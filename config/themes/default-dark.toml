@@ -1,0 +1,33 @@
+[theme]
+name = "default-dark"
+
+[editor]
+bg = "#1E1E1E"
+fg = "#D4D4D4"
+cursor = "#AEAFAD"
+selection = "#264F78"
+gutter = "#2A2D2E"
+font_size = 17.0
+line_height = 26.0
+
+[ui]
+sidebar_bg = "#252526"
+panel_bg = "#1E1E1E"
+status_bar_bg = "#007ACC"
+border_color = "#3C3C3C"
+selection_bg = "#094771"
+sidebar_font_size = 14.0
+sidebar_line_height = 21.0
+panel_font_size = 14.0
+panel_line_height = 21.0
+
+[syntax]
+keyword = "#569CD6"
+string = "#CE9178"
+function = "#DCDCAA"
+comment = "#6A9955"
+type = "#4EC9B0"
+number = "#B5CEA8"
+constant = "#4FC1FF"
+operator = "#D4D4D4"
+variable = "#9CDCFE"

@@ -1,0 +1,4 @@
+Phase5 open sample.
+Use Cmd/Ctrl+S  s
+Helllo nice to meet you
+to save and Cmd/Ctrl+O to reload this file.

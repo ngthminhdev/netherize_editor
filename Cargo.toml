@@ -2,5 +2,36 @@
 name = "netherize_editor"
 version = "0.1.0"
 edition = "2024"
+default-run = "netherize_editor"
 
 [dependencies]
+bytemuck = { version = "1.24.0", features = ["derive"] }
+cosmic-text = "0.18.2"
+font-kit = "0.14.3"
+notify = "6.1.1"
+pollster = "0.4.0"
+portable-pty = "0.9.0"
+ropey = "1.6.1"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+toml = "0.8"
+swash = "0.2.7"
+sysinfo = "0.37.2"
+tokio = { version = "1.52.1", features = ["rt-multi-thread", "sync", "time"] }
+tree-sitter = "0.24.7"
+tree-sitter-rust = "0.23.3"
+wgpu = "29.0.1"
+winit = "0.30.13"
+
+[dev-dependencies]
+criterion = { version = "0.5.1", default-features = true }
+
+[[bench]]
+name = "editor_bench"
+harness = false
+
+[profile.release]
+debug = true
+
+[profile.bench]
+debug = true
