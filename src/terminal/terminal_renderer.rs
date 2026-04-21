@@ -21,7 +21,6 @@
 //! 5. Tạo `GlyphInstance` với màu lấy từ `CellStyle.fg.to_rgba_f32(true)`.
 //!
 //! Background cells không render ở phase này (future: QuadPipeline).
-
 use crate::{
     render::glyph_instance::GlyphInstance,
     terminal::grid::TerminalGrid,

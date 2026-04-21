@@ -1,5 +1,6 @@
 use crate::{
     app::app_state::AppState,
+    config::theme_config::linear_rgba_to_srgb_u8,
     render::glyph_instance::GlyphInstance,
     text::{
         atlas::GlyphAtlas,
@@ -160,17 +161,7 @@ pub fn compute_cursor_overlay(
 }
 
 fn color_f32_to_u8(color: [f32; 4]) -> [u8; 4] {
-    [
-        f32_channel_to_u8(color[0]),
-        f32_channel_to_u8(color[1]),
-        f32_channel_to_u8(color[2]),
-        f32_channel_to_u8(color[3]),
-    ]
-}
-
-fn f32_channel_to_u8(channel: f32) -> u8 {
-    let clamped = channel.clamp(0.0, 1.0);
-    (clamped * 255.0).round() as u8
+    linear_rgba_to_srgb_u8(color)
 }
 
 /// Tính caret từ buffer cursor + layout metrics hiện tại.

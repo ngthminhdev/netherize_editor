@@ -65,6 +65,12 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::SwitchMode(ModeEvent::EnterNormal)),
         },
         Case {
+            name: "normal escape -> ClearSearchHighlights",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: input_from_named(NamedKey::Escape),
+            expected: Some(Command::ClearSearchHighlights),
+        },
+        Case {
             name: "cmd/ctrl p -> OpenFilePicker",
             context: KeybindingContext::for_mode(EditorMode::Insert),
             input: NormalizedInput {
@@ -113,7 +119,7 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::FocusEditor),
         },
         Case {
-            name: "normal p without prefix -> None",
+            name: "normal p -> PasteAfter",
             context: KeybindingContext::for_mode(EditorMode::Normal),
             input: NormalizedInput {
                 physical_key: Some(KeyCode::KeyP),
@@ -121,7 +127,7 @@ fn table_driven_keybinding_resolution() {
                 text: Some("p".to_string()),
                 modifiers: ModifiersState::empty(),
             },
-            expected: None,
+            expected: Some(Command::PasteAfter),
         },
         Case {
             name: "normal a -> AppendAfterCursor",
@@ -157,15 +163,87 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::InsertAtLineStart),
         },
         Case {
-            name: "normal backtick -> ToggleTerminal",
+            name: "global F12 -> ToggleTerminal",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: input_from_named(NamedKey::F12),
+            expected: Some(Command::ToggleTerminal),
+        },
+        Case {
+            name: "normal ctrl+l -> BufferNext",
             context: KeybindingContext::for_mode(EditorMode::Normal),
             input: NormalizedInput {
-                physical_key: Some(KeyCode::Backquote),
+                physical_key: Some(KeyCode::KeyL),
                 named_key: None,
-                text: Some("`".to_string()),
+                text: Some("l".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::BufferNext),
+        },
+        Case {
+            name: "normal ctrl+h -> BufferPrev",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyH),
+                named_key: None,
+                text: Some("h".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::BufferPrev),
+        },
+        Case {
+            name: "explorer w -> ExplorerCollapseOrParent",
+            context: KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyW),
+                named_key: None,
+                text: Some("w".to_string()),
                 modifiers: ModifiersState::empty(),
             },
-            expected: Some(Command::ToggleTerminal),
+            expected: Some(Command::ExplorerCollapseOrParent),
+        },
+        Case {
+            name: "explorer W -> ExplorerCollapseAllUnderNode",
+            context: KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyW),
+                named_key: None,
+                text: Some("W".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::ExplorerCollapseAllUnderNode),
+        },
+        Case {
+            name: "explorer d -> ExplorerDeleteNode",
+            context: KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyD),
+                named_key: None,
+                text: Some("d".to_string()),
+                modifiers: ModifiersState::empty(),
+            },
+            expected: Some(Command::ExplorerDeleteNode),
+        },
+        Case {
+            name: "explorer e -> ExplorerExpandNode",
+            context: KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyE),
+                named_key: None,
+                text: Some("e".to_string()),
+                modifiers: ModifiersState::empty(),
+            },
+            expected: Some(Command::ExplorerExpandNode),
+        },
+        Case {
+            name: "explorer E -> ExplorerExpandAllUnderNode",
+            context: KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyE),
+                named_key: None,
+                text: Some("E".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::ExplorerExpandAllUnderNode),
         },
         Case {
             name: "palette text -> FilePickerAppendQuery",
@@ -183,6 +261,45 @@ fn table_driven_keybinding_resolution() {
             context: KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true),
             input: input_from_named(NamedKey::Enter),
             expected: Some(Command::FilePickerConfirmSelection),
+        },
+        Case {
+            name: "visual y -> YankSelection",
+            context: KeybindingContext::for_mode(EditorMode::Visual),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyY),
+                named_key: None,
+                text: Some("y".to_string()),
+                modifiers: ModifiersState::empty(),
+            },
+            expected: Some(Command::YankSelection),
+        },
+        Case {
+            name: "palette ctrl+n -> OverlaySelectNext",
+            context: KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyN),
+                named_key: None,
+                text: Some("n".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::OverlaySelectNext),
+        },
+        Case {
+            name: "palette ctrl+p -> OverlaySelectPrev",
+            context: KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyP),
+                named_key: None,
+                text: Some("p".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::OverlaySelectPrev),
+        },
+        Case {
+            name: "palette arrow down -> OverlaySelectNext",
+            context: KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true),
+            input: input_from_named(NamedKey::ArrowDown),
+            expected: Some(Command::OverlaySelectNext),
         },
         Case {
             name: "palette without picker text -> None",
@@ -221,17 +338,30 @@ fn ctrl_s_maps_to_save_file() {
 }
 
 #[test]
-fn ctrl_backslash_maps_to_toggle_terminal() {
+fn f12_maps_to_toggle_terminal_in_terminal_focus() {
+    let map = make_map();
+    let input = input_from_named(NamedKey::F12);
+    assert_eq!(
+        map.translate(
+            &input,
+            KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal)
+        ),
+        Some(Command::ToggleTerminal)
+    );
+}
+
+#[test]
+fn bare_backtick_no_longer_maps_to_terminal_command() {
     let map = make_map();
     let input = NormalizedInput {
-        physical_key: Some(KeyCode::Backslash),
+        physical_key: Some(KeyCode::Backquote),
         named_key: None,
-        text: Some("\\".to_string()),
-        modifiers: ModifiersState::CONTROL,
+        text: Some("`".to_string()),
+        modifiers: ModifiersState::empty(),
     };
     assert_eq!(
         map.translate(&input, KeybindingContext::for_mode(EditorMode::Normal)),
-        Some(Command::ToggleTerminal)
+        None
     );
 }
 
@@ -351,6 +481,36 @@ fn leader_and_chord_resolution_work() {
             assert_eq!(resolved.command, Command::OpenFileFinder);
         }
         other => panic!("expected dispatch for leader f f, got {:?}", other),
+    }
+}
+
+#[test]
+fn leader_space_x_maps_to_close_current_buffer() {
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let space = input_from_named(NamedKey::Space);
+    let first = map
+        .resolve_sequence_start(&space, context)
+        .expect("space should start chord");
+    let pending = match first {
+        SequenceMatch::Pending(pending) => pending,
+        other => panic!("expected pending leader sequence, got {:?}", other),
+    };
+
+    let follow_x = NormalizedInput {
+        physical_key: Some(KeyCode::KeyX),
+        named_key: None,
+        text: Some("x".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let resolved = map
+        .resolve_sequence_next(&pending, &follow_x, context)
+        .expect("leader+x should resolve");
+    match resolved {
+        SequenceMatch::Dispatch(resolved) => {
+            assert_eq!(resolved.command, Command::BufferCloseCurrent);
+        }
+        other => panic!("expected dispatch for leader x, got {:?}", other),
     }
 }
 

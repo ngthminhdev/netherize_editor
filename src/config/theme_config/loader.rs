@@ -1,0 +1,440 @@
+use std::path::{Path, PathBuf};
+
+use super::{
+    model::{
+        EditorThemeTokens, FileIconThemeTokens, IconThemeTokens, SyntaxThemeTokens, ThemeColor,
+        ThemeConfig, UiThemeTokens,
+    },
+    raw::{RawEditor, RawFileIconTheme, RawIcons, RawSyntax, RawThemeFile, RawUi},
+};
+
+impl ThemeConfig {
+    pub fn active_profile() -> String {
+        std::env::var("NETHERIZE_THEME").unwrap_or_else(|_| "default-dark".into())
+    }
+
+    pub fn load_active() -> Self {
+        let profile = Self::active_profile();
+        match Self::load(&profile) {
+            Ok(theme) => {
+                eprintln!("[theme] loaded profile '{profile}'");
+                theme
+            }
+            Err(err) => {
+                eprintln!("[theme] {err}");
+                eprintln!("[theme] falling back to built-in dark theme");
+                Self::builtin_dark()
+            }
+        }
+    }
+
+    pub fn load(profile: &str) -> Result<Self, String> {
+        let path = find_profile_path(profile)
+            .ok_or_else(|| format!("theme profile '{profile}' not found under config/themes"))?;
+        Self::load_from_path(&path)
+    }
+
+    pub fn load_from_path(path: &Path) -> Result<Self, String> {
+        let content = std::fs::read_to_string(path)
+            .map_err(|err| format!("cannot read theme file {}: {err}", path.display()))?;
+
+        let raw: RawThemeFile = toml::from_str(&content)
+            .map_err(|err| format!("parse error in theme file {}: {err}", path.display()))?;
+
+        let mut theme = Self::from_raw(raw)
+            .map_err(|err| format!("invalid theme file {}: {err}", path.display()))?;
+
+        if theme.name.is_empty() {
+            theme.name = path
+                .file_stem()
+                .and_then(|name| name.to_str())
+                .unwrap_or("theme")
+                .to_string();
+        }
+
+        Ok(theme)
+    }
+
+    fn from_raw(raw: RawThemeFile) -> Result<Self, String> {
+        let RawThemeFile {
+            theme,
+            editor: raw_editor,
+            ui: raw_ui,
+            syntax: raw_syntax,
+            icons: raw_icons,
+        } = raw;
+
+        let editor = parse_editor(&raw_editor)?;
+        let ui = parse_ui(&raw_ui, &raw_editor)?;
+        let syntax = parse_syntax(&raw_syntax)?;
+        let icons = parse_icons(&raw_icons, &ui)?;
+
+        Ok(Self {
+            name: theme.name,
+            description: theme.description,
+            editor,
+            ui,
+            syntax,
+            icons,
+        })
+    }
+}
+
+fn parse_editor(raw: &RawEditor) -> Result<EditorThemeTokens, String> {
+    Ok(EditorThemeTokens {
+        bg: parse_color("editor", "bg", &raw.bg)?,
+        fg: parse_color("editor", "fg", &raw.fg)?,
+        cursor: parse_color("editor", "cursor", &raw.cursor)?,
+        selection: parse_color("editor", "selection", &raw.selection)?,
+        gutter: parse_color("editor", "gutter", &raw.gutter)?,
+        gutter_active: parse_color(
+            "editor",
+            "gutter_active",
+            raw.gutter_active.as_deref().unwrap_or(raw.fg.as_str()),
+        )?,
+        font_size: parse_positive_size("editor", "font_size", raw.font_size.unwrap_or(17.0))?,
+        line_height: parse_positive_size("editor", "line_height", raw.line_height.unwrap_or(26.0))?,
+        font_family: raw
+            .font_family
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
+        nerd_font_family: raw
+            .nerd_font_family
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
+    })
+}
+
+fn parse_ui(raw: &RawUi, raw_editor: &RawEditor) -> Result<UiThemeTokens, String> {
+    Ok(UiThemeTokens {
+        bg: parse_color("ui", "bg", raw.bg.as_deref().unwrap_or("#07080d"))?,
+        sidebar_bg: parse_color("ui", "sidebar_bg", &raw.sidebar_bg)?,
+        panel_bg: parse_color("ui", "panel_bg", &raw.panel_bg)?,
+        terminal_bg: parse_color(
+            "ui",
+            "terminal_bg",
+            raw.terminal_bg.as_deref().unwrap_or(raw.panel_bg.as_str()),
+        )?,
+        overlay_bg: parse_color(
+            "ui",
+            "overlay_bg",
+            raw.overlay_bg.as_deref().unwrap_or("#05070cD9"),
+        )?,
+        status_bar_bg: parse_color("ui", "status_bar_bg", &raw.status_bar_bg)?,
+        border_color: parse_color("ui", "border_color", &raw.border_color)?,
+        selection_bg: parse_color(
+            "ui",
+            "selection_bg",
+            raw.selection_bg.as_deref().unwrap_or("#094771"),
+        )?,
+        fg: parse_color(
+            "ui",
+            "fg",
+            raw.fg.as_deref().unwrap_or(raw_editor.fg.as_str()),
+        )?,
+        fg_dim: parse_color("ui", "fg_dim", raw.fg_dim.as_deref().unwrap_or("#b7bfcc"))?,
+        fg_faint: parse_color(
+            "ui",
+            "fg_faint",
+            raw.fg_faint.as_deref().unwrap_or("#8f98aa"),
+        )?,
+        fg_ghost: parse_color(
+            "ui",
+            "fg_ghost",
+            raw.fg_ghost.as_deref().unwrap_or("#6d7483"),
+        )?,
+        accent: parse_color("ui", "accent", raw.accent.as_deref().unwrap_or("#9BE564"))?,
+        cyan: parse_color("ui", "cyan", raw.cyan.as_deref().unwrap_or("#2FD3F6"))?,
+        magenta: parse_color("ui", "magenta", raw.magenta.as_deref().unwrap_or("#E77AE9"))?,
+        amber: parse_color("ui", "amber", raw.amber.as_deref().unwrap_or("#F5B63A"))?,
+        success: parse_color("ui", "success", raw.success.as_deref().unwrap_or("#67D67C"))?,
+        warning: parse_color("ui", "warning", raw.warning.as_deref().unwrap_or("#F2B84B"))?,
+        info: parse_color("ui", "info", raw.info.as_deref().unwrap_or("#49C6F8"))?,
+        error: parse_color("ui", "error", raw.error.as_deref().unwrap_or("#FF7B72"))?,
+        mode_normal: parse_color(
+            "ui",
+            "mode_normal",
+            raw.mode_normal.as_deref().unwrap_or("#2FD3F6"),
+        )?,
+        mode_insert: parse_color(
+            "ui",
+            "mode_insert",
+            raw.mode_insert.as_deref().unwrap_or("#9BE564"),
+        )?,
+        mode_visual: parse_color(
+            "ui",
+            "mode_visual",
+            raw.mode_visual.as_deref().unwrap_or("#E77AE9"),
+        )?,
+        sidebar_font_size: parse_positive_size(
+            "ui",
+            "sidebar_font_size",
+            raw.sidebar_font_size.unwrap_or(14.0),
+        )?,
+        sidebar_line_height: parse_positive_size(
+            "ui",
+            "sidebar_line_height",
+            raw.sidebar_line_height.unwrap_or(21.0),
+        )?,
+        panel_font_size: parse_positive_size(
+            "ui",
+            "panel_font_size",
+            raw.panel_font_size.unwrap_or(14.0),
+        )?,
+        panel_line_height: parse_positive_size(
+            "ui",
+            "panel_line_height",
+            raw.panel_line_height.unwrap_or(21.0),
+        )?,
+        sidebar_width: parse_positive_size(
+            "ui",
+            "sidebar_width",
+            raw.sidebar_width.unwrap_or(260.0),
+        )?,
+        right_sidebar_width: parse_positive_size(
+            "ui",
+            "right_sidebar_width",
+            raw.right_sidebar_width.unwrap_or(280.0),
+        )?,
+        bottom_panel_height: parse_positive_size(
+            "ui",
+            "bottom_panel_height",
+            raw.bottom_panel_height.unwrap_or(220.0),
+        )?,
+        top_bar_height: parse_positive_size(
+            "ui",
+            "top_bar_height",
+            raw.top_bar_height.unwrap_or(32.0),
+        )?,
+        status_bar_height: parse_positive_size(
+            "ui",
+            "status_bar_height",
+            raw.status_bar_height.unwrap_or(24.0),
+        )?,
+    })
+}
+
+fn parse_syntax(raw: &RawSyntax) -> Result<SyntaxThemeTokens, String> {
+    Ok(SyntaxThemeTokens {
+        keyword: parse_color("syntax", "keyword", &raw.keyword)?,
+        string: parse_color("syntax", "string", &raw.string)?,
+        function: parse_color("syntax", "function", &raw.function)?,
+        comment: parse_color("syntax", "comment", &raw.comment)?,
+        r#type: parse_color("syntax", "type", &raw.r#type)?,
+        number: parse_color("syntax", "number", &raw.number)?,
+        constant: parse_color("syntax", "constant", &raw.constant)?,
+        operator: parse_color("syntax", "operator", &raw.operator)?,
+        variable: parse_color("syntax", "variable", &raw.variable)?,
+        property: parse_color(
+            "syntax",
+            "property",
+            raw.property.as_deref().unwrap_or(raw.variable.as_str()),
+        )?,
+        punctuation: parse_color(
+            "syntax",
+            "punctuation",
+            raw.punctuation.as_deref().unwrap_or("#8f98aa"),
+        )?,
+        r#macro: parse_color(
+            "syntax",
+            "macro",
+            raw.r#macro.as_deref().unwrap_or(raw.keyword.as_str()),
+        )?,
+        lifetime: parse_color(
+            "syntax",
+            "lifetime",
+            raw.lifetime.as_deref().unwrap_or(raw.number.as_str()),
+        )?,
+    })
+}
+
+fn parse_icons(raw: &RawIcons, ui: &UiThemeTokens) -> Result<IconThemeTokens, String> {
+    Ok(IconThemeTokens {
+        explorer_file_marker: parse_string_token(
+            "icons",
+            "explorer_file_marker",
+            raw.explorer_file_marker.as_deref(),
+            "·",
+        )?,
+        explorer_folder_collapsed_marker: parse_string_token(
+            "icons",
+            "explorer_folder_collapsed_marker",
+            raw.explorer_folder_collapsed_marker.as_deref(),
+            "▶",
+        )?,
+        explorer_folder_expanded_marker: parse_string_token(
+            "icons",
+            "explorer_folder_expanded_marker",
+            raw.explorer_folder_expanded_marker.as_deref(),
+            "▼",
+        )?,
+        file_picker_dot: parse_string_token(
+            "icons",
+            "file_picker_dot",
+            raw.file_picker_dot.as_deref(),
+            "●",
+        )?,
+        folder_closed: parse_file_icon(
+            "icons.folder_closed",
+            raw.folder_closed.as_ref(),
+            "\u{F07B}",
+            ui.amber,
+        )?,
+        folder_open: parse_file_icon(
+            "icons.folder_open",
+            raw.folder_open.as_ref(),
+            "\u{F07C}",
+            ui.amber,
+        )?,
+        default_file: parse_file_icon(
+            "icons.default_file",
+            raw.default_file.as_ref(),
+            "\u{F15B}",
+            ui.fg_ghost,
+        )?,
+        rust: parse_file_icon("icons.rust", raw.rust.as_ref(), "\u{E7A8}", ui.warning)?,
+        javascript: parse_file_icon(
+            "icons.javascript",
+            raw.javascript.as_ref(),
+            "\u{E781}",
+            ui.amber,
+        )?,
+        typescript: parse_file_icon(
+            "icons.typescript",
+            raw.typescript.as_ref(),
+            "\u{E628}",
+            ui.info,
+        )?,
+        tsx: parse_file_icon("icons.tsx", raw.tsx.as_ref(), "\u{E7BA}", ui.info)?,
+        jsx: parse_file_icon("icons.jsx", raw.jsx.as_ref(), "\u{E7BA}", ui.amber)?,
+        python: parse_file_icon("icons.python", raw.python.as_ref(), "\u{E73C}", ui.info)?,
+        go: parse_file_icon("icons.go", raw.go.as_ref(), "\u{E724}", ui.cyan)?,
+        config: parse_file_icon("icons.config", raw.config.as_ref(), "\u{E615}", ui.fg_ghost)?,
+        json: parse_file_icon("icons.json", raw.json.as_ref(), "\u{E60B}", ui.amber)?,
+        markdown: parse_file_icon("icons.markdown", raw.markdown.as_ref(), "\u{F48A}", ui.info)?,
+        html: parse_file_icon("icons.html", raw.html.as_ref(), "\u{E736}", ui.error)?,
+        css: parse_file_icon("icons.css", raw.css.as_ref(), "\u{E749}", ui.info)?,
+        sass: parse_file_icon("icons.sass", raw.sass.as_ref(), "\u{E603}", ui.magenta)?,
+        shell: parse_file_icon("icons.shell", raw.shell.as_ref(), "\u{F489}", ui.success)?,
+        git: parse_file_icon("icons.git", raw.git.as_ref(), "\u{F1D3}", ui.warning)?,
+        lock: parse_file_icon("icons.lock", raw.lock.as_ref(), "\u{F13E}", ui.fg_ghost)?,
+        image: parse_file_icon("icons.image", raw.image.as_ref(), "\u{F1C5}", ui.success)?,
+    })
+}
+
+fn parse_file_icon(
+    section: &str,
+    raw: Option<&RawFileIconTheme>,
+    default_glyph: &str,
+    default_color: ThemeColor,
+) -> Result<FileIconThemeTokens, String> {
+    Ok(FileIconThemeTokens {
+        glyph: parse_string_token(
+            section,
+            "glyph",
+            raw.and_then(|icon| icon.glyph.as_deref()),
+            default_glyph,
+        )?,
+        color: if let Some(color) = raw.and_then(|icon| icon.color.as_deref()) {
+            parse_color(section, "color", color)?
+        } else {
+            default_color
+        },
+    })
+}
+
+fn parse_color(section: &str, token: &str, value: &str) -> Result<ThemeColor, String> {
+    ThemeColor::from_hex(value).map_err(|err| format!("{section}.{token}: {err}"))
+}
+
+fn parse_positive_size(section: &str, token: &str, value: f32) -> Result<f32, String> {
+    if value > 0.0 {
+        Ok(value)
+    } else {
+        Err(format!("{section}.{token}: expected > 0, got {value}"))
+    }
+}
+
+fn parse_string_token(
+    section: &str,
+    token: &str,
+    value: Option<&str>,
+    default: &str,
+) -> Result<String, String> {
+    let parsed = value.unwrap_or(default).trim();
+    if parsed.is_empty() {
+        Err(format!("{section}.{token}: expected non-empty string"))
+    } else {
+        Ok(parsed.to_string())
+    }
+}
+
+fn find_profile_path(name: &str) -> Option<PathBuf> {
+    let filename = format!("{name}.toml");
+
+    if let Ok(cwd) = std::env::current_dir() {
+        let path = cwd.join("config").join("themes").join(&filename);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(parent) = exe.parent()
+    {
+        let path = parent.join("config").join("themes").join(&filename);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ThemeConfig;
+
+    #[test]
+    fn invalid_theme_file_returns_error() {
+        let path = std::env::temp_dir().join("netherize_invalid_theme.toml");
+        std::fs::write(
+            &path,
+            r##"
+[editor]
+bg = "#111111"
+fg = "#eeeeee"
+cursor = "#ffffff"
+selection = "#333333"
+gutter = "#222222"
+
+[ui]
+sidebar_bg = "#111111"
+panel_bg = "#111111"
+status_bar_bg = "#111111"
+border_color = "#111111"
+
+[syntax]
+keyword = "not-a-hex"
+string = "#00ff00"
+function = "#00ff00"
+comment = "#00ff00"
+type = "#00ff00"
+number = "#00ff00"
+constant = "#00ff00"
+operator = "#00ff00"
+variable = "#00ff00"
+"##,
+        )
+        .expect("write invalid theme");
+
+        let result = ThemeConfig::load_from_path(&path);
+        assert!(result.is_err());
+
+        let _ = std::fs::remove_file(path);
+    }
+}

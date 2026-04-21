@@ -22,6 +22,16 @@ pub(super) fn syntax_spans_to_styled(
                     theme.syntax.function.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::Number => theme.syntax.number.as_u8(),
+                crate::syntax::highlight::HighlightCategory::Property => {
+                    theme.syntax.property.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::Punctuation => {
+                    theme.syntax.punctuation.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::Macro => theme.syntax.r#macro.as_u8(),
+                crate::syntax::highlight::HighlightCategory::Lifetime => {
+                    theme.syntax.lifetime.as_u8()
+                }
             };
             StyledTextSpan::new(span.range.start, span.range.end, color)
         })
@@ -76,10 +86,7 @@ fn scale_metric(value: f32, scale: f32, min: f32) -> f32 {
     (value * scale).max(min)
 }
 
-pub(super) fn collect_explorer_entries(
-    app_state: &AppState,
-    expanded: &HashSet<PathBuf>,
-) -> Vec<ExplorerEntry> {
+pub(super) fn collect_explorer_entries(app_state: &AppState) -> Vec<ExplorerEntry> {
     let Some(nodes) = app_state.workspace_nodes() else {
         return Vec::new();
     };
@@ -136,16 +143,23 @@ pub(super) fn collect_explorer_entries(
     }
 
     let mut entries = Vec::new();
-    collect_visible_explorer_entries(&root, 0, &node_types, &children_map, expanded, &mut entries);
+    collect_visible_explorer_entries(
+        app_state,
+        &root,
+        0,
+        &node_types,
+        &children_map,
+        &mut entries,
+    );
     entries
 }
 
 fn collect_visible_explorer_entries(
+    app_state: &AppState,
     parent: &Path,
     depth: usize,
     node_types: &HashMap<PathBuf, WorkspaceNodeType>,
     children_map: &HashMap<PathBuf, Vec<PathBuf>>,
-    expanded: &HashSet<PathBuf>,
     out: &mut Vec<ExplorerEntry>,
 ) {
     let Some(children) = children_map.get(parent) else {
@@ -157,7 +171,8 @@ fn collect_visible_explorer_entries(
             .get(child)
             .copied()
             .unwrap_or(WorkspaceNodeType::File);
-        let is_expanded = file_type == WorkspaceNodeType::Folder && expanded.contains(child);
+        let is_expanded =
+            file_type == WorkspaceNodeType::Folder && app_state.workspace_is_expanded(child);
         let name = child
             .file_name()
             .and_then(|name| name.to_str())
@@ -174,11 +189,11 @@ fn collect_visible_explorer_entries(
 
         if file_type == WorkspaceNodeType::Folder && is_expanded {
             collect_visible_explorer_entries(
+                app_state,
                 child,
                 depth + 1,
                 node_types,
                 children_map,
-                expanded,
                 out,
             );
         }
@@ -188,11 +203,14 @@ fn collect_visible_explorer_entries(
 pub(super) fn build_sidebar_rows(
     entries: &[ExplorerEntry],
     selected_idx: usize,
+    theme: &ThemeConfig,
 ) -> Vec<SidebarRow> {
     if entries.is_empty() {
         return vec![SidebarRow {
             depth: 0,
-            icon: "·",
+            arrow: theme.sidebar_arrow(false, false).to_string(),
+            nerd_icon: theme.icons.default_file.glyph.clone(),
+            icon_color: theme.icons.default_file.color.as_f32(),
             label: "(no files)".to_string(),
             is_selected: false,
         }];
@@ -203,19 +221,14 @@ pub(super) fn build_sidebar_rows(
         .iter()
         .enumerate()
         .map(|(idx, entry)| {
-            let icon = match entry.file_type {
-                WorkspaceNodeType::Folder => {
-                    if entry.is_expanded {
-                        "▼"
-                    } else {
-                        "▶"
-                    }
-                }
-                WorkspaceNodeType::File => "·",
-            };
+            let is_dir = entry.file_type == WorkspaceNodeType::Folder;
+            let arrow = theme.sidebar_arrow(is_dir, entry.is_expanded).to_string();
+            let icon = theme.file_icon_for_path(&entry.path, is_dir, entry.is_expanded);
             SidebarRow {
                 depth: entry.depth,
-                icon,
+                arrow,
+                nerd_icon: icon.glyph.clone(),
+                icon_color: icon.color.as_f32(),
                 label: entry.name.clone(),
                 is_selected: idx == selected,
             }
@@ -229,7 +242,7 @@ pub(super) fn region_color(id: RegionId, theme: &ThemeConfig) -> [f32; 4] {
         RegionId::LeftSidebar => theme.ui.sidebar_bg.as_f32(),
         RegionId::Center => theme.editor.bg.as_f32(),
         RegionId::RightSidebar => theme.ui.sidebar_bg.as_f32(),
-        RegionId::BottomPanel => theme.ui.panel_bg.as_f32(),
+        RegionId::BottomPanel => theme.ui.terminal_bg.as_f32(),
         RegionId::StatusBar => theme.ui.status_bar_bg.as_f32(),
         _ => theme.ui.border_color.as_f32(),
     }

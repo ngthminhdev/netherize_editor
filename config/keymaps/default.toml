@@ -15,27 +15,19 @@ command = "editor.save_file"
 
 [[bindings]]
 key = "mod+o"
-command = "editor.open_file"
+command = "editor.open_folder"
 
 [[bindings]]
 key = "mod+p"
-command = "app.open_file_picker"
-
-[[bindings]]
-key = "mod+shift+p"
 command = "app.open_command_palette"
 
 [[bindings]]
 key = "mod+b"
-command = "app.toggle_explorer"
+command = "app.toggle_left_dock"
 
 [[bindings]]
 key = "mod+f"
 command = "app.focus_explorer"
-
-[[bindings]]
-key = "mod+backslash"
-command = "app.toggle_terminal"
 
 [[bindings]]
 key = "F12"
@@ -68,10 +60,6 @@ command = "ui.scale_reset"
 [[bindings]]
 key = "F10"
 command = "runner.smart_compile_and_run"
-
-# [[bindings]]
-# key = "F12"
-# command = "app.focus_terminal"
 
 # ───────────────── INSERT ─────────────────
 [[bindings]]
@@ -258,6 +246,16 @@ mode = "normal"
 key = "Ctrl+r"
 command = "editor.redo"
 
+[[bindings]]
+mode = "normal"
+key = "Ctrl+h"
+command = "buffer.prev"
+
+[[bindings]]
+mode = "normal"
+key = "Ctrl+l"
+command = "buffer.next"
+
 # scroll
 [[bindings]]
 mode = "normal"
@@ -273,6 +271,31 @@ command = "editor.move_to_last_line"
 mode = "normal"
 key = "z z"
 command = "editor.center_cursor_line"
+
+[[bindings]]
+mode = "normal"
+key = "/"
+command = "editor.open_in_file_search"
+
+[[bindings]]
+mode = "normal"
+key = "n"
+command = "editor.search_next"
+
+[[bindings]]
+mode = "normal"
+key = "N"
+command = "editor.search_prev"
+
+[[bindings]]
+mode = "normal"
+key = "*"
+command = "editor.search_word_under_cursor"
+
+[[bindings]]
+mode = "normal"
+key = "Escape"
+command = "editor.clear_search_highlights"
 
 [[bindings]]
 mode = "normal"
@@ -376,6 +399,11 @@ mode = "terminal"
 key = "Escape"
 command = "app.focus_editor"
 
+[[bindings]]
+mode = "terminal"
+key = "F12"
+command = "app.toggle_terminal"
+
 # ───────────────── EXPLORER ─────────────────
 [[bindings]]
 mode = "explorer"
@@ -387,7 +415,62 @@ mode = "explorer"
 key = "k"
 command = "explorer.move_up"
 
+[[bindings]]
+mode = "explorer"
+key = "h"
+command = "explorer.collapse_node"
+
+[[bindings]]
+mode = "explorer"
+key = "l"
+command = "explorer.expand_or_child"
+
+[[bindings]]
+mode = "explorer"
+key = "w"
+command = "explorer.collapse_node"
+
+[[bindings]]
+mode = "explorer"
+key = "W"
+command = "explorer.collapse_all_under_node"
+
+[[bindings]]
+mode = "explorer"
+key = "o"
+command = "explorer.toggle_or_open"
+
+[[bindings]]
+mode = "explorer"
+key = "d"
+command = "explorer.delete_node"
+
+[[bindings]]
+mode = "explorer"
+key = "e"
+command = "explorer.expand_node"
+
+[[bindings]]
+mode = "explorer"
+key = "E"
+command = "explorer.expand_all_under_node"
+
+[[bindings]]
+mode = "explorer"
+key = "a"
+command = "explorer.create_file"
+
+[[bindings]]
+mode = "explorer"
+key = "A"
+command = "explorer.create_folder"
+
 # ───────────────── LEADER ─────────────────
+[[bindings]]
+mode = "normal"
+key = "<leader>p j"
+command = "projects.recent"
+
 [[bindings]]
 mode = "normal"
 key = "<leader>f f"
@@ -400,10 +483,31 @@ command = "app.search_in_files"
 
 [[bindings]]
 mode = "normal"
-key = "<leader>t"
-command = "app.toggle_terminal"
+key = "<leader>w"
+command = "editor.save_file"
 
 [[bindings]]
 mode = "normal"
-key = "<leader>w"
-command = "editor.save_file"
+key = "<leader>x"
+command = "buffer.close_current"
+
+# ───────────────── PALETTE ─────────────────
+[[bindings]]
+mode = "palette"
+key = "Ctrl+p"
+command = "overlay.select_prev"
+
+[[bindings]]
+mode = "palette"
+key = "Ctrl+n"
+command = "overlay.select_next"
+
+[[bindings]]
+mode = "palette"
+key = "ArrowUp"
+command = "overlay.select_prev"
+
+[[bindings]]
+mode = "palette"
+key = "ArrowDown"
+command = "overlay.select_next"

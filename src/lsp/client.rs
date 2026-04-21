@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fs,
     io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio},
@@ -124,7 +125,8 @@ pub fn spawn_lsp_server(
     request_id: u64,
     revision_id: u64,
 ) -> Result<SpawnedLspServer, String> {
-    let server_name = resolve_lsp_server_command(requested_command);
+    let server_name = resolve_lsp_server_command(requested_command, root_path)
+        .ok_or_else(|| format!("no supported LSP server found for {}", root_path.display()))?;
     let mut command = Command::new(&server_name);
     command.current_dir(root_path);
     command.stdin(Stdio::piped());
@@ -381,14 +383,54 @@ pub fn path_to_lsp_uri(path: &Path) -> String {
     }
 }
 
-pub fn resolve_lsp_server_command(requested_command: Option<&str>) -> String {
+pub fn resolve_lsp_server_command(
+    requested_command: Option<&str>,
+    root_path: &Path,
+) -> Option<String> {
     if let Some(command) = requested_command {
         let command = command.trim();
         if !command.is_empty() {
-            return command.to_string();
+            return Some(command.to_string());
         }
     }
-    "rust-analyzer".to_string()
+    detect_lsp_server_for_workspace(root_path)
+}
+
+pub fn detect_lsp_server_for_workspace(root_path: &Path) -> Option<String> {
+    if has_workspace_marker(root_path, &["Cargo.toml", "rust-project.json"]) {
+        return Some("rust-analyzer".to_string());
+    }
+    if has_workspace_marker(root_path, &["go.work", "go.mod"]) {
+        return Some("gopls".to_string());
+    }
+
+    let top_level_server = fs::read_dir(root_path)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let path = entry.path();
+            path.is_file().then_some(path)
+        })
+        .find_map(|path| detect_lsp_server_for_path(&path));
+
+    top_level_server
+}
+
+pub fn detect_lsp_server_for_path(path: &Path) -> Option<String> {
+    match path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("rs") => Some("rust-analyzer".to_string()),
+        Some("go") => Some("gopls".to_string()),
+        _ => None,
+    }
+}
+
+fn has_workspace_marker(root_path: &Path, markers: &[&str]) -> bool {
+    markers.iter().any(|marker| root_path.join(marker).exists())
 }
 
 fn parse_diagnostic(value: &Value) -> Option<LspDiagnostic> {
@@ -436,11 +478,27 @@ pub fn into_stdout_reader(stdout: ChildStdout) -> Box<dyn BufRead + Send> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
+    use std::{
+        fs,
+        io::Cursor,
+        path::{Path, PathBuf},
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     use serde_json::json;
 
-    use super::{parse_publish_diagnostics, read_json_rpc_message, write_json_rpc_message};
+    use super::{
+        detect_lsp_server_for_path, detect_lsp_server_for_workspace, parse_publish_diagnostics,
+        read_json_rpc_message, resolve_lsp_server_command, write_json_rpc_message,
+    };
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        std::env::temp_dir().join(format!("netherize_{name}_{stamp}"))
+    }
 
     #[test]
     fn json_rpc_frame_roundtrip() {
@@ -491,5 +549,56 @@ mod tests {
             parsed.diagnostics[0].message,
             "cannot find value `hello` in this scope"
         );
+    }
+
+    #[test]
+    fn workspace_server_detection_prefers_rust_markers() {
+        let root = unique_temp_dir("rust_lsp_workspace");
+        fs::create_dir_all(&root).expect("create workspace");
+        fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").expect("write cargo");
+
+        let server = detect_lsp_server_for_workspace(&root);
+        assert_eq!(server.as_deref(), Some("rust-analyzer"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn workspace_server_detection_supports_go_markers() {
+        let root = unique_temp_dir("go_lsp_workspace");
+        fs::create_dir_all(&root).expect("create workspace");
+        fs::write(root.join("go.mod"), "module demo\n\ngo 1.24\n").expect("write go.mod");
+
+        let server = detect_lsp_server_for_workspace(&root);
+        assert_eq!(server.as_deref(), Some("gopls"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn file_server_detection_matches_supported_extensions() {
+        assert_eq!(
+            detect_lsp_server_for_path(Path::new("/tmp/main.rs")).as_deref(),
+            Some("rust-analyzer")
+        );
+        assert_eq!(
+            detect_lsp_server_for_path(Path::new("/tmp/main.go")).as_deref(),
+            Some("gopls")
+        );
+        assert_eq!(
+            detect_lsp_server_for_path(Path::new("/tmp/README.md")),
+            None
+        );
+    }
+
+    #[test]
+    fn explicit_server_command_overrides_workspace_detection() {
+        let root = unique_temp_dir("explicit_lsp_workspace");
+        fs::create_dir_all(&root).expect("create workspace");
+
+        let server = resolve_lsp_server_command(Some("custom-lsp"), &root);
+        assert_eq!(server.as_deref(), Some("custom-lsp"));
+
+        let _ = fs::remove_dir_all(root);
     }
 }

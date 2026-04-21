@@ -17,12 +17,12 @@ sidebar_min_width = 180.0
 bottom_min_height = 120.0
 
 [docks]
-left_visible = true
+left_visible = false
 left_size_px = 280.0
 right_visible = false
 right_size_px = 300.0
 bottom_visible = false
-bottom_size_px = 230.0
+bottom_size_px = 500.0
 overlay_visible = false
 
 [cursor]

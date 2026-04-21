@@ -3,6 +3,8 @@ use cosmic_text::{
     fontdb,
 };
 
+use crate::config::theme_config::srgb_rgba_to_linear_f32;
+
 #[derive(Debug, Clone)]
 pub struct FontFaceSummary {
     pub id: fontdb::ID,
@@ -68,7 +70,7 @@ impl TextSystem {
         }
     }
 
-    /// Override the default font family (e.g. "GoogleSansCode"). `None` falls back
+    /// Override the default font family (e.g. "Google Sans Code"). `None` falls back
     /// to cosmic-text's built-in default family resolution.
     pub fn set_font_family(&mut self, family: Option<&str>) {
         self.font_family = family.map(str::to_string);
@@ -115,6 +117,20 @@ impl TextSystem {
         let family = self.font_family.as_deref();
         let attrs = apply_family(
             Attrs::new().color(Self::rgba_u8_to_color(color_rgba)),
+            family,
+        );
+        self.buffer
+            .set_text(&mut self.font_system, text, &attrs, Shaping::Advanced, None);
+        self.buffer.shape_until_scroll(&mut self.font_system, false);
+    }
+
+    /// Set text bold với màu cụ thể — dùng cho Leap label overlay.
+    pub fn set_text_bold_color(&mut self, text: &str, color_rgba: [u8; 4]) {
+        let family = self.font_family.as_deref();
+        let attrs = apply_family(
+            Attrs::new()
+                .color(Self::rgba_u8_to_color(color_rgba))
+                .weight(fontdb::Weight::BOLD),
             family,
         );
         self.buffer
@@ -254,12 +270,9 @@ impl TextSystem {
     }
 
     fn rgba_f32_from_color(color: Color) -> [f32; 4] {
-        [
-            f32::from(color.r()) / 255.0,
-            f32::from(color.g()) / 255.0,
-            f32::from(color.b()) / 255.0,
-            f32::from(color.a()) / 255.0,
-        ]
+        // cosmic-text 0.18 stores raw RGBA bytes; treat them as sRGB and decode
+        // to linear before handing the color to wgpu.
+        srgb_rgba_to_linear_f32(color.as_rgba())
     }
 
     fn sanitize_span(text: &str, span: StyledTextSpan) -> Option<StyledTextSpan> {

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use crate::{
     app::{
         app_state::AppState,
+        clipboard::ClipboardProvider,
         command_palette::{CommandPaletteAction, CommandPaletteMode},
     },
     core::{
@@ -55,15 +56,136 @@ fn enter_insert_mode_if_needed(app_state: &mut AppState) -> Result<bool, String>
         .map_err(|err| format!("{err:?}"))
 }
 
-fn commit_text_transaction(app_state: &mut AppState, changed: bool) {
-    if changed {
+fn commit_text_transaction(
+    app_state: &mut AppState,
+    changed: bool,
+    auto_commit_text_transactions: bool,
+) {
+    if changed && auto_commit_text_transactions {
         let _ = app_state.commit_transaction();
     }
+}
+
+fn write_text_to_clipboard(
+    clipboard: &mut Option<&mut dyn ClipboardProvider>,
+    text: Option<String>,
+) -> bool {
+    let Some(text) = text.filter(|text| !text.is_empty()) else {
+        return false;
+    };
+    let Some(provider) = clipboard.as_deref_mut() else {
+        return false;
+    };
+
+    match provider.set_text(&text) {
+        Ok(()) => true,
+        Err(err) => {
+            eprintln!("[clipboard] {err}");
+            false
+        }
+    }
+}
+
+fn read_text_from_clipboard(
+    clipboard: &mut Option<&mut dyn ClipboardProvider>,
+) -> Result<String, String> {
+    let Some(provider) = clipboard.as_deref_mut() else {
+        return Err("system clipboard unavailable".to_string());
+    };
+
+    provider.get_text()
 }
 
 /// Dispatcher là điểm duy nhất được phép apply Command vào AppState.
 /// Nhờ đó event loop chỉ làm nhiệm vụ chuyển tiếp, không tự mutate state.
 pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchReport {
+    dispatch_command_count(app_state, command, 1)
+}
+
+pub fn dispatch_command_count(
+    app_state: &mut AppState,
+    command: Command,
+    count: usize,
+) -> DispatchReport {
+    dispatch_command_with_clipboard_count(app_state, command, count, None)
+}
+
+pub fn dispatch_command_with_clipboard(
+    app_state: &mut AppState,
+    command: Command,
+    clipboard: Option<&mut dyn ClipboardProvider>,
+) -> DispatchReport {
+    dispatch_command_with_clipboard_count(app_state, command, 1, clipboard)
+}
+
+pub fn dispatch_command_with_clipboard_count(
+    app_state: &mut AppState,
+    command: Command,
+    count: usize,
+    mut clipboard: Option<&mut dyn ClipboardProvider>,
+) -> DispatchReport {
+    let repeat_count = if command.supports_numeric_count() {
+        count.max(1)
+    } else {
+        1
+    };
+
+    if repeat_count == 1 {
+        return dispatch_command_with_clipboard_once(app_state, command, &mut clipboard, true);
+    }
+
+    let group_transaction = command.groups_repeated_edits_into_single_transaction();
+    let mut executed = 0usize;
+    let mut any_redraw = false;
+    let mut any_state_changed = false;
+    let mut all_success = true;
+    let mut last_message = String::new();
+
+    for _ in 0..repeat_count {
+        let report = dispatch_command_with_clipboard_once(
+            app_state,
+            command.clone(),
+            &mut clipboard,
+            !group_transaction,
+        );
+        executed += 1;
+        any_redraw |= report.request_redraw;
+        any_state_changed |= report.state_changed;
+        all_success &= report.success;
+        last_message = report.message;
+
+        if !report.success || !report.state_changed {
+            break;
+        }
+    }
+
+    if group_transaction && any_state_changed {
+        let _ = app_state.commit_transaction();
+    }
+
+    let summary_message = if executed == repeat_count {
+        format!("Dispatch: repeated {}x -> {}", repeat_count, last_message)
+    } else {
+        format!(
+            "Dispatch: repeated {} of {}x -> {}",
+            executed, repeat_count, last_message
+        )
+    };
+
+    DispatchReport {
+        message: summary_message,
+        request_redraw: any_redraw,
+        success: all_success,
+        state_changed: any_state_changed,
+    }
+}
+
+fn dispatch_command_with_clipboard_once(
+    app_state: &mut AppState,
+    command: Command,
+    clipboard: &mut Option<&mut dyn ClipboardProvider>,
+    auto_commit_text_transactions: bool,
+) -> DispatchReport {
     match command {
         Command::InsertChar(ch) => {
             app_state.insert_char(ch);
@@ -222,6 +344,7 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
         },
         Command::SubstituteLine => match enter_insert_mode_if_needed(app_state) {
             Ok(mode_changed) => {
+                write_text_to_clipboard(clipboard, app_state.substitute_current_line_text());
                 let text_or_cursor_changed = app_state.substitute_current_line();
                 let changed = text_or_cursor_changed || mode_changed;
                 DispatchReport {
@@ -243,8 +366,9 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
             },
         },
         Command::DeleteChar => {
+            write_text_to_clipboard(clipboard, app_state.delete_char_text_at_cursor());
             let changed = app_state.delete_char_at_cursor();
-            commit_text_transaction(app_state, changed);
+            commit_text_transaction(app_state, changed, auto_commit_text_transactions);
             DispatchReport {
                 message: if changed {
                     "Dispatch: applied to active buffer (delete char)".to_string()
@@ -257,6 +381,7 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
             }
         }
         Command::DeleteSelection => {
+            write_text_to_clipboard(clipboard, app_state.visual_selection_text());
             let mut changed = app_state.delete_visual_selection();
             let mut mode_changed = false;
             if changed
@@ -266,7 +391,7 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
                 mode_changed = result.changed;
             }
             changed |= mode_changed;
-            commit_text_transaction(app_state, changed);
+            commit_text_transaction(app_state, changed, auto_commit_text_transactions);
             DispatchReport {
                 message: if changed {
                     "Dispatch: deleted visual selection".to_string()
@@ -279,8 +404,9 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
             }
         }
         Command::DeleteCurrentLine => {
+            write_text_to_clipboard(clipboard, app_state.delete_current_line_text());
             let changed = app_state.delete_current_line();
-            commit_text_transaction(app_state, changed);
+            commit_text_transaction(app_state, changed, auto_commit_text_transactions);
             DispatchReport {
                 message: if changed {
                     "Dispatch: applied to active buffer (delete current line)".to_string()
@@ -293,8 +419,9 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
             }
         }
         Command::DeleteWordForward => {
+            write_text_to_clipboard(clipboard, app_state.delete_word_forward_text());
             let changed = app_state.delete_word_forward();
-            commit_text_transaction(app_state, changed);
+            commit_text_transaction(app_state, changed, auto_commit_text_transactions);
             DispatchReport {
                 message: if changed {
                     "Dispatch: applied to active buffer (delete word forward)".to_string()
@@ -307,14 +434,49 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
             }
         }
         Command::DeleteWordBackward => {
+            write_text_to_clipboard(clipboard, app_state.delete_word_backward_text());
             let changed = app_state.delete_word_backward();
-            commit_text_transaction(app_state, changed);
+            commit_text_transaction(app_state, changed, auto_commit_text_transactions);
             DispatchReport {
                 message: if changed {
                     "Dispatch: applied to active buffer (delete word backward)".to_string()
                 } else {
                     "Dispatch: delete word backward ignored".to_string()
                 },
+                request_redraw: changed,
+                success: true,
+                state_changed: changed,
+            }
+        }
+        Command::YankSelection => {
+            let Some(selection_text) = app_state.visual_selection_text() else {
+                return DispatchReport {
+                    message: "Dispatch: yank selection ignored".to_string(),
+                    request_redraw: false,
+                    success: true,
+                    state_changed: false,
+                };
+            };
+
+            if !write_text_to_clipboard(clipboard, Some(selection_text)) {
+                return DispatchReport {
+                    message: "Dispatch: yank selection failed (clipboard unavailable)".to_string(),
+                    request_redraw: false,
+                    success: false,
+                    state_changed: false,
+                };
+            }
+
+            let mut changed = false;
+            if app_state.current_mode() == EditorMode::Visual
+                && let Ok(result) = app_state.apply_mode_event(ModeEvent::EnterNormal)
+            {
+                changed |= result.changed;
+            }
+            changed |= app_state.clear_visual_selection();
+
+            DispatchReport {
+                message: "Dispatch: yanked visual selection".to_string(),
                 request_redraw: changed,
                 success: true,
                 state_changed: changed,
@@ -347,6 +509,7 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
             }
         }
         Command::ChangeSelection => {
+            write_text_to_clipboard(clipboard, app_state.visual_selection_text());
             let text_changed = app_state.delete_visual_selection();
             if !text_changed {
                 return DispatchReport {
@@ -376,8 +539,79 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
                 state_changed: changed,
             }
         }
+        Command::PasteAfter => {
+            let clipboard_text = match read_text_from_clipboard(clipboard) {
+                Ok(text) => text,
+                Err(err) => {
+                    return DispatchReport {
+                        message: format!("Dispatch: paste after failed -> {err}"),
+                        request_redraw: false,
+                        success: false,
+                        state_changed: false,
+                    };
+                }
+            };
+
+            let mut changed = false;
+            if app_state.current_mode() == EditorMode::Visual
+                && let Ok(result) = app_state.apply_mode_event(ModeEvent::EnterNormal)
+            {
+                changed |= result.changed;
+            }
+            changed |= app_state.clear_visual_selection();
+            let text_changed = app_state.paste_after(&clipboard_text);
+            changed |= text_changed;
+            commit_text_transaction(app_state, text_changed, auto_commit_text_transactions);
+
+            DispatchReport {
+                message: if changed {
+                    "Dispatch: pasted text after cursor".to_string()
+                } else {
+                    "Dispatch: paste after ignored".to_string()
+                },
+                request_redraw: changed,
+                success: true,
+                state_changed: changed,
+            }
+        }
+        Command::PasteBefore => {
+            let clipboard_text = match read_text_from_clipboard(clipboard) {
+                Ok(text) => text,
+                Err(err) => {
+                    return DispatchReport {
+                        message: format!("Dispatch: paste before failed -> {err}"),
+                        request_redraw: false,
+                        success: false,
+                        state_changed: false,
+                    };
+                }
+            };
+
+            let mut changed = false;
+            if app_state.current_mode() == EditorMode::Visual
+                && let Ok(result) = app_state.apply_mode_event(ModeEvent::EnterNormal)
+            {
+                changed |= result.changed;
+            }
+            changed |= app_state.clear_visual_selection();
+            let text_changed = app_state.paste_before(&clipboard_text);
+            changed |= text_changed;
+            commit_text_transaction(app_state, text_changed, auto_commit_text_transactions);
+
+            DispatchReport {
+                message: if changed {
+                    "Dispatch: pasted text before cursor".to_string()
+                } else {
+                    "Dispatch: paste before ignored".to_string()
+                },
+                request_redraw: changed,
+                success: true,
+                state_changed: changed,
+            }
+        }
         Command::ChangeWordForward => match enter_insert_mode_if_needed(app_state) {
             Ok(mode_changed) => {
+                write_text_to_clipboard(clipboard, app_state.delete_word_forward_text());
                 let text_changed = app_state.change_word_forward();
                 let changed = text_changed || mode_changed;
                 DispatchReport {
@@ -400,6 +634,7 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
         },
         Command::ChangeWordBackward => match enter_insert_mode_if_needed(app_state) {
             Ok(mode_changed) => {
+                write_text_to_clipboard(clipboard, app_state.delete_word_backward_text());
                 let text_changed = app_state.change_word_backward();
                 let changed = text_changed || mode_changed;
                 DispatchReport {
@@ -422,7 +657,7 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
         },
         Command::ReplaceChar(ch) => {
             let changed = app_state.replace_char_at_cursor(ch);
-            commit_text_transaction(app_state, changed);
+            commit_text_transaction(app_state, changed, auto_commit_text_transactions);
             DispatchReport {
                 message: if changed {
                     format!("Dispatch: replaced char at cursor with {ch:?}")
@@ -599,6 +834,17 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
                 state_changed: false,
             }
         }
+        // Leap/EasyMotion — hoàn toàn xử lý bởi AppShell (cần viewport + renderer).
+        // Dispatch layer chỉ pass-through, không mutate AppState.
+        Command::LeapStart
+        | Command::LeapActivate(_)
+        | Command::LeapJump(_)
+        | Command::LeapCancel => DispatchReport {
+            message: "Dispatch: leap (handled by event loop)".to_string(),
+            request_redraw: true,
+            success: true,
+            state_changed: false,
+        },
         Command::SaveFile => match app_state.save_file() {
             Ok(path) => DispatchReport {
                 message: format!("Dispatch: save trigger succeeded -> {}", path.display()),
@@ -793,19 +1039,67 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
                 },
             }
         }
-        cmd @ (Command::OpenWorkspaceSymbols | Command::SearchInFiles) => {
-            let open_source = if matches!(cmd, Command::SearchInFiles) {
-                "search in files"
-            } else {
-                "workspace symbols"
-            };
+        Command::OpenInFileSearch => {
             let current_mode = app_state.current_mode();
             if current_mode != EditorMode::PaletteFocus
                 && !app_state.can_apply_mode_event(ModeEvent::OpenPalette)
             {
                 return DispatchReport {
                     message: format!(
-                        "Dispatch: open {open_source} rejected (mode={} does not allow OpenPalette)",
+                        "Dispatch: open in-file search rejected (mode={} does not allow OpenPalette)",
+                        current_mode.as_str()
+                    ),
+                    request_redraw: false,
+                    success: false,
+                    state_changed: false,
+                };
+            }
+
+            match app_state.open_command_palette_mode(CommandPaletteMode::InFileSearch) {
+                Ok(result_count) => {
+                    let mode_changed = if current_mode == EditorMode::PaletteFocus {
+                        false
+                    } else {
+                        match app_state.apply_mode_event(ModeEvent::OpenPalette) {
+                            Ok(result) => result.changed,
+                            Err(err) => {
+                                let _ = app_state.close_command_palette();
+                                return DispatchReport {
+                                    message: format!(
+                                        "Dispatch: open in-file search rejected -> {:?}",
+                                        err
+                                    ),
+                                    request_redraw: false,
+                                    success: false,
+                                    state_changed: false,
+                                };
+                            }
+                        }
+                    };
+
+                    DispatchReport {
+                        message: format!("Dispatch: in-file search opened ({result_count} items)"),
+                        request_redraw: true,
+                        success: true,
+                        state_changed: mode_changed,
+                    }
+                }
+                Err(err) => DispatchReport {
+                    message: format!("Dispatch: open in-file search failed -> {err}"),
+                    request_redraw: false,
+                    success: false,
+                    state_changed: false,
+                },
+            }
+        }
+        Command::OpenWorkspaceSymbols => {
+            let current_mode = app_state.current_mode();
+            if current_mode != EditorMode::PaletteFocus
+                && !app_state.can_apply_mode_event(ModeEvent::OpenPalette)
+            {
+                return DispatchReport {
+                    message: format!(
+                        "Dispatch: open workspace symbols rejected (mode={} does not allow OpenPalette)",
                         current_mode.as_str(),
                     ),
                     request_redraw: false,
@@ -825,7 +1119,7 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
                                 let _ = app_state.close_command_palette();
                                 return DispatchReport {
                                     message: format!(
-                                        "Dispatch: open {open_source} rejected -> {:?}",
+                                        "Dispatch: open workspace symbols rejected -> {:?}",
                                         err
                                     ),
                                     request_redraw: false,
@@ -837,14 +1131,70 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
                     };
 
                     DispatchReport {
-                        message: format!("Dispatch: {open_source} opened ({} items)", result_count),
+                        message: format!(
+                            "Dispatch: workspace symbols opened ({} items)",
+                            result_count
+                        ),
                         request_redraw: true,
                         success: true,
                         state_changed: mode_changed,
                     }
                 }
                 Err(err) => DispatchReport {
-                    message: format!("Dispatch: open {open_source} failed -> {err}"),
+                    message: format!("Dispatch: open workspace symbols failed -> {err}"),
+                    request_redraw: false,
+                    success: false,
+                    state_changed: false,
+                },
+            }
+        }
+        Command::SearchInFiles => {
+            let current_mode = app_state.current_mode();
+            if current_mode != EditorMode::PaletteFocus
+                && !app_state.can_apply_mode_event(ModeEvent::OpenPalette)
+            {
+                return DispatchReport {
+                    message: format!(
+                        "Dispatch: open live grep rejected (mode={} does not allow OpenPalette)",
+                        current_mode.as_str(),
+                    ),
+                    request_redraw: false,
+                    success: false,
+                    state_changed: false,
+                };
+            }
+
+            match app_state.open_command_palette_mode(CommandPaletteMode::LiveGrep) {
+                Ok(result_count) => {
+                    let mode_changed = if current_mode == EditorMode::PaletteFocus {
+                        false
+                    } else {
+                        match app_state.apply_mode_event(ModeEvent::OpenPalette) {
+                            Ok(result) => result.changed,
+                            Err(err) => {
+                                let _ = app_state.close_command_palette();
+                                return DispatchReport {
+                                    message: format!(
+                                        "Dispatch: open live grep rejected -> {:?}",
+                                        err
+                                    ),
+                                    request_redraw: false,
+                                    success: false,
+                                    state_changed: false,
+                                };
+                            }
+                        }
+                    };
+
+                    DispatchReport {
+                        message: format!("Dispatch: live grep opened ({} items)", result_count),
+                        request_redraw: true,
+                        success: true,
+                        state_changed: mode_changed,
+                    }
+                }
+                Err(err) => DispatchReport {
+                    message: format!("Dispatch: open live grep failed -> {err}"),
                     request_redraw: false,
                     success: false,
                     state_changed: false,
@@ -887,26 +1237,26 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
                 state_changed: false,
             },
         },
-        Command::FilePickerSelectNext => {
-            let changed = app_state.file_picker_select_next();
+        Command::OverlaySelectNext | Command::FilePickerSelectNext => {
+            let changed = app_state.command_palette_select_next();
             DispatchReport {
                 message: if changed {
-                    "Dispatch: file picker select next".to_string()
+                    "Dispatch: overlay select next".to_string()
                 } else {
-                    "Dispatch: file picker select next ignored".to_string()
+                    "Dispatch: overlay select next ignored".to_string()
                 },
                 request_redraw: changed,
                 success: true,
                 state_changed: changed,
             }
         }
-        Command::FilePickerSelectPrev => {
-            let changed = app_state.file_picker_select_prev();
+        Command::OverlaySelectPrev | Command::FilePickerSelectPrev => {
+            let changed = app_state.command_palette_select_prev();
             DispatchReport {
                 message: if changed {
-                    "Dispatch: file picker select prev".to_string()
+                    "Dispatch: overlay select prev".to_string()
                 } else {
-                    "Dispatch: file picker select prev ignored".to_string()
+                    "Dispatch: overlay select prev ignored".to_string()
                 },
                 request_redraw: changed,
                 success: true,
@@ -914,6 +1264,32 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
             }
         }
         Command::FilePickerConfirmSelection => {
+            if matches!(
+                app_state.command_palette_mode(),
+                Some(CommandPaletteMode::InFileSearch)
+            ) {
+                let moved = app_state.search_next();
+                let picker_closed = app_state.close_command_palette();
+                let mut mode_changed = false;
+                if app_state.current_mode() == EditorMode::PaletteFocus
+                    && let Ok(result) = app_state.apply_mode_event(ModeEvent::ExitFocus)
+                {
+                    mode_changed = result.changed;
+                }
+
+                let changed = moved || picker_closed || mode_changed;
+                return DispatchReport {
+                    message: if moved {
+                        "Dispatch: in-file search confirmed".to_string()
+                    } else {
+                        "Dispatch: in-file search confirmed (no further matches)".to_string()
+                    },
+                    request_redraw: true,
+                    success: true,
+                    state_changed: changed,
+                };
+            }
+
             let Some(selected_action) = app_state.command_palette_selected_action() else {
                 return DispatchReport {
                     message: "Dispatch: command palette confirm ignored (no selection)".to_string(),
@@ -977,6 +1353,35 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
                         open_report.state_changed || picker_closed || mode_changed;
                     open_report
                 }
+                CommandPaletteAction::OpenSearchMatch { path, line, column } => {
+                    let mut open_report = dispatch_open_file(app_state, path.clone());
+                    if !open_report.success {
+                        return open_report;
+                    }
+
+                    let jumped = app_state.jump_to_line_and_column(
+                        line.saturating_sub(1) as usize,
+                        column.saturating_sub(1) as usize,
+                    );
+                    let picker_closed = app_state.close_command_palette();
+                    let mut mode_changed = false;
+                    if app_state.current_mode() == EditorMode::PaletteFocus
+                        && let Ok(result) = app_state.apply_mode_event(ModeEvent::ExitFocus)
+                    {
+                        mode_changed = result.changed;
+                    }
+
+                    open_report.message = format!(
+                        "Dispatch: live grep confirmed -> opened {}:{}:{}",
+                        path.display(),
+                        line,
+                        column
+                    );
+                    open_report.request_redraw = true;
+                    open_report.state_changed =
+                        open_report.state_changed || jumped || picker_closed || mode_changed;
+                    open_report
+                }
                 CommandPaletteAction::ExecuteCommand(command_id) => {
                     let Some(next) = command_ids::parse(&command_id, app_state.active_file())
                     else {
@@ -1009,6 +1414,19 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
                         dispatch_command(app_state, Command::BufferPrev)
                     } else if trimmed == "bd" {
                         dispatch_command(app_state, Command::BufferCloseCurrent)
+                    } else if let Ok(line_number) = trimmed.parse::<usize>() {
+                        // `:N` — nhảy đến dòng N (1-indexed, giống Vim thật)
+                        let target_line =
+                            line_number.saturating_sub(1).min(app_state.total_lines());
+                        let changed = app_state.jump_to_line(target_line);
+                        DispatchReport {
+                            message: format!(
+                                "Dispatch: jumped to line {line_number} (char_idx updated)"
+                            ),
+                            request_redraw: changed,
+                            success: true,
+                            state_changed: changed,
+                        }
                     } else {
                         DispatchReport {
                             message: format!("Dispatch: vim command captured -> {}", trimmed),
@@ -1038,6 +1456,10 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
             }
         }
         Command::CloseFilePicker => {
+            let clears_search = matches!(
+                app_state.command_palette_mode(),
+                Some(CommandPaletteMode::InFileSearch)
+            );
             let picker_closed = app_state.close_command_palette();
             let mut mode_changed = false;
             if app_state.current_mode() == EditorMode::PaletteFocus {
@@ -1045,13 +1467,70 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
                     mode_changed = result.changed;
                 }
             }
+            let search_cleared = if clears_search {
+                app_state.clear_search_highlights()
+            } else {
+                false
+            };
 
-            let changed = picker_closed || mode_changed;
+            let changed = picker_closed || mode_changed || search_cleared;
             DispatchReport {
                 message: if changed {
                     "Dispatch: file picker closed".to_string()
                 } else {
                     "Dispatch: file picker close ignored".to_string()
+                },
+                request_redraw: changed,
+                success: true,
+                state_changed: changed,
+            }
+        }
+        Command::SearchNext => {
+            let changed = app_state.search_next();
+            DispatchReport {
+                message: if changed {
+                    "Dispatch: search next".to_string()
+                } else {
+                    "Dispatch: search next ignored".to_string()
+                },
+                request_redraw: changed,
+                success: true,
+                state_changed: changed,
+            }
+        }
+        Command::SearchPrev => {
+            let changed = app_state.search_prev();
+            DispatchReport {
+                message: if changed {
+                    "Dispatch: search previous".to_string()
+                } else {
+                    "Dispatch: search previous ignored".to_string()
+                },
+                request_redraw: changed,
+                success: true,
+                state_changed: changed,
+            }
+        }
+        Command::SearchWordUnderCursor => {
+            let changed = app_state.search_word_under_cursor();
+            DispatchReport {
+                message: if changed {
+                    "Dispatch: search word under cursor".to_string()
+                } else {
+                    "Dispatch: search word under cursor ignored".to_string()
+                },
+                request_redraw: changed,
+                success: true,
+                state_changed: changed,
+            }
+        }
+        Command::ClearSearchHighlights => {
+            let changed = app_state.clear_search_highlights();
+            DispatchReport {
+                message: if changed {
+                    "Dispatch: cleared search highlights".to_string()
+                } else {
+                    "Dispatch: clear search highlights ignored".to_string()
                 },
                 request_redraw: changed,
                 success: true,
@@ -1162,28 +1641,24 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
                 };
             }
 
-            // Case 2: panel đang mở và terminal đang focus -> đóng panel + thoát focus.
+            // Case 2: panel đang mở và terminal đang focus -> blur về editor, giữ panel mở.
             if current_mode == EditorMode::TerminalFocus {
-                let panel_changed = app_state.set_terminal_panel_open(false);
                 return match app_state.apply_mode_event(ModeEvent::ExitFocus) {
                     Ok(transition) => DispatchReport {
                         message: format!(
-                            "Dispatch: terminal panel closed via mode transition {:?} -> {:?}",
+                            "Dispatch: terminal focus exited via mode transition {:?} -> {:?}",
                             transition.from, transition.to
                         ),
                         request_redraw: true,
                         success: true,
-                        state_changed: panel_changed || transition.changed,
+                        state_changed: transition.changed,
                     },
-                    Err(err) => {
-                        let _ = app_state.set_terminal_panel_open(true);
-                        DispatchReport {
-                            message: format!("Dispatch: terminal close rejected -> {:?}", err),
-                            request_redraw: false,
-                            success: false,
-                            state_changed: false,
-                        }
-                    }
+                    Err(err) => DispatchReport {
+                        message: format!("Dispatch: terminal blur rejected -> {:?}", err),
+                        request_redraw: false,
+                        success: false,
+                        state_changed: false,
+                    },
                 };
             }
 
@@ -1250,9 +1725,136 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
                 state_changed: changed,
             }
         }
+
+        // ── Text Objects (vi(/va{/ci{/dib…) ──────────────────────────────────
+        Command::SelectTextObject {
+            open_char,
+            close_char,
+            inner,
+        } => {
+            let changed = app_state.select_text_object(open_char, close_char, inner);
+            DispatchReport {
+                message: if changed {
+                    format!(
+                        "Dispatch: selected text object {open_char}{close_char} {}",
+                        if inner { "inner" } else { "around" }
+                    )
+                } else {
+                    "Dispatch: select text object ignored (bounds not found)".to_string()
+                },
+                request_redraw: changed,
+                success: true,
+                state_changed: changed,
+            }
+        }
+
+        Command::DeleteTextObject {
+            open_char,
+            close_char,
+            inner,
+        } => {
+            write_text_to_clipboard(
+                clipboard,
+                app_state.text_object_text(open_char, close_char, inner),
+            );
+            // Thoát Visual mode về Normal trước nếu cần.
+            if app_state.current_mode() == EditorMode::Visual {
+                let _ = app_state.apply_mode_event(ModeEvent::EnterNormal);
+            }
+            let changed = app_state.delete_text_object(open_char, close_char, inner);
+            if changed {
+                // Đảm bảo ở Normal mode sau khi xóa.
+                if app_state.current_mode() != EditorMode::Normal {
+                    let _ = app_state.apply_mode_event(ModeEvent::EnterNormal);
+                }
+                commit_text_transaction(app_state, true, auto_commit_text_transactions);
+            }
+            DispatchReport {
+                message: if changed {
+                    format!(
+                        "Dispatch: deleted text object {open_char}{close_char} {}",
+                        if inner { "inner" } else { "around" }
+                    )
+                } else {
+                    "Dispatch: delete text object ignored (bounds not found)".to_string()
+                },
+                request_redraw: changed,
+                success: true,
+                state_changed: changed,
+            }
+        }
+
+        Command::ChangeTextObject {
+            open_char,
+            close_char,
+            inner,
+        } => {
+            write_text_to_clipboard(
+                clipboard,
+                app_state.text_object_text(open_char, close_char, inner),
+            );
+            // Thoát Visual mode về Normal trước nếu cần.
+            if app_state.current_mode() == EditorMode::Visual {
+                let _ = app_state.apply_mode_event(ModeEvent::EnterNormal);
+            }
+            let changed = app_state.delete_text_object(open_char, close_char, inner);
+            if !changed {
+                return DispatchReport {
+                    message: "Dispatch: change text object ignored (bounds not found)".to_string(),
+                    request_redraw: false,
+                    success: true,
+                    state_changed: false,
+                };
+            }
+            // Vào Insert mode để người dùng tiếp tục gõ.
+            let mode_changed = enter_insert_mode_if_needed(app_state)
+                .map(|c| c)
+                .unwrap_or(false);
+            DispatchReport {
+                message: format!(
+                    "Dispatch: changed text object {open_char}{close_char} {} and entered insert",
+                    if inner { "inner" } else { "around" }
+                ),
+                request_redraw: true,
+                success: true,
+                state_changed: changed || mode_changed,
+            }
+        }
+
+        Command::YankTextObject {
+            open_char,
+            close_char,
+            inner,
+        } => {
+            let yank_text = app_state.text_object_text(open_char, close_char, inner);
+            let yanked = write_text_to_clipboard(clipboard, yank_text);
+            // Rời Visual mode về Normal nếu cần.
+            let mut changed = false;
+            if app_state.current_mode() == EditorMode::Visual {
+                if let Ok(result) = app_state.apply_mode_event(ModeEvent::EnterNormal) {
+                    changed |= result.changed;
+                }
+            }
+            changed |= app_state.clear_visual_selection();
+            DispatchReport {
+                message: if yanked {
+                    format!(
+                        "Dispatch: yanked text object {open_char}{close_char} {}",
+                        if inner { "inner" } else { "around" }
+                    )
+                } else {
+                    "Dispatch: yank text object failed (clipboard unavailable or bounds not found)"
+                        .to_string()
+                },
+                request_redraw: changed,
+                success: yanked,
+                state_changed: changed,
+            }
+        }
+
         // Workbench navigation commands are handled by event_loop, not AppState.
         // dispatch_command just acknowledges them so the router can act.
-        Command::ToggleExplorer
+        Command::ToggleLeftDock
         | Command::FocusEditor
         | Command::FocusExplorer
         | Command::FocusTerminal
@@ -1267,14 +1869,22 @@ pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchR
         | Command::ExplorerMoveUp
         | Command::ExplorerMoveDown
         | Command::ExplorerCollapseOrParent
+        | Command::ExplorerExpandNode
+        | Command::ExplorerCollapseAllUnderNode
         | Command::ExplorerExpandOrChild
+        | Command::ExplorerExpandAllUnderNode
         | Command::ExplorerToggleOrOpen
+        | Command::ExplorerDeleteNode
+        | Command::ExplorerCreateFile
+        | Command::ExplorerCreateFolder
         | Command::ExplorerExpandCollapse
         | Command::ExplorerOpenFile
         | Command::NextPanelTab
         | Command::PrevPanelTab
         | Command::TerminalScrollUp
-        | Command::TerminalScrollDown => DispatchReport {
+        | Command::TerminalScrollDown
+        | Command::OpenFolder
+        | Command::OpenRecentProjects => DispatchReport {
             message: "Dispatch: workbench navigation (handled by event loop)".to_string(),
             request_redraw: true,
             success: true,
@@ -1291,13 +1901,35 @@ mod tests {
     };
 
     use crate::{
-        app::app_state::AppState,
+        app::{
+            app_state::AppState,
+            clipboard::ClipboardProvider,
+            command_palette::{CommandPaletteItem, CommandPaletteMode},
+        },
         core::{
-            command_dispatch::dispatch_command,
+            command_dispatch::{
+                dispatch_command, dispatch_command_count, dispatch_command_with_clipboard,
+            },
             commands::Command,
             mode::{EditorMode, ModeEvent},
         },
     };
+
+    #[derive(Default)]
+    struct MockClipboard {
+        text: String,
+    }
+
+    impl ClipboardProvider for MockClipboard {
+        fn get_text(&mut self) -> Result<String, String> {
+            Ok(self.text.clone())
+        }
+
+        fn set_text(&mut self, text: &str) -> Result<(), String> {
+            self.text = text.to_string();
+            Ok(())
+        }
+    }
 
     fn unique_temp_path(suffix: &str) -> std::path::PathBuf {
         let nanos = SystemTime::now()
@@ -1467,6 +2099,40 @@ mod tests {
     }
 
     #[test]
+    fn delete_current_line_copies_deleted_text_to_clipboard() {
+        let mut app_state = AppState::from_text(unique_temp_path("cut_line"), "one\ntwo\nthree");
+        let mut clipboard = MockClipboard::default();
+        let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+        app_state.move_down();
+
+        let report = dispatch_command_with_clipboard(
+            &mut app_state,
+            Command::DeleteCurrentLine,
+            Some(&mut clipboard),
+        );
+
+        assert!(report.success);
+        assert_eq!(clipboard.text, "two\n");
+        assert_eq!(app_state.text_string(), "one\nthree");
+    }
+
+    #[test]
+    fn counted_delete_char_groups_into_single_undo_transaction() {
+        let mut app_state = AppState::from_text(unique_temp_path("count_delete_char"), "abcd");
+        let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+        let delete = dispatch_command_count(&mut app_state, Command::DeleteChar, 2);
+        assert!(delete.success);
+        assert!(delete.state_changed);
+        assert_eq!(app_state.text_string(), "cd");
+
+        let undo = dispatch_command(&mut app_state, Command::Undo);
+        assert!(undo.success);
+        assert!(undo.state_changed);
+        assert_eq!(app_state.text_string(), "abcd");
+    }
+
+    #[test]
     fn delete_word_backward_removes_previous_word_span() {
         let mut app_state = AppState::from_text(unique_temp_path("save"), "foo   bar");
         let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
@@ -1476,6 +2142,68 @@ mod tests {
         assert!(report.success);
         assert!(report.state_changed);
         assert_eq!(app_state.text_string(), "foo   ");
+    }
+
+    #[test]
+    fn yank_selection_copies_text_and_returns_to_normal_mode() {
+        let mut app_state = AppState::from_text(unique_temp_path("yank_selection"), "abcdef");
+        let mut clipboard = MockClipboard::default();
+        let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterVisual));
+        app_state.move_right();
+        app_state.move_right();
+
+        let report = dispatch_command_with_clipboard(
+            &mut app_state,
+            Command::YankSelection,
+            Some(&mut clipboard),
+        );
+
+        assert!(report.success);
+        assert!(report.state_changed);
+        assert_eq!(clipboard.text, "abc");
+        assert_eq!(app_state.text_string(), "abcdef");
+        assert_eq!(app_state.current_mode(), EditorMode::Normal);
+        assert!(app_state.visual_selection_range().is_none());
+    }
+
+    #[test]
+    fn paste_after_participates_in_undo_transaction() {
+        let mut app_state = AppState::from_text(unique_temp_path("paste_after"), "abc");
+        let mut clipboard = MockClipboard {
+            text: "XYZ".to_string(),
+        };
+        let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+        let paste = dispatch_command_with_clipboard(
+            &mut app_state,
+            Command::PasteAfter,
+            Some(&mut clipboard),
+        );
+        assert!(paste.success);
+        assert!(paste.state_changed);
+        assert_eq!(app_state.text_string(), "aXYZbc");
+
+        let undo = dispatch_command(&mut app_state, Command::Undo);
+        assert!(undo.success);
+        assert!(undo.state_changed);
+        assert_eq!(app_state.text_string(), "abc");
+    }
+
+    #[test]
+    fn counted_delete_word_forward_groups_into_single_undo_transaction() {
+        let mut app_state =
+            AppState::from_text(unique_temp_path("count_delete_word"), "one two three four");
+        let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+        let delete = dispatch_command_count(&mut app_state, Command::DeleteWordForward, 2);
+        assert!(delete.success);
+        assert!(delete.state_changed);
+        assert_eq!(app_state.text_string(), "three four");
+
+        let undo = dispatch_command(&mut app_state, Command::Undo);
+        assert!(undo.success);
+        assert!(undo.state_changed);
+        assert_eq!(app_state.text_string(), "one two three four");
     }
 
     #[test]
@@ -1643,6 +2371,29 @@ mod tests {
     }
 
     #[test]
+    fn closing_in_file_search_clears_search_highlights() {
+        let mut app_state =
+            AppState::from_text(unique_temp_path("close_in_file_search"), "alpha beta alpha");
+        let _ = dispatch_command(
+            &mut app_state,
+            Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
+        );
+
+        let open = dispatch_command(&mut app_state, Command::OpenInFileSearch);
+        assert!(open.success);
+        assert_eq!(app_state.current_mode(), EditorMode::PaletteFocus);
+
+        assert!(app_state.set_in_file_search_query("alpha"));
+        assert_eq!(app_state.search_highlights().len(), 2);
+
+        let close = dispatch_command(&mut app_state, Command::CloseFilePicker);
+        assert!(close.success);
+        assert_eq!(app_state.current_mode(), EditorMode::Normal);
+        assert!(app_state.last_search_query().is_empty());
+        assert!(app_state.search_highlights().is_empty());
+    }
+
+    #[test]
     fn file_picker_confirm_selection_reuses_open_flow() {
         let mut app_state = AppState::new(unique_temp_path("save"));
         let workspace_root = unique_temp_dir("workspace_confirm");
@@ -1665,6 +2416,14 @@ mod tests {
             &mut app_state,
             Command::FilePickerAppendQuery("phase8".to_string()),
         );
+        assert!(app_state.set_command_palette_results(
+            CommandPaletteMode::FilePicker,
+            "phase8",
+            vec![CommandPaletteItem::file_match(
+                "src/netherize_phase8.rs".to_string(),
+                workspace_root.join("src/netherize_phase8.rs"),
+            )],
+        ));
 
         let report = dispatch_command(&mut app_state, Command::FilePickerConfirmSelection);
         assert!(report.success);
@@ -1703,6 +2462,14 @@ mod tests {
             &mut app_state,
             Command::FilePickerAppendQuery("phase1-hello".to_string()),
         );
+        assert!(app_state.set_command_palette_results(
+            CommandPaletteMode::FilePicker,
+            "phase1-hello",
+            vec![CommandPaletteItem::file_match(
+                "src/phase1-hello.txt".to_string(),
+                old_path.clone(),
+            )],
+        ));
 
         fs::rename(&old_path, &new_path).expect("rename source");
         let report = dispatch_command(&mut app_state, Command::FilePickerConfirmSelection);
@@ -1815,7 +2582,7 @@ mod tests {
     }
 
     #[test]
-    fn toggle_terminal_command_enters_and_exits_terminal_focus() {
+    fn toggle_terminal_command_blurs_terminal_focus_without_closing_panel() {
         let mut app_state = AppState::new(unique_temp_path("save"));
         let _ = dispatch_command(
             &mut app_state,
@@ -1830,7 +2597,7 @@ mod tests {
         let exit = dispatch_command(&mut app_state, Command::ToggleTerminal);
         assert!(exit.success);
         assert_eq!(app_state.current_mode(), EditorMode::Normal);
-        assert!(!app_state.is_terminal_panel_open());
+        assert!(app_state.is_terminal_panel_open());
     }
 
     #[test]

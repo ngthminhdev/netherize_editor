@@ -140,8 +140,8 @@ impl WorkbenchLayoutEngine {
         );
         let left_sidebar = RegionNode::new(
             RegionId::LeftSidebar,
-            RegionBounds::new(0.0, center_y, left_w, center_h),
-            panels.left.visible && left_w > 0.0 && center_h > 0.0,
+            RegionBounds::new(0.0, center_y, left_w, body_h),
+            panels.left.visible && left_w > 0.0 && body_h > 0.0,
         );
         let center = RegionNode::new(
             RegionId::Center,
@@ -150,13 +150,13 @@ impl WorkbenchLayoutEngine {
         );
         let right_sidebar = RegionNode::new(
             RegionId::RightSidebar,
-            RegionBounds::new(right_x, center_y, right_w, center_h),
-            panels.right.visible && right_w > 0.0 && center_h > 0.0,
+            RegionBounds::new(right_x, center_y, right_w, body_h),
+            panels.right.visible && right_w > 0.0 && body_h > 0.0,
         );
         let bottom_panel = RegionNode::new(
             RegionId::BottomPanel,
-            RegionBounds::new(0.0, bottom_y, width, bottom_h),
-            panels.bottom.visible && bottom_h > 0.0,
+            RegionBounds::new(center_x, bottom_y, center_w, bottom_h),
+            panels.bottom.visible && center_w > 0.0 && bottom_h > 0.0,
         );
         let status_bar = RegionNode::new(
             RegionId::StatusBar,
@@ -196,7 +196,7 @@ impl WorkbenchLayoutEngine {
         if panels.bottom.visible && bottom_h > 0.0 && vertical_gap > 0.0 {
             handles.push(SplitHandle {
                 id: SplitHandleId::CenterBottom,
-                bounds: RegionBounds::new(0.0, center_y + center_h, width, vertical_gap),
+                bounds: RegionBounds::new(center_x, center_y + center_h, center_w, vertical_gap),
             });
         }
 
@@ -467,6 +467,69 @@ mod tests {
         assert!(
             (right_edge - viewport_w).abs() <= 0.001,
             "center should reach viewport edge: right_edge={right_edge}, viewport_w={viewport_w}"
+        );
+    }
+
+    #[test]
+    fn left_sidebar_spans_full_body_height_when_bottom_panel_is_visible() {
+        let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
+        let mut state = WorkbenchPanelState::default();
+        state.bottom.visible = true;
+        state.bottom.size_px = 220.0;
+
+        let viewport = PhysicalSize::new(1280, 800);
+        let layout = engine.compute(viewport, &state);
+
+        let left = layout
+            .model
+            .find(RegionId::LeftSidebar)
+            .expect("left sidebar region");
+        let top = layout.model.find(RegionId::TopBar).expect("top bar region");
+        let status = layout
+            .model
+            .find(RegionId::StatusBar)
+            .expect("status bar region");
+        let expected_body_height = viewport.height as f32 - top.height - status.height;
+
+        assert!(
+            (left.height - expected_body_height).abs() <= 0.001,
+            "left sidebar should fill body height: left.height={} expected={expected_body_height}",
+            left.height
+        );
+    }
+
+    #[test]
+    fn bottom_panel_starts_after_left_sidebar() {
+        let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
+        let mut state = WorkbenchPanelState::default();
+        state.left.visible = true;
+        state.left.size_px = 280.0;
+        state.bottom.visible = true;
+        state.bottom.size_px = 220.0;
+        state.right.visible = false;
+
+        let layout = engine.compute(PhysicalSize::new(1400, 900), &state);
+        let left = layout
+            .model
+            .find(RegionId::LeftSidebar)
+            .expect("left sidebar region");
+        let center = layout.model.find(RegionId::Center).expect("center region");
+        let bottom = layout
+            .model
+            .find(RegionId::BottomPanel)
+            .expect("bottom panel region");
+
+        assert!(
+            (bottom.x - left.width).abs() <= 0.001,
+            "bottom panel should start after left sidebar: bottom.x={} left.width={}",
+            bottom.x,
+            left.width
+        );
+        assert!(
+            (bottom.width - center.width).abs() <= 0.001,
+            "bottom panel width should match center pane: bottom.width={} center.width={}",
+            bottom.width,
+            center.width
         );
     }
 }

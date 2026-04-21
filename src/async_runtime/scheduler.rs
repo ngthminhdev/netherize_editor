@@ -4,6 +4,7 @@ use std::{
     io::{BufRead, BufReader, Read},
     ops::Range,
     path::PathBuf,
+    process::ExitStatus,
     sync::{
         Arc, Mutex, OnceLock,
         atomic::{AtomicU64, Ordering},
@@ -19,9 +20,9 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::async_runtime::message::{
-    FileSystemChangeKind, FileSystemEvent, RequestSpec, RequestTopic, WorkerEvent, WorkerEventKind,
-    WorkerFailure, WorkerFailureKind, WorkerMessage, WorkerRequest, WorkerRequestPayload,
-    WorkerResult, WorkerResultPayload,
+    FileSystemChangeKind, FileSystemEvent, FzfResultItem, FzfSearchMode, RequestSpec, RequestTopic,
+    WorkerEvent, WorkerEventKind, WorkerFailure, WorkerFailureKind, WorkerMessage, WorkerRequest,
+    WorkerRequestPayload, WorkerResult, WorkerResultPayload,
 };
 use crate::lsp::client::{
     build_did_change_notification, build_did_close_notification, build_did_open_notification,
@@ -77,25 +78,23 @@ struct PtySessionRegistry {
 
 #[derive(Default)]
 struct LspSessionRegistry {
-    session: Mutex<Option<Arc<crate::lsp::client::LspClientProcess>>>,
+    session: Mutex<Option<LspSessionHandle>>,
+}
+
+#[derive(Clone)]
+struct LspSessionHandle {
+    process: Arc<crate::lsp::client::LspClientProcess>,
+    server_name: String,
+    root_path: PathBuf,
 }
 
 impl LspSessionRegistry {
-    fn has_active_session(&self) -> Result<bool, String> {
-        let guard = self
-            .session
-            .lock()
-            .map_err(|_| "lsp session lock poisoned".to_string())?;
-        Ok(guard.is_some())
-    }
-
-    fn set(&self, session: Arc<crate::lsp::client::LspClientProcess>) -> Result<(), String> {
+    fn replace(&self, session: LspSessionHandle) -> Result<Option<LspSessionHandle>, String> {
         let mut guard = self
             .session
             .lock()
             .map_err(|_| "lsp session lock poisoned".to_string())?;
-        *guard = Some(session);
-        Ok(())
+        Ok(guard.replace(session))
     }
 
     fn get(&self) -> Result<Option<Arc<crate::lsp::client::LspClientProcess>>, String> {
@@ -103,15 +102,32 @@ impl LspSessionRegistry {
             .session
             .lock()
             .map_err(|_| "lsp session lock poisoned".to_string())?;
-        Ok(guard.clone())
+        Ok(guard.as_ref().map(|session| session.process.clone()))
     }
 
-    fn take(&self) -> Result<Option<Arc<crate::lsp::client::LspClientProcess>>, String> {
+    fn take(&self) -> Result<Option<LspSessionHandle>, String> {
         let mut guard = self
             .session
             .lock()
             .map_err(|_| "lsp session lock poisoned".to_string())?;
         Ok(guard.take())
+    }
+
+    fn clear_if_process(
+        &self,
+        process: &Arc<crate::lsp::client::LspClientProcess>,
+    ) -> Result<Option<LspSessionHandle>, String> {
+        let mut guard = self
+            .session
+            .lock()
+            .map_err(|_| "lsp session lock poisoned".to_string())?;
+        if guard
+            .as_ref()
+            .is_some_and(|session| Arc::ptr_eq(&session.process, process))
+        {
+            return Ok(guard.take());
+        }
+        Ok(None)
     }
 }
 
@@ -148,12 +164,7 @@ impl PtySessionRegistry {
 
 impl AsyncScheduler {
     pub fn new() -> Result<(Self, std_mpsc::Receiver<WorkerMessage>), String> {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .enable_time()
-            .worker_threads(2)
-            .thread_name("netherize-worker")
-            .build()
-            .map_err(|err| format!("build tokio runtime failed: {err}"))?;
+        let runtime = build_worker_runtime()?;
 
         let (request_tx, request_rx) = mpsc::unbounded_channel();
         let (result_tx, result_rx) = std_mpsc::channel();
@@ -192,12 +203,23 @@ impl AsyncScheduler {
     }
 }
 
+fn build_worker_runtime() -> Result<tokio::runtime::Runtime, String> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_time()
+        .enable_io()
+        .worker_threads(2)
+        .thread_name("netherize-worker")
+        .build()
+        .map_err(|err| format!("build tokio runtime failed: {err}"))
+}
+
 async fn dispatch_loop(
     mut request_rx: mpsc::UnboundedReceiver<WorkerRequest>,
     result_tx: std_mpsc::Sender<WorkerMessage>,
 ) {
     let pty_sessions = Arc::new(PtySessionRegistry::default());
     let lsp_sessions = Arc::new(LspSessionRegistry::default());
+    let mut active_fzf_search: Option<tokio::task::JoinHandle<()>> = None;
 
     while let Some(request) = request_rx.recv().await {
         async_trace!(
@@ -242,6 +264,18 @@ async fn dispatch_loop(
             tokio::spawn(async move {
                 run_lsp_request(request, lsp_sessions, worker_tx).await;
             });
+            continue;
+        }
+
+        if matches!(request.payload, WorkerRequestPayload::FzfSearch { .. }) {
+            if let Some(handle) = active_fzf_search.take() {
+                handle.abort();
+            }
+            let worker_tx = result_tx.clone();
+            let handle = tokio::spawn(async move {
+                run_fzf_request(request, worker_tx).await;
+            });
+            active_fzf_search = Some(handle);
             continue;
         }
 
@@ -584,10 +618,6 @@ fn execute_lsp_request(
             root_path,
             server_command,
         } => {
-            if lsp_sessions.has_active_session()? {
-                return Err("lsp server is already running".to_string());
-            }
-
             let spawned = spawn_lsp_server(
                 server_command.as_deref(),
                 root_path,
@@ -595,7 +625,11 @@ fn execute_lsp_request(
                 request.revision_id,
             )?;
             let session = spawned.process.clone();
-            lsp_sessions.set(session.clone())?;
+            let previous = lsp_sessions.replace(LspSessionHandle {
+                process: session.clone(),
+                server_name: spawned.server_name.clone(),
+                root_path: spawned.root_path.clone(),
+            })?;
 
             spawn_lsp_stdout_reader(
                 session,
@@ -606,6 +640,19 @@ fn execute_lsp_request(
             )?;
             if let Some(stderr) = spawned.stderr {
                 spawn_lsp_stderr_logger(stderr, spawned.server_name.clone())?;
+            }
+            if let Some(previous) = previous {
+                eprintln!(
+                    "[Worker] restarting LSP '{}' for {} -> '{}' for {}",
+                    previous.server_name,
+                    previous.root_path.display(),
+                    spawned.server_name,
+                    spawned.root_path.display()
+                );
+                previous
+                    .process
+                    .update_request_meta(request.request_id, request.revision_id);
+                let _ = previous.process.graceful_shutdown();
             }
 
             Ok(WorkerResultPayload::LspServerStarted {
@@ -669,8 +716,10 @@ fn execute_lsp_request(
             let Some(session) = lsp_sessions.take()? else {
                 return Err("stop lsp rejected: no active server".to_string());
             };
-            session.update_request_meta(request.request_id, request.revision_id);
-            let exit_status = session.graceful_shutdown()?;
+            session
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            let exit_status = session.process.graceful_shutdown()?;
             Ok(WorkerResultPayload::LspServerStopped {
                 exit_status,
                 reason: "shutdown requested by app".to_string(),
@@ -820,8 +869,8 @@ fn spawn_lsp_stdout_reader(
                 let message = match read_json_rpc_message(&mut *reader) {
                     Ok(Some(message)) => message,
                     Ok(None) => {
-                        let should_emit = lsp_sessions.take().ok().flatten().is_some();
-                        if should_emit {
+                        let should_emit = lsp_sessions.clear_if_process(&session).ok().flatten();
+                        if should_emit.is_some() {
                             let request_id = session.latest_request_id();
                             let revision_id = session.latest_revision();
                             let result = WorkerResult {
@@ -838,8 +887,8 @@ fn spawn_lsp_stdout_reader(
                         break;
                     }
                     Err(err) => {
-                        let should_emit = lsp_sessions.take().ok().flatten().is_some();
-                        if should_emit {
+                        let should_emit = lsp_sessions.clear_if_process(&session).ok().flatten();
+                        if should_emit.is_some() {
                             let failed = WorkerEvent {
                                 request_id: session.latest_request_id(),
                                 revision_id: session.latest_revision(),
@@ -940,6 +989,198 @@ fn spawn_lsp_stderr_logger(
         })
         .map_err(|err| format!("spawn lsp stderr logger failed: {err}"))?;
     Ok(())
+}
+
+const MAX_FZF_RESULTS: usize = 48;
+
+async fn run_fzf_request(request: WorkerRequest, worker_tx: std_mpsc::Sender<WorkerMessage>) {
+    let started = WorkerEvent {
+        request_id: request.request_id,
+        revision_id: request.revision_id,
+        topic: request.topic,
+        kind: WorkerEventKind::Started,
+    };
+    emit_message(&worker_tx, WorkerMessage::Event(started));
+
+    match execute_fzf_async(&request).await {
+        Ok(payload) => {
+            let result = WorkerResult {
+                request_id: request.request_id,
+                revision_id: request.revision_id,
+                topic: request.topic,
+                payload,
+            };
+            emit_message(&worker_tx, WorkerMessage::Result(result));
+            let completed = WorkerEvent {
+                request_id: request.request_id,
+                revision_id: request.revision_id,
+                topic: request.topic,
+                kind: WorkerEventKind::Completed,
+            };
+            emit_message(&worker_tx, WorkerMessage::Event(completed));
+        }
+        Err(message) => {
+            let failed = WorkerEvent {
+                request_id: request.request_id,
+                revision_id: request.revision_id,
+                topic: request.topic,
+                kind: WorkerEventKind::Failed {
+                    error: WorkerFailure {
+                        kind: WorkerFailureKind::Execution,
+                        message,
+                    },
+                },
+            };
+            emit_message(&worker_tx, WorkerMessage::Event(failed));
+        }
+    }
+}
+
+async fn execute_fzf_async(request: &WorkerRequest) -> Result<WorkerResultPayload, String> {
+    let WorkerRequestPayload::FzfSearch {
+        query,
+        mode,
+        workspace_root,
+    } = &request.payload
+    else {
+        return Err("fzf runner received non-fzf payload".to_string());
+    };
+
+    if query.trim().is_empty() {
+        return Ok(WorkerResultPayload::FzfResults {
+            query: query.clone(),
+            mode: *mode,
+            items: Vec::new(),
+        });
+    }
+
+    let items = match mode {
+        FzfSearchMode::FindFile => fzf_find_file(query, workspace_root).await?,
+        FzfSearchMode::LiveGrep => fzf_live_grep(query, workspace_root).await?,
+    };
+
+    Ok(WorkerResultPayload::FzfResults {
+        query: query.clone(),
+        mode: *mode,
+        items,
+    })
+}
+
+async fn fzf_find_file(
+    query: &str,
+    workspace_root: &std::path::Path,
+) -> Result<Vec<FzfResultItem>, String> {
+    let ignore_rules = WorkspaceIgnoreRules::default();
+    let prune_expr = ignore_rules
+        .ignored_directory_names()
+        .map(|name| format!("-name {}", sh_single_quote(name)))
+        .collect::<Vec<_>>()
+        .join(" -o ");
+    let script = if prune_expr.is_empty() {
+        "find . -type f -print | fzf -f \"$1\"".to_string()
+    } else {
+        format!("find . \\( {prune_expr} \\) -prune -o -type f -print | fzf -f \"$1\"")
+    };
+    let fzf_output = run_fzf_shell(&script, query, workspace_root, "find|fzf").await?;
+
+    let items: Vec<FzfResultItem> = String::from_utf8_lossy(&fzf_output.stdout)
+        .lines()
+        .take(MAX_FZF_RESULTS)
+        .map(|line| {
+            let rel = line.trim_start_matches("./").to_string();
+            FzfResultItem {
+                label: rel.clone(),
+                preview: None,
+                path: workspace_root.join(&rel),
+                line: None,
+                column: None,
+            }
+        })
+        .collect();
+
+    Ok(items)
+}
+
+async fn fzf_live_grep(
+    query: &str,
+    workspace_root: &std::path::Path,
+) -> Result<Vec<FzfResultItem>, String> {
+    let fzf_output = run_fzf_shell(
+        "rg --line-number --column \"\" . | fzf -f \"$1\"",
+        query,
+        workspace_root,
+        "rg|fzf",
+    )
+    .await?;
+
+    let items: Vec<FzfResultItem> = String::from_utf8_lossy(&fzf_output.stdout)
+        .lines()
+        .take(MAX_FZF_RESULTS)
+        .filter_map(|line| parse_rg_fzf_line(line, workspace_root))
+        .collect();
+
+    Ok(items)
+}
+
+async fn run_fzf_shell(
+    script: &str,
+    query: &str,
+    workspace_root: &std::path::Path,
+    label: &str,
+) -> Result<std::process::Output, String> {
+    use tokio::process::Command;
+
+    let mut command = Command::new("sh");
+    command.kill_on_drop(true);
+    let output = command
+        .args(["-lc", script, "--", query])
+        .current_dir(workspace_root)
+        .output()
+        .await
+        .map_err(|e| format!("{label} failed: {e}"))?;
+
+    if output.status.success() || is_empty_fzf_status(output.status) {
+        return Ok(output);
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stderr.is_empty() {
+        Err(format!("{label} exited with status {}", output.status))
+    } else {
+        Err(format!(
+            "{label} exited with status {}: {stderr}",
+            output.status
+        ))
+    }
+}
+
+fn is_empty_fzf_status(status: ExitStatus) -> bool {
+    status.code() == Some(1)
+}
+
+fn sh_single_quote(text: &str) -> String {
+    format!("'{}'", text.replace('\'', "'\"'\"'"))
+}
+
+fn parse_rg_fzf_line(line: &str, workspace_root: &std::path::Path) -> Option<FzfResultItem> {
+    // rg output format: path:line:col:content
+    let mut parts = line.splitn(4, ':');
+    let path_str = parts.next()?;
+    let line_num: u32 = parts.next()?.parse().ok()?;
+    let col_num: u32 = parts.next()?.parse().ok()?;
+    let content = parts.next().unwrap_or("").trim();
+
+    let rel = path_str.trim_start_matches("./");
+    let label = format!("{rel}:{line_num}:{col_num}");
+    let preview = (!content.is_empty()).then(|| content.to_string());
+
+    Some(FzfResultItem {
+        label,
+        preview,
+        path: workspace_root.join(rel),
+        line: Some(line_num),
+        column: Some(col_num),
+    })
 }
 
 async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayload, String> {
@@ -1092,6 +1333,9 @@ async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayl
         | WorkerRequestPayload::LspDidClose { .. }
         | WorkerRequestPayload::StopLspServer => {
             Err("LSP request should be handled by dedicated LSP runner".to_string())
+        }
+        WorkerRequestPayload::FzfSearch { .. } => {
+            Err("FzfSearch request should be handled by dedicated fzf runner".to_string())
         }
     }
 }
@@ -1334,7 +1578,10 @@ mod tests {
 
     use notify::{Event as NotifyEvent, EventKind as NotifyEventKind, event::ModifyKind};
 
-    use crate::async_runtime::{message::FileSystemChangeKind, scheduler::normalize_notify_event};
+    use crate::async_runtime::{
+        message::FileSystemChangeKind,
+        scheduler::{build_worker_runtime, normalize_notify_event},
+    };
 
     #[test]
     fn normalize_create_event_maps_to_internal_create() {
@@ -1378,5 +1625,21 @@ mod tests {
         assert_eq!(mapped[0].kind, FileSystemChangeKind::Rename);
         assert_eq!(mapped[0].path, PathBuf::from("/tmp/old.rs"));
         assert_eq!(mapped[0].new_path, None);
+    }
+
+    #[test]
+    fn worker_runtime_enables_io_for_tokio_process() {
+        let runtime = build_worker_runtime().expect("worker runtime");
+        let output = runtime
+            .block_on(async {
+                tokio::process::Command::new("sh")
+                    .args(["-lc", "printf ok"])
+                    .output()
+                    .await
+            })
+            .expect("spawn process");
+
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "ok");
     }
 }

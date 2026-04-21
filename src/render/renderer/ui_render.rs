@@ -1,0 +1,661 @@
+//! Panel UI rendering: Explorer sidebar, Terminal, Welcome logo, TopBar, StatusBar.
+
+use crate::{
+    core::mode::EditorMode,
+    render::{
+        region_pipeline::RegionDrawInstance,
+        renderer::{Renderer, SidebarRow, StatusbarLayoutKey, TopbarLayoutKey, TopbarTab},
+    },
+    terminal::grid::TerminalGrid,
+    text::text_system::StyledTextSpan,
+};
+
+use super::helpers::{
+    clamp_monospace_text, estimate_monospace_width, layout_panel_rich_text, layout_panel_text,
+    mode_display_label, mode_pill_color, rect_to_scissor,
+};
+
+const EMPTY_TERMINAL_HINT: &str = "(terminal ready — press F12 to focus)";
+
+impl Renderer {
+    /// Render the explorer file tree into the left sidebar region.
+    ///
+    /// Returns selection quads so the caller can draw them via the
+    /// region pipeline *before* the text pass.
+    pub fn update_sidebar_content(
+        &mut self,
+        header: Option<&str>,
+        rows: &[SidebarRow],
+        bounds: [f32; 4],
+        sidebar_focused: bool,
+    ) -> Vec<RegionDrawInstance> {
+        if bounds[2] < 1.0 || bounds[3] < 1.0 {
+            self.sidebar_scissor = None;
+            self.sidebar_glyph_instances.clear();
+            self.sidebar_text_pipeline
+                .upload_instances(&self.device, &self.queue, &[]);
+            return Vec::new();
+        }
+
+        self.sidebar_scissor = rect_to_scissor(bounds);
+        let line_h = self.theme.ui.sidebar_line_height;
+        let font_size = self.theme.ui.sidebar_font_size;
+
+        let fg = self.theme.ui.fg.as_f32();
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let fg_ghost = self.theme.ui.fg_ghost.as_f32();
+        let accent = self.theme.ui.accent.as_f32();
+        let sel_bg = if sidebar_focused {
+            [accent[0], accent[1], accent[2], 0.18]
+        } else {
+            let c = self.theme.ui.selection_bg.as_f32();
+            [c[0], c[1], c[2], 0.55]
+        };
+
+        let width = (bounds[2] - self.panel_padding * 2.0).max(1.0);
+        self.sidebar_text_system.set_size(Some(width), Some(line_h));
+
+        let mut glyphs = Vec::new();
+        let mut selection_quads: Vec<RegionDrawInstance> = Vec::new();
+        let mut current_y = bounds[1] + self.panel_padding;
+
+        if let Some(header) = header {
+            glyphs.extend(layout_panel_text(
+                header,
+                &mut self.sidebar_text_system,
+                &mut self.atlas,
+                &self.queue,
+                bounds[0] + self.sidebar_base_padding,
+                current_y,
+                fg_ghost,
+            ));
+            current_y += line_h;
+        }
+
+        for row in rows {
+            let x = bounds[0]
+                + self.sidebar_base_padding
+                + row.depth as f32 * self.sidebar_indent_per_depth;
+
+            let label_color = if row.is_selected {
+                selection_quads.push(RegionDrawInstance::new(
+                    [
+                        bounds[0] + 2.0,
+                        current_y,
+                        (bounds[2] - 4.0).max(0.0),
+                        line_h,
+                    ],
+                    sel_bg,
+                ));
+                if sidebar_focused { accent } else { fg }
+            } else {
+                fg_dim
+            };
+
+            // 1. Disclosure arrow (▶ ▼ ·)
+            let arrow_str = format!("{} ", row.arrow);
+            let arrow_w = arrow_str.chars().count() as f32 * font_size * 0.60;
+            glyphs.extend(layout_panel_text(
+                &arrow_str,
+                &mut self.sidebar_text_system,
+                &mut self.atlas,
+                &self.queue,
+                x,
+                current_y,
+                fg_ghost,
+            ));
+
+            // 2. NerdFont icon (folder/filetype), colored per-filetype
+            let nerd_str = format!("{} ", row.nerd_icon);
+            let nerd_w = nerd_str.chars().count() as f32 * font_size * 0.60;
+            glyphs.extend(layout_panel_text(
+                &nerd_str,
+                &mut self.sidebar_text_system,
+                &mut self.atlas,
+                &self.queue,
+                x + arrow_w,
+                current_y,
+                row.icon_color,
+            ));
+
+            // 3. Label
+            glyphs.extend(layout_panel_text(
+                &row.label,
+                &mut self.sidebar_text_system,
+                &mut self.atlas,
+                &self.queue,
+                x + arrow_w + nerd_w,
+                current_y,
+                label_color,
+            ));
+
+            current_y += line_h;
+        }
+
+        self.sidebar_glyph_instances = glyphs;
+        self.sidebar_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.sidebar_glyph_instances,
+        );
+        selection_quads
+    }
+
+    /// Clear sidebar — called when the panel is hidden.
+    pub fn clear_sidebar(&mut self) {
+        self.sidebar_scissor = None;
+        self.sidebar_glyph_instances.clear();
+        self.sidebar_text_pipeline
+            .upload_instances(&self.device, &self.queue, &[]);
+    }
+
+    // ── Terminal ───────────────────────────────────────────────────────────────
+
+    /// Render PTY grid output into the bottom terminal panel.
+    pub fn update_terminal_content(
+        &mut self,
+        grid: &TerminalGrid,
+        bounds: [f32; 4],
+        terminal_focused: bool,
+    ) {
+        if bounds[2] < 1.0 || bounds[3] < 1.0 {
+            self.terminal_scissor = None;
+            self.terminal_cursor_instances.clear();
+            return;
+        }
+        let origin_x = bounds[0] + self.panel_padding;
+        let origin_y = bounds[1] + self.panel_padding + self.theme.ui.panel_line_height;
+        let width = (bounds[2] - self.panel_padding * 2.0).max(1.0);
+        let height =
+            (bounds[3] - self.panel_padding * 2.0 - self.theme.ui.panel_line_height).max(1.0);
+
+        self.terminal_scissor = rect_to_scissor(bounds);
+
+        let default_fg = self.theme.editor.fg.as_f32();
+        let default_bg = self.theme.ui.terminal_bg.as_f32();
+
+        if grid.used_rows() == 0 {
+            self.terminal_text_system
+                .set_size(Some(width), Some(height));
+            self.terminal_glyph_instances = layout_panel_text(
+                EMPTY_TERMINAL_HINT,
+                &mut self.terminal_text_system,
+                &mut self.atlas,
+                &self.queue,
+                origin_x,
+                origin_y,
+                default_fg,
+            );
+        } else {
+            let font_size = self.theme.ui.panel_font_size;
+            let line_h = self.theme.ui.panel_line_height.max(1.0);
+            self.terminal_view_renderer.origin_x = origin_x;
+            self.terminal_view_renderer.origin_y = origin_y;
+            self.terminal_view_renderer.cell_width = (font_size * 0.6).max(1.0);
+            self.terminal_view_renderer.cell_height = line_h;
+            self.terminal_view_renderer.font_size = font_size;
+
+            self.terminal_glyph_instances = self.terminal_view_renderer.build_instances(
+                grid,
+                &mut self.atlas,
+                &self.queue,
+                &mut self.terminal_text_system,
+                default_fg,
+                default_bg,
+                width,
+            );
+        }
+
+        self.terminal_cursor_instances.clear();
+        if terminal_focused && grid.used_rows() > 0 && grid.scroll_offset == 0 {
+            let [cell_x, cell_y, cell_w, cell_h] = self
+                .terminal_view_renderer
+                .cell_rect(grid.cursor_row, grid.cursor_col);
+            let clip_right = origin_x + width;
+            if cell_x < clip_right {
+                let cursor_color = self.theme.editor.cursor.as_f32();
+                let (x, y, w, h, alpha) = match self.cursor_shape {
+                    crate::config::ui_config::CursorShape::Beam => (
+                        cell_x,
+                        cell_y,
+                        self.cursor_beam_width.max(1.0),
+                        cell_h.max(1.0),
+                        1.0,
+                    ),
+                    crate::config::ui_config::CursorShape::Underline => {
+                        let underline_h = self.cursor_underline_height.max(1.0);
+                        (
+                            cell_x,
+                            cell_y + (cell_h - underline_h).max(0.0),
+                            cell_w.max(1.0),
+                            underline_h,
+                            1.0,
+                        )
+                    }
+                    // Terminal behaves like an insert-target, so the "block"
+                    // editor shape falls back to a beam here to keep the shell
+                    // glyph readable while still making the caret obvious.
+                    crate::config::ui_config::CursorShape::Block => (
+                        cell_x,
+                        cell_y,
+                        self.cursor_beam_width.max(1.0),
+                        cell_h.max(1.0),
+                        1.0,
+                    ),
+                };
+                self.terminal_cursor_instances.push(RegionDrawInstance::new(
+                    [x, y, w, h],
+                    [cursor_color[0], cursor_color[1], cursor_color[2], alpha],
+                ));
+            }
+        }
+
+        self.terminal_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.terminal_glyph_instances,
+        );
+    }
+
+    /// Clear terminal — called when the panel is hidden.
+    pub fn clear_terminal(&mut self) {
+        self.terminal_scissor = None;
+        self.terminal_glyph_instances.clear();
+        self.terminal_cursor_instances.clear();
+        self.terminal_text_pipeline
+            .upload_instances(&self.device, &self.queue, &[]);
+    }
+
+    // ── Welcome logo ───────────────────────────────────────────────────────────
+
+    /// Render centered welcome text into the dedicated welcome layer.
+    pub fn update_welcome_screen_content(
+        &mut self,
+        text: &str,
+        spans: &[StyledTextSpan],
+        bounds: [f32; 4],
+    ) {
+        if bounds[2] < 1.0 || bounds[3] < 1.0 {
+            self.clear_welcome_logo();
+            return;
+        }
+
+        self.welcome_logo_scissor = rect_to_scissor(bounds);
+
+        let max_width = (bounds[2] - self.panel_padding * 2.0).max(1.0);
+        let font_size = self.theme.editor.font_size;
+        let line_height = self.theme.editor.line_height.max(font_size + 4.0);
+
+        use cosmic_text::Metrics;
+        self.welcome_logo_text_system
+            .set_metrics(Metrics::new(font_size, line_height));
+        self.welcome_logo_text_system
+            .set_size(Some(max_width), None);
+        self.welcome_logo_text_system.set_text_with_spans(
+            text,
+            self.theme.editor.fg.as_u8(),
+            spans,
+        );
+
+        let mut content_width = 0.0_f32;
+        let mut content_height = 0.0_f32;
+        for run in self.welcome_logo_text_system.buffer().layout_runs() {
+            content_width = content_width.max(run.line_w.max(1.0));
+            content_height = content_height.max(run.line_top + run.line_height.max(1.0));
+        }
+        content_width = content_width.min(max_width).max(1.0);
+        content_height = content_height.max(line_height);
+
+        let origin_x = bounds[0] + ((bounds[2] - content_width) * 0.5).max(self.panel_padding);
+        let origin_y = bounds[1]
+            + ((bounds[3] - content_height) * 0.5)
+                .max(self.panel_padding)
+                .min((bounds[3] - content_height - self.panel_padding).max(self.panel_padding));
+
+        self.welcome_logo_glyph_instances = layout_panel_rich_text(
+            text,
+            spans,
+            self.theme.editor.fg.as_f32(),
+            &mut self.welcome_logo_text_system,
+            &mut self.atlas,
+            &self.queue,
+            origin_x,
+            origin_y,
+        );
+        self.welcome_logo_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.welcome_logo_glyph_instances,
+        );
+    }
+
+    /// Render ANSI art into the welcome-logo layer (separate from the real PTY panel).
+    pub fn update_welcome_logo_content(&mut self, grid: &TerminalGrid, bounds: [f32; 4]) {
+        if bounds[2] < 1.0 || bounds[3] < 1.0 {
+            self.welcome_logo_scissor = None;
+            self.welcome_logo_glyph_instances.clear();
+            self.welcome_logo_text_pipeline
+                .upload_instances(&self.device, &self.queue, &[]);
+            return;
+        }
+
+        self.welcome_logo_scissor = rect_to_scissor(bounds);
+
+        let width = bounds[2].max(1.0);
+        let height = bounds[3].max(1.0);
+        let cols = grid.cols.max(1) as f32;
+        let rows = grid.rows.max(1) as f32;
+
+        let font_size = (height / rows).min(width / (cols * 0.6)).max(1.0);
+        let cell_width = (font_size * 0.6).max(1.0);
+        let cell_height = font_size.max(1.0);
+        let rendered_w = (cell_width * cols).min(width);
+        let rendered_h = (cell_height * rows).min(height);
+        let origin_x = bounds[0] + ((width - rendered_w) * 0.5).max(0.0);
+        let origin_y = bounds[1] + ((height - rendered_h) * 0.5).max(0.0);
+
+        use cosmic_text::Metrics;
+        self.welcome_logo_text_system
+            .set_metrics(Metrics::new(font_size, cell_height));
+
+        self.welcome_logo_view_renderer.origin_x = origin_x;
+        self.welcome_logo_view_renderer.origin_y = origin_y;
+        self.welcome_logo_view_renderer.cell_width = cell_width;
+        self.welcome_logo_view_renderer.cell_height = cell_height;
+        self.welcome_logo_view_renderer.font_size = font_size;
+
+        let default_fg = self.theme.editor.fg.as_f32();
+        let default_bg = self.theme.editor.bg.as_f32();
+
+        self.welcome_logo_glyph_instances = self.welcome_logo_view_renderer.build_instances(
+            grid,
+            &mut self.atlas,
+            &self.queue,
+            &mut self.welcome_logo_text_system,
+            default_fg,
+            default_bg,
+            rendered_w,
+        );
+        self.welcome_logo_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.welcome_logo_glyph_instances,
+        );
+    }
+
+    pub fn clear_welcome_logo(&mut self) {
+        self.welcome_logo_scissor = None;
+        self.welcome_logo_glyph_instances.clear();
+        self.welcome_logo_text_pipeline
+            .upload_instances(&self.device, &self.queue, &[]);
+    }
+
+    // ── TopBar ─────────────────────────────────────────────────────────────────
+
+    /// Render the tab bar on top. Returns tab chrome quads.
+    pub fn update_topbar_content(
+        &mut self,
+        tabs: &[TopbarTab],
+        active_buffer_index: Option<usize>,
+        bounds: [f32; 4],
+    ) -> Vec<RegionDrawInstance> {
+        if bounds[2] < 1.0 || bounds[3] < 1.0 {
+            self.topbar_scissor = None;
+            self.topbar_glyph_instances.clear();
+            self.topbar_chrome_instances.clear();
+            self.last_topbar_layout_key = None;
+            self.topbar_text_pipeline
+                .upload_instances(&self.device, &self.queue, &[]);
+            return vec![];
+        }
+
+        let layout_key = TopbarLayoutKey {
+            tabs: tabs.to_vec(),
+            active_buffer_index,
+            bounds,
+        };
+        if self.last_topbar_layout_key.as_ref() == Some(&layout_key) {
+            return self.topbar_chrome_instances.clone();
+        }
+
+        self.topbar_scissor = rect_to_scissor(bounds);
+        let line_h = self.statusbar_line_height;
+        let font_size = self.statusbar_font_size;
+        let width = (bounds[2] - self.topbar_padding_x * 2.0).max(1.0);
+        self.topbar_text_system
+            .set_size(Some(width), Some(bounds[3]));
+        let origin_y = bounds[1] + ((bounds[3] - line_h) * 0.5).max(0.0);
+        let active_fg = self.theme.ui.fg.as_f32();
+        let inactive_fg = self.theme.ui.fg_dim.as_f32();
+        let empty_fg = self.theme.ui.fg_ghost.as_f32();
+        let active_bg = self.theme.ui.selection_bg.as_f32();
+        let accent = self.theme.ui.accent.as_f32();
+        let font_family = self.theme.editor.font_family.as_deref();
+        let nerd_family = self
+            .theme
+            .editor
+            .nerd_font_family
+            .as_deref()
+            .filter(|family| !family.is_empty())
+            .or(font_family);
+
+        let mut glyphs = Vec::new();
+        let mut chrome = Vec::new();
+        let mut tab_x = bounds[0] + self.topbar_padding_x;
+        let tab_gap = 6.0;
+        let available_right = bounds[0] + bounds[2] - self.topbar_padding_x;
+        let tab_pad_x = 10.0;
+        let icon_gap = 6.0;
+
+        if tabs.is_empty() {
+            glyphs.extend(layout_panel_text(
+                "[ no file ]",
+                &mut self.topbar_text_system,
+                &mut self.atlas,
+                &self.queue,
+                tab_x,
+                origin_y,
+                empty_fg,
+            ));
+        } else {
+            for (idx, tab) in tabs.iter().enumerate() {
+                let icon = self.theme.file_icon_for_path(&tab.path, false, false);
+                let icon_text = format!("{} ", icon.glyph);
+                let icon_width = estimate_monospace_width(&icon_text, font_size);
+                let label_width = estimate_monospace_width(&tab.label, font_size);
+                let tab_width = (tab_pad_x * 2.0 + icon_width + icon_gap + label_width).min(width);
+                if tab_x + tab_width > available_right {
+                    break;
+                }
+
+                let is_active = active_buffer_index == Some(idx);
+                if is_active {
+                    chrome.push(RegionDrawInstance::new(
+                        [
+                            tab_x,
+                            bounds[1] + 2.0,
+                            tab_width,
+                            (bounds[3] - 4.0).max(0.0),
+                        ],
+                        active_bg,
+                    ));
+                    chrome.push(RegionDrawInstance::new(
+                        [
+                            tab_x,
+                            (bounds[1] + bounds[3] - 2.0).max(bounds[1]),
+                            tab_width,
+                            2.0,
+                        ],
+                        accent,
+                    ));
+                }
+
+                let icon_x = tab_x + tab_pad_x;
+                self.topbar_text_system.set_font_family(nerd_family);
+                glyphs.extend(layout_panel_text(
+                    &icon_text,
+                    &mut self.topbar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    icon_x,
+                    origin_y,
+                    icon.color.as_f32(),
+                ));
+                self.topbar_text_system.set_font_family(font_family);
+                glyphs.extend(layout_panel_text(
+                    &tab.label,
+                    &mut self.topbar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    icon_x + icon_width + icon_gap,
+                    origin_y,
+                    if is_active { active_fg } else { inactive_fg },
+                ));
+                tab_x += tab_width + tab_gap;
+            }
+        }
+
+        self.topbar_glyph_instances = glyphs;
+        self.topbar_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.topbar_glyph_instances,
+        );
+        self.topbar_chrome_instances = chrome;
+        self.last_topbar_layout_key = Some(layout_key);
+        self.topbar_chrome_instances.clone()
+    }
+
+    // ── StatusBar ──────────────────────────────────────────────────────────────
+
+    /// Render the status bar.
+    /// Returns background + border + mode-badge quads to be drawn before text.
+    pub fn update_statusbar_content(
+        &mut self,
+        mode: EditorMode,
+        pending_keys: &str,
+        git_branch: &str,
+        filetype: &str,
+        line: usize,
+        col: usize,
+        bounds: [f32; 4],
+    ) -> Vec<RegionDrawInstance> {
+        if bounds[2] < 1.0 || bounds[3] < 1.0 {
+            self.statusbar_scissor = None;
+            self.statusbar_glyph_instances.clear();
+            self.statusbar_chrome_instances.clear();
+            self.last_statusbar_layout_key = None;
+            self.statusbar_text_pipeline
+                .upload_instances(&self.device, &self.queue, &[]);
+            return vec![];
+        }
+
+        let layout_key = StatusbarLayoutKey {
+            mode,
+            pending_keys: pending_keys.to_string(),
+            git_branch: git_branch.to_string(),
+            filetype: filetype.to_string(),
+            line,
+            col,
+            bounds,
+        };
+        if self.last_statusbar_layout_key.as_ref() == Some(&layout_key) {
+            return self.statusbar_chrome_instances.clone();
+        }
+
+        self.statusbar_scissor = rect_to_scissor(bounds);
+        let line_h = self.statusbar_line_height;
+        let font_size = self.statusbar_font_size;
+        let width = (bounds[2] - self.statusbar_padding_x * 2.0).max(1.0);
+        self.statusbar_text_system
+            .set_size(Some(width), Some(bounds[3]));
+
+        let mode_label = mode_display_label(mode);
+        let mode_color = mode_pill_color(mode, &self.theme);
+        let pill_text = format!("  {}  ", mode_label);
+        let pill_width = estimate_monospace_width(&pill_text, font_size);
+        let pill_x = bounds[0] + self.statusbar_padding_x;
+        let pill_height = (bounds[3] - 6.0).max(line_h).min(bounds[3]);
+        let pill_y = bounds[1] + ((bounds[3] - pill_height) * 0.5).max(0.0);
+        let pill_rect = [pill_x, pill_y, pill_width, pill_height];
+
+        let branch_label = if git_branch.trim().is_empty() {
+            "git: -".to_string()
+        } else {
+            let b = git_branch.trim();
+            if b.starts_with("git: ") {
+                b.to_string()
+            } else {
+                format!("git: {b}")
+            }
+        };
+        let right_text = format!(
+            "{}  |  {filetype}  |  UTF-8  |  LF  |  Ln {}, Col {}",
+            branch_label,
+            line + 1,
+            col + 1
+        );
+
+        let origin_y = bounds[1] + ((bounds[3] - line_h) * 0.5).max(0.0);
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let accent = self.theme.ui.accent.as_f32();
+        let pill_fg = self.theme.ui.bg.as_f32();
+
+        let mut glyphs = layout_panel_text(
+            &pill_text,
+            &mut self.statusbar_text_system,
+            &mut self.atlas,
+            &self.queue,
+            pill_x,
+            origin_y,
+            pill_fg,
+        );
+
+        let right_width = estimate_monospace_width(&right_text, font_size);
+        let right_x = (bounds[0] + bounds[2] - self.statusbar_padding_x - right_width)
+            .max(bounds[0] + self.statusbar_padding_x);
+        let pending_x = pill_x + pill_width + self.statusbar_padding_x * 0.75;
+        let pending_gap = self.statusbar_padding_x;
+        let pending_maxw = (right_x - pending_x - pending_gap).max(0.0);
+        let pending_text = clamp_monospace_text(pending_keys, pending_maxw, font_size);
+
+        if !pending_text.is_empty() {
+            glyphs.extend(layout_panel_text(
+                &pending_text,
+                &mut self.statusbar_text_system,
+                &mut self.atlas,
+                &self.queue,
+                pending_x,
+                origin_y,
+                accent,
+            ));
+        }
+        glyphs.extend(layout_panel_text(
+            &right_text,
+            &mut self.statusbar_text_system,
+            &mut self.atlas,
+            &self.queue,
+            right_x,
+            origin_y,
+            fg_dim,
+        ));
+
+        self.statusbar_glyph_instances = glyphs;
+        self.statusbar_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.statusbar_glyph_instances,
+        );
+
+        self.statusbar_chrome_instances = vec![
+            RegionDrawInstance::new(bounds, self.theme.ui.status_bar_bg.as_f32()),
+            RegionDrawInstance::new(
+                [bounds[0], bounds[1], bounds[2], 1.0_f32.min(bounds[3])],
+                self.theme.ui.border_color.as_f32(),
+            ),
+            RegionDrawInstance::new(pill_rect, mode_color),
+        ];
+        self.last_statusbar_layout_key = Some(layout_key);
+        self.statusbar_chrome_instances.clone()
+    }
+}

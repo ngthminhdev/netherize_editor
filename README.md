@@ -15,13 +15,14 @@ A GPU-accelerated terminal/text editor written in Rust. Currently in active deve
 | Text shaping (cosmic-text) | ✅ Rich text + syntax spans |
 | Syntax highlighting (tree-sitter) | ✅ Rust grammar wired |
 | Workbench layout engine | ✅ Region-based, resizable splits |
-| File explorer sidebar | ✅ Tree with j/k/h/l/Enter navigation |
+| File explorer sidebar | ✅ Tree with j/k/h/l/Enter navigation + theme-correct colors |
 | Embedded terminal (PTY) | ✅ ANSI parser + grid |
 | LSP client | 🚧 Skeleton (didOpen wired, partial) |
-| Config / theme (TOML runtime) | ✅ Hot-reloadable at startup |
-| Command palette | ✅ Overlay UI working |
-| File picker (fuzzy) | ✅ Working |
+| Config / theme (TOML runtime) | ✅ Profile-driven TOML + built-in fallback |
+| Command palette | ✅ Overlay UI with prompt prefix/query color split |
+| File picker (fuzzy) | ✅ Matched-char accent highlight + fg_dim labels |
 | Multi-buffer | ✅ Buffer ring (next/prev/close) |
+| Leap navigation | ✅ EasyMotion-style jump with dim overlay + per-char quad |
 
 ---
 
@@ -32,7 +33,7 @@ cargo run
 ```
 
 ```sh
-cargo test -q          # 128 tests, all pass
+cargo test             # full unit + doc test suite
 cargo bench            # criterion benchmarks in benches/
 ```
 
@@ -62,7 +63,13 @@ netherize_editor/
 │   │   │   ├── focus.rs           # Focus-context-aware key routing
 │   │   │   ├── helpers.rs
 │   │   │   └── tests.rs
-│   │   ├── input.rs               # Raw key event normalization
+│   │   ├── input/                 # Key normalization + pending-state router
+│   │   │   ├── mod.rs             # Public input module surface
+│   │   │   ├── handler.rs         # Main input state machine / router
+│   │   │   ├── model.rs           # NormalizedInput / TranslatedInput
+│   │   │   ├── pending.rs         # Pending chord/operator state types
+│   │   │   ├── helpers.rs         # Key classification + terminal payload helpers
+│   │   │   └── tests.rs           # Input routing regression tests
 │   │   ├── resolved_keymap.rs     # Merged keymap at runtime
 │   │   ├── command_palette.rs     # Command palette state + filtering
 │   │   ├── file_picker.rs         # File picker state + fuzzy results
@@ -76,7 +83,13 @@ netherize_editor/
 │   │   └── mod.rs
 │   │
 │   ├── render/                    # GPU rendering layer (wgpu)
-│   │   ├── renderer.rs            # Renderer struct — orchestrates all render passes
+│   │   ├── renderer.rs            # Renderer facade + shared render types
+│   │   ├── renderer/
+│   │   │   ├── lifecycle.rs       # GPU init, resize, theme/ui config apply, frame submit
+│   │   │   ├── editor_render.rs   # Editor/gutter/caret/selection render prep
+│   │   │   ├── ui_render.rs       # Sidebar, terminal, topbar, statusbar, welcome UI
+│   │   │   ├── palette_render.rs  # Command palette, file picker, leap overlay
+│   │   │   └── helpers.rs         # Shared pure helpers for render modules
 │   │   ├── pipeline.rs            # Generic wgpu pipeline builder
 │   │   ├── text_pipeline.rs       # Glyph-instance pipeline (text quads)
 │   │   ├── region_pipeline.rs     # Colored quad pipeline (backgrounds, highlights)
@@ -132,7 +145,12 @@ netherize_editor/
 │   │   └── mod.rs
 │   │
 │   └── config/                    # Config loading
-│       ├── theme_config.rs        # ThemeConfig — parsed from TOML, used by Renderer
+│       ├── theme_config.rs        # Theme module entrypoint + public re-exports
+│       ├── theme_config/
+│       │   ├── model.rs           # Public theme tokens + file-icon lookup helpers
+│       │   ├── loader.rs          # TOML loading, validation, profile lookup
+│       │   ├── raw.rs             # Serde-only structs matching theme TOML
+│       │   └── builtin.rs         # Built-in dark fallback theme
 │       ├── ui_config.rs           # UiConfig — layout sizes, cursor style, padding
 │       ├── keymap_config.rs       # KeymapConfig — raw key binding table
 │       ├── keymap_loader.rs       # Loads + merges keymap TOML files
@@ -140,13 +158,11 @@ netherize_editor/
 │
 ├── config/
 │   ├── themes/
-│   │   └── default-dark.toml      # Color theme ([editor], [ui], [syntax] sections)
+│   │   └── default-dark.toml      # Theme profile ([theme], [editor], [ui], [syntax], [icons])
 │   ├── ui/
 │   │   └── default.toml           # Layout sizes, cursor shape, padding, dock visibility
 │   └── keymaps/
-│       ├── default.toml           # Default keymap (VSCode-ish)
-│       ├── nvim.toml              # Neovim-style keymap
-│       └── min.toml               # Minimal keymap
+│       └── default.toml           # Shared repo baseline; local remaps can live in ~/.config/netherize/keymaps/user.toml
 │
 ├── docs/
 │   ├── MODULE12_HANDOFF_COMPACT.md  # Handoff notes for Module 12 (Phase 2+3)
@@ -169,10 +185,33 @@ User presses key
 winit KeyEvent  (app/event_loop/application.rs)
       │
       ▼
-input_map::resolve()  →  Command enum  (app/input_map/)
+InputHandler::translate_key_event()
+  (app/input/handler.rs)
+  - normalize KeyEvent
+  - keep pending chord / operator / replace / leap state
+  - accumulate numeric counts (1..9 only; 0 falls through as a normal key)
       │
       ▼
-command_dispatch()  →  AppState mutation  (app/event_loop/commands.rs)
+InputMap::resolve() / resolve_sequence_*()
+  (app/input_map/mod.rs)
+  - turn normalized key(s) into Command
+  - load merged bindings from resolved keymap
+      │
+      ▼
+TranslatedInput { command, repeat_count }
+      │
+      ▼
+AppShell::handle_command_with_count()
+  (app/event_loop/commands.rs)
+  - workbench/focus commands
+  - terminal open/focus behavior
+  - forward repeat_count into editor dispatch
+      │
+      ▼
+dispatch_command_with_clipboard_count()
+  (core/command_dispatch.rs)
+  - loop repeatable commands
+  - group repeated text edits into one undo transaction
       │
       ▼
 AppState  (app/app_state.rs)
@@ -198,6 +237,51 @@ Renderer.update_editor_content()  (render/renderer.rs)
 Renderer.render()  →  wgpu submit  →  screen
 ```
 
+### Keyboard / Vim Path In One Line
+
+For almost every "why didn't this key do what I expected?" bug, read the path below in order:
+
+`application.rs` -> `app/input/handler.rs` -> `app/input_map/mod.rs` -> `app/resolved_keymap.rs` -> `app/event_loop/commands.rs` -> `core/command_dispatch.rs` -> `app/app_state.rs`
+
+That path is the fastest way to debug:
+
+- missing keybinding
+- wrong chord/operator behavior
+- numeric counts like `5j`, `d2w`, `3dw`
+- terminal focus vs editor focus
+- command runs but mutates the wrong state
+
+---
+
+## Where To Fix What
+
+Use this table when you want to jump straight to the likely file instead of reading the whole repo.
+
+| If you want to change... | Start here | Why |
+|------|------|------|
+| Vim counts, pending operators, chord interruption, `r<char>`, Leap pending states | `src/app/input/handler.rs`, `src/app/input/pending.rs` | Handler owns the state machine; pending types keep the router states readable |
+| A shortcut does not fire, or `0/F12/<leader>` maps wrong | `config/keymaps/default.toml`, `src/app/input_map/mod.rs`, `src/app/resolved_keymap.rs` | Binding definition, sequence matching, and merged runtime keymap live here |
+| A command should repeat `count` times or should/should not support counts | `src/core/commands.rs`, `src/core/command_dispatch.rs` | Count policy and the actual execution loop are centralized here |
+| Undo transaction boundaries for repeated delete/paste/edit commands | `src/core/command_dispatch.rs`, `src/app/app_state.rs` | Dispatch decides when to commit; AppState stores the transaction stack |
+| Mode transitions such as Normal/Insert/Visual/TerminalFocus | `src/core/mode.rs`, `src/app/app_state.rs` | `ModeState` validates transitions; `AppState` applies them |
+| F12 terminal behavior, focus handoff, explorer/panel focus routing | `src/app/event_loop/commands.rs` | Workbench commands are handled here, not in core dispatch |
+| Terminal raw input, ANSI behavior, PTY I/O | `src/app/input/helpers.rs`, `src/app/input/handler.rs`, `src/terminal/pty.rs`, `src/terminal/grid.rs` | Terminal key payload building lives in input helpers, then flows into PTY/grid behavior |
+| Sidebar / bottom panel overlap, docking geometry, resize handles | `src/workbench/layout_engine.rs`, `src/workbench/panel_state.rs` | Region bounds and panel sizes come from the workbench layout engine |
+| Cursor/caret rendering, terminal cursor visibility, status bar UI | `src/render/caret.rs`, `src/render/renderer/ui_render.rs`, `src/app/event_loop/application.rs` | Render prep happens in UI/caret code, driven by event-loop state |
+| Theme token bug or wrong color/icon | `config/themes/default-dark.toml`, `src/config/theme_config/` | Theme data is defined in TOML and validated/loaded in the theme module |
+| UI spacing, panel sizes, cursor shape defaults | `config/ui/default.toml`, `src/config/ui_config.rs` | Geometry defaults come from UI config, not from the renderer |
+
+### Three Common Debug Paths
+
+1. Key maps wrong:
+   `config/keymaps/default.toml` -> `src/app/resolved_keymap.rs` -> `src/app/input_map/mod.rs`
+
+2. Key maps correctly but behavior is wrong:
+   `src/app/input/handler.rs` -> `src/app/event_loop/commands.rs` -> `src/core/command_dispatch.rs`
+
+3. Command succeeds but screen looks wrong:
+   `src/app/app_state.rs` -> `src/workbench/layout_engine.rs` -> `src/render/renderer/ui_render.rs`
+
 ---
 
 ## Key Structs at a Glance
@@ -222,13 +306,13 @@ Renderer.render()  →  wgpu submit  →  screen
 Normal ──(i/a/o/O/s/S/A)──► Insert
 Normal ──(v)──────────────► Visual
 Normal ──(Ctrl+P)─────────► PaletteFocus
-Normal ──(Ctrl+`)─────────► TerminalFocus
+Normal ──(F12)────────────► TerminalFocus
 
 Insert ──(Esc)────────────► Normal
 Visual ──(Esc)────────────► Normal
 
 PaletteFocus ──(Esc/ExitFocus)──► [return to previous mode]
-TerminalFocus ──(Esc)───────────► [return to previous mode]
+TerminalFocus ──(Esc/F12)───────► [return to previous mode]
 ```
 
 Mode transitions are validated by `ModeState::apply(event)` — invalid transitions return `Err`.
@@ -292,9 +376,18 @@ panel_padding = ...
 
 ### `config/themes/default-dark.toml`
 
-Controls all colors:
+Controls theme metadata, colors, sizes, and file icons.
+
+Theme loading order:
+
+1. `ThemeConfig::load_active()` reads `NETHERIZE_THEME` and defaults to `default-dark`
+2. It looks for `config/themes/<profile>.toml`
+3. If the file is missing or invalid, the renderer falls back to `ThemeConfig::builtin_dark()`
 
 ```toml
+[theme]
+name = "default-dark"
+
 [editor]
 bg = ...
 fg = ...
@@ -309,11 +402,95 @@ selection_bg = ...
 keyword = ...
 string = ...
 comment = ...
+
+[icons]
+explorer_folder_collapsed_marker = "▶"
+
+[icons.rust]
+glyph = "\uE7A8"
+color = "#FF955C"
 ```
 
 ### `config/keymaps/default.toml`
 
 Maps key combos to `Command` IDs per mode context.
+
+### Active Profiles And Override Flow
+
+Profiles are selected via environment variables at startup:
+
+```sh
+NETHERIZE_THEME=default-dark NETHERIZE_PROFILE=default NETHERIZE_UI=default cargo run
+```
+
+- `NETHERIZE_THEME` -> `config/themes/<profile>.toml`
+- `NETHERIZE_PROFILE` -> `config/keymaps/<profile>.toml` (repo currently ships `default.toml`)
+- `NETHERIZE_UI` -> `config/ui/<profile>.toml`
+
+### Theme Override Workflow
+
+Theme loading is profile-based today:
+
+1. Copy an existing file such as `config/themes/default-dark.toml`
+2. Save it as a new profile, for example `config/themes/my-dark.toml`
+3. Edit the tokens you want to change
+4. Start the editor with `NETHERIZE_THEME=my-dark cargo run`
+
+Example:
+
+```toml
+[theme]
+name = "my-dark"
+
+[editor]
+bg = "#0b1020"
+fg = "#d9e2f2"
+cursor = "#9be564"
+selection = "#1d2a44"
+gutter = "#5f6b82"
+
+[ui]
+sidebar_bg = "#0f1628"
+panel_bg = "#111a30"
+terminal_bg = "#0d1424"
+status_bar_bg = "#0a1220"
+border_color = "#24314d"
+accent = "#9be564"
+```
+
+`ThemeConfig::load_active()` currently resolves only `config/themes/<profile>.toml` and falls back to the built-in dark theme if that file is missing or invalid. Unlike keymaps, there is not yet a dedicated `~/.config/netherize/...` theme override layer.
+
+### Keymap Override Workflow
+
+Keymaps load in this order, with later layers winning:
+
+1. Built-in Rust defaults
+2. Selected profile from `config/keymaps/<profile>.toml` (`default.toml` in this repo unless you add another one later)
+3. Optional user overrides from `~/.config/netherize/keymaps/user.toml`
+
+That means repo profiles stay as the shared baseline, while local machine-specific remaps can live in `~/.config/netherize/keymaps/user.toml`.
+
+Example user override file:
+
+```toml
+[profile]
+name = "user"
+
+[[bindings]]
+key = "mod+Shift+p"
+command = "app.open_command_palette"
+
+[[bindings]]
+mode = "terminal"
+key = "F12"
+command = "app.toggle_terminal"
+```
+
+Terminal shortcut semantics are now intentionally centralized on `F12`:
+
+- If the terminal panel is hidden, `F12` opens it and focuses the terminal
+- If the terminal panel is already visible, `F12` focuses the terminal
+- If the terminal already has focus, `F12` returns focus to the editor and keeps the panel open
 
 ---
 
@@ -361,13 +538,17 @@ Each frame in `Renderer::render()` runs these passes in order:
 
 Read in this order to build a mental model quickly:
 
-1. **`src/core/mode.rs`** — understand the mode FSM first; it's small and self-contained
-2. **`src/core/commands.rs`** — see every possible action the editor can perform
-3. **`src/app/app_state.rs`** — the central state; understand fields and key methods
-4. **`src/workbench/region_model.rs`** + **`layout_engine.rs`** — how the UI is divided
-5. **`src/text/text_system.rs`** + **`text/atlas.rs`** — how text goes from string → GPU
-6. **`src/render/renderer.rs`** — how all of the above is assembled into a frame
-7. **`src/app/event_loop/application.rs`** — the main loop tying it all together
+1. **`src/core/commands.rs`** — the command surface area; know the verbs first
+2. **`src/core/mode.rs`** — understand the mode FSM and focus-return rules
+3. **`src/app/input/handler.rs`** — key routing state machine, numeric counts, operator flow
+4. **`src/app/input/model.rs`** + **`src/app/input/pending.rs`** — normalized input types and pending-state definitions
+5. **`src/app/input_map/mod.rs`** + **`src/app/resolved_keymap.rs`** — how keys become commands
+6. **`src/app/event_loop/commands.rs`** — workbench behavior, panel focus, terminal open/focus logic
+7. **`src/core/command_dispatch.rs`** — how commands mutate editor state and how undo grouping works
+8. **`src/app/app_state.rs`** — the central source of truth for text, cursor, mode, buffers, and transactions
+9. **`src/workbench/layout_engine.rs`** — UI region geometry when a bug is visual/layout-related
+10. **`src/render/renderer.rs`** + **`src/render/renderer/ui_render.rs`** — frame assembly and UI rendering
+11. **`src/text/text_system.rs`** + **`src/text/atlas.rs`** — text shaping/raster path when glyph/render bugs appear
 
 ---
 
@@ -377,5 +558,58 @@ Read in this order to build a mental model quickly:
 - **Scrolling**: vertical scroll works via `scroll_line`; horizontal scroll not yet implemented.
 - **Multiple splits**: layout engine supports Left/Center/Right/Bottom but no arbitrary splits yet.
 - **Atlas overflow**: when the glyph atlas fills up, new glyphs are dropped silently. Atlas eviction/resize not yet implemented.
-- **Undo/redo**: not implemented; `ropey` supports it via `Rope::clone()` snapshots but no history stack exists yet.
+- **Undo/redo**: implemented for normal edit flows, including grouped repeated commands, but coverage is still strongest around editor-core mutations rather than every future UI action.
 - **Visual line mode**: `EnterVisualLine` command exists but selection logic is partial.
+
+---
+
+## Render Layout Fixes (Module 12 — Phase 2)
+
+### Explorer Tree — `update_sidebar_content`
+
+Field-level color hierarchy now matches theme tokens exactly:
+
+| Element | Token | Color |
+|---------|-------|-------|
+| Arrow icon (`▶ ▼ ·`) | `ui.fg_ghost` | Muted gray — de-emphasized |
+| File/folder (normal) | `ui.fg_dim` | Soft gray — readable but not dominant |
+| Selected item (unfocused) | `ui.fg` | Bright white |
+| Selected item (focused) | `ui.accent` | Green accent |
+| Header label | `ui.fg_ghost` | Same as icon — muted |
+
+Icon and label are rendered as two separate `layout_panel_text` calls so colors can differ within the same row. Y-coordinate uses `current_y` accumulated each node (`current_y += line_h`) to prevent node overlap.
+
+### Gutter (Line Numbers) — `update_editor_gutter`
+
+Gutter quads (background clear + active-line highlight) are uploaded directly inside the function via `region_pipeline.upload_instances()`. Previously the function returned the quads, which caused a compile error when callers didn't collect the return value.
+
+| Element | Token | Color |
+|---------|-------|-------|
+| Gutter background | `editor.bg` | Clears old frame artifacts |
+| Active line highlight | `editor.selection` @ 22% alpha | Subtle row highlight |
+| Active line number | `editor.gutter_active` | Bright |
+| Other line numbers | `editor.gutter` | Muted gray |
+
+### File Picker (Fuzzy Finder) — `update_palette_content` + `CommandPaletteRenderModel`
+
+`CommandPaletteRenderModel` now carries split prompt fields and match ranges:
+
+```rust
+pub prompt_prefix: String,        // "find> " — rendered with hint_color
+pub prompt_query: String,         // user query — rendered with text_color / hint_color
+pub result_match_ranges: Vec<Vec<(usize, usize)>>,  // byte ranges for accent highlight
+pub match_color: [f32; 4],        // ui.accent — matched chars
+pub label_color: [f32; 4],        // ui.fg_dim  — normal label text
+```
+
+Renderer splits each result label into segments: non-matched parts use `label_color` (`fg_dim`), matched parts use `match_color` (`accent`). Substring matches produce one continuous highlight range; fuzzy matches highlight individual matching chars.
+
+| Element | Token | Behavior |
+|---------|-------|----------|
+| Prompt prefix (`find> `) | `hint_color` | Muted — always dim |
+| Query text (user input) | `text_color` | Bright when user has typed |
+| Empty hint placeholder | `hint_color` | Dim when query is empty |
+| Result labels (normal) | `label_color` = `fg_dim` | Soft gray |
+| Matched chars in labels | `match_color` = `accent` | Green accent |
+| Active item background | `selection_bg` | Subtle highlight strip |
+| "(no matches)" | `hint_color` | Muted, below separator |

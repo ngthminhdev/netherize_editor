@@ -1,7 +1,10 @@
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
-use crate::render::glyph_instance::{GlyphVertex, QUAD_INDICES, QUAD_VERTICES};
+use crate::render::{
+    color_space::srgb_color_target_state,
+    glyph_instance::{GlyphVertex, QUAD_INDICES, QUAD_VERTICES},
+};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
@@ -144,11 +147,7 @@ impl RegionPipeline {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
+                targets: &[Some(srgb_color_target_state(surface_format))],
             }),
             multiview_mask: None,
             cache: None,

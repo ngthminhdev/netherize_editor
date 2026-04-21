@@ -526,11 +526,9 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         KeySpec::ModShiftPlus(KeyCode::KeyP),
         OPEN_COMMAND_PALETTE,
     );
-    km.insert(None, mp(KeyCode::Backslash), TOGGLE_TERMINAL);
-    km.insert(None, mp(KeyCode::Backquote), TOGGLE_TERMINAL);
-    km.insert(None, mp(KeyCode::KeyE), TOGGLE_EXPLORER);
+    km.insert(None, mp(KeyCode::KeyB), TOGGLE_LEFT_DOCK);
     km.insert(None, mp(KeyCode::KeyF), FOCUS_EXPLORER);
-    km.insert(None, nk(NamedKey::F12), FOCUS_TERMINAL);
+    km.insert(None, nk(NamedKey::F12), TOGGLE_TERMINAL);
 
     // ── Insert mode ───────────────────────────────────────────────────────────
     km.insert(Some("insert"), nk(NamedKey::Escape), ENTER_NORMAL);
@@ -542,7 +540,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("insert"), nk(NamedKey::ArrowDown), MOVE_DOWN);
 
     // ── Normal mode ───────────────────────────────────────────────────────────
-    km.insert(Some("normal"), nk(NamedKey::Escape), ENTER_NORMAL);
+    km.insert(
+        Some("normal"),
+        nk(NamedKey::Escape),
+        CLEAR_SEARCH_HIGHLIGHTS,
+    );
     km.insert(Some("normal"), nk(NamedKey::ArrowLeft), MOVE_LEFT);
     km.insert(Some("normal"), nk(NamedKey::ArrowRight), MOVE_RIGHT);
     km.insert(Some("normal"), nk(NamedKey::ArrowUp), MOVE_UP);
@@ -568,10 +570,13 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("normal"), ph(KeyCode::KeyA), APPEND_AFTER_CURSOR);
     km.insert(Some("normal"), ch('S'), SUBSTITUTE_LINE);
     km.insert(Some("normal"), ph(KeyCode::KeyX), DELETE_CHAR);
+    km.insert(Some("normal"), ph(KeyCode::KeyP), PASTE_AFTER);
+    km.insert(Some("normal"), ch('P'), PASTE_BEFORE);
     km.insert(Some("normal"), ph(KeyCode::KeyU), UNDO);
+    km.insert(Some("normal"), mp(KeyCode::KeyH), BUFFER_PREV);
+    km.insert(Some("normal"), mp(KeyCode::KeyL), BUFFER_NEXT);
     km.insert(Some("normal"), mp(KeyCode::KeyR), REDO);
     km.insert(Some("normal"), KeySpec::Char(':'), OPEN_VIM_COMMAND);
-    km.insert(Some("normal"), ph(KeyCode::Backquote), TOGGLE_TERMINAL);
 
     // ── Visual mode ───────────────────────────────────────────────────────────
     km.insert(Some("visual"), nk(NamedKey::Escape), ENTER_NORMAL);
@@ -593,30 +598,27 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("visual"), ph(KeyCode::KeyD), DELETE_SELECTION);
     km.insert(Some("visual"), ph(KeyCode::KeyC), CHANGE_SELECTION);
     km.insert(Some("visual"), ph(KeyCode::KeyX), DELETE_SELECTION);
+    km.insert(Some("visual"), ph(KeyCode::KeyY), YANK_SELECTION);
 
-    // ── Palette focus (file picker) ───────────────────────────────────────────
+    // ── Palette focus (overlay / command palette / file picker) ─────────────
     km.insert(Some("palette"), nk(NamedKey::Enter), FILE_PICKER_CONFIRM);
-    km.insert(
-        Some("palette"),
-        nk(NamedKey::ArrowUp),
-        FILE_PICKER_SELECT_PREV,
-    );
+    km.insert(Some("palette"), nk(NamedKey::ArrowUp), OVERLAY_SELECT_PREV);
     km.insert(
         Some("palette"),
         nk(NamedKey::ArrowDown),
-        FILE_PICKER_SELECT_NEXT,
+        OVERLAY_SELECT_NEXT,
     );
+    km.insert(Some("palette"), mp(KeyCode::KeyP), OVERLAY_SELECT_PREV);
+    km.insert(Some("palette"), mp(KeyCode::KeyN), OVERLAY_SELECT_NEXT);
     km.insert(
         Some("palette"),
         nk(NamedKey::Backspace),
         FILE_PICKER_BACKSPACE,
     );
-    km.insert(Some("palette"), nk(NamedKey::Space), FILE_PICKER_BACKSPACE);
 
     // ── Terminal focus mode bindings (mode-only lookup in InputMap) ──────────
     km.insert(Some("terminal"), nk(NamedKey::Escape), FOCUS_EDITOR);
-    km.insert(Some("terminal"), ph(KeyCode::Backquote), TOGGLE_TERMINAL);
-    km.insert(Some("terminal"), mp(KeyCode::Backslash), TOGGLE_TERMINAL);
+    km.insert(Some("terminal"), nk(NamedKey::F12), TOGGLE_TERMINAL);
 
     // ── Explorer focus mode bindings (mode-only lookup in InputMap) ──────────
     km.insert(Some("explorer"), nk(NamedKey::Escape), FOCUS_EDITOR);
@@ -631,13 +633,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(
         Some("explorer"),
         nk(NamedKey::ArrowLeft),
-        EXPLORER_COLLAPSE_OR_PARENT,
+        EXPLORER_COLLAPSE_NODE,
     );
-    km.insert(
-        Some("explorer"),
-        ph(KeyCode::KeyH),
-        EXPLORER_COLLAPSE_OR_PARENT,
-    );
+    km.insert(Some("explorer"), ph(KeyCode::KeyH), EXPLORER_COLLAPSE_NODE);
+    km.insert(Some("explorer"), ph(KeyCode::KeyW), EXPLORER_COLLAPSE_NODE);
+    km.insert(Some("explorer"), ch('W'), EXPLORER_COLLAPSE_ALL_UNDER_NODE);
     km.insert(
         Some("explorer"),
         nk(NamedKey::ArrowRight),
@@ -653,6 +653,12 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         nk(NamedKey::Enter),
         EXPLORER_TOGGLE_OR_OPEN,
     );
+    km.insert(Some("explorer"), ph(KeyCode::KeyO), EXPLORER_TOGGLE_OR_OPEN);
+    km.insert(Some("explorer"), ph(KeyCode::KeyD), EXPLORER_DELETE_NODE);
+    km.insert(Some("explorer"), ph(KeyCode::KeyE), EXPLORER_EXPAND_NODE);
+    km.insert(Some("explorer"), ch('E'), EXPLORER_EXPAND_ALL_UNDER_NODE);
+    km.insert(Some("explorer"), ph(KeyCode::KeyA), EXPLORER_CREATE_FILE);
+    km.insert(Some("explorer"), ch('A'), EXPLORER_CREATE_FOLDER);
 
     // ── Global Ctrl+W → focus back to editor ─────────────────────────────────
     km.insert(None, mp(KeyCode::KeyW), FOCUS_BACK);
@@ -705,16 +711,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
 
     // Leader bindings (Space = leader) are represented as explicit sequences.
-    km.insert_sequence(
-        None,
-        seq(&[KeySpec::Leader, ph(KeyCode::KeyP)]),
-        OPEN_COMMAND_PALETTE,
-    );
-    km.insert_sequence(
-        None,
-        seq(&[KeySpec::Leader, ph(KeyCode::KeyT)]),
-        TOGGLE_TERMINAL,
-    );
+    // Note: <leader>p removed — command palette is opened via mod+p only.
     km.insert_sequence(
         None,
         seq(&[KeySpec::Leader, ph(KeyCode::KeyE)]),
@@ -727,11 +724,6 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert_sequence(
         None,
-        seq(&[KeySpec::Leader, ph(KeyCode::KeyB)]),
-        FOCUS_TERMINAL,
-    );
-    km.insert_sequence(
-        None,
         seq(&[KeySpec::Leader, ph(KeyCode::KeyF), ph(KeyCode::KeyF)]),
         OPEN_FILE_FINDER,
     );
@@ -739,6 +731,23 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         None,
         seq(&[KeySpec::Leader, ph(KeyCode::KeyF), ph(KeyCode::KeyW)]),
         SEARCH_IN_FILES,
+    );
+    km.insert_sequence(
+        Some("normal"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyX)]),
+        BUFFER_CLOSE_CURRENT,
+    );
+
+    // Leap / EasyMotion navigation (Space + s → LeapStart)
+    km.insert_sequence(
+        Some("normal"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyS)]),
+        LEAP_START,
+    );
+    km.insert_sequence(
+        Some("visual"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyS)]),
+        LEAP_START,
     );
 
     km
@@ -930,6 +939,12 @@ mod tests {
             text: Some("x".into()),
             modifiers: ModifiersState::empty(),
         };
+        let visual_y = NormalizedInput {
+            physical_key: Some(KeyCode::KeyY),
+            named_key: None,
+            text: Some("y".into()),
+            modifiers: ModifiersState::empty(),
+        };
 
         assert_eq!(
             km.lookup(&visual_d, "visual"),
@@ -942,6 +957,38 @@ mod tests {
         assert_eq!(
             km.lookup(&visual_x, "visual"),
             Some(command_ids::DELETE_SELECTION)
+        );
+        assert_eq!(
+            km.lookup(&visual_y, "visual"),
+            Some(command_ids::YANK_SELECTION)
+        );
+    }
+
+    #[test]
+    fn builtin_defaults_include_normal_paste_bindings() {
+        use winit::keyboard::ModifiersState;
+        let km = builtin_defaults();
+
+        let normal_p = NormalizedInput {
+            physical_key: Some(KeyCode::KeyP),
+            named_key: None,
+            text: Some("p".into()),
+            modifiers: ModifiersState::empty(),
+        };
+        let normal_shift_p = NormalizedInput {
+            physical_key: Some(KeyCode::KeyP),
+            named_key: None,
+            text: Some("P".into()),
+            modifiers: ModifiersState::SHIFT,
+        };
+
+        assert_eq!(
+            km.lookup(&normal_p, "normal"),
+            Some(command_ids::PASTE_AFTER)
+        );
+        assert_eq!(
+            km.lookup(&normal_shift_p, "normal"),
+            Some(command_ids::PASTE_BEFORE)
         );
     }
 
@@ -991,5 +1038,94 @@ mod tests {
             true,
         );
         assert!(candidates.contains(&KeySpec::Leader));
+    }
+
+    #[test]
+    fn builtin_defaults_map_mod_b_to_toggle_left_dock() {
+        use winit::keyboard::ModifiersState;
+        let km = builtin_defaults();
+        let input = NormalizedInput {
+            physical_key: Some(KeyCode::KeyB),
+            named_key: None,
+            text: Some("b".into()),
+            modifiers: ModifiersState::CONTROL,
+        };
+
+        assert_eq!(
+            km.lookup(&input, "normal"),
+            Some(command_ids::TOGGLE_LEFT_DOCK)
+        );
+    }
+
+    #[test]
+    fn builtin_defaults_do_not_map_mod_e_globally() {
+        use winit::keyboard::ModifiersState;
+        let km = builtin_defaults();
+        let input = NormalizedInput {
+            physical_key: Some(KeyCode::KeyE),
+            named_key: None,
+            text: Some("e".into()),
+            modifiers: ModifiersState::CONTROL,
+        };
+
+        assert_eq!(km.lookup(&input, "normal"), None);
+    }
+
+    #[test]
+    fn builtin_defaults_include_explorer_nerdtree_shortcuts() {
+        use winit::keyboard::ModifiersState;
+        let km = builtin_defaults();
+
+        let create_file = NormalizedInput {
+            physical_key: Some(KeyCode::KeyA),
+            named_key: None,
+            text: Some("a".into()),
+            modifiers: ModifiersState::empty(),
+        };
+        let create_folder = NormalizedInput {
+            physical_key: Some(KeyCode::KeyA),
+            named_key: None,
+            text: Some("A".into()),
+            modifiers: ModifiersState::SHIFT,
+        };
+        let open_entry = NormalizedInput {
+            physical_key: Some(KeyCode::KeyO),
+            named_key: None,
+            text: Some("o".into()),
+            modifiers: ModifiersState::empty(),
+        };
+        let expand_entry = NormalizedInput {
+            physical_key: Some(KeyCode::KeyE),
+            named_key: None,
+            text: Some("e".into()),
+            modifiers: ModifiersState::empty(),
+        };
+        let expand_subtree_entry = NormalizedInput {
+            physical_key: Some(KeyCode::KeyE),
+            named_key: None,
+            text: Some("E".into()),
+            modifiers: ModifiersState::SHIFT,
+        };
+
+        assert_eq!(
+            km.lookup(&create_file, "explorer"),
+            Some(command_ids::EXPLORER_CREATE_FILE)
+        );
+        assert_eq!(
+            km.lookup(&create_folder, "explorer"),
+            Some(command_ids::EXPLORER_CREATE_FOLDER)
+        );
+        assert_eq!(
+            km.lookup(&open_entry, "explorer"),
+            Some(command_ids::EXPLORER_TOGGLE_OR_OPEN)
+        );
+        assert_eq!(
+            km.lookup(&expand_entry, "explorer"),
+            Some(command_ids::EXPLORER_EXPAND_NODE)
+        );
+        assert_eq!(
+            km.lookup(&expand_subtree_entry, "explorer"),
+            Some(command_ids::EXPLORER_EXPAND_ALL_UNDER_NODE)
+        );
     }
 }

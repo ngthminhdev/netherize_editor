@@ -1,56 +1,159 @@
 [theme]
-name = "default-dark"
+name = "bearded-arc-zed"
+description = "Bearded Arc theme mapped from Zed/VSCode format"
 
 [editor]
-bg = "#0d1017"
-fg = "#f2f4f8"
-cursor = "#9BE564"
-selection = "#1e2535"
-gutter = "#5e6575"
-gutter_active = "#d8deea"
+bg = "#1c2433"          # editor.background
+fg = "#d0d7e4"          # editor.foreground
+cursor = "#22ECDB"      # Dùng màu cyan cho nổi bật
+selection = "#253043"   # elevated_surface.background (solid color thay vì mã có alpha)
+gutter = "#1c2433"      # editor.gutter.background
+gutter_active = "#7d91b8" # editor.active_line_number
 font_size = 15.0
 line_height = 26.0
-font_family = "Menlo"
+font_family = "Google Sans Code"
+nerd_font_family = "Hack Nerd Font"
 
 [ui]
-bg = "#07080d"
-sidebar_bg = "#0f1320"
-panel_bg = "#121622"
-terminal_bg = "#0b0f18"
-overlay_bg = "#05070c"
-status_bar_bg = "#111111"
-border_color = "#1e2535"
-selection_bg = "#1e2535"
-fg = "#f2f4f8"
-fg_dim = "#b7bfcc"
-fg_faint = "#8f98aa"
-fg_ghost = "#6d7483"
-accent = "#9BE564"
-cyan = "#2FD3F6"
-magenta = "#E77AE9"
-amber = "#F5B63A"
-success = "#67D67C"
-warning = "#F2B84B"
-info = "#49C6F8"
-error = "#FF7B72"
+bg = "#181f2c"          # panel.background / title_bar.background
+sidebar_bg = "#181f2c"  # panel.background
+panel_bg = "#181f2c"    # panel.background
+terminal_bg = "#1c2433" # terminal.background
+overlay_bg = "#181f2cD9" # Nền có độ trong suốt cho modal
+status_bar_bg = "#181f2c" # status_bar.background
+border_color = "#11161f"  # border
+selection_bg = "#2a364d"  # element.active
+
+# Nhóm màu text giao diện
+fg = "#d0d7e4"          # foreground
+fg_dim = "#afbbd2"      # text.muted
+fg_faint = "#4a5e84"    # text.placeholder
+fg_ghost = "#4a5e84"    # ignored / hidden
+
+# Nhóm màu tín hiệu & nhấn (Semantic)
+accent = "#8196b5"      # info
+cyan = "#22ECDB"        # terminal.ansi.cyan
+magenta = "#F38CEC"     # terminal.ansi.magenta
+amber = "#EACD61"       # terminal.ansi.yellow
+success = "#3CEC85"     # success
+warning = "#FF955C"     # warning
+info = "#69C3FF"        # terminal.ansi.blue / modified
+error = "#E35535"       # error
+
+# Màu cho Status Bar Badge
+mode_normal = "#22ECDB"
+mode_insert = "#3CEC85"
+mode_visual = "#F38CEC"
+
+# Kích thước Layout
 sidebar_font_size = 15.0
 sidebar_line_height = 22.0
 panel_font_size = 14.0
 panel_line_height = 22.0
-# Layout dimensions (px) — consumed by WorkbenchLayoutEngine.
+
 sidebar_width = 280.0
 right_sidebar_width = 320.0
 bottom_panel_height = 220.0
 top_bar_height = 36.0
 status_bar_height = 32.0
 
+[icons]
+explorer_file_marker = "·"
+explorer_folder_collapsed_marker = "▶"
+explorer_folder_expanded_marker = "▼"
+file_picker_dot = "●"
+
+[icons.folder_closed]
+glyph = "\uF07B"
+color = "#EACD61"
+
+[icons.folder_open]
+glyph = "\uF07C"
+color = "#EACD61"
+
+[icons.default_file]
+glyph = "\uF15B"
+color = "#4a5e84"
+
+[icons.rust]
+glyph = "\uE7A8"
+color = "#FF955C"
+
+[icons.javascript]
+glyph = "\uE781"
+color = "#EACD61"
+
+[icons.typescript]
+glyph = "\uE628"
+color = "#69C3FF"
+
+[icons.tsx]
+glyph = "\uE7BA"
+color = "#69C3FF"
+
+[icons.jsx]
+glyph = "\uE7BA"
+color = "#EACD61"
+
+[icons.python]
+glyph = "\uE73C"
+color = "#69C3FF"
+
+[icons.go]
+glyph = "\uE724"
+color = "#22ECDB"
+
+[icons.config]
+glyph = "\uE615"
+color = "#4a5e84"
+
+[icons.json]
+glyph = "\uE60B"
+color = "#EACD61"
+
+[icons.markdown]
+glyph = "\uF48A"
+color = "#69C3FF"
+
+[icons.html]
+glyph = "\uE736"
+color = "#E35535"
+
+[icons.css]
+glyph = "\uE749"
+color = "#69C3FF"
+
+[icons.sass]
+glyph = "\uE603"
+color = "#F38CEC"
+
+[icons.shell]
+glyph = "\uF489"
+color = "#3CEC85"
+
+[icons.git]
+glyph = "\uF1D3"
+color = "#FF955C"
+
+[icons.lock]
+glyph = "\uF13E"
+color = "#4a5e84"
+
+[icons.image]
+glyph = "\uF1C5"
+color = "#3CEC85"
+
 [syntax]
-keyword = "#E77AE9"
-string = "#67D67C"
-function = "#2FD3F6"
-comment = "#6d7483"
-type = "#F5B63A"
-number = "#FF7B72"
-constant = "#49C6F8"
-operator = "#f2f4f8"
-variable = "#f2f4f8"
+keyword = "#EACD61"      # keyword
+string = "#3CEC85"       # string
+function = "#69C3FF"     # function
+comment = "#4a5e84"      # comment
+type = "#B78AFF"         # type
+number = "#E35535"       # constant.numeric
+constant = "#E35535"     # constant
+operator = "#EACD61"     # keyword.operator / operator
+variable = "#FF738A"     # variable
+property = "#d0d7e4"     # property
+punctuation = "#8196b5"  # Dùng info color thay cho punctuation alpha
+macro = "#69C3FF"        # function.macro
+lifetime = "#FF955C"     # Dùng warning color để nổi bật lifetime

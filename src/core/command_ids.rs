@@ -18,6 +18,11 @@ pub const MOVE_TO_LAST_LINE: &str = "editor.move_to_last_line";
 pub const SCROLL_HALF_PAGE_UP: &str = "editor.scroll_half_page_up";
 pub const SCROLL_HALF_PAGE_DOWN: &str = "editor.scroll_half_page_down";
 pub const CENTER_CURSOR_LINE: &str = "editor.center_cursor_line";
+pub const OPEN_IN_FILE_SEARCH: &str = "editor.open_in_file_search";
+pub const SEARCH_NEXT: &str = "editor.search_next";
+pub const SEARCH_PREV: &str = "editor.search_prev";
+pub const SEARCH_WORD_UNDER_CURSOR: &str = "editor.search_word_under_cursor";
+pub const CLEAR_SEARCH_HIGHLIGHTS: &str = "editor.clear_search_highlights";
 pub const BACKSPACE: &str = "editor.backspace";
 pub const NEWLINE: &str = "editor.newline";
 pub const INSERT_LINE_BELOW: &str = "editor.insert_line_below";
@@ -31,13 +36,19 @@ pub const DELETE_SELECTION: &str = "editor.delete_selection";
 pub const DELETE_CURRENT_LINE: &str = "editor.delete_current_line";
 pub const DELETE_WORD_FORWARD: &str = "editor.delete_word_forward";
 pub const DELETE_WORD_BACKWARD: &str = "editor.delete_word_backward";
+pub const YANK_SELECTION: &str = "editor.yank_selection";
 pub const CHANGE_SELECTION: &str = "editor.change_selection";
 pub const CHANGE_WORD_FORWARD: &str = "editor.change_word_forward";
 pub const CHANGE_WORD_BACKWARD: &str = "editor.change_word_backward";
+pub const PASTE_AFTER: &str = "editor.paste_after";
+pub const PASTE_BEFORE: &str = "editor.paste_before";
 pub const UNDO: &str = "editor.undo";
 pub const REDO: &str = "editor.redo";
 pub const SAVE_FILE: &str = "editor.save_file";
 pub const OPEN_FILE: &str = "editor.open_file";
+
+// ── Leap / EasyMotion navigation ─────────────────────────────────────────────
+pub const LEAP_START: &str = "editor.leap_start";
 
 // ── Mode transitions ──────────────────────────────────────────────────────────
 pub const ENTER_NORMAL: &str = "mode.enter_normal";
@@ -46,9 +57,13 @@ pub const ENTER_VISUAL: &str = "mode.enter_visual";
 pub const ENTER_VISUAL_LINE: &str = "mode.enter_visual_line";
 pub const EXIT_FOCUS: &str = "mode.exit_focus";
 
+// ── Workspace / Project management ───────────────────────────────────────────
+pub const OPEN_FOLDER: &str = "editor.open_folder";
+pub const OPEN_RECENT_PROJECTS: &str = "projects.recent";
+
 // ── App-level UI ──────────────────────────────────────────────────────────────
 pub const TOGGLE_TERMINAL: &str = "app.toggle_terminal";
-pub const TOGGLE_EXPLORER: &str = "app.toggle_explorer";
+pub const TOGGLE_LEFT_DOCK: &str = "app.toggle_left_dock";
 pub const OPEN_FILE_PICKER: &str = "app.open_file_picker";
 pub const OPEN_FILE_FINDER: &str = "app.open_file_finder";
 pub const OPEN_COMMAND_PALETTE: &str = "app.open_command_palette";
@@ -81,14 +96,23 @@ pub const BUFFER_CLOSE_CURRENT: &str = "buffer.close_current";
 // ── Explorer surface ──────────────────────────────────────────────────────────
 pub const EXPLORER_MOVE_UP: &str = "explorer.move_up";
 pub const EXPLORER_MOVE_DOWN: &str = "explorer.move_down";
+pub const EXPLORER_COLLAPSE_NODE: &str = "explorer.collapse_node";
 pub const EXPLORER_COLLAPSE_OR_PARENT: &str = "explorer.collapse_or_parent";
+pub const EXPLORER_EXPAND_NODE: &str = "explorer.expand_node";
+pub const EXPLORER_COLLAPSE_ALL_UNDER_NODE: &str = "explorer.collapse_all_under_node";
 pub const EXPLORER_EXPAND_OR_CHILD: &str = "explorer.expand_or_child";
+pub const EXPLORER_EXPAND_ALL_UNDER_NODE: &str = "explorer.expand_all_under_node";
 pub const EXPLORER_TOGGLE_OR_OPEN: &str = "explorer.toggle_or_open";
+pub const EXPLORER_DELETE_NODE: &str = "explorer.delete_node";
+pub const EXPLORER_CREATE_FILE: &str = "explorer.create_file";
+pub const EXPLORER_CREATE_FOLDER: &str = "explorer.create_folder";
 // Legacy command IDs.
 pub const EXPLORER_EXPAND_COLLAPSE: &str = "explorer.expand_collapse";
 pub const EXPLORER_OPEN_FILE: &str = "explorer.open_file";
 
 // ── File picker ───────────────────────────────────────────────────────────────
+pub const OVERLAY_SELECT_NEXT: &str = "overlay.select_next";
+pub const OVERLAY_SELECT_PREV: &str = "overlay.select_prev";
 pub const FILE_PICKER_CONFIRM: &str = "file_picker.confirm";
 pub const FILE_PICKER_CLOSE: &str = "file_picker.close";
 pub const FILE_PICKER_SELECT_NEXT: &str = "file_picker.select_next";
@@ -96,6 +120,8 @@ pub const FILE_PICKER_SELECT_PREV: &str = "file_picker.select_prev";
 pub const FILE_PICKER_BACKSPACE: &str = "file_picker.backspace";
 
 pub const ALL_IDS: &[&str] = &[
+    OPEN_FOLDER,
+    OPEN_RECENT_PROJECTS,
     MOVE_LEFT,
     MOVE_RIGHT,
     MOVE_UP,
@@ -111,6 +137,11 @@ pub const ALL_IDS: &[&str] = &[
     SCROLL_HALF_PAGE_UP,
     SCROLL_HALF_PAGE_DOWN,
     CENTER_CURSOR_LINE,
+    OPEN_IN_FILE_SEARCH,
+    SEARCH_NEXT,
+    SEARCH_PREV,
+    SEARCH_WORD_UNDER_CURSOR,
+    CLEAR_SEARCH_HIGHLIGHTS,
     BACKSPACE,
     NEWLINE,
     INSERT_LINE_BELOW,
@@ -124,9 +155,12 @@ pub const ALL_IDS: &[&str] = &[
     DELETE_CURRENT_LINE,
     DELETE_WORD_FORWARD,
     DELETE_WORD_BACKWARD,
+    YANK_SELECTION,
     CHANGE_SELECTION,
     CHANGE_WORD_FORWARD,
     CHANGE_WORD_BACKWARD,
+    PASTE_AFTER,
+    PASTE_BEFORE,
     UNDO,
     REDO,
     SAVE_FILE,
@@ -137,7 +171,7 @@ pub const ALL_IDS: &[&str] = &[
     ENTER_VISUAL_LINE,
     EXIT_FOCUS,
     TOGGLE_TERMINAL,
-    TOGGLE_EXPLORER,
+    TOGGLE_LEFT_DOCK,
     OPEN_FILE_PICKER,
     OPEN_FILE_FINDER,
     OPEN_COMMAND_PALETTE,
@@ -162,16 +196,26 @@ pub const ALL_IDS: &[&str] = &[
     BUFFER_CLOSE_CURRENT,
     EXPLORER_MOVE_UP,
     EXPLORER_MOVE_DOWN,
+    EXPLORER_COLLAPSE_NODE,
     EXPLORER_COLLAPSE_OR_PARENT,
+    EXPLORER_EXPAND_NODE,
+    EXPLORER_COLLAPSE_ALL_UNDER_NODE,
     EXPLORER_EXPAND_OR_CHILD,
+    EXPLORER_EXPAND_ALL_UNDER_NODE,
     EXPLORER_TOGGLE_OR_OPEN,
+    EXPLORER_DELETE_NODE,
+    EXPLORER_CREATE_FILE,
+    EXPLORER_CREATE_FOLDER,
     EXPLORER_EXPAND_COLLAPSE,
     EXPLORER_OPEN_FILE,
+    OVERLAY_SELECT_NEXT,
+    OVERLAY_SELECT_PREV,
     FILE_PICKER_CONFIRM,
     FILE_PICKER_CLOSE,
     FILE_PICKER_SELECT_NEXT,
     FILE_PICKER_SELECT_PREV,
     FILE_PICKER_BACKSPACE,
+    LEAP_START,
 ];
 
 pub fn is_valid(id: &str) -> bool {
@@ -195,6 +239,11 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         SCROLL_HALF_PAGE_UP => Some(Command::ScrollHalfPageUp),
         SCROLL_HALF_PAGE_DOWN => Some(Command::ScrollHalfPageDown),
         CENTER_CURSOR_LINE => Some(Command::CenterCursorLine),
+        OPEN_IN_FILE_SEARCH => Some(Command::OpenInFileSearch),
+        SEARCH_NEXT => Some(Command::SearchNext),
+        SEARCH_PREV => Some(Command::SearchPrev),
+        SEARCH_WORD_UNDER_CURSOR => Some(Command::SearchWordUnderCursor),
+        CLEAR_SEARCH_HIGHLIGHTS => Some(Command::ClearSearchHighlights),
         BACKSPACE => Some(Command::Backspace),
         NEWLINE => Some(Command::Newline),
         INSERT_LINE_BELOW => Some(Command::InsertLineBelow),
@@ -208,22 +257,27 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         DELETE_CURRENT_LINE => Some(Command::DeleteCurrentLine),
         DELETE_WORD_FORWARD => Some(Command::DeleteWordForward),
         DELETE_WORD_BACKWARD => Some(Command::DeleteWordBackward),
+        YANK_SELECTION => Some(Command::YankSelection),
         CHANGE_SELECTION => Some(Command::ChangeSelection),
         CHANGE_WORD_FORWARD => Some(Command::ChangeWordForward),
         CHANGE_WORD_BACKWARD => Some(Command::ChangeWordBackward),
+        PASTE_AFTER => Some(Command::PasteAfter),
+        PASTE_BEFORE => Some(Command::PasteBefore),
         UNDO => Some(Command::Undo),
         REDO => Some(Command::Redo),
         SAVE_FILE => Some(Command::SaveFile),
         OPEN_FILE => Some(Command::OpenFile(
             open_file_path.map(PathBuf::from).unwrap_or_default(),
         )),
+        OPEN_FOLDER => Some(Command::OpenFolder),
+        OPEN_RECENT_PROJECTS => Some(Command::OpenRecentProjects),
         ENTER_NORMAL => Some(Command::SwitchMode(ModeEvent::EnterNormal)),
         ENTER_INSERT => Some(Command::SwitchMode(ModeEvent::EnterInsert)),
         ENTER_VISUAL => Some(Command::SwitchMode(ModeEvent::EnterVisual)),
         ENTER_VISUAL_LINE => Some(Command::EnterVisualLine),
         EXIT_FOCUS => Some(Command::SwitchMode(ModeEvent::ExitFocus)),
         TOGGLE_TERMINAL => Some(Command::ToggleTerminal),
-        TOGGLE_EXPLORER => Some(Command::ToggleExplorer),
+        TOGGLE_LEFT_DOCK => Some(Command::ToggleLeftDock),
         OPEN_FILE_PICKER => Some(Command::OpenFilePicker),
         OPEN_FILE_FINDER => Some(Command::OpenFileFinder),
         OPEN_COMMAND_PALETTE => Some(Command::OpenCommandPalette),
@@ -248,16 +302,25 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         BUFFER_CLOSE_CURRENT => Some(Command::BufferCloseCurrent),
         EXPLORER_MOVE_UP => Some(Command::ExplorerMoveUp),
         EXPLORER_MOVE_DOWN => Some(Command::ExplorerMoveDown),
-        EXPLORER_COLLAPSE_OR_PARENT => Some(Command::ExplorerCollapseOrParent),
+        EXPLORER_COLLAPSE_NODE | EXPLORER_COLLAPSE_OR_PARENT => {
+            Some(Command::ExplorerCollapseOrParent)
+        }
+        EXPLORER_EXPAND_NODE => Some(Command::ExplorerExpandNode),
+        EXPLORER_COLLAPSE_ALL_UNDER_NODE => Some(Command::ExplorerCollapseAllUnderNode),
         EXPLORER_EXPAND_OR_CHILD => Some(Command::ExplorerExpandOrChild),
+        EXPLORER_EXPAND_ALL_UNDER_NODE => Some(Command::ExplorerExpandAllUnderNode),
         EXPLORER_TOGGLE_OR_OPEN => Some(Command::ExplorerToggleOrOpen),
+        EXPLORER_DELETE_NODE => Some(Command::ExplorerDeleteNode),
+        EXPLORER_CREATE_FILE => Some(Command::ExplorerCreateFile),
+        EXPLORER_CREATE_FOLDER => Some(Command::ExplorerCreateFolder),
         EXPLORER_EXPAND_COLLAPSE => Some(Command::ExplorerExpandCollapse),
         EXPLORER_OPEN_FILE => Some(Command::ExplorerOpenFile),
+        OVERLAY_SELECT_NEXT | FILE_PICKER_SELECT_NEXT => Some(Command::OverlaySelectNext),
+        OVERLAY_SELECT_PREV | FILE_PICKER_SELECT_PREV => Some(Command::OverlaySelectPrev),
         FILE_PICKER_CONFIRM => Some(Command::FilePickerConfirmSelection),
         FILE_PICKER_CLOSE => Some(Command::CloseFilePicker),
-        FILE_PICKER_SELECT_NEXT => Some(Command::FilePickerSelectNext),
-        FILE_PICKER_SELECT_PREV => Some(Command::FilePickerSelectPrev),
         FILE_PICKER_BACKSPACE => Some(Command::FilePickerBackspaceQuery),
+        LEAP_START => Some(Command::LeapStart),
         _ => None,
     }
 }

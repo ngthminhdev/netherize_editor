@@ -1,4 +1,5 @@
 pub mod caret;
+pub mod color_space;
 pub mod glyph_instance;
 pub mod pipeline;
 pub mod region_pipeline;

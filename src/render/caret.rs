@@ -1,6 +1,8 @@
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
+use crate::render::color_space::srgb_color_target_state;
+
 #[derive(Debug, Clone, Copy)]
 pub struct CaretScreenRect {
     pub x: f32,
@@ -187,11 +189,7 @@ impl CaretPipeline {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
+                targets: &[Some(srgb_color_target_state(surface_format))],
             }),
             multiview_mask: None,
             cache: None,

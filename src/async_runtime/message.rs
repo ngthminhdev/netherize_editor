@@ -11,6 +11,31 @@ pub enum RequestTopic {
     WorkspaceWatch,
     TerminalPty,
     LspClient,
+    FzfSearch,
+}
+
+/// Which search mode the fzf worker is running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FzfSearchMode {
+    /// `find . -type f | fzf --filter query` — Find File picker
+    FindFile,
+    /// `rg --line-number --column "" . | fzf --filter query` — Live Grep
+    LiveGrep,
+}
+
+/// A single result row returned by the fzf worker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FzfResultItem {
+    /// Display label shown in the palette row.
+    pub label: String,
+    /// Optional secondary preview line shown beneath the primary label.
+    pub preview: Option<String>,
+    /// Absolute path to the file (used as the OpenFile action).
+    pub path: PathBuf,
+    /// 1-based line number (Live Grep only).
+    pub line: Option<u32>,
+    /// 1-based column number (Live Grep only).
+    pub column: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,6 +106,11 @@ pub enum WorkerRequestPayload {
     StartLspServer {
         root_path: PathBuf,
         server_command: Option<String>,
+    },
+    FzfSearch {
+        query: String,
+        mode: FzfSearchMode,
+        workspace_root: PathBuf,
     },
     LspDidOpen {
         uri: String,
@@ -201,6 +231,11 @@ pub enum WorkerResultPayload {
     LspLogMessage {
         level: String,
         message: String,
+    },
+    FzfResults {
+        query: String,
+        mode: FzfSearchMode,
+        items: Vec<FzfResultItem>,
     },
 }
 

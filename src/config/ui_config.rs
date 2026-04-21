@@ -160,7 +160,7 @@ impl UiConfig {
             },
             docks: DockUiConfig {
                 left: DockSectionConfig {
-                    visible: true,
+                    visible: false,
                     size_px: 280.0,
                 },
                 right: DockSectionConfig {

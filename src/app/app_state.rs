@@ -7,7 +7,8 @@ use ropey::Rope;
 
 use crate::app::{
     command_palette::{
-        CommandPalette, CommandPaletteAction, CommandPaletteMode, CommandPaletteRenderModel,
+        CommandPalette, CommandPaletteAction, CommandPaletteItem, CommandPaletteMode,
+        CommandPaletteRenderModel,
     },
     file_picker::FilePickerEntry,
 };
@@ -59,6 +60,9 @@ pub struct AppState {
     workspace_model: Option<WorkspaceModel>,
     command_palette: CommandPalette,
     file_picker_results_cache: Vec<FilePickerEntry>,
+    last_search_query: String,
+    search_highlights: Vec<(usize, usize)>,
+    search_whole_word: bool,
     terminal_panel_open: bool,
     external_conflict: Option<String>,
     external_notice: Option<String>,
@@ -86,6 +90,9 @@ impl AppState {
             workspace_model: None,
             command_palette: CommandPalette::default(),
             file_picker_results_cache: Vec::new(),
+            last_search_query: String::new(),
+            search_highlights: Vec::new(),
+            search_whole_word: false,
             terminal_panel_open: false,
             external_conflict: None,
             external_notice: None,
@@ -113,6 +120,9 @@ impl AppState {
             workspace_model: None,
             command_palette: CommandPalette::default(),
             file_picker_results_cache: Vec::new(),
+            last_search_query: String::new(),
+            search_highlights: Vec::new(),
+            search_whole_word: false,
             terminal_panel_open: false,
             external_conflict: None,
             external_notice: None,
@@ -147,6 +157,65 @@ impl AppState {
         self.workspace_model.as_ref().map(|m| m.nodes.as_slice())
     }
 
+    pub fn workspace_selected_path(&self) -> Option<&Path> {
+        self.workspace_model
+            .as_ref()
+            .and_then(WorkspaceModel::selected_path)
+    }
+
+    pub fn workspace_is_expanded(&self, path: &Path) -> bool {
+        self.workspace_model
+            .as_ref()
+            .is_some_and(|workspace| workspace.is_expanded(path))
+    }
+
+    pub fn workspace_select_path(&mut self, path: &Path) -> bool {
+        self.workspace_model
+            .as_mut()
+            .is_some_and(|workspace| workspace.select_path(path))
+    }
+
+    pub fn workspace_expand_path(&mut self, path: &Path) -> bool {
+        self.workspace_model
+            .as_mut()
+            .is_some_and(|workspace| workspace.expand_path(path))
+    }
+
+    pub fn workspace_collapse_path(&mut self, path: &Path) -> bool {
+        self.workspace_model
+            .as_mut()
+            .is_some_and(|workspace| workspace.collapse_path(path))
+    }
+
+    pub fn workspace_collapse_path_and_descendants(&mut self, path: &Path) -> bool {
+        self.workspace_model
+            .as_mut()
+            .is_some_and(|workspace| workspace.collapse_path_and_descendants(path))
+    }
+
+    pub fn workspace_expand_path_and_descendants(&mut self, path: &Path) -> bool {
+        self.workspace_model
+            .as_mut()
+            .is_some_and(|workspace| workspace.expand_path_and_descendants(path))
+    }
+
+    pub fn workspace_reveal_path(&mut self, path: &Path) -> bool {
+        self.workspace_model
+            .as_mut()
+            .is_some_and(|workspace| workspace.reveal_path(path))
+    }
+
+    pub fn rescan_workspace(&mut self) -> Result<bool, String> {
+        let Some(workspace) = self.workspace_model.as_mut() else {
+            return Ok(false);
+        };
+        workspace.rescan()?;
+        if self.is_file_picker_open() {
+            let _ = self.refresh_file_picker_results_if_open()?;
+        }
+        Ok(true)
+    }
+
     pub fn workspace_file_count(&self) -> usize {
         self.workspace_model
             .as_ref()
@@ -162,13 +231,34 @@ impl AppState {
 
     pub fn open_command_palette_mode(&mut self, mode: CommandPaletteMode) -> Result<usize, String> {
         let workspace = self.workspace_model.as_ref();
-        if matches!(mode, CommandPaletteMode::FilePicker) && workspace.is_none() {
+        if matches!(
+            mode,
+            CommandPaletteMode::FilePicker
+                | CommandPaletteMode::LiveGrep
+                | CommandPaletteMode::ExplorerCreateFile
+                | CommandPaletteMode::ExplorerCreateFolder
+        ) && workspace.is_none()
+        {
             return Err("workspace is not attached".to_string());
         }
 
         let count = self.command_palette.open(mode, workspace);
         self.sync_file_picker_cache();
         Ok(count)
+    }
+
+    pub fn open_recent_projects_palette(
+        &mut self,
+        recent: &[std::path::PathBuf],
+    ) -> Result<(), String> {
+        use crate::app::command_palette::CommandPaletteItem;
+        let items = recent
+            .iter()
+            .map(|path| CommandPaletteItem::recent_project(path))
+            .collect();
+        self.command_palette
+            .open_with_items(CommandPaletteMode::RecentProjects, items);
+        Ok(())
     }
 
     pub fn close_command_palette(&mut self) -> bool {
@@ -205,8 +295,13 @@ impl AppState {
 
     pub fn command_palette_append_query(&mut self, text: &str) -> Result<bool, String> {
         let workspace = self.workspace_model.as_ref();
-        if matches!(self.command_palette.mode, CommandPaletteMode::FilePicker)
-            && workspace.is_none()
+        if matches!(
+            self.command_palette.mode,
+            CommandPaletteMode::FilePicker
+                | CommandPaletteMode::LiveGrep
+                | CommandPaletteMode::ExplorerCreateFile
+                | CommandPaletteMode::ExplorerCreateFolder
+        ) && workspace.is_none()
         {
             return Err("workspace is not attached".to_string());
         }
@@ -218,10 +313,35 @@ impl AppState {
         Ok(changed)
     }
 
+    pub fn set_command_palette_query(&mut self, text: &str) -> Result<bool, String> {
+        let workspace = self.workspace_model.as_ref();
+        if matches!(
+            self.command_palette.mode,
+            CommandPaletteMode::FilePicker
+                | CommandPaletteMode::LiveGrep
+                | CommandPaletteMode::ExplorerCreateFile
+                | CommandPaletteMode::ExplorerCreateFolder
+        ) && workspace.is_none()
+        {
+            return Err("workspace is not attached".to_string());
+        }
+
+        let changed = self.command_palette.set_query(text, workspace);
+        if changed {
+            self.sync_file_picker_cache();
+        }
+        Ok(changed)
+    }
+
     pub fn command_palette_backspace_query(&mut self) -> Result<bool, String> {
         let workspace = self.workspace_model.as_ref();
-        if matches!(self.command_palette.mode, CommandPaletteMode::FilePicker)
-            && workspace.is_none()
+        if matches!(
+            self.command_palette.mode,
+            CommandPaletteMode::FilePicker
+                | CommandPaletteMode::LiveGrep
+                | CommandPaletteMode::ExplorerCreateFile
+                | CommandPaletteMode::ExplorerCreateFolder
+        ) && workspace.is_none()
         {
             return Err("workspace is not attached".to_string());
         }
@@ -243,6 +363,26 @@ impl AppState {
 
     pub fn command_palette_selected_action(&self) -> Option<CommandPaletteAction> {
         self.command_palette.selected_action()
+    }
+
+    pub fn set_command_palette_results(
+        &mut self,
+        mode: CommandPaletteMode,
+        query: &str,
+        items: Vec<CommandPaletteItem>,
+    ) -> bool {
+        if !self.command_palette.is_visible
+            || self.command_palette.mode != mode
+            || self.command_palette.query != query
+        {
+            return false;
+        }
+
+        let changed = self.command_palette.replace_results(items);
+        if changed {
+            self.sync_file_picker_cache();
+        }
+        changed
     }
 
     pub fn command_palette_render_model(
@@ -318,6 +458,12 @@ impl AppState {
 
     pub fn refresh_file_picker_results_if_open(&mut self) -> Result<bool, String> {
         if !self.is_file_picker_open() {
+            return Ok(false);
+        }
+        if matches!(
+            self.command_palette.mode,
+            CommandPaletteMode::FilePicker | CommandPaletteMode::LiveGrep
+        ) {
             return Ok(false);
         }
         let workspace = self
@@ -545,6 +691,51 @@ impl AppState {
         let changed = self.update_cursor_position(target_idx);
         self.target_col = 0;
         changed
+    }
+
+    // ── Leap navigation helpers ────────────────────────────────────────────────
+
+    /// Nhảy cursor trực tiếp đến char_idx (Leap jump).
+    /// Sử dụng `update_cursor_position` để đảm bảo clamp và revision bump.
+    pub fn leap_jump_to_char(&mut self, char_idx: usize) -> bool {
+        let clamped = char_idx.min(self.text.len_chars().saturating_sub(1));
+        let changed = self.update_cursor_position(clamped);
+        if changed {
+            let (_, col) = self.cursor_line_col();
+            self.target_col = col;
+            self.bump_revision();
+        }
+        changed
+    }
+
+    /// Trả về char_idx đầu tiên của một line (dùng để tính viewport scan range).
+    pub fn char_idx_for_line(&self, line: usize) -> usize {
+        let clamped = line.min(self.text.len_lines());
+        self.text.line_to_char(clamped)
+    }
+
+    /// Tổng số chars trong text (để Leap biết khi nào dừng scan).
+    pub fn text_len_chars(&self) -> usize {
+        self.text.len_chars()
+    }
+
+    /// Convert byte offset trong một line sang char offset trong cùng line đó.
+    /// Dùng bởi renderer để map cosmic-text glyph.start → char_idx trong Rope.
+    pub fn byte_to_char_in_line(&self, line_idx: usize, byte_in_line: usize) -> usize {
+        let line = self
+            .text
+            .line(line_idx.min(self.text.len_lines().saturating_sub(1)));
+        // Rope::line() trả về RopeSlice — đếm chars tới byte_in_line
+        let mut char_count = 0usize;
+        let mut byte_count = 0usize;
+        for ch in line.chars() {
+            if byte_count >= byte_in_line {
+                break;
+            }
+            byte_count += ch.len_utf8();
+            char_count += 1;
+        }
+        char_count
     }
 
     pub fn move_to_first_non_whitespace(&mut self) -> bool {
@@ -915,6 +1106,24 @@ impl AppState {
         changed
     }
 
+    /// Nhảy đến `line_idx` (0-indexed). Dùng bởi `:N` vim command.
+    /// Trả về true nếu cursor thực sự thay đổi.
+    pub fn jump_to_line(&mut self, line_idx: usize) -> bool {
+        let total = self.text.len_lines();
+        let target_line = line_idx.min(total.saturating_sub(1));
+        let char_idx = self.text.line_to_char(target_line);
+        let changed = self.update_cursor_position(char_idx);
+        self.target_col = 0;
+        // Scroll: đặt target_line vào giữa màn hình nếu scroll_line cần update
+        if changed {
+            // Dùng auto_scroll_to_cursor sẽ được gọi bởi renderer
+            // Ở đây chỉ reset scroll_line về target_line để viewport thấy dòng đó
+            self.scroll_line = target_line.saturating_sub(10);
+            self.bump_revision();
+        }
+        changed
+    }
+
     pub fn center_cursor_line(&mut self, viewport_lines: usize) {
         let (cursor_line, _) = self.cursor_line_col();
         self.scroll_line = cursor_line.saturating_sub(viewport_lines / 2);
@@ -957,6 +1166,9 @@ impl AppState {
         self.load_buffer_from_file(&canonical_path)?;
         self.active_file = Some(canonical_path);
         self.register_open_buffer();
+        if let Some(active_path) = self.active_file.clone() {
+            let _ = self.workspace_reveal_path(&active_path);
+        }
         self.selection_anchor_char_idx = None;
         self.dirty = false;
         self.external_conflict = None;
@@ -979,6 +1191,7 @@ impl AppState {
 
         self.active_file = Some(canonical_path.clone());
         self.register_open_buffer();
+        let _ = self.workspace_reveal_path(&canonical_path);
         self.dirty = false;
         Ok(canonical_path)
     }
@@ -1000,6 +1213,7 @@ impl AppState {
         self.external_conflict = None;
         self.visual_line_mode = false;
         self.clear_history();
+        let _ = self.refresh_active_search_highlights();
         self.bump_revision();
         true
     }
@@ -1037,6 +1251,7 @@ impl AppState {
             self.external_conflict = None;
             self.visual_line_mode = false;
             self.clear_history();
+            let _ = self.refresh_active_search_highlights();
             self.bump_revision();
             return Ok(true);
         }
@@ -1153,6 +1368,36 @@ impl AppState {
         })
     }
 
+    pub fn visual_selection_text(&self) -> Option<String> {
+        let selection = self.visual_selection_range()?;
+        self.char_range_text(selection.start_char, selection.end_char)
+    }
+
+    pub fn delete_char_text_at_cursor(&self) -> Option<String> {
+        let (start, end) = self.delete_char_range_at_cursor()?;
+        self.char_range_text(start, end)
+    }
+
+    pub fn delete_current_line_text(&self) -> Option<String> {
+        let (start, end) = self.current_line_delete_range()?;
+        self.char_range_text(start, end)
+    }
+
+    pub fn delete_word_forward_text(&self) -> Option<String> {
+        let (start, end) = self.delete_word_forward_range()?;
+        self.char_range_text(start, end)
+    }
+
+    pub fn delete_word_backward_text(&self) -> Option<String> {
+        let (start, end) = self.delete_word_backward_range()?;
+        self.char_range_text(start, end)
+    }
+
+    pub fn substitute_current_line_text(&self) -> Option<String> {
+        let (start, end) = self.current_line_content_range()?;
+        self.char_range_text(start, end)
+    }
+
     pub fn delete_visual_selection(&mut self) -> bool {
         let Some(selection) = self.visual_selection_range() else {
             return false;
@@ -1166,6 +1411,248 @@ impl AppState {
         let (_, col) = self.cursor_line_col();
         self.target_col = col;
         self.selection_anchor_char_idx = None;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
+    /// Tìm ranh giới (start_char, end_char) của cặp ngoặc gần con trỏ nhất.
+    ///
+    /// **Thuật toán:**
+    /// - Duyệt **lùi** từ `cursor - 1` về 0 để tìm `open_char` chưa bị đóng.
+    ///   Bộ đếm `depth` tăng mỗi lần gặp `close_char`, giảm mỗi lần gặp `open_char`.
+    ///   Khi `depth == 0` và gặp `open_char` → đây là bracket mở của chúng ta.
+    /// - Duyệt **tới** từ `cursor` để tìm `close_char` tương ứng.
+    ///   Bộ đếm `depth` tăng mỗi lần gặp `open_char`, giảm mỗi lần gặp `close_char`.
+    ///   Khi `depth == 0` và gặp `close_char` → đây là bracket đóng.
+    ///
+    /// **Trả về:**
+    /// - `inner == true`: `(open_pos + 1, close_pos)` — nội dung bên trong, không gồm bracket.
+    /// - `inner == false`: `(open_pos, close_pos + 1)` — bao gồm cả 2 bracket (around).
+    pub fn find_text_object_bounds(
+        &self,
+        open_char: char,
+        close_char: char,
+        inner: bool,
+    ) -> Option<(usize, usize)> {
+        let len = self.text.len_chars();
+        if len == 0 {
+            return None;
+        }
+        let pos = self.cursor_char_idx.min(len.saturating_sub(1));
+
+        // ── Scan BACKWARD: tìm open_char chưa bị đóng ───────────────────────
+        // Nếu open_char == close_char (ví dụ: nháy đơn, nháy kép),
+        // backward scan không dùng được counter theo cách thông thường.
+        // Trường hợp đó ta chỉ tìm ký tự open_char gần nhất.
+        let open_pos: usize;
+        if open_char == close_char {
+            // Tìm ký tự same-pair gần nhất về phía trước (không đếm nested).
+            let mut found = false;
+            let mut p = 0usize;
+            let scan_end = if pos == 0 { 0 } else { pos };
+            for i in (0..scan_end).rev() {
+                if self.text.char(i) == open_char {
+                    p = i;
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                return None;
+            }
+            open_pos = p;
+        } else {
+            // Bracket pairs khác nhau: dùng depth counter để bỏ qua nested.
+            let mut depth: usize = 0;
+            let mut found = false;
+            let mut p = 0usize;
+            // Scan từ (pos-1) xuống 0, bao gồm cả vị trí pos nếu là bracket
+            let scan_start = if pos == 0 { 0 } else { pos };
+            for i in (0..=scan_start).rev() {
+                let ch = self.text.char(i);
+                if ch == close_char {
+                    depth += 1;
+                } else if ch == open_char {
+                    if depth == 0 {
+                        p = i;
+                        found = true;
+                        break;
+                    }
+                    depth -= 1;
+                }
+            }
+            if !found {
+                return None;
+            }
+            open_pos = p;
+        }
+
+        // ── Scan FORWARD: tìm close_char khớp với open_pos ──────────────────
+        let close_pos: usize;
+        if open_char == close_char {
+            // Tìm ký tự same-pair tiếp theo về phía trước sau open_pos.
+            let mut found = false;
+            let mut p = 0usize;
+            for i in (open_pos + 1)..len {
+                if self.text.char(i) == close_char {
+                    p = i;
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                return None;
+            }
+            close_pos = p;
+        } else {
+            let mut depth: usize = 0;
+            let mut found = false;
+            let mut p = 0usize;
+            for i in (open_pos + 1)..len {
+                let ch = self.text.char(i);
+                if ch == open_char {
+                    depth += 1;
+                } else if ch == close_char {
+                    if depth == 0 {
+                        p = i;
+                        found = true;
+                        break;
+                    }
+                    depth -= 1;
+                }
+            }
+            if !found {
+                return None;
+            }
+            close_pos = p;
+        }
+
+        // ── Tính start/end theo inner/around ────────────────────────────────
+        if inner {
+            // Nội dung bên trong, không gồm bracket: [open+1, close)
+            if open_pos + 1 > close_pos {
+                // Empty brackets — chọn vị trí trống giữa 2 bracket
+                return Some((open_pos + 1, open_pos + 1));
+            }
+            Some((open_pos + 1, close_pos))
+        } else {
+            // Around: gồm cả 2 bracket: [open, close+1)
+            Some((open_pos, close_pos + 1))
+        }
+    }
+
+    /// Chọn text object bằng cách tìm bounds rồi set visual selection.
+    ///
+    /// Nếu hiện tại chưa ở Visual mode, method sẽ chuyển sang Visual mode trước.
+    /// Trả về `true` nếu selection được set thành công.
+    pub fn select_text_object(&mut self, open_char: char, close_char: char, inner: bool) -> bool {
+        let Some((start, end)) = self.find_text_object_bounds(open_char, close_char, inner) else {
+            return false;
+        };
+        let len = self.text.len_chars();
+        if len == 0 {
+            return false;
+        }
+
+        // Clamp để tránh out-of-bounds.
+        let anchor = start.min(len.saturating_sub(1));
+        let focus = end.saturating_sub(1).min(len.saturating_sub(1));
+
+        // Chuyển sang Visual mode nếu cần.
+        if self.current_mode() != EditorMode::Visual {
+            if self.can_apply_mode_event(ModeEvent::EnterVisual) {
+                let _ = self.apply_mode_event(ModeEvent::EnterVisual);
+            } else {
+                return false;
+            }
+        }
+
+        self.visual_line_mode = false;
+        self.selection_anchor_char_idx = Some(anchor);
+        self.cursor_char_idx = focus;
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.bump_revision();
+        true
+    }
+
+    /// Lấy char range text cho một text object (dùng trước khi xóa/yank).
+    pub fn text_object_text(
+        &self,
+        open_char: char,
+        close_char: char,
+        inner: bool,
+    ) -> Option<String> {
+        let (start, end) = self.find_text_object_bounds(open_char, close_char, inner)?;
+        self.char_range_text(start, end)
+    }
+
+    /// Xóa text object tại vị trí con trỏ và trả về true nếu thành công.
+    pub fn delete_text_object(&mut self, open_char: char, close_char: char, inner: bool) -> bool {
+        let Some((start, end)) = self.find_text_object_bounds(open_char, close_char, inner) else {
+            return false;
+        };
+        if start >= end {
+            return false;
+        }
+        self.apply_delete(start, end - start);
+        self.cursor_char_idx = start.min(self.text.len_chars());
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.selection_anchor_char_idx = None;
+        self.visual_line_mode = false;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
+    pub fn paste_after(&mut self, text: &str) -> bool {
+        let insert_text = text.to_string();
+        if insert_text.is_empty() {
+            return false;
+        }
+
+        let line_idx = self
+            .text
+            .char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
+        let line_end = self.line_content_end_char_idx(line_idx);
+        let insert_at = if self.cursor_char_idx < line_end {
+            self.cursor_char_idx + 1
+        } else {
+            line_end
+        };
+
+        if !self.apply_insert(insert_at, insert_text.clone()) {
+            return false;
+        }
+
+        let inserted_chars = insert_text.chars().count();
+        self.cursor_char_idx =
+            (insert_at + inserted_chars.saturating_sub(1)).min(self.text.len_chars());
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
+    pub fn paste_before(&mut self, text: &str) -> bool {
+        let insert_text = text.to_string();
+        if insert_text.is_empty() {
+            return false;
+        }
+
+        let insert_at = self.cursor_char_idx.min(self.text.len_chars());
+        if !self.apply_insert(insert_at, insert_text.clone()) {
+            return false;
+        }
+
+        let inserted_chars = insert_text.chars().count();
+        self.cursor_char_idx =
+            (insert_at + inserted_chars.saturating_sub(1)).min(self.text.len_chars());
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
         self.dirty = true;
         self.bump_revision();
         true
@@ -1264,6 +1751,83 @@ impl AppState {
         self.cursor_byte_idx().saturating_sub(line_start_byte)
     }
 
+    pub fn last_search_query(&self) -> &str {
+        &self.last_search_query
+    }
+
+    pub fn search_highlights(&self) -> &[(usize, usize)] {
+        &self.search_highlights
+    }
+
+    pub fn set_in_file_search_query(&mut self, query: &str) -> bool {
+        self.set_search_query_internal(query, false)
+    }
+
+    pub fn search_next(&mut self) -> bool {
+        self.jump_to_search_match(true)
+    }
+
+    pub fn search_prev(&mut self) -> bool {
+        self.jump_to_search_match(false)
+    }
+
+    pub fn search_word_under_cursor(&mut self) -> bool {
+        let Some(query) = self.word_under_cursor() else {
+            return false;
+        };
+
+        let changed = self.set_search_query_internal(&query, true);
+        let moved = self.search_next();
+        changed || moved
+    }
+
+    pub fn clear_search_highlights(&mut self) -> bool {
+        self.set_search_query_internal("", false)
+    }
+
+    pub fn jump_to_line_and_column(&mut self, line_idx: usize, col_idx: usize) -> bool {
+        if self.text.len_lines() == 0 {
+            return false;
+        }
+
+        let target_line = line_idx.min(self.text.len_lines().saturating_sub(1));
+        let line_start = self.text.line_to_char(target_line);
+        let target_char = line_start + col_idx.min(self.max_col_for_line(target_line));
+        self.move_cursor_to_char_idx(target_char)
+    }
+
+    pub fn byte_to_char_idx(&self, byte_idx: usize) -> usize {
+        self.text.byte_to_char(byte_idx.min(self.text.len_bytes()))
+    }
+
+    pub fn byte_to_line_idx(&self, byte_idx: usize) -> usize {
+        if self.text.len_bytes() == 0 {
+            return 0;
+        }
+        self.text
+            .byte_to_line(byte_idx.min(self.text.len_bytes().saturating_sub(1)))
+    }
+
+    pub fn line_start_byte_idx(&self, line_idx: usize) -> usize {
+        if self.text.len_lines() == 0 {
+            return 0;
+        }
+        self.text
+            .line_to_byte(line_idx.min(self.text.len_lines().saturating_sub(1)))
+    }
+
+    pub fn line_end_byte_idx(&self, line_idx: usize) -> usize {
+        if self.text.len_lines() == 0 {
+            return 0;
+        }
+        let clamped = line_idx.min(self.text.len_lines().saturating_sub(1));
+        if clamped + 1 < self.text.len_lines() {
+            self.text.line_to_byte(clamped + 1)
+        } else {
+            self.text.len_bytes()
+        }
+    }
+
     pub fn text_string(&self) -> String {
         self.text.to_string()
     }
@@ -1279,6 +1843,14 @@ impl AppState {
 
     pub fn active_file(&self) -> Option<&Path> {
         self.active_file.as_deref()
+    }
+
+    pub fn open_buffers(&self) -> &[PathBuf] {
+        &self.open_buffers
+    }
+
+    pub fn active_buffer_index(&self) -> Option<usize> {
+        self.active_buffer_index
     }
 
     pub fn active_filetype_label(&self) -> &'static str {
@@ -1459,6 +2031,7 @@ impl AppState {
 
         let insert_at = index.min(self.text.len_chars());
         self.text.insert(insert_at, text);
+        let _ = self.refresh_active_search_highlights();
     }
 
     fn apply_delete_raw(&mut self, index: usize, len_chars: usize) -> Option<String> {
@@ -1473,7 +2046,106 @@ impl AppState {
 
         let deleted = self.text.slice(index..end).to_string();
         self.text.remove(index..end);
+        let _ = self.refresh_active_search_highlights();
         Some(deleted)
+    }
+
+    fn char_range_text(&self, start: usize, end: usize) -> Option<String> {
+        if start >= end || start >= self.text.len_chars() {
+            return None;
+        }
+
+        let end = end.min(self.text.len_chars());
+        if end <= start {
+            return None;
+        }
+
+        Some(self.text.slice(start..end).to_string())
+    }
+
+    fn current_line_content_range(&self) -> Option<(usize, usize)> {
+        if self.text.len_chars() == 0 {
+            return None;
+        }
+
+        let line_idx = self
+            .text
+            .char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
+        let line_start = self.text.line_to_char(line_idx);
+        let line_end = self.line_content_end_char_idx(line_idx);
+        (line_start < line_end).then_some((line_start, line_end))
+    }
+
+    fn delete_char_range_at_cursor(&self) -> Option<(usize, usize)> {
+        if self.text.len_chars() == 0 {
+            return None;
+        }
+
+        let line_idx = self
+            .text
+            .char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
+        let line_start = self.text.line_to_char(line_idx);
+        let line_end = self.line_content_end_char_idx(line_idx);
+        if line_start == line_end {
+            return None;
+        }
+
+        let mut delete_idx = if self.cursor_char_idx < line_end {
+            self.cursor_char_idx
+        } else {
+            line_end.saturating_sub(1)
+        };
+        if delete_idx < line_start {
+            delete_idx = line_start;
+        }
+        if delete_idx >= self.text.len_chars() {
+            return None;
+        }
+
+        Some((delete_idx, delete_idx + 1))
+    }
+
+    fn current_line_delete_range(&self) -> Option<(usize, usize)> {
+        if self.text.len_lines() == 0 {
+            return None;
+        }
+
+        let line_idx = self
+            .text
+            .char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
+        let line_start = self.text.line_to_char(line_idx);
+        let mut line_end = if line_idx + 1 < self.text.len_lines() {
+            self.text.line_to_char(line_idx + 1)
+        } else {
+            self.text.len_chars()
+        };
+        let mut delete_start = line_start;
+
+        if delete_start == line_end && line_idx > 0 {
+            delete_start = delete_start.saturating_sub(1);
+            line_end = line_end.max(delete_start);
+        }
+
+        (delete_start < line_end).then_some((delete_start, line_end))
+    }
+
+    fn delete_word_forward_range(&self) -> Option<(usize, usize)> {
+        let n = self.text.len_chars();
+        if self.cursor_char_idx >= n {
+            return None;
+        }
+
+        let end = next_word_start(&self.text, self.cursor_char_idx);
+        (end > self.cursor_char_idx).then_some((self.cursor_char_idx, end))
+    }
+
+    fn delete_word_backward_range(&self) -> Option<(usize, usize)> {
+        if self.cursor_char_idx == 0 {
+            return None;
+        }
+
+        let start = previous_word_start(&self.text, self.cursor_char_idx);
+        (start < self.cursor_char_idx).then_some((start, self.cursor_char_idx))
     }
 
     fn clear_history(&mut self) {
@@ -1529,6 +2201,90 @@ impl AppState {
                 _ => None,
             })
             .collect();
+    }
+
+    fn set_search_query_internal(&mut self, query: &str, whole_word: bool) -> bool {
+        let query_changed = self.last_search_query != query;
+        let whole_word_changed = self.search_whole_word != whole_word;
+        self.last_search_query = query.to_string();
+        self.search_whole_word = whole_word;
+        let highlights_changed = self.refresh_active_search_highlights();
+        query_changed || whole_word_changed || highlights_changed
+    }
+
+    fn refresh_active_search_highlights(&mut self) -> bool {
+        let next = if self.last_search_query.is_empty() {
+            Vec::new()
+        } else {
+            let text = self.text.to_string();
+            collect_search_highlights(&text, &self.last_search_query, self.search_whole_word)
+        };
+
+        if self.search_highlights == next {
+            return false;
+        }
+
+        self.search_highlights = next;
+        true
+    }
+
+    fn jump_to_search_match(&mut self, forward: bool) -> bool {
+        if self.search_highlights.is_empty() {
+            return false;
+        }
+
+        let cursor_byte = self.cursor_byte_idx();
+        let target = if forward {
+            self.search_highlights
+                .iter()
+                .copied()
+                .find(|(start, _)| *start > cursor_byte)
+                .or_else(|| self.search_highlights.first().copied())
+        } else {
+            self.search_highlights
+                .iter()
+                .copied()
+                .rev()
+                .find(|(_, end)| *end <= cursor_byte)
+                .or_else(|| self.search_highlights.last().copied())
+        };
+
+        let Some((start_byte, _)) = target else {
+            return false;
+        };
+        self.move_cursor_to_char_idx(self.byte_to_char_idx(start_byte))
+    }
+
+    fn move_cursor_to_char_idx(&mut self, char_idx: usize) -> bool {
+        let changed = self.update_cursor_position(char_idx);
+        let (_, col) = self.cursor_line_col();
+        let target_changed = self.target_col != col;
+        self.target_col = col;
+        changed || target_changed
+    }
+
+    fn word_under_cursor(&self) -> Option<String> {
+        let len_chars = self.text.len_chars();
+        if len_chars == 0 {
+            return None;
+        }
+
+        let focus = self.cursor_char_idx.min(len_chars.saturating_sub(1));
+        if classify_char(self.text.char(focus)) != WordClass::Word {
+            return None;
+        }
+
+        let mut start = focus;
+        while start > 0 && classify_char(self.text.char(start - 1)) == WordClass::Word {
+            start -= 1;
+        }
+
+        let mut end = focus + 1;
+        while end < len_chars && classify_char(self.text.char(end)) == WordClass::Word {
+            end += 1;
+        }
+
+        self.char_range_text(start, end)
     }
 
     fn max_col_for_line(&self, line_idx: usize) -> usize {
@@ -1594,6 +2350,7 @@ impl AppState {
         self.selection_anchor_char_idx = None;
         self.visual_line_mode = false;
         self.clear_history();
+        let _ = self.refresh_active_search_highlights();
         Ok(())
     }
 
@@ -1798,6 +2555,42 @@ fn word_end_at_or_after(text: &Rope, cursor: usize) -> Option<usize> {
     Some(i)
 }
 
+fn collect_search_highlights(text: &str, query: &str, whole_word: bool) -> Vec<(usize, usize)> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+
+    text.match_indices(query)
+        .filter_map(|(start, matched)| {
+            let end = start + matched.len();
+            if whole_word && !is_whole_word_match(text, start, end) {
+                return None;
+            }
+            Some((start, end))
+        })
+        .collect()
+}
+
+fn is_whole_word_match(text: &str, start: usize, end: usize) -> bool {
+    let left_ok = if start == 0 {
+        true
+    } else {
+        text[..start]
+            .chars()
+            .next_back()
+            .is_none_or(|ch| classify_char(ch) != WordClass::Word)
+    };
+    let right_ok = if end >= text.len() {
+        true
+    } else {
+        text[end..]
+            .chars()
+            .next()
+            .is_none_or(|ch| classify_char(ch) != WordClass::Word)
+    };
+    left_ok && right_ok
+}
+
 fn path_matches(left: &Path, right: &Path) -> bool {
     if left == right {
         return true;
@@ -1816,6 +2609,7 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
+    use crate::app::command_palette::{CommandPaletteItem, CommandPaletteMode};
     use crate::async_runtime::message::{FileSystemChangeKind, FileSystemEvent};
     use crate::core::mode::{EditorMode, ModeEvent};
 
@@ -1923,6 +2717,10 @@ mod tests {
         assert!(state.buffer_prev().expect("buffer prev"));
         assert!(state.active_file().expect("active file").ends_with("b.rs"));
         assert!(state.buffer_next().expect("buffer next"));
+        assert!(state.active_file().expect("active file").ends_with("c.rs"));
+        assert!(state.buffer_next().expect("buffer next wrap"));
+        assert!(state.active_file().expect("active file").ends_with("a.rs"));
+        assert!(state.buffer_prev().expect("buffer prev wrap"));
         assert!(state.active_file().expect("active file").ends_with("c.rs"));
 
         assert!(state.close_current_buffer().expect("close current"));
@@ -2207,7 +3005,7 @@ mod tests {
         assert!(state.workspace_file_count() >= 1);
 
         let count = state.open_file_picker().expect("open picker");
-        assert!(count >= 1);
+        assert_eq!(count, 0);
         assert!(state.is_file_picker_open());
 
         let changed = state
@@ -2215,7 +3013,21 @@ mod tests {
             .expect("append query");
         assert!(changed);
         assert_eq!(state.file_picker_query_text(), "picker");
-        assert!(!state.file_picker_results().is_empty());
+        assert!(state.set_command_palette_results(
+            CommandPaletteMode::FilePicker,
+            "picker",
+            vec![CommandPaletteItem::file_match(
+                "src/picker.rs".to_string(),
+                root.join("src/picker.rs"),
+            )],
+        ));
+        assert_eq!(state.file_picker_results().len(), 1);
+        assert!(
+            state
+                .file_picker_results()
+                .iter()
+                .any(|entry| entry.relative_path.ends_with("src/picker.rs"))
+        );
 
         let _ = state.close_file_picker();
         assert!(!state.is_file_picker_open());
@@ -2234,6 +3046,17 @@ mod tests {
             .attach_workspace(root.clone())
             .expect("attach workspace should succeed");
         state.open_file_picker().expect("open picker");
+        state
+            .file_picker_append_query("old")
+            .expect("append old query");
+        assert!(state.set_command_palette_results(
+            CommandPaletteMode::FilePicker,
+            "old",
+            vec![CommandPaletteItem::file_match(
+                "src/old.rs".to_string(),
+                root.join("src/old.rs"),
+            )],
+        ));
 
         assert!(
             state
@@ -2254,6 +3077,17 @@ mod tests {
 
         assert!(report.workspace_reloaded);
         assert!(state.is_file_picker_open());
+        assert!(state.set_command_palette_results(
+            CommandPaletteMode::FilePicker,
+            "old",
+            vec![
+                CommandPaletteItem::file_match("src/old.rs".to_string(), root.join("src/old.rs")),
+                CommandPaletteItem::file_match(
+                    "src/new_file.rs".to_string(),
+                    root.join("src/new_file.rs"),
+                ),
+            ],
+        ));
         assert!(
             state
                 .file_picker_results()
@@ -2318,6 +3152,9 @@ mod tests {
             .expect("attach workspace should succeed");
         state.open_file(active.clone()).expect("open active file");
         state.open_file_picker().expect("open picker");
+        state
+            .file_picker_append_query("created")
+            .expect("append created query");
 
         // Mô phỏng file active bị xóa từ bên ngoài trước khi có event modify/reload.
         fs::remove_file(&active).expect("remove active file");
@@ -2340,6 +3177,14 @@ mod tests {
             .expect("apply external events should not fail");
 
         assert!(report.workspace_reloaded);
+        assert!(state.set_command_palette_results(
+            CommandPaletteMode::FilePicker,
+            "created",
+            vec![CommandPaletteItem::file_match(
+                "src/created_after_delete.rs".to_string(),
+                created_path.clone(),
+            )],
+        ));
         assert!(
             state
                 .file_picker_results()
@@ -2363,6 +3208,17 @@ mod tests {
             .attach_workspace(root.clone())
             .expect("attach workspace should succeed");
         state.open_file_picker().expect("open picker");
+        state
+            .file_picker_append_query("old_name")
+            .expect("append old_name query");
+        assert!(state.set_command_palette_results(
+            CommandPaletteMode::FilePicker,
+            "old_name",
+            vec![CommandPaletteItem::file_match(
+                "src/old_name.rs".to_string(),
+                old_path.clone(),
+            )],
+        ));
         assert!(
             state
                 .file_picker_results()
@@ -2380,6 +3236,14 @@ mod tests {
             .expect("apply external rename-like modify");
 
         assert!(report.workspace_reloaded);
+        assert!(state.set_command_palette_results(
+            CommandPaletteMode::FilePicker,
+            "old_name",
+            vec![CommandPaletteItem::file_match(
+                "src/new_name.rs".to_string(),
+                new_path.clone(),
+            )],
+        ));
         assert!(
             state
                 .file_picker_results()
@@ -2392,6 +3256,167 @@ mod tests {
                 .iter()
                 .all(|entry| !entry.relative_path.ends_with("src/old_name.rs"))
         );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn in_file_search_collects_matches_and_wraps_navigation() {
+        let mut state = AppState::from_text(unique_temp_path("search"), "alpha beta alpha");
+
+        assert!(state.set_in_file_search_query("alpha"));
+        assert_eq!(state.search_highlights().len(), 2);
+        assert_eq!(state.last_search_query(), "alpha");
+
+        assert!(state.search_next());
+        assert_eq!(state.cursor_char_idx(), 11);
+
+        assert!(state.search_prev());
+        assert_eq!(state.cursor_char_idx(), 0);
+    }
+
+    #[test]
+    fn search_word_under_cursor_uses_whole_word_matches() {
+        let mut state = AppState::from_text(unique_temp_path("star"), "foo foobar foo");
+
+        assert!(state.search_word_under_cursor());
+        assert_eq!(state.last_search_query(), "foo");
+        assert_eq!(state.search_highlights().len(), 2);
+        assert_eq!(state.cursor_char_idx(), 11);
+    }
+
+    #[test]
+    fn clear_search_highlights_resets_query_and_matches() {
+        let mut state = AppState::from_text(unique_temp_path("clear_search"), "alpha beta alpha");
+
+        assert!(state.set_in_file_search_query("alpha"));
+        assert_eq!(state.search_highlights().len(), 2);
+
+        assert!(state.clear_search_highlights());
+        assert!(state.last_search_query().is_empty());
+        assert!(state.search_highlights().is_empty());
+        assert!(!state.clear_search_highlights());
+    }
+
+    // ── find_text_object_bounds tests ────────────────────────────────────────
+
+    fn state_at(text: &str, cursor: usize) -> AppState {
+        let mut s = AppState::from_text(std::path::PathBuf::from("test.txt"), text);
+        s.cursor_char_idx = cursor;
+        s
+    }
+
+    #[test]
+    fn text_object_inner_parens_basic() {
+        // "foo(bar, baz)qux"  cursor on 'b' (idx 4)
+        let s = state_at("foo(bar, baz)qux", 4);
+        let result = s.find_text_object_bounds('(', ')', true);
+        // inner: from idx 4 (after '(') to idx 12 (before ')')
+        assert_eq!(result, Some((4, 12)));
+    }
+
+    #[test]
+    fn text_object_around_parens_basic() {
+        // "foo(bar)qux"  cursor on 'b' (idx 4)
+        let s = state_at("foo(bar)qux", 4);
+        let result = s.find_text_object_bounds('(', ')', false);
+        // around: from idx 3 ('(') to idx 8 (after ')')
+        assert_eq!(result, Some((3, 8)));
+    }
+
+    #[test]
+    fn text_object_inner_curly_nested() {
+        // "fn foo() { let x = {inner}; }"  cursor inside 'inner' (idx 21)
+        //  0123456789012345678901234567890
+        let text = "fn foo() { let x = {inner}; }";
+        let s = state_at(text, 21); // cursor on 'i' of 'inner'
+        let result = s.find_text_object_bounds('{', '}', true);
+        // inner '{' at idx 19, close '}' at idx 25 → inner = (20, 25)
+        assert_eq!(result, Some((20, 25)));
+    }
+
+    #[test]
+    fn text_object_around_nested() {
+        // Same text, cursor inside inner {}
+        let text = "fn foo() { let x = {inner}; }";
+        let s = state_at(text, 21);
+        let result = s.find_text_object_bounds('{', '}', false);
+        // around: (19, 26) — gồm cả 2 bracket
+        assert_eq!(result, Some((19, 26)));
+    }
+
+    #[test]
+    fn text_object_not_found_when_no_open_bracket() {
+        let s = state_at("hello world", 5);
+        assert_eq!(s.find_text_object_bounds('(', ')', true), None);
+    }
+
+    #[test]
+    fn text_object_empty_parens() {
+        // "()"  cursor on '(' (idx 0)
+        let s = state_at("()", 0);
+        // inner: open_pos=0, close_pos=1 → (1, 1) empty range
+        let result = s.find_text_object_bounds('(', ')', true);
+        assert_eq!(result, Some((1, 1)));
+    }
+
+    #[test]
+    fn text_object_cursor_on_open_bracket() {
+        // "(abc)"  cursor on '(' itself (idx 0)
+        // backward scan bao gồm cả pos=0, nhưng vì depth=0 và ch=='(' nên tìm được đúng
+        let s = state_at("(abc)", 0);
+        let result = s.find_text_object_bounds('(', ')', true);
+        assert_eq!(result, Some((1, 4)));
+    }
+
+    #[test]
+    fn text_object_select_enters_visual_mode() {
+        let mut s = AppState::from_text(std::path::PathBuf::from("t.txt"), "foo(bar)");
+        s.cursor_char_idx = 4; // trên 'b'
+        // Bắt đầu từ Normal mode
+        assert_eq!(s.current_mode(), EditorMode::Normal);
+        let ok = s.select_text_object('(', ')', true);
+        assert!(ok);
+        assert_eq!(s.current_mode(), EditorMode::Visual);
+        // anchor nên là idx 4 ('b'), focus là idx 6 ('r')
+        assert_eq!(s.selection_anchor_char_idx, Some(4));
+        assert_eq!(s.cursor_char_idx, 6);
+    }
+
+    #[test]
+    fn text_object_delete_removes_inner() {
+        let mut s = AppState::from_text(std::path::PathBuf::from("t.txt"), "foo(bar)end");
+        s.cursor_char_idx = 5; // 'a' inside parens
+        let ok = s.delete_text_object('(', ')', true);
+        assert!(ok);
+        // "foo()end" phải còn lại
+        assert_eq!(s.text_string(), "foo()end");
+        assert_eq!(s.cursor_char_idx, 4); // cursor dừng ở chỗ xóa
+    }
+
+    #[test]
+    fn open_file_reveals_active_path_in_workspace_tree() {
+        let mut state = AppState::new(unique_temp_path("workspace_reveal_on_open"));
+        let root = unique_temp_dir("workspace_reveal_on_open");
+        let nested_dir = root.join("src/ui");
+        let active = nested_dir.join("tabs.rs");
+        fs::create_dir_all(&nested_dir).expect("create nested dirs");
+        fs::write(&active, "pub fn tabs() {}\n").expect("write active file");
+        let canonical_root = root.canonicalize().expect("canonical root");
+        let canonical_nested_dir = canonical_root.join("src/ui");
+        let canonical_active = canonical_nested_dir.join("tabs.rs");
+
+        state
+            .attach_workspace(root.clone())
+            .expect("attach workspace should succeed");
+        state.open_file(active.clone()).expect("open active file");
+
+        assert_eq!(
+            state.workspace_selected_path(),
+            Some(canonical_active.as_path())
+        );
+        assert!(state.workspace_is_expanded(&canonical_root.join("src")));
+        assert!(state.workspace_is_expanded(&canonical_nested_dir));
 
         let _ = fs::remove_dir_all(root);
     }

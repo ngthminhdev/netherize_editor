@@ -19,14 +19,18 @@ impl SurfaceState {
     ) -> Result<Self, String> {
         let capabilities = surface.get_capabilities(adapter);
 
-        // Ưu tiên sRGB để màu hiển thị đúng hơn; fallback về format đầu tiên.
+        // Bắt buộc sRGB để GPU blend trên linear domain rồi encode đúng ra màn hình.
         let surface_format = capabilities
             .formats
             .iter()
             .copied()
             .find(wgpu::TextureFormat::is_srgb)
-            .or_else(|| capabilities.formats.first().copied())
-            .ok_or_else(|| "surface has no supported texture format".to_string())?;
+            .ok_or_else(|| {
+                format!(
+                    "surface has no supported sRGB texture format (supported: {:?})",
+                    capabilities.formats
+                )
+            })?;
 
         // Ưu tiên FIFO (vsync ổn định), fallback nếu platform không hỗ trợ.
         let present_mode = if capabilities

@@ -171,6 +171,18 @@ impl InputMap {
             return None;
         }
 
+        if let Some(command) = resolved_keymap::resolve_command_mode_only(
+            &self.keymap,
+            input,
+            "palette",
+            &self.open_file_path,
+        ) {
+            return Some(KeybindingMatch {
+                command,
+                reason: "palette focus: palette-mode keymap binding",
+            });
+        }
+
         if let Some(named) = input.named_key {
             let mapped = match named {
                 NamedKey::Escape => Some(KeybindingMatch {
@@ -182,11 +194,11 @@ impl InputMap {
                     reason: "palette focus: Enter -> ConfirmSelection",
                 }),
                 NamedKey::ArrowUp => Some(KeybindingMatch {
-                    command: Command::FilePickerSelectPrev,
+                    command: Command::OverlaySelectPrev,
                     reason: "palette focus: ArrowUp -> SelectPrev",
                 }),
                 NamedKey::ArrowDown => Some(KeybindingMatch {
-                    command: Command::FilePickerSelectNext,
+                    command: Command::OverlaySelectNext,
                     reason: "palette focus: ArrowDown -> SelectNext",
                 }),
                 NamedKey::Backspace => Some(KeybindingMatch {
@@ -229,12 +241,6 @@ impl InputMap {
             });
         }
 
-        if input.has_command_modifier() && input.physical_key == Some(KeyCode::Backslash) {
-            return Some(KeybindingMatch {
-                command: Command::ToggleTerminal,
-                reason: "terminal focus: Cmd/Ctrl+\\ -> ToggleTerminal",
-            });
-        }
         if input.named_key == Some(NamedKey::Escape) {
             return Some(KeybindingMatch {
                 command: Command::FocusEditor,

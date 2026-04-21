@@ -12,6 +12,10 @@ pub enum HighlightCategory {
     Type,
     Function,
     Number,
+    Property,
+    Punctuation,
+    Macro,
+    Lifetime,
 }
 
 impl HighlightCategory {
@@ -23,6 +27,10 @@ impl HighlightCategory {
             Self::Type => "type",
             Self::Function => "function",
             Self::Number => "number",
+            Self::Property => "property",
+            Self::Punctuation => "punctuation",
+            Self::Macro => "macro",
+            Self::Lifetime => "lifetime",
         }
     }
 
@@ -31,10 +39,14 @@ impl HighlightCategory {
             // Ưu tiên cao hơn để span hẹp nhưng quan trọng không bị đè.
             Self::Comment => 100,
             Self::String => 90,
+            Self::Lifetime => 85,
             Self::Keyword => 80,
+            Self::Macro => 75,
             Self::Function => 70,
+            Self::Property => 65,
             Self::Type => 60,
             Self::Number => 50,
+            Self::Punctuation => 10,
         }
     }
 }
@@ -78,6 +90,10 @@ pub struct HighlightPalette {
     pub ty: [u8; 4],
     pub function: [u8; 4],
     pub number: [u8; 4],
+    pub property: [u8; 4],
+    pub punctuation: [u8; 4],
+    pub macro_name: [u8; 4],
+    pub lifetime: [u8; 4],
 }
 
 impl Default for HighlightPalette {
@@ -90,6 +106,10 @@ impl Default for HighlightPalette {
             ty: [255, 198, 128, 255],
             function: [166, 232, 189, 255],
             number: [255, 177, 177, 255],
+            property: [183, 191, 204, 255],
+            punctuation: [143, 152, 170, 255],
+            macro_name: [214, 153, 255, 255],
+            lifetime: [255, 123, 114, 255],
         }
     }
 }
@@ -103,6 +123,10 @@ impl HighlightPalette {
             HighlightCategory::Type => self.ty,
             HighlightCategory::Function => self.function,
             HighlightCategory::Number => self.number,
+            HighlightCategory::Property => self.property,
+            HighlightCategory::Punctuation => self.punctuation,
+            HighlightCategory::Macro => self.macro_name,
+            HighlightCategory::Lifetime => self.lifetime,
         }
     }
 }
@@ -179,6 +203,14 @@ pub fn generate_highlight_spans_in_byte_window(
     }
 }
 
+fn node_text<'a>(node: Node<'_>, source: &'a str) -> Option<&'a str> {
+    source.get(node.start_byte()..node.end_byte())
+}
+
+fn is_pascal_case(s: &str) -> bool {
+    s.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+}
+
 fn generate_rust_highlight_spans(
     root: Node<'_>,
     source: &str,
@@ -194,7 +226,7 @@ fn generate_rust_highlight_spans(
             continue;
         }
 
-        if let Some(category) = classify_rust_node(node) {
+        if let Some(category) = classify_rust_node(node, source) {
             raw_spans.push(HighlightSpan {
                 range: node.start_byte()..node.end_byte(),
                 category,
@@ -221,7 +253,7 @@ fn generate_rust_highlight_spans(
     normalize_spans(source, raw_spans, byte_window)
 }
 
-fn classify_rust_node(node: Node<'_>) -> Option<HighlightCategory> {
+fn classify_rust_node(node: Node<'_>, source: &str) -> Option<HighlightCategory> {
     let kind = node.kind();
 
     if matches!(kind, "line_comment" | "block_comment") {
@@ -236,6 +268,9 @@ fn classify_rust_node(node: Node<'_>) -> Option<HighlightCategory> {
     if matches!(kind, "integer_literal" | "float_literal") {
         return Some(HighlightCategory::Number);
     }
+    if kind == "lifetime" {
+        return Some(HighlightCategory::Lifetime);
+    }
     if matches!(
         kind,
         "primitive_type"
@@ -249,12 +284,52 @@ fn classify_rust_node(node: Node<'_>) -> Option<HighlightCategory> {
     if is_rust_keyword_token(kind) {
         return Some(HighlightCategory::Keyword);
     }
+    if is_rust_punctuation_token(kind) {
+        return Some(HighlightCategory::Punctuation);
+    }
+    if matches!(kind, "identifier" | "scoped_identifier") && is_attribute_identifier(node) {
+        return Some(HighlightCategory::Lifetime);
+    }
+    if matches!(kind, "identifier" | "scoped_identifier") && is_macro_identifier(node) {
+        return Some(HighlightCategory::Macro);
+    }
+
+    if kind == "identifier" {
+        if let Some(text) = node_text(node, source) {
+            if is_pascal_case(text) {
+                if let Some(parent) = node.parent() {
+                    // Type names in use lists: use std::{Foo, Bar}
+                    if parent.kind() == "use_list" {
+                        return Some(HighlightCategory::Type);
+                    }
+                    // Type/namespace components in qualified paths: Foo::Bar, Enum::Variant
+                    if parent.kind() == "scoped_identifier" {
+                        return Some(HighlightCategory::Type);
+                    }
+                    // PascalCase identifiers inside derive/attribute token trees: #[derive(Debug)]
+                    if parent.kind() == "token_tree" {
+                        return Some(HighlightCategory::Type);
+                    }
+                    // Enum variant / tuple-struct patterns: Some(x), None, Err(e) in match arms
+                    if matches!(
+                        parent.kind(),
+                        "tuple_struct_pattern" | "struct_pattern" | "match_pattern"
+                    ) {
+                        return Some(HighlightCategory::Type);
+                    }
+                }
+            }
+        }
+    }
 
     if kind == "identifier" && is_function_identifier(node) {
         return Some(HighlightCategory::Function);
     }
     if kind == "field_identifier" && is_method_identifier(node) {
         return Some(HighlightCategory::Function);
+    }
+    if kind == "field_identifier" {
+        return Some(HighlightCategory::Property);
     }
 
     None
@@ -303,6 +378,23 @@ fn is_function_identifier(node: Node<'_>) -> bool {
 
 fn is_method_identifier(node: Node<'_>) -> bool {
     is_child_field(node, "method_call_expression", "method")
+}
+
+fn is_macro_identifier(node: Node<'_>) -> bool {
+    is_child_field(node, "macro_invocation", "macro")
+        || is_child_field(node, "macro_definition", "name")
+}
+
+fn is_attribute_identifier(node: Node<'_>) -> bool {
+    is_child_field(node, "attribute_item", "path")
+        || is_child_field(node, "inner_attribute_item", "path")
+}
+
+fn is_rust_punctuation_token(kind: &str) -> bool {
+    matches!(
+        kind,
+        "{" | "}" | "(" | ")" | "[" | "]" | "<" | ">" | "," | ";" | "." | ":" | "::" | "->" | "=>"
+    )
 }
 
 fn is_child_field(node: Node<'_>, parent_kind: &str, field_name: &str) -> bool {
@@ -573,6 +665,41 @@ fn greet(name: &str) -> String {
             spans
                 .iter()
                 .any(|s| s.category == HighlightCategory::Comment)
+        );
+    }
+
+    #[test]
+    fn rust_highlight_generates_extended_categories() {
+        let source = r#"
+#[derive(Debug)]
+struct Demo<'a> {
+    device: &'a str,
+}
+
+fn log_demo<'a>(demo: Demo<'a>) {
+    println!("{}", demo.device);
+}
+"#;
+
+        let mut engine = SyntaxEngine::new_rust().expect("init parser");
+        let tree = engine.parse_source(source, 11).expect("parse");
+        let spans = generate_highlight_spans(tree, source);
+
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Property)
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Punctuation)
+        );
+        assert!(spans.iter().any(|s| s.category == HighlightCategory::Macro));
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Lifetime)
         );
     }
 

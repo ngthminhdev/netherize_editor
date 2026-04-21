@@ -1,4 +1,8 @@
 use super::*;
+use winit::{
+    event::ElementState,
+    keyboard::{Key, NamedKey},
+};
 
 impl ApplicationHandler for AppShell {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
@@ -49,6 +53,7 @@ impl ApplicationHandler for AppShell {
         self.sidebar_needs_layout = true;
         self.terminal_needs_layout = true;
         self.last_editor_bounds = None;
+        self.last_show_welcome = None;
         self.last_sidebar_bounds = None;
         self.last_terminal_bounds = None;
 
@@ -92,6 +97,7 @@ impl ApplicationHandler for AppShell {
                 self.sidebar_needs_layout = true;
                 self.terminal_needs_layout = true;
                 self.last_editor_bounds = None;
+                self.last_show_welcome = None;
                 self.last_sidebar_bounds = None;
                 self.last_terminal_bounds = None;
                 let scale_factor = self
@@ -113,9 +119,15 @@ impl ApplicationHandler for AppShell {
                 self.input_handler.update_modifiers(mods);
             }
             WindowEvent::Ime(Ime::Commit(text)) => {
+                if self.pending_confirmation.is_some() {
+                    return;
+                }
+                if self.should_swallow_palette_ime_commit() {
+                    return;
+                }
                 let context = self.build_context();
                 if let Some(translated) = self.input_handler.translate_ime_commit(&text, context)
-                    && self.handle_command(translated.command)
+                    && self.handle_command_with_count(translated.command, translated.repeat_count)
                 {
                     self.request_redraw();
                 }
@@ -123,13 +135,24 @@ impl ApplicationHandler for AppShell {
             WindowEvent::KeyboardInput {
                 event: key_event, ..
             } => {
+                if key_event.state == ElementState::Pressed && !key_event.repeat {
+                    self.note_post_open_keyboard_press();
+                }
+                if let Some(changed) = self.handle_pending_confirmation_key_event(&key_event) {
+                    if changed {
+                        self.request_redraw();
+                    }
+                    return;
+                }
                 let context = self.build_context();
                 let outcome =
                     self.input_handler
                         .translate_key_event(&key_event, &self.input_map, context);
                 match outcome {
                     Some(InputRouteOutcome::Dispatch(translated)) => {
-                        if self.handle_command(translated.command) {
+                        if self
+                            .handle_command_with_count(translated.command, translated.repeat_count)
+                        {
                             self.request_redraw();
                         }
                     }
@@ -152,6 +175,7 @@ impl ApplicationHandler for AppShell {
 impl AppShell {
     fn redraw(&mut self) {
         let got_new_data = self.pump_bridge();
+        self.update_frame_metrics_snapshot(Instant::now());
         let layout = self
             .layout_engine
             .compute(self.window_size, &self.panel_state);
@@ -167,12 +191,17 @@ impl AppShell {
             .model
             .find(RegionId::Center)
             .map(|center| [center.x, center.y, center.width, center.height]);
-        let show_welcome = self.app_state.active_file().is_none()
-            && !self.app_state.is_dirty()
-            && self.app_state.text_string().is_empty();
+        // Show the centered empty-state only when no tab is open and no overlay
+        // is actively using the center of the screen.
+        let show_welcome = self.should_show_welcome();
+        let show_welcome_changed = self.last_show_welcome != Some(show_welcome);
+        let workspace_attached = self.app_state.workspace_root_path().is_some();
 
+        // Keep the explorer hidden on a true "empty" start, but once a workspace
+        // has been attached explicitly we still allow the tree to stay visible
+        // even if there are no open tabs yet.
         let sidebar_bounds = sidebar_region.and_then(|sidebar| {
-            sidebar.visible.then_some([
+            (sidebar.visible && (!show_welcome || workspace_attached)).then_some([
                 sidebar.bounds.x,
                 sidebar.bounds.y,
                 sidebar.bounds.width,
@@ -192,6 +221,7 @@ impl AppShell {
                     && region.id != RegionId::Root
                     && region.id != RegionId::OverlayLayer
                     && region.id != RegionId::StatusBar
+                    && !(show_welcome && !workspace_attached && region.id == RegionId::LeftSidebar)
             })
             .map(|region| {
                 RegionDrawInstance::new(
@@ -205,7 +235,12 @@ impl AppShell {
                 )
             })
             .collect();
-        if let Some(bounds) = focus_region_bounds(&layout.model, self.focus_manager.current()) {
+        let focus_target = if show_welcome && !workspace_attached {
+            FocusTarget::CenterEditor
+        } else {
+            self.focus_manager.current()
+        };
+        if let Some(bounds) = focus_region_bounds(&layout.model, focus_target) {
             region_instances.extend(focus_ring_instances(
                 bounds,
                 self.theme.ui.accent.as_f32(),
@@ -216,44 +251,68 @@ impl AppShell {
         if let Some(center_bounds) = center_bounds {
             let bounds_changed = self.last_editor_bounds != Some(center_bounds);
             let mut refresh_highlights_for_viewport = false;
-            if self.editor_needs_layout || bounds_changed {
-                let (text, styled) = if show_welcome {
-                    welcome_screen_content(&self.theme)
-                } else {
-                    (
-                        self.app_state.text_string(),
-                        syntax_spans_to_styled(&self.highlight_spans, &self.theme),
-                    )
-                };
+            if self.editor_needs_layout || bounds_changed || show_welcome_changed {
                 if let Some(renderer) = self.renderer.as_mut() {
-                    renderer.update_editor_content(&text, &self.app_state, center_bounds, &styled);
+                    if show_welcome {
+                        let (text, styled) = welcome_screen_content(&self.theme);
+                        renderer.clear_editor_content();
+                        renderer.update_welcome_screen_content(&text, &styled, center_bounds);
+                    } else {
+                        renderer.clear_welcome_logo();
+                        renderer.update_editor_content(
+                            &self.app_state.text_string(),
+                            &self.app_state,
+                            center_bounds,
+                            &syntax_spans_to_styled(&self.highlight_spans, &self.theme),
+                        );
+                    }
                 }
                 self.last_editor_bounds = Some(center_bounds);
                 self.editor_needs_layout = false;
                 self.editor_caret_needs_layout = false;
                 refresh_highlights_for_viewport = bounds_changed && !show_welcome;
             } else if self.editor_caret_needs_layout {
-                if let Some(renderer) = self.renderer.as_mut() {
+                if !show_welcome && let Some(renderer) = self.renderer.as_mut() {
                     renderer.update_editor_caret(&self.app_state, center_bounds);
                 }
                 self.editor_caret_needs_layout = false;
             }
 
             if !show_welcome && let Some(renderer) = self.renderer.as_ref() {
-                if self.app_state.current_mode() == EditorMode::Visual {
-                    region_instances
-                        .extend(renderer.visual_selection_quads(&self.app_state, center_bounds));
-                } else if let Some(quad) =
-                    renderer.current_line_highlight_quad(&self.app_state, center_bounds)
+                if self.app_state.current_mode() != EditorMode::Visual
+                    && let Some(quad) =
+                        renderer.current_line_highlight_quad(&self.app_state, center_bounds)
                 {
                     region_instances.push(quad);
                 }
+                region_instances
+                    .extend(renderer.search_highlight_quads(&self.app_state, center_bounds));
+                if self.app_state.current_mode() == EditorMode::Visual {
+                    region_instances
+                        .extend(renderer.visual_selection_quads(&self.app_state, center_bounds));
+                }
+            }
+
+            // Leap label overlay — luôn cập nhật sau khi editor đã shape buffer.
+            // Nếu không có labels (đã cancel hoặc jump xong) thì clear.
+            if let Some(labels) = &self.leap_labels {
+                if !show_welcome {
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        let labels_clone = labels.clone();
+                        renderer.update_leap_labels(&labels_clone, &self.app_state, center_bounds);
+                    }
+                }
+            } else if let Some(renderer) = self.renderer.as_mut() {
+                renderer.clear_leap_labels();
             }
 
             if refresh_highlights_for_viewport {
                 self.submit_parse_for_active_buffer(true);
             }
+        } else if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_welcome_logo();
         }
+        self.last_show_welcome = Some(show_welcome);
 
         if let Some(renderer) = self.renderer.as_mut() {
             if let Some(bounds) = sidebar_bounds {
@@ -267,8 +326,11 @@ impl AppShell {
                         .and_then(|root| root.file_name().and_then(|name| name.to_str()))
                         .unwrap_or("workspace");
                     let header = format!("[ {root_name} ]");
-                    let rows =
-                        build_sidebar_rows(&self.explorer_snapshot.entries, self.explorer_cursor);
+                    let rows = build_sidebar_rows(
+                        &self.explorer_snapshot.entries,
+                        self.explorer_cursor,
+                        &self.theme,
+                    );
                     self.sidebar_selection_quads = renderer.update_sidebar_content(
                         Some(&header),
                         &rows,
@@ -290,13 +352,25 @@ impl AppShell {
 
         if let Some(top) = layout.model.find(RegionId::TopBar) {
             let top_bounds = [top.x, top.y, top.width, top.height];
-            let filename = self
+            let tabs = self
                 .app_state
-                .active_file()
-                .and_then(|path| path.file_name().and_then(|name| name.to_str()))
-                .map(str::to_string);
+                .open_buffers()
+                .iter()
+                .map(|path| crate::render::renderer::TopbarTab {
+                    label: path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .map(str::to_string)
+                        .unwrap_or_else(|| path.display().to_string()),
+                    path: path.clone(),
+                })
+                .collect::<Vec<_>>();
             if let Some(renderer) = self.renderer.as_mut() {
-                let tab_quads = renderer.update_topbar_content(filename.as_deref(), top_bounds);
+                let tab_quads = renderer.update_topbar_content(
+                    &tabs,
+                    self.app_state.active_buffer_index(),
+                    top_bounds,
+                );
                 region_instances.extend(tab_quads);
             }
         }
@@ -350,7 +424,11 @@ impl AppShell {
                 ];
                 let bounds_changed = self.last_terminal_bounds != Some(bottom_bounds);
                 if self.terminal_needs_layout || bounds_changed {
-                    renderer.update_terminal_content(&self.terminal_grid, bottom_bounds);
+                    renderer.update_terminal_content(
+                        &self.terminal_grid,
+                        bottom_bounds,
+                        self.app_state.current_mode() == EditorMode::TerminalFocus,
+                    );
                     self.last_terminal_bounds = Some(bottom_bounds);
                     self.terminal_needs_layout = false;
                 }
@@ -362,7 +440,9 @@ impl AppShell {
 
         if let Some(renderer) = self.renderer.as_mut() {
             match renderer.render(&region_instances) {
-                Ok(()) => {}
+                Ok(()) => {
+                    self.last_frame_time = Instant::now();
+                }
                 Err(RenderError::Outdated) | Err(RenderError::Lost) => {
                     renderer.reconfigure_surface();
                 }
@@ -377,6 +457,27 @@ impl AppShell {
             self.request_redraw();
         }
     }
+
+    pub(super) fn handle_pending_confirmation_key_event(
+        &mut self,
+        key_event: &winit::event::KeyEvent,
+    ) -> Option<bool> {
+        if self.pending_confirmation.is_none() {
+            return None;
+        }
+        if key_event.state != ElementState::Pressed || key_event.repeat {
+            return Some(false);
+        }
+
+        let decision = match key_event.logical_key.as_ref() {
+            Key::Named(NamedKey::Escape) => Some(false),
+            Key::Character(text) if text.eq_ignore_ascii_case("y") => Some(true),
+            Key::Character(text) if text.eq_ignore_ascii_case("n") => Some(false),
+            _ => Some(false),
+        };
+
+        decision.map(|confirmed| self.respond_to_pending_confirmation(confirmed))
+    }
 }
 
 fn focus_region_bounds(
@@ -390,7 +491,7 @@ fn focus_region_bounds(
         FocusTarget::BottomPanel => RegionId::BottomPanel,
         FocusTarget::TopBar => RegionId::TopBar,
         FocusTarget::StatusBar => RegionId::StatusBar,
-        FocusTarget::OverlayLayer => RegionId::OverlayLayer,
+        FocusTarget::OverlayLayer => return None,
     };
     let region = model.find(region_id)?;
     if region.width <= 0.0 || region.height <= 0.0 {

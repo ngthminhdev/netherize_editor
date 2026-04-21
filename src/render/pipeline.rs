@@ -1,6 +1,8 @@
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
+use crate::render::color_space::srgb_color_target_state;
+
 /// Mỗi vertex của quad chỉ cần vị trí 2D (NDC).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -83,11 +85,7 @@ impl QuadPipeline {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
+                targets: &[Some(srgb_color_target_state(surface_format))],
             }),
             multiview_mask: None,
             cache: None,
