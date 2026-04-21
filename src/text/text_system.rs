@@ -1,5 +1,6 @@
 use cosmic_text::{
-    Attrs, Buffer, CacheKey, Color, FontSystem, Metrics, Shaping, SwashCache, SwashImage, fontdb,
+    Attrs, Buffer, CacheKey, Color, Family, FontSystem, Metrics, Shaping, SwashCache, SwashImage,
+    fontdb,
 };
 
 #[derive(Debug, Clone)]
@@ -19,6 +20,13 @@ pub struct VisibleGlyph {
     pub physical_x: i32,
     pub physical_y: i32,
     pub color: [f32; 4],
+    /// Byte offset of this glyph's cluster inside its layout run's line text.
+    /// Mirrors `cosmic_text::LayoutGlyph::start` — needed to correlate a glyph
+    /// with the cursor's byte position when drawing the block-cursor overlay.
+    pub byte_start: usize,
+    pub byte_end: usize,
+    /// Line index inside the Buffer (matches `run.line_i`).
+    pub line_i: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +50,7 @@ pub struct TextSystem {
     font_system: FontSystem,
     swash_cache: SwashCache,
     buffer: Buffer,
+    font_family: Option<String>,
 }
 
 impl TextSystem {
@@ -55,7 +64,14 @@ impl TextSystem {
             font_system,
             swash_cache,
             buffer,
+            font_family: None,
         }
+    }
+
+    /// Override the default font family (e.g. "GoogleSansCode"). `None` falls back
+    /// to cosmic-text's built-in default family resolution.
+    pub fn set_font_family(&mut self, family: Option<&str>) {
+        self.font_family = family.map(str::to_string);
     }
 
     pub fn locale(&self) -> &str {
@@ -88,17 +104,22 @@ impl TextSystem {
     }
 
     pub fn set_text(&mut self, text: &str) {
-        let attrs = Attrs::new();
+        let family = self.font_family.as_deref();
+        let attrs = apply_family(Attrs::new(), family);
         self.buffer
             .set_text(&mut self.font_system, text, &attrs, Shaping::Advanced, None);
-        self.buffer.shape_until_scroll(&mut self.font_system, true);
+        self.buffer.shape_until_scroll(&mut self.font_system, false);
     }
 
     pub fn set_text_with_color(&mut self, text: &str, color_rgba: [u8; 4]) {
-        let attrs = Attrs::new().color(Self::rgba_u8_to_color(color_rgba));
+        let family = self.font_family.as_deref();
+        let attrs = apply_family(
+            Attrs::new().color(Self::rgba_u8_to_color(color_rgba)),
+            family,
+        );
         self.buffer
             .set_text(&mut self.font_system, text, &attrs, Shaping::Advanced, None);
-        self.buffer.shape_until_scroll(&mut self.font_system, true);
+        self.buffer.shape_until_scroll(&mut self.font_system, false);
     }
 
     /// Set rich text bằng styled spans theo byte range.
@@ -116,7 +137,6 @@ impl TextSystem {
             return;
         }
 
-        let default_attrs = Attrs::new().color(Self::rgba_u8_to_color(default_color_rgba));
         let mut sanitized: Vec<StyledTextSpan> = spans
             .iter()
             .filter_map(|span| Self::sanitize_span(text, *span))
@@ -127,6 +147,12 @@ impl TextSystem {
             self.set_text_with_color(text, default_color_rgba);
             return;
         }
+
+        let family = self.font_family.as_deref();
+        let default_attrs = apply_family(
+            Attrs::new().color(Self::rgba_u8_to_color(default_color_rgba)),
+            family,
+        );
 
         // Merge spans cùng màu nếu dính nhau/chồng nhau để giảm phân mảnh khi set_rich_text.
         let mut merged: Vec<StyledTextSpan> = Vec::with_capacity(sanitized.len());
@@ -140,7 +166,7 @@ impl TextSystem {
             merged.push(span);
         }
 
-        let mut segments: Vec<(&str, Attrs<'static>)> = Vec::with_capacity(merged.len() * 2 + 1);
+        let mut segments: Vec<(&str, Attrs<'_>)> = Vec::with_capacity(merged.len() * 2 + 1);
         let mut cursor = 0usize;
 
         for span in merged {
@@ -149,7 +175,10 @@ impl TextSystem {
                 segments.push((&text[cursor..start], default_attrs.clone()));
             }
             if start < span.end {
-                let attrs = Attrs::new().color(Self::rgba_u8_to_color(span.color_rgba));
+                let attrs = apply_family(
+                    Attrs::new().color(Self::rgba_u8_to_color(span.color_rgba)),
+                    family,
+                );
                 segments.push((&text[start..span.end], attrs));
                 cursor = span.end;
             }
@@ -169,7 +198,7 @@ impl TextSystem {
             Shaping::Advanced,
             None,
         );
-        self.buffer.shape_until_scroll(&mut self.font_system, true);
+        self.buffer.shape_until_scroll(&mut self.font_system, false);
     }
 
     pub fn shape_until_scroll(&mut self, prune: bool) {
@@ -210,6 +239,9 @@ impl TextSystem {
                     physical_x: physical.x,
                     physical_y: physical.y,
                     color,
+                    byte_start: glyph.start,
+                    byte_end: glyph.end,
+                    line_i: run.line_i,
                 });
             }
         }
@@ -268,5 +300,38 @@ impl TextSystem {
             monospaced: face.monospaced,
             source: format!("{:?}", face.source),
         }
+    }
+}
+
+fn apply_family<'a>(attrs: Attrs<'a>, family: Option<&'a str>) -> Attrs<'a> {
+    match family {
+        Some(name) => attrs.family(Family::Name(name)),
+        None => attrs,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmic_text::Metrics;
+
+    use super::TextSystem;
+
+    #[test]
+    fn unbounded_height_shapes_deep_lines() {
+        let total_lines = 96usize;
+        let text = (0..total_lines)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let mut system = TextSystem::new(Metrics::new(16.0, 22.0), Some(900.0), None);
+        system.set_text(&text);
+        let glyphs = system.collect_visible_glyphs(0.0, 0.0, [1.0, 1.0, 1.0, 1.0]);
+        let max_line = glyphs.iter().map(|glyph| glyph.line_i).max().unwrap_or(0);
+
+        assert!(
+            max_line >= total_lines.saturating_sub(2),
+            "deep lines were not shaped: max_line={max_line}, total_lines={total_lines}"
+        );
     }
 }

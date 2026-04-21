@@ -214,7 +214,7 @@ impl RegionPipeline {
         queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&raw));
     }
 
-    pub fn draw<'pass>(&'pass self, render_pass: &mut wgpu::RenderPass<'pass>) {
+    pub fn draw<'pass>(&self, render_pass: &mut wgpu::RenderPass<'pass>) {
         if self.instance_count == 0 {
             return;
         }

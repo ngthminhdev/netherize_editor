@@ -90,7 +90,7 @@ impl Default for WorkbenchPanelState {
                 vec![PanelTabId::Inspector, PanelTabId::Outline],
             ),
             bottom: PanelState::new(
-                true,
+                false,
                 220.0,
                 vec![
                     PanelTabId::Terminal,
@@ -104,6 +104,17 @@ impl Default for WorkbenchPanelState {
 }
 
 impl WorkbenchPanelState {
+    /// Default panel tabs, but with sizes driven by the `[ui]` theme block
+    /// instead of the hardcoded defaults. Visibility defaults are preserved
+    /// (left on, right off, bottom off).
+    pub fn from_ui_theme(ui: &crate::config::theme_config::UiThemeTokens) -> Self {
+        let mut state = Self::default();
+        state.left.size_px = ui.sidebar_width.max(0.0);
+        state.right.size_px = ui.right_sidebar_width.max(0.0);
+        state.bottom.size_px = ui.bottom_panel_height.max(0.0);
+        state
+    }
+
     pub fn toggle_left(&mut self) -> bool {
         self.left.visible = !self.left.visible;
         true

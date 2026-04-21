@@ -2,9 +2,10 @@ use std::{
     any::Any,
     collections::HashMap,
     io::{BufRead, BufReader, Read},
+    ops::Range,
     path::PathBuf,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicU64, Ordering},
         mpsc as std_mpsc,
     },
@@ -26,9 +27,34 @@ use crate::lsp::client::{
     build_did_change_notification, build_did_close_notification, build_did_open_notification,
     parse_publish_diagnostics, parse_window_log_message, read_json_rpc_message, spawn_lsp_server,
 };
-use crate::syntax::{highlight::generate_highlight_spans, syntax_engine::SyntaxEngine};
+use crate::syntax::{
+    highlight::{generate_highlight_spans, generate_highlight_spans_in_byte_window},
+    syntax_engine::SyntaxEngine,
+};
 use crate::terminal::pty::{PtyProcess, PtyProvider};
 use crate::workspace::model::WorkspaceIgnoreRules;
+
+fn async_trace_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("NETHERIZE_ASYNC_TRACE")
+            .map(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false)
+    })
+}
+
+macro_rules! async_trace {
+    ($($arg:tt)*) => {
+        if async_trace_enabled() {
+            println!($($arg)*);
+        }
+    };
+}
 
 /// Runtime wrapper duy nhất cho background jobs.
 /// App layer chỉ submit request qua struct này, không spawn tokio rải rác.
@@ -37,6 +63,11 @@ pub struct AsyncScheduler {
     request_tx: mpsc::UnboundedSender<WorkerRequest>,
     next_request_id: Arc<AtomicU64>,
 }
+
+const FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD: usize = 128 * 1024;
+const FULL_BUFFER_HIGHLIGHT_LINE_THRESHOLD: usize = 1_500;
+const VIEWPORT_HIGHLIGHT_OVERSCAN_MULTIPLIER: usize = 3;
+const VIEWPORT_HIGHLIGHT_MIN_OVERSCAN_LINES: usize = 48;
 
 #[derive(Default)]
 struct PtySessionRegistry {
@@ -146,9 +177,11 @@ impl AsyncScheduler {
             payload: spec.payload,
         };
 
-        println!(
+        async_trace!(
             "[Scheduler] enqueue request_id={} revision={} topic={:?}",
-            request.request_id, request.revision_id, request.topic
+            request.request_id,
+            request.revision_id,
+            request.topic
         );
 
         self.request_tx
@@ -167,9 +200,11 @@ async fn dispatch_loop(
     let lsp_sessions = Arc::new(LspSessionRegistry::default());
 
     while let Some(request) = request_rx.recv().await {
-        println!(
+        async_trace!(
             "[Scheduler] dispatch request_id={} revision={} topic={:?}",
-            request.request_id, request.revision_id, request.topic
+            request.request_id,
+            request.revision_id,
+            request.topic
         );
 
         if matches!(request.payload, WorkerRequestPayload::StartFileWatch { .. }) {
@@ -219,9 +254,10 @@ async fn dispatch_loop(
                 kind: WorkerEventKind::Started,
             };
             emit_message(&worker_tx, WorkerMessage::Event(started));
-            println!(
+            async_trace!(
                 "[Worker] started request_id={} revision={}",
-                request.request_id, request.revision_id
+                request.request_id,
+                request.revision_id
             );
 
             let job_request = request.clone();
@@ -245,9 +281,10 @@ async fn dispatch_loop(
                         kind: WorkerEventKind::Completed,
                     };
                     emit_message(&worker_tx, WorkerMessage::Event(completed));
-                    println!(
+                    async_trace!(
                         "[Worker] completed request_id={} revision={}",
-                        request.request_id, request.revision_id
+                        request.request_id,
+                        request.revision_id
                     );
                 }
                 Ok(Err(message)) => {
@@ -263,9 +300,10 @@ async fn dispatch_loop(
                         },
                     };
                     emit_message(&worker_tx, WorkerMessage::Event(failed));
-                    println!(
+                    async_trace!(
                         "[Worker] failed request_id={} revision={}",
-                        request.request_id, request.revision_id
+                        request.request_id,
+                        request.revision_id
                     );
                 }
                 Err(join_error) => {
@@ -278,9 +316,10 @@ async fn dispatch_loop(
                         },
                     };
                     emit_message(&worker_tx, WorkerMessage::Event(failed));
-                    println!(
+                    async_trace!(
                         "[Worker] failed (panic/cancelled) request_id={} revision={}",
-                        request.request_id, request.revision_id
+                        request.request_id,
+                        request.revision_id
                     );
                 }
             }
@@ -299,9 +338,10 @@ async fn run_file_watch_request(
         kind: WorkerEventKind::Started,
     };
     emit_message(&worker_tx, WorkerMessage::Event(started));
-    println!(
+    async_trace!(
         "[Worker] started watcher request_id={} revision={}",
-        request.request_id, request.revision_id
+        request.request_id,
+        request.revision_id
     );
 
     let watcher_request = request.clone();
@@ -318,9 +358,10 @@ async fn run_file_watch_request(
                 kind: WorkerEventKind::Completed,
             };
             emit_message(&worker_tx, WorkerMessage::Event(completed));
-            println!(
+            async_trace!(
                 "[Worker] completed watcher request_id={} revision={}",
-                request.request_id, request.revision_id
+                request.request_id,
+                request.revision_id
             );
         }
         Ok(Err(message)) => {
@@ -336,9 +377,10 @@ async fn run_file_watch_request(
                 },
             };
             emit_message(&worker_tx, WorkerMessage::Event(failed));
-            println!(
+            async_trace!(
                 "[Worker] file watcher failed request_id={} revision={}",
-                request.request_id, request.revision_id
+                request.request_id,
+                request.revision_id
             );
         }
         Err(join_error) => {
@@ -351,9 +393,10 @@ async fn run_file_watch_request(
                 },
             };
             emit_message(&worker_tx, WorkerMessage::Event(failed));
-            println!(
+            async_trace!(
                 "[Worker] file watcher failed (panic/cancelled) request_id={} revision={}",
-                request.request_id, request.revision_id
+                request.request_id,
+                request.revision_id
             );
         }
     }
@@ -371,9 +414,10 @@ async fn run_pty_request(
         kind: WorkerEventKind::Started,
     };
     emit_message(&worker_tx, WorkerMessage::Event(started));
-    println!(
+    async_trace!(
         "[Worker] started pty request_id={} revision={}",
-        request.request_id, request.revision_id
+        request.request_id,
+        request.revision_id
     );
 
     let pty_request = request.clone();
@@ -400,9 +444,10 @@ async fn run_pty_request(
                 kind: WorkerEventKind::Completed,
             };
             emit_message(&worker_tx, WorkerMessage::Event(completed));
-            println!(
+            async_trace!(
                 "[Worker] completed pty request_id={} revision={}",
-                request.request_id, request.revision_id
+                request.request_id,
+                request.revision_id
             );
         }
         Ok(Err(message)) => {
@@ -418,9 +463,10 @@ async fn run_pty_request(
                 },
             };
             emit_message(&worker_tx, WorkerMessage::Event(failed));
-            println!(
+            async_trace!(
                 "[Worker] failed pty request_id={} revision={}",
-                request.request_id, request.revision_id
+                request.request_id,
+                request.revision_id
             );
         }
         Err(join_error) => {
@@ -433,9 +479,10 @@ async fn run_pty_request(
                 },
             };
             emit_message(&worker_tx, WorkerMessage::Event(failed));
-            println!(
+            async_trace!(
                 "[Worker] failed (panic/cancelled) pty request_id={} revision={}",
-                request.request_id, request.revision_id
+                request.request_id,
+                request.revision_id
             );
         }
     }
@@ -453,9 +500,10 @@ async fn run_lsp_request(
         kind: WorkerEventKind::Started,
     };
     emit_message(&worker_tx, WorkerMessage::Event(started));
-    println!(
+    async_trace!(
         "[Worker] started lsp request_id={} revision={}",
-        request.request_id, request.revision_id
+        request.request_id,
+        request.revision_id
     );
 
     let lsp_request = request.clone();
@@ -482,9 +530,10 @@ async fn run_lsp_request(
                 kind: WorkerEventKind::Completed,
             };
             emit_message(&worker_tx, WorkerMessage::Event(completed));
-            println!(
+            async_trace!(
                 "[Worker] completed lsp request_id={} revision={}",
-                request.request_id, request.revision_id
+                request.request_id,
+                request.revision_id
             );
         }
         Ok(Err(message)) => {
@@ -500,9 +549,10 @@ async fn run_lsp_request(
                 },
             };
             emit_message(&worker_tx, WorkerMessage::Event(failed));
-            println!(
+            async_trace!(
                 "[Worker] failed lsp request_id={} revision={}",
-                request.request_id, request.revision_id
+                request.request_id,
+                request.revision_id
             );
         }
         Err(join_error) => {
@@ -515,9 +565,10 @@ async fn run_lsp_request(
                 },
             };
             emit_message(&worker_tx, WorkerMessage::Event(failed));
-            println!(
+            async_trace!(
                 "[Worker] failed (panic/cancelled) lsp request_id={} revision={}",
-                request.request_id, request.revision_id
+                request.request_id,
+                request.revision_id
             );
         }
     }
@@ -897,11 +948,17 @@ async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayl
             file_path,
             text_snapshot,
             language_id,
+            buffer_revision,
+            viewport_line_start,
+            viewport_line_count,
         } => {
             let file_path = file_path.clone();
             let text_snapshot = text_snapshot.clone();
             let language_id = *language_id;
-            let revision_id = request.revision_id;
+            let buffer_revision = *buffer_revision;
+            let viewport_line_start = *viewport_line_start;
+            let viewport_line_count = *viewport_line_count;
+            let request_revision = request.revision_id;
 
             tokio::task::spawn_blocking(move || {
                 let line_count = text_snapshot.lines().count();
@@ -912,18 +969,29 @@ async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayl
                 let mut syntax_engine = SyntaxEngine::new(language_id)
                     .map_err(|err| format!("init syntax engine failed: {err}"))?;
                 let tree = syntax_engine
-                    .parse_source(&text_snapshot, revision_id)
+                    .parse_source(&text_snapshot, buffer_revision)
                     .map_err(|err| format!("parse source failed: {err}"))?;
                 let parse_time_ms = parse_started.elapsed().as_millis();
 
                 let highlight_started = Instant::now();
-                let spans = generate_highlight_spans(tree, &text_snapshot);
+                let covered_byte_range = highlight_byte_window(
+                    &text_snapshot,
+                    viewport_line_start,
+                    viewport_line_count,
+                    line_count,
+                    byte_count,
+                );
+                let spans = covered_byte_range
+                    .clone()
+                    .map(|window| generate_highlight_spans_in_byte_window(tree, &text_snapshot, window))
+                    .unwrap_or_else(|| generate_highlight_spans(tree, &text_snapshot));
                 let highlight_time_ms = highlight_started.elapsed().as_millis();
                 let total_time_ms = parse_time_ms + highlight_time_ms;
 
-                println!(
-                    "[Worker] parse profile revision={} language={} bytes={} lines={} chars={} spans={} parse_ms={} highlight_ms={} total_ms={}",
-                    revision_id,
+                async_trace!(
+                    "[Worker] parse profile request_revision={} buffer_revision={} language={} bytes={} lines={} chars={} spans={} parse_ms={} highlight_ms={} total_ms={}",
+                    request_revision,
+                    buffer_revision,
                     language_id.as_str(),
                     byte_count,
                     line_count,
@@ -937,7 +1005,9 @@ async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayl
                 Ok(WorkerResultPayload::ParseAndHighlight {
                     file_path,
                     language_id,
+                    buffer_revision,
                     spans,
+                    covered_byte_range,
                     line_count,
                     char_count,
                     byte_count,
@@ -1047,7 +1117,7 @@ fn execute_file_watch_loop(
         .watch(&root_path, RecursiveMode::Recursive)
         .map_err(|err| format!("watch {:?} failed: {err}", root_path))?;
 
-    println!(
+    async_trace!(
         "[Worker] file watcher active request_id={} root={}",
         request.request_id,
         root_path.display()
@@ -1142,6 +1212,70 @@ fn normalize_rename_event(paths: Vec<PathBuf>) -> Vec<FileSystemEvent> {
             new_path: None,
         })
         .collect()
+}
+
+fn byte_range_for_line_window(
+    source: &str,
+    window_start_line: usize,
+    window_line_count: usize,
+) -> Option<Range<usize>> {
+    if source.is_empty() {
+        return None;
+    }
+
+    let mut line_starts = Vec::with_capacity(source.lines().count().max(1) + 1);
+    line_starts.push(0);
+    for (idx, byte) in source.bytes().enumerate() {
+        if byte == b'\n' && idx + 1 <= source.len() {
+            line_starts.push(idx + 1);
+        }
+    }
+    if line_starts.is_empty() {
+        return None;
+    }
+
+    let total_lines = line_starts.len();
+    let clamped_start = window_start_line.min(total_lines.saturating_sub(1));
+    let line_count = window_line_count.max(1);
+    let end_line_exclusive = clamped_start.saturating_add(line_count).min(total_lines);
+
+    let start = line_starts[clamped_start];
+    let end = if end_line_exclusive < total_lines {
+        line_starts[end_line_exclusive]
+    } else {
+        source.len()
+    };
+
+    (start < end).then_some(start..end)
+}
+
+fn highlight_byte_window(
+    source: &str,
+    viewport_line_start: usize,
+    viewport_line_count: usize,
+    line_count: usize,
+    byte_count: usize,
+) -> Option<Range<usize>> {
+    if source.is_empty() {
+        return None;
+    }
+
+    if should_highlight_full_buffer(line_count, byte_count) {
+        return None;
+    }
+
+    let visible_lines = viewport_line_count.max(1);
+    let overscan = visible_lines
+        .saturating_mul(VIEWPORT_HIGHLIGHT_OVERSCAN_MULTIPLIER)
+        .max(VIEWPORT_HIGHLIGHT_MIN_OVERSCAN_LINES);
+    let window_line_count = visible_lines.saturating_add(overscan.saturating_mul(2));
+    let window_start_line = viewport_line_start.saturating_sub(overscan);
+    byte_range_for_line_window(source, window_start_line, window_line_count)
+}
+
+fn should_highlight_full_buffer(line_count: usize, byte_count: usize) -> bool {
+    line_count <= FULL_BUFFER_HIGHLIGHT_LINE_THRESHOLD
+        && byte_count <= FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD
 }
 
 fn cpu_burn_checksum(busy_millis: u64) -> u64 {

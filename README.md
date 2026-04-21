@@ -1,362 +1,381 @@
 # Netherize Editor
 
-Đây là project thử nghiệm để xây một text editor bằng Rust, hiện đang ở giai đoạn rất sớm.
-
-## Mục tiêu hiện tại
-
-Project đang thử ghép 3 phần chính lại với nhau:
-
-- `ropey` để quản lý text buffer
-- `winit` để tạo window và nhận input bàn phím
-- `wgpu` để render lên GPU
-- `cosmic-text` để shape/rasterize text
-
-Hiện tại source đã có nền tảng cho:
-- editor buffer
-- renderer GPU cơ bản
-- text rasterization thử nghiệm
-
-Nhưng chưa hoàn thiện pipeline render text thật sự lên màn hình.
+A GPU-accelerated terminal/text editor written in Rust. Currently in active development (Module 12 / Phase 2–3).
 
 ---
 
-## Cấu trúc source hiện tại
+## Quick Status
 
-### `src/main.rs`
-
-Đây là entry point của chương trình.
-
-Hiện file này đang chứa:
-
-- khai báo module:
-  - `renderer`
-  - `text_renderer`
-- struct `AppState`
-- event loop theo `winit`
-- logic tạo window và khởi tạo `Renderer`
-- xử lý một số phím `j`, `k`, `l` để đổi màu nền
-- một đoạn test tạm cho `TextRenderer` trong `main()`
-
-### Trạng thái hiện tại của `main.rs`
-
-File này đang hơi ở trạng thái "lai":
-
-- có sẵn `AppState` để chạy GUI thật
-- nhưng trong `main()` phần event loop đang bị comment
-- thay vào đó đang test `TextRenderer::rasterize_text("Hello, World!")`
-
-Nói ngắn gọn:
-- phần GUI có khung rồi
-- nhưng chương trình hiện tại đang chạy theo kiểu test text rasterization
+| Area | Status |
+|------|--------|
+| Editor buffer + cursor | ✅ Stable, fully tested |
+| Vim-style mode system | ✅ Working (Normal / Insert / Visual / PaletteFocus / TerminalFocus) |
+| GPU renderer (wgpu) | ✅ Renders text, cursor, gutter, sidebar, statusbar |
+| Glyph atlas (texture packing) | ✅ Shelf-packer, uploaded to GPU |
+| Text shaping (cosmic-text) | ✅ Rich text + syntax spans |
+| Syntax highlighting (tree-sitter) | ✅ Rust grammar wired |
+| Workbench layout engine | ✅ Region-based, resizable splits |
+| File explorer sidebar | ✅ Tree with j/k/h/l/Enter navigation |
+| Embedded terminal (PTY) | ✅ ANSI parser + grid |
+| LSP client | 🚧 Skeleton (didOpen wired, partial) |
+| Config / theme (TOML runtime) | ✅ Hot-reloadable at startup |
+| Command palette | ✅ Overlay UI working |
+| File picker (fuzzy) | ✅ Working |
+| Multi-buffer | ✅ Buffer ring (next/prev/close) |
 
 ---
 
-### `src/editor_core.rs`
+## Running
 
-Đây là phần lõi của text editor.
+```sh
+cargo run
+```
 
-File này định nghĩa struct:
-
-- `EditorBuffer`
-
-#### `EditorBuffer` đang quản lý gì?
-
-- `text: Rope`
-- `cursor_char_idx: usize`
-- `target_col: usize`
-
-#### Chức năng chính đã có
-
-- tạo buffer rỗng với `new()`
-- tạo buffer từ string với `from_str()`
-- lấy vị trí con trỏ hiện tại:
-  - `current_position()`
-  - `cursor_2d_position()`
-- chỉnh sửa text:
-  - `insert_char(ch)`
-  - `delete_backward()`
-- di chuyển con trỏ:
-  - `move_left()`
-  - `move_right()`
-  - `move_up()`
-  - `move_down()`
-- chuyển toàn bộ nội dung buffer thành `String` với `to_string()`
-
-#### Ý tưởng của `target_col`
-
-`target_col` dùng để nhớ "cột mong muốn" khi di chuyển lên/xuống.
-
-Ví dụ:
-- đang ở cột 5
-- xuống một dòng ngắn hơn thì con trỏ bị snap về cột nhỏ hơn
-- nhưng editor vẫn nhớ cột gốc là 5
-- khi xuống dòng dài hơn nữa thì con trỏ có thể quay lại cột 5
-
-Đây là behavior rất giống editor thật.
-
-#### Test trong file
-
-File này có unit test cho:
-- di chuyển ngang
-- di chuyển dọc với target column memory
-- insert làm cập nhật `target_col`
-
-Đây hiện là phần ổn định nhất của project.
+```sh
+cargo test -q          # 128 tests, all pass
+cargo bench            # criterion benchmarks in benches/
+```
 
 ---
 
-### `src/renderer.rs`
+## Repository Layout
 
-Đây là renderer GPU cơ bản dùng `wgpu`.
-
-#### Struct chính
-
-- `Renderer<'a>`
-
-#### Tài nguyên đang giữ
-
-- `surface`
-- `device`
-- `queue`
-- `config`
-- `size`
-
-#### Chức năng hiện có
-
-- `new(window)`:
-  - tạo `wgpu::Instance`
-  - tạo `Surface`
-  - request `Adapter`
-  - request `Device` và `Queue`
-  - chọn `SurfaceConfiguration`
-  - configure surface
-- `resize(new_size)`:
-  - cập nhật width/height
-  - configure lại surface
-- `render(clear_color)`:
-  - lấy current surface texture
-  - tạo command encoder
-  - mở render pass
-  - clear toàn bộ màn hình bằng một màu
-  - submit command buffer
-  - present frame
-
-#### `RenderError`
-
-File này có enum `RenderError` để map các trạng thái render hiện tại:
-
-- `Timeout`
-- `Occluded`
-- `Outdated`
-- `Lost`
-- `Validation`
-
-Hiện renderer này **chỉ mới clear background**, chưa render text, chưa render cursor, chưa có pipeline/shader riêng.
-
----
-
-### `src/text_renderer.rs`
-
-Đây là phần thử nghiệm dùng `cosmic-text`.
-
-#### Struct chính
-
-- `TextRenderer`
-
-#### Tài nguyên đang giữ
-
-- `font_system`
-- `swash_cache`
-
-#### Chức năng hiện có
-
-- `new()`
-- `rasterize_text(text, font_size, line_height, width)`
-
-#### `rasterize_text(...)` đang làm gì?
-
-- tạo `Metrics`
-- tạo `Buffer`
-- set width cho buffer
-- set text vào buffer
-- shape/layout text bằng `cosmic-text`
-- gọi `buffer.draw(...)`
-- thu toàn bộ pixel thành:
-  - `Vec<(x, y, r, g, b, a)>`
-
-Nói đơn giản:
-- file này đang rasterize text bằng CPU
-- trả về danh sách pixel trắng của chữ
-- nhưng chưa đẩy dữ liệu đó sang GPU để hiển thị thật lên window
-
-#### Hạn chế hiện tại
-
-`TextRenderer` hiện chưa:
-- giữ `Buffer` lâu dài
-- đồng bộ trực tiếp với `EditorBuffer`
-- trả về layout cursor
-- tạo atlas texture
-- render bằng `wgpu`
-
----
-
-## Luồng hoạt động hiện tại
-
-Nếu nhìn theo kiến trúc tổng quát, project đang có các mảnh như sau:
-
-### 1. Editor text state
-`editor_core.rs`
-
-- lưu text bằng `Rope`
-- quản lý con trỏ
-- xử lý insert/delete/move
-
-### 2. Window + GPU
-`renderer.rs`
-
-- mở surface GPU
-- clear background
-
-### 3. Text shaping/rasterization
-`text_renderer.rs`
-
-- biến string thành pixels bằng `cosmic-text`
-
-### 4. App shell
-`main.rs`
-
-- tạo window
-- xử lý input
-- gọi renderer
+```
+netherize_editor/
+├── src/
+│   ├── main.rs                    # Entry point — delegates to app::event_loop::run()
+│   ├── lib.rs                     # Module re-exports
+│   ├── editor_core.rs             # Legacy EditorBuffer (ropey-backed), kept for reference
+│   │
+│   ├── app/                       # Application shell
+│   │   ├── app_state.rs           # AppState — authoritative editor state (text, cursor, mode, buffers)
+│   │   ├── event_loop/            # winit ApplicationHandler impl + command dispatch
+│   │   │   ├── mod.rs             # run() entrypoint
+│   │   │   ├── application.rs     # winit::ApplicationHandler impl
+│   │   │   ├── commands.rs        # Command → AppState mutation handlers
+│   │   │   ├── async_results.rs   # Polling async channel results into the main loop
+│   │   │   ├── helpers.rs         # Shared render/layout helpers
+│   │   │   ├── setup.rs           # GPU + window init
+│   │   │   └── welcome.rs         # Welcome screen logic
+│   │   ├── input_map/             # Keymap resolution (key event → Command)
+│   │   │   ├── mod.rs
+│   │   │   ├── focus.rs           # Focus-context-aware key routing
+│   │   │   ├── helpers.rs
+│   │   │   └── tests.rs
+│   │   ├── input.rs               # Raw key event normalization
+│   │   ├── resolved_keymap.rs     # Merged keymap at runtime
+│   │   ├── command_palette.rs     # Command palette state + filtering
+│   │   ├── file_picker.rs         # File picker state + fuzzy results
+│   │   └── async_bridge.rs        # Tokio ↔ winit message bridge
+│   │
+│   ├── core/                      # Editor semantics (mode, commands)
+│   │   ├── mode.rs                # EditorMode enum + ModeState transition machine
+│   │   ├── commands.rs            # Command enum (all editor actions)
+│   │   ├── command_ids.rs         # Stable string IDs for palette lookup
+│   │   ├── command_dispatch.rs    # Routes Command → handler
+│   │   └── mod.rs
+│   │
+│   ├── render/                    # GPU rendering layer (wgpu)
+│   │   ├── renderer.rs            # Renderer struct — orchestrates all render passes
+│   │   ├── pipeline.rs            # Generic wgpu pipeline builder
+│   │   ├── text_pipeline.rs       # Glyph-instance pipeline (text quads)
+│   │   ├── region_pipeline.rs     # Colored quad pipeline (backgrounds, highlights)
+│   │   ├── caret.rs               # Cursor/caret rendering
+│   │   ├── glyph_instance.rs      # GlyphInstance vertex layout
+│   │   ├── surface.rs             # wgpu Surface + swapchain management
+│   │   ├── shaders/               # WGSL shader sources
+│   │   └── mod.rs
+│   │
+│   ├── text/                      # Text shaping + atlas
+│   │   ├── text_system.rs         # TextSystem — wraps cosmic-text Buffer + FontSystem
+│   │   ├── atlas.rs               # GlyphAtlas — shelf-packing texture atlas on GPU
+│   │   ├── raster.rs              # RasterizedGlyph — swash image → alpha bytes
+│   │   ├── layout_sync.rs         # Syncs editor content → TextSystem on change
+│   │   └── mod.rs
+│   │
+│   ├── syntax/                    # Syntax highlighting
+│   │   ├── syntax_engine.rs       # tree-sitter parse + highlight span extraction
+│   │   ├── highlight.rs           # Highlight → StyledTextSpan mapping
+│   │   └── mod.rs
+│   │
+│   ├── workbench/                 # UI layout + panel management
+│   │   ├── layout_engine.rs       # WorkbenchLayoutEngine — computes RegionModel from panel sizes
+│   │   ├── region_model.rs        # RegionId / RegionBounds / RegionModel tree
+│   │   ├── panel_state.rs         # Sidebar/bottom panel open-state + sizes
+│   │   ├── focus_manager.rs       # Which region currently holds keyboard focus
+│   │   ├── overlay_manager.rs     # Overlay stack (palette, picker, etc.)
+│   │   ├── inspector_panel.rs     # Right sidebar inspector content
+│   │   ├── text_coordinate_map.rs # Screen pixel ↔ editor char-index mapping
+│   │   ├── debug_state.rs         # Debug overlay lines
+│   │   └── mod.rs
+│   │
+│   ├── workspace/                 # File system workspace
+│   │   ├── scanner.rs             # Recursive directory scan → WorkspaceNode tree
+│   │   ├── model.rs               # WorkspaceModel (node tree + path index)
+│   │   ├── fuzzy.rs               # Fuzzy file search
+│   │   └── mod.rs
+│   │
+│   ├── terminal/                  # Embedded PTY terminal
+│   │   ├── pty.rs                 # portable-pty spawn + read/write
+│   │   ├── ansi_parser.rs         # ANSI escape sequence parser
+│   │   ├── grid.rs                # Terminal cell grid + scrollback
+│   │   ├── terminal_renderer.rs   # Renders terminal grid via TextSystem
+│   │   └── mod.rs
+│   │
+│   ├── lsp/                       # Language Server Protocol client
+│   │   ├── client.rs              # LSP process spawn + JSON-RPC (partial)
+│   │   └── mod.rs
+│   │
+│   ├── async_runtime/             # Tokio async bridge
+│   │   ├── scheduler.rs           # Task queue + wakeup
+│   │   ├── message.rs             # AsyncMessage enum (results sent back to main loop)
+│   │   └── mod.rs
+│   │
+│   └── config/                    # Config loading
+│       ├── theme_config.rs        # ThemeConfig — parsed from TOML, used by Renderer
+│       ├── ui_config.rs           # UiConfig — layout sizes, cursor style, padding
+│       ├── keymap_config.rs       # KeymapConfig — raw key binding table
+│       ├── keymap_loader.rs       # Loads + merges keymap TOML files
+│       └── mod.rs
+│
+├── config/
+│   ├── themes/
+│   │   └── default-dark.toml      # Color theme ([editor], [ui], [syntax] sections)
+│   ├── ui/
+│   │   └── default.toml           # Layout sizes, cursor shape, padding, dock visibility
+│   └── keymaps/
+│       ├── default.toml           # Default keymap (VSCode-ish)
+│       ├── nvim.toml              # Neovim-style keymap
+│       └── min.toml               # Minimal keymap
+│
+├── docs/
+│   ├── MODULE12_HANDOFF_COMPACT.md  # Handoff notes for Module 12 (Phase 2+3)
+│   └── perf_profiling.md
+│
+├── benches/
+│   └── editor_bench.rs            # Criterion benchmarks
+│
+└── Cargo.toml
+```
 
 ---
 
-## Phần nào đã có, phần nào chưa có
+## Architecture: How Data Flows
 
-### Đã có
-- text buffer bằng `ropey`
-- cursor movement logic
-- unit tests cho editor buffer
-- window lifecycle với `winit`
-- GPU init với `wgpu`
-- background clear pass
-- text rasterization thử nghiệm bằng `cosmic-text`
-
-### Chưa có
-- đồng bộ chính thức giữa `EditorBuffer` và `TextRenderer`
-- text buffer persistent trong `TextRenderer`
-- render text thật sự lên GPU
-- texture atlas cho glyph
-- render cursor block kiểu Vim
-- mode system hoàn chỉnh (`Normal`, `Insert`, `Command`) đang dùng thật
-- keyboard editing flow hoàn chỉnh
-- syntax highlighting
-- scrolling
-- file open/save
-
----
-
-## Kiến trúc mong muốn tiếp theo
-
-Hướng phát triển hợp lý tiếp theo là:
-
-### Bước 1: giữ `TextBuffer` sống lâu
-Thay vì mỗi lần rasterize lại tạo `Buffer` mới, nên cho `TextRenderer` giữ:
-
-- `FontSystem`
-- `SwashCache`
-- `Buffer`
-
-và cập nhật nội dung bằng `set_text(...)`.
-
-### Bước 2: nối `EditorBuffer` với `TextRenderer`
-Luồng dữ liệu mong muốn:
-
-- user gõ phím
-- `EditorBuffer` cập nhật text
-- `EditorBuffer.to_string()`
-- đổ string đó sang `TextRenderer`
-- `TextRenderer` shape lại layout
-
-### Bước 3: render text bằng GPU
-Hiện tại text chỉ ra `Vec<pixel>`.
-Cần một pipeline để:
-- đưa glyph/atlas lên GPU
-- render texture đó lên screen
-
-### Bước 4: render cursor
-Lấy tọa độ glyph tại vị trí cursor rồi vẽ một block/quad đè lên.
+```
+User presses key
+      │
+      ▼
+winit KeyEvent  (app/event_loop/application.rs)
+      │
+      ▼
+input_map::resolve()  →  Command enum  (app/input_map/)
+      │
+      ▼
+command_dispatch()  →  AppState mutation  (app/event_loop/commands.rs)
+      │
+      ▼
+AppState  (app/app_state.rs)
+  ├── text: Rope              (ropey)
+  ├── cursor_char_idx
+  ├── mode_state: ModeState   (core/mode.rs)
+  ├── open_buffers: Vec<...>
+  └── workspace_model
+      │
+      ▼
+layout_sync → TextSystem.set_text_with_spans()  (text/layout_sync.rs)
+      │
+      ▼
+syntax_engine → StyledTextSpan[]  (syntax/syntax_engine.rs)
+      │
+      ▼
+Renderer.update_editor_content()  (render/renderer.rs)
+  ├── TextSystem.collect_visible_glyphs()
+  ├── GlyphAtlas.get_or_insert()  →  GPU texture upload
+  └── GlyphInstance[] → vertex buffer
+      │
+      ▼
+Renderer.render()  →  wgpu submit  →  screen
+```
 
 ---
 
-## Dependency chính
+## Key Structs at a Glance
 
-Từ `Cargo.toml`, các thư viện quan trọng hiện đang dùng là:
-
-- `ropey`
-- `winit`
-- `wgpu`
-- `cosmic-text`
-- `pollster`
-- `tokio`
-- `font-kit`
-- `swash`
-
-### Vai trò ngắn gọn
-
-- `ropey`: text buffer hiệu quả cho editor
-- `winit`: window + keyboard events
-- `wgpu`: giao tiếp GPU
-- `cosmic-text`: layout và rasterize text
-- `pollster`: block async khi khởi tạo GPU
-- `font-kit`, `swash`: font/glyph rasterization support
+| Struct | File | Role |
+|--------|------|------|
+| `AppState` | `app/app_state.rs` | Central editor state (text, cursor, mode, buffers, workspace) |
+| `ModeState` | `core/mode.rs` | Vim-style mode FSM with return-mode memory |
+| `Command` | `core/commands.rs` | All possible editor actions as an enum |
+| `Renderer` | `render/renderer.rs` | Owns all wgpu resources + orchestrates render passes |
+| `TextSystem` | `text/text_system.rs` | Wraps cosmic-text Buffer; shapes + collects glyphs |
+| `GlyphAtlas` | `text/atlas.rs` | GPU texture atlas with shelf-packing |
+| `WorkbenchLayoutEngine` | `workbench/layout_engine.rs` | Computes pixel bounds for all UI regions |
+| `RegionModel` | `workbench/region_model.rs` | Tree of named, bounded UI regions |
+| `FocusManager` | `workbench/focus_manager.rs` | Tracks which region has keyboard focus |
 
 ---
 
-## Tình trạng hiện tại của project
+## Mode System
 
-Project đang ở mức:
+```
+Normal ──(i/a/o/O/s/S/A)──► Insert
+Normal ──(v)──────────────► Visual
+Normal ──(Ctrl+P)─────────► PaletteFocus
+Normal ──(Ctrl+`)─────────► TerminalFocus
 
-**prototype / playground**
+Insert ──(Esc)────────────► Normal
+Visual ──(Esc)────────────► Normal
 
-Nó chưa phải editor hoàn chỉnh, nhưng đã có các "viên gạch" quan trọng:
+PaletteFocus ──(Esc/ExitFocus)──► [return to previous mode]
+TerminalFocus ──(Esc)───────────► [return to previous mode]
+```
 
-- core text buffer
-- basic renderer
-- text rasterizer
-- app skeleton
-
-Đây là nền tảng tốt để đi tiếp sang:
-- text rendering thật
-- cursor rendering
-- input editing loop hoàn chỉnh
-
----
-
-## Gợi ý thứ tự đọc code
-
-Nếu bạn mới vào project, nên đọc theo thứ tự này:
-
-1. `src/editor_core.rs`
-   - dễ hiểu nhất
-   - thấy rõ logic editor buffer
-
-2. `src/renderer.rs`
-   - hiểu phần khởi tạo GPU và clear screen
-
-3. `src/text_renderer.rs`
-   - hiểu cách cosmic-text shape và rasterize chữ
-
-4. `src/main.rs`
-   - xem cách các phần được nối lại với nhau
+Mode transitions are validated by `ModeState::apply(event)` — invalid transitions return `Err`.
 
 ---
 
-## Tóm tắt 1 câu
+## Workbench Regions
 
-Project này hiện là một bản prototype của text editor viết bằng Rust, đã có:
-- editor buffer bằng `ropey`
-- renderer nền bằng `wgpu`
-- text rasterization bằng `cosmic-text`
+```
+┌─────────────────────────────────────────────┐
+│                  TopBar                      │
+├──────────┬──────────────────────┬────────────┤
+│          │                      │            │
+│ Left     │       Center         │  Right     │
+│ Sidebar  │      (Editor)        │  Sidebar   │
+│(Explorer)│                      │(Inspector) │
+│          │                      │            │
+│          ├──────────────────────┤            │
+│          │    BottomPanel       │            │
+│          │    (Terminal)        │            │
+├──────────┴──────────────────────┴────────────┤
+│                 StatusBar                    │
+└─────────────────────────────────────────────┘
+```
 
-nhưng chưa ghép xong thành một pipeline render text editor hoàn chỉnh.
+Layout is computed by `WorkbenchLayoutEngine::compute(viewport, panel_state)` and stored as `RegionModel`. The renderer reads `RegionModel` to determine scissor rects and text origins for each panel.
+
+---
+
+## Configuration
+
+All config files are TOML, loaded at startup. Restart required after changes.
+
+### `config/ui/default.toml`
+
+Controls layout geometry and cursor appearance:
+
+```toml
+[layout]
+top_bar_height = ...
+status_bar_height = ...
+region_gap = ...
+
+[docks]
+left_size_px = ...
+right_size_px = ...
+bottom_size_px = ...
+left_visible = true
+right_visible = false
+bottom_visible = true
+
+[cursor]
+shape = "nvim"    # "nvim" = block, "zed" = beam, "underline"
+beam_width = ...
+block_width = ...
+
+[spacing]
+editor_padding = ...
+panel_padding = ...
+```
+
+### `config/themes/default-dark.toml`
+
+Controls all colors:
+
+```toml
+[editor]
+bg = ...
+fg = ...
+
+[ui]
+sidebar_bg = ...
+panel_bg = ...
+status_bar_bg = ...
+selection_bg = ...
+
+[syntax]
+keyword = ...
+string = ...
+comment = ...
+```
+
+### `config/keymaps/default.toml`
+
+Maps key combos to `Command` IDs per mode context.
+
+---
+
+## Render Pipeline (wgpu)
+
+Each frame in `Renderer::render()` runs these passes in order:
+
+1. **Region quads** — background color fills for each visible region (via `region_pipeline`)
+2. **Gutter text** — line numbers (via `gutter_text_pipeline`)
+3. **Editor text** — syntax-highlighted content (via `text_pipeline`, scissored to Center bounds)
+4. **Current line highlight** — colored quad behind active line
+5. **Visual selection quads** — highlight quads for selected text
+6. **Cursor / caret** — block, beam, or underline shape (via `caret_pipeline`)
+7. **Sidebar text** — file explorer tree (via `sidebar_text_pipeline`)
+8. **Terminal** — ANSI grid cells (via `terminal_text_pipeline`)
+9. **Topbar** — tab/file labels
+10. **Statusbar** — mode pill, file path, cursor position, diagnostics
+11. **Palette overlay** — command palette or file picker (rendered last, on top)
+
+---
+
+## Dependencies
+
+| Crate | Purpose |
+|-------|---------|
+| `ropey` | Gap-buffer text rope for efficient insert/delete |
+| `winit` | Cross-platform window + keyboard events |
+| `wgpu` | GPU rendering (WebGPU API) |
+| `cosmic-text` | Font loading, text shaping, glyph rasterization |
+| `swash` | Low-level glyph rasterizer used by cosmic-text |
+| `tree-sitter` + `tree-sitter-rust` | Incremental syntax parsing for highlighting |
+| `portable-pty` | PTY spawn + I/O for the embedded terminal |
+| `tokio` | Async runtime for LSP + file watching |
+| `notify` | File system watcher (external change detection) |
+| `serde` + `serde_json` | JSON-RPC (LSP protocol) |
+| `toml` | Config file parsing |
+| `sysinfo` | System info for statusbar |
+| `bytemuck` | Safe vertex buffer casting |
+| `pollster` | Block-on-async for GPU device init |
+| `criterion` | Benchmarks (dev-dependency) |
+
+---
+
+## Where to Start Reading (AI / New Contributor)
+
+Read in this order to build a mental model quickly:
+
+1. **`src/core/mode.rs`** — understand the mode FSM first; it's small and self-contained
+2. **`src/core/commands.rs`** — see every possible action the editor can perform
+3. **`src/app/app_state.rs`** — the central state; understand fields and key methods
+4. **`src/workbench/region_model.rs`** + **`layout_engine.rs`** — how the UI is divided
+5. **`src/text/text_system.rs`** + **`text/atlas.rs`** — how text goes from string → GPU
+6. **`src/render/renderer.rs`** — how all of the above is assembled into a frame
+7. **`src/app/event_loop/application.rs`** — the main loop tying it all together
+
+---
+
+## Known Gaps / Next Steps
+
+- **LSP**: `client.rs` spawns the process and sends `didOpen`, but response handling and diagnostics display are not yet wired to the renderer.
+- **Scrolling**: vertical scroll works via `scroll_line`; horizontal scroll not yet implemented.
+- **Multiple splits**: layout engine supports Left/Center/Right/Bottom but no arbitrary splits yet.
+- **Atlas overflow**: when the glyph atlas fills up, new glyphs are dropped silently. Atlas eviction/resize not yet implemented.
+- **Undo/redo**: not implemented; `ropey` supports it via `Rope::clone()` snapshots but no history stack exists yet.
+- **Visual line mode**: `EnterVisualLine` command exists but selection logic is partial.

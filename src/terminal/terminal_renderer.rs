@@ -87,17 +87,79 @@ impl TerminalViewRenderer {
         text_system: &mut TextSystem,
         default_fg: [f32; 4],
         default_bg: [f32; 4],
+        clip_width: f32,
     ) -> Vec<GlyphInstance> {
         let mut instances = Vec::new();
+        let clip_right = self.origin_x + clip_width;
 
         for (row, col, cell) in grid.iter_visible_cells() {
-            // Bỏ qua ô trống hoặc null char.
-            if cell.ch == ' ' || cell.ch == '\0' {
+            let has_background = cell.style.bg != crate::terminal::ansi_parser::AnsiColor::Default;
+            let has_foreground_glyph = cell.ch != ' ' && cell.ch != '\0';
+
+            // Bỏ qua ô hoàn toàn trống, nhưng vẫn giữ các ô có background ANSI.
+            if !has_background && !has_foreground_glyph {
                 continue;
             }
 
             let screen_x = self.origin_x + col as f32 * self.cell_width;
             let screen_y = self.origin_y + row as f32 * self.cell_height;
+
+            // Skip cells that start beyond the clipping boundary.
+            if screen_x >= clip_right {
+                continue;
+            }
+
+            if has_background {
+                let bg_rgba = cell
+                    .style
+                    .bg
+                    .to_rgba_f32_with_defaults(default_fg, default_bg, false);
+
+                // Dùng full block glyph để giả lập background cell màu.
+                text_system.set_size(Some(self.cell_width), Some(self.cell_height));
+                text_system.set_text("█");
+                let bg_glyphs = text_system.collect_visible_glyphs(0.0, 0.0, bg_rgba);
+
+                for vg in bg_glyphs {
+                    let atlas_entry = if let Some(existing) = atlas.get(vg.cache_key) {
+                        existing
+                    } else {
+                        match rasterize_glyph_alpha(text_system, vg.cache_key) {
+                            Some(rasterized) => {
+                                match atlas.get_or_insert(queue, vg.cache_key, &rasterized) {
+                                    Ok(entry) => entry,
+                                    Err(err) => {
+                                        eprintln!("[TerminalRenderer] atlas insert failed: {err}");
+                                        continue;
+                                    }
+                                }
+                            }
+                            None => continue,
+                        }
+                    };
+
+                    let (uv_min, uv_max) = atlas.uv_min_max(atlas_entry.region);
+                    let glyph_w = atlas_entry.region.width as f32;
+                    let glyph_h = atlas_entry.region.height as f32;
+                    let glyph_x =
+                        screen_x + vg.physical_x as f32 + atlas_entry.placement_left as f32;
+                    let glyph_y =
+                        screen_y + vg.physical_y as f32 - atlas_entry.placement_top as f32;
+
+                    instances.push(GlyphInstance::new(
+                        [glyph_x, glyph_y],
+                        [glyph_w, glyph_h],
+                        uv_min,
+                        uv_max,
+                        bg_rgba,
+                    ));
+                }
+            }
+
+            if !has_foreground_glyph {
+                continue;
+            }
+
             let fg_rgba = cell
                 .style
                 .fg

@@ -1,2 +1,0 @@
-abcHello from phase4 open sample.
-You can type, save (Cmd/Ctrl+S), and open (Cmd/Ctrl+O).

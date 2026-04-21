@@ -1,19 +1,17 @@
 # Netherize Editor — Neovim-Style Keymap Profile
 # ============================================================
-# Profile cho người dùng Neovim thuần thục.
-# Điểm khác biệt chính so với "default":
-#   • hjkl hoạt động trong CẢ Insert mode (không chỉ Normal/Visual)
-#   • Phím mũi tên bị vô hiệu hoá trong Insert mode để ép học hjkl
-#   • Backtick mở terminal ở cả Normal và Visual mode
+# Profile mô phỏng workflow Neovim của user (NvChad-inspired, leader=Space).
+# Chỉ bind những command đã có backing trong Netherize; các binding LSP/Git/AI
+# trong profile Neovim gốc sẽ được nối dần khi command tương ứng xuất hiện.
 #
-# Để chọn profile này: NETHERIZE_PROFILE=nvim
+# Chọn profile: NETHERIZE_PROFILE=nvim
 # ============================================================
 
 [profile]
 name = "nvim"
-description = "Neovim-flavored bindings. hjkl movement enabled in Insert mode; arrow keys disabled in Insert to enforce muscle memory."
+description = "Neovim-flavored bindings. Leader = Space. hjkl trong Normal/Visual; Insert vẫn giữ arrow keys."
 
-# ── Global shortcuts ──────────────────────────────────────────────────────────
+# ── Global shortcuts (mod = Cmd trên macOS, Ctrl nơi khác) ───────────────────
 [[bindings]]
 key = "mod+s"
 command = "editor.save_file"
@@ -24,17 +22,46 @@ command = "editor.open_file"
 
 [[bindings]]
 key = "mod+p"
-command = "app.open_file_finder"
+command = "app.open_file_picker"
+
+[[bindings]]
+key = "mod+shift+p"
+command = "app.open_command_palette"
 
 [[bindings]]
 key = "mod+e"
 command = "app.toggle_explorer"
 
 [[bindings]]
+key = "mod+f"
+command = "app.focus_explorer"
+
+[[bindings]]
 key = "mod+backslash"
 command = "app.toggle_terminal"
 
-# ── Insert mode — hjkl movement (extra, phím mũi tên vẫn giữ) ────────────────
+[[bindings]]
+key = "mod+backtick"
+command = "app.toggle_terminal"
+
+[[bindings]]
+key = "mod+w"
+command = "app.focus_back"
+
+# Buffer cycling — <C-l>/<C-h>
+[[bindings]]
+key = "mod+l"
+command = "buffer.next"
+
+[[bindings]]
+key = "mod+h"
+command = "buffer.prev"
+
+[[bindings]]
+key = "F12"
+command = "app.focus_terminal"
+
+# ── Insert mode — arrow keys vẫn available ───────────────────────────────────
 [[bindings]]
 key = "Escape"
 mode = "insert"
@@ -50,7 +77,6 @@ key = "Enter"
 mode = "insert"
 command = "editor.newline"
 
-# Arrow keys still available (unlike strict vim mode)
 [[bindings]]
 key = "ArrowLeft"
 mode = "insert"
@@ -71,7 +97,7 @@ key = "ArrowDown"
 mode = "insert"
 command = "editor.move_down"
 
-# ── Normal mode ───────────────────────────────────────────────────────────────
+# ── Normal mode ──────────────────────────────────────────────────────────────
 [[bindings]]
 key = "Escape"
 mode = "normal"
@@ -88,6 +114,56 @@ mode = "normal"
 command = "mode.enter_visual"
 
 [[bindings]]
+key = "V"
+mode = "normal"
+command = "mode.enter_visual_line"
+
+[[bindings]]
+key = "o"
+mode = "normal"
+command = "editor.insert_line_below"
+
+[[bindings]]
+key = "O"
+mode = "normal"
+command = "editor.insert_line_above"
+
+[[bindings]]
+key = "I"
+mode = "normal"
+command = "editor.insert_at_line_start"
+
+[[bindings]]
+key = "A"
+mode = "normal"
+command = "editor.append_at_line_end"
+
+[[bindings]]
+key = "a"
+mode = "normal"
+command = "editor.append_after_cursor"
+
+[[bindings]]
+key = "S"
+mode = "normal"
+command = "editor.substitute_line"
+
+[[bindings]]
+key = "x"
+mode = "normal"
+command = "editor.delete_char"
+
+[[bindings]]
+key = "u"
+mode = "normal"
+command = "editor.undo"
+
+[[bindings]]
+key = "Ctrl+r"
+mode = "normal"
+command = "editor.redo"
+
+[[bindings]]
 key = "h"
 mode = "normal"
 command = "editor.move_left"
@@ -132,7 +208,53 @@ key = "backtick"
 mode = "normal"
 command = "app.toggle_terminal"
 
-# ── Visual mode ───────────────────────────────────────────────────────────────
+[[bindings]]
+key = "z z"
+mode = "normal"
+command = "editor.center_cursor_line"
+
+[[bindings]]
+key = ":"
+mode = "normal"
+command = "app.open_vim_command"
+
+# ── Operator + motion chords (normal mode) ───────────────────────────────────
+# Engine: input_map::resolve_sequence_* (literal step match). Mỗi entry là
+# một "nhịp" theo cú pháp TOML — parser tự chia sequence theo whitespace.
+# Để mở rộng tiếp (vd. "d 0", "d $", "d G"), chỉ cần thêm dòng mới, không
+# cần đụng vào Rust code.
+
+# `dd` đã có trong builtin_defaults; khai báo lại để nvim profile tự-đủ.
+[[bindings]]
+key = "d d"
+mode = "normal"
+command = "editor.delete_current_line"
+
+# `dw` — xóa từ con trỏ tới đầu từ kế tiếp (bao gồm whitespace theo sau).
+[[bindings]]
+key = "d w"
+mode = "normal"
+command = "editor.delete_word_forward"
+
+[[bindings]]
+key = "d b"
+mode = "normal"
+command = "editor.delete_word_backward"
+
+[[bindings]]
+key = "c w"
+mode = "normal"
+command = "editor.change_word_forward"
+
+[[bindings]]
+key = "c b"
+mode = "normal"
+command = "editor.change_word_backward"
+
+# `r<char>` dùng payload ký tự động nên được route ở InputHandler pending state,
+# không map thành static key binding trong TOML.
+
+# ── Visual mode ──────────────────────────────────────────────────────────────
 [[bindings]]
 key = "Escape"
 mode = "visual"
@@ -159,6 +281,61 @@ mode = "visual"
 command = "editor.move_right"
 
 [[bindings]]
+key = "w"
+mode = "visual"
+command = "editor.move_word_forward"
+
+[[bindings]]
+key = "b"
+mode = "visual"
+command = "editor.move_word_backward"
+
+[[bindings]]
+key = "e"
+mode = "visual"
+command = "editor.move_word_end"
+
+[[bindings]]
+key = "0"
+mode = "visual"
+command = "editor.move_to_line_start"
+
+[[bindings]]
+key = "$"
+mode = "visual"
+command = "editor.move_to_line_end"
+
+[[bindings]]
+key = "^"
+mode = "visual"
+command = "editor.move_to_first_non_whitespace"
+
+[[bindings]]
+key = "g g"
+mode = "visual"
+command = "editor.move_to_first_line"
+
+[[bindings]]
+key = "G"
+mode = "visual"
+command = "editor.move_to_last_line"
+
+[[bindings]]
+key = "d"
+mode = "visual"
+command = "editor.delete_selection"
+
+[[bindings]]
+key = "c"
+mode = "visual"
+command = "editor.change_selection"
+
+[[bindings]]
+key = "x"
+mode = "visual"
+command = "editor.delete_selection"
+
+[[bindings]]
 key = "ArrowLeft"
 mode = "visual"
 command = "editor.move_left"
@@ -183,23 +360,27 @@ key = "backtick"
 mode = "visual"
 command = "app.toggle_terminal"
 
-# ── Leader prefix (Space = leader) ───────────────────────────────────────────
+# ── Leader (Space) — Window / Panel focus ────────────────────────────────────
+# Map `<leader>hjkl` theo phong cách window.focus_left/down/up/right của user.
+# Trong workbench layout: left sidebar = Explorer, right sidebar = Inspector,
+# bottom = Terminal, center = Editor.
 [[bindings]]
-key = "<leader>f"
-command = "app.open_file_finder"
+key = "<leader>h"
+command = "app.focus_left"
 
 [[bindings]]
-key = "<leader>p"
-command = "app.open_command_palette"
+key = "<leader>l"
+command = "app.focus_right"
 
 [[bindings]]
-key = "<leader>t"
-command = "app.toggle_terminal"
+key = "<leader>j"
+command = "app.focus_down"
 
 [[bindings]]
-key = "<leader>w"
-command = "editor.save_file"
+key = "<leader>k"
+command = "app.focus_up"
 
+# Alias ngắn (y hệt workflow cũ).
 [[bindings]]
 key = "<leader>e"
 command = "app.focus_explorer"
@@ -212,7 +393,46 @@ command = "app.focus_inspector"
 key = "<leader>b"
 command = "app.focus_terminal"
 
-# ── Focus navigation ──────────────────────────────────────────────────────────
+# ── Leader — Palette / Telescope analogs ─────────────────────────────────────
 [[bindings]]
-key = "mod+w"
-command = "app.focus_back"
+key = "<leader>p"
+command = "app.open_command_palette"
+
+[[bindings]]
+key = "<leader>f f"
+command = "app.open_file_finder"
+
+[[bindings]]
+key = "<leader>f w"
+command = "app.search_in_files"
+
+# `<leader>fp` trong profile user = document_symbols; ta dùng workspace symbols.
+[[bindings]]
+key = "<leader>f p"
+command = "app.open_workspace_symbols"
+
+# ── Leader — Terminal / Save / Tab ───────────────────────────────────────────
+[[bindings]]
+key = "<leader>t"
+command = "app.toggle_terminal"
+
+[[bindings]]
+key = "<leader>w"
+command = "editor.save_file"
+
+# `<leader>tn` trong profile user = tab.next.
+[[bindings]]
+key = "<leader>t n"
+command = "buffer.next"
+
+[[bindings]]
+key = "<leader>t p"
+command = "buffer.prev"
+
+[[bindings]]
+key = "<leader>t c"
+command = "buffer.close_current"
+
+[[bindings]]
+key = "<leader>b n"
+command = "buffer.new"

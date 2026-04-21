@@ -1,17 +1,14 @@
-# Netherize Editor — Default Keymap Profile
-# ============================================================
-# Đây là profile phím mặc định.
-# Các binding ở đây sẽ ghi đè (override) lên built-in Rust defaults.
-# Nếu file này bị lỗi cú pháp, app tự fallback về built-in defaults.
-#
-# Để chọn profile này: NETHERIZE_PROFILE=default (hoặc bỏ env var)
+# Netherize Editor — Unified Neovim Profile (Final Clean)
 # ============================================================
 
 [profile]
-name = "default"
-description = "Standard editor keybindings. Arrow keys work everywhere; hjkl movement in Normal/Visual modes."
+name = "nvim-ultimate"
+description = "Clean full Neovim-style profile (block TOML, no inline bindings)"
 
-# ── Global shortcuts (apply across all modes) ─────────────────────────────────
+[meta]
+leader = "space"
+
+# ───────────────── GLOBAL ─────────────────
 [[bindings]]
 key = "mod+s"
 command = "editor.save_file"
@@ -22,252 +19,391 @@ command = "editor.open_file"
 
 [[bindings]]
 key = "mod+p"
-command = "app.open_file_finder"
+command = "app.open_file_picker"
 
 [[bindings]]
-key = "mod+backslash"
-command = "app.toggle_terminal"
-
-[[bindings]]
-key = "mod+e"
-command = "app.toggle_explorer"
-
-# ── Insert mode ───────────────────────────────────────────────────────────────
-[[bindings]]
-key = "Escape"
-mode = "insert"
-command = "mode.enter_normal"
-
-[[bindings]]
-key = "Backspace"
-mode = "insert"
-command = "editor.backspace"
-
-[[bindings]]
-key = "Enter"
-mode = "insert"
-command = "editor.newline"
-
-[[bindings]]
-key = "ArrowLeft"
-mode = "insert"
-command = "editor.move_left"
-
-[[bindings]]
-key = "ArrowRight"
-mode = "insert"
-command = "editor.move_right"
-
-[[bindings]]
-key = "ArrowUp"
-mode = "insert"
-command = "editor.move_up"
-
-[[bindings]]
-key = "ArrowDown"
-mode = "insert"
-command = "editor.move_down"
-
-# ── Normal mode ───────────────────────────────────────────────────────────────
-[[bindings]]
-key = "Escape"
-mode = "normal"
-command = "mode.enter_normal"
-
-[[bindings]]
-key = "i"
-mode = "normal"
-command = "mode.enter_insert"
-
-[[bindings]]
-key = "v"
-mode = "normal"
-command = "mode.enter_visual"
-
-[[bindings]]
-key = "h"
-mode = "normal"
-command = "editor.move_left"
-
-[[bindings]]
-key = "j"
-mode = "normal"
-command = "editor.move_down"
-
-[[bindings]]
-key = "k"
-mode = "normal"
-command = "editor.move_up"
-
-[[bindings]]
-key = "l"
-mode = "normal"
-command = "editor.move_right"
-
-[[bindings]]
-key = "ArrowLeft"
-mode = "normal"
-command = "editor.move_left"
-
-[[bindings]]
-key = "ArrowRight"
-mode = "normal"
-command = "editor.move_right"
-
-[[bindings]]
-key = "ArrowUp"
-mode = "normal"
-command = "editor.move_up"
-
-[[bindings]]
-key = "ArrowDown"
-mode = "normal"
-command = "editor.move_down"
-
-[[bindings]]
-key = "backtick"
-mode = "normal"
-command = "app.toggle_terminal"
-
-# ── Terminal focus mode ───────────────────────────────────────────────────────
-[[bindings]]
-key = "Escape"
-mode = "terminal"
-command = "app.focus_editor"
-
-[[bindings]]
-key = "mod+backslash"
-mode = "terminal"
-command = "app.toggle_terminal"
-
-[[bindings]]
-key = "backtick"
-mode = "terminal"
-command = "app.toggle_terminal"
-
-# ── Explorer focus mode ───────────────────────────────────────────────────────
-[[bindings]]
-key = "Escape"
-mode = "explorer"
-command = "app.focus_editor"
-
-[[bindings]]
-key = "j"
-mode = "explorer"
-command = "explorer.move_down"
-
-[[bindings]]
-key = "ArrowDown"
-mode = "explorer"
-command = "explorer.move_down"
-
-[[bindings]]
-key = "k"
-mode = "explorer"
-command = "explorer.move_up"
-
-[[bindings]]
-key = "ArrowUp"
-mode = "explorer"
-command = "explorer.move_up"
-
-[[bindings]]
-key = "h"
-mode = "explorer"
-command = "explorer.collapse_or_parent"
-
-[[bindings]]
-key = "ArrowLeft"
-mode = "explorer"
-command = "explorer.collapse_or_parent"
-
-[[bindings]]
-key = "l"
-mode = "explorer"
-command = "explorer.expand_or_child"
-
-[[bindings]]
-key = "ArrowRight"
-mode = "explorer"
-command = "explorer.expand_or_child"
-
-[[bindings]]
-key = "Enter"
-mode = "explorer"
-command = "explorer.toggle_or_open"
-
-# ── Visual mode ───────────────────────────────────────────────────────────────
-[[bindings]]
-key = "Escape"
-mode = "visual"
-command = "mode.enter_normal"
-
-[[bindings]]
-key = "h"
-mode = "visual"
-command = "editor.move_left"
-
-[[bindings]]
-key = "j"
-mode = "visual"
-command = "editor.move_down"
-
-[[bindings]]
-key = "k"
-mode = "visual"
-command = "editor.move_up"
-
-[[bindings]]
-key = "l"
-mode = "visual"
-command = "editor.move_right"
-
-[[bindings]]
-key = "ArrowLeft"
-mode = "visual"
-command = "editor.move_left"
-
-[[bindings]]
-key = "ArrowRight"
-mode = "visual"
-command = "editor.move_right"
-
-[[bindings]]
-key = "ArrowUp"
-mode = "visual"
-command = "editor.move_up"
-
-[[bindings]]
-key = "ArrowDown"
-mode = "visual"
-command = "editor.move_down"
-
-# ── Leader prefix bindings (Space = leader key) ───────────────────────────────
-[[bindings]]
-key = "<leader>f"
-command = "app.open_file_finder"
-
-[[bindings]]
-key = "<leader>p"
+key = "mod+shift+p"
 command = "app.open_command_palette"
 
 [[bindings]]
+key = "mod+b"
+command = "app.toggle_explorer"
+
+[[bindings]]
+key = "mod+f"
+command = "app.focus_explorer"
+
+[[bindings]]
+key = "mod+backslash"
+command = "app.toggle_terminal"
+
+[[bindings]]
+key = "F12"
+command = "app.toggle_terminal"
+
+[[bindings]]
+key = "mod+w"
+command = "app.focus_back"
+
+[[bindings]]
+key = "mod+l"
+command = "app.next_panel_tab"
+
+[[bindings]]
+key = "mod+h"
+command = "app.prev_panel_tab"
+
+[[bindings]]
+key = "Ctrl+="
+command = "ui.scale_up"
+
+[[bindings]]
+key = "Ctrl+-"
+command = "ui.scale_down"
+
+[[bindings]]
+key = "Ctrl+0"
+command = "ui.scale_reset"
+
+[[bindings]]
+key = "F10"
+command = "runner.smart_compile_and_run"
+
+# [[bindings]]
+# key = "F12"
+# command = "app.focus_terminal"
+
+# ───────────────── INSERT ─────────────────
+[[bindings]]
+mode = "insert"
+key = "Escape"
+command = "mode.enter_normal"
+
+[[bindings]]
+mode = "insert"
+key = "Backspace"
+command = "editor.backspace"
+
+[[bindings]]
+mode = "insert"
+key = "Enter"
+command = "editor.newline"
+
+[[bindings]]
+mode = "insert"
+key = "ArrowLeft"
+command = "editor.move_left"
+
+[[bindings]]
+mode = "insert"
+key = "ArrowRight"
+command = "editor.move_right"
+
+[[bindings]]
+mode = "insert"
+key = "ArrowUp"
+command = "editor.move_up"
+
+[[bindings]]
+mode = "insert"
+key = "ArrowDown"
+command = "editor.move_down"
+
+[[bindings]]
+mode = "insert"
+key = "Ctrl+j"
+command = "line.move_down"
+
+[[bindings]]
+mode = "insert"
+key = "Ctrl+k"
+command = "line.move_up"
+
+# ───────────────── NORMAL ─────────────────
+[[bindings]]
+mode = "normal"
+key = "i"
+command = "mode.enter_insert"
+
+[[bindings]]
+mode = "normal"
+key = "v"
+command = "mode.enter_visual"
+
+[[bindings]]
+mode = "normal"
+key = "V"
+command = "mode.enter_visual_line"
+
+[[bindings]]
+mode = "normal"
+key = "h"
+command = "editor.move_left"
+
+[[bindings]]
+mode = "normal"
+key = "j"
+command = "editor.move_down"
+
+[[bindings]]
+mode = "normal"
+key = "k"
+command = "editor.move_up"
+
+[[bindings]]
+mode = "normal"
+key = "l"
+command = "editor.move_right"
+
+# word motions
+[[bindings]]
+mode = "normal"
+key = "w"
+command = "editor.move_word_forward"
+
+[[bindings]]
+mode = "normal"
+key = "b"
+command = "editor.move_word_backward"
+
+[[bindings]]
+mode = "normal"
+key = "e"
+command = "editor.move_word_end"
+
+# line motions
+[[bindings]]
+mode = "normal"
+key = "0"
+command = "editor.move_to_line_start"
+
+[[bindings]]
+mode = "normal"
+key = "$"
+command = "editor.move_to_line_end"
+
+[[bindings]]
+mode = "normal"
+key = "^"
+command = "editor.move_to_first_non_whitespace"
+
+# edit
+[[bindings]]
+mode = "normal"
+key = "I"
+command = "editor.insert_at_line_start"
+
+[[bindings]]
+mode = "normal"
+key = "A"
+command = "editor.append_at_line_end"
+
+[[bindings]]
+mode = "normal"
+key = "a"
+command = "editor.append_after_cursor"
+
+[[bindings]]
+mode = "normal"
+key = "o"
+command = "editor.insert_line_below"
+
+[[bindings]]
+mode = "normal"
+key = "O"
+command = "editor.insert_line_above"
+
+[[bindings]]
+mode = "normal"
+key = "x"
+command = "editor.delete_char"
+
+# operators
+[[bindings]]
+mode = "normal"
+key = "d d"
+command = "editor.delete_current_line"
+
+[[bindings]]
+mode = "normal"
+key = "d w"
+command = "editor.delete_word_forward"
+
+[[bindings]]
+mode = "normal"
+key = "d b"
+command = "editor.delete_word_backward"
+
+[[bindings]]
+mode = "normal"
+key = "c w"
+command = "editor.change_word_forward"
+
+[[bindings]]
+mode = "normal"
+key = "c b"
+command = "editor.change_word_backward"
+
+# `r<char>` cần payload ký tự động nên được xử lý trong InputHandler pending state,
+# không khai báo static binding ở đây.
+
+# undo redo
+[[bindings]]
+mode = "normal"
+key = "u"
+command = "editor.undo"
+
+[[bindings]]
+mode = "normal"
+key = "Ctrl+r"
+command = "editor.redo"
+
+# scroll
+[[bindings]]
+mode = "normal"
+key = "g g"
+command = "editor.move_to_first_line"
+
+[[bindings]]
+mode = "normal"
+key = "G"
+command = "editor.move_to_last_line"
+
+[[bindings]]
+mode = "normal"
+key = "z z"
+command = "editor.center_cursor_line"
+
+[[bindings]]
+mode = "normal"
+key = "ctrl+u"
+command = "editor.scroll_half_page_up"
+
+[[bindings]]
+mode = "normal"
+key = "ctrl+d"
+command = "editor.scroll_half_page_down"
+
+# ───────────────── VISUAL ─────────────────
+[[bindings]]
+mode = "visual"
+key = "Escape"
+command = "mode.enter_normal"
+
+[[bindings]]
+mode = "visual"
+key = "h"
+command = "editor.move_left"
+
+[[bindings]]
+mode = "visual"
+key = "j"
+command = "editor.move_down"
+
+[[bindings]]
+mode = "visual"
+key = "k"
+command = "editor.move_up"
+
+[[bindings]]
+mode = "visual"
+key = "l"
+command = "editor.move_right"
+
+[[bindings]]
+mode = "visual"
+key = "w"
+command = "editor.move_word_forward"
+
+[[bindings]]
+mode = "visual"
+key = "b"
+command = "editor.move_word_backward"
+
+[[bindings]]
+mode = "visual"
+key = "e"
+command = "editor.move_word_end"
+
+[[bindings]]
+mode = "visual"
+key = "0"
+command = "editor.move_to_line_start"
+
+[[bindings]]
+mode = "visual"
+key = "$"
+command = "editor.move_to_line_end"
+
+[[bindings]]
+mode = "visual"
+key = "^"
+command = "editor.move_to_first_non_whitespace"
+
+[[bindings]]
+mode = "visual"
+key = "G"
+command = "editor.move_to_last_line"
+
+[[bindings]]
+mode = "visual"
+key = "g g"
+command = "editor.move_to_first_line"
+
+[[bindings]]
+mode = "visual"
+key = "z z"
+command = "editor.center_cursor_line"
+
+[[bindings]]
+mode = "visual"
+key = "d"
+command = "editor.delete_selection"
+
+[[bindings]]
+mode = "visual"
+key = "c"
+command = "editor.change_selection"
+
+[[bindings]]
+mode = "visual"
+key = "x"
+command = "editor.delete_selection"
+
+# ───────────────── TERMINAL ─────────────────
+[[bindings]]
+mode = "terminal"
+key = "Escape"
+command = "app.focus_editor"
+
+# ───────────────── EXPLORER ─────────────────
+[[bindings]]
+mode = "explorer"
+key = "j"
+command = "explorer.move_down"
+
+[[bindings]]
+mode = "explorer"
+key = "k"
+command = "explorer.move_up"
+
+# ───────────────── LEADER ─────────────────
+[[bindings]]
+mode = "normal"
+key = "<leader>f f"
+command = "app.open_file_finder"
+
+[[bindings]]
+mode = "normal"
+key = "<leader>f w"
+command = "app.search_in_files"
+
+[[bindings]]
+mode = "normal"
 key = "<leader>t"
 command = "app.toggle_terminal"
 
 [[bindings]]
-key = "<leader>e"
-command = "app.focus_explorer"
-
-[[bindings]]
-key = "<leader>i"
-command = "app.focus_inspector"
-
-[[bindings]]
-key = "<leader>b"
-command = "app.focus_terminal"
-
-# ── Focus navigation ──────────────────────────────────────────────────────────
-[[bindings]]
-key = "mod+w"
-command = "app.focus_back"
+mode = "normal"
+key = "<leader>w"
+command = "editor.save_file"

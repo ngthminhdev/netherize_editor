@@ -1,8 +1,11 @@
 use winit::dpi::PhysicalSize;
 
-use crate::workbench::{
-    panel_state::WorkbenchPanelState,
-    region_model::{RegionBounds, RegionId, RegionModel, RegionNode},
+use crate::{
+    config::theme_config::UiThemeTokens,
+    workbench::{
+        panel_state::WorkbenchPanelState,
+        region_model::{RegionBounds, RegionId, RegionModel, RegionNode},
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -68,6 +71,25 @@ impl Default for WorkbenchLayoutConfig {
     }
 }
 
+impl WorkbenchLayoutConfig {
+    /// Build a layout config from the themed `[ui]` block so chrome sizes are
+    /// data-driven instead of baked into Rust constants.
+    pub fn from_ui_theme(ui: &UiThemeTokens) -> Self {
+        let defaults = Self::default();
+        Self {
+            region_gap: defaults.region_gap,
+            top_bar_height: ui.top_bar_height,
+            status_bar_height: ui.status_bar_height,
+            center_min_width: defaults.center_min_width,
+            center_min_height: defaults.center_min_height,
+            // Allow shrinking below the configured sidebar_width, but not
+            // below a usability floor.
+            sidebar_min_width: defaults.sidebar_min_width,
+            bottom_min_height: defaults.bottom_min_height,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct WorkbenchLayoutEngine {
     pub config: WorkbenchLayoutConfig,
@@ -104,9 +126,11 @@ impl WorkbenchLayoutEngine {
             panels.right.size_px,
         );
 
-        let center_x = left_w + left_gap;
+        let center_x = left_w;
         let center_y = body_y;
-        let right_x = center_x + center_w + right_gap;
+        // Keep the right sidebar hard-aligned to the viewport edge so we
+        // don't leave a 1px seam/sliver due to floating-point rounding.
+        let right_x = (width - right_w).max(0.0);
         let bottom_y = center_y + center_h + vertical_gap;
 
         let top_bar = RegionNode::new(
@@ -156,15 +180,17 @@ impl WorkbenchLayoutEngine {
 
         let mut handles = Vec::new();
         if panels.left.visible && left_w > 0.0 && left_gap > 0.0 && center_h > 0.0 {
+            let handle_x = (left_w - left_gap * 0.5).clamp(0.0, (width - left_gap).max(0.0));
             handles.push(SplitHandle {
                 id: SplitHandleId::LeftCenter,
-                bounds: RegionBounds::new(left_w, center_y, left_gap, center_h),
+                bounds: RegionBounds::new(handle_x, center_y, left_gap, center_h),
             });
         }
         if panels.right.visible && right_w > 0.0 && right_gap > 0.0 && center_h > 0.0 {
+            let handle_x = (right_x - right_gap * 0.5).clamp(0.0, (width - right_gap).max(0.0));
             handles.push(SplitHandle {
                 id: SplitHandleId::CenterRight,
-                bounds: RegionBounds::new(center_x + center_w, center_y, right_gap, center_h),
+                bounds: RegionBounds::new(handle_x, center_y, right_gap, center_h),
             });
         }
         if panels.bottom.visible && bottom_h > 0.0 && vertical_gap > 0.0 {
@@ -200,11 +226,8 @@ impl WorkbenchLayoutEngine {
                 } else {
                     0.0
                 };
-                let left_gap = if panels.left.visible { gap } else { 0.0 };
-                let right_gap = if panels.right.visible { gap } else { 0.0 };
-                let max_left =
-                    (width - right_w - left_gap - right_gap - self.config.center_min_width)
-                        .max(self.config.sidebar_min_width);
+                let max_left = (width - right_w - self.config.center_min_width)
+                    .max(self.config.sidebar_min_width);
                 let min_left = self.config.sidebar_min_width.min(max_left);
                 let next = (panels.left.size_px + delta_x).clamp(min_left, max_left);
                 if (next - panels.left.size_px).abs() < f32::EPSILON {
@@ -222,11 +245,8 @@ impl WorkbenchLayoutEngine {
                 } else {
                     0.0
                 };
-                let left_gap = if panels.left.visible { gap } else { 0.0 };
-                let right_gap = if panels.right.visible { gap } else { 0.0 };
-                let max_right =
-                    (width - left_w - left_gap - right_gap - self.config.center_min_width)
-                        .max(self.config.sidebar_min_width);
+                let max_right = (width - left_w - self.config.center_min_width)
+                    .max(self.config.sidebar_min_width);
                 let min_right = self.config.sidebar_min_width.min(max_right);
                 let next = (panels.right.size_px - delta_x).clamp(min_right, max_right);
                 if (next - panels.right.size_px).abs() < f32::EPSILON {
@@ -301,7 +321,7 @@ impl WorkbenchLayoutEngine {
         };
 
         let side_total = left_target + right_target;
-        let max_side_total = (width - self.config.center_min_width - left_gap - right_gap).max(0.0);
+        let max_side_total = (width - self.config.center_min_width).max(0.0);
 
         let (left_w, right_w) = if side_total <= max_side_total || side_total <= 0.0 {
             (left_target, right_target)
@@ -310,7 +330,15 @@ impl WorkbenchLayoutEngine {
             (left_target * scale, right_target * scale)
         };
 
-        let center_w = (width - left_w - right_w - left_gap - right_gap).max(1.0);
+        // Snap split coordinates to pixel boundaries to avoid sub-pixel seams
+        // (visible as a 1px "khuyet" strip on the right edge on some scales).
+        let left_w = left_w.round();
+        let right_w = right_w.round();
+
+        // Horizontal split intentionally has no visual gap between sidebars
+        // and center so center.width stays exact:
+        // center.width = window.width - left.width - right.width.
+        let center_w = (width - left_w - right_w).max(0.0);
         (left_w, right_w, center_w, left_gap, right_gap)
     }
 }
@@ -368,5 +396,77 @@ mod tests {
         assert!(large_center.y + large_center.height <= large_bottom.y + 0.001);
         assert!(large_center.width > small_center.width);
         assert!(large_center.height > small_center.height);
+    }
+
+    #[test]
+    fn right_sidebar_stays_flush_with_viewport_edge() {
+        let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
+        let mut state = WorkbenchPanelState::default();
+        state.right.visible = true;
+        state.right.size_px = 333.3;
+        state.left.size_px = 241.7;
+
+        let layout = engine.compute(PhysicalSize::new(1280, 800), &state);
+        let right = layout
+            .model
+            .find(RegionId::RightSidebar)
+            .expect("right sidebar region");
+
+        let viewport_w = 1280.0;
+        let right_edge = right.x + right.width;
+        assert!(
+            (right_edge - viewport_w).abs() <= 0.001,
+            "right sidebar should be flush: right_edge={right_edge}, viewport_w={viewport_w}"
+        );
+    }
+
+    #[test]
+    fn center_width_equals_window_minus_sidebars_when_right_visible() {
+        let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
+        let mut state = WorkbenchPanelState::default();
+        state.left.visible = true;
+        state.right.visible = true;
+        state.left.size_px = 280.0;
+        state.right.size_px = 320.0;
+
+        let viewport_w = 1600.0;
+        let layout = engine.compute(PhysicalSize::new(viewport_w as u32, 900), &state);
+
+        let left = layout
+            .model
+            .find(RegionId::LeftSidebar)
+            .expect("left sidebar region");
+        let center = layout.model.find(RegionId::Center).expect("center region");
+        let right = layout
+            .model
+            .find(RegionId::RightSidebar)
+            .expect("right sidebar region");
+
+        let expected = viewport_w - left.width - right.width;
+        assert!(
+            (center.width - expected).abs() <= 0.001,
+            "center.width mismatch: center={} expected={expected}",
+            center.width
+        );
+    }
+
+    #[test]
+    fn center_reaches_viewport_right_edge_when_right_sidebar_hidden() {
+        let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
+        let mut state = WorkbenchPanelState::default();
+        state.left.visible = true;
+        state.right.visible = false;
+        state.left.size_px = 280.0;
+        state.right.size_px = 320.0; // must be ignored while hidden
+
+        let viewport_w = 1600.0;
+        let layout = engine.compute(PhysicalSize::new(viewport_w as u32, 900), &state);
+
+        let center = layout.model.find(RegionId::Center).expect("center region");
+        let right_edge = center.x + center.width;
+        assert!(
+            (right_edge - viewport_w).abs() <= 0.001,
+            "center should reach viewport edge: right_edge={right_edge}, viewport_w={viewport_w}"
+        );
     }
 }

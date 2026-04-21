@@ -19,13 +19,16 @@ pub enum KeySpec {
     Physical(KeyCode),
     /// Command/Ctrl modifier + physical key: "mod+s"
     ModPlus(KeyCode),
-    /// Leader key followed by a physical key: "<leader>f"
-    LeaderThen(KeyCode),
+    /// Command/Ctrl + Shift + physical key: "mod+shift+p"
+    ModShiftPlus(KeyCode),
+    /// Printable character key (layout-aware), e.g. ":".
+    Char(char),
+    /// Leader token (Space) used as the first step of a chord sequence.
+    Leader,
 }
 
 impl KeySpec {
     /// Returns true if this spec matches the given input event.
-    /// Note: `LeaderThen` is checked separately in `lookup_leader`.
     pub fn matches(&self, input: &NormalizedInput) -> bool {
         match self {
             Self::Named(named) => !input.has_command_modifier() && input.named_key == Some(*named),
@@ -35,46 +38,187 @@ impl KeySpec {
             Self::ModPlus(code) => {
                 input.has_command_modifier() && input.physical_key == Some(*code)
             }
-            Self::LeaderThen(_) => false, // matched via lookup_leader, not here
+            Self::ModShiftPlus(code) => {
+                input.has_command_modifier()
+                    && input.modifiers.shift_key()
+                    && input.physical_key == Some(*code)
+            }
+            Self::Char(ch) => {
+                !input.has_command_modifier()
+                    && input
+                        .text
+                        .as_ref()
+                        .is_some_and(|text| text.chars().count() == 1 && text.starts_with(*ch))
+            }
+            Self::Leader => is_leader_input(input),
+        }
+    }
+
+    pub fn display_token(&self) -> String {
+        match self {
+            Self::Named(named) => named_key_display(*named),
+            Self::Physical(code) => physical_key_display(*code),
+            Self::ModPlus(code) => format!("mod+{}", physical_key_display(*code)),
+            Self::ModShiftPlus(code) => format!("mod+shift+{}", physical_key_display(*code)),
+            Self::Char(ch) => ch.to_string(),
+            Self::Leader => "<Space>".to_string(),
         }
     }
 }
 
-/// Parse a key string from a TOML binding entry into a `KeySpec`.
-/// Returns `None` if the string is unrecognised.
-pub fn parse_key_spec(s: &str) -> Option<KeySpec> {
-    // <leader>x
-    if let Some(rest) = s.strip_prefix("<leader>") {
-        return char_key_to_code(rest).map(KeySpec::LeaderThen);
+fn named_key_display(named: NamedKey) -> String {
+    match named {
+        NamedKey::Space => "<Space>".to_string(),
+        NamedKey::Escape => "<Esc>".to_string(),
+        NamedKey::Enter => "<Enter>".to_string(),
+        NamedKey::Backspace => "<Backspace>".to_string(),
+        NamedKey::Tab => "<Tab>".to_string(),
+        NamedKey::ArrowUp => "<Up>".to_string(),
+        NamedKey::ArrowDown => "<Down>".to_string(),
+        NamedKey::ArrowLeft => "<Left>".to_string(),
+        NamedKey::ArrowRight => "<Right>".to_string(),
+        NamedKey::F12 => "<F12>".to_string(),
+        _ => format!("<{named:?}>"),
     }
-    // mod+x
-    if let Some(rest) = s.strip_prefix("mod+") {
+}
+
+fn physical_key_display(code: KeyCode) -> String {
+    match code {
+        KeyCode::KeyA => "a".to_string(),
+        KeyCode::KeyB => "b".to_string(),
+        KeyCode::KeyC => "c".to_string(),
+        KeyCode::KeyD => "d".to_string(),
+        KeyCode::KeyE => "e".to_string(),
+        KeyCode::KeyF => "f".to_string(),
+        KeyCode::KeyG => "g".to_string(),
+        KeyCode::KeyH => "h".to_string(),
+        KeyCode::KeyI => "i".to_string(),
+        KeyCode::KeyJ => "j".to_string(),
+        KeyCode::KeyK => "k".to_string(),
+        KeyCode::KeyL => "l".to_string(),
+        KeyCode::KeyM => "m".to_string(),
+        KeyCode::KeyN => "n".to_string(),
+        KeyCode::KeyO => "o".to_string(),
+        KeyCode::KeyP => "p".to_string(),
+        KeyCode::KeyQ => "q".to_string(),
+        KeyCode::KeyR => "r".to_string(),
+        KeyCode::KeyS => "s".to_string(),
+        KeyCode::KeyT => "t".to_string(),
+        KeyCode::KeyU => "u".to_string(),
+        KeyCode::KeyV => "v".to_string(),
+        KeyCode::KeyW => "w".to_string(),
+        KeyCode::KeyX => "x".to_string(),
+        KeyCode::KeyY => "y".to_string(),
+        KeyCode::KeyZ => "z".to_string(),
+        KeyCode::Digit0 => "0".to_string(),
+        KeyCode::Digit1 => "1".to_string(),
+        KeyCode::Digit2 => "2".to_string(),
+        KeyCode::Digit3 => "3".to_string(),
+        KeyCode::Digit4 => "4".to_string(),
+        KeyCode::Digit5 => "5".to_string(),
+        KeyCode::Digit6 => "6".to_string(),
+        KeyCode::Digit7 => "7".to_string(),
+        KeyCode::Digit8 => "8".to_string(),
+        KeyCode::Digit9 => "9".to_string(),
+        KeyCode::Semicolon => ";".to_string(),
+        KeyCode::Backslash => "\\".to_string(),
+        KeyCode::Backquote => "`".to_string(),
+        KeyCode::Space => "<Space>".to_string(),
+        _ => format!("<{code:?}>"),
+    }
+}
+
+/// Parse a key string from a TOML binding entry into a chord sequence.
+/// Examples:
+/// - "d d" -> [Physical(KeyD), Physical(KeyD)]
+/// - "<leader>f f" -> [Leader, Physical(KeyF), Physical(KeyF)]
+pub fn parse_key_sequence(s: &str) -> Option<Vec<KeySpec>> {
+    let mut steps = Vec::new();
+    for token in s.split_whitespace() {
+        let parsed = parse_key_token(token)?;
+        steps.extend(parsed);
+    }
+    (!steps.is_empty()).then_some(steps)
+}
+
+/// Backward-compatible helper used by older tests/callers.
+/// Returns `Some` only for single-step key specs.
+pub fn parse_key_spec(s: &str) -> Option<KeySpec> {
+    let sequence = parse_key_sequence(s)?;
+    (sequence.len() == 1).then(|| sequence[0].clone())
+}
+
+fn parse_key_token(token: &str) -> Option<Vec<KeySpec>> {
+    let normalized = normalize_modifier_alias(token);
+
+    if normalized == "<leader>" {
+        return Some(vec![KeySpec::Leader]);
+    }
+    if let Some(rest) = normalized.strip_prefix("<leader>") {
+        if rest.is_empty() {
+            return Some(vec![KeySpec::Leader]);
+        }
+        return parse_non_leader_key(rest).map(|spec| vec![KeySpec::Leader, spec]);
+    }
+
+    parse_non_leader_key(&normalized).map(|spec| vec![spec])
+}
+
+fn parse_non_leader_key(token: &str) -> Option<KeySpec> {
+    if let Some(rest) = token.strip_prefix("mod+shift+") {
+        return char_key_to_code(rest).map(KeySpec::ModShiftPlus);
+    }
+    if let Some(rest) = token.strip_prefix("mod+") {
         return char_key_to_code(rest).map(KeySpec::ModPlus);
     }
-    // Named logical keys
-    let named = match s {
-        "Escape" => Some(NamedKey::Escape),
-        "Backspace" => Some(NamedKey::Backspace),
-        "Enter" => Some(NamedKey::Enter),
-        "Space" => Some(NamedKey::Space),
-        "ArrowUp" => Some(NamedKey::ArrowUp),
-        "ArrowDown" => Some(NamedKey::ArrowDown),
-        "ArrowLeft" => Some(NamedKey::ArrowLeft),
-        "ArrowRight" => Some(NamedKey::ArrowRight),
-        "Tab" => Some(NamedKey::Tab),
+
+    let named = match token.to_ascii_lowercase().as_str() {
+        "escape" => Some(NamedKey::Escape),
+        "backspace" => Some(NamedKey::Backspace),
+        "enter" => Some(NamedKey::Enter),
+        "space" => Some(NamedKey::Space),
+        "arrowup" => Some(NamedKey::ArrowUp),
+        "arrowdown" => Some(NamedKey::ArrowDown),
+        "arrowleft" => Some(NamedKey::ArrowLeft),
+        "arrowright" => Some(NamedKey::ArrowRight),
+        "tab" => Some(NamedKey::Tab),
+        "f12" => Some(NamedKey::F12),
         _ => None,
     };
     if let Some(n) = named {
         return Some(KeySpec::Named(n));
     }
-    // Special physical key names
-    match s {
-        "backtick" => return Some(KeySpec::Physical(KeyCode::Backquote)),
-        "backslash" => return Some(KeySpec::Physical(KeyCode::Backslash)),
-        _ => {}
+
+    // Single-character token: lowercase letter/digit prefers physical key;
+    // uppercase/punctuation stays as layout-aware Char to preserve case.
+    if token.chars().count() == 1
+        && let Some(ch) = token.chars().next()
+        && !ch.is_control()
+    {
+        if ch.is_ascii_lowercase() || ch.is_ascii_digit() {
+            return char_key_to_code(token).map(KeySpec::Physical);
+        }
+        return Some(KeySpec::Char(ch));
     }
-    // Single letter or digit
-    char_key_to_code(s).map(KeySpec::Physical)
+
+    char_key_to_code(token).map(KeySpec::Physical)
+}
+
+fn normalize_modifier_alias(token: &str) -> String {
+    let lower = token.to_ascii_lowercase();
+    if let Some(rest) = lower.strip_prefix("ctrl+shift+") {
+        return format!("mod+shift+{rest}");
+    }
+    if let Some(rest) = lower.strip_prefix("cmd+shift+") {
+        return format!("mod+shift+{rest}");
+    }
+    if let Some(rest) = lower.strip_prefix("ctrl+") {
+        return format!("mod+{rest}");
+    }
+    if let Some(rest) = lower.strip_prefix("cmd+") {
+        return format!("mod+{rest}");
+    }
+    token.to_string()
 }
 
 /// Map a single-char string (a-z, 0-9) or special name to a `KeyCode`.
@@ -116,9 +260,18 @@ fn char_key_to_code(s: &str) -> Option<KeyCode> {
         "7" => Some(KeyCode::Digit7),
         "8" => Some(KeyCode::Digit8),
         "9" => Some(KeyCode::Digit9),
+        "semicolon" => Some(KeyCode::Semicolon),
         "backslash" => Some(KeyCode::Backslash),
+        "backtick" | "grave" => Some(KeyCode::Backquote),
         _ => None,
     }
+}
+
+pub fn is_leader_input(input: &NormalizedInput) -> bool {
+    !input.has_command_modifier()
+        && (input.named_key == Some(NamedKey::Space)
+            || input.physical_key == Some(KeyCode::Space)
+            || input.text.as_deref() == Some(" "))
 }
 
 pub fn editor_mode_str(mode: EditorMode) -> &'static str {
@@ -140,6 +293,20 @@ struct BindingKey {
     spec: KeySpec,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct SequenceBindingKey {
+    /// None = global (applies to all modes)
+    mode: Option<String>,
+    steps: Vec<KeySpec>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SequenceLookup<'a> {
+    None,
+    Prefix,
+    Exact(&'a str),
+}
+
 /// The fully resolved keymap after all layers have been applied.
 ///
 /// Maps (mode, KeySpec) → command_id string.
@@ -147,12 +314,14 @@ struct BindingKey {
 #[derive(Debug, Clone)]
 pub struct ResolvedKeymap {
     bindings: HashMap<BindingKey, String>,
+    sequences: HashMap<SequenceBindingKey, String>,
 }
 
 impl ResolvedKeymap {
     fn new() -> Self {
         Self {
             bindings: HashMap::new(),
+            sequences: HashMap::new(),
         }
     }
 
@@ -166,9 +335,20 @@ impl ResolvedKeymap {
         );
     }
 
+    fn insert_sequence(&mut self, mode: Option<&str>, steps: Vec<KeySpec>, cmd_id: &str) {
+        self.sequences.insert(
+            SequenceBindingKey {
+                mode: mode.map(str::to_string),
+                steps,
+            },
+            cmd_id.to_string(),
+        );
+    }
+
     /// Merge `other` on top of `self` (override semantics).
     pub fn apply_overrides(&mut self, other: Self) {
         self.bindings.extend(other.bindings);
+        self.sequences.extend(other.sequences);
     }
 
     /// Look up the command ID for a non-leader input in the given mode.
@@ -209,15 +389,57 @@ impl ResolvedKeymap {
         None
     }
 
-    /// Look up the command ID for a leader-prefixed input.
-    /// Leader bindings are stored with `LeaderThen(code)` and mode = None.
-    pub fn lookup_leader(&self, input: &NormalizedInput) -> Option<&str> {
-        let code = input.physical_key?;
-        let key = BindingKey {
-            mode: None,
-            spec: KeySpec::LeaderThen(code),
-        };
-        self.bindings.get(&key).map(String::as_str)
+    /// Look up global (mode=None) bindings only.
+    pub fn lookup_global(&self, input: &NormalizedInput) -> Option<&str> {
+        let specs = input_to_specs(input);
+        for spec in specs {
+            let gk = BindingKey { mode: None, spec };
+            if let Some(id) = self.bindings.get(&gk) {
+                return Some(id);
+            }
+        }
+        None
+    }
+
+    /// Match a chord sequence in the current mode.
+    /// Priority: mode-specific exact > global exact > mode-specific prefix > global prefix.
+    pub fn lookup_sequence(&self, steps: &[KeySpec], mode_str: &str) -> SequenceLookup<'_> {
+        let mut mode_exact: Option<&str> = None;
+        let mut global_exact: Option<&str> = None;
+        let mut mode_prefix = false;
+        let mut global_prefix = false;
+
+        for (key, id) in &self.sequences {
+            let scope = key.mode.as_deref();
+            let in_mode_scope = scope == Some(mode_str);
+            let in_global_scope = scope.is_none();
+            if !in_mode_scope && !in_global_scope {
+                continue;
+            }
+            if !key.steps.starts_with(steps) {
+                continue;
+            }
+
+            if key.steps.len() == steps.len() {
+                if in_mode_scope {
+                    mode_exact = Some(id.as_str());
+                } else if in_global_scope {
+                    global_exact = Some(id.as_str());
+                }
+            } else if in_mode_scope {
+                mode_prefix = true;
+            } else if in_global_scope {
+                global_prefix = true;
+            }
+        }
+
+        if let Some(id) = mode_exact.or(global_exact) {
+            return SequenceLookup::Exact(id);
+        }
+        if mode_prefix || global_prefix {
+            return SequenceLookup::Prefix;
+        }
+        SequenceLookup::None
     }
 
     /// Build a `ResolvedKeymap` from a list of `KeyBinding` entries loaded
@@ -225,8 +447,11 @@ impl ResolvedKeymap {
     pub fn from_bindings(bindings: &[KeyBinding]) -> Self {
         let mut km = Self::new();
         for b in bindings {
-            match parse_key_spec(&b.key) {
-                Some(spec) => km.insert(b.mode.as_deref(), spec, &b.command),
+            match parse_key_sequence(&b.key) {
+                Some(steps) if steps.len() == 1 => {
+                    km.insert(b.mode.as_deref(), steps[0].clone(), &b.command)
+                }
+                Some(steps) => km.insert_sequence(b.mode.as_deref(), steps, &b.command),
                 None => eprintln!(
                     "[keymap] cannot parse key '{}' for command '{}' — skipped",
                     b.key, b.command
@@ -238,19 +463,40 @@ impl ResolvedKeymap {
 }
 
 fn input_to_specs(input: &NormalizedInput) -> Vec<KeySpec> {
-    let mut specs = Vec::with_capacity(2);
+    let mut specs = Vec::with_capacity(4);
     if input.has_command_modifier() {
         if let Some(code) = input.physical_key {
+            if input.modifiers.shift_key() {
+                specs.push(KeySpec::ModShiftPlus(code));
+            }
             specs.push(KeySpec::ModPlus(code));
         }
     } else {
         if let Some(named) = input.named_key {
             specs.push(KeySpec::Named(named));
         }
+        // Char needs to be checked before Physical so shifted keys like `I` / `O`
+        // can override lowercase physical bindings (`i` / `o`) in normal mode.
+        if let Some(text) = &input.text
+            && text.chars().count() == 1
+            && let Some(ch) = text.chars().next()
+            && !ch.is_control()
+        {
+            specs.push(KeySpec::Char(ch));
+        }
         if let Some(code) = input.physical_key {
             specs.push(KeySpec::Physical(code));
         }
     }
+    specs
+}
+
+pub fn sequence_step_candidates(input: &NormalizedInput, allow_leader: bool) -> Vec<KeySpec> {
+    let mut specs = Vec::new();
+    if allow_leader && is_leader_input(input) {
+        specs.push(KeySpec::Leader);
+    }
+    specs.extend(input_to_specs(input));
     specs
 }
 
@@ -266,16 +512,25 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     let nk = |n: NamedKey| KeySpec::Named(n);
     let ph = |c: KeyCode| KeySpec::Physical(c);
     let mp = |c: KeyCode| KeySpec::ModPlus(c);
-    let ld = |c: KeyCode| KeySpec::LeaderThen(c);
+    let ch = |c: char| KeySpec::Char(c);
+    let seq = |steps: &[KeySpec]| steps.to_vec();
 
     let mut km = ResolvedKeymap::new();
 
     // ── Global (mod+key) shortcuts — apply across all modes ──────────────────
     km.insert(None, mp(KeyCode::KeyS), SAVE_FILE);
     km.insert(None, mp(KeyCode::KeyO), OPEN_FILE);
-    km.insert(None, mp(KeyCode::KeyP), OPEN_FILE_FINDER);
+    km.insert(None, mp(KeyCode::KeyP), OPEN_FILE_PICKER);
+    km.insert(
+        None,
+        KeySpec::ModShiftPlus(KeyCode::KeyP),
+        OPEN_COMMAND_PALETTE,
+    );
     km.insert(None, mp(KeyCode::Backslash), TOGGLE_TERMINAL);
+    km.insert(None, mp(KeyCode::Backquote), TOGGLE_TERMINAL);
     km.insert(None, mp(KeyCode::KeyE), TOGGLE_EXPLORER);
+    km.insert(None, mp(KeyCode::KeyF), FOCUS_EXPLORER);
+    km.insert(None, nk(NamedKey::F12), FOCUS_TERMINAL);
 
     // ── Insert mode ───────────────────────────────────────────────────────────
     km.insert(Some("insert"), nk(NamedKey::Escape), ENTER_NORMAL);
@@ -296,8 +551,26 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("normal"), ph(KeyCode::KeyJ), MOVE_DOWN);
     km.insert(Some("normal"), ph(KeyCode::KeyK), MOVE_UP);
     km.insert(Some("normal"), ph(KeyCode::KeyL), MOVE_RIGHT);
+    km.insert(Some("normal"), ph(KeyCode::KeyW), MOVE_WORD_FORWARD);
+    km.insert(Some("normal"), ph(KeyCode::KeyB), MOVE_WORD_BACKWARD);
+    km.insert(Some("normal"), ph(KeyCode::KeyE), MOVE_WORD_END);
+    km.insert(Some("normal"), ph(KeyCode::Digit0), MOVE_TO_LINE_START);
+    km.insert(Some("normal"), ch('$'), MOVE_TO_LINE_END);
+    km.insert(Some("normal"), ch('^'), MOVE_TO_FIRST_NON_WHITESPACE);
+    km.insert(Some("normal"), ch('G'), MOVE_TO_LAST_LINE);
     km.insert(Some("normal"), ph(KeyCode::KeyI), ENTER_INSERT);
     km.insert(Some("normal"), ph(KeyCode::KeyV), ENTER_VISUAL);
+    km.insert(Some("normal"), ch('V'), ENTER_VISUAL_LINE);
+    km.insert(Some("normal"), ph(KeyCode::KeyO), INSERT_LINE_BELOW);
+    km.insert(Some("normal"), ch('O'), INSERT_LINE_ABOVE);
+    km.insert(Some("normal"), ch('I'), INSERT_AT_LINE_START);
+    km.insert(Some("normal"), ch('A'), APPEND_AT_LINE_END);
+    km.insert(Some("normal"), ph(KeyCode::KeyA), APPEND_AFTER_CURSOR);
+    km.insert(Some("normal"), ch('S'), SUBSTITUTE_LINE);
+    km.insert(Some("normal"), ph(KeyCode::KeyX), DELETE_CHAR);
+    km.insert(Some("normal"), ph(KeyCode::KeyU), UNDO);
+    km.insert(Some("normal"), mp(KeyCode::KeyR), REDO);
+    km.insert(Some("normal"), KeySpec::Char(':'), OPEN_VIM_COMMAND);
     km.insert(Some("normal"), ph(KeyCode::Backquote), TOGGLE_TERMINAL);
 
     // ── Visual mode ───────────────────────────────────────────────────────────
@@ -310,6 +583,16 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("visual"), ph(KeyCode::KeyJ), MOVE_DOWN);
     km.insert(Some("visual"), ph(KeyCode::KeyK), MOVE_UP);
     km.insert(Some("visual"), ph(KeyCode::KeyL), MOVE_RIGHT);
+    km.insert(Some("visual"), ph(KeyCode::KeyW), MOVE_WORD_FORWARD);
+    km.insert(Some("visual"), ph(KeyCode::KeyB), MOVE_WORD_BACKWARD);
+    km.insert(Some("visual"), ph(KeyCode::KeyE), MOVE_WORD_END);
+    km.insert(Some("visual"), ph(KeyCode::Digit0), MOVE_TO_LINE_START);
+    km.insert(Some("visual"), ch('$'), MOVE_TO_LINE_END);
+    km.insert(Some("visual"), ch('^'), MOVE_TO_FIRST_NON_WHITESPACE);
+    km.insert(Some("visual"), ch('G'), MOVE_TO_LAST_LINE);
+    km.insert(Some("visual"), ph(KeyCode::KeyD), DELETE_SELECTION);
+    km.insert(Some("visual"), ph(KeyCode::KeyC), CHANGE_SELECTION);
+    km.insert(Some("visual"), ph(KeyCode::KeyX), DELETE_SELECTION);
 
     // ── Palette focus (file picker) ───────────────────────────────────────────
     km.insert(Some("palette"), nk(NamedKey::Enter), FILE_PICKER_CONFIRM);
@@ -374,13 +657,89 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     // ── Global Ctrl+W → focus back to editor ─────────────────────────────────
     km.insert(None, mp(KeyCode::KeyW), FOCUS_BACK);
 
-    // ── Leader prefix bindings (stored as LeaderThen, mode = global) ─────────
-    km.insert(None, ld(KeyCode::KeyF), OPEN_FILE_FINDER);
-    km.insert(None, ld(KeyCode::KeyP), OPEN_COMMAND_PALETTE);
-    km.insert(None, ld(KeyCode::KeyT), TOGGLE_TERMINAL);
-    km.insert(None, ld(KeyCode::KeyE), FOCUS_EXPLORER);
-    km.insert(None, ld(KeyCode::KeyI), FOCUS_INSPECTOR);
-    km.insert(None, ld(KeyCode::KeyB), FOCUS_TERMINAL);
+    // ── Chord bindings (multi-step sequences) ─────────────────────────────────
+    km.insert_sequence(
+        Some("normal"),
+        seq(&[ph(KeyCode::KeyD), ph(KeyCode::KeyD)]),
+        DELETE_CURRENT_LINE,
+    );
+    km.insert_sequence(
+        Some("normal"),
+        seq(&[ph(KeyCode::KeyD), ph(KeyCode::KeyW)]),
+        DELETE_WORD_FORWARD,
+    );
+    km.insert_sequence(
+        Some("normal"),
+        seq(&[ph(KeyCode::KeyD), ph(KeyCode::KeyB)]),
+        DELETE_WORD_BACKWARD,
+    );
+    km.insert_sequence(
+        Some("normal"),
+        seq(&[ph(KeyCode::KeyC), ph(KeyCode::KeyW)]),
+        CHANGE_WORD_FORWARD,
+    );
+    km.insert_sequence(
+        Some("normal"),
+        seq(&[ph(KeyCode::KeyC), ph(KeyCode::KeyB)]),
+        CHANGE_WORD_BACKWARD,
+    );
+    km.insert_sequence(
+        Some("normal"),
+        seq(&[ph(KeyCode::KeyG), ph(KeyCode::KeyG)]),
+        MOVE_TO_FIRST_LINE,
+    );
+    km.insert_sequence(
+        Some("normal"),
+        seq(&[ph(KeyCode::KeyZ), ph(KeyCode::KeyZ)]),
+        CENTER_CURSOR_LINE,
+    );
+    km.insert_sequence(
+        Some("visual"),
+        seq(&[ph(KeyCode::KeyG), ph(KeyCode::KeyG)]),
+        MOVE_TO_FIRST_LINE,
+    );
+    km.insert_sequence(
+        Some("visual"),
+        seq(&[ph(KeyCode::KeyZ), ph(KeyCode::KeyZ)]),
+        CENTER_CURSOR_LINE,
+    );
+
+    // Leader bindings (Space = leader) are represented as explicit sequences.
+    km.insert_sequence(
+        None,
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyP)]),
+        OPEN_COMMAND_PALETTE,
+    );
+    km.insert_sequence(
+        None,
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyT)]),
+        TOGGLE_TERMINAL,
+    );
+    km.insert_sequence(
+        None,
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyE)]),
+        FOCUS_EXPLORER,
+    );
+    km.insert_sequence(
+        None,
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyI)]),
+        FOCUS_INSPECTOR,
+    );
+    km.insert_sequence(
+        None,
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyB)]),
+        FOCUS_TERMINAL,
+    );
+    km.insert_sequence(
+        None,
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyF), ph(KeyCode::KeyF)]),
+        OPEN_FILE_FINDER,
+    );
+    km.insert_sequence(
+        None,
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyF), ph(KeyCode::KeyW)]),
+        SEARCH_IN_FILES,
+    );
 
     km
 }
@@ -419,12 +778,12 @@ pub fn resolve_command_mode_only(
     command_ids::parse(id, Some(open_file_path))
 }
 
-pub fn resolve_leader_command(
+pub fn resolve_global_command(
     keymap: &ResolvedKeymap,
     input: &NormalizedInput,
     open_file_path: &std::path::Path,
 ) -> Option<Command> {
-    let id = keymap.lookup_leader(input)?;
+    let id = keymap.lookup_global(input)?;
     command_ids::parse(id, Some(open_file_path))
 }
 
@@ -464,19 +823,60 @@ mod tests {
             parse_key_spec("mod+s"),
             Some(KeySpec::ModPlus(KeyCode::KeyS))
         );
+        assert_eq!(
+            parse_key_spec("mod+shift+p"),
+            Some(KeySpec::ModShiftPlus(KeyCode::KeyP))
+        );
     }
 
     #[test]
     fn parse_leader_key() {
         assert_eq!(
-            parse_key_spec("<leader>f"),
-            Some(KeySpec::LeaderThen(KeyCode::KeyF))
+            parse_key_sequence("<leader>f"),
+            Some(vec![KeySpec::Leader, KeySpec::Physical(KeyCode::KeyF)])
         );
     }
 
     #[test]
     fn parse_unknown_key_returns_none() {
         assert!(parse_key_spec("XF86AudioPlay").is_none());
+    }
+
+    #[test]
+    fn parse_character_key() {
+        assert_eq!(parse_key_spec(":"), Some(KeySpec::Char(':')));
+        assert_eq!(parse_key_spec("O"), Some(KeySpec::Char('O')));
+    }
+
+    #[test]
+    fn parse_chord_sequence_key() {
+        assert_eq!(
+            parse_key_sequence("d d"),
+            Some(vec![
+                KeySpec::Physical(KeyCode::KeyD),
+                KeySpec::Physical(KeyCode::KeyD)
+            ])
+        );
+        assert_eq!(
+            parse_key_sequence("<leader>f w"),
+            Some(vec![
+                KeySpec::Leader,
+                KeySpec::Physical(KeyCode::KeyF),
+                KeySpec::Physical(KeyCode::KeyW)
+            ])
+        );
+    }
+
+    #[test]
+    fn parse_ctrl_aliases_as_mod() {
+        assert_eq!(
+            parse_key_spec("Ctrl+e"),
+            Some(KeySpec::ModPlus(KeyCode::KeyE))
+        );
+        assert_eq!(
+            parse_key_spec("Ctrl+Shift+p"),
+            Some(KeySpec::ModShiftPlus(KeyCode::KeyP))
+        );
     }
 
     #[test]
@@ -505,5 +905,91 @@ mod tests {
         };
         // In insert mode j should NOT be bound (falls through to InsertChar)
         assert_eq!(km.lookup(&input, "insert"), None);
+    }
+
+    #[test]
+    fn builtin_defaults_has_visual_delete_and_change_bindings() {
+        use winit::keyboard::ModifiersState;
+        let km = builtin_defaults();
+
+        let visual_d = NormalizedInput {
+            physical_key: Some(KeyCode::KeyD),
+            named_key: None,
+            text: Some("d".into()),
+            modifiers: ModifiersState::empty(),
+        };
+        let visual_c = NormalizedInput {
+            physical_key: Some(KeyCode::KeyC),
+            named_key: None,
+            text: Some("c".into()),
+            modifiers: ModifiersState::empty(),
+        };
+        let visual_x = NormalizedInput {
+            physical_key: Some(KeyCode::KeyX),
+            named_key: None,
+            text: Some("x".into()),
+            modifiers: ModifiersState::empty(),
+        };
+
+        assert_eq!(
+            km.lookup(&visual_d, "visual"),
+            Some(command_ids::DELETE_SELECTION)
+        );
+        assert_eq!(
+            km.lookup(&visual_c, "visual"),
+            Some(command_ids::CHANGE_SELECTION)
+        );
+        assert_eq!(
+            km.lookup(&visual_x, "visual"),
+            Some(command_ids::DELETE_SELECTION)
+        );
+    }
+
+    #[test]
+    fn builtin_defaults_include_dd_chord() {
+        use winit::keyboard::ModifiersState;
+        let km = builtin_defaults();
+        let steps = vec![
+            KeySpec::Physical(KeyCode::KeyD),
+            KeySpec::Physical(KeyCode::KeyD),
+        ];
+        let found = km.lookup_sequence(&steps, "normal");
+        assert_eq!(
+            found,
+            SequenceLookup::Exact(command_ids::DELETE_CURRENT_LINE)
+        );
+
+        let leader_steps = vec![
+            KeySpec::Leader,
+            KeySpec::Physical(KeyCode::KeyF),
+            KeySpec::Physical(KeyCode::KeyF),
+        ];
+        let search = km.lookup_sequence(&leader_steps, "normal");
+        assert_eq!(search, SequenceLookup::Exact(command_ids::OPEN_FILE_FINDER));
+
+        let db_steps = vec![
+            KeySpec::Physical(KeyCode::KeyD),
+            KeySpec::Physical(KeyCode::KeyB),
+        ];
+        let db = km.lookup_sequence(&db_steps, "normal");
+        assert_eq!(db, SequenceLookup::Exact(command_ids::DELETE_WORD_BACKWARD));
+
+        let gg_steps = vec![
+            KeySpec::Physical(KeyCode::KeyG),
+            KeySpec::Physical(KeyCode::KeyG),
+        ];
+        let gg = km.lookup_sequence(&gg_steps, "normal");
+        assert_eq!(gg, SequenceLookup::Exact(command_ids::MOVE_TO_FIRST_LINE));
+
+        let candidates = sequence_step_candidates(
+            &NormalizedInput {
+                physical_key: Some(KeyCode::Space),
+                named_key: Some(NamedKey::Space),
+                text: None,
+                modifiers: ModifiersState::empty(),
+            },
+            true,
+        );
+        assert!(candidates.contains(&KeySpec::Leader));
     }
 }

@@ -57,6 +57,13 @@ impl TerminalCell {
     fn blank() -> Self {
         Self::default()
     }
+
+    fn is_visually_empty(&self) -> bool {
+        self.ch == ' '
+            && self.style.fg == AnsiColor::Default
+            && self.style.bg == AnsiColor::Default
+            && !self.style.bold
+    }
 }
 
 // ─── TerminalGrid ─────────────────────────────────────────────────────────────
@@ -65,10 +72,18 @@ impl TerminalCell {
 ///
 /// Cells được lưu row-major: `cells[row * cols + col]`.
 /// Khi cursor xuống quá dòng cuối, grid **scroll up** (xóa dòng đầu, thêm dòng trống cuối).
+const SCROLLBACK_LIMIT: usize = 500;
+
 pub struct TerminalGrid {
     pub cols: usize,
     pub rows: usize,
     cells: Vec<TerminalCell>,
+
+    /// Scrollback buffer — rows pushed off the top of the live grid.
+    scrollback: Vec<Vec<TerminalCell>>,
+
+    /// How many rows above the live grid bottom are shown (0 = live view).
+    pub scroll_offset: usize,
 
     /// Vị trí cursor hiện tại (0-based).
     pub cursor_row: usize,
@@ -90,6 +105,8 @@ impl TerminalGrid {
             cols,
             rows,
             cells: vec![TerminalCell::blank(); cols * rows],
+            scrollback: Vec::new(),
+            scroll_offset: 0,
             cursor_row: 0,
             cursor_col: 0,
             current_style: CellStyle::default(),
@@ -256,11 +273,32 @@ impl TerminalGrid {
         self.cursor_col += 1;
     }
 
-    /// Scroll lên 1 dòng: xóa dòng đầu, thêm dòng trống dưới cùng.
+    /// Scroll lên 1 dòng: push dòng đầu vào scrollback, thêm dòng trống dưới.
     fn scroll_up(&mut self) {
+        let pushed_row: Vec<TerminalCell> = self.cells[0..self.cols].to_vec();
+        self.scrollback.push(pushed_row);
+        if self.scrollback.len() > SCROLLBACK_LIMIT {
+            self.scrollback.remove(0);
+        }
         self.cells.drain(0..self.cols);
         self.cells
             .extend(std::iter::repeat_n(TerminalCell::blank(), self.cols));
+    }
+
+    /// Scroll view lên N dòng (không thay đổi live grid, chỉ thay offset).
+    pub fn view_scroll_up(&mut self, lines: usize) {
+        let max = self.scrollback.len();
+        self.scroll_offset = (self.scroll_offset + lines).min(max);
+    }
+
+    /// Scroll view xuống N dòng (về phía live content).
+    pub fn view_scroll_down(&mut self, lines: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(lines);
+    }
+
+    /// Reset về live view (offset = 0).
+    pub fn view_scroll_to_bottom(&mut self) {
+        self.scroll_offset = 0;
     }
 
     // ─── Query API ────────────────────────────────────────────────────────────
@@ -273,12 +311,39 @@ impl TerminalGrid {
         &self.cells[row * self.cols + col]
     }
 
-    /// Iterate qua tất cả visible cells: `(row, col, &TerminalCell)`.
-    pub fn iter_visible_cells(&self) -> impl Iterator<Item = (usize, usize, &TerminalCell)> {
-        self.cells
-            .iter()
-            .enumerate()
-            .map(|(idx, cell)| (idx / self.cols, idx % self.cols, cell))
+    /// Iterate qua visible cells theo scroll_offset hiện tại: `(row, col, &TerminalCell)`.
+    ///
+    /// Khi `scroll_offset > 0`, rows được lấy từ scrollback + live grid.
+    /// Row 0 trong iterator luôn là dòng trên cùng của viewport.
+    pub fn iter_visible_cells(&self) -> impl Iterator<Item = (usize, usize, TerminalCell)> + '_ {
+        let rows = self.rows;
+        let cols = self.cols;
+        let offset = self.scroll_offset;
+        let sb_len = self.scrollback.len();
+
+        (0..rows).flat_map(move |display_row| {
+            // display_row 0 = top of viewport.
+            // When offset > 0, top of viewport is in scrollback.
+            let source_row_from_bottom = (rows - 1 - display_row) + offset;
+            let cells: Vec<TerminalCell> = if source_row_from_bottom < rows {
+                // Row is in the live grid.
+                let live_row = rows - 1 - source_row_from_bottom;
+                let start = live_row * cols;
+                self.cells[start..start + cols].to_vec()
+            } else {
+                // Row is in the scrollback buffer.
+                let sb_idx = sb_len.saturating_sub(source_row_from_bottom - rows + 1);
+                if sb_idx < sb_len {
+                    self.scrollback[sb_idx].clone()
+                } else {
+                    vec![TerminalCell::blank(); cols]
+                }
+            };
+            cells
+                .into_iter()
+                .enumerate()
+                .map(move |(col, cell)| (display_row, col, cell))
+        })
     }
 
     /// Số dòng thực sự có nội dung (không tính dòng trống trailing).
@@ -286,7 +351,7 @@ impl TerminalGrid {
         for row in (0..self.rows).rev() {
             let row_start = row * self.cols;
             let row_cells = &self.cells[row_start..row_start + self.cols];
-            if row_cells.iter().any(|c| c.ch != ' ') {
+            if row_cells.iter().any(|c| !c.is_visually_empty()) {
                 return row + 1;
             }
         }
@@ -450,6 +515,13 @@ mod tests {
         assert_eq!(grid.cursor_col, 0);
         assert_eq!(grid.current_style, CellStyle::default());
         assert_eq!(grid.cell_at(0, 0).ch, ' ');
+    }
+
+    #[test]
+    fn used_rows_counts_background_colored_spaces_as_visible_content() {
+        let mut grid = TerminalGrid::new(10, 3);
+        grid.feed_chunk("\x1b[48;5;196m \x1b[0m");
+        assert_eq!(grid.used_rows(), 1);
     }
 
     #[test]

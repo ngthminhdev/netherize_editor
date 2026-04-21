@@ -1,8 +1,33 @@
-use std::sync::mpsc::{Receiver, TryRecvError};
+use std::sync::{
+    OnceLock,
+    mpsc::{Receiver, TryRecvError},
+};
 
 use crate::async_runtime::message::{
     RequestTopic, WorkerEvent, WorkerEventKind, WorkerMessage, WorkerResult,
 };
+
+fn async_trace_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("NETHERIZE_ASYNC_TRACE")
+            .map(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false)
+    })
+}
+
+macro_rules! async_trace {
+    ($($arg:tt)*) => {
+        if async_trace_enabled() {
+            println!($($arg)*);
+        }
+    };
+}
 
 /// App state implement trait này để bridge route message về đúng nơi.
 /// Event loop chỉ gọi bridge.pump(...) tại một điểm duy nhất.
@@ -59,16 +84,19 @@ impl AppAsyncBridge {
                                     stats.cancelled += 1;
                                 }
                             }
-                            println!(
+                            async_trace!(
                                 "[Bridge] event request_id={} revision={} topic={:?} kind={:?}",
-                                event.request_id, event.revision_id, event.topic, event.kind
+                                event.request_id,
+                                event.revision_id,
+                                event.topic,
+                                event.kind
                             );
                             router.on_worker_event(event);
                         }
                         WorkerMessage::Result(result) => {
                             let latest_revision = router.current_revision_for(result.topic);
                             if result.revision_id < latest_revision {
-                                println!(
+                                async_trace!(
                                     "[Bridge] stale result discarded request_id={} revision={} latest_revision={} topic={:?}",
                                     result.request_id,
                                     result.revision_id,
@@ -78,9 +106,11 @@ impl AppAsyncBridge {
                                 stats.stale += 1;
                                 router.on_stale_result(result);
                             } else {
-                                println!(
+                                async_trace!(
                                     "[Bridge] accepted result request_id={} revision={} topic={:?}",
-                                    result.request_id, result.revision_id, result.topic
+                                    result.request_id,
+                                    result.revision_id,
+                                    result.topic
                                 );
                                 stats.accepted += 1;
                                 router.on_worker_result(result);
@@ -90,7 +120,7 @@ impl AppAsyncBridge {
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
-                    println!("[Bridge] worker channel disconnected");
+                    async_trace!("[Bridge] worker channel disconnected");
                     stats.disconnected = true;
                     break;
                 }

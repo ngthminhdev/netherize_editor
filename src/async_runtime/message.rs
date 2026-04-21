@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{ops::Range, path::PathBuf};
 
 use crate::syntax::{highlight::HighlightSpan, syntax_engine::LanguageId};
 
@@ -44,6 +44,9 @@ pub enum WorkerRequestPayload {
         file_path: Option<PathBuf>,
         text_snapshot: String,
         language_id: LanguageId,
+        buffer_revision: u64,
+        viewport_line_start: usize,
+        viewport_line_count: usize,
     },
     MockParseBuffer {
         file_path: PathBuf,
@@ -131,7 +134,9 @@ pub enum WorkerResultPayload {
     ParseAndHighlight {
         file_path: Option<PathBuf>,
         language_id: LanguageId,
+        buffer_revision: u64,
         spans: Vec<HighlightSpan>,
+        covered_byte_range: Option<Range<usize>>,
         line_count: usize,
         char_count: usize,
         byte_count: usize,

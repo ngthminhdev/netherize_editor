@@ -72,8 +72,11 @@ pub struct EditorThemeTokens {
     pub cursor: ThemeColor,
     pub selection: ThemeColor,
     pub gutter: ThemeColor,
+    pub gutter_active: ThemeColor,
     pub font_size: f32,
     pub line_height: f32,
+    /// Optional font family name (e.g. "GoogleSansCode"). Empty/missing → default.
+    pub font_family: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,10 +86,29 @@ pub struct UiThemeTokens {
     pub status_bar_bg: ThemeColor,
     pub border_color: ThemeColor,
     pub selection_bg: ThemeColor,
+    pub fg_dim: ThemeColor,
+    pub fg_faint: ThemeColor,
+    pub fg_ghost: ThemeColor,
+    pub accent: ThemeColor,
+    pub cyan: ThemeColor,
+    pub magenta: ThemeColor,
+    pub amber: ThemeColor,
+    pub success: ThemeColor,
+    pub error: ThemeColor,
     pub sidebar_font_size: f32,
     pub sidebar_line_height: f32,
     pub panel_font_size: f32,
     pub panel_line_height: f32,
+    /// Default width of the left explorer sidebar, px.
+    pub sidebar_width: f32,
+    /// Default width of the right inspector sidebar, px.
+    pub right_sidebar_width: f32,
+    /// Default height of the bottom terminal panel, px.
+    pub bottom_panel_height: f32,
+    /// Height of the top tab/title bar, px.
+    pub top_bar_height: f32,
+    /// Height of the status bar, px.
+    pub status_bar_height: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -158,8 +180,10 @@ impl ThemeConfig {
                 cursor: ThemeColor::from_rgba_u8(174, 175, 173, 255),
                 selection: ThemeColor::from_rgba_u8(38, 79, 120, 255),
                 gutter: ThemeColor::from_rgba_u8(42, 45, 46, 255),
+                gutter_active: ThemeColor::from_rgba_u8(212, 212, 212, 255),
                 font_size: 17.0,
                 line_height: 26.0,
+                font_family: None,
             },
             ui: UiThemeTokens {
                 sidebar_bg: ThemeColor::from_rgba_u8(37, 37, 38, 255),
@@ -167,10 +191,24 @@ impl ThemeConfig {
                 status_bar_bg: ThemeColor::from_rgba_u8(0, 122, 204, 255),
                 border_color: ThemeColor::from_rgba_u8(60, 60, 60, 255),
                 selection_bg: ThemeColor::from_rgba_u8(9, 71, 113, 255),
+                fg_dim: ThemeColor::from_rgba_u8(183, 191, 204, 255),
+                fg_faint: ThemeColor::from_rgba_u8(143, 152, 170, 255),
+                fg_ghost: ThemeColor::from_rgba_u8(109, 116, 131, 255),
+                accent: ThemeColor::from_rgba_u8(155, 229, 100, 255),
+                cyan: ThemeColor::from_rgba_u8(47, 211, 246, 255),
+                magenta: ThemeColor::from_rgba_u8(231, 122, 233, 255),
+                amber: ThemeColor::from_rgba_u8(245, 182, 58, 255),
+                success: ThemeColor::from_rgba_u8(103, 214, 124, 255),
+                error: ThemeColor::from_rgba_u8(255, 123, 114, 255),
                 sidebar_font_size: 14.0,
                 sidebar_line_height: 21.0,
                 panel_font_size: 14.0,
                 panel_line_height: 21.0,
+                sidebar_width: 260.0,
+                right_sidebar_width: 280.0,
+                bottom_panel_height: 220.0,
+                top_bar_height: 32.0,
+                status_bar_height: 24.0,
             },
             syntax: SyntaxThemeTokens {
                 keyword: ThemeColor::from_rgba_u8(86, 156, 214, 255),
@@ -195,6 +233,14 @@ impl ThemeConfig {
                 cursor: parse_color("editor", "cursor", &raw.editor.cursor)?,
                 selection: parse_color("editor", "selection", &raw.editor.selection)?,
                 gutter: parse_color("editor", "gutter", &raw.editor.gutter)?,
+                gutter_active: parse_color(
+                    "editor",
+                    "gutter_active",
+                    raw.editor
+                        .gutter_active
+                        .as_deref()
+                        .unwrap_or(raw.editor.fg.as_str()),
+                )?,
                 font_size: parse_positive_size(
                     "editor",
                     "font_size",
@@ -205,6 +251,13 @@ impl ThemeConfig {
                     "line_height",
                     raw.editor.line_height.unwrap_or(26.0),
                 )?,
+                font_family: raw
+                    .editor
+                    .font_family
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string),
             },
             ui: UiThemeTokens {
                 sidebar_bg: parse_color("ui", "sidebar_bg", &raw.ui.sidebar_bg)?,
@@ -216,6 +269,39 @@ impl ThemeConfig {
                     "selection_bg",
                     raw.ui.selection_bg.as_deref().unwrap_or("#094771"),
                 )?,
+                fg_dim: parse_color(
+                    "ui",
+                    "fg_dim",
+                    raw.ui.fg_dim.as_deref().unwrap_or("#b7bfcc"),
+                )?,
+                fg_faint: parse_color(
+                    "ui",
+                    "fg_faint",
+                    raw.ui.fg_faint.as_deref().unwrap_or("#8f98aa"),
+                )?,
+                fg_ghost: parse_color(
+                    "ui",
+                    "fg_ghost",
+                    raw.ui.fg_ghost.as_deref().unwrap_or("#6d7483"),
+                )?,
+                accent: parse_color(
+                    "ui",
+                    "accent",
+                    raw.ui.accent.as_deref().unwrap_or("#9BE564"),
+                )?,
+                cyan: parse_color("ui", "cyan", raw.ui.cyan.as_deref().unwrap_or("#2FD3F6"))?,
+                magenta: parse_color(
+                    "ui",
+                    "magenta",
+                    raw.ui.magenta.as_deref().unwrap_or("#E77AE9"),
+                )?,
+                amber: parse_color("ui", "amber", raw.ui.amber.as_deref().unwrap_or("#F5B63A"))?,
+                success: parse_color(
+                    "ui",
+                    "success",
+                    raw.ui.success.as_deref().unwrap_or("#67D67C"),
+                )?,
+                error: parse_color("ui", "error", raw.ui.error.as_deref().unwrap_or("#FF7B72"))?,
                 sidebar_font_size: parse_positive_size(
                     "ui",
                     "sidebar_font_size",
@@ -235,6 +321,31 @@ impl ThemeConfig {
                     "ui",
                     "panel_line_height",
                     raw.ui.panel_line_height.unwrap_or(21.0),
+                )?,
+                sidebar_width: parse_positive_size(
+                    "ui",
+                    "sidebar_width",
+                    raw.ui.sidebar_width.unwrap_or(260.0),
+                )?,
+                right_sidebar_width: parse_positive_size(
+                    "ui",
+                    "right_sidebar_width",
+                    raw.ui.right_sidebar_width.unwrap_or(280.0),
+                )?,
+                bottom_panel_height: parse_positive_size(
+                    "ui",
+                    "bottom_panel_height",
+                    raw.ui.bottom_panel_height.unwrap_or(220.0),
+                )?,
+                top_bar_height: parse_positive_size(
+                    "ui",
+                    "top_bar_height",
+                    raw.ui.top_bar_height.unwrap_or(32.0),
+                )?,
+                status_bar_height: parse_positive_size(
+                    "ui",
+                    "status_bar_height",
+                    raw.ui.status_bar_height.unwrap_or(24.0),
                 )?,
             },
             syntax: SyntaxThemeTokens {
@@ -308,8 +419,10 @@ struct RawEditor {
     cursor: String,
     selection: String,
     gutter: String,
+    gutter_active: Option<String>,
     font_size: Option<f32>,
     line_height: Option<f32>,
+    font_family: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -319,10 +432,24 @@ struct RawUi {
     status_bar_bg: String,
     border_color: String,
     selection_bg: Option<String>,
+    fg_dim: Option<String>,
+    fg_faint: Option<String>,
+    fg_ghost: Option<String>,
+    accent: Option<String>,
+    cyan: Option<String>,
+    magenta: Option<String>,
+    amber: Option<String>,
+    success: Option<String>,
+    error: Option<String>,
     sidebar_font_size: Option<f32>,
     sidebar_line_height: Option<f32>,
     panel_font_size: Option<f32>,
     panel_line_height: Option<f32>,
+    sidebar_width: Option<f32>,
+    right_sidebar_width: Option<f32>,
+    bottom_panel_height: Option<f32>,
+    top_bar_height: Option<f32>,
+    status_bar_height: Option<f32>,
 }
 
 #[derive(Debug, Deserialize)]

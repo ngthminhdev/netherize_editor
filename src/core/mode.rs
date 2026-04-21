@@ -139,7 +139,7 @@ pub struct ModeState {
 
 impl Default for ModeState {
     fn default() -> Self {
-        Self::new(EditorMode::Insert)
+        Self::new(EditorMode::Normal)
     }
 }
 

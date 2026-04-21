@@ -6,7 +6,10 @@ use winit::{
 };
 
 use crate::{
-    app::input_map::{InputMap, KeybindingContext, PrefixNamespace},
+    app::{
+        input_map::{InputMap, KeybindingContext, PendingSequence, SequenceMatch},
+        resolved_keymap::KeySpec,
+    },
     core::commands::Command,
 };
 
@@ -80,10 +83,20 @@ pub enum InputRouteOutcome {
     },
 }
 
-#[derive(Debug, Clone, Copy)]
-struct PendingPrefix {
-    namespace: PrefixNamespace,
+#[derive(Debug, Clone)]
+struct PendingInput {
+    sequence: Option<PendingSequence>,
+    state: PendingState,
     started_at: Instant,
+}
+
+#[derive(Debug, Clone)]
+enum PendingState {
+    OperatorDelete,
+    OperatorChange,
+    ReplaceChar,
+    Leader,
+    Sequence,
 }
 
 /// InputHandler là lớp cầu nối:
@@ -91,7 +104,7 @@ struct PendingPrefix {
 pub struct InputHandler {
     modifiers: ModifiersState,
     prefix_timeout: Duration,
-    pending_prefix: Option<PendingPrefix>,
+    pending_input: Option<PendingInput>,
 }
 
 impl InputHandler {
@@ -99,7 +112,7 @@ impl InputHandler {
         Self {
             modifiers: ModifiersState::empty(),
             prefix_timeout: Duration::from_millis(1_500),
-            pending_prefix: None,
+            pending_input: None,
         }
     }
 
@@ -120,6 +133,21 @@ impl InputHandler {
 
     pub fn current_modifiers(&self) -> ModifiersState {
         self.modifiers
+    }
+
+    pub fn get_pending_keys(&self) -> String {
+        self.pending_input
+            .as_ref()
+            .and_then(|pending| pending.sequence.as_ref())
+            .map(|sequence| {
+                sequence
+                    .steps
+                    .iter()
+                    .map(KeySpec::display_token)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .unwrap_or_default()
     }
 
     pub fn translate_key_event(
@@ -146,34 +174,93 @@ impl InputHandler {
         let input_debug = normalized.debug_label();
         self.reset_prefix_if_timed_out(now);
 
-        if let Some(pending) = self.pending_prefix {
+        if let Some(pending) = self.pending_input.clone() {
             if normalized.named_key == Some(NamedKey::Escape) {
                 self.reset_prefix();
                 return Some(InputRouteOutcome::NoDispatch {
                     input_debug,
                     route_debug: format!(
-                        "mode={} focus={} -> prefix {} cancelled by Esc",
+                        "mode={} focus={} -> chord cancelled by Esc",
                         context.mode.as_str(),
                         context.focus.as_str(),
-                        pending.namespace.as_str(),
                     ),
                 });
             }
 
-            if let Some(resolved) =
-                input_map.resolve_prefixed(pending.namespace, &normalized, context)
-            {
-                self.reset_prefix();
-                return Some(InputRouteOutcome::Dispatch(TranslatedInput {
+            if matches!(pending.state, PendingState::ReplaceChar) {
+                if let Some(ch) = replace_char_from_input(&normalized) {
+                    self.reset_prefix();
+                    return Some(InputRouteOutcome::Dispatch(TranslatedInput {
+                        input_debug,
+                        route_debug: format!(
+                            "mode={} focus={} -> pending replace char commit ({ch:?})",
+                            context.mode.as_str(),
+                            context.focus.as_str(),
+                        ),
+                        command: Command::ReplaceChar(ch),
+                    }));
+                }
+                self.pending_input = Some(PendingInput {
+                    started_at: now,
+                    ..pending
+                });
+                return Some(InputRouteOutcome::NoDispatch {
                     input_debug,
                     route_debug: format!(
-                        "mode={} focus={} -> {}",
+                        "mode={} focus={} -> pending replace char (waiting printable key)",
                         context.mode.as_str(),
                         context.focus.as_str(),
-                        resolved.reason
                     ),
-                    command: resolved.command,
-                }));
+                });
+            }
+
+            let Some(sequence) = pending.sequence.as_ref() else {
+                self.reset_prefix();
+                return Some(InputRouteOutcome::NoDispatch {
+                    input_debug,
+                    route_debug: format!(
+                        "mode={} focus={} -> invalid pending state reset",
+                        context.mode.as_str(),
+                        context.focus.as_str(),
+                    ),
+                });
+            };
+
+            if let Some(matched) = input_map.resolve_sequence_next(sequence, &normalized, context) {
+                match matched {
+                    SequenceMatch::Dispatch(resolved) => {
+                        self.reset_prefix();
+                        return Some(InputRouteOutcome::Dispatch(TranslatedInput {
+                            input_debug,
+                            route_debug: format!(
+                                "mode={} focus={} -> {}",
+                                context.mode.as_str(),
+                                context.focus.as_str(),
+                                resolved.reason
+                            ),
+                            command: resolved.command,
+                        }));
+                    }
+                    SequenceMatch::Pending(next_sequence) => {
+                        let next_state = classify_pending_state(&next_sequence);
+                        let step_count = next_sequence.steps.len();
+                        self.pending_input = Some(PendingInput {
+                            state: next_state.clone(),
+                            sequence: Some(next_sequence),
+                            started_at: now,
+                        });
+                        return Some(InputRouteOutcome::NoDispatch {
+                            input_debug,
+                            route_debug: format!(
+                                "mode={} focus={} -> {} ({} step(s))",
+                                context.mode.as_str(),
+                                context.focus.as_str(),
+                                next_state.as_str(),
+                                step_count
+                            ),
+                        });
+                    }
+                }
             }
 
             // Prefix bị gián đoạn: reset an toàn rồi fallback resolve key hiện tại như key thường.
@@ -182,7 +269,7 @@ impl InputHandler {
                 return Some(InputRouteOutcome::Dispatch(TranslatedInput {
                     input_debug,
                     route_debug: format!(
-                        "mode={} focus={} -> prefix interrupted, fallback -> {}",
+                        "mode={} focus={} -> chord interrupted, fallback -> {}",
                         context.mode.as_str(),
                         context.focus.as_str(),
                         resolved.reason
@@ -194,27 +281,80 @@ impl InputHandler {
             return Some(InputRouteOutcome::NoDispatch {
                 input_debug,
                 route_debug: format!(
-                    "mode={} focus={} -> prefix interrupted and no fallback mapping",
+                    "mode={} focus={} -> chord interrupted and no fallback mapping",
                     context.mode.as_str(),
                     context.focus.as_str()
                 ),
             });
         }
 
-        if let Some((namespace, reason)) = input_map.resolve_prefix_start(&normalized, context) {
-            self.pending_prefix = Some(PendingPrefix {
-                namespace,
+        if should_start_replace_pending(&normalized, context) {
+            self.pending_input = Some(PendingInput {
+                sequence: None,
+                state: PendingState::ReplaceChar,
                 started_at: now,
             });
             return Some(InputRouteOutcome::NoDispatch {
                 input_debug,
                 route_debug: format!(
-                    "mode={} focus={} -> {}",
+                    "mode={} focus={} -> pending replace char start",
                     context.mode.as_str(),
                     context.focus.as_str(),
-                    reason
                 ),
             });
+        }
+
+        if let Some(matched) = input_map.resolve_sequence_start(&normalized, context) {
+            match matched {
+                SequenceMatch::Dispatch(resolved) => {
+                    return Some(InputRouteOutcome::Dispatch(TranslatedInput {
+                        input_debug,
+                        route_debug: format!(
+                            "mode={} focus={} -> {}",
+                            context.mode.as_str(),
+                            context.focus.as_str(),
+                            resolved.reason
+                        ),
+                        command: resolved.command,
+                    }));
+                }
+                SequenceMatch::Pending(sequence) => {
+                    // If this key already has a single-key mapping, prefer it over
+                    // entering a pending chord state. This keeps `G` working even
+                    // when `gg` exists as a chord prefix.
+                    if let Some(resolved) = input_map.resolve(&normalized, context) {
+                        self.reset_prefix();
+                        return Some(InputRouteOutcome::Dispatch(TranslatedInput {
+                            input_debug,
+                            route_debug: format!(
+                                "mode={} focus={} -> single-key mapping preferred over chord prefix -> {}",
+                                context.mode.as_str(),
+                                context.focus.as_str(),
+                                resolved.reason
+                            ),
+                            command: resolved.command,
+                        }));
+                    }
+
+                    self.pending_input = Some(PendingInput {
+                        state: classify_pending_state(&sequence),
+                        sequence: Some(sequence),
+                        started_at: now,
+                    });
+                    return Some(InputRouteOutcome::NoDispatch {
+                        input_debug,
+                        route_debug: format!(
+                            "mode={} focus={} -> {} start",
+                            context.mode.as_str(),
+                            context.focus.as_str(),
+                            self.pending_input
+                                .as_ref()
+                                .map(|pending| pending.state.as_str())
+                                .unwrap_or("pending sequence")
+                        ),
+                    });
+                }
+            }
         }
 
         if let Some(resolved) = input_map.resolve(&normalized, context) {
@@ -259,20 +399,22 @@ impl InputHandler {
             return None;
         }
 
-        if context.focus != crate::app::input_map::InputFocusContext::Editor {
-            return None;
-        }
-
-        if context.mode == crate::core::mode::EditorMode::PaletteFocus && context.file_picker_open {
+        if context.mode == crate::core::mode::EditorMode::PaletteFocus
+            && context.command_palette_visible
+        {
             return Some(TranslatedInput {
                 input_debug: format!("IME Commit({text:?})"),
                 route_debug: format!(
-                    "mode={} focus={} -> IME commit -> FilePickerAppendQuery",
+                    "mode={} focus={} -> IME commit -> CommandPaletteAppendQuery",
                     context.mode.as_str(),
                     context.focus.as_str()
                 ),
                 command: Command::FilePickerAppendQuery(text.to_string()),
             });
+        }
+
+        if context.focus != crate::app::input_map::InputFocusContext::Editor {
+            return None;
         }
 
         if context.mode != crate::core::mode::EditorMode::Insert {
@@ -291,7 +433,7 @@ impl InputHandler {
     }
 
     fn reset_prefix_if_timed_out(&mut self, now: Instant) {
-        if let Some(pending) = self.pending_prefix {
+        if let Some(pending) = &self.pending_input {
             if now.duration_since(pending.started_at) > self.prefix_timeout {
                 self.reset_prefix();
             }
@@ -299,8 +441,62 @@ impl InputHandler {
     }
 
     fn reset_prefix(&mut self) {
-        self.pending_prefix = None;
+        self.pending_input = None;
     }
+}
+
+fn classify_pending_state(sequence: &PendingSequence) -> PendingState {
+    if sequence.steps.len() == 1 {
+        if matches!(sequence.steps[0], KeySpec::Leader) {
+            return PendingState::Leader;
+        }
+        if matches!(sequence.steps[0], KeySpec::Physical(KeyCode::KeyD)) {
+            return PendingState::OperatorDelete;
+        }
+        if matches!(sequence.steps[0], KeySpec::Physical(KeyCode::KeyC)) {
+            return PendingState::OperatorChange;
+        }
+    }
+    PendingState::Sequence
+}
+
+impl PendingState {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::OperatorDelete => "pending operator delete",
+            Self::OperatorChange => "pending operator change",
+            Self::ReplaceChar => "pending replace char",
+            Self::Leader => "pending leader",
+            Self::Sequence => "pending sequence",
+        }
+    }
+}
+
+fn should_start_replace_pending(input: &NormalizedInput, context: KeybindingContext) -> bool {
+    if context.focus != crate::app::input_map::InputFocusContext::Editor
+        || context.mode != crate::core::mode::EditorMode::Normal
+    {
+        return false;
+    }
+    if input.has_command_modifier() || input.modifiers.alt_key() || input.modifiers.shift_key() {
+        return false;
+    }
+    input.physical_key == Some(KeyCode::KeyR) || input.text.as_deref() == Some("r")
+}
+
+fn replace_char_from_input(input: &NormalizedInput) -> Option<char> {
+    if let Some(text) = input.text.as_deref() {
+        if text.chars().count() == 1
+            && let Some(ch) = text.chars().next()
+            && !ch.is_control()
+        {
+            return Some(ch);
+        }
+    }
+    if input.named_key == Some(NamedKey::Space) {
+        return Some(' ');
+    }
+    None
 }
 
 fn format_modifiers(modifiers: ModifiersState) -> String {
@@ -425,7 +621,10 @@ mod tests {
     use winit::keyboard::{KeyCode, ModifiersState, NamedKey};
 
     use crate::{
-        app::input_map::{InputMap, KeybindingContext},
+        app::{
+            input_map::{InputMap, KeybindingContext},
+            resolved_keymap::builtin_defaults,
+        },
         core::{commands::Command, mode::EditorMode},
     };
 
@@ -461,10 +660,14 @@ mod tests {
         }
     }
 
+    fn make_map() -> InputMap {
+        InputMap::with_keymap(PathBuf::from("phase7_test.txt"), builtin_defaults())
+    }
+
     #[test]
-    fn prefix_leader_resolves_space_f() {
+    fn leader_space_f_f_maps_to_open_file_finder() {
         let mut handler = InputHandler::new();
-        let map = InputMap::new(PathBuf::from("phase7_test.txt"));
+        let map = make_map();
         let context = KeybindingContext::for_mode(EditorMode::Normal);
         let t0 = std::time::Instant::now();
 
@@ -478,7 +681,11 @@ mod tests {
 
         let follow =
             handler.route_normalized_input(char_input('f', KeyCode::KeyF), &map, context, t0);
-        match follow {
+        assert!(matches!(follow, Some(InputRouteOutcome::NoDispatch { .. })));
+
+        let resolved =
+            handler.route_normalized_input(char_input('f', KeyCode::KeyF), &map, context, t0);
+        match resolved {
             Some(InputRouteOutcome::Dispatch(translated)) => {
                 assert_eq!(translated.command, Command::OpenFileFinder);
             }
@@ -487,9 +694,152 @@ mod tests {
     }
 
     #[test]
+    fn d_d_maps_to_delete_current_line() {
+        let mut handler = InputHandler::new();
+        let map = make_map();
+        let context = KeybindingContext::for_mode(EditorMode::Normal);
+        let t0 = std::time::Instant::now();
+
+        let first =
+            handler.route_normalized_input(char_input('d', KeyCode::KeyD), &map, context, t0);
+        assert!(matches!(first, Some(InputRouteOutcome::NoDispatch { .. })));
+
+        let second =
+            handler.route_normalized_input(char_input('d', KeyCode::KeyD), &map, context, t0);
+        match second {
+            Some(InputRouteOutcome::Dispatch(translated)) => {
+                assert_eq!(translated.command, Command::DeleteCurrentLine);
+            }
+            other => panic!("expected dd dispatch, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn c_w_maps_to_change_word_forward() {
+        let mut handler = InputHandler::new();
+        let map = make_map();
+        let context = KeybindingContext::for_mode(EditorMode::Normal);
+        let t0 = std::time::Instant::now();
+
+        let first =
+            handler.route_normalized_input(char_input('c', KeyCode::KeyC), &map, context, t0);
+        assert!(matches!(first, Some(InputRouteOutcome::NoDispatch { .. })));
+
+        let second =
+            handler.route_normalized_input(char_input('w', KeyCode::KeyW), &map, context, t0);
+        match second {
+            Some(InputRouteOutcome::Dispatch(translated)) => {
+                assert_eq!(translated.command, Command::ChangeWordForward);
+            }
+            other => panic!("expected cw dispatch, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn c_b_maps_to_change_word_backward() {
+        let mut handler = InputHandler::new();
+        let map = make_map();
+        let context = KeybindingContext::for_mode(EditorMode::Normal);
+        let t0 = std::time::Instant::now();
+
+        let first =
+            handler.route_normalized_input(char_input('c', KeyCode::KeyC), &map, context, t0);
+        assert!(matches!(first, Some(InputRouteOutcome::NoDispatch { .. })));
+
+        let second =
+            handler.route_normalized_input(char_input('b', KeyCode::KeyB), &map, context, t0);
+        match second {
+            Some(InputRouteOutcome::Dispatch(translated)) => {
+                assert_eq!(translated.command, Command::ChangeWordBackward);
+            }
+            other => panic!("expected cb dispatch, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn r_then_printable_key_maps_to_replace_char() {
+        let mut handler = InputHandler::new();
+        let map = make_map();
+        let context = KeybindingContext::for_mode(EditorMode::Normal);
+        let t0 = std::time::Instant::now();
+
+        let first =
+            handler.route_normalized_input(char_input('r', KeyCode::KeyR), &map, context, t0);
+        assert!(matches!(first, Some(InputRouteOutcome::NoDispatch { .. })));
+
+        let second =
+            handler.route_normalized_input(char_input('X', KeyCode::KeyX), &map, context, t0);
+        match second {
+            Some(InputRouteOutcome::Dispatch(translated)) => {
+                assert_eq!(translated.command, Command::ReplaceChar('X'));
+            }
+            other => panic!("expected r<char> dispatch, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pending_replace_is_canceled_by_escape() {
+        let mut handler = InputHandler::new();
+        let map = make_map();
+        let context = KeybindingContext::for_mode(EditorMode::Normal);
+        let t0 = std::time::Instant::now();
+
+        let first =
+            handler.route_normalized_input(char_input('r', KeyCode::KeyR), &map, context, t0);
+        assert!(matches!(first, Some(InputRouteOutcome::NoDispatch { .. })));
+
+        let canceled =
+            handler.route_normalized_input(named_input(NamedKey::Escape, None), &map, context, t0);
+        assert!(matches!(
+            canceled,
+            Some(InputRouteOutcome::NoDispatch { .. })
+        ));
+
+        let next =
+            handler.route_normalized_input(char_input('w', KeyCode::KeyW), &map, context, t0);
+        match next {
+            Some(InputRouteOutcome::Dispatch(translated)) => {
+                assert_eq!(translated.command, Command::MoveWordForward);
+            }
+            other => panic!(
+                "pending replace state should reset after Escape, got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn pending_delete_prefix_is_canceled_by_escape() {
+        let mut handler = InputHandler::new();
+        let map = make_map();
+        let context = KeybindingContext::for_mode(EditorMode::Normal);
+        let t0 = std::time::Instant::now();
+
+        let first =
+            handler.route_normalized_input(char_input('d', KeyCode::KeyD), &map, context, t0);
+        assert!(matches!(first, Some(InputRouteOutcome::NoDispatch { .. })));
+
+        let canceled =
+            handler.route_normalized_input(named_input(NamedKey::Escape, None), &map, context, t0);
+        assert!(matches!(
+            canceled,
+            Some(InputRouteOutcome::NoDispatch { .. })
+        ));
+
+        let next =
+            handler.route_normalized_input(char_input('w', KeyCode::KeyW), &map, context, t0);
+        match next {
+            Some(InputRouteOutcome::Dispatch(translated)) => {
+                assert_eq!(translated.command, Command::MoveWordForward);
+            }
+            other => panic!("pending state should reset after Escape, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn interrupted_prefix_falls_back_and_does_not_stick() {
         let mut handler = InputHandler::new();
-        let map = InputMap::new(PathBuf::from("phase7_test.txt"));
+        let map = make_map();
         let context = KeybindingContext::for_mode(EditorMode::Normal);
         let t0 = std::time::Instant::now();
 
@@ -500,13 +850,15 @@ mod tests {
             t0,
         );
 
-        // 'x' không có mapping ở prefix leader, cũng không có mapping thường -> NoDispatch.
+        // Prefix bị gián đoạn, key hiện tại fallback về mapping thường.
         let interrupted =
             handler.route_normalized_input(char_input('x', KeyCode::KeyX), &map, context, t0);
-        assert!(matches!(
-            interrupted,
-            Some(InputRouteOutcome::NoDispatch { .. })
-        ));
+        match interrupted {
+            Some(InputRouteOutcome::Dispatch(translated)) => {
+                assert_eq!(translated.command, Command::DeleteChar);
+            }
+            other => panic!("expected fallback dispatch for x, got {:?}", other),
+        }
 
         // Sau khi bị gián đoạn, router không kẹt trong prefix nữa.
         let after =
@@ -522,7 +874,7 @@ mod tests {
     #[test]
     fn prefix_timeout_resets_safely() {
         let mut handler = InputHandler::new();
-        let map = InputMap::new(PathBuf::from("phase7_test.txt"));
+        let map = make_map();
         let context = KeybindingContext::for_mode(EditorMode::Normal);
         let t0 = std::time::Instant::now();
 
@@ -560,7 +912,7 @@ mod tests {
     #[test]
     fn focus_loss_resets_prefix_safely() {
         let mut handler = InputHandler::new();
-        let map = InputMap::new(PathBuf::from("phase7_test.txt"));
+        let map = make_map();
         let context = KeybindingContext::for_mode(EditorMode::Normal);
         let now = std::time::Instant::now();
 
@@ -592,7 +944,7 @@ mod tests {
     #[test]
     fn leader_space_p_maps_to_open_command_palette() {
         let mut handler = InputHandler::new();
-        let map = InputMap::new(PathBuf::from("phase7_test.txt"));
+        let map = make_map();
         let context = KeybindingContext::for_mode(EditorMode::Normal);
         let now = std::time::Instant::now();
 
@@ -616,7 +968,7 @@ mod tests {
     #[test]
     fn leader_space_t_maps_to_toggle_terminal() {
         let mut handler = InputHandler::new();
-        let map = InputMap::new(PathBuf::from("phase7_test.txt"));
+        let map = make_map();
         let context = KeybindingContext::for_mode(EditorMode::Normal);
         let now = std::time::Instant::now();
 
@@ -638,9 +990,39 @@ mod tests {
     }
 
     #[test]
+    fn get_pending_keys_returns_human_readable_chord_sequence() {
+        let mut handler = InputHandler::new();
+        let map = make_map();
+        let context = KeybindingContext::for_mode(EditorMode::Normal);
+        let now = std::time::Instant::now();
+
+        let _ = handler.route_normalized_input(
+            named_input(NamedKey::Space, Some(KeyCode::Space)),
+            &map,
+            context,
+            now,
+        );
+        assert_eq!(handler.get_pending_keys(), "<Space>");
+
+        let _ = handler.route_normalized_input(char_input('f', KeyCode::KeyF), &map, context, now);
+        assert_eq!(handler.get_pending_keys(), "<Space> f");
+    }
+
+    #[test]
+    fn get_pending_keys_returns_operator_prefix() {
+        let mut handler = InputHandler::new();
+        let map = make_map();
+        let context = KeybindingContext::for_mode(EditorMode::Normal);
+        let now = std::time::Instant::now();
+
+        let _ = handler.route_normalized_input(char_input('d', KeyCode::KeyD), &map, context, now);
+        assert_eq!(handler.get_pending_keys(), "d");
+    }
+
+    #[test]
     fn terminal_focus_routes_printable_text_through_command_path() {
         let mut handler = InputHandler::new();
-        let map = InputMap::new(PathBuf::from("phase7_test.txt"));
+        let map = make_map();
         let context = KeybindingContext::with_focus(
             EditorMode::TerminalFocus,
             crate::app::input_map::InputFocusContext::Terminal,
@@ -663,7 +1045,7 @@ mod tests {
     #[test]
     fn terminal_focus_routes_arrow_keys_as_ansi_sequences() {
         let mut handler = InputHandler::new();
-        let map = InputMap::new(PathBuf::from("phase7_test.txt"));
+        let map = make_map();
         let context = KeybindingContext::with_focus(
             EditorMode::TerminalFocus,
             crate::app::input_map::InputFocusContext::Terminal,

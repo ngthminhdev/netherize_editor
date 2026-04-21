@@ -1,4 +1,3 @@
-pub mod command_router;
 pub mod debug_state;
 pub mod focus_manager;
 pub mod inspector_panel;

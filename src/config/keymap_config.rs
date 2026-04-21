@@ -23,7 +23,8 @@ pub struct KeyBinding {
     /// - Physical keys: "h", "j", "k", "l", "i", "v"
     ///   Special names: "backtick", "backslash"
     /// - Modifier combo: "mod+s" (Cmd on macOS, Ctrl elsewhere)
-    /// - Leader prefix:  "<leader>f", "<leader>p", "<leader>t"
+    ///   Aliases: "Ctrl+e", "Cmd+Shift+P"
+    /// - Chord sequence: "d d", "<leader>f f", "<leader>f w"
     pub key: String,
 
     /// Mode scope. Absent or null = global (applies to all modes).

@@ -45,6 +45,31 @@ pub struct HighlightSpan {
     pub category: HighlightCategory,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HighlightEdit {
+    pub start: usize,
+    pub old_end: usize,
+    pub new_end: usize,
+}
+
+impl HighlightEdit {
+    pub fn insert(start: usize, inserted_len: usize) -> Self {
+        Self {
+            start,
+            old_end: start,
+            new_end: start.saturating_add(inserted_len),
+        }
+    }
+
+    pub fn delete(start: usize, old_end: usize) -> Self {
+        Self {
+            start,
+            old_end,
+            new_end: start,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct HighlightPalette {
     pub keyword: [u8; 4],
@@ -82,17 +107,93 @@ impl HighlightPalette {
     }
 }
 
+pub fn apply_highlight_edits(spans: &mut Vec<HighlightSpan>, edits: &[HighlightEdit]) {
+    if spans.is_empty() || edits.is_empty() {
+        return;
+    }
+
+    let mut adjusted = std::mem::take(spans);
+    for edit in edits {
+        adjusted = adjusted
+            .into_iter()
+            .filter_map(|span| transform_span_by_edit(span, *edit))
+            .collect();
+    }
+
+    *spans = coalesce_spans(adjusted);
+}
+
+pub fn merge_highlight_spans(
+    spans: &mut Vec<HighlightSpan>,
+    replacement: Vec<HighlightSpan>,
+    covered_byte_range: Option<Range<usize>>,
+) {
+    let Some(window) = covered_byte_range else {
+        *spans = coalesce_spans(replacement);
+        return;
+    };
+
+    let mut merged = Vec::with_capacity(spans.len() + replacement.len() + 2);
+    for span in std::mem::take(spans) {
+        if span.range.end <= window.start || span.range.start >= window.end {
+            merged.push(span);
+            continue;
+        }
+
+        if span.range.start < window.start {
+            merged.push(HighlightSpan {
+                range: span.range.start..window.start,
+                category: span.category,
+            });
+        }
+        if span.range.end > window.end {
+            merged.push(HighlightSpan {
+                range: window.end..span.range.end,
+                category: span.category,
+            });
+        }
+    }
+
+    merged.extend(replacement);
+    *spans = coalesce_spans(merged);
+}
+
 pub fn generate_highlight_spans(tree_state: &SyntaxTreeState, source: &str) -> Vec<HighlightSpan> {
     match tree_state.language_id() {
-        LanguageId::Rust => generate_rust_highlight_spans(tree_state.root_node(), source),
+        LanguageId::Rust => generate_rust_highlight_spans(tree_state.root_node(), source, None),
     }
 }
 
-fn generate_rust_highlight_spans(root: Node<'_>, source: &str) -> Vec<HighlightSpan> {
+pub fn generate_highlight_spans_in_byte_window(
+    tree_state: &SyntaxTreeState,
+    source: &str,
+    window: Range<usize>,
+) -> Vec<HighlightSpan> {
+    match tree_state.language_id() {
+        LanguageId::Rust => {
+            let Some((start, end)) = sanitize_byte_range(source, window) else {
+                return Vec::new();
+            };
+            generate_rust_highlight_spans(tree_state.root_node(), source, Some(start..end))
+        }
+    }
+}
+
+fn generate_rust_highlight_spans(
+    root: Node<'_>,
+    source: &str,
+    byte_window: Option<Range<usize>>,
+) -> Vec<HighlightSpan> {
     let mut raw_spans = Vec::new();
     let mut stack = vec![root];
 
     while let Some(node) = stack.pop() {
+        if let Some(window) = &byte_window
+            && (node.end_byte() <= window.start || node.start_byte() >= window.end)
+        {
+            continue;
+        }
+
         if let Some(category) = classify_rust_node(node) {
             raw_spans.push(HighlightSpan {
                 range: node.start_byte()..node.end_byte(),
@@ -117,7 +218,7 @@ fn generate_rust_highlight_spans(root: Node<'_>, source: &str) -> Vec<HighlightS
         }
     }
 
-    normalize_spans(source, raw_spans)
+    normalize_spans(source, raw_spans, byte_window)
 }
 
 fn classify_rust_node(node: Node<'_>) -> Option<HighlightCategory> {
@@ -217,20 +318,44 @@ fn is_child_field(node: Node<'_>, parent_kind: &str, field_name: &str) -> bool {
         .is_some_and(|field_node| field_node.id() == node.id())
 }
 
-fn normalize_spans(source: &str, spans: Vec<HighlightSpan>) -> Vec<HighlightSpan> {
+fn normalize_spans(
+    source: &str,
+    spans: Vec<HighlightSpan>,
+    byte_window: Option<Range<usize>>,
+) -> Vec<HighlightSpan> {
     if source.is_empty() || spans.is_empty() {
         return Vec::new();
     }
 
-    let mut painted: Vec<Option<(HighlightCategory, u8)>> = vec![None; source.len()];
+    let (paint_start, paint_end) = if let Some(window) = byte_window {
+        let Some((start, end)) = sanitize_byte_range(source, window) else {
+            return Vec::new();
+        };
+        (start, end)
+    } else {
+        (0, source.len())
+    };
+    if paint_start >= paint_end {
+        return Vec::new();
+    }
+
+    let mut painted: Vec<Option<(HighlightCategory, u8)>> = vec![None; paint_end - paint_start];
 
     for span in spans {
-        let Some((start, end)) = sanitize_byte_range(source, span.range) else {
+        let Some((raw_start, raw_end)) = sanitize_byte_range(source, span.range) else {
             continue;
         };
+        let start = raw_start.max(paint_start);
+        let end = raw_end.min(paint_end);
+        if start >= end {
+            continue;
+        }
+
         let priority = span.category.priority();
 
-        for slot in painted.iter_mut().take(end).skip(start) {
+        let local_start = start - paint_start;
+        let local_end = end - paint_start;
+        for slot in painted.iter_mut().take(local_end).skip(local_start) {
             match slot {
                 Some((_, existing_priority)) if *existing_priority >= priority => {}
                 _ => *slot = Some((span.category, priority)),
@@ -256,7 +381,9 @@ fn normalize_spans(source: &str, spans: Vec<HighlightSpan>) -> Vec<HighlightSpan
             }
         }
 
-        let Some((safe_start, safe_end)) = sanitize_byte_range(source, start..end) else {
+        let Some((safe_start, safe_end)) =
+            sanitize_byte_range(source, (paint_start + start)..(paint_start + end))
+        else {
             cursor = end;
             continue;
         };
@@ -274,6 +401,100 @@ fn normalize_spans(source: &str, spans: Vec<HighlightSpan>) -> Vec<HighlightSpan
             category,
         });
         cursor = end;
+    }
+
+    merged
+}
+
+fn transform_span_by_edit(span: HighlightSpan, edit: HighlightEdit) -> Option<HighlightSpan> {
+    let start = span.range.start;
+    let end = span.range.end;
+    if start >= end {
+        return None;
+    }
+
+    if edit.old_end == edit.start {
+        let inserted_len = edit.new_end.saturating_sub(edit.start);
+        if inserted_len == 0 {
+            return Some(span);
+        }
+
+        if end <= edit.start {
+            return Some(span);
+        }
+
+        if start > edit.start {
+            return Some(HighlightSpan {
+                range: (start + inserted_len)..(end + inserted_len),
+                category: span.category,
+            });
+        }
+
+        return Some(HighlightSpan {
+            range: start..(end + inserted_len),
+            category: span.category,
+        });
+    }
+
+    if end <= edit.start {
+        return Some(span);
+    }
+
+    let removed_len = edit.old_end.saturating_sub(edit.start);
+    if removed_len == 0 {
+        return Some(span);
+    }
+
+    if start >= edit.old_end {
+        return Some(HighlightSpan {
+            range: (start - removed_len)..(end - removed_len),
+            category: span.category,
+        });
+    }
+
+    let new_start = if start >= edit.start {
+        edit.start
+    } else {
+        start
+    };
+    let new_end = if end <= edit.old_end {
+        edit.start
+    } else {
+        end - removed_len
+    };
+
+    (new_start < new_end).then_some(HighlightSpan {
+        range: new_start..new_end,
+        category: span.category,
+    })
+}
+
+fn coalesce_spans(mut spans: Vec<HighlightSpan>) -> Vec<HighlightSpan> {
+    spans.retain(|span| span.range.start < span.range.end);
+    spans.sort_by_key(|span| (span.range.start, span.range.end));
+
+    let mut merged: Vec<HighlightSpan> = Vec::with_capacity(spans.len());
+    for mut span in spans {
+        if let Some(last) = merged.last_mut() {
+            if span.range.start < last.range.end {
+                if span.category == last.category {
+                    last.range.end = last.range.end.max(span.range.end);
+                    continue;
+                }
+
+                span.range.start = last.range.end;
+                if span.range.start >= span.range.end {
+                    continue;
+                }
+            }
+
+            if last.category == span.category && last.range.end == span.range.start {
+                last.range.end = span.range.end;
+                continue;
+            }
+        }
+
+        merged.push(span);
     }
 
     merged
@@ -303,7 +524,10 @@ fn sanitize_byte_range(source: &str, range: Range<usize>) -> Option<(usize, usiz
 
 #[cfg(test)]
 mod tests {
-    use super::{HighlightCategory, generate_highlight_spans};
+    use super::{
+        HighlightCategory, HighlightEdit, HighlightSpan, apply_highlight_edits,
+        generate_highlight_spans, merge_highlight_spans,
+    };
     use crate::syntax::syntax_engine::SyntaxEngine;
 
     #[test]
@@ -364,5 +588,62 @@ fn greet(name: &str) -> String {
             let right = &window[1];
             assert!(left.range.end <= right.range.start);
         }
+    }
+
+    #[test]
+    fn highlight_edits_shift_existing_ranges_without_clearing() {
+        let mut spans = vec![
+            HighlightSpan {
+                range: 10..20,
+                category: HighlightCategory::Keyword,
+            },
+            HighlightSpan {
+                range: 25..30,
+                category: HighlightCategory::String,
+            },
+        ];
+
+        apply_highlight_edits(&mut spans, &[HighlightEdit::insert(15, 3)]);
+        assert_eq!(spans[0].range, 10..23);
+        assert_eq!(spans[1].range, 28..33);
+
+        apply_highlight_edits(&mut spans, &[HighlightEdit::delete(12, 18)]);
+        assert_eq!(spans[0].range, 10..17);
+        assert_eq!(spans[1].range, 22..27);
+    }
+
+    #[test]
+    fn merge_highlight_window_only_replaces_overlapping_slice() {
+        let mut spans = vec![HighlightSpan {
+            range: 0..10,
+            category: HighlightCategory::Comment,
+        }];
+
+        merge_highlight_spans(
+            &mut spans,
+            vec![HighlightSpan {
+                range: 4..6,
+                category: HighlightCategory::Keyword,
+            }],
+            Some(4..6),
+        );
+
+        assert_eq!(
+            spans,
+            vec![
+                HighlightSpan {
+                    range: 0..4,
+                    category: HighlightCategory::Comment,
+                },
+                HighlightSpan {
+                    range: 4..6,
+                    category: HighlightCategory::Keyword,
+                },
+                HighlightSpan {
+                    range: 6..10,
+                    category: HighlightCategory::Comment,
+                },
+            ]
+        );
     }
 }
