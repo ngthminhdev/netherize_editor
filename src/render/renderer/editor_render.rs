@@ -4,7 +4,7 @@
 use cosmic_text::Metrics;
 
 use crate::{
-    app::app_state::AppState,
+    app::app_state::{AppState, EditorOverlay, OverlayColorToken},
     core::mode::EditorMode,
     render::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
@@ -13,8 +13,8 @@ use crate::{
 };
 
 use super::helpers::{
-    caret_rect_for_mode, gutter_width_for_editor, layout_panel_text, rect_to_scissor,
-    should_draw_block_cursor,
+    caret_rect_for_mode, gutter_width_for_editor, layout_panel_text, layout_panel_text_italic,
+    rect_to_scissor, should_draw_block_cursor,
 };
 use crate::text::text_system::StyledTextSpan;
 
@@ -38,6 +38,45 @@ fn run_x_for_byte(text_area_x: f32, run: &cosmic_text::LayoutRun, byte_in_line: 
     x
 }
 
+struct EditorViewportGeometry {
+    line_height: f32,
+    font_size: f32,
+    gutter_width: f32,
+    viewport_text_left: f32,
+    viewport_text_width: f32,
+    origin_x: f32,
+    origin_y: f32,
+}
+
+fn editor_viewport_geometry(
+    renderer: &Renderer,
+    app_state: &AppState,
+    center_bounds: [f32; 4],
+) -> EditorViewportGeometry {
+    let line_height = renderer.theme.editor.line_height;
+    let font_size = renderer.theme.editor.font_size;
+    let total_lines = app_state.total_lines().max(1);
+    let gutter_digits = total_lines.to_string().len().max(3);
+    let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
+    let scroll_y = app_state.scroll_line as f32 * line_height;
+    let scroll_x = app_state.scroll_column as f32 * (font_size * 0.6).max(1.0);
+    let viewport_text_left = center_bounds[0] + renderer.editor_padding_x + gutter_width;
+    let origin_x = viewport_text_left - scroll_x;
+    let origin_y = center_bounds[1] + renderer.editor_padding_y + line_height - scroll_y;
+    let viewport_text_width =
+        (center_bounds[2] - renderer.editor_padding_x - gutter_width).max(1.0);
+
+    EditorViewportGeometry {
+        line_height,
+        font_size,
+        gutter_width,
+        viewport_text_left,
+        viewport_text_width,
+        origin_x,
+        origin_y,
+    }
+}
+
 impl Renderer {
     pub fn clear_editor_content(&mut self) {
         self.glyph_instances.clear();
@@ -49,6 +88,8 @@ impl Renderer {
         self.gutter_glyph_instances.clear();
         self.gutter_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
+        self.clear_editor_overlays();
+        self.editor_scissor = None;
     }
 
     /// Rebuild glyph instances and caret for the center editor region.
@@ -59,17 +100,8 @@ impl Renderer {
         center_bounds: [f32; 4],
         spans: &[StyledTextSpan],
     ) {
-        let line_height = self.theme.editor.line_height;
-        let font_size = self.theme.editor.font_size;
-        let total_lines = app_state.total_lines().max(1);
-        let scroll_line = app_state.scroll_line;
-
-        let gutter_digits = total_lines.to_string().len().max(3);
-        let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
-        let scroll_y = scroll_line as f32 * line_height;
-        let origin_x = center_bounds[0] + self.editor_padding_x + gutter_width;
-        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
-        let width = (center_bounds[2] - self.editor_padding_x - gutter_width).max(1.0);
+        let geometry = editor_viewport_geometry(self, app_state, center_bounds);
+        let width = geometry.viewport_text_width;
 
         self.editor_scissor = rect_to_scissor(center_bounds);
         // Allow cosmic-text to shape full height; scissor clips the visible region.
@@ -81,7 +113,7 @@ impl Renderer {
             &mut self.text_system,
             &mut self.atlas,
             &self.queue,
-            [origin_x, origin_y],
+            [geometry.origin_x, geometry.origin_y],
             self.theme.editor.fg.as_f32(),
             self.theme.editor.bg.as_f32(),
             spans,
@@ -131,10 +163,10 @@ impl Renderer {
         self.update_editor_gutter(
             app_state,
             center_bounds,
-            line_height,
-            font_size,
-            gutter_digits,
-            gutter_width,
+            geometry.line_height,
+            geometry.font_size,
+            app_state.total_lines().max(1).to_string().len().max(3),
+            geometry.gutter_width,
         );
     }
 
@@ -143,16 +175,13 @@ impl Renderer {
     /// Must honor the same mode → shape mapping as `update_editor_content`, otherwise
     /// h/j/k/l in Normal mode would collapse the block caret back to a thin bar.
     pub fn update_editor_caret(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {
-        let line_height = self.theme.editor.line_height;
-        let font_size = self.theme.editor.font_size;
-        let total_lines = app_state.total_lines().max(1);
-        let scroll_y = app_state.scroll_line as f32 * line_height;
-        let gutter_digits = total_lines.to_string().len().max(3);
-        let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
-        let origin_x = center_bounds[0] + self.editor_padding_x + gutter_width;
-        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
+        let geometry = editor_viewport_geometry(self, app_state, center_bounds);
 
-        let caret_layout = compute_caret_layout(&self.text_system, app_state, [origin_x, origin_y]);
+        let caret_layout = compute_caret_layout(
+            &self.text_system,
+            app_state,
+            [geometry.origin_x, geometry.origin_y],
+        );
         let caret = caret_rect_for_mode(
             caret_layout,
             app_state.current_mode(),
@@ -171,7 +200,7 @@ impl Renderer {
                 app_state,
                 &mut self.atlas,
                 &self.queue,
-                [origin_x, origin_y],
+                [geometry.origin_x, geometry.origin_y],
                 self.theme.editor.bg.as_f32(),
             )
             .unwrap_or(None)
@@ -188,10 +217,95 @@ impl Renderer {
         self.update_editor_gutter(
             app_state,
             center_bounds,
-            line_height,
-            font_size,
-            gutter_digits,
-            gutter_width,
+            geometry.line_height,
+            geometry.font_size,
+            app_state.total_lines().max(1).to_string().len().max(3),
+            geometry.gutter_width,
+        );
+    }
+
+    pub fn clear_editor_overlays(&mut self) {
+        self.editor_overlay_scissor = None;
+        self.editor_overlay_glyph_instances.clear();
+        self.editor_overlay_text_pipeline
+            .upload_instances(&self.device, &self.queue, &[]);
+    }
+
+    pub fn update_editor_overlays(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {
+        if app_state.current_overlays().is_empty() {
+            self.clear_editor_overlays();
+            return;
+        }
+
+        let geometry = editor_viewport_geometry(self, app_state, center_bounds);
+        let viewport_top = center_bounds[1] + self.editor_padding_y;
+        let viewport_bottom =
+            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
+        let viewport_right = center_bounds[0] + center_bounds[2] - self.editor_padding_x;
+
+        self.editor_overlay_scissor = rect_to_scissor(center_bounds);
+        let mut glyphs = Vec::new();
+
+        for overlay in app_state.current_overlays() {
+            let EditorOverlay::VirtualText {
+                line,
+                column: _,
+                text,
+                color_token,
+            } = overlay;
+            let line_end_byte = app_state.line_content_end_byte_idx(*line);
+            let line_start_byte = app_state.line_start_byte_idx(*line);
+            let byte_in_line = line_end_byte.saturating_sub(line_start_byte);
+
+            let mut line_top: Option<f32> = None;
+            let mut line_height_px = geometry.line_height.max(1.0);
+            let mut tail_x = geometry.origin_x;
+
+            for run in self.text_system.buffer().layout_runs() {
+                if run.line_i != *line {
+                    continue;
+                }
+                let candidate_top = geometry.origin_y + run.line_top;
+                let candidate_bottom = candidate_top + run.line_height.max(1.0);
+                if candidate_bottom <= viewport_top || candidate_top >= viewport_bottom {
+                    continue;
+                }
+
+                line_top = Some(candidate_top);
+                line_height_px = run.line_height.max(1.0);
+                tail_x = tail_x.max(run_x_for_byte(geometry.origin_x, &run, byte_in_line));
+            }
+
+            let Some(line_top) = line_top else {
+                continue;
+            };
+
+            let origin_x = (tail_x + 10.0).max(geometry.viewport_text_left + 4.0);
+            if origin_x >= viewport_right {
+                continue;
+            }
+
+            let width = (viewport_right - origin_x).max(1.0);
+            self.editor_overlay_text_system
+                .set_size(Some(width), Some(line_height_px));
+            glyphs.extend(layout_panel_text_italic(
+                text,
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                origin_x,
+                line_top,
+                match color_token {
+                    OverlayColorToken::UiFgGhost => self.theme.ui.fg_ghost.as_f32(),
+                },
+            ));
+        }
+
+        self.editor_overlay_glyph_instances = glyphs;
+        self.editor_overlay_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.editor_overlay_glyph_instances,
         );
     }
 
@@ -215,7 +329,7 @@ impl Renderer {
 
         let viewport_top = center_bounds[1] + self.editor_padding_y;
         let viewport_bottom =
-            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0 - line_height).max(1.0);
+            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
         let line_top = caret_layout.top;
         let line_bottom = line_top + caret_layout.height.max(1.0);
         if line_bottom <= viewport_top || line_top >= viewport_bottom {
@@ -260,7 +374,7 @@ impl Renderer {
 
         let viewport_top = center_bounds[1] + self.editor_padding_y;
         let viewport_bottom =
-            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0 - line_height).max(1.0);
+            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
 
         let mut color = self.theme.editor.selection.as_f32();
         color[3] = (color[3] * 0.45).clamp(0.18, 0.42);
@@ -324,7 +438,7 @@ impl Renderer {
 
         let viewport_top = center_bounds[1] + self.editor_padding_y;
         let viewport_bottom =
-            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0 - line_height).max(1.0);
+            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
 
         let mut color = self.theme.ui.warning.as_f32();
         color[3] = color[3].clamp(0.26, 0.38);

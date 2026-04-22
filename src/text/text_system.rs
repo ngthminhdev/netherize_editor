@@ -138,6 +138,19 @@ impl TextSystem {
         self.buffer.shape_until_scroll(&mut self.font_system, false);
     }
 
+    pub fn set_text_italic_color(&mut self, text: &str, color_rgba: [u8; 4]) {
+        let family = self.font_family.as_deref();
+        let attrs = apply_family(
+            Attrs::new()
+                .color(Self::rgba_u8_to_color(color_rgba))
+                .style(fontdb::Style::Italic),
+            family,
+        );
+        self.buffer
+            .set_text(&mut self.font_system, text, &attrs, Shaping::Advanced, None);
+        self.buffer.shape_until_scroll(&mut self.font_system, false);
+    }
+
     /// Set rich text bằng styled spans theo byte range.
     ///
     /// `spans` phải dùng byte-offset trong `text` (khớp output của tree-sitter).

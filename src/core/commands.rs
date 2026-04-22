@@ -20,14 +20,19 @@ pub enum Command {
     DeleteChar,
     DeleteSelection,
     DeleteCurrentLine,
+    ToggleLineComment,
+    ToggleSelectionComment,
     DeleteWordForward,
     DeleteWordBackward,
     YankSelection,
+    YankCurrentLine,
+    YankToWordEnd,
     ChangeSelection,
     ChangeWordForward,
     ChangeWordBackward,
     PasteAfter,
     PasteBefore,
+    PasteSystemClipboard,
     Undo,
     Redo,
     ReplaceChar(char),
@@ -68,6 +73,8 @@ pub enum Command {
     FilePickerBackspaceQuery,
     OverlaySelectNext,
     OverlaySelectPrev,
+    GitOpenLazygit,
+    GitBlameLine,
     // Legacy aliases (kept for backward compatibility with old keymaps/tests).
     FilePickerSelectNext,
     FilePickerSelectPrev,
@@ -77,6 +84,7 @@ pub enum Command {
 
     // ── Terminal ───────────────────────────────────────────────────────────────
     ToggleTerminal,
+    ToggleBottomDock,
     ToggleLeftDock,
     /// Raw terminal bytes/string payload routed through command path.
     TerminalWriteInput(String),
@@ -223,6 +231,36 @@ impl Command {
                 | Self::DeleteWordBackward
                 | Self::PasteAfter
                 | Self::PasteBefore
+        )
+    }
+
+    pub fn supports_press_and_hold_repeat(&self) -> bool {
+        matches!(
+            self,
+            Self::MoveLeft
+                | Self::MoveRight
+                | Self::MoveUp
+                | Self::MoveDown
+                | Self::MoveWordForward
+                | Self::MoveWordBackward
+                | Self::MoveWordEnd
+                | Self::MoveToLineStart
+                | Self::MoveToLineEnd
+                | Self::MoveToFirstNonWhitespace
+                | Self::MoveToFirstLine
+                | Self::MoveToLastLine
+                | Self::ScrollHalfPageUp
+                | Self::ScrollHalfPageDown
+                | Self::SearchNext
+                | Self::SearchPrev
+                | Self::OverlaySelectNext
+                | Self::OverlaySelectPrev
+                | Self::ExplorerMoveUp
+                | Self::ExplorerMoveDown
+                | Self::ExplorerCollapseOrParent
+                | Self::ExplorerExpandOrChild
+                | Self::TerminalScrollUp
+                | Self::TerminalScrollDown
         )
     }
 }

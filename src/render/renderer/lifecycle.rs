@@ -120,11 +120,15 @@ impl Renderer {
         let text_pipeline = make_text_pipeline(&device, &atlas, surface_format, width, height);
         let editor_cursor_overlay_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
+        let editor_overlay_text_pipeline =
+            make_text_pipeline(&device, &atlas, surface_format, width, height);
         let gutter_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let sidebar_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let terminal_text_pipeline =
+            make_text_pipeline(&device, &atlas, surface_format, width, height);
+        let buffer_terminal_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let welcome_logo_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
@@ -151,6 +155,10 @@ impl Renderer {
             caret_pipeline,
             editor_cursor_overlay_pipeline,
             editor_scissor: None,
+            editor_overlay_text_system: make_text_system(editor_metrics, font_family.as_deref()),
+            editor_overlay_text_pipeline,
+            editor_overlay_glyph_instances: Vec::new(),
+            editor_overlay_scissor: None,
             gutter_text_system,
             gutter_text_pipeline,
             gutter_glyph_instances: Vec::new(),
@@ -165,6 +173,12 @@ impl Renderer {
             terminal_glyph_instances: Vec::new(),
             terminal_cursor_instances: Vec::new(),
             terminal_scissor: None,
+            buffer_terminal_text_system: make_text_system(panel_metrics, font_family.as_deref()),
+            buffer_terminal_text_pipeline,
+            buffer_terminal_view_renderer: TerminalViewRenderer::default_monospace(),
+            buffer_terminal_glyph_instances: Vec::new(),
+            buffer_terminal_cursor_instances: Vec::new(),
+            buffer_terminal_scissor: None,
             welcome_logo_text_system,
             welcome_logo_text_pipeline,
             welcome_logo_view_renderer: TerminalViewRenderer::default_monospace(),
@@ -214,9 +228,17 @@ impl Renderer {
             theme.editor.font_size,
             theme.editor.line_height,
         ));
+        self.editor_overlay_text_system.set_metrics(Metrics::new(
+            theme.editor.font_size,
+            theme.editor.line_height,
+        ));
         let ui_metrics = Metrics::new(theme.ui.sidebar_font_size, theme.ui.sidebar_line_height);
         self.sidebar_text_system.set_metrics(ui_metrics);
         self.terminal_text_system.set_metrics(Metrics::new(
+            theme.ui.panel_font_size,
+            theme.ui.panel_line_height,
+        ));
+        self.buffer_terminal_text_system.set_metrics(Metrics::new(
             theme.ui.panel_font_size,
             theme.ui.panel_line_height,
         ));
@@ -234,8 +256,10 @@ impl Renderer {
 
         // Sidebar text must use NerdFont to render PUA glyphs without mojibake.
         self.text_system.set_font_family(family);
+        self.editor_overlay_text_system.set_font_family(family);
         self.sidebar_text_system.set_font_family(nerd_family);
-        self.terminal_text_system.set_font_family(family);
+        self.terminal_text_system.set_font_family(nerd_family);
+        self.buffer_terminal_text_system.set_font_family(nerd_family);
         self.welcome_logo_text_system.set_font_family(family);
         self.topbar_text_system.set_font_family(family);
         self.statusbar_text_system.set_font_family(family);
@@ -279,9 +303,11 @@ impl Renderer {
         for pipeline in [
             &mut self.text_pipeline,
             &mut self.editor_cursor_overlay_pipeline,
+            &mut self.editor_overlay_text_pipeline,
             &mut self.gutter_text_pipeline,
             &mut self.sidebar_text_pipeline,
             &mut self.terminal_text_pipeline,
+            &mut self.buffer_terminal_text_pipeline,
             &mut self.welcome_logo_text_pipeline,
             &mut self.topbar_text_pipeline,
             &mut self.statusbar_text_pipeline,
@@ -357,6 +383,7 @@ impl Renderer {
                     self.text_pipeline.draw(render_pass);
                     self.caret_pipeline.draw(render_pass);
                     self.editor_cursor_overlay_pipeline.draw(render_pass);
+                    self.editor_overlay_text_pipeline.draw(render_pass);
                     self.gutter_text_pipeline.draw(render_pass);
                 },
             );
@@ -431,6 +458,32 @@ impl Renderer {
                 draw_text_region(
                     &mut pass,
                     self.terminal_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline.draw(render_pass);
+                    },
+                );
+            }
+
+            draw_text_region(
+                &mut pass,
+                self.buffer_terminal_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.buffer_terminal_text_pipeline.draw(render_pass);
+                },
+            );
+            if !self.buffer_terminal_cursor_instances.is_empty() {
+                self.region_pipeline.upload_instances(
+                    &self.device,
+                    &self.queue,
+                    &self.buffer_terminal_cursor_instances,
+                );
+                draw_text_region(
+                    &mut pass,
+                    self.buffer_terminal_scissor,
                     viewport_width,
                     viewport_height,
                     |render_pass| {

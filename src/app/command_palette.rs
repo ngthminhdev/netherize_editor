@@ -24,6 +24,8 @@ pub enum CommandPaletteMode {
     ExplorerCreateFolder,
     /// Explorer delete confirmation overlay.
     ExplorerDeleteConfirm,
+    /// Dirty buffer close confirmation overlay.
+    BufferCloseConfirm,
     /// Recent Projects picker — hiện danh sách project đã mở gần đây.
     RecentProjects,
 }
@@ -40,6 +42,7 @@ impl CommandPaletteMode {
             Self::ExplorerCreateFile => "file> ",
             Self::ExplorerCreateFolder => "dir> ",
             Self::ExplorerDeleteConfirm => "delete> ",
+            Self::BufferCloseConfirm => "close> ",
             Self::RecentProjects => "project> ",
         }
     }
@@ -55,6 +58,7 @@ impl CommandPaletteMode {
             Self::ExplorerCreateFile => "enter a new file path...",
             Self::ExplorerCreateFolder => "enter a new folder path...",
             Self::ExplorerDeleteConfirm => "Delete selected item? (y/n)",
+            Self::BufferCloseConfirm => "Save changes before closing? (y/n)",
             Self::RecentProjects => "no recent projects",
         }
     }
@@ -70,6 +74,7 @@ impl CommandPaletteMode {
             Self::ExplorerCreateFile => "NEW FILE",
             Self::ExplorerCreateFolder => "NEW FOLDER",
             Self::ExplorerDeleteConfirm => "DELETE",
+            Self::BufferCloseConfirm => "CLOSE",
             Self::RecentProjects => "RECENT",
         }
     }
@@ -381,7 +386,8 @@ impl CommandPalette {
             CommandPaletteMode::InFileSearch => Vec::new(),
             CommandPaletteMode::ExplorerCreateFile
             | CommandPaletteMode::ExplorerCreateFolder
-            | CommandPaletteMode::ExplorerDeleteConfirm => Vec::new(),
+            | CommandPaletteMode::ExplorerDeleteConfirm
+            | CommandPaletteMode::BufferCloseConfirm => Vec::new(),
             CommandPaletteMode::RecentProjects => unreachable!("handled above"),
         };
 
@@ -441,6 +447,7 @@ impl CommandPalette {
                 | CommandPaletteMode::ExplorerCreateFile
                 | CommandPaletteMode::ExplorerCreateFolder
                 | CommandPaletteMode::ExplorerDeleteConfirm
+                | CommandPaletteMode::BufferCloseConfirm
         );
         let requested_visible_rows = if show_results {
             self.results.len().min(max_items)
@@ -626,6 +633,11 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
     let candidates = [
         ("editor.undo", "Undo"),
         ("editor.redo", "Redo"),
+        ("editor.toggle_line_comment", "Toggle Line Comment"),
+        (
+            "editor.toggle_selection_comment",
+            "Toggle Selection Comment",
+        ),
         ("editor.open_in_file_search", "Search In Current File"),
         ("editor.search_next", "Search Next Match"),
         ("editor.search_prev", "Search Previous Match"),
@@ -634,6 +646,7 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
             "Search Word Under Cursor",
         ),
         ("editor.clear_search_highlights", "Clear Search Highlights"),
+        ("editor.paste_system_clipboard", "Paste System Clipboard"),
         ("editor.save_file", "Save File"),
         ("app.open_file_picker", "Open File Picker"),
         ("app.open_file_finder", "Open File Finder"),

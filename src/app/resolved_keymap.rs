@@ -528,7 +528,8 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert(None, mp(KeyCode::KeyB), TOGGLE_LEFT_DOCK);
     km.insert(None, mp(KeyCode::KeyF), FOCUS_EXPLORER);
-    km.insert(None, nk(NamedKey::F12), TOGGLE_TERMINAL);
+    km.insert(None, nk(NamedKey::F12), FOCUS_TERMINAL);
+    km.insert(None, mp(KeyCode::Backslash), TOGGLE_BOTTOM_DOCK);
 
     // ── Insert mode ───────────────────────────────────────────────────────────
     km.insert(Some("insert"), nk(NamedKey::Escape), ENTER_NORMAL);
@@ -538,6 +539,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("insert"), nk(NamedKey::ArrowRight), MOVE_RIGHT);
     km.insert(Some("insert"), nk(NamedKey::ArrowUp), MOVE_UP);
     km.insert(Some("insert"), nk(NamedKey::ArrowDown), MOVE_DOWN);
+    km.insert(Some("insert"), mp(KeyCode::KeyV), PASTE_SYSTEM_CLIPBOARD);
 
     // ── Normal mode ───────────────────────────────────────────────────────────
     km.insert(
@@ -572,6 +574,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("normal"), ph(KeyCode::KeyX), DELETE_CHAR);
     km.insert(Some("normal"), ph(KeyCode::KeyP), PASTE_AFTER);
     km.insert(Some("normal"), ch('P'), PASTE_BEFORE);
+    km.insert(Some("normal"), mp(KeyCode::KeyV), PASTE_SYSTEM_CLIPBOARD);
     km.insert(Some("normal"), ph(KeyCode::KeyU), UNDO);
     km.insert(Some("normal"), mp(KeyCode::KeyH), BUFFER_PREV);
     km.insert(Some("normal"), mp(KeyCode::KeyL), BUFFER_NEXT);
@@ -599,6 +602,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("visual"), ph(KeyCode::KeyC), CHANGE_SELECTION);
     km.insert(Some("visual"), ph(KeyCode::KeyX), DELETE_SELECTION);
     km.insert(Some("visual"), ph(KeyCode::KeyY), YANK_SELECTION);
+    km.insert(Some("visual"), mp(KeyCode::KeyV), PASTE_SYSTEM_CLIPBOARD);
 
     // ── Palette focus (overlay / command palette / file picker) ─────────────
     km.insert(Some("palette"), nk(NamedKey::Enter), FILE_PICKER_CONFIRM);
@@ -615,10 +619,13 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         nk(NamedKey::Backspace),
         FILE_PICKER_BACKSPACE,
     );
+    km.insert(Some("palette"), mp(KeyCode::KeyV), PASTE_SYSTEM_CLIPBOARD);
 
     // ── Terminal focus mode bindings (mode-only lookup in InputMap) ──────────
     km.insert(Some("terminal"), nk(NamedKey::Escape), FOCUS_EDITOR);
-    km.insert(Some("terminal"), nk(NamedKey::F12), TOGGLE_TERMINAL);
+    km.insert(Some("terminal"), nk(NamedKey::F12), FOCUS_TERMINAL);
+    km.insert(Some("terminal"), mp(KeyCode::KeyH), BUFFER_PREV);
+    km.insert(Some("terminal"), mp(KeyCode::KeyL), BUFFER_NEXT);
 
     // ── Explorer focus mode bindings (mode-only lookup in InputMap) ──────────
     km.insert(Some("explorer"), nk(NamedKey::Escape), FOCUS_EDITOR);
@@ -671,6 +678,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert_sequence(
         Some("normal"),
+        seq(&[ph(KeyCode::KeyG), ph(KeyCode::KeyC), ph(KeyCode::KeyC)]),
+        TOGGLE_LINE_COMMENT,
+    );
+    km.insert_sequence(
+        Some("normal"),
         seq(&[ph(KeyCode::KeyD), ph(KeyCode::KeyW)]),
         DELETE_WORD_FORWARD,
     );
@@ -706,6 +718,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert_sequence(
         Some("visual"),
+        seq(&[ph(KeyCode::KeyG), ph(KeyCode::KeyC)]),
+        TOGGLE_SELECTION_COMMENT,
+    );
+    km.insert_sequence(
+        Some("visual"),
         seq(&[ph(KeyCode::KeyZ), ph(KeyCode::KeyZ)]),
         CENTER_CURSOR_LINE,
     );
@@ -731,6 +748,16 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         None,
         seq(&[KeySpec::Leader, ph(KeyCode::KeyF), ph(KeyCode::KeyW)]),
         SEARCH_IN_FILES,
+    );
+    km.insert_sequence(
+        Some("normal"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyG), ph(KeyCode::KeyF)]),
+        GIT_OPEN_LAZYGIT,
+    );
+    km.insert_sequence(
+        Some("normal"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyG), ph(KeyCode::KeyL)]),
+        GIT_BLAME_LINE,
     );
     km.insert_sequence(
         Some("normal"),
@@ -820,6 +847,10 @@ mod tests {
     fn parse_physical_keys() {
         assert_eq!(parse_key_spec("h"), Some(KeySpec::Physical(KeyCode::KeyH)));
         assert_eq!(parse_key_spec("j"), Some(KeySpec::Physical(KeyCode::KeyJ)));
+        assert_eq!(
+            parse_key_spec("backslash"),
+            Some(KeySpec::Physical(KeyCode::Backslash))
+        );
         assert_eq!(
             parse_key_spec("backtick"),
             Some(KeySpec::Physical(KeyCode::Backquote))
@@ -993,6 +1024,35 @@ mod tests {
     }
 
     #[test]
+    fn builtin_defaults_map_mod_v_to_system_paste() {
+        use winit::keyboard::ModifiersState;
+        let km = builtin_defaults();
+        let mod_v = NormalizedInput {
+            physical_key: Some(KeyCode::KeyV),
+            named_key: None,
+            text: Some("v".into()),
+            modifiers: ModifiersState::CONTROL,
+        };
+
+        assert_eq!(
+            km.lookup(&mod_v, "insert"),
+            Some(command_ids::PASTE_SYSTEM_CLIPBOARD)
+        );
+        assert_eq!(
+            km.lookup(&mod_v, "normal"),
+            Some(command_ids::PASTE_SYSTEM_CLIPBOARD)
+        );
+        assert_eq!(
+            km.lookup(&mod_v, "visual"),
+            Some(command_ids::PASTE_SYSTEM_CLIPBOARD)
+        );
+        assert_eq!(
+            km.lookup_mode_only(&mod_v, "palette"),
+            Some(command_ids::PASTE_SYSTEM_CLIPBOARD)
+        );
+    }
+
+    #[test]
     fn builtin_defaults_include_dd_chord() {
         use winit::keyboard::ModifiersState;
         let km = builtin_defaults();
@@ -1041,6 +1101,34 @@ mod tests {
     }
 
     #[test]
+    fn builtin_defaults_include_comment_chords() {
+        let km = builtin_defaults();
+
+        let gcc_steps = vec![
+            KeySpec::Physical(KeyCode::KeyG),
+            KeySpec::Physical(KeyCode::KeyC),
+            KeySpec::Physical(KeyCode::KeyC),
+        ];
+        assert_eq!(
+            km.lookup_sequence(&gcc_steps, "normal"),
+            SequenceLookup::Exact(command_ids::TOGGLE_LINE_COMMENT)
+        );
+
+        let gc_steps = vec![
+            KeySpec::Physical(KeyCode::KeyG),
+            KeySpec::Physical(KeyCode::KeyC),
+        ];
+        assert_eq!(
+            km.lookup_sequence(&gc_steps, "visual"),
+            SequenceLookup::Exact(command_ids::TOGGLE_SELECTION_COMMENT)
+        );
+        assert_eq!(
+            km.lookup_sequence(&gc_steps, "normal"),
+            SequenceLookup::Prefix
+        );
+    }
+
+    #[test]
     fn builtin_defaults_map_mod_b_to_toggle_left_dock() {
         use winit::keyboard::ModifiersState;
         let km = builtin_defaults();
@@ -1054,6 +1142,23 @@ mod tests {
         assert_eq!(
             km.lookup(&input, "normal"),
             Some(command_ids::TOGGLE_LEFT_DOCK)
+        );
+    }
+
+    #[test]
+    fn builtin_defaults_map_mod_backslash_to_toggle_bottom_dock() {
+        use winit::keyboard::ModifiersState;
+        let km = builtin_defaults();
+        let input = NormalizedInput {
+            physical_key: Some(KeyCode::Backslash),
+            named_key: None,
+            text: Some("\\".into()),
+            modifiers: ModifiersState::CONTROL,
+        };
+
+        assert_eq!(
+            km.lookup(&input, "normal"),
+            Some(command_ids::TOGGLE_BOTTOM_DOCK)
         );
     }
 

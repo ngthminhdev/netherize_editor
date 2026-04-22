@@ -31,7 +31,11 @@ command = "app.focus_explorer"
 
 [[bindings]]
 key = "F12"
-command = "app.toggle_terminal"
+command = "app.focus_terminal"
+
+[[bindings]]
+key = "mod+backslash"
+command = "app.toggle_bottom_dock"
 
 [[bindings]]
 key = "mod+w"
@@ -96,6 +100,11 @@ command = "editor.move_up"
 mode = "insert"
 key = "ArrowDown"
 command = "editor.move_down"
+
+[[bindings]]
+mode = "insert"
+key = "mod+v"
+command = "editor.paste_system_clipboard"
 
 [[bindings]]
 mode = "insert"
@@ -206,11 +215,19 @@ mode = "normal"
 key = "x"
 command = "editor.delete_char"
 
+# `yy` và `ye` được xử lý trong InputHandler yank-pending để dùng chung
+# flow với `yi(` / `ya{`, nên không khai báo static chord ở đây.
+
 # operators
 [[bindings]]
 mode = "normal"
 key = "d d"
 command = "editor.delete_current_line"
+
+[[bindings]]
+mode = "normal"
+key = "g c c"
+command = "editor.toggle_line_comment"
 
 [[bindings]]
 mode = "normal"
@@ -245,6 +262,11 @@ command = "editor.undo"
 mode = "normal"
 key = "Ctrl+r"
 command = "editor.redo"
+
+[[bindings]]
+mode = "normal"
+key = "mod+v"
+command = "editor.paste_system_clipboard"
 
 [[bindings]]
 mode = "normal"
@@ -390,8 +412,23 @@ command = "editor.change_selection"
 
 [[bindings]]
 mode = "visual"
+key = "g c"
+command = "editor.toggle_selection_comment"
+
+[[bindings]]
+mode = "visual"
 key = "x"
 command = "editor.delete_selection"
+
+[[bindings]]
+mode = "visual"
+key = "y"
+command = "editor.yank_selection"
+
+[[bindings]]
+mode = "visual"
+key = "mod+v"
+command = "editor.paste_system_clipboard"
 
 # ───────────────── TERMINAL ─────────────────
 [[bindings]]
@@ -402,7 +439,17 @@ command = "app.focus_editor"
 [[bindings]]
 mode = "terminal"
 key = "F12"
-command = "app.toggle_terminal"
+command = "app.focus_terminal"
+
+[[bindings]]
+mode = "terminal"
+key = "Ctrl+h"
+command = "buffer.prev"
+
+[[bindings]]
+mode = "terminal"
+key = "Ctrl+l"
+command = "buffer.next"
 
 # ───────────────── EXPLORER ─────────────────
 [[bindings]]
@@ -483,6 +530,16 @@ command = "app.search_in_files"
 
 [[bindings]]
 mode = "normal"
+key = "<leader>g f"
+command = "git.open_lazygit"
+
+[[bindings]]
+mode = "normal"
+key = "<leader>g l"
+command = "git.blame_line"
+
+[[bindings]]
+mode = "normal"
 key = "<leader>w"
 command = "editor.save_file"
 
@@ -511,3 +568,8 @@ command = "overlay.select_prev"
 mode = "palette"
 key = "ArrowDown"
 command = "overlay.select_next"
+
+[[bindings]]
+mode = "palette"
+key = "mod+v"
+command = "editor.paste_system_clipboard"

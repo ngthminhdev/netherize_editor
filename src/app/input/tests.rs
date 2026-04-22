@@ -94,6 +94,85 @@ fn d_d_maps_to_delete_current_line() {
 }
 
 #[test]
+fn g_c_c_maps_to_toggle_line_comment() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let t0 = std::time::Instant::now();
+
+    let first = handler.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, t0);
+    assert!(matches!(first, Some(InputRouteOutcome::NoDispatch { .. })));
+
+    let second = handler.route_normalized_input(char_input('c', KeyCode::KeyC), &map, context, t0);
+    assert!(matches!(second, Some(InputRouteOutcome::NoDispatch { .. })));
+
+    let third = handler.route_normalized_input(char_input('c', KeyCode::KeyC), &map, context, t0);
+    match third {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::ToggleLineComment);
+        }
+        other => panic!("expected gcc dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn y_y_maps_to_yank_current_line() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let t0 = std::time::Instant::now();
+
+    let first = handler.route_normalized_input(char_input('y', KeyCode::KeyY), &map, context, t0);
+    assert!(matches!(first, Some(InputRouteOutcome::NoDispatch { .. })));
+
+    let second = handler.route_normalized_input(char_input('y', KeyCode::KeyY), &map, context, t0);
+    match second {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::YankCurrentLine);
+        }
+        other => panic!("expected yy dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn y_e_maps_to_yank_to_word_end() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let t0 = std::time::Instant::now();
+
+    let first = handler.route_normalized_input(char_input('y', KeyCode::KeyY), &map, context, t0);
+    assert!(matches!(first, Some(InputRouteOutcome::NoDispatch { .. })));
+
+    let second = handler.route_normalized_input(char_input('e', KeyCode::KeyE), &map, context, t0);
+    match second {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::YankToWordEnd);
+        }
+        other => panic!("expected ye dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn visual_g_c_maps_to_toggle_selection_comment() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Visual);
+    let t0 = std::time::Instant::now();
+
+    let first = handler.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, t0);
+    assert!(matches!(first, Some(InputRouteOutcome::NoDispatch { .. })));
+
+    let second = handler.route_normalized_input(char_input('c', KeyCode::KeyC), &map, context, t0);
+    match second {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::ToggleSelectionComment);
+        }
+        other => panic!("expected visual gc dispatch, got {:?}", other),
+    }
+}
+
+#[test]
 fn numeric_count_wraps_simple_motion_dispatch() {
     let mut handler = InputHandler::new();
     let map = make_map();
@@ -436,6 +515,58 @@ fn focus_loss_resets_prefix_safely() {
 }
 
 #[test]
+fn repeated_motion_key_dispatches_while_holding() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let now = std::time::Instant::now();
+
+    let first = handler.route_normalized_input(char_input('j', KeyCode::KeyJ), &map, context, now);
+    match first {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::MoveDown);
+            assert_eq!(translated.repeat_count, 1);
+        }
+        other => panic!("expected initial j dispatch, got {:?}", other),
+    }
+
+    let repeated =
+        handler.route_repeated_normalized_input(char_input('j', KeyCode::KeyJ), &map, context);
+    match repeated {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::MoveDown);
+            assert_eq!(translated.repeat_count, 1);
+        }
+        other => panic!("expected repeated j dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn repeated_chord_prefix_is_ignored_while_pending() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let now = std::time::Instant::now();
+
+    let first = handler.route_normalized_input(char_input('d', KeyCode::KeyD), &map, context, now);
+    assert!(matches!(first, Some(InputRouteOutcome::NoDispatch { .. })));
+    assert_eq!(handler.get_pending_keys(), "d");
+
+    let repeated =
+        handler.route_repeated_normalized_input(char_input('d', KeyCode::KeyD), &map, context);
+    assert!(repeated.is_none(), "held d should not auto-complete dd");
+    assert_eq!(handler.get_pending_keys(), "d");
+
+    let next = handler.route_normalized_input(char_input('w', KeyCode::KeyW), &map, context, now);
+    match next {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::DeleteWordForward);
+        }
+        other => panic!("expected dw dispatch after ignored repeat, got {:?}", other),
+    }
+}
+
+#[test]
 fn leader_space_t_no_longer_maps_to_terminal_toggle() {
     let mut handler = InputHandler::new();
     let map = make_map();
@@ -535,7 +666,7 @@ fn terminal_focus_routes_arrow_keys_as_ansi_sequences() {
 }
 
 #[test]
-fn terminal_focus_f12_maps_to_toggle_terminal() {
+fn terminal_focus_f12_maps_to_focus_terminal() {
     let mut handler = InputHandler::new();
     let map = make_map();
     let context =
@@ -546,7 +677,7 @@ fn terminal_focus_f12_maps_to_toggle_terminal() {
         handler.route_normalized_input(named_input(NamedKey::F12, None), &map, context, now);
     match mapped {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::ToggleTerminal);
+            assert_eq!(translated.command, Command::FocusTerminal);
         }
         other => panic!("expected F12 dispatch in terminal focus, got {:?}", other),
     }

@@ -39,6 +39,70 @@ pub struct VisualSelectionRange {
     pub end_byte_in_line: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClipboardRecordKind {
+    Charwise,
+    Linewise,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditorBuffer {
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PtyState {
+    pub session_id: Option<u64>,
+    pub title: String,
+    pub working_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BufferContent {
+    Text(EditorBuffer),
+    Terminal(PtyState),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BufferEntry {
+    pub content: BufferContent,
+}
+
+impl BufferEntry {
+    pub fn label(&self) -> String {
+        match &self.content {
+            BufferContent::Text(buffer) => buffer
+                .path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| buffer.path.display().to_string()),
+            BufferContent::Terminal(state) => state.title.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OverlayColorToken {
+    UiFgGhost,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EditorOverlay {
+    VirtualText {
+        line: usize,
+        column: usize,
+        text: String,
+        color_token: OverlayColorToken,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ClipboardRecord {
+    text: String,
+    kind: ClipboardRecordKind,
+}
+
 /// AppState giữ editor state tối thiểu cho phase 4.
 ///
 /// Đây là nơi duy nhất được phép mutate text/cursor khi command dispatch chạy.
@@ -52,11 +116,12 @@ pub struct AppState {
     active_file: Option<PathBuf>,
     selection_anchor_char_idx: Option<usize>,
     visual_line_mode: bool,
-    open_buffers: Vec<PathBuf>,
+    buffers: Vec<BufferEntry>,
     active_buffer_index: Option<usize>,
     default_save_path: PathBuf,
     dirty: bool,
     pub scroll_line: usize,
+    pub scroll_column: usize,
     workspace_model: Option<WorkspaceModel>,
     command_palette: CommandPalette,
     file_picker_results_cache: Vec<FilePickerEntry>,
@@ -66,9 +131,11 @@ pub struct AppState {
     terminal_panel_open: bool,
     external_conflict: Option<String>,
     external_notice: Option<String>,
+    clipboard_record: Option<ClipboardRecord>,
     history: EditHistory,
     current_transaction: Option<Transaction>,
     pending_highlight_edits: Vec<HighlightEdit>,
+    current_overlays: Vec<EditorOverlay>,
 }
 
 impl AppState {
@@ -82,11 +149,12 @@ impl AppState {
             active_file: None,
             selection_anchor_char_idx: None,
             visual_line_mode: false,
-            open_buffers: Vec::new(),
+            buffers: Vec::new(),
             active_buffer_index: None,
             default_save_path,
             dirty: false,
             scroll_line: 0,
+            scroll_column: 0,
             workspace_model: None,
             command_palette: CommandPalette::default(),
             file_picker_results_cache: Vec::new(),
@@ -96,9 +164,11 @@ impl AppState {
             terminal_panel_open: false,
             external_conflict: None,
             external_notice: None,
+            clipboard_record: None,
             history: EditHistory::new(),
             current_transaction: None,
             pending_highlight_edits: Vec::new(),
+            current_overlays: Vec::new(),
         }
     }
 
@@ -112,11 +182,12 @@ impl AppState {
             active_file: None,
             selection_anchor_char_idx: None,
             visual_line_mode: false,
-            open_buffers: Vec::new(),
+            buffers: Vec::new(),
             active_buffer_index: None,
             default_save_path,
             dirty: false,
             scroll_line: 0,
+            scroll_column: 0,
             workspace_model: None,
             command_palette: CommandPalette::default(),
             file_picker_results_cache: Vec::new(),
@@ -126,9 +197,11 @@ impl AppState {
             terminal_panel_open: false,
             external_conflict: None,
             external_notice: None,
+            clipboard_record: None,
             history: EditHistory::new(),
             current_transaction: None,
             pending_highlight_edits: Vec::new(),
+            current_overlays: Vec::new(),
         }
     }
 
@@ -453,6 +526,65 @@ impl AppState {
             return false;
         }
         self.terminal_panel_open = open;
+        true
+    }
+
+    pub fn open_terminal_buffer(
+        &mut self,
+        title: impl Into<String>,
+        working_dir: Option<PathBuf>,
+    ) -> usize {
+        self.buffers.push(BufferEntry {
+            content: BufferContent::Terminal(PtyState {
+                session_id: None,
+                title: title.into(),
+                working_dir,
+            }),
+        });
+        let index = self.buffers.len().saturating_sub(1);
+        self.active_buffer_index = Some(index);
+        self.active_file = None;
+        self.selection_anchor_char_idx = None;
+        self.visual_line_mode = false;
+        self.external_conflict = None;
+        self.bump_revision();
+        index
+    }
+
+    pub fn bind_terminal_buffer_session(
+        &mut self,
+        buffer_index: usize,
+        session_id: u64,
+        working_dir: PathBuf,
+    ) -> bool {
+        let Some(buffer) = self.buffers.get_mut(buffer_index) else {
+            return false;
+        };
+        let BufferContent::Terminal(state) = &mut buffer.content else {
+            return false;
+        };
+
+        let changed = state.session_id != Some(session_id)
+            || state.working_dir.as_deref() != Some(working_dir.as_path());
+        state.session_id = Some(session_id);
+        state.working_dir = Some(working_dir);
+        changed
+    }
+
+    pub fn mark_terminal_buffer_closed(&mut self, session_id: u64) -> bool {
+        let Some(index) = self.terminal_buffer_index_for_session(session_id) else {
+            return false;
+        };
+        let Some(buffer) = self.buffers.get_mut(index) else {
+            return false;
+        };
+        let BufferContent::Terminal(state) = &mut buffer.content else {
+            return false;
+        };
+        if state.session_id.is_none() {
+            return false;
+        }
+        state.session_id = None;
         true
     }
 
@@ -1163,20 +1295,30 @@ impl AppState {
         let canonical_path = path
             .canonicalize()
             .map_err(|err| format!("canonicalize file {:?} failed: {err}", path))?;
-        self.load_buffer_from_file(&canonical_path)?;
-        self.active_file = Some(canonical_path);
-        self.register_open_buffer();
-        if let Some(active_path) = self.active_file.clone() {
-            let _ = self.workspace_reveal_path(&active_path);
-        }
-        self.selection_anchor_char_idx = None;
-        self.dirty = false;
-        self.external_conflict = None;
-        self.bump_revision();
+        let active_idx = match self
+            .buffers
+            .iter()
+            .position(|buffer| matches!(&buffer.content, BufferContent::Text(buffer) if buffer.path == canonical_path))
+        {
+            Some(idx) => idx,
+            None => {
+                self.buffers.push(BufferEntry {
+                    content: BufferContent::Text(EditorBuffer {
+                        path: canonical_path.clone(),
+                    }),
+                });
+                self.buffers.len().saturating_sub(1)
+            }
+        };
+        self.activate_buffer_index(active_idx)?;
         Ok(())
     }
 
     pub fn save_file(&mut self) -> Result<PathBuf, String> {
+        if self.active_buffer_is_terminal() {
+            return Err("cannot save terminal buffer".to_string());
+        }
+
         let path = self
             .active_file
             .clone()
@@ -1190,30 +1332,24 @@ impl AppState {
             .map_err(|err| format!("canonicalize saved file {:?} failed: {err}", path))?;
 
         self.active_file = Some(canonical_path.clone());
-        self.register_open_buffer();
+        self.register_open_text_buffer(canonical_path.clone());
         let _ = self.workspace_reveal_path(&canonical_path);
         self.dirty = false;
         Ok(canonical_path)
     }
 
     pub fn new_empty_buffer(&mut self) -> bool {
-        let changed = self.active_file.is_some() || self.dirty || self.text.len_chars() > 0;
+        let changed = self.active_file.is_some()
+            || self.active_buffer_index.is_some()
+            || self.dirty
+            || self.text.len_chars() > 0;
         if !changed {
             return false;
         }
 
-        self.text = Rope::new();
-        self.cursor_char_idx = 0;
-        self.target_col = 0;
-        self.scroll_line = 0;
-        self.active_file = None;
-        self.selection_anchor_char_idx = None;
+        self.reset_text_editor_state();
         self.active_buffer_index = None;
-        self.dirty = false;
-        self.external_conflict = None;
-        self.visual_line_mode = false;
-        self.clear_history();
-        let _ = self.refresh_active_search_highlights();
+        let _ = self.clear_current_overlays();
         self.bump_revision();
         true
     }
@@ -1227,46 +1363,29 @@ impl AppState {
     }
 
     pub fn close_current_buffer(&mut self) -> Result<bool, String> {
-        let Some(active_path) = self.active_file.clone() else {
+        let Some(current_idx) = self.active_buffer_index else {
             return Ok(false);
         };
-        let Some(current_idx) = self
-            .open_buffers
-            .iter()
-            .position(|path| path == &active_path)
-        else {
-            return Ok(self.new_empty_buffer());
-        };
 
-        self.open_buffers.remove(current_idx);
-        if self.open_buffers.is_empty() {
-            self.text = Rope::new();
-            self.cursor_char_idx = 0;
-            self.target_col = 0;
-            self.scroll_line = 0;
-            self.active_file = None;
-            self.selection_anchor_char_idx = None;
+        self.buffers.remove(current_idx);
+        if self.buffers.is_empty() {
+            self.reset_text_editor_state();
             self.active_buffer_index = None;
-            self.dirty = false;
-            self.external_conflict = None;
-            self.visual_line_mode = false;
-            self.clear_history();
-            let _ = self.refresh_active_search_highlights();
+            let _ = self.clear_current_overlays();
             self.bump_revision();
             return Ok(true);
         }
 
-        let mut next_idx = current_idx.min(self.open_buffers.len().saturating_sub(1));
-        while !self.open_buffers.is_empty() {
-            let next_path = self.open_buffers[next_idx].clone();
-            match self.open_file(next_path) {
+        let mut next_idx = current_idx.min(self.buffers.len().saturating_sub(1));
+        while !self.buffers.is_empty() {
+            match self.activate_buffer_index(next_idx) {
                 Ok(()) => return Ok(true),
                 Err(_) => {
-                    self.open_buffers.remove(next_idx);
-                    if self.open_buffers.is_empty() {
+                    self.buffers.remove(next_idx);
+                    if self.buffers.is_empty() {
                         return Ok(self.new_empty_buffer());
                     }
-                    if next_idx >= self.open_buffers.len() {
+                    if next_idx >= self.buffers.len() {
                         next_idx = 0;
                     }
                 }
@@ -1380,11 +1499,21 @@ impl AppState {
 
     pub fn delete_current_line_text(&self) -> Option<String> {
         let (start, end) = self.current_line_delete_range()?;
-        self.char_range_text(start, end)
+        self.linewise_text_for_range(start, end)
+    }
+
+    pub fn yank_current_line_text(&self) -> Option<String> {
+        let (start, end) = self.current_line_delete_range()?;
+        self.linewise_text_for_range(start, end)
     }
 
     pub fn delete_word_forward_text(&self) -> Option<String> {
         let (start, end) = self.delete_word_forward_range()?;
+        self.char_range_text(start, end)
+    }
+
+    pub fn yank_to_word_end_text(&self) -> Option<String> {
+        let (start, end) = self.yank_word_end_range()?;
         self.char_range_text(start, end)
     }
 
@@ -1658,6 +1787,46 @@ impl AppState {
         true
     }
 
+    pub fn insert_text_at_cursor(&mut self, text: &str) -> bool {
+        let insert_text = text.to_string();
+        if insert_text.is_empty() {
+            return false;
+        }
+
+        let insert_at = self.cursor_char_idx.min(self.text.len_chars());
+        if !self.apply_insert(insert_at, insert_text.clone()) {
+            return false;
+        }
+
+        let inserted_chars = insert_text.chars().count();
+        self.cursor_char_idx = (insert_at + inserted_chars).min(self.text.len_chars());
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
+    pub fn paste_linewise_after(&mut self, text: &str) -> bool {
+        self.paste_linewise(text, false)
+    }
+
+    pub fn paste_linewise_before(&mut self, text: &str) -> bool {
+        self.paste_linewise(text, true)
+    }
+
+    pub fn toggle_line_comment(&mut self) -> bool {
+        let (line_idx, _) = self.cursor_line_col();
+        self.toggle_comments_on_lines(line_idx, line_idx)
+    }
+
+    pub fn toggle_selection_comment(&mut self) -> bool {
+        let Some(selection) = self.visual_selection_range() else {
+            return false;
+        };
+        self.toggle_comments_on_lines(selection.start_line, selection.end_line)
+    }
+
     pub fn commit_transaction(&mut self) -> bool {
         let Some(mut transaction) = self.current_transaction.take() else {
             return false;
@@ -1759,6 +1928,20 @@ impl AppState {
         &self.search_highlights
     }
 
+    pub fn remember_clipboard_text(&mut self, text: String, kind: ClipboardRecordKind) {
+        if text.is_empty() {
+            return;
+        }
+        self.clipboard_record = Some(ClipboardRecord { text, kind });
+    }
+
+    pub fn clipboard_record_kind_for_text(&self, text: &str) -> Option<ClipboardRecordKind> {
+        self.clipboard_record
+            .as_ref()
+            .filter(|record| record.text == text)
+            .map(|record| record.kind)
+    }
+
     pub fn set_in_file_search_query(&mut self, query: &str) -> bool {
         self.set_search_query_internal(query, false)
     }
@@ -1828,6 +2011,11 @@ impl AppState {
         }
     }
 
+    pub fn line_content_end_byte_idx(&self, line_idx: usize) -> usize {
+        let line_end_char = self.line_content_end_char_idx(line_idx);
+        self.text.char_to_byte(line_end_char)
+    }
+
     pub fn text_string(&self) -> String {
         self.text.to_string()
     }
@@ -1845,15 +2033,64 @@ impl AppState {
         self.active_file.as_deref()
     }
 
-    pub fn open_buffers(&self) -> &[PathBuf] {
-        &self.open_buffers
+    pub fn buffers(&self) -> &[BufferEntry] {
+        &self.buffers
     }
 
     pub fn active_buffer_index(&self) -> Option<usize> {
         self.active_buffer_index
     }
 
+    pub fn active_buffer(&self) -> Option<&BufferEntry> {
+        self.active_buffer_index
+            .and_then(|idx| self.buffers.get(idx))
+    }
+
+    pub fn active_buffer_is_terminal(&self) -> bool {
+        self.active_buffer()
+            .is_some_and(|buffer| matches!(buffer.content, BufferContent::Terminal(_)))
+    }
+
+    pub fn active_terminal_session_id(&self) -> Option<u64> {
+        match self.active_buffer().map(|buffer| &buffer.content) {
+            Some(BufferContent::Terminal(state)) => state.session_id,
+            _ => None,
+        }
+    }
+
+    pub fn terminal_buffer_index_for_session(&self, session_id: u64) -> Option<usize> {
+        self.buffers
+            .iter()
+            .position(|buffer| match &buffer.content {
+                BufferContent::Terminal(state) => state.session_id == Some(session_id),
+                BufferContent::Text(_) => false,
+            })
+    }
+
+    pub fn current_overlays(&self) -> &[EditorOverlay] {
+        &self.current_overlays
+    }
+
+    pub fn set_current_overlays(&mut self, overlays: Vec<EditorOverlay>) -> bool {
+        if self.current_overlays == overlays {
+            return false;
+        }
+        self.current_overlays = overlays;
+        true
+    }
+
+    pub fn clear_current_overlays(&mut self) -> bool {
+        if self.current_overlays.is_empty() {
+            return false;
+        }
+        self.current_overlays.clear();
+        true
+    }
+
     pub fn active_filetype_label(&self) -> &'static str {
+        if self.active_buffer_is_terminal() {
+            return "Terminal";
+        }
         self.active_file
             .as_deref()
             .map(filetype_label_for_path)
@@ -1954,7 +2191,7 @@ impl AppState {
             self.is_command_palette_visible(),
             palette_mode,
             self.is_terminal_panel_open(),
-            self.open_buffers.len(),
+            self.buffers.len(),
             self.active_buffer_index,
             selection,
             palette_query,
@@ -2076,6 +2313,14 @@ impl AppState {
         (line_start < line_end).then_some((line_start, line_end))
     }
 
+    fn linewise_text_for_range(&self, start: usize, end: usize) -> Option<String> {
+        let mut text = self.char_range_text(start, end)?;
+        if !text.ends_with('\n') {
+            text.push('\n');
+        }
+        Some(text)
+    }
+
     fn delete_char_range_at_cursor(&self) -> Option<(usize, usize)> {
         if self.text.len_chars() == 0 {
             return None;
@@ -2146,6 +2391,62 @@ impl AppState {
 
         let start = previous_word_start(&self.text, self.cursor_char_idx);
         (start < self.cursor_char_idx).then_some((start, self.cursor_char_idx))
+    }
+
+    fn yank_word_end_range(&self) -> Option<(usize, usize)> {
+        let n = self.text.len_chars();
+        if self.cursor_char_idx >= n {
+            return None;
+        }
+
+        let end = word_end_from_cursor(&self.text, self.cursor_char_idx)?;
+        (end >= self.cursor_char_idx).then_some((self.cursor_char_idx, end + 1))
+    }
+
+    fn paste_linewise(&mut self, text: &str, before: bool) -> bool {
+        let mut insert_text = text.to_string();
+        if insert_text.is_empty() {
+            return false;
+        }
+
+        let total_chars = self.text.len_chars();
+        let line_idx = if total_chars == 0 {
+            0
+        } else {
+            self.text
+                .char_to_line(self.cursor_char_idx.min(total_chars))
+        };
+        let line_start = self.text.line_to_char(line_idx);
+        let has_following_line = line_idx + 1 < self.text.len_lines();
+        let insert_at = if before {
+            line_start
+        } else if has_following_line {
+            self.text.line_to_char(line_idx + 1)
+        } else {
+            total_chars
+        };
+
+        let buffer_has_trailing_newline =
+            total_chars > 0 && self.text.char(total_chars.saturating_sub(1)) == '\n';
+        let inserted_line_start = if before {
+            insert_at
+        } else if total_chars == 0 || has_following_line || buffer_has_trailing_newline {
+            insert_at
+        } else {
+            insert_text = format!("\n{insert_text}");
+            insert_at + 1
+        };
+
+        if !self.apply_insert(insert_at, insert_text) {
+            return false;
+        }
+
+        self.cursor_char_idx = inserted_line_start.min(self.text.len_chars());
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.dirty = true;
+        self.bump_revision();
+        true
     }
 
     fn clear_history(&mut self) {
@@ -2287,6 +2588,93 @@ impl AppState {
         self.char_range_text(start, end)
     }
 
+    fn active_comment_syntax(&self) -> Option<CommentSyntax> {
+        self.active_file
+            .as_deref()
+            .or(Some(self.default_save_path.as_path()))
+            .and_then(active_comment_syntax_for_path)
+    }
+
+    fn toggle_comments_on_lines(&mut self, start_line: usize, end_line: usize) -> bool {
+        let Some(syntax) = self.active_comment_syntax() else {
+            return false;
+        };
+        if self.text.len_lines() == 0 {
+            return false;
+        }
+
+        let last_line = self.text.len_lines().saturating_sub(1);
+        let start_line = start_line.min(last_line);
+        let end_line = end_line.min(last_line);
+        let plans: Vec<LineCommentPlan> = (start_line..=end_line)
+            .map(|line_idx| line_comment_plan(&self.text, line_idx, syntax.line_prefix))
+            .collect();
+        let should_uncomment =
+            !plans.is_empty() && plans.iter().all(|plan| plan.removal_len_chars.is_some());
+
+        let edits: Vec<CommentEdit> = if should_uncomment {
+            plans
+                .into_iter()
+                .filter_map(|plan| {
+                    plan.removal_len_chars.map(|len_chars| CommentEdit::Delete {
+                        at: plan.edit_char_idx,
+                        len_chars,
+                    })
+                })
+                .collect()
+        } else {
+            let insert_text = format!("{} ", syntax.line_prefix);
+            plans
+                .into_iter()
+                .map(|plan| CommentEdit::Insert {
+                    at: plan.edit_char_idx,
+                    text: insert_text.clone(),
+                })
+                .collect()
+        };
+
+        if edits.is_empty() {
+            return false;
+        }
+
+        let mut cursor = self.cursor_char_idx.min(self.text.len_chars());
+        let mut offset: isize = 0;
+        let mut changed = false;
+
+        for edit in edits {
+            match edit {
+                CommentEdit::Insert { at, text } => {
+                    let current_at = shift_char_position(at, offset).min(self.text.len_chars());
+                    let inserted_chars = text.chars().count();
+                    if self.apply_insert(current_at, text) {
+                        cursor = adjust_cursor_after_insert(cursor, current_at, inserted_chars);
+                        offset += inserted_chars as isize;
+                        changed = true;
+                    }
+                }
+                CommentEdit::Delete { at, len_chars } => {
+                    let current_at = shift_char_position(at, offset).min(self.text.len_chars());
+                    if self.apply_delete(current_at, len_chars) {
+                        cursor = adjust_cursor_after_delete(cursor, current_at, len_chars);
+                        offset -= len_chars as isize;
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        if !changed {
+            return false;
+        }
+
+        self.dirty = true;
+        let moved = self.move_cursor_to_char_idx(cursor.min(self.text.len_chars()));
+        if !moved {
+            self.bump_revision();
+        }
+        true
+    }
+
     fn max_col_for_line(&self, line_idx: usize) -> usize {
         let line = self.text.line(line_idx);
         let len_chars = line.len_chars();
@@ -2347,6 +2735,7 @@ impl AppState {
         self.cursor_char_idx = 0;
         self.target_col = 0;
         self.scroll_line = 0;
+        self.scroll_column = 0;
         self.selection_anchor_char_idx = None;
         self.visual_line_mode = false;
         self.clear_history();
@@ -2354,50 +2743,42 @@ impl AppState {
         Ok(())
     }
 
-    fn register_open_buffer(&mut self) {
-        let Some(active_path) = self.active_file.clone() else {
-            self.active_buffer_index = None;
-            return;
-        };
-
+    fn register_open_text_buffer(&mut self, active_path: PathBuf) {
         if let Some(existing_idx) = self
-            .open_buffers
+            .buffers
             .iter()
-            .position(|path| path == &active_path)
+            .position(|buffer| matches!(&buffer.content, BufferContent::Text(buffer) if buffer.path == active_path))
         {
             self.active_buffer_index = Some(existing_idx);
             return;
         }
 
-        self.open_buffers.push(active_path);
-        self.active_buffer_index = Some(self.open_buffers.len().saturating_sub(1));
+        self.buffers.push(BufferEntry {
+            content: BufferContent::Text(EditorBuffer { path: active_path }),
+        });
+        self.active_buffer_index = Some(self.buffers.len().saturating_sub(1));
     }
 
     fn cycle_buffer(&mut self, forward: bool) -> Result<bool, String> {
-        if self.open_buffers.is_empty() {
+        if self.buffers.is_empty() {
             return Ok(false);
         }
 
         let current_idx = self
             .active_buffer_index
-            .filter(|idx| *idx < self.open_buffers.len())
-            .or_else(|| {
-                self.active_file
-                    .as_ref()
-                    .and_then(|path| self.open_buffers.iter().position(|entry| entry == path))
-            });
+            .filter(|idx| *idx < self.buffers.len());
 
         let next_idx = match current_idx {
-            Some(idx) if forward => (idx + 1) % self.open_buffers.len(),
+            Some(idx) if forward => (idx + 1) % self.buffers.len(),
             Some(idx) => {
                 if idx == 0 {
-                    self.open_buffers.len() - 1
+                    self.buffers.len() - 1
                 } else {
                     idx - 1
                 }
             }
             None if forward => 0,
-            None => self.open_buffers.len() - 1,
+            None => self.buffers.len() - 1,
         };
 
         if current_idx == Some(next_idx) {
@@ -2405,18 +2786,17 @@ impl AppState {
         }
 
         let mut candidate_idx = next_idx;
-        let mut attempts = self.open_buffers.len();
-        while attempts > 0 && !self.open_buffers.is_empty() {
+        let mut attempts = self.buffers.len();
+        while attempts > 0 && !self.buffers.is_empty() {
             attempts -= 1;
-            let next_path = self.open_buffers[candidate_idx].clone();
-            match self.open_file(next_path) {
+            match self.activate_buffer_index(candidate_idx) {
                 Ok(()) => return Ok(true),
                 Err(_) => {
-                    self.open_buffers.remove(candidate_idx);
-                    if self.open_buffers.is_empty() {
+                    self.buffers.remove(candidate_idx);
+                    if self.buffers.is_empty() {
                         return Ok(self.new_empty_buffer());
                     }
-                    if candidate_idx >= self.open_buffers.len() {
+                    if candidate_idx >= self.buffers.len() {
                         candidate_idx = 0;
                     }
                 }
@@ -2425,6 +2805,161 @@ impl AppState {
 
         Ok(false)
     }
+
+    fn activate_buffer_index(&mut self, index: usize) -> Result<(), String> {
+        let Some(buffer) = self.buffers.get(index).cloned() else {
+            return Err(format!("buffer index {index} out of range"));
+        };
+
+        match buffer.content {
+            BufferContent::Text(buffer) => {
+                self.load_buffer_from_file(&buffer.path)?;
+                self.active_file = Some(buffer.path.clone());
+                self.active_buffer_index = Some(index);
+                self.selection_anchor_char_idx = None;
+                self.dirty = false;
+                self.external_conflict = None;
+                self.visual_line_mode = false;
+                let _ = self.workspace_reveal_path(&buffer.path);
+            }
+            BufferContent::Terminal(_) => {
+                self.active_file = None;
+                self.active_buffer_index = Some(index);
+                self.selection_anchor_char_idx = None;
+                self.visual_line_mode = false;
+                self.external_conflict = None;
+            }
+        }
+
+        self.bump_revision();
+        Ok(())
+    }
+
+    fn reset_text_editor_state(&mut self) {
+        self.text = Rope::new();
+        self.cursor_char_idx = 0;
+        self.target_col = 0;
+        self.scroll_line = 0;
+        self.scroll_column = 0;
+        self.active_file = None;
+        self.selection_anchor_char_idx = None;
+        self.dirty = false;
+        self.external_conflict = None;
+        self.visual_line_mode = false;
+        self.clear_history();
+        let _ = self.refresh_active_search_highlights();
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CommentSyntax {
+    line_prefix: &'static str,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LineCommentPlan {
+    edit_char_idx: usize,
+    removal_len_chars: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+enum CommentEdit {
+    Insert { at: usize, text: String },
+    Delete { at: usize, len_chars: usize },
+}
+
+fn active_comment_syntax_for_path(path: &Path) -> Option<CommentSyntax> {
+    if let Some(file_name) = path.file_name().and_then(|name| name.to_str())
+        && file_name.eq_ignore_ascii_case("makefile")
+    {
+        return Some(CommentSyntax { line_prefix: "#" });
+    }
+
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase());
+    let line_prefix = match extension.as_deref() {
+        Some(
+            "rs" | "go" | "js" | "jsx" | "ts" | "tsx" | "c" | "cc" | "cpp" | "h" | "hpp" | "java"
+            | "kt" | "kts" | "swift" | "cs" | "dart" | "scala" | "scss" | "proto" | "php",
+        ) => "//",
+        Some(
+            "py" | "sh" | "bash" | "zsh" | "fish" | "rb" | "yml" | "yaml" | "toml" | "ini" | "cfg"
+            | "conf" | "properties",
+        ) => "#",
+        Some("sql" | "lua") => "--",
+        _ => "//",
+    };
+
+    Some(CommentSyntax { line_prefix })
+}
+
+fn line_comment_plan(text: &Rope, line_idx: usize, line_prefix: &str) -> LineCommentPlan {
+    let clamped_line = line_idx.min(text.len_lines().saturating_sub(1));
+    let line_start = text.line_to_char(clamped_line);
+    let line_text = text.line(clamped_line).to_string();
+    let line_content = line_text.strip_suffix('\n').unwrap_or(&line_text);
+    let indent_byte_idx = line_content
+        .char_indices()
+        .find(|(_, ch)| !ch.is_whitespace())
+        .map(|(idx, _)| idx)
+        .unwrap_or(line_content.len());
+    let indent_chars = line_content[..indent_byte_idx].chars().count();
+    let rest = &line_content[indent_byte_idx..];
+
+    LineCommentPlan {
+        edit_char_idx: line_start + indent_chars,
+        removal_len_chars: line_comment_removal_len(rest, line_prefix),
+    }
+}
+
+fn line_comment_removal_len(rest: &str, line_prefix: &str) -> Option<usize> {
+    if !rest.starts_with(line_prefix) {
+        return None;
+    }
+
+    let after_prefix = &rest[line_prefix.len()..];
+    if line_prefix == "//" && (after_prefix.starts_with('/') || after_prefix.starts_with('!')) {
+        return None;
+    }
+    if line_prefix == "#" && after_prefix.starts_with('!') {
+        return None;
+    }
+
+    let mut len_chars = line_prefix.chars().count();
+    if after_prefix
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_whitespace())
+    {
+        len_chars += 1;
+    }
+    Some(len_chars)
+}
+
+fn shift_char_position(position: usize, delta: isize) -> usize {
+    if delta.is_negative() {
+        position.saturating_sub(delta.unsigned_abs())
+    } else {
+        position.saturating_add(delta as usize)
+    }
+}
+
+fn adjust_cursor_after_insert(cursor: usize, insert_at: usize, len_chars: usize) -> usize {
+    if insert_at <= cursor {
+        cursor.saturating_add(len_chars)
+    } else {
+        cursor
+    }
+}
+
+fn adjust_cursor_after_delete(cursor: usize, delete_at: usize, len_chars: usize) -> usize {
+    if delete_at >= cursor {
+        return cursor;
+    }
+
+    cursor.saturating_sub(len_chars.min(cursor.saturating_sub(delete_at)))
 }
 
 /// Vim word-class for `dw` boundary detection.
@@ -2549,6 +3084,24 @@ fn word_end_at_or_after(text: &Rope, cursor: usize) -> Option<usize> {
     }
 
     let cls = classify_char(text.char(i));
+    while i + 1 < n && classify_char(text.char(i + 1)) == cls {
+        i += 1;
+    }
+    Some(i)
+}
+
+fn word_end_from_cursor(text: &Rope, cursor: usize) -> Option<usize> {
+    let n = text.len_chars();
+    if n == 0 || cursor >= n {
+        return None;
+    }
+
+    let cls = classify_char(text.char(cursor));
+    if cls == WordClass::Space || cls == WordClass::Newline {
+        return None;
+    }
+
+    let mut i = cursor;
     while i + 1 < n && classify_char(text.char(i + 1)) == cls {
         i += 1;
     }
@@ -2730,6 +3283,30 @@ mod tests {
         assert!(state.close_current_buffer().expect("close current"));
         assert!(state.active_file().is_none());
         assert!(state.text_string().is_empty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn terminal_buffer_entries_are_tracked_in_tab_ring() {
+        let mut state = AppState::new(unique_temp_path("terminal_buffer"));
+        let root = unique_temp_dir("terminal_buffer");
+        fs::create_dir_all(&root).expect("create terminal buffer root");
+        let file_a = root.join("a.rs");
+        fs::write(&file_a, "alpha\n").expect("write a");
+
+        state.open_file(file_a.clone()).expect("open a");
+        let terminal_idx = state.open_terminal_buffer("[Lazygit]", Some(root.clone()));
+
+        assert_eq!(state.buffers().len(), 2);
+        assert_eq!(state.active_buffer_index(), Some(terminal_idx));
+        assert!(state.active_buffer_is_terminal());
+        assert_eq!(state.active_filetype_label(), "Terminal");
+        assert_eq!(state.buffers()[terminal_idx].label(), "[Lazygit]");
+
+        assert!(state.buffer_prev().expect("switch back to text"));
+        assert!(state.active_file().expect("active file").ends_with("a.rs"));
+        assert!(!state.active_buffer_is_terminal());
 
         let _ = fs::remove_dir_all(root);
     }

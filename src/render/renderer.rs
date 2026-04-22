@@ -61,9 +61,15 @@ pub enum RenderError {
 // ── Layout cache keys (used for dirty-check caching) ──────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum TopbarTabKind {
+    Text { path: PathBuf },
+    Terminal,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct TopbarTab {
     pub label: String,
-    pub path: PathBuf,
+    pub kind: TopbarTabKind,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -103,6 +109,10 @@ pub struct Renderer {
     /// Redraws the glyph under the block cursor with a contrast color.
     pub(super) editor_cursor_overlay_pipeline: TextPipeline,
     pub(super) editor_scissor: Option<[u32; 4]>,
+    pub(super) editor_overlay_text_system: TextSystem,
+    pub(super) editor_overlay_text_pipeline: TextPipeline,
+    pub(super) editor_overlay_glyph_instances: Vec<GlyphInstance>,
+    pub(super) editor_overlay_scissor: Option<[u32; 4]>,
 
     // ── Gutter (line numbers) ─────────────────────────────────────────────────
     pub(super) gutter_text_system: TextSystem,
@@ -123,6 +133,14 @@ pub struct Renderer {
     pub(super) terminal_glyph_instances: Vec<GlyphInstance>,
     pub(super) terminal_cursor_instances: Vec<RegionDrawInstance>,
     pub(super) terminal_scissor: Option<[u32; 4]>,
+
+    // ── Full-screen terminal buffer tabs ─────────────────────────────────────
+    pub(super) buffer_terminal_text_system: TextSystem,
+    pub(super) buffer_terminal_text_pipeline: TextPipeline,
+    pub(super) buffer_terminal_view_renderer: TerminalViewRenderer,
+    pub(super) buffer_terminal_glyph_instances: Vec<GlyphInstance>,
+    pub(super) buffer_terminal_cursor_instances: Vec<RegionDrawInstance>,
+    pub(super) buffer_terminal_scissor: Option<[u32; 4]>,
 
     // ── Welcome ANSI logo overlay ─────────────────────────────────────────────
     pub(super) welcome_logo_text_system: TextSystem,

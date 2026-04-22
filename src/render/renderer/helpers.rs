@@ -74,6 +74,20 @@ pub(super) fn layout_panel_text_bold(
     collect_instances(text_system, atlas, queue, origin_x, origin_y, color)
 }
 
+pub(super) fn layout_panel_text_italic(
+    text: &str,
+    text_system: &mut TextSystem,
+    atlas: &mut GlyphAtlas,
+    queue: &wgpu::Queue,
+    origin_x: f32,
+    origin_y: f32,
+    color: [f32; 4],
+) -> Vec<GlyphInstance> {
+    let color_u8 = color_f32_to_u8(color);
+    text_system.set_text_italic_color(text, color_u8);
+    collect_instances(text_system, atlas, queue, origin_x, origin_y, color)
+}
+
 fn color_f32_to_u8(color: [f32; 4]) -> [u8; 4] {
     linear_rgba_to_srgb_u8(color)
 }

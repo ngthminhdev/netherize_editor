@@ -301,6 +301,70 @@ impl TerminalGrid {
         self.scroll_offset = 0;
     }
 
+    /// Resize grid while preserving recent terminal output as much as possible.
+    ///
+    /// - Growing keeps the existing live rows pinned to the top.
+    /// - Shrinking keeps the newest visible rows and pushes trimmed rows into
+    ///   scrollback so recent output stays on screen.
+    pub fn resize(&mut self, new_cols: usize, new_rows: usize) -> bool {
+        let new_cols = new_cols.max(1);
+        let new_rows = new_rows.max(1);
+        if self.cols == new_cols && self.rows == new_rows {
+            return false;
+        }
+
+        let old_cols = self.cols;
+        let old_rows = self.rows;
+        let old_cells = std::mem::replace(
+            &mut self.cells,
+            vec![TerminalCell::blank(); new_cols * new_rows],
+        );
+
+        for row in &mut self.scrollback {
+            resize_terminal_row(row, new_cols);
+        }
+
+        let copy_cols = old_cols.min(new_cols);
+        let copy_rows = old_rows.min(new_rows);
+        let trimmed_top_rows = old_rows.saturating_sub(new_rows);
+
+        if trimmed_top_rows > 0 {
+            for trimmed_row in 0..trimmed_top_rows {
+                let start = trimmed_row * old_cols;
+                let end = start + old_cols;
+                let mut row = old_cells[start..end].to_vec();
+                resize_terminal_row(&mut row, new_cols);
+                self.scrollback.push(row);
+            }
+            if self.scrollback.len() > SCROLLBACK_LIMIT {
+                let overflow = self.scrollback.len() - SCROLLBACK_LIMIT;
+                self.scrollback.drain(0..overflow);
+            }
+        }
+
+        let src_row_offset = trimmed_top_rows;
+        for row in 0..copy_rows {
+            let src_row = row + src_row_offset;
+            let src_start = src_row * old_cols;
+            let dst_start = row * new_cols;
+            self.cells[dst_start..dst_start + copy_cols]
+                .copy_from_slice(&old_cells[src_start..src_start + copy_cols]);
+        }
+
+        self.cols = new_cols;
+        self.rows = new_rows;
+        self.cursor_col = self.cursor_col.min(new_cols.saturating_sub(1));
+        self.cursor_row = if trimmed_top_rows == 0 {
+            self.cursor_row.min(new_rows.saturating_sub(1))
+        } else {
+            self.cursor_row
+                .saturating_sub(trimmed_top_rows)
+                .min(new_rows.saturating_sub(1))
+        };
+        self.scroll_offset = self.scroll_offset.min(self.scrollback.len());
+        true
+    }
+
     // ─── Query API ────────────────────────────────────────────────────────────
 
     /// Lấy cell tại vị trí `(row, col)`. Trả cell blank nếu out-of-bounds.
@@ -415,6 +479,14 @@ static BLANK_CELL: TerminalCell = TerminalCell {
 fn clamp_add(base: usize, delta: i32, min: usize, max: usize) -> usize {
     let result = base as i32 + delta;
     result.max(min as i32).min(max as i32) as usize
+}
+
+fn resize_terminal_row(row: &mut Vec<TerminalCell>, new_cols: usize) {
+    if row.len() > new_cols {
+        row.truncate(new_cols);
+    } else if row.len() < new_cols {
+        row.resize(new_cols, TerminalCell::blank());
+    }
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -533,5 +605,24 @@ mod tests {
         // Parser phải nhớ state của ESC[3 từ chunk trước.
         assert_eq!(grid.cell_at(0, 0).style.fg, AnsiColor::Index(2));
         assert_eq!(grid.cell_at(0, 0).ch, 'H');
+    }
+
+    #[test]
+    fn resize_keeps_recent_rows_when_shrinking_height() {
+        let mut grid = TerminalGrid::new(4, 3);
+        grid.feed_chunk("1111\r\n2222\r\n3333");
+
+        assert!(grid.resize(4, 2));
+        assert_eq!(grid.debug_dump(), "2222\n3333\n");
+    }
+
+    #[test]
+    fn resize_expands_width_without_losing_existing_text() {
+        let mut grid = TerminalGrid::new(4, 2);
+        grid.feed_chunk("ab");
+
+        assert!(grid.resize(8, 2));
+        assert_eq!(grid.debug_dump(), "ab\n");
+        assert_eq!(grid.cols, 8);
     }
 }

@@ -29,7 +29,11 @@ pub enum InputFocusContext {
     Explorer,
     Inspector,
     BottomPanel,
+    /// Bottom panel terminal (ESC = unfocus).
     Terminal,
+    /// Buffer terminal chiếm toàn bộ center (lazygit, v.v.).
+    /// Mọi input — kể cả ESC — được forward thẳng vào PTY.
+    BufferTerminal,
 }
 
 impl InputFocusContext {
@@ -40,6 +44,7 @@ impl InputFocusContext {
             Self::Inspector => "inspector",
             Self::BottomPanel => "bottom_panel",
             Self::Terminal => "terminal",
+            Self::BufferTerminal => "buffer_terminal",
         }
     }
 
@@ -57,10 +62,9 @@ pub struct KeybindingContext {
 
 impl KeybindingContext {
     pub fn for_mode(mode: EditorMode) -> Self {
-        let focus = if mode == EditorMode::TerminalFocus {
-            InputFocusContext::Terminal
-        } else {
-            InputFocusContext::Editor
+        let focus = match mode {
+            EditorMode::TerminalFocus => InputFocusContext::Terminal,
+            _ => InputFocusContext::Editor,
         };
         Self {
             mode,
@@ -141,6 +145,12 @@ impl InputMap {
             return self.resolve_palette_focus(input, context.command_palette_visible);
         }
 
+        // BufferTerminal (lazygit, v.v.): bypass keymap hoàn toàn,
+        // mọi input sẽ được forward thẳng vào PTY trong handler.rs.
+        if context.focus == InputFocusContext::BufferTerminal {
+            return None;
+        }
+
         if context.focus == InputFocusContext::Terminal {
             return self.resolve_terminal_focus(input);
         }
@@ -208,7 +218,9 @@ impl InputMap {
         if context.command_palette_visible || context.mode == EditorMode::PaletteFocus {
             return None;
         }
-        if context.focus == InputFocusContext::Terminal {
+        if context.focus == InputFocusContext::Terminal
+            || context.focus == InputFocusContext::BufferTerminal
+        {
             return None;
         }
 
@@ -257,6 +269,7 @@ impl InputMap {
             InputFocusContext::Explorer => "explorer",
             InputFocusContext::Inspector => "inspector",
             InputFocusContext::Terminal => "terminal",
+            InputFocusContext::BufferTerminal => "terminal",
             InputFocusContext::BottomPanel => "bottom_panel",
         }
     }

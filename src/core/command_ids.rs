@@ -34,6 +34,8 @@ pub const SUBSTITUTE_LINE: &str = "editor.substitute_line";
 pub const DELETE_CHAR: &str = "editor.delete_char";
 pub const DELETE_SELECTION: &str = "editor.delete_selection";
 pub const DELETE_CURRENT_LINE: &str = "editor.delete_current_line";
+pub const TOGGLE_LINE_COMMENT: &str = "editor.toggle_line_comment";
+pub const TOGGLE_SELECTION_COMMENT: &str = "editor.toggle_selection_comment";
 pub const DELETE_WORD_FORWARD: &str = "editor.delete_word_forward";
 pub const DELETE_WORD_BACKWARD: &str = "editor.delete_word_backward";
 pub const YANK_SELECTION: &str = "editor.yank_selection";
@@ -42,6 +44,7 @@ pub const CHANGE_WORD_FORWARD: &str = "editor.change_word_forward";
 pub const CHANGE_WORD_BACKWARD: &str = "editor.change_word_backward";
 pub const PASTE_AFTER: &str = "editor.paste_after";
 pub const PASTE_BEFORE: &str = "editor.paste_before";
+pub const PASTE_SYSTEM_CLIPBOARD: &str = "editor.paste_system_clipboard";
 pub const UNDO: &str = "editor.undo";
 pub const REDO: &str = "editor.redo";
 pub const SAVE_FILE: &str = "editor.save_file";
@@ -63,6 +66,7 @@ pub const OPEN_RECENT_PROJECTS: &str = "projects.recent";
 
 // ── App-level UI ──────────────────────────────────────────────────────────────
 pub const TOGGLE_TERMINAL: &str = "app.toggle_terminal";
+pub const TOGGLE_BOTTOM_DOCK: &str = "app.toggle_bottom_dock";
 pub const TOGGLE_LEFT_DOCK: &str = "app.toggle_left_dock";
 pub const OPEN_FILE_PICKER: &str = "app.open_file_picker";
 pub const OPEN_FILE_FINDER: &str = "app.open_file_finder";
@@ -70,6 +74,8 @@ pub const OPEN_COMMAND_PALETTE: &str = "app.open_command_palette";
 pub const OPEN_VIM_COMMAND: &str = "app.open_vim_command";
 pub const OPEN_WORKSPACE_SYMBOLS: &str = "app.open_workspace_symbols";
 pub const SEARCH_IN_FILES: &str = "app.search_in_files";
+pub const GIT_OPEN_LAZYGIT: &str = "git.open_lazygit";
+pub const GIT_BLAME_LINE: &str = "git.blame_line";
 
 // ── Workbench focus navigation ────────────────────────────────────────────────
 pub const FOCUS_EDITOR: &str = "app.focus_editor";
@@ -153,6 +159,8 @@ pub const ALL_IDS: &[&str] = &[
     DELETE_CHAR,
     DELETE_SELECTION,
     DELETE_CURRENT_LINE,
+    TOGGLE_LINE_COMMENT,
+    TOGGLE_SELECTION_COMMENT,
     DELETE_WORD_FORWARD,
     DELETE_WORD_BACKWARD,
     YANK_SELECTION,
@@ -161,6 +169,7 @@ pub const ALL_IDS: &[&str] = &[
     CHANGE_WORD_BACKWARD,
     PASTE_AFTER,
     PASTE_BEFORE,
+    PASTE_SYSTEM_CLIPBOARD,
     UNDO,
     REDO,
     SAVE_FILE,
@@ -171,6 +180,7 @@ pub const ALL_IDS: &[&str] = &[
     ENTER_VISUAL_LINE,
     EXIT_FOCUS,
     TOGGLE_TERMINAL,
+    TOGGLE_BOTTOM_DOCK,
     TOGGLE_LEFT_DOCK,
     OPEN_FILE_PICKER,
     OPEN_FILE_FINDER,
@@ -178,6 +188,8 @@ pub const ALL_IDS: &[&str] = &[
     OPEN_VIM_COMMAND,
     OPEN_WORKSPACE_SYMBOLS,
     SEARCH_IN_FILES,
+    GIT_OPEN_LAZYGIT,
+    GIT_BLAME_LINE,
     FOCUS_EDITOR,
     FOCUS_EXPLORER,
     FOCUS_TERMINAL,
@@ -255,6 +267,8 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         DELETE_CHAR => Some(Command::DeleteChar),
         DELETE_SELECTION => Some(Command::DeleteSelection),
         DELETE_CURRENT_LINE => Some(Command::DeleteCurrentLine),
+        TOGGLE_LINE_COMMENT => Some(Command::ToggleLineComment),
+        TOGGLE_SELECTION_COMMENT => Some(Command::ToggleSelectionComment),
         DELETE_WORD_FORWARD => Some(Command::DeleteWordForward),
         DELETE_WORD_BACKWARD => Some(Command::DeleteWordBackward),
         YANK_SELECTION => Some(Command::YankSelection),
@@ -263,6 +277,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         CHANGE_WORD_BACKWARD => Some(Command::ChangeWordBackward),
         PASTE_AFTER => Some(Command::PasteAfter),
         PASTE_BEFORE => Some(Command::PasteBefore),
+        PASTE_SYSTEM_CLIPBOARD => Some(Command::PasteSystemClipboard),
         UNDO => Some(Command::Undo),
         REDO => Some(Command::Redo),
         SAVE_FILE => Some(Command::SaveFile),
@@ -277,6 +292,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         ENTER_VISUAL_LINE => Some(Command::EnterVisualLine),
         EXIT_FOCUS => Some(Command::SwitchMode(ModeEvent::ExitFocus)),
         TOGGLE_TERMINAL => Some(Command::ToggleTerminal),
+        TOGGLE_BOTTOM_DOCK => Some(Command::ToggleBottomDock),
         TOGGLE_LEFT_DOCK => Some(Command::ToggleLeftDock),
         OPEN_FILE_PICKER => Some(Command::OpenFilePicker),
         OPEN_FILE_FINDER => Some(Command::OpenFileFinder),
@@ -284,6 +300,8 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         OPEN_VIM_COMMAND => Some(Command::OpenVimCommand),
         OPEN_WORKSPACE_SYMBOLS => Some(Command::OpenWorkspaceSymbols),
         SEARCH_IN_FILES => Some(Command::SearchInFiles),
+        GIT_OPEN_LAZYGIT => Some(Command::GitOpenLazygit),
+        GIT_BLAME_LINE => Some(Command::GitBlameLine),
         FOCUS_EDITOR => Some(Command::FocusEditor),
         FOCUS_EXPLORER => Some(Command::FocusExplorer),
         FOCUS_TERMINAL => Some(Command::FocusTerminal),

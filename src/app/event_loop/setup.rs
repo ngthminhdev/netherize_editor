@@ -67,6 +67,8 @@ impl AppShell {
             scheduler,
             bridge: Some(bridge),
             pty_session_id: None,
+            terminal_buffer_grids: HashMap::new(),
+            pending_lazygit_buffer_index: None,
             highlight_spans: Vec::new(),
             terminal_grid: TerminalGrid::new(120, 40),
             explorer_cursor: 0,
@@ -92,6 +94,7 @@ impl AppShell {
             editor_caret_needs_layout: false,
             sidebar_needs_layout: true,
             terminal_needs_layout: true,
+            buffer_terminal_needs_layout: true,
             last_frame_time: now,
             last_fps_metrics_update_at: now,
             accumulated_frame_time: Duration::ZERO,
@@ -106,9 +109,11 @@ impl AppShell {
             last_sidebar_bounds: None,
             last_sidebar_focused: None,
             last_terminal_bounds: None,
+            last_buffer_terminal_bounds: None,
             sidebar_selection_quads: Vec::new(),
             suppress_next_palette_ime_commit: false,
             leap_labels: None,
+            git_overlay_revision: 0,
         })
     }
 
@@ -212,9 +217,78 @@ impl AppShell {
         self.editor_caret_needs_layout = false;
         self.sidebar_needs_layout = true;
         self.terminal_needs_layout = true;
+        self.buffer_terminal_needs_layout = true;
         self.last_editor_bounds = None;
         self.last_sidebar_bounds = None;
         self.last_terminal_bounds = None;
+        self.last_buffer_terminal_bounds = None;
+    }
+
+    pub(super) fn sync_terminal_layout(&mut self, bounds: [f32; 4]) -> bool {
+        let scaled_ui = scale_ui_config(&self.ui_config, self.runtime_scale);
+        let panel_padding = scaled_ui.spacing.panel_padding;
+        let line_height = self.theme.ui.panel_line_height.max(1.0);
+        let cell_width = (self.theme.ui.panel_font_size * 0.6).max(1.0);
+
+        let content_width = (bounds[2] - panel_padding * 2.0).max(1.0);
+        let content_height = (bounds[3] - panel_padding * 2.0 - line_height).max(1.0);
+        let cols = (content_width / cell_width).floor().max(1.0) as usize;
+        let rows = (content_height / line_height).floor().max(1.0) as usize;
+
+        let grid_changed = self.terminal_grid.resize(cols, rows);
+        if grid_changed {
+            self.terminal_needs_layout = true;
+        }
+
+        if grid_changed && let Some(session_id) = self.pty_session_id {
+            self.submit(RequestSpec {
+                revision_id: 0,
+                topic: RequestTopic::TerminalPty,
+                payload: WorkerRequestPayload::ResizePtySession {
+                    session_id,
+                    cols: cols.min(u16::MAX as usize) as u16,
+                    rows: rows.min(u16::MAX as usize) as u16,
+                },
+            });
+        }
+
+        grid_changed
+    }
+
+    pub(super) fn sync_terminal_buffer_layout(
+        &mut self,
+        session_id: u64,
+        bounds: [f32; 4],
+    ) -> bool {
+        let Some(grid) = self.terminal_buffer_grids.get_mut(&session_id) else {
+            return false;
+        };
+
+        let scaled_ui = scale_ui_config(&self.ui_config, self.runtime_scale);
+        let panel_padding = scaled_ui.spacing.panel_padding;
+        let line_height = self.theme.ui.panel_line_height.max(1.0);
+        let cell_width = (self.theme.ui.panel_font_size * 0.6).max(1.0);
+
+        let content_width = (bounds[2] - panel_padding * 2.0).max(1.0);
+        let content_height = (bounds[3] - panel_padding * 2.0 - line_height).max(1.0);
+        let cols = (content_width / cell_width).floor().max(1.0) as usize;
+        let rows = (content_height / line_height).floor().max(1.0) as usize;
+
+        let grid_changed = grid.resize(cols, rows);
+        if grid_changed {
+            self.buffer_terminal_needs_layout = true;
+            self.submit(RequestSpec {
+                revision_id: 0,
+                topic: RequestTopic::TerminalPty,
+                payload: WorkerRequestPayload::ResizePtySession {
+                    session_id,
+                    cols: cols.min(u16::MAX as usize) as u16,
+                    rows: rows.min(u16::MAX as usize) as u16,
+                },
+            });
+        }
+
+        grid_changed
     }
 
     pub(super) fn build_context(&self) -> KeybindingContext {
@@ -228,6 +302,9 @@ impl AppShell {
                 } else {
                     InputFocusContext::BottomPanel
                 }
+            }
+            FocusTarget::CenterEditor if self.app_state.active_buffer_is_terminal() => {
+                InputFocusContext::BufferTerminal
             }
             _ => InputFocusContext::Editor,
         };

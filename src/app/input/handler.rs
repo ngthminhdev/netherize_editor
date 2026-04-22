@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use winit::{
     event::{ElementState, KeyEvent, Modifiers},
-    keyboard::{ModifiersState, NamedKey},
+    keyboard::{KeyCode, ModifiersState, NamedKey},
 };
 
 use crate::{
@@ -180,12 +180,50 @@ impl InputHandler {
         input_map: &InputMap,
         context: KeybindingContext,
     ) -> Option<InputRouteOutcome> {
-        if key_event.state != ElementState::Pressed || key_event.repeat {
+        if key_event.state != ElementState::Pressed {
             return None;
         }
 
         let normalized = NormalizedInput::from_key_event(key_event, self.modifiers);
+        if key_event.repeat {
+            return self.route_repeated_normalized_input(normalized, input_map, context);
+        }
         self.route_normalized_input(normalized, input_map, context, Instant::now())
+    }
+
+    pub(crate) fn route_repeated_normalized_input(
+        &mut self,
+        normalized: NormalizedInput,
+        input_map: &InputMap,
+        context: KeybindingContext,
+    ) -> Option<InputRouteOutcome> {
+        // Repeat events chỉ được phép đi qua cho các command an toàn khi giữ phím.
+        // Không để OS auto-repeat vô tình hoàn thành prefix/chord như dd, gcc, gg...
+        if self.pending_input.is_some()
+            || self.pending_count.is_some()
+            || self.operator_count.is_some()
+        {
+            return None;
+        }
+
+        let input_debug = normalized.debug_label();
+        let resolved = input_map.resolve(&normalized, context)?;
+        if !resolved.command.supports_press_and_hold_repeat() {
+            return None;
+        }
+
+        Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+            input_debug,
+            format!(
+                "mode={} focus={} -> key repeat -> {}",
+                context.mode.as_str(),
+                context.focus.as_str(),
+                resolved.reason
+            ),
+            resolved.command,
+            1,
+            false,
+        )))
     }
 
     // crate-visible for clock-injected router tests.
@@ -477,6 +515,37 @@ impl InputHandler {
                 PendingState::OperatorDelete
                 | PendingState::OperatorChange
                 | PendingState::OperatorYank => {
+                    if matches!(pending.state, PendingState::OperatorYank) {
+                        let yank_command = if normalized.physical_key == Some(KeyCode::KeyY)
+                            || normalized.text.as_deref() == Some("y")
+                        {
+                            Some(Command::YankCurrentLine)
+                        } else if normalized.physical_key == Some(KeyCode::KeyE)
+                            || normalized.text.as_deref() == Some("e")
+                        {
+                            Some(Command::YankToWordEnd)
+                        } else {
+                            None
+                        };
+
+                        if let Some(command) = yank_command {
+                            self.clear_pending_input();
+                            let (repeat_count, count_ignored) = self
+                                .consume_repeat_count_for_command(&command, Some(&pending.state));
+                            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                                input_debug,
+                                format!(
+                                    "mode={} focus={} -> pending operator yank resolved",
+                                    context.mode.as_str(),
+                                    context.focus.as_str()
+                                ),
+                                command,
+                                repeat_count,
+                                count_ignored,
+                            )));
+                        }
+                    }
+
                     if let Some(inner) = inner_or_around_from_input(&normalized) {
                         let op = match &pending.state {
                             PendingState::OperatorDelete => TextObjectOp::Delete,
@@ -714,6 +783,29 @@ impl InputHandler {
             }
         }
 
+        // BufferTerminal (lazygit, v.v.): bypass keymap hoàn toàn.
+        // Mọi input kể cả ESC được forward thẳng vào PTY.
+        // Chỉ modifier-only keys (Shift, Ctrl...) bị bỏ qua.
+        if context.focus == InputFocusContext::BufferTerminal {
+            if !is_modifier_only_key(&normalized) {
+                if let Some(payload) = terminal_input_payload(&normalized) {
+                    self.clear_pending_counts();
+                    return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                        input_debug,
+                        format!(
+                            "mode={} focus={} -> buffer terminal raw input",
+                            context.mode.as_str(),
+                            context.focus.as_str()
+                        ),
+                        Command::TerminalWriteInput(payload),
+                        1,
+                        false,
+                    )));
+                }
+            }
+            return None;
+        }
+
         if let Some(resolved) = input_map.resolve(&normalized, context) {
             let (repeat_count, count_ignored) =
                 self.consume_repeat_count_for_command(&resolved.command, None);
@@ -747,6 +839,7 @@ impl InputHandler {
                 false,
             )));
         }
+
 
         if self.pending_count.is_some() || self.operator_count.is_some() {
             self.clear_pending_counts();

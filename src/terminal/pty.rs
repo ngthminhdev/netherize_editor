@@ -21,6 +21,15 @@ impl PtyProvider {
         working_dir: Option<&Path>,
     ) -> Result<SpawnedShell, String> {
         let shell_program = resolve_shell_program(requested_shell);
+        self.spawn_command(&shell_program, &[], working_dir)
+    }
+
+    pub fn spawn_command(
+        &self,
+        program: &str,
+        args: &[String],
+        working_dir: Option<&Path>,
+    ) -> Result<SpawnedShell, String> {
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -31,16 +40,19 @@ impl PtyProvider {
             })
             .map_err(|err| format!("open pty failed: {err}"))?;
 
-        let mut command = CommandBuilder::new(&shell_program);
+        let mut command = CommandBuilder::new(program);
         if let Some(cwd) = working_dir {
             command.cwd(cwd);
         }
         command.env("TERM", "xterm-256color");
+        for arg in args {
+            command.arg(arg);
+        }
 
         let child = pair
             .slave
             .spawn_command(command)
-            .map_err(|err| format!("spawn shell {:?} failed: {err}", shell_program))?;
+            .map_err(|err| format!("spawn command {:?} failed: {err}", program))?;
 
         let reader = pair
             .master
@@ -58,7 +70,7 @@ impl PtyProvider {
         };
 
         Ok(SpawnedShell {
-            shell_program,
+            shell_program: program.to_string(),
             working_dir,
             reader,
             process: Arc::new(PtyProcess::new(pair.master, child, writer)),
@@ -75,7 +87,7 @@ pub struct SpawnedShell {
 
 /// Runtime handle của một PTY session đang sống.
 pub struct PtyProcess {
-    _master: Mutex<Box<dyn MasterPty + Send>>,
+    master: Mutex<Box<dyn MasterPty + Send>>,
     child: Mutex<Box<dyn Child + Send>>,
     writer: Mutex<Box<dyn Write + Send>>,
 }
@@ -87,7 +99,7 @@ impl PtyProcess {
         writer: Box<dyn Write + Send>,
     ) -> Self {
         Self {
-            _master: Mutex::new(master),
+            master: Mutex::new(master),
             child: Mutex::new(child),
             writer: Mutex::new(writer),
         }
@@ -116,6 +128,21 @@ impl PtyProcess {
             .try_wait()
             .map_err(|err| format!("pty try_wait failed: {err}"))?;
         Ok(status.map(|exit| exit.exit_code() as i32))
+    }
+
+    pub fn resize(&self, cols: u16, rows: u16) -> Result<(), String> {
+        let master = self
+            .master
+            .lock()
+            .map_err(|_| "pty master lock poisoned".to_string())?;
+        master
+            .resize(PtySize {
+                rows: rows.max(1),
+                cols: cols.max(1),
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|err| format!("resize pty failed: {err}"))
     }
 
     pub fn close(&self) -> Result<(), String> {

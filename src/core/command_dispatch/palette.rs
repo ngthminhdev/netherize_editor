@@ -1,0 +1,344 @@
+use crate::{
+    app::command_palette::{CommandPaletteAction, CommandPaletteMode},
+    core::{
+        command_ids,
+        commands::Command,
+        mode::{EditorMode, ModeEvent},
+    },
+};
+
+use super::{DispatchCtx, common::DispatchReport, dispatch_command};
+
+pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> DispatchReport {
+    match command {
+        Command::OpenFilePicker | Command::OpenFileFinder => {
+            let was_open = ctx.app_state.is_file_picker_open();
+            match open_palette_mode(ctx, CommandPaletteMode::FilePicker, "file finder") {
+                Ok((result_count, mode_changed)) => DispatchReport::success_with_flags(
+                    if was_open {
+                        format!("Dispatch: file finder refreshed ({result_count} results)")
+                    } else {
+                        format!("Dispatch: file finder opened ({result_count} results)")
+                    },
+                    true,
+                    mode_changed || !was_open,
+                ),
+                Err(report) => report,
+            }
+        }
+        Command::OpenVimCommand => {
+            match open_palette_mode(ctx, CommandPaletteMode::VimCommand, "vim command") {
+                Ok((result_count, mode_changed)) => DispatchReport::success_with_flags(
+                    format!("Dispatch: vim command opened ({result_count} items)"),
+                    true,
+                    mode_changed,
+                ),
+                Err(report) => report,
+            }
+        }
+        Command::OpenInFileSearch => {
+            match open_palette_mode(ctx, CommandPaletteMode::InFileSearch, "in-file search") {
+                Ok((result_count, mode_changed)) => DispatchReport::success_with_flags(
+                    format!("Dispatch: in-file search opened ({result_count} items)"),
+                    true,
+                    mode_changed,
+                ),
+                Err(report) => report,
+            }
+        }
+        Command::OpenWorkspaceSymbols => match open_palette_mode(
+            ctx,
+            CommandPaletteMode::WorkspaceSymbols,
+            "workspace symbols",
+        ) {
+            Ok((result_count, mode_changed)) => DispatchReport::success_with_flags(
+                format!("Dispatch: workspace symbols opened ({result_count} items)"),
+                true,
+                mode_changed,
+            ),
+            Err(report) => report,
+        },
+        Command::SearchInFiles => {
+            match open_palette_mode(ctx, CommandPaletteMode::LiveGrep, "live grep") {
+                Ok((result_count, mode_changed)) => DispatchReport::success_with_flags(
+                    format!("Dispatch: live grep opened ({result_count} items)"),
+                    true,
+                    mode_changed,
+                ),
+                Err(report) => report,
+            }
+        }
+        Command::FilePickerAppendQuery(text) => match ctx.app_state.file_picker_append_query(&text)
+        {
+            Ok(changed) => DispatchReport::success(
+                if changed {
+                    format!("Dispatch: file picker query append {:?}", text)
+                } else {
+                    "Dispatch: file picker query append ignored".to_string()
+                },
+                changed,
+            ),
+            Err(err) => DispatchReport::failure(format!(
+                "Dispatch: file picker query append failed -> {err}"
+            )),
+        },
+        Command::FilePickerBackspaceQuery => match ctx.app_state.file_picker_backspace_query() {
+            Ok(changed) => DispatchReport::success(
+                if changed {
+                    "Dispatch: file picker query backspace".to_string()
+                } else {
+                    "Dispatch: file picker query backspace ignored".to_string()
+                },
+                changed,
+            ),
+            Err(err) => DispatchReport::failure(format!(
+                "Dispatch: file picker query backspace failed -> {err}"
+            )),
+        },
+        Command::OverlaySelectNext | Command::FilePickerSelectNext => {
+            let changed = ctx.app_state.command_palette_select_next();
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: overlay select next".to_string()
+                } else {
+                    "Dispatch: overlay select next ignored".to_string()
+                },
+                changed,
+            )
+        }
+        Command::OverlaySelectPrev | Command::FilePickerSelectPrev => {
+            let changed = ctx.app_state.command_palette_select_prev();
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: overlay select prev".to_string()
+                } else {
+                    "Dispatch: overlay select prev ignored".to_string()
+                },
+                changed,
+            )
+        }
+        Command::FilePickerConfirmSelection => confirm_selection(ctx),
+        Command::CloseFilePicker => close_picker(ctx),
+        Command::OpenCommandPalette => {
+            match open_palette_mode(ctx, CommandPaletteMode::CommandPalette, "command palette") {
+                Ok((result_count, mode_changed)) => DispatchReport::success_with_flags(
+                    format!("Dispatch: command palette opened ({result_count} items)"),
+                    true,
+                    mode_changed,
+                ),
+                Err(report) => report,
+            }
+        }
+        _ => unreachable!("palette::dispatch received non-palette command"),
+    }
+}
+
+fn open_palette_mode(
+    ctx: &mut DispatchCtx<'_, '_>,
+    mode: CommandPaletteMode,
+    label: &str,
+) -> Result<(usize, bool), DispatchReport> {
+    let current_mode = ctx.app_state.current_mode();
+    if current_mode != EditorMode::PaletteFocus
+        && !ctx.app_state.can_apply_mode_event(ModeEvent::OpenPalette)
+    {
+        return Err(DispatchReport::failure(format!(
+            "Dispatch: open {label} rejected (mode={} does not allow OpenPalette)",
+            current_mode.as_str()
+        )));
+    }
+
+    let result_count = match ctx.app_state.open_command_palette_mode(mode) {
+        Ok(result_count) => result_count,
+        Err(err) => {
+            return Err(DispatchReport::failure(format!(
+                "Dispatch: open {label} failed -> {err}"
+            )));
+        }
+    };
+
+    let mode_changed = if current_mode == EditorMode::PaletteFocus {
+        false
+    } else {
+        match ctx.app_state.apply_mode_event(ModeEvent::OpenPalette) {
+            Ok(result) => result.changed,
+            Err(err) => {
+                let _ = ctx.app_state.close_command_palette();
+                return Err(DispatchReport::failure(format!(
+                    "Dispatch: open {label} rejected -> {:?}",
+                    err
+                )));
+            }
+        }
+    };
+
+    Ok((result_count, mode_changed))
+}
+
+fn confirm_selection(ctx: &mut DispatchCtx<'_, '_>) -> DispatchReport {
+    if matches!(
+        ctx.app_state.command_palette_mode(),
+        Some(CommandPaletteMode::InFileSearch)
+    ) {
+        let moved = ctx.app_state.search_next();
+        let changed = moved || ctx.close_palette_and_exit_focus();
+        return DispatchReport::success_with_flags(
+            if moved {
+                "Dispatch: in-file search confirmed".to_string()
+            } else {
+                "Dispatch: in-file search confirmed (no further matches)".to_string()
+            },
+            true,
+            changed,
+        );
+    }
+
+    let Some(selected_action) = ctx.app_state.command_palette_selected_action() else {
+        return DispatchReport::success_with_flags(
+            "Dispatch: command palette confirm ignored (no selection)",
+            false,
+            false,
+        );
+    };
+
+    match selected_action {
+        CommandPaletteAction::OpenFile(mut path) => {
+            if !path.exists() {
+                match ctx.app_state.refresh_file_picker_results_if_open() {
+                    Ok(_) => {
+                        let Some(refreshed_path) = ctx.app_state.file_picker_selected_path() else {
+                            return DispatchReport {
+                                message:
+                                    "Dispatch: file picker confirm failed -> selection is stale after external changes".to_string(),
+                                request_redraw: true,
+                                success: false,
+                                state_changed: true,
+                            };
+                        };
+                        path = refreshed_path;
+                    }
+                    Err(err) => {
+                        return DispatchReport::failure(format!(
+                            "Dispatch: file picker confirm failed -> refresh picker failed: {err}"
+                        ));
+                    }
+                }
+            }
+
+            let mut open_report = ctx.open_file(path.clone());
+            if !open_report.success {
+                return open_report;
+            }
+
+            let changed = ctx.close_palette_and_exit_focus();
+            open_report.message = format!(
+                "Dispatch: file picker confirmed -> opened {}",
+                path.display()
+            );
+            open_report.request_redraw = true;
+            open_report.state_changed |= changed;
+            open_report
+        }
+        CommandPaletteAction::OpenSearchMatch { path, line, column } => {
+            let mut open_report = ctx.open_file(path.clone());
+            if !open_report.success {
+                return open_report;
+            }
+
+            let jumped = ctx.app_state.jump_to_line_and_column(
+                line.saturating_sub(1) as usize,
+                column.saturating_sub(1) as usize,
+            );
+            let changed = ctx.close_palette_and_exit_focus();
+            open_report.message = format!(
+                "Dispatch: live grep confirmed -> opened {}:{}:{}",
+                path.display(),
+                line,
+                column
+            );
+            open_report.request_redraw = true;
+            open_report.state_changed |= jumped || changed;
+            open_report
+        }
+        CommandPaletteAction::ExecuteCommand(command_id) => {
+            let Some(next) = command_ids::parse(&command_id, ctx.app_state.active_file()) else {
+                return DispatchReport::failure(format!(
+                    "Dispatch: command palette confirm failed -> unknown command id '{}'",
+                    command_id
+                ));
+            };
+            dispatch_command(ctx.app_state, next)
+        }
+        CommandPaletteAction::ExecuteVimCommand(vim) => {
+            let trimmed = vim.trim();
+            let report = if trimmed == "w" {
+                dispatch_command(ctx.app_state, Command::SaveFile)
+            } else if trimmed == "q" {
+                dispatch_command(ctx.app_state, Command::CloseFilePicker)
+            } else if trimmed == "wq" {
+                let _ = dispatch_command(ctx.app_state, Command::SaveFile);
+                dispatch_command(ctx.app_state, Command::CloseFilePicker)
+            } else if trimmed == "enew" {
+                dispatch_command(ctx.app_state, Command::BufferNew)
+            } else if trimmed == "bn" {
+                dispatch_command(ctx.app_state, Command::BufferNext)
+            } else if trimmed == "bp" {
+                dispatch_command(ctx.app_state, Command::BufferPrev)
+            } else if trimmed == "bd" {
+                dispatch_command(ctx.app_state, Command::BufferCloseCurrent)
+            } else if let Ok(line_number) = trimmed.parse::<usize>() {
+                let target_line = line_number
+                    .saturating_sub(1)
+                    .min(ctx.app_state.total_lines());
+                let changed = ctx.app_state.jump_to_line(target_line);
+                DispatchReport::success_with_flags(
+                    format!("Dispatch: jumped to line {line_number} (char_idx updated)"),
+                    changed,
+                    changed,
+                )
+            } else {
+                DispatchReport::success_with_flags(
+                    format!("Dispatch: vim command captured -> {}", trimmed),
+                    true,
+                    false,
+                )
+            };
+            let _ = ctx.app_state.close_command_palette();
+            if ctx.app_state.current_mode() == EditorMode::PaletteFocus {
+                let _ = ctx.app_state.apply_mode_event(ModeEvent::ExitFocus);
+            }
+            report
+        }
+        CommandPaletteAction::JumpToSymbol(symbol) => {
+            let _ = ctx.app_state.close_command_palette();
+            if ctx.app_state.current_mode() == EditorMode::PaletteFocus {
+                let _ = ctx.app_state.apply_mode_event(ModeEvent::ExitFocus);
+            }
+            DispatchReport::success_with_flags(
+                format!("Dispatch: workspace symbol selected -> {}", symbol),
+                true,
+                false,
+            )
+        }
+    }
+}
+
+fn close_picker(ctx: &mut DispatchCtx<'_, '_>) -> DispatchReport {
+    let clears_search = matches!(
+        ctx.app_state.command_palette_mode(),
+        Some(CommandPaletteMode::InFileSearch)
+    );
+    let mut changed = ctx.close_palette_and_exit_focus();
+    if clears_search {
+        changed |= ctx.app_state.clear_search_highlights();
+    }
+
+    DispatchReport::success(
+        if changed {
+            "Dispatch: file picker closed".to_string()
+        } else {
+            "Dispatch: file picker close ignored".to_string()
+        },
+        changed,
+    )
+}

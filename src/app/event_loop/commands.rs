@@ -1,8 +1,21 @@
 use super::*;
 use crate::{
-    app::command_palette::CommandPaletteMode,
+    app::clipboard::ClipboardProvider, app::command_palette::CommandPaletteMode,
     core::command_dispatch::dispatch_command_with_clipboard_count,
 };
+
+fn dispatch_palette_overlay_command(
+    app_state: &mut AppState,
+    clipboard: &mut dyn ClipboardProvider,
+    command: Command,
+) -> crate::core::command_dispatch::DispatchReport {
+    match command {
+        Command::PasteSystemClipboard => {
+            dispatch_command_with_clipboard(app_state, command, Some(clipboard))
+        }
+        _ => dispatch_command(app_state, command),
+    }
+}
 
 impl AppShell {
     pub(super) fn handle_command(&mut self, command: Command) -> bool {
@@ -27,44 +40,92 @@ impl AppShell {
             Command::ToggleTerminal => {
                 let report = dispatch_command(&mut self.app_state, command);
                 let is_open = self.app_state.is_terminal_panel_open();
-                if is_open != self.panel_state.bottom.visible {
-                    self.panel_state.toggle_bottom();
+                let mut changed = report.request_redraw;
+                if self.panel_state.bottom.visible != is_open {
+                    self.panel_state.bottom.visible = is_open;
                     self.terminal_needs_layout = true;
+                    changed = true;
                 }
-                if self.panel_state.bottom.visible {
+                if is_open {
                     self.terminal_needs_layout = true;
                 }
 
+                let focus_changed = if is_open {
+                    let changed = self.focus_manager.set(FocusTarget::BottomPanel);
+                    if self.pty_session_id.is_none() {
+                        let working_dir = self
+                            .app_state
+                            .active_file()
+                            .and_then(|path| path.parent())
+                            .map(PathBuf::from)
+                            .or_else(|| std::env::current_dir().ok());
+                        self.submit(RequestSpec {
+                            revision_id: 0,
+                            topic: RequestTopic::TerminalPty,
+                            payload: WorkerRequestPayload::SpawnPtyShell {
+                                shell: None,
+                                working_dir,
+                            },
+                        });
+                    }
+                    changed
+                } else if self.focus_manager.current() == FocusTarget::BottomPanel {
+                    self.focus_manager.set(FocusTarget::CenterEditor)
+                } else {
+                    false
+                };
+
+                if focus_changed {
+                    self.input_handler.clear_pending_prefix();
+                }
+                changed || focus_changed
+            }
+            Command::ToggleBottomDock => {
+                let next_visible = !self.panel_state.bottom.visible;
+                let mut changed = false;
+
+                if self.panel_state.bottom.visible != next_visible {
+                    self.panel_state.bottom.visible = next_visible;
+                    changed = true;
+                }
+                changed |= self.app_state.set_terminal_panel_open(next_visible);
+                self.terminal_needs_layout = true;
+
+                if next_visible && self.pty_session_id.is_none() {
+                    let working_dir = self
+                        .app_state
+                        .active_file()
+                        .and_then(|path| path.parent())
+                        .map(PathBuf::from)
+                        .or_else(|| std::env::current_dir().ok());
+                    self.submit(RequestSpec {
+                        revision_id: 0,
+                        topic: RequestTopic::TerminalPty,
+                        payload: WorkerRequestPayload::SpawnPtyShell {
+                            shell: None,
+                            working_dir,
+                        },
+                    });
+                }
+
+                if !next_visible && self.app_state.current_mode() == EditorMode::TerminalFocus {
+                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
+                        changed |= result.changed;
+                    }
+                }
+
                 let focus_changed =
-                    if is_open && self.app_state.current_mode() == EditorMode::TerminalFocus {
-                        let changed = self.focus_manager.set(FocusTarget::BottomPanel);
-                        if self.pty_session_id.is_none() {
-                            let working_dir = self
-                                .app_state
-                                .active_file()
-                                .and_then(|path| path.parent())
-                                .map(PathBuf::from)
-                                .or_else(|| std::env::current_dir().ok());
-                            self.submit(RequestSpec {
-                                revision_id: 0,
-                                topic: RequestTopic::TerminalPty,
-                                payload: WorkerRequestPayload::SpawnPtyShell {
-                                    shell: None,
-                                    working_dir,
-                                },
-                            });
-                        }
-                        changed
-                    } else if is_open {
+                    if !next_visible && self.focus_manager.current() == FocusTarget::BottomPanel {
                         self.focus_manager.set(FocusTarget::CenterEditor)
                     } else {
-                        self.focus_manager.set(FocusTarget::CenterEditor)
+                        false
                     };
 
                 if focus_changed {
                     self.input_handler.clear_pending_prefix();
                 }
-                report.request_redraw
+
+                changed || focus_changed
             }
             Command::OpenFolder => self.open_folder_with_dialog(),
             Command::OpenRecentProjects => self.open_recent_projects_palette(),
@@ -84,8 +145,18 @@ impl AppShell {
                 }
                 report.request_redraw
             }
-            Command::FilePickerAppendQuery(_) | Command::FilePickerBackspaceQuery => {
-                let report = dispatch_command(&mut self.app_state, command);
+            Command::GitOpenLazygit => self.open_lazygit_buffer(),
+            Command::GitBlameLine => self.submit_git_blame_line(),
+            Command::FilePickerAppendQuery(_)
+            | Command::FilePickerBackspaceQuery
+            | Command::PasteSystemClipboard
+                if self.app_state.current_mode() == EditorMode::PaletteFocus
+                    && self.app_state.is_command_palette_visible() =>
+            {
+                let report = {
+                    let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
+                    dispatch_palette_overlay_command(app_state, clipboard, command)
+                };
                 if !report.success {
                     return report.request_redraw;
                 }
@@ -101,6 +172,12 @@ impl AppShell {
                 }
 
                 report.request_redraw || report.state_changed
+            }
+            Command::BufferCloseCurrent => {
+                if self.app_state.is_dirty() && self.app_state.active_file().is_some() {
+                    return self.begin_dirty_buffer_close_confirmation();
+                }
+                self.close_current_buffer_now()
             }
             Command::CloseFilePicker => {
                 let returns_to_explorer = matches!(
@@ -143,10 +220,10 @@ impl AppShell {
                 }
                 changed
             }
-            Command::ExplorerCreateFile => self.open_explorer_prompt(
+            Command::ExplorerCreateFile => self.open_prompt_overlay(
                 crate::app::command_palette::CommandPaletteMode::ExplorerCreateFile,
             ),
-            Command::ExplorerCreateFolder => self.open_explorer_prompt(
+            Command::ExplorerCreateFolder => self.open_prompt_overlay(
                 crate::app::command_palette::CommandPaletteMode::ExplorerCreateFolder,
             ),
             Command::ExplorerDeleteNode => self.begin_explorer_delete_confirmation(),
@@ -246,14 +323,30 @@ impl AppShell {
                 false
             }
             Command::TerminalScrollUp => {
-                self.terminal_grid.view_scroll_up(3);
-                self.terminal_needs_layout = true;
-                true
+                if let Some(grid) = self.focused_terminal_grid_mut() {
+                    grid.view_scroll_up(3);
+                    if self.app_state.active_buffer_is_terminal() {
+                        self.buffer_terminal_needs_layout = true;
+                    } else {
+                        self.terminal_needs_layout = true;
+                    }
+                    true
+                } else {
+                    false
+                }
             }
             Command::TerminalScrollDown => {
-                self.terminal_grid.view_scroll_down(3);
-                self.terminal_needs_layout = true;
-                true
+                if let Some(grid) = self.focused_terminal_grid_mut() {
+                    grid.view_scroll_down(3);
+                    if self.app_state.active_buffer_is_terminal() {
+                        self.buffer_terminal_needs_layout = true;
+                    } else {
+                        self.terminal_needs_layout = true;
+                    }
+                    true
+                } else {
+                    false
+                }
             }
             Command::MoveFocusCycle => {
                 let changed = self.focus_manager.cycle_next(&self.panel_state);
@@ -675,6 +768,7 @@ impl AppShell {
                     self.app_state.auto_scroll_to_cursor(viewport_lines);
 
                     self.submit_lsp_did_open_for_active_file();
+                    let _ = self.sync_focus_mode_for_active_buffer();
                 }
 
                 if report.state_changed {
@@ -733,6 +827,8 @@ impl AppShell {
                         | Command::DeleteChar
                         | Command::DeleteSelection
                         | Command::DeleteCurrentLine
+                        | Command::ToggleLineComment
+                        | Command::ToggleSelectionComment
                         | Command::DeleteWordForward
                         | Command::DeleteWordBackward
                         | Command::ChangeSelection
@@ -740,6 +836,7 @@ impl AppShell {
                         | Command::ChangeWordBackward
                         | Command::PasteAfter
                         | Command::PasteBefore
+                        | Command::PasteSystemClipboard
                         | Command::Undo
                         | Command::Redo
                         | Command::ReplaceChar(_)
@@ -765,6 +862,7 @@ impl AppShell {
                 if report.success && should_notify_did_open {
                     self.highlight_spans.clear();
                     self.mark_explorer_dirty();
+                    let _ = self.sync_focus_mode_for_active_buffer();
                 }
 
                 if report.state_changed && is_cursor_move {
@@ -795,7 +893,7 @@ impl AppShell {
     }
 
     fn forward_to_pty(&self, text: &str) {
-        if let Some(session_id) = self.pty_session_id {
+        if let Some(session_id) = self.focused_terminal_session_id() {
             self.submit(RequestSpec {
                 revision_id: 0,
                 topic: RequestTopic::TerminalPty,
@@ -825,6 +923,60 @@ impl AppShell {
         }
     }
 
+    fn open_lazygit_buffer(&mut self) -> bool {
+        let Some(workspace_root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
+            eprintln!("[AppShell] lazygit open skipped: workspace is not attached");
+            return false;
+        };
+
+        let buffer_index = self
+            .app_state
+            .open_terminal_buffer("[Lazygit]", Some(workspace_root.clone()));
+        self.pending_lazygit_buffer_index = Some(buffer_index);
+        self.buffer_terminal_needs_layout = true;
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        self.highlight_spans.clear();
+        let _ = self.sync_focus_mode_for_active_buffer();
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::TerminalPty,
+            payload: WorkerRequestPayload::SpawnPtyCommand {
+                program: "lazygit".to_string(),
+                args: Vec::new(),
+                working_dir: Some(workspace_root),
+            },
+        });
+
+        true
+    }
+
+    fn submit_git_blame_line(&mut self) -> bool {
+        if self.app_state.active_buffer_is_terminal() {
+            return false;
+        }
+        let Some(workspace_root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
+            return false;
+        };
+        let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
+            return false;
+        };
+
+        self.git_overlay_revision = self.git_overlay_revision.saturating_add(1);
+        let line_number = self.app_state.cursor_line_col().0 + 1;
+        self.submit(RequestSpec {
+            revision_id: self.git_overlay_revision,
+            topic: RequestTopic::Git,
+            payload: WorkerRequestPayload::GitBlameLine {
+                workspace_root,
+                file_path,
+                line_number,
+            },
+        });
+        false
+    }
+
     fn pending_confirmation_prompt(&self) -> Option<String> {
         match &self.pending_confirmation.as_ref()?.action {
             PendingConfirmationAction::Delete { path, .. } => {
@@ -834,6 +986,15 @@ impl AppShell {
                     .map(str::to_string)
                     .unwrap_or_else(|| path.to_string_lossy().into_owned());
                 Some(format!("Delete {label}? (y/n)"))
+            }
+            PendingConfirmationAction::CloseDirtyBuffer { path } => {
+                let label = path
+                    .as_ref()
+                    .and_then(|path| path.file_name())
+                    .and_then(|name| name.to_str())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| "current buffer".to_string());
+                Some(format!("Save changes to {label} before closing? (y/n)"))
             }
         }
     }
@@ -853,9 +1014,10 @@ impl AppShell {
                 path: selected.path,
                 file_type: selected.file_type,
             },
+            return_focus: FocusTarget::LeftSidebar,
         });
         let prompt = self.pending_confirmation_prompt().unwrap_or_default();
-        if !self.open_explorer_prompt(
+        if !self.open_prompt_overlay(
             crate::app::command_palette::CommandPaletteMode::ExplorerDeleteConfirm,
         ) {
             self.pending_confirmation = None;
@@ -872,17 +1034,42 @@ impl AppShell {
         true
     }
 
+    fn begin_dirty_buffer_close_confirmation(&mut self) -> bool {
+        self.pending_confirmation = Some(PendingConfirmation {
+            action: PendingConfirmationAction::CloseDirtyBuffer {
+                path: self.app_state.active_file().map(PathBuf::from),
+            },
+            return_focus: FocusTarget::CenterEditor,
+        });
+        let prompt = self.pending_confirmation_prompt().unwrap_or_default();
+        if !self.open_prompt_overlay(
+            crate::app::command_palette::CommandPaletteMode::BufferCloseConfirm,
+        ) {
+            self.pending_confirmation = None;
+            return false;
+        }
+        if let Err(err) = self.app_state.set_command_palette_query(&prompt) {
+            eprintln!("[AppShell] close confirmation prompt failed: {err}");
+            self.pending_confirmation = None;
+            let _ = self.app_state.close_command_palette();
+            let _ = self.app_state.apply_mode_event(ModeEvent::ExitFocus);
+            let _ = self.focus_manager.set(FocusTarget::CenterEditor);
+            return false;
+        }
+        true
+    }
+
     pub(super) fn respond_to_pending_confirmation(&mut self, confirmed: bool) -> bool {
         let Some(pending) = self.pending_confirmation.take() else {
             return false;
         };
-        let changed = self.close_pending_confirmation_overlay();
-        if !confirmed {
-            return changed;
-        }
+        let mut changed = self.close_pending_confirmation_overlay(pending.return_focus);
 
         match pending.action {
             PendingConfirmationAction::Delete { path, file_type } => {
+                if !confirmed {
+                    return changed;
+                }
                 let fallback_selection = self.app_state.workspace_root_path().and_then(|root| {
                     path.parent().and_then(|parent| {
                         (parent.starts_with(root) && parent != root).then(|| parent.to_path_buf())
@@ -913,17 +1100,27 @@ impl AppShell {
                 self.mark_explorer_dirty();
                 true
             }
+            PendingConfirmationAction::CloseDirtyBuffer { .. } => {
+                if confirmed {
+                    let saved = self.handle_command(Command::SaveFile);
+                    changed |= saved;
+                    if self.app_state.is_dirty() {
+                        return changed;
+                    }
+                }
+                changed | self.close_current_buffer_now()
+            }
         }
     }
 
-    fn close_pending_confirmation_overlay(&mut self) -> bool {
+    fn close_pending_confirmation_overlay(&mut self, focus_target: FocusTarget) -> bool {
         let mut changed = self.app_state.close_command_palette();
         if self.app_state.current_mode() == EditorMode::PaletteFocus
             && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus)
         {
             changed |= result.changed;
         }
-        let focus_changed = self.focus_manager.set(FocusTarget::LeftSidebar);
+        let focus_changed = self.focus_manager.set(focus_target);
         changed |= focus_changed;
         if focus_changed {
             self.input_handler.clear_pending_prefix();
@@ -931,7 +1128,7 @@ impl AppShell {
         changed
     }
 
-    fn open_explorer_prompt(
+    fn open_prompt_overlay(
         &mut self,
         mode: crate::app::command_palette::CommandPaletteMode,
     ) -> bool {
@@ -943,7 +1140,7 @@ impl AppShell {
         }
 
         if let Err(err) = self.app_state.open_command_palette_mode(mode) {
-            eprintln!("[AppShell] explorer prompt open failed: {err}");
+            eprintln!("[AppShell] prompt overlay open failed: {err}");
             return false;
         }
 
@@ -960,6 +1157,35 @@ impl AppShell {
             self.input_handler.clear_pending_prefix();
         }
         true
+    }
+
+    pub(super) fn close_current_buffer_now(&mut self) -> bool {
+        let closed_terminal_session = self.app_state.active_terminal_session_id();
+        let report = dispatch_command(&mut self.app_state, Command::BufferCloseCurrent);
+        self.reconcile_highlight_spans_with_pending_edits();
+
+        if report.state_changed {
+            if let Some(session_id) = closed_terminal_session {
+                self.terminal_buffer_grids.remove(&session_id);
+                self.submit(RequestSpec {
+                    revision_id: 0,
+                    topic: RequestTopic::TerminalPty,
+                    payload: WorkerRequestPayload::ClosePtySession { session_id },
+                });
+            }
+            self.highlight_spans.clear();
+            self.mark_explorer_dirty();
+            let viewport_lines = self.editor_viewport_lines();
+            self.app_state.auto_scroll_to_cursor(viewport_lines);
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+            self.buffer_terminal_needs_layout = true;
+            self.submit_parse_for_active_buffer(true);
+            self.submit_lsp_did_open_for_active_file();
+            let _ = self.sync_focus_mode_for_active_buffer();
+        }
+
+        report.request_redraw || report.state_changed
     }
 
     fn confirm_explorer_prompt(&mut self) -> bool {
@@ -1256,6 +1482,46 @@ impl AppShell {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::clipboard::ClipboardProvider;
+
+    #[derive(Default)]
+    struct MockClipboard {
+        text: String,
+    }
+
+    impl ClipboardProvider for MockClipboard {
+        fn get_text(&mut self) -> Result<String, String> {
+            Ok(self.text.clone())
+        }
+
+        fn set_text(&mut self, text: &str) -> Result<(), String> {
+            self.text = text.to_string();
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn palette_paste_uses_clipboard_provider() {
+        let mut app_state = AppState::from_text(PathBuf::from("palette-paste.txt"), "alpha beta");
+        let mut clipboard = MockClipboard {
+            text: "foo\nbar".to_string(),
+        };
+
+        let open = dispatch_command(&mut app_state, Command::OpenInFileSearch);
+        assert!(open.success);
+        assert_eq!(app_state.current_mode(), EditorMode::PaletteFocus);
+        assert!(app_state.is_command_palette_visible());
+
+        let report = dispatch_palette_overlay_command(
+            &mut app_state,
+            &mut clipboard,
+            Command::PasteSystemClipboard,
+        );
+
+        assert!(report.success);
+        assert!(report.state_changed);
+        assert_eq!(app_state.command_palette_query_text(), "foo bar");
+    }
 
     #[test]
     fn move_to_first_line_uses_viewport_layout_path() {
@@ -1278,6 +1544,35 @@ mod tests {
         assert_eq!(shell.app_state.scroll_line, 0);
         assert!(shell.editor_needs_layout);
         assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn toggle_terminal_command_closes_bottom_panel_after_second_press() {
+        let mut shell = AppShell::new().expect("create app shell");
+        assert!(!shell.panel_state.bottom.visible);
+
+        assert!(shell.handle_command(Command::ToggleTerminal));
+        assert!(shell.panel_state.bottom.visible);
+        assert_eq!(shell.focus_manager.current(), FocusTarget::BottomPanel);
+
+        assert!(shell.handle_command(Command::ToggleTerminal));
+        assert!(!shell.panel_state.bottom.visible);
+        assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    }
+
+    #[test]
+    fn toggle_bottom_dock_keeps_editor_focus_when_opening() {
+        let mut shell = AppShell::new().expect("create app shell");
+        assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+        assert!(!shell.panel_state.bottom.visible);
+
+        assert!(shell.handle_command(Command::ToggleBottomDock));
+        assert!(shell.panel_state.bottom.visible);
+        assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+
+        assert!(shell.handle_command(Command::ToggleBottomDock));
+        assert!(!shell.panel_state.bottom.visible);
+        assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
     }
 
     #[test]
@@ -1326,11 +1621,90 @@ mod tests {
                 path: PathBuf::from("demo.txt"),
                 file_type: WorkspaceNodeType::File,
             },
+            return_focus: FocusTarget::LeftSidebar,
         });
 
         assert!(shell.respond_to_pending_confirmation(false));
         assert!(shell.pending_confirmation.is_none());
         assert!(!shell.app_state.is_command_palette_visible());
+    }
+
+    #[test]
+    fn dirty_buffer_close_opens_save_confirmation_prompt() {
+        let mut shell = AppShell::new().expect("create app shell");
+        let file_name = format!("netherize_dirty_close_prompt_{}.txt", std::process::id());
+        let file_path = std::env::temp_dir().join(&file_name);
+        let expected_prompt = format!("Save changes to {file_name} before closing? (y/n)");
+        std::fs::write(&file_path, "hello\n").expect("write file");
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        shell.app_state.insert_char('!');
+
+        assert!(shell.handle_command(Command::BufferCloseCurrent));
+        assert_eq!(
+            shell.app_state.command_palette_mode(),
+            Some(crate::app::command_palette::CommandPaletteMode::BufferCloseConfirm)
+        );
+        assert_eq!(
+            shell.pending_confirmation_prompt().as_deref(),
+            Some(expected_prompt.as_str())
+        );
+
+        let _ = std::fs::remove_file(file_path);
+    }
+
+    #[test]
+    fn dirty_buffer_close_confirmation_yes_saves_then_closes() {
+        let mut shell = AppShell::new().expect("create app shell");
+        let file_path = std::env::temp_dir().join(format!(
+            "netherize_dirty_close_yes_{}.txt",
+            std::process::id()
+        ));
+        std::fs::write(&file_path, "hello\n").expect("write file");
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        shell.app_state.insert_char('!');
+
+        assert!(shell.handle_command(Command::BufferCloseCurrent));
+        assert!(shell.respond_to_pending_confirmation(true));
+        assert_eq!(
+            std::fs::read_to_string(&file_path).expect("read file"),
+            "!hello\n"
+        );
+        assert!(shell.app_state.active_file().is_none());
+        assert!(!shell.app_state.is_command_palette_visible());
+
+        let _ = std::fs::remove_file(file_path);
+    }
+
+    #[test]
+    fn dirty_buffer_close_confirmation_no_discards_changes_and_closes() {
+        let mut shell = AppShell::new().expect("create app shell");
+        let file_path = std::env::temp_dir().join(format!(
+            "netherize_dirty_close_no_{}.txt",
+            std::process::id()
+        ));
+        std::fs::write(&file_path, "hello\n").expect("write file");
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        shell.app_state.insert_char('!');
+
+        assert!(shell.handle_command(Command::BufferCloseCurrent));
+        assert!(shell.respond_to_pending_confirmation(false));
+        assert_eq!(
+            std::fs::read_to_string(&file_path).expect("read file"),
+            "hello\n"
+        );
+        assert!(shell.app_state.active_file().is_none());
+        assert!(!shell.app_state.is_command_palette_visible());
+
+        let _ = std::fs::remove_file(file_path);
     }
 
     #[test]

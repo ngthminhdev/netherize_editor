@@ -52,10 +52,12 @@ impl ApplicationHandler for AppShell {
         self.editor_caret_needs_layout = false;
         self.sidebar_needs_layout = true;
         self.terminal_needs_layout = true;
+        self.buffer_terminal_needs_layout = true;
         self.last_editor_bounds = None;
         self.last_show_welcome = None;
         self.last_sidebar_bounds = None;
         self.last_terminal_bounds = None;
+        self.last_buffer_terminal_bounds = None;
 
         self.window_size = window.inner_size();
         self.window = Some(window);
@@ -96,10 +98,12 @@ impl ApplicationHandler for AppShell {
                 self.editor_caret_needs_layout = false;
                 self.sidebar_needs_layout = true;
                 self.terminal_needs_layout = true;
+                self.buffer_terminal_needs_layout = true;
                 self.last_editor_bounds = None;
                 self.last_show_welcome = None;
                 self.last_sidebar_bounds = None;
                 self.last_terminal_bounds = None;
+                self.last_buffer_terminal_bounds = None;
                 let scale_factor = self
                     .window
                     .as_ref()
@@ -125,10 +129,13 @@ impl ApplicationHandler for AppShell {
                 if self.should_swallow_palette_ime_commit() {
                     return;
                 }
+                let overlay_cleared = self.invalidate_editor_overlays();
                 let context = self.build_context();
                 if let Some(translated) = self.input_handler.translate_ime_commit(&text, context)
                     && self.handle_command_with_count(translated.command, translated.repeat_count)
                 {
+                    self.request_redraw();
+                } else if overlay_cleared {
                     self.request_redraw();
                 }
             }
@@ -137,6 +144,10 @@ impl ApplicationHandler for AppShell {
             } => {
                 if key_event.state == ElementState::Pressed && !key_event.repeat {
                     self.note_post_open_keyboard_press();
+                    let overlay_cleared = self.invalidate_editor_overlays();
+                    if overlay_cleared {
+                        self.request_redraw();
+                    }
                 }
                 if let Some(changed) = self.handle_pending_confirmation_key_event(&key_event) {
                     if changed {
@@ -157,6 +168,11 @@ impl ApplicationHandler for AppShell {
                         }
                     }
                     Some(InputRouteOutcome::NoDispatch { .. }) | None => {}
+                }
+            }
+            WindowEvent::MouseWheel { .. } => {
+                if self.invalidate_editor_overlays() {
+                    self.request_redraw();
                 }
             }
             WindowEvent::RedrawRequested => self.redraw(),
@@ -240,45 +256,135 @@ impl AppShell {
         } else {
             self.focus_manager.current()
         };
-        if let Some(bounds) = focus_region_bounds(&layout.model, focus_target) {
-            region_instances.extend(focus_ring_instances(
-                bounds,
-                self.theme.ui.accent.as_f32(),
-                2.0,
-            ));
+        // Ẩn focus ring khi terminal buffer đang chiếm center — focus ring
+        // gây ra border nhấp nháy trên mỗi redraw từ PTY output.
+        let center_has_terminal_buffer = self
+            .app_state
+            .active_terminal_session_id()
+            .is_some();
+        if !center_has_terminal_buffer {
+            if let Some(bounds) = focus_region_bounds(&layout.model, focus_target) {
+                region_instances.extend(focus_ring_instances(
+                    bounds,
+                    self.theme.ui.accent.as_f32(),
+                    2.0,
+                ));
+            }
         }
 
         if let Some(center_bounds) = center_bounds {
             let bounds_changed = self.last_editor_bounds != Some(center_bounds);
             let mut refresh_highlights_for_viewport = false;
+            let active_terminal_session = self.app_state.active_terminal_session_id();
+
+            // ── Invariant guard ───────────────────────────────────────────────
+            // Nếu terminal buffer đang chiếm center, đảm bảo editor GPU buffer
+            // luôn được xóa trước khi render — bất kể nhánh nào xử lý frame này.
+            // Điều này ngăn editor stale content "leak" qua khi chỉ có caret/terminal dirty.
+            if active_terminal_session.is_some() {
+                if let Some(renderer) = self.renderer.as_mut() {
+                    renderer.clear_editor_content();
+                }
+                // Push solid terminal_bg background quad MỖI FRAME khi terminal active.
+                // Không phụ thuộc vào dirty flag — đảm bảo background không bao giờ
+                // biến mất giữa các frame (khi chỉ có gutter/caret dirty mà không push bg).
+                region_instances.push(RegionDrawInstance::new(
+                    center_bounds,
+                    self.theme.ui.terminal_bg.as_f32(),
+                ));
+            }
+
             if self.editor_needs_layout || bounds_changed || show_welcome_changed {
                 if let Some(renderer) = self.renderer.as_mut() {
                     if show_welcome {
                         let (text, styled) = welcome_screen_content(&self.theme);
                         renderer.clear_editor_content();
+                        renderer.clear_buffer_terminal();
                         renderer.update_welcome_screen_content(&text, &styled, center_bounds);
+                    } else if let Some(session_id) = active_terminal_session {
+                        renderer.clear_welcome_logo();
+                        renderer.clear_editor_content();
+                        if let Some(grid) = self.terminal_buffer_grids.get(&session_id) {
+                            if let Some(bg_quad) = renderer.update_buffer_terminal_content(
+                                grid,
+                                center_bounds,
+                                self.app_state.current_mode() == EditorMode::TerminalFocus,
+                            ) {
+                                region_instances.push(bg_quad);
+                            }
+                        } else {
+                            renderer.clear_buffer_terminal();
+                        }
                     } else {
                         renderer.clear_welcome_logo();
+                        renderer.clear_buffer_terminal();
                         renderer.update_editor_content(
                             &self.app_state.text_string(),
                             &self.app_state,
                             center_bounds,
                             &syntax_spans_to_styled(&self.highlight_spans, &self.theme),
                         );
+                        renderer.update_editor_overlays(&self.app_state, center_bounds);
                     }
                 }
                 self.last_editor_bounds = Some(center_bounds);
+                self.last_buffer_terminal_bounds = Some(center_bounds);
                 self.editor_needs_layout = false;
                 self.editor_caret_needs_layout = false;
-                refresh_highlights_for_viewport = bounds_changed && !show_welcome;
+                self.buffer_terminal_needs_layout = false;
+                refresh_highlights_for_viewport =
+                    bounds_changed && !show_welcome && active_terminal_session.is_none();
             } else if self.editor_caret_needs_layout {
-                if !show_welcome && let Some(renderer) = self.renderer.as_mut() {
+                if let Some(session_id) = active_terminal_session {
+                    // Terminal buffer đang active: xóa editor stale content và
+                    // force re-render terminal qua main branch ở frame tiếp theo.
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.clear_editor_content();
+                    }
+                    // Render ngay lập tức cho terminal thay vì đợi frame sau.
+                    let grid_changed = self.sync_terminal_buffer_layout(session_id, center_bounds);
+                    if let Some(grid) = self.terminal_buffer_grids.get(&session_id)
+                        && let Some(renderer) = self.renderer.as_mut()
+                    {
+                        if self.buffer_terminal_needs_layout || bounds_changed || grid_changed {
+                            if let Some(bg_quad) = renderer.update_buffer_terminal_content(
+                                grid,
+                                center_bounds,
+                                self.app_state.current_mode() == EditorMode::TerminalFocus,
+                            ) {
+                                region_instances.push(bg_quad);
+                            }
+                            self.last_buffer_terminal_bounds = Some(center_bounds);
+                            self.buffer_terminal_needs_layout = false;
+                        }
+                    }
+                } else if !show_welcome && let Some(renderer) = self.renderer.as_mut() {
                     renderer.update_editor_caret(&self.app_state, center_bounds);
+                    renderer.update_editor_overlays(&self.app_state, center_bounds);
                 }
                 self.editor_caret_needs_layout = false;
+            } else if let Some(session_id) = active_terminal_session {
+                let grid_changed = self.sync_terminal_buffer_layout(session_id, center_bounds);
+                if (self.buffer_terminal_needs_layout || bounds_changed || grid_changed)
+                    && let Some(grid) = self.terminal_buffer_grids.get(&session_id)
+                    && let Some(renderer) = self.renderer.as_mut()
+                {
+                    if let Some(bg_quad) = renderer.update_buffer_terminal_content(
+                        grid,
+                        center_bounds,
+                        self.app_state.current_mode() == EditorMode::TerminalFocus,
+                    ) {
+                        region_instances.push(bg_quad);
+                    }
+                    self.last_buffer_terminal_bounds = Some(center_bounds);
+                    self.buffer_terminal_needs_layout = false;
+                }
             }
 
-            if !show_welcome && let Some(renderer) = self.renderer.as_ref() {
+            if !show_welcome
+                && active_terminal_session.is_none()
+                && let Some(renderer) = self.renderer.as_ref()
+            {
                 if self.app_state.current_mode() != EditorMode::Visual
                     && let Some(quad) =
                         renderer.current_line_highlight_quad(&self.app_state, center_bounds)
@@ -293,14 +399,20 @@ impl AppShell {
                 }
             }
 
-            // Leap label overlay — luôn cập nhật sau khi editor đã shape buffer.
-            // Nếu không có labels (đã cancel hoặc jump xong) thì clear.
-            if let Some(labels) = &self.leap_labels {
-                if !show_welcome {
-                    if let Some(renderer) = self.renderer.as_mut() {
-                        let labels_clone = labels.clone();
-                        renderer.update_leap_labels(&labels_clone, &self.app_state, center_bounds);
+            if active_terminal_session.is_none() {
+                if let Some(labels) = &self.leap_labels {
+                    if !show_welcome {
+                        if let Some(renderer) = self.renderer.as_mut() {
+                            let labels_clone = labels.clone();
+                            renderer.update_leap_labels(
+                                &labels_clone,
+                                &self.app_state,
+                                center_bounds,
+                            );
+                        }
                     }
+                } else if let Some(renderer) = self.renderer.as_mut() {
+                    renderer.clear_leap_labels();
                 }
             } else if let Some(renderer) = self.renderer.as_mut() {
                 renderer.clear_leap_labels();
@@ -311,6 +423,7 @@ impl AppShell {
             }
         } else if let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_welcome_logo();
+            renderer.clear_buffer_terminal();
         }
         self.last_show_welcome = Some(show_welcome);
 
@@ -354,15 +467,16 @@ impl AppShell {
             let top_bounds = [top.x, top.y, top.width, top.height];
             let tabs = self
                 .app_state
-                .open_buffers()
+                .buffers()
                 .iter()
-                .map(|path| crate::render::renderer::TopbarTab {
-                    label: path
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .map(str::to_string)
-                        .unwrap_or_else(|| path.display().to_string()),
-                    path: path.clone(),
+                .map(|buffer| TopbarTab {
+                    label: buffer.label(),
+                    kind: match &buffer.content {
+                        BufferContent::Text(text) => TopbarTabKind::Text {
+                            path: text.path.clone(),
+                        },
+                        BufferContent::Terminal(_) => TopbarTabKind::Terminal,
+                    },
                 })
                 .collect::<Vec<_>>();
             if let Some(renderer) = self.renderer.as_mut() {
@@ -414,8 +528,11 @@ impl AppShell {
             renderer.clear_palette();
         }
 
-        if let (Some(bottom), Some(renderer)) = (bottom_region, self.renderer.as_mut()) {
-            if bottom.visible && !show_welcome {
+        if let Some(bottom) = bottom_region {
+            // Ẩn bottom panel terminal khi center đang hiển thị terminal buffer
+            // (lazygit, v.v.) để tránh render terminal hai nơi đồng thời.
+            let center_has_terminal = self.app_state.active_terminal_session_id().is_some();
+            if bottom.visible && !show_welcome && !center_has_terminal {
                 let bottom_bounds = [
                     bottom.bounds.x,
                     bottom.bounds.y,
@@ -423,7 +540,10 @@ impl AppShell {
                     bottom.bounds.height,
                 ];
                 let bounds_changed = self.last_terminal_bounds != Some(bottom_bounds);
-                if self.terminal_needs_layout || bounds_changed {
+                let grid_changed = self.sync_terminal_layout(bottom_bounds);
+                if (self.terminal_needs_layout || bounds_changed || grid_changed)
+                    && let Some(renderer) = self.renderer.as_mut()
+                {
                     renderer.update_terminal_content(
                         &self.terminal_grid,
                         bottom_bounds,
@@ -433,7 +553,9 @@ impl AppShell {
                     self.terminal_needs_layout = false;
                 }
             } else if self.last_terminal_bounds.is_some() {
-                renderer.clear_terminal();
+                if let Some(renderer) = self.renderer.as_mut() {
+                    renderer.clear_terminal();
+                }
                 self.last_terminal_bounds = None;
             }
         }
@@ -469,14 +591,16 @@ impl AppShell {
             return Some(false);
         }
 
-        let decision = match key_event.logical_key.as_ref() {
+        let Some(decision) = (match key_event.logical_key.as_ref() {
             Key::Named(NamedKey::Escape) => Some(false),
             Key::Character(text) if text.eq_ignore_ascii_case("y") => Some(true),
             Key::Character(text) if text.eq_ignore_ascii_case("n") => Some(false),
-            _ => Some(false),
+            _ => None,
+        }) else {
+            return Some(false);
         };
 
-        decision.map(|confirmed| self.respond_to_pending_confirmation(confirmed))
+        Some(self.respond_to_pending_confirmation(decision))
     }
 }
 

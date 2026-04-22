@@ -10,6 +10,7 @@ pub enum RequestTopic {
     BackgroundDemo,
     WorkspaceWatch,
     TerminalPty,
+    Git,
     LspClient,
     FzfSearch,
 }
@@ -96,9 +97,19 @@ pub enum WorkerRequestPayload {
         shell: Option<String>,
         working_dir: Option<PathBuf>,
     },
+    SpawnPtyCommand {
+        program: String,
+        args: Vec<String>,
+        working_dir: Option<PathBuf>,
+    },
     WritePtyInput {
         session_id: u64,
         input: String,
+    },
+    ResizePtySession {
+        session_id: u64,
+        cols: u16,
+        rows: u16,
     },
     ClosePtySession {
         session_id: u64,
@@ -111,6 +122,11 @@ pub enum WorkerRequestPayload {
         query: String,
         mode: FzfSearchMode,
         workspace_root: PathBuf,
+    },
+    GitBlameLine {
+        workspace_root: PathBuf,
+        file_path: PathBuf,
+        line_number: usize,
     },
     LspDidOpen {
         uri: String,
@@ -204,6 +220,11 @@ pub enum WorkerResultPayload {
         session_id: u64,
         bytes: usize,
     },
+    PtyResized {
+        session_id: u64,
+        cols: u16,
+        rows: u16,
+    },
     PtySessionClosed {
         session_id: u64,
         exit_status: Option<i32>,
@@ -236,6 +257,11 @@ pub enum WorkerResultPayload {
         query: String,
         mode: FzfSearchMode,
         items: Vec<FzfResultItem>,
+    },
+    GitBlameLine {
+        file_path: PathBuf,
+        line_number: usize,
+        summary: String,
     },
 }
 

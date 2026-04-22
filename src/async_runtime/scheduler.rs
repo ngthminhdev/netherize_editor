@@ -240,7 +240,9 @@ async fn dispatch_loop(
         if matches!(
             request.payload,
             WorkerRequestPayload::SpawnPtyShell { .. }
+                | WorkerRequestPayload::SpawnPtyCommand { .. }
                 | WorkerRequestPayload::WritePtyInput { .. }
+                | WorkerRequestPayload::ResizePtySession { .. }
                 | WorkerRequestPayload::ClosePtySession { .. }
         ) {
             let worker_tx = result_tx.clone();
@@ -756,6 +758,31 @@ fn execute_pty_request(
                 working_dir: spawned.working_dir,
             })
         }
+        WorkerRequestPayload::SpawnPtyCommand {
+            program,
+            args,
+            working_dir,
+        } => {
+            let provider = PtyProvider::new();
+            let spawned = provider.spawn_command(program, args, working_dir.as_deref())?;
+            let session_id = pty_sessions.alloc_session_id();
+            pty_sessions.insert(session_id, spawned.process.clone())?;
+
+            spawn_pty_output_reader(
+                request,
+                session_id,
+                spawned.reader,
+                spawned.process,
+                pty_sessions.clone(),
+                worker_tx.clone(),
+            )?;
+
+            Ok(WorkerResultPayload::PtySpawned {
+                session_id,
+                shell: spawned.shell_program,
+                working_dir: spawned.working_dir,
+            })
+        }
         WorkerRequestPayload::WritePtyInput { session_id, input } => {
             let Some(process) = pty_sessions.get(*session_id)? else {
                 return Err(format!("pty session {} not found", session_id));
@@ -764,6 +791,21 @@ fn execute_pty_request(
             Ok(WorkerResultPayload::PtyInputWritten {
                 session_id: *session_id,
                 bytes,
+            })
+        }
+        WorkerRequestPayload::ResizePtySession {
+            session_id,
+            cols,
+            rows,
+        } => {
+            let Some(process) = pty_sessions.get(*session_id)? else {
+                return Err(format!("pty session {} not found", session_id));
+            };
+            process.resize(*cols, *rows)?;
+            Ok(WorkerResultPayload::PtyResized {
+                session_id: *session_id,
+                cols: *cols,
+                rows: *rows,
             })
         }
         WorkerRequestPayload::ClosePtySession { session_id } => {
@@ -1183,6 +1225,91 @@ fn parse_rg_fzf_line(line: &str, workspace_root: &std::path::Path) -> Option<Fzf
     })
 }
 
+async fn run_git_blame_line(
+    workspace_root: PathBuf,
+    file_path: PathBuf,
+    line_number: usize,
+) -> Result<String, String> {
+    use tokio::process::Command;
+
+    let line_spec = format!("{line_number},{line_number}");
+    let file_arg = file_path.to_string_lossy().to_string();
+    let output = Command::new("git")
+        .kill_on_drop(true)
+        .args(["blame", "-L", &line_spec, "--porcelain", &file_arg])
+        .current_dir(&workspace_root)
+        .output()
+        .await
+        .map_err(|err| format!("git blame failed: {err}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if stderr.is_empty() {
+            return Err(format!("git blame exited with status {}", output.status));
+        }
+        return Err(format!(
+            "git blame exited with status {}: {stderr}",
+            output.status
+        ));
+    }
+
+    parse_git_blame_summary(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn parse_git_blame_summary(stdout: &str) -> Result<String, String> {
+    let mut author: Option<String> = None;
+    let mut author_time: Option<u64> = None;
+
+    for line in stdout.lines() {
+        if author.is_none()
+            && let Some(value) = line.strip_prefix("author ")
+        {
+            author = Some(value.trim().to_string());
+            continue;
+        }
+        if author_time.is_none()
+            && let Some(value) = line.strip_prefix("author-time ")
+        {
+            author_time = value.trim().parse::<u64>().ok();
+        }
+        if author.is_some() && author_time.is_some() {
+            break;
+        }
+    }
+
+    let author = author.unwrap_or_else(|| "Unknown".to_string());
+    let relative = author_time
+        .map(format_relative_unix_time)
+        .unwrap_or_else(|| "unknown time".to_string());
+    Ok(format!("{author}, {relative}"))
+}
+
+fn format_relative_unix_time(timestamp: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let delta = now.saturating_sub(timestamp);
+
+    match delta {
+        0..=59 => "just now".to_string(),
+        60..=3_599 => format_relative_duration(delta / 60, "minute"),
+        3_600..=86_399 => format_relative_duration(delta / 3_600, "hour"),
+        86_400..=604_799 => format_relative_duration(delta / 86_400, "day"),
+        604_800..=2_592_000 => format_relative_duration(delta / 604_800, "week"),
+        2_592_001..=31_536_000 => format_relative_duration(delta / 2_592_000, "month"),
+        _ => format_relative_duration(delta / 31_536_000, "year"),
+    }
+}
+
+fn format_relative_duration(value: u64, unit: &str) -> String {
+    if value <= 1 {
+        format!("1 {unit} ago")
+    } else {
+        format!("{value} {unit}s ago")
+    }
+}
+
 async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayload, String> {
     match &request.payload {
         WorkerRequestPayload::ParseAndHighlight {
@@ -1319,11 +1446,29 @@ async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayl
         WorkerRequestPayload::MockPanic { reason } => {
             panic!("mock worker panic: {reason}");
         }
+        WorkerRequestPayload::GitBlameLine {
+            workspace_root,
+            file_path,
+            line_number,
+        } => {
+            let workspace_root = workspace_root.clone();
+            let file_path = file_path.clone();
+            let line_number = *line_number;
+            let summary =
+                run_git_blame_line(workspace_root, file_path.clone(), line_number).await?;
+            Ok(WorkerResultPayload::GitBlameLine {
+                file_path,
+                line_number,
+                summary,
+            })
+        }
         WorkerRequestPayload::StartFileWatch { .. } => {
             Err("StartFileWatch request should be handled by dedicated watch loop".to_string())
         }
         WorkerRequestPayload::SpawnPtyShell { .. }
+        | WorkerRequestPayload::SpawnPtyCommand { .. }
         | WorkerRequestPayload::WritePtyInput { .. }
+        | WorkerRequestPayload::ResizePtySession { .. }
         | WorkerRequestPayload::ClosePtySession { .. } => {
             Err("PTY request should be handled by dedicated PTY runner".to_string())
         }
@@ -1580,7 +1725,7 @@ mod tests {
 
     use crate::async_runtime::{
         message::FileSystemChangeKind,
-        scheduler::{build_worker_runtime, normalize_notify_event},
+        scheduler::{build_worker_runtime, normalize_notify_event, parse_git_blame_summary},
     };
 
     #[test]
@@ -1641,5 +1786,22 @@ mod tests {
 
         assert!(output.status.success());
         assert_eq!(String::from_utf8_lossy(&output.stdout), "ok");
+    }
+
+    #[test]
+    fn parse_git_blame_summary_extracts_author_and_relative_time() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let stdout = format!(
+            "deadbeef 10 10 1\nauthor Jane Dev\nauthor-time {}\nsummary hello\n",
+            now.saturating_sub(7_200)
+        );
+
+        let summary = parse_git_blame_summary(&stdout).expect("parse blame summary");
+
+        assert!(summary.starts_with("Jane Dev, "));
+        assert!(summary.ends_with("ago"));
     }
 }

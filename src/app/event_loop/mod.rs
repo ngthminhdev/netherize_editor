@@ -15,7 +15,7 @@ use winit::{
 
 use crate::{
     app::{
-        app_state::AppState,
+        app_state::{AppState, BufferContent, EditorOverlay, OverlayColorToken},
         async_bridge::{AppAsyncBridge, AsyncResultRouter},
         clipboard::SystemClipboard,
         command_palette::CommandPaletteMode,
@@ -43,7 +43,7 @@ use crate::{
     lsp::client::{detect_lsp_server_for_path, detect_lsp_server_for_workspace, path_to_lsp_uri},
     render::{
         region_pipeline::RegionDrawInstance,
-        renderer::{RenderError, Renderer, SidebarRow},
+        renderer::{RenderError, Renderer, SidebarRow, TopbarTab, TopbarTabKind},
     },
     syntax::{highlight::HighlightSpan, syntax_engine::LanguageId},
     terminal::grid::TerminalGrid,
@@ -88,6 +88,8 @@ pub struct AppShell {
     scheduler: AsyncScheduler,
     bridge: Option<AppAsyncBridge>,
     pty_session_id: Option<u64>,
+    terminal_buffer_grids: HashMap<u64, TerminalGrid>,
+    pending_lazygit_buffer_index: Option<usize>,
     highlight_spans: Vec<HighlightSpan>,
     terminal_grid: TerminalGrid,
     explorer_cursor: usize,
@@ -113,6 +115,7 @@ pub struct AppShell {
     editor_caret_needs_layout: bool,
     sidebar_needs_layout: bool,
     terminal_needs_layout: bool,
+    buffer_terminal_needs_layout: bool,
     last_frame_time: Instant,
     last_fps_metrics_update_at: Instant,
     accumulated_frame_time: Duration,
@@ -127,11 +130,13 @@ pub struct AppShell {
     last_sidebar_bounds: Option<[f32; 4]>,
     last_sidebar_focused: Option<bool>,
     last_terminal_bounds: Option<[f32; 4]>,
+    last_buffer_terminal_bounds: Option<[f32; 4]>,
     sidebar_selection_quads: Vec<RegionDrawInstance>,
     suppress_next_palette_ime_commit: bool,
     /// Leap/EasyMotion labels hiện tại: (label_char, char_idx_in_text).
     /// `Some(labels)` khi đang ở PendingLeapLabel state, `None` khi không active.
     leap_labels: Option<Vec<(char, usize)>>,
+    git_overlay_revision: u64,
 }
 
 const DEBUG_UI_ENABLED: bool = false;
@@ -159,11 +164,15 @@ enum PendingConfirmationAction {
         path: PathBuf,
         file_type: WorkspaceNodeType,
     },
+    CloseDirtyBuffer {
+        path: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone)]
 struct PendingConfirmation {
     action: PendingConfirmationAction,
+    return_focus: FocusTarget,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -189,7 +198,7 @@ pub fn run() -> Result<(), winit::error::EventLoopError> {
 
 impl AppShell {
     fn should_show_welcome(&self) -> bool {
-        self.app_state.open_buffers().is_empty() && !self.app_state.is_command_palette_visible()
+        self.app_state.buffers().is_empty() && !self.app_state.is_command_palette_visible()
     }
 
     fn arm_palette_ime_commit_suppression(&mut self) {
@@ -215,5 +224,78 @@ impl AppShell {
             self.clear_palette_ime_commit_suppression();
         }
         should_swallow
+    }
+
+    fn invalidate_editor_overlays(&mut self) -> bool {
+        self.git_overlay_revision = self.git_overlay_revision.saturating_add(1);
+        let changed = self.app_state.clear_current_overlays();
+        if changed {
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+        }
+        changed
+    }
+
+    fn active_terminal_grid_mut(&mut self) -> Option<&mut TerminalGrid> {
+        let session_id = self.app_state.active_terminal_session_id()?;
+        self.terminal_buffer_grids.get_mut(&session_id)
+    }
+
+    fn focused_terminal_grid_mut(&mut self) -> Option<&mut TerminalGrid> {
+        if self.app_state.active_buffer_is_terminal()
+            && self.focus_manager.current() == FocusTarget::CenterEditor
+        {
+            return self.active_terminal_grid_mut();
+        }
+        if self.focus_manager.current() == FocusTarget::BottomPanel {
+            return Some(&mut self.terminal_grid);
+        }
+        None
+    }
+
+    fn focused_terminal_session_id(&self) -> Option<u64> {
+        if self.app_state.active_buffer_is_terminal()
+            && self.focus_manager.current() == FocusTarget::CenterEditor
+        {
+            return self.app_state.active_terminal_session_id();
+        }
+        if self.focus_manager.current() == FocusTarget::BottomPanel {
+            return self.pty_session_id;
+        }
+        None
+    }
+
+    fn sync_focus_mode_for_active_buffer(&mut self) -> bool {
+        let mut changed = false;
+        if self.app_state.active_buffer_is_terminal() {
+            if self.app_state.current_mode() == EditorMode::PaletteFocus {
+                changed |= self.app_state.close_command_palette();
+                if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
+                    changed |= result.changed;
+                }
+            }
+            if self.app_state.current_mode() != EditorMode::TerminalFocus
+                && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal)
+            {
+                changed |= result.changed;
+            }
+            let focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
+            changed |= focus_changed;
+            if focus_changed {
+                self.input_handler.clear_pending_prefix();
+            }
+        } else {
+            if self.app_state.current_mode() == EditorMode::TerminalFocus
+                && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus)
+            {
+                changed |= result.changed;
+            }
+            let focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
+            changed |= focus_changed;
+            if focus_changed {
+                self.input_handler.clear_pending_prefix();
+            }
+        }
+        changed
     }
 }

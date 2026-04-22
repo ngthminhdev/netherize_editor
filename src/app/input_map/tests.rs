@@ -65,6 +65,17 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::SwitchMode(ModeEvent::EnterNormal)),
         },
         Case {
+            name: "insert cmd+v -> PasteSystemClipboard",
+            context: KeybindingContext::for_mode(EditorMode::Insert),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyV),
+                named_key: None,
+                text: Some("v".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::PasteSystemClipboard),
+        },
+        Case {
             name: "normal escape -> ClearSearchHighlights",
             context: KeybindingContext::for_mode(EditorMode::Normal),
             input: input_from_named(NamedKey::Escape),
@@ -130,6 +141,17 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::PasteAfter),
         },
         Case {
+            name: "normal cmd+v -> PasteSystemClipboard",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyV),
+                named_key: None,
+                text: Some("v".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::PasteSystemClipboard),
+        },
+        Case {
             name: "normal a -> AppendAfterCursor",
             context: KeybindingContext::for_mode(EditorMode::Normal),
             input: NormalizedInput {
@@ -163,10 +185,21 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::InsertAtLineStart),
         },
         Case {
-            name: "global F12 -> ToggleTerminal",
+            name: "global F12 -> FocusTerminal",
             context: KeybindingContext::for_mode(EditorMode::Normal),
             input: input_from_named(NamedKey::F12),
-            expected: Some(Command::ToggleTerminal),
+            expected: Some(Command::FocusTerminal),
+        },
+        Case {
+            name: "global cmd+backslash -> ToggleBottomDock",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::Backslash),
+                named_key: None,
+                text: Some("\\".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::ToggleBottomDock),
         },
         Case {
             name: "normal ctrl+l -> BufferNext",
@@ -274,6 +307,28 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::YankSelection),
         },
         Case {
+            name: "visual cmd+v -> PasteSystemClipboard",
+            context: KeybindingContext::for_mode(EditorMode::Visual),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyV),
+                named_key: None,
+                text: Some("v".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::PasteSystemClipboard),
+        },
+        Case {
+            name: "palette cmd+v -> PasteSystemClipboard",
+            context: KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyV),
+                named_key: None,
+                text: Some("v".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::PasteSystemClipboard),
+        },
+        Case {
             name: "palette ctrl+n -> OverlaySelectNext",
             context: KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true),
             input: NormalizedInput {
@@ -338,7 +393,7 @@ fn ctrl_s_maps_to_save_file() {
 }
 
 #[test]
-fn f12_maps_to_toggle_terminal_in_terminal_focus() {
+fn f12_maps_to_focus_terminal_in_terminal_focus() {
     let map = make_map();
     let input = input_from_named(NamedKey::F12);
     assert_eq!(
@@ -346,7 +401,7 @@ fn f12_maps_to_toggle_terminal_in_terminal_focus() {
             &input,
             KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal)
         ),
-        Some(Command::ToggleTerminal)
+        Some(Command::FocusTerminal)
     );
 }
 
