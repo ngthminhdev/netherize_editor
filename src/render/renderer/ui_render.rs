@@ -728,15 +728,34 @@ impl Renderer {
             ));
         } else {
             for (idx, tab) in tabs.iter().enumerate() {
-                let icon = match &tab.kind {
-                    TopbarTabKind::Text { path } => self.theme.file_icon_for_path(path, false, false),
-                    TopbarTabKind::Terminal => self.theme.file_icon_for_extension("sh"),
-                    TopbarTabKind::References => self.theme.file_icon_for_extension("txt"),
-                    TopbarTabKind::Diagnostics => self.theme.file_icon_for_extension("log"),
-                    TopbarTabKind::FuzzyPicker => self.theme.file_icon_for_extension("fzf"),
+                let icon_glyph = match &tab.kind {
+                    TopbarTabKind::Text { path } => self
+                        .theme
+                        .file_icon_for_path(path, false, false)
+                        .glyph
+                        .clone(),
+                    TopbarTabKind::Terminal => self
+                        .theme
+                        .file_icon_for_extension("sh")
+                        .glyph
+                        .clone(),
+                    TopbarTabKind::References => self
+                        .theme
+                        .file_icon_for_extension("txt")
+                        .glyph
+                        .clone(),
+                    TopbarTabKind::Diagnostics => self
+                        .theme
+                        .file_icon_for_extension("log")
+                        .glyph
+                        .clone(),
+                    TopbarTabKind::FuzzyPicker => self
+                        .theme
+                        .file_icon_for_extension("fzf")
+                        .glyph
+                        .clone(),
                     TopbarTabKind::Settings => "⚙".to_string(),
                 };
-                let icon_glyph = icon.glyph.clone();
                 let icon_color = match &tab.kind {
                     TopbarTabKind::Text { path } => self
                         .theme
