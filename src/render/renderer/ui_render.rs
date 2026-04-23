@@ -185,11 +185,7 @@ impl Renderer {
             // 2. NerdFont icon (folder/filetype), colored per-filetype
             let nerd_str = format!("{} ", row.nerd_icon);
             let nerd_w = nerd_str.chars().count() as f32 * font_size * 0.60;
-            let icon_color = if row.is_selected && sidebar_focused {
-                accent
-            } else {
-                row.icon_color
-            };
+            let icon_color = row.icon_color;
             glyphs.extend(layout_panel_text(
                 &nerd_str,
                 &mut self.sidebar_text_system,
@@ -753,6 +749,16 @@ impl Renderer {
                     TopbarTabKind::FuzzyPicker => self.theme.file_icon_for_extension("fzf"),
 >>>>>>> 3fe1b8d (Add diagnostics state, status bar, and picker)
                 };
+                let icon_color = match &tab.kind {
+                    TopbarTabKind::Text { path } => self
+                        .theme
+                        .icon_theme_for_path(path, false, false)
+                        .color
+                        .as_f32(),
+                    TopbarTabKind::Terminal => self.theme.icons.shell.color.as_f32(),
+                    TopbarTabKind::References => self.theme.icons.default_file.color.as_f32(),
+                    TopbarTabKind::FuzzyPicker => self.theme.ui.accent.as_f32(),
+                };
                 let icon_text = format!("{} ", icon_glyph);
                 let icon_width = estimate_monospace_width(&icon_text, font_size);
                 let label_width = estimate_monospace_width(&tab.label, font_size);
@@ -806,7 +812,7 @@ impl Renderer {
                     &self.queue,
                     icon_x,
                     origin_y,
-                    if is_active { accent } else { inactive_fg },
+                    icon_color,
                 ));
                 self.topbar_text_system.set_font_family(font_family);
                 glyphs.extend(layout_panel_text(

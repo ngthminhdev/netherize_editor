@@ -307,6 +307,43 @@ impl ThemeConfig {
         }
     }
 
+    pub fn icon_theme_for_filename(&self, filename: &str, is_dir: bool) -> &FileIconThemeTokens {
+        if is_dir {
+            return &self.icons.folder_closed;
+        }
+
+        if let Some(exact) = filename.strip_prefix('.') {
+            return self.file_icon_for_extension(exact);
+        }
+
+        let extension = Path::new(filename)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("");
+        self.file_icon_for_extension(extension)
+    }
+
+    pub fn icon_theme_for_path(
+        &self,
+        path: &Path,
+        is_dir: bool,
+        is_expanded: bool,
+    ) -> &FileIconThemeTokens {
+        if is_dir {
+            if is_expanded {
+                &self.icons.folder_open
+            } else {
+                &self.icons.folder_closed
+            }
+        } else {
+            let filename = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
+            self.icon_theme_for_filename(filename, false)
+        }
+    }
+
     pub fn get_icon_for_file(&self, filename: &str, is_dir: bool) -> &str {
         if is_dir {
             return self.default_folder_icon.as_str();
