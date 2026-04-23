@@ -1689,10 +1689,18 @@ impl Renderer {
         let fg_ghost = self.theme.ui.fg_ghost.as_f32();
         let selection_bg = self.theme.ui.selection_bg.as_f32();
         let accent = self.theme.ui.accent.as_f32();
+        let panel_radius = settings
+            .items
+            .iter()
+            .find_map(|item| match item {
+                SettingItem::UiRounding { enabled, radius_px } if *enabled => Some(*radius_px),
+                _ => None,
+            })
+            .unwrap_or(0.0);
 
         let mut chrome = vec![
             RegionDrawInstance::new([panel_x, panel_y, panel_w, panel_h], bg)
-                .with_radius(self.theme.ui.status_bar_height.min(10.0)),
+                .with_radius(panel_radius),
             RegionDrawInstance::new([panel_x, panel_y, panel_w, 1.0], border),
         ];
         let mut glyphs = Vec::new();
@@ -1750,7 +1758,13 @@ impl Renderer {
                 | SettingItem::RightSidebarWidth { current }
                 | SettingItem::BottomPanelHeight { current } => format!("{} px", current),
                 SettingItem::UiRounding { enabled, radius_px } => {
-                    if *enabled { format!("On ({radius_px:.1}px)") } else { "Off".to_string() }
+                    if !*enabled || *radius_px <= 0.0 {
+                        "Off".to_string()
+                    } else if *radius_px < 12.0 {
+                        "8 px".to_string()
+                    } else {
+                        "16 px".to_string()
+                    }
                 }
             };
 

@@ -159,12 +159,14 @@ impl AppShell {
                 true
             }
             crate::app::app_state::SettingItem::UiRounding { enabled, radius_px } => {
-                let next_enabled = !enabled;
-                let next_radius = if next_enabled {
-                    radius_px.max(8.0)
+                let next_radius = if !enabled || radius_px <= 0.0 {
+                    8.0
+                } else if radius_px < 12.0 {
+                    16.0
                 } else {
                     0.0
                 };
+                let next_enabled = next_radius > 0.0;
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
                     && let Some(crate::app::app_state::SettingItem::UiRounding {
                         enabled,
@@ -382,15 +384,14 @@ impl AppShell {
                     .unwrap_or(self.base_theme.name.as_str())
                     .to_string();
                 let font_family = self.base_theme.editor.font_family.clone().unwrap_or_default();
-                let border_radius_px = self.ui_config.window.min_content_scale.min(8.0);
                 self.app_state.open_settings_buffer(
                     theme_profile,
                     font_family,
                     self.ui_config.docks.left.size_px.round() as i32,
                     self.ui_config.docks.right.size_px.round() as i32,
                     self.ui_config.docks.bottom.size_px.round() as i32,
-                    border_radius_px > 0.0,
-                    border_radius_px,
+                    self.ui_config.border_radius_px > 0.0,
+                    self.ui_config.border_radius_px,
                 );
                 let _ = self.sync_focus_mode_for_active_buffer();
                 self.editor_needs_layout = true;

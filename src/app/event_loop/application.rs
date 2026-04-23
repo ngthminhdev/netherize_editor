@@ -374,6 +374,8 @@ impl AppShell {
                     bounds,
                     self.theme.ui.accent.as_f32(),
                     2.0,
+                    self.ui_config.border_radius_px,
+                    self.theme.editor.bg.as_f32(),
                 ));
             }
         }
@@ -840,6 +842,8 @@ fn focus_ring_instances(
     bounds: [f32; 4],
     mut color: [f32; 4],
     thickness: f32,
+    border_radius: f32,
+    inner_fill: [f32; 4],
 ) -> Vec<RegionDrawInstance> {
     let [x, y, w, h] = bounds;
     if w <= 0.0 || h <= 0.0 {
@@ -849,10 +853,19 @@ fn focus_ring_instances(
     let t = thickness.max(1.0).min(w * 0.5).min(h * 0.5);
     color[3] = color[3].max(0.9);
 
-    vec![
-        RegionDrawInstance::new([x, y, w, t], color),
-        RegionDrawInstance::new([x, y + h - t, w, t], color),
-        RegionDrawInstance::new([x, y, t, h], color),
-        RegionDrawInstance::new([x + w - t, y, t, h], color),
-    ]
+    let inner_x = x + t;
+    let inner_y = y + t;
+    let inner_w = (w - t * 2.0).max(0.0);
+    let inner_h = (h - t * 2.0).max(0.0);
+
+    let mut instances = vec![
+        RegionDrawInstance::new([x, y, w, h], color).with_radius(border_radius),
+    ];
+    if inner_w > 0.0 && inner_h > 0.0 {
+        instances.push(
+            RegionDrawInstance::new([inner_x, inner_y, inner_w, inner_h], inner_fill)
+                .with_radius((border_radius - t).max(0.0)),
+        );
+    }
+    instances
 }
