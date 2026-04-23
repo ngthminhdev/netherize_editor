@@ -2803,34 +2803,50 @@ mod tests {
 
         let leap_state = shell.leap_state.as_ref().expect("editor leap state");
         assert_eq!(leap_state.targets.len(), 27);
-        assert_eq!(leap_state.targets[0].label, "aa");
-        assert_eq!(leap_state.targets[25].label, "az");
-        assert_eq!(leap_state.targets[26].label, "ba");
+        assert_eq!(leap_state.targets[0].label, "a");
+        assert_eq!(leap_state.targets[12].label, "m");
+        assert_eq!(leap_state.targets[13].label, "na");
+        assert_eq!(leap_state.targets[25].label, "nm");
+        assert_eq!(leap_state.targets[26].label, "nn");
     }
 
     #[test]
-    fn leap_filters_prefix_until_it_can_jump() {
+    fn leap_fast_jump_label_resolves_immediately() {
         let mut shell = AppShell::new_for_tests().expect("create app shell");
-        let text = (0..27).map(|_| "a").collect::<Vec<_>>().join(" ");
+        let text = (0..40).map(|_| "a").collect::<Vec<_>>().join(" ");
         shell.app_state = AppState::from_text(PathBuf::from("editor-leap.txt"), &text);
         shell.last_editor_bounds = Some([0.0, 0.0, 960.0, 240.0]);
 
         assert!(shell.handle_command(Command::LeapActivate('a')));
-        assert!(shell.handle_command(Command::LeapJump('a')));
+        assert!(shell.handle_command(Command::LeapJump('b')));
+
+        assert!(shell.leap_state.is_none());
+        assert_eq!(shell.app_state.cursor_line_col(), (0, 2));
+    }
+
+    #[test]
+    fn leap_prefix_label_filters_and_waits_for_second_key() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let text = (0..40).map(|_| "a").collect::<Vec<_>>().join(" ");
+        shell.app_state = AppState::from_text(PathBuf::from("editor-leap.txt"), &text);
+        shell.last_editor_bounds = Some([0.0, 0.0, 960.0, 240.0]);
+
+        assert!(shell.handle_command(Command::LeapActivate('a')));
+        assert!(shell.handle_command(Command::LeapJump('n')));
 
         let leap_state = shell.leap_state.as_ref().expect("filtered leap state");
-        assert_eq!(leap_state.typed_prefix, "a");
+        assert_eq!(leap_state.typed_prefix, "n");
         assert_eq!(leap_state.targets.len(), 26);
         assert!(
             leap_state
                 .targets
                 .iter()
-                .all(|target| target.label.starts_with("a"))
+                .all(|target| target.label.starts_with("n"))
         );
 
         assert!(shell.handle_command(Command::LeapJump('b')));
         assert!(shell.leap_state.is_none());
-        assert_eq!(shell.app_state.cursor_line_col(), (0, 2));
+        assert_eq!(shell.app_state.cursor_line_col(), (0, 28));
     }
 
     #[test]

@@ -32,18 +32,21 @@ pub fn generate_leap_labels(count: usize) -> Vec<String> {
         return Vec::new();
     }
 
-    if count <= alphabet.len() {
-        return alphabet
-            .into_iter()
-            .take(count)
-            .map(|ch| ch.to_string())
-            .collect();
+    let fast_jump = &alphabet[..13];
+    let prefix_group = &alphabet[13..];
+
+    let mut labels = Vec::with_capacity(count.min(fast_jump.len() + prefix_group.len() * alphabet.len()));
+
+    for ch in fast_jump {
+        labels.push(ch.to_string());
+        if labels.len() >= count {
+            return labels;
+        }
     }
 
-    let mut labels = Vec::with_capacity(count.min(alphabet.len() * alphabet.len()));
-    for first in &alphabet {
-        for second in &alphabet {
-            labels.push(format!("{first}{second}"));
+    for prefix in prefix_group {
+        for suffix in &alphabet {
+            labels.push(format!("{prefix}{suffix}"));
             if labels.len() >= count {
                 return labels;
             }
@@ -165,12 +168,32 @@ mod tests {
     }
 
     #[test]
-    fn generate_leap_labels_switches_to_two_chars_after_twenty_six() {
+    fn generate_leap_labels_uses_hybrid_boundary_after_fast_group() {
+        let labels = generate_leap_labels(14);
+        assert_eq!(labels[0], "a");
+        assert_eq!(labels[12], "m");
+        assert_eq!(labels[13], "na");
+    }
+
+    #[test]
+    fn generate_leap_labels_generates_prefixed_two_char_labels_after_fast_group() {
         let labels = generate_leap_labels(28);
-        assert_eq!(labels[0], "aa");
-        assert_eq!(labels[1], "ab");
-        assert_eq!(labels[25], "az");
-        assert_eq!(labels[26], "ba");
-        assert_eq!(labels[27], "bb");
+        assert_eq!(labels[0], "a");
+        assert_eq!(labels[12], "m");
+        assert_eq!(labels[13], "na");
+        assert_eq!(labels[14], "nb");
+        assert_eq!(labels[25], "nm");
+        assert_eq!(labels[26], "nn");
+        assert_eq!(labels[27], "no");
+    }
+
+    #[test]
+    fn generate_leap_labels_supports_full_hybrid_capacity() {
+        let labels = generate_leap_labels(351);
+        assert_eq!(labels.len(), 351);
+        assert_eq!(labels[0], "a");
+        assert_eq!(labels[12], "m");
+        assert_eq!(labels[13], "na");
+        assert_eq!(labels[350], "zz");
     }
 }

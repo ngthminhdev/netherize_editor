@@ -952,7 +952,7 @@ impl Renderer {
         let label_color = self.theme.ui.cyan.as_f32();
         let char_bg_color = self.theme.ui.panel_bg.as_f32();
         let mut overlay_color = self.theme.ui.overlay_bg.as_f32();
-        overlay_color[3] = overlay_color[3].max(0.50);
+        overlay_color[3] = overlay_color[3].min(0.40);
 
         let label_map: std::collections::HashMap<usize, &str> = labels
             .iter()
