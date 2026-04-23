@@ -8,6 +8,20 @@ use crate::{
 
 use super::common::{DispatchCtx, DispatchReport, normalize_palette_clipboard_text};
 
+fn matching_open_char(ch: char) -> Option<char> {
+    match ch {
+        '(' | '[' | '{' | '"' | '\'' => Some(ch),
+        _ => None,
+    }
+}
+
+fn matching_close_char(ch: char) -> Option<char> {
+    match ch {
+        ')' | ']' | '}' | '"' | '\'' => Some(ch),
+        _ => None,
+    }
+}
+
 pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> DispatchReport {
     if let Some(report) = dispatch_terminal_normal(ctx, &command) {
         return report;
@@ -15,10 +29,24 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
 
     match command {
         Command::InsertChar(ch) => {
-            ctx.app_state.insert_char(ch);
+            let changed = if matching_close_char(ch).is_some() {
+                ctx.app_state.step_over_closing_char(ch) || {
+                    if matching_open_char(ch).is_some() {
+                        ctx.app_state.insert_auto_pair(ch)
+                    } else {
+                        ctx.app_state.insert_char(ch);
+                        true
+                    }
+                }
+            } else if matching_open_char(ch).is_some() {
+                ctx.app_state.insert_auto_pair(ch)
+            } else {
+                ctx.app_state.insert_char(ch);
+                true
+            };
             DispatchReport::success(
                 format!("Dispatch: applied to active buffer (insert {ch:?})"),
-                true,
+                changed,
             )
         }
         Command::InsertText(text) => {
@@ -40,8 +68,8 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             )
         }
         Command::Newline => {
-            ctx.app_state.insert_char('\n');
-            DispatchReport::success("Dispatch: applied to active buffer (insert newline)", true)
+            let changed = ctx.app_state.smart_insert_newline();
+            DispatchReport::success("Dispatch: applied to active buffer (insert newline)", changed)
         }
         Command::Backspace => {
             let before_cursor = ctx.app_state.cursor_char_idx();

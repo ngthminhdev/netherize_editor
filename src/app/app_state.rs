@@ -1773,6 +1773,68 @@ impl AppState {
         self.bump_revision();
     }
 
+    pub fn step_over_closing_char(&mut self, ch: char) -> bool {
+        if self.char_at_cursor() != Some(ch) {
+            return false;
+        }
+
+        let before_cursor = self.cursor_char_idx;
+        self.move_right();
+        if self.cursor_char_idx == before_cursor {
+            return false;
+        }
+
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
+    pub fn insert_auto_pair(&mut self, open: char) -> bool {
+        let Some(close) = matching_close_char(open) else {
+            return false;
+        };
+
+        let insert_at = self.cursor_char_idx;
+        if !self.apply_insert(insert_at, format!("{open}{close}")) {
+            return false;
+        }
+
+        self.cursor_char_idx = insert_at + 1;
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
+    pub fn smart_insert_newline(&mut self) -> bool {
+        let left = self.char_before_cursor();
+        let right = self.char_at_cursor();
+
+        if !matches_matching_bracket_pair(left, right) {
+            self.insert_char('\n');
+            return true;
+        }
+
+        let (line_idx, _) = self.cursor_line_col();
+        let current_indent = self.line_indent_string(line_idx);
+        let indent_unit = self.indent_unit_for_line(&current_indent);
+        let insert_at = self.cursor_char_idx;
+        let inserted = format!("\n{}{}\n{}", current_indent, indent_unit, current_indent);
+
+        if !self.apply_insert(insert_at, inserted) {
+            return false;
+        }
+
+        let cursor_after_first_line_break = insert_at + 1 + current_indent.chars().count() + indent_unit.chars().count();
+        self.cursor_char_idx = cursor_after_first_line_break;
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
     pub fn backspace(&mut self) {
         if self.cursor_char_idx == 0 {
             return;
@@ -3710,6 +3772,36 @@ impl AppState {
         changed || target_changed
     }
 
+    fn char_at_cursor(&self) -> Option<char> {
+        (self.cursor_char_idx < self.text.len_chars()).then(|| self.text.char(self.cursor_char_idx))
+    }
+
+    fn char_before_cursor(&self) -> Option<char> {
+        (self.cursor_char_idx > 0).then(|| self.text.char(self.cursor_char_idx - 1))
+    }
+
+    fn line_indent_string(&self, line_idx: usize) -> String {
+        if self.text.len_lines() == 0 {
+            return String::new();
+        }
+
+        let clamped_line = line_idx.min(self.text.len_lines().saturating_sub(1));
+        let line_text = self.text.line(clamped_line).to_string();
+        let line_content = line_text.strip_suffix('\n').unwrap_or(&line_text);
+        line_content
+            .chars()
+            .take_while(|ch| matches!(ch, ' ' | '\t'))
+            .collect()
+    }
+
+    fn indent_unit_for_line(&self, current_indent: &str) -> String {
+        if current_indent.contains('\t') {
+            "\t".to_string()
+        } else {
+            "    ".to_string()
+        }
+    }
+
     fn word_under_cursor(&self) -> Option<String> {
         let len_chars = self.text.len_chars();
         if len_chars == 0 {
@@ -4095,6 +4187,24 @@ fn line_comment_removal_len(rest: &str, line_prefix: &str) -> Option<usize> {
         len_chars += 1;
     }
     Some(len_chars)
+}
+
+fn matching_close_char(open: char) -> Option<char> {
+    match open {
+        '(' => Some(')'),
+        '[' => Some(']'),
+        '{' => Some('}'),
+        '"' => Some('"'),
+        '\'' => Some('\''),
+        _ => None,
+    }
+}
+
+fn matches_matching_bracket_pair(left: Option<char>, right: Option<char>) -> bool {
+    matches!(
+        (left, right),
+        (Some('('), Some(')')) | (Some('['), Some(']')) | (Some('{'), Some('}'))
+    )
 }
 
 fn shift_char_position(position: usize, delta: isize) -> usize {

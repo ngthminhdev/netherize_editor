@@ -86,6 +86,96 @@ fn newline_command_inserts_line_break() {
 }
 
 #[test]
+fn insert_open_paren_auto_pairs_and_places_cursor_inside() {
+    let mut app_state = AppState::from_text(unique_temp_path("auto_pair"), "ab");
+    app_state.move_right();
+
+    let report = dispatch_command(&mut app_state, Command::InsertChar('('));
+
+    assert!(report.success);
+    assert!(report.state_changed);
+    assert_eq!(app_state.text_string(), "a()b");
+    assert_eq!(app_state.cursor_line_col(), (0, 2));
+}
+
+#[test]
+fn insert_quote_auto_pairs_and_step_over_works() {
+    let mut app_state = AppState::new(unique_temp_path("quote_pair"));
+
+    let open = dispatch_command(&mut app_state, Command::InsertChar('"'));
+    assert!(open.success);
+    assert_eq!(app_state.text_string(), "\"\"");
+    assert_eq!(app_state.cursor_line_col(), (0, 1));
+
+    let step = dispatch_command(&mut app_state, Command::InsertChar('"'));
+    assert!(step.success);
+    assert!(step.state_changed);
+    assert_eq!(app_state.text_string(), "\"\"");
+    assert_eq!(app_state.cursor_line_col(), (0, 2));
+}
+
+#[test]
+fn insert_closing_paren_steps_over_existing_closer() {
+    let mut app_state = AppState::new(unique_temp_path("step_over"));
+    let _ = dispatch_command(&mut app_state, Command::InsertChar('('));
+
+    let report = dispatch_command(&mut app_state, Command::InsertChar(')'));
+
+    assert!(report.success);
+    assert!(report.state_changed);
+    assert_eq!(app_state.text_string(), "()");
+    assert_eq!(app_state.cursor_line_col(), (0, 2));
+}
+
+#[test]
+fn newline_between_braces_expands_block_with_indent() {
+    let mut app_state = AppState::new(unique_temp_path("smart_enter"));
+    let _ = dispatch_command(&mut app_state, Command::InsertChar('{'));
+
+    let report = dispatch_command(&mut app_state, Command::Newline);
+
+    assert!(report.success);
+    assert!(report.state_changed);
+    assert_eq!(app_state.text_string(), "{\n    \n}");
+    assert_eq!(app_state.cursor_line_col(), (1, 4));
+}
+
+#[test]
+fn auto_pair_and_smart_enter_group_into_insert_session_undo_transaction() {
+    let mut app_state = AppState::new(unique_temp_path("pair_undo"));
+
+    let enter_insert = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterInsert));
+    assert!(enter_insert.success);
+
+    let pair = dispatch_command(&mut app_state, Command::InsertChar('{'));
+    assert!(pair.success);
+    assert_eq!(app_state.text_string(), "{}");
+
+    let exit_after_pair = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    assert!(exit_after_pair.success);
+
+    let undo_pair = dispatch_command(&mut app_state, Command::Undo);
+    assert!(undo_pair.success);
+    assert!(undo_pair.state_changed);
+    assert_eq!(app_state.text_string(), "");
+
+    let reenter_insert = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterInsert));
+    assert!(reenter_insert.success);
+    let _ = dispatch_command(&mut app_state, Command::InsertChar('{'));
+    let smart_enter = dispatch_command(&mut app_state, Command::Newline);
+    assert!(smart_enter.success);
+    assert_eq!(app_state.text_string(), "{\n    \n}");
+
+    let exit_after_newline = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    assert!(exit_after_newline.success);
+
+    let undo_newline = dispatch_command(&mut app_state, Command::Undo);
+    assert!(undo_newline.success);
+    assert!(undo_newline.state_changed);
+    assert_eq!(app_state.text_string(), "");
+}
+
+#[test]
 fn insert_line_below_enters_insert_mode() {
     let mut app_state = AppState::from_text(unique_temp_path("save"), "abc\nxyz");
     let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
