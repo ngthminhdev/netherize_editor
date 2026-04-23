@@ -229,6 +229,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::OverlaySelectPrev
         | Command::SettingsSelectNext
         | Command::SettingsSelectPrev
+        | Command::SettingsAdjustDecrease
+        | Command::SettingsAdjustIncrease
         | Command::SettingsActivate
         | Command::FilePickerSelectNext
         | Command::FilePickerSelectPrev

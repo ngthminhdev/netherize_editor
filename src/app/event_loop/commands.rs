@@ -80,6 +80,52 @@ impl AppShell {
         )
     }
 
+    fn adjust_selected_setting(&mut self, delta: i32) -> bool {
+        let Some(selected) = self.app_state.active_settings_buffer().and_then(|state| state.selected_item()).cloned() else {
+            return false;
+        };
+
+        match selected {
+            crate::app::app_state::SettingItem::SidebarWidth { current } => {
+                let next = (current + delta).clamp(160, 640);
+                self.ui_config.docks.left.size_px = next as f32;
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::SidebarWidth { current }) = state.selected_item_mut()
+                {
+                    *current = next;
+                }
+                self.apply_scaled_runtime_config();
+                let _ = self.ui_config.save_user_override();
+                true
+            }
+            crate::app::app_state::SettingItem::RightSidebarWidth { current } => {
+                let next = (current + delta).clamp(180, 720);
+                self.ui_config.docks.right.size_px = next as f32;
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::RightSidebarWidth { current }) = state.selected_item_mut()
+                {
+                    *current = next;
+                }
+                self.apply_scaled_runtime_config();
+                let _ = self.ui_config.save_user_override();
+                true
+            }
+            crate::app::app_state::SettingItem::BottomPanelHeight { current } => {
+                let next = (current + delta).clamp(120, 520);
+                self.ui_config.docks.bottom.size_px = next as f32;
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::BottomPanelHeight { current }) = state.selected_item_mut()
+                {
+                    *current = next;
+                }
+                self.apply_scaled_runtime_config();
+                let _ = self.ui_config.save_user_override();
+                true
+            }
+            _ => false,
+        }
+    }
+
     fn activate_selected_setting(&mut self) -> bool {
         let Some(selected) = self.app_state.active_settings_buffer().and_then(|state| state.selected_item()).cloned() else {
             return false;
@@ -120,43 +166,16 @@ impl AppShell {
                 true
             }
             crate::app::app_state::SettingItem::SidebarWidth { current } => {
-                let next = (current + 20).clamp(160, 640);
-                self.ui_config.docks.left.size_px = next as f32;
-                if let Some(state) = self.app_state.active_settings_buffer_mut()
-                    && let Some(crate::app::app_state::SettingItem::SidebarWidth { current }) =
-                        state.selected_item_mut()
-                {
-                    *current = next;
-                }
-                self.apply_scaled_runtime_config();
-                let _ = self.ui_config.save_user_override();
-                true
+                let _ = current;
+                self.adjust_selected_setting(20)
             }
             crate::app::app_state::SettingItem::RightSidebarWidth { current } => {
-                let next = (current + 20).clamp(180, 720);
-                self.ui_config.docks.right.size_px = next as f32;
-                if let Some(state) = self.app_state.active_settings_buffer_mut()
-                    && let Some(crate::app::app_state::SettingItem::RightSidebarWidth { current }) =
-                        state.selected_item_mut()
-                {
-                    *current = next;
-                }
-                self.apply_scaled_runtime_config();
-                let _ = self.ui_config.save_user_override();
-                true
+                let _ = current;
+                self.adjust_selected_setting(20)
             }
             crate::app::app_state::SettingItem::BottomPanelHeight { current } => {
-                let next = (current + 20).clamp(120, 520);
-                self.ui_config.docks.bottom.size_px = next as f32;
-                if let Some(state) = self.app_state.active_settings_buffer_mut()
-                    && let Some(crate::app::app_state::SettingItem::BottomPanelHeight { current }) =
-                        state.selected_item_mut()
-                {
-                    *current = next;
-                }
-                self.apply_scaled_runtime_config();
-                let _ = self.ui_config.save_user_override();
-                true
+                let _ = current;
+                self.adjust_selected_setting(20)
             }
             crate::app::app_state::SettingItem::UiRounding { enabled, radius_px } => {
                 let next_radius = if !enabled || radius_px <= 0.0 {
@@ -414,6 +433,8 @@ impl AppShell {
                 }
                 changed
             }
+            Command::SettingsAdjustDecrease => self.adjust_selected_setting(-20),
+            Command::SettingsAdjustIncrease => self.adjust_selected_setting(20),
             Command::SettingsActivate => self.activate_selected_setting(),
             Command::GitOpenLazygit => self.open_lazygit_buffer(),
             Command::GitBlameLine => self.submit_git_blame_line(),

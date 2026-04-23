@@ -145,6 +145,8 @@ pub const OVERLAY_SELECT_NEXT: &str = "overlay.select_next";
 pub const OVERLAY_SELECT_PREV: &str = "overlay.select_prev";
 pub const SETTINGS_SELECT_NEXT: &str = "settings.select_next";
 pub const SETTINGS_SELECT_PREV: &str = "settings.select_prev";
+pub const SETTINGS_ADJUST_DECREASE: &str = "settings.adjust_decrease";
+pub const SETTINGS_ADJUST_INCREASE: &str = "settings.adjust_increase";
 pub const SETTINGS_ACTIVATE: &str = "settings.activate";
 pub const FILE_PICKER_CONFIRM: &str = "file_picker.confirm";
 pub const FILE_PICKER_CLOSE: &str = "file_picker.close";
@@ -271,6 +273,8 @@ pub const ALL_IDS: &[&str] = &[
     OVERLAY_SELECT_PREV,
     SETTINGS_SELECT_NEXT,
     SETTINGS_SELECT_PREV,
+    SETTINGS_ADJUST_DECREASE,
+    SETTINGS_ADJUST_INCREASE,
     SETTINGS_ACTIVATE,
     FILE_PICKER_CONFIRM,
     FILE_PICKER_CLOSE,
@@ -406,6 +410,8 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         OVERLAY_SELECT_PREV | FILE_PICKER_SELECT_PREV => Some(Command::OverlaySelectPrev),
         SETTINGS_SELECT_NEXT => Some(Command::SettingsSelectNext),
         SETTINGS_SELECT_PREV => Some(Command::SettingsSelectPrev),
+        SETTINGS_ADJUST_DECREASE => Some(Command::SettingsAdjustDecrease),
+        SETTINGS_ADJUST_INCREASE => Some(Command::SettingsAdjustIncrease),
         SETTINGS_ACTIVATE => Some(Command::SettingsActivate),
         FILE_PICKER_CONFIRM => Some(Command::FilePickerConfirmSelection),
         FILE_PICKER_CLOSE => Some(Command::CloseFilePicker),

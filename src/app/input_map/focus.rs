@@ -28,12 +28,28 @@ impl InputMap {
         }
 
         if input.named_key == Some(NamedKey::Enter)
-            || input.named_key == Some(NamedKey::ArrowRight)
-            || (!input.has_command_modifier() && input.physical_key == Some(KeyL))
         {
             return Some(KeybindingMatch {
                 command: Command::SettingsActivate,
-                reason: "settings: Enter/l/right -> SettingsActivate",
+                reason: "settings: Enter -> SettingsActivate",
+            });
+        }
+
+        if input.named_key == Some(NamedKey::ArrowRight)
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyL))
+        {
+            return Some(KeybindingMatch {
+                command: Command::SettingsAdjustIncrease,
+                reason: "settings: l/right -> SettingsAdjustIncrease",
+            });
+        }
+
+        if input.named_key == Some(NamedKey::ArrowLeft)
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyH))
+        {
+            return Some(KeybindingMatch {
+                command: Command::SettingsAdjustDecrease,
+                reason: "settings: h/left -> SettingsAdjustDecrease",
             });
         }
 

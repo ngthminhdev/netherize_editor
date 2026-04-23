@@ -99,6 +99,8 @@ pub enum Command {
     OverlaySelectPrev,
     SettingsSelectNext,
     SettingsSelectPrev,
+    SettingsAdjustDecrease,
+    SettingsAdjustIncrease,
     SettingsActivate,
     GitOpenLazygit,
     GitBlameLine,
