@@ -12,6 +12,7 @@ use crate::app::{
         CommandPaletteRenderModel,
     },
     file_picker::FilePickerEntry,
+    match_ranges::score_label_match,
 };
 use crate::async_runtime::message::{
     FilePreviewLine, FileSystemChangeKind, FileSystemEvent, LspCompletionItem, LspDiagnostic,
@@ -283,6 +284,12 @@ pub struct CompletionTriggerPosition {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletionPrefixInfo {
+    pub start_col: usize,
+    pub prefix: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompletionDisplayItem {
     pub item: LspCompletionItem,
     pub match_ranges: Vec<(usize, usize)>,
@@ -294,6 +301,7 @@ pub struct CompletionState {
     pub raw_items: Vec<LspCompletionItem>,
     pub filtered_items: Vec<CompletionDisplayItem>,
     pub selected_index: usize,
+    pub typed_prefix: String,
     pub trigger_pos: CompletionTriggerPosition,
     pub anchor_line: usize,
     pub anchor_col: usize,
@@ -304,24 +312,19 @@ impl CompletionState {
         items: Vec<LspCompletionItem>,
         anchor_line: usize,
         anchor_col: usize,
+        prefix_start_col: usize,
+        prefix: String,
     ) -> Self {
-        let filtered_items = items
-            .iter()
-            .cloned()
-            .map(|item| CompletionDisplayItem {
-                item,
-                match_ranges: Vec::new(),
-                score: 0,
-            })
-            .collect();
+        let filtered_items = build_completion_display_items(&items, &prefix);
 
         Self {
             raw_items: items,
             filtered_items,
             selected_index: 0,
+            typed_prefix: prefix,
             trigger_pos: CompletionTriggerPosition {
                 line: anchor_line,
-                col: anchor_col,
+                col: prefix_start_col,
             },
             anchor_line,
             anchor_col,
@@ -2840,6 +2843,40 @@ impl AppState {
         true
     }
 
+    pub fn replace_completion_prefix_at_cursor(
+        &mut self,
+        prefix_len_chars: usize,
+        text: &str,
+    ) -> bool {
+        let insert_text = text.to_string();
+        if insert_text.is_empty() {
+            return false;
+        }
+
+        let cursor = self.cursor_char_idx.min(self.text.len_chars());
+        let line_idx = self.text.char_to_line(cursor);
+        let line_start = self.text.line_to_char(line_idx);
+        let delete_start = cursor.saturating_sub(prefix_len_chars).max(line_start);
+        let delete_len = cursor.saturating_sub(delete_start);
+
+        let mut changed = false;
+        if delete_len > 0 {
+            changed |= self.apply_delete(delete_start, delete_len);
+        }
+        changed |= self.apply_insert(delete_start, insert_text.clone());
+        if !changed {
+            return false;
+        }
+
+        self.cursor_char_idx = delete_start + insert_text.chars().count();
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.dirty = true;
+        let _ = self.commit_transaction();
+        self.bump_revision();
+        true
+    }
+
     pub fn paste_linewise_after(&mut self, text: &str) -> bool {
         self.paste_linewise(text, false)
     }
@@ -2951,6 +2988,35 @@ impl AppState {
         let line_idx = self.text.char_to_line(self.cursor_char_idx);
         let line_start_byte = self.text.line_to_byte(line_idx);
         self.cursor_byte_idx().saturating_sub(line_start_byte)
+    }
+
+    pub fn completion_prefix_info_at(
+        &self,
+        line_idx: usize,
+        cursor_col: usize,
+    ) -> CompletionPrefixInfo {
+        if self.text.len_lines() == 0 {
+            return CompletionPrefixInfo {
+                start_col: 0,
+                prefix: String::new(),
+            };
+        }
+
+        let clamped_line = line_idx.min(self.text.len_lines().saturating_sub(1));
+        let line_text = self.text.line(clamped_line).to_string();
+        let line_content = line_text.strip_suffix('\n').unwrap_or(&line_text);
+        let chars: Vec<char> = line_content.chars().collect();
+        let cursor_col = cursor_col.min(chars.len());
+        let mut start_col = cursor_col;
+
+        while start_col > 0 && is_completion_identifier_char(chars[start_col - 1]) {
+            start_col -= 1;
+        }
+
+        CompletionPrefixInfo {
+            start_col,
+            prefix: chars[start_col..cursor_col].iter().collect(),
+        }
     }
 
     pub fn last_search_query(&self) -> &str {
@@ -3354,44 +3420,12 @@ impl AppState {
             return false;
         };
 
-        let mut filtered_items = if prefix.is_empty() {
-            state
-                .raw_items
-                .iter()
-                .cloned()
-                .map(|item| CompletionDisplayItem {
-                    item,
-                    match_ranges: Vec::new(),
-                    score: 0,
-                })
-                .collect::<Vec<_>>()
-        } else {
-            let mut scored = state
-                .raw_items
-                .iter()
-                .enumerate()
-                .filter_map(|(original_idx, item)| {
-                    score_completion_match(&item.label, prefix).map(|(score, match_ranges)| {
-                        (original_idx, item.clone(), score, match_ranges)
-                    })
-                })
-                .collect::<Vec<_>>();
-
-            scored.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
-
-            scored
-                .into_iter()
-                .map(|(_, item, score, match_ranges)| CompletionDisplayItem {
-                    item,
-                    match_ranges,
-                    score,
-                })
-                .collect::<Vec<_>>()
-        };
+        let mut filtered_items = build_completion_display_items(&state.raw_items, prefix);
 
         let next_selected = if filtered_items.is_empty() { 0 } else { 0 };
-        let changed =
-            state.filtered_items != filtered_items || state.selected_index != next_selected;
+        let changed = state.filtered_items != filtered_items
+            || state.selected_index != next_selected
+            || state.typed_prefix != prefix;
         if !changed {
             return false;
         }
@@ -3399,6 +3433,7 @@ impl AppState {
         state.filtered_items.clear();
         state.filtered_items.append(&mut filtered_items);
         state.selected_index = next_selected;
+        state.typed_prefix = prefix.to_string();
         self.bump_revision();
         true
     }
@@ -4389,6 +4424,10 @@ fn classify_char(ch: char) -> WordClass {
     }
 }
 
+fn is_completion_identifier_char(ch: char) -> bool {
+    ch.is_alphanumeric() || matches!(ch, '_' | '$')
+}
+
 /// Returns the char index where vim's `dw` motion should stop, counting from
 /// `cursor`. Crosses same-line whitespace after the current token so `dw` eats
 /// one "word-like run" plus trailing spaces. Stops at newline.
@@ -4527,56 +4566,45 @@ fn collect_search_highlights(text: &str, query: &str, whole_word: bool) -> Vec<(
         .collect()
 }
 
+fn build_completion_display_items(
+    items: &[LspCompletionItem],
+    prefix: &str,
+) -> Vec<CompletionDisplayItem> {
+    if prefix.is_empty() {
+        return items
+            .iter()
+            .cloned()
+            .map(|item| CompletionDisplayItem {
+                item,
+                match_ranges: Vec::new(),
+                score: 0,
+            })
+            .collect();
+    }
+
+    let mut scored = items
+        .iter()
+        .enumerate()
+        .filter_map(|(original_idx, item)| {
+            score_completion_match(&item.label, prefix)
+                .map(|(score, match_ranges)| (original_idx, item.clone(), score, match_ranges))
+        })
+        .collect::<Vec<_>>();
+
+    scored.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+
+    scored
+        .into_iter()
+        .map(|(_, item, score, match_ranges)| CompletionDisplayItem {
+            item,
+            match_ranges,
+            score,
+        })
+        .collect()
+}
+
 fn score_completion_match(label: &str, query: &str) -> Option<(i64, Vec<(usize, usize)>)> {
-    let trimmed = query.trim();
-    if trimmed.is_empty() {
-        return Some((0, Vec::new()));
-    }
-
-    let label_lower = label.to_lowercase();
-    let query_lower = trimmed.to_lowercase();
-
-    if let Some(start) = label_lower.find(&query_lower) {
-        let end = start + query_lower.len();
-        let prefix_bonus = (label_lower.len().saturating_sub(start) as i64).min(64);
-        return Some((10_000 + prefix_bonus, vec![(start, end)]));
-    }
-
-    let mut ranges = Vec::new();
-    let mut score = 0_i64;
-    let mut search_start = 0usize;
-    let mut previous_end = None;
-
-    for q_char in query_lower.chars() {
-        let found = label_lower[search_start..]
-            .char_indices()
-            .find(|(_, c)| *c == q_char)
-            .map(|(off, c)| {
-                let abs = search_start + off;
-                (abs, abs + c.len_utf8())
-            });
-
-        let (start, end) = found?;
-        score += 100;
-        if start == 0 {
-            score += 25;
-        }
-        if let Some(prev_end) = previous_end {
-            if start == prev_end {
-                score += 40;
-            } else {
-                score -= (start.saturating_sub(prev_end) as i64).min(24);
-            }
-        } else {
-            score += (32_i64 - start as i64).max(0);
-        }
-
-        ranges.push((start, end));
-        previous_end = Some(end);
-        search_start = end;
-    }
-
-    Some((score, ranges))
+    score_label_match(label, query)
 }
 
 fn is_whole_word_match(text: &str, start: usize, end: usize) -> bool {
@@ -5590,5 +5618,30 @@ mod tests {
             Some("No references found")
         );
         assert!(references.items.is_empty());
+    }
+
+    #[test]
+    fn completion_prefix_info_stops_at_member_access_boundary() {
+        let state = AppState::from_text(unique_temp_path("completion_prefix"), "MessageManager.ge");
+        let info = state.completion_prefix_info_at(0, "MessageManager.ge".chars().count());
+
+        assert_eq!(info.start_col, "MessageManager.".chars().count());
+        assert_eq!(info.prefix, "ge");
+    }
+
+    #[test]
+    fn replace_completion_prefix_at_cursor_deletes_prefix_then_inserts_item() {
+        let mut state =
+            AppState::from_text(unique_temp_path("completion_replace"), "MessageManager.ge");
+        assert!(state.jump_to_line_and_column(0, "MessageManager.ge".chars().count()));
+
+        assert!(state.replace_completion_prefix_at_cursor(2, "getInstance()"));
+        assert_eq!(state.text_string(), "MessageManager.getInstance()");
+        assert_eq!(
+            state.cursor_char_idx(),
+            "MessageManager.getInstance()".chars().count()
+        );
+        assert!(state.undo());
+        assert_eq!(state.text_string(), "MessageManager.ge");
     }
 }

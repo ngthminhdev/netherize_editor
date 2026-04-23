@@ -7,6 +7,7 @@ use crate::{
         FloatingBoxStyle, OverlayColorToken, ReferencesBufferState, SettingItem, SettingsState,
     },
     async_runtime::message::LspDiagnostic,
+    config::theme_config::ThemeConfig,
     core::mode::EditorMode,
     render::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
@@ -1195,7 +1196,17 @@ impl Renderer {
             let max_len = completion
                 .filtered_items
                 .iter()
-                .map(|item| item.item.label.chars().count() + 5)
+                .map(|item| {
+                    let detail_len = item
+                        .item
+                        .detail
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|detail| !detail.is_empty())
+                        .map(|detail| detail.chars().count() + 3)
+                        .unwrap_or(0);
+                    item.item.label.chars().count() + detail_len + 8
+                })
                 .max()
                 .unwrap_or(8);
             let visible_rows = completion.filtered_items.len().min(MAX_VISIBLE_ROWS).max(1);
@@ -1217,7 +1228,8 @@ impl Renderer {
             let selection_bg = self.theme.ui.selection_bg.as_f32();
             let separator_color = self.theme.ui.border_color.as_f32();
             let badge_color = self.theme.ui.border_color.as_f32();
-            let label_dim = self.theme.ui.fg_dim.as_f32();
+            let label_color = self.theme.ui.fg.as_f32();
+            let detail_color = self.theme.ui.fg_ghost.as_f32();
             let match_color = self.theme.ui.accent.as_f32();
 
             chrome_quads.push(RegionDrawInstance::new(
@@ -1272,15 +1284,10 @@ impl Renderer {
                     ));
                 }
 
-                let icon = match item.item.kind {
-                    Some(3) => "ⓕ",
-                    Some(6) => "ⓥ",
-                    Some(7) => "ⓒ",
-                    Some(14) => "ⓚ",
-                    _ => "•",
-                };
-
-                let badge_w = (char_w * 1.8).max(18.0);
+                let kind_badge = completion_kind_badge(item.item.kind, &self.theme);
+                let badge_label = kind_badge.icon;
+                let badge_w =
+                    (estimate_monospace_width(badge_label, geometry.font_size) + 10.0).max(18.0);
                 let badge_h = (geometry.line_height - 6.0).max(12.0);
                 let badge_x = anchor_x + PAD_X;
                 let badge_y = row_y + ((geometry.line_height - badge_h) * 0.5);
@@ -1292,31 +1299,65 @@ impl Renderer {
                 self.editor_overlay_text_system
                     .set_size(Some((badge_w - 6.0).max(1.0)), Some(geometry.line_height));
                 glyphs.extend(layout_panel_text(
-                    icon,
+                    badge_label,
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
                     badge_x + 3.0,
                     row_y,
-                    self.theme.ui.fg.as_f32(),
+                    kind_badge.color,
                 ));
 
                 let label_x = badge_x + badge_w + 8.0;
+                let detail_text = item
+                    .item
+                    .detail
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|detail| !detail.is_empty())
+                    .map(|detail| {
+                        clamp_monospace_text(
+                            detail,
+                            (popup_w * 0.35).max(char_w * 8.0),
+                            geometry.font_size,
+                        )
+                    })
+                    .unwrap_or_default();
+                let detail_width = estimate_monospace_width(&detail_text, geometry.font_size);
+                let detail_gap = if detail_text.is_empty() { 0.0 } else { 10.0 };
+                let detail_x = anchor_x + popup_w - PAD_X - detail_width;
+                let label_width = if detail_text.is_empty() {
+                    (popup_w - (label_x - anchor_x) - PAD_X).max(1.0)
+                } else {
+                    (detail_x - label_x - detail_gap).max(char_w * 6.0)
+                };
                 let spans = completion_label_spans(item, match_color);
-                self.editor_overlay_text_system.set_size(
-                    Some((popup_w - (label_x - anchor_x) - PAD_X).max(1.0)),
-                    Some(geometry.line_height),
-                );
+                self.editor_overlay_text_system
+                    .set_size(Some(label_width), Some(geometry.line_height));
                 glyphs.extend(layout_panel_rich_text(
                     &item.item.label,
                     &spans,
-                    label_dim,
+                    label_color,
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
                     label_x,
                     row_y,
                 ));
+
+                if !detail_text.is_empty() {
+                    self.editor_overlay_text_system
+                        .set_size(Some(detail_width.max(1.0)), Some(geometry.line_height));
+                    glyphs.extend(layout_panel_text(
+                        &detail_text,
+                        &mut self.editor_overlay_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        detail_x,
+                        row_y,
+                        detail_color,
+                    ));
+                }
             }
         }
 
@@ -2339,4 +2380,46 @@ fn completion_label_spans(
         .iter()
         .map(|(start, end)| StyledTextSpan::new(*start, *end, color))
         .collect()
+}
+
+struct CompletionKindBadge<'a> {
+    icon: &'a str,
+    color: [f32; 4],
+}
+
+fn completion_kind_badge<'a>(kind: Option<u32>, theme: &'a ThemeConfig) -> CompletionKindBadge<'a> {
+    match kind {
+        Some(2 | 3 | 4) => CompletionKindBadge {
+            icon: "fn",
+            color: theme.syntax.function.as_f32(),
+        },
+        Some(5) => CompletionKindBadge {
+            icon: "v",
+            color: theme.syntax.field.as_f32(),
+        },
+        Some(6 | 10 | 12) => CompletionKindBadge {
+            icon: "v",
+            color: theme.syntax.identifier.as_f32(),
+        },
+        Some(7 | 8 | 13 | 22 | 25) => CompletionKindBadge {
+            icon: "C",
+            color: theme.syntax.r#type.as_f32(),
+        },
+        Some(9 | 17 | 18 | 19) => CompletionKindBadge {
+            icon: "m",
+            color: theme.ui.fg_dim.as_f32(),
+        },
+        Some(14 | 24) => CompletionKindBadge {
+            icon: "k",
+            color: theme.syntax.keyword.as_f32(),
+        },
+        Some(20 | 21) => CompletionKindBadge {
+            icon: "c",
+            color: theme.syntax.constant.as_f32(),
+        },
+        _ => CompletionKindBadge {
+            icon: "•",
+            color: theme.ui.fg_dim.as_f32(),
+        },
+    }
 }

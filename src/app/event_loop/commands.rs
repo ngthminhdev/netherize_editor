@@ -2125,6 +2125,9 @@ impl AppShell {
             return false;
         };
         let (cursor_line, cursor_col) = self.app_state.cursor_line_col();
+        let prefix_info = self
+            .app_state
+            .completion_prefix_info_at(cursor_line, cursor_col);
         let mut changed = self.app_state.clear_current_overlays();
         changed |= self.app_state.clear_completion();
         self.submit(RequestSpec {
@@ -2137,6 +2140,8 @@ impl AppShell {
                 character,
                 cursor_line,
                 cursor_col,
+                prefix_start_col: prefix_info.start_col,
+                prefix: prefix_info.prefix,
             },
         });
         changed
@@ -2170,7 +2175,14 @@ impl AppShell {
     }
 
     fn accept_completion_item(&mut self) -> bool {
-        let Some(item) = self.app_state.selected_completion_item().cloned() else {
+        let Some(completion) = self.app_state.completion().cloned() else {
+            return false;
+        };
+        let Some(item) = completion
+            .filtered_items
+            .get(completion.selected_index)
+            .map(|entry| entry.item.clone())
+        else {
             return false;
         };
         let insert_text = item
@@ -2182,26 +2194,25 @@ impl AppShell {
             return self.close_completion_popup();
         }
 
-        let _ = self.app_state.clear_completion();
-        let report = {
-            let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
-            dispatch_command_with_clipboard_count(
-                app_state,
-                Command::InsertText(insert_text),
-                1,
-                Some(clipboard),
-            )
-        };
-        if report.state_changed {
+        let prefix_len = completion.typed_prefix.chars().count();
+        let popup_closed = self.app_state.clear_completion();
+        let changed = self
+            .app_state
+            .replace_completion_prefix_at_cursor(prefix_len, &insert_text);
+        if changed {
             self.reconcile_highlight_spans_with_pending_edits();
             self.editor_needs_layout = true;
             self.editor_caret_needs_layout = true;
             let viewport_lines = self.editor_viewport_lines();
             self.app_state.auto_scroll_to_cursor(viewport_lines);
             self.submit_lsp_did_open_for_active_file();
+        } else if popup_closed {
+            self.editor_caret_needs_layout = true;
+        }
+        if popup_closed || changed {
             self.request_redraw();
         }
-        report.request_redraw || report.state_changed || true
+        popup_closed || changed
     }
 
     fn refresh_open_completion_after_text_edit(&mut self) -> bool {
@@ -2214,21 +2225,16 @@ impl AppShell {
             return self.close_completion_popup();
         }
 
-        let line_text = self
+        let prefix_info = self
             .app_state
-            .text_string()
-            .lines()
-            .nth(cursor_line)
-            .unwrap_or_default()
-            .to_string();
+            .completion_prefix_info_at(cursor_line, cursor_col);
+        if prefix_info.start_col != completion.trigger_pos.col {
+            return self.close_completion_popup();
+        }
 
-        let prefix: String = line_text
-            .chars()
-            .skip(completion.trigger_pos.col)
-            .take(cursor_col.saturating_sub(completion.trigger_pos.col))
-            .collect();
-
-        let changed = self.app_state.refresh_completion_with_prefix(&prefix);
+        let changed = self
+            .app_state
+            .refresh_completion_with_prefix(&prefix_info.prefix);
         if self
             .app_state
             .completion()
@@ -3289,6 +3295,39 @@ mod tests {
         let shell = AppShell::new_for_tests().expect("create app shell");
 
         assert!(shell.app_state.workspace_root_path().is_some());
+    }
+
+    #[test]
+    fn completion_accept_replaces_typed_prefix_instead_of_inserting_after_it() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        shell.app_state =
+            AppState::from_text(PathBuf::from("completion_accept.ts"), "MessageManager.ge");
+        let completion = crate::app::app_state::CompletionState::from_lsp_items(
+            vec![crate::async_runtime::message::LspCompletionItem {
+                label: "getInstance".to_string(),
+                detail: Some("() -> MessageManager".to_string()),
+                insert_text: Some("getInstance()".to_string()),
+                text_edit_text: None,
+                kind: Some(2),
+            }],
+            0,
+            "MessageManager.ge".chars().count(),
+            "MessageManager.".chars().count(),
+            "ge".to_string(),
+        );
+        assert!(
+            shell
+                .app_state
+                .jump_to_line_and_column(0, "MessageManager.ge".chars().count())
+        );
+        assert!(shell.app_state.set_completion(completion));
+
+        assert!(shell.handle_command(Command::CompletionAccept));
+        assert_eq!(
+            shell.app_state.text_string(),
+            "MessageManager.getInstance()"
+        );
+        assert!(shell.app_state.completion().is_none());
     }
 
     #[test]

@@ -35,7 +35,8 @@ pub fn generate_leap_labels(count: usize) -> Vec<String> {
     let fast_jump = &alphabet[..13];
     let prefix_group = &alphabet[13..];
 
-    let mut labels = Vec::with_capacity(count.min(fast_jump.len() + prefix_group.len() * alphabet.len()));
+    let mut labels =
+        Vec::with_capacity(count.min(fast_jump.len() + prefix_group.len() * alphabet.len()));
 
     for ch in fast_jump {
         labels.push(ch.to_string());

@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use crate::{config::theme_config::ThemeConfig, workspace::model::WorkspaceModel};
+use crate::{
+    app::match_ranges::compute_label_match_ranges, config::theme_config::ThemeConfig,
+    workspace::model::WorkspaceModel,
+};
 
 const DEFAULT_MAX_RESULTS: usize = 24;
 
@@ -633,9 +636,9 @@ impl CommandPalette {
                         if self.mode == CommandPaletteMode::LiveGrep {
                             let preview =
                                 secondary_labels.get(idx).map(String::as_str).unwrap_or("");
-                            compute_match_ranges(preview, q)
+                            compute_label_match_ranges(preview, q)
                         } else {
-                            compute_match_ranges(label, q)
+                            compute_label_match_ranges(label, q)
                         }
                     })
                     .unwrap_or_default()
@@ -774,42 +777,6 @@ fn vim_command_items(query: &str) -> Vec<CommandPaletteItem> {
 ///   dưới dạng range 1-byte (hoặc char boundary).
 ///
 /// Kết quả dùng bởi renderer để tô màu `match_color` lên phần khớp.
-fn compute_match_ranges(label: &str, query: &str) -> Vec<(usize, usize)> {
-    if query.is_empty() {
-        return Vec::new();
-    }
-
-    let label_lower = label.to_lowercase();
-    let query_lower = query.trim();
-
-    // 1. Substring match (ưu tiên cao): highlight liên tục
-    if let Some(byte_start) = label_lower.find(query_lower) {
-        let byte_end = byte_start + query_lower.len();
-        return vec![(byte_start, byte_end)];
-    }
-
-    // 2. Fuzzy subsequence: highlight từng char riêng
-    let mut ranges = Vec::new();
-    let mut search_start = 0usize;
-    for q_char in query_lower.chars() {
-        let found = label_lower[search_start..]
-            .char_indices()
-            .find(|(_, c)| *c == q_char)
-            .map(|(off, c)| {
-                let abs = search_start + off;
-                (abs, abs + c.len_utf8())
-            });
-        if let Some((s, e)) = found {
-            ranges.push((s, e));
-            search_start = e;
-        } else {
-            // Query không match fuzzy — không highlight gì
-            return Vec::new();
-        }
-    }
-    ranges
-}
-
 fn palette_max_items(mode: CommandPaletteMode) -> usize {
     match mode {
         CommandPaletteMode::LiveGrep => 10,

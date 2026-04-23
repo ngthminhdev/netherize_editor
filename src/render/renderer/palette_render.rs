@@ -888,11 +888,19 @@ impl Renderer {
         let mut cursor = 0usize;
         let mut segs: Vec<(&str, [f32; 4])> = Vec::new();
 
-        for &(start, end) in ranges {
+        for &(raw_start, raw_end) in ranges {
+            let Some((mut start, end)) = Self::sanitize_label_range(label, raw_start, raw_end)
+            else {
+                continue;
+            };
+            if end <= cursor {
+                continue;
+            }
+            start = start.max(cursor);
             if start > cursor {
                 segs.push((&label[cursor..start], model.label_color));
             }
-            if end <= label.len() {
+            if end > start {
                 segs.push((&label[start..end], model.match_color));
             }
             cursor = end;
@@ -916,6 +924,28 @@ impl Renderer {
             ));
             seg_x += seg_text.chars().count() as f32 * font_size * 0.60;
         }
+    }
+
+    fn sanitize_label_range(label: &str, start: usize, end: usize) -> Option<(usize, usize)> {
+        if label.is_empty() {
+            return None;
+        }
+
+        let len = label.len();
+        let mut start = start.min(len);
+        let mut end = end.min(len);
+        if start >= end {
+            return None;
+        }
+
+        while start > 0 && !label.is_char_boundary(start) {
+            start -= 1;
+        }
+        while end < len && !label.is_char_boundary(end) {
+            end += 1;
+        }
+
+        (start < end).then_some((start, end))
     }
 
     // ── Leap label overlay ─────────────────────────────────────────────────────

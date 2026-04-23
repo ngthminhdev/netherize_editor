@@ -839,8 +839,12 @@ fn completion_popup_tab_accepts_selected_item() {
     let context = completion_context();
     let now = std::time::Instant::now();
 
-    let mapped =
-        handler.route_normalized_input(named_input(NamedKey::Tab, Some(KeyCode::Tab)), &map, context, now);
+    let mapped = handler.route_normalized_input(
+        named_input(NamedKey::Tab, Some(KeyCode::Tab)),
+        &map,
+        context,
+        now,
+    );
     match mapped {
         Some(InputRouteOutcome::Dispatch(translated)) => {
             assert_eq!(translated.command, Command::CompletionAccept);
@@ -898,7 +902,10 @@ fn completion_popup_arrow_keys_still_navigate_items() {
         Some(InputRouteOutcome::Dispatch(translated)) => {
             assert_eq!(translated.command, Command::CompletionNext);
         }
-        other => panic!("expected completion next dispatch for ArrowDown, got {:?}", other),
+        other => panic!(
+            "expected completion next dispatch for ArrowDown, got {:?}",
+            other
+        ),
     }
 
     let up = handler.route_normalized_input(
@@ -911,7 +918,10 @@ fn completion_popup_arrow_keys_still_navigate_items() {
         Some(InputRouteOutcome::Dispatch(translated)) => {
             assert_eq!(translated.command, Command::CompletionPrev);
         }
-        other => panic!("expected completion prev dispatch for ArrowUp, got {:?}", other),
+        other => panic!(
+            "expected completion prev dispatch for ArrowUp, got {:?}",
+            other
+        ),
     }
 }
 

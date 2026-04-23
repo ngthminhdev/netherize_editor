@@ -195,6 +195,8 @@ pub enum WorkerRequestPayload {
         character: u32,
         cursor_line: usize,
         cursor_col: usize,
+        prefix_start_col: usize,
+        prefix: String,
     },
     StopLspServer,
 }
@@ -232,6 +234,7 @@ pub struct LspDiagnostic {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LspCompletionItem {
     pub label: String,
+    pub detail: Option<String>,
     pub insert_text: Option<String>,
     pub text_edit_text: Option<String>,
     pub kind: Option<u32>,
@@ -363,6 +366,8 @@ pub enum WorkerResultPayload {
         items: Vec<LspCompletionItem>,
         cursor_line: usize,
         cursor_col: usize,
+        prefix_start_col: usize,
+        prefix: String,
     },
     FzfResults {
         query: String,

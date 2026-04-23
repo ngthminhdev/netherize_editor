@@ -948,6 +948,8 @@ fn execute_lsp_request(
             character,
             cursor_line,
             cursor_col,
+            prefix_start_col,
+            prefix,
         } => {
             let Some(server_key) = language_profile_for_language_id(language_id)
                 .map(|profile| profile.lsp_binary)
@@ -959,7 +961,16 @@ fn execute_lsp_request(
                 return Err("completion rejected: LSP server not running".to_string());
             };
             session.update_request_meta(request.request_id, request.revision_id);
-            handle_lsp_completion(&session, uri, *line, *character, *cursor_line, *cursor_col)
+            handle_lsp_completion(
+                &session,
+                uri,
+                *line,
+                *character,
+                *cursor_line,
+                *cursor_col,
+                *prefix_start_col,
+                prefix,
+            )
         }
         _ => Err("execute_lsp_request received non-lsp payload".to_string()),
     }
@@ -1042,6 +1053,15 @@ fn parse_completion_items(
                 .iter()
                 .filter_map(|item| {
                     let label = item.get("label")?.as_str()?.to_string();
+                    let detail = item
+                        .get("detail")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string)
+                        .or_else(|| {
+                            item.pointer("/labelDetails/detail")
+                                .and_then(serde_json::Value::as_str)
+                                .map(str::to_string)
+                        });
                     let insert_text = item
                         .get("insertText")
                         .and_then(serde_json::Value::as_str)
@@ -1057,6 +1077,7 @@ fn parse_completion_items(
                         .map(|kind| kind as u32);
                     Some(LspCompletionItem {
                         label,
+                        detail,
                         insert_text,
                         text_edit_text,
                         kind,
@@ -1213,6 +1234,8 @@ fn handle_lsp_completion(
     character: u32,
     cursor_line: usize,
     cursor_col: usize,
+    prefix_start_col: usize,
+    prefix: &str,
 ) -> Result<WorkerResultPayload, String> {
     use serde_json::json;
     let params = json!({
@@ -1234,6 +1257,8 @@ fn handle_lsp_completion(
         items,
         cursor_line,
         cursor_col,
+        prefix_start_col,
+        prefix: prefix.to_string(),
     })
 }
 
