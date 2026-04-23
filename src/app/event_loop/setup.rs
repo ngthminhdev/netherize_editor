@@ -214,6 +214,9 @@ impl AppShell {
         let scaled_ui = scale_ui_config(&self.ui_config, self.runtime_scale);
 
         self.theme = scaled_theme.clone();
+        if let Some(font_family) = scaled_ui.editor.font_family.clone() {
+            self.theme.editor.font_family = Some(font_family);
+        }
         self.layout_engine.config =
             crate::workbench::layout_engine::WorkbenchLayoutConfig::from_ui_theme(&scaled_theme.ui);
         self.layout_engine.config.region_gap = scaled_ui.layout.region_gap;
@@ -332,6 +335,9 @@ impl AppShell {
             }
             FocusTarget::CenterEditor if self.app_state.active_buffer_is_fuzzy_picker() => {
                 InputFocusContext::FuzzyPicker
+            }
+            FocusTarget::CenterEditor if self.app_state.active_buffer_is_settings() => {
+                InputFocusContext::SettingsTab
             }
             FocusTarget::CenterEditor if self.app_state.active_buffer_is_diagnostics() => {
                 InputFocusContext::Diagnostics

@@ -42,6 +42,11 @@ key = "mod+w"
 command = "app.focus_back"
 
 [[bindings]]
+mode = "normal"
+key = "mod+,"
+command = "app.open_settings"
+
+[[bindings]]
 key = "Ctrl+="
 command = "ui.scale_up"
 

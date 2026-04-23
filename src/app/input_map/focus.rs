@@ -3,6 +3,57 @@ use winit::keyboard::KeyCode;
 use super::*;
 
 impl InputMap {
+    pub(super) fn resolve_settings_focus(
+        &self,
+        input: &NormalizedInput,
+    ) -> Option<KeybindingMatch> {
+        use KeyCode::*;
+
+        if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowDown))
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyJ))
+        {
+            return Some(KeybindingMatch {
+                command: Command::SettingsSelectNext,
+                reason: "settings: down/j -> SettingsSelectNext",
+            });
+        }
+
+        if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowUp))
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyK))
+        {
+            return Some(KeybindingMatch {
+                command: Command::SettingsSelectPrev,
+                reason: "settings: up/k -> SettingsSelectPrev",
+            });
+        }
+
+        if input.named_key == Some(NamedKey::Enter)
+            || input.named_key == Some(NamedKey::ArrowRight)
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyL))
+        {
+            return Some(KeybindingMatch {
+                command: Command::SettingsActivate,
+                reason: "settings: Enter/l/right -> SettingsActivate",
+            });
+        }
+
+        if input.named_key == Some(NamedKey::Escape)
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyQ))
+        {
+            return Some(KeybindingMatch {
+                command: Command::BufferCloseCurrent,
+                reason: "settings: Esc/q -> BufferCloseCurrent",
+            });
+        }
+
+        resolved_keymap::resolve_global_command(&self.keymap, input, &self.open_file_path).map(
+            |command| KeybindingMatch {
+                command,
+                reason: "settings: global binding",
+            },
+        )
+    }
+
     pub(super) fn resolve_diagnostics_focus(
         &self,
         input: &NormalizedInput,

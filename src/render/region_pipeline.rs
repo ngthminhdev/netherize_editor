@@ -28,6 +28,8 @@ struct RegionInstanceRaw {
     rect: [f32; 4],
     // RGBA 0..1
     color: [f32; 4],
+    border_radius: f32,
+    _pad: [f32; 3],
 }
 
 impl RegionInstanceRaw {
@@ -46,6 +48,11 @@ impl RegionInstanceRaw {
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float32x4,
                 },
+                wgpu::VertexAttribute {
+                    offset: (std::mem::size_of::<[f32; 4]>() * 2) as u64,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Float32,
+                },
             ],
         }
     }
@@ -55,11 +62,21 @@ impl RegionInstanceRaw {
 pub struct RegionDrawInstance {
     pub rect: [f32; 4],
     pub color: [f32; 4],
+    pub border_radius: f32,
 }
 
 impl RegionDrawInstance {
     pub fn new(rect: [f32; 4], color: [f32; 4]) -> Self {
-        Self { rect, color }
+        Self {
+            rect,
+            color,
+            border_radius: 0.0,
+        }
+    }
+
+    pub fn with_radius(mut self, border_radius: f32) -> Self {
+        self.border_radius = border_radius.max(0.0);
+        self
     }
 }
 
@@ -208,6 +225,8 @@ impl RegionPipeline {
             .map(|instance| RegionInstanceRaw {
                 rect: instance.rect,
                 color: instance.color,
+                border_radius: instance.border_radius,
+                _pad: [0.0; 3],
             })
             .collect();
         queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&raw));

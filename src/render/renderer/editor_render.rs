@@ -2,12 +2,11 @@
 //! current-line highlight.
 
 use cosmic_text::Metrics;
-
 use crate::{
     app::app_state::{
         AppState, DiagnosticsState, EditorOverlay, FloatingBoxBlock, FloatingBoxStyle,
         OverlayColorToken,
-        ReferencesBufferState,
+        ReferencesBufferState, SettingItem, SettingsState,
     },
     core::mode::EditorMode,
     render::{
@@ -1649,6 +1648,127 @@ impl Renderer {
                 right_x + 10.0,
                 content_top + 4.0,
                 fg_ghost,
+            ));
+        }
+
+        self.editor_overlay_chrome_instances = chrome;
+        self.editor_overlay_glyph_instances = glyphs;
+        self.editor_overlay_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.editor_overlay_glyph_instances,
+        );
+    }
+
+    pub fn update_settings_buffer_content(
+        &mut self,
+        settings: &SettingsState,
+        center_bounds: [f32; 4],
+    ) {
+        if center_bounds[2] < 1.0 || center_bounds[3] < 1.0 {
+            self.clear_editor_overlays();
+            return;
+        }
+
+        let font_size = self.theme.ui.panel_font_size.max(1.0);
+        let line_height = self.theme.ui.panel_line_height.max(font_size + 4.0);
+        self.editor_overlay_text_system
+            .set_metrics(Metrics::new(font_size, line_height));
+        self.editor_overlay_scissor = rect_to_scissor(center_bounds);
+
+        let panel_x = center_bounds[0] + self.editor_padding_x.max(12.0);
+        let panel_y = center_bounds[1] + self.editor_padding_y.max(12.0);
+        let panel_w = (center_bounds[2] - self.editor_padding_x.max(12.0) * 2.0).max(1.0);
+        let panel_h = (center_bounds[3] - self.editor_padding_y.max(12.0) * 2.0).max(1.0);
+
+        let bg = self.theme.editor.bg.as_f32();
+        let panel_bg = self.theme.ui.panel_bg.as_f32();
+        let border = self.theme.ui.border_color.as_f32();
+        let fg = self.theme.ui.fg.as_f32();
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let fg_ghost = self.theme.ui.fg_ghost.as_f32();
+        let selection_bg = self.theme.ui.selection_bg.as_f32();
+        let accent = self.theme.ui.accent.as_f32();
+
+        let mut chrome = vec![
+            RegionDrawInstance::new([panel_x, panel_y, panel_w, panel_h], bg)
+                .with_radius(self.theme.ui.status_bar_height.min(10.0)),
+            RegionDrawInstance::new([panel_x, panel_y, panel_w, 1.0], border),
+        ];
+        let mut glyphs = Vec::new();
+
+        self.editor_overlay_text_system
+            .set_size(Some((panel_w - 20.0).max(1.0)), Some(line_height));
+        glyphs.extend(layout_panel_text(
+            "Settings",
+            &mut self.editor_overlay_text_system,
+            &mut self.atlas,
+            &self.queue,
+            panel_x + 10.0,
+            panel_y + 8.0,
+            fg,
+        ));
+        glyphs.extend(layout_panel_text(
+            &clamp_monospace_text(
+                "j/k: navigate  |  Enter/l: change  |  Esc/q: close",
+                (panel_w - 20.0).max(1.0),
+                font_size,
+            ),
+            &mut self.editor_overlay_text_system,
+            &mut self.atlas,
+            &self.queue,
+            panel_x + 10.0,
+            panel_y + 8.0 + line_height,
+            fg_ghost,
+        ));
+
+        let row_h = line_height + 10.0;
+        let start_y = panel_y + line_height * 2.0 + 20.0;
+        for (idx, item) in settings.items.iter().enumerate() {
+            let row_y = start_y + idx as f32 * row_h;
+            if row_y + row_h > panel_y + panel_h - 8.0 {
+                break;
+            }
+
+            if idx == settings.selected_index {
+                chrome.push(RegionDrawInstance::new(
+                    [panel_x + 6.0, row_y - 2.0, (panel_w - 12.0).max(1.0), row_h],
+                    selection_bg,
+                ));
+                chrome.push(RegionDrawInstance::new(
+                    [panel_x + 6.0, row_y - 2.0, 3.0, row_h],
+                    accent,
+                ));
+            }
+
+            let value = match item {
+                SettingItem::ThemeSelector { current } => current.clone(),
+                SettingItem::FontFamily { current } => {
+                    if current.trim().is_empty() { "<default>".to_string() } else { current.clone() }
+                }
+                SettingItem::SidebarWidth { current }
+                | SettingItem::RightSidebarWidth { current }
+                | SettingItem::BottomPanelHeight { current } => format!("{} px", current),
+                SettingItem::UiRounding { enabled, radius_px } => {
+                    if *enabled { format!("On ({radius_px:.1}px)") } else { "Off".to_string() }
+                }
+            };
+
+            let line = format!("{: <20} {}", item.title(), value);
+            self.editor_overlay_text_system
+                .set_size(Some((panel_w - 28.0).max(1.0)), Some(line_height));
+            glyphs.extend(layout_panel_text(
+                &clamp_monospace_text(&line, (panel_w - 28.0).max(1.0), font_size),
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                panel_x + 14.0,
+                row_y,
+                if idx == settings.selected_index { fg } else { fg_dim },
+            ));
+            chrome.push(RegionDrawInstance::new(
+                [panel_x + 10.0, row_y + row_h - 4.0, (panel_w - 20.0).max(1.0), 1.0],
+                panel_bg,
             ));
         }
 

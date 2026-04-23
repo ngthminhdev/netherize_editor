@@ -27,6 +27,98 @@ use crate::syntax::highlight::HighlightEdit;
 use crate::text::text_system::StyledTextSpan;
 use crate::workspace::model::{WorkspaceModel, WorkspaceNodeType};
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum SettingItem {
+    ThemeSelector { current: String },
+    FontFamily { current: String },
+    SidebarWidth { current: i32 },
+    RightSidebarWidth { current: i32 },
+    BottomPanelHeight { current: i32 },
+    UiRounding { enabled: bool, radius_px: f32 },
+}
+
+impl SettingItem {
+    pub fn title(&self) -> &'static str {
+        match self {
+            Self::ThemeSelector { .. } => "Theme",
+            Self::FontFamily { .. } => "Font Family",
+            Self::SidebarWidth { .. } => "Left Dock Width",
+            Self::RightSidebarWidth { .. } => "Right Dock Width",
+            Self::BottomPanelHeight { .. } => "Bottom Dock Height",
+            Self::UiRounding { .. } => "UI Rounding",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SettingsState {
+    pub selected_index: usize,
+    pub items: Vec<SettingItem>,
+}
+
+impl SettingsState {
+    pub fn new(
+        theme_profile: impl Into<String>,
+        font_family: impl Into<String>,
+        left_width: i32,
+        right_width: i32,
+        bottom_height: i32,
+        ui_rounding_enabled: bool,
+        border_radius_px: f32,
+    ) -> Self {
+        Self {
+            selected_index: 0,
+            items: vec![
+                SettingItem::ThemeSelector {
+                    current: theme_profile.into(),
+                },
+                SettingItem::FontFamily {
+                    current: font_family.into(),
+                },
+                SettingItem::SidebarWidth {
+                    current: left_width.max(0),
+                },
+                SettingItem::RightSidebarWidth {
+                    current: right_width.max(0),
+                },
+                SettingItem::BottomPanelHeight {
+                    current: bottom_height.max(0),
+                },
+                SettingItem::UiRounding {
+                    enabled: ui_rounding_enabled,
+                    radius_px: border_radius_px.max(0.0),
+                },
+            ],
+        }
+    }
+
+    pub fn select_next(&mut self) -> bool {
+        if self.selected_index + 1 < self.items.len() {
+            self.selected_index += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn select_prev(&mut self) -> bool {
+        if self.selected_index > 0 {
+            self.selected_index -= 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn selected_item(&self) -> Option<&SettingItem> {
+        self.items.get(self.selected_index)
+    }
+
+    pub fn selected_item_mut(&mut self) -> Option<&mut SettingItem> {
+        self.items.get_mut(self.selected_index)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ExternalChangeReport {
     pub workspace_reloaded: bool,
@@ -184,16 +276,17 @@ impl FuzzyState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BufferContent {
     Text(EditorBuffer),
     Terminal(PtyState),
     References(ReferencesBufferState),
     Diagnostics(DiagnosticsState),
     FuzzyPicker(FuzzyState),
+    SettingsTab(SettingsState),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BufferEntry {
     pub content: BufferContent,
 }
@@ -211,6 +304,7 @@ impl BufferEntry {
             BufferContent::References(state) => state.title.clone(),
             BufferContent::Diagnostics(_) => "[Diagnostics]".to_string(),
             BufferContent::FuzzyPicker(_) => "[Fuzzy Finder]".to_string(),
+            BufferContent::SettingsTab(_) => "[Settings]".to_string(),
         }
     }
 }
@@ -1016,6 +1110,27 @@ impl AppState {
         false
     }
 
+    pub fn active_buffer_is_settings(&self) -> bool {
+        self.active_buffer()
+            .is_some_and(|buffer| matches!(buffer.content, BufferContent::SettingsTab(_)))
+    }
+
+    pub fn active_settings_buffer(&self) -> Option<&SettingsState> {
+        match self.active_buffer().map(|buffer| &buffer.content) {
+            Some(BufferContent::SettingsTab(state)) => Some(state),
+            _ => None,
+        }
+    }
+
+    pub fn active_settings_buffer_mut(&mut self) -> Option<&mut SettingsState> {
+        self.active_buffer_index
+            .and_then(|idx| self.buffers.get_mut(idx))
+            .and_then(|buffer| match &mut buffer.content {
+                BufferContent::SettingsTab(state) => Some(state),
+                _ => None,
+            })
+    }
+
     pub fn is_file_picker_open(&self) -> bool {
         self.command_palette.is_visible
             && self.command_palette.mode == CommandPaletteMode::FilePicker
@@ -1237,6 +1352,71 @@ impl AppState {
         let _ = self.clear_current_overlays();
         self.bump_revision();
         index
+    }
+
+    pub fn open_settings_buffer(
+        &mut self,
+        theme_profile: impl Into<String>,
+        font_family: impl Into<String>,
+        left_width: i32,
+        right_width: i32,
+        bottom_height: i32,
+        ui_rounding_enabled: bool,
+        border_radius_px: f32,
+    ) -> usize {
+        if let Some(existing_idx) = self
+            .buffers
+            .iter()
+            .position(|buffer| matches!(buffer.content, BufferContent::SettingsTab(_)))
+        {
+            self.reset_text_editor_state();
+            self.active_buffer_index = Some(existing_idx);
+            let _ = self.clear_current_overlays();
+            self.bump_revision();
+            return existing_idx;
+        }
+
+        let state = SettingsState::new(
+            theme_profile,
+            font_family,
+            left_width,
+            right_width,
+            bottom_height,
+            ui_rounding_enabled,
+            border_radius_px,
+        );
+        self.buffers.push(BufferEntry {
+            content: BufferContent::SettingsTab(state),
+        });
+
+        let index = self.buffers.len().saturating_sub(1);
+        self.reset_text_editor_state();
+        self.active_buffer_index = Some(index);
+        let _ = self.clear_current_overlays();
+        self.bump_revision();
+        index
+    }
+
+    pub fn settings_select_next(&mut self) -> bool {
+        let Some(state) = self.active_settings_buffer_mut() else {
+            return false;
+        };
+        let changed = state.select_next();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn settings_select_prev(&mut self) -> bool {
+        let Some(state) = self.active_settings_buffer_mut() else {
+            return false;
+        };
+        let changed = state.select_prev();
+        if changed {
+            self.bump_revision();
+        }
+        changed
     }
 
     pub fn bind_terminal_buffer_session(
@@ -2691,7 +2871,8 @@ impl AppState {
                 BufferContent::Text(_)
                 | BufferContent::References(_)
                 | BufferContent::Diagnostics(_)
-                | BufferContent::FuzzyPicker(_) => false,
+                | BufferContent::FuzzyPicker(_)
+                | BufferContent::SettingsTab(_) => false,
             })
     }
 
@@ -3630,7 +3811,10 @@ impl AppState {
                 self.visual_line_mode = false;
                 self.external_conflict = None;
             }
-            BufferContent::References(_) | BufferContent::Diagnostics(_) | BufferContent::FuzzyPicker(_) => {
+            BufferContent::References(_)
+            | BufferContent::Diagnostics(_)
+            | BufferContent::FuzzyPicker(_)
+            | BufferContent::SettingsTab(_) => {
                 self.reset_text_editor_state();
                 self.active_buffer_index = Some(index);
                 let _ = self.clear_current_overlays();

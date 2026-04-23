@@ -80,6 +80,108 @@ impl AppShell {
         )
     }
 
+    fn activate_selected_setting(&mut self) -> bool {
+        let Some(selected) = self.app_state.active_settings_buffer().and_then(|state| state.selected_item()).cloned() else {
+            return false;
+        };
+
+        match selected {
+            crate::app::app_state::SettingItem::ThemeSelector { .. } => {
+                self.handle_command(Command::OpenThemeSelector)
+            }
+            crate::app::app_state::SettingItem::FontFamily { current } => {
+                let next = if current.trim().is_empty() {
+                    self.base_theme
+                        .editor
+                        .nerd_font_family
+                        .clone()
+                        .unwrap_or_else(|| "monospace".to_string())
+                } else {
+                    String::new()
+                };
+                self.base_theme.editor.font_family = if next.trim().is_empty() {
+                    None
+                } else {
+                    Some(next.clone())
+                };
+                self.ui_config.editor.font_family = if next.trim().is_empty() {
+                    None
+                } else {
+                    Some(next.clone())
+                };
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::FontFamily { current }) =
+                        state.selected_item_mut()
+                {
+                    *current = next;
+                }
+                self.apply_scaled_runtime_config();
+                let _ = self.ui_config.save_user_override();
+                true
+            }
+            crate::app::app_state::SettingItem::SidebarWidth { current } => {
+                let next = (current + 20).clamp(160, 640);
+                self.ui_config.docks.left.size_px = next as f32;
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::SidebarWidth { current }) =
+                        state.selected_item_mut()
+                {
+                    *current = next;
+                }
+                self.apply_scaled_runtime_config();
+                let _ = self.ui_config.save_user_override();
+                true
+            }
+            crate::app::app_state::SettingItem::RightSidebarWidth { current } => {
+                let next = (current + 20).clamp(180, 720);
+                self.ui_config.docks.right.size_px = next as f32;
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::RightSidebarWidth { current }) =
+                        state.selected_item_mut()
+                {
+                    *current = next;
+                }
+                self.apply_scaled_runtime_config();
+                let _ = self.ui_config.save_user_override();
+                true
+            }
+            crate::app::app_state::SettingItem::BottomPanelHeight { current } => {
+                let next = (current + 20).clamp(120, 520);
+                self.ui_config.docks.bottom.size_px = next as f32;
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::BottomPanelHeight { current }) =
+                        state.selected_item_mut()
+                {
+                    *current = next;
+                }
+                self.apply_scaled_runtime_config();
+                let _ = self.ui_config.save_user_override();
+                true
+            }
+            crate::app::app_state::SettingItem::UiRounding { enabled, radius_px } => {
+                let next_enabled = !enabled;
+                let next_radius = if next_enabled {
+                    radius_px.max(8.0)
+                } else {
+                    0.0
+                };
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::UiRounding {
+                        enabled,
+                        radius_px,
+                    }) = state.selected_item_mut()
+                {
+                    *enabled = next_enabled;
+                    *radius_px = next_radius;
+                }
+                self.ui_config.border_radius_px = next_radius;
+                self.apply_scaled_runtime_config();
+                let _ = self.ui_config.save_user_override();
+                true
+            }
+        }
+    }
+
     fn mark_focused_terminal_layout_dirty(&mut self) {
         if self.app_state.active_buffer_is_terminal()
             && self.focus_manager.current() == FocusTarget::CenterEditor
@@ -273,6 +375,45 @@ impl AppShell {
                 }
                 report.request_redraw
             }
+            Command::OpenSettings => {
+                let theme_profile = self
+                    .persistent_state
+                    .configured_theme_profile()
+                    .unwrap_or(self.base_theme.name.as_str())
+                    .to_string();
+                let font_family = self.base_theme.editor.font_family.clone().unwrap_or_default();
+                let border_radius_px = self.ui_config.window.min_content_scale.min(8.0);
+                self.app_state.open_settings_buffer(
+                    theme_profile,
+                    font_family,
+                    self.ui_config.docks.left.size_px.round() as i32,
+                    self.ui_config.docks.right.size_px.round() as i32,
+                    self.ui_config.docks.bottom.size_px.round() as i32,
+                    border_radius_px > 0.0,
+                    border_radius_px,
+                );
+                let _ = self.sync_focus_mode_for_active_buffer();
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+                true
+            }
+            Command::SettingsSelectNext => {
+                let changed = self.app_state.settings_select_next();
+                if changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                }
+                changed
+            }
+            Command::SettingsSelectPrev => {
+                let changed = self.app_state.settings_select_prev();
+                if changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                }
+                changed
+            }
+            Command::SettingsActivate => self.activate_selected_setting(),
             Command::GitOpenLazygit => self.open_lazygit_buffer(),
             Command::GitBlameLine => self.submit_git_blame_line(),
             Command::LspHover => self.submit_lsp_hover(),

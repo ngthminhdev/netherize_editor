@@ -75,6 +75,7 @@ pub enum TopbarTabKind {
     References,
     Diagnostics,
     FuzzyPicker,
+    Settings,
 }
 
 #[derive(Debug, Clone, PartialEq)]

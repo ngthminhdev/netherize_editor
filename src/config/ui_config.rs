@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
+use crate::config::paths::user_config_root;
 use crate::workbench::layout_engine::WorkbenchLayoutConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,9 +88,10 @@ pub struct SpacingUiConfig {
     pub explorer_padding: f32,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct EditorUiConfig {
     pub relative_numbers: bool,
+    pub font_family: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -101,6 +103,7 @@ pub struct UiConfig {
     pub spacing: SpacingUiConfig,
     pub status_bar: StatusBarUiConfig,
     pub editor: EditorUiConfig,
+    pub border_radius_px: f32,
 }
 
 impl UiConfig {
@@ -113,12 +116,12 @@ impl UiConfig {
         match Self::load(&profile) {
             Ok(config) => {
                 eprintln!("[ui] loaded profile '{profile}'");
-                config
+                config.with_user_overrides()
             }
             Err(err) => {
                 eprintln!("[ui] {err}");
                 eprintln!("[ui] falling back to built-in UI defaults");
-                Self::builtin()
+                Self::builtin().with_user_overrides()
             }
         }
     }
@@ -191,7 +194,9 @@ impl UiConfig {
             },
             editor: EditorUiConfig {
                 relative_numbers: false,
+                font_family: None,
             },
+            border_radius_px: 0.0,
         }
     }
 
@@ -404,10 +409,44 @@ impl UiConfig {
             },
             editor: EditorUiConfig {
                 relative_numbers: raw.editor.relative_numbers.unwrap_or(false),
+                font_family: raw.editor.font_family,
             },
+            border_radius_px: raw.border_radius_px.unwrap_or(fallback.border_radius_px),
         };
         config.validate()?;
         Ok(config)
+    }
+
+    fn with_user_overrides(mut self) -> Self {
+        let path = Self::user_override_path();
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            return self;
+        };
+        let Ok(raw) = toml::from_str::<RawUiFile>(&content) else {
+            return self;
+        };
+        if let Ok(override_config) = Self::from_raw(raw) {
+            self.docks = override_config.docks;
+            self.editor.font_family = override_config.editor.font_family;
+            self.border_radius_px = override_config.border_radius_px;
+        }
+        self
+    }
+
+    pub fn user_override_path() -> PathBuf {
+        user_config_root().join("ui.toml")
+    }
+
+    pub fn save_user_override(&self) -> Result<(), String> {
+        let path = Self::user_override_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|err| format!("create ui config dir failed: {err}"))?;
+        }
+        let raw = UserUiConfigFile::from(self);
+        let text = toml::to_string_pretty(&raw)
+            .map_err(|err| format!("serialize ui config failed: {err}"))?;
+        std::fs::write(&path, text).map_err(|err| format!("write ui config failed: {err}"))
     }
 }
 
@@ -477,6 +516,7 @@ struct RawUiFile {
     status_bar: RawStatusBar,
     #[serde(default)]
     editor: RawEditorSection,
+    border_radius_px: Option<f32>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -537,4 +577,50 @@ struct RawStatusBar {
 #[derive(Debug, Default, Deserialize)]
 struct RawEditorSection {
     relative_numbers: Option<bool>,
+    font_family: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct UserUiConfigFile {
+    docks: UserUiDocks,
+    editor: UserUiEditor,
+    border_radius_px: f32,
+}
+
+#[derive(Debug, Serialize)]
+struct UserUiDocks {
+    left_visible: bool,
+    left_size_px: f32,
+    right_visible: bool,
+    right_size_px: f32,
+    bottom_visible: bool,
+    bottom_size_px: f32,
+    overlay_visible: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct UserUiEditor {
+    relative_numbers: bool,
+    font_family: Option<String>,
+}
+
+impl From<&UiConfig> for UserUiConfigFile {
+    fn from(value: &UiConfig) -> Self {
+        Self {
+            docks: UserUiDocks {
+                left_visible: value.docks.left.visible,
+                left_size_px: value.docks.left.size_px,
+                right_visible: value.docks.right.visible,
+                right_size_px: value.docks.right.size_px,
+                bottom_visible: value.docks.bottom.visible,
+                bottom_size_px: value.docks.bottom.size_px,
+                overlay_visible: value.docks.overlay_visible,
+            },
+            editor: UserUiEditor {
+                relative_numbers: value.editor.relative_numbers,
+                font_family: value.editor.font_family.clone(),
+            },
+            border_radius_px: value.border_radius_px,
+        }
+    }
 }

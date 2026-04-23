@@ -317,6 +317,21 @@ impl AppShell {
             if focus_changed {
                 self.input_handler.clear_pending_prefix();
             }
+        } else if self.app_state.active_buffer_is_settings() {
+            if matches!(
+                self.app_state.current_mode(),
+                EditorMode::TerminalFocus | EditorMode::TerminalNormal | EditorMode::PaletteFocus
+            ) {
+                changed |= self.app_state.close_command_palette();
+                if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
+                    changed |= result.changed;
+                }
+            }
+            let focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
+            changed |= focus_changed;
+            if focus_changed {
+                self.input_handler.clear_pending_prefix();
+            }
         } else {
             if matches!(
                 self.app_state.current_mode(),

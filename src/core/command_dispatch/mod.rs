@@ -220,12 +220,16 @@ fn dispatch_command_with_clipboard_once(
         | Command::OpenWorkspaceSymbols
         | Command::SearchInFiles
         | Command::OpenThemeSelector
+        | Command::OpenSettings
         | Command::GitOpenLazygit
         | Command::GitBlameLine
         | Command::FilePickerAppendQuery(_)
         | Command::FilePickerBackspaceQuery
         | Command::OverlaySelectNext
         | Command::OverlaySelectPrev
+        | Command::SettingsSelectNext
+        | Command::SettingsSelectPrev
+        | Command::SettingsActivate
         | Command::FilePickerSelectNext
         | Command::FilePickerSelectPrev
         | Command::FilePickerConfirmSelection

@@ -77,6 +77,7 @@ pub const OPEN_VIM_COMMAND: &str = "app.open_vim_command";
 pub const OPEN_WORKSPACE_SYMBOLS: &str = "app.open_workspace_symbols";
 pub const SEARCH_IN_FILES: &str = "app.search_in_files";
 pub const OPEN_THEME_SELECTOR: &str = "app.open_theme_selector";
+pub const OPEN_SETTINGS: &str = "app.open_settings";
 pub const GIT_OPEN_LAZYGIT: &str = "git.open_lazygit";
 pub const GIT_BLAME_LINE: &str = "git.blame_line";
 pub const TERMINAL_ENTER_NORMAL_MODE: &str = "terminal.enter_normal_mode";
@@ -142,6 +143,9 @@ pub const EXPLORER_OPEN_FILE: &str = "explorer.open_file";
 // ── File picker ───────────────────────────────────────────────────────────────
 pub const OVERLAY_SELECT_NEXT: &str = "overlay.select_next";
 pub const OVERLAY_SELECT_PREV: &str = "overlay.select_prev";
+pub const SETTINGS_SELECT_NEXT: &str = "settings.select_next";
+pub const SETTINGS_SELECT_PREV: &str = "settings.select_prev";
+pub const SETTINGS_ACTIVATE: &str = "settings.activate";
 pub const FILE_PICKER_CONFIRM: &str = "file_picker.confirm";
 pub const FILE_PICKER_CLOSE: &str = "file_picker.close";
 pub const FILE_PICKER_SELECT_NEXT: &str = "file_picker.select_next";
@@ -214,6 +218,7 @@ pub const ALL_IDS: &[&str] = &[
     OPEN_WORKSPACE_SYMBOLS,
     SEARCH_IN_FILES,
     OPEN_THEME_SELECTOR,
+    OPEN_SETTINGS,
     GIT_OPEN_LAZYGIT,
     GIT_BLAME_LINE,
     TERMINAL_ENTER_NORMAL_MODE,
@@ -264,6 +269,9 @@ pub const ALL_IDS: &[&str] = &[
     EXPLORER_OPEN_FILE,
     OVERLAY_SELECT_NEXT,
     OVERLAY_SELECT_PREV,
+    SETTINGS_SELECT_NEXT,
+    SETTINGS_SELECT_PREV,
+    SETTINGS_ACTIVATE,
     FILE_PICKER_CONFIRM,
     FILE_PICKER_CLOSE,
     FILE_PICKER_SELECT_NEXT,
@@ -346,6 +354,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         OPEN_WORKSPACE_SYMBOLS => Some(Command::OpenWorkspaceSymbols),
         SEARCH_IN_FILES => Some(Command::SearchInFiles),
         OPEN_THEME_SELECTOR => Some(Command::OpenThemeSelector),
+        OPEN_SETTINGS => Some(Command::OpenSettings),
         GIT_OPEN_LAZYGIT => Some(Command::GitOpenLazygit),
         GIT_BLAME_LINE => Some(Command::GitBlameLine),
         LSP_HOVER => Some(Command::LspHover),
@@ -395,6 +404,9 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         EXPLORER_OPEN_FILE => Some(Command::ExplorerOpenFile),
         OVERLAY_SELECT_NEXT | FILE_PICKER_SELECT_NEXT => Some(Command::OverlaySelectNext),
         OVERLAY_SELECT_PREV | FILE_PICKER_SELECT_PREV => Some(Command::OverlaySelectPrev),
+        SETTINGS_SELECT_NEXT => Some(Command::SettingsSelectNext),
+        SETTINGS_SELECT_PREV => Some(Command::SettingsSelectPrev),
+        SETTINGS_ACTIVATE => Some(Command::SettingsActivate),
         FILE_PICKER_CONFIRM => Some(Command::FilePickerConfirmSelection),
         FILE_PICKER_CLOSE => Some(Command::CloseFilePicker),
         FILE_PICKER_BACKSPACE => Some(Command::FilePickerBackspaceQuery),

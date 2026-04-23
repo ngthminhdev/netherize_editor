@@ -734,6 +734,7 @@ impl Renderer {
                     TopbarTabKind::References => self.theme.file_icon_for_extension("txt"),
                     TopbarTabKind::Diagnostics => self.theme.file_icon_for_extension("log"),
                     TopbarTabKind::FuzzyPicker => self.theme.file_icon_for_extension("fzf"),
+                    TopbarTabKind::Settings => "⚙".to_string(),
                 };
                 let icon_glyph = icon.glyph.clone();
                 let icon_color = match &tab.kind {
@@ -746,6 +747,7 @@ impl Renderer {
                     TopbarTabKind::References => self.theme.icons.default_file.color.as_f32(),
                     TopbarTabKind::Diagnostics => self.theme.icons.default_file.color.as_f32(),
                     TopbarTabKind::FuzzyPicker => self.theme.ui.accent.as_f32(),
+                    TopbarTabKind::Settings => self.theme.ui.accent.as_f32(),
                 };
                 let icon_text = format!("{} ", icon_glyph);
                 let icon_width = estimate_monospace_width(&icon_text, font_size);
@@ -765,7 +767,7 @@ impl Renderer {
                             (bounds[3] - 4.0).max(0.0),
                         ],
                         active_bg,
-                    ));
+                    ).with_radius(6.0));
                     chrome.push(RegionDrawInstance::new(
                         [
                             tab_x,

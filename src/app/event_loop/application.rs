@@ -357,6 +357,7 @@ impl AppShell {
                     ],
                     region_color(region.id, &self.theme),
                 )
+                .with_radius(self.ui_config.border_radius_px)
             })
             .collect();
         let focus_target = if show_welcome && !workspace_attached {
@@ -398,7 +399,7 @@ impl AppShell {
                 region_instances.push(RegionDrawInstance::new(
                     center_bounds,
                     self.theme.ui.terminal_bg.as_f32(),
-                ));
+                ).with_radius(self.ui_config.border_radius_px));
             }
 
             if self.editor_needs_layout || bounds_changed || show_welcome_changed {
@@ -445,6 +446,11 @@ impl AppShell {
                         } else {
                             renderer.clear_editor_overlays();
                         }
+                    } else if let Some(settings) = self.app_state.active_settings_buffer() {
+                        renderer.clear_welcome_logo();
+                        renderer.clear_buffer_terminal();
+                        renderer.clear_editor_content();
+                        renderer.update_settings_buffer_content(settings, center_bounds);
                     } else {
                         renderer.clear_welcome_logo();
                         renderer.clear_buffer_terminal();
@@ -510,6 +516,11 @@ impl AppShell {
                         } else {
                             renderer.clear_editor_overlays();
                         }
+                    }
+                } else if let Some(settings) = self.app_state.active_settings_buffer() {
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.clear_editor_content();
+                        renderer.update_settings_buffer_content(settings, center_bounds);
                     }
                 } else if !show_welcome && let Some(renderer) = self.renderer.as_mut() {
                     renderer.update_editor_caret(&self.app_state, center_bounds);
@@ -640,6 +651,7 @@ impl AppShell {
                         BufferContent::References(_) => TopbarTabKind::References,
                         BufferContent::Diagnostics(_) => TopbarTabKind::Diagnostics,
                         BufferContent::FuzzyPicker(_) => TopbarTabKind::FuzzyPicker,
+                        BufferContent::SettingsTab(_) => TopbarTabKind::Settings,
                     },
                 })
                 .collect::<Vec<_>>();

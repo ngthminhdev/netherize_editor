@@ -37,6 +37,7 @@ pub enum InputFocusContext {
     /// Mọi input — kể cả ESC — được forward thẳng vào PTY.
     BufferTerminal,
     FuzzyPicker,
+    SettingsTab,
 }
 
 impl InputFocusContext {
@@ -51,6 +52,7 @@ impl InputFocusContext {
             Self::Terminal => "terminal",
             Self::BufferTerminal => "buffer_terminal",
             Self::FuzzyPicker => "fuzzy_picker",
+            Self::SettingsTab => "settings_tab",
         }
     }
 
@@ -63,6 +65,7 @@ impl InputFocusContext {
                 | Self::Explorer
                 | Self::Inspector
                 | Self::FuzzyPicker
+                | Self::SettingsTab
         )
     }
 }
@@ -176,6 +179,9 @@ impl InputMap {
         }
         if context.focus == InputFocusContext::FuzzyPicker {
             return self.resolve_fuzzy_picker_focus(input, context);
+        }
+        if context.focus == InputFocusContext::SettingsTab {
+            return self.resolve_settings_focus(input);
         }
         if context.focus == InputFocusContext::Terminal {
             return self.resolve_terminal_focus(input, context.mode);
@@ -300,6 +306,7 @@ impl InputMap {
             InputFocusContext::BufferTerminal => "terminal",
             InputFocusContext::BottomPanel => "bottom_panel",
             InputFocusContext::FuzzyPicker => editor_mode_str(context.mode),
+            InputFocusContext::SettingsTab => editor_mode_str(context.mode),
         }
     }
 
