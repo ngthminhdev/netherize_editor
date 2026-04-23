@@ -1,22 +1,37 @@
-use tree_sitter::{Language, Node, Parser, Tree};
+use tree_sitter::{Node, Parser, Tree};
+
+use crate::syntax::parser::tree_sitter_language;
 
 /// Ngôn ngữ parser mà SyntaxEngine đang xử lý.
-/// Phase bootstrap chỉ bật 1 language để tối giản lifecycle ban đầu.
+/// Registry có thể ánh xạ nhiều file extension vào cùng một parser family
+/// (ví dụ JavaScript + JSX cùng grammar, TypeScript + TSX cùng grammar).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LanguageId {
     Rust,
+    JavaScript,
+    Jsx,
+    TypeScript,
+    Tsx,
+    Go,
+    Yaml,
+    Dockerfile,
+    Json,
+    Bash,
 }
 
 impl LanguageId {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Rust => "rust",
-        }
-    }
-
-    fn as_tree_sitter_language(self) -> Language {
-        match self {
-            Self::Rust => tree_sitter_rust::LANGUAGE.into(),
+            Self::JavaScript => "javascript",
+            Self::Jsx => "jsx",
+            Self::TypeScript => "typescript",
+            Self::Tsx => "tsx",
+            Self::Go => "go",
+            Self::Yaml => "yaml",
+            Self::Dockerfile => "dockerfile",
+            Self::Json => "json",
+            Self::Bash => "bash",
         }
     }
 }
@@ -66,14 +81,18 @@ pub struct SyntaxEngine {
 impl SyntaxEngine {
     pub fn new(language_id: LanguageId) -> Result<Self, String> {
         let mut parser = Parser::new();
-        parser
-            .set_language(&language_id.as_tree_sitter_language())
-            .map_err(|err| {
-                format!(
-                    "set tree-sitter language '{}' failed: {err}",
-                    language_id.as_str()
-                )
-            })?;
+        let language = tree_sitter_language(language_id).ok_or_else(|| {
+            format!(
+                "tree-sitter language '{}' is not available in this build",
+                language_id.as_str()
+            )
+        })?;
+        parser.set_language(&language).map_err(|err| {
+            format!(
+                "set tree-sitter language '{}' failed: {err}",
+                language_id.as_str()
+            )
+        })?;
 
         Ok(Self {
             parser,
@@ -108,11 +127,15 @@ impl SyntaxEngine {
     pub fn current_tree(&self) -> Option<&SyntaxTreeState> {
         self.current_tree.as_ref()
     }
+
+    pub fn language_id(&self) -> LanguageId {
+        self.language_id
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::SyntaxEngine;
+    use super::{LanguageId, SyntaxEngine};
 
     #[test]
     fn rust_parser_bootstrap_returns_source_file_root() {
@@ -137,5 +160,38 @@ mod tests {
         let current = engine.current_tree().expect("have current tree");
         assert_eq!(current.revision(), 2);
         assert_eq!(current.root_node().kind(), "source_file");
+    }
+
+    #[test]
+    fn javascript_parser_bootstrap_returns_program_root() {
+        let mut engine = SyntaxEngine::new(LanguageId::JavaScript).expect("init js parser");
+        let state = engine
+            .parse_source("function greet(name) { return name; }", 1)
+            .expect("parse javascript");
+
+        assert_eq!(state.language_id().as_str(), "javascript");
+        assert_eq!(state.root_node().kind(), "program");
+    }
+
+    #[test]
+    fn typescript_parser_bootstrap_returns_program_root() {
+        let mut engine = SyntaxEngine::new(LanguageId::TypeScript).expect("init ts parser");
+        let state = engine
+            .parse_source("type User = { name: string };", 1)
+            .expect("parse typescript");
+
+        assert_eq!(state.language_id().as_str(), "typescript");
+        assert_eq!(state.root_node().kind(), "program");
+    }
+
+    #[test]
+    fn go_parser_bootstrap_returns_source_file_root() {
+        let mut engine = SyntaxEngine::new(LanguageId::Go).expect("init go parser");
+        let state = engine
+            .parse_source("package main\n\nfunc main() {}\n", 1)
+            .expect("parse go");
+
+        assert_eq!(state.language_id().as_str(), "go");
+        assert_eq!(state.root_node().kind(), "source_file");
     }
 }

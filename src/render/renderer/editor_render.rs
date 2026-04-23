@@ -4,7 +4,9 @@
 use cosmic_text::Metrics;
 
 use crate::{
-    app::app_state::{AppState, EditorOverlay, OverlayColorToken},
+    app::app_state::{
+        AppState, EditorOverlay, FloatingBoxStyle, OverlayColorToken, ReferencesBufferState,
+    },
     core::mode::EditorMode,
     render::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
@@ -13,8 +15,8 @@ use crate::{
 };
 
 use super::helpers::{
-    caret_rect_for_mode, gutter_width_for_editor, layout_panel_text, layout_panel_text_italic,
-    rect_to_scissor, should_draw_block_cursor,
+    caret_rect_for_mode, clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
+    layout_panel_text, layout_panel_text_italic, rect_to_scissor, should_draw_block_cursor,
 };
 use crate::text::text_system::StyledTextSpan;
 
@@ -226,11 +228,296 @@ impl Renderer {
 
     pub fn clear_editor_overlays(&mut self) {
         self.editor_overlay_scissor = None;
+        self.editor_overlay_chrome_instances.clear();
         self.editor_overlay_glyph_instances.clear();
         self.editor_overlay_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
     }
 
+    pub fn update_references_buffer_content(
+        &mut self,
+        references: &ReferencesBufferState,
+        center_bounds: [f32; 4],
+    ) {
+        if center_bounds[2] < 1.0 || center_bounds[3] < 1.0 {
+            self.clear_editor_overlays();
+            return;
+        }
+
+        let font_size = self.theme.editor.font_size;
+        let line_height = self.theme.editor.line_height.max(font_size + 4.0);
+        self.editor_overlay_text_system
+            .set_metrics(Metrics::new(font_size, line_height));
+        self.editor_overlay_scissor = rect_to_scissor(center_bounds);
+
+        let pad_x = self.editor_padding_x.max(14.0);
+        let pad_y = self.editor_padding_y.max(14.0);
+        let panel_x = center_bounds[0] + pad_x;
+        let panel_y = center_bounds[1] + pad_y;
+        let panel_w = (center_bounds[2] - pad_x * 2.0).max(1.0);
+        let panel_h = (center_bounds[3] - pad_y * 2.0).max(1.0);
+        let gap = 16.0;
+        let left_w = (panel_w * 0.5).max(1.0);
+        let right_w = (panel_w - left_w - gap).max(1.0);
+        let left_x = panel_x;
+        let right_x = left_x + left_w + gap;
+        let header_h = line_height + 14.0;
+        let footer_h = line_height + 10.0;
+        let content_top = panel_y + header_h;
+        let content_bottom = (panel_y + panel_h - footer_h).max(content_top + line_height);
+        let content_h = (content_bottom - content_top).max(line_height);
+
+        let panel_bg = self.theme.ui.panel_bg.as_f32();
+        let editor_bg = self.theme.editor.bg.as_f32();
+        let mut divider = self.theme.ui.fg_ghost.as_f32();
+        divider[3] = divider[3].clamp(0.28, 0.42);
+        let accent = self.theme.ui.accent.as_f32();
+        let warning = self.theme.ui.warning.as_f32();
+        let fg = self.theme.ui.fg.as_f32();
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let fg_ghost = self.theme.ui.fg_ghost.as_f32();
+        let selection_bg = self.theme.ui.selection_bg.as_f32();
+
+        let mut glyphs = Vec::new();
+        let mut chrome = vec![
+            RegionDrawInstance::new([left_x, panel_y, left_w, panel_h], panel_bg),
+            RegionDrawInstance::new([right_x, panel_y, right_w, panel_h], editor_bg),
+            RegionDrawInstance::new([right_x - gap * 0.5, panel_y, 1.0, panel_h], divider),
+            RegionDrawInstance::new([left_x, panel_y + header_h - 1.0, left_w, 1.0], divider),
+            RegionDrawInstance::new([right_x, panel_y + header_h - 1.0, right_w, 1.0], divider),
+        ];
+
+        let header_y = panel_y + 6.0;
+        let left_header = if references.loading {
+            format!("{}  > loading...", references.title)
+        } else {
+            references.title.clone()
+        };
+        self.editor_overlay_text_system
+            .set_size(Some((left_w - 20.0).max(1.0)), Some(line_height));
+        glyphs.extend(layout_panel_text(
+            &clamp_monospace_text(&left_header, (left_w - 20.0).max(1.0), font_size),
+            &mut self.editor_overlay_text_system,
+            &mut self.atlas,
+            &self.queue,
+            left_x + 10.0,
+            header_y,
+            fg,
+        ));
+
+        let selected = references.items.get(references.selected_index);
+        let right_header = selected
+            .map(|item| {
+                format!(
+                    "{}:{}:{}",
+                    item.relative_path,
+                    item.line + 1,
+                    item.column + 1
+                )
+            })
+            .unwrap_or_else(|| {
+                references
+                    .status_message
+                    .clone()
+                    .unwrap_or_else(|| "No reference selected".to_string())
+            });
+        self.editor_overlay_text_system
+            .set_size(Some((right_w - 20.0).max(1.0)), Some(line_height));
+        glyphs.extend(layout_panel_text(
+            &clamp_monospace_text(&right_header, (right_w - 20.0).max(1.0), font_size),
+            &mut self.editor_overlay_text_system,
+            &mut self.atlas,
+            &self.queue,
+            right_x + 10.0,
+            header_y,
+            fg,
+        ));
+
+        let help_text = "J/K / Ctrl+N/P / Up/Down to navigate  |  Enter to open  |  Esc/Q to close";
+        self.editor_overlay_text_system
+            .set_size(Some((panel_w - 20.0).max(1.0)), Some(line_height));
+        glyphs.extend(layout_panel_text(
+            &clamp_monospace_text(help_text, (panel_w - 20.0).max(1.0), font_size),
+            &mut self.editor_overlay_text_system,
+            &mut self.atlas,
+            &self.queue,
+            panel_x + 10.0,
+            panel_y + panel_h - footer_h + 4.0,
+            fg_ghost,
+        ));
+
+        let left_text_width = (left_w - 20.0).max(1.0);
+        if references.items.is_empty() {
+            let status = references
+                .status_message
+                .as_deref()
+                .unwrap_or("Loading references...");
+            self.editor_overlay_text_system
+                .set_size(Some(left_text_width), Some(line_height));
+            glyphs.extend(layout_panel_text(
+                status,
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                left_x + 14.0,
+                content_top + 4.0,
+                fg_ghost,
+            ));
+        } else {
+            let row_h = line_height * 2.0 + 8.0;
+            let visible_rows = ((content_h / row_h).floor() as usize).max(1);
+            let mut start_idx = references.selected_index.saturating_sub(visible_rows / 2);
+            if start_idx + visible_rows > references.items.len() {
+                start_idx = references.items.len().saturating_sub(visible_rows);
+            }
+
+            for (slot, item_idx) in (start_idx..references.items.len())
+                .take(visible_rows)
+                .enumerate()
+            {
+                let item = &references.items[item_idx];
+                let row_y = content_top + slot as f32 * row_h;
+                let is_selected = item_idx == references.selected_index;
+                if is_selected {
+                    chrome.push(RegionDrawInstance::new(
+                        [left_x + 6.0, row_y, (left_w - 12.0).max(1.0), row_h - 4.0],
+                        selection_bg,
+                    ));
+                    chrome.push(RegionDrawInstance::new(
+                        [left_x + 6.0, row_y, 3.0, row_h - 4.0],
+                        accent,
+                    ));
+                }
+
+                self.editor_overlay_text_system
+                    .set_size(Some(left_text_width), Some(line_height));
+                glyphs.extend(layout_panel_text(
+                    &clamp_monospace_text(&item.relative_path, left_text_width, font_size),
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    left_x + 14.0,
+                    row_y + 4.0,
+                    if is_selected { fg } else { fg_dim },
+                ));
+
+                self.editor_overlay_text_system
+                    .set_size(Some(left_text_width), Some(line_height));
+                glyphs.extend(layout_panel_text(
+                    &clamp_monospace_text(&item.summary, left_text_width, font_size),
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    left_x + 14.0,
+                    row_y + line_height + 4.0,
+                    if is_selected { fg_dim } else { fg_ghost },
+                ));
+            }
+        }
+
+        if !references.preview_lines.is_empty() {
+            let line_number_width = estimate_monospace_width(
+                &format!(
+                    "{:>4}",
+                    references
+                        .preview_lines
+                        .last()
+                        .map(|line| line.line_number)
+                        .unwrap_or(1)
+                ),
+                font_size,
+            ) + 14.0;
+            let preview_text_width = (right_w - 20.0 - line_number_width).max(1.0);
+            let preview_rows = ((content_h / line_height).floor() as usize).max(1);
+            let mut preview_start = 0usize;
+            if let Some(target_idx) = references
+                .preview_lines
+                .iter()
+                .position(|line| line.is_target)
+            {
+                preview_start = target_idx.saturating_sub(preview_rows / 2);
+                if preview_start + preview_rows > references.preview_lines.len() {
+                    preview_start = references.preview_lines.len().saturating_sub(preview_rows);
+                }
+            }
+
+            for (slot, line) in references
+                .preview_lines
+                .iter()
+                .skip(preview_start)
+                .take(preview_rows)
+                .enumerate()
+            {
+                let row_y = content_top + slot as f32 * line_height;
+                if line.is_target {
+                    chrome.push(RegionDrawInstance::new(
+                        [right_x + 6.0, row_y, (right_w - 12.0).max(1.0), line_height],
+                        selection_bg,
+                    ));
+                    chrome.push(RegionDrawInstance::new(
+                        [right_x + 6.0, row_y, 3.0, line_height],
+                        accent,
+                    ));
+                }
+
+                self.editor_overlay_text_system
+                    .set_size(Some(line_number_width), Some(line_height));
+                glyphs.extend(layout_panel_text(
+                    &format!("{:>4}", line.line_number),
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    right_x + 10.0,
+                    row_y,
+                    if line.is_target { warning } else { fg_ghost },
+                ));
+
+                self.editor_overlay_text_system
+                    .set_size(Some(preview_text_width), Some(line_height));
+                glyphs.extend(layout_panel_text(
+                    &clamp_monospace_text(&line.text, preview_text_width, font_size),
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    right_x + 10.0 + line_number_width,
+                    row_y,
+                    if line.is_target { fg } else { fg_dim },
+                ));
+            }
+        } else {
+            let empty_message = if references.loading {
+                "Loading references..."
+            } else if references.items.is_empty() {
+                references
+                    .status_message
+                    .as_deref()
+                    .unwrap_or("No references found")
+            } else {
+                "Loading preview..."
+            };
+            self.editor_overlay_text_system
+                .set_size(Some((right_w - 20.0).max(1.0)), Some(line_height));
+            glyphs.extend(layout_panel_text(
+                empty_message,
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                right_x + 10.0,
+                content_top + 4.0,
+                fg_ghost,
+            ));
+        }
+
+        self.editor_overlay_chrome_instances = chrome;
+        self.editor_overlay_glyph_instances = glyphs;
+        self.editor_overlay_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.editor_overlay_glyph_instances,
+        );
+    }
+
+    /// Rebuild overlay glyph instances and floating-box chrome for the editor layer.
     pub fn update_editor_overlays(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {
         if app_state.current_overlays().is_empty() {
             self.clear_editor_overlays();
@@ -245,62 +532,126 @@ impl Renderer {
 
         self.editor_overlay_scissor = rect_to_scissor(center_bounds);
         let mut glyphs = Vec::new();
+        let mut chrome_quads: Vec<RegionDrawInstance> = Vec::new();
 
         for overlay in app_state.current_overlays() {
-            let EditorOverlay::VirtualText {
-                line,
-                column: _,
-                text,
-                color_token,
-            } = overlay;
-            let line_end_byte = app_state.line_content_end_byte_idx(*line);
-            let line_start_byte = app_state.line_start_byte_idx(*line);
-            let byte_in_line = line_end_byte.saturating_sub(line_start_byte);
+            match overlay {
+                EditorOverlay::VirtualText {
+                    line,
+                    column: _,
+                    text,
+                    color_token,
+                } => {
+                    let line_end_byte = app_state.line_content_end_byte_idx(*line);
+                    let line_start_byte = app_state.line_start_byte_idx(*line);
+                    let byte_in_line = line_end_byte.saturating_sub(line_start_byte);
 
-            let mut line_top: Option<f32> = None;
-            let mut line_height_px = geometry.line_height.max(1.0);
-            let mut tail_x = geometry.origin_x;
+                    let mut line_top: Option<f32> = None;
+                    let mut line_height_px = geometry.line_height.max(1.0);
+                    let mut tail_x = geometry.origin_x;
 
-            for run in self.text_system.buffer().layout_runs() {
-                if run.line_i != *line {
-                    continue;
+                    for run in self.text_system.buffer().layout_runs() {
+                        if run.line_i != *line {
+                            continue;
+                        }
+                        let candidate_top = geometry.origin_y + run.line_top;
+                        let candidate_bottom = candidate_top + run.line_height.max(1.0);
+                        if candidate_bottom <= viewport_top || candidate_top >= viewport_bottom {
+                            continue;
+                        }
+                        line_top = Some(candidate_top);
+                        line_height_px = run.line_height.max(1.0);
+                        tail_x = tail_x.max(run_x_for_byte(geometry.origin_x, &run, byte_in_line));
+                    }
+
+                    let Some(line_top) = line_top else { continue };
+                    let origin_x = (tail_x + 10.0).max(geometry.viewport_text_left + 4.0);
+                    if origin_x >= viewport_right {
+                        continue;
+                    }
+                    let width = (viewport_right - origin_x).max(1.0);
+                    self.editor_overlay_text_system
+                        .set_size(Some(width), Some(line_height_px));
+                    glyphs.extend(layout_panel_text_italic(
+                        text,
+                        &mut self.editor_overlay_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        origin_x,
+                        line_top,
+                        match color_token {
+                            OverlayColorToken::UiFgGhost => self.theme.ui.fg_ghost.as_f32(),
+                        },
+                    ));
                 }
-                let candidate_top = geometry.origin_y + run.line_top;
-                let candidate_bottom = candidate_top + run.line_height.max(1.0);
-                if candidate_bottom <= viewport_top || candidate_top >= viewport_bottom {
-                    continue;
+                EditorOverlay::FloatingBox {
+                    anchor_line,
+                    anchor_col: _,
+                    lines,
+                    style,
+                } => {
+                    const PAD_X: f32 = 10.0;
+                    const PAD_Y: f32 = 6.0;
+                    const BORDER: f32 = 1.0;
+                    let char_w = (geometry.font_size * 0.6).max(1.0);
+                    let max_len = lines.iter().map(|l| l.len()).max().unwrap_or(0);
+                    let popup_w = (max_len as f32 * char_w + PAD_X * 2.0)
+                        .clamp(120.0, geometry.viewport_text_width);
+                    let popup_h = (lines.len() as f32 * geometry.line_height + PAD_Y * 2.0)
+                        .max(geometry.line_height);
+
+                    let anchor_y = geometry.origin_y + (*anchor_line as f32) * geometry.line_height;
+                    let mut popup_y = anchor_y + geometry.line_height;
+                    if popup_y + popup_h > viewport_bottom {
+                        popup_y = (anchor_y - popup_h).max(center_bounds[1]);
+                    }
+                    let popup_x = geometry.viewport_text_left.max(center_bounds[0]);
+
+                    let bg_color = self.theme.ui.panel_bg.as_f32();
+                    let border_color = match style {
+                        FloatingBoxStyle::DocHover => self.theme.ui.accent.as_f32(),
+                        FloatingBoxStyle::PeekWindow => self.theme.ui.warning.as_f32(),
+                    };
+                    chrome_quads.push(RegionDrawInstance::new(
+                        [
+                            popup_x - BORDER,
+                            popup_y - BORDER,
+                            popup_w + BORDER * 2.0,
+                            popup_h + BORDER * 2.0,
+                        ],
+                        border_color,
+                    ));
+                    chrome_quads.push(RegionDrawInstance::new(
+                        [popup_x, popup_y, popup_w, popup_h],
+                        bg_color,
+                    ));
+
+                    let text_x = popup_x + PAD_X;
+                    let text_color = self.theme.ui.fg.as_f32();
+                    let line_w = (popup_w - PAD_X * 2.0).max(1.0);
+                    for (i, line_text) in lines.iter().enumerate() {
+                        let text_y = popup_y + PAD_Y + i as f32 * geometry.line_height;
+                        if text_y + geometry.line_height < viewport_top || text_y > viewport_bottom
+                        {
+                            continue;
+                        }
+                        self.editor_overlay_text_system
+                            .set_size(Some(line_w), Some(geometry.line_height));
+                        glyphs.extend(layout_panel_text(
+                            line_text,
+                            &mut self.editor_overlay_text_system,
+                            &mut self.atlas,
+                            &self.queue,
+                            text_x,
+                            text_y,
+                            text_color,
+                        ));
+                    }
                 }
-
-                line_top = Some(candidate_top);
-                line_height_px = run.line_height.max(1.0);
-                tail_x = tail_x.max(run_x_for_byte(geometry.origin_x, &run, byte_in_line));
             }
-
-            let Some(line_top) = line_top else {
-                continue;
-            };
-
-            let origin_x = (tail_x + 10.0).max(geometry.viewport_text_left + 4.0);
-            if origin_x >= viewport_right {
-                continue;
-            }
-
-            let width = (viewport_right - origin_x).max(1.0);
-            self.editor_overlay_text_system
-                .set_size(Some(width), Some(line_height_px));
-            glyphs.extend(layout_panel_text_italic(
-                text,
-                &mut self.editor_overlay_text_system,
-                &mut self.atlas,
-                &self.queue,
-                origin_x,
-                line_top,
-                match color_token {
-                    OverlayColorToken::UiFgGhost => self.theme.ui.fg_ghost.as_f32(),
-                },
-            ));
         }
 
+        self.editor_overlay_chrome_instances = chrome_quads;
         self.editor_overlay_glyph_instances = glyphs;
         self.editor_overlay_text_pipeline.upload_instances(
             &self.device,
@@ -591,9 +942,9 @@ impl Renderer {
             };
             let label = format!("{:>width$} ", num_str, width = gutter_digits);
             let color = if abs_line == cursor_line {
-                gutter_active_color
-            } else {
                 gutter_text_color
+            } else {
+                gutter_active_color
             };
 
             gutter_glyphs.extend(layout_panel_text(
@@ -616,5 +967,265 @@ impl Renderer {
         // Gutter background quads uploaded to region_pipeline (drawn before text in render()).
         self.region_pipeline
             .upload_instances(&self.device, &self.queue, &quads);
+    }
+
+    pub fn update_fuzzy_picker_buffer_content(
+        &mut self,
+        fuzzy_state: &crate::app::app_state::FuzzyState,
+        center_bounds: [f32; 4],
+    ) {
+        if center_bounds[2] < 1.0 || center_bounds[3] < 1.0 {
+            self.clear_editor_overlays();
+            return;
+        }
+
+        let font_size = self.theme.editor.font_size;
+        let line_height = self.theme.editor.line_height.max(font_size + 4.0);
+        self.editor_overlay_text_system
+            .set_metrics(Metrics::new(font_size, line_height));
+        self.editor_overlay_scissor = rect_to_scissor(center_bounds);
+
+        let pad_x = self.editor_padding_x.max(14.0);
+        let pad_y = self.editor_padding_y.max(14.0);
+        let panel_x = center_bounds[0] + pad_x;
+        let panel_y = center_bounds[1] + pad_y;
+        let panel_w = (center_bounds[2] - pad_x * 2.0).max(1.0);
+        let panel_h = (center_bounds[3] - pad_y * 2.0).max(1.0);
+        let gap = 16.0;
+
+        let left_w = (panel_w * 0.5).max(1.0);
+        let right_w = (panel_w - left_w - gap).max(1.0);
+        let left_x = panel_x;
+        let right_x = left_x + left_w + gap;
+
+        let header_h = line_height + 14.0;
+        let footer_h = line_height + 10.0;
+        let content_top = panel_y + header_h;
+        let content_bottom = (panel_y + panel_h - footer_h).max(content_top + line_height);
+        let content_h = (content_bottom - content_top).max(line_height);
+
+        let panel_bg = self.theme.ui.panel_bg.as_f32();
+        let editor_bg = self.theme.editor.bg.as_f32();
+        let mut divider = self.theme.ui.fg_ghost.as_f32();
+        divider[3] = divider[3].clamp(0.28, 0.42);
+        let accent = self.theme.ui.accent.as_f32();
+        let fg = self.theme.ui.fg.as_f32();
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let fg_ghost = self.theme.ui.fg_ghost.as_f32();
+        let selection_bg = self.theme.ui.selection_bg.as_f32();
+        let warning = self.theme.ui.warning.as_f32();
+
+        let mut glyphs = Vec::new();
+        let mut chrome = vec![
+            RegionDrawInstance::new([left_x, panel_y, left_w, panel_h], panel_bg),
+            RegionDrawInstance::new([right_x, panel_y, right_w, panel_h], editor_bg),
+            RegionDrawInstance::new([right_x - gap * 0.5, panel_y, 1.0, panel_h], divider),
+            RegionDrawInstance::new([left_x, panel_y + header_h - 1.0, left_w, 1.0], divider),
+            RegionDrawInstance::new([right_x, panel_y + header_h - 1.0, right_w, 1.0], divider),
+        ];
+
+        let header_y = panel_y + 6.0;
+
+        let title = match fuzzy_state.mode {
+            crate::app::command_palette::CommandPaletteMode::FilePicker => "File Picker",
+            crate::app::command_palette::CommandPaletteMode::LiveGrep => "Live Grep",
+            _ => "Search",
+        };
+        let left_header = format!("{}  > {}", title, fuzzy_state.query);
+
+        self.editor_overlay_text_system
+            .set_size(Some((left_w - 20.0).max(1.0)), Some(line_height));
+        glyphs.extend(layout_panel_text(
+            &clamp_monospace_text(&left_header, (left_w - 20.0).max(1.0), font_size),
+            &mut self.editor_overlay_text_system,
+            &mut self.atlas,
+            &self.queue,
+            left_x + 10.0,
+            header_y,
+            fg,
+        ));
+
+        let selected = fuzzy_state.results.get(fuzzy_state.selected_index);
+        let right_header = selected
+            .map(|item| item.label.clone())
+            .unwrap_or_else(|| "No file selected".to_string());
+
+        self.editor_overlay_text_system
+            .set_size(Some((right_w - 20.0).max(1.0)), Some(line_height));
+        glyphs.extend(layout_panel_text(
+            &clamp_monospace_text(&right_header, (right_w - 20.0).max(1.0), font_size),
+            &mut self.editor_overlay_text_system,
+            &mut self.atlas,
+            &self.queue,
+            right_x + 10.0,
+            header_y,
+            fg,
+        ));
+
+        let help_text = "Type to search  |  Ctrl+N/P / Up/Down to navigate  |  Enter to open";
+        self.editor_overlay_text_system
+            .set_size(Some((panel_w - 20.0).max(1.0)), Some(line_height));
+        glyphs.extend(layout_panel_text(
+            &clamp_monospace_text(help_text, (panel_w - 20.0).max(1.0), font_size),
+            &mut self.editor_overlay_text_system,
+            &mut self.atlas,
+            &self.queue,
+            panel_x + 10.0,
+            panel_y + panel_h - footer_h + 4.0,
+            fg_ghost,
+        ));
+
+        let row_h = line_height * 2.0 + 8.0;
+        let visible_rows = ((content_h / row_h).floor() as usize).max(1);
+        let mut start_idx = fuzzy_state.selected_index.saturating_sub(visible_rows / 2);
+        if start_idx + visible_rows > fuzzy_state.results.len() {
+            start_idx = fuzzy_state.results.len().saturating_sub(visible_rows);
+        }
+        let left_text_width = (left_w - 20.0).max(1.0);
+        for (slot, item_idx) in (start_idx..fuzzy_state.results.len())
+            .take(visible_rows)
+            .enumerate()
+        {
+            let item = &fuzzy_state.results[item_idx];
+            let row_y = content_top + slot as f32 * row_h;
+            let is_selected = item_idx == fuzzy_state.selected_index;
+            if is_selected {
+                chrome.push(RegionDrawInstance::new(
+                    [left_x + 6.0, row_y, (left_w - 12.0).max(1.0), row_h - 4.0],
+                    selection_bg,
+                ));
+                chrome.push(RegionDrawInstance::new(
+                    [left_x + 6.0, row_y, 3.0, row_h - 4.0],
+                    accent,
+                ));
+            }
+
+            self.editor_overlay_text_system
+                .set_size(Some(left_text_width), Some(line_height));
+            glyphs.extend(layout_panel_text(
+                &clamp_monospace_text(&item.label, left_text_width, font_size),
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                left_x + 14.0,
+                row_y + 4.0,
+                if is_selected { fg } else { fg_dim },
+            ));
+
+            let summary = item.secondary_label.clone().unwrap_or_default();
+            if !summary.is_empty() {
+                self.editor_overlay_text_system
+                    .set_size(Some(left_text_width), Some(line_height));
+                glyphs.extend(layout_panel_text(
+                    &clamp_monospace_text(&summary, left_text_width, font_size),
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    left_x + 14.0,
+                    row_y + line_height + 4.0,
+                    if is_selected { fg_dim } else { fg_ghost },
+                ));
+            }
+        }
+
+        if !fuzzy_state.preview_lines.is_empty() {
+            let line_number_width = estimate_monospace_width(
+                &format!(
+                    "{:>4}",
+                    fuzzy_state
+                        .preview_lines
+                        .last()
+                        .map(|line| line.line_number)
+                        .unwrap_or(1)
+                ),
+                font_size,
+            ) + 14.0;
+            let preview_text_width = (right_w - 20.0 - line_number_width).max(1.0);
+            let preview_rows = ((content_h / line_height).floor() as usize).max(1);
+            let mut preview_start = 0usize;
+            if let Some(target_idx) = fuzzy_state
+                .preview_lines
+                .iter()
+                .position(|line| line.is_target)
+            {
+                preview_start = target_idx.saturating_sub(preview_rows / 2);
+                if preview_start + preview_rows > fuzzy_state.preview_lines.len() {
+                    preview_start = fuzzy_state.preview_lines.len().saturating_sub(preview_rows);
+                }
+            }
+
+            for (slot, line) in fuzzy_state
+                .preview_lines
+                .iter()
+                .skip(preview_start)
+                .take(preview_rows)
+                .enumerate()
+            {
+                let row_y = content_top + slot as f32 * line_height;
+                if line.is_target {
+                    chrome.push(RegionDrawInstance::new(
+                        [right_x + 6.0, row_y, (right_w - 12.0).max(1.0), line_height],
+                        selection_bg,
+                    ));
+                    chrome.push(RegionDrawInstance::new(
+                        [right_x + 6.0, row_y, 3.0, line_height],
+                        accent,
+                    ));
+                }
+
+                self.editor_overlay_text_system
+                    .set_size(Some(line_number_width), Some(line_height));
+                glyphs.extend(layout_panel_text(
+                    &format!("{:>4}", line.line_number),
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    right_x + 10.0,
+                    row_y,
+                    if line.is_target { warning } else { fg_ghost },
+                ));
+
+                self.editor_overlay_text_system
+                    .set_size(Some(preview_text_width), Some(line_height));
+                glyphs.extend(layout_panel_text(
+                    &clamp_monospace_text(&line.text, preview_text_width, font_size),
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    right_x + 10.0 + line_number_width,
+                    row_y,
+                    if line.is_target { fg } else { fg_dim },
+                ));
+            }
+        } else {
+            let empty_message = if fuzzy_state.results.is_empty() {
+                if fuzzy_state.query.trim().is_empty() {
+                    "Type to search..."
+                } else {
+                    "No matches"
+                }
+            } else {
+                "Loading preview..."
+            };
+            self.editor_overlay_text_system
+                .set_size(Some((right_w - 20.0).max(1.0)), Some(line_height));
+            glyphs.extend(layout_panel_text(
+                empty_message,
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                right_x + 10.0,
+                content_top + 4.0,
+                fg_ghost,
+            ));
+        }
+
+        self.editor_overlay_chrome_instances = chrome;
+        self.editor_overlay_glyph_instances = glyphs;
+        self.editor_overlay_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.editor_overlay_glyph_instances,
+        );
     }
 }

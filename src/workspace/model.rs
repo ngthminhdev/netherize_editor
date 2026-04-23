@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, HashMap},
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -95,6 +95,9 @@ pub struct WorkspaceModel {
     pub ignore_rules: WorkspaceIgnoreRules,
     expanded_paths: BTreeSet<PathBuf>,
     selected_path: Option<PathBuf>,
+    scroll_offset: f32,
+    filter_query: String,
+    is_inputting_filter: bool,
 }
 
 impl WorkspaceModel {
@@ -117,6 +120,9 @@ impl WorkspaceModel {
             ignore_rules,
             expanded_paths: BTreeSet::new(),
             selected_path: None,
+            scroll_offset: 0.0,
+            filter_query: String::new(),
+            is_inputting_filter: false,
         };
         model.expanded_paths.insert(model.root_path.clone());
         model.prune_explorer_state();
@@ -136,6 +142,79 @@ impl WorkspaceModel {
 
     pub fn selected_path(&self) -> Option<&Path> {
         self.selected_path.as_deref()
+    }
+
+    pub fn scroll_offset(&self) -> f32 {
+        self.scroll_offset
+    }
+
+    pub fn scroll_offset_rows(&self, line_height: f32) -> usize {
+        let line_height = line_height.max(1.0);
+        (self.scroll_offset.max(0.0) / line_height).floor() as usize
+    }
+
+    pub fn filter_query(&self) -> &str {
+        &self.filter_query
+    }
+
+    pub fn is_inputting_filter(&self) -> bool {
+        self.is_inputting_filter
+    }
+
+    pub fn start_filter_input(&mut self) -> bool {
+        if self.is_inputting_filter {
+            return false;
+        }
+        self.is_inputting_filter = true;
+        true
+    }
+
+    pub fn stop_filter_input(&mut self) -> bool {
+        if !self.is_inputting_filter {
+            return false;
+        }
+        self.is_inputting_filter = false;
+        true
+    }
+
+    pub fn clear_filter(&mut self) -> bool {
+        if self.filter_query.is_empty() && !self.is_inputting_filter {
+            return false;
+        }
+        self.filter_query.clear();
+        self.is_inputting_filter = false;
+        true
+    }
+
+    pub fn append_filter_text(&mut self, text: &str) -> bool {
+        let filtered = text
+            .chars()
+            .filter(|ch| !ch.is_control())
+            .collect::<String>();
+        if filtered.is_empty() {
+            return false;
+        }
+        self.filter_query.push_str(&filtered);
+        true
+    }
+
+    pub fn backspace_filter(&mut self) -> bool {
+        self.filter_query.pop().is_some()
+    }
+
+    pub fn has_active_filter(&self) -> bool {
+        !self.filter_query.is_empty()
+    }
+
+    pub fn node_matches_filter(&self, path: &Path) -> bool {
+        if self.filter_query.is_empty() {
+            return true;
+        }
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            return false;
+        };
+        name.to_lowercase()
+            .contains(&self.filter_query.to_lowercase())
     }
 
     pub fn select_path(&mut self, path: &Path) -> bool {
@@ -236,6 +315,45 @@ impl WorkspaceModel {
         changed
     }
 
+    pub fn expand_to_path(&mut self, target_path: &Path) -> bool {
+        self.reveal_path(target_path)
+    }
+
+    pub fn scroll_to_selected_node(&mut self, viewport_height: f32, line_height: f32) -> bool {
+        let Some(selected_path) = self.selected_path.as_ref() else {
+            return false;
+        };
+        let line_height = line_height.max(1.0);
+        let viewport_height = viewport_height.max(line_height);
+        let visible_paths = self.visible_node_paths();
+        let Some(index) = visible_paths
+            .iter()
+            .position(|path| path.as_path() == selected_path.as_path())
+        else {
+            return false;
+        };
+
+        let node_y = index as f32 * line_height;
+        let node_bottom = node_y + line_height;
+        let padding = (line_height * 2.0).min(((viewport_height - line_height) * 0.5).max(0.0));
+        let viewport_top = self.scroll_offset.max(0.0);
+        let viewport_bottom = viewport_top + viewport_height;
+
+        let next_offset = if node_y < viewport_top + padding {
+            (node_y - padding).max(0.0)
+        } else if node_bottom > viewport_bottom - padding {
+            (node_bottom + padding - viewport_height).max(0.0)
+        } else {
+            return false;
+        };
+
+        if (self.scroll_offset - next_offset).abs() < f32::EPSILON {
+            return false;
+        }
+        self.scroll_offset = next_offset;
+        true
+    }
+
     fn contains_path(&self, path: &Path) -> bool {
         path == self.root_path || self.nodes.iter().any(|node| node.path == path)
     }
@@ -267,11 +385,156 @@ impl WorkspaceModel {
             .is_some_and(|path| !self.contains_path(path))
         {
             self.selected_path = None;
+            self.scroll_offset = 0.0;
         }
     }
 
     fn normalize_path(path: &Path) -> PathBuf {
         path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+    }
+
+    fn visible_node_paths(&self) -> Vec<PathBuf> {
+        let mut node_types: HashMap<PathBuf, WorkspaceNodeType> = HashMap::new();
+        let mut children_map: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
+
+        for node in &self.nodes {
+            node_types.insert(node.path.clone(), node.file_type);
+        }
+
+        for node in &self.nodes {
+            if node.path == self.root_path {
+                continue;
+            }
+            let Some(parent) = node.path.parent() else {
+                continue;
+            };
+            if !parent.starts_with(&self.root_path) {
+                continue;
+            }
+            children_map
+                .entry(parent.to_path_buf())
+                .or_default()
+                .push(node.path.clone());
+        }
+
+        for children in children_map.values_mut() {
+            children.sort_by(|left, right| {
+                let left_type = node_types
+                    .get(left)
+                    .copied()
+                    .unwrap_or(WorkspaceNodeType::File);
+                let right_type = node_types
+                    .get(right)
+                    .copied()
+                    .unwrap_or(WorkspaceNodeType::File);
+                let left_rank = if left_type == WorkspaceNodeType::Folder {
+                    0
+                } else {
+                    1
+                };
+                let right_rank = if right_type == WorkspaceNodeType::Folder {
+                    0
+                } else {
+                    1
+                };
+                left_rank.cmp(&right_rank).then_with(|| left.cmp(right))
+            });
+        }
+
+        let trimmed_filter = self.filter_query.trim();
+        let filter_query = (!trimmed_filter.is_empty()).then(|| trimmed_filter.to_lowercase());
+        let mut subtree_matches: HashMap<PathBuf, bool> = HashMap::new();
+        if let Some(query) = filter_query.as_deref() {
+            Self::compute_visible_filter_matches(
+                &self.root_path,
+                &children_map,
+                query,
+                &mut subtree_matches,
+            );
+        }
+
+        let mut out = Vec::new();
+        self.collect_visible_node_paths(
+            &self.root_path,
+            &node_types,
+            &children_map,
+            filter_query.as_deref(),
+            &subtree_matches,
+            &mut out,
+        );
+        out
+    }
+
+    fn compute_visible_filter_matches(
+        path: &Path,
+        children_map: &HashMap<PathBuf, Vec<PathBuf>>,
+        query: &str,
+        out: &mut HashMap<PathBuf, bool>,
+    ) -> bool {
+        let self_match = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.to_lowercase().contains(query));
+        let mut subtree_match = self_match;
+
+        if let Some(children) = children_map.get(path) {
+            for child in children {
+                subtree_match |=
+                    Self::compute_visible_filter_matches(child, children_map, query, out);
+            }
+        }
+
+        out.insert(path.to_path_buf(), subtree_match);
+        subtree_match
+    }
+
+    fn collect_visible_node_paths(
+        &self,
+        parent: &Path,
+        node_types: &HashMap<PathBuf, WorkspaceNodeType>,
+        children_map: &HashMap<PathBuf, Vec<PathBuf>>,
+        filter_query: Option<&str>,
+        subtree_matches: &HashMap<PathBuf, bool>,
+        out: &mut Vec<PathBuf>,
+    ) {
+        let Some(children) = children_map.get(parent) else {
+            return;
+        };
+
+        for child in children {
+            let file_type = node_types
+                .get(child)
+                .copied()
+                .unwrap_or(WorkspaceNodeType::File);
+            let subtree_match =
+                filter_query.is_none_or(|_| subtree_matches.get(child).copied().unwrap_or(false));
+            if !subtree_match {
+                continue;
+            }
+
+            let has_matching_descendant = filter_query.is_some()
+                && file_type == WorkspaceNodeType::Folder
+                && children_map.get(child).is_some_and(|children| {
+                    children
+                        .iter()
+                        .any(|nested| subtree_matches.get(nested).copied().unwrap_or(false))
+                });
+            let is_expanded = file_type == WorkspaceNodeType::Folder
+                && (self.expanded_paths.contains(child) || has_matching_descendant);
+
+            out.push(child.clone());
+
+            if file_type == WorkspaceNodeType::Folder && is_expanded {
+                self.collect_visible_node_paths(
+                    child,
+                    node_types,
+                    children_map,
+                    filter_query,
+                    subtree_matches,
+                    out,
+                );
+            }
+        }
     }
 }
 
@@ -311,6 +574,61 @@ mod tests {
             workspace.selected_path(),
             Some(canonical_nested_file.as_path())
         );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn expand_to_path_expands_ancestors_and_selects_file() {
+        let root = std::env::temp_dir().join(format!(
+            "netherize_workspace_expand_to_path_{}",
+            std::process::id()
+        ));
+        let nested_dir = root.join("src/ui");
+        let nested_file = nested_dir.join("tabs.rs");
+        fs::create_dir_all(&nested_dir).expect("create nested dirs");
+        fs::write(&nested_file, "pub fn tabs() {}\n").expect("write nested file");
+        let canonical_root = root.canonicalize().expect("canonical root");
+        let canonical_src = canonical_root.join("src");
+        let canonical_nested_dir = canonical_root.join("src/ui");
+        let canonical_nested_file = canonical_nested_dir.join("tabs.rs");
+
+        let mut workspace = WorkspaceModel::load(root.clone()).expect("load workspace");
+        assert!(workspace.expand_to_path(&nested_file));
+        assert!(workspace.is_expanded(&canonical_root));
+        assert!(workspace.is_expanded(&canonical_src));
+        assert!(workspace.is_expanded(&canonical_nested_dir));
+        assert_eq!(
+            workspace.selected_path(),
+            Some(canonical_nested_file.as_path())
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn scroll_to_selected_node_keeps_selected_row_in_view() {
+        let root = std::env::temp_dir().join(format!(
+            "netherize_workspace_scroll_selected_{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).expect("create root");
+        for idx in 0..30 {
+            fs::write(root.join(format!("file_{idx:02}.rs")), "fn main() {}\n")
+                .expect("write file");
+        }
+        let canonical_root = root.canonicalize().expect("canonical root");
+        let lower_file = canonical_root.join("file_25.rs");
+        let upper_file = canonical_root.join("file_01.rs");
+
+        let mut workspace = WorkspaceModel::load(root.clone()).expect("load workspace");
+        assert!(workspace.expand_to_path(&lower_file));
+        assert!(workspace.scroll_to_selected_node(50.0, 10.0));
+        assert!(workspace.scroll_offset() > 0.0);
+
+        assert!(workspace.expand_to_path(&upper_file));
+        assert!(workspace.scroll_to_selected_node(50.0, 10.0));
+        assert_eq!(workspace.scroll_offset(), 0.0);
 
         let _ = fs::remove_dir_all(root);
     }
@@ -364,6 +682,53 @@ mod tests {
         assert!(workspace.is_expanded(&canonical_src));
         assert!(workspace.is_expanded(&canonical_ui));
         assert!(workspace.is_expanded(&canonical_components));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn filter_keeps_matching_descendant_and_auto_expands_ancestor() {
+        let root = std::env::temp_dir().join(format!(
+            "netherize_workspace_filter_tree_{}",
+            std::process::id()
+        ));
+        let nested_dir = root.join("src/ui");
+        let match_file = nested_dir.join("filter_panel.rs");
+        let other_file = root.join("README.md");
+        fs::create_dir_all(&nested_dir).expect("create nested dirs");
+        fs::write(&match_file, "pub fn panel() {}\n").expect("write match file");
+        fs::write(&other_file, "# docs\n").expect("write other file");
+
+        let canonical_root = root.canonicalize().expect("canonical root");
+        let canonical_src = canonical_root.join("src");
+        let canonical_ui = canonical_root.join("src/ui");
+        let canonical_match_file = canonical_root.join("src/ui/filter_panel.rs");
+
+        let mut workspace = WorkspaceModel::load(root.clone()).expect("load workspace");
+        assert!(workspace.append_filter_text("panel"));
+        assert!(workspace.has_active_filter());
+        assert!(workspace.node_matches_filter(&canonical_match_file));
+        assert!(!workspace.node_matches_filter(&other_file));
+        assert!(!workspace.node_matches_filter(&canonical_src));
+        assert!(!workspace.node_matches_filter(&canonical_ui));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn clear_filter_resets_query_and_input_state() {
+        let root = std::env::temp_dir().join(format!(
+            "netherize_workspace_filter_clear_{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("src")).expect("create dirs");
+
+        let mut workspace = WorkspaceModel::load(root.clone()).expect("load workspace");
+        assert!(workspace.start_filter_input());
+        assert!(workspace.append_filter_text("abc"));
+        assert!(workspace.clear_filter());
+        assert_eq!(workspace.filter_query(), "");
+        assert!(!workspace.is_inputting_filter());
 
         let _ = fs::remove_dir_all(root);
     }

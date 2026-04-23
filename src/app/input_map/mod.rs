@@ -26,6 +26,7 @@ use helpers::{insert_command_from_text, palette_query_from_text};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputFocusContext {
     Editor,
+    References,
     Explorer,
     Inspector,
     BottomPanel,
@@ -34,22 +35,28 @@ pub enum InputFocusContext {
     /// Buffer terminal chiếm toàn bộ center (lazygit, v.v.).
     /// Mọi input — kể cả ESC — được forward thẳng vào PTY.
     BufferTerminal,
+    FuzzyPicker,
 }
 
 impl InputFocusContext {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Editor => "editor",
+            Self::References => "references",
             Self::Explorer => "explorer",
             Self::Inspector => "inspector",
             Self::BottomPanel => "bottom_panel",
             Self::Terminal => "terminal",
             Self::BufferTerminal => "buffer_terminal",
+            Self::FuzzyPicker => "fuzzy_picker",
         }
     }
 
     pub fn allows_leader(self) -> bool {
-        matches!(self, Self::Editor | Self::Explorer | Self::Inspector)
+        matches!(
+            self,
+            Self::Editor | Self::References | Self::Explorer | Self::Inspector | Self::FuzzyPicker
+        )
     }
 }
 
@@ -63,7 +70,7 @@ pub struct KeybindingContext {
 impl KeybindingContext {
     pub fn for_mode(mode: EditorMode) -> Self {
         let focus = match mode {
-            EditorMode::TerminalFocus => InputFocusContext::Terminal,
+            EditorMode::TerminalFocus | EditorMode::TerminalNormal => InputFocusContext::Terminal,
             _ => InputFocusContext::Editor,
         };
         Self {
@@ -151,8 +158,14 @@ impl InputMap {
             return None;
         }
 
+        if context.focus == InputFocusContext::References {
+            return self.resolve_references_focus(input);
+        }
+        if context.focus == InputFocusContext::FuzzyPicker {
+            return self.resolve_fuzzy_picker_focus(input, context);
+        }
         if context.focus == InputFocusContext::Terminal {
-            return self.resolve_terminal_focus(input);
+            return self.resolve_terminal_focus(input, context.mode);
         }
         if context.focus == InputFocusContext::Explorer {
             return self.resolve_explorer_focus(input);
@@ -266,11 +279,13 @@ impl InputMap {
     fn sequence_mode_str(&self, context: KeybindingContext) -> &'static str {
         match context.focus {
             InputFocusContext::Editor => editor_mode_str(context.mode),
+            InputFocusContext::References => editor_mode_str(context.mode),
             InputFocusContext::Explorer => "explorer",
             InputFocusContext::Inspector => "inspector",
-            InputFocusContext::Terminal => "terminal",
+            InputFocusContext::Terminal => editor_mode_str(context.mode),
             InputFocusContext::BufferTerminal => "terminal",
             InputFocusContext::BottomPanel => "bottom_panel",
+            InputFocusContext::FuzzyPicker => editor_mode_str(context.mode),
         }
     }
 

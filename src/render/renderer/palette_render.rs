@@ -23,7 +23,11 @@ impl Renderer {
         if self.last_palette_model.as_ref() == Some(model) {
             return;
         }
-        if model.mode == crate::app::command_palette::CommandPaletteMode::RecentProjects {
+        if matches!(
+            model.mode,
+            crate::app::command_palette::CommandPaletteMode::RecentProjects
+                | crate::app::command_palette::CommandPaletteMode::ThemeSelector
+        ) {
             self.render_recent_projects(model);
         } else if model.mode == crate::app::command_palette::CommandPaletteMode::LiveGrep {
             self.render_live_grep_picker(model);
@@ -630,7 +634,7 @@ impl Renderer {
         self.palette_glyph_instances = glyphs;
     }
 
-    // ── Recent Projects picker (2-column: name | path) ────────────────────────
+    // ── Name/path picker (Recent Projects + Theme Selector) ───────────────────
 
     fn render_recent_projects(&mut self, model: &CommandPaletteRenderModel) {
         let [panel_x, panel_y, panel_w, panel_h] = model.panel_bounds;
@@ -670,9 +674,15 @@ impl Renderer {
 
         let badge_text = format!(" {} ", model.title);
         let badge_w = badge_text.chars().count() as f32 * font_size * 0.60 + 4.0;
+        let badge_color =
+            if model.mode == crate::app::command_palette::CommandPaletteMode::ThemeSelector {
+                model.success_color
+            } else {
+                model.info_color
+            };
         quads.push(RegionDrawInstance::new(
             [text_x, row_top + 2.0, badge_w, line_h - 4.0],
-            model.info_color,
+            badge_color,
         ));
         glyphs.extend(layout_panel_text(
             &badge_text,
@@ -708,8 +718,24 @@ impl Renderer {
         // ── Column header labels ────────────────────────────────────────────────
         let mut col_header_color = model.hint_color;
         col_header_color[3] *= 0.7;
+        let (name_header, path_header, empty_text, footer_text) =
+            if model.mode == crate::app::command_palette::CommandPaletteMode::ThemeSelector {
+                (
+                    "PROFILE",
+                    "SOURCE",
+                    "  (no themes found in repo/user theme folders)",
+                    "  ↑↓ navigate   ↵ apply theme   esc close",
+                )
+            } else {
+                (
+                    "NAME",
+                    "PATH",
+                    "  (no recent projects — open a folder with Cmd+O)",
+                    "  ↑↓ navigate   ↵ open   esc close",
+                )
+            };
         glyphs.extend(layout_panel_text(
-            "NAME",
+            name_header,
             &mut self.palette_text_system,
             &mut self.atlas,
             &self.queue,
@@ -718,7 +744,7 @@ impl Renderer {
             col_header_color,
         ));
         glyphs.extend(layout_panel_text(
-            "PATH",
+            path_header,
             &mut self.palette_text_system,
             &mut self.atlas,
             &self.queue,
@@ -812,7 +838,7 @@ impl Renderer {
 
         if model.result_labels.is_empty() {
             glyphs.extend(layout_panel_text(
-                "  (no recent projects — open a folder with Cmd+O)",
+                empty_text,
                 &mut self.palette_text_system,
                 &mut self.atlas,
                 &self.queue,
@@ -829,7 +855,7 @@ impl Renderer {
             model.border_color,
         ));
         glyphs.extend(layout_panel_text(
-            "  ↑↓ navigate   ↵ open   esc close",
+            footer_text,
             &mut self.palette_text_system,
             &mut self.atlas,
             &self.queue,
@@ -894,10 +920,10 @@ impl Renderer {
 
     // ── Leap label overlay ─────────────────────────────────────────────────────
 
-    /// Draw cyan label chars + amber-bg badges over each Leap target glyph.
+    /// Draw cyan label chars + amber-bg badges over each Leap target glyph in the editor.
     ///
-    /// `labels`: (label_char, char_idx_in_rope) pairs from `generate_leap_labels`.
-    pub fn update_leap_labels(
+    /// `labels`: (label_char, char_idx_in_rope) pairs from `generate_editor_leap_labels`.
+    pub fn update_editor_leap_labels(
         &mut self,
         labels: &[(char, usize)],
         app_state: &AppState,

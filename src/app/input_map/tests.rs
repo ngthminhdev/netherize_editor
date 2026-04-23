@@ -65,7 +65,7 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::SwitchMode(ModeEvent::EnterNormal)),
         },
         Case {
-            name: "insert cmd+v -> PasteSystemClipboard",
+            name: "insert cmd+v -> EditorPaste",
             context: KeybindingContext::for_mode(EditorMode::Insert),
             input: NormalizedInput {
                 physical_key: Some(KeyCode::KeyV),
@@ -73,7 +73,7 @@ fn table_driven_keybinding_resolution() {
                 text: Some("v".to_string()),
                 modifiers: ModifiersState::CONTROL,
             },
-            expected: Some(Command::PasteSystemClipboard),
+            expected: Some(Command::EditorPaste),
         },
         Case {
             name: "normal escape -> ClearSearchHighlights",
@@ -121,6 +121,48 @@ fn table_driven_keybinding_resolution() {
             expected: None,
         },
         Case {
+            name: "terminal focus cmd+v -> TerminalPaste",
+            context: KeybindingContext::with_focus(
+                EditorMode::TerminalFocus,
+                InputFocusContext::Terminal,
+            ),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyV),
+                named_key: None,
+                text: Some("v".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::TerminalPaste),
+        },
+        Case {
+            name: "terminal focus ctrl+h -> None (strict PTY input)",
+            context: KeybindingContext::with_focus(
+                EditorMode::TerminalFocus,
+                InputFocusContext::Terminal,
+            ),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyH),
+                named_key: None,
+                text: Some("h".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: None,
+        },
+        Case {
+            name: "terminal focus ctrl+w -> None (global focus_back blocked)",
+            context: KeybindingContext::with_focus(
+                EditorMode::TerminalFocus,
+                InputFocusContext::Terminal,
+            ),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyW),
+                named_key: None,
+                text: Some("w".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: None,
+        },
+        Case {
             name: "terminal focus escape -> FocusEditor",
             context: KeybindingContext::with_focus(
                 EditorMode::TerminalFocus,
@@ -128,6 +170,57 @@ fn table_driven_keybinding_resolution() {
             ),
             input: input_from_named(NamedKey::Escape),
             expected: Some(Command::FocusEditor),
+        },
+        Case {
+            name: "terminal focus ctrl+q -> EnterTerminalNormal",
+            context: KeybindingContext::with_focus(
+                EditorMode::TerminalFocus,
+                InputFocusContext::Terminal,
+            ),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyQ),
+                named_key: None,
+                text: Some("q".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::SwitchMode(ModeEvent::EnterTerminalNormal)),
+        },
+        Case {
+            name: "terminal normal j -> MoveDown",
+            context: KeybindingContext::with_focus(
+                EditorMode::TerminalNormal,
+                InputFocusContext::Terminal,
+            ),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyJ),
+                named_key: None,
+                text: Some("j".to_string()),
+                modifiers: ModifiersState::empty(),
+            },
+            expected: Some(Command::MoveDown),
+        },
+        Case {
+            name: "terminal normal escape -> EnterTerminalFocus",
+            context: KeybindingContext::with_focus(
+                EditorMode::TerminalNormal,
+                InputFocusContext::Terminal,
+            ),
+            input: input_from_named(NamedKey::Escape),
+            expected: Some(Command::SwitchMode(ModeEvent::FocusTerminal)),
+        },
+        Case {
+            name: "terminal normal cmd+v -> TerminalPaste",
+            context: KeybindingContext::with_focus(
+                EditorMode::TerminalNormal,
+                InputFocusContext::Terminal,
+            ),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyV),
+                named_key: None,
+                text: Some("v".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::TerminalPaste),
         },
         Case {
             name: "normal p -> PasteAfter",
@@ -141,7 +234,7 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::PasteAfter),
         },
         Case {
-            name: "normal cmd+v -> PasteSystemClipboard",
+            name: "normal cmd+v -> EditorPaste",
             context: KeybindingContext::for_mode(EditorMode::Normal),
             input: NormalizedInput {
                 physical_key: Some(KeyCode::KeyV),
@@ -149,7 +242,7 @@ fn table_driven_keybinding_resolution() {
                 text: Some("v".to_string()),
                 modifiers: ModifiersState::CONTROL,
             },
-            expected: Some(Command::PasteSystemClipboard),
+            expected: Some(Command::EditorPaste),
         },
         Case {
             name: "normal a -> AppendAfterCursor",
@@ -279,6 +372,60 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::ExplorerExpandAllUnderNode),
         },
         Case {
+            name: "explorer f -> ExplorerStartFilter",
+            context: KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyF),
+                named_key: None,
+                text: Some("f".to_string()),
+                modifiers: ModifiersState::empty(),
+            },
+            expected: Some(Command::ExplorerStartFilter),
+        },
+        Case {
+            name: "explorer F -> ExplorerClearFilter",
+            context: KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyF),
+                named_key: None,
+                text: Some("F".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::ExplorerClearFilter),
+        },
+        Case {
+            name: "references arrow down -> ReferencesSelectNext",
+            context: KeybindingContext::with_focus(
+                EditorMode::Normal,
+                InputFocusContext::References,
+            ),
+            input: input_from_named(NamedKey::ArrowDown),
+            expected: Some(Command::ReferencesSelectNext),
+        },
+        Case {
+            name: "references ctrl+p -> ReferencesSelectPrev",
+            context: KeybindingContext::with_focus(
+                EditorMode::Normal,
+                InputFocusContext::References,
+            ),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyP),
+                named_key: None,
+                text: Some("p".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::ReferencesSelectPrev),
+        },
+        Case {
+            name: "references enter -> ReferencesOpenSelection",
+            context: KeybindingContext::with_focus(
+                EditorMode::Normal,
+                InputFocusContext::References,
+            ),
+            input: input_from_named(NamedKey::Enter),
+            expected: Some(Command::ReferencesOpenSelection),
+        },
+        Case {
             name: "palette text -> FilePickerAppendQuery",
             context: KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true),
             input: NormalizedInput {
@@ -307,7 +454,7 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::YankSelection),
         },
         Case {
-            name: "visual cmd+v -> PasteSystemClipboard",
+            name: "visual cmd+v -> EditorPaste",
             context: KeybindingContext::for_mode(EditorMode::Visual),
             input: NormalizedInput {
                 physical_key: Some(KeyCode::KeyV),
@@ -315,10 +462,10 @@ fn table_driven_keybinding_resolution() {
                 text: Some("v".to_string()),
                 modifiers: ModifiersState::CONTROL,
             },
-            expected: Some(Command::PasteSystemClipboard),
+            expected: Some(Command::EditorPaste),
         },
         Case {
-            name: "palette cmd+v -> PasteSystemClipboard",
+            name: "palette cmd+v -> EditorPaste",
             context: KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true),
             input: NormalizedInput {
                 physical_key: Some(KeyCode::KeyV),
@@ -326,7 +473,21 @@ fn table_driven_keybinding_resolution() {
                 text: Some("v".to_string()),
                 modifiers: ModifiersState::CONTROL,
             },
-            expected: Some(Command::PasteSystemClipboard),
+            expected: Some(Command::EditorPaste),
+        },
+        Case {
+            name: "fuzzy picker insert cmd+v -> EditorPaste",
+            context: KeybindingContext::with_focus(
+                EditorMode::Insert,
+                InputFocusContext::FuzzyPicker,
+            ),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyV),
+                named_key: None,
+                text: Some("v".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::EditorPaste),
         },
         Case {
             name: "palette ctrl+n -> OverlaySelectNext",
@@ -533,10 +694,130 @@ fn leader_and_chord_resolution_work() {
         .expect("leader+f+f should resolve");
     match third {
         SequenceMatch::Dispatch(resolved) => {
-            assert_eq!(resolved.command, Command::OpenFileFinder);
+            assert_eq!(resolved.command, Command::OpenFilePicker);
         }
         other => panic!("expected dispatch for leader f f, got {:?}", other),
     }
+}
+
+#[test]
+fn leader_f_w_sequence_maps_to_search_in_files() {
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let space = input_from_named(NamedKey::Space);
+    let first = map
+        .resolve_sequence_start(&space, context)
+        .expect("space should start chord");
+    let pending = match first {
+        SequenceMatch::Pending(pending) => pending,
+        other => panic!("expected pending leader sequence, got {:?}", other),
+    };
+
+    let follow_f = NormalizedInput {
+        physical_key: Some(KeyCode::KeyF),
+        named_key: None,
+        text: Some("f".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let second = map
+        .resolve_sequence_next(&pending, &follow_f, context)
+        .expect("leader+f should still be pending");
+    let pending = match second {
+        SequenceMatch::Pending(pending) => pending,
+        other => panic!("expected second pending sequence, got {:?}", other),
+    };
+
+    let follow_w = NormalizedInput {
+        physical_key: Some(KeyCode::KeyW),
+        named_key: None,
+        text: Some("w".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let resolved = map
+        .resolve_sequence_next(&pending, &follow_w, context)
+        .expect("leader+f+w should resolve");
+    match resolved {
+        SequenceMatch::Dispatch(resolved) => {
+            assert_eq!(resolved.command, Command::SearchInFiles);
+        }
+        other => panic!("expected dispatch for leader f w, got {:?}", other),
+    }
+}
+
+#[test]
+fn fuzzy_picker_insert_text_appends_query() {
+    let map = make_map();
+    let resolved = map.resolve(
+        &NormalizedInput {
+            physical_key: Some(KeyCode::KeyA),
+            named_key: None,
+            text: Some("a".to_string()),
+            modifiers: ModifiersState::empty(),
+        },
+        KeybindingContext::with_focus(EditorMode::Insert, InputFocusContext::FuzzyPicker),
+    );
+
+    assert_eq!(
+        resolved.map(|matched| matched.command),
+        Some(Command::FilePickerAppendQuery("a".to_string()))
+    );
+}
+
+#[test]
+fn fuzzy_picker_normal_q_closes_buffer() {
+    let map = make_map();
+    let resolved = map.resolve(
+        &NormalizedInput {
+            physical_key: Some(KeyCode::KeyQ),
+            named_key: None,
+            text: Some("q".to_string()),
+            modifiers: ModifiersState::empty(),
+        },
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::FuzzyPicker),
+    );
+
+    assert_eq!(
+        resolved.map(|matched| matched.command),
+        Some(Command::BufferCloseCurrent)
+    );
+}
+
+#[test]
+fn fuzzy_picker_insert_ctrl_n_selects_next() {
+    let map = make_map();
+    let resolved = map.resolve(
+        &NormalizedInput {
+            physical_key: Some(KeyCode::KeyN),
+            named_key: None,
+            text: Some("n".to_string()),
+            modifiers: ModifiersState::CONTROL,
+        },
+        KeybindingContext::with_focus(EditorMode::Insert, InputFocusContext::FuzzyPicker),
+    );
+
+    assert_eq!(
+        resolved.map(|matched| matched.command),
+        Some(Command::OverlaySelectNext)
+    );
+}
+
+#[test]
+fn fuzzy_picker_normal_j_selects_next() {
+    let map = make_map();
+    let resolved = map.resolve(
+        &NormalizedInput {
+            physical_key: Some(KeyCode::KeyJ),
+            named_key: None,
+            text: Some("j".to_string()),
+            modifiers: ModifiersState::empty(),
+        },
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::FuzzyPicker),
+    );
+
+    assert_eq!(
+        resolved.map(|matched| matched.command),
+        Some(Command::OverlaySelectNext)
+    );
 }
 
 #[test]

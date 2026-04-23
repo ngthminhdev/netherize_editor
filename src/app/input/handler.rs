@@ -7,17 +7,20 @@ use winit::{
 
 use crate::{
     app::input_map::{InputFocusContext, InputMap, KeybindingContext, SequenceMatch},
-    core::{commands::Command, mode::EditorMode},
+    core::{
+        commands::{Command, Operator},
+        mode::EditorMode,
+    },
 };
 
 use super::{
     helpers::{
-        bracket_chars_from_input, inner_or_around_from_input, is_modifier_only_key,
-        numeric_count_digit_from_input, printable_char_from_input, replace_char_from_input,
-        should_start_replace_pending, should_start_yank_pending, terminal_input_payload,
+        inner_or_around_from_input, is_modifier_only_key, numeric_count_digit_from_input,
+        printable_char_from_input, replace_char_from_input, should_start_replace_pending,
+        should_start_yank_pending, terminal_input_payload, text_object_kind_from_input,
     },
     model::{InputRouteOutcome, NormalizedInput, TranslatedInput},
-    pending::{PendingInput, PendingState, TextObjectOp, classify_pending_state},
+    pending::{PendingInput, PendingState, classify_pending_state},
 };
 
 /// InputHandler là lớp cầu nối:
@@ -412,24 +415,25 @@ impl InputHandler {
             }
 
             match &pending.state {
-                PendingState::VisualTextObjectModifier { inner } => {
-                    let inner = *inner;
-                    if let Some((open, close)) = bracket_chars_from_input(&normalized) {
+                PendingState::VisualTextObjectModifier { modifier } => {
+                    let modifier = *modifier;
+                    if let Some(kind) = text_object_kind_from_input(&normalized) {
                         self.clear_pending_input();
-                        let command = Command::SelectTextObject {
-                            open_char: open,
-                            close_char: close,
-                            inner,
+                        let command = Command::TextObjectAction {
+                            op: Operator::Visual,
+                            modifier,
+                            kind,
                         };
                         let (repeat_count, count_ignored) =
                             self.consume_repeat_count_for_command(&command, Some(&pending.state));
                         return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                             input_debug,
                             format!(
-                                "mode={} focus={} -> visual text object {open}{close} {}",
+                                "mode={} focus={} -> visual text object {:?} {:?}",
                                 context.mode.as_str(),
                                 context.focus.as_str(),
-                                if inner { "inner" } else { "around" }
+                                modifier,
+                                kind
                             ),
                             command,
                             repeat_count,
@@ -443,7 +447,7 @@ impl InputHandler {
                         return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                             input_debug,
                             format!(
-                                "mode={} focus={} -> visual text object: not bracket, fallback -> {}",
+                                "mode={} focus={} -> visual text object: not a text object kind, fallback -> {}",
                                 context.mode.as_str(),
                                 context.focus.as_str(),
                                 resolved.reason
@@ -456,44 +460,29 @@ impl InputHandler {
                     return Some(InputRouteOutcome::NoDispatch {
                         input_debug,
                         route_debug: format!(
-                            "mode={} focus={} -> visual text object: not a bracket, no fallback",
+                            "mode={} focus={} -> visual text object: not a text object kind, no fallback",
                             context.mode.as_str(),
                             context.focus.as_str()
                         ),
                     });
                 }
 
-                PendingState::OperatorWithObject { op, inner } => {
+                PendingState::OperatorWithObject { op, modifier } => {
                     let op = *op;
-                    let inner = *inner;
-                    if let Some((open, close)) = bracket_chars_from_input(&normalized) {
-                        let command = match op {
-                            TextObjectOp::Delete => Command::DeleteTextObject {
-                                open_char: open,
-                                close_char: close,
-                                inner,
-                            },
-                            TextObjectOp::Change => Command::ChangeTextObject {
-                                open_char: open,
-                                close_char: close,
-                                inner,
-                            },
-                            TextObjectOp::Yank => Command::YankTextObject {
-                                open_char: open,
-                                close_char: close,
-                                inner,
-                            },
-                        };
+                    let modifier = *modifier;
+                    if let Some(kind) = text_object_kind_from_input(&normalized) {
+                        let command = Command::TextObjectAction { op, modifier, kind };
                         self.clear_pending_input();
                         let (repeat_count, count_ignored) =
                             self.consume_repeat_count_for_command(&command, Some(&pending.state));
                         return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                             input_debug,
                             format!(
-                                "mode={} focus={} -> text object {open}{close} {} ({:?})",
+                                "mode={} focus={} -> text object {:?} {:?} ({:?})",
                                 context.mode.as_str(),
                                 context.focus.as_str(),
-                                if inner { "inner" } else { "around" },
+                                modifier,
+                                kind,
                                 op
                             ),
                             command,
@@ -505,7 +494,7 @@ impl InputHandler {
                     return Some(InputRouteOutcome::NoDispatch {
                         input_debug,
                         route_debug: format!(
-                            "mode={} focus={} -> operator+object: not a bracket, reset",
+                            "mode={} focus={} -> operator+object: not a text object kind, reset",
                             context.mode.as_str(),
                             context.focus.as_str()
                         ),
@@ -546,26 +535,26 @@ impl InputHandler {
                         }
                     }
 
-                    if let Some(inner) = inner_or_around_from_input(&normalized) {
+                    if let Some(modifier) = inner_or_around_from_input(&normalized) {
                         let op = match &pending.state {
-                            PendingState::OperatorDelete => TextObjectOp::Delete,
-                            PendingState::OperatorChange => TextObjectOp::Change,
-                            PendingState::OperatorYank => TextObjectOp::Yank,
+                            PendingState::OperatorDelete => Operator::Delete,
+                            PendingState::OperatorChange => Operator::Change,
+                            PendingState::OperatorYank => Operator::Yank,
                             _ => unreachable!(),
                         };
                         self.pending_input = Some(PendingInput {
-                            state: PendingState::OperatorWithObject { op, inner },
+                            state: PendingState::OperatorWithObject { op, modifier },
                             sequence: None,
                             started_at: now,
                         });
                         return Some(InputRouteOutcome::NoDispatch {
                             input_debug,
                             route_debug: format!(
-                                "mode={} focus={} -> {}: got modifier '{}', waiting bracket",
+                                "mode={} focus={} -> {}: got modifier '{:?}', waiting text object kind",
                                 context.mode.as_str(),
                                 context.focus.as_str(),
                                 pending.state.as_str(),
-                                if inner { "i" } else { "a" }
+                                modifier
                             ),
                         });
                     }
@@ -705,19 +694,19 @@ impl InputHandler {
         }
 
         if context.focus == InputFocusContext::Editor && context.mode == EditorMode::Visual {
-            if let Some(inner) = inner_or_around_from_input(&normalized) {
+            if let Some(modifier) = inner_or_around_from_input(&normalized) {
                 self.pending_input = Some(PendingInput {
                     sequence: None,
-                    state: PendingState::VisualTextObjectModifier { inner },
+                    state: PendingState::VisualTextObjectModifier { modifier },
                     started_at: now,
                 });
                 return Some(InputRouteOutcome::NoDispatch {
                     input_debug,
                     route_debug: format!(
-                        "mode={} focus={} -> visual text object modifier '{}' start, waiting bracket",
+                        "mode={} focus={} -> visual text object modifier '{:?}' start, waiting text object kind",
                         context.mode.as_str(),
                         context.focus.as_str(),
-                        if inner { "i" } else { "a" }
+                        modifier
                     ),
                 });
             }
@@ -787,6 +776,21 @@ impl InputHandler {
         // Mọi input kể cả ESC được forward thẳng vào PTY.
         // Chỉ modifier-only keys (Shift, Ctrl...) bị bỏ qua.
         if context.focus == InputFocusContext::BufferTerminal {
+            if normalized.has_command_modifier() && normalized.physical_key == Some(KeyCode::KeyV) {
+                self.clear_pending_counts();
+                return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                    input_debug,
+                    format!(
+                        "mode={} focus={} -> buffer terminal paste",
+                        context.mode.as_str(),
+                        context.focus.as_str()
+                    ),
+                    Command::TerminalPaste,
+                    1,
+                    false,
+                )));
+            }
+
             if !is_modifier_only_key(&normalized) {
                 if let Some(payload) = terminal_input_payload(&normalized) {
                     self.clear_pending_counts();
@@ -824,13 +828,14 @@ impl InputHandler {
         }
 
         if context.focus == InputFocusContext::Terminal
+            && context.mode == EditorMode::TerminalFocus
             && let Some(payload) = terminal_input_payload(&normalized)
         {
             self.clear_pending_counts();
             return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                 input_debug,
                 format!(
-                    "mode={} focus={} -> terminal raw input routing",
+                    "mode={} focus={} -> strict terminal raw input routing",
                     context.mode.as_str(),
                     context.focus.as_str()
                 ),
@@ -839,7 +844,6 @@ impl InputHandler {
                 false,
             )));
         }
-
 
         if self.pending_count.is_some() || self.operator_count.is_some() {
             self.clear_pending_counts();

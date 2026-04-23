@@ -40,12 +40,14 @@ use crate::{
         commands::Command,
         mode::{EditorMode, ModeEvent},
     },
-    lsp::client::{detect_lsp_server_for_path, detect_lsp_server_for_workspace, path_to_lsp_uri},
+    lsp::client::path_to_lsp_uri,
     render::{
         region_pipeline::RegionDrawInstance,
-        renderer::{RenderError, Renderer, SidebarRow, TopbarTab, TopbarTabKind},
+        renderer::{
+            RenderError, Renderer, SidebarFilterState, SidebarRow, TopbarTab, TopbarTabKind,
+        },
     },
-    syntax::{highlight::HighlightSpan, syntax_engine::LanguageId},
+    syntax::{highlight::HighlightSpan, syntax_engine::SyntaxEngine},
     terminal::grid::TerminalGrid,
     text::text_system::StyledTextSpan,
     workbench::{
@@ -91,6 +93,9 @@ pub struct AppShell {
     terminal_buffer_grids: HashMap<u64, TerminalGrid>,
     pending_lazygit_buffer_index: Option<usize>,
     highlight_spans: Vec<HighlightSpan>,
+    semantic_highlight_spans: Vec<HighlightSpan>,
+    syntax_engine: Option<SyntaxEngine>,
+    syntax_engine_file: Option<PathBuf>,
     terminal_grid: TerminalGrid,
     explorer_cursor: usize,
     explorer_snapshot: ExplorerSnapshot,
@@ -99,6 +104,10 @@ pub struct AppShell {
     workspace_git_branch: Option<String>,
     active_lsp_server: Option<ActiveLspServer>,
     pending_lsp_server: Option<ActiveLspServer>,
+    /// Popup hướng dẫn cài LSP — `Some` khi binary chưa cài, `None` khi đã dismiss.
+    active_lsp_guide: Option<LspInstallGuide>,
+    /// Toast window-relative ngắn hạn cho các action nền.
+    transient_toast: Option<TransientToast>,
     base_theme: ThemeConfig,
     theme: ThemeConfig,
     ui_config: UiConfig,
@@ -133,7 +142,7 @@ pub struct AppShell {
     last_buffer_terminal_bounds: Option<[f32; 4]>,
     sidebar_selection_quads: Vec<RegionDrawInstance>,
     suppress_next_palette_ime_commit: bool,
-    /// Leap/EasyMotion labels hiện tại: (label_char, char_idx_in_text).
+    /// Leap/EasyMotion labels hiện tại cho active editor viewport.
     /// `Some(labels)` khi đang ở PendingLeapLabel state, `None` khi không active.
     leap_labels: Option<Vec<(char, usize)>>,
     git_overlay_revision: u64,
@@ -179,6 +188,21 @@ struct PendingConfirmation {
 struct ActiveLspServer {
     server_name: String,
     root_path: PathBuf,
+}
+
+/// State cho popup hướng dẫn cài đặt Language Server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LspInstallGuide {
+    /// Binary name (ví dụ "rust-analyzer").
+    binary: String,
+    /// Lệnh cài đặt sẽ được bơm thẳng vào terminal khi user bấm Enter.
+    install_cmd: String,
+}
+
+#[derive(Debug, Clone)]
+struct TransientToast {
+    message: String,
+    expires_at: Instant,
 }
 
 pub fn run() -> Result<(), winit::error::EventLoopError> {
@@ -274,8 +298,10 @@ impl AppShell {
                     changed |= result.changed;
                 }
             }
-            if self.app_state.current_mode() != EditorMode::TerminalFocus
-                && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal)
+            if !matches!(
+                self.app_state.current_mode(),
+                EditorMode::TerminalFocus | EditorMode::TerminalNormal
+            ) && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal)
             {
                 changed |= result.changed;
             }
@@ -285,8 +311,10 @@ impl AppShell {
                 self.input_handler.clear_pending_prefix();
             }
         } else {
-            if self.app_state.current_mode() == EditorMode::TerminalFocus
-                && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus)
+            if matches!(
+                self.app_state.current_mode(),
+                EditorMode::TerminalFocus | EditorMode::TerminalNormal
+            ) && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus)
             {
                 changed |= result.changed;
             }

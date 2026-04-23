@@ -3,20 +3,13 @@ use std::time::Instant;
 use winit::keyboard::KeyCode;
 
 use crate::app::{input_map::PendingSequence, resolved_keymap::KeySpec};
+use crate::core::commands::{Operator, TextObjectModifier};
 
 #[derive(Debug, Clone)]
 pub(super) struct PendingInput {
     pub(super) sequence: Option<PendingSequence>,
     pub(super) state: PendingState,
     pub(super) started_at: Instant,
-}
-
-/// Loại toán tử đang chờ text object.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum TextObjectOp {
-    Delete,
-    Change,
-    Yank,
 }
 
 #[derive(Debug, Clone)]
@@ -30,12 +23,12 @@ pub(super) enum PendingState {
     Sequence,
     /// Đã nhận operator (d/c/y) + modifier (i/a) -> chờ bracket char.
     OperatorWithObject {
-        op: TextObjectOp,
-        inner: bool,
+        op: Operator,
+        modifier: TextObjectModifier,
     },
     /// Trong Visual mode đã nhận 'i' hoặc 'a' -> chờ bracket char.
     VisualTextObjectModifier {
-        inner: bool,
+        modifier: TextObjectModifier,
     },
     /// Leap: chờ user gõ target char (sau LeapStart).
     LeapChar,
@@ -77,31 +70,32 @@ impl PendingState {
             Self::ReplaceChar => "pending replace char",
             Self::Leader => "pending leader",
             Self::Sequence => "pending sequence",
-            Self::OperatorWithObject { op, inner } => match op {
-                TextObjectOp::Delete => {
-                    if *inner {
+            Self::OperatorWithObject { op, modifier } => match op {
+                Operator::Delete => {
+                    if *modifier == TextObjectModifier::Inner {
                         "pending delete inner object"
                     } else {
                         "pending delete around object"
                     }
                 }
-                TextObjectOp::Change => {
-                    if *inner {
+                Operator::Change => {
+                    if *modifier == TextObjectModifier::Inner {
                         "pending change inner object"
                     } else {
                         "pending change around object"
                     }
                 }
-                TextObjectOp::Yank => {
-                    if *inner {
+                Operator::Yank => {
+                    if *modifier == TextObjectModifier::Inner {
                         "pending yank inner object"
                     } else {
                         "pending yank around object"
                     }
                 }
+                Operator::Visual => "pending visual object",
             },
-            Self::VisualTextObjectModifier { inner } => {
-                if *inner {
+            Self::VisualTextObjectModifier { modifier } => {
+                if *modifier == TextObjectModifier::Inner {
                     "pending visual inner object"
                 } else {
                     "pending visual around object"

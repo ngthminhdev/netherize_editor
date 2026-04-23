@@ -44,6 +44,7 @@ pub const CHANGE_WORD_FORWARD: &str = "editor.change_word_forward";
 pub const CHANGE_WORD_BACKWARD: &str = "editor.change_word_backward";
 pub const PASTE_AFTER: &str = "editor.paste_after";
 pub const PASTE_BEFORE: &str = "editor.paste_before";
+pub const EDITOR_PASTE: &str = "editor.paste";
 pub const PASTE_SYSTEM_CLIPBOARD: &str = "editor.paste_system_clipboard";
 pub const UNDO: &str = "editor.undo";
 pub const REDO: &str = "editor.redo";
@@ -58,6 +59,7 @@ pub const ENTER_NORMAL: &str = "mode.enter_normal";
 pub const ENTER_INSERT: &str = "mode.enter_insert";
 pub const ENTER_VISUAL: &str = "mode.enter_visual";
 pub const ENTER_VISUAL_LINE: &str = "mode.enter_visual_line";
+pub const ENTER_TERMINAL_FOCUS: &str = "mode.enter_terminal_focus";
 pub const EXIT_FOCUS: &str = "mode.exit_focus";
 
 // ── Workspace / Project management ───────────────────────────────────────────
@@ -74,8 +76,21 @@ pub const OPEN_COMMAND_PALETTE: &str = "app.open_command_palette";
 pub const OPEN_VIM_COMMAND: &str = "app.open_vim_command";
 pub const OPEN_WORKSPACE_SYMBOLS: &str = "app.open_workspace_symbols";
 pub const SEARCH_IN_FILES: &str = "app.search_in_files";
+pub const OPEN_THEME_SELECTOR: &str = "app.open_theme_selector";
 pub const GIT_OPEN_LAZYGIT: &str = "git.open_lazygit";
 pub const GIT_BLAME_LINE: &str = "git.blame_line";
+pub const TERMINAL_ENTER_NORMAL_MODE: &str = "terminal.enter_normal_mode";
+pub const TERMINAL_PASTE: &str = "terminal.paste";
+
+// ── LSP Interactive (Module 10) ──────────────────────────────────────────────────
+pub const LSP_HOVER: &str = "lsp.hover";
+pub const LSP_GO_TO_DEFINITION: &str = "lsp.go_to_definition";
+pub const LSP_PREVIEW_DEFINITION: &str = "lsp.preview_definition";
+pub const LSP_REFERENCES: &str = "lsp.references";
+
+// ── Jump list navigation ─────────────────────────────────────────────────────
+pub const JUMP_BACK: &str = "editor.jump_back";
+pub const JUMP_FORWARD: &str = "editor.jump_forward";
 
 // ── Workbench focus navigation ────────────────────────────────────────────────
 pub const FOCUS_EDITOR: &str = "app.focus_editor";
@@ -112,6 +127,8 @@ pub const EXPLORER_TOGGLE_OR_OPEN: &str = "explorer.toggle_or_open";
 pub const EXPLORER_DELETE_NODE: &str = "explorer.delete_node";
 pub const EXPLORER_CREATE_FILE: &str = "explorer.create_file";
 pub const EXPLORER_CREATE_FOLDER: &str = "explorer.create_folder";
+pub const EXPLORER_START_FILTER: &str = "explorer.start_filter";
+pub const EXPLORER_CLEAR_FILTER: &str = "explorer.clear_filter";
 // Legacy command IDs.
 pub const EXPLORER_EXPAND_COLLAPSE: &str = "explorer.expand_collapse";
 pub const EXPLORER_OPEN_FILE: &str = "explorer.open_file";
@@ -169,6 +186,7 @@ pub const ALL_IDS: &[&str] = &[
     CHANGE_WORD_BACKWARD,
     PASTE_AFTER,
     PASTE_BEFORE,
+    EDITOR_PASTE,
     PASTE_SYSTEM_CLIPBOARD,
     UNDO,
     REDO,
@@ -178,6 +196,7 @@ pub const ALL_IDS: &[&str] = &[
     ENTER_INSERT,
     ENTER_VISUAL,
     ENTER_VISUAL_LINE,
+    ENTER_TERMINAL_FOCUS,
     EXIT_FOCUS,
     TOGGLE_TERMINAL,
     TOGGLE_BOTTOM_DOCK,
@@ -188,8 +207,17 @@ pub const ALL_IDS: &[&str] = &[
     OPEN_VIM_COMMAND,
     OPEN_WORKSPACE_SYMBOLS,
     SEARCH_IN_FILES,
+    OPEN_THEME_SELECTOR,
     GIT_OPEN_LAZYGIT,
     GIT_BLAME_LINE,
+    TERMINAL_ENTER_NORMAL_MODE,
+    TERMINAL_PASTE,
+    LSP_HOVER,
+    LSP_GO_TO_DEFINITION,
+    LSP_PREVIEW_DEFINITION,
+    LSP_REFERENCES,
+    JUMP_BACK,
+    JUMP_FORWARD,
     FOCUS_EDITOR,
     FOCUS_EXPLORER,
     FOCUS_TERMINAL,
@@ -218,6 +246,8 @@ pub const ALL_IDS: &[&str] = &[
     EXPLORER_DELETE_NODE,
     EXPLORER_CREATE_FILE,
     EXPLORER_CREATE_FOLDER,
+    EXPLORER_START_FILTER,
+    EXPLORER_CLEAR_FILTER,
     EXPLORER_EXPAND_COLLAPSE,
     EXPLORER_OPEN_FILE,
     OVERLAY_SELECT_NEXT,
@@ -277,7 +307,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         CHANGE_WORD_BACKWARD => Some(Command::ChangeWordBackward),
         PASTE_AFTER => Some(Command::PasteAfter),
         PASTE_BEFORE => Some(Command::PasteBefore),
-        PASTE_SYSTEM_CLIPBOARD => Some(Command::PasteSystemClipboard),
+        EDITOR_PASTE | PASTE_SYSTEM_CLIPBOARD => Some(Command::EditorPaste),
         UNDO => Some(Command::Undo),
         REDO => Some(Command::Redo),
         SAVE_FILE => Some(Command::SaveFile),
@@ -290,7 +320,10 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         ENTER_INSERT => Some(Command::SwitchMode(ModeEvent::EnterInsert)),
         ENTER_VISUAL => Some(Command::SwitchMode(ModeEvent::EnterVisual)),
         ENTER_VISUAL_LINE => Some(Command::EnterVisualLine),
+        ENTER_TERMINAL_FOCUS => Some(Command::SwitchMode(ModeEvent::FocusTerminal)),
         EXIT_FOCUS => Some(Command::SwitchMode(ModeEvent::ExitFocus)),
+        TERMINAL_ENTER_NORMAL_MODE => Some(Command::SwitchMode(ModeEvent::EnterTerminalNormal)),
+        TERMINAL_PASTE => Some(Command::TerminalPaste),
         TOGGLE_TERMINAL => Some(Command::ToggleTerminal),
         TOGGLE_BOTTOM_DOCK => Some(Command::ToggleBottomDock),
         TOGGLE_LEFT_DOCK => Some(Command::ToggleLeftDock),
@@ -300,8 +333,15 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         OPEN_VIM_COMMAND => Some(Command::OpenVimCommand),
         OPEN_WORKSPACE_SYMBOLS => Some(Command::OpenWorkspaceSymbols),
         SEARCH_IN_FILES => Some(Command::SearchInFiles),
+        OPEN_THEME_SELECTOR => Some(Command::OpenThemeSelector),
         GIT_OPEN_LAZYGIT => Some(Command::GitOpenLazygit),
         GIT_BLAME_LINE => Some(Command::GitBlameLine),
+        LSP_HOVER => Some(Command::LspHover),
+        LSP_GO_TO_DEFINITION => Some(Command::LspGoToDefinition),
+        LSP_PREVIEW_DEFINITION => Some(Command::LspPreviewDefinition),
+        LSP_REFERENCES => Some(Command::LspReferences),
+        JUMP_BACK => Some(Command::JumpBack),
+        JUMP_FORWARD => Some(Command::JumpForward),
         FOCUS_EDITOR => Some(Command::FocusEditor),
         FOCUS_EXPLORER => Some(Command::FocusExplorer),
         FOCUS_TERMINAL => Some(Command::FocusTerminal),
@@ -331,6 +371,8 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         EXPLORER_DELETE_NODE => Some(Command::ExplorerDeleteNode),
         EXPLORER_CREATE_FILE => Some(Command::ExplorerCreateFile),
         EXPLORER_CREATE_FOLDER => Some(Command::ExplorerCreateFolder),
+        EXPLORER_START_FILTER => Some(Command::ExplorerStartFilter),
+        EXPLORER_CLEAR_FILTER => Some(Command::ExplorerClearFilter),
         EXPLORER_EXPAND_COLLAPSE => Some(Command::ExplorerExpandCollapse),
         EXPLORER_OPEN_FILE => Some(Command::ExplorerOpenFile),
         OVERLAY_SELECT_NEXT | FILE_PICKER_SELECT_NEXT => Some(Command::OverlaySelectNext),

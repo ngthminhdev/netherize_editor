@@ -9,13 +9,16 @@ use crate::{
         clipboard::ClipboardProvider,
         command_palette::{CommandPaletteItem, CommandPaletteMode},
     },
+    config::theme_config::ThemeConfig,
     core::{
         command_dispatch::{
             dispatch_command, dispatch_command_count, dispatch_command_with_clipboard,
+            dispatch_command_with_clipboard_and_terminal, dispatch_command_with_terminal,
         },
         commands::Command,
         mode::{EditorMode, ModeEvent},
     },
+    terminal::grid::TerminalGrid,
 };
 
 #[derive(Default)]
@@ -145,6 +148,24 @@ fn visual_delete_and_change_selection_dispatch_work() {
 }
 
 #[test]
+fn open_theme_selector_dispatch_populates_static_theme_items() {
+    let mut app_state = AppState::new(unique_temp_path("theme_selector"));
+
+    let report = dispatch_command(&mut app_state, Command::OpenThemeSelector);
+
+    assert!(report.success);
+    assert_eq!(
+        app_state.command_palette_mode(),
+        Some(CommandPaletteMode::ThemeSelector)
+    );
+    assert!(
+        app_state
+            .command_palette_result_labels()
+            .contains(&ThemeConfig::active_profile())
+    );
+}
+
+#[test]
 fn visual_word_and_line_motions_keep_selection_anchor() {
     let mut app_state = AppState::from_text(unique_temp_path("visual_motion"), "foo bar\nbaz");
     let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterVisual));
@@ -270,6 +291,78 @@ fn yank_selection_copies_text_and_returns_to_normal_mode() {
 }
 
 #[test]
+fn terminal_normal_mode_initializes_virtual_cursor_and_vim_motions() {
+    let mut app_state = AppState::from_text(unique_temp_path("terminal_normal_mode"), "buffer");
+    let mut grid = TerminalGrid::new(8, 3);
+    let _ = grid.feed_chunk("one\r\ntwo\r\nthree");
+
+    let _ = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(ModeEvent::FocusTerminal),
+    );
+    let enter = dispatch_command_with_terminal(
+        &mut app_state,
+        Command::SwitchMode(ModeEvent::EnterTerminalNormal),
+        Some(&mut grid),
+    );
+    assert!(enter.success);
+    assert_eq!(app_state.current_mode(), EditorMode::TerminalNormal);
+    assert_eq!(
+        grid.virtual_cursor.row,
+        grid.live_cursor_absolute_position().row
+    );
+
+    let move_up = dispatch_command_with_terminal(&mut app_state, Command::MoveUp, Some(&mut grid));
+    assert!(move_up.success);
+    assert!(move_up.state_changed);
+    assert_eq!(grid.virtual_cursor.row, 1);
+
+    let move_start =
+        dispatch_command_with_terminal(&mut app_state, Command::MoveToLineStart, Some(&mut grid));
+    assert!(move_start.success);
+    assert_eq!(grid.virtual_cursor.col, 0);
+}
+
+#[test]
+fn terminal_normal_selection_yanks_terminal_grid_and_returns_to_typing_mode() {
+    let mut app_state = AppState::from_text(unique_temp_path("terminal_normal_yank"), "buffer");
+    let mut clipboard = MockClipboard::default();
+    let mut grid = TerminalGrid::new(8, 4);
+    let _ = grid.feed_chunk("alpha\r\nbeta\r\ngamma");
+
+    let _ = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(ModeEvent::FocusTerminal),
+    );
+    let _ = dispatch_command_with_terminal(
+        &mut app_state,
+        Command::SwitchMode(ModeEvent::EnterTerminalNormal),
+        Some(&mut grid),
+    );
+    let _ = dispatch_command_with_terminal(&mut app_state, Command::MoveUp, Some(&mut grid));
+    let _ =
+        dispatch_command_with_terminal(&mut app_state, Command::MoveToLineStart, Some(&mut grid));
+    let _ = dispatch_command_with_terminal(
+        &mut app_state,
+        Command::SwitchMode(ModeEvent::EnterVisual),
+        Some(&mut grid),
+    );
+    let _ = dispatch_command_with_terminal(&mut app_state, Command::MoveWordEnd, Some(&mut grid));
+
+    let yank = dispatch_command_with_clipboard_and_terminal(
+        &mut app_state,
+        Command::YankSelection,
+        Some(&mut clipboard),
+        Some(&mut grid),
+    );
+
+    assert!(yank.success);
+    assert_eq!(clipboard.text, "beta");
+    assert_eq!(app_state.current_mode(), EditorMode::TerminalFocus);
+    assert!(grid.selection_anchor.is_none());
+}
+
+#[test]
 fn yank_current_line_copies_line_to_clipboard_without_mutating_buffer() {
     let mut app_state =
         AppState::from_text(unique_temp_path("yank_current_line"), "one\ntwo\nthree");
@@ -353,18 +446,15 @@ fn paste_before_replaces_visual_selection_from_clipboard() {
 }
 
 #[test]
-fn paste_system_clipboard_in_insert_mode_keeps_cursor_after_inserted_text() {
+fn editor_paste_in_insert_mode_keeps_cursor_after_inserted_text() {
     let mut app_state = AppState::from_text(unique_temp_path("paste_system_insert"), "abc");
     let mut clipboard = MockClipboard {
         text: "XYZ".to_string(),
     };
 
     app_state.move_right();
-    let paste = dispatch_command_with_clipboard(
-        &mut app_state,
-        Command::PasteSystemClipboard,
-        Some(&mut clipboard),
-    );
+    let paste =
+        dispatch_command_with_clipboard(&mut app_state, Command::EditorPaste, Some(&mut clipboard));
 
     assert!(paste.success);
     assert!(paste.state_changed);
@@ -373,7 +463,7 @@ fn paste_system_clipboard_in_insert_mode_keeps_cursor_after_inserted_text() {
 }
 
 #[test]
-fn paste_system_clipboard_appends_to_palette_query() {
+fn editor_paste_appends_to_palette_query() {
     let mut app_state = AppState::from_text(unique_temp_path("paste_system_palette"), "alpha");
     let mut clipboard = MockClipboard {
         text: "foo\nbar".to_string(),
@@ -383,15 +473,28 @@ fn paste_system_clipboard_appends_to_palette_query() {
     assert!(open.success);
     assert_eq!(app_state.current_mode(), EditorMode::PaletteFocus);
 
-    let paste = dispatch_command_with_clipboard(
-        &mut app_state,
-        Command::PasteSystemClipboard,
-        Some(&mut clipboard),
-    );
+    let paste =
+        dispatch_command_with_clipboard(&mut app_state, Command::EditorPaste, Some(&mut clipboard));
 
     assert!(paste.success);
     assert!(paste.state_changed);
     assert_eq!(app_state.command_palette_query_text(), "foo bar");
+}
+
+#[test]
+fn editor_paste_appends_to_active_fuzzy_picker_query() {
+    let mut app_state = AppState::from_text(unique_temp_path("paste_fuzzy_buffer"), "alpha");
+    let mut clipboard = MockClipboard {
+        text: "src\nmain".to_string(),
+    };
+    app_state.open_fuzzy_picker_buffer(CommandPaletteMode::FilePicker);
+
+    let paste =
+        dispatch_command_with_clipboard(&mut app_state, Command::EditorPaste, Some(&mut clipboard));
+
+    assert!(paste.success);
+    assert!(paste.state_changed);
+    assert_eq!(app_state.command_palette_query_text(), "src main");
 }
 
 #[test]
@@ -575,7 +678,7 @@ fn open_command_palette_command_enters_palette_focus_mode() {
 }
 
 #[test]
-fn open_file_finder_command_enters_palette_focus_mode() {
+fn open_file_picker_command_enters_palette_focus_mode() {
     let mut app_state = AppState::new(unique_temp_path("save"));
     let workspace_root = unique_temp_dir("workspace");
     fs::create_dir_all(workspace_root.join("src")).expect("create workspace");
@@ -588,10 +691,38 @@ fn open_file_finder_command_enters_palette_focus_mode() {
         Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
     );
 
-    let report = dispatch_command(&mut app_state, Command::OpenFileFinder);
+    let report = dispatch_command(&mut app_state, Command::OpenFilePicker);
     assert!(report.success);
     assert_eq!(app_state.current_mode(), EditorMode::PaletteFocus);
     assert!(app_state.is_file_picker_open());
+    assert!(!app_state.active_buffer_is_fuzzy_picker());
+
+    let _ = fs::remove_dir_all(workspace_root);
+}
+
+#[test]
+fn open_file_finder_command_opens_fuzzy_picker_buffer() {
+    let mut app_state = AppState::new(unique_temp_path("save"));
+    let workspace_root = unique_temp_dir("workspace_finder_buffer");
+    fs::create_dir_all(workspace_root.join("src")).expect("create workspace");
+    fs::write(workspace_root.join("src/main.rs"), "fn main() {}\n").expect("write source");
+    app_state
+        .attach_workspace(workspace_root.clone())
+        .expect("attach workspace");
+    let _ = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
+    );
+
+    let report = dispatch_command(&mut app_state, Command::OpenFileFinder);
+    assert!(report.success);
+    assert_eq!(app_state.current_mode(), EditorMode::Insert);
+    assert!(app_state.active_buffer_is_fuzzy_picker());
+    assert_eq!(
+        app_state.command_palette_mode(),
+        Some(CommandPaletteMode::FilePicker)
+    );
+    assert!(!app_state.is_command_palette_visible());
 
     let _ = fs::remove_dir_all(workspace_root);
 }
@@ -690,7 +821,7 @@ fn file_picker_confirm_selection_reuses_open_flow() {
         &mut app_state,
         Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
     );
-    let _ = dispatch_command(&mut app_state, Command::OpenFileFinder);
+    let _ = dispatch_command(&mut app_state, Command::OpenFilePicker);
     let _ = dispatch_command(
         &mut app_state,
         Command::FilePickerAppendQuery("phase8".to_string()),
@@ -736,7 +867,7 @@ fn file_picker_confirm_refreshes_stale_selection_before_opening() {
         &mut app_state,
         Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
     );
-    let _ = dispatch_command(&mut app_state, Command::OpenFileFinder);
+    let _ = dispatch_command(&mut app_state, Command::OpenFilePicker);
     let _ = dispatch_command(
         &mut app_state,
         Command::FilePickerAppendQuery("phase1-hello".to_string()),

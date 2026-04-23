@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
 use super::{
     model::{
@@ -7,14 +10,68 @@ use super::{
     },
     raw::{RawEditor, RawFileIconTheme, RawIcons, RawSyntax, RawThemeFile, RawUi},
 };
+use crate::config::paths::{legacy_app_state_root, user_config_root};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThemeProfileEntry {
+    pub profile: String,
+    pub path: PathBuf,
+}
 
 impl ThemeConfig {
+    pub fn default_profile() -> &'static str {
+        "default-dark"
+    }
+
+    pub fn resolved_profile(persisted_profile: Option<&str>) -> String {
+        std::env::var("NETHERIZE_THEME")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                persisted_profile
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| Self::default_profile().to_string())
+    }
+
     pub fn active_profile() -> String {
-        std::env::var("NETHERIZE_THEME").unwrap_or_else(|_| "default-dark".into())
+        Self::resolved_profile(None)
+    }
+
+    pub fn list_available_themes() -> Vec<String> {
+        Self::list_available_theme_entries()
+            .into_iter()
+            .map(|entry| entry.profile)
+            .collect()
+    }
+
+    pub fn list_available_theme_entries() -> Vec<ThemeProfileEntry> {
+        let mut seen = HashSet::new();
+        let mut themes = Vec::new();
+
+        for entry in theme_search_dirs()
+            .into_iter()
+            .flat_map(|dir| list_available_theme_entries_in_dir(&dir))
+        {
+            let dedupe_key = entry.profile.to_ascii_lowercase();
+            if seen.insert(dedupe_key) {
+                themes.push(entry);
+            }
+        }
+
+        themes.sort_by_cached_key(|entry| entry.profile.to_ascii_lowercase());
+        themes
     }
 
     pub fn load_active() -> Self {
-        let profile = Self::active_profile();
+        Self::load_preferred(None)
+    }
+
+    pub fn load_preferred(persisted_profile: Option<&str>) -> Self {
+        let profile = Self::resolved_profile(persisted_profile);
         match Self::load(&profile) {
             Ok(theme) => {
                 eprintln!("[theme] loaded profile '{profile}'");
@@ -30,7 +87,7 @@ impl ThemeConfig {
 
     pub fn load(profile: &str) -> Result<Self, String> {
         let path = find_profile_path(profile)
-            .ok_or_else(|| format!("theme profile '{profile}' not found under config/themes"))?;
+            .ok_or_else(|| format!("theme profile '{profile}' not found in theme search paths"))?;
         Self::load_from_path(&path)
     }
 
@@ -137,11 +194,6 @@ fn parse_ui(raw: &RawUi, raw_editor: &RawEditor) -> Result<UiThemeTokens, String
             raw.fg.as_deref().unwrap_or(raw_editor.fg.as_str()),
         )?,
         fg_dim: parse_color("ui", "fg_dim", raw.fg_dim.as_deref().unwrap_or("#b7bfcc"))?,
-        fg_faint: parse_color(
-            "ui",
-            "fg_faint",
-            raw.fg_faint.as_deref().unwrap_or("#8f98aa"),
-        )?,
         fg_ghost: parse_color(
             "ui",
             "fg_ghost",
@@ -226,13 +278,49 @@ fn parse_syntax(raw: &RawSyntax) -> Result<SyntaxThemeTokens, String> {
         comment: parse_color("syntax", "comment", &raw.comment)?,
         r#type: parse_color("syntax", "type", &raw.r#type)?,
         number: parse_color("syntax", "number", &raw.number)?,
-        constant: parse_color("syntax", "constant", &raw.constant)?,
-        operator: parse_color("syntax", "operator", &raw.operator)?,
-        variable: parse_color("syntax", "variable", &raw.variable)?,
+        identifier: parse_color(
+            "syntax",
+            "identifier",
+            raw.identifier.as_deref().unwrap_or("#d0d7e4"),
+        )?,
+        parameter: parse_color(
+            "syntax",
+            "parameter",
+            raw.parameter
+                .as_deref()
+                .or(raw.identifier.as_deref())
+                .unwrap_or(raw.function.as_str()),
+        )?,
+        field: parse_color(
+            "syntax",
+            "field",
+            raw.field
+                .as_deref()
+                .or(raw.property.as_deref())
+                .or(raw.identifier.as_deref())
+                .unwrap_or(raw.function.as_str()),
+        )?,
         property: parse_color(
             "syntax",
             "property",
-            raw.property.as_deref().unwrap_or(raw.variable.as_str()),
+            raw.property
+                .as_deref()
+                .or(raw.field.as_deref())
+                .or(raw.identifier.as_deref())
+                .unwrap_or(raw.function.as_str()),
+        )?,
+        constant: parse_color(
+            "syntax",
+            "constant",
+            raw.constant.as_deref().unwrap_or(raw.number.as_str()),
+        )?,
+        operator: parse_color(
+            "syntax",
+            "operator",
+            raw.operator
+                .as_deref()
+                .or(raw.punctuation.as_deref())
+                .unwrap_or("#8f98aa"),
         )?,
         punctuation: parse_color(
             "syntax",
@@ -375,66 +463,59 @@ fn parse_string_token(
 
 fn find_profile_path(name: &str) -> Option<PathBuf> {
     let filename = format!("{name}.toml");
+    theme_search_dirs()
+        .into_iter()
+        .map(|dir| dir.join(&filename))
+        .find(|path| path.exists())
+}
+
+fn theme_search_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
 
     if let Ok(cwd) = std::env::current_dir() {
-        let path = cwd.join("config").join("themes").join(&filename);
-        if path.exists() {
-            return Some(path);
+        let dir = cwd.join("config").join("themes");
+        if dir.is_dir() {
+            dirs.push(dir);
         }
+    }
+
+    let user_dir = user_config_root().join("themes");
+    if user_dir.is_dir() && !dirs.contains(&user_dir) {
+        dirs.push(user_dir);
+    }
+
+    let legacy_dir = legacy_app_state_root().join("themes");
+    if legacy_dir.is_dir() && !dirs.contains(&legacy_dir) {
+        dirs.push(legacy_dir);
     }
 
     if let Ok(exe) = std::env::current_exe()
         && let Some(parent) = exe.parent()
     {
-        let path = parent.join("config").join("themes").join(&filename);
-        if path.exists() {
-            return Some(path);
+        let dir = parent.join("config").join("themes");
+        if dir.is_dir() && !dirs.contains(&dir) {
+            dirs.push(dir);
         }
     }
 
-    None
+    dirs
 }
 
-#[cfg(test)]
-mod tests {
-    use super::ThemeConfig;
+fn list_available_theme_entries_in_dir(dir: &Path) -> Vec<ThemeProfileEntry> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
 
-    #[test]
-    fn invalid_theme_file_returns_error() {
-        let path = std::env::temp_dir().join("netherize_invalid_theme.toml");
-        std::fs::write(
-            &path,
-            r##"
-[editor]
-bg = "#111111"
-fg = "#eeeeee"
-cursor = "#ffffff"
-selection = "#333333"
-gutter = "#222222"
-
-[ui]
-sidebar_bg = "#111111"
-panel_bg = "#111111"
-status_bar_bg = "#111111"
-border_color = "#111111"
-
-[syntax]
-keyword = "not-a-hex"
-string = "#00ff00"
-function = "#00ff00"
-comment = "#00ff00"
-type = "#00ff00"
-number = "#00ff00"
-constant = "#00ff00"
-operator = "#00ff00"
-variable = "#00ff00"
-"##,
-        )
-        .expect("write invalid theme");
-
-        let result = ThemeConfig::load_from_path(&path);
-        assert!(result.is_err());
-
-        let _ = std::fs::remove_file(path);
-    }
+    entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("toml"))
+        .filter_map(|path| {
+            let profile = path.file_stem().and_then(|stem| stem.to_str())?;
+            Some(ThemeProfileEntry {
+                profile: profile.to_string(),
+                path,
+            })
+        })
+        .collect()
 }

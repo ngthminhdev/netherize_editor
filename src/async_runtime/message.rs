@@ -12,7 +12,11 @@ pub enum RequestTopic {
     TerminalPty,
     Git,
     LspClient,
+    LspCheck,
+    /// Các LSP interactive requests: hover, definition, references.
+    LspRequest,
     FzfSearch,
+    FilePreview,
 }
 
 /// Which search mode the fzf worker is running.
@@ -37,6 +41,13 @@ pub struct FzfResultItem {
     pub line: Option<u32>,
     /// 1-based column number (Live Grep only).
     pub column: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilePreviewLine {
+    pub line_number: usize,
+    pub text: String,
+    pub is_target: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +113,10 @@ pub enum WorkerRequestPayload {
         args: Vec<String>,
         working_dir: Option<PathBuf>,
     },
+    SpawnDetachedShellCommand {
+        command: String,
+        working_dir: Option<PathBuf>,
+    },
     WritePtyInput {
         session_id: u64,
         input: String,
@@ -128,6 +143,11 @@ pub enum WorkerRequestPayload {
         file_path: PathBuf,
         line_number: usize,
     },
+    LoadFilePreview {
+        file_path: PathBuf,
+        max_lines: usize,
+        target_line: Option<usize>,
+    },
     LspDidOpen {
         uri: String,
         language_id: String,
@@ -142,7 +162,40 @@ pub enum WorkerRequestPayload {
     LspDidClose {
         uri: String,
     },
+    CheckLspForPath {
+        /// File path được mở — dùng để look up extension và registry.
+        path: PathBuf,
+    },
+    /// textDocument/hover request.
+    LspHoverRequest {
+        uri: String,
+        line: u32,
+        character: u32,
+    },
+    /// textDocument/definition request — jump hoặc peek.
+    LspDefinitionRequest {
+        uri: String,
+        line: u32,
+        character: u32,
+        /// `true` = nhảy thẳng (gd), `false` = hiển peek (gD).
+        jump: bool,
+    },
+    /// textDocument/references request.
+    LspReferencesRequest {
+        uri: String,
+        line: u32,
+        character: u32,
+    },
     StopLspServer,
+}
+
+/// Loại location từ LSP — dùng cho definition và references.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LspLocation {
+    /// URI dạng `file:///absolute/path`.
+    pub uri: String,
+    pub line: u32,
+    pub character: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -214,11 +267,15 @@ pub enum WorkerResultPayload {
     },
     PtyOutput {
         session_id: u64,
-        chunk: String,
+        chunk: Vec<u8>,
     },
     PtyInputWritten {
         session_id: u64,
         bytes: usize,
+    },
+    DetachedShellCommandSpawned {
+        command: String,
+        pid: Option<u32>,
     },
     PtyResized {
         session_id: u64,
@@ -253,6 +310,36 @@ pub enum WorkerResultPayload {
         level: String,
         message: String,
     },
+    LspCheckResult {
+        /// File path gốc được check.
+        path: PathBuf,
+        /// Tên binary (ví dụ "rust-analyzer").
+        binary: String,
+        /// Tên ngôn ngữ hiển thị (ví dụ "Rust").
+        language_label: String,
+        /// Lệnh cài đặt để gợi ý user.
+        install_cmd: String,
+        /// `true` nếu binary đã có trong $PATH.
+        is_installed: bool,
+    },
+    /// textDocument/hover response.
+    LspHoverResult {
+        /// Nội dung markdown hoặc plain text từ LSP.
+        content: String,
+        /// Vị trí cursor tại thời điểm gửi request (dùng để định vị popup).
+        cursor_line: usize,
+        cursor_col: usize,
+    },
+    /// textDocument/definition response.
+    LspDefinitionResult {
+        locations: Vec<LspLocation>,
+        /// Giữ nguyên intent (jump vs. peek) để routing đúng.
+        jump: bool,
+    },
+    /// textDocument/references response.
+    LspReferencesResult {
+        locations: Vec<LspLocation>,
+    },
     FzfResults {
         query: String,
         mode: FzfSearchMode,
@@ -262,6 +349,11 @@ pub enum WorkerResultPayload {
         file_path: PathBuf,
         line_number: usize,
         summary: String,
+    },
+    FilePreviewLoaded {
+        file_path: PathBuf,
+        target_line: Option<usize>,
+        lines: Vec<FilePreviewLine>,
     },
 }
 

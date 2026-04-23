@@ -39,21 +39,20 @@ impl AppShell {
 
         let workspace_git_branch = app_state.workspace_root_path().and_then(detect_git_branch);
 
-        let base_theme = ThemeConfig::load_active();
+        let base_theme = ThemeConfig::load_preferred(persistent_state.configured_theme_profile());
         let theme = base_theme.clone();
         let ui_config = UiConfig::load_active();
-        let layout_engine = WorkbenchLayoutEngine::new(ui_config.layout);
-        let mut panel_state = WorkbenchPanelState::default();
+        let layout_engine = WorkbenchLayoutEngine::new(
+            crate::workbench::layout_engine::WorkbenchLayoutConfig::from_ui_theme(&theme.ui),
+        );
+        let mut panel_state = WorkbenchPanelState::from_ui_theme(&theme.ui);
         panel_state.left.visible = ui_config.docks.left.visible;
-        panel_state.left.size_px = ui_config.docks.left.size_px;
         panel_state.right.visible = if DEBUG_UI_ENABLED {
             ui_config.docks.right.visible
         } else {
             false
         };
-        panel_state.right.size_px = ui_config.docks.right.size_px;
         panel_state.bottom.visible = ui_config.docks.bottom.visible;
-        panel_state.bottom.size_px = ui_config.docks.bottom.size_px;
         panel_state.overlay_visible = ui_config.docks.overlay_visible;
         let _ = app_state.set_terminal_panel_open(panel_state.bottom.visible);
         let window_width = ui_config.window.width;
@@ -70,6 +69,9 @@ impl AppShell {
             terminal_buffer_grids: HashMap::new(),
             pending_lazygit_buffer_index: None,
             highlight_spans: Vec::new(),
+            semantic_highlight_spans: Vec::new(),
+            syntax_engine: None,
+            syntax_engine_file: None,
             terminal_grid: TerminalGrid::new(120, 40),
             explorer_cursor: 0,
             explorer_snapshot: ExplorerSnapshot::default(),
@@ -78,6 +80,8 @@ impl AppShell {
             workspace_git_branch,
             active_lsp_server: None,
             pending_lsp_server: None,
+            active_lsp_guide: None,
+            transient_toast: None,
             base_theme,
             theme,
             ui_config,
@@ -150,9 +154,16 @@ impl AppShell {
         );
     }
 
-    pub(super) fn submit(&self, spec: RequestSpec) {
-        if let Err(err) = self.scheduler.submit(spec) {
-            eprintln!("[AppShell] scheduler submit failed: {err}");
+    pub(super) fn submit(
+        &self,
+        spec: RequestSpec,
+    ) -> Option<crate::async_runtime::message::WorkerRequest> {
+        match self.scheduler.submit(spec) {
+            Ok(request) => Some(request),
+            Err(err) => {
+                eprintln!("[AppShell] scheduler submit failed: {err}");
+                None
+            }
         }
     }
 
@@ -202,12 +213,18 @@ impl AppShell {
         let scaled_theme = scale_theme(&self.base_theme, self.runtime_scale);
         let scaled_ui = scale_ui_config(&self.ui_config, self.runtime_scale);
 
-        self.layout_engine.config = scaled_ui.layout;
-        self.panel_state.left.size_px = scaled_ui.docks.left.size_px;
-        self.panel_state.right.size_px = scaled_ui.docks.right.size_px;
-        self.panel_state.bottom.size_px = scaled_ui.docks.bottom.size_px;
-
         self.theme = scaled_theme.clone();
+        self.layout_engine.config =
+            crate::workbench::layout_engine::WorkbenchLayoutConfig::from_ui_theme(&scaled_theme.ui);
+        self.layout_engine.config.region_gap = scaled_ui.layout.region_gap;
+        self.layout_engine.config.center_min_width = scaled_ui.layout.center_min_width;
+        self.layout_engine.config.center_min_height = scaled_ui.layout.center_min_height;
+        self.layout_engine.config.sidebar_min_width = scaled_ui.layout.sidebar_min_width;
+        self.layout_engine.config.bottom_min_height = scaled_ui.layout.bottom_min_height;
+
+        self.panel_state.left.size_px = scaled_theme.ui.sidebar_width;
+        self.panel_state.right.size_px = scaled_theme.ui.right_sidebar_width;
+        self.panel_state.bottom.size_px = scaled_theme.ui.bottom_panel_height;
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.apply_theme(scaled_theme);
             renderer.apply_ui_config(&scaled_ui);
@@ -219,9 +236,12 @@ impl AppShell {
         self.terminal_needs_layout = true;
         self.buffer_terminal_needs_layout = true;
         self.last_editor_bounds = None;
+        self.last_show_welcome = None;
         self.last_sidebar_bounds = None;
+        self.last_sidebar_focused = None;
         self.last_terminal_bounds = None;
         self.last_buffer_terminal_bounds = None;
+        self.sidebar_selection_quads.clear();
     }
 
     pub(super) fn sync_terminal_layout(&mut self, bounds: [f32; 4]) -> bool {
@@ -297,14 +317,24 @@ impl AppShell {
             FocusTarget::LeftSidebar => InputFocusContext::Explorer,
             FocusTarget::RightSidebar => InputFocusContext::Inspector,
             FocusTarget::BottomPanel => {
-                if mode == EditorMode::TerminalFocus {
+                if matches!(mode, EditorMode::TerminalFocus | EditorMode::TerminalNormal) {
                     InputFocusContext::Terminal
                 } else {
                     InputFocusContext::BottomPanel
                 }
             }
             FocusTarget::CenterEditor if self.app_state.active_buffer_is_terminal() => {
-                InputFocusContext::BufferTerminal
+                if mode == EditorMode::TerminalNormal {
+                    InputFocusContext::Terminal
+                } else {
+                    InputFocusContext::BufferTerminal
+                }
+            }
+            FocusTarget::CenterEditor if self.app_state.active_buffer_is_fuzzy_picker() => {
+                InputFocusContext::FuzzyPicker
+            }
+            FocusTarget::CenterEditor if self.app_state.active_buffer_is_references() => {
+                InputFocusContext::References
             }
             _ => InputFocusContext::Editor,
         };
@@ -315,6 +345,31 @@ impl AppShell {
         }
     }
 
+    pub(super) fn sidebar_filter_state(&self) -> Option<SidebarFilterState> {
+        let query = self
+            .app_state
+            .workspace_filter_query()
+            .unwrap_or_default()
+            .to_string();
+        let is_inputting = self.app_state.workspace_is_inputting_filter();
+        if !is_inputting && query.is_empty() {
+            return None;
+        }
+        Some(SidebarFilterState {
+            query,
+            is_inputting,
+            show_cursor: is_inputting && self.filter_cursor_visible(),
+        })
+    }
+
+    pub(super) fn filter_cursor_visible(&self) -> bool {
+        let elapsed_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_millis())
+            .unwrap_or(0);
+        (elapsed_ms / 500) % 2 == 0
+    }
+
     pub(super) fn editor_viewport_lines(&self) -> usize {
         if let Some(bounds) = self.last_editor_bounds {
             let line_height = self.theme.editor.line_height;
@@ -323,6 +378,26 @@ impl AppShell {
         } else {
             20
         }
+    }
+
+    pub(super) fn sidebar_tree_viewport_height(&self, bounds: [f32; 4]) -> f32 {
+        let line_height = self.theme.ui.sidebar_line_height.max(1.0);
+        let scaled_ui = scale_ui_config(&self.ui_config, self.runtime_scale);
+        let filter_height = if self.sidebar_filter_state().is_some() {
+            31.0
+        } else {
+            0.0
+        };
+        (bounds[3] - filter_height - scaled_ui.spacing.panel_padding - line_height - 2.0)
+            .max(line_height)
+    }
+
+    pub(super) fn sync_explorer_scroll_to_selected(&mut self, bounds: [f32; 4]) -> bool {
+        let viewport_height = self.sidebar_tree_viewport_height(bounds);
+        self.app_state.workspace_scroll_to_selected_node(
+            viewport_height,
+            self.theme.ui.sidebar_line_height.max(1.0),
+        )
     }
 
     pub(super) fn update_frame_metrics_snapshot(&mut self, now: Instant) {
@@ -355,7 +430,10 @@ impl AppShell {
 
     pub(super) fn release_focus_mode_to_editor(&mut self) -> bool {
         let mut changed = false;
-        let was_terminal_focus = self.app_state.current_mode() == EditorMode::TerminalFocus;
+        let was_terminal_focus = matches!(
+            self.app_state.current_mode(),
+            EditorMode::TerminalFocus | EditorMode::TerminalNormal
+        );
 
         if self.app_state.current_mode() == EditorMode::PaletteFocus {
             changed |= self.app_state.close_command_palette();
@@ -363,20 +441,28 @@ impl AppShell {
 
         if matches!(
             self.app_state.current_mode(),
-            EditorMode::PaletteFocus | EditorMode::TerminalFocus
+            EditorMode::PaletteFocus | EditorMode::TerminalFocus | EditorMode::TerminalNormal
         ) && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus)
         {
             changed |= result.changed;
         }
 
         if was_terminal_focus {
-            self.terminal_needs_layout = true;
+            if self.app_state.active_buffer_is_terminal() {
+                self.buffer_terminal_needs_layout = true;
+            } else {
+                self.terminal_needs_layout = true;
+            }
         }
 
         changed
     }
 
     pub(super) fn submit_parse_for_active_buffer(&mut self, force: bool) {
+        if self.refresh_inline_syntax_highlighting() {
+            return;
+        }
+
         if !force
             && let Some(last) = self.last_parse_submit_at
             && last.elapsed() < PARSE_DEBOUNCE_INTERVAL
@@ -386,6 +472,16 @@ impl AppShell {
         }
 
         if let Some(file_path) = self.app_state.active_file().map(PathBuf::from) {
+            let Some(language_id) = crate::syntax::parser::language_id_for_path(&file_path) else {
+                self.clear_highlight_layers();
+                self.syntax_engine = None;
+                self.syntax_engine_file = None;
+                self.pending_parse_after_debounce = false;
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+                return;
+            };
+
             let viewport_line_count = self.editor_viewport_lines().max(1);
             self.active_highlight_request_revision =
                 self.active_highlight_request_revision.saturating_add(1);
@@ -396,7 +492,7 @@ impl AppShell {
                 payload: WorkerRequestPayload::ParseAndHighlight {
                     file_path: Some(file_path),
                     text_snapshot: self.app_state.text_string(),
-                    language_id: LanguageId::Rust,
+                    language_id,
                     buffer_revision: self.app_state.revision(),
                     viewport_line_start: self.app_state.scroll_line,
                     viewport_line_count,
@@ -406,6 +502,85 @@ impl AppShell {
         } else {
             self.pending_parse_after_debounce = false;
         }
+    }
+
+    fn refresh_inline_syntax_highlighting(&mut self) -> bool {
+        let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
+            let had_highlighting =
+                !self.highlight_spans.is_empty() || !self.semantic_highlight_spans.is_empty();
+            if had_highlighting {
+                self.clear_highlight_layers();
+                self.syntax_engine = None;
+                self.syntax_engine_file = None;
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+            }
+            return had_highlighting;
+        };
+
+        let Some(language_id) = crate::syntax::parser::language_id_for_path(&file_path) else {
+            let had_highlighting =
+                !self.highlight_spans.is_empty() || !self.semantic_highlight_spans.is_empty();
+            if had_highlighting {
+                self.clear_highlight_layers();
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+            }
+            self.syntax_engine = None;
+            self.syntax_engine_file = None;
+            return had_highlighting;
+        };
+
+        let text_snapshot = self.app_state.text_string();
+        if !crate::syntax::highlight::should_highlight_inline(&text_snapshot) {
+            return false;
+        }
+
+        let buffer_revision = self.app_state.revision();
+        let needs_reset = self
+            .syntax_engine_file
+            .as_ref()
+            .is_none_or(|current| current != &file_path)
+            || self
+                .syntax_engine
+                .as_ref()
+                .is_none_or(|engine| engine.language_id() != language_id);
+        if needs_reset {
+            self.syntax_engine = match SyntaxEngine::new(language_id) {
+                Ok(engine) => Some(engine),
+                Err(err) => {
+                    eprintln!("[AppShell] syntax engine init failed: {err}");
+                    self.syntax_engine_file = None;
+                    return false;
+                }
+            };
+            self.syntax_engine_file = Some(file_path);
+        }
+
+        let Some(engine) = self.syntax_engine.as_mut() else {
+            return false;
+        };
+
+        match engine.parse_source(&text_snapshot, buffer_revision) {
+            Ok(tree) => {
+                self.highlight_spans =
+                    crate::syntax::highlight::generate_highlight_spans(tree, &text_snapshot);
+                self.pending_parse_after_debounce = false;
+                self.last_parse_submit_at = Some(std::time::Instant::now());
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+                true
+            }
+            Err(err) => {
+                eprintln!("[AppShell] inline tree-sitter parse failed: {err}");
+                false
+            }
+        }
+    }
+
+    pub(super) fn clear_highlight_layers(&mut self) {
+        self.highlight_spans.clear();
+        self.semantic_highlight_spans.clear();
     }
 
     pub(super) fn flush_pending_parse_after_debounce(&mut self) {
@@ -457,6 +632,57 @@ impl AppShell {
         });
     }
 
+    pub(super) fn submit_fuzzy_picker_preview_load(&mut self) {
+        if !self.app_state.active_buffer_is_fuzzy_picker() {
+            return;
+        }
+
+        let action = self.app_state.command_palette_selected_action();
+        let Some((path, target_line)) = (match action {
+            Some(crate::app::command_palette::CommandPaletteAction::OpenFile(path)) => {
+                Some((path, None))
+            }
+            Some(crate::app::command_palette::CommandPaletteAction::OpenSearchMatch {
+                path,
+                line,
+                ..
+            }) => Some((path, Some(line as usize))),
+            _ => None,
+        }) else {
+            return;
+        };
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::FilePreview,
+            payload: WorkerRequestPayload::LoadFilePreview {
+                file_path: path,
+                max_lines: 100,
+                target_line,
+            },
+        });
+    }
+
+    pub(super) fn submit_references_preview_load(&mut self) {
+        if !self.app_state.active_buffer_is_references() {
+            return;
+        }
+
+        let Some(item) = self.app_state.selected_reference_item_cloned() else {
+            return;
+        };
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::FilePreview,
+            payload: WorkerRequestPayload::LoadFilePreview {
+                file_path: item.path,
+                max_lines: 100,
+                target_line: Some(item.line + 1),
+            },
+        });
+    }
+
     pub(super) fn sync_in_file_search_with_palette_query(&mut self) -> bool {
         if !matches!(
             self.app_state.command_palette_mode(),
@@ -490,18 +716,7 @@ impl AppShell {
     }
 
     pub(super) fn sync_lsp_server_for_workspace(&mut self) -> bool {
-        let desired = self
-            .app_state
-            .workspace_root_path()
-            .and_then(|root| {
-                detect_lsp_server_for_workspace(root).map(|server_name| (root, server_name))
-            })
-            .map(|(root, server_name)| ActiveLspServer {
-                server_name,
-                root_path: root.to_path_buf(),
-            });
-
-        match desired {
+        match self.desired_lsp_server_for_active_file() {
             Some(desired) => self.queue_lsp_server_start(desired),
             None => {
                 let had_lsp = self.active_lsp_server.take().is_some()
@@ -522,12 +737,9 @@ impl AppShell {
         let Some(path) = self.app_state.active_file() else {
             return None;
         };
-        let server_name = detect_lsp_server_for_path(path)?;
-        let root_path = match self.app_state.workspace_root_path() {
-            Some(root) if path.starts_with(root) => root.to_path_buf(),
-            Some(_) => return None,
-            None => path.parent()?.to_path_buf(),
-        };
+        let profile = crate::lsp::registry::language_profile_for_path(path)?;
+        let server_name = profile.lsp_binary.to_string();
+        let root_path = crate::lsp::registry::find_project_root(path, profile.root_markers);
 
         Some(ActiveLspServer {
             server_name,
@@ -557,6 +769,22 @@ impl AppShell {
                 version,
                 text: self.app_state.text_string(),
             },
+        });
+    }
+
+    /// Submit async task kiểm tra xem LSP binary cho `path` có được cài chưa.
+    ///
+    /// Nếu extension không có trong registry, request bị skip (worker sẽ fail
+    /// silently — không hiển thị lỗi ra UI).
+    pub(super) fn submit_lsp_check_for_path(&self, path: PathBuf) {
+        if crate::lsp::registry::language_profile_for_path(&path).is_none() {
+            return;
+        }
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspCheck,
+            payload: WorkerRequestPayload::CheckLspForPath { path },
         });
     }
 
@@ -605,8 +833,72 @@ impl AppShell {
         if self.app_state.workspace_root_path().is_none() {
             return;
         }
-        if self.app_state.workspace_reveal_path(file_path) {
+        let expanded = self.app_state.workspace_expand_to_path(file_path);
+        let selected = self
+            .app_state
+            .workspace_selected_path()
+            .is_some_and(|selected| selected == file_path);
+        if expanded || selected {
             self.mark_explorer_dirty();
         }
+        if let Some(bounds) = self.last_sidebar_bounds
+            && self.sync_explorer_scroll_to_selected(bounds)
+        {
+            self.sidebar_needs_layout = true;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::command_palette::CommandPaletteMode;
+
+    #[test]
+    fn build_context_marks_center_fuzzy_picker_buffer() {
+        let mut shell = AppShell::new().expect("create app shell");
+        let _ = shell.app_state.apply_mode_event(ModeEvent::EnterInsert);
+        shell
+            .app_state
+            .open_fuzzy_picker_buffer(CommandPaletteMode::LiveGrep);
+
+        let context = shell.build_context();
+
+        assert_eq!(context.mode, EditorMode::Insert);
+        assert_eq!(context.focus, InputFocusContext::FuzzyPicker);
+        assert!(!context.command_palette_visible);
+    }
+
+    #[test]
+    fn submit_parse_for_small_rust_buffer_runs_inline_tree_sitter() {
+        let file_path = std::env::temp_dir().join(format!(
+            "netherize_inline_highlight_{}.rs",
+            std::process::id()
+        ));
+        std::fs::write(
+            &file_path,
+            "const MAX_SIZE: usize = 32;\nfn main() { println!(\"{}\", MAX_SIZE); }\n",
+        )
+        .expect("write rust fixture");
+
+        let mut shell = AppShell::new().expect("create app shell");
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open rust fixture");
+
+        shell.submit_parse_for_active_buffer(true);
+
+        assert!(
+            !shell.highlight_spans.is_empty(),
+            "expected inline tree-sitter spans"
+        );
+        assert_eq!(
+            shell.active_highlight_request_revision, 0,
+            "small rust buffers should not wait for async worker"
+        );
+        assert!(shell.syntax_engine.is_some());
+
+        let _ = std::fs::remove_file(file_path);
     }
 }

@@ -2,6 +2,7 @@ use winit::keyboard::{KeyCode, NamedKey};
 
 use crate::{
     app::input_map::{InputFocusContext, KeybindingContext},
+    core::commands::{TextObjectKind, TextObjectModifier},
     core::mode::EditorMode,
 };
 
@@ -127,23 +128,21 @@ pub(super) fn should_start_yank_pending(
     input.physical_key == Some(KeyCode::KeyY) || input.text.as_deref() == Some("y")
 }
 
-/// Kiểm tra nếu input là 'i' (inner) hoặc 'a' (around); trả về Some(true/false).
-pub(super) fn inner_or_around_from_input(input: &NormalizedInput) -> Option<bool> {
+/// Kiểm tra nếu input là 'i' (inner) hoặc 'a' (around)
+pub(super) fn inner_or_around_from_input(input: &NormalizedInput) -> Option<TextObjectModifier> {
     if input.has_command_modifier() || input.modifiers.alt_key() || input.modifiers.shift_key() {
         return None;
     }
     if input.physical_key == Some(KeyCode::KeyI) || input.text.as_deref() == Some("i") {
-        return Some(true);
+        return Some(TextObjectModifier::Inner);
     }
     if input.physical_key == Some(KeyCode::KeyA) || input.text.as_deref() == Some("a") {
-        return Some(false);
+        return Some(TextObjectModifier::Around);
     }
     None
 }
 
-/// Map input key sang cặp ngoặc (open_char, close_char).
-/// Vim aliases: b -> '()'; B -> '{}'
-pub(super) fn bracket_chars_from_input(input: &NormalizedInput) -> Option<(char, char)> {
+pub(super) fn text_object_kind_from_input(input: &NormalizedInput) -> Option<TextObjectKind> {
     if input.has_command_modifier() || input.modifiers.alt_key() {
         return None;
     }
@@ -151,16 +150,20 @@ pub(super) fn bracket_chars_from_input(input: &NormalizedInput) -> Option<(char,
 
     if let Some(text) = input.text.as_deref() {
         match text {
-            "b" => return Some(('(', ')')),
-            "B" => return Some(('{', '}')),
+            "b" => return Some(TextObjectKind::Bracket('(', ')')),
+            "B" => return Some(TextObjectKind::Bracket('{', '}')),
+            "\"" => return Some(TextObjectKind::Quote('"')),
+            "'" => return Some(TextObjectKind::Quote('\'')),
+            "`" => return Some(TextObjectKind::Quote('`')),
             _ => {}
         }
     }
+
     if let Some(KeyCode::KeyB) = input.physical_key {
         return if shift {
-            Some(('{', '}'))
+            Some(TextObjectKind::Bracket('{', '}'))
         } else {
-            Some(('(', ')'))
+            Some(TextObjectKind::Bracket('(', ')'))
         };
     }
 
@@ -169,9 +172,13 @@ pub(super) fn bracket_chars_from_input(input: &NormalizedInput) -> Option<(char,
         && let Some(ch) = text.chars().next()
     {
         match ch {
-            '(' | ')' => return Some(('(', ')')),
-            '{' | '}' => return Some(('{', '}')),
-            '[' | ']' => return Some(('[', ']')),
+            '(' | ')' => return Some(TextObjectKind::Bracket('(', ')')),
+            '{' | '}' => return Some(TextObjectKind::Bracket('{', '}')),
+            '[' | ']' => return Some(TextObjectKind::Bracket('[', ']')),
+            '<' | '>' => return Some(TextObjectKind::Bracket('<', '>')),
+            '"' => return Some(TextObjectKind::Quote('"')),
+            '\'' => return Some(TextObjectKind::Quote('\'')),
+            '`' => return Some(TextObjectKind::Quote('`')),
             _ => {}
         }
     }
@@ -179,20 +186,30 @@ pub(super) fn bracket_chars_from_input(input: &NormalizedInput) -> Option<(char,
     match input.physical_key {
         Some(KeyCode::BracketLeft) => {
             return if shift {
-                Some(('{', '}'))
+                Some(TextObjectKind::Bracket('{', '}'))
             } else {
-                Some(('[', ']'))
+                Some(TextObjectKind::Bracket('[', ']'))
             };
         }
         Some(KeyCode::BracketRight) => {
             return if shift {
-                Some(('{', '}'))
+                Some(TextObjectKind::Bracket('{', '}'))
             } else {
-                Some(('[', ']'))
+                Some(TextObjectKind::Bracket('[', ']'))
             };
         }
-        Some(KeyCode::Digit9) if shift => return Some(('(', ')')),
-        Some(KeyCode::Digit0) if shift => return Some(('(', ')')),
+        Some(KeyCode::Digit9) if shift => return Some(TextObjectKind::Bracket('(', ')')),
+        Some(KeyCode::Digit0) if shift => return Some(TextObjectKind::Bracket('(', ')')),
+        Some(KeyCode::Quote) => {
+            return if shift {
+                Some(TextObjectKind::Quote('"'))
+            } else {
+                Some(TextObjectKind::Quote('\''))
+            };
+        }
+        Some(KeyCode::Backquote) => return Some(TextObjectKind::Quote('`')),
+        Some(KeyCode::Comma) if shift => return Some(TextObjectKind::Bracket('<', '>')),
+        Some(KeyCode::Period) if shift => return Some(TextObjectKind::Bracket('<', '>')),
         _ => {}
     }
 

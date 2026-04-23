@@ -22,8 +22,21 @@ pub(super) fn syntax_spans_to_styled(
                     theme.syntax.function.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::Number => theme.syntax.number.as_u8(),
+                crate::syntax::highlight::HighlightCategory::Identifier => {
+                    theme.syntax.identifier.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::Parameter => {
+                    theme.syntax.parameter.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::Field => theme.syntax.field.as_u8(),
                 crate::syntax::highlight::HighlightCategory::Property => {
                     theme.syntax.property.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::Constant => {
+                    theme.syntax.constant.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::Operator => {
+                    theme.syntax.operator.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::Punctuation => {
                     theme.syntax.punctuation.as_u8()
@@ -33,7 +46,13 @@ pub(super) fn syntax_spans_to_styled(
                     theme.syntax.lifetime.as_u8()
                 }
             };
-            StyledTextSpan::new(span.range.start, span.range.end, color)
+            StyledTextSpan::with_style(
+                span.range.start,
+                span.range.end,
+                color,
+                span.category.is_bold(),
+                span.category.is_italic(),
+            )
         })
         .collect()
 }
@@ -142,6 +161,16 @@ pub(super) fn collect_explorer_entries(app_state: &AppState) -> Vec<ExplorerEntr
         });
     }
 
+    let filter_query = app_state
+        .workspace_filter_query()
+        .map(str::trim)
+        .filter(|query| !query.is_empty())
+        .map(str::to_lowercase);
+    let mut subtree_matches: HashMap<PathBuf, bool> = HashMap::new();
+    if let Some(query) = filter_query.as_deref() {
+        compute_filter_matches(&root, &children_map, query, &mut subtree_matches);
+    }
+
     let mut entries = Vec::new();
     collect_visible_explorer_entries(
         app_state,
@@ -149,9 +178,33 @@ pub(super) fn collect_explorer_entries(app_state: &AppState) -> Vec<ExplorerEntr
         0,
         &node_types,
         &children_map,
+        filter_query.as_deref(),
+        &subtree_matches,
         &mut entries,
     );
     entries
+}
+
+fn compute_filter_matches(
+    path: &Path,
+    children_map: &HashMap<PathBuf, Vec<PathBuf>>,
+    query: &str,
+    out: &mut HashMap<PathBuf, bool>,
+) -> bool {
+    let self_match = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.to_lowercase().contains(query));
+    let mut subtree_match = self_match;
+
+    if let Some(children) = children_map.get(path) {
+        for child in children {
+            subtree_match |= compute_filter_matches(child, children_map, query, out);
+        }
+    }
+
+    out.insert(path.to_path_buf(), subtree_match);
+    subtree_match
 }
 
 fn collect_visible_explorer_entries(
@@ -160,6 +213,8 @@ fn collect_visible_explorer_entries(
     depth: usize,
     node_types: &HashMap<PathBuf, WorkspaceNodeType>,
     children_map: &HashMap<PathBuf, Vec<PathBuf>>,
+    filter_query: Option<&str>,
+    subtree_matches: &HashMap<PathBuf, bool>,
     out: &mut Vec<ExplorerEntry>,
 ) {
     let Some(children) = children_map.get(parent) else {
@@ -171,12 +226,25 @@ fn collect_visible_explorer_entries(
             .get(child)
             .copied()
             .unwrap_or(WorkspaceNodeType::File);
-        let is_expanded =
-            file_type == WorkspaceNodeType::Folder && app_state.workspace_is_expanded(child);
         let name = child
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("?");
+        let subtree_match =
+            filter_query.is_none_or(|_| subtree_matches.get(child).copied().unwrap_or(false));
+        if !subtree_match {
+            continue;
+        }
+
+        let has_matching_descendant = filter_query.is_some()
+            && file_type == WorkspaceNodeType::Folder
+            && children_map.get(child).is_some_and(|children| {
+                children
+                    .iter()
+                    .any(|nested| subtree_matches.get(nested).copied().unwrap_or(false))
+            });
+        let is_expanded = file_type == WorkspaceNodeType::Folder
+            && (app_state.workspace_is_expanded(child) || has_matching_descendant);
 
         out.push(ExplorerEntry {
             path: child.clone(),
@@ -194,6 +262,8 @@ fn collect_visible_explorer_entries(
                 depth + 1,
                 node_types,
                 children_map,
+                filter_query,
+                subtree_matches,
                 out,
             );
         }
@@ -204,27 +274,37 @@ pub(super) fn build_sidebar_rows(
     entries: &[ExplorerEntry],
     selected_idx: usize,
     theme: &ThemeConfig,
+    filter_active: bool,
+    scroll_offset_rows: usize,
 ) -> Vec<SidebarRow> {
     if entries.is_empty() {
         return vec![SidebarRow {
+            path: None,
             depth: 0,
             arrow: theme.sidebar_arrow(false, false).to_string(),
             nerd_icon: theme.icons.default_file.glyph.clone(),
             icon_color: theme.icons.default_file.color.as_f32(),
-            label: "(no files)".to_string(),
+            label: if filter_active {
+                "(no matches)".to_string()
+            } else {
+                "(no files)".to_string()
+            },
             is_selected: false,
         }];
     }
 
     let selected = selected_idx.min(entries.len().saturating_sub(1));
+    let scroll_start = scroll_offset_rows.min(entries.len().saturating_sub(1));
     entries
         .iter()
         .enumerate()
+        .skip(scroll_start)
         .map(|(idx, entry)| {
             let is_dir = entry.file_type == WorkspaceNodeType::Folder;
             let arrow = theme.sidebar_arrow(is_dir, entry.is_expanded).to_string();
             let icon = theme.file_icon_for_path(&entry.path, is_dir, entry.is_expanded);
             SidebarRow {
+                path: Some(entry.path.clone()),
                 depth: entry.depth,
                 arrow,
                 nerd_icon: icon.glyph.clone(),
@@ -249,19 +329,11 @@ pub(super) fn region_color(id: RegionId, theme: &ThemeConfig) -> [f32; 4] {
 }
 
 pub(super) fn language_id_for_path(path: &Path) -> String {
-    match path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.to_ascii_lowercase())
-        .as_deref()
-    {
-        Some("rs") => "rust",
-        Some("js") | Some("mjs") | Some("cjs") => "javascript",
-        Some("ts") | Some("tsx") => "typescript",
-        Some("jsx") => "javascriptreact",
-        Some("py") => "python",
-        Some("go") => "go",
-        Some("json") => "json",
+    if let Some(profile) = crate::lsp::registry::language_profile_for_path(path) {
+        return profile.language_id.to_string();
+    }
+
+    match path.extension().and_then(|ext| ext.to_str()) {
         Some("toml") => "toml",
         Some("md") => "markdown",
         _ => "plaintext",
@@ -293,6 +365,48 @@ fn find_git_dir(start: &Path) -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::syntax_spans_to_styled;
+    use crate::{
+        config::theme_config::ThemeConfig,
+        syntax::highlight::{HighlightCategory, HighlightSpan},
+    };
+
+    #[test]
+    fn syntax_spans_to_styled_applies_theme_colors_and_emphasis() {
+        let theme = ThemeConfig::builtin_dark();
+        let spans = vec![
+            HighlightSpan {
+                range: 0..4,
+                category: HighlightCategory::Comment,
+            },
+            HighlightSpan {
+                range: 5..12,
+                category: HighlightCategory::Macro,
+            },
+            HighlightSpan {
+                range: 13..17,
+                category: HighlightCategory::Parameter,
+            },
+        ];
+
+        let styled = syntax_spans_to_styled(&spans, &theme);
+
+        assert_eq!(styled[0].color_rgba, theme.syntax.comment.as_u8());
+        assert!(styled[0].italic);
+        assert!(!styled[0].bold);
+
+        assert_eq!(styled[1].color_rgba, theme.syntax.r#macro.as_u8());
+        assert!(styled[1].bold);
+        assert!(!styled[1].italic);
+
+        assert_eq!(styled[2].color_rgba, theme.syntax.parameter.as_u8());
+        assert!(!styled[2].bold);
+        assert!(!styled[2].italic);
+    }
 }
 
 fn parse_git_head(head: &str) -> Option<String> {

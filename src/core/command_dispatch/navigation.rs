@@ -2,7 +2,11 @@ use crate::core::commands::Command;
 
 use super::common::{DispatchCtx, DispatchReport};
 
-pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> DispatchReport {
+pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> DispatchReport {
+    if let Some(report) = dispatch_terminal_normal(ctx, &command) {
+        return report;
+    }
+
     match command {
         Command::MoveLeft => {
             let before_cursor = ctx.app_state.cursor_char_idx();
@@ -191,4 +195,86 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> Dispa
         }
         _ => unreachable!("navigation::dispatch received non-navigation command"),
     }
+}
+
+fn dispatch_terminal_normal(
+    ctx: &mut DispatchCtx<'_, '_, '_>,
+    command: &Command,
+) -> Option<DispatchReport> {
+    if !ctx.terminal_normal_active() {
+        return None;
+    }
+
+    let grid = ctx.terminal_grid_mut()?;
+    let (message, changed) = match command {
+        Command::MoveLeft => (
+            "Dispatch: moved terminal virtual cursor left",
+            grid.move_virtual_left(),
+        ),
+        Command::MoveRight => (
+            "Dispatch: moved terminal virtual cursor right",
+            grid.move_virtual_right(),
+        ),
+        Command::MoveUp => (
+            "Dispatch: moved terminal virtual cursor up",
+            grid.move_virtual_up(),
+        ),
+        Command::MoveDown => (
+            "Dispatch: moved terminal virtual cursor down",
+            grid.move_virtual_down(),
+        ),
+        Command::MoveWordForward => (
+            "Dispatch: moved terminal virtual cursor word forward",
+            grid.move_virtual_word_forward(),
+        ),
+        Command::MoveWordBackward => (
+            "Dispatch: moved terminal virtual cursor word backward",
+            grid.move_virtual_word_backward(),
+        ),
+        Command::MoveWordEnd => (
+            "Dispatch: moved terminal virtual cursor to word end",
+            grid.move_virtual_word_end(),
+        ),
+        Command::MoveToLineStart => (
+            "Dispatch: moved terminal virtual cursor to line start",
+            grid.move_virtual_to_line_start(),
+        ),
+        Command::MoveToLineEnd => (
+            "Dispatch: moved terminal virtual cursor to line end",
+            grid.move_virtual_to_line_end(),
+        ),
+        Command::MoveToFirstNonWhitespace => (
+            "Dispatch: moved terminal virtual cursor to first non-whitespace",
+            grid.move_virtual_to_first_non_whitespace(),
+        ),
+        Command::MoveToFirstLine => (
+            "Dispatch: moved terminal virtual cursor to first history line",
+            grid.move_virtual_to_first_line(),
+        ),
+        Command::MoveToLastLine => (
+            "Dispatch: moved terminal virtual cursor to last history line",
+            grid.move_virtual_to_last_line(),
+        ),
+        Command::ScrollHalfPageUp => {
+            let half_page = (grid.rows / 2).max(1);
+            (
+                "Dispatch: scrolled terminal virtual cursor half page up",
+                grid.move_virtual_half_page_up(half_page),
+            )
+        }
+        Command::ScrollHalfPageDown => {
+            let half_page = (grid.rows / 2).max(1);
+            (
+                "Dispatch: scrolled terminal virtual cursor half page down",
+                grid.move_virtual_half_page_down(half_page),
+            )
+        }
+        Command::CenterCursorLine => (
+            "Dispatch: centered terminal virtual cursor line",
+            grid.center_virtual_cursor_line(),
+        ),
+        _ => return None,
+    };
+
+    Some(DispatchReport::success(message, changed))
 }

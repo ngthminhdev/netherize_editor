@@ -1,35 +1,88 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
-    io::{BufRead, BufReader, Read, Write},
+    future::Future,
+    io::{BufRead, Write},
     path::{Path, PathBuf},
-    process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio},
+    process::Stdio,
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
+        mpsc as std_mpsc,
     },
 };
 
 use serde_json::{Value, json};
+use tokio::{
+    io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader},
+    process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
+    sync::Mutex as AsyncMutex,
+};
 
-use crate::async_runtime::message::{LspDiagnostic, LspPosition, LspRange};
+use crate::{
+    async_runtime::message::{LspDiagnostic, LspPosition, LspRange},
+    lsp::registry::{
+        all_language_profiles, language_profile_for_binary, language_profile_for_extension,
+        language_profile_for_path,
+    },
+};
+
+#[derive(Debug, Clone)]
+pub struct LspEntry {
+    pub binary: &'static str,
+    pub language_label: &'static str,
+    pub install_cmd: &'static str,
+}
+
+pub fn lsp_entry_for_extension(ext: &str) -> Option<LspEntry> {
+    let profile = language_profile_for_extension(ext)?;
+    Some(LspEntry {
+        binary: profile.lsp_binary,
+        language_label: profile.language_label,
+        install_cmd: profile.install_command,
+    })
+}
+
+pub fn check_lsp_installed(binary: &str) -> bool {
+    std::process::Command::new("which")
+        .arg(binary)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+pub fn lsp_entry_and_status_for_path(path: &Path) -> Option<(LspEntry, bool)> {
+    let profile = language_profile_for_path(path)?;
+    let entry = LspEntry {
+        binary: profile.lsp_binary,
+        language_label: profile.language_label,
+        install_cmd: profile.install_command,
+    };
+    Some((entry.clone(), check_lsp_installed(entry.binary)))
+}
 
 pub struct LspClientProcess {
-    child: Mutex<Child>,
-    writer: Mutex<ChildStdin>,
+    child: AsyncMutex<Child>,
+    writer: AsyncMutex<ChildStdin>,
     next_rpc_id: AtomicU64,
     latest_revision: AtomicU64,
     latest_request_id: AtomicU64,
+    pending_response_tx: Mutex<Option<std_mpsc::SyncSender<(u64, Value)>>>,
+    open_documents: Mutex<HashSet<String>>,
 }
 
 impl LspClientProcess {
     fn new(child: Child, writer: ChildStdin) -> Self {
         Self {
-            child: Mutex::new(child),
-            writer: Mutex::new(writer),
+            child: AsyncMutex::new(child),
+            writer: AsyncMutex::new(writer),
             next_rpc_id: AtomicU64::new(1),
             latest_revision: AtomicU64::new(0),
             latest_request_id: AtomicU64::new(0),
+            pending_response_tx: Mutex::new(None),
+            open_documents: Mutex::new(HashSet::new()),
         }
     }
 
@@ -46,20 +99,21 @@ impl LspClientProcess {
         self.latest_request_id.load(Ordering::Relaxed)
     }
 
-    pub fn send_notification(&self, method: &str, params: Value) -> Result<(), String> {
+    async fn send_notification_async(&self, method: &str, params: Value) -> Result<(), String> {
         let payload = json!({
             "jsonrpc": "2.0",
             "method": method,
             "params": params,
         });
-        let mut writer = self
-            .writer
-            .lock()
-            .map_err(|_| "lsp writer lock poisoned".to_string())?;
-        write_json_rpc_message(&mut *writer, &payload)
+        let mut writer = self.writer.lock().await;
+        write_json_rpc_message_async(&mut *writer, &payload).await
     }
 
-    pub fn send_request(&self, method: &str, params: Value) -> Result<u64, String> {
+    pub fn send_notification(&self, method: &str, params: Value) -> Result<(), String> {
+        block_on_runtime(self.send_notification_async(method, params))
+    }
+
+    async fn send_request_async(&self, method: &str, params: Value) -> Result<u64, String> {
         let request_id = self.next_rpc_id.fetch_add(1, Ordering::Relaxed);
         let payload = json!({
             "jsonrpc": "2.0",
@@ -67,35 +121,84 @@ impl LspClientProcess {
             "method": method,
             "params": params,
         });
-        let mut writer = self
-            .writer
-            .lock()
-            .map_err(|_| "lsp writer lock poisoned".to_string())?;
-        write_json_rpc_message(&mut *writer, &payload)?;
+        let mut writer = self.writer.lock().await;
+        write_json_rpc_message_async(&mut *writer, &payload).await?;
         Ok(request_id)
     }
 
-    pub fn graceful_shutdown(&self) -> Result<Option<i32>, String> {
-        // Theo spec: gửi request shutdown rồi notification exit.
-        let _ = self.send_request("shutdown", Value::Null);
-        let _ = self.send_notification("exit", Value::Null);
+    pub fn send_request(&self, method: &str, params: Value) -> Result<u64, String> {
+        block_on_runtime(self.send_request_async(method, params))
+    }
 
-        let mut child = self
-            .child
+    pub fn register_pending_request(&self) -> std_mpsc::Receiver<(u64, Value)> {
+        let (tx, rx) = std_mpsc::sync_channel(4);
+        if let Ok(mut guard) = self.pending_response_tx.lock() {
+            *guard = Some(tx);
+        }
+        rx
+    }
+
+    pub fn deliver_response(&self, id: u64, value: Value) {
+        if let Ok(guard) = self.pending_response_tx.lock()
+            && let Some(tx) = guard.as_ref()
+        {
+            let _ = tx.try_send((id, value));
+        }
+    }
+
+    pub fn clear_pending_request(&self) {
+        if let Ok(mut guard) = self.pending_response_tx.lock() {
+            *guard = None;
+        }
+    }
+
+    pub fn is_document_open(&self, uri: &str) -> bool {
+        self.open_documents
             .lock()
-            .map_err(|_| "lsp child lock poisoned".to_string())?;
+            .map(|guard| guard.contains(uri))
+            .unwrap_or(false)
+    }
+
+    pub fn mark_document_open(&self, uri: &str) {
+        if let Ok(mut guard) = self.open_documents.lock() {
+            guard.insert(uri.to_string());
+        }
+    }
+
+    pub fn mark_document_closed(&self, uri: &str) {
+        if let Ok(mut guard) = self.open_documents.lock() {
+            guard.remove(uri);
+        }
+    }
+
+    fn clear_open_documents(&self) {
+        if let Ok(mut guard) = self.open_documents.lock() {
+            guard.clear();
+        }
+    }
+
+    async fn graceful_shutdown_async(&self) -> Result<Option<i32>, String> {
+        let _ = self.send_request_async("shutdown", Value::Null).await;
+        let _ = self.send_notification_async("exit", Value::Null).await;
+
+        let mut child = self.child.lock().await;
         let status = match child.try_wait() {
             Ok(Some(status)) => Some(status.code().unwrap_or_default()),
             Ok(None) => {
-                let _ = child.kill();
-                match child.wait() {
+                let _ = child.start_kill();
+                match child.wait().await {
                     Ok(status) => Some(status.code().unwrap_or_default()),
                     Err(_) => None,
                 }
             }
             Err(err) => return Err(format!("lsp try_wait failed: {err}")),
         };
+        self.clear_open_documents();
         Ok(status)
+    }
+
+    pub fn graceful_shutdown(&self) -> Result<Option<i32>, String> {
+        block_on_runtime(self.graceful_shutdown_async())
     }
 }
 
@@ -103,8 +206,8 @@ pub struct SpawnedLspServer {
     pub process: Arc<LspClientProcess>,
     pub server_name: String,
     pub root_path: PathBuf,
-    pub reader: Box<dyn BufRead + Send>,
-    pub stderr: Option<Box<dyn Read + Send>>,
+    pub reader: BufReader<ChildStdout>,
+    pub stderr: Option<BufReader<ChildStderr>>,
     pub capabilities_summary: String,
 }
 
@@ -119,7 +222,7 @@ pub struct ParsedLogMessage {
     pub message: String,
 }
 
-pub fn spawn_lsp_server(
+pub async fn spawn_lsp_server(
     requested_command: Option<&str>,
     root_path: &Path,
     request_id: u64,
@@ -128,6 +231,9 @@ pub fn spawn_lsp_server(
     let server_name = resolve_lsp_server_command(requested_command, root_path)
         .ok_or_else(|| format!("no supported LSP server found for {}", root_path.display()))?;
     let mut command = Command::new(&server_name);
+    if let Some(profile) = language_profile_for_binary(&server_name) {
+        command.args(profile.launch_args);
+    }
     command.current_dir(root_path);
     command.stdin(Stdio::piped());
     command.stdout(Stdio::piped());
@@ -145,48 +251,49 @@ pub fn spawn_lsp_server(
         .stdout
         .take()
         .ok_or_else(|| "lsp child stdout unavailable".to_string())?;
-    let stderr = child.stderr.take().map(|stderr| {
-        let reader: Box<dyn Read + Send> = Box::new(stderr);
-        reader
-    });
+    let stderr = child.stderr.take().map(BufReader::new);
 
     let process = Arc::new(LspClientProcess::new(child, stdin));
     process.update_request_meta(request_id, revision_id);
-    let mut reader = Box::new(BufReader::new(stdout)) as Box<dyn BufRead + Send>;
+    let mut reader = BufReader::new(stdout);
+    let root_uri = path_to_lsp_uri(root_path);
 
-    let init_request_id = process.send_request(
-        "initialize",
-        json!({
-            "processId": std::process::id(),
-            "clientInfo": {
-                "name": "netherize-editor",
-                "version": "0.1.0"
-            },
-            "rootUri": path_to_lsp_uri(root_path),
-            "capabilities": {
-                "textDocument": {
-                    "synchronization": {
-                        "didSave": true,
-                        "willSave": false,
-                        "willSaveWaitUntil": false
-                    },
-                    "publishDiagnostics": {
-                        "relatedInformation": true
+    let init_request_id = process
+        .send_request_async(
+            "initialize",
+            json!({
+                "processId": std::process::id(),
+                "clientInfo": {
+                    "name": "netherize-editor",
+                    "version": "0.1.0"
+                },
+                "rootUri": root_uri,
+                "capabilities": {
+                    "textDocument": {
+                        "synchronization": {
+                            "didSave": true,
+                            "willSave": false,
+                            "willSaveWaitUntil": false
+                        },
+                        "publishDiagnostics": {
+                            "relatedInformation": true
+                        }
                     }
-                }
-            },
-            "trace": "off",
-            "workspaceFolders": [{
-                "uri": path_to_lsp_uri(root_path),
-                "name": root_path
-                    .file_name()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or("workspace")
-            }]
-        }),
-    )?;
+                },
+                "trace": "off",
+                "workspaceFolders": [{
+                    "uri": path_to_lsp_uri(root_path),
+                    "name": root_path
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("workspace")
+                }]
+            }),
+        )
+        .await?;
 
-    let initialize_response = wait_for_json_rpc_response(&mut *reader, init_request_id)?
+    let initialize_response = wait_for_json_rpc_response_async(&mut reader, init_request_id)
+        .await?
         .ok_or_else(|| "lsp initialize returned EOF".to_string())?;
 
     if let Some(error) = initialize_response.get("error") {
@@ -199,7 +306,9 @@ pub fn spawn_lsp_server(
         .map(ToString::to_string)
         .unwrap_or_else(|| "{}".to_string());
 
-    process.send_notification("initialized", json!({}))?;
+    process
+        .send_notification_async("initialized", json!({}))
+        .await?;
 
     Ok(SpawnedLspServer {
         process,
@@ -209,6 +318,41 @@ pub fn spawn_lsp_server(
         stderr,
         capabilities_summary,
     })
+}
+
+pub async fn read_json_rpc_message_async<R>(reader: &mut R) -> Result<Option<Value>, String>
+where
+    R: AsyncBufRead + Unpin + ?Sized,
+{
+    let mut headers = HashMap::new();
+    loop {
+        let mut line = String::new();
+        let read = reader
+            .read_line(&mut line)
+            .await
+            .map_err(|err| format!("read lsp header failed: {err}"))?;
+        if read == 0 {
+            return Ok(None);
+        }
+
+        if is_header_separator(&line) {
+            break;
+        }
+
+        if let Some((name, value)) = parse_header_line(&line) {
+            headers.insert(name, value);
+        }
+    }
+
+    let content_length = parse_content_length(&headers)?;
+    let mut body = vec![0_u8; content_length];
+    reader
+        .read_exact(&mut body)
+        .await
+        .map_err(|err| format!("read lsp body failed: {err}"))?;
+    let value = serde_json::from_slice::<Value>(&body)
+        .map_err(|err| format!("decode lsp json failed: {err}"))?;
+    Ok(Some(value))
 }
 
 pub fn read_json_rpc_message(reader: &mut dyn BufRead) -> Result<Option<Value>, String> {
@@ -222,22 +366,16 @@ pub fn read_json_rpc_message(reader: &mut dyn BufRead) -> Result<Option<Value>, 
             return Ok(None);
         }
 
-        if line == "\r\n" || line == "\n" {
+        if is_header_separator(&line) {
             break;
         }
 
-        if let Some((name, value)) = line.split_once(':') {
-            headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
+        if let Some((name, value)) = parse_header_line(&line) {
+            headers.insert(name, value);
         }
     }
 
-    let Some(length_header) = headers.get("content-length") else {
-        return Err("lsp message missing Content-Length header".to_string());
-    };
-    let content_length = length_header
-        .parse::<usize>()
-        .map_err(|err| format!("invalid Content-Length {:?}: {err}", length_header))?;
-
+    let content_length = parse_content_length(&headers)?;
     let mut body = vec![0_u8; content_length];
     reader
         .read_exact(&mut body)
@@ -245,6 +383,27 @@ pub fn read_json_rpc_message(reader: &mut dyn BufRead) -> Result<Option<Value>, 
     let value = serde_json::from_slice::<Value>(&body)
         .map_err(|err| format!("decode lsp json failed: {err}"))?;
     Ok(Some(value))
+}
+
+pub async fn write_json_rpc_message_async<W>(writer: &mut W, payload: &Value) -> Result<(), String>
+where
+    W: AsyncWrite + Unpin + ?Sized,
+{
+    let body =
+        serde_json::to_vec(payload).map_err(|err| format!("encode lsp json failed: {err}"))?;
+    writer
+        .write_all(format!("Content-Length: {}\r\n\r\n", body.len()).as_bytes())
+        .await
+        .map_err(|err| format!("write lsp header failed: {err}"))?;
+    writer
+        .write_all(&body)
+        .await
+        .map_err(|err| format!("write lsp body failed: {err}"))?;
+    writer
+        .flush()
+        .await
+        .map_err(|err| format!("flush lsp message failed: {err}"))?;
+    Ok(())
 }
 
 pub fn write_json_rpc_message(writer: &mut dyn Write, payload: &Value) -> Result<(), String> {
@@ -262,20 +421,21 @@ pub fn write_json_rpc_message(writer: &mut dyn Write, payload: &Value) -> Result
     Ok(())
 }
 
-pub fn wait_for_json_rpc_response(
-    reader: &mut dyn BufRead,
+async fn wait_for_json_rpc_response_async<R>(
+    reader: &mut R,
     expected_id: u64,
-) -> Result<Option<Value>, String> {
+) -> Result<Option<Value>, String>
+where
+    R: AsyncBufRead + Unpin + ?Sized,
+{
     loop {
-        let Some(message) = read_json_rpc_message(reader)? else {
+        let Some(message) = read_json_rpc_message_async(reader).await? else {
             return Ok(None);
         };
 
-        let message_id = message.get("id").and_then(Value::as_u64);
-        if message_id == Some(expected_id) {
+        if message.get("id").and_then(Value::as_u64) == Some(expected_id) {
             return Ok(Some(message));
         }
-        // Các message khác (notification/response không liên quan) sẽ được bỏ qua ở bootstrap.
     }
 }
 
@@ -358,11 +518,9 @@ pub fn build_did_change_notification(uri: &str, version: i32, text: &str) -> Val
             "uri": uri,
             "version": version
         },
-        "contentChanges": [
-            {
-                "text": text
-            }
-        ]
+        "contentChanges": [{
+            "text": text
+        }]
     })
 }
 
@@ -397,40 +555,27 @@ pub fn resolve_lsp_server_command(
 }
 
 pub fn detect_lsp_server_for_workspace(root_path: &Path) -> Option<String> {
-    if has_workspace_marker(root_path, &["Cargo.toml", "rust-project.json"]) {
-        return Some("rust-analyzer".to_string());
-    }
-    if has_workspace_marker(root_path, &["go.work", "go.mod"]) {
-        return Some("gopls".to_string());
+    for profile in all_language_profiles() {
+        if profile
+            .root_markers
+            .iter()
+            .copied()
+            .filter(|marker| *marker != ".git")
+            .any(|marker| root_path.join(marker).exists())
+        {
+            return Some(profile.lsp_binary.to_string());
+        }
     }
 
-    let top_level_server = fs::read_dir(root_path)
+    fs::read_dir(root_path)
         .ok()?
         .filter_map(Result::ok)
-        .filter_map(|entry| {
-            let path = entry.path();
-            path.is_file().then_some(path)
-        })
-        .find_map(|path| detect_lsp_server_for_path(&path));
-
-    top_level_server
+        .map(|entry| entry.path())
+        .find_map(|path| detect_lsp_server_for_path(&path))
 }
 
 pub fn detect_lsp_server_for_path(path: &Path) -> Option<String> {
-    match path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.to_ascii_lowercase())
-        .as_deref()
-    {
-        Some("rs") => Some("rust-analyzer".to_string()),
-        Some("go") => Some("gopls".to_string()),
-        _ => None,
-    }
-}
-
-fn has_workspace_marker(root_path: &Path, markers: &[&str]) -> bool {
-    markers.iter().any(|marker| root_path.join(marker).exists())
+    language_profile_for_path(path).map(|profile| profile.lsp_binary.to_string())
 }
 
 fn parse_diagnostic(value: &Value) -> Option<LspDiagnostic> {
@@ -468,12 +613,36 @@ fn parse_position(value: &Value) -> Option<LspPosition> {
     })
 }
 
-pub fn into_stderr_reader(stderr: ChildStderr) -> Box<dyn Read + Send> {
-    Box::new(BufReader::new(stderr))
+fn runtime_handle() -> Result<tokio::runtime::Handle, String> {
+    tokio::runtime::Handle::try_current()
+        .map_err(|_| "tokio runtime handle unavailable for lsp io".to_string())
 }
 
-pub fn into_stdout_reader(stdout: ChildStdout) -> Box<dyn BufRead + Send> {
-    Box::new(BufReader::new(stdout))
+fn block_on_runtime<F, T>(future: F) -> Result<T, String>
+where
+    F: Future<Output = Result<T, String>>,
+{
+    runtime_handle()?.block_on(future)
+}
+
+fn parse_header_line(line: &str) -> Option<(String, String)> {
+    let trimmed = line.trim_end_matches(['\r', '\n']);
+    let (name, value) = trimmed.split_once(':')?;
+    Some((name.trim().to_ascii_lowercase(), value.trim().to_string()))
+}
+
+fn is_header_separator(line: &str) -> bool {
+    line.trim_end_matches(['\r', '\n']).is_empty()
+}
+
+fn parse_content_length(headers: &HashMap<String, String>) -> Result<usize, String> {
+    let Some(length_header) = headers.get("content-length") else {
+        return Err("lsp message missing Content-Length header".to_string());
+    };
+    length_header
+        .trim()
+        .parse::<usize>()
+        .map_err(|err| format!("invalid Content-Length {:?}: {err}", length_header))
 }
 
 #[cfg(test)]
@@ -518,6 +687,23 @@ mod tests {
 
         assert_eq!(decoded["method"], "test/ping");
         assert_eq!(decoded["params"]["value"], 42);
+    }
+
+    #[test]
+    fn json_rpc_frame_accepts_crlf_headers() {
+        let body = "{\"jsonrpc\":\"2.0\"}";
+        let raw = format!(
+            "Content-Length: {}\r\nContent-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n{}",
+            body.len(),
+            body
+        )
+        .into_bytes();
+        let mut reader = Cursor::new(raw);
+        let decoded = read_json_rpc_message(&mut reader)
+            .expect("read frame")
+            .expect("frame should exist");
+
+        assert_eq!(decoded["jsonrpc"], "2.0");
     }
 
     #[test]
@@ -584,6 +770,10 @@ mod tests {
         assert_eq!(
             detect_lsp_server_for_path(Path::new("/tmp/main.go")).as_deref(),
             Some("gopls")
+        );
+        assert_eq!(
+            detect_lsp_server_for_path(Path::new("/tmp/Dockerfile")).as_deref(),
+            Some("docker-langserver")
         );
         assert_eq!(
             detect_lsp_server_for_path(Path::new("/tmp/README.md")),

@@ -1,7 +1,10 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    config::keymap_config::{KeyBinding, KeymapFile},
+    config::{
+        keymap_config::{KeyBinding, KeymapFile},
+        paths::user_config_root,
+    },
     core::command_ids,
 };
 
@@ -97,13 +100,7 @@ fn find_profile_path(name: &str) -> Option<PathBuf> {
 }
 
 fn default_user_overrides_path() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME").map(PathBuf::from)?;
-    Some(
-        home.join(".config")
-            .join("netherize")
-            .join("keymaps")
-            .join("user.toml"),
-    )
+    Some(user_config_root().join("keymaps").join("user.toml"))
 }
 
 /// Read and parse a TOML keymap file.

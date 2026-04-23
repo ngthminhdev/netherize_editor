@@ -3,6 +3,60 @@ use winit::keyboard::KeyCode;
 use super::*;
 
 impl InputMap {
+    pub(super) fn resolve_references_focus(
+        &self,
+        input: &NormalizedInput,
+    ) -> Option<KeybindingMatch> {
+        use KeyCode::*;
+
+        if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowDown))
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyJ))
+            || (input.modifiers.control_key()
+                && !input.modifiers.super_key()
+                && input.physical_key == Some(KeyN))
+        {
+            return Some(KeybindingMatch {
+                command: Command::ReferencesSelectNext,
+                reason: "references: down/ctrl+n -> ReferencesSelectNext",
+            });
+        }
+
+        if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowUp))
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyK))
+            || (input.modifiers.control_key()
+                && !input.modifiers.super_key()
+                && input.physical_key == Some(KeyP))
+        {
+            return Some(KeybindingMatch {
+                command: Command::ReferencesSelectPrev,
+                reason: "references: up/ctrl+p -> ReferencesSelectPrev",
+            });
+        }
+
+        if input.named_key == Some(NamedKey::Escape)
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyQ))
+        {
+            return Some(KeybindingMatch {
+                command: Command::BufferCloseCurrent,
+                reason: "references: Esc/q -> BufferCloseCurrent",
+            });
+        }
+
+        if input.named_key == Some(NamedKey::Enter) {
+            return Some(KeybindingMatch {
+                command: Command::ReferencesOpenSelection,
+                reason: "references: Enter -> ReferencesOpenSelection",
+            });
+        }
+
+        resolved_keymap::resolve_global_command(&self.keymap, input, &self.open_file_path).map(
+            |command| KeybindingMatch {
+                command,
+                reason: "references: global binding",
+            },
+        )
+    }
+
     pub(super) fn resolve_explorer_focus(
         &self,
         input: &NormalizedInput,
@@ -225,14 +279,131 @@ impl InputMap {
         None
     }
 
+    pub(super) fn resolve_fuzzy_picker_focus(
+        &self,
+        input: &NormalizedInput,
+        context: KeybindingContext,
+    ) -> Option<KeybindingMatch> {
+        use KeyCode::*;
+        let is_insert = context.mode == EditorMode::Insert;
+
+        if is_insert {
+            if input.has_command_modifier() && input.physical_key == Some(KeyV) {
+                return Some(KeybindingMatch {
+                    command: Command::EditorPaste,
+                    reason: "fuzzy picker: mod+v -> EditorPaste",
+                });
+            }
+            if input.named_key == Some(NamedKey::Escape) {
+                return Some(KeybindingMatch {
+                    command: Command::SwitchMode(ModeEvent::Escape),
+                    reason: "fuzzy picker: Esc -> Escape (Normal mode)",
+                });
+            }
+            if input.named_key == Some(NamedKey::Enter) {
+                return Some(KeybindingMatch {
+                    command: Command::FilePickerConfirmSelection,
+                    reason: "fuzzy picker: Enter -> ConfirmSelection",
+                });
+            }
+            if input.named_key == Some(NamedKey::ArrowUp)
+                || (input.modifiers.control_key()
+                    && !input.modifiers.super_key()
+                    && input.physical_key == Some(KeyP))
+            {
+                return Some(KeybindingMatch {
+                    command: Command::OverlaySelectPrev,
+                    reason: "fuzzy picker: ArrowUp/Ctrl+P -> SelectPrev",
+                });
+            }
+            if input.named_key == Some(NamedKey::ArrowDown)
+                || (input.modifiers.control_key()
+                    && !input.modifiers.super_key()
+                    && input.physical_key == Some(KeyN))
+            {
+                return Some(KeybindingMatch {
+                    command: Command::OverlaySelectNext,
+                    reason: "fuzzy picker: ArrowDown/Ctrl+N -> SelectNext",
+                });
+            }
+            if input.named_key == Some(NamedKey::Backspace) {
+                return Some(KeybindingMatch {
+                    command: Command::FilePickerBackspaceQuery,
+                    reason: "fuzzy picker: Backspace -> DeleteQueryChar",
+                });
+            }
+            if input.named_key == Some(NamedKey::Space) {
+                return Some(KeybindingMatch {
+                    command: Command::FilePickerAppendQuery(" ".to_string()),
+                    reason: "fuzzy picker: Space -> AppendQueryChar",
+                });
+            }
+            if let Some(command) = palette_query_from_text(&input.text) {
+                return Some(KeybindingMatch {
+                    command,
+                    reason: "fuzzy picker: text input -> AppendQuery",
+                });
+            }
+            return None;
+        }
+
+        // In Normal mode, allow navigation and global commands (like `q`, `space x`)
+        if input.named_key == Some(NamedKey::Enter) {
+            return Some(KeybindingMatch {
+                command: Command::FilePickerConfirmSelection,
+                reason: "fuzzy picker: Enter -> ConfirmSelection",
+            });
+        }
+        if input.named_key == Some(NamedKey::ArrowUp)
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyK))
+        {
+            return Some(KeybindingMatch {
+                command: Command::OverlaySelectPrev,
+                reason: "fuzzy picker: ArrowUp/k -> SelectPrev",
+            });
+        }
+        if input.named_key == Some(NamedKey::ArrowDown)
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyJ))
+        {
+            return Some(KeybindingMatch {
+                command: Command::OverlaySelectNext,
+                reason: "fuzzy picker: ArrowDown/j -> SelectNext",
+            });
+        }
+        if input.named_key == Some(NamedKey::Escape)
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyQ))
+        {
+            return Some(KeybindingMatch {
+                command: Command::BufferCloseCurrent,
+                reason: "fuzzy picker: Esc/q -> BufferCloseCurrent",
+            });
+        }
+        if input.has_command_modifier() && input.physical_key == Some(KeyV) {
+            return Some(KeybindingMatch {
+                command: Command::EditorPaste,
+                reason: "fuzzy picker: mod+v -> EditorPaste",
+            });
+        }
+
+        resolved_keymap::resolve_global_command(&self.keymap, input, &self.open_file_path).map(
+            |command| KeybindingMatch {
+                command,
+                reason: "fuzzy picker: global binding",
+            },
+        )
+    }
+
     pub(super) fn resolve_terminal_focus(
         &self,
         input: &NormalizedInput,
+        mode: EditorMode,
     ) -> Option<KeybindingMatch> {
+        // Strict terminal mode: only consult terminal-mode bindings here.
+        // Unmapped keys must fall through as raw PTY input instead of triggering globals.
         if let Some(command) = resolved_keymap::resolve_command_mode_only(
             &self.keymap,
             input,
-            "terminal",
+            resolved_keymap::editor_mode_str(mode),
             &self.open_file_path,
         ) {
             return Some(KeybindingMatch {
@@ -241,7 +412,7 @@ impl InputMap {
             });
         }
 
-        if input.named_key == Some(NamedKey::Escape) {
+        if mode == EditorMode::TerminalFocus && input.named_key == Some(NamedKey::Escape) {
             return Some(KeybindingMatch {
                 command: Command::FocusEditor,
                 reason: "terminal focus: Esc -> FocusEditor",

@@ -36,6 +36,8 @@ pub struct StyledTextSpan {
     pub start: usize,
     pub end: usize,
     pub color_rgba: [u8; 4],
+    pub bold: bool,
+    pub italic: bool,
 }
 
 impl StyledTextSpan {
@@ -44,6 +46,24 @@ impl StyledTextSpan {
             start,
             end,
             color_rgba,
+            bold: false,
+            italic: false,
+        }
+    }
+
+    pub const fn with_style(
+        start: usize,
+        end: usize,
+        color_rgba: [u8; 4],
+        bold: bool,
+        italic: bool,
+    ) -> Self {
+        Self {
+            start,
+            end,
+            color_rgba,
+            bold,
+            italic,
         }
     }
 }
@@ -187,7 +207,11 @@ impl TextSystem {
         let mut merged: Vec<StyledTextSpan> = Vec::with_capacity(sanitized.len());
         for span in sanitized {
             if let Some(last) = merged.last_mut() {
-                if last.color_rgba == span.color_rgba && span.start <= last.end {
+                if last.color_rgba == span.color_rgba
+                    && last.bold == span.bold
+                    && last.italic == span.italic
+                    && span.start <= last.end
+                {
                     last.end = last.end.max(span.end);
                     continue;
                 }
@@ -204,10 +228,14 @@ impl TextSystem {
                 segments.push((&text[cursor..start], default_attrs.clone()));
             }
             if start < span.end {
-                let attrs = apply_family(
-                    Attrs::new().color(Self::rgba_u8_to_color(span.color_rgba)),
-                    family,
-                );
+                let mut attrs = Attrs::new().color(Self::rgba_u8_to_color(span.color_rgba));
+                if span.bold {
+                    attrs = attrs.weight(fontdb::Weight::BOLD);
+                }
+                if span.italic {
+                    attrs = attrs.style(fontdb::Style::Italic);
+                }
+                let attrs = apply_family(attrs, family);
                 segments.push((&text[start..span.end], attrs));
                 cursor = span.end;
             }
@@ -307,7 +335,13 @@ impl TextSystem {
             end += 1;
         }
 
-        (start < end).then_some(StyledTextSpan::new(start, end, span.color_rgba))
+        (start < end).then_some(StyledTextSpan::with_style(
+            start,
+            end,
+            span.color_rgba,
+            span.bold,
+            span.italic,
+        ))
     }
 
     fn face_to_summary(face: &fontdb::FaceInfo) -> FontFaceSummary {

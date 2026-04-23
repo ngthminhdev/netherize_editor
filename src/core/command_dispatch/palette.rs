@@ -1,5 +1,6 @@
 use crate::{
     app::command_palette::{CommandPaletteAction, CommandPaletteMode},
+    config::theme_config::ThemeConfig,
     core::{
         command_ids,
         commands::Command,
@@ -9,22 +10,31 @@ use crate::{
 
 use super::{DispatchCtx, common::DispatchReport, dispatch_command};
 
-pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> DispatchReport {
+pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> DispatchReport {
     match command {
-        Command::OpenFilePicker | Command::OpenFileFinder => {
-            let was_open = ctx.app_state.is_file_picker_open();
-            match open_palette_mode(ctx, CommandPaletteMode::FilePicker, "file finder") {
+        Command::OpenFilePicker => {
+            match open_palette_mode(ctx, CommandPaletteMode::FilePicker, "file picker") {
                 Ok((result_count, mode_changed)) => DispatchReport::success_with_flags(
-                    if was_open {
-                        format!("Dispatch: file finder refreshed ({result_count} results)")
-                    } else {
-                        format!("Dispatch: file finder opened ({result_count} results)")
-                    },
+                    format!("Dispatch: file picker opened ({result_count} items)"),
                     true,
-                    mode_changed || !was_open,
+                    mode_changed,
                 ),
                 Err(report) => report,
             }
+        }
+        Command::OpenFileFinder => {
+            let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterInsert);
+            let buffer_index = ctx
+                .app_state
+                .open_fuzzy_picker_buffer(CommandPaletteMode::FilePicker);
+            DispatchReport::success_with_flags(
+                format!(
+                    "Dispatch: file picker buffer opened at index {}",
+                    buffer_index
+                ),
+                true,
+                true,
+            )
         }
         Command::OpenVimCommand => {
             match open_palette_mode(ctx, CommandPaletteMode::VimCommand, "vim command") {
@@ -59,15 +69,27 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> Dispa
             Err(report) => report,
         },
         Command::SearchInFiles => {
-            match open_palette_mode(ctx, CommandPaletteMode::LiveGrep, "live grep") {
-                Ok((result_count, mode_changed)) => DispatchReport::success_with_flags(
-                    format!("Dispatch: live grep opened ({result_count} items)"),
-                    true,
-                    mode_changed,
+            let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterInsert);
+            let buffer_index = ctx
+                .app_state
+                .open_fuzzy_picker_buffer(CommandPaletteMode::LiveGrep);
+            DispatchReport::success_with_flags(
+                format!(
+                    "Dispatch: live grep buffer opened at index {}",
+                    buffer_index
                 ),
-                Err(report) => report,
-            }
+                true,
+                true,
+            )
         }
+        Command::OpenThemeSelector => match open_theme_selector(ctx) {
+            Ok((result_count, mode_changed)) => DispatchReport::success_with_flags(
+                format!("Dispatch: theme selector opened ({result_count} items)"),
+                true,
+                mode_changed,
+            ),
+            Err(report) => report,
+        },
         Command::FilePickerAppendQuery(text) => match ctx.app_state.file_picker_append_query(&text)
         {
             Ok(changed) => DispatchReport::success(
@@ -134,7 +156,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> Dispa
 }
 
 fn open_palette_mode(
-    ctx: &mut DispatchCtx<'_, '_>,
+    ctx: &mut DispatchCtx<'_, '_, '_>,
     mode: CommandPaletteMode,
     label: &str,
 ) -> Result<(usize, bool), DispatchReport> {
@@ -175,7 +197,52 @@ fn open_palette_mode(
     Ok((result_count, mode_changed))
 }
 
-fn confirm_selection(ctx: &mut DispatchCtx<'_, '_>) -> DispatchReport {
+fn open_theme_selector(ctx: &mut DispatchCtx<'_, '_, '_>) -> Result<(usize, bool), DispatchReport> {
+    let current_mode = ctx.app_state.current_mode();
+    if current_mode != EditorMode::PaletteFocus
+        && !ctx.app_state.can_apply_mode_event(ModeEvent::OpenPalette)
+    {
+        return Err(DispatchReport::failure(format!(
+            "Dispatch: open theme selector rejected (mode={} does not allow OpenPalette)",
+            current_mode.as_str()
+        )));
+    }
+
+    let themes = ThemeConfig::list_available_theme_entries();
+    if themes.is_empty() {
+        return Err(DispatchReport::failure(
+            "Dispatch: open theme selector failed -> no theme profiles found",
+        ));
+    }
+
+    let result_count = match ctx.app_state.open_theme_selector_palette(&themes) {
+        Ok(result_count) => result_count,
+        Err(err) => {
+            return Err(DispatchReport::failure(format!(
+                "Dispatch: open theme selector failed -> {err}"
+            )));
+        }
+    };
+
+    let mode_changed = if current_mode == EditorMode::PaletteFocus {
+        false
+    } else {
+        match ctx.app_state.apply_mode_event(ModeEvent::OpenPalette) {
+            Ok(result) => result.changed,
+            Err(err) => {
+                let _ = ctx.app_state.close_command_palette();
+                return Err(DispatchReport::failure(format!(
+                    "Dispatch: open theme selector rejected -> {:?}",
+                    err
+                )));
+            }
+        }
+    };
+
+    Ok((result_count, mode_changed))
+}
+
+fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
     if matches!(
         ctx.app_state.command_palette_mode(),
         Some(CommandPaletteMode::InFileSearch)
@@ -309,6 +376,11 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_>) -> DispatchReport {
             }
             report
         }
+        CommandPaletteAction::SelectTheme(theme_name) => DispatchReport::success_with_flags(
+            format!("Dispatch: theme selection deferred -> {}", theme_name),
+            false,
+            false,
+        ),
         CommandPaletteAction::JumpToSymbol(symbol) => {
             let _ = ctx.app_state.close_command_palette();
             if ctx.app_state.current_mode() == EditorMode::PaletteFocus {
@@ -323,7 +395,7 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_>) -> DispatchReport {
     }
 }
 
-fn close_picker(ctx: &mut DispatchCtx<'_, '_>) -> DispatchReport {
+fn close_picker(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
     let clears_search = matches!(
         ctx.app_state.command_palette_mode(),
         Some(CommandPaletteMode::InFileSearch)

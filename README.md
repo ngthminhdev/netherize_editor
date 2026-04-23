@@ -13,12 +13,12 @@ A GPU-accelerated terminal/text editor written in Rust. Currently in active deve
 | GPU renderer (wgpu) | ✅ Renders text, cursor, gutter, sidebar, statusbar |
 | Glyph atlas (texture packing) | ✅ Shelf-packer, uploaded to GPU |
 | Text shaping (cosmic-text) | ✅ Rich text + syntax spans |
-| Syntax highlighting (tree-sitter) | ✅ Rust grammar wired |
+| Syntax highlighting (tree-sitter) | ✅ Polyglot bootstrap (Rust / JS / TS / Go / YAML / JSON / Bash) |
 | Workbench layout engine | ✅ Region-based, resizable splits |
 | File explorer sidebar | ✅ Tree with j/k/h/l/Enter navigation + theme-correct colors |
 | Embedded terminal (PTY) | ✅ ANSI parser + grid |
-| LSP client | 🚧 Skeleton (didOpen wired, partial) |
-| Config / theme (TOML runtime) | ✅ Profile-driven TOML + built-in fallback |
+| LSP client | ✅ Smart root detection + async stdio transport + Mason-style install prompt |
+| Config / theme (TOML runtime) | ✅ Repo profiles + user theme discovery + persisted runtime selection |
 | Command palette | ✅ Overlay UI with prompt prefix/query color split |
 | File picker (fuzzy) | ✅ Matched-char accent highlight + fg_dim labels |
 | Multi-buffer | ✅ Buffer ring (next/prev/close) |
@@ -82,6 +82,11 @@ netherize_editor/
 │   │   ├── command_dispatch.rs    # Routes Command → handler
 │   │   └── mod.rs
 │   │
+│   ├── lsp/                       # Polyglot language server client
+│   │   ├── registry.rs            # File extension/filename → language profile, install command, root markers
+│   │   ├── client.rs              # JSON-RPC framing, async stdio transport, didOpen/didChange lifecycle
+│   │   └── mod.rs
+│   │
 │   ├── render/                    # GPU rendering layer (wgpu)
 │   │   ├── renderer.rs            # Renderer facade + shared render types
 │   │   ├── renderer/
@@ -107,8 +112,9 @@ netherize_editor/
 │   │   └── mod.rs
 │   │
 │   ├── syntax/                    # Syntax highlighting
-│   │   ├── syntax_engine.rs       # tree-sitter parse + highlight span extraction
-│   │   ├── highlight.rs           # Highlight → StyledTextSpan mapping
+│   │   ├── parser.rs              # Language registry bridge → tree-sitter grammar bootstrap
+│   │   ├── syntax_engine.rs       # tree-sitter parser lifecycle for each supported language
+│   │   ├── highlight.rs           # Query capture → theme token spans / emphasis flags
 │   │   └── mod.rs
 │   │
 │   ├── workbench/                 # UI layout + panel management
@@ -151,6 +157,7 @@ netherize_editor/
 │       │   ├── loader.rs          # TOML loading, validation, profile lookup
 │       │   ├── raw.rs             # Serde-only structs matching theme TOML
 │       │   └── builtin.rs         # Built-in dark fallback theme
+│       ├── paths.rs               # Shared user-config / legacy-state path helpers
 │       ├── ui_config.rs           # UiConfig — layout sizes, cursor style, padding
 │       ├── keymap_config.rs       # KeymapConfig — raw key binding table
 │       ├── keymap_loader.rs       # Loads + merges keymap TOML files
@@ -173,6 +180,22 @@ netherize_editor/
 │
 └── Cargo.toml
 ```
+
+### Runtime State And User Config
+
+Repo-shipped profiles still live under `config/`, but user-specific state/config now resolves like this:
+
+- `~/.config/netherize/state.toml` — persisted app state (`recent_projects`, selected `theme_profile`)
+- `~/.config/netherize/themes/*.toml` — user theme profiles discovered by Theme Selector / `ThemeConfig`
+- `~/.config/netherize/keymaps/user.toml` — optional local keymap overrides
+- `~/.netherize_editor/state.toml` — legacy state path; current code reads it as fallback and migrates on next save
+
+Theme lookup order is now:
+
+1. `./config/themes`
+2. `~/.config/netherize/themes`
+3. `~/.netherize_editor/themes` (legacy fallback)
+4. `config/themes` next to the built binary
 
 ---
 
@@ -380,9 +403,11 @@ Controls theme metadata, colors, sizes, and file icons.
 
 Theme loading order:
 
-1. `ThemeConfig::load_active()` reads `NETHERIZE_THEME` and defaults to `default-dark`
-2. It looks for `config/themes/<profile>.toml`
-3. If the file is missing or invalid, the renderer falls back to `ThemeConfig::builtin_dark()`
+1. `ThemeConfig::load_preferred(...)` reads `NETHERIZE_THEME` if it is set
+2. Otherwise it falls back to the persisted `theme_profile` from `~/.config/netherize/state.toml`
+3. Otherwise it defaults to `default-dark`
+4. The profile name is resolved across the search roots listed above
+5. If the file is missing or invalid, the renderer falls back to `ThemeConfig::builtin_dark()`
 
 ```toml
 [theme]
@@ -423,18 +448,19 @@ Profiles are selected via environment variables at startup:
 NETHERIZE_THEME=default-dark NETHERIZE_PROFILE=default NETHERIZE_UI=default cargo run
 ```
 
-- `NETHERIZE_THEME` -> `config/themes/<profile>.toml`
+- `NETHERIZE_THEME` -> theme profile name resolved across repo/user theme search roots
 - `NETHERIZE_PROFILE` -> `config/keymaps/<profile>.toml` (repo currently ships `default.toml`)
 - `NETHERIZE_UI` -> `config/ui/<profile>.toml`
 
 ### Theme Override Workflow
 
-Theme loading is profile-based today:
+Theme loading is profile-based and now also supports runtime persistence:
 
 1. Copy an existing file such as `config/themes/default-dark.toml`
-2. Save it as a new profile, for example `config/themes/my-dark.toml`
+2. Save it either as a repo profile (`config/themes/my-dark.toml`) or a user profile (`~/.config/netherize/themes/my-dark.toml`)
 3. Edit the tokens you want to change
-4. Start the editor with `NETHERIZE_THEME=my-dark cargo run`
+4. Either start the editor with `NETHERIZE_THEME=my-dark cargo run` or pick it from `<Space> t h`
+5. When selected from Theme Selector, the active profile is saved to `~/.config/netherize/state.toml` and restored on the next launch unless `NETHERIZE_THEME` overrides it
 
 Example:
 
@@ -458,7 +484,7 @@ border_color = "#24314d"
 accent = "#9be564"
 ```
 
-`ThemeConfig::load_active()` currently resolves only `config/themes/<profile>.toml` and falls back to the built-in dark theme if that file is missing or invalid. Unlike keymaps, there is not yet a dedicated `~/.config/netherize/...` theme override layer.
+Theme profiles are now discovered from both repo and user folders, and Theme Selector shows the source path for each profile so duplicate names are easier to reason about.
 
 ### Keymap Override Workflow
 
@@ -554,12 +580,13 @@ Read in this order to build a mental model quickly:
 
 ## Known Gaps / Next Steps
 
-- **LSP**: `client.rs` spawns the process and sends `didOpen`, but response handling and diagnostics display are not yet wired to the renderer.
+- **LSP UI**: diagnostics are parsed and logged, but inline squiggles / gutter markers / semantic-token overlays are not rendered yet.
 - **Scrolling**: vertical scroll works via `scroll_line`; horizontal scroll not yet implemented.
 - **Multiple splits**: layout engine supports Left/Center/Right/Bottom but no arbitrary splits yet.
 - **Atlas overflow**: when the glyph atlas fills up, new glyphs are dropped silently. Atlas eviction/resize not yet implemented.
 - **Undo/redo**: implemented for normal edit flows, including grouped repeated commands, but coverage is still strongest around editor-core mutations rather than every future UI action.
 - **Visual line mode**: `EnterVisualLine` command exists but selection logic is partial.
+- **Dockerfile tree-sitter highlight**: Dockerfile is wired in the language registry + LSP install flow, but syntax highlighting still depends on a compatible modern grammar wrapper.
 
 ---
 

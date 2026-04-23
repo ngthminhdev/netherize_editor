@@ -1,7 +1,11 @@
 use super::*;
 use crate::{
-    app::clipboard::ClipboardProvider, app::command_palette::CommandPaletteMode,
-    core::command_dispatch::dispatch_command_with_clipboard_count,
+    app::clipboard::ClipboardProvider,
+    app::command_palette::CommandPaletteMode,
+    core::command_dispatch::{
+        DispatchReport, dispatch_command_with_clipboard_count,
+        dispatch_command_with_clipboard_count_with_terminal,
+    },
 };
 
 fn dispatch_palette_overlay_command(
@@ -10,7 +14,7 @@ fn dispatch_palette_overlay_command(
     command: Command,
 ) -> crate::core::command_dispatch::DispatchReport {
     match command {
-        Command::PasteSystemClipboard => {
+        Command::EditorPaste | Command::PasteSystemClipboard => {
             dispatch_command_with_clipboard(app_state, command, Some(clipboard))
         }
         _ => dispatch_command(app_state, command),
@@ -29,6 +33,104 @@ impl AppShell {
         }
 
         crate::syntax::highlight::apply_highlight_edits(&mut self.highlight_spans, &edits);
+        crate::syntax::highlight::apply_highlight_edits(&mut self.semantic_highlight_spans, &edits);
+    }
+
+    fn dispatch_command_with_focused_terminal(
+        &mut self,
+        command: Command,
+        repeat_count: usize,
+    ) -> DispatchReport {
+        let focus_target = self.focus_manager.current();
+        let active_terminal_session = self.app_state.active_terminal_session_id();
+        let active_buffer_is_terminal = self.app_state.active_buffer_is_terminal();
+
+        if active_buffer_is_terminal && focus_target == FocusTarget::CenterEditor {
+            let terminal = active_terminal_session
+                .and_then(|session_id| self.terminal_buffer_grids.get_mut(&session_id));
+            let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
+            return dispatch_command_with_clipboard_count_with_terminal(
+                app_state,
+                command,
+                repeat_count,
+                Some(clipboard),
+                terminal,
+            );
+        }
+
+        if focus_target == FocusTarget::BottomPanel {
+            let terminal = Some(&mut self.terminal_grid);
+            let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
+            return dispatch_command_with_clipboard_count_with_terminal(
+                app_state,
+                command,
+                repeat_count,
+                Some(clipboard),
+                terminal,
+            );
+        }
+
+        let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
+        dispatch_command_with_clipboard_count_with_terminal(
+            app_state,
+            command,
+            repeat_count,
+            Some(clipboard),
+            None,
+        )
+    }
+
+    fn mark_focused_terminal_layout_dirty(&mut self) {
+        if self.app_state.active_buffer_is_terminal()
+            && self.focus_manager.current() == FocusTarget::CenterEditor
+        {
+            self.buffer_terminal_needs_layout = true;
+        } else {
+            self.terminal_needs_layout = true;
+        }
+    }
+
+    fn handle_terminal_normal_command(
+        &mut self,
+        command: &Command,
+        repeat_count: usize,
+    ) -> Option<bool> {
+        let terminal_copy_routing = self.app_state.current_mode() == EditorMode::TerminalNormal
+            || matches!(command, Command::SwitchMode(ModeEvent::EnterTerminalNormal));
+        if !terminal_copy_routing {
+            return None;
+        }
+
+        let supported = matches!(
+            command,
+            Command::MoveLeft
+                | Command::MoveRight
+                | Command::MoveUp
+                | Command::MoveDown
+                | Command::MoveWordForward
+                | Command::MoveWordBackward
+                | Command::MoveWordEnd
+                | Command::MoveToLineStart
+                | Command::MoveToLineEnd
+                | Command::MoveToFirstNonWhitespace
+                | Command::MoveToFirstLine
+                | Command::MoveToLastLine
+                | Command::ScrollHalfPageUp
+                | Command::ScrollHalfPageDown
+                | Command::CenterCursorLine
+                | Command::YankSelection
+                | Command::SwitchMode(ModeEvent::EnterTerminalNormal)
+                | Command::SwitchMode(ModeEvent::EnterVisual | ModeEvent::FocusTerminal)
+        );
+        if !supported {
+            return None;
+        }
+
+        let report = self.dispatch_command_with_focused_terminal(command.clone(), repeat_count);
+        if report.state_changed {
+            self.mark_focused_terminal_layout_dirty();
+        }
+        Some(report.request_redraw || report.state_changed)
     }
 
     pub(super) fn handle_command_with_count(
@@ -36,6 +138,14 @@ impl AppShell {
         command: Command,
         repeat_count: usize,
     ) -> bool {
+        if matches!(command, Command::TerminalPaste) {
+            return self.handle_terminal_paste();
+        }
+
+        if let Some(changed) = self.handle_terminal_normal_command(&command, repeat_count) {
+            return changed;
+        }
+
         match &command {
             Command::ToggleTerminal => {
                 let report = dispatch_command(&mut self.app_state, command);
@@ -108,7 +218,12 @@ impl AppShell {
                     });
                 }
 
-                if !next_visible && self.app_state.current_mode() == EditorMode::TerminalFocus {
+                if !next_visible
+                    && matches!(
+                        self.app_state.current_mode(),
+                        EditorMode::TerminalFocus | EditorMode::TerminalNormal
+                    )
+                {
                     if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
                         changed |= result.changed;
                     }
@@ -135,11 +250,24 @@ impl AppShell {
             | Command::OpenVimCommand
             | Command::OpenWorkspaceSymbols
             | Command::OpenInFileSearch
-            | Command::SearchInFiles => {
+            | Command::SearchInFiles
+            | Command::OpenThemeSelector => {
+                let opens_fuzzy_buffer =
+                    matches!(command, Command::OpenFileFinder | Command::SearchInFiles);
                 let report = dispatch_command(&mut self.app_state, command);
                 if report.success {
-                    self.arm_palette_ime_commit_suppression();
-                    if self.focus_manager.set(FocusTarget::OverlayLayer) {
+                    if opens_fuzzy_buffer {
+                        self.editor_needs_layout = true;
+                        self.editor_caret_needs_layout = false;
+                    }
+                    let focus_changed = if opens_fuzzy_buffer {
+                        self.clear_palette_ime_commit_suppression();
+                        self.focus_manager.set(FocusTarget::CenterEditor)
+                    } else {
+                        self.arm_palette_ime_commit_suppression();
+                        self.focus_manager.set(FocusTarget::OverlayLayer)
+                    };
+                    if focus_changed {
                         self.input_handler.clear_pending_prefix();
                     }
                 }
@@ -147,8 +275,48 @@ impl AppShell {
             }
             Command::GitOpenLazygit => self.open_lazygit_buffer(),
             Command::GitBlameLine => self.submit_git_blame_line(),
+            Command::LspHover => self.submit_lsp_hover(),
+            Command::LspGoToDefinition => self.submit_lsp_definition(true),
+            Command::LspPreviewDefinition => self.submit_lsp_definition(false),
+            Command::LspReferences => self.submit_lsp_references(),
+            Command::ReferencesSelectNext => self.select_next_reference_item(),
+            Command::ReferencesSelectPrev => self.select_prev_reference_item(),
+            Command::ReferencesOpenSelection => self.open_selected_reference_item(),
+            Command::JumpBack => return self.execute_jump_back(),
+            Command::JumpForward => return self.execute_jump_forward(),
             Command::FilePickerAppendQuery(_)
             | Command::FilePickerBackspaceQuery
+            | Command::EditorPaste
+            | Command::PasteSystemClipboard
+            | Command::OverlaySelectNext
+            | Command::OverlaySelectPrev
+            | Command::FilePickerSelectNext
+            | Command::FilePickerSelectPrev
+                if self.app_state.active_buffer_is_fuzzy_picker() =>
+            {
+                let report = {
+                    let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
+                    dispatch_command_with_clipboard_count(
+                        app_state,
+                        command,
+                        repeat_count,
+                        Some(clipboard),
+                    )
+                };
+                if !report.success {
+                    return report.request_redraw;
+                }
+                if report.state_changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                }
+                self.submit_active_palette_fzf_search();
+                self.submit_fuzzy_picker_preview_load();
+                report.request_redraw || report.state_changed
+            }
+            Command::FilePickerAppendQuery(_)
+            | Command::FilePickerBackspaceQuery
+            | Command::EditorPaste
             | Command::PasteSystemClipboard
                 if self.app_state.current_mode() == EditorMode::PaletteFocus
                     && self.app_state.is_command_palette_visible() =>
@@ -226,6 +394,22 @@ impl AppShell {
             Command::ExplorerCreateFolder => self.open_prompt_overlay(
                 crate::app::command_palette::CommandPaletteMode::ExplorerCreateFolder,
             ),
+            Command::ExplorerStartFilter => {
+                let changed = self.app_state.workspace_start_filter_input();
+                if changed {
+                    self.input_handler.clear_pending_prefix();
+                    self.mark_explorer_dirty();
+                }
+                changed
+            }
+            Command::ExplorerClearFilter => {
+                let changed = self.app_state.workspace_clear_filter();
+                if changed {
+                    self.input_handler.clear_pending_prefix();
+                    self.mark_explorer_dirty();
+                }
+                changed
+            }
             Command::ExplorerDeleteNode => self.begin_explorer_delete_confirmation(),
             Command::FocusEditor | Command::FocusBack => {
                 let mut changed = self.release_focus_mode_to_editor();
@@ -322,6 +506,7 @@ impl AppShell {
                 self.forward_to_pty(input);
                 false
             }
+            Command::TerminalPaste => self.handle_terminal_paste(),
             Command::TerminalScrollUp => {
                 if let Some(grid) = self.focused_terminal_grid_mut() {
                     grid.view_scroll_up(3);
@@ -574,7 +759,7 @@ impl AppShell {
                 if !report.success {
                     return false;
                 }
-                self.highlight_spans.clear();
+                self.clear_highlight_layers();
                 self.submit_parse_for_active_buffer(true);
                 self.submit_lsp_did_open_for_active_file();
                 let mut changed = report.request_redraw || report.state_changed;
@@ -649,7 +834,7 @@ impl AppShell {
                 true
             }
             Command::LeapActivate(target_char) => {
-                let labels = self.generate_leap_labels(*target_char);
+                let labels = self.generate_editor_leap_labels(*target_char);
                 if labels.is_empty() {
                     self.leap_labels = None;
                     false
@@ -719,6 +904,15 @@ impl AppShell {
                 if matches!(&command, Command::FilePickerConfirmSelection)
                     && matches!(
                         self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::ThemeSelector)
+                    )
+                {
+                    return self.confirm_theme_selection();
+                }
+
+                if matches!(&command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
                         Some(CommandPaletteMode::InFileSearch)
                     )
                 {
@@ -752,7 +946,7 @@ impl AppShell {
                 self.reconcile_highlight_spans_with_pending_edits();
 
                 if report.success {
-                    self.highlight_spans.clear();
+                    self.clear_highlight_layers();
 
                     // Lấy file vừa được mở
                     let file_after = self.app_state.active_file().map(PathBuf::from);
@@ -769,6 +963,14 @@ impl AppShell {
 
                     self.submit_lsp_did_open_for_active_file();
                     let _ = self.sync_focus_mode_for_active_buffer();
+
+                    // Trigger async LSP install check khi mở file mới.
+                    // Chỉ check khi file thực sự thay đổi (tránh spam check).
+                    if let Some(ref path) = file_after
+                        && file_after != file_before
+                    {
+                        self.submit_lsp_check_for_path(path.clone());
+                    }
                 }
 
                 if report.state_changed {
@@ -836,6 +1038,7 @@ impl AppShell {
                         | Command::ChangeWordBackward
                         | Command::PasteAfter
                         | Command::PasteBefore
+                        | Command::EditorPaste
                         | Command::PasteSystemClipboard
                         | Command::Undo
                         | Command::Redo
@@ -860,7 +1063,7 @@ impl AppShell {
                 };
                 self.reconcile_highlight_spans_with_pending_edits();
                 if report.success && should_notify_did_open {
-                    self.highlight_spans.clear();
+                    self.clear_highlight_layers();
                     self.mark_explorer_dirty();
                     let _ = self.sync_focus_mode_for_active_buffer();
                 }
@@ -892,17 +1095,133 @@ impl AppShell {
         }
     }
 
+    fn handle_terminal_paste(&mut self) -> bool {
+        let clipboard_text = match self.clipboard.get_text() {
+            Ok(text) => text,
+            Err(err) => {
+                eprintln!("[terminal] paste failed: {err}");
+                return false;
+            }
+        };
+        if clipboard_text.is_empty() {
+            return false;
+        }
+
+        let payload = normalize_terminal_paste_text(&clipboard_text);
+        if payload.is_empty() {
+            return false;
+        }
+
+        let mut changed = false;
+        if self.app_state.current_mode() == EditorMode::TerminalNormal {
+            if let Some(grid) = self.focused_terminal_grid_mut() {
+                changed |= grid.exit_normal_mode();
+            }
+            if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
+                changed |= result.changed;
+            }
+            self.mark_focused_terminal_layout_dirty();
+        }
+
+        let Some(session_id) = self.focused_terminal_session_id() else {
+            eprintln!("[terminal] paste ignored: no focused PTY session");
+            return changed;
+        };
+
+        self.forward_to_terminal_session(session_id, &payload);
+        changed
+    }
+
     fn forward_to_pty(&self, text: &str) {
         if let Some(session_id) = self.focused_terminal_session_id() {
+            self.forward_to_terminal_session(session_id, text);
+        }
+    }
+
+    fn forward_to_terminal_session(&self, session_id: u64, text: &str) {
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::TerminalPty,
+            payload: WorkerRequestPayload::WritePtyInput {
+                session_id,
+                input: text.to_string(),
+            },
+        });
+    }
+
+    pub(super) fn dismiss_lsp_guide(&mut self) {
+        self.active_lsp_guide = None;
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_lsp_guide_popup();
+        }
+    }
+
+    pub(super) fn show_transient_toast(&mut self, message: impl Into<String>) {
+        self.transient_toast = Some(TransientToast {
+            message: message.into(),
+            expires_at: Instant::now() + Duration::from_secs(4),
+        });
+    }
+
+    pub(super) fn clear_expired_transient_toast(&mut self) -> bool {
+        let expired = self
+            .transient_toast
+            .as_ref()
+            .is_some_and(|toast| Instant::now() >= toast.expires_at);
+        if !expired {
+            return false;
+        }
+
+        self.transient_toast = None;
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_toast_popup();
+        }
+        true
+    }
+
+    fn lsp_install_working_dir(&self) -> Option<PathBuf> {
+        self.app_state
+            .workspace_root_path()
+            .map(PathBuf::from)
+            .or_else(|| {
+                self.app_state
+                    .active_file()
+                    .and_then(|path| path.parent())
+                    .map(PathBuf::from)
+            })
+            .or_else(|| std::env::current_dir().ok())
+    }
+
+    pub(super) fn accept_lsp_install_guide(&mut self) -> bool {
+        let Some(guide) = self.active_lsp_guide.take() else {
+            return false;
+        };
+        let LspInstallGuide {
+            binary,
+            install_cmd,
+        } = guide;
+
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_lsp_guide_popup();
+        }
+
+        let mut changed = true;
+        if let Some(session_id) = self.pty_session_id {
+            changed |= self.handle_command(Command::FocusTerminal);
+            self.forward_to_terminal_session(session_id, &format!("{install_cmd}\r"));
+        } else {
             self.submit(RequestSpec {
                 revision_id: 0,
                 topic: RequestTopic::TerminalPty,
-                payload: WorkerRequestPayload::WritePtyInput {
-                    session_id,
-                    input: text.to_string(),
+                payload: WorkerRequestPayload::SpawnDetachedShellCommand {
+                    command: install_cmd,
+                    working_dir: self.lsp_install_working_dir(),
                 },
             });
+            self.show_transient_toast(format!("Installing {binary} in background..."));
         }
+
+        changed
     }
 
     fn map_directional_focus_command(&self, command: &Command) -> Command {
@@ -936,7 +1255,7 @@ impl AppShell {
         self.buffer_terminal_needs_layout = true;
         self.editor_needs_layout = true;
         self.editor_caret_needs_layout = false;
-        self.highlight_spans.clear();
+        self.clear_highlight_layers();
         let _ = self.sync_focus_mode_for_active_buffer();
 
         self.submit(RequestSpec {
@@ -975,6 +1294,177 @@ impl AppShell {
             },
         });
         false
+    }
+
+    /// Helper: tr\u1ea3 v\u1ec1 (uri, lsp_line, lsp_character) n\u1ebfu \u0111i\u1ec1u ki\u1ec7n h\u1ee3p l\u1ec7.
+    fn lsp_cursor_context(&self) -> Option<(String, u32, u32)> {
+        if self.app_state.active_buffer_is_terminal() {
+            return None;
+        }
+        if self.active_lsp_server.is_none() {
+            eprintln!("[AppShell] LSP request skipped: no active LSP server");
+            return None;
+        }
+        let path = self.app_state.active_file()?;
+        let uri = crate::lsp::client::path_to_lsp_uri(path);
+        let (line, col) = self.app_state.cursor_line_col();
+        Some((uri, line as u32, col as u32))
+    }
+
+    fn submit_lsp_hover(&mut self) -> bool {
+        let Some((uri, line, character)) = self.lsp_cursor_context() else {
+            return false;
+        };
+        // Clear overlay c\u0169 tr\u01b0\u1edbc khi g\u1eedi request m\u1edbi.
+        let changed = self.app_state.clear_current_overlays();
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspHoverRequest {
+                uri,
+                line,
+                character,
+            },
+        });
+        changed
+    }
+
+    /// `jump = true` => gd (go to definition). `jump = false` => gD (peek preview).
+    fn submit_lsp_definition(&mut self, jump: bool) -> bool {
+        let Some((uri, line, character)) = self.lsp_cursor_context() else {
+            return false;
+        };
+        let changed = self.app_state.clear_current_overlays();
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspDefinitionRequest {
+                uri,
+                line,
+                character,
+                jump,
+            },
+        });
+        changed
+    }
+
+    fn submit_lsp_references(&mut self) -> bool {
+        let Some((uri, line, character)) = self.lsp_cursor_context() else {
+            return false;
+        };
+        let mut changed = self.app_state.clear_current_overlays();
+        let origin_path = self.app_state.active_file().map(PathBuf::from);
+        let origin_line = self.app_state.cursor_line_col().0;
+        let Some(request) = self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspReferencesRequest {
+                uri,
+                line,
+                character,
+            },
+        }) else {
+            return changed;
+        };
+
+        self.app_state.open_pending_references_buffer(
+            "References",
+            origin_path,
+            origin_line,
+            request.request_id,
+        );
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        let focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
+        changed = true;
+        if focus_changed {
+            self.input_handler.clear_pending_prefix();
+        }
+        self.request_redraw();
+        changed || focus_changed
+    }
+
+    fn select_next_reference_item(&mut self) -> bool {
+        let changed = self.app_state.references_select_next();
+        if changed {
+            self.submit_references_preview_load();
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+        }
+        changed
+    }
+
+    fn select_prev_reference_item(&mut self) -> bool {
+        let changed = self.app_state.references_select_prev();
+        if changed {
+            self.submit_references_preview_load();
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+        }
+        changed
+    }
+
+    fn open_selected_reference_item(&mut self) -> bool {
+        let Some(item) = self.app_state.selected_reference_item_cloned() else {
+            return false;
+        };
+
+        if let Some((origin_path, origin_line)) = self.app_state.active_references_origin() {
+            self.app_state.push_jump_entry(origin_path, origin_line);
+        }
+
+        if let Err(err) = self.app_state.open_file(item.path.clone()) {
+            eprintln!("[AppShell] references open_file failed: {err}");
+            return false;
+        }
+
+        self.app_state
+            .jump_to_line_and_column(item.line, item.column);
+        let vp = self.editor_viewport_lines();
+        self.app_state.auto_scroll_to_cursor(vp);
+        self.submit_lsp_check_for_path(item.path.clone());
+        self.submit_lsp_did_open_for_active_file();
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        let focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
+        if focus_changed {
+            self.input_handler.clear_pending_prefix();
+        }
+        true
+    }
+
+    fn execute_jump_back(&mut self) -> bool {
+        let Some((path, line)) = self.app_state.pop_jump_back() else {
+            return false;
+        };
+        if let Err(err) = self.app_state.open_file(path.clone()) {
+            eprintln!("[AppShell] jump_back open_file failed: {err}");
+            return false;
+        }
+        self.app_state.jump_to_line(line);
+        let vp = self.editor_viewport_lines();
+        self.app_state.auto_scroll_to_cursor(vp);
+        self.submit_lsp_check_for_path(path);
+        self.submit_lsp_did_open_for_active_file();
+        self.editor_needs_layout = true;
+        true
+    }
+
+    fn execute_jump_forward(&mut self) -> bool {
+        let Some((path, line)) = self.app_state.pop_jump_forward() else {
+            return false;
+        };
+        if let Err(err) = self.app_state.open_file(path.clone()) {
+            eprintln!("[AppShell] jump_forward open_file failed: {err}");
+            return false;
+        }
+        self.app_state.jump_to_line(line);
+        let vp = self.editor_viewport_lines();
+        self.app_state.auto_scroll_to_cursor(vp);
+        self.submit_lsp_check_for_path(path);
+        self.submit_lsp_did_open_for_active_file();
+        self.editor_needs_layout = true;
+        true
     }
 
     fn pending_confirmation_prompt(&self) -> Option<String> {
@@ -1173,7 +1663,7 @@ impl AppShell {
                     payload: WorkerRequestPayload::ClosePtySession { session_id },
                 });
             }
-            self.highlight_spans.clear();
+            self.clear_highlight_layers();
             self.mark_explorer_dirty();
             let viewport_lines = self.editor_viewport_lines();
             self.app_state.auto_scroll_to_cursor(viewport_lines);
@@ -1414,11 +1904,60 @@ impl AppShell {
         true
     }
 
-    /// Quét viewport hiện tại, tìm tất cả ký tự `target` và gán labels 'a'-'z'.
-    ///
-    /// Trả về `Vec<(label_char, char_idx)>` để caller dùng khi render và khi jump.
-    /// Chỉ scan trong khoảng [scroll_line, scroll_line + viewport_lines).
-    fn generate_leap_labels(&self, target: char) -> Vec<(char, usize)> {
+    fn confirm_theme_selection(&mut self) -> bool {
+        let Some(crate::app::command_palette::CommandPaletteAction::SelectTheme(theme_profile)) =
+            self.app_state.command_palette_selected_action()
+        else {
+            return false;
+        };
+
+        let loaded_theme = match ThemeConfig::load(&theme_profile) {
+            Ok(theme) => theme,
+            Err(err) => {
+                eprintln!(
+                    "[AppShell] theme load failed for profile '{}': {err}",
+                    theme_profile
+                );
+                self.show_transient_toast(format!("Failed to load theme: {theme_profile}"));
+                return true;
+            }
+        };
+
+        self.base_theme = loaded_theme;
+        self.apply_scaled_runtime_config();
+        self.leap_labels = None;
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_leap_labels();
+        }
+        self.persistent_state
+            .set_theme_profile(Some(theme_profile.clone()));
+        self.persistent_state.save();
+
+        self.clear_palette_ime_commit_suppression();
+        let mut changed = self.app_state.close_command_palette();
+        if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
+            changed |= result.changed;
+        }
+        let focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
+        changed |= focus_changed;
+        if focus_changed {
+            self.input_handler.clear_pending_prefix();
+        }
+
+        self.show_transient_toast(format!("Theme loaded: {theme_profile}"));
+        changed || self.transient_toast.is_some()
+    }
+
+    fn normalize_leap_target(target: char) -> char {
+        if target.is_ascii_alphabetic() {
+            target.to_ascii_lowercase()
+        } else {
+            target
+        }
+    }
+
+    /// Quét viewport editor hiện tại, tìm tất cả ký tự `target` và gán labels 'a'-'z'.
+    fn generate_editor_leap_labels(&self, target: char) -> Vec<(char, usize)> {
         const LABEL_CHARS: &[char] = &[
             'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q',
             'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
@@ -1441,11 +1980,7 @@ impl AppShell {
 
         // Lấy text snapshot và scan
         let text = self.app_state.text_string();
-        let target_lower = if target.is_ascii_alphabetic() {
-            target.to_ascii_lowercase()
-        } else {
-            target
-        };
+        let target_lower = Self::normalize_leap_target(target);
 
         let mut labels: Vec<(char, usize)> = Vec::new();
         let mut label_idx = 0usize;
@@ -1477,6 +2012,26 @@ impl AppShell {
 
         labels
     }
+}
+
+fn normalize_terminal_paste_text(text: &str) -> String {
+    let mut normalized = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    let _ = chars.next();
+                }
+                normalized.push('\r');
+            }
+            '\n' => normalized.push('\r'),
+            _ => normalized.push(ch),
+        }
+    }
+
+    normalized
 }
 
 #[cfg(test)]
@@ -1512,15 +2067,20 @@ mod tests {
         assert_eq!(app_state.current_mode(), EditorMode::PaletteFocus);
         assert!(app_state.is_command_palette_visible());
 
-        let report = dispatch_palette_overlay_command(
-            &mut app_state,
-            &mut clipboard,
-            Command::PasteSystemClipboard,
-        );
+        let report =
+            dispatch_palette_overlay_command(&mut app_state, &mut clipboard, Command::EditorPaste);
 
         assert!(report.success);
         assert!(report.state_changed);
         assert_eq!(app_state.command_palette_query_text(), "foo bar");
+    }
+
+    #[test]
+    fn terminal_paste_normalizes_newlines_to_carriage_returns() {
+        assert_eq!(
+            normalize_terminal_paste_text("echo one\necho two\r\npwd\r"),
+            "echo one\recho two\rpwd\r"
+        );
     }
 
     #[test]
@@ -1573,6 +2133,45 @@ mod tests {
         assert!(shell.handle_command(Command::ToggleBottomDock));
         assert!(!shell.panel_state.bottom.visible);
         assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    }
+
+    #[test]
+    fn explorer_filter_commands_update_workspace_state() {
+        let mut shell = AppShell::new().expect("create app shell");
+        let root = std::env::temp_dir().join(format!(
+            "netherize_explorer_filter_cmd_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(root.join("src")).expect("create dirs");
+        std::fs::write(root.join("src/main.rs"), "fn main() {}\n").expect("write file");
+
+        shell
+            .app_state
+            .attach_workspace(root.clone())
+            .expect("attach workspace");
+        shell.focus_manager.set(FocusTarget::LeftSidebar);
+
+        assert!(shell.handle_command(Command::ExplorerStartFilter));
+        assert!(shell.app_state.workspace_is_inputting_filter());
+        assert!(shell.app_state.workspace_append_filter_text("main"));
+        assert!(shell.handle_command(Command::ExplorerClearFilter));
+        assert!(!shell.app_state.workspace_is_inputting_filter());
+        assert!(!shell.app_state.workspace_has_active_filter());
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn leap_uses_editor_targets_even_when_explorer_is_focused() {
+        let mut shell = AppShell::new().expect("create app shell");
+        shell.app_state = AppState::from_text(PathBuf::from("editor-leap.txt"), "beta\nomega");
+        shell.focus_manager.set(FocusTarget::LeftSidebar);
+        shell.last_editor_bounds = Some([0.0, 0.0, 640.0, 240.0]);
+
+        assert!(shell.handle_command(Command::LeapActivate('b')));
+
+        let labels = shell.leap_labels.as_ref().expect("editor leap labels");
+        assert_eq!(labels.as_slice(), [('a', 0)].as_ref());
     }
 
     #[test]
@@ -1729,6 +2328,281 @@ mod tests {
 
         assert!(!shell.suppress_next_palette_ime_commit);
         assert!(!shell.should_swallow_palette_ime_commit());
+    }
+
+    #[test]
+    fn open_file_finder_keeps_center_focus_for_fuzzy_buffer() {
+        let mut shell = AppShell::new().expect("create app shell");
+
+        assert!(shell.handle_command(Command::OpenFileFinder));
+
+        assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+        assert!(shell.app_state.active_buffer_is_fuzzy_picker());
+        assert_eq!(shell.app_state.current_mode(), EditorMode::Insert);
+        assert!(!shell.app_state.is_command_palette_visible());
+    }
+
+    #[test]
+    fn search_in_files_keeps_center_focus_for_fuzzy_buffer() {
+        let mut shell = AppShell::new().expect("create app shell");
+
+        assert!(shell.handle_command(Command::SearchInFiles));
+
+        assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+        assert!(shell.app_state.active_buffer_is_fuzzy_picker());
+        assert_eq!(shell.app_state.current_mode(), EditorMode::Insert);
+        assert_eq!(
+            shell.app_state.command_palette_mode(),
+            Some(CommandPaletteMode::LiveGrep)
+        );
+        assert!(!shell.app_state.is_command_palette_visible());
+    }
+
+    #[test]
+    fn file_picker_confirm_scrolls_explorer_to_opened_file() {
+        let mut shell = AppShell::new().expect("create app shell");
+        let root =
+            std::env::temp_dir().join(format!("netherize_picker_scroll_{}", std::process::id()));
+        std::fs::create_dir_all(&root).expect("create workspace");
+        for idx in 0..40 {
+            std::fs::write(root.join(format!("file_{idx:02}.rs")), "fn main() {}\n")
+                .expect("write file");
+        }
+        let target = root.join("file_35.rs");
+        let canonical_target = target.canonicalize().expect("canonical target");
+
+        shell
+            .app_state
+            .attach_workspace(root.clone())
+            .expect("attach workspace");
+        shell.last_sidebar_bounds = Some([0.0, 0.0, 240.0, 90.0]);
+        shell.sidebar_needs_layout = false;
+
+        assert!(shell.handle_command(Command::OpenFileFinder));
+        assert!(shell.handle_command(Command::FilePickerAppendQuery("file_35".to_string())));
+        assert!(shell.app_state.set_command_palette_results(
+            CommandPaletteMode::FilePicker,
+            "file_35",
+            vec![crate::app::command_palette::CommandPaletteItem::file_match(
+                "file_35.rs".to_string(),
+                target.clone(),
+            )],
+        ));
+        assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+
+        assert_eq!(
+            shell.app_state.workspace_selected_path(),
+            Some(canonical_target.as_path())
+        );
+        assert!(
+            shell
+                .app_state
+                .workspace_scroll_offset_rows(shell.theme.ui.sidebar_line_height)
+                > 0
+        );
+        assert!(shell.sidebar_needs_layout);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn open_theme_selector_opens_overlay_with_theme_profiles() {
+        let mut shell = AppShell::new().expect("create app shell");
+
+        assert!(shell.handle_command(Command::OpenThemeSelector));
+
+        assert_eq!(shell.focus_manager.current(), FocusTarget::OverlayLayer);
+        assert_eq!(
+            shell.app_state.command_palette_mode(),
+            Some(CommandPaletteMode::ThemeSelector)
+        );
+        assert!(
+            shell
+                .app_state
+                .command_palette_result_labels()
+                .contains(&"default-dark".to_string())
+        );
+    }
+
+    #[test]
+    fn confirming_theme_selector_reloads_theme_and_closes_overlay() {
+        let mut shell = AppShell::new().expect("create app shell");
+        shell.editor_needs_layout = false;
+        shell.sidebar_needs_layout = false;
+        shell.terminal_needs_layout = false;
+
+        assert!(shell.handle_command(Command::OpenThemeSelector));
+        shell
+            .app_state
+            .set_command_palette_query("default-dark")
+            .expect("set theme query");
+        assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+
+        assert!(!shell.app_state.is_command_palette_visible());
+        assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+        assert_eq!(shell.base_theme.name, "bearded-arc-zed");
+        assert_eq!(shell.theme.name, "bearded-arc-zed");
+        assert_eq!(
+            shell.persistent_state.configured_theme_profile(),
+            Some("default-dark")
+        );
+        assert!(shell.editor_needs_layout);
+        assert!(shell.sidebar_needs_layout);
+        assert!(shell.terminal_needs_layout);
+    }
+
+    #[test]
+    fn lsp_references_open_loading_buffer_immediately() {
+        let mut shell = AppShell::new().expect("create app shell");
+        let root = std::env::temp_dir().join(format!(
+            "netherize_references_loading_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(root.join("src")).expect("create workspace");
+        let file_path = root.join("src/main.rs");
+        std::fs::write(&file_path, "fn demo() {\n    demo();\n}\n").expect("write file");
+        shell
+            .app_state
+            .attach_workspace(root.clone())
+            .expect("attach workspace");
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        shell.active_lsp_server = Some(ActiveLspServer {
+            server_name: "rust-analyzer".to_string(),
+            root_path: root.clone(),
+        });
+
+        assert!(shell.handle_command(Command::LspReferences));
+
+        let references = shell
+            .app_state
+            .active_references_buffer()
+            .expect("references buffer should open immediately");
+        assert!(references.loading);
+        assert!(references.items.is_empty());
+        assert_eq!(
+            references.status_message.as_deref(),
+            Some("Loading references...")
+        );
+        assert!(references.pending_request_id.is_some());
+        assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+        assert!(shell.editor_needs_layout);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn opening_fuzzy_buffer_marks_editor_layout_dirty() {
+        let mut shell = AppShell::new().expect("create app shell");
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+
+        assert!(shell.handle_command(Command::SearchInFiles));
+
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn fuzzy_picker_query_updates_mark_editor_layout_dirty() {
+        let mut shell = AppShell::new().expect("create app shell");
+        assert!(shell.handle_command(Command::SearchInFiles));
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+
+        assert!(shell.handle_command(Command::FilePickerAppendQuery("foo".to_string())));
+
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn fuzzy_picker_selection_clears_stale_preview_lines() {
+        let mut shell = AppShell::new().expect("create app shell");
+        shell
+            .app_state
+            .open_fuzzy_picker_buffer(CommandPaletteMode::FilePicker);
+        assert!(shell.app_state.set_command_palette_results(
+            CommandPaletteMode::FilePicker,
+            "",
+            vec![
+                crate::app::command_palette::CommandPaletteItem::file_match(
+                    "a.rs".to_string(),
+                    PathBuf::from("a.rs"),
+                ),
+                crate::app::command_palette::CommandPaletteItem::file_match(
+                    "b.rs".to_string(),
+                    PathBuf::from("b.rs"),
+                ),
+            ],
+        ));
+        assert!(shell.app_state.set_fuzzy_picker_preview(vec![
+            crate::async_runtime::message::FilePreviewLine {
+                line_number: 1,
+                text: "hello".to_string(),
+                is_target: false,
+            },
+        ]));
+
+        assert!(shell.handle_command(Command::OverlaySelectNext));
+
+        assert!(
+            shell
+                .app_state
+                .active_fuzzy_picker_buffer()
+                .expect("fuzzy buffer")
+                .preview_lines
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn references_selection_clears_stale_preview_lines() {
+        let mut shell = AppShell::new().expect("create app shell");
+        shell
+            .app_state
+            .open_references_buffer(
+                "References (2)",
+                Some(PathBuf::from("origin.rs")),
+                4,
+                vec![
+                    crate::app::app_state::ReferencesBufferItem {
+                        path: PathBuf::from("a.rs"),
+                        relative_path: "a.rs".to_string(),
+                        line: 10,
+                        column: 2,
+                        summary: "Ln 11, Col 3".to_string(),
+                    },
+                    crate::app::app_state::ReferencesBufferItem {
+                        path: PathBuf::from("b.rs"),
+                        relative_path: "b.rs".to_string(),
+                        line: 20,
+                        column: 5,
+                        summary: "Ln 21, Col 6".to_string(),
+                    },
+                ],
+            )
+            .expect("open references buffer");
+        assert!(shell.app_state.set_active_references_preview(vec![
+            crate::async_runtime::message::FilePreviewLine {
+                line_number: 11,
+                text: "hello".to_string(),
+                is_target: true,
+            },
+        ]));
+
+        assert!(shell.handle_command(Command::ReferencesSelectNext));
+
+        assert!(
+            shell
+                .app_state
+                .active_references_buffer()
+                .expect("references buffer")
+                .preview_lines
+                .is_empty()
+        );
     }
 
     #[test]

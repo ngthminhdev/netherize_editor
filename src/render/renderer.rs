@@ -38,6 +38,7 @@ const ATLAS_SIZE: u32 = 2048;
 /// Depth drives x-indentation; `icon` is the disclosure glyph (▶/▼/·).
 #[derive(Debug, Clone)]
 pub struct SidebarRow {
+    pub path: Option<PathBuf>,
     pub depth: usize,
     /// Disclosure arrow ▶/▼/· — always rendered in fg_ghost.
     pub arrow: String,
@@ -47,6 +48,13 @@ pub struct SidebarRow {
     pub icon_color: [f32; 4],
     pub label: String,
     pub is_selected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SidebarFilterState {
+    pub query: String,
+    pub is_inputting: bool,
+    pub show_cursor: bool,
 }
 
 #[derive(Debug)]
@@ -64,6 +72,8 @@ pub enum RenderError {
 pub enum TopbarTabKind {
     Text { path: PathBuf },
     Terminal,
+    References,
+    FuzzyPicker,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -112,6 +122,7 @@ pub struct Renderer {
     pub(super) editor_overlay_text_system: TextSystem,
     pub(super) editor_overlay_text_pipeline: TextPipeline,
     pub(super) editor_overlay_glyph_instances: Vec<GlyphInstance>,
+    pub(super) editor_overlay_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) editor_overlay_scissor: Option<[u32; 4]>,
 
     // ── Gutter (line numbers) ─────────────────────────────────────────────────
@@ -173,6 +184,11 @@ pub struct Renderer {
     pub(super) palette_scissor: Option<[u32; 4]>,
     pub(super) last_palette_model: Option<CommandPaletteRenderModel>,
 
+    // ── Window overlays ──────────────────────────────────────────────────────
+    pub(super) lsp_guide_text_system: TextSystem,
+    pub(super) lsp_guide_text_pipeline: TextPipeline,
+    pub(super) lsp_guide_scissor: Option<[u32; 4]>,
+
     // ── UI config knobs ───────────────────────────────────────────────────────
     pub(super) editor_padding_x: f32,
     pub(super) editor_padding_y: f32,
@@ -194,4 +210,17 @@ pub struct Renderer {
     pub(super) leap_label_glyph_instances: Vec<GlyphInstance>,
     pub(super) leap_label_bg_instances: Vec<RegionDrawInstance>,
     pub(super) leap_label_scissor: Option<[u32; 4]>,
+
+    // ── LSP Install Guide popup ───────────────────────────────────────────────
+    /// Chrome quads cho floating background + border.
+    pub(super) lsp_guide_chrome_instances: Vec<RegionDrawInstance>,
+    /// Glyph instances cho text bên trong popup.
+    pub(super) lsp_guide_glyph_instances: Vec<GlyphInstance>,
+
+    // ── Transient toast popup ────────────────────────────────────────────────
+    pub(super) toast_text_system: TextSystem,
+    pub(super) toast_text_pipeline: TextPipeline,
+    pub(super) toast_glyph_instances: Vec<GlyphInstance>,
+    pub(super) toast_chrome_instances: Vec<RegionDrawInstance>,
+    pub(super) toast_scissor: Option<[u32; 4]>,
 }

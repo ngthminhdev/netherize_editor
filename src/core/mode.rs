@@ -6,6 +6,7 @@ pub enum EditorMode {
     Visual,
     PaletteFocus,
     TerminalFocus,
+    TerminalNormal,
 }
 
 impl EditorMode {
@@ -16,6 +17,7 @@ impl EditorMode {
             Self::Visual => "visual",
             Self::PaletteFocus => "palette_focus",
             Self::TerminalFocus => "terminal_focus",
+            Self::TerminalNormal => "terminal_normal",
         }
     }
 }
@@ -27,6 +29,7 @@ pub enum ModeEvent {
     EnterInsert,
     EnterNormal,
     EnterVisual,
+    EnterTerminalNormal,
     OpenPalette,
     FocusTerminal,
     ExitFocus,
@@ -40,7 +43,7 @@ pub struct ModeTransitionRule {
     pub to: EditorMode,
 }
 
-const TRANSITION_RULES: [ModeTransitionRule; 13] = [
+const TRANSITION_RULES: [ModeTransitionRule; 15] = [
     // Core editing transitions
     ModeTransitionRule {
         from: EditorMode::Normal,
@@ -106,6 +109,16 @@ const TRANSITION_RULES: [ModeTransitionRule; 13] = [
     },
     ModeTransitionRule {
         from: EditorMode::Visual,
+        event: ModeEvent::FocusTerminal,
+        to: EditorMode::TerminalFocus,
+    },
+    ModeTransitionRule {
+        from: EditorMode::TerminalFocus,
+        event: ModeEvent::EnterTerminalNormal,
+        to: EditorMode::TerminalNormal,
+    },
+    ModeTransitionRule {
+        from: EditorMode::TerminalNormal,
         event: ModeEvent::FocusTerminal,
         to: EditorMode::TerminalFocus,
     },
@@ -183,7 +196,7 @@ impl ModeState {
         // Transition phụ thuộc ngữ cảnh trước: focus mode sẽ quay về mode trước đó.
         if matches!(
             self.current,
-            EditorMode::PaletteFocus | EditorMode::TerminalFocus
+            EditorMode::PaletteFocus | EditorMode::TerminalFocus | EditorMode::TerminalNormal
         ) && matches!(event, ModeEvent::ExitFocus | ModeEvent::Escape)
         {
             return Some(self.return_mode.unwrap_or(EditorMode::Normal));
@@ -193,8 +206,14 @@ impl ModeState {
     }
 
     fn update_focus_memory(&mut self, from: EditorMode, to: EditorMode) {
-        let from_is_focus = matches!(from, EditorMode::PaletteFocus | EditorMode::TerminalFocus);
-        let to_is_focus = matches!(to, EditorMode::PaletteFocus | EditorMode::TerminalFocus);
+        let from_is_focus = matches!(
+            from,
+            EditorMode::PaletteFocus | EditorMode::TerminalFocus | EditorMode::TerminalNormal
+        );
+        let to_is_focus = matches!(
+            to,
+            EditorMode::PaletteFocus | EditorMode::TerminalFocus | EditorMode::TerminalNormal
+        );
 
         // Đi vào focus mode: nhớ mode trước đó để lúc thoát có chỗ quay về.
         if !from_is_focus && to_is_focus {
@@ -289,6 +308,34 @@ mod tests {
     }
 
     #[test]
+    fn terminal_normal_keeps_focus_memory_and_can_return_to_typing() {
+        let mut state = ModeState::new(EditorMode::Insert);
+        state
+            .apply_with_side_effects(ModeEvent::FocusTerminal)
+            .expect("focus terminal");
+        assert_eq!(state.current(), EditorMode::TerminalFocus);
+        assert_eq!(state.return_mode(), Some(EditorMode::Insert));
+
+        state
+            .apply_with_side_effects(ModeEvent::EnterTerminalNormal)
+            .expect("enter terminal normal");
+        assert_eq!(state.current(), EditorMode::TerminalNormal);
+        assert_eq!(state.return_mode(), Some(EditorMode::Insert));
+
+        state
+            .apply_with_side_effects(ModeEvent::FocusTerminal)
+            .expect("return to typing");
+        assert_eq!(state.current(), EditorMode::TerminalFocus);
+        assert_eq!(state.return_mode(), Some(EditorMode::Insert));
+
+        state
+            .apply_with_side_effects(ModeEvent::ExitFocus)
+            .expect("exit terminal focus");
+        assert_eq!(state.current(), EditorMode::Insert);
+        assert_eq!(state.return_mode(), None);
+    }
+
+    #[test]
     fn transition_table_contains_core_rules() {
         let rules = transition_rules();
         assert!(rules.iter().any(|rule| {
@@ -300,6 +347,11 @@ mod tests {
             rule.from == EditorMode::Insert
                 && rule.event == ModeEvent::Escape
                 && rule.to == EditorMode::Normal
+        }));
+        assert!(rules.iter().any(|rule| {
+            rule.from == EditorMode::TerminalFocus
+                && rule.event == ModeEvent::EnterTerminalNormal
+                && rule.to == EditorMode::TerminalNormal
         }));
     }
 }

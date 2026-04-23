@@ -278,6 +278,7 @@ pub(super) fn mode_display_label(mode: EditorMode) -> &'static str {
         EditorMode::Visual => "VISUAL",
         EditorMode::PaletteFocus => "PALETTE",
         EditorMode::TerminalFocus => "TERMINAL",
+        EditorMode::TerminalNormal => "T-COPY",
     }
 }
 
@@ -288,6 +289,7 @@ pub(super) fn mode_pill_color(mode: EditorMode, theme: &ThemeConfig) -> [f32; 4]
         EditorMode::Visual => theme.ui.mode_visual.as_f32(),
         EditorMode::PaletteFocus => theme.ui.amber.as_f32(),
         EditorMode::TerminalFocus => theme.ui.success.as_f32(),
+        EditorMode::TerminalNormal => theme.ui.accent.as_f32(),
     }
 }
 

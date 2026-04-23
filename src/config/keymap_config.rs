@@ -28,7 +28,8 @@ pub struct KeyBinding {
     pub key: String,
 
     /// Mode scope. Absent or null = global (applies to all modes).
-    /// Valid values: "insert", "normal", "visual", "palette", "terminal"
+    /// Valid values: "insert", "normal", "visual", "palette", "terminal",
+    /// "terminal_normal"
     pub mode: Option<String>,
 
     /// Stable command ID, e.g. "editor.move_up" or "app.toggle_terminal".

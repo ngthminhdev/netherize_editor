@@ -6,6 +6,7 @@ use crate::{
         clipboard::ClipboardProvider,
     },
     core::mode::{EditorMode, ModeEvent},
+    terminal::grid::TerminalGrid,
 };
 
 #[derive(Debug, Clone)]
@@ -49,21 +50,24 @@ impl DispatchReport {
     }
 }
 
-pub(super) struct DispatchCtx<'state, 'clipboard> {
+pub(super) struct DispatchCtx<'state, 'clipboard, 'terminal> {
     pub(super) app_state: &'state mut AppState,
     pub(super) clipboard: &'state mut Option<&'clipboard mut dyn ClipboardProvider>,
+    pub(super) terminal: &'state mut Option<&'terminal mut TerminalGrid>,
     auto_commit_text_transactions: bool,
 }
 
-impl<'state, 'clipboard> DispatchCtx<'state, 'clipboard> {
+impl<'state, 'clipboard, 'terminal> DispatchCtx<'state, 'clipboard, 'terminal> {
     pub(super) fn new(
         app_state: &'state mut AppState,
         clipboard: &'state mut Option<&'clipboard mut dyn ClipboardProvider>,
+        terminal: &'state mut Option<&'terminal mut TerminalGrid>,
         auto_commit_text_transactions: bool,
     ) -> Self {
         Self {
             app_state,
             clipboard,
+            terminal,
             auto_commit_text_transactions,
         }
     }
@@ -159,6 +163,14 @@ impl<'state, 'clipboard> DispatchCtx<'state, 'clipboard> {
         }
 
         picker_closed || mode_changed
+    }
+
+    pub(super) fn terminal_grid_mut(&mut self) -> Option<&mut TerminalGrid> {
+        self.terminal.as_deref_mut()
+    }
+
+    pub(super) fn terminal_normal_active(&self) -> bool {
+        self.app_state.current_mode() == EditorMode::TerminalNormal && self.terminal.is_some()
     }
 }
 

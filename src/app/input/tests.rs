@@ -7,7 +7,10 @@ use crate::{
         input_map::{InputFocusContext, InputMap, KeybindingContext},
         resolved_keymap::builtin_defaults,
     },
-    core::{commands::Command, mode::EditorMode},
+    core::{
+        commands::Command,
+        mode::{EditorMode, ModeEvent},
+    },
 };
 
 use super::{InputHandler, InputRouteOutcome, NormalizedInput};
@@ -33,6 +36,15 @@ fn char_input(ch: char, key: KeyCode) -> NormalizedInput {
     }
 }
 
+fn ctrl_input(ch: char, key: KeyCode) -> NormalizedInput {
+    NormalizedInput {
+        physical_key: Some(key),
+        named_key: None,
+        text: Some(ch.to_string()),
+        modifiers: ModifiersState::CONTROL,
+    }
+}
+
 fn named_input(named: NamedKey, physical: Option<KeyCode>) -> NormalizedInput {
     NormalizedInput {
         physical_key: physical,
@@ -47,7 +59,7 @@ fn make_map() -> InputMap {
 }
 
 #[test]
-fn leader_space_f_f_maps_to_open_file_finder() {
+fn leader_space_f_f_maps_to_open_file_picker() {
     let mut handler = InputHandler::new();
     let map = make_map();
     let context = KeybindingContext::for_mode(EditorMode::Normal);
@@ -68,7 +80,60 @@ fn leader_space_f_f_maps_to_open_file_finder() {
         handler.route_normalized_input(char_input('f', KeyCode::KeyF), &map, context, t0);
     match resolved {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::OpenFileFinder);
+            assert_eq!(translated.command, Command::OpenFilePicker);
+        }
+        other => panic!("expected dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn leader_space_f_w_maps_to_search_in_files() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let t0 = std::time::Instant::now();
+
+    let start = handler.route_normalized_input(
+        named_input(NamedKey::Space, Some(KeyCode::Space)),
+        &map,
+        context,
+        t0,
+    );
+    assert!(matches!(start, Some(InputRouteOutcome::NoDispatch { .. })));
+
+    let follow = handler.route_normalized_input(char_input('f', KeyCode::KeyF), &map, context, t0);
+    assert!(matches!(follow, Some(InputRouteOutcome::NoDispatch { .. })));
+
+    let resolved =
+        handler.route_normalized_input(char_input('w', KeyCode::KeyW), &map, context, t0);
+    match resolved {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::SearchInFiles);
+        }
+        other => panic!("expected dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn fuzzy_picker_normal_mode_allows_leader_close_sequence() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::FuzzyPicker);
+    let t0 = std::time::Instant::now();
+
+    let start = handler.route_normalized_input(
+        named_input(NamedKey::Space, Some(KeyCode::Space)),
+        &map,
+        context,
+        t0,
+    );
+    assert!(matches!(start, Some(InputRouteOutcome::NoDispatch { .. })));
+
+    let resolved =
+        handler.route_normalized_input(char_input('x', KeyCode::KeyX), &map, context, t0);
+    match resolved {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::BufferCloseCurrent);
         }
         other => panic!("expected dispatch, got {:?}", other),
     }
@@ -666,6 +731,117 @@ fn terminal_focus_routes_arrow_keys_as_ansi_sequences() {
 }
 
 #[test]
+fn terminal_focus_ctrl_q_enters_terminal_normal_mode() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal);
+    let now = std::time::Instant::now();
+
+    let mapped = handler.route_normalized_input(ctrl_input('q', KeyCode::KeyQ), &map, context, now);
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::SwitchMode(ModeEvent::EnterTerminalNormal)
+            );
+        }
+        other => panic!("expected terminal normal dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn terminal_focus_mod_v_routes_terminal_paste() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal);
+    let now = std::time::Instant::now();
+
+    let mapped = handler.route_normalized_input(ctrl_input('v', KeyCode::KeyV), &map, context, now);
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::TerminalPaste);
+        }
+        other => panic!("expected terminal paste dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn buffer_terminal_mod_v_routes_terminal_paste() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::BufferTerminal);
+    let now = std::time::Instant::now();
+
+    let mapped = handler.route_normalized_input(ctrl_input('v', KeyCode::KeyV), &map, context, now);
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::TerminalPaste);
+        }
+        other => panic!("expected buffer terminal paste dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn terminal_focus_ctrl_h_routes_raw_control_char() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal);
+    let now = std::time::Instant::now();
+
+    let mapped = handler.route_normalized_input(ctrl_input('h', KeyCode::KeyH), &map, context, now);
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::TerminalWriteInput("\u{08}".to_string())
+            );
+        }
+        other => panic!("expected raw ctrl+h terminal dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn terminal_focus_ctrl_w_stays_raw_instead_of_triggering_global_focus_back() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal);
+    let now = std::time::Instant::now();
+
+    let mapped = handler.route_normalized_input(ctrl_input('w', KeyCode::KeyW), &map, context, now);
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::TerminalWriteInput("\u{17}".to_string())
+            );
+        }
+        other => panic!("expected raw ctrl+w terminal dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn terminal_normal_routes_vim_motions_without_forwarding_raw_input() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalNormal, InputFocusContext::Terminal);
+    let now = std::time::Instant::now();
+
+    let mapped = handler.route_normalized_input(char_input('j', KeyCode::KeyJ), &map, context, now);
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::MoveDown);
+        }
+        other => panic!("expected terminal normal motion dispatch, got {:?}", other),
+    }
+}
+
+#[test]
 fn terminal_focus_f12_maps_to_focus_terminal() {
     let mut handler = InputHandler::new();
     let map = make_map();
@@ -681,6 +857,21 @@ fn terminal_focus_f12_maps_to_focus_terminal() {
         }
         other => panic!("expected F12 dispatch in terminal focus, got {:?}", other),
     }
+}
+
+#[test]
+fn terminal_normal_does_not_forward_unbound_text_to_pty() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalNormal, InputFocusContext::Terminal);
+    let now = std::time::Instant::now();
+
+    let mapped = handler.route_normalized_input(char_input('x', KeyCode::KeyX), &map, context, now);
+    assert!(
+        mapped.is_none(),
+        "unbound terminal-normal key should be ignored"
+    );
 }
 
 #[test]

@@ -5,7 +5,11 @@ use crate::core::{
 
 use super::common::{DispatchCtx, DispatchReport};
 
-pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> DispatchReport {
+pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> DispatchReport {
+    if let Some(report) = dispatch_terminal_normal(ctx, &command) {
+        return report;
+    }
+
     match command {
         Command::SaveFile => match ctx.app_state.save_file() {
             Ok(path) => DispatchReport::success_with_flags(
@@ -80,6 +84,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> Dispa
         | Command::MoveFocusCycle
         | Command::FocusBack
         | Command::TerminalWriteInput(_)
+        | Command::TerminalPaste
         | Command::ExplorerMoveUp
         | Command::ExplorerMoveDown
         | Command::ExplorerCollapseOrParent
@@ -91,6 +96,8 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> Dispa
         | Command::ExplorerDeleteNode
         | Command::ExplorerCreateFile
         | Command::ExplorerCreateFolder
+        | Command::ExplorerStartFilter
+        | Command::ExplorerClearFilter
         | Command::ExplorerExpandCollapse
         | Command::ExplorerOpenFile
         | Command::NextPanelTab
@@ -98,7 +105,16 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> Dispa
         | Command::TerminalScrollUp
         | Command::TerminalScrollDown
         | Command::OpenFolder
-        | Command::OpenRecentProjects => DispatchReport::success_with_flags(
+        | Command::OpenRecentProjects
+        | Command::LspHover
+        | Command::LspGoToDefinition
+        | Command::LspPreviewDefinition
+        | Command::LspReferences
+        | Command::ReferencesSelectNext
+        | Command::ReferencesSelectPrev
+        | Command::ReferencesOpenSelection
+        | Command::JumpBack
+        | Command::JumpForward => DispatchReport::success_with_flags(
             "Dispatch: workbench navigation (handled by event loop)",
             true,
             false,
@@ -111,6 +127,17 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> Dispa
                 }
                 if result.to == EditorMode::Visual {
                     changed |= ctx.app_state.begin_visual_selection();
+                }
+                if result.to == EditorMode::TerminalNormal
+                    && let Some(grid) = ctx.terminal_grid_mut()
+                {
+                    changed |= grid.enter_normal_mode();
+                }
+                if result.from == EditorMode::TerminalNormal
+                    && result.to != EditorMode::TerminalNormal
+                    && let Some(grid) = ctx.terminal_grid_mut()
+                {
+                    changed |= grid.exit_normal_mode();
                 }
                 if result.from == EditorMode::Visual && result.to != EditorMode::Visual {
                     changed |= ctx.app_state.clear_visual_selection();
@@ -142,7 +169,46 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> Dispa
     }
 }
 
-fn toggle_terminal(ctx: &mut DispatchCtx<'_, '_>) -> DispatchReport {
+fn dispatch_terminal_normal(
+    ctx: &mut DispatchCtx<'_, '_, '_>,
+    command: &Command,
+) -> Option<DispatchReport> {
+    if !ctx.terminal_normal_active() {
+        return None;
+    }
+
+    match command {
+        Command::SwitchMode(ModeEvent::EnterVisual) => {
+            let changed = ctx
+                .terminal_grid_mut()
+                .is_some_and(|grid| grid.begin_selection());
+            Some(DispatchReport::success(
+                if changed {
+                    "Dispatch: began terminal visual selection"
+                } else {
+                    "Dispatch: terminal visual selection ignored"
+                },
+                changed,
+            ))
+        }
+        Command::SwitchMode(ModeEvent::FocusTerminal) => {
+            let mut changed = false;
+            if let Some(grid) = ctx.terminal_grid_mut() {
+                changed |= grid.exit_normal_mode();
+            }
+            if let Ok(result) = ctx.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
+                changed |= result.changed;
+            }
+            Some(DispatchReport::success(
+                "Dispatch: returned terminal to typing mode",
+                changed,
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn toggle_terminal(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
     let panel_open = ctx.app_state.is_terminal_panel_open();
     let current_mode = ctx.app_state.current_mode();
 
@@ -182,7 +248,10 @@ fn toggle_terminal(ctx: &mut DispatchCtx<'_, '_>) -> DispatchReport {
     }
 
     let mut mode_changed = false;
-    if current_mode == EditorMode::TerminalFocus {
+    if matches!(
+        current_mode,
+        EditorMode::TerminalFocus | EditorMode::TerminalNormal
+    ) {
         match ctx.app_state.apply_mode_event(ModeEvent::ExitFocus) {
             Ok(transition) => {
                 mode_changed = transition.changed;

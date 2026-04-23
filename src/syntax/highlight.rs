@@ -1,8 +1,15 @@
-use std::ops::Range;
+use std::{ops::Range, sync::OnceLock};
 
-use tree_sitter::Node;
+use streaming_iterator::StreamingIterator;
+use tree_sitter::{Node, Query, QueryCursor};
 
-use crate::syntax::syntax_engine::{LanguageId, SyntaxTreeState};
+use crate::syntax::{
+    parser::tree_sitter_language,
+    syntax_engine::{LanguageId, SyntaxTreeState},
+};
+
+pub const INLINE_TREE_SITTER_BYTE_THRESHOLD: usize = 128 * 1024;
+pub const INLINE_TREE_SITTER_LINE_THRESHOLD: usize = 1_500;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HighlightCategory {
@@ -12,7 +19,12 @@ pub enum HighlightCategory {
     Type,
     Function,
     Number,
+    Identifier,
+    Parameter,
+    Field,
     Property,
+    Constant,
+    Operator,
     Punctuation,
     Macro,
     Lifetime,
@@ -27,25 +39,43 @@ impl HighlightCategory {
             Self::Type => "type",
             Self::Function => "function",
             Self::Number => "number",
+            Self::Identifier => "identifier",
+            Self::Parameter => "parameter",
+            Self::Field => "field",
             Self::Property => "property",
+            Self::Constant => "constant",
+            Self::Operator => "operator",
             Self::Punctuation => "punctuation",
             Self::Macro => "macro",
             Self::Lifetime => "lifetime",
         }
     }
 
+    pub fn is_bold(self) -> bool {
+        matches!(self, Self::Macro)
+    }
+
+    pub fn is_italic(self) -> bool {
+        matches!(self, Self::Comment)
+    }
+
     fn priority(self) -> u8 {
         match self {
-            // Ưu tiên cao hơn để span hẹp nhưng quan trọng không bị đè.
-            Self::Comment => 100,
-            Self::String => 90,
-            Self::Lifetime => 85,
-            Self::Keyword => 80,
-            Self::Macro => 75,
-            Self::Function => 70,
-            Self::Property => 65,
-            Self::Type => 60,
-            Self::Number => 50,
+            // Narrow but expressive captures should win over the generic fallback.
+            Self::Comment => 120,
+            Self::Macro => 110,
+            Self::String => 100,
+            Self::Lifetime => 95,
+            Self::Keyword => 90,
+            Self::Function => 85,
+            Self::Constant => 83,
+            Self::Parameter => 80,
+            Self::Field => 78,
+            Self::Property => 76,
+            Self::Type => 72,
+            Self::Number => 68,
+            Self::Identifier => 40,
+            Self::Operator => 20,
             Self::Punctuation => 10,
         }
     }
@@ -90,7 +120,12 @@ pub struct HighlightPalette {
     pub ty: [u8; 4],
     pub function: [u8; 4],
     pub number: [u8; 4],
+    pub identifier: [u8; 4],
+    pub parameter: [u8; 4],
+    pub field: [u8; 4],
     pub property: [u8; 4],
+    pub constant: [u8; 4],
+    pub operator: [u8; 4],
     pub punctuation: [u8; 4],
     pub macro_name: [u8; 4],
     pub lifetime: [u8; 4],
@@ -98,18 +133,22 @@ pub struct HighlightPalette {
 
 impl Default for HighlightPalette {
     fn default() -> Self {
-        // Palette tối ưu cho nền tối đang dùng ở probe hiện tại.
         Self {
-            keyword: [214, 153, 255, 255],
-            string: [153, 214, 255, 255],
-            comment: [120, 130, 146, 255],
-            ty: [255, 198, 128, 255],
-            function: [166, 232, 189, 255],
-            number: [255, 177, 177, 255],
-            property: [183, 191, 204, 255],
-            punctuation: [143, 152, 170, 255],
-            macro_name: [214, 153, 255, 255],
-            lifetime: [255, 123, 114, 255],
+            keyword: [234, 205, 97, 255],
+            string: [60, 236, 133, 255],
+            comment: [74, 94, 132, 255],
+            ty: [183, 138, 255, 255],
+            function: [105, 195, 255, 255],
+            number: [227, 85, 53, 255],
+            identifier: [208, 215, 228, 255],
+            parameter: [34, 236, 219, 255],
+            field: [105, 195, 255, 255],
+            property: [208, 215, 228, 255],
+            constant: [255, 149, 92, 255],
+            operator: [175, 187, 210, 255],
+            punctuation: [129, 150, 181, 255],
+            macro_name: [105, 195, 255, 255],
+            lifetime: [255, 149, 92, 255],
         }
     }
 }
@@ -123,7 +162,12 @@ impl HighlightPalette {
             HighlightCategory::Type => self.ty,
             HighlightCategory::Function => self.function,
             HighlightCategory::Number => self.number,
+            HighlightCategory::Identifier => self.identifier,
+            HighlightCategory::Parameter => self.parameter,
+            HighlightCategory::Field => self.field,
             HighlightCategory::Property => self.property,
+            HighlightCategory::Constant => self.constant,
+            HighlightCategory::Operator => self.operator,
             HighlightCategory::Punctuation => self.punctuation,
             HighlightCategory::Macro => self.macro_name,
             HighlightCategory::Lifetime => self.lifetime,
@@ -182,10 +226,29 @@ pub fn merge_highlight_spans(
     *spans = coalesce_spans(merged);
 }
 
-pub fn generate_highlight_spans(tree_state: &SyntaxTreeState, source: &str) -> Vec<HighlightSpan> {
-    match tree_state.language_id() {
-        LanguageId::Rust => generate_rust_highlight_spans(tree_state.root_node(), source, None),
+pub fn overlay_highlight_layers(
+    base: &[HighlightSpan],
+    overrides: &[HighlightSpan],
+) -> Vec<HighlightSpan> {
+    if overrides.is_empty() {
+        return base.to_vec();
     }
+
+    let mut merged = coalesce_spans(base.to_vec());
+    for span in overrides.iter().cloned() {
+        let window = span.range.clone();
+        merge_highlight_spans(&mut merged, vec![span], Some(window));
+    }
+    merged
+}
+
+pub fn generate_highlight_spans(tree_state: &SyntaxTreeState, source: &str) -> Vec<HighlightSpan> {
+    generate_query_highlight_spans(
+        tree_state.language_id(),
+        tree_state.root_node(),
+        source,
+        None,
+    )
 }
 
 pub fn generate_highlight_spans_in_byte_window(
@@ -193,221 +256,238 @@ pub fn generate_highlight_spans_in_byte_window(
     source: &str,
     window: Range<usize>,
 ) -> Vec<HighlightSpan> {
-    match tree_state.language_id() {
-        LanguageId::Rust => {
-            let Some((start, end)) = sanitize_byte_range(source, window) else {
-                return Vec::new();
-            };
-            generate_rust_highlight_spans(tree_state.root_node(), source, Some(start..end))
-        }
+    let Some((start, end)) = sanitize_byte_range(source, window) else {
+        return Vec::new();
+    };
+    generate_query_highlight_spans(
+        tree_state.language_id(),
+        tree_state.root_node(),
+        source,
+        Some(start..end),
+    )
+}
+
+pub fn should_highlight_inline(text: &str) -> bool {
+    if text.len() > INLINE_TREE_SITTER_BYTE_THRESHOLD {
+        return false;
     }
+
+    let line_count = text.bytes().filter(|byte| *byte == b'\n').count() + 1;
+    line_count <= INLINE_TREE_SITTER_LINE_THRESHOLD
 }
 
-fn node_text<'a>(node: Node<'_>, source: &'a str) -> Option<&'a str> {
-    source.get(node.start_byte()..node.end_byte())
-}
-
-fn is_pascal_case(s: &str) -> bool {
-    s.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
-}
-
-fn generate_rust_highlight_spans(
+fn generate_query_highlight_spans(
+    language_id: LanguageId,
     root: Node<'_>,
     source: &str,
     byte_window: Option<Range<usize>>,
 ) -> Vec<HighlightSpan> {
+    let Some(query) = highlight_query(language_id) else {
+        return Vec::new();
+    };
+    let sanitized_window =
+        byte_window.and_then(|window| sanitize_byte_range(source, window).map(|(s, e)| s..e));
+    let mut cursor = QueryCursor::new();
     let mut raw_spans = Vec::new();
-    let mut stack = vec![root];
+    let mut query_matches = cursor.matches(query, root, source.as_bytes());
+    if let Some(window) = sanitized_window.clone() {
+        query_matches.set_byte_range(window);
+    }
 
-    while let Some(node) = stack.pop() {
-        if let Some(window) = &byte_window
-            && (node.end_byte() <= window.start || node.start_byte() >= window.end)
-        {
-            continue;
-        }
+    loop {
+        query_matches.advance();
+        let Some(query_match) = query_matches.get() else {
+            break;
+        };
+        for capture in query_match.captures {
+            let node = capture.node;
+            if let Some(window) = &sanitized_window
+                && (node.end_byte() <= window.start || node.start_byte() >= window.end)
+            {
+                continue;
+            }
 
-        if let Some(category) = classify_rust_node(node, source) {
+            let capture_name = query.capture_names()[capture.index as usize];
+            let Some(category) = capture_category(capture_name) else {
+                continue;
+            };
+
             raw_spans.push(HighlightSpan {
                 range: node.start_byte()..node.end_byte(),
                 category,
             });
         }
+    }
 
-        let mut cursor = node.walk();
-        if cursor.goto_first_child() {
-            let mut children = Vec::new();
-            loop {
-                children.push(cursor.node());
-                if !cursor.goto_next_sibling() {
-                    break;
-                }
-            }
+    normalize_spans(source, raw_spans, sanitized_window)
+}
 
-            // Giữ thứ tự trái -> phải ổn định khi duyệt DFS bằng stack.
-            for child in children.into_iter().rev() {
-                stack.push(child);
-            }
+fn highlight_query(language_id: LanguageId) -> Option<&'static Query> {
+    match language_id {
+        LanguageId::Rust => Some(rust_highlight_query()),
+        LanguageId::JavaScript => Some(javascript_highlight_query()),
+        LanguageId::Jsx => Some(jsx_highlight_query()),
+        LanguageId::TypeScript => Some(typescript_highlight_query()),
+        LanguageId::Tsx => Some(tsx_highlight_query()),
+        LanguageId::Go => Some(go_highlight_query()),
+        LanguageId::Yaml => Some(yaml_highlight_query()),
+        LanguageId::Dockerfile => None,
+        LanguageId::Json => Some(json_highlight_query()),
+        LanguageId::Bash => Some(bash_highlight_query()),
+    }
+}
+
+fn rust_highlight_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(
+            LanguageId::Rust,
+            include_str!("queries/rust/highlights.scm"),
+            "rust",
+        )
+    })
+}
+
+fn javascript_highlight_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(
+            LanguageId::JavaScript,
+            tree_sitter_javascript::HIGHLIGHT_QUERY,
+            "javascript",
+        )
+    })
+}
+
+fn jsx_highlight_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        let source = format!(
+            "{}\n{}",
+            tree_sitter_javascript::HIGHLIGHT_QUERY,
+            tree_sitter_javascript::JSX_HIGHLIGHT_QUERY
+        );
+        build_highlight_query(LanguageId::Jsx, &source, "jsx")
+    })
+}
+
+fn typescript_highlight_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(
+            LanguageId::TypeScript,
+            tree_sitter_typescript::HIGHLIGHTS_QUERY,
+            "typescript",
+        )
+    })
+}
+
+fn tsx_highlight_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(
+            LanguageId::Tsx,
+            tree_sitter_typescript::HIGHLIGHTS_QUERY,
+            "tsx",
+        )
+    })
+}
+
+fn go_highlight_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(LanguageId::Go, tree_sitter_go::HIGHLIGHTS_QUERY, "go")
+    })
+}
+
+fn yaml_highlight_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(LanguageId::Yaml, tree_sitter_yaml::HIGHLIGHTS_QUERY, "yaml")
+    })
+}
+
+fn json_highlight_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(LanguageId::Json, tree_sitter_json::HIGHLIGHTS_QUERY, "json")
+    })
+}
+
+fn bash_highlight_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(LanguageId::Bash, tree_sitter_bash::HIGHLIGHT_QUERY, "bash")
+    })
+}
+
+fn build_highlight_query(language_id: LanguageId, source: &str, label: &str) -> Query {
+    let language = tree_sitter_language(language_id).unwrap_or_else(|| {
+        panic!(
+            "tree-sitter language '{}' missing while building {label} highlight query",
+            language_id.as_str()
+        )
+    });
+    Query::new(&language, source)
+        .unwrap_or_else(|err| panic!("invalid {label} highlight query: {err}"))
+}
+
+fn capture_category(capture_name: &str) -> Option<HighlightCategory> {
+    match capture_name {
+        "string.special.key" => Some(HighlightCategory::Property),
+        "syntax.keyword" => Some(HighlightCategory::Keyword),
+        "syntax.string" => Some(HighlightCategory::String),
+        "syntax.comment" => Some(HighlightCategory::Comment),
+        "syntax.type" => Some(HighlightCategory::Type),
+        "syntax.function" => Some(HighlightCategory::Function),
+        "syntax.number" => Some(HighlightCategory::Number),
+        "syntax.identifier" => Some(HighlightCategory::Identifier),
+        "syntax.parameter" => Some(HighlightCategory::Parameter),
+        "syntax.field" => Some(HighlightCategory::Field),
+        "syntax.property" => Some(HighlightCategory::Property),
+        "syntax.constant" => Some(HighlightCategory::Constant),
+        "syntax.operator" => Some(HighlightCategory::Operator),
+        "syntax.punctuation" => Some(HighlightCategory::Punctuation),
+        "syntax.macro" => Some(HighlightCategory::Macro),
+        "syntax.lifetime" => Some(HighlightCategory::Lifetime),
+        "macro" | "function.macro" | "constructor.macro" => Some(HighlightCategory::Macro),
+        "lifetime" => Some(HighlightCategory::Lifetime),
+        "field" => Some(HighlightCategory::Field),
+        "property" => Some(HighlightCategory::Property),
+        "identifier" => Some(HighlightCategory::Identifier),
+        "operator" => Some(HighlightCategory::Operator),
+        _ if capture_name.starts_with("comment") => Some(HighlightCategory::Comment),
+        _ if capture_name.starts_with("keyword") => Some(HighlightCategory::Keyword),
+        _ if capture_name.starts_with("string") => Some(HighlightCategory::String),
+        _ if capture_name.starts_with("type") => Some(HighlightCategory::Type),
+        _ if capture_name.starts_with("function") || capture_name.starts_with("method") => {
+            Some(HighlightCategory::Function)
         }
-    }
-
-    normalize_spans(source, raw_spans, byte_window)
-}
-
-fn classify_rust_node(node: Node<'_>, source: &str) -> Option<HighlightCategory> {
-    let kind = node.kind();
-
-    if matches!(kind, "line_comment" | "block_comment") {
-        return Some(HighlightCategory::Comment);
-    }
-    if matches!(
-        kind,
-        "string_literal" | "raw_string_literal" | "char_literal"
-    ) {
-        return Some(HighlightCategory::String);
-    }
-    if matches!(kind, "integer_literal" | "float_literal") {
-        return Some(HighlightCategory::Number);
-    }
-    if kind == "lifetime" {
-        return Some(HighlightCategory::Lifetime);
-    }
-    if matches!(
-        kind,
-        "primitive_type"
-            | "type_identifier"
-            | "scoped_type_identifier"
-            | "generic_type"
-            | "bounded_type"
-    ) {
-        return Some(HighlightCategory::Type);
-    }
-    if is_rust_keyword_token(kind) {
-        return Some(HighlightCategory::Keyword);
-    }
-    if is_rust_punctuation_token(kind) {
-        return Some(HighlightCategory::Punctuation);
-    }
-    if matches!(kind, "identifier" | "scoped_identifier") && is_attribute_identifier(node) {
-        return Some(HighlightCategory::Lifetime);
-    }
-    if matches!(kind, "identifier" | "scoped_identifier") && is_macro_identifier(node) {
-        return Some(HighlightCategory::Macro);
-    }
-
-    if kind == "identifier" {
-        if let Some(text) = node_text(node, source) {
-            if is_pascal_case(text) {
-                if let Some(parent) = node.parent() {
-                    // Type names in use lists: use std::{Foo, Bar}
-                    if parent.kind() == "use_list" {
-                        return Some(HighlightCategory::Type);
-                    }
-                    // Type/namespace components in qualified paths: Foo::Bar, Enum::Variant
-                    if parent.kind() == "scoped_identifier" {
-                        return Some(HighlightCategory::Type);
-                    }
-                    // PascalCase identifiers inside derive/attribute token trees: #[derive(Debug)]
-                    if parent.kind() == "token_tree" {
-                        return Some(HighlightCategory::Type);
-                    }
-                    // Enum variant / tuple-struct patterns: Some(x), None, Err(e) in match arms
-                    if matches!(
-                        parent.kind(),
-                        "tuple_struct_pattern" | "struct_pattern" | "match_pattern"
-                    ) {
-                        return Some(HighlightCategory::Type);
-                    }
-                }
-            }
+        _ if capture_name.starts_with("number")
+            || capture_name == "float"
+            || capture_name == "integer" =>
+        {
+            Some(HighlightCategory::Number)
         }
+        _ if capture_name.starts_with("variable.parameter")
+            || capture_name.starts_with("parameter") =>
+        {
+            Some(HighlightCategory::Parameter)
+        }
+        _ if capture_name.starts_with("field") => Some(HighlightCategory::Field),
+        _ if capture_name.starts_with("property") => Some(HighlightCategory::Property),
+        _ if capture_name.starts_with("constant")
+            || capture_name == "boolean"
+            || capture_name == "enum_member" =>
+        {
+            Some(HighlightCategory::Constant)
+        }
+        _ if capture_name.starts_with("operator") => Some(HighlightCategory::Operator),
+        _ if capture_name.starts_with("punctuation") => Some(HighlightCategory::Punctuation),
+        _ if capture_name.starts_with("lifetime") => Some(HighlightCategory::Lifetime),
+        _ if capture_name.starts_with("variable") => Some(HighlightCategory::Identifier),
+        _ => None,
     }
-
-    if kind == "identifier" && is_function_identifier(node) {
-        return Some(HighlightCategory::Function);
-    }
-    if kind == "field_identifier" && is_method_identifier(node) {
-        return Some(HighlightCategory::Function);
-    }
-    if kind == "field_identifier" {
-        return Some(HighlightCategory::Property);
-    }
-
-    None
-}
-
-fn is_rust_keyword_token(kind: &str) -> bool {
-    matches!(
-        kind,
-        "fn" | "let"
-            | "mut"
-            | "pub"
-            | "use"
-            | "struct"
-            | "enum"
-            | "impl"
-            | "trait"
-            | "mod"
-            | "match"
-            | "if"
-            | "else"
-            | "for"
-            | "while"
-            | "loop"
-            | "return"
-            | "break"
-            | "continue"
-            | "async"
-            | "await"
-            | "const"
-            | "static"
-            | "where"
-            | "in"
-            | "as"
-            | "crate"
-            | "super"
-            | "self"
-            | "Self"
-    )
-}
-
-fn is_function_identifier(node: Node<'_>) -> bool {
-    is_child_field(node, "function_item", "name")
-        || is_child_field(node, "function_signature_item", "name")
-        || is_child_field(node, "call_expression", "function")
-}
-
-fn is_method_identifier(node: Node<'_>) -> bool {
-    is_child_field(node, "method_call_expression", "method")
-}
-
-fn is_macro_identifier(node: Node<'_>) -> bool {
-    is_child_field(node, "macro_invocation", "macro")
-        || is_child_field(node, "macro_definition", "name")
-}
-
-fn is_attribute_identifier(node: Node<'_>) -> bool {
-    is_child_field(node, "attribute_item", "path")
-        || is_child_field(node, "inner_attribute_item", "path")
-}
-
-fn is_rust_punctuation_token(kind: &str) -> bool {
-    matches!(
-        kind,
-        "{" | "}" | "(" | ")" | "[" | "]" | "<" | ">" | "," | ";" | "." | ":" | "::" | "->" | "=>"
-    )
-}
-
-fn is_child_field(node: Node<'_>, parent_kind: &str, field_name: &str) -> bool {
-    let Some(parent) = node.parent() else {
-        return false;
-    };
-    if parent.kind() != parent_kind {
-        return false;
-    }
-
-    parent
-        .child_by_field_name(field_name)
-        .is_some_and(|field_node| field_node.id() == node.id())
 }
 
 fn normalize_spans(
@@ -444,7 +524,6 @@ fn normalize_spans(
         }
 
         let priority = span.category.priority();
-
         let local_start = start - paint_start;
         let local_end = end - paint_start;
         for slot in painted.iter_mut().take(local_end).skip(local_start) {
@@ -618,9 +697,10 @@ fn sanitize_byte_range(source: &str, range: Range<usize>) -> Option<(usize, usiz
 mod tests {
     use super::{
         HighlightCategory, HighlightEdit, HighlightSpan, apply_highlight_edits,
-        generate_highlight_spans, merge_highlight_spans,
+        generate_highlight_spans, merge_highlight_spans, overlay_highlight_layers,
+        should_highlight_inline,
     };
-    use crate::syntax::syntax_engine::SyntaxEngine;
+    use crate::syntax::syntax_engine::{LanguageId, SyntaxEngine};
 
     #[test]
     fn rust_highlight_generates_core_categories() {
@@ -671,13 +751,16 @@ fn greet(name: &str) -> String {
     #[test]
     fn rust_highlight_generates_extended_categories() {
         let source = r#"
-#[derive(Debug)]
+const MAX_SIZE: usize = 32;
+
 struct Demo<'a> {
-    device: &'a str,
+    label: &'a str,
 }
 
-fn log_demo<'a>(demo: Demo<'a>) {
-    println!("{}", demo.device);
+fn render<'a>(label: &'a str, count: usize) -> Demo<'a> {
+    println!("{}", label);
+    let next = count + MAX_SIZE;
+    Demo { label }
 }
 "#;
 
@@ -688,12 +771,28 @@ fn log_demo<'a>(demo: Demo<'a>) {
         assert!(
             spans
                 .iter()
+                .any(|s| s.category == HighlightCategory::Identifier)
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Parameter)
+        );
+        assert!(spans.iter().any(|s| s.category == HighlightCategory::Field));
+        assert!(
+            spans
+                .iter()
                 .any(|s| s.category == HighlightCategory::Property)
         );
         assert!(
             spans
                 .iter()
-                .any(|s| s.category == HighlightCategory::Punctuation)
+                .any(|s| s.category == HighlightCategory::Constant)
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Operator)
         );
         assert!(spans.iter().any(|s| s.category == HighlightCategory::Macro));
         assert!(
@@ -701,6 +800,86 @@ fn log_demo<'a>(demo: Demo<'a>) {
                 .iter()
                 .any(|s| s.category == HighlightCategory::Lifetime)
         );
+    }
+
+    #[test]
+    fn javascript_highlight_uses_default_query_captures() {
+        let source = r#"
+const answer = 42;
+function greet(name) {
+    console.log(`hello ${name}`);
+    return answer;
+}
+"#;
+
+        let mut engine = SyntaxEngine::new(LanguageId::JavaScript).expect("init js parser");
+        let tree = engine.parse_source(source, 12).expect("parse js");
+        let spans = generate_highlight_spans(tree, source);
+
+        assert!(!spans.is_empty(), "expected js highlight spans");
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Keyword)
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Function)
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Number)
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::String)
+        );
+    }
+
+    #[test]
+    fn go_highlight_uses_default_query_captures() {
+        let source = r#"
+package main
+
+import "fmt"
+
+func greet(name string) string {
+    fmt.Println(name);
+    return name
+}
+"#;
+
+        let mut engine = SyntaxEngine::new(LanguageId::Go).expect("init go parser");
+        let tree = engine.parse_source(source, 13).expect("parse go");
+        let spans = generate_highlight_spans(tree, source);
+
+        assert!(!spans.is_empty(), "expected go highlight spans");
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Keyword)
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Function)
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::String)
+        );
+    }
+
+    #[test]
+    fn syntax_categories_expose_emphasis_for_comment_and_macro() {
+        assert!(HighlightCategory::Comment.is_italic());
+        assert!(!HighlightCategory::Comment.is_bold());
+        assert!(HighlightCategory::Macro.is_bold());
+        assert!(!HighlightCategory::Macro.is_italic());
     }
 
     #[test]
@@ -772,5 +951,50 @@ fn log_demo<'a>(demo: Demo<'a>) {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn semantic_overrides_replace_tree_sitter_in_same_range() {
+        let base = vec![
+            HighlightSpan {
+                range: 0..4,
+                category: HighlightCategory::Identifier,
+            },
+            HighlightSpan {
+                range: 4..8,
+                category: HighlightCategory::Field,
+            },
+        ];
+        let overrides = vec![HighlightSpan {
+            range: 2..6,
+            category: HighlightCategory::Constant,
+        }];
+
+        let merged = overlay_highlight_layers(&base, &overrides);
+
+        assert_eq!(
+            merged,
+            vec![
+                HighlightSpan {
+                    range: 0..2,
+                    category: HighlightCategory::Identifier,
+                },
+                HighlightSpan {
+                    range: 2..6,
+                    category: HighlightCategory::Constant,
+                },
+                HighlightSpan {
+                    range: 6..8,
+                    category: HighlightCategory::Field,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn inline_highlight_threshold_accepts_small_buffers() {
+        assert!(should_highlight_inline("fn main() {}\n"));
+        let large = "x".repeat(super::INLINE_TREE_SITTER_BYTE_THRESHOLD + 1);
+        assert!(!should_highlight_inline(&large));
     }
 }

@@ -2,6 +2,26 @@ use std::path::PathBuf;
 
 use crate::core::mode::ModeEvent;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Operator {
+    Visual,
+    Delete,
+    Change,
+    Yank,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextObjectModifier {
+    Inner,
+    Around,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextObjectKind {
+    Quote(char),
+    Bracket(char, char),
+}
+
 /// Command là giao diện trung gian giữa input layer và editor core.
 /// Event loop chỉ chuyển phím -> command, không sửa state trực tiếp.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,6 +52,8 @@ pub enum Command {
     ChangeWordBackward,
     PasteAfter,
     PasteBefore,
+    EditorPaste,
+    /// Legacy alias for older keymaps; routed with `EditorPaste`.
     PasteSystemClipboard,
     Undo,
     Redo,
@@ -69,6 +91,7 @@ pub enum Command {
     OpenFileFinder,
     OpenInFileSearch,
     SearchInFiles,
+    OpenThemeSelector,
     FilePickerAppendQuery(String),
     FilePickerBackspaceQuery,
     OverlaySelectNext,
@@ -88,6 +111,8 @@ pub enum Command {
     ToggleLeftDock,
     /// Raw terminal bytes/string payload routed through command path.
     TerminalWriteInput(String),
+    /// Paste system clipboard into the focused PTY session.
+    TerminalPaste,
     /// Scroll terminal viewport up (towards scrollback history).
     TerminalScrollUp,
     /// Scroll terminal viewport down (towards live output).
@@ -127,6 +152,8 @@ pub enum Command {
     ExplorerDeleteNode,
     ExplorerCreateFile,
     ExplorerCreateFolder,
+    ExplorerStartFilter,
+    ExplorerClearFilter,
     // Legacy aliases (kept for backward compatibility with old keymaps/tests).
     ExplorerExpandCollapse,
     ExplorerOpenFile,
@@ -148,31 +175,10 @@ pub enum Command {
     EnterVisualLine,
 
     // ── Text Objects (Vim vi(/va{/ci{/dib …) ─────────────────────────────────
-    /// Chọn text object bằng cách set Visual selection lên vùng bracket.
-    /// `open_char`/`close_char`: cặp bracket ('(',')', '{','}', '[',']').
-    /// `inner`: true = nội dung bên trong; false = bao gồm cả bracket (around).
-    SelectTextObject {
-        open_char: char,
-        close_char: char,
-        inner: bool,
-    },
-    /// Xóa text object (d + i/a + bracket).
-    DeleteTextObject {
-        open_char: char,
-        close_char: char,
-        inner: bool,
-    },
-    /// Xóa text object rồi vào Insert mode (c + i/a + bracket).
-    ChangeTextObject {
-        open_char: char,
-        close_char: char,
-        inner: bool,
-    },
-    /// Yank (copy) text object vào clipboard (y + i/a + bracket).
-    YankTextObject {
-        open_char: char,
-        close_char: char,
-        inner: bool,
+    TextObjectAction {
+        op: Operator,
+        modifier: TextObjectModifier,
+        kind: TextObjectKind,
     },
 
     // ── Leap / EasyMotion navigation (Module 07 Phase 3) ──────────────────────
@@ -184,6 +190,26 @@ pub enum Command {
     LeapJump(char),
     /// Hủy Leap session (Escape hoặc không tìm thấy kết quả).
     LeapCancel,
+
+    // ── LSP Interactive Features (Module 10) ──────────────────────────────────────
+    /// Shift+K: Gửi textDocument/hover, hiển thị FloatingBox tài liệu hàm/biến.
+    LspHover,
+    /// gd: Gửi textDocument/definition, nhảy đến file và dòng định nghĩa.
+    LspGoToDefinition,
+    /// gD: Gửi textDocument/definition, hiển thị code peek FloatingBox.
+    LspPreviewDefinition,
+    /// gr: Gửi textDocument/references, mở danh sách tham chiếu.
+    LspReferences,
+    /// References view: chọn item kế tiếp.
+    ReferencesSelectNext,
+    /// References view: chọn item trước đó.
+    ReferencesSelectPrev,
+    /// References view: mở item đang chọn như `gd`.
+    ReferencesOpenSelection,
+    /// ctrl+o: Nhảy lùi về vị trí trước trong jump list.
+    JumpBack,
+    /// ctrl+i: Nhảy tiến về vị trí sau trong jump list.
+    JumpForward,
 }
 
 impl Command {
@@ -255,6 +281,8 @@ impl Command {
                 | Self::SearchPrev
                 | Self::OverlaySelectNext
                 | Self::OverlaySelectPrev
+                | Self::ReferencesSelectNext
+                | Self::ReferencesSelectPrev
                 | Self::ExplorerMoveUp
                 | Self::ExplorerMoveDown
                 | Self::ExplorerCollapseOrParent

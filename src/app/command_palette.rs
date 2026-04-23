@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::{config::theme_config::ThemeConfig, workspace::model::WorkspaceModel};
 
@@ -28,6 +28,10 @@ pub enum CommandPaletteMode {
     BufferCloseConfirm,
     /// Recent Projects picker — hiện danh sách project đã mở gần đây.
     RecentProjects,
+    /// Theme selector — liệt kê `config/themes/*.toml` để hot-reload runtime.
+    ThemeSelector,
+    /// LSP References — danh sách tĩnh kết quả `gr` từ LSP server.
+    LspReferences,
 }
 
 impl CommandPaletteMode {
@@ -44,6 +48,8 @@ impl CommandPaletteMode {
             Self::ExplorerDeleteConfirm => "delete> ",
             Self::BufferCloseConfirm => "close> ",
             Self::RecentProjects => "project> ",
+            Self::ThemeSelector => "Select Theme> ",
+            Self::LspReferences => "refs> ",
         }
     }
 
@@ -60,6 +66,8 @@ impl CommandPaletteMode {
             Self::ExplorerDeleteConfirm => "Delete selected item? (y/n)",
             Self::BufferCloseConfirm => "Save changes before closing? (y/n)",
             Self::RecentProjects => "no recent projects",
+            Self::ThemeSelector => "type to filter themes...",
+            Self::LspReferences => "no references found",
         }
     }
 
@@ -76,14 +84,20 @@ impl CommandPaletteMode {
             Self::ExplorerDeleteConfirm => "DELETE",
             Self::BufferCloseConfirm => "CLOSE",
             Self::RecentProjects => "RECENT",
+            Self::ThemeSelector => "THEMES",
+            Self::LspReferences => "REFS",
         }
     }
 
-    /// File Picker, Live Grep và Recent Projects dùng UI phức tạp (box rộng, header badge, footer).
+    /// File Picker, Live Grep, Recent Projects và Theme Selector dùng UI phức tạp.
     pub fn is_complex_picker(self) -> bool {
         matches!(
             self,
-            Self::FilePicker | Self::LiveGrep | Self::RecentProjects
+            Self::FilePicker
+                | Self::LiveGrep
+                | Self::RecentProjects
+                | Self::ThemeSelector
+                | Self::LspReferences
         )
     }
 }
@@ -98,6 +112,7 @@ pub enum CommandPaletteAction {
     },
     ExecuteCommand(String),
     ExecuteVimCommand(String),
+    SelectTheme(String),
     JumpToSymbol(String),
 }
 
@@ -149,6 +164,14 @@ impl CommandPaletteItem {
             label: label.to_string(),
             secondary_label: None,
             action: CommandPaletteAction::ExecuteCommand(id.to_string()),
+        }
+    }
+
+    pub fn theme(name: &str, path: &Path) -> Self {
+        Self {
+            label: name.to_string(),
+            secondary_label: Some(path.display().to_string()),
+            action: CommandPaletteAction::SelectTheme(name.to_string()),
         }
     }
 
@@ -348,8 +371,22 @@ impl CommandPalette {
     }
 
     pub fn refresh_results(&mut self, _workspace: Option<&WorkspaceModel>) {
+        // LspReferences: static list, never overwrite with fzf results.
+        if matches!(self.mode, CommandPaletteMode::LspReferences) {
+            self.results = self.static_items.clone();
+            if self.results.is_empty() {
+                self.selected_index = 0;
+            } else {
+                self.selected_index = self.selected_index.min(self.results.len() - 1);
+            }
+            return;
+        }
+
         // RecentProjects: filter static_items by query (name OR full path).
-        if matches!(self.mode, CommandPaletteMode::RecentProjects) {
+        if matches!(
+            self.mode,
+            CommandPaletteMode::RecentProjects | CommandPaletteMode::ThemeSelector
+        ) {
             self.results = if self.query.is_empty() {
                 self.static_items.clone()
             } else {
@@ -358,6 +395,11 @@ impl CommandPalette {
                     .iter()
                     .filter(|item| {
                         item.label.to_lowercase().contains(&q)
+                            || item
+                                .secondary_label
+                                .as_deref()
+                                .map(|secondary| secondary.to_lowercase().contains(&q))
+                                .unwrap_or(false)
                             || matches!(&item.action,
                                 CommandPaletteAction::OpenFile(path)
                                     if path.to_string_lossy().to_lowercase().contains(&q))
@@ -389,6 +431,8 @@ impl CommandPalette {
             | CommandPaletteMode::ExplorerDeleteConfirm
             | CommandPaletteMode::BufferCloseConfirm => Vec::new(),
             CommandPaletteMode::RecentProjects => unreachable!("handled above"),
+            CommandPaletteMode::ThemeSelector => unreachable!("handled above"),
+            CommandPaletteMode::LspReferences => unreachable!("handled above"),
         };
 
         if self.results.is_empty() {
@@ -550,27 +594,34 @@ impl CommandPalette {
             .map(|entry| entry.label.clone())
             .collect();
 
-        // For RecentProjects, secondary_labels holds the full folder path.
-        let secondary_labels: Vec<String> =
-            if matches!(self.mode, CommandPaletteMode::RecentProjects) {
-                self.results
-                    .iter()
-                    .map(|entry| match &entry.action {
+        let secondary_labels: Vec<String> = if matches!(
+            self.mode,
+            CommandPaletteMode::RecentProjects | CommandPaletteMode::ThemeSelector
+        ) {
+            self.results
+                .iter()
+                .map(|entry| match self.mode {
+                    CommandPaletteMode::RecentProjects => match &entry.action {
                         CommandPaletteAction::OpenFile(path) => path.display().to_string(),
                         CommandPaletteAction::OpenSearchMatch { path, .. } => {
                             path.display().to_string()
                         }
                         _ => String::new(),
-                    })
-                    .collect()
-            } else if matches!(self.mode, CommandPaletteMode::LiveGrep) {
-                self.results
-                    .iter()
-                    .map(|entry| entry.secondary_label.clone().unwrap_or_default())
-                    .collect()
-            } else {
-                Vec::new()
-            };
+                    },
+                    CommandPaletteMode::ThemeSelector => {
+                        entry.secondary_label.clone().unwrap_or_default()
+                    }
+                    _ => String::new(),
+                })
+                .collect()
+        } else if matches!(self.mode, CommandPaletteMode::LiveGrep) {
+            self.results
+                .iter()
+                .map(|entry| entry.secondary_label.clone().unwrap_or_default())
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         let result_match_ranges: Vec<Vec<(usize, usize)>> = result_labels
             .iter()
@@ -646,7 +697,7 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
             "Search Word Under Cursor",
         ),
         ("editor.clear_search_highlights", "Clear Search Highlights"),
-        ("editor.paste_system_clipboard", "Paste System Clipboard"),
+        ("editor.paste", "Paste System Clipboard"),
         ("editor.save_file", "Save File"),
         ("app.open_file_picker", "Open File Picker"),
         ("app.open_file_finder", "Open File Finder"),
@@ -762,6 +813,7 @@ fn compute_match_ranges(label: &str, query: &str) -> Vec<(usize, usize)> {
 fn palette_max_items(mode: CommandPaletteMode) -> usize {
     match mode {
         CommandPaletteMode::LiveGrep => 10,
+        CommandPaletteMode::ThemeSelector => 16,
         mode if mode.is_complex_picker() => 12,
         _ => 10,
     }
@@ -780,7 +832,10 @@ fn complex_picker_reserved_height(
     line_height: f32,
 ) -> f32 {
     let footer_height = line_height + 11.0;
-    let header_height = if matches!(mode, CommandPaletteMode::RecentProjects) {
+    let header_height = if matches!(
+        mode,
+        CommandPaletteMode::RecentProjects | CommandPaletteMode::ThemeSelector
+    ) {
         line_height * 2.0 + 10.0
     } else {
         line_height + 6.0

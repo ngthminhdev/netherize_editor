@@ -21,6 +21,8 @@ pub enum KeySpec {
     ModPlus(KeyCode),
     /// Command/Ctrl + Shift + physical key: "mod+shift+p"
     ModShiftPlus(KeyCode),
+    /// Ctrl-only modifier (not Cmd/Super): "ctrl+o" — distinct from ModPlus on macOS
+    CtrlPlus(KeyCode),
     /// Printable character key (layout-aware), e.g. ":".
     Char(char),
     /// Leader token (Space) used as the first step of a chord sequence.
@@ -43,6 +45,11 @@ impl KeySpec {
                     && input.modifiers.shift_key()
                     && input.physical_key == Some(*code)
             }
+            Self::CtrlPlus(code) => {
+                input.modifiers.control_key()
+                    && !input.modifiers.super_key()
+                    && input.physical_key == Some(*code)
+            }
             Self::Char(ch) => {
                 !input.has_command_modifier()
                     && input
@@ -60,6 +67,7 @@ impl KeySpec {
             Self::Physical(code) => physical_key_display(*code),
             Self::ModPlus(code) => format!("mod+{}", physical_key_display(*code)),
             Self::ModShiftPlus(code) => format!("mod+shift+{}", physical_key_display(*code)),
+            Self::CtrlPlus(code) => format!("ctrl+{}", physical_key_display(*code)),
             Self::Char(ch) => ch.to_string(),
             Self::Leader => "<Space>".to_string(),
         }
@@ -171,6 +179,9 @@ fn parse_non_leader_key(token: &str) -> Option<KeySpec> {
     if let Some(rest) = token.strip_prefix("mod+") {
         return char_key_to_code(rest).map(KeySpec::ModPlus);
     }
+    if let Some(rest) = token.strip_prefix("ctrl+") {
+        return char_key_to_code(rest).map(KeySpec::CtrlPlus);
+    }
 
     let named = match token.to_ascii_lowercase().as_str() {
         "escape" => Some(NamedKey::Escape),
@@ -212,8 +223,9 @@ fn normalize_modifier_alias(token: &str) -> String {
     if let Some(rest) = lower.strip_prefix("cmd+shift+") {
         return format!("mod+shift+{rest}");
     }
+    // ctrl+ stays as ctrl+ (handled as CtrlPlus, distinct from mod+/cmd+)
     if let Some(rest) = lower.strip_prefix("ctrl+") {
-        return format!("mod+{rest}");
+        return format!("ctrl+{rest}");
     }
     if let Some(rest) = lower.strip_prefix("cmd+") {
         return format!("mod+{rest}");
@@ -281,6 +293,7 @@ pub fn editor_mode_str(mode: EditorMode) -> &'static str {
         EditorMode::Visual => "visual",
         EditorMode::PaletteFocus => "palette",
         EditorMode::TerminalFocus => "terminal",
+        EditorMode::TerminalNormal => "terminal_normal",
     }
 }
 
@@ -469,6 +482,10 @@ fn input_to_specs(input: &NormalizedInput) -> Vec<KeySpec> {
             if input.modifiers.shift_key() {
                 specs.push(KeySpec::ModShiftPlus(code));
             }
+            // CtrlPlus has priority over ModPlus when only Ctrl is held (not Cmd/Super).
+            if input.modifiers.control_key() && !input.modifiers.super_key() {
+                specs.push(KeySpec::CtrlPlus(code));
+            }
             specs.push(KeySpec::ModPlus(code));
         }
     } else {
@@ -539,7 +556,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("insert"), nk(NamedKey::ArrowRight), MOVE_RIGHT);
     km.insert(Some("insert"), nk(NamedKey::ArrowUp), MOVE_UP);
     km.insert(Some("insert"), nk(NamedKey::ArrowDown), MOVE_DOWN);
-    km.insert(Some("insert"), mp(KeyCode::KeyV), PASTE_SYSTEM_CLIPBOARD);
+    km.insert(Some("insert"), mp(KeyCode::KeyV), EDITOR_PASTE);
 
     // ── Normal mode ───────────────────────────────────────────────────────────
     km.insert(
@@ -574,7 +591,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("normal"), ph(KeyCode::KeyX), DELETE_CHAR);
     km.insert(Some("normal"), ph(KeyCode::KeyP), PASTE_AFTER);
     km.insert(Some("normal"), ch('P'), PASTE_BEFORE);
-    km.insert(Some("normal"), mp(KeyCode::KeyV), PASTE_SYSTEM_CLIPBOARD);
+    km.insert(Some("normal"), mp(KeyCode::KeyV), EDITOR_PASTE);
     km.insert(Some("normal"), ph(KeyCode::KeyU), UNDO);
     km.insert(Some("normal"), mp(KeyCode::KeyH), BUFFER_PREV);
     km.insert(Some("normal"), mp(KeyCode::KeyL), BUFFER_NEXT);
@@ -602,7 +619,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("visual"), ph(KeyCode::KeyC), CHANGE_SELECTION);
     km.insert(Some("visual"), ph(KeyCode::KeyX), DELETE_SELECTION);
     km.insert(Some("visual"), ph(KeyCode::KeyY), YANK_SELECTION);
-    km.insert(Some("visual"), mp(KeyCode::KeyV), PASTE_SYSTEM_CLIPBOARD);
+    km.insert(Some("visual"), mp(KeyCode::KeyV), EDITOR_PASTE);
 
     // ── Palette focus (overlay / command palette / file picker) ─────────────
     km.insert(Some("palette"), nk(NamedKey::Enter), FILE_PICKER_CONFIRM);
@@ -619,13 +636,64 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         nk(NamedKey::Backspace),
         FILE_PICKER_BACKSPACE,
     );
-    km.insert(Some("palette"), mp(KeyCode::KeyV), PASTE_SYSTEM_CLIPBOARD);
+    km.insert(Some("palette"), mp(KeyCode::KeyV), EDITOR_PASTE);
 
     // ── Terminal focus mode bindings (mode-only lookup in InputMap) ──────────
     km.insert(Some("terminal"), nk(NamedKey::Escape), FOCUS_EDITOR);
+    km.insert(
+        Some("terminal"),
+        KeySpec::CtrlPlus(KeyCode::KeyQ),
+        TERMINAL_ENTER_NORMAL_MODE,
+    );
     km.insert(Some("terminal"), nk(NamedKey::F12), FOCUS_TERMINAL);
-    km.insert(Some("terminal"), mp(KeyCode::KeyH), BUFFER_PREV);
-    km.insert(Some("terminal"), mp(KeyCode::KeyL), BUFFER_NEXT);
+    km.insert(Some("terminal"), mp(KeyCode::KeyV), TERMINAL_PASTE);
+
+    // ── Terminal normal mode bindings (copy mode / virtual cursor) ──────────
+    km.insert(
+        Some("terminal_normal"),
+        nk(NamedKey::Escape),
+        ENTER_TERMINAL_FOCUS,
+    );
+    km.insert(Some("terminal_normal"), ph(KeyCode::KeyH), MOVE_LEFT);
+    km.insert(Some("terminal_normal"), ph(KeyCode::KeyJ), MOVE_DOWN);
+    km.insert(Some("terminal_normal"), ph(KeyCode::KeyK), MOVE_UP);
+    km.insert(Some("terminal_normal"), ph(KeyCode::KeyL), MOVE_RIGHT);
+    km.insert(
+        Some("terminal_normal"),
+        ph(KeyCode::KeyW),
+        MOVE_WORD_FORWARD,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        ph(KeyCode::KeyB),
+        MOVE_WORD_BACKWARD,
+    );
+    km.insert(Some("terminal_normal"), ph(KeyCode::KeyE), MOVE_WORD_END);
+    km.insert(
+        Some("terminal_normal"),
+        ph(KeyCode::Digit0),
+        MOVE_TO_LINE_START,
+    );
+    km.insert(Some("terminal_normal"), ch('$'), MOVE_TO_LINE_END);
+    km.insert(
+        Some("terminal_normal"),
+        ch('^'),
+        MOVE_TO_FIRST_NON_WHITESPACE,
+    );
+    km.insert(Some("terminal_normal"), ch('G'), MOVE_TO_LAST_LINE);
+    km.insert(
+        Some("terminal_normal"),
+        KeySpec::CtrlPlus(KeyCode::KeyU),
+        SCROLL_HALF_PAGE_UP,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        KeySpec::CtrlPlus(KeyCode::KeyD),
+        SCROLL_HALF_PAGE_DOWN,
+    );
+    km.insert(Some("terminal_normal"), ph(KeyCode::KeyV), ENTER_VISUAL);
+    km.insert(Some("terminal_normal"), ph(KeyCode::KeyY), YANK_SELECTION);
+    km.insert(Some("terminal_normal"), mp(KeyCode::KeyV), TERMINAL_PASTE);
 
     // ── Explorer focus mode bindings (mode-only lookup in InputMap) ──────────
     km.insert(Some("explorer"), nk(NamedKey::Escape), FOCUS_EDITOR);
@@ -666,6 +734,8 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("explorer"), ch('E'), EXPLORER_EXPAND_ALL_UNDER_NODE);
     km.insert(Some("explorer"), ph(KeyCode::KeyA), EXPLORER_CREATE_FILE);
     km.insert(Some("explorer"), ch('A'), EXPLORER_CREATE_FOLDER);
+    km.insert(Some("explorer"), ph(KeyCode::KeyF), EXPLORER_START_FILTER);
+    km.insert(Some("explorer"), ch('F'), EXPLORER_CLEAR_FILTER);
 
     // ── Global Ctrl+W → focus back to editor ─────────────────────────────────
     km.insert(None, mp(KeyCode::KeyW), FOCUS_BACK);
@@ -742,12 +812,17 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert_sequence(
         None,
         seq(&[KeySpec::Leader, ph(KeyCode::KeyF), ph(KeyCode::KeyF)]),
-        OPEN_FILE_FINDER,
+        OPEN_FILE_PICKER,
     );
     km.insert_sequence(
         None,
         seq(&[KeySpec::Leader, ph(KeyCode::KeyF), ph(KeyCode::KeyW)]),
         SEARCH_IN_FILES,
+    );
+    km.insert_sequence(
+        Some("normal"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyT), ph(KeyCode::KeyH)]),
+        OPEN_THEME_SELECTOR,
     );
     km.insert_sequence(
         Some("normal"),
@@ -908,11 +983,16 @@ mod tests {
     }
 
     #[test]
-    fn parse_ctrl_aliases_as_mod() {
+    fn parse_ctrl_as_ctrl_plus() {
         assert_eq!(
             parse_key_spec("Ctrl+e"),
-            Some(KeySpec::ModPlus(KeyCode::KeyE))
+            Some(KeySpec::CtrlPlus(KeyCode::KeyE))
         );
+        assert_eq!(
+            parse_key_spec("ctrl+o"),
+            Some(KeySpec::CtrlPlus(KeyCode::KeyO))
+        );
+        // ctrl+shift+ still maps to ModShiftPlus (same as cmd+shift+)
         assert_eq!(
             parse_key_spec("Ctrl+Shift+p"),
             Some(KeySpec::ModShiftPlus(KeyCode::KeyP))
@@ -1024,7 +1104,7 @@ mod tests {
     }
 
     #[test]
-    fn builtin_defaults_map_mod_v_to_system_paste() {
+    fn builtin_defaults_map_mod_v_to_editor_paste() {
         use winit::keyboard::ModifiersState;
         let km = builtin_defaults();
         let mod_v = NormalizedInput {
@@ -1034,21 +1114,20 @@ mod tests {
             modifiers: ModifiersState::CONTROL,
         };
 
-        assert_eq!(
-            km.lookup(&mod_v, "insert"),
-            Some(command_ids::PASTE_SYSTEM_CLIPBOARD)
-        );
-        assert_eq!(
-            km.lookup(&mod_v, "normal"),
-            Some(command_ids::PASTE_SYSTEM_CLIPBOARD)
-        );
-        assert_eq!(
-            km.lookup(&mod_v, "visual"),
-            Some(command_ids::PASTE_SYSTEM_CLIPBOARD)
-        );
+        assert_eq!(km.lookup(&mod_v, "insert"), Some(command_ids::EDITOR_PASTE));
+        assert_eq!(km.lookup(&mod_v, "normal"), Some(command_ids::EDITOR_PASTE));
+        assert_eq!(km.lookup(&mod_v, "visual"), Some(command_ids::EDITOR_PASTE));
         assert_eq!(
             km.lookup_mode_only(&mod_v, "palette"),
-            Some(command_ids::PASTE_SYSTEM_CLIPBOARD)
+            Some(command_ids::EDITOR_PASTE)
+        );
+        assert_eq!(
+            km.lookup_mode_only(&mod_v, "terminal"),
+            Some(command_ids::TERMINAL_PASTE)
+        );
+        assert_eq!(
+            km.lookup_mode_only(&mod_v, "terminal_normal"),
+            Some(command_ids::TERMINAL_PASTE)
         );
     }
 
@@ -1072,7 +1151,7 @@ mod tests {
             KeySpec::Physical(KeyCode::KeyF),
         ];
         let search = km.lookup_sequence(&leader_steps, "normal");
-        assert_eq!(search, SequenceLookup::Exact(command_ids::OPEN_FILE_FINDER));
+        assert_eq!(search, SequenceLookup::Exact(command_ids::OPEN_FILE_PICKER));
 
         let db_steps = vec![
             KeySpec::Physical(KeyCode::KeyD),

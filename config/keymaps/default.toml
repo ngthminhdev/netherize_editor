@@ -42,14 +42,6 @@ key = "mod+w"
 command = "app.focus_back"
 
 [[bindings]]
-key = "mod+l"
-command = "app.next_panel_tab"
-
-[[bindings]]
-key = "mod+h"
-command = "app.prev_panel_tab"
-
-[[bindings]]
 key = "Ctrl+="
 command = "ui.scale_up"
 
@@ -104,7 +96,7 @@ command = "editor.move_down"
 [[bindings]]
 mode = "insert"
 key = "mod+v"
-command = "editor.paste_system_clipboard"
+command = "editor.paste"
 
 [[bindings]]
 mode = "insert"
@@ -266,7 +258,7 @@ command = "editor.redo"
 [[bindings]]
 mode = "normal"
 key = "mod+v"
-command = "editor.paste_system_clipboard"
+command = "editor.paste"
 
 [[bindings]]
 mode = "normal"
@@ -277,6 +269,16 @@ command = "buffer.prev"
 mode = "normal"
 key = "Ctrl+l"
 command = "buffer.next"
+
+[[bindings]]
+mode = "normal"
+key = "mod+h"
+command = "app.prev_panel_tab"
+
+[[bindings]]
+mode = "normal"
+key = "mod+l"
+command = "app.next_panel_tab"
 
 # scroll
 [[bindings]]
@@ -428,7 +430,7 @@ command = "editor.yank_selection"
 [[bindings]]
 mode = "visual"
 key = "mod+v"
-command = "editor.paste_system_clipboard"
+command = "editor.paste"
 
 # ───────────────── TERMINAL ─────────────────
 [[bindings]]
@@ -438,18 +440,104 @@ command = "app.focus_editor"
 
 [[bindings]]
 mode = "terminal"
+key = "Ctrl+q"
+command = "terminal.enter_normal_mode"
+
+[[bindings]]
+mode = "terminal"
 key = "F12"
 command = "app.focus_terminal"
 
 [[bindings]]
 mode = "terminal"
-key = "Ctrl+h"
-command = "buffer.prev"
+key = "mod+v"
+command = "terminal.paste"
+
+# ───────────────── TERMINAL NORMAL ─────────────────
+[[bindings]]
+mode = "terminal_normal"
+key = "Escape"
+command = "mode.enter_terminal_focus"
 
 [[bindings]]
-mode = "terminal"
-key = "Ctrl+l"
-command = "buffer.next"
+mode = "terminal_normal"
+key = "h"
+command = "editor.move_left"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "j"
+command = "editor.move_down"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "k"
+command = "editor.move_up"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "l"
+command = "editor.move_right"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "w"
+command = "editor.move_word_forward"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "b"
+command = "editor.move_word_backward"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "e"
+command = "editor.move_word_end"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "0"
+command = "editor.move_to_line_start"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "$"
+command = "editor.move_to_line_end"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "^"
+command = "editor.move_to_first_non_whitespace"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "G"
+command = "editor.move_to_last_line"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "ctrl+u"
+command = "editor.scroll_half_page_up"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "ctrl+d"
+command = "editor.scroll_half_page_down"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "v"
+command = "mode.enter_visual"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "y"
+command = "editor.yank_selection"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "mod+v"
+command = "terminal.paste"
 
 # ───────────────── EXPLORER ─────────────────
 [[bindings]]
@@ -512,6 +600,58 @@ mode = "explorer"
 key = "A"
 command = "explorer.create_folder"
 
+[[bindings]]
+mode = "explorer"
+key = "f"
+command = "explorer.start_filter"
+
+[[bindings]]
+mode = "explorer"
+key = "F"
+command = "explorer.clear_filter"
+
+[[bindings]]
+mode = "explorer"
+key = "mod+h"
+command = "app.prev_panel_tab"
+
+[[bindings]]
+mode = "explorer"
+key = "mod+l"
+command = "app.next_panel_tab"
+
+# ───────────────── JUMP LIST ─────────────────
+[[bindings]]
+mode = "normal"
+key = "ctrl+o"
+command = "editor.jump_back"
+
+[[bindings]]
+mode = "normal"
+key = "ctrl+i"
+command = "editor.jump_forward"
+
+# ───────────────── LSP ─────────────────
+[[bindings]]
+mode = "normal"
+key = "K"
+command = "lsp.hover"
+
+[[bindings]]
+mode = "normal"
+key = "g d"
+command = "lsp.go_to_definition"
+
+[[bindings]]
+mode = "normal"
+key = "g D"
+command = "lsp.preview_definition"
+
+[[bindings]]
+mode = "normal"
+key = "g r"
+command = "lsp.references"
+
 # ───────────────── LEADER ─────────────────
 [[bindings]]
 mode = "normal"
@@ -521,12 +661,17 @@ command = "projects.recent"
 [[bindings]]
 mode = "normal"
 key = "<leader>f f"
-command = "app.open_file_finder"
+command = "app.open_file_picker"
 
 [[bindings]]
 mode = "normal"
 key = "<leader>f w"
 command = "app.search_in_files"
+
+[[bindings]]
+mode = "normal"
+key = "<leader>t h"
+command = "app.open_theme_selector"
 
 [[bindings]]
 mode = "normal"
@@ -572,4 +717,4 @@ command = "overlay.select_next"
 [[bindings]]
 mode = "palette"
 key = "mod+v"
-command = "editor.paste_system_clipboard"
+command = "editor.paste"

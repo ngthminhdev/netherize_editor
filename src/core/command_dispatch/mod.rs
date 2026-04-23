@@ -1,6 +1,7 @@
 use crate::{
     app::{app_state::AppState, clipboard::ClipboardProvider},
     core::commands::Command,
+    terminal::grid::TerminalGrid,
 };
 
 mod common;
@@ -19,7 +20,7 @@ pub use common::DispatchReport;
 /// Event loop chỉ forward input, còn mutation logic được chia nhỏ theo domain
 /// để flow `input -> command -> app state` vẫn dễ lần theo.
 pub fn dispatch_command(app_state: &mut AppState, command: Command) -> DispatchReport {
-    dispatch_command_count(app_state, command, 1)
+    dispatch_command_count_with_terminal(app_state, command, 1, None)
 }
 
 pub fn dispatch_command_count(
@@ -27,7 +28,7 @@ pub fn dispatch_command_count(
     command: Command,
     count: usize,
 ) -> DispatchReport {
-    dispatch_command_with_clipboard_count(app_state, command, count, None)
+    dispatch_command_with_clipboard_count_with_terminal(app_state, command, count, None, None)
 }
 
 pub fn dispatch_command_with_clipboard(
@@ -35,14 +36,50 @@ pub fn dispatch_command_with_clipboard(
     command: Command,
     clipboard: Option<&mut dyn ClipboardProvider>,
 ) -> DispatchReport {
-    dispatch_command_with_clipboard_count(app_state, command, 1, clipboard)
+    dispatch_command_with_clipboard_count_with_terminal(app_state, command, 1, clipboard, None)
 }
 
 pub fn dispatch_command_with_clipboard_count(
     app_state: &mut AppState,
     command: Command,
     count: usize,
+    clipboard: Option<&mut dyn ClipboardProvider>,
+) -> DispatchReport {
+    dispatch_command_with_clipboard_count_with_terminal(app_state, command, count, clipboard, None)
+}
+
+pub fn dispatch_command_with_terminal(
+    app_state: &mut AppState,
+    command: Command,
+    terminal: Option<&mut TerminalGrid>,
+) -> DispatchReport {
+    dispatch_command_count_with_terminal(app_state, command, 1, terminal)
+}
+
+pub fn dispatch_command_count_with_terminal(
+    app_state: &mut AppState,
+    command: Command,
+    count: usize,
+    terminal: Option<&mut TerminalGrid>,
+) -> DispatchReport {
+    dispatch_command_with_clipboard_count_with_terminal(app_state, command, count, None, terminal)
+}
+
+pub fn dispatch_command_with_clipboard_and_terminal(
+    app_state: &mut AppState,
+    command: Command,
+    clipboard: Option<&mut dyn ClipboardProvider>,
+    terminal: Option<&mut TerminalGrid>,
+) -> DispatchReport {
+    dispatch_command_with_clipboard_count_with_terminal(app_state, command, 1, clipboard, terminal)
+}
+
+pub fn dispatch_command_with_clipboard_count_with_terminal(
+    app_state: &mut AppState,
+    command: Command,
+    count: usize,
     mut clipboard: Option<&mut dyn ClipboardProvider>,
+    mut terminal: Option<&mut TerminalGrid>,
 ) -> DispatchReport {
     let repeat_count = if command.supports_numeric_count() {
         count.max(1)
@@ -51,7 +88,13 @@ pub fn dispatch_command_with_clipboard_count(
     };
 
     if repeat_count == 1 {
-        return dispatch_command_with_clipboard_once(app_state, command, &mut clipboard, true);
+        return dispatch_command_with_clipboard_once(
+            app_state,
+            command,
+            &mut clipboard,
+            &mut terminal,
+            true,
+        );
     }
 
     let group_transaction = command.groups_repeated_edits_into_single_transaction();
@@ -66,6 +109,7 @@ pub fn dispatch_command_with_clipboard_count(
             app_state,
             command.clone(),
             &mut clipboard,
+            &mut terminal,
             !group_transaction,
         );
         executed += 1;
@@ -104,9 +148,15 @@ fn dispatch_command_with_clipboard_once(
     app_state: &mut AppState,
     command: Command,
     clipboard: &mut Option<&mut dyn ClipboardProvider>,
+    terminal: &mut Option<&mut TerminalGrid>,
     auto_commit_text_transactions: bool,
 ) -> DispatchReport {
-    let mut ctx = DispatchCtx::new(app_state, clipboard, auto_commit_text_transactions);
+    let mut ctx = DispatchCtx::new(
+        app_state,
+        clipboard,
+        terminal,
+        auto_commit_text_transactions,
+    );
 
     match &command {
         Command::InsertChar(_)
@@ -134,14 +184,12 @@ fn dispatch_command_with_clipboard_once(
         | Command::ChangeWordBackward
         | Command::PasteAfter
         | Command::PasteBefore
+        | Command::EditorPaste
         | Command::PasteSystemClipboard
         | Command::Undo
         | Command::Redo
         | Command::ReplaceChar(_)
-        | Command::SelectTextObject { .. }
-        | Command::DeleteTextObject { .. }
-        | Command::ChangeTextObject { .. }
-        | Command::YankTextObject { .. } => editing::dispatch(&mut ctx, command),
+        | Command::TextObjectAction { .. } => editing::dispatch(&mut ctx, command),
         Command::MoveLeft
         | Command::MoveRight
         | Command::MoveUp
@@ -171,6 +219,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::OpenInFileSearch
         | Command::OpenWorkspaceSymbols
         | Command::SearchInFiles
+        | Command::OpenThemeSelector
         | Command::GitOpenLazygit
         | Command::GitBlameLine
         | Command::FilePickerAppendQuery(_)
@@ -190,6 +239,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::ToggleBottomDock
         | Command::ToggleLeftDock
         | Command::TerminalWriteInput(_)
+        | Command::TerminalPaste
         | Command::TerminalScrollUp
         | Command::TerminalScrollDown
         | Command::FocusEditor
@@ -213,6 +263,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::ExplorerDeleteNode
         | Command::ExplorerCreateFile
         | Command::ExplorerCreateFolder
+        | Command::ExplorerStartFilter
+        | Command::ExplorerClearFilter
         | Command::ExplorerExpandCollapse
         | Command::ExplorerOpenFile
         | Command::NextPanelTab
@@ -222,6 +274,15 @@ fn dispatch_command_with_clipboard_once(
         | Command::BufferPrev
         | Command::BufferCloseCurrent
         | Command::SwitchMode(_)
-        | Command::EnterVisualLine => session::dispatch(&mut ctx, command),
+        | Command::EnterVisualLine
+        | Command::LspHover
+        | Command::LspGoToDefinition
+        | Command::LspPreviewDefinition
+        | Command::LspReferences
+        | Command::ReferencesSelectNext
+        | Command::ReferencesSelectPrev
+        | Command::ReferencesOpenSelection
+        | Command::JumpBack
+        | Command::JumpForward => session::dispatch(&mut ctx, command),
     }
 }

@@ -1,14 +1,18 @@
 use crate::{
     app::{app_state::ClipboardRecordKind, command_palette::CommandPaletteMode},
     core::{
-        commands::Command,
+        commands::{Command, Operator},
         mode::{EditorMode, ModeEvent},
     },
 };
 
 use super::common::{DispatchCtx, DispatchReport, normalize_palette_clipboard_text};
 
-pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> DispatchReport {
+pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> DispatchReport {
+    if let Some(report) = dispatch_terminal_normal(ctx, &command) {
+        return report;
+    }
+
     match command {
         Command::InsertChar(ch) => {
             ctx.app_state.insert_char(ch);
@@ -460,7 +464,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> Dispa
                 changed,
             )
         }
-        Command::PasteSystemClipboard => {
+        Command::EditorPaste | Command::PasteSystemClipboard => {
             let clipboard_text = match ctx.read_text_from_clipboard() {
                 Ok(text) => text,
                 Err(err) => {
@@ -489,7 +493,8 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> Dispa
                         | CommandPaletteMode::ExplorerDeleteConfirm
                         | CommandPaletteMode::BufferCloseConfirm
                 )
-            ) && ctx.app_state.current_mode() == EditorMode::PaletteFocus
+            ) && (ctx.app_state.current_mode() == EditorMode::PaletteFocus
+                || ctx.app_state.active_buffer_is_fuzzy_picker())
             {
                 let normalized = normalize_palette_clipboard_text(&clipboard_text);
                 if normalized.is_empty() {
@@ -584,124 +589,149 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_>, command: Command) -> Dispa
                 changed,
             )
         }
-        Command::SelectTextObject {
-            open_char,
-            close_char,
-            inner,
-        } => {
-            let changed = ctx
-                .app_state
-                .select_text_object(open_char, close_char, inner);
-            DispatchReport::success(
-                if changed {
-                    format!(
-                        "Dispatch: selected text object {open_char}{close_char} {}",
-                        if inner { "inner" } else { "around" }
-                    )
-                } else {
-                    "Dispatch: select text object ignored (bounds not found)".to_string()
-                },
-                changed,
-            )
-        }
-        Command::DeleteTextObject {
-            open_char,
-            close_char,
-            inner,
-        } => {
-            let clipboard_text = ctx.app_state.text_object_text(open_char, close_char, inner);
-            ctx.write_text_to_clipboard_and_remember(clipboard_text, ClipboardRecordKind::Charwise);
-            if ctx.app_state.current_mode() == EditorMode::Visual {
-                let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal);
-            }
-            let changed = ctx
-                .app_state
-                .delete_text_object(open_char, close_char, inner);
-            if changed {
-                if ctx.app_state.current_mode() != EditorMode::Normal {
-                    let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal);
-                }
-                ctx.commit_text_transaction(true);
-            }
-            DispatchReport::success(
-                if changed {
-                    format!(
-                        "Dispatch: deleted text object {open_char}{close_char} {}",
-                        if inner { "inner" } else { "around" }
-                    )
-                } else {
-                    "Dispatch: delete text object ignored (bounds not found)".to_string()
-                },
-                changed,
-            )
-        }
-        Command::ChangeTextObject {
-            open_char,
-            close_char,
-            inner,
-        } => {
-            let clipboard_text = ctx.app_state.text_object_text(open_char, close_char, inner);
-            ctx.write_text_to_clipboard_and_remember(clipboard_text, ClipboardRecordKind::Charwise);
-            if ctx.app_state.current_mode() == EditorMode::Visual {
-                let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal);
-            }
-            let changed = ctx
-                .app_state
-                .delete_text_object(open_char, close_char, inner);
-            if !changed {
-                return DispatchReport::success_with_flags(
-                    "Dispatch: change text object ignored (bounds not found)",
-                    false,
-                    false,
-                );
-            }
-            let mode_changed = ctx.enter_insert_mode_if_needed().unwrap_or(false);
-            DispatchReport::success(
-                format!(
-                    "Dispatch: changed text object {open_char}{close_char} {} and entered insert",
-                    if inner { "inner" } else { "around" }
-                ),
-                changed || mode_changed,
-            )
-        }
-        Command::YankTextObject {
-            open_char,
-            close_char,
-            inner,
-        } => {
-            let yank_text = ctx.app_state.text_object_text(open_char, close_char, inner);
-            if let Some(text) = yank_text.as_deref() {
-                ctx.remember_clipboard_text(text, ClipboardRecordKind::Charwise);
-            }
-            let yanked = ctx.write_text_to_clipboard(yank_text);
+        Command::TextObjectAction { op, modifier, kind } => {
             let mut changed = false;
-            if ctx.app_state.current_mode() == EditorMode::Visual
-                && let Ok(result) = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal)
-            {
-                changed |= result.changed;
-            }
-            changed |= ctx.app_state.clear_visual_selection();
 
-            DispatchReport {
-                message: if yanked {
-                    format!(
-                        "Dispatch: yanked text object {open_char}{close_char} {}",
-                        if inner { "inner" } else { "around" }
+            match op {
+                Operator::Visual => {
+                    changed = ctx.app_state.select_text_object(modifier, kind);
+                    DispatchReport::success(
+                        if changed {
+                            format!("Dispatch: selected text object {:?} {:?}", modifier, kind)
+                        } else {
+                            "Dispatch: select text object ignored (bounds not found)".to_string()
+                        },
+                        changed,
                     )
-                } else {
-                    "Dispatch: yank text object failed (clipboard unavailable or bounds not found)"
-                        .to_string()
-                },
-                request_redraw: changed,
-                success: yanked,
-                state_changed: changed,
+                }
+                Operator::Delete => {
+                    let clipboard_text = ctx.app_state.text_object_text(modifier, kind);
+                    ctx.write_text_to_clipboard_and_remember(
+                        clipboard_text,
+                        ClipboardRecordKind::Charwise,
+                    );
+                    if ctx.app_state.current_mode() == EditorMode::Visual {
+                        let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal);
+                    }
+                    changed = ctx.app_state.delete_text_object(modifier, kind);
+                    if changed {
+                        if ctx.app_state.current_mode() != EditorMode::Normal {
+                            let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal);
+                        }
+                        ctx.commit_text_transaction(true);
+                    }
+                    DispatchReport::success(
+                        if changed {
+                            format!("Dispatch: deleted text object {:?} {:?}", modifier, kind)
+                        } else {
+                            "Dispatch: delete text object ignored (bounds not found)".to_string()
+                        },
+                        changed,
+                    )
+                }
+                Operator::Change => {
+                    let clipboard_text = ctx.app_state.text_object_text(modifier, kind);
+                    ctx.write_text_to_clipboard_and_remember(
+                        clipboard_text,
+                        ClipboardRecordKind::Charwise,
+                    );
+                    if ctx.app_state.current_mode() == EditorMode::Visual {
+                        let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal);
+                    }
+                    changed = ctx.app_state.delete_text_object(modifier, kind);
+                    if !changed {
+                        return DispatchReport::success_with_flags(
+                            "Dispatch: change text object ignored (bounds not found)",
+                            false,
+                            false,
+                        );
+                    }
+                    let mode_changed = ctx.enter_insert_mode_if_needed().unwrap_or(false);
+                    DispatchReport::success(
+                        format!(
+                            "Dispatch: changed text object {:?} {:?} and entered insert",
+                            modifier, kind
+                        ),
+                        changed || mode_changed,
+                    )
+                }
+                Operator::Yank => {
+                    let yank_text = ctx.app_state.text_object_text(modifier, kind);
+                    if let Some(text) = yank_text.as_deref() {
+                        ctx.remember_clipboard_text(text, ClipboardRecordKind::Charwise);
+                    }
+                    let yanked = ctx.write_text_to_clipboard(yank_text);
+                    if ctx.app_state.current_mode() == EditorMode::Visual
+                        && let Ok(result) = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal)
+                    {
+                        changed |= result.changed;
+                    }
+                    changed |= ctx.app_state.clear_visual_selection();
+
+                    DispatchReport {
+                        message: if yanked {
+                            format!("Dispatch: yanked text object {:?} {:?}", modifier, kind)
+                        } else {
+                            "Dispatch: yank text object failed (clipboard unavailable or bounds not found)".to_string()
+                        },
+                        request_redraw: changed,
+                        success: yanked,
+                        state_changed: changed,
+                    }
+                }
             }
         }
         _ => unreachable!("editing::dispatch received non-editing command"),
     }
 }
 
-fn replace_visual_selection_if_needed(ctx: &mut DispatchCtx<'_, '_>) -> bool {
+fn dispatch_terminal_normal(
+    ctx: &mut DispatchCtx<'_, '_, '_>,
+    command: &Command,
+) -> Option<DispatchReport> {
+    if !ctx.terminal_normal_active() {
+        return None;
+    }
+
+    match command {
+        Command::YankSelection => {
+            let selection_text = {
+                let grid = ctx.terminal_grid_mut()?;
+                grid.yank_selection_text()
+            };
+            let Some(selection_text) = selection_text else {
+                return Some(DispatchReport::success_with_flags(
+                    "Dispatch: terminal yank ignored (no selection)",
+                    false,
+                    false,
+                ));
+            };
+
+            ctx.remember_clipboard_text(&selection_text, ClipboardRecordKind::Charwise);
+            if !ctx.write_text_to_clipboard(Some(selection_text)) {
+                return Some(DispatchReport::failure(
+                    "Dispatch: terminal yank failed (clipboard unavailable)",
+                ));
+            }
+
+            let mut changed = false;
+            if let Some(grid) = ctx.terminal_grid_mut() {
+                changed |= grid.exit_normal_mode();
+            }
+            if let Ok(result) = ctx.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
+                changed |= result.changed;
+            }
+
+            Some(DispatchReport::success(
+                "Dispatch: yanked terminal selection",
+                changed,
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn replace_visual_selection_if_needed(ctx: &mut DispatchCtx<'_, '_, '_>) -> bool {
     let mut changed = false;
     if ctx.app_state.current_mode() == EditorMode::Visual {
         changed |= ctx.app_state.delete_visual_selection();

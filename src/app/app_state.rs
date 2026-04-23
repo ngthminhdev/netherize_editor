@@ -12,10 +12,12 @@ use crate::app::{
     },
     file_picker::FilePickerEntry,
 };
-use crate::async_runtime::message::{FileSystemChangeKind, FileSystemEvent};
+use crate::async_runtime::message::{FilePreviewLine, FileSystemChangeKind, FileSystemEvent};
+use crate::core::commands::{TextObjectKind, TextObjectModifier};
 use crate::core::mode::{
     EditorMode, ModeEvent, ModeState, ModeTransitionError, ModeTransitionResult,
 };
+use crate::core::text_object::find_text_object_range;
 use crate::core::transaction::{CursorState, EditAction, EditHistory, Transaction};
 use crate::editor_core::filetype_label_for_path;
 use crate::syntax::highlight::HighlightEdit;
@@ -58,9 +60,94 @@ pub struct PtyState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReferencesBufferItem {
+    pub path: PathBuf,
+    pub relative_path: String,
+    pub line: usize,
+    pub column: usize,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReferencesBufferState {
+    pub title: String,
+    pub origin_path: Option<PathBuf>,
+    pub origin_line: usize,
+    pub items: Vec<ReferencesBufferItem>,
+    pub selected_index: usize,
+    pub preview_lines: Vec<FilePreviewLine>,
+    pub loading: bool,
+    pub status_message: Option<String>,
+    pub pending_request_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FuzzyState {
+    pub mode: CommandPaletteMode,
+    pub query: String,
+    pub selected_index: usize,
+    pub preview_lines: Vec<FilePreviewLine>,
+    pub results: Vec<CommandPaletteItem>,
+}
+
+impl FuzzyState {
+    pub fn new(mode: CommandPaletteMode) -> Self {
+        Self {
+            mode,
+            query: String::new(),
+            selected_index: 0,
+            preview_lines: Vec::new(),
+            results: Vec::new(),
+        }
+    }
+
+    pub fn append_query(&mut self, text: &str) -> bool {
+        self.query.push_str(text);
+        self.selected_index = 0;
+        self.preview_lines.clear();
+        true
+    }
+
+    pub fn backspace_query(&mut self) -> bool {
+        if self.query.is_empty() {
+            return false;
+        }
+        self.query.pop();
+        self.selected_index = 0;
+        self.preview_lines.clear();
+        true
+    }
+
+    pub fn select_next(&mut self) -> bool {
+        if self.results.is_empty() {
+            return false;
+        }
+        if self.selected_index + 1 < self.results.len() {
+            self.selected_index += 1;
+            self.preview_lines.clear();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn select_prev(&mut self) -> bool {
+        if self.selected_index > 0 {
+            self.selected_index -= 1;
+            self.preview_lines.clear();
+            true
+        } else {
+            false
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BufferContent {
     Text(EditorBuffer),
     Terminal(PtyState),
+    References(ReferencesBufferState),
+    FuzzyPicker(FuzzyState),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,6 +165,8 @@ impl BufferEntry {
                 .map(str::to_string)
                 .unwrap_or_else(|| buffer.path.display().to_string()),
             BufferContent::Terminal(state) => state.title.clone(),
+            BufferContent::References(state) => state.title.clone(),
+            BufferContent::FuzzyPicker(_) => "[Fuzzy Finder]".to_string(),
         }
     }
 }
@@ -87,6 +176,15 @@ pub enum OverlayColorToken {
     UiFgGhost,
 }
 
+/// Style cho FloatingBox overlay — xác định màu border và tiêu đề.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FloatingBoxStyle {
+    /// Hover documentation (K) — border màu accent.
+    DocHover,
+    /// Code peek preview (gD) — border màu warning, header rộng hơn.
+    PeekWindow,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditorOverlay {
     VirtualText {
@@ -94,6 +192,15 @@ pub enum EditorOverlay {
         column: usize,
         text: String,
         color_token: OverlayColorToken,
+    },
+    /// Floating popup hiển thị multi-line text (doc hover, code peek).
+    FloatingBox {
+        /// Dòng cursor lúc trigger (0-indexed) — dùng để định vị popup bên dưới.
+        anchor_line: usize,
+        anchor_col: usize,
+        /// Các dòng nội dung, đã được tách sẵn.
+        lines: Vec<String>,
+        style: FloatingBoxStyle,
     },
 }
 
@@ -136,6 +243,8 @@ pub struct AppState {
     current_transaction: Option<Transaction>,
     pending_highlight_edits: Vec<HighlightEdit>,
     current_overlays: Vec<EditorOverlay>,
+    jump_back_stack: Vec<(PathBuf, usize)>,
+    jump_forward_stack: Vec<(PathBuf, usize)>,
 }
 
 impl AppState {
@@ -169,6 +278,8 @@ impl AppState {
             current_transaction: None,
             pending_highlight_edits: Vec::new(),
             current_overlays: Vec::new(),
+            jump_back_stack: Vec::new(),
+            jump_forward_stack: Vec::new(),
         }
     }
 
@@ -202,6 +313,8 @@ impl AppState {
             current_transaction: None,
             pending_highlight_edits: Vec::new(),
             current_overlays: Vec::new(),
+            jump_back_stack: Vec::new(),
+            jump_forward_stack: Vec::new(),
         }
     }
 
@@ -234,6 +347,54 @@ impl AppState {
         self.workspace_model
             .as_ref()
             .and_then(WorkspaceModel::selected_path)
+    }
+
+    pub fn workspace_filter_query(&self) -> Option<&str> {
+        self.workspace_model
+            .as_ref()
+            .map(WorkspaceModel::filter_query)
+    }
+
+    pub fn workspace_has_active_filter(&self) -> bool {
+        self.workspace_model
+            .as_ref()
+            .is_some_and(WorkspaceModel::has_active_filter)
+    }
+
+    pub fn workspace_is_inputting_filter(&self) -> bool {
+        self.workspace_model
+            .as_ref()
+            .is_some_and(WorkspaceModel::is_inputting_filter)
+    }
+
+    pub fn workspace_start_filter_input(&mut self) -> bool {
+        self.workspace_model
+            .as_mut()
+            .is_some_and(WorkspaceModel::start_filter_input)
+    }
+
+    pub fn workspace_stop_filter_input(&mut self) -> bool {
+        self.workspace_model
+            .as_mut()
+            .is_some_and(WorkspaceModel::stop_filter_input)
+    }
+
+    pub fn workspace_clear_filter(&mut self) -> bool {
+        self.workspace_model
+            .as_mut()
+            .is_some_and(WorkspaceModel::clear_filter)
+    }
+
+    pub fn workspace_append_filter_text(&mut self, text: &str) -> bool {
+        self.workspace_model
+            .as_mut()
+            .is_some_and(|workspace| workspace.append_filter_text(text))
+    }
+
+    pub fn workspace_backspace_filter(&mut self) -> bool {
+        self.workspace_model
+            .as_mut()
+            .is_some_and(WorkspaceModel::backspace_filter)
     }
 
     pub fn workspace_is_expanded(&self, path: &Path) -> bool {
@@ -272,10 +433,30 @@ impl AppState {
             .is_some_and(|workspace| workspace.expand_path_and_descendants(path))
     }
 
-    pub fn workspace_reveal_path(&mut self, path: &Path) -> bool {
+    pub fn workspace_expand_to_path(&mut self, path: &Path) -> bool {
         self.workspace_model
             .as_mut()
-            .is_some_and(|workspace| workspace.reveal_path(path))
+            .is_some_and(|workspace| workspace.expand_to_path(path))
+    }
+
+    pub fn workspace_reveal_path(&mut self, path: &Path) -> bool {
+        self.workspace_expand_to_path(path)
+    }
+
+    pub fn workspace_scroll_to_selected_node(
+        &mut self,
+        viewport_height: f32,
+        line_height: f32,
+    ) -> bool {
+        self.workspace_model.as_mut().is_some_and(|workspace| {
+            workspace.scroll_to_selected_node(viewport_height, line_height)
+        })
+    }
+
+    pub fn workspace_scroll_offset_rows(&self, line_height: f32) -> usize {
+        self.workspace_model
+            .as_ref()
+            .map_or(0, |workspace| workspace.scroll_offset_rows(line_height))
     }
 
     pub fn rescan_workspace(&mut self) -> Result<bool, String> {
@@ -320,6 +501,52 @@ impl AppState {
         Ok(count)
     }
 
+    /// Push current file+line onto the jump back stack before a jump (e.g. gd).
+    /// Clears the forward stack since jumping starts a new branch.
+    pub fn push_jump(&mut self) {
+        let Some(path) = self.active_file.clone() else {
+            return;
+        };
+        let line = self.cursor_line_col().0;
+        self.jump_back_stack.push((path, line));
+        self.jump_forward_stack.clear();
+    }
+
+    /// Push an explicit file+line onto the jump back stack.
+    /// Useful when the current active surface is a non-file buffer.
+    pub fn push_jump_entry(&mut self, path: PathBuf, line: usize) {
+        self.jump_back_stack.push((path, line));
+        self.jump_forward_stack.clear();
+    }
+
+    /// Pop from the back stack and return (path, line). Pushes current pos onto forward stack.
+    pub fn pop_jump_back(&mut self) -> Option<(PathBuf, usize)> {
+        let entry = self.jump_back_stack.pop()?;
+        let current_path = self.active_file.clone().unwrap_or_default();
+        let current_line = self.cursor_line_col().0;
+        self.jump_forward_stack.push((current_path, current_line));
+        Some(entry)
+    }
+
+    /// Pop from the forward stack and return (path, line). Pushes current pos onto back stack.
+    pub fn pop_jump_forward(&mut self) -> Option<(PathBuf, usize)> {
+        let entry = self.jump_forward_stack.pop()?;
+        let current_path = self.active_file.clone().unwrap_or_default();
+        let current_line = self.cursor_line_col().0;
+        self.jump_back_stack.push((current_path, current_line));
+        Some(entry)
+    }
+
+    /// Mở Command Palette ở LspReferences mode với danh sách references tĩnh từ LSP.
+    pub fn open_lsp_references_palette(
+        &mut self,
+        items: Vec<crate::app::command_palette::CommandPaletteItem>,
+    ) -> Result<(), String> {
+        self.command_palette
+            .open_with_items(CommandPaletteMode::LspReferences, items);
+        Ok(())
+    }
+
     pub fn open_recent_projects_palette(
         &mut self,
         recent: &[std::path::PathBuf],
@@ -334,6 +561,20 @@ impl AppState {
         Ok(())
     }
 
+    pub fn open_theme_selector_palette(
+        &mut self,
+        themes: &[crate::config::theme_config::ThemeProfileEntry],
+    ) -> Result<usize, String> {
+        use crate::app::command_palette::CommandPaletteItem;
+        let items = themes
+            .iter()
+            .map(|theme| CommandPaletteItem::theme(&theme.profile, &theme.path))
+            .collect();
+        Ok(self
+            .command_palette
+            .open_with_items(CommandPaletteMode::ThemeSelector, items))
+    }
+
     pub fn close_command_palette(&mut self) -> bool {
         let changed = self.command_palette.close();
         self.sync_file_picker_cache();
@@ -345,20 +586,58 @@ impl AppState {
     }
 
     pub fn command_palette_mode(&self) -> Option<CommandPaletteMode> {
-        self.command_palette
-            .is_visible
-            .then_some(self.command_palette.mode)
+        if let Some(index) = self.active_buffer_index {
+            if let Some(BufferEntry {
+                content: BufferContent::FuzzyPicker(state),
+            }) = self.buffers.get(index)
+            {
+                return Some(state.mode);
+            }
+        }
+        if self.command_palette.is_visible {
+            Some(self.command_palette.mode)
+        } else {
+            None
+        }
     }
 
     pub fn command_palette_query_text(&self) -> &str {
+        if let Some(index) = self.active_buffer_index {
+            if let Some(BufferEntry {
+                content: BufferContent::FuzzyPicker(state),
+            }) = self.buffers.get(index)
+            {
+                return &state.query;
+            }
+        }
         &self.command_palette.query
     }
 
     pub fn command_palette_selected_index(&self) -> usize {
+        if let Some(index) = self.active_buffer_index {
+            if let Some(BufferEntry {
+                content: BufferContent::FuzzyPicker(state),
+            }) = self.buffers.get(index)
+            {
+                return state.selected_index;
+            }
+        }
         self.command_palette.selected_index
     }
 
     pub fn command_palette_result_labels(&self) -> Vec<String> {
+        if let Some(index) = self.active_buffer_index {
+            if let Some(BufferEntry {
+                content: BufferContent::FuzzyPicker(state),
+            }) = self.buffers.get(index)
+            {
+                return state
+                    .results
+                    .iter()
+                    .map(|entry| entry.label.clone())
+                    .collect();
+            }
+        }
         self.command_palette
             .results
             .iter()
@@ -367,6 +646,17 @@ impl AppState {
     }
 
     pub fn command_palette_append_query(&mut self, text: &str) -> Result<bool, String> {
+        if let Some(index) = self.active_buffer_index {
+            if let Some(BufferEntry {
+                content: BufferContent::FuzzyPicker(state),
+            }) = self.buffers.get_mut(index)
+            {
+                let changed = state.append_query(text);
+                self.bump_revision();
+                return Ok(changed);
+            }
+        }
+
         let workspace = self.workspace_model.as_ref();
         if matches!(
             self.command_palette.mode,
@@ -407,6 +697,17 @@ impl AppState {
     }
 
     pub fn command_palette_backspace_query(&mut self) -> Result<bool, String> {
+        if let Some(index) = self.active_buffer_index {
+            if let Some(BufferEntry {
+                content: BufferContent::FuzzyPicker(state),
+            }) = self.buffers.get_mut(index)
+            {
+                let changed = state.backspace_query();
+                self.bump_revision();
+                return Ok(changed);
+            }
+        }
+
         let workspace = self.workspace_model.as_ref();
         if matches!(
             self.command_palette.mode,
@@ -427,14 +728,49 @@ impl AppState {
     }
 
     pub fn command_palette_select_next(&mut self) -> bool {
+        if let Some(index) = self.active_buffer_index {
+            if let Some(BufferEntry {
+                content: BufferContent::FuzzyPicker(state),
+            }) = self.buffers.get_mut(index)
+            {
+                let changed = state.select_next();
+                if changed {
+                    self.bump_revision();
+                }
+                return changed;
+            }
+        }
         self.command_palette.select_next()
     }
 
     pub fn command_palette_select_prev(&mut self) -> bool {
+        if let Some(index) = self.active_buffer_index {
+            if let Some(BufferEntry {
+                content: BufferContent::FuzzyPicker(state),
+            }) = self.buffers.get_mut(index)
+            {
+                let changed = state.select_prev();
+                if changed {
+                    self.bump_revision();
+                }
+                return changed;
+            }
+        }
         self.command_palette.select_prev()
     }
 
     pub fn command_palette_selected_action(&self) -> Option<CommandPaletteAction> {
+        if let Some(index) = self.active_buffer_index {
+            if let Some(BufferEntry {
+                content: BufferContent::FuzzyPicker(state),
+            }) = self.buffers.get(index)
+            {
+                return state
+                    .results
+                    .get(state.selected_index)
+                    .map(|item| item.action.clone());
+            }
+        }
         self.command_palette.selected_action()
     }
 
@@ -444,6 +780,23 @@ impl AppState {
         query: &str,
         items: Vec<CommandPaletteItem>,
     ) -> bool {
+        if let Some(index) = self.active_buffer_index {
+            if let Some(BufferEntry {
+                content: BufferContent::FuzzyPicker(state),
+            }) = self.buffers.get_mut(index)
+            {
+                if state.mode == mode && state.query == query {
+                    state.results = items;
+                    state.selected_index = state
+                        .selected_index
+                        .min(state.results.len().saturating_sub(1));
+                    state.preview_lines.clear();
+                    self.bump_revision();
+                    return true;
+                }
+            }
+        }
+
         if !self.command_palette.is_visible
             || self.command_palette.mode != mode
             || self.command_palette.query != query
@@ -475,6 +828,54 @@ impl AppState {
             return false;
         }
         self.close_command_palette()
+    }
+
+    pub fn set_fuzzy_picker_preview(&mut self, lines: Vec<FilePreviewLine>) -> bool {
+        if let Some(index) = self.active_buffer_index {
+            if let Some(BufferEntry {
+                content: BufferContent::FuzzyPicker(state),
+            }) = self.buffers.get_mut(index)
+            {
+                state.preview_lines = lines;
+                self.bump_revision();
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn set_active_references_preview(&mut self, lines: Vec<FilePreviewLine>) -> bool {
+        if let Some(index) = self.active_buffer_index {
+            if let Some(BufferEntry {
+                content: BufferContent::References(state),
+            }) = self.buffers.get_mut(index)
+            {
+                state.preview_lines = lines;
+                self.bump_revision();
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn active_fuzzy_picker_buffer(&self) -> Option<&FuzzyState> {
+        if let Some(index) = self.active_buffer_index {
+            if let Some(buffer) = self.buffers.get(index) {
+                if let BufferContent::FuzzyPicker(state) = &buffer.content {
+                    return Some(state);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn active_buffer_is_fuzzy_picker(&self) -> bool {
+        if let Some(index) = self.active_buffer_index {
+            if let Some(buffer) = self.buffers.get(index) {
+                return matches!(buffer.content, BufferContent::FuzzyPicker(_));
+            }
+        }
+        false
     }
 
     pub fn is_file_picker_open(&self) -> bool {
@@ -551,6 +952,147 @@ impl AppState {
         index
     }
 
+    pub fn open_references_buffer(
+        &mut self,
+        title: impl Into<String>,
+        origin_path: Option<PathBuf>,
+        origin_line: usize,
+        items: Vec<ReferencesBufferItem>,
+    ) -> Result<usize, String> {
+        if items.is_empty() {
+            return Err("cannot open references buffer without items".to_string());
+        }
+
+        self.buffers.push(BufferEntry {
+            content: BufferContent::References(ReferencesBufferState {
+                title: title.into(),
+                origin_path,
+                origin_line,
+                items,
+                selected_index: 0,
+                preview_lines: Vec::new(),
+                loading: false,
+                status_message: None,
+                pending_request_id: None,
+            }),
+        });
+
+        let index = self.buffers.len().saturating_sub(1);
+        self.reset_text_editor_state();
+        self.active_buffer_index = Some(index);
+        let _ = self.clear_current_overlays();
+        self.bump_revision();
+        Ok(index)
+    }
+
+    pub fn open_pending_references_buffer(
+        &mut self,
+        title: impl Into<String>,
+        origin_path: Option<PathBuf>,
+        origin_line: usize,
+        pending_request_id: u64,
+    ) -> usize {
+        self.buffers.push(BufferEntry {
+            content: BufferContent::References(ReferencesBufferState {
+                title: title.into(),
+                origin_path,
+                origin_line,
+                items: Vec::new(),
+                selected_index: 0,
+                preview_lines: Vec::new(),
+                loading: true,
+                status_message: Some("Loading references...".to_string()),
+                pending_request_id: Some(pending_request_id),
+            }),
+        });
+
+        let index = self.buffers.len().saturating_sub(1);
+        self.reset_text_editor_state();
+        self.active_buffer_index = Some(index);
+        let _ = self.clear_current_overlays();
+        self.bump_revision();
+        index
+    }
+
+    pub fn finish_pending_references_buffer(
+        &mut self,
+        pending_request_id: u64,
+        title: impl Into<String>,
+        items: Vec<ReferencesBufferItem>,
+    ) -> bool {
+        let Some(buffer) = self.buffers.iter_mut().find(|buffer| {
+            matches!(
+                &buffer.content,
+                BufferContent::References(state)
+                    if state.pending_request_id == Some(pending_request_id)
+            )
+        }) else {
+            return false;
+        };
+
+        let BufferContent::References(state) = &mut buffer.content else {
+            return false;
+        };
+
+        state.title = title.into();
+        state.items = items;
+        state.selected_index = 0;
+        state.preview_lines.clear();
+        state.loading = false;
+        state.pending_request_id = None;
+        state.status_message = if state.items.is_empty() {
+            Some("No references found".to_string())
+        } else {
+            None
+        };
+        self.bump_revision();
+        true
+    }
+
+    pub fn fail_pending_references_buffer(
+        &mut self,
+        pending_request_id: u64,
+        message: impl Into<String>,
+    ) -> bool {
+        let Some(buffer) = self.buffers.iter_mut().find(|buffer| {
+            matches!(
+                &buffer.content,
+                BufferContent::References(state)
+                    if state.pending_request_id == Some(pending_request_id)
+            )
+        }) else {
+            return false;
+        };
+
+        let BufferContent::References(state) = &mut buffer.content else {
+            return false;
+        };
+
+        state.title = "References (0)".to_string();
+        state.items.clear();
+        state.selected_index = 0;
+        state.preview_lines.clear();
+        state.loading = false;
+        state.pending_request_id = None;
+        state.status_message = Some(message.into());
+        self.bump_revision();
+        true
+    }
+
+    pub fn open_fuzzy_picker_buffer(&mut self, mode: CommandPaletteMode) -> usize {
+        let state = FuzzyState::new(mode);
+        self.buffers.push(BufferEntry {
+            content: BufferContent::FuzzyPicker(state),
+        });
+
+        let index = self.buffers.len().saturating_sub(1);
+        self.reset_text_editor_state();
+        self.active_buffer_index = Some(index);
+        let _ = self.clear_current_overlays();
+        self.bump_revision();
+        index
+    }
+
     pub fn bind_terminal_buffer_session(
         &mut self,
         buffer_index: usize,
@@ -594,7 +1136,9 @@ impl AppState {
         }
         if matches!(
             self.command_palette.mode,
-            CommandPaletteMode::FilePicker | CommandPaletteMode::LiveGrep
+            CommandPaletteMode::FilePicker
+                | CommandPaletteMode::LiveGrep
+                | CommandPaletteMode::LspReferences
         ) {
             return Ok(false);
         }
@@ -1318,6 +1862,9 @@ impl AppState {
         if self.active_buffer_is_terminal() {
             return Err("cannot save terminal buffer".to_string());
         }
+        if self.active_buffer_is_references() {
+            return Err("cannot save references buffer".to_string());
+        }
 
         let path = self
             .active_file
@@ -1333,7 +1880,7 @@ impl AppState {
 
         self.active_file = Some(canonical_path.clone());
         self.register_open_text_buffer(canonical_path.clone());
-        let _ = self.workspace_reveal_path(&canonical_path);
+        let _ = self.workspace_expand_to_path(&canonical_path);
         self.dirty = false;
         Ok(canonical_path)
     }
@@ -1545,138 +2092,14 @@ impl AppState {
         true
     }
 
-    /// Tìm ranh giới (start_char, end_char) của cặp ngoặc gần con trỏ nhất.
-    ///
-    /// **Thuật toán:**
-    /// - Duyệt **lùi** từ `cursor - 1` về 0 để tìm `open_char` chưa bị đóng.
-    ///   Bộ đếm `depth` tăng mỗi lần gặp `close_char`, giảm mỗi lần gặp `open_char`.
-    ///   Khi `depth == 0` và gặp `open_char` → đây là bracket mở của chúng ta.
-    /// - Duyệt **tới** từ `cursor` để tìm `close_char` tương ứng.
-    ///   Bộ đếm `depth` tăng mỗi lần gặp `open_char`, giảm mỗi lần gặp `close_char`.
-    ///   Khi `depth == 0` và gặp `close_char` → đây là bracket đóng.
-    ///
-    /// **Trả về:**
-    /// - `inner == true`: `(open_pos + 1, close_pos)` — nội dung bên trong, không gồm bracket.
-    /// - `inner == false`: `(open_pos, close_pos + 1)` — bao gồm cả 2 bracket (around).
-    pub fn find_text_object_bounds(
-        &self,
-        open_char: char,
-        close_char: char,
-        inner: bool,
-    ) -> Option<(usize, usize)> {
-        let len = self.text.len_chars();
-        if len == 0 {
-            return None;
-        }
-        let pos = self.cursor_char_idx.min(len.saturating_sub(1));
-
-        // ── Scan BACKWARD: tìm open_char chưa bị đóng ───────────────────────
-        // Nếu open_char == close_char (ví dụ: nháy đơn, nháy kép),
-        // backward scan không dùng được counter theo cách thông thường.
-        // Trường hợp đó ta chỉ tìm ký tự open_char gần nhất.
-        let open_pos: usize;
-        if open_char == close_char {
-            // Tìm ký tự same-pair gần nhất về phía trước (không đếm nested).
-            let mut found = false;
-            let mut p = 0usize;
-            let scan_end = if pos == 0 { 0 } else { pos };
-            for i in (0..scan_end).rev() {
-                if self.text.char(i) == open_char {
-                    p = i;
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                return None;
-            }
-            open_pos = p;
-        } else {
-            // Bracket pairs khác nhau: dùng depth counter để bỏ qua nested.
-            let mut depth: usize = 0;
-            let mut found = false;
-            let mut p = 0usize;
-            // Scan từ (pos-1) xuống 0, bao gồm cả vị trí pos nếu là bracket
-            let scan_start = if pos == 0 { 0 } else { pos };
-            for i in (0..=scan_start).rev() {
-                let ch = self.text.char(i);
-                if ch == close_char {
-                    depth += 1;
-                } else if ch == open_char {
-                    if depth == 0 {
-                        p = i;
-                        found = true;
-                        break;
-                    }
-                    depth -= 1;
-                }
-            }
-            if !found {
-                return None;
-            }
-            open_pos = p;
-        }
-
-        // ── Scan FORWARD: tìm close_char khớp với open_pos ──────────────────
-        let close_pos: usize;
-        if open_char == close_char {
-            // Tìm ký tự same-pair tiếp theo về phía trước sau open_pos.
-            let mut found = false;
-            let mut p = 0usize;
-            for i in (open_pos + 1)..len {
-                if self.text.char(i) == close_char {
-                    p = i;
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                return None;
-            }
-            close_pos = p;
-        } else {
-            let mut depth: usize = 0;
-            let mut found = false;
-            let mut p = 0usize;
-            for i in (open_pos + 1)..len {
-                let ch = self.text.char(i);
-                if ch == open_char {
-                    depth += 1;
-                } else if ch == close_char {
-                    if depth == 0 {
-                        p = i;
-                        found = true;
-                        break;
-                    }
-                    depth -= 1;
-                }
-            }
-            if !found {
-                return None;
-            }
-            close_pos = p;
-        }
-
-        // ── Tính start/end theo inner/around ────────────────────────────────
-        if inner {
-            // Nội dung bên trong, không gồm bracket: [open+1, close)
-            if open_pos + 1 > close_pos {
-                // Empty brackets — chọn vị trí trống giữa 2 bracket
-                return Some((open_pos + 1, open_pos + 1));
-            }
-            Some((open_pos + 1, close_pos))
-        } else {
-            // Around: gồm cả 2 bracket: [open, close+1)
-            Some((open_pos, close_pos + 1))
-        }
-    }
-
-    /// Chọn text object bằng cách tìm bounds rồi set visual selection.
-    ///
-    /// Nếu hiện tại chưa ở Visual mode, method sẽ chuyển sang Visual mode trước.
-    /// Trả về `true` nếu selection được set thành công.
-    pub fn select_text_object(&mut self, open_char: char, close_char: char, inner: bool) -> bool {
-        let Some((start, end)) = self.find_text_object_bounds(open_char, close_char, inner) else {
+    pub fn select_text_object(
+        &mut self,
+        modifier: TextObjectModifier,
+        kind: TextObjectKind,
+    ) -> bool {
+        let Some((start, end)) =
+            find_text_object_range(&self.text, self.cursor_char_idx, modifier, kind)
+        else {
             return false;
         };
         let len = self.text.len_chars();
@@ -1709,17 +2132,23 @@ impl AppState {
     /// Lấy char range text cho một text object (dùng trước khi xóa/yank).
     pub fn text_object_text(
         &self,
-        open_char: char,
-        close_char: char,
-        inner: bool,
+        modifier: TextObjectModifier,
+        kind: TextObjectKind,
     ) -> Option<String> {
-        let (start, end) = self.find_text_object_bounds(open_char, close_char, inner)?;
+        let (start, end) =
+            find_text_object_range(&self.text, self.cursor_char_idx, modifier, kind)?;
         self.char_range_text(start, end)
     }
 
     /// Xóa text object tại vị trí con trỏ và trả về true nếu thành công.
-    pub fn delete_text_object(&mut self, open_char: char, close_char: char, inner: bool) -> bool {
-        let Some((start, end)) = self.find_text_object_bounds(open_char, close_char, inner) else {
+    pub fn delete_text_object(
+        &mut self,
+        modifier: TextObjectModifier,
+        kind: TextObjectKind,
+    ) -> bool {
+        let Some((start, end)) =
+            find_text_object_range(&self.text, self.cursor_char_idx, modifier, kind)
+        else {
             return false;
         };
         if start >= end {
@@ -2051,6 +2480,32 @@ impl AppState {
             .is_some_and(|buffer| matches!(buffer.content, BufferContent::Terminal(_)))
     }
 
+    pub fn active_buffer_is_references(&self) -> bool {
+        self.active_buffer()
+            .is_some_and(|buffer| matches!(buffer.content, BufferContent::References(_)))
+    }
+
+    pub fn active_references_buffer(&self) -> Option<&ReferencesBufferState> {
+        match self.active_buffer().map(|buffer| &buffer.content) {
+            Some(BufferContent::References(state)) => Some(state),
+            _ => None,
+        }
+    }
+
+    pub fn active_references_origin(&self) -> Option<(PathBuf, usize)> {
+        let state = self.active_references_buffer()?;
+        Some((state.origin_path.clone()?, state.origin_line))
+    }
+
+    pub fn selected_reference_item(&self) -> Option<&ReferencesBufferItem> {
+        let state = self.active_references_buffer()?;
+        state.items.get(state.selected_index)
+    }
+
+    pub fn selected_reference_item_cloned(&self) -> Option<ReferencesBufferItem> {
+        self.selected_reference_item().cloned()
+    }
+
     pub fn active_terminal_session_id(&self) -> Option<u64> {
         match self.active_buffer().map(|buffer| &buffer.content) {
             Some(BufferContent::Terminal(state)) => state.session_id,
@@ -2063,8 +2518,58 @@ impl AppState {
             .iter()
             .position(|buffer| match &buffer.content {
                 BufferContent::Terminal(state) => state.session_id == Some(session_id),
-                BufferContent::Text(_) => false,
+                BufferContent::Text(_)
+                | BufferContent::References(_)
+                | BufferContent::FuzzyPicker(_) => false,
             })
+    }
+
+    pub fn references_select_next(&mut self) -> bool {
+        let Some(BufferContent::References(state)) = self
+            .active_buffer_index
+            .and_then(|idx| self.buffers.get_mut(idx))
+            .map(|buffer| &mut buffer.content)
+        else {
+            return false;
+        };
+
+        if state.items.is_empty() {
+            return false;
+        }
+        let next = (state.selected_index + 1) % state.items.len();
+        if next == state.selected_index {
+            return false;
+        }
+        state.selected_index = next;
+        state.preview_lines.clear();
+        self.bump_revision();
+        true
+    }
+
+    pub fn references_select_prev(&mut self) -> bool {
+        let Some(BufferContent::References(state)) = self
+            .active_buffer_index
+            .and_then(|idx| self.buffers.get_mut(idx))
+            .map(|buffer| &mut buffer.content)
+        else {
+            return false;
+        };
+
+        if state.items.is_empty() {
+            return false;
+        }
+        let next = if state.selected_index == 0 {
+            state.items.len().saturating_sub(1)
+        } else {
+            state.selected_index - 1
+        };
+        if next == state.selected_index {
+            return false;
+        }
+        state.selected_index = next;
+        state.preview_lines.clear();
+        self.bump_revision();
+        true
     }
 
     pub fn current_overlays(&self) -> &[EditorOverlay] {
@@ -2090,6 +2595,9 @@ impl AppState {
     pub fn active_filetype_label(&self) -> &'static str {
         if self.active_buffer_is_terminal() {
             return "Terminal";
+        }
+        if self.active_buffer_is_references() {
+            return "References";
         }
         self.active_file
             .as_deref()
@@ -2820,7 +3328,7 @@ impl AppState {
                 self.dirty = false;
                 self.external_conflict = None;
                 self.visual_line_mode = false;
-                let _ = self.workspace_reveal_path(&buffer.path);
+                let _ = self.workspace_expand_to_path(&buffer.path);
             }
             BufferContent::Terminal(_) => {
                 self.active_file = None;
@@ -2828,6 +3336,11 @@ impl AppState {
                 self.selection_anchor_char_idx = None;
                 self.visual_line_mode = false;
                 self.external_conflict = None;
+            }
+            BufferContent::References(_) | BufferContent::FuzzyPicker(_) => {
+                self.reset_text_editor_state();
+                self.active_buffer_index = Some(index);
+                let _ = self.clear_current_overlays();
             }
         }
 
@@ -3159,14 +3672,16 @@ fn path_matches(left: &Path, right: &Path) -> bool {
 mod tests {
     use std::{
         fs,
+        path::PathBuf,
         time::{SystemTime, UNIX_EPOCH},
     };
 
     use crate::app::command_palette::{CommandPaletteItem, CommandPaletteMode};
-    use crate::async_runtime::message::{FileSystemChangeKind, FileSystemEvent};
+    use crate::async_runtime::message::{FilePreviewLine, FileSystemChangeKind, FileSystemEvent};
+    use crate::core::commands::{TextObjectKind, TextObjectModifier};
     use crate::core::mode::{EditorMode, ModeEvent};
 
-    use super::AppState;
+    use super::{AppState, ReferencesBufferItem};
     use crate::syntax::highlight::HighlightEdit;
 
     fn unique_temp_path(suffix: &str) -> std::path::PathBuf {
@@ -3877,82 +4392,13 @@ mod tests {
 
     // ── find_text_object_bounds tests ────────────────────────────────────────
 
-    fn state_at(text: &str, cursor: usize) -> AppState {
-        let mut s = AppState::from_text(std::path::PathBuf::from("test.txt"), text);
-        s.cursor_char_idx = cursor;
-        s
-    }
-
-    #[test]
-    fn text_object_inner_parens_basic() {
-        // "foo(bar, baz)qux"  cursor on 'b' (idx 4)
-        let s = state_at("foo(bar, baz)qux", 4);
-        let result = s.find_text_object_bounds('(', ')', true);
-        // inner: from idx 4 (after '(') to idx 12 (before ')')
-        assert_eq!(result, Some((4, 12)));
-    }
-
-    #[test]
-    fn text_object_around_parens_basic() {
-        // "foo(bar)qux"  cursor on 'b' (idx 4)
-        let s = state_at("foo(bar)qux", 4);
-        let result = s.find_text_object_bounds('(', ')', false);
-        // around: from idx 3 ('(') to idx 8 (after ')')
-        assert_eq!(result, Some((3, 8)));
-    }
-
-    #[test]
-    fn text_object_inner_curly_nested() {
-        // "fn foo() { let x = {inner}; }"  cursor inside 'inner' (idx 21)
-        //  0123456789012345678901234567890
-        let text = "fn foo() { let x = {inner}; }";
-        let s = state_at(text, 21); // cursor on 'i' of 'inner'
-        let result = s.find_text_object_bounds('{', '}', true);
-        // inner '{' at idx 19, close '}' at idx 25 → inner = (20, 25)
-        assert_eq!(result, Some((20, 25)));
-    }
-
-    #[test]
-    fn text_object_around_nested() {
-        // Same text, cursor inside inner {}
-        let text = "fn foo() { let x = {inner}; }";
-        let s = state_at(text, 21);
-        let result = s.find_text_object_bounds('{', '}', false);
-        // around: (19, 26) — gồm cả 2 bracket
-        assert_eq!(result, Some((19, 26)));
-    }
-
-    #[test]
-    fn text_object_not_found_when_no_open_bracket() {
-        let s = state_at("hello world", 5);
-        assert_eq!(s.find_text_object_bounds('(', ')', true), None);
-    }
-
-    #[test]
-    fn text_object_empty_parens() {
-        // "()"  cursor on '(' (idx 0)
-        let s = state_at("()", 0);
-        // inner: open_pos=0, close_pos=1 → (1, 1) empty range
-        let result = s.find_text_object_bounds('(', ')', true);
-        assert_eq!(result, Some((1, 1)));
-    }
-
-    #[test]
-    fn text_object_cursor_on_open_bracket() {
-        // "(abc)"  cursor on '(' itself (idx 0)
-        // backward scan bao gồm cả pos=0, nhưng vì depth=0 và ch=='(' nên tìm được đúng
-        let s = state_at("(abc)", 0);
-        let result = s.find_text_object_bounds('(', ')', true);
-        assert_eq!(result, Some((1, 4)));
-    }
-
     #[test]
     fn text_object_select_enters_visual_mode() {
         let mut s = AppState::from_text(std::path::PathBuf::from("t.txt"), "foo(bar)");
         s.cursor_char_idx = 4; // trên 'b'
         // Bắt đầu từ Normal mode
         assert_eq!(s.current_mode(), EditorMode::Normal);
-        let ok = s.select_text_object('(', ')', true);
+        let ok = s.select_text_object(TextObjectModifier::Inner, TextObjectKind::Bracket('(', ')'));
         assert!(ok);
         assert_eq!(s.current_mode(), EditorMode::Visual);
         // anchor nên là idx 4 ('b'), focus là idx 6 ('r')
@@ -3964,7 +4410,7 @@ mod tests {
     fn text_object_delete_removes_inner() {
         let mut s = AppState::from_text(std::path::PathBuf::from("t.txt"), "foo(bar)end");
         s.cursor_char_idx = 5; // 'a' inside parens
-        let ok = s.delete_text_object('(', ')', true);
+        let ok = s.delete_text_object(TextObjectModifier::Inner, TextObjectKind::Bracket('(', ')'));
         assert!(ok);
         // "foo()end" phải còn lại
         assert_eq!(s.text_string(), "foo()end");
@@ -3996,5 +4442,177 @@ mod tests {
         assert!(state.workspace_is_expanded(&canonical_nested_dir));
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn references_buffer_tracks_selection_and_origin() {
+        let mut state = AppState::new(unique_temp_path("references_buffer_state"));
+        let first_path = PathBuf::from("/tmp/refs/a.rs");
+        let second_path = PathBuf::from("/tmp/refs/b.rs");
+        let origin_path = PathBuf::from("/tmp/origin.rs");
+        let items = vec![
+            ReferencesBufferItem {
+                path: first_path.clone(),
+                relative_path: "src/a.rs".to_string(),
+                line: 10,
+                column: 4,
+                summary: "first reference".to_string(),
+            },
+            ReferencesBufferItem {
+                path: second_path.clone(),
+                relative_path: "src/b.rs".to_string(),
+                line: 20,
+                column: 7,
+                summary: "second reference".to_string(),
+            },
+        ];
+
+        let opened_index = state
+            .open_references_buffer("References (2)", Some(origin_path.clone()), 6, items)
+            .expect("references buffer should open");
+
+        assert_eq!(state.active_buffer_index(), Some(opened_index));
+        assert!(state.active_buffer_is_references());
+        assert_eq!(state.active_filetype_label(), "References");
+        assert_eq!(
+            state
+                .selected_reference_item()
+                .map(|item| item.path.as_path()),
+            Some(first_path.as_path())
+        );
+        assert_eq!(
+            state.active_references_origin(),
+            Some((origin_path.clone(), 6))
+        );
+
+        assert!(state.references_select_next());
+        assert_eq!(
+            state
+                .selected_reference_item()
+                .map(|item| item.path.as_path()),
+            Some(second_path.as_path())
+        );
+
+        assert!(state.references_select_next());
+        assert_eq!(
+            state
+                .selected_reference_item()
+                .map(|item| item.path.as_path()),
+            Some(first_path.as_path())
+        );
+
+        assert!(state.references_select_prev());
+        assert_eq!(
+            state
+                .selected_reference_item()
+                .map(|item| item.path.as_path()),
+            Some(second_path.as_path())
+        );
+
+        assert_eq!(
+            state
+                .save_file()
+                .expect_err("references buffer cannot be saved"),
+            "cannot save references buffer"
+        );
+    }
+
+    #[test]
+    fn pending_references_buffer_accepts_async_results_and_preview() {
+        let mut state = AppState::new(unique_temp_path("pending_references_buffer"));
+        let origin_path = PathBuf::from("/tmp/origin.rs");
+        let item_path = PathBuf::from("/tmp/refs/a.rs");
+        let request_id = 77;
+
+        state.open_pending_references_buffer(
+            "References",
+            Some(origin_path.clone()),
+            8,
+            request_id,
+        );
+        assert!(state.active_buffer_is_references());
+        let loading = state
+            .active_references_buffer()
+            .expect("references buffer should be active");
+        assert!(loading.loading);
+        assert_eq!(loading.pending_request_id, Some(request_id));
+        assert!(loading.items.is_empty());
+
+        assert!(state.finish_pending_references_buffer(
+            request_id,
+            "References (2)",
+            vec![
+                ReferencesBufferItem {
+                    path: item_path.clone(),
+                    relative_path: "src/a.rs".to_string(),
+                    line: 10,
+                    column: 4,
+                    summary: "Ln 11, Col 5".to_string(),
+                },
+                ReferencesBufferItem {
+                    path: PathBuf::from("/tmp/refs/b.rs"),
+                    relative_path: "src/b.rs".to_string(),
+                    line: 20,
+                    column: 2,
+                    summary: "Ln 21, Col 3".to_string(),
+                },
+            ],
+        ));
+
+        assert_eq!(
+            state
+                .selected_reference_item()
+                .map(|item| item.path.as_path()),
+            Some(item_path.as_path())
+        );
+        let loaded = state
+            .active_references_buffer()
+            .expect("references buffer should stay active");
+        assert!(!loaded.loading);
+        assert_eq!(loaded.pending_request_id, None);
+        assert!(loaded.preview_lines.is_empty());
+
+        assert!(state.set_active_references_preview(vec![FilePreviewLine {
+            line_number: 11,
+            text: "call()".to_string(),
+            is_target: true,
+        }]));
+        assert_eq!(
+            state
+                .active_references_buffer()
+                .expect("references buffer")
+                .preview_lines
+                .len(),
+            1
+        );
+
+        assert!(state.references_select_next());
+        assert!(
+            state
+                .active_references_buffer()
+                .expect("references buffer")
+                .preview_lines
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn failing_pending_references_buffer_surfaces_status() {
+        let mut state = AppState::new(unique_temp_path("pending_references_failure"));
+
+        state.open_pending_references_buffer("References", None, 0, 91);
+
+        assert!(state.fail_pending_references_buffer(91, "No references found"));
+
+        let references = state
+            .active_references_buffer()
+            .expect("references buffer should stay active");
+        assert!(!references.loading);
+        assert_eq!(references.title, "References (0)");
+        assert_eq!(
+            references.status_message.as_deref(),
+            Some("No references found")
+        );
+        assert!(references.items.is_empty());
     }
 }

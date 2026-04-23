@@ -114,6 +114,8 @@ impl Renderer {
         let topbar_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let statusbar_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let palette_text_system = make_text_system(ui_metrics, font_family.as_deref());
+        let lsp_guide_text_system = make_text_system(panel_metrics, font_family.as_deref());
+        let toast_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let leap_label_text_system = make_text_system(leap_metrics, font_family.as_deref());
 
         let atlas = GlyphAtlas::new(&device, ATLAS_SIZE, ATLAS_SIZE);
@@ -138,6 +140,10 @@ impl Renderer {
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let palette_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
+        let lsp_guide_text_pipeline =
+            make_text_pipeline(&device, &atlas, surface_format, width, height);
+        let toast_text_pipeline =
+            make_text_pipeline(&device, &atlas, surface_format, width, height);
         let leap_label_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
 
@@ -158,6 +164,7 @@ impl Renderer {
             editor_overlay_text_system: make_text_system(editor_metrics, font_family.as_deref()),
             editor_overlay_text_pipeline,
             editor_overlay_glyph_instances: Vec::new(),
+            editor_overlay_chrome_instances: Vec::new(),
             editor_overlay_scissor: None,
             gutter_text_system,
             gutter_text_pipeline,
@@ -202,6 +209,9 @@ impl Renderer {
             palette_chrome_instances: Vec::new(),
             palette_scissor: None,
             last_palette_model: None,
+            lsp_guide_text_system,
+            lsp_guide_text_pipeline,
+            lsp_guide_scissor: None,
             editor_padding_x: 14.0,
             editor_padding_y: 14.0,
             panel_padding: 10.0,
@@ -220,6 +230,13 @@ impl Renderer {
             leap_label_glyph_instances: Vec::new(),
             leap_label_bg_instances: Vec::new(),
             leap_label_scissor: None,
+            lsp_guide_chrome_instances: Vec::new(),
+            lsp_guide_glyph_instances: Vec::new(),
+            toast_text_system,
+            toast_text_pipeline,
+            toast_glyph_instances: Vec::new(),
+            toast_chrome_instances: Vec::new(),
+            toast_scissor: None,
         })
     }
 
@@ -245,6 +262,11 @@ impl Renderer {
         self.topbar_text_system.set_metrics(ui_metrics);
         self.statusbar_text_system.set_metrics(ui_metrics);
         self.palette_text_system.set_metrics(ui_metrics);
+        self.lsp_guide_text_system.set_metrics(Metrics::new(
+            theme.ui.panel_font_size,
+            theme.ui.panel_line_height,
+        ));
+        self.toast_text_system.set_metrics(ui_metrics);
 
         let family = theme.editor.font_family.as_deref();
         let nerd_family = theme
@@ -259,11 +281,14 @@ impl Renderer {
         self.editor_overlay_text_system.set_font_family(family);
         self.sidebar_text_system.set_font_family(nerd_family);
         self.terminal_text_system.set_font_family(nerd_family);
-        self.buffer_terminal_text_system.set_font_family(nerd_family);
+        self.buffer_terminal_text_system
+            .set_font_family(nerd_family);
         self.welcome_logo_text_system.set_font_family(family);
         self.topbar_text_system.set_font_family(family);
         self.statusbar_text_system.set_font_family(family);
         self.palette_text_system.set_font_family(family);
+        self.lsp_guide_text_system.set_font_family(family);
+        self.toast_text_system.set_font_family(family);
         self.leap_label_text_system.set_font_family(family);
 
         self.clear_color = theme_color_to_wgpu(theme.ui.bg);
@@ -292,6 +317,7 @@ impl Renderer {
         let status_metrics = Metrics::new(ui.status_bar.font_size, ui.status_bar.line_height);
         self.topbar_text_system.set_metrics(status_metrics);
         self.statusbar_text_system.set_metrics(status_metrics);
+        self.toast_text_system.set_metrics(status_metrics);
         self.last_topbar_layout_key = None;
         self.last_statusbar_layout_key = None;
         self.last_palette_model = None;
@@ -312,6 +338,8 @@ impl Renderer {
             &mut self.topbar_text_pipeline,
             &mut self.statusbar_text_pipeline,
             &mut self.palette_text_pipeline,
+            &mut self.lsp_guide_text_pipeline,
+            &mut self.toast_text_pipeline,
             &mut self.leap_label_text_pipeline,
         ] {
             pipeline.update_screen_size(&self.queue, width, height);
@@ -383,12 +411,60 @@ impl Renderer {
                     self.text_pipeline.draw(render_pass);
                     self.caret_pipeline.draw(render_pass);
                     self.editor_cursor_overlay_pipeline.draw(render_pass);
-                    self.editor_overlay_text_pipeline.draw(render_pass);
                     self.gutter_text_pipeline.draw(render_pass);
                 },
             );
 
-            // 3. Leap label overlay: dim + per-char bg + label chars.
+            if !self.editor_overlay_chrome_instances.is_empty() {
+                self.region_pipeline.upload_instances(
+                    &self.device,
+                    &self.queue,
+                    &self.editor_overlay_chrome_instances,
+                );
+                draw_text_region(
+                    &mut pass,
+                    self.editor_overlay_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline.draw(render_pass);
+                    },
+                );
+            }
+
+            draw_text_region(
+                &mut pass,
+                self.editor_overlay_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.editor_overlay_text_pipeline.draw(render_pass);
+                },
+            );
+
+            // 3. Welcome ANSI logo.
+            draw_text_region(
+                &mut pass,
+                self.welcome_logo_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.welcome_logo_text_pipeline.draw(render_pass);
+                },
+            );
+
+            // 4. Explorer sidebar.
+            draw_text_region(
+                &mut pass,
+                self.sidebar_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.sidebar_text_pipeline.draw(render_pass);
+                },
+            );
+
+            // 5. Leap label overlay: dim + per-char bg + label chars.
             if !self.leap_label_glyph_instances.is_empty() {
                 if !self.leap_label_bg_instances.is_empty() {
                     self.region_pipeline.upload_instances(
@@ -416,28 +492,6 @@ impl Renderer {
                     },
                 );
             }
-
-            // 4. Welcome ANSI logo.
-            draw_text_region(
-                &mut pass,
-                self.welcome_logo_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.welcome_logo_text_pipeline.draw(render_pass);
-                },
-            );
-
-            // 5. Explorer sidebar.
-            draw_text_region(
-                &mut pass,
-                self.sidebar_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.sidebar_text_pipeline.draw(render_pass);
-                },
-            );
 
             // 6. Terminal panel.
             draw_text_region(
@@ -532,6 +586,58 @@ impl Renderer {
                 viewport_height,
                 |render_pass| {
                     self.palette_text_pipeline.draw(render_pass);
+                },
+            );
+
+            if !self.lsp_guide_chrome_instances.is_empty() {
+                self.region_pipeline.upload_instances(
+                    &self.device,
+                    &self.queue,
+                    &self.lsp_guide_chrome_instances,
+                );
+                draw_text_region(
+                    &mut pass,
+                    self.lsp_guide_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline.draw(render_pass);
+                    },
+                );
+            }
+            draw_text_region(
+                &mut pass,
+                self.lsp_guide_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.lsp_guide_text_pipeline.draw(render_pass);
+                },
+            );
+
+            if !self.toast_chrome_instances.is_empty() {
+                self.region_pipeline.upload_instances(
+                    &self.device,
+                    &self.queue,
+                    &self.toast_chrome_instances,
+                );
+                draw_text_region(
+                    &mut pass,
+                    self.toast_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline.draw(render_pass);
+                    },
+                );
+            }
+            draw_text_region(
+                &mut pass,
+                self.toast_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.toast_text_pipeline.draw(render_pass);
                 },
             );
         }

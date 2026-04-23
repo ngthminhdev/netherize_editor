@@ -15,6 +15,14 @@ impl AsyncResultRouter for AppShell {
             if event.topic == RequestTopic::LspClient {
                 self.pending_lsp_server = None;
             }
+            if self.app_state.fail_pending_references_buffer(
+                event.request_id,
+                friendly_references_status(&error.message),
+            ) {
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+                self.request_redraw();
+            }
             eprintln!(
                 "[AppShell] worker {:?} failed (revision={}): {}",
                 event.topic, event.revision_id, error.message
@@ -23,14 +31,19 @@ impl AsyncResultRouter for AppShell {
     }
 
     fn on_worker_result(&mut self, result: WorkerResult) {
+        let request_id = result.request_id;
         match result.payload {
             WorkerResultPayload::ParseAndHighlight {
+                file_path,
                 spans,
                 buffer_revision,
                 covered_byte_range,
                 ..
             } => {
                 if buffer_revision != self.app_state.revision() {
+                    return;
+                }
+                if file_path != self.app_state.active_file().map(PathBuf::from) {
                     return;
                 }
 
@@ -94,6 +107,9 @@ impl AsyncResultRouter for AppShell {
                     .app_state
                     .set_command_palette_results(palette_mode, &query, palette_items)
                 {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    self.submit_fuzzy_picker_preview_load();
                     self.request_redraw();
                 }
             }
@@ -138,20 +154,41 @@ impl AsyncResultRouter for AppShell {
                 self.request_redraw();
             }
             WorkerResultPayload::PtyOutput { session_id, chunk } => {
+                let preserve_viewport = self.app_state.current_mode() == EditorMode::TerminalNormal
+                    && self.focused_terminal_session_id() == Some(session_id);
+                let mut should_redraw = false;
                 if self.pty_session_id == Some(session_id) {
-                    self.terminal_grid.feed_chunk(&chunk);
-                    self.terminal_grid.view_scroll_to_bottom();
+                    let scrolled_rows = self.terminal_grid.feed_bytes(&chunk);
+                    if preserve_viewport {
+                        self.terminal_grid.view_scroll_up(scrolled_rows);
+                    } else {
+                        self.terminal_grid.view_scroll_to_bottom();
+                    }
                     self.terminal_needs_layout = true;
-                    self.request_redraw();
+                    should_redraw = true;
                 }
                 if let Some(grid) = self.terminal_buffer_grids.get_mut(&session_id) {
-                    grid.feed_chunk(&chunk);
-                    grid.view_scroll_to_bottom();
+                    let scrolled_rows = grid.feed_bytes(&chunk);
+                    if preserve_viewport {
+                        grid.view_scroll_up(scrolled_rows);
+                    } else {
+                        grid.view_scroll_to_bottom();
+                    }
                     if self.app_state.active_terminal_session_id() == Some(session_id) {
                         self.buffer_terminal_needs_layout = true;
-                        self.request_redraw();
+                        should_redraw = true;
                     }
                 }
+                if should_redraw {
+                    self.request_redraw();
+                }
+            }
+            WorkerResultPayload::PtyInputWritten { .. } => {}
+            WorkerResultPayload::DetachedShellCommandSpawned { command, pid } => {
+                eprintln!(
+                    "[AppShell] background shell command started pid={:?}: {}",
+                    pid, command
+                );
             }
             WorkerResultPayload::PtyResized {
                 session_id,
@@ -258,9 +295,220 @@ impl AsyncResultRouter for AppShell {
             WorkerResultPayload::LspLogMessage { level, message } => {
                 eprintln!("[LSP/{level}] {message}");
             }
+            WorkerResultPayload::LspCheckResult {
+                binary,
+                install_cmd,
+                is_installed,
+                ..
+            } => {
+                if !is_installed {
+                    // Hiển thị popup hướng dẫn cài LSP.
+                    self.active_lsp_guide = Some(LspInstallGuide {
+                        binary,
+                        install_cmd,
+                    });
+                    self.request_redraw();
+                }
+                // Nếu đã cài: không cần làm gì (LSP đã/sẽ được start qua submit_lsp_did_open).
+            }
+            WorkerResultPayload::LspHoverResult { content, .. } => {
+                use crate::app::app_state::{EditorOverlay, FloatingBoxStyle};
+                if content.is_empty() {
+                    return;
+                }
+                let (anchor_line, anchor_col) = self.app_state.cursor_line_col();
+                let lines: Vec<String> = content
+                    .lines()
+                    .map(str::to_string)
+                    .filter(|l| !l.trim().is_empty())
+                    .take(20)
+                    .collect();
+                if lines.is_empty() {
+                    return;
+                }
+                let changed =
+                    self.app_state
+                        .set_current_overlays(vec![EditorOverlay::FloatingBox {
+                            anchor_line,
+                            anchor_col,
+                            lines,
+                            style: FloatingBoxStyle::DocHover,
+                        }]);
+                if changed {
+                    self.editor_caret_needs_layout = true;
+                    self.request_redraw();
+                }
+            }
+            WorkerResultPayload::LspDefinitionResult {
+                locations, jump, ..
+            } => {
+                use crate::app::app_state::{EditorOverlay, FloatingBoxStyle};
+                let Some(loc) = locations.into_iter().next() else {
+                    eprintln!("[AppShell] LSP definition: no locations");
+                    return;
+                };
+                let path = match lsp_uri_to_path(&loc.uri) {
+                    Some(p) => p,
+                    None => {
+                        eprintln!("[AppShell] LSP definition: cannot parse URI {}", loc.uri);
+                        return;
+                    }
+                };
+                if jump {
+                    // gd: mở file và nhảy đến dòng.
+                    self.app_state.push_jump();
+                    if let Err(err) = self.app_state.open_file(path.clone()) {
+                        eprintln!("[AppShell] LSP gd open_file failed: {err}");
+                        return;
+                    }
+                    let target_line = loc.line as usize;
+                    self.app_state.jump_to_line(target_line);
+                    let vp = self.editor_viewport_lines();
+                    self.app_state.auto_scroll_to_cursor(vp);
+                    self.submit_lsp_check_for_path(path);
+                    self.submit_lsp_did_open_for_active_file();
+                    self.editor_needs_layout = true;
+                    self.request_redraw();
+                } else {
+                    // gD: đọc ~17 dòng quanh vị trí định nghĩa và hiển FloatingBox.
+                    let preview_lines = read_file_preview(&path, loc.line as usize, 8);
+                    if preview_lines.is_empty() {
+                        eprintln!(
+                            "[AppShell] LSP gD: cannot read preview for {}",
+                            path.display()
+                        );
+                        return;
+                    }
+                    let (anchor_line, anchor_col) = self.app_state.cursor_line_col();
+                    let changed =
+                        self.app_state
+                            .set_current_overlays(vec![EditorOverlay::FloatingBox {
+                                anchor_line,
+                                anchor_col,
+                                lines: preview_lines,
+                                style: FloatingBoxStyle::PeekWindow,
+                            }]);
+                    if changed {
+                        self.editor_caret_needs_layout = true;
+                        self.request_redraw();
+                    }
+                }
+            }
+            WorkerResultPayload::LspReferencesResult { locations, .. } => {
+                let workspace_root = self.app_state.workspace_root_path().map(PathBuf::from);
+                let items: Vec<crate::app::app_state::ReferencesBufferItem> = locations
+                    .iter()
+                    .filter_map(|loc| {
+                        let path = lsp_uri_to_path(&loc.uri)?;
+                        let relative_path = workspace_root
+                            .as_ref()
+                            .and_then(|root| path.strip_prefix(root).ok())
+                            .map(|relative| relative.display().to_string())
+                            .unwrap_or_else(|| path.display().to_string());
+                        Some(crate::app::app_state::ReferencesBufferItem {
+                            path,
+                            relative_path,
+                            line: loc.line as usize,
+                            column: loc.character as usize,
+                            summary: format!("Ln {}, Col {}", loc.line + 1, loc.character + 1),
+                        })
+                    })
+                    .collect();
+                let title = format!("References ({})", items.len());
+                if self
+                    .app_state
+                    .finish_pending_references_buffer(request_id, title, items)
+                {
+                    self.submit_references_preview_load();
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    self.request_redraw();
+                }
+            }
+            WorkerResultPayload::FilePreviewLoaded {
+                file_path,
+                target_line,
+                lines,
+            } => {
+                let changed = if self.app_state.active_buffer_is_fuzzy_picker()
+                    && active_fuzzy_preview_target(&self.app_state)
+                        == Some((file_path.clone(), target_line))
+                {
+                    self.app_state.set_fuzzy_picker_preview(lines)
+                } else if self.app_state.active_buffer_is_references()
+                    && active_references_preview_target(&self.app_state)
+                        == Some((file_path, target_line))
+                {
+                    self.app_state.set_active_references_preview(lines)
+                } else {
+                    false
+                };
+                if changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    self.request_redraw();
+                }
+            }
             _ => {}
         }
     }
 
     fn on_stale_result(&mut self, _stale: WorkerResult) {}
+}
+
+/// Convert `file:///path/to/file` URI thành PathBuf.
+fn lsp_uri_to_path(uri: &str) -> Option<std::path::PathBuf> {
+    uri.strip_prefix("file://").map(std::path::PathBuf::from)
+}
+
+/// Đọc ~(context*2+1) dòng code quanh `center_line` từ file để preview (gD).
+fn read_file_preview(path: &std::path::Path, center_line: usize, context: usize) -> Vec<String> {
+    use std::io::{BufRead, BufReader};
+    let file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return Vec::new(),
+    };
+    let start = center_line.saturating_sub(context);
+    let end = center_line + context + 1;
+    BufReader::new(file)
+        .lines()
+        .enumerate()
+        .filter_map(|(i, line)| {
+            if i >= start && i < end {
+                let text = line.unwrap_or_default();
+                let marker = if i == center_line { "▶" } else { " " };
+                Some(format!("{marker} {:>4}  {}", i + 1, text))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn friendly_references_status(message: &str) -> String {
+    let normalized = message.trim();
+    if normalized.contains("no references found") || normalized.contains("empty result") {
+        "No references found".to_string()
+    } else if normalized.contains("LSP server not running") {
+        "LSP server is not ready yet".to_string()
+    } else if normalized.contains("timed out") {
+        "References request timed out".to_string()
+    } else {
+        "References request failed".to_string()
+    }
+}
+
+fn active_fuzzy_preview_target(app_state: &AppState) -> Option<(PathBuf, Option<usize>)> {
+    match app_state.command_palette_selected_action()? {
+        crate::app::command_palette::CommandPaletteAction::OpenFile(path) => Some((path, None)),
+        crate::app::command_palette::CommandPaletteAction::OpenSearchMatch {
+            path, line, ..
+        } => Some((path, Some(line as usize))),
+        _ => None,
+    }
+}
+
+fn active_references_preview_target(app_state: &AppState) -> Option<(PathBuf, Option<usize>)> {
+    let item = app_state.selected_reference_item()?;
+    Some((item.path.clone(), Some(item.line + 1)))
 }

@@ -126,6 +126,10 @@ impl ApplicationHandler for AppShell {
                 if self.pending_confirmation.is_some() {
                     return;
                 }
+                if self.handle_explorer_filter_ime_commit(&text) {
+                    self.request_redraw();
+                    return;
+                }
                 if self.should_swallow_palette_ime_commit() {
                     return;
                 }
@@ -150,6 +154,35 @@ impl ApplicationHandler for AppShell {
                     }
                 }
                 if let Some(changed) = self.handle_pending_confirmation_key_event(&key_event) {
+                    if changed {
+                        self.request_redraw();
+                    }
+                    return;
+                }
+
+                // LSP Install Guide popup — intercept input khi popup active.
+                if self.active_lsp_guide.is_some() && key_event.state == ElementState::Pressed {
+                    let named = match &key_event.logical_key {
+                        Key::Named(n) => Some(*n),
+                        _ => None,
+                    };
+
+                    match named {
+                        Some(NamedKey::Escape) => {
+                            self.dismiss_lsp_guide();
+                            self.request_redraw();
+                        }
+                        Some(NamedKey::Enter) => {
+                            if self.accept_lsp_install_guide() {
+                                self.request_redraw();
+                            }
+                        }
+                        _ => {}
+                    }
+                    // Swallow tất cả input khi popup active.
+                    return;
+                }
+                if let Some(changed) = self.handle_explorer_filter_key_event(&key_event) {
                     if changed {
                         self.request_redraw();
                     }
@@ -185,10 +218,73 @@ impl ApplicationHandler for AppShell {
         if self.pump_bridge() {
             self.request_redraw();
         }
+        if self.clear_expired_transient_toast() {
+            self.request_redraw();
+        }
+        if self.app_state.workspace_is_inputting_filter() {
+            self.sidebar_needs_layout = true;
+            self.request_redraw();
+        }
     }
 }
 
 impl AppShell {
+    fn handle_explorer_filter_ime_commit(&mut self, text: &str) -> bool {
+        if self.focus_manager.current() != FocusTarget::LeftSidebar
+            || !self.app_state.workspace_is_inputting_filter()
+        {
+            return false;
+        }
+        if self.app_state.workspace_append_filter_text(text) {
+            self.mark_explorer_dirty();
+            return true;
+        }
+        false
+    }
+
+    fn handle_explorer_filter_key_event(
+        &mut self,
+        key_event: &winit::event::KeyEvent,
+    ) -> Option<bool> {
+        if self.focus_manager.current() != FocusTarget::LeftSidebar
+            || !self.app_state.workspace_is_inputting_filter()
+        {
+            return None;
+        }
+
+        if key_event.state != ElementState::Pressed {
+            return Some(false);
+        }
+
+        let changed = match key_event.logical_key.as_ref() {
+            Key::Named(NamedKey::Escape) | Key::Named(NamedKey::Enter) => {
+                let changed = self.app_state.workspace_stop_filter_input();
+                if changed {
+                    self.input_handler.clear_pending_prefix();
+                    self.mark_explorer_dirty();
+                }
+                changed
+            }
+            Key::Named(NamedKey::Backspace) => {
+                let changed = self.app_state.workspace_backspace_filter();
+                if changed {
+                    self.mark_explorer_dirty();
+                }
+                changed
+            }
+            Key::Character(text) => {
+                let changed = self.app_state.workspace_append_filter_text(text);
+                if changed {
+                    self.mark_explorer_dirty();
+                }
+                changed
+            }
+            _ => false,
+        };
+
+        Some(changed)
+    }
+
     fn redraw(&mut self) {
         let got_new_data = self.pump_bridge();
         self.update_frame_metrics_snapshot(Instant::now());
@@ -258,10 +354,7 @@ impl AppShell {
         };
         // Ẩn focus ring khi terminal buffer đang chiếm center — focus ring
         // gây ra border nhấp nháy trên mỗi redraw từ PTY output.
-        let center_has_terminal_buffer = self
-            .app_state
-            .active_terminal_session_id()
-            .is_some();
+        let center_has_terminal_buffer = self.app_state.active_terminal_session_id().is_some();
         if !center_has_terminal_buffer {
             if let Some(bounds) = focus_region_bounds(&layout.model, focus_target) {
                 region_instances.extend(focus_ring_instances(
@@ -276,6 +369,7 @@ impl AppShell {
             let bounds_changed = self.last_editor_bounds != Some(center_bounds);
             let mut refresh_highlights_for_viewport = false;
             let active_terminal_session = self.app_state.active_terminal_session_id();
+            let references_active = self.app_state.active_buffer_is_references();
 
             // ── Invariant guard ───────────────────────────────────────────────
             // Nếu terminal buffer đang chiếm center, đảm bảo editor GPU buffer
@@ -308,21 +402,40 @@ impl AppShell {
                             if let Some(bg_quad) = renderer.update_buffer_terminal_content(
                                 grid,
                                 center_bounds,
-                                self.app_state.current_mode() == EditorMode::TerminalFocus,
+                                self.app_state.current_mode(),
                             ) {
                                 region_instances.push(bg_quad);
                             }
                         } else {
                             renderer.clear_buffer_terminal();
                         }
+                    } else if let Some(fuzzy_state) = self.app_state.active_fuzzy_picker_buffer() {
+                        renderer.clear_welcome_logo();
+                        renderer.clear_buffer_terminal();
+                        renderer.clear_editor_content();
+                        renderer.update_fuzzy_picker_buffer_content(fuzzy_state, center_bounds);
+                    } else if references_active {
+                        renderer.clear_welcome_logo();
+                        renderer.clear_buffer_terminal();
+                        renderer.clear_editor_content();
+                        if let Some(references) = self.app_state.active_references_buffer() {
+                            renderer.update_references_buffer_content(references, center_bounds);
+                        } else {
+                            renderer.clear_editor_overlays();
+                        }
                     } else {
                         renderer.clear_welcome_logo();
                         renderer.clear_buffer_terminal();
+                        let effective_highlights =
+                            crate::syntax::highlight::overlay_highlight_layers(
+                                &self.highlight_spans,
+                                &self.semantic_highlight_spans,
+                            );
                         renderer.update_editor_content(
                             &self.app_state.text_string(),
                             &self.app_state,
                             center_bounds,
-                            &syntax_spans_to_styled(&self.highlight_spans, &self.theme),
+                            &syntax_spans_to_styled(&effective_highlights, &self.theme),
                         );
                         renderer.update_editor_overlays(&self.app_state, center_bounds);
                     }
@@ -350,12 +463,21 @@ impl AppShell {
                             if let Some(bg_quad) = renderer.update_buffer_terminal_content(
                                 grid,
                                 center_bounds,
-                                self.app_state.current_mode() == EditorMode::TerminalFocus,
+                                self.app_state.current_mode(),
                             ) {
                                 region_instances.push(bg_quad);
                             }
                             self.last_buffer_terminal_bounds = Some(center_bounds);
                             self.buffer_terminal_needs_layout = false;
+                        }
+                    }
+                } else if references_active {
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.clear_editor_content();
+                        if let Some(references) = self.app_state.active_references_buffer() {
+                            renderer.update_references_buffer_content(references, center_bounds);
+                        } else {
+                            renderer.clear_editor_overlays();
                         }
                     }
                 } else if !show_welcome && let Some(renderer) = self.renderer.as_mut() {
@@ -372,7 +494,7 @@ impl AppShell {
                     if let Some(bg_quad) = renderer.update_buffer_terminal_content(
                         grid,
                         center_bounds,
-                        self.app_state.current_mode() == EditorMode::TerminalFocus,
+                        self.app_state.current_mode(),
                     ) {
                         region_instances.push(bg_quad);
                     }
@@ -383,6 +505,7 @@ impl AppShell {
 
             if !show_welcome
                 && active_terminal_session.is_none()
+                && !references_active
                 && let Some(renderer) = self.renderer.as_ref()
             {
                 if self.app_state.current_mode() != EditorMode::Visual
@@ -399,23 +522,16 @@ impl AppShell {
                 }
             }
 
-            if active_terminal_session.is_none() {
-                if let Some(labels) = &self.leap_labels {
-                    if !show_welcome {
-                        if let Some(renderer) = self.renderer.as_mut() {
-                            let labels_clone = labels.clone();
-                            renderer.update_leap_labels(
-                                &labels_clone,
-                                &self.app_state,
-                                center_bounds,
-                            );
-                        }
+            if let Some(renderer) = self.renderer.as_mut() {
+                if active_terminal_session.is_none() && !references_active && !show_welcome {
+                    if let Some(labels) = &self.leap_labels {
+                        renderer.update_editor_leap_labels(labels, &self.app_state, center_bounds);
+                    } else {
+                        renderer.clear_leap_labels();
                     }
-                } else if let Some(renderer) = self.renderer.as_mut() {
+                } else {
                     renderer.clear_leap_labels();
                 }
-            } else if let Some(renderer) = self.renderer.as_mut() {
-                renderer.clear_leap_labels();
             }
 
             if refresh_highlights_for_viewport {
@@ -424,9 +540,27 @@ impl AppShell {
         } else if let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_welcome_logo();
             renderer.clear_buffer_terminal();
+            renderer.clear_leap_labels();
         }
         self.last_show_welcome = Some(show_welcome);
 
+        let sidebar_filter_state = self.sidebar_filter_state();
+        let sidebar_scroll_offset_rows = if let Some(bounds) = sidebar_bounds {
+            if self.sync_explorer_scroll_to_selected(bounds) {
+                self.sidebar_needs_layout = true;
+            }
+            self.app_state
+                .workspace_scroll_offset_rows(self.theme.ui.sidebar_line_height.max(1.0))
+        } else {
+            0
+        };
+        let sidebar_rows = build_sidebar_rows(
+            &self.explorer_snapshot.entries,
+            self.explorer_cursor,
+            &self.theme,
+            self.app_state.workspace_has_active_filter(),
+            sidebar_scroll_offset_rows,
+        );
         if let Some(renderer) = self.renderer.as_mut() {
             if let Some(bounds) = sidebar_bounds {
                 let sidebar_focused = self.focus_manager.current() == FocusTarget::LeftSidebar;
@@ -439,16 +573,12 @@ impl AppShell {
                         .and_then(|root| root.file_name().and_then(|name| name.to_str()))
                         .unwrap_or("workspace");
                     let header = format!("[ {root_name} ]");
-                    let rows = build_sidebar_rows(
-                        &self.explorer_snapshot.entries,
-                        self.explorer_cursor,
-                        &self.theme,
-                    );
                     self.sidebar_selection_quads = renderer.update_sidebar_content(
                         Some(&header),
-                        &rows,
+                        &sidebar_rows,
                         bounds,
                         sidebar_focused,
+                        sidebar_filter_state.as_ref(),
                     );
                     self.last_sidebar_bounds = Some(bounds);
                     self.last_sidebar_focused = Some(sidebar_focused);
@@ -476,6 +606,8 @@ impl AppShell {
                             path: text.path.clone(),
                         },
                         BufferContent::Terminal(_) => TopbarTabKind::Terminal,
+                        BufferContent::References(_) => TopbarTabKind::References,
+                        BufferContent::FuzzyPicker(_) => TopbarTabKind::FuzzyPicker,
                     },
                 })
                 .collect::<Vec<_>>();
@@ -547,7 +679,7 @@ impl AppShell {
                     renderer.update_terminal_content(
                         &self.terminal_grid,
                         bottom_bounds,
-                        self.app_state.current_mode() == EditorMode::TerminalFocus,
+                        self.app_state.current_mode(),
                     );
                     self.last_terminal_bounds = Some(bottom_bounds);
                     self.terminal_needs_layout = false;
@@ -558,6 +690,28 @@ impl AppShell {
                 }
                 self.last_terminal_bounds = None;
             }
+        }
+
+        // ── LSP Install Guide Popup (always on top) ─────────────────────────
+        // Render sau tất cả overlay khác để popup nổi lên trên cùng.
+        if let Some(guide) = self.active_lsp_guide.clone()
+            && let Some(renderer) = self.renderer.as_mut()
+        {
+            let w = self.window_size.width as f32;
+            let h = self.window_size.height as f32;
+            renderer.update_lsp_guide_popup(&guide.binary, &guide.install_cmd, w, h);
+        } else if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_lsp_guide_popup();
+        }
+
+        if let Some(toast) = self.transient_toast.clone()
+            && let Some(renderer) = self.renderer.as_mut()
+        {
+            let w = self.window_size.width as f32;
+            let h = self.window_size.height as f32;
+            renderer.update_toast_popup(&toast.message, w, h);
+        } else if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_toast_popup();
         }
 
         if let Some(renderer) = self.renderer.as_mut() {

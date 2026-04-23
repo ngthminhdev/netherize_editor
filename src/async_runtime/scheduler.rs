@@ -1,10 +1,10 @@
 use std::{
     any::Any,
     collections::HashMap,
-    io::{BufRead, BufReader, Read},
+    io::Read,
     ops::Range,
     path::PathBuf,
-    process::ExitStatus,
+    process::{ExitStatus, Stdio},
     sync::{
         Arc, Mutex, OnceLock,
         atomic::{AtomicU64, Ordering},
@@ -17,7 +17,7 @@ use notify::{
     Event as NotifyEvent, EventKind as NotifyEventKind, RecursiveMode, Watcher, event::ModifyKind,
 };
 use serde_json::Value;
-use tokio::sync::mpsc;
+use tokio::{io::AsyncBufReadExt, sync::mpsc};
 
 use crate::async_runtime::message::{
     FileSystemChangeKind, FileSystemEvent, FzfResultItem, FzfSearchMode, RequestSpec, RequestTopic,
@@ -26,7 +26,8 @@ use crate::async_runtime::message::{
 };
 use crate::lsp::client::{
     build_did_change_notification, build_did_close_notification, build_did_open_notification,
-    parse_publish_diagnostics, parse_window_log_message, read_json_rpc_message, spawn_lsp_server,
+    parse_publish_diagnostics, parse_window_log_message, read_json_rpc_message_async,
+    spawn_lsp_server,
 };
 use crate::syntax::{
     highlight::{generate_highlight_spans, generate_highlight_spans_in_byte_window},
@@ -241,6 +242,7 @@ async fn dispatch_loop(
             request.payload,
             WorkerRequestPayload::SpawnPtyShell { .. }
                 | WorkerRequestPayload::SpawnPtyCommand { .. }
+                | WorkerRequestPayload::SpawnDetachedShellCommand { .. }
                 | WorkerRequestPayload::WritePtyInput { .. }
                 | WorkerRequestPayload::ResizePtySession { .. }
                 | WorkerRequestPayload::ClosePtySession { .. }
@@ -259,6 +261,9 @@ async fn dispatch_loop(
                 | WorkerRequestPayload::LspDidOpen { .. }
                 | WorkerRequestPayload::LspDidChange { .. }
                 | WorkerRequestPayload::LspDidClose { .. }
+                | WorkerRequestPayload::LspHoverRequest { .. }
+                | WorkerRequestPayload::LspDefinitionRequest { .. }
+                | WorkerRequestPayload::LspReferencesRequest { .. }
                 | WorkerRequestPayload::StopLspServer
         ) {
             let worker_tx = result_tx.clone();
@@ -456,6 +461,74 @@ async fn run_pty_request(
         request.revision_id
     );
 
+    if let WorkerRequestPayload::SpawnDetachedShellCommand {
+        command,
+        working_dir,
+    } = &request.payload
+    {
+        let result = (|| async {
+            let mut child = tokio::process::Command::new("sh");
+            child.arg("-c").arg(command);
+            if let Some(dir) = working_dir {
+                child.current_dir(dir);
+            }
+            child.stdin(Stdio::null());
+            child.stdout(Stdio::null());
+            child.stderr(Stdio::null());
+
+            let child = child
+                .spawn()
+                .map_err(|err| format!("spawn detached shell command failed: {err}"))?;
+            let pid = child.id();
+
+            tokio::spawn(async move {
+                let mut child = child;
+                let _ = child.wait().await;
+            });
+
+            Ok::<WorkerResultPayload, String>(WorkerResultPayload::DetachedShellCommandSpawned {
+                command: command.clone(),
+                pid,
+            })
+        })()
+        .await;
+
+        match result {
+            Ok(payload) => {
+                let result = WorkerResult {
+                    request_id: request.request_id,
+                    revision_id: request.revision_id,
+                    topic: request.topic,
+                    payload,
+                };
+                emit_message(&worker_tx, WorkerMessage::Result(result));
+
+                let completed = WorkerEvent {
+                    request_id: request.request_id,
+                    revision_id: request.revision_id,
+                    topic: request.topic,
+                    kind: WorkerEventKind::Completed,
+                };
+                emit_message(&worker_tx, WorkerMessage::Event(completed));
+            }
+            Err(message) => {
+                let failed = WorkerEvent {
+                    request_id: request.request_id,
+                    revision_id: request.revision_id,
+                    topic: request.topic,
+                    kind: WorkerEventKind::Failed {
+                        error: WorkerFailure {
+                            kind: WorkerFailureKind::Execution,
+                            message,
+                        },
+                    },
+                };
+                emit_message(&worker_tx, WorkerMessage::Event(failed));
+            }
+        }
+        return;
+    }
+
     let pty_request = request.clone();
     let pty_sessions_for_task = pty_sessions.clone();
     let worker_tx_for_task = worker_tx.clone();
@@ -620,12 +693,14 @@ fn execute_lsp_request(
             root_path,
             server_command,
         } => {
-            let spawned = spawn_lsp_server(
+            let handle = tokio::runtime::Handle::try_current()
+                .map_err(|_| "tokio runtime unavailable while starting lsp server".to_string())?;
+            let spawned = handle.block_on(spawn_lsp_server(
                 server_command.as_deref(),
                 root_path,
                 request.request_id,
                 request.revision_id,
-            )?;
+            ))?;
             let session = spawned.process.clone();
             let previous = lsp_sessions.replace(LspSessionHandle {
                 process: session.clone(),
@@ -673,16 +748,28 @@ fn execute_lsp_request(
                 return Err("lsp didOpen rejected: server is not running".to_string());
             };
             session.update_request_meta(request.request_id, request.revision_id);
-            session.send_notification(
-                "textDocument/didOpen",
-                build_did_open_notification(uri, language_id, *version, text),
-            )?;
-
-            Ok(WorkerResultPayload::LspAck {
-                action: "didOpen".to_string(),
-                uri: Some(uri.clone()),
-                version: Some(*version),
-            })
+            if session.is_document_open(uri) {
+                session.send_notification(
+                    "textDocument/didChange",
+                    build_did_change_notification(uri, *version, text),
+                )?;
+                Ok(WorkerResultPayload::LspAck {
+                    action: "didChange".to_string(),
+                    uri: Some(uri.clone()),
+                    version: Some(*version),
+                })
+            } else {
+                session.send_notification(
+                    "textDocument/didOpen",
+                    build_did_open_notification(uri, language_id, *version, text),
+                )?;
+                session.mark_document_open(uri);
+                Ok(WorkerResultPayload::LspAck {
+                    action: "didOpen".to_string(),
+                    uri: Some(uri.clone()),
+                    version: Some(*version),
+                })
+            }
         }
         WorkerRequestPayload::LspDidChange { uri, version, text } => {
             let Some(session) = lsp_sessions.get()? else {
@@ -707,6 +794,7 @@ fn execute_lsp_request(
             session.update_request_meta(request.request_id, request.revision_id);
             session
                 .send_notification("textDocument/didClose", build_did_close_notification(uri))?;
+            session.mark_document_closed(uri);
 
             Ok(WorkerResultPayload::LspAck {
                 action: "didClose".to_string(),
@@ -727,8 +815,243 @@ fn execute_lsp_request(
                 reason: "shutdown requested by app".to_string(),
             })
         }
+        WorkerRequestPayload::LspHoverRequest {
+            uri,
+            line,
+            character,
+        } => {
+            let Some(session) = lsp_sessions.get()? else {
+                return Err("hover rejected: LSP server not running".to_string());
+            };
+            session.update_request_meta(request.request_id, request.revision_id);
+            // cursor_line/col không có trong request vì không cần cho hover rendering.
+            handle_lsp_hover(&session, uri, *line, *character, 0, 0)
+        }
+        WorkerRequestPayload::LspDefinitionRequest {
+            uri,
+            line,
+            character,
+            jump,
+        } => {
+            let Some(session) = lsp_sessions.get()? else {
+                return Err("definition rejected: LSP server not running".to_string());
+            };
+            session.update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_definition(&session, uri, *line, *character, *jump)
+        }
+        WorkerRequestPayload::LspReferencesRequest {
+            uri,
+            line,
+            character,
+        } => {
+            let Some(session) = lsp_sessions.get()? else {
+                return Err("references rejected: LSP server not running".to_string());
+            };
+            session.update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_references(&session, uri, *line, *character)
+        }
         _ => Err("execute_lsp_request received non-lsp payload".to_string()),
     }
+}
+
+// ── LSP Interactive Requests (hover, definition, references) ─────────────────
+
+/// Gửi request và chờ response thông qua pending channel.
+/// Phải gọi `register_pending_request` TRƯỚC `send_request` để tránh race condition.
+fn lsp_request_response(
+    session: &std::sync::Arc<crate::lsp::client::LspClientProcess>,
+    method: &str,
+    params: serde_json::Value,
+    timeout_secs: u64,
+) -> Result<serde_json::Value, String> {
+    // 1. Đăng ký trước để stdout reader biết chỗ deliver.
+    let rx = session.register_pending_request();
+    // 2. Gửi request.
+    let request_id = session.send_request(method, params)?;
+    // 3. Đợi response từ channel (chứ không phải từ reader trực tiếp).
+    let deadline = std::time::Duration::from_secs(timeout_secs);
+    loop {
+        match rx.recv_timeout(deadline) {
+            Ok((id, value)) if id == request_id => {
+                session.clear_pending_request();
+                return Ok(value);
+            }
+            Ok(_) => {
+                // Message cho request khác — bỏ qua, tiếp tục đợi.
+            }
+            Err(_) => {
+                session.clear_pending_request();
+                return Err(format!(
+                    "lsp {method} request timed out after {timeout_secs}s"
+                ));
+            }
+        }
+    }
+}
+
+/// Parse `MarkupContent` hoặc string result từ hover response.
+fn parse_hover_content(result: &serde_json::Value) -> String {
+    let contents = match result.get("contents") {
+        Some(c) => c,
+        None => return String::new(),
+    };
+    if let Some(value) = contents.get("value").and_then(|v| v.as_str()) {
+        return value.trim().to_string();
+    }
+    if let Some(s) = contents.as_str() {
+        return s.trim().to_string();
+    }
+    if let Some(arr) = contents.as_array() {
+        return arr
+            .iter()
+            .filter_map(|item| {
+                item.get("value")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| item.as_str())
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+    }
+    String::new()
+}
+
+/// Parse array of `Location` hoặc `LocationLink` từ definition/references.
+fn parse_locations(result: &serde_json::Value) -> Vec<crate::async_runtime::message::LspLocation> {
+    use crate::async_runtime::message::LspLocation;
+    let items = match result.as_array() {
+        Some(arr) => arr.as_slice(),
+        None => {
+            // Single location object
+            if let (Some(uri), Some(line), Some(char)) = (
+                result.get("uri").and_then(|v| v.as_str()),
+                result.pointer("/range/start/line").and_then(|v| v.as_u64()),
+                result
+                    .pointer("/range/start/character")
+                    .and_then(|v| v.as_u64()),
+            ) {
+                return vec![LspLocation {
+                    uri: uri.to_string(),
+                    line: line as u32,
+                    character: char as u32,
+                }];
+            }
+            return Vec::new();
+        }
+    };
+    items
+        .iter()
+        .filter_map(|item| {
+            // `Location` format
+            let uri = item.get("uri").and_then(|v| v.as_str())?;
+            let line = item
+                .pointer("/range/start/line")
+                .and_then(|v| v.as_u64())
+                // `LocationLink` format
+                .or_else(|| {
+                    item.pointer("/targetRange/start/line")
+                        .and_then(|v| v.as_u64())
+                })?;
+            let character = item
+                .pointer("/range/start/character")
+                .and_then(|v| v.as_u64())
+                .or_else(|| {
+                    item.pointer("/targetRange/start/character")
+                        .and_then(|v| v.as_u64())
+                })
+                .unwrap_or(0);
+            Some(LspLocation {
+                uri: uri.to_string(),
+                line: line as u32,
+                character: character as u32,
+            })
+        })
+        .collect()
+}
+
+/// Execute hover request trong execute_lsp_request.
+fn handle_lsp_hover(
+    session: &std::sync::Arc<crate::lsp::client::LspClientProcess>,
+    uri: &str,
+    line: u32,
+    character: u32,
+    cursor_line: usize,
+    cursor_col: usize,
+) -> Result<WorkerResultPayload, String> {
+    use serde_json::json;
+    let params = json!({
+        "textDocument": { "uri": uri },
+        "position": { "line": line, "character": character }
+    });
+    let response = lsp_request_response(session, "textDocument/hover", params, 10)?;
+    let result = response
+        .get("result")
+        .ok_or_else(|| "hover: no result".to_string())?;
+    if result.is_null() {
+        return Err("hover: null result (no documentation)".to_string());
+    }
+    let content = parse_hover_content(result);
+    if content.is_empty() {
+        return Err("hover: empty documentation".to_string());
+    }
+    Ok(WorkerResultPayload::LspHoverResult {
+        content,
+        cursor_line,
+        cursor_col,
+    })
+}
+
+/// Execute definition request trong execute_lsp_request.
+fn handle_lsp_definition(
+    session: &std::sync::Arc<crate::lsp::client::LspClientProcess>,
+    uri: &str,
+    line: u32,
+    character: u32,
+    jump: bool,
+) -> Result<WorkerResultPayload, String> {
+    use serde_json::json;
+    let params = json!({
+        "textDocument": { "uri": uri },
+        "position": { "line": line, "character": character }
+    });
+    let response = lsp_request_response(session, "textDocument/definition", params, 10)?;
+    let result = response
+        .get("result")
+        .ok_or_else(|| "definition: no result".to_string())?;
+    if result.is_null() {
+        return Err("definition: no definition found".to_string());
+    }
+    let locations = parse_locations(result);
+    if locations.is_empty() {
+        return Err("definition: no locations returned".to_string());
+    }
+    Ok(WorkerResultPayload::LspDefinitionResult { locations, jump })
+}
+
+/// Execute references request trong execute_lsp_request.
+fn handle_lsp_references(
+    session: &std::sync::Arc<crate::lsp::client::LspClientProcess>,
+    uri: &str,
+    line: u32,
+    character: u32,
+) -> Result<WorkerResultPayload, String> {
+    use serde_json::json;
+    let params = json!({
+        "textDocument": { "uri": uri },
+        "position": { "line": line, "character": character },
+        "context": { "includeDeclaration": true }
+    });
+    let response = lsp_request_response(session, "textDocument/references", params, 15)?;
+    let result = response
+        .get("result")
+        .ok_or_else(|| "references: no result".to_string())?;
+    if result.is_null() {
+        return Err("references: no references found".to_string());
+    }
+    let locations = parse_locations(result);
+    if locations.is_empty() {
+        return Err("references: empty result".to_string());
+    }
+    Ok(WorkerResultPayload::LspReferencesResult { locations })
 }
 
 fn execute_pty_request(
@@ -820,6 +1143,9 @@ fn execute_pty_request(
                 reason: "close requested by app".to_string(),
             })
         }
+        WorkerRequestPayload::SpawnDetachedShellCommand { .. } => {
+            Err("detached shell command should be handled by async PTY runner".to_string())
+        }
         _ => Err("execute_pty_request received non-pty payload".to_string()),
     }
 }
@@ -838,7 +1164,7 @@ fn spawn_pty_output_reader(
     std::thread::Builder::new()
         .name(format!("netherize-pty-reader-{session_id}"))
         .spawn(move || {
-            let mut buffer = [0_u8; 4096];
+            let mut buffer = [0_u8; 8192];
             loop {
                 match reader.read(&mut buffer) {
                     Ok(0) => {
@@ -858,7 +1184,7 @@ fn spawn_pty_output_reader(
                         break;
                     }
                     Ok(read_bytes) => {
-                        let chunk = String::from_utf8_lossy(&buffer[..read_bytes]).to_string();
+                        let chunk = buffer[..read_bytes].to_vec();
                         if chunk.is_empty() {
                             continue;
                         }
@@ -899,137 +1225,134 @@ fn spawn_pty_output_reader(
 
 fn spawn_lsp_stdout_reader(
     session: Arc<crate::lsp::client::LspClientProcess>,
-    mut reader: Box<dyn BufRead + Send>,
+    mut reader: tokio::io::BufReader<tokio::process::ChildStdout>,
     topic: RequestTopic,
     lsp_sessions: Arc<LspSessionRegistry>,
     worker_tx: std_mpsc::Sender<WorkerMessage>,
 ) -> Result<(), String> {
-    std::thread::Builder::new()
-        .name("netherize-lsp-stdout".to_string())
-        .spawn(move || {
-            loop {
-                let message = match read_json_rpc_message(&mut *reader) {
-                    Ok(Some(message)) => message,
-                    Ok(None) => {
-                        let should_emit = lsp_sessions.clear_if_process(&session).ok().flatten();
-                        if should_emit.is_some() {
-                            let request_id = session.latest_request_id();
-                            let revision_id = session.latest_revision();
-                            let result = WorkerResult {
-                                request_id,
-                                revision_id,
-                                topic,
-                                payload: WorkerResultPayload::LspServerStopped {
-                                    exit_status: None,
-                                    reason: "lsp stdout reached EOF".to_string(),
-                                },
-                            };
-                            emit_message(&worker_tx, WorkerMessage::Result(result));
-                        }
-                        break;
+    tokio::spawn(async move {
+        loop {
+            let message = match read_json_rpc_message_async(&mut reader).await {
+                Ok(Some(message)) => message,
+                Ok(None) => {
+                    let should_emit = lsp_sessions.clear_if_process(&session).ok().flatten();
+                    if should_emit.is_some() {
+                        let request_id = session.latest_request_id();
+                        let revision_id = session.latest_revision();
+                        let result = WorkerResult {
+                            request_id,
+                            revision_id,
+                            topic,
+                            payload: WorkerResultPayload::LspServerStopped {
+                                exit_status: None,
+                                reason: "lsp stdout reached EOF".to_string(),
+                            },
+                        };
+                        emit_message(&worker_tx, WorkerMessage::Result(result));
                     }
-                    Err(err) => {
-                        let should_emit = lsp_sessions.clear_if_process(&session).ok().flatten();
-                        if should_emit.is_some() {
-                            let failed = WorkerEvent {
-                                request_id: session.latest_request_id(),
-                                revision_id: session.latest_revision(),
-                                topic,
-                                kind: WorkerEventKind::Failed {
-                                    error: WorkerFailure {
-                                        kind: WorkerFailureKind::Execution,
-                                        message: format!("lsp stdout reader failed: {err}"),
-                                    },
+                    break;
+                }
+                Err(err) => {
+                    let should_emit = lsp_sessions.clear_if_process(&session).ok().flatten();
+                    if should_emit.is_some() {
+                        let failed = WorkerEvent {
+                            request_id: session.latest_request_id(),
+                            revision_id: session.latest_revision(),
+                            topic,
+                            kind: WorkerEventKind::Failed {
+                                error: WorkerFailure {
+                                    kind: WorkerFailureKind::Execution,
+                                    message: format!("lsp stdout reader failed: {err}"),
                                 },
-                            };
-                            emit_message(&worker_tx, WorkerMessage::Event(failed));
-                        }
-                        break;
+                            },
+                        };
+                        emit_message(&worker_tx, WorkerMessage::Event(failed));
                     }
+                    break;
+                }
+            };
+
+            if let Some(parsed) = parse_publish_diagnostics(&message) {
+                let revision_id = parsed.version.unwrap_or_else(|| session.latest_revision());
+                let result = WorkerResult {
+                    request_id: session.latest_request_id(),
+                    revision_id,
+                    topic,
+                    payload: WorkerResultPayload::LspDiagnostics {
+                        uri: parsed.uri,
+                        version: parsed.version,
+                        diagnostics: parsed.diagnostics,
+                    },
                 };
-
-                if let Some(parsed) = parse_publish_diagnostics(&message) {
-                    let revision_id = parsed.version.unwrap_or_else(|| session.latest_revision());
-                    let result = WorkerResult {
-                        request_id: session.latest_request_id(),
-                        revision_id,
-                        topic,
-                        payload: WorkerResultPayload::LspDiagnostics {
-                            uri: parsed.uri,
-                            version: parsed.version,
-                            diagnostics: parsed.diagnostics,
-                        },
-                    };
-                    emit_message(&worker_tx, WorkerMessage::Result(result));
-                    continue;
-                }
-
-                if let Some(parsed) = parse_window_log_message(&message) {
-                    let result = WorkerResult {
-                        request_id: session.latest_request_id(),
-                        revision_id: session.latest_revision(),
-                        topic,
-                        payload: WorkerResultPayload::LspLogMessage {
-                            level: parsed.level,
-                            message: parsed.message,
-                        },
-                    };
-                    emit_message(&worker_tx, WorkerMessage::Result(result));
-                    continue;
-                }
-
-                let method = message
-                    .get("method")
-                    .and_then(Value::as_str)
-                    .unwrap_or("unknown")
-                    .to_string();
-                if method != "unknown" {
-                    let result = WorkerResult {
-                        request_id: session.latest_request_id(),
-                        revision_id: session.latest_revision(),
-                        topic,
-                        payload: WorkerResultPayload::LspAck {
-                            action: format!("notification:{method}"),
-                            uri: None,
-                            version: None,
-                        },
-                    };
-                    emit_message(&worker_tx, WorkerMessage::Result(result));
-                }
+                emit_message(&worker_tx, WorkerMessage::Result(result));
+                continue;
             }
-        })
-        .map_err(|err| format!("spawn lsp stdout reader thread failed: {err}"))?;
 
+            if let Some(parsed) = parse_window_log_message(&message) {
+                let result = WorkerResult {
+                    request_id: session.latest_request_id(),
+                    revision_id: session.latest_revision(),
+                    topic,
+                    payload: WorkerResultPayload::LspLogMessage {
+                        level: parsed.level,
+                        message: parsed.message,
+                    },
+                };
+                emit_message(&worker_tx, WorkerMessage::Result(result));
+                continue;
+            }
+
+            if let Some(id) = message.get("id").and_then(|v| v.as_u64()) {
+                session.deliver_response(id, message.clone());
+                continue;
+            }
+
+            let method = message
+                .get("method")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+                .to_string();
+            if method != "unknown" {
+                let result = WorkerResult {
+                    request_id: session.latest_request_id(),
+                    revision_id: session.latest_revision(),
+                    topic,
+                    payload: WorkerResultPayload::LspAck {
+                        action: format!("notification:{method}"),
+                        uri: None,
+                        version: None,
+                    },
+                };
+                emit_message(&worker_tx, WorkerMessage::Result(result));
+            }
+        }
+    });
     Ok(())
 }
 
 fn spawn_lsp_stderr_logger(
-    stderr: Box<dyn Read + Send>,
+    mut stderr: tokio::io::BufReader<tokio::process::ChildStderr>,
     server_name: String,
 ) -> Result<(), String> {
-    std::thread::Builder::new()
-        .name("netherize-lsp-stderr".to_string())
-        .spawn(move || {
-            let mut reader = BufReader::new(stderr);
-            let mut line = String::new();
-            loop {
-                line.clear();
-                match reader.read_line(&mut line) {
-                    Ok(0) => break,
-                    Ok(_) => {
-                        let line = line.trim_end();
-                        if !line.is_empty() {
-                            eprintln!("[LSP:{server_name}:stderr] {line}");
-                        }
-                    }
-                    Err(err) => {
-                        eprintln!("[LSP:{server_name}:stderr] read failed: {err}");
-                        break;
+    tokio::spawn(async move {
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match stderr.read_line(&mut line).await {
+                Ok(0) => break,
+                Ok(_) => {
+                    let line = line.trim_end();
+                    if !line.is_empty() {
+                        eprintln!("[LSP:{server_name}:stderr] {line}");
                     }
                 }
+                Err(err) => {
+                    eprintln!("[LSP:{server_name}:stderr] read failed: {err}");
+                    break;
+                }
             }
-        })
-        .map_err(|err| format!("spawn lsp stderr logger failed: {err}"))?;
+        }
+    });
     Ok(())
 }
 
@@ -1112,18 +1435,8 @@ async fn fzf_find_file(
     query: &str,
     workspace_root: &std::path::Path,
 ) -> Result<Vec<FzfResultItem>, String> {
-    let ignore_rules = WorkspaceIgnoreRules::default();
-    let prune_expr = ignore_rules
-        .ignored_directory_names()
-        .map(|name| format!("-name {}", sh_single_quote(name)))
-        .collect::<Vec<_>>()
-        .join(" -o ");
-    let script = if prune_expr.is_empty() {
-        "find . -type f -print | fzf -f \"$1\"".to_string()
-    } else {
-        format!("find . \\( {prune_expr} \\) -prune -o -type f -print | fzf -f \"$1\"")
-    };
-    let fzf_output = run_fzf_shell(&script, query, workspace_root, "find|fzf").await?;
+    let script = build_fzf_find_file_script();
+    let fzf_output = run_fzf_shell(&script, query, workspace_root, "rg-files|fzf").await?;
 
     let items: Vec<FzfResultItem> = String::from_utf8_lossy(&fzf_output.stdout)
         .lines()
@@ -1147,13 +1460,8 @@ async fn fzf_live_grep(
     query: &str,
     workspace_root: &std::path::Path,
 ) -> Result<Vec<FzfResultItem>, String> {
-    let fzf_output = run_fzf_shell(
-        "rg --line-number --column \"\" . | fzf -f \"$1\"",
-        query,
-        workspace_root,
-        "rg|fzf",
-    )
-    .await?;
+    let script = build_fzf_live_grep_script();
+    let fzf_output = run_fzf_shell(&script, query, workspace_root, "rg|fzf").await?;
 
     let items: Vec<FzfResultItem> = String::from_utf8_lossy(&fzf_output.stdout)
         .lines()
@@ -1204,6 +1512,32 @@ fn sh_single_quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\"'\"'"))
 }
 
+fn build_fzf_find_file_script() -> String {
+    let glob_args = build_ripgrep_ignore_glob_args();
+    if glob_args.is_empty() {
+        "rg --files --hidden | fzf -f \"$1\"".to_string()
+    } else {
+        format!("rg --files --hidden {glob_args} | fzf -f \"$1\"")
+    }
+}
+
+fn build_fzf_live_grep_script() -> String {
+    let glob_args = build_ripgrep_ignore_glob_args();
+    if glob_args.is_empty() {
+        "rg --line-number --column --hidden \"\" . | fzf -f \"$1\"".to_string()
+    } else {
+        format!("rg --line-number --column --hidden {glob_args} \"\" . | fzf -f \"$1\"")
+    }
+}
+
+fn build_ripgrep_ignore_glob_args() -> String {
+    WorkspaceIgnoreRules::default()
+        .ignored_directory_names()
+        .map(|name| format!("--glob {}", sh_single_quote(&format!("!**/{name}/**"))))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn parse_rg_fzf_line(line: &str, workspace_root: &std::path::Path) -> Option<FzfResultItem> {
     // rg output format: path:line:col:content
     let mut parts = line.splitn(4, ':');
@@ -1223,6 +1557,47 @@ fn parse_rg_fzf_line(line: &str, workspace_root: &std::path::Path) -> Option<Fzf
         line: Some(line_num),
         column: Some(col_num),
     })
+}
+
+fn build_file_preview_lines(
+    file_path: &std::path::Path,
+    max_lines: usize,
+    target_line: Option<usize>,
+) -> Vec<crate::async_runtime::message::FilePreviewLine> {
+    let text = std::fs::read_to_string(file_path).unwrap_or_default();
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.is_empty() || max_lines == 0 {
+        return Vec::new();
+    }
+
+    let total_lines = lines.len();
+    let (start, end, target_idx) = if let Some(target_line) = target_line {
+        let target_idx = target_line
+            .saturating_sub(1)
+            .min(total_lines.saturating_sub(1));
+        let half_window = max_lines / 2;
+        let mut start = target_idx.saturating_sub(half_window);
+        let end = (start + max_lines).min(total_lines);
+        if end - start < max_lines {
+            start = end.saturating_sub(max_lines);
+        }
+        (start, end, Some(target_idx))
+    } else {
+        (0, max_lines.min(total_lines), None)
+    };
+
+    lines[start..end]
+        .iter()
+        .enumerate()
+        .map(|(offset, line)| {
+            let idx = start + offset;
+            crate::async_runtime::message::FilePreviewLine {
+                line_number: idx + 1,
+                text: (*line).to_string(),
+                is_target: target_idx.is_some_and(|target| idx == target),
+            }
+        })
+        .collect()
 }
 
 async fn run_git_blame_line(
@@ -1446,6 +1821,34 @@ async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayl
         WorkerRequestPayload::MockPanic { reason } => {
             panic!("mock worker panic: {reason}");
         }
+        WorkerRequestPayload::CheckLspForPath { path } => {
+            let path = path.clone();
+            // Capture ext trước khi move path vào closure.
+            let ext_hint = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("?")
+                .to_string();
+            let result = tokio::task::spawn_blocking(move || {
+                crate::lsp::client::lsp_entry_and_status_for_path(&path).map(
+                    |(entry, is_installed)| WorkerResultPayload::LspCheckResult {
+                        path: path.clone(),
+                        binary: entry.binary.to_string(),
+                        language_label: entry.language_label.to_string(),
+                        install_cmd: entry.install_cmd.to_string(),
+                        is_installed,
+                    },
+                )
+            })
+            .await
+            .map_err(|err| format!("lsp check join error: {err}"))?;
+
+            match result {
+                Some(payload) => Ok(payload),
+                // Extension không được hỗ trợ → fail silently (không show lỗi UI).
+                None => Err(format!("no LSP registry entry for .{ext_hint}")),
+            }
+        }
         WorkerRequestPayload::GitBlameLine {
             workspace_root,
             file_path,
@@ -1467,6 +1870,7 @@ async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayl
         }
         WorkerRequestPayload::SpawnPtyShell { .. }
         | WorkerRequestPayload::SpawnPtyCommand { .. }
+        | WorkerRequestPayload::SpawnDetachedShellCommand { .. }
         | WorkerRequestPayload::WritePtyInput { .. }
         | WorkerRequestPayload::ResizePtySession { .. }
         | WorkerRequestPayload::ClosePtySession { .. } => {
@@ -1476,11 +1880,34 @@ async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayl
         | WorkerRequestPayload::LspDidOpen { .. }
         | WorkerRequestPayload::LspDidChange { .. }
         | WorkerRequestPayload::LspDidClose { .. }
+        | WorkerRequestPayload::LspHoverRequest { .. }
+        | WorkerRequestPayload::LspDefinitionRequest { .. }
+        | WorkerRequestPayload::LspReferencesRequest { .. }
         | WorkerRequestPayload::StopLspServer => {
             Err("LSP request should be handled by dedicated LSP runner".to_string())
         }
         WorkerRequestPayload::FzfSearch { .. } => {
             Err("FzfSearch request should be handled by dedicated fzf runner".to_string())
+        }
+        WorkerRequestPayload::LoadFilePreview {
+            file_path,
+            max_lines,
+            target_line,
+        } => {
+            let file_path = file_path.clone();
+            let max_lines = *max_lines;
+            let target_line = *target_line;
+            let result = tokio::task::spawn_blocking(move || {
+                let lines = build_file_preview_lines(&file_path, max_lines, target_line);
+                WorkerResultPayload::FilePreviewLoaded {
+                    file_path,
+                    target_line,
+                    lines,
+                }
+            })
+            .await
+            .map_err(|err| format!("file preview join error: {err}"))?;
+            Ok(result)
         }
     }
 }
@@ -1725,7 +2152,10 @@ mod tests {
 
     use crate::async_runtime::{
         message::FileSystemChangeKind,
-        scheduler::{build_worker_runtime, normalize_notify_event, parse_git_blame_summary},
+        scheduler::{
+            build_file_preview_lines, build_fzf_find_file_script, build_fzf_live_grep_script,
+            build_worker_runtime, normalize_notify_event, parse_git_blame_summary,
+        },
     };
 
     #[test]
@@ -1786,6 +2216,81 @@ mod tests {
 
         assert!(output.status.success());
         assert_eq!(String::from_utf8_lossy(&output.stdout), "ok");
+    }
+
+    #[test]
+    fn file_preview_lines_center_around_target_line() {
+        let path = std::env::temp_dir().join(format!(
+            "netherize_preview_target_{}.txt",
+            std::process::id()
+        ));
+        let text = (1..=8)
+            .map(|line| format!("line {line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&path, text).expect("write preview file");
+
+        let lines = build_file_preview_lines(&path, 5, Some(6));
+
+        assert_eq!(
+            lines
+                .iter()
+                .map(|line| line.line_number)
+                .collect::<Vec<_>>(),
+            vec![4, 5, 6, 7, 8]
+        );
+        assert_eq!(
+            lines
+                .iter()
+                .find(|line| line.is_target)
+                .map(|line| line.line_number),
+            Some(6)
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn file_preview_lines_without_target_use_file_start() {
+        let path = std::env::temp_dir().join(format!(
+            "netherize_preview_plain_{}.txt",
+            std::process::id()
+        ));
+        std::fs::write(&path, "a\nb\nc\nd\n").expect("write preview file");
+
+        let lines = build_file_preview_lines(&path, 2, None);
+
+        assert_eq!(
+            lines
+                .iter()
+                .map(|line| line.line_number)
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+        assert!(!lines.iter().any(|line| line.is_target));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn fzf_find_file_script_uses_ripgrep_files_and_ignore_globs() {
+        let script = build_fzf_find_file_script();
+
+        assert!(script.contains("rg --files --hidden"));
+        assert!(script.contains("--glob '!**/.git/**'"));
+        assert!(script.contains("--glob '!**/target/**'"));
+        assert!(script.contains("fzf -f \"$1\""));
+        assert!(!script.contains("find ."));
+    }
+
+    #[test]
+    fn fzf_live_grep_script_uses_ripgrep_and_ignore_globs() {
+        let script = build_fzf_live_grep_script();
+
+        assert!(script.contains("rg --line-number --column --hidden"));
+        assert!(script.contains("--glob '!**/.git/**'"));
+        assert!(script.contains("--glob '!**/target/**'"));
+        assert!(script.contains("fzf -f \"$1\""));
     }
 
     #[test]
