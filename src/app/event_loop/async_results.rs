@@ -293,9 +293,16 @@ impl AsyncResultRouter for AppShell {
                 );
                 if let Some(path) =
                     lsp_uri_to_path(&uri).and_then(|path| path.canonicalize().ok().or(Some(path)))
-                    && self.app_state.set_file_diagnostics(path, diagnostics)
                 {
-                    self.editor_needs_layout |= self.app_state.active_buffer_is_diagnostics();
+                    let is_active_file = self
+                        .app_state
+                        .active_file()
+                        .is_some_and(|active| active == path.as_path());
+                    if self.app_state.set_file_diagnostics(path, diagnostics) {
+                        self.editor_needs_layout |=
+                            self.app_state.active_buffer_is_diagnostics() || is_active_file;
+                        self.editor_caret_needs_layout |= is_active_file;
+                    }
                     self.request_redraw();
                 }
             }

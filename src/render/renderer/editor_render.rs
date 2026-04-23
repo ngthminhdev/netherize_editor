@@ -41,6 +41,56 @@ fn run_x_for_byte(text_area_x: f32, run: &cosmic_text::LayoutRun, byte_in_line: 
     x
 }
 
+fn wrap_text_lines(text: &str, max_chars: usize) -> Vec<String> {
+    if text.is_empty() {
+        return vec![String::new()];
+    }
+    let max_chars = max_chars.max(8);
+    let mut out = Vec::new();
+    for raw_line in text.lines() {
+        if raw_line.chars().count() <= max_chars {
+            out.push(raw_line.to_string());
+            continue;
+        }
+
+        let mut current = String::new();
+        for word in raw_line.split_whitespace() {
+            let current_len = current.chars().count();
+            let word_len = word.chars().count();
+            let next_len = if current.is_empty() {
+                word_len
+            } else {
+                current_len + 1 + word_len
+            };
+            if next_len > max_chars && !current.is_empty() {
+                out.push(current);
+                current = word.to_string();
+            } else {
+                if !current.is_empty() {
+                    current.push(' ');
+                }
+                current.push_str(word);
+            }
+        }
+
+        if current.is_empty() {
+            let chars: Vec<char> = raw_line.chars().collect();
+            let mut start = 0usize;
+            while start < chars.len() {
+                let end = (start + max_chars).min(chars.len());
+                out.push(chars[start..end].iter().collect());
+                start = end;
+            }
+        } else {
+            out.push(current);
+        }
+    }
+    if out.is_empty() {
+        out.push(String::new());
+    }
+    out
+}
+
 struct EditorViewportGeometry {
     line_height: f32,
     font_size: f32,
@@ -820,7 +870,30 @@ impl Renderer {
 
     /// Rebuild overlay glyph instances and floating-box chrome for the editor layer.
     pub fn update_editor_overlays(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {
-        if app_state.current_overlays().is_empty() && app_state.completion().is_none() {
+        let active_diagnostics = app_state
+            .active_file()
+            .and_then(|path| app_state.diagnostics_for_path(path));
+        let active_has_error = active_diagnostics
+            .is_some_and(|items| items.iter().any(|diag| diag.severity == Some(1)));
+        let cursor_line = app_state.cursor_line_col().0;
+        let cursor_diagnostic = app_state
+            .active_file()
+            .and_then(|path| app_state.diagnostics_for_path(path))
+            .and_then(|items| {
+                items
+                    .iter()
+                    .filter(|diag| {
+                        let start_line = diag.range.start.line as usize;
+                        let end_line = diag.range.end.line as usize;
+                        cursor_line >= start_line && cursor_line <= end_line
+                    })
+                    .min_by_key(|diag| (diag.severity.unwrap_or(u32::MAX), diag.range.start.line))
+            });
+
+        if app_state.current_overlays().is_empty()
+            && app_state.completion().is_none()
+            && cursor_diagnostic.is_none()
+        {
             self.editor_overlay_scissor = rect_to_scissor(center_bounds);
             let header_h = self.theme.ui.panel_line_height.max(20.0);
             let title = "[Main Editor]";
@@ -865,6 +938,38 @@ impl Renderer {
         self.editor_overlay_scissor = rect_to_scissor(center_bounds);
         let mut glyphs = Vec::new();
         let mut chrome_quads: Vec<RegionDrawInstance> = Vec::new();
+
+        if active_has_error {
+            let border = self.theme.ui.error.as_f32();
+            chrome_quads.push(RegionDrawInstance::new(
+                [center_bounds[0], center_bounds[1], center_bounds[2], 2.0],
+                border,
+            ));
+            chrome_quads.push(RegionDrawInstance::new(
+                [
+                    center_bounds[0],
+                    center_bounds[1] + center_bounds[3] - 2.0,
+                    center_bounds[2],
+                    2.0,
+                ],
+                border,
+            ));
+            chrome_quads.push(RegionDrawInstance::new(
+                [center_bounds[0], center_bounds[1], 2.0, center_bounds[3]],
+                border,
+            ));
+            chrome_quads.push(RegionDrawInstance::new(
+                [
+                    center_bounds[0] + center_bounds[2] - 2.0,
+                    center_bounds[1],
+                    2.0,
+                    center_bounds[3],
+                ],
+                border,
+            ));
+        }
+
+        chrome_quads.extend(self.diagnostic_underline_quads(app_state, center_bounds));
 
         for overlay in app_state.current_overlays() {
             match overlay {
@@ -1157,6 +1262,78 @@ impl Renderer {
             }
         }
 
+        if let Some(diagnostic) = cursor_diagnostic {
+            const PAD_X: f32 = 10.0;
+            const PAD_Y: f32 = 6.0;
+            const BORDER: f32 = 1.0;
+
+            let severity = diagnostic.severity.unwrap_or(2);
+            let border_color = if severity == 1 {
+                self.theme.ui.error.as_f32()
+            } else {
+                self.theme.ui.warning.as_f32()
+            };
+            let text_color = border_color;
+            let bg_color = self.theme.ui.panel_bg.as_f32();
+            let char_w = (geometry.font_size * 0.6).max(1.0);
+            let max_popup_w = geometry.viewport_text_width.min(420.0).max(160.0);
+            let wrap_cols = ((max_popup_w - PAD_X * 2.0) / char_w).floor() as usize;
+            let wrapped = wrap_text_lines(&diagnostic.message, wrap_cols.max(16));
+            let longest = wrapped
+                .iter()
+                .map(|line| line.chars().count())
+                .max()
+                .unwrap_or(0);
+            let popup_w = (longest as f32 * char_w + PAD_X * 2.0)
+                .clamp(160.0, max_popup_w)
+                .min((viewport_right - geometry.viewport_text_left).max(160.0));
+            let popup_h = (wrapped.len().max(1) as f32 * geometry.line_height + PAD_Y * 2.0)
+                .max(geometry.line_height);
+
+            let anchor_line = diagnostic.range.start.line as usize;
+            let anchor_col = diagnostic.range.start.character as usize;
+            let anchor_x = (geometry.origin_x + anchor_col as f32 * char_w).clamp(
+                geometry.viewport_text_left,
+                (viewport_right - popup_w).max(geometry.viewport_text_left),
+            );
+            let anchor_y = geometry.origin_y + anchor_line as f32 * geometry.line_height;
+            let mut popup_y = anchor_y + geometry.line_height;
+            if popup_y + popup_h > viewport_bottom {
+                popup_y = (anchor_y - popup_h).max(center_bounds[1]);
+            }
+
+            chrome_quads.push(RegionDrawInstance::new(
+                [
+                    anchor_x - BORDER,
+                    popup_y - BORDER,
+                    popup_w + BORDER * 2.0,
+                    popup_h + BORDER * 2.0,
+                ],
+                border_color,
+            ));
+            chrome_quads.push(RegionDrawInstance::new(
+                [anchor_x, popup_y, popup_w, popup_h],
+                bg_color,
+            ));
+
+            for (idx, line_text) in wrapped.iter().enumerate() {
+                let text_y = popup_y + PAD_Y + idx as f32 * geometry.line_height;
+                self.editor_overlay_text_system.set_size(
+                    Some((popup_w - PAD_X * 2.0).max(1.0)),
+                    Some(geometry.line_height),
+                );
+                glyphs.extend(layout_panel_text(
+                    line_text,
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    anchor_x + PAD_X,
+                    text_y,
+                    text_color,
+                ));
+            }
+        }
+
         self.editor_overlay_chrome_instances = chrome_quads;
         self.editor_overlay_glyph_instances = glyphs;
         self.editor_overlay_text_pipeline.upload_instances(
@@ -1355,6 +1532,102 @@ impl Renderer {
                 let width = (right - left).max(2.0);
                 quads.push(RegionDrawInstance::new(
                     [left, line_top, width, line_height_px],
+                    color,
+                ));
+            }
+        }
+
+        quads
+    }
+
+    pub fn diagnostic_underline_quads(
+        &self,
+        app_state: &AppState,
+        center_bounds: [f32; 4],
+    ) -> Vec<RegionDrawInstance> {
+        let Some(path) = app_state.active_file() else {
+            return Vec::new();
+        };
+        let Some(diagnostics) = app_state.diagnostics_for_path(path) else {
+            return Vec::new();
+        };
+
+        let line_height = self.theme.editor.line_height;
+        let font_size = self.theme.editor.font_size;
+        let total_lines = app_state.total_lines().max(1);
+        let gutter_digits = total_lines.to_string().len().max(3);
+        let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
+        let text_area_x = center_bounds[0] + self.editor_padding_x + gutter_width;
+        let text_area_w = (center_bounds[2] - self.editor_padding_x - gutter_width).max(1.0);
+        let scroll_y = app_state.scroll_line as f32 * line_height;
+        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
+        let viewport_top = center_bounds[1] + self.editor_padding_y;
+        let viewport_bottom =
+            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
+
+        let mut quads = Vec::new();
+        for diagnostic in diagnostics {
+            let severity = diagnostic.severity.unwrap_or(2);
+            if severity != 1 && severity != 2 {
+                continue;
+            }
+            let color = if severity == 1 {
+                self.theme.ui.error.as_f32()
+            } else {
+                self.theme.ui.warning.as_f32()
+            };
+
+            let start_line = diagnostic.range.start.line as usize;
+            let end_line = diagnostic.range.end.line as usize;
+
+            for run in self.text_system.buffer().layout_runs() {
+                if run.line_i < start_line || run.line_i > end_line {
+                    continue;
+                }
+
+                let line_top = origin_y + run.line_top;
+                let line_height_px = run.line_height.max(1.0);
+                let line_bottom = line_top + line_height_px;
+                if line_bottom <= viewport_top || line_top >= viewport_bottom {
+                    continue;
+                }
+
+                let line_start_byte = app_state.line_start_byte_idx(run.line_i);
+                let line_end_byte = app_state.line_content_end_byte_idx(run.line_i);
+                let local_start = if run.line_i == start_line {
+                    diagnostic.range.start.character as usize
+                } else {
+                    0
+                };
+                let mut local_end = if run.line_i == end_line {
+                    diagnostic.range.end.character as usize
+                } else {
+                    line_end_byte.saturating_sub(line_start_byte)
+                };
+                if run.line_i == start_line && run.line_i == end_line && local_start >= local_end {
+                    local_end = local_start.saturating_add(1);
+                }
+
+                let line_start_x = text_area_x;
+                let line_end_x = (text_area_x + run.line_w).max(line_start_x + 1.0);
+                let start_x = if run.line_i == start_line {
+                    run_x_for_byte(text_area_x, &run, local_start)
+                } else {
+                    line_start_x
+                };
+                let end_x = if run.line_i == end_line {
+                    run_x_for_byte(text_area_x, &run, local_end)
+                } else {
+                    line_end_x
+                };
+
+                let left = start_x.min(end_x).max(text_area_x);
+                let right = start_x.max(end_x).min(text_area_x + text_area_w);
+                let width = (right - left).max(6.0);
+                let underline_h = 2.0;
+                let underline_y = line_top + (line_height_px - underline_h).max(0.0);
+                quads.push(RegionDrawInstance::new(
+                    [left, underline_y, width, underline_h],
                     color,
                 ));
             }

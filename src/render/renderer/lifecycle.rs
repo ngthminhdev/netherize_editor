@@ -421,27 +421,27 @@ impl Renderer {
                     &self.queue,
                     &self.editor_overlay_chrome_instances,
                 );
-            let topbar_inner_scissor = self.topbar_scissor.and_then(|[sx, sy, sw, sh]| {
-                let inset_x = 4_u32;
-                let inset_y = 2_u32;
-                let clipped_w = sw.saturating_sub(inset_x.saturating_mul(2));
-                let clipped_h = sh.saturating_sub(inset_y.saturating_mul(2));
-                (clipped_w > 0 && clipped_h > 0).then_some([
-                    sx.saturating_add(inset_x),
-                    sy.saturating_add(inset_y),
-                    clipped_w,
-                    clipped_h,
-                ])
-            });
-            draw_text_region(
-                &mut pass,
-                topbar_inner_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.topbar_text_pipeline.draw(render_pass);
-                },
-            );
+                let topbar_inner_scissor = self.topbar_scissor.and_then(|[sx, sy, sw, sh]| {
+                    let inset_x = 4_u32;
+                    let inset_y = 2_u32;
+                    let clipped_w = sw.saturating_sub(inset_x.saturating_mul(2));
+                    let clipped_h = sh.saturating_sub(inset_y.saturating_mul(2));
+                    (clipped_w > 0 && clipped_h > 0).then_some([
+                        sx.saturating_add(inset_x),
+                        sy.saturating_add(inset_y),
+                        clipped_w,
+                        clipped_h,
+                    ])
+                });
+                draw_text_region(
+                    &mut pass,
+                    topbar_inner_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.topbar_text_pipeline.draw(render_pass);
+                    },
+                );
             }
 
             draw_text_region(

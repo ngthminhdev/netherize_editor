@@ -738,8 +738,7 @@ impl Renderer {
         let line_h = self.statusbar_line_height;
         let font_size = self.statusbar_font_size;
         let width = (bounds[2] - self.topbar_padding_x * 2.0).max(1.0);
-        self.topbar_text_system
-            .set_size(None, Some(bounds[3]));
+        self.topbar_text_system.set_size(None, Some(bounds[3]));
         let origin_y = bounds[1] + ((bounds[3] - line_h) * 0.5).max(0.0);
         let active_fg = self.theme.ui.fg.as_f32();
         let inactive_fg = self.theme.ui.fg_dim.as_f32();
@@ -963,7 +962,12 @@ impl Renderer {
             line + 1,
             col + 1
         );
-        let diagnostics_label = format!("❌ {}  ⚠ {}", diagnostics_errors, diagnostics_warnings);
+        let show_diagnostics = diagnostics_errors > 0 || diagnostics_warnings > 0;
+        let diagnostics_label = if show_diagnostics {
+            format!("❌ {}  ⚠ {}", diagnostics_errors, diagnostics_warnings)
+        } else {
+            String::new()
+        };
 
         let origin_y = bounds[1] + ((bounds[3] - line_h) * 0.5).max(0.0);
         let fg_dim = self.theme.ui.fg_dim.as_f32();
@@ -983,14 +987,18 @@ impl Renderer {
         );
 
         let right_width = estimate_monospace_width(&right_text, font_size);
-        let diagnostics_width = estimate_monospace_width(&diagnostics_label, font_size);
+        let diagnostics_width = if show_diagnostics {
+            estimate_monospace_width(&diagnostics_label, font_size)
+        } else {
+            0.0
+        };
         let right_x = (bounds[0] + bounds[2]
             - self.statusbar_padding_x
             - right_width
             - diagnostics_width
-            - 24.0)
-            .max(bounds[0] + self.statusbar_padding_x);
-        let diag_x = right_x + right_width + 24.0;
+            - if show_diagnostics { 24.0 } else { 0.0 })
+        .max(bounds[0] + self.statusbar_padding_x);
+        let diag_x = right_x + right_width + if show_diagnostics { 24.0 } else { 0.0 };
         let pending_x = pill_x + pill_width + self.statusbar_padding_x * 0.75;
         let pending_gap = self.statusbar_padding_x;
         let pending_maxw = (right_x - pending_x - pending_gap).max(0.0);
@@ -1016,26 +1024,28 @@ impl Renderer {
             origin_y,
             fg_dim,
         ));
-        let error_part = format!("❌ {}", diagnostics_errors);
-        glyphs.extend(layout_panel_text(
-            &error_part,
-            &mut self.statusbar_text_system,
-            &mut self.atlas,
-            &self.queue,
-            diag_x,
-            origin_y,
-            error_fg,
-        ));
-        let warn_x = diag_x + estimate_monospace_width(&error_part, font_size) + 16.0;
-        glyphs.extend(layout_panel_text(
-            &format!("⚠ {}", diagnostics_warnings),
-            &mut self.statusbar_text_system,
-            &mut self.atlas,
-            &self.queue,
-            warn_x,
-            origin_y,
-            warning_fg,
-        ));
+        if show_diagnostics {
+            let error_part = format!("❌ {}", diagnostics_errors);
+            glyphs.extend(layout_panel_text(
+                &error_part,
+                &mut self.statusbar_text_system,
+                &mut self.atlas,
+                &self.queue,
+                diag_x,
+                origin_y,
+                error_fg,
+            ));
+            let warn_x = diag_x + estimate_monospace_width(&error_part, font_size) + 16.0;
+            glyphs.extend(layout_panel_text(
+                &format!("⚠ {}", diagnostics_warnings),
+                &mut self.statusbar_text_system,
+                &mut self.atlas,
+                &self.queue,
+                warn_x,
+                origin_y,
+                warning_fg,
+            ));
+        }
 
         self.statusbar_glyph_instances = glyphs;
         self.statusbar_text_pipeline.upload_instances(
