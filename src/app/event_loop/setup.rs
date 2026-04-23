@@ -46,6 +46,9 @@ impl AppShell {
             crate::workbench::layout_engine::WorkbenchLayoutConfig::from_ui_theme(&theme.ui),
         );
         let mut panel_state = WorkbenchPanelState::from_ui_theme(&theme.ui);
+        panel_state.left.size_px = ui_config.docks.left.size_px;
+        panel_state.right.size_px = ui_config.docks.right.size_px;
+        panel_state.bottom.size_px = ui_config.docks.bottom.size_px;
         panel_state.left.visible = ui_config.docks.left.visible;
         panel_state.right.visible = if DEBUG_UI_ENABLED {
             ui_config.docks.right.visible
@@ -225,9 +228,9 @@ impl AppShell {
         self.layout_engine.config.sidebar_min_width = scaled_ui.layout.sidebar_min_width;
         self.layout_engine.config.bottom_min_height = scaled_ui.layout.bottom_min_height;
 
-        self.panel_state.left.size_px = scaled_theme.ui.sidebar_width;
-        self.panel_state.right.size_px = scaled_theme.ui.right_sidebar_width;
-        self.panel_state.bottom.size_px = scaled_theme.ui.bottom_panel_height;
+        self.panel_state.left.size_px = scaled_ui.docks.left.size_px;
+        self.panel_state.right.size_px = scaled_ui.docks.right.size_px;
+        self.panel_state.bottom.size_px = scaled_ui.docks.bottom.size_px;
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.apply_theme(scaled_theme);
             renderer.apply_ui_config(&scaled_ui);
