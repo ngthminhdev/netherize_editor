@@ -55,6 +55,21 @@ fn named_input(named: NamedKey, physical: Option<KeyCode>) -> NormalizedInput {
     }
 }
 
+fn shift_named_input(named: NamedKey, physical: Option<KeyCode>) -> NormalizedInput {
+    NormalizedInput {
+        physical_key: physical,
+        named_key: Some(named),
+        text: None,
+        modifiers: ModifiersState::SHIFT,
+    }
+}
+
+fn completion_context() -> KeybindingContext {
+    let mut context = KeybindingContext::for_mode(EditorMode::Insert);
+    context.completion_visible = true;
+    context
+}
+
 fn make_map() -> InputMap {
     InputMap::with_keymap(PathBuf::from("phase7_test.txt"), builtin_defaults())
 }
@@ -815,6 +830,112 @@ fn terminal_focus_routes_arrow_keys_as_ansi_sequences() {
         }
         other => panic!("expected terminal arrow dispatch, got {:?}", other),
     }
+}
+
+#[test]
+fn completion_popup_tab_accepts_selected_item() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = completion_context();
+    let now = std::time::Instant::now();
+
+    let mapped =
+        handler.route_normalized_input(named_input(NamedKey::Tab, Some(KeyCode::Tab)), &map, context, now);
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::CompletionAccept);
+        }
+        other => panic!("expected completion accept dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn completion_popup_ctrl_n_selects_next_item() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = completion_context();
+    let now = std::time::Instant::now();
+
+    let mapped = handler.route_normalized_input(ctrl_input('n', KeyCode::KeyN), &map, context, now);
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::CompletionNext);
+        }
+        other => panic!("expected completion next dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn completion_popup_ctrl_p_selects_prev_item() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = completion_context();
+    let now = std::time::Instant::now();
+
+    let mapped = handler.route_normalized_input(ctrl_input('p', KeyCode::KeyP), &map, context, now);
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::CompletionPrev);
+        }
+        other => panic!("expected completion prev dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn completion_popup_arrow_keys_still_navigate_items() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = completion_context();
+    let now = std::time::Instant::now();
+
+    let down = handler.route_normalized_input(
+        named_input(NamedKey::ArrowDown, Some(KeyCode::ArrowDown)),
+        &map,
+        context,
+        now,
+    );
+    match down {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::CompletionNext);
+        }
+        other => panic!("expected completion next dispatch for ArrowDown, got {:?}", other),
+    }
+
+    let up = handler.route_normalized_input(
+        named_input(NamedKey::ArrowUp, Some(KeyCode::ArrowUp)),
+        &map,
+        context,
+        now,
+    );
+    match up {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::CompletionPrev);
+        }
+        other => panic!("expected completion prev dispatch for ArrowUp, got {:?}", other),
+    }
+}
+
+#[test]
+fn completion_popup_shift_tab_is_not_intercepted() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = completion_context();
+    let now = std::time::Instant::now();
+
+    let mapped = handler.route_normalized_input(
+        shift_named_input(NamedKey::Tab, Some(KeyCode::Tab)),
+        &map,
+        context,
+        now,
+    );
+    assert!(
+        !matches!(
+            mapped,
+            Some(InputRouteOutcome::Dispatch(ref translated))
+                if translated.command == Command::CompletionPrev
+        ),
+        "Shift+Tab should no longer be intercepted as completion previous"
+    );
 }
 
 #[test]

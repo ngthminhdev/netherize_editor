@@ -3331,11 +3331,8 @@ impl AppState {
         if state.filtered_items.is_empty() {
             return false;
         }
-        let next = if state.selected_index == 0 {
-            state.filtered_items.len().saturating_sub(1)
-        } else {
-            state.selected_index - 1
-        };
+        let len = state.filtered_items.len();
+        let next = (state.selected_index + len - 1) % len;
         if next == state.selected_index {
             return false;
         }

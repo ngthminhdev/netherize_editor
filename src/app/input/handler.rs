@@ -814,23 +814,88 @@ impl InputHandler {
             && context.mode == EditorMode::Insert
             && context.completion_visible
         {
-            if normalized.named_key == Some(NamedKey::Tab) {
-                let command = if normalized.modifiers.shift_key() {
-                    Command::CompletionPrev
-                } else {
-                    Command::CompletionNext
-                };
+            if normalized.named_key == Some(NamedKey::Tab)
+                && !normalized.modifiers.control_key()
+                && !normalized.modifiers.alt_key()
+                && !normalized.modifiers.super_key()
+                && !normalized.modifiers.shift_key()
+            {
                 return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                     input_debug,
                     format!(
-                        "mode={} focus={} -> completion popup intercept",
+                        "mode={} focus={} -> completion accept intercept (Tab)",
                         context.mode.as_str(),
                         context.focus.as_str()
                     ),
-                    command,
+                    Command::CompletionAccept,
                     1,
                     false,
                 )));
+            }
+
+            if normalized.modifiers.control_key()
+                && !normalized.modifiers.alt_key()
+                && !normalized.modifiers.super_key()
+            {
+                match normalized.text.as_deref() {
+                    Some("n") | Some("N") => {
+                        return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                            input_debug,
+                            format!(
+                                "mode={} focus={} -> completion next intercept (Ctrl+N)",
+                                context.mode.as_str(),
+                                context.focus.as_str()
+                            ),
+                            Command::CompletionNext,
+                            1,
+                            false,
+                        )));
+                    }
+                    Some("p") | Some("P") => {
+                        return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                            input_debug,
+                            format!(
+                                "mode={} focus={} -> completion prev intercept (Ctrl+P)",
+                                context.mode.as_str(),
+                                context.focus.as_str()
+                            ),
+                            Command::CompletionPrev,
+                            1,
+                            false,
+                        )));
+                    }
+                    _ => {}
+                }
+            }
+
+            match normalized.named_key {
+                Some(NamedKey::ArrowDown) => {
+                    return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                        input_debug,
+                        format!(
+                            "mode={} focus={} -> completion next intercept (ArrowDown)",
+                            context.mode.as_str(),
+                            context.focus.as_str()
+                        ),
+                        Command::CompletionNext,
+                        1,
+                        false,
+                    )));
+                }
+                Some(NamedKey::ArrowUp) => {
+                    return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                        input_debug,
+                        format!(
+                            "mode={} focus={} -> completion prev intercept (ArrowUp)",
+                            context.mode.as_str(),
+                            context.focus.as_str()
+                        ),
+                        Command::CompletionPrev,
+                        1,
+                        false,
+                    )));
+                }
+                _ => {}
             }
 
             if normalized.named_key == Some(NamedKey::Enter) {
