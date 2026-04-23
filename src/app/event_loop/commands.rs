@@ -81,7 +81,12 @@ impl AppShell {
     }
 
     fn adjust_selected_setting(&mut self, delta: i32) -> bool {
-        let Some(selected) = self.app_state.active_settings_buffer().and_then(|state| state.selected_item()).cloned() else {
+        let Some(selected) = self
+            .app_state
+            .active_settings_buffer()
+            .and_then(|state| state.selected_item())
+            .cloned()
+        else {
             return false;
         };
 
@@ -90,7 +95,8 @@ impl AppShell {
                 let next = (current + delta).clamp(160, 640);
                 self.ui_config.docks.left.size_px = next as f32;
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
-                    && let Some(crate::app::app_state::SettingItem::SidebarWidth { current }) = state.selected_item_mut()
+                    && let Some(crate::app::app_state::SettingItem::SidebarWidth { current }) =
+                        state.selected_item_mut()
                 {
                     *current = next;
                 }
@@ -102,7 +108,8 @@ impl AppShell {
                 let next = (current + delta).clamp(180, 720);
                 self.ui_config.docks.right.size_px = next as f32;
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
-                    && let Some(crate::app::app_state::SettingItem::RightSidebarWidth { current }) = state.selected_item_mut()
+                    && let Some(crate::app::app_state::SettingItem::RightSidebarWidth { current }) =
+                        state.selected_item_mut()
                 {
                     *current = next;
                 }
@@ -114,7 +121,8 @@ impl AppShell {
                 let next = (current + delta).clamp(120, 520);
                 self.ui_config.docks.bottom.size_px = next as f32;
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
-                    && let Some(crate::app::app_state::SettingItem::BottomPanelHeight { current }) = state.selected_item_mut()
+                    && let Some(crate::app::app_state::SettingItem::BottomPanelHeight { current }) =
+                        state.selected_item_mut()
                 {
                     *current = next;
                 }
@@ -131,7 +139,12 @@ impl AppShell {
             return self.commit_settings_editing();
         }
 
-        let Some(selected) = self.app_state.active_settings_buffer().and_then(|state| state.selected_item()).cloned() else {
+        let Some(selected) = self
+            .app_state
+            .active_settings_buffer()
+            .and_then(|state| state.selected_item())
+            .cloned()
+        else {
             return false;
         };
 
@@ -193,10 +206,13 @@ impl AppShell {
 
         match kind {
             crate::app::app_state::SettingsEditingKind::FontFamily => {
-                self.base_theme.editor.font_family = (!trimmed.is_empty()).then(|| trimmed.to_string());
-                self.ui_config.editor.font_family = (!trimmed.is_empty()).then(|| trimmed.to_string());
+                self.base_theme.editor.font_family =
+                    (!trimmed.is_empty()).then(|| trimmed.to_string());
+                self.ui_config.editor.font_family =
+                    (!trimmed.is_empty()).then(|| trimmed.to_string());
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
-                    && let Some(crate::app::app_state::SettingItem::FontFamily { current }) = state.selected_item_mut()
+                    && let Some(crate::app::app_state::SettingItem::FontFamily { current }) =
+                        state.selected_item_mut()
                 {
                     *current = trimmed.to_string();
                 }
@@ -207,7 +223,8 @@ impl AppShell {
                     let value = value.clamp(8.0, 40.0);
                     self.base_theme.editor.font_size = value;
                     if let Some(state) = self.app_state.active_settings_buffer_mut()
-                        && let Some(crate::app::app_state::SettingItem::FontSize { current }) = state.selected_item_mut()
+                        && let Some(crate::app::app_state::SettingItem::FontSize { current }) =
+                            state.selected_item_mut()
                     {
                         *current = value;
                     }
@@ -219,7 +236,8 @@ impl AppShell {
                     let value = value.clamp(10.0, 64.0);
                     self.base_theme.editor.line_height = value;
                     if let Some(state) = self.app_state.active_settings_buffer_mut()
-                        && let Some(crate::app::app_state::SettingItem::LineHeight { current }) = state.selected_item_mut()
+                        && let Some(crate::app::app_state::SettingItem::LineHeight { current }) =
+                            state.selected_item_mut()
                     {
                         *current = value;
                     }
@@ -231,7 +249,8 @@ impl AppShell {
                     let value = value.clamp(160, 640);
                     self.ui_config.docks.left.size_px = value as f32;
                     if let Some(state) = self.app_state.active_settings_buffer_mut()
-                        && let Some(crate::app::app_state::SettingItem::SidebarWidth { current }) = state.selected_item_mut()
+                        && let Some(crate::app::app_state::SettingItem::SidebarWidth { current }) =
+                            state.selected_item_mut()
                     {
                         *current = value;
                     }
@@ -243,7 +262,9 @@ impl AppShell {
                     let value = value.clamp(180, 720);
                     self.ui_config.docks.right.size_px = value as f32;
                     if let Some(state) = self.app_state.active_settings_buffer_mut()
-                        && let Some(crate::app::app_state::SettingItem::RightSidebarWidth { current }) = state.selected_item_mut()
+                        && let Some(crate::app::app_state::SettingItem::RightSidebarWidth {
+                            current,
+                        }) = state.selected_item_mut()
                     {
                         *current = value;
                     }
@@ -255,7 +276,9 @@ impl AppShell {
                     let value = value.clamp(120, 520);
                     self.ui_config.docks.bottom.size_px = value as f32;
                     if let Some(state) = self.app_state.active_settings_buffer_mut()
-                        && let Some(crate::app::app_state::SettingItem::BottomPanelHeight { current }) = state.selected_item_mut()
+                        && let Some(crate::app::app_state::SettingItem::BottomPanelHeight {
+                            current,
+                        }) = state.selected_item_mut()
                     {
                         *current = value;
                     }
@@ -552,13 +575,16 @@ impl AppShell {
             | Command::FilePickerBackspaceQuery
             | Command::EditorPaste
             | Command::PasteSystemClipboard
-                if self.app_state.active_buffer_is_settings() && self.app_state.settings_is_editing() =>
+                if self.app_state.active_buffer_is_settings()
+                    && self.app_state.settings_is_editing() =>
             {
                 let changed = match command {
                     Command::FilePickerAppendQuery(text) => {
                         self.app_state.settings_append_editing_text(&text)
                     }
-                    Command::FilePickerBackspaceQuery => self.app_state.settings_backspace_editing(),
+                    Command::FilePickerBackspaceQuery => {
+                        self.app_state.settings_backspace_editing()
+                    }
                     Command::EditorPaste | Command::PasteSystemClipboard => {
                         if let Ok(text) = self.clipboard.get_text() {
                             self.app_state.settings_append_editing_text(&text)
@@ -574,7 +600,7 @@ impl AppShell {
                 }
                 changed
             }
-            | Command::OverlaySelectNext
+            Command::OverlaySelectNext
             | Command::OverlaySelectPrev
             | Command::FilePickerSelectNext
             | Command::FilePickerSelectPrev
@@ -1599,10 +1625,6 @@ impl AppShell {
     /// Helper: trả về (language_id, uri, lsp_line, lsp_character) nếu điều kiện hợp lệ.
     fn lsp_cursor_context(&self) -> Option<(String, String, u32, u32)> {
         if self.app_state.active_buffer_is_terminal() {
-            return None;
-        }
-        if self.active_lsp_server.is_none() {
-            eprintln!("[AppShell] LSP request skipped: no active LSP server");
             return None;
         }
         let buffer = self.app_state.active_text_buffer()?;

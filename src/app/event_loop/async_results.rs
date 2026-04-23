@@ -291,7 +291,8 @@ impl AsyncResultRouter for AppShell {
                     "[AppShell] LSP diagnostics: {} issue(s) in {uri}",
                     diagnostics.len()
                 );
-                if let Some(path) = lsp_uri_to_path(&uri)
+                if let Some(path) =
+                    lsp_uri_to_path(&uri).and_then(|path| path.canonicalize().ok().or(Some(path)))
                     && self.app_state.set_file_diagnostics(path, diagnostics)
                 {
                     self.editor_needs_layout |= self.app_state.active_buffer_is_diagnostics();
@@ -508,7 +509,8 @@ impl AsyncResultRouter for AppShell {
 /// Convert `file:///path/to/file` URI thành PathBuf.
 fn lsp_uri_to_path(uri: &str) -> Option<std::path::PathBuf> {
     let url = url::Url::parse(uri).ok()?;
-    url.to_file_path().ok()
+    let path = url.to_file_path().ok()?;
+    path.canonicalize().ok().or(Some(path))
 }
 
 /// Đọc ~(context*2+1) dòng code quanh `center_line` từ file để preview (gD).
