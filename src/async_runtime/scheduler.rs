@@ -31,7 +31,7 @@ use crate::lsp::client::{
     parse_publish_diagnostics, parse_window_log_message, read_json_rpc_message_async,
     spawn_lsp_server,
 };
-use crate::lsp::registry::language_profile_for_binary;
+use crate::lsp::registry::language_profile_for_language_id;
 use crate::syntax::{
     highlight::{generate_highlight_spans, generate_highlight_spans_in_byte_window},
     syntax_engine::SyntaxEngine,
@@ -73,6 +73,7 @@ const FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD: usize = 128 * 1024;
 const FULL_BUFFER_HIGHLIGHT_LINE_THRESHOLD: usize = 1_500;
 const VIEWPORT_HIGHLIGHT_OVERSCAN_MULTIPLIER: usize = 3;
 const VIEWPORT_HIGHLIGHT_MIN_OVERSCAN_LINES: usize = 48;
+const FILE_WATCH_BATCH_WINDOW: Duration = Duration::from_millis(50);
 
 #[derive(Default)]
 struct PtySessionRegistry {
@@ -95,27 +96,25 @@ struct LspSessionHandle {
 impl LspSessionRegistry {
     fn replace(
         &self,
-        language_id: String,
+        server_key: String,
         session: LspSessionHandle,
     ) -> Result<Option<LspSessionHandle>, String> {
         let mut guard = self
             .sessions
             .lock()
             .map_err(|_| "lsp session lock poisoned".to_string())?;
-        Ok(guard.insert(language_id, session))
+        Ok(guard.insert(server_key, session))
     }
 
     fn get(
         &self,
-        language_id: &str,
+        server_key: &str,
     ) -> Result<Option<Arc<crate::lsp::client::LspClientProcess>>, String> {
         let guard = self
             .sessions
             .lock()
             .map_err(|_| "lsp session lock poisoned".to_string())?;
-        Ok(guard
-            .get(language_id)
-            .map(|session| session.process.clone()))
+        Ok(guard.get(server_key).map(|session| session.process.clone()))
     }
 
     fn take_any(&self) -> Result<Option<LspSessionHandle>, String> {
@@ -728,11 +727,9 @@ fn execute_lsp_request(
                 request.revision_id,
             ))?;
             let session = spawned.process.clone();
-            let language_id = language_profile_for_binary(&spawned.server_name)
-                .map(|profile| profile.language_id.to_string())
-                .unwrap_or_else(|| spawned.server_name.clone());
+            let server_key = spawned.server_name.clone();
             let previous = lsp_sessions.replace(
-                language_id,
+                server_key,
                 LspSessionHandle {
                     process: session.clone(),
                     server_name: spawned.server_name.clone(),
@@ -776,7 +773,13 @@ fn execute_lsp_request(
             version,
             text,
         } => {
-            let Some(session) = lsp_sessions.get(language_id)? else {
+            let Some(server_key) = language_profile_for_language_id(language_id)
+                .map(|profile| profile.lsp_binary)
+                .or(Some(language_id.as_str()))
+            else {
+                return Err("lsp didOpen rejected: language profile not found".to_string());
+            };
+            let Some(session) = lsp_sessions.get(server_key)? else {
                 return Err("lsp didOpen rejected: server is not running".to_string());
             };
             session.update_request_meta(request.request_id, request.revision_id);
@@ -867,7 +870,13 @@ fn execute_lsp_request(
             line,
             character,
         } => {
-            let Some(session) = lsp_sessions.get(language_id)? else {
+            let Some(server_key) = language_profile_for_language_id(language_id)
+                .map(|profile| profile.lsp_binary)
+                .or(Some(language_id.as_str()))
+            else {
+                return Err("hover rejected: language profile not found".to_string());
+            };
+            let Some(session) = lsp_sessions.get(server_key)? else {
                 return Err("hover rejected: LSP server not running".to_string());
             };
             session.update_request_meta(request.request_id, request.revision_id);
@@ -919,7 +928,13 @@ fn execute_lsp_request(
             cursor_line,
             cursor_col,
         } => {
-            let Some(session) = lsp_sessions.get(language_id)? else {
+            let Some(server_key) = language_profile_for_language_id(language_id)
+                .map(|profile| profile.lsp_binary)
+                .or(Some(language_id.as_str()))
+            else {
+                return Err("completion rejected: language profile not found".to_string());
+            };
+            let Some(session) = lsp_sessions.get(server_key)? else {
                 return Err("completion rejected: LSP server not running".to_string());
             };
             session.update_request_meta(request.request_id, request.revision_id);
@@ -2095,33 +2110,76 @@ fn execute_file_watch_loop(
     loop {
         match notify_rx.recv() {
             Ok(Ok(event)) => {
-                let events = normalize_notify_event(event)
-                    .into_iter()
-                    .filter(|event| {
-                        !ignore_rules.should_ignore_path(&event.path)
-                            && event
-                                .new_path
-                                .as_ref()
-                                .map_or(true, |path| !ignore_rules.should_ignore_path(path))
-                    })
-                    .collect::<Vec<_>>();
-                if events.is_empty() {
-                    continue;
+                let mut events = Vec::new();
+                extend_unique_file_events(
+                    &mut events,
+                    filter_file_watch_events(event, &ignore_rules),
+                );
+
+                let mut channel_disconnected = false;
+                loop {
+                    match notify_rx.recv_timeout(FILE_WATCH_BATCH_WINDOW) {
+                        Ok(Ok(event)) => {
+                            extend_unique_file_events(
+                                &mut events,
+                                filter_file_watch_events(event, &ignore_rules),
+                            );
+                        }
+                        Ok(Err(err)) => return Err(format!("file watcher error: {err}")),
+                        Err(std_mpsc::RecvTimeoutError::Timeout) => break,
+                        Err(std_mpsc::RecvTimeoutError::Disconnected) => {
+                            channel_disconnected = true;
+                            break;
+                        }
+                    }
                 }
 
-                let result = WorkerResult {
-                    request_id: request.request_id,
-                    revision_id: request.revision_id,
-                    topic: request.topic,
-                    payload: WorkerResultPayload::FileSystemEvents {
-                        root_path: root_path.clone(),
-                        events,
-                    },
-                };
-                emit_message(worker_tx, WorkerMessage::Result(result));
+                if !events.is_empty() {
+                    let result = WorkerResult {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        payload: WorkerResultPayload::FileSystemEvents {
+                            root_path: root_path.clone(),
+                            events,
+                        },
+                    };
+                    emit_message(worker_tx, WorkerMessage::Result(result));
+                }
+
+                if channel_disconnected {
+                    return Err("file watcher channel disconnected".to_string());
+                }
             }
             Ok(Err(err)) => return Err(format!("file watcher error: {err}")),
             Err(err) => return Err(format!("file watcher channel disconnected: {err}")),
+        }
+    }
+}
+
+fn filter_file_watch_events(
+    event: NotifyEvent,
+    ignore_rules: &WorkspaceIgnoreRules,
+) -> Vec<FileSystemEvent> {
+    normalize_notify_event(event)
+        .into_iter()
+        .filter(|event| {
+            !ignore_rules.should_ignore_path(&event.path)
+                && event
+                    .new_path
+                    .as_ref()
+                    .map_or(true, |path| !ignore_rules.should_ignore_path(path))
+        })
+        .collect()
+}
+
+fn extend_unique_file_events(
+    target: &mut Vec<FileSystemEvent>,
+    incoming: impl IntoIterator<Item = FileSystemEvent>,
+) {
+    for event in incoming {
+        if !target.contains(&event) {
+            target.push(event);
         }
     }
 }
@@ -2304,10 +2362,11 @@ mod tests {
     use notify::{Event as NotifyEvent, EventKind as NotifyEventKind, event::ModifyKind};
 
     use crate::async_runtime::{
-        message::FileSystemChangeKind,
+        message::{FileSystemChangeKind, FileSystemEvent},
         scheduler::{
             build_file_preview_lines, build_fzf_find_file_script, build_fzf_live_grep_script,
-            build_worker_runtime, normalize_notify_event, parse_git_blame_summary,
+            build_worker_runtime, extend_unique_file_events, normalize_notify_event,
+            parse_git_blame_summary,
         },
     };
 
@@ -2353,6 +2412,20 @@ mod tests {
         assert_eq!(mapped[0].kind, FileSystemChangeKind::Rename);
         assert_eq!(mapped[0].path, PathBuf::from("/tmp/old.rs"));
         assert_eq!(mapped[0].new_path, None);
+    }
+
+    #[test]
+    fn extend_unique_file_events_deduplicates_burst_entries() {
+        let mut target = Vec::new();
+        let event = FileSystemEvent {
+            kind: FileSystemChangeKind::Modify,
+            path: PathBuf::from("/tmp/demo.rs"),
+            new_path: None,
+        };
+
+        extend_unique_file_events(&mut target, [event.clone(), event.clone()]);
+
+        assert_eq!(target, vec![event]);
     }
 
     #[test]
