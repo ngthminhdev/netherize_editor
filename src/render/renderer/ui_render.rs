@@ -734,26 +734,18 @@ impl Renderer {
                         .file_icon_for_path(path, false, false)
                         .glyph
                         .clone(),
-                    TopbarTabKind::Terminal => self
-                        .theme
-                        .file_icon_for_extension("sh")
-                        .glyph
-                        .clone(),
-                    TopbarTabKind::References => self
-                        .theme
-                        .file_icon_for_extension("txt")
-                        .glyph
-                        .clone(),
-                    TopbarTabKind::Diagnostics => self
-                        .theme
-                        .file_icon_for_extension("log")
-                        .glyph
-                        .clone(),
-                    TopbarTabKind::FuzzyPicker => self
-                        .theme
-                        .file_icon_for_extension("fzf")
-                        .glyph
-                        .clone(),
+                    TopbarTabKind::Terminal => {
+                        self.theme.file_icon_for_extension("sh").glyph.clone()
+                    }
+                    TopbarTabKind::References => {
+                        self.theme.file_icon_for_extension("txt").glyph.clone()
+                    }
+                    TopbarTabKind::Diagnostics => {
+                        self.theme.file_icon_for_extension("log").glyph.clone()
+                    }
+                    TopbarTabKind::FuzzyPicker => {
+                        self.theme.file_icon_for_extension("fzf").glyph.clone()
+                    }
                     TopbarTabKind::Settings => "⚙".to_string(),
                 };
                 let icon_color = match &tab.kind {
@@ -778,15 +770,18 @@ impl Renderer {
 
                 let is_active = active_buffer_index == Some(idx);
                 if is_active {
-                    chrome.push(RegionDrawInstance::new(
-                        [
-                            tab_x,
-                            bounds[1] + 2.0,
-                            tab_width,
-                            (bounds[3] - 4.0).max(0.0),
-                        ],
-                        active_bg,
-                    ).with_radius(6.0));
+                    chrome.push(
+                        RegionDrawInstance::new(
+                            [
+                                tab_x,
+                                bounds[1] + 2.0,
+                                tab_width,
+                                (bounds[3] - 4.0).max(0.0),
+                            ],
+                            active_bg,
+                        )
+                        .with_radius(6.0),
+                    );
                     chrome.push(RegionDrawInstance::new(
                         [
                             tab_x,
@@ -942,8 +937,7 @@ impl Renderer {
 
         let right_width = estimate_monospace_width(&right_text, font_size);
         let diagnostics_width = estimate_monospace_width(&diagnostics_label, font_size);
-        let right_x = (bounds[0]
-            + bounds[2]
+        let right_x = (bounds[0] + bounds[2]
             - self.statusbar_padding_x
             - right_width
             - diagnostics_width

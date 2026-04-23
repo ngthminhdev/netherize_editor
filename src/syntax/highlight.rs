@@ -277,11 +277,7 @@ pub fn should_highlight_inline(text: &str) -> bool {
     line_count <= INLINE_TREE_SITTER_LINE_THRESHOLD
 }
 
-pub fn highlight_snippet(
-    text: &str,
-    extension: &str,
-    _theme: &ThemeConfig,
-) -> Vec<HighlightSpan> {
+pub fn highlight_snippet(text: &str, extension: &str, _theme: &ThemeConfig) -> Vec<HighlightSpan> {
     if text.is_empty() || !should_highlight_inline(text) {
         return Vec::new();
     }

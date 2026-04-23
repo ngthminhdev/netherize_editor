@@ -1,12 +1,10 @@
 //! Editor viewport rendering: content text, caret, gutter, visual selection,
 //! current-line highlight.
 
-use cosmic_text::Metrics;
 use crate::{
     app::app_state::{
         AppState, DiagnosticsState, EditorOverlay, FloatingBoxBlock, FloatingBoxStyle,
-        OverlayColorToken,
-        ReferencesBufferState, SettingItem, SettingsState,
+        OverlayColorToken, ReferencesBufferState, SettingItem, SettingsState,
     },
     core::mode::EditorMode,
     render::{
@@ -14,6 +12,7 @@ use crate::{
     },
     text::layout_sync::{compute_caret_layout, compute_cursor_overlay, rebuild_layout_projection},
 };
+use cosmic_text::Metrics;
 
 use super::helpers::{
     caret_rect_for_mode, clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
@@ -613,7 +612,14 @@ impl Renderer {
         let right_header = diagnostics
             .results
             .get(diagnostics.selected_index)
-            .map(|item| format!("{}:{}:{}", item.file_path.display(), item.line + 1, item.col + 1))
+            .map(|item| {
+                format!(
+                    "{}:{}:{}",
+                    item.file_path.display(),
+                    item.line + 1,
+                    item.col + 1
+                )
+            })
             .unwrap_or_else(|| "No diagnostic selected".to_string());
         self.editor_overlay_text_system
             .set_size(Some((right_w - 20.0).max(1.0)), Some(line_height));
@@ -629,9 +635,11 @@ impl Renderer {
 
         let row_h = line_height * 2.0 + 8.0;
         let visible_rows = (content_h / row_h).floor() as usize;
-        let start = diagnostics
-            .selected_index
-            .saturating_sub(visible_rows.saturating_sub(1).min(diagnostics.selected_index));
+        let start = diagnostics.selected_index.saturating_sub(
+            visible_rows
+                .saturating_sub(1)
+                .min(diagnostics.selected_index),
+        );
         let left_text_width = (left_w - 24.0).max(1.0);
 
         for (slot, (item_idx, item)) in diagnostics
@@ -660,7 +668,12 @@ impl Renderer {
                 Some(2) => warning,
                 _ => fg_dim,
             };
-            let title = format!("{}:{}:{}", item.file_path.display(), item.line + 1, item.col + 1);
+            let title = format!(
+                "{}:{}:{}",
+                item.file_path.display(),
+                item.line + 1,
+                item.col + 1
+            );
             self.editor_overlay_text_system
                 .set_size(Some(left_text_width), Some(line_height));
             glyphs.extend(layout_panel_text(
@@ -687,13 +700,24 @@ impl Renderer {
 
         if !diagnostics.preview_lines.is_empty() {
             let line_number_width = estimate_monospace_width(
-                &format!("{:>4}", diagnostics.preview_lines.last().map(|line| line.line_number).unwrap_or(1)),
+                &format!(
+                    "{:>4}",
+                    diagnostics
+                        .preview_lines
+                        .last()
+                        .map(|line| line.line_number)
+                        .unwrap_or(1)
+                ),
                 font_size,
             ) + 14.0;
             let preview_text_width = (right_w - 20.0 - line_number_width).max(1.0);
             let preview_rows = ((content_h / line_height).floor() as usize).max(1);
             let mut preview_start = 0usize;
-            if let Some(target_idx) = diagnostics.preview_lines.iter().position(|line| line.is_target) {
+            if let Some(target_idx) = diagnostics
+                .preview_lines
+                .iter()
+                .position(|line| line.is_target)
+            {
                 preview_start = target_idx.saturating_sub(preview_rows / 2);
                 if preview_start + preview_rows > diagnostics.preview_lines.len() {
                     preview_start = diagnostics.preview_lines.len().saturating_sub(preview_rows);
@@ -747,7 +771,11 @@ impl Renderer {
             self.editor_overlay_text_system
                 .set_size(Some((right_w - 20.0).max(1.0)), Some(line_height));
             glyphs.extend(layout_panel_text(
-                if diagnostics.results.is_empty() { "No diagnostics" } else { "Loading preview..." },
+                if diagnostics.results.is_empty() {
+                    "No diagnostics"
+                } else {
+                    "Loading preview..."
+                },
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
@@ -904,7 +932,8 @@ impl Renderer {
                                 for (line_idx, line_text) in block_lines.iter().enumerate() {
                                     let text_y = popup_y
                                         + PAD_Y
-                                        + (block_line_offset + line_idx) as f32 * geometry.line_height;
+                                        + (block_line_offset + line_idx) as f32
+                                            * geometry.line_height;
                                     if text_y + geometry.line_height < viewport_top
                                         || text_y > viewport_bottom
                                     {
@@ -929,7 +958,8 @@ impl Renderer {
                                 for (line_idx, line_text) in block_lines.iter().enumerate() {
                                     let text_y = popup_y
                                         + PAD_Y
-                                        + (block_line_offset + line_idx) as f32 * geometry.line_height;
+                                        + (block_line_offset + line_idx) as f32
+                                            * geometry.line_height;
                                     if text_y + geometry.line_height < viewport_top
                                         || text_y > viewport_bottom
                                     {
@@ -991,8 +1021,10 @@ impl Renderer {
                 .max()
                 .unwrap_or(8);
             let visible_rows = completion.items.len().min(MAX_VISIBLE_ROWS).max(1);
-            let popup_w = (max_len as f32 * char_w + PAD_X * 2.0).clamp(160.0, geometry.viewport_text_width);
-            let popup_h = (visible_rows as f32 * geometry.line_height + PAD_Y * 2.0).max(geometry.line_height);
+            let popup_w =
+                (max_len as f32 * char_w + PAD_X * 2.0).clamp(160.0, geometry.viewport_text_width);
+            let popup_h = (visible_rows as f32 * geometry.line_height + PAD_Y * 2.0)
+                .max(geometry.line_height);
 
             let anchor_x = (geometry.origin_x + completion.anchor_col as f32 * char_w)
                 .clamp(geometry.viewport_text_left, viewport_right - popup_w);
@@ -1007,7 +1039,12 @@ impl Renderer {
             let selection_bg = self.theme.ui.selection_bg.as_f32();
 
             chrome_quads.push(RegionDrawInstance::new(
-                [anchor_x - BORDER, popup_y - BORDER, popup_w + BORDER * 2.0, popup_h + BORDER * 2.0],
+                [
+                    anchor_x - BORDER,
+                    popup_y - BORDER,
+                    popup_w + BORDER * 2.0,
+                    popup_h + BORDER * 2.0,
+                ],
                 border_color,
             ));
             chrome_quads.push(RegionDrawInstance::new(
@@ -1031,7 +1068,12 @@ impl Renderer {
                 let row_y = popup_y + PAD_Y + row_idx as f32 * geometry.line_height;
                 if item_idx == completion.selected_index {
                     chrome_quads.push(RegionDrawInstance::new(
-                        [anchor_x + 1.0, row_y, (popup_w - 2.0).max(1.0), geometry.line_height],
+                        [
+                            anchor_x + 1.0,
+                            row_y,
+                            (popup_w - 2.0).max(1.0),
+                            geometry.line_height,
+                        ],
                         selection_bg,
                     ));
                 }
@@ -1044,8 +1086,10 @@ impl Renderer {
                     _ => "•",
                 };
                 let row_text = format!("{} {}", icon, item.label);
-                self.editor_overlay_text_system
-                    .set_size(Some((popup_w - PAD_X * 2.0).max(1.0)), Some(geometry.line_height));
+                self.editor_overlay_text_system.set_size(
+                    Some((popup_w - PAD_X * 2.0).max(1.0)),
+                    Some(geometry.line_height),
+                );
                 glyphs.extend(layout_panel_text(
                     &row_text,
                     &mut self.editor_overlay_text_system,
@@ -1752,7 +1796,11 @@ impl Renderer {
             let value = match item {
                 SettingItem::ThemeSelector { current } => current.clone(),
                 SettingItem::FontFamily { current } => {
-                    if current.trim().is_empty() { "<default>".to_string() } else { current.clone() }
+                    if current.trim().is_empty() {
+                        "<default>".to_string()
+                    } else {
+                        current.clone()
+                    }
                 }
                 SettingItem::FontSize { current } => format!("{current:.1}"),
                 SettingItem::LineHeight { current } => format!("{current:.1}"),
@@ -1799,10 +1847,19 @@ impl Renderer {
                 &self.queue,
                 panel_x + 14.0,
                 row_y,
-                if idx == settings.selected_index { fg } else { fg_dim },
+                if idx == settings.selected_index {
+                    fg
+                } else {
+                    fg_dim
+                },
             ));
             chrome.push(RegionDrawInstance::new(
-                [panel_x + 10.0, row_y + row_h - 4.0, (panel_w - 20.0).max(1.0), 1.0],
+                [
+                    panel_x + 10.0,
+                    row_y + row_h - 4.0,
+                    (panel_w - 20.0).max(1.0),
+                    1.0,
+                ],
                 panel_bg,
             ));
         }

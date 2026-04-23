@@ -475,7 +475,12 @@ impl AppShell {
                     .configured_theme_profile()
                     .unwrap_or(self.base_theme.name.as_str())
                     .to_string();
-                let font_family = self.base_theme.editor.font_family.clone().unwrap_or_default();
+                let font_family = self
+                    .base_theme
+                    .editor
+                    .font_family
+                    .clone()
+                    .unwrap_or_default();
                 self.app_state.open_settings_buffer(
                     theme_profile,
                     font_family,
@@ -605,7 +610,10 @@ impl AppShell {
             {
                 let is_typing_edit = matches!(
                     &command,
-                    Command::InsertChar(_) | Command::InsertText(_) | Command::Backspace | Command::Newline
+                    Command::InsertChar(_)
+                        | Command::InsertText(_)
+                        | Command::Backspace
+                        | Command::Newline
                 );
                 if is_typing_edit {
                     let _ = self.app_state.clear_completion();
@@ -1588,8 +1596,8 @@ impl AppShell {
         false
     }
 
-    /// Helper: tr\u1ea3 v\u1ec1 (uri, lsp_line, lsp_character) n\u1ebfu \u0111i\u1ec1u ki\u1ec7n h\u1ee3p l\u1ec7.
-    fn lsp_cursor_context(&self) -> Option<(String, u32, u32)> {
+    /// Helper: trả về (language_id, uri, lsp_line, lsp_character) nếu điều kiện hợp lệ.
+    fn lsp_cursor_context(&self) -> Option<(String, String, u32, u32)> {
         if self.app_state.active_buffer_is_terminal() {
             return None;
         }
@@ -1597,22 +1605,23 @@ impl AppShell {
             eprintln!("[AppShell] LSP request skipped: no active LSP server");
             return None;
         }
-        let path = self.app_state.active_file()?;
-        let uri = crate::lsp::client::path_to_lsp_uri(path);
+        let buffer = self.app_state.active_text_buffer()?;
+        let language_id = buffer.language_id.clone()?;
+        let uri = crate::lsp::client::path_to_lsp_uri(&buffer.path);
         let (line, col) = self.app_state.cursor_line_col();
-        Some((uri, line as u32, col as u32))
+        Some((language_id, uri, line as u32, col as u32))
     }
 
     fn submit_lsp_hover(&mut self) -> bool {
-        let Some((uri, line, character)) = self.lsp_cursor_context() else {
+        let Some((language_id, uri, line, character)) = self.lsp_cursor_context() else {
             return false;
         };
-        // Clear overlay c\u0169 tr\u01b0\u1edbc khi g\u1eedi request m\u1edbi.
         let changed = self.app_state.clear_current_overlays();
         self.submit(RequestSpec {
             revision_id: 0,
             topic: RequestTopic::LspRequest,
             payload: WorkerRequestPayload::LspHoverRequest {
+                language_id,
                 uri,
                 line,
                 character,
@@ -1623,7 +1632,7 @@ impl AppShell {
 
     /// `jump = true` => gd (go to definition). `jump = false` => gD (peek preview).
     fn submit_lsp_definition(&mut self, jump: bool) -> bool {
-        let Some((uri, line, character)) = self.lsp_cursor_context() else {
+        let Some((_language_id, uri, line, character)) = self.lsp_cursor_context() else {
             return false;
         };
         let changed = self.app_state.clear_current_overlays();
@@ -1641,7 +1650,7 @@ impl AppShell {
     }
 
     fn submit_lsp_references(&mut self) -> bool {
-        let Some((uri, line, character)) = self.lsp_cursor_context() else {
+        let Some((_language_id, uri, line, character)) = self.lsp_cursor_context() else {
             return false;
         };
         let mut changed = self.app_state.clear_current_overlays();
@@ -1731,13 +1740,15 @@ impl AppShell {
             .diagnostics()
             .iter()
             .flat_map(|(path, diagnostics)| {
-                diagnostics.iter().map(|diagnostic| crate::app::app_state::DiagnosticItem {
-                    file_path: path.clone(),
-                    line: diagnostic.range.start.line as usize,
-                    col: diagnostic.range.start.character as usize,
-                    message: diagnostic.message.clone(),
-                    severity: diagnostic.severity,
-                })
+                diagnostics
+                    .iter()
+                    .map(|diagnostic| crate::app::app_state::DiagnosticItem {
+                        file_path: path.clone(),
+                        line: diagnostic.range.start.line as usize,
+                        col: diagnostic.range.start.character as usize,
+                        message: diagnostic.message.clone(),
+                        severity: diagnostic.severity,
+                    })
             })
             .collect::<Vec<_>>();
 
@@ -2012,7 +2023,7 @@ impl AppShell {
     }
 
     fn submit_lsp_completion(&mut self) -> bool {
-        let Some((uri, line, character)) = self.lsp_cursor_context() else {
+        let Some((language_id, uri, line, character)) = self.lsp_cursor_context() else {
             return false;
         };
         let (cursor_line, cursor_col) = self.app_state.cursor_line_col();
@@ -2022,6 +2033,7 @@ impl AppShell {
             revision_id: 0,
             topic: RequestTopic::LspRequest,
             payload: WorkerRequestPayload::LspCompletionRequest {
+                language_id,
                 uri,
                 line,
                 character,

@@ -9,7 +9,10 @@ pub fn language_id_for_path(path: &Path) -> Option<LanguageId> {
 }
 
 pub fn language_id_for_extension(extension: &str) -> Option<LanguageId> {
-    let ext = extension.trim().trim_start_matches('.').to_ascii_lowercase();
+    let ext = extension
+        .trim()
+        .trim_start_matches('.')
+        .to_ascii_lowercase();
     match ext.as_str() {
         "rs" | "rust" => Some(LanguageId::Rust),
         "js" | "javascript" => Some(LanguageId::JavaScript),

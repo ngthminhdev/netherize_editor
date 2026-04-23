@@ -1967,6 +1967,7 @@ dependencies = [
  "tree-sitter-rust",
  "tree-sitter-typescript",
  "tree-sitter-yaml",
+ "url",
  "wgpu",
  "winit",
 ]

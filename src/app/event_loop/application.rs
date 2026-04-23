@@ -398,10 +398,10 @@ impl AppShell {
                 // Push solid terminal_bg background quad MỖI FRAME khi terminal active.
                 // Không phụ thuộc vào dirty flag — đảm bảo background không bao giờ
                 // biến mất giữa các frame (khi chỉ có gutter/caret dirty mà không push bg).
-                region_instances.push(RegionDrawInstance::new(
-                    center_bounds,
-                    self.theme.ui.terminal_bg.as_f32(),
-                ).with_radius(self.ui_config.border_radius_px));
+                region_instances.push(
+                    RegionDrawInstance::new(center_bounds, self.theme.ui.terminal_bg.as_f32())
+                        .with_radius(self.ui_config.border_radius_px),
+                );
             }
 
             if self.editor_needs_layout || bounds_changed || show_welcome_changed {
@@ -679,11 +679,13 @@ impl AppShell {
                 .active_file()
                 .and_then(|path| self.app_state.diagnostics_for_path(path))
                 .map(|items| {
-                    items.iter().fold((0usize, 0usize), |(e, w), item| match item.severity {
-                        Some(1) => (e + 1, w),
-                        Some(2) => (e, w + 1),
-                        _ => (e, w),
-                    })
+                    items
+                        .iter()
+                        .fold((0usize, 0usize), |(e, w), item| match item.severity {
+                            Some(1) => (e + 1, w),
+                            Some(2) => (e, w + 1),
+                            _ => (e, w),
+                        })
                 })
                 .unwrap_or((0, 0));
             if let Some(renderer) = self.renderer.as_mut() {
@@ -858,9 +860,8 @@ fn focus_ring_instances(
     let inner_w = (w - t * 2.0).max(0.0);
     let inner_h = (h - t * 2.0).max(0.0);
 
-    let mut instances = vec![
-        RegionDrawInstance::new([x, y, w, h], color).with_radius(border_radius),
-    ];
+    let mut instances =
+        vec![RegionDrawInstance::new([x, y, w, h], color).with_radius(border_radius)];
     if inner_w > 0.0 && inner_h > 0.0 {
         instances.push(
             RegionDrawInstance::new([inner_x, inner_y, inner_w, inner_h], inner_fill)

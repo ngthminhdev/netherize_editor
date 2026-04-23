@@ -31,6 +31,7 @@ use crate::lsp::client::{
     parse_publish_diagnostics, parse_window_log_message, read_json_rpc_message_async,
     spawn_lsp_server,
 };
+use crate::lsp::registry::language_profile_for_binary;
 use crate::syntax::{
     highlight::{generate_highlight_spans, generate_highlight_spans_in_byte_window},
     syntax_engine::SyntaxEngine,
@@ -81,7 +82,7 @@ struct PtySessionRegistry {
 
 #[derive(Default)]
 struct LspSessionRegistry {
-    session: Mutex<Option<LspSessionHandle>>,
+    sessions: Mutex<HashMap<String, LspSessionHandle>>,
 }
 
 #[derive(Clone)]
@@ -92,28 +93,40 @@ struct LspSessionHandle {
 }
 
 impl LspSessionRegistry {
-    fn replace(&self, session: LspSessionHandle) -> Result<Option<LspSessionHandle>, String> {
+    fn replace(
+        &self,
+        language_id: String,
+        session: LspSessionHandle,
+    ) -> Result<Option<LspSessionHandle>, String> {
         let mut guard = self
-            .session
+            .sessions
             .lock()
             .map_err(|_| "lsp session lock poisoned".to_string())?;
-        Ok(guard.replace(session))
+        Ok(guard.insert(language_id, session))
     }
 
-    fn get(&self) -> Result<Option<Arc<crate::lsp::client::LspClientProcess>>, String> {
+    fn get(
+        &self,
+        language_id: &str,
+    ) -> Result<Option<Arc<crate::lsp::client::LspClientProcess>>, String> {
         let guard = self
-            .session
+            .sessions
             .lock()
             .map_err(|_| "lsp session lock poisoned".to_string())?;
-        Ok(guard.as_ref().map(|session| session.process.clone()))
+        Ok(guard
+            .get(language_id)
+            .map(|session| session.process.clone()))
     }
 
-    fn take(&self) -> Result<Option<LspSessionHandle>, String> {
+    fn take_any(&self) -> Result<Option<LspSessionHandle>, String> {
         let mut guard = self
-            .session
+            .sessions
             .lock()
             .map_err(|_| "lsp session lock poisoned".to_string())?;
-        Ok(guard.take())
+        let Some(language_id) = guard.keys().next().cloned() else {
+            return Ok(None);
+        };
+        Ok(guard.remove(&language_id))
     }
 
     fn clear_if_process(
@@ -121,14 +134,13 @@ impl LspSessionRegistry {
         process: &Arc<crate::lsp::client::LspClientProcess>,
     ) -> Result<Option<LspSessionHandle>, String> {
         let mut guard = self
-            .session
+            .sessions
             .lock()
             .map_err(|_| "lsp session lock poisoned".to_string())?;
-        if guard
-            .as_ref()
-            .is_some_and(|session| Arc::ptr_eq(&session.process, process))
-        {
-            return Ok(guard.take());
+        if let Some(language_id) = guard.iter().find_map(|(language_id, session)| {
+            Arc::ptr_eq(&session.process, process).then(|| language_id.clone())
+        }) {
+            return Ok(guard.remove(&language_id));
         }
         Ok(None)
     }
@@ -716,11 +728,17 @@ fn execute_lsp_request(
                 request.revision_id,
             ))?;
             let session = spawned.process.clone();
-            let previous = lsp_sessions.replace(LspSessionHandle {
-                process: session.clone(),
-                server_name: spawned.server_name.clone(),
-                root_path: spawned.root_path.clone(),
-            })?;
+            let language_id = language_profile_for_binary(&spawned.server_name)
+                .map(|profile| profile.language_id.to_string())
+                .unwrap_or_else(|| spawned.server_name.clone());
+            let previous = lsp_sessions.replace(
+                language_id,
+                LspSessionHandle {
+                    process: session.clone(),
+                    server_name: spawned.server_name.clone(),
+                    root_path: spawned.root_path.clone(),
+                },
+            )?;
 
             spawn_lsp_stdout_reader(
                 session,
@@ -758,7 +776,7 @@ fn execute_lsp_request(
             version,
             text,
         } => {
-            let Some(session) = lsp_sessions.get()? else {
+            let Some(session) = lsp_sessions.get(language_id)? else {
                 return Err("lsp didOpen rejected: server is not running".to_string());
             };
             session.update_request_meta(request.request_id, request.revision_id);
@@ -786,11 +804,18 @@ fn execute_lsp_request(
             }
         }
         WorkerRequestPayload::LspDidChange { uri, version, text } => {
-            let Some(session) = lsp_sessions.get()? else {
+            let Some(active_session) = lsp_sessions
+                .sessions
+                .lock()
+                .map_err(|_| "lsp session lock poisoned".to_string())?
+                .values()
+                .find(|session| session.process.is_document_open(uri))
+                .map(|session| session.process.clone())
+            else {
                 return Err("lsp didChange rejected: server is not running".to_string());
             };
-            session.update_request_meta(request.request_id, request.revision_id);
-            session.send_notification(
+            active_session.update_request_meta(request.request_id, request.revision_id);
+            active_session.send_notification(
                 "textDocument/didChange",
                 build_did_change_notification(uri, *version, text),
             )?;
@@ -802,13 +827,20 @@ fn execute_lsp_request(
             })
         }
         WorkerRequestPayload::LspDidClose { uri } => {
-            let Some(session) = lsp_sessions.get()? else {
+            let Some(active_session) = lsp_sessions
+                .sessions
+                .lock()
+                .map_err(|_| "lsp session lock poisoned".to_string())?
+                .values()
+                .find(|session| session.process.is_document_open(uri))
+                .map(|session| session.process.clone())
+            else {
                 return Err("lsp didClose rejected: server is not running".to_string());
             };
-            session.update_request_meta(request.request_id, request.revision_id);
-            session
+            active_session.update_request_meta(request.request_id, request.revision_id);
+            active_session
                 .send_notification("textDocument/didClose", build_did_close_notification(uri))?;
-            session.mark_document_closed(uri);
+            active_session.mark_document_closed(uri);
 
             Ok(WorkerResultPayload::LspAck {
                 action: "didClose".to_string(),
@@ -817,7 +849,7 @@ fn execute_lsp_request(
             })
         }
         WorkerRequestPayload::StopLspServer => {
-            let Some(session) = lsp_sessions.take()? else {
+            let Some(session) = lsp_sessions.take_any()? else {
                 return Err("stop lsp rejected: no active server".to_string());
             };
             session
@@ -830,11 +862,12 @@ fn execute_lsp_request(
             })
         }
         WorkerRequestPayload::LspHoverRequest {
+            language_id,
             uri,
             line,
             character,
         } => {
-            let Some(session) = lsp_sessions.get()? else {
+            let Some(session) = lsp_sessions.get(language_id)? else {
                 return Err("hover rejected: LSP server not running".to_string());
             };
             session.update_request_meta(request.request_id, request.revision_id);
@@ -847,7 +880,14 @@ fn execute_lsp_request(
             character,
             jump,
         } => {
-            let Some(session) = lsp_sessions.get()? else {
+            let Some(session) = lsp_sessions
+                .sessions
+                .lock()
+                .map_err(|_| "lsp session lock poisoned".to_string())?
+                .values()
+                .find(|session| session.process.is_document_open(uri))
+                .map(|session| session.process.clone())
+            else {
                 return Err("definition rejected: LSP server not running".to_string());
             };
             session.update_request_meta(request.request_id, request.revision_id);
@@ -858,20 +898,28 @@ fn execute_lsp_request(
             line,
             character,
         } => {
-            let Some(session) = lsp_sessions.get()? else {
+            let Some(session) = lsp_sessions
+                .sessions
+                .lock()
+                .map_err(|_| "lsp session lock poisoned".to_string())?
+                .values()
+                .find(|session| session.process.is_document_open(uri))
+                .map(|session| session.process.clone())
+            else {
                 return Err("references rejected: LSP server not running".to_string());
             };
             session.update_request_meta(request.request_id, request.revision_id);
             handle_lsp_references(&session, uri, *line, *character)
         }
         WorkerRequestPayload::LspCompletionRequest {
+            language_id,
             uri,
             line,
             character,
             cursor_line,
             cursor_col,
         } => {
-            let Some(session) = lsp_sessions.get()? else {
+            let Some(session) = lsp_sessions.get(language_id)? else {
                 return Err("completion rejected: LSP server not running".to_string());
             };
             session.update_request_meta(request.request_id, request.revision_id);
@@ -1987,7 +2035,7 @@ async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayl
         | WorkerRequestPayload::LspHoverRequest { .. }
         | WorkerRequestPayload::LspDefinitionRequest { .. }
         | WorkerRequestPayload::LspReferencesRequest { .. }
-                | WorkerRequestPayload::LspCompletionRequest { .. }
+        | WorkerRequestPayload::LspCompletionRequest { .. }
         | WorkerRequestPayload::StopLspServer => {
             Err("LSP request should be handled by dedicated LSP runner".to_string())
         }

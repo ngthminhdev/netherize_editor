@@ -175,6 +175,12 @@ pub fn language_profile_for_path(path: &Path) -> Option<&'static LanguageProfile
         .and_then(language_profile_for_extension)
 }
 
+pub fn language_profile_for_language_id(language_id: &str) -> Option<&'static LanguageProfile> {
+    LANGUAGE_REGISTRY
+        .iter()
+        .find(|profile| profile.language_id.eq_ignore_ascii_case(language_id))
+}
+
 pub fn language_profile_for_binary(binary: &str) -> Option<&'static LanguageProfile> {
     LANGUAGE_REGISTRY
         .iter()

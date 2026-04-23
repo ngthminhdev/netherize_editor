@@ -4,8 +4,7 @@ use std::path::Path;
 use super::*;
 
 use crate::{
-    app::app_state::FloatingBoxBlock,
-    async_runtime::message::FilePreviewLine,
+    app::app_state::FloatingBoxBlock, async_runtime::message::FilePreviewLine,
     syntax::highlight::highlight_snippet,
 };
 
@@ -85,7 +84,10 @@ pub(super) fn build_preview_render_data(
     (text, spans)
 }
 
-pub(super) fn parse_hover_markdown_blocks(content: &str, theme: &ThemeConfig) -> Vec<FloatingBoxBlock> {
+pub(super) fn parse_hover_markdown_blocks(
+    content: &str,
+    theme: &ThemeConfig,
+) -> Vec<FloatingBoxBlock> {
     let mut blocks = Vec::new();
     let mut prose_lines: Vec<String> = Vec::new();
     let mut code_lines: Vec<String> = Vec::new();
@@ -93,26 +95,22 @@ pub(super) fn parse_hover_markdown_blocks(content: &str, theme: &ThemeConfig) ->
     let mut in_code_block = false;
 
     let flush_prose = |blocks: &mut Vec<FloatingBoxBlock>, prose_lines: &mut Vec<String>| {
-        let text = prose_lines
-            .join("\n")
-            .trim()
-            .to_string();
+        let text = prose_lines.join("\n").trim().to_string();
         prose_lines.clear();
         if !text.is_empty() {
             blocks.push(FloatingBoxBlock::Prose(text));
         }
     };
 
-    let flush_code = |blocks: &mut Vec<FloatingBoxBlock>, code_lines: &mut Vec<String>, code_language: &str| {
+    let flush_code = |blocks: &mut Vec<FloatingBoxBlock>,
+                      code_lines: &mut Vec<String>,
+                      code_language: &str| {
         let text = code_lines.join("\n");
         code_lines.clear();
         if text.trim().is_empty() {
             return;
         }
-        let spans = syntax_spans_to_styled(
-            &highlight_snippet(&text, code_language, theme),
-            theme,
-        );
+        let spans = syntax_spans_to_styled(&highlight_snippet(&text, code_language, theme), theme);
         blocks.push(FloatingBoxBlock::Code { text, spans });
     };
 

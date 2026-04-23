@@ -450,12 +450,14 @@ impl AsyncResultRouter for AppShell {
                 if items.is_empty() {
                     return;
                 }
-                let changed = self.app_state.set_completion(crate::app::app_state::CompletionState {
-                    items,
-                    selected_index: 0,
-                    anchor_line: cursor_line,
-                    anchor_col: cursor_col,
-                });
+                let changed =
+                    self.app_state
+                        .set_completion(crate::app::app_state::CompletionState {
+                            items,
+                            selected_index: 0,
+                            anchor_line: cursor_line,
+                            anchor_col: cursor_col,
+                        });
                 if changed {
                     self.editor_caret_needs_layout = true;
                     self.request_redraw();
@@ -505,7 +507,8 @@ impl AsyncResultRouter for AppShell {
 
 /// Convert `file:///path/to/file` URI thành PathBuf.
 fn lsp_uri_to_path(uri: &str) -> Option<std::path::PathBuf> {
-    uri.strip_prefix("file://").map(std::path::PathBuf::from)
+    let url = url::Url::parse(uri).ok()?;
+    url.to_file_path().ok()
 }
 
 /// Đọc ~(context*2+1) dòng code quanh `center_line` từ file để preview (gD).

@@ -168,6 +168,7 @@ pub enum WorkerRequestPayload {
     },
     /// textDocument/hover request.
     LspHoverRequest {
+        language_id: String,
         uri: String,
         line: u32,
         character: u32,
@@ -188,6 +189,7 @@ pub enum WorkerRequestPayload {
     },
     /// textDocument/completion request.
     LspCompletionRequest {
+        language_id: String,
         uri: String,
         line: u32,
         character: u32,

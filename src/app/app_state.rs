@@ -224,6 +224,7 @@ pub enum ClipboardRecordKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditorBuffer {
     pub path: PathBuf,
+    pub language_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2297,6 +2298,8 @@ impl AppState {
         let canonical_path = path
             .canonicalize()
             .map_err(|err| format!("canonicalize file {:?} failed: {err}", path))?;
+        let language_id = crate::lsp::registry::language_profile_for_path(&canonical_path)
+            .map(|profile| profile.language_id.to_string());
         let active_idx = match self
             .buffers
             .iter()
@@ -2307,6 +2310,7 @@ impl AppState {
                 self.buffers.push(BufferEntry {
                     content: BufferContent::Text(EditorBuffer {
                         path: canonical_path.clone(),
+                        language_id,
                     }),
                 });
                 self.buffers.len().saturating_sub(1)
@@ -2934,6 +2938,14 @@ impl AppState {
     pub fn active_buffer(&self) -> Option<&BufferEntry> {
         self.active_buffer_index
             .and_then(|idx| self.buffers.get(idx))
+    }
+
+    pub fn active_text_buffer(&self) -> Option<&EditorBuffer> {
+        let buffer = self.active_buffer()?;
+        match &buffer.content {
+            BufferContent::Text(text) => Some(text),
+            _ => None,
+        }
     }
 
     pub fn active_buffer_is_terminal(&self) -> bool {
@@ -3858,6 +3870,8 @@ impl AppState {
     }
 
     fn register_open_text_buffer(&mut self, active_path: PathBuf) {
+        let language_id = crate::lsp::registry::language_profile_for_path(&active_path)
+            .map(|profile| profile.language_id.to_string());
         if let Some(existing_idx) = self
             .buffers
             .iter()
@@ -3868,7 +3882,10 @@ impl AppState {
         }
 
         self.buffers.push(BufferEntry {
-            content: BufferContent::Text(EditorBuffer { path: active_path }),
+            content: BufferContent::Text(EditorBuffer {
+                path: active_path,
+                language_id,
+            }),
         });
         self.active_buffer_index = Some(self.buffers.len().saturating_sub(1));
     }

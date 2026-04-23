@@ -651,7 +651,10 @@ fn repeated_toggle_command_is_ignored_while_holding() {
 
     let repeated =
         handler.route_repeated_normalized_input(named_input(NamedKey::F12, None), &map, context);
-    assert!(repeated.is_none(), "held toggle/system keys should be ignored");
+    assert!(
+        repeated.is_none(),
+        "held toggle/system keys should be ignored"
+    );
 }
 
 #[test]
