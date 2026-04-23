@@ -200,6 +200,16 @@ pub enum Command {
     LspPreviewDefinition,
     /// gr: Gửi textDocument/references, mở danh sách tham chiếu.
     LspReferences,
+    /// ctrl+space trong insert mode: gửi textDocument/completion.
+    TriggerCompletion,
+    /// Completion popup: chọn item kế tiếp.
+    CompletionNext,
+    /// Completion popup: chọn item trước đó.
+    CompletionPrev,
+    /// Completion popup: chèn item đang chọn.
+    CompletionAccept,
+    /// Completion popup: đóng popup.
+    CompletionClose,
     /// References view: chọn item kế tiếp.
     ReferencesSelectNext,
     /// References view: chọn item trước đó.
@@ -297,6 +307,8 @@ impl Command {
                 | Self::Redo
                 | Self::OverlaySelectNext
                 | Self::OverlaySelectPrev
+                | Self::CompletionNext
+                | Self::CompletionPrev
                 | Self::ReferencesSelectNext
                 | Self::ReferencesSelectPrev
                 | Self::DiagnosticsSelectNext

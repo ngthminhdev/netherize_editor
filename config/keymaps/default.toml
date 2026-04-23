@@ -652,6 +652,11 @@ mode = "normal"
 key = "g r"
 command = "lsp.references"
 
+[[bindings]]
+mode = "insert"
+key = "ctrl+space"
+command = "lsp.trigger_completion"
+
 # ───────────────── LEADER ─────────────────
 [[bindings]]
 mode = "normal"

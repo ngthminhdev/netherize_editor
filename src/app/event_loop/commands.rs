@@ -279,6 +279,11 @@ impl AppShell {
             Command::LspGoToDefinition => self.submit_lsp_definition(true),
             Command::LspPreviewDefinition => self.submit_lsp_definition(false),
             Command::LspReferences => self.submit_lsp_references(),
+            Command::TriggerCompletion => self.submit_lsp_completion(),
+            Command::CompletionNext => self.select_next_completion_item(),
+            Command::CompletionPrev => self.select_prev_completion_item(),
+            Command::CompletionAccept => self.accept_completion_item(),
+            Command::CompletionClose => self.close_completion_popup(),
             Command::DiagnosticsOpenPicker => self.open_diagnostics_picker(),
             Command::ReferencesSelectNext => self.select_next_reference_item(),
             Command::ReferencesSelectPrev => self.select_prev_reference_item(),
@@ -298,6 +303,7 @@ impl AppShell {
             | Command::FilePickerSelectPrev
                 if self.app_state.active_buffer_is_fuzzy_picker() =>
             {
+                let _ = self.app_state.clear_completion();
                 let report = {
                     let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
                     dispatch_command_with_clipboard_count(
@@ -325,6 +331,13 @@ impl AppShell {
                 if self.app_state.current_mode() == EditorMode::PaletteFocus
                     && self.app_state.is_command_palette_visible() =>
             {
+                let is_typing_edit = matches!(
+                    &command,
+                    Command::InsertChar(_) | Command::InsertText(_) | Command::Backspace | Command::Newline
+                );
+                if is_typing_edit {
+                    let _ = self.app_state.clear_completion();
+                }
                 let report = {
                     let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
                     dispatch_palette_overlay_command(app_state, clipboard, command)
@@ -1056,6 +1069,9 @@ impl AppShell {
                     &command,
                     Command::InsertChar(_) | Command::InsertText(_) | Command::Backspace
                 );
+                if is_typing_edit {
+                    let _ = self.app_state.clear_completion();
+                }
                 let report = {
                     let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
                     dispatch_command_with_clipboard_count(
@@ -1721,6 +1737,89 @@ impl AppShell {
             self.input_handler.clear_pending_prefix();
         }
         changed
+    }
+
+    fn submit_lsp_completion(&mut self) -> bool {
+        let Some((uri, line, character)) = self.lsp_cursor_context() else {
+            return false;
+        };
+        let (cursor_line, cursor_col) = self.app_state.cursor_line_col();
+        let mut changed = self.app_state.clear_current_overlays();
+        changed |= self.app_state.clear_completion();
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspCompletionRequest {
+                uri,
+                line,
+                character,
+                cursor_line,
+                cursor_col,
+            },
+        });
+        changed
+    }
+
+    fn select_next_completion_item(&mut self) -> bool {
+        let changed = self.app_state.completion_select_next();
+        if changed {
+            self.editor_caret_needs_layout = true;
+            self.request_redraw();
+        }
+        changed
+    }
+
+    fn select_prev_completion_item(&mut self) -> bool {
+        let changed = self.app_state.completion_select_prev();
+        if changed {
+            self.editor_caret_needs_layout = true;
+            self.request_redraw();
+        }
+        changed
+    }
+
+    fn close_completion_popup(&mut self) -> bool {
+        let changed = self.app_state.clear_completion();
+        if changed {
+            self.editor_caret_needs_layout = true;
+            self.request_redraw();
+        }
+        changed
+    }
+
+    fn accept_completion_item(&mut self) -> bool {
+        let Some(item) = self.app_state.selected_completion_item().cloned() else {
+            return false;
+        };
+        let insert_text = item
+            .insert_text
+            .clone()
+            .or(item.text_edit_text.clone())
+            .unwrap_or(item.label.clone());
+        if insert_text.is_empty() {
+            return self.close_completion_popup();
+        }
+
+        let _ = self.app_state.clear_completion();
+        let report = {
+            let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
+            dispatch_command_with_clipboard_count(
+                app_state,
+                Command::InsertText(insert_text),
+                1,
+                Some(clipboard),
+            )
+        };
+        if report.state_changed {
+            self.reconcile_highlight_spans_with_pending_edits();
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = true;
+            let viewport_lines = self.editor_viewport_lines();
+            self.app_state.auto_scroll_to_cursor(viewport_lines);
+            self.submit_lsp_did_open_for_active_file();
+            self.request_redraw();
+        }
+        report.request_redraw || report.state_changed || true
     }
 
     fn open_prompt_overlay(

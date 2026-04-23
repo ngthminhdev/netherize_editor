@@ -72,6 +72,7 @@ pub struct KeybindingContext {
     pub mode: EditorMode,
     pub focus: InputFocusContext,
     pub command_palette_visible: bool,
+    pub completion_visible: bool,
 }
 
 impl KeybindingContext {
@@ -84,6 +85,7 @@ impl KeybindingContext {
             mode,
             focus,
             command_palette_visible: false,
+            completion_visible: false,
         }
     }
 
@@ -102,6 +104,7 @@ impl KeybindingContext {
             mode,
             focus,
             command_palette_visible: false,
+            completion_visible: false,
         }
     }
 }

@@ -14,7 +14,7 @@ use crate::app::{
     file_picker::FilePickerEntry,
 };
 use crate::async_runtime::message::{
-    FilePreviewLine, FileSystemChangeKind, FileSystemEvent, LspDiagnostic,
+    FilePreviewLine, FileSystemChangeKind, FileSystemEvent, LspCompletionItem, LspDiagnostic,
 };
 use crate::core::commands::{TextObjectKind, TextObjectModifier};
 use crate::core::mode::{
@@ -101,6 +101,14 @@ pub struct DiagnosticsState {
     pub results: Vec<DiagnosticItem>,
     pub selected_index: usize,
     pub preview_lines: Vec<FilePreviewLine>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletionState {
+    pub items: Vec<LspCompletionItem>,
+    pub selected_index: usize,
+    pub anchor_line: usize,
+    pub anchor_col: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -288,6 +296,7 @@ pub struct AppState {
     current_transaction: Option<Transaction>,
     pending_highlight_edits: Vec<HighlightEdit>,
     current_overlays: Vec<EditorOverlay>,
+    completion: Option<CompletionState>,
     jump_back_stack: Vec<(PathBuf, usize)>,
     jump_forward_stack: Vec<(PathBuf, usize)>,
     diagnostics: HashMap<PathBuf, Vec<LspDiagnostic>>,
@@ -324,6 +333,7 @@ impl AppState {
             current_transaction: None,
             pending_highlight_edits: Vec::new(),
             current_overlays: Vec::new(),
+            completion: None,
             jump_back_stack: Vec::new(),
             jump_forward_stack: Vec::new(),
             diagnostics: HashMap::new(),
@@ -360,6 +370,7 @@ impl AppState {
             current_transaction: None,
             pending_highlight_edits: Vec::new(),
             current_overlays: Vec::new(),
+            completion: None,
             jump_back_stack: Vec::new(),
             jump_forward_stack: Vec::new(),
             diagnostics: HashMap::new(),
@@ -2786,6 +2797,73 @@ impl AppState {
 
     pub fn current_overlays(&self) -> &[EditorOverlay] {
         &self.current_overlays
+    }
+
+    pub fn completion(&self) -> Option<&CompletionState> {
+        self.completion.as_ref()
+    }
+
+    pub fn has_completion(&self) -> bool {
+        self.completion.is_some()
+    }
+
+    pub fn set_completion(&mut self, completion: CompletionState) -> bool {
+        if self.completion.as_ref() == Some(&completion) {
+            return false;
+        }
+        self.completion = Some(completion);
+        self.bump_revision();
+        true
+    }
+
+    pub fn clear_completion(&mut self) -> bool {
+        if self.completion.is_none() {
+            return false;
+        }
+        self.completion = None;
+        self.bump_revision();
+        true
+    }
+
+    pub fn completion_select_next(&mut self) -> bool {
+        let Some(state) = self.completion.as_mut() else {
+            return false;
+        };
+        if state.items.is_empty() {
+            return false;
+        }
+        let next = (state.selected_index + 1) % state.items.len();
+        if next == state.selected_index {
+            return false;
+        }
+        state.selected_index = next;
+        self.bump_revision();
+        true
+    }
+
+    pub fn completion_select_prev(&mut self) -> bool {
+        let Some(state) = self.completion.as_mut() else {
+            return false;
+        };
+        if state.items.is_empty() {
+            return false;
+        }
+        let next = if state.selected_index == 0 {
+            state.items.len().saturating_sub(1)
+        } else {
+            state.selected_index - 1
+        };
+        if next == state.selected_index {
+            return false;
+        }
+        state.selected_index = next;
+        self.bump_revision();
+        true
+    }
+
+    pub fn selected_completion_item(&self) -> Option<&LspCompletionItem> {
+        let state = self.completion.as_ref()?;
+        state.items.get(state.selected_index)
     }
 
     pub fn set_current_overlays(&mut self, overlays: Vec<EditorOverlay>) -> bool {

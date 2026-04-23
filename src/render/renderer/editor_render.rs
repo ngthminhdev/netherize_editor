@@ -769,7 +769,7 @@ impl Renderer {
 
     /// Rebuild overlay glyph instances and floating-box chrome for the editor layer.
     pub fn update_editor_overlays(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {
-        if app_state.current_overlays().is_empty() {
+        if app_state.current_overlays().is_empty() && app_state.completion().is_none() {
             self.clear_editor_overlays();
             return;
         }
@@ -975,6 +975,87 @@ impl Renderer {
                         }
                     }
                 }
+            }
+        }
+
+        if let Some(completion) = app_state.completion() {
+            const PAD_X: f32 = 10.0;
+            const PAD_Y: f32 = 6.0;
+            const BORDER: f32 = 1.0;
+            const MAX_VISIBLE_ROWS: usize = 8;
+
+            let char_w = (geometry.font_size * 0.6).max(1.0);
+            let max_len = completion
+                .items
+                .iter()
+                .map(|item| item.label.chars().count() + 3)
+                .max()
+                .unwrap_or(8);
+            let visible_rows = completion.items.len().min(MAX_VISIBLE_ROWS).max(1);
+            let popup_w = (max_len as f32 * char_w + PAD_X * 2.0).clamp(160.0, geometry.viewport_text_width);
+            let popup_h = (visible_rows as f32 * geometry.line_height + PAD_Y * 2.0).max(geometry.line_height);
+
+            let anchor_x = (geometry.origin_x + completion.anchor_col as f32 * char_w)
+                .clamp(geometry.viewport_text_left, viewport_right - popup_w);
+            let anchor_y = geometry.origin_y + completion.anchor_line as f32 * geometry.line_height;
+            let mut popup_y = anchor_y + geometry.line_height;
+            if popup_y + popup_h > viewport_bottom {
+                popup_y = (anchor_y - popup_h).max(center_bounds[1]);
+            }
+
+            let bg_color = self.theme.ui.panel_bg.as_f32();
+            let border_color = self.theme.ui.border_color.as_f32();
+            let selection_bg = self.theme.ui.selection_bg.as_f32();
+
+            chrome_quads.push(RegionDrawInstance::new(
+                [anchor_x - BORDER, popup_y - BORDER, popup_w + BORDER * 2.0, popup_h + BORDER * 2.0],
+                border_color,
+            ));
+            chrome_quads.push(RegionDrawInstance::new(
+                [anchor_x, popup_y, popup_w, popup_h],
+                bg_color,
+            ));
+
+            let scroll_start = if completion.selected_index >= visible_rows {
+                completion.selected_index + 1 - visible_rows
+            } else {
+                0
+            };
+            let visible_items = completion
+                .items
+                .iter()
+                .enumerate()
+                .skip(scroll_start)
+                .take(visible_rows);
+
+            for (row_idx, (item_idx, item)) in visible_items.enumerate() {
+                let row_y = popup_y + PAD_Y + row_idx as f32 * geometry.line_height;
+                if item_idx == completion.selected_index {
+                    chrome_quads.push(RegionDrawInstance::new(
+                        [anchor_x + 1.0, row_y, (popup_w - 2.0).max(1.0), geometry.line_height],
+                        selection_bg,
+                    ));
+                }
+
+                let icon = match item.kind {
+                    Some(3) => "ⓕ",
+                    Some(6) => "ⓥ",
+                    Some(7) => "ⓒ",
+                    Some(14) => "ⓚ",
+                    _ => "•",
+                };
+                let row_text = format!("{} {}", icon, item.label);
+                self.editor_overlay_text_system
+                    .set_size(Some((popup_w - PAD_X * 2.0).max(1.0)), Some(geometry.line_height));
+                glyphs.extend(layout_panel_text(
+                    &row_text,
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    anchor_x + PAD_X,
+                    row_y,
+                    self.theme.ui.fg.as_f32(),
+                ));
             }
         }
 

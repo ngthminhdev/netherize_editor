@@ -270,6 +270,7 @@ async fn dispatch_loop(
                 | WorkerRequestPayload::LspHoverRequest { .. }
                 | WorkerRequestPayload::LspDefinitionRequest { .. }
                 | WorkerRequestPayload::LspReferencesRequest { .. }
+                | WorkerRequestPayload::LspCompletionRequest { .. }
                 | WorkerRequestPayload::StopLspServer
         ) {
             let worker_tx = result_tx.clone();
@@ -863,6 +864,19 @@ fn execute_lsp_request(
             session.update_request_meta(request.request_id, request.revision_id);
             handle_lsp_references(&session, uri, *line, *character)
         }
+        WorkerRequestPayload::LspCompletionRequest {
+            uri,
+            line,
+            character,
+            cursor_line,
+            cursor_col,
+        } => {
+            let Some(session) = lsp_sessions.get()? else {
+                return Err("completion rejected: LSP server not running".to_string());
+            };
+            session.update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_completion(&session, uri, *line, *character, *cursor_line, *cursor_col)
+        }
         _ => Err("execute_lsp_request received non-lsp payload".to_string()),
     }
 }
@@ -926,6 +940,47 @@ fn parse_hover_content(result: &serde_json::Value) -> String {
             .join("\n");
     }
     String::new()
+}
+
+fn parse_completion_items(
+    result: &serde_json::Value,
+) -> Vec<crate::async_runtime::message::LspCompletionItem> {
+    use crate::async_runtime::message::LspCompletionItem;
+
+    let items = result
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .or_else(|| result.as_array());
+
+    items
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    let label = item.get("label")?.as_str()?.to_string();
+                    let insert_text = item
+                        .get("insertText")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string);
+                    let text_edit_text = item
+                        .get("textEdit")
+                        .and_then(|edit| edit.get("newText"))
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string);
+                    let kind = item
+                        .get("kind")
+                        .and_then(serde_json::Value::as_u64)
+                        .map(|kind| kind as u32);
+                    Some(LspCompletionItem {
+                        label,
+                        insert_text,
+                        text_edit_text,
+                        kind,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Parse array of `Location` hoặc `LocationLink` từ definition/references.
@@ -1065,6 +1120,37 @@ fn handle_lsp_references(
         return Err("references: empty result".to_string());
     }
     Ok(WorkerResultPayload::LspReferencesResult { locations })
+}
+
+fn handle_lsp_completion(
+    session: &std::sync::Arc<crate::lsp::client::LspClientProcess>,
+    uri: &str,
+    line: u32,
+    character: u32,
+    cursor_line: usize,
+    cursor_col: usize,
+) -> Result<WorkerResultPayload, String> {
+    use serde_json::json;
+    let params = json!({
+        "textDocument": { "uri": uri },
+        "position": { "line": line, "character": character }
+    });
+    let response = lsp_request_response(session, "textDocument/completion", params, 10)?;
+    let result = response
+        .get("result")
+        .ok_or_else(|| "completion: no result".to_string())?;
+    if result.is_null() {
+        return Err("completion: no items returned".to_string());
+    }
+    let items = parse_completion_items(result);
+    if items.is_empty() {
+        return Err("completion: empty completion list".to_string());
+    }
+    Ok(WorkerResultPayload::LspCompletionResult {
+        items,
+        cursor_line,
+        cursor_col,
+    })
 }
 
 fn execute_pty_request(
@@ -1901,6 +1987,7 @@ async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayl
         | WorkerRequestPayload::LspHoverRequest { .. }
         | WorkerRequestPayload::LspDefinitionRequest { .. }
         | WorkerRequestPayload::LspReferencesRequest { .. }
+                | WorkerRequestPayload::LspCompletionRequest { .. }
         | WorkerRequestPayload::StopLspServer => {
             Err("LSP request should be handled by dedicated LSP runner".to_string())
         }

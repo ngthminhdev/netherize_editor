@@ -186,6 +186,14 @@ pub enum WorkerRequestPayload {
         line: u32,
         character: u32,
     },
+    /// textDocument/completion request.
+    LspCompletionRequest {
+        uri: String,
+        line: u32,
+        character: u32,
+        cursor_line: usize,
+        cursor_col: usize,
+    },
     StopLspServer,
 }
 
@@ -217,6 +225,14 @@ pub struct LspDiagnostic {
     pub code: Option<String>,
     pub source: Option<String>,
     pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LspCompletionItem {
+    pub label: String,
+    pub insert_text: Option<String>,
+    pub text_edit_text: Option<String>,
+    pub kind: Option<u32>,
 }
 
 /// Result worker trả về main thread.
@@ -339,6 +355,12 @@ pub enum WorkerResultPayload {
     /// textDocument/references response.
     LspReferencesResult {
         locations: Vec<LspLocation>,
+    },
+    /// textDocument/completion response.
+    LspCompletionResult {
+        items: Vec<LspCompletionItem>,
+        cursor_line: usize,
+        cursor_col: usize,
     },
     FzfResults {
         query: String,

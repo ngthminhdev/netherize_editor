@@ -87,6 +87,11 @@ pub const LSP_HOVER: &str = "lsp.hover";
 pub const LSP_GO_TO_DEFINITION: &str = "lsp.go_to_definition";
 pub const LSP_PREVIEW_DEFINITION: &str = "lsp.preview_definition";
 pub const LSP_REFERENCES: &str = "lsp.references";
+pub const LSP_TRIGGER_COMPLETION: &str = "lsp.trigger_completion";
+pub const COMPLETION_NEXT: &str = "completion.next";
+pub const COMPLETION_PREV: &str = "completion.prev";
+pub const COMPLETION_ACCEPT: &str = "completion.accept";
+pub const COMPLETION_CLOSE: &str = "completion.close";
 pub const DIAGNOSTICS_OPEN_PICKER: &str = "diagnostics.open_picker";
 
 // ── Jump list navigation ─────────────────────────────────────────────────────
@@ -217,6 +222,11 @@ pub const ALL_IDS: &[&str] = &[
     LSP_GO_TO_DEFINITION,
     LSP_PREVIEW_DEFINITION,
     LSP_REFERENCES,
+    LSP_TRIGGER_COMPLETION,
+    COMPLETION_NEXT,
+    COMPLETION_PREV,
+    COMPLETION_ACCEPT,
+    COMPLETION_CLOSE,
     DIAGNOSTICS_OPEN_PICKER,
     JUMP_BACK,
     JUMP_FORWARD,
@@ -342,6 +352,11 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         LSP_GO_TO_DEFINITION => Some(Command::LspGoToDefinition),
         LSP_PREVIEW_DEFINITION => Some(Command::LspPreviewDefinition),
         LSP_REFERENCES => Some(Command::LspReferences),
+        LSP_TRIGGER_COMPLETION => Some(Command::TriggerCompletion),
+        COMPLETION_NEXT => Some(Command::CompletionNext),
+        COMPLETION_PREV => Some(Command::CompletionPrev),
+        COMPLETION_ACCEPT => Some(Command::CompletionAccept),
+        COMPLETION_CLOSE => Some(Command::CompletionClose),
         DIAGNOSTICS_OPEN_PICKER => Some(Command::DiagnosticsOpenPicker),
         JUMP_BACK => Some(Command::JumpBack),
         JUMP_FORWARD => Some(Command::JumpForward),

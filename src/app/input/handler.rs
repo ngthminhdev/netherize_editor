@@ -810,6 +810,58 @@ impl InputHandler {
             return None;
         }
 
+        if context.focus == InputFocusContext::Editor
+            && context.mode == EditorMode::Insert
+            && context.completion_visible
+        {
+            if normalized.named_key == Some(NamedKey::Tab) {
+                let command = if normalized.modifiers.shift_key() {
+                    Command::CompletionPrev
+                } else {
+                    Command::CompletionNext
+                };
+                return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                    input_debug,
+                    format!(
+                        "mode={} focus={} -> completion popup intercept",
+                        context.mode.as_str(),
+                        context.focus.as_str()
+                    ),
+                    command,
+                    1,
+                    false,
+                )));
+            }
+
+            if normalized.named_key == Some(NamedKey::Enter) {
+                return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                    input_debug,
+                    format!(
+                        "mode={} focus={} -> completion accept intercept",
+                        context.mode.as_str(),
+                        context.focus.as_str()
+                    ),
+                    Command::CompletionAccept,
+                    1,
+                    false,
+                )));
+            }
+
+            if normalized.named_key == Some(NamedKey::Escape) {
+                return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                    input_debug,
+                    format!(
+                        "mode={} focus={} -> completion close intercept",
+                        context.mode.as_str(),
+                        context.focus.as_str()
+                    ),
+                    Command::CompletionClose,
+                    1,
+                    false,
+                )));
+            }
+        }
+
         if let Some(resolved) = input_map.resolve(&normalized, context) {
             let (repeat_count, count_ignored) =
                 self.consume_repeat_count_for_command(&resolved.command, None);

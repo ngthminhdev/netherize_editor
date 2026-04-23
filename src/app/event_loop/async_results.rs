@@ -442,6 +442,25 @@ impl AsyncResultRouter for AppShell {
                     self.request_redraw();
                 }
             }
+            WorkerResultPayload::LspCompletionResult {
+                items,
+                cursor_line,
+                cursor_col,
+            } => {
+                if items.is_empty() {
+                    return;
+                }
+                let changed = self.app_state.set_completion(crate::app::app_state::CompletionState {
+                    items,
+                    selected_index: 0,
+                    anchor_line: cursor_line,
+                    anchor_col: cursor_col,
+                });
+                if changed {
+                    self.editor_caret_needs_layout = true;
+                    self.request_redraw();
+                }
+            }
             WorkerResultPayload::FilePreviewLoaded {
                 file_path,
                 target_line,
@@ -458,7 +477,6 @@ impl AsyncResultRouter for AppShell {
                 } else if self.app_state.active_buffer_is_references()
                     && active_references_preview_target(&self.app_state)
                         == Some((file_path.clone(), target_line))
-                {
                 {
                     let (preview_text, preview_spans) =
                         build_preview_render_data(&lines, &file_path, &self.theme);

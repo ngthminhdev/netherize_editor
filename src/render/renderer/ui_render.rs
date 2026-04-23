@@ -728,27 +728,14 @@ impl Renderer {
             ));
         } else {
             for (idx, tab) in tabs.iter().enumerate() {
-<<<<<<< HEAD
-                let icon_glyph = match &tab.kind {
-                    TopbarTabKind::Text { path } => path
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .map(|name| self.theme.get_icon_for_file(name, false).to_string())
-                        .unwrap_or_else(|| self.theme.default_file_icon.clone()),
-                    TopbarTabKind::Terminal => "".to_string(),
-                    TopbarTabKind::References => "📄".to_string(),
-                    TopbarTabKind::FuzzyPicker => "🔎".to_string(),
-=======
                 let icon = match &tab.kind {
-                    TopbarTabKind::Text { path } => {
-                        self.theme.file_icon_for_path(path, false, false)
-                    }
+                    TopbarTabKind::Text { path } => self.theme.file_icon_for_path(path, false, false),
                     TopbarTabKind::Terminal => self.theme.file_icon_for_extension("sh"),
                     TopbarTabKind::References => self.theme.file_icon_for_extension("txt"),
                     TopbarTabKind::Diagnostics => self.theme.file_icon_for_extension("log"),
                     TopbarTabKind::FuzzyPicker => self.theme.file_icon_for_extension("fzf"),
->>>>>>> 3fe1b8d (Add diagnostics state, status bar, and picker)
                 };
+                let icon_glyph = icon.glyph.clone();
                 let icon_color = match &tab.kind {
                     TopbarTabKind::Text { path } => self
                         .theme
@@ -757,6 +744,7 @@ impl Renderer {
                         .as_f32(),
                     TopbarTabKind::Terminal => self.theme.icons.shell.color.as_f32(),
                     TopbarTabKind::References => self.theme.icons.default_file.color.as_f32(),
+                    TopbarTabKind::Diagnostics => self.theme.icons.default_file.color.as_f32(),
                     TopbarTabKind::FuzzyPicker => self.theme.ui.accent.as_f32(),
                 };
                 let icon_text = format!("{} ", icon_glyph);
@@ -791,7 +779,7 @@ impl Renderer {
 
                 if idx < tabs.len() - 1 {
                     let mut sep_color = self.theme.ui.fg_ghost.as_f32();
-                    sep_color[3] = 0.8; // Make it distinct enough to see
+                    sep_color[3] = 0.8;
                     chrome.push(RegionDrawInstance::new(
                         [
                             tab_x + tab_width + (tab_gap * 0.5_f32).floor(),

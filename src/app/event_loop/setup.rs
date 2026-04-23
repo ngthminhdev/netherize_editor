@@ -345,6 +345,7 @@ impl AppShell {
             mode,
             focus,
             command_palette_visible: self.app_state.is_command_palette_visible(),
+            completion_visible: self.app_state.has_completion(),
         }
     }
 
