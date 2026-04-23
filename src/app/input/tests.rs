@@ -5,8 +5,9 @@ use winit::keyboard::{KeyCode, ModifiersState, NamedKey};
 use crate::{
     app::{
         input_map::{InputFocusContext, InputMap, KeybindingContext},
-        resolved_keymap::builtin_defaults,
+        resolved_keymap::{build, builtin_defaults},
     },
+    config::keymap_loader::KeymapLoader,
     core::{
         commands::Command,
         mode::{EditorMode, ModeEvent},
@@ -56,6 +57,11 @@ fn named_input(named: NamedKey, physical: Option<KeyCode>) -> NormalizedInput {
 
 fn make_map() -> InputMap {
     InputMap::with_keymap(PathBuf::from("phase7_test.txt"), builtin_defaults())
+}
+
+fn make_default_profile_map() -> InputMap {
+    let bindings = KeymapLoader::load("default", None);
+    InputMap::with_keymap(PathBuf::from("phase7_test.txt"), build(&bindings))
 }
 
 #[test]
@@ -723,6 +729,36 @@ fn get_pending_keys_returns_human_readable_chord_sequence() {
 
     let _ = handler.route_normalized_input(char_input('f', KeyCode::KeyF), &map, context, now);
     assert_eq!(handler.get_pending_keys(), "<Space> f");
+}
+
+#[test]
+fn leader_d_s_dispatches_diagnostics_picker() {
+    let mut handler = InputHandler::new();
+    let map = make_default_profile_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let now = std::time::Instant::now();
+
+    let first = handler.route_normalized_input(
+        named_input(NamedKey::Space, Some(KeyCode::Space)),
+        &map,
+        context,
+        now,
+    );
+    assert!(matches!(first, Some(InputRouteOutcome::NoDispatch { .. })));
+    assert_eq!(handler.get_pending_keys(), "<Space>");
+
+    let second = handler.route_normalized_input(char_input('d', KeyCode::KeyD), &map, context, now);
+    assert!(matches!(second, Some(InputRouteOutcome::NoDispatch { .. })));
+    assert_eq!(handler.get_pending_keys(), "<Space> d");
+
+    let third = handler.route_normalized_input(char_input('s', KeyCode::KeyS), &map, context, now);
+    match third {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::DiagnosticsOpenPicker);
+        }
+        other => panic!("expected diagnostics picker dispatch, got {:?}", other),
+    }
+    assert_eq!(handler.get_pending_keys(), "");
 }
 
 #[test]

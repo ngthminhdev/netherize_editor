@@ -277,6 +277,7 @@ fn char_key_to_code(s: &str) -> Option<KeyCode> {
         "semicolon" => Some(KeyCode::Semicolon),
         "backslash" => Some(KeyCode::Backslash),
         "backtick" | "grave" => Some(KeyCode::Backquote),
+        "space" => Some(KeyCode::Space),
         _ => None,
     }
 }
@@ -943,6 +944,14 @@ mod tests {
         assert_eq!(
             parse_key_spec("mod+shift+p"),
             Some(KeySpec::ModShiftPlus(KeyCode::KeyP))
+        );
+        assert_eq!(
+            parse_key_spec("ctrl+space"),
+            Some(KeySpec::CtrlPlus(KeyCode::Space))
+        );
+        assert_eq!(
+            parse_key_spec("mod+space"),
+            Some(KeySpec::ModPlus(KeyCode::Space))
         );
     }
 

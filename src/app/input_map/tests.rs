@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use winit::keyboard::{KeyCode, ModifiersState, NamedKey};
 
 use crate::{
-    app::resolved_keymap::builtin_defaults,
+    app::resolved_keymap::{build, builtin_defaults},
+    config::keymap_loader::KeymapLoader,
     core::{
         commands::Command,
         mode::{EditorMode, ModeEvent},
@@ -14,6 +15,11 @@ use super::{InputFocusContext, InputMap, KeybindingContext, NormalizedInput, Seq
 
 fn make_map() -> InputMap {
     InputMap::with_keymap(PathBuf::from("test_open.txt"), builtin_defaults())
+}
+
+fn make_default_profile_map() -> InputMap {
+    let bindings = KeymapLoader::load("default", None);
+    InputMap::with_keymap(PathBuf::from("test_open.txt"), build(&bindings))
 }
 
 fn input_from_named(named_key: NamedKey) -> NormalizedInput {
@@ -847,6 +853,50 @@ fn leader_space_x_maps_to_close_current_buffer() {
             assert_eq!(resolved.command, Command::BufferCloseCurrent);
         }
         other => panic!("expected dispatch for leader x, got {:?}", other),
+    }
+}
+
+#[test]
+fn leader_d_s_maps_to_diagnostics_open_picker() {
+    let map = make_default_profile_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let space = input_from_named(NamedKey::Space);
+    let first = map
+        .resolve_sequence_start(&space, context)
+        .expect("space should start chord");
+    let pending = match first {
+        SequenceMatch::Pending(pending) => pending,
+        other => panic!("expected pending leader sequence, got {:?}", other),
+    };
+
+    let follow_d = NormalizedInput {
+        physical_key: Some(KeyCode::KeyD),
+        named_key: None,
+        text: Some("d".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let second = map
+        .resolve_sequence_next(&pending, &follow_d, context)
+        .expect("leader+d should still be pending");
+    let pending = match second {
+        SequenceMatch::Pending(pending) => pending,
+        other => panic!("expected second pending sequence, got {:?}", other),
+    };
+
+    let follow_s = NormalizedInput {
+        physical_key: Some(KeyCode::KeyS),
+        named_key: None,
+        text: Some("s".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let resolved = map
+        .resolve_sequence_next(&pending, &follow_s, context)
+        .expect("leader+d+s should resolve");
+    match resolved {
+        SequenceMatch::Dispatch(resolved) => {
+            assert_eq!(resolved.command, Command::DiagnosticsOpenPicker);
+        }
+        other => panic!("expected dispatch for leader d s, got {:?}", other),
     }
 }
 

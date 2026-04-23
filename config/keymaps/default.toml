@@ -662,6 +662,11 @@ mode = "insert"
 key = "ctrl+space"
 command = "lsp.trigger_completion"
 
+[[bindings]]
+mode = "insert"
+key = "mod+space"
+command = "lsp.trigger_completion"
+
 # ───────────────── LEADER ─────────────────
 [[bindings]]
 mode = "normal"
@@ -697,6 +702,11 @@ command = "git.blame_line"
 mode = "normal"
 key = "<leader>w"
 command = "editor.save_file"
+
+[[bindings]]
+mode = "normal"
+key = "<leader>d s"
+command = "diagnostics.open_picker"
 
 [[bindings]]
 mode = "normal"
