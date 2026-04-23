@@ -692,6 +692,40 @@ impl AppShell {
                 }
                 report.request_redraw
             }
+            Command::InsertChar(_)
+            | Command::InsertText(_)
+            | Command::Backspace
+            | Command::Newline => {
+                let report = {
+                    let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
+                    dispatch_command_with_clipboard_count(
+                        app_state,
+                        command,
+                        repeat_count,
+                        Some(clipboard),
+                    )
+                };
+                if !report.success {
+                    return report.request_redraw;
+                }
+                if report.state_changed {
+                    self.reconcile_highlight_spans_with_pending_edits();
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = true;
+                    let viewport_lines = self.editor_viewport_lines();
+                    self.app_state.auto_scroll_to_cursor(viewport_lines);
+                    self.submit_lsp_did_open_for_active_file();
+                }
+                let completion_changed = if report.state_changed {
+                    self.refresh_open_completion_after_text_edit()
+                } else {
+                    false
+                };
+                if report.request_redraw || report.state_changed || completion_changed {
+                    self.request_redraw();
+                }
+                report.request_redraw || report.state_changed || completion_changed
+            }
             Command::ToggleLeftDock => {
                 let mut changed = self.panel_state.toggle_left();
                 if changed {
@@ -2127,6 +2161,45 @@ impl AppShell {
             self.request_redraw();
         }
         report.request_redraw || report.state_changed || true
+    }
+
+    fn refresh_open_completion_after_text_edit(&mut self) -> bool {
+        let Some(completion) = self.app_state.completion().cloned() else {
+            return false;
+        };
+
+        let (cursor_line, cursor_col) = self.app_state.cursor_line_col();
+        if cursor_line != completion.trigger_pos.line || cursor_col < completion.trigger_pos.col {
+            return self.close_completion_popup();
+        }
+
+        let line_text = self
+            .app_state
+            .text_string()
+            .lines()
+            .nth(cursor_line)
+            .unwrap_or_default()
+            .to_string();
+
+        let prefix: String = line_text
+            .chars()
+            .skip(completion.trigger_pos.col)
+            .take(cursor_col.saturating_sub(completion.trigger_pos.col))
+            .collect();
+
+        let changed = self.app_state.refresh_completion_with_prefix(&prefix);
+        if self
+            .app_state
+            .completion()
+            .is_some_and(|state| state.filtered_items.is_empty())
+        {
+            return self.close_completion_popup() || changed;
+        }
+
+        if changed {
+            self.editor_caret_needs_layout = true;
+        }
+        changed
     }
 
     fn open_prompt_overlay(

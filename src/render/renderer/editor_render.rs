@@ -3,8 +3,8 @@
 
 use crate::{
     app::app_state::{
-        AppState, DiagnosticsState, EditorOverlay, FloatingBoxBlock, FloatingBoxStyle,
-        OverlayColorToken, ReferencesBufferState, SettingItem, SettingsState,
+        AppState, CompletionDisplayItem, DiagnosticsState, EditorOverlay, FloatingBoxBlock,
+        FloatingBoxStyle, OverlayColorToken, ReferencesBufferState, SettingItem, SettingsState,
     },
     core::mode::EditorMode,
     render::{
@@ -1210,15 +1210,17 @@ impl Renderer {
             const PAD_Y: f32 = 6.0;
             const BORDER: f32 = 1.0;
             const MAX_VISIBLE_ROWS: usize = 8;
+            const ROW_SEPARATOR_H: f32 = 1.0;
+            const BADGE_RADIUS: f32 = 5.0;
 
             let char_w = (geometry.font_size * 0.6).max(1.0);
             let max_len = completion
-                .items
+                .filtered_items
                 .iter()
-                .map(|item| item.label.chars().count() + 3)
+                .map(|item| item.item.label.chars().count() + 5)
                 .max()
                 .unwrap_or(8);
-            let visible_rows = completion.items.len().min(MAX_VISIBLE_ROWS).max(1);
+            let visible_rows = completion.filtered_items.len().min(MAX_VISIBLE_ROWS).max(1);
             let popup_w =
                 (max_len as f32 * char_w + PAD_X * 2.0).clamp(160.0, geometry.viewport_text_width);
             let popup_h = (visible_rows as f32 * geometry.line_height + PAD_Y * 2.0)
@@ -1235,6 +1237,10 @@ impl Renderer {
             let bg_color = self.theme.ui.panel_bg.as_f32();
             let border_color = self.theme.ui.border_color.as_f32();
             let selection_bg = self.theme.ui.selection_bg.as_f32();
+            let separator_color = self.theme.ui.border_color.as_f32();
+            let badge_color = self.theme.ui.border_color.as_f32();
+            let label_dim = self.theme.ui.fg_dim.as_f32();
+            let match_color = self.theme.ui.accent.as_f32();
 
             chrome_quads.push(RegionDrawInstance::new(
                 [
@@ -1256,7 +1262,7 @@ impl Renderer {
                 0
             };
             let visible_items = completion
-                .items
+                .filtered_items
                 .iter()
                 .enumerate()
                 .skip(scroll_start)
@@ -1276,26 +1282,64 @@ impl Renderer {
                     ));
                 }
 
-                let icon = match item.kind {
+                if row_idx + 1 < visible_rows {
+                    chrome_quads.push(RegionDrawInstance::new(
+                        [
+                            anchor_x + 1.0,
+                            row_y + geometry.line_height - ROW_SEPARATOR_H,
+                            (popup_w - 2.0).max(1.0),
+                            ROW_SEPARATOR_H,
+                        ],
+                        separator_color,
+                    ));
+                }
+
+                let icon = match item.item.kind {
                     Some(3) => "ⓕ",
                     Some(6) => "ⓥ",
                     Some(7) => "ⓒ",
                     Some(14) => "ⓚ",
                     _ => "•",
                 };
-                let row_text = format!("{} {}", icon, item.label);
+
+                let badge_w = (char_w * 1.8).max(18.0);
+                let badge_h = (geometry.line_height - 6.0).max(12.0);
+                let badge_x = anchor_x + PAD_X;
+                let badge_y = row_y + ((geometry.line_height - badge_h) * 0.5);
+                chrome_quads.push(
+                    RegionDrawInstance::new([badge_x, badge_y, badge_w, badge_h], badge_color)
+                        .with_radius(BADGE_RADIUS),
+                );
+
                 self.editor_overlay_text_system.set_size(
-                    Some((popup_w - PAD_X * 2.0).max(1.0)),
+                    Some((badge_w - 6.0).max(1.0)),
                     Some(geometry.line_height),
                 );
                 glyphs.extend(layout_panel_text(
-                    &row_text,
+                    icon,
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    anchor_x + PAD_X,
+                    badge_x + 3.0,
                     row_y,
                     self.theme.ui.fg.as_f32(),
+                ));
+
+                let label_x = badge_x + badge_w + 8.0;
+                let spans = completion_label_spans(item, match_color);
+                self.editor_overlay_text_system.set_size(
+                    Some((popup_w - (label_x - anchor_x) - PAD_X).max(1.0)),
+                    Some(geometry.line_height),
+                );
+                glyphs.extend(layout_panel_rich_text(
+                    &item.item.label,
+                    &spans,
+                    label_dim,
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    label_x,
+                    row_y,
                 ));
             }
         }
@@ -2263,4 +2307,18 @@ impl Renderer {
             &self.editor_overlay_glyph_instances,
         );
     }
+}
+
+fn completion_label_spans(item: &CompletionDisplayItem, match_color: [f32; 4]) -> Vec<StyledTextSpan> {
+    let color = [
+        (match_color[0] * 255.0) as u8,
+        (match_color[1] * 255.0) as u8,
+        (match_color[2] * 255.0) as u8,
+        (match_color[3] * 255.0) as u8,
+    ];
+
+    item.match_ranges
+        .iter()
+        .map(|(start, end)| StyledTextSpan::new(*start, *end, color))
+        .collect()
 }

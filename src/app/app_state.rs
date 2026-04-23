@@ -277,11 +277,56 @@ pub struct DiagnosticsState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletionTriggerPosition {
+    pub line: usize,
+    pub col: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletionDisplayItem {
+    pub item: LspCompletionItem,
+    pub match_ranges: Vec<(usize, usize)>,
+    pub score: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompletionState {
-    pub items: Vec<LspCompletionItem>,
+    pub raw_items: Vec<LspCompletionItem>,
+    pub filtered_items: Vec<CompletionDisplayItem>,
     pub selected_index: usize,
+    pub trigger_pos: CompletionTriggerPosition,
     pub anchor_line: usize,
     pub anchor_col: usize,
+}
+
+impl CompletionState {
+    pub fn from_lsp_items(
+        items: Vec<LspCompletionItem>,
+        anchor_line: usize,
+        anchor_col: usize,
+    ) -> Self {
+        let filtered_items = items
+            .iter()
+            .cloned()
+            .map(|item| CompletionDisplayItem {
+                item,
+                match_ranges: Vec::new(),
+                score: 0,
+            })
+            .collect();
+
+        Self {
+            raw_items: items,
+            filtered_items,
+            selected_index: 0,
+            trigger_pos: CompletionTriggerPosition {
+                line: anchor_line,
+                col: anchor_col,
+            },
+            anchor_line,
+            anchor_col,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3249,10 +3294,10 @@ impl AppState {
         let Some(state) = self.completion.as_mut() else {
             return false;
         };
-        if state.items.is_empty() {
+        if state.filtered_items.is_empty() {
             return false;
         }
-        let next = (state.selected_index + 1) % state.items.len();
+        let next = (state.selected_index + 1) % state.filtered_items.len();
         if next == state.selected_index {
             return false;
         }
@@ -3265,11 +3310,11 @@ impl AppState {
         let Some(state) = self.completion.as_mut() else {
             return false;
         };
-        if state.items.is_empty() {
+        if state.filtered_items.is_empty() {
             return false;
         }
         let next = if state.selected_index == 0 {
-            state.items.len().saturating_sub(1)
+            state.filtered_items.len().saturating_sub(1)
         } else {
             state.selected_index - 1
         };
@@ -3283,7 +3328,63 @@ impl AppState {
 
     pub fn selected_completion_item(&self) -> Option<&LspCompletionItem> {
         let state = self.completion.as_ref()?;
-        state.items.get(state.selected_index)
+        state
+            .filtered_items
+            .get(state.selected_index)
+            .map(|entry| &entry.item)
+    }
+
+    pub fn refresh_completion_with_prefix(&mut self, prefix: &str) -> bool {
+        let Some(state) = self.completion.as_mut() else {
+            return false;
+        };
+
+        let mut filtered_items = if prefix.is_empty() {
+            state
+                .raw_items
+                .iter()
+                .cloned()
+                .map(|item| CompletionDisplayItem {
+                    item,
+                    match_ranges: Vec::new(),
+                    score: 0,
+                })
+                .collect::<Vec<_>>()
+        } else {
+            let mut scored = state
+                .raw_items
+                .iter()
+                .enumerate()
+                .filter_map(|(original_idx, item)| {
+                    score_completion_match(&item.label, prefix).map(
+                        |(score, match_ranges)| (original_idx, item.clone(), score, match_ranges),
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            scored.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+
+            scored
+                .into_iter()
+                .map(|(_, item, score, match_ranges)| CompletionDisplayItem {
+                    item,
+                    match_ranges,
+                    score,
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let next_selected = if filtered_items.is_empty() { 0 } else { 0 };
+        let changed = state.filtered_items != filtered_items || state.selected_index != next_selected;
+        if !changed {
+            return false;
+        }
+
+        state.filtered_items.clear();
+        state.filtered_items.append(&mut filtered_items);
+        state.selected_index = next_selected;
+        self.bump_revision();
+        true
     }
 
     pub fn set_current_overlays(&mut self, overlays: Vec<EditorOverlay>) -> bool {
@@ -4408,6 +4509,58 @@ fn collect_search_highlights(text: &str, query: &str, whole_word: bool) -> Vec<(
             Some((start, end))
         })
         .collect()
+}
+
+fn score_completion_match(label: &str, query: &str) -> Option<(i64, Vec<(usize, usize)>)> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Some((0, Vec::new()));
+    }
+
+    let label_lower = label.to_lowercase();
+    let query_lower = trimmed.to_lowercase();
+
+    if let Some(start) = label_lower.find(&query_lower) {
+        let end = start + query_lower.len();
+        let prefix_bonus = (label_lower.len().saturating_sub(start) as i64).min(64);
+        return Some((10_000 + prefix_bonus, vec![(start, end)]));
+    }
+
+    let mut ranges = Vec::new();
+    let mut score = 0_i64;
+    let mut search_start = 0usize;
+    let mut previous_end = None;
+
+    for q_char in query_lower.chars() {
+        let found = label_lower[search_start..]
+            .char_indices()
+            .find(|(_, c)| *c == q_char)
+            .map(|(off, c)| {
+                let abs = search_start + off;
+                (abs, abs + c.len_utf8())
+            });
+
+        let (start, end) = found?;
+        score += 100;
+        if start == 0 {
+            score += 25;
+        }
+        if let Some(prev_end) = previous_end {
+            if start == prev_end {
+                score += 40;
+            } else {
+                score -= (start.saturating_sub(prev_end) as i64).min(24);
+            }
+        } else {
+            score += (32_i64 - start as i64).max(0);
+        }
+
+        ranges.push((start, end));
+        previous_end = Some(end);
+        search_start = end;
+    }
+
+    Some((score, ranges))
 }
 
 fn is_whole_word_match(text: &str, start: usize, end: usize) -> bool {

@@ -460,12 +460,11 @@ impl AsyncResultRouter for AppShell {
                 }
                 let changed =
                     self.app_state
-                        .set_completion(crate::app::app_state::CompletionState {
+                        .set_completion(crate::app::app_state::CompletionState::from_lsp_items(
                             items,
-                            selected_index: 0,
-                            anchor_line: cursor_line,
-                            anchor_col: cursor_col,
-                        });
+                            cursor_line,
+                            cursor_col,
+                        ));
                 if changed {
                     self.editor_caret_needs_layout = true;
                     self.request_redraw();
