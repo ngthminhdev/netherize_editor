@@ -24,6 +24,7 @@ use crate::core::text_object::find_text_object_range;
 use crate::core::transaction::{CursorState, EditAction, EditHistory, Transaction};
 use crate::editor_core::filetype_label_for_path;
 use crate::syntax::highlight::HighlightEdit;
+use crate::text::text_system::StyledTextSpan;
 use crate::workspace::model::{WorkspaceModel, WorkspaceNodeType};
 
 #[derive(Debug, Clone, Default)]
@@ -79,6 +80,8 @@ pub struct ReferencesBufferState {
     pub items: Vec<ReferencesBufferItem>,
     pub selected_index: usize,
     pub preview_lines: Vec<FilePreviewLine>,
+    pub preview_text: String,
+    pub preview_spans: Vec<StyledTextSpan>,
     pub loading: bool,
     pub status_message: Option<String>,
     pub pending_request_id: Option<u64>,
@@ -106,6 +109,8 @@ pub struct FuzzyState {
     pub query: String,
     pub selected_index: usize,
     pub preview_lines: Vec<FilePreviewLine>,
+    pub preview_text: String,
+    pub preview_spans: Vec<StyledTextSpan>,
     pub results: Vec<CommandPaletteItem>,
 }
 
@@ -116,6 +121,8 @@ impl FuzzyState {
             query: String::new(),
             selected_index: 0,
             preview_lines: Vec::new(),
+            preview_text: String::new(),
+            preview_spans: Vec::new(),
             results: Vec::new(),
         }
     }
@@ -124,6 +131,8 @@ impl FuzzyState {
         self.query.push_str(text);
         self.selected_index = 0;
         self.preview_lines.clear();
+        self.preview_text.clear();
+        self.preview_spans.clear();
         true
     }
 
@@ -134,6 +143,8 @@ impl FuzzyState {
         self.query.pop();
         self.selected_index = 0;
         self.preview_lines.clear();
+        self.preview_text.clear();
+        self.preview_spans.clear();
         true
     }
 
@@ -144,6 +155,8 @@ impl FuzzyState {
         if self.selected_index + 1 < self.results.len() {
             self.selected_index += 1;
             self.preview_lines.clear();
+            self.preview_text.clear();
+            self.preview_spans.clear();
             true
         } else {
             false
@@ -154,6 +167,8 @@ impl FuzzyState {
         if self.selected_index > 0 {
             self.selected_index -= 1;
             self.preview_lines.clear();
+            self.preview_text.clear();
+            self.preview_spans.clear();
             true
         } else {
             false
@@ -207,6 +222,15 @@ pub enum FloatingBoxStyle {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FloatingBoxBlock {
+    Prose(String),
+    Code {
+        text: String,
+        spans: Vec<StyledTextSpan>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditorOverlay {
     VirtualText {
         line: usize,
@@ -219,8 +243,8 @@ pub enum EditorOverlay {
         /// Dòng cursor lúc trigger (0-indexed) — dùng để định vị popup bên dưới.
         anchor_line: usize,
         anchor_col: usize,
-        /// Các dòng nội dung, đã được tách sẵn.
-        lines: Vec<String>,
+        /// Nội dung đã được parse thành prose/code blocks.
+        blocks: Vec<FloatingBoxBlock>,
         style: FloatingBoxStyle,
     },
 }
@@ -815,6 +839,8 @@ impl AppState {
                         .selected_index
                         .min(state.results.len().saturating_sub(1));
                     state.preview_lines.clear();
+                    state.preview_text.clear();
+                    state.preview_spans.clear();
                     self.bump_revision();
                     return true;
                 }
@@ -854,13 +880,20 @@ impl AppState {
         self.close_command_palette()
     }
 
-    pub fn set_fuzzy_picker_preview(&mut self, lines: Vec<FilePreviewLine>) -> bool {
+    pub fn set_fuzzy_picker_preview(
+        &mut self,
+        lines: Vec<FilePreviewLine>,
+        preview_text: String,
+        preview_spans: Vec<StyledTextSpan>,
+    ) -> bool {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::FuzzyPicker(state),
             }) = self.buffers.get_mut(index)
             {
                 state.preview_lines = lines;
+                state.preview_text = preview_text;
+                state.preview_spans = preview_spans;
                 self.bump_revision();
                 return true;
             }
@@ -868,13 +901,20 @@ impl AppState {
         false
     }
 
-    pub fn set_active_references_preview(&mut self, lines: Vec<FilePreviewLine>) -> bool {
+    pub fn set_active_references_preview(
+        &mut self,
+        lines: Vec<FilePreviewLine>,
+        preview_text: String,
+        preview_spans: Vec<StyledTextSpan>,
+    ) -> bool {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::References(state),
             }) = self.buffers.get_mut(index)
             {
                 state.preview_lines = lines;
+                state.preview_text = preview_text;
+                state.preview_spans = preview_spans;
                 self.bump_revision();
                 return true;
             }
@@ -1058,6 +1098,8 @@ impl AppState {
                 items,
                 selected_index: 0,
                 preview_lines: Vec::new(),
+                preview_text: String::new(),
+                preview_spans: Vec::new(),
                 loading: false,
                 status_message: None,
                 pending_request_id: None,
@@ -1087,6 +1129,8 @@ impl AppState {
                 items: Vec::new(),
                 selected_index: 0,
                 preview_lines: Vec::new(),
+                preview_text: String::new(),
+                preview_spans: Vec::new(),
                 loading: true,
                 status_message: Some("Loading references...".to_string()),
                 pending_request_id: Some(pending_request_id),
@@ -1125,6 +1169,8 @@ impl AppState {
         state.items = items;
         state.selected_index = 0;
         state.preview_lines.clear();
+        state.preview_text.clear();
+        state.preview_spans.clear();
         state.loading = false;
         state.pending_request_id = None;
         state.status_message = if state.items.is_empty() {
@@ -1159,6 +1205,8 @@ impl AppState {
         state.items.clear();
         state.selected_index = 0;
         state.preview_lines.clear();
+        state.preview_text.clear();
+        state.preview_spans.clear();
         state.loading = false;
         state.pending_request_id = None;
         state.status_message = Some(message.into());
@@ -2654,6 +2702,8 @@ impl AppState {
         }
         state.selected_index = next;
         state.preview_lines.clear();
+        state.preview_text.clear();
+        state.preview_spans.clear();
         self.bump_revision();
         true
     }
@@ -2680,6 +2730,8 @@ impl AppState {
         }
         state.selected_index = next;
         state.preview_lines.clear();
+        state.preview_text.clear();
+        state.preview_spans.clear();
         self.bump_revision();
         true
     }
@@ -4735,11 +4787,15 @@ mod tests {
         assert_eq!(loaded.pending_request_id, None);
         assert!(loaded.preview_lines.is_empty());
 
-        assert!(state.set_active_references_preview(vec![FilePreviewLine {
-            line_number: 11,
-            text: "call()".to_string(),
-            is_target: true,
-        }]));
+        assert!(state.set_active_references_preview(
+            vec![FilePreviewLine {
+                line_number: 11,
+                text: "call()".to_string(),
+                is_target: true,
+            }],
+            String::new(),
+            Vec::new(),
+        ));
         assert_eq!(
             state
                 .active_references_buffer()

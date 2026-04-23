@@ -3,9 +3,10 @@ use std::{ops::Range, sync::OnceLock};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, Query, QueryCursor};
 
+use crate::config::theme_config::ThemeConfig;
 use crate::syntax::{
-    parser::tree_sitter_language,
-    syntax_engine::{LanguageId, SyntaxTreeState},
+    parser::{language_id_for_extension, tree_sitter_language},
+    syntax_engine::{LanguageId, SyntaxEngine, SyntaxTreeState},
 };
 
 pub const INLINE_TREE_SITTER_BYTE_THRESHOLD: usize = 128 * 1024;
@@ -274,6 +275,26 @@ pub fn should_highlight_inline(text: &str) -> bool {
 
     let line_count = text.bytes().filter(|byte| *byte == b'\n').count() + 1;
     line_count <= INLINE_TREE_SITTER_LINE_THRESHOLD
+}
+
+pub fn highlight_snippet(
+    text: &str,
+    extension: &str,
+    _theme: &ThemeConfig,
+) -> Vec<HighlightSpan> {
+    if text.is_empty() || !should_highlight_inline(text) {
+        return Vec::new();
+    }
+    let Some(language_id) = language_id_for_extension(extension) else {
+        return Vec::new();
+    };
+    let Ok(mut engine) = SyntaxEngine::new(language_id) else {
+        return Vec::new();
+    };
+    let Ok(tree_state) = engine.parse_source(text, 0) else {
+        return Vec::new();
+    };
+    generate_highlight_spans(tree_state, text)
 }
 
 fn generate_query_highlight_spans(

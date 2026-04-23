@@ -1,6 +1,13 @@
 use std::fs;
+use std::path::Path;
 
 use super::*;
+
+use crate::{
+    app::app_state::FloatingBoxBlock,
+    async_runtime::message::FilePreviewLine,
+    syntax::highlight::highlight_snippet,
+};
 
 pub(super) fn syntax_spans_to_styled(
     spans: &[HighlightSpan],
@@ -55,6 +62,89 @@ pub(super) fn syntax_spans_to_styled(
             )
         })
         .collect()
+}
+
+pub(super) fn build_preview_render_data(
+    lines: &[FilePreviewLine],
+    path: &Path,
+    theme: &ThemeConfig,
+) -> (String, Vec<StyledTextSpan>) {
+    if lines.is_empty() {
+        return (String::new(), Vec::new());
+    }
+    let text = lines
+        .iter()
+        .map(|line| line.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or_default();
+    let spans = syntax_spans_to_styled(&highlight_snippet(&text, extension, theme), theme);
+    (text, spans)
+}
+
+pub(super) fn parse_hover_markdown_blocks(content: &str, theme: &ThemeConfig) -> Vec<FloatingBoxBlock> {
+    let mut blocks = Vec::new();
+    let mut prose_lines: Vec<String> = Vec::new();
+    let mut code_lines: Vec<String> = Vec::new();
+    let mut code_language = String::new();
+    let mut in_code_block = false;
+
+    let flush_prose = |blocks: &mut Vec<FloatingBoxBlock>, prose_lines: &mut Vec<String>| {
+        let text = prose_lines
+            .join("\n")
+            .trim()
+            .to_string();
+        prose_lines.clear();
+        if !text.is_empty() {
+            blocks.push(FloatingBoxBlock::Prose(text));
+        }
+    };
+
+    let flush_code = |blocks: &mut Vec<FloatingBoxBlock>, code_lines: &mut Vec<String>, code_language: &str| {
+        let text = code_lines.join("\n");
+        code_lines.clear();
+        if text.trim().is_empty() {
+            return;
+        }
+        let spans = syntax_spans_to_styled(
+            &highlight_snippet(&text, code_language, theme),
+            theme,
+        );
+        blocks.push(FloatingBoxBlock::Code { text, spans });
+    };
+
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        if let Some(fence) = trimmed.strip_prefix("```") {
+            if in_code_block {
+                flush_code(&mut blocks, &mut code_lines, &code_language);
+                code_language.clear();
+                in_code_block = false;
+            } else {
+                flush_prose(&mut blocks, &mut prose_lines);
+                code_language = fence.trim().to_string();
+                in_code_block = true;
+            }
+            continue;
+        }
+
+        if in_code_block {
+            code_lines.push(line.to_string());
+        } else {
+            prose_lines.push(line.to_string());
+        }
+    }
+
+    if in_code_block {
+        flush_code(&mut blocks, &mut code_lines, &code_language);
+    } else {
+        flush_prose(&mut blocks, &mut prose_lines);
+    }
+
+    blocks
 }
 
 pub(super) fn scale_theme(base: &ThemeConfig, scale: f32) -> ThemeConfig {

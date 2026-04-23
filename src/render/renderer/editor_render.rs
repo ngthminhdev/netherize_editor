@@ -5,7 +5,11 @@ use cosmic_text::Metrics;
 
 use crate::{
     app::app_state::{
+<<<<<<< HEAD
         AppState, DiagnosticsState, EditorOverlay, FloatingBoxStyle, OverlayColorToken,
+=======
+        AppState, EditorOverlay, FloatingBoxBlock, FloatingBoxStyle, OverlayColorToken,
+>>>>>>> 64fd530 (Add syntax highlighting for preview and hover overlays)
         ReferencesBufferState,
     },
     core::mode::EditorMode,
@@ -17,7 +21,8 @@ use crate::{
 
 use super::helpers::{
     caret_rect_for_mode, clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
-    layout_panel_text, layout_panel_text_italic, rect_to_scissor, should_draw_block_cursor,
+    layout_panel_rich_text, layout_panel_text, layout_panel_text_italic, rect_to_scissor,
+    should_draw_block_cursor,
 };
 use crate::text::text_system::StyledTextSpan;
 
@@ -475,14 +480,38 @@ impl Renderer {
 
                 self.editor_overlay_text_system
                     .set_size(Some(preview_text_width), Some(line_height));
-                glyphs.extend(layout_panel_text(
+                let line_start = references
+                    .preview_lines
+                    .iter()
+                    .take(preview_start + slot)
+                    .map(|item| item.text.len() + 1)
+                    .sum::<usize>();
+                let line_end = line_start + line.text.len();
+                let line_spans: Vec<StyledTextSpan> = references
+                    .preview_spans
+                    .iter()
+                    .filter_map(|span| {
+                        if span.end <= line_start || span.start >= line_end {
+                            return None;
+                        }
+                        Some(StyledTextSpan::with_style(
+                            span.start.max(line_start) - line_start,
+                            span.end.min(line_end) - line_start,
+                            span.color_rgba,
+                            span.bold,
+                            span.italic,
+                        ))
+                    })
+                    .collect();
+                glyphs.extend(layout_panel_rich_text(
                     &clamp_monospace_text(&line.text, preview_text_width, font_size),
+                    &line_spans,
+                    if line.is_target { fg } else { fg_dim },
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
                     right_x + 10.0 + line_number_width,
                     row_y,
-                    if line.is_target { fg } else { fg_dim },
                 ));
             }
         } else {
@@ -811,17 +840,36 @@ impl Renderer {
                 EditorOverlay::FloatingBox {
                     anchor_line,
                     anchor_col: _,
-                    lines,
+                    blocks,
                     style,
                 } => {
                     const PAD_X: f32 = 10.0;
                     const PAD_Y: f32 = 6.0;
                     const BORDER: f32 = 1.0;
                     let char_w = (geometry.font_size * 0.6).max(1.0);
-                    let max_len = lines.iter().map(|l| l.len()).max().unwrap_or(0);
+                    let max_len = blocks
+                        .iter()
+                        .map(|block| match block {
+                            FloatingBoxBlock::Prose(text) => {
+                                text.lines().map(|line| line.len()).max().unwrap_or(0)
+                            }
+                            FloatingBoxBlock::Code { text, .. } => {
+                                text.lines().map(|line| line.len()).max().unwrap_or(0)
+                            }
+                        })
+                        .max()
+                        .unwrap_or(0);
+                    let line_count = blocks
+                        .iter()
+                        .map(|block| match block {
+                            FloatingBoxBlock::Prose(text) | FloatingBoxBlock::Code { text, .. } => {
+                                text.lines().count().max(1)
+                            }
+                        })
+                        .sum::<usize>();
                     let popup_w = (max_len as f32 * char_w + PAD_X * 2.0)
                         .clamp(120.0, geometry.viewport_text_width);
-                    let popup_h = (lines.len() as f32 * geometry.line_height + PAD_Y * 2.0)
+                    let popup_h = (line_count as f32 * geometry.line_height + PAD_Y * 2.0)
                         .max(geometry.line_height);
 
                     let anchor_y = geometry.origin_y + (*anchor_line as f32) * geometry.line_height;
@@ -851,25 +899,83 @@ impl Renderer {
                     ));
 
                     let text_x = popup_x + PAD_X;
-                    let text_color = self.theme.ui.fg.as_f32();
                     let line_w = (popup_w - PAD_X * 2.0).max(1.0);
-                    for (i, line_text) in lines.iter().enumerate() {
-                        let text_y = popup_y + PAD_Y + i as f32 * geometry.line_height;
-                        if text_y + geometry.line_height < viewport_top || text_y > viewport_bottom
-                        {
-                            continue;
+                    let mut block_line_offset = 0usize;
+                    for block in blocks {
+                        match block {
+                            FloatingBoxBlock::Prose(text) => {
+                                let block_lines: Vec<&str> = text.lines().collect();
+                                for (line_idx, line_text) in block_lines.iter().enumerate() {
+                                    let text_y = popup_y
+                                        + PAD_Y
+                                        + (block_line_offset + line_idx) as f32 * geometry.line_height;
+                                    if text_y + geometry.line_height < viewport_top
+                                        || text_y > viewport_bottom
+                                    {
+                                        continue;
+                                    }
+                                    self.editor_overlay_text_system
+                                        .set_size(Some(line_w), Some(geometry.line_height));
+                                    glyphs.extend(layout_panel_text_italic(
+                                        line_text,
+                                        &mut self.editor_overlay_text_system,
+                                        &mut self.atlas,
+                                        &self.queue,
+                                        text_x,
+                                        text_y,
+                                        self.theme.ui.fg_ghost.as_f32(),
+                                    ));
+                                }
+                                block_line_offset += block_lines.len().max(1);
+                            }
+                            FloatingBoxBlock::Code { text, spans } => {
+                                let block_lines: Vec<&str> = text.lines().collect();
+                                for (line_idx, line_text) in block_lines.iter().enumerate() {
+                                    let text_y = popup_y
+                                        + PAD_Y
+                                        + (block_line_offset + line_idx) as f32 * geometry.line_height;
+                                    if text_y + geometry.line_height < viewport_top
+                                        || text_y > viewport_bottom
+                                    {
+                                        continue;
+                                    }
+                                    let line_start = block_lines
+                                        .iter()
+                                        .take(line_idx)
+                                        .map(|line| line.len() + 1)
+                                        .sum::<usize>();
+                                    let line_end = line_start + line_text.len();
+                                    let line_spans: Vec<StyledTextSpan> = spans
+                                        .iter()
+                                        .filter_map(|span| {
+                                            if span.end <= line_start || span.start >= line_end {
+                                                return None;
+                                            }
+                                            Some(StyledTextSpan::with_style(
+                                                span.start.max(line_start) - line_start,
+                                                span.end.min(line_end) - line_start,
+                                                span.color_rgba,
+                                                span.bold,
+                                                span.italic,
+                                            ))
+                                        })
+                                        .collect();
+                                    self.editor_overlay_text_system
+                                        .set_size(Some(line_w), Some(geometry.line_height));
+                                    glyphs.extend(layout_panel_rich_text(
+                                        line_text,
+                                        &line_spans,
+                                        self.theme.ui.fg.as_f32(),
+                                        &mut self.editor_overlay_text_system,
+                                        &mut self.atlas,
+                                        &self.queue,
+                                        text_x,
+                                        text_y,
+                                    ));
+                                }
+                                block_line_offset += block_lines.len().max(1);
+                            }
                         }
-                        self.editor_overlay_text_system
-                            .set_size(Some(line_w), Some(geometry.line_height));
-                        glyphs.extend(layout_panel_text(
-                            line_text,
-                            &mut self.editor_overlay_text_system,
-                            &mut self.atlas,
-                            &self.queue,
-                            text_x,
-                            text_y,
-                            text_color,
-                        ));
                     }
                 }
             }
@@ -1411,14 +1517,38 @@ impl Renderer {
 
                 self.editor_overlay_text_system
                     .set_size(Some(preview_text_width), Some(line_height));
-                glyphs.extend(layout_panel_text(
+                let line_start = fuzzy_state
+                    .preview_lines
+                    .iter()
+                    .take(preview_start + slot)
+                    .map(|item| item.text.len() + 1)
+                    .sum::<usize>();
+                let line_end = line_start + line.text.len();
+                let line_spans: Vec<StyledTextSpan> = fuzzy_state
+                    .preview_spans
+                    .iter()
+                    .filter_map(|span| {
+                        if span.end <= line_start || span.start >= line_end {
+                            return None;
+                        }
+                        Some(StyledTextSpan::with_style(
+                            span.start.max(line_start) - line_start,
+                            span.end.min(line_end) - line_start,
+                            span.color_rgba,
+                            span.bold,
+                            span.italic,
+                        ))
+                    })
+                    .collect();
+                glyphs.extend(layout_panel_rich_text(
                     &clamp_monospace_text(&line.text, preview_text_width, font_size),
+                    &line_spans,
+                    if line.is_target { fg } else { fg_dim },
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
                     right_x + 10.0 + line_number_width,
                     row_y,
-                    if line.is_target { fg } else { fg_dim },
                 ));
             }
         } else {

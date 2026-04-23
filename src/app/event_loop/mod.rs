@@ -68,8 +68,9 @@ mod setup;
 mod welcome;
 
 use helpers::{
-    build_sidebar_rows, collect_explorer_entries, detect_git_branch, language_id_for_path,
-    region_color, scale_theme, scale_ui_config, syntax_spans_to_styled,
+    build_preview_render_data, build_sidebar_rows, collect_explorer_entries, detect_git_branch,
+    language_id_for_path, parse_hover_markdown_blocks, region_color, scale_theme,
+    scale_ui_config, syntax_spans_to_styled,
 };
 use welcome::welcome_screen_content;
 

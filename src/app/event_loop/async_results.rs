@@ -323,13 +323,8 @@ impl AsyncResultRouter for AppShell {
                     return;
                 }
                 let (anchor_line, anchor_col) = self.app_state.cursor_line_col();
-                let lines: Vec<String> = content
-                    .lines()
-                    .map(str::to_string)
-                    .filter(|l| !l.trim().is_empty())
-                    .take(20)
-                    .collect();
-                if lines.is_empty() {
+                let blocks = parse_hover_markdown_blocks(&content, &self.theme);
+                if blocks.is_empty() {
                     return;
                 }
                 let changed =
@@ -337,7 +332,7 @@ impl AsyncResultRouter for AppShell {
                         .set_current_overlays(vec![EditorOverlay::FloatingBox {
                             anchor_line,
                             anchor_col,
-                            lines,
+                            blocks,
                             style: FloatingBoxStyle::DocHover,
                         }]);
                 if changed {
@@ -386,12 +381,28 @@ impl AsyncResultRouter for AppShell {
                         return;
                     }
                     let (anchor_line, anchor_col) = self.app_state.cursor_line_col();
+                    let preview_text = preview_lines.join("\n");
+                    let extension = path
+                        .extension()
+                        .and_then(|ext| ext.to_str())
+                        .unwrap_or_default();
+                    let preview_spans = syntax_spans_to_styled(
+                        &crate::syntax::highlight::highlight_snippet(
+                            &preview_text,
+                            extension,
+                            &self.theme,
+                        ),
+                        &self.theme,
+                    );
                     let changed =
                         self.app_state
                             .set_current_overlays(vec![EditorOverlay::FloatingBox {
                                 anchor_line,
                                 anchor_col,
-                                lines: preview_lines,
+                                blocks: vec![crate::app::app_state::FloatingBoxBlock::Code {
+                                    text: preview_text,
+                                    spans: preview_spans,
+                                }],
                                 style: FloatingBoxStyle::PeekWindow,
                             }]);
                     if changed {
@@ -440,17 +451,27 @@ impl AsyncResultRouter for AppShell {
                     && active_fuzzy_preview_target(&self.app_state)
                         == Some((file_path.clone(), target_line))
                 {
-                    self.app_state.set_fuzzy_picker_preview(lines)
+                    let (preview_text, preview_spans) =
+                        build_preview_render_data(&lines, &file_path, &self.theme);
+                    self.app_state
+                        .set_fuzzy_picker_preview(lines, preview_text, preview_spans)
                 } else if self.app_state.active_buffer_is_references()
                     && active_references_preview_target(&self.app_state)
                         == Some((file_path.clone(), target_line))
                 {
+<<<<<<< HEAD
                     self.app_state.set_active_references_preview(lines)
                 } else if self.app_state.active_buffer_is_diagnostics()
                     && active_diagnostics_preview_target(&self.app_state)
                         == Some((file_path, target_line))
                 {
                     self.app_state.set_active_diagnostics_preview(lines)
+=======
+                    let (preview_text, preview_spans) =
+                        build_preview_render_data(&lines, &file_path, &self.theme);
+                    self.app_state
+                        .set_active_references_preview(lines, preview_text, preview_spans)
+>>>>>>> 64fd530 (Add syntax highlighting for preview and hover overlays)
                 } else {
                     false
                 };

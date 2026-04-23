@@ -2643,13 +2643,15 @@ mod tests {
                 ),
             ],
         ));
-        assert!(shell.app_state.set_fuzzy_picker_preview(vec![
-            crate::async_runtime::message::FilePreviewLine {
+        assert!(shell.app_state.set_fuzzy_picker_preview(
+            vec![crate::async_runtime::message::FilePreviewLine {
                 line_number: 1,
                 text: "hello".to_string(),
                 is_target: false,
-            },
-        ]));
+            }],
+            String::new(),
+            Vec::new(),
+        ));
 
         assert!(shell.handle_command(Command::OverlaySelectNext));
 
@@ -2690,13 +2692,15 @@ mod tests {
                 ],
             )
             .expect("open references buffer");
-        assert!(shell.app_state.set_active_references_preview(vec![
-            crate::async_runtime::message::FilePreviewLine {
+        assert!(shell.app_state.set_active_references_preview(
+            vec![crate::async_runtime::message::FilePreviewLine {
                 line_number: 11,
                 text: "hello".to_string(),
                 is_target: true,
-            },
-        ]));
+            }],
+            String::new(),
+            Vec::new(),
+        ));
 
         assert!(shell.handle_command(Command::ReferencesSelectNext));
 
