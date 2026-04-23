@@ -1433,6 +1433,10 @@ impl AppShell {
                     &command,
                     Command::InsertChar(_) | Command::InsertText(_) | Command::Backspace
                 );
+                let auto_trigger_char = match &command {
+                    Command::InsertChar(ch) => Some(*ch),
+                    _ => None,
+                };
                 if is_typing_edit {
                     let _ = self.app_state.clear_completion();
                 }
@@ -1470,6 +1474,12 @@ impl AppShell {
                 if report.state_changed && should_reparse {
                     self.submit_parse_for_active_buffer(!is_typing_edit);
                     self.submit_lsp_did_change_for_active_file();
+                }
+                if report.success
+                    && let Some(ch) = auto_trigger_char
+                    && self.should_auto_trigger_lsp_completion_for_char(ch)
+                {
+                    self.submit_lsp_completion();
                 }
                 if report.success && should_notify_did_open {
                     self.submit_lsp_did_open_for_active_file();
@@ -2103,7 +2113,14 @@ impl AppShell {
         changed
     }
 
+    fn should_auto_trigger_lsp_completion_for_char(&self, ch: char) -> bool {
+        self.app_state.current_mode() == EditorMode::Insert
+            && self.active_lsp_server.is_some()
+            && self.lsp_completion_trigger_chars.contains(&ch)
+    }
+
     fn submit_lsp_completion(&mut self) -> bool {
+        self.force_flush_lsp_did_change_for_active_file();
         let Some((language_id, uri, line, character)) = self.lsp_cursor_context() else {
             return false;
         };

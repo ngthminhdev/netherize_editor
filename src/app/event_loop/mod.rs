@@ -105,6 +105,7 @@ pub struct AppShell {
     workspace_git_branch: Option<String>,
     active_lsp_server: Option<ActiveLspServer>,
     pending_lsp_server: Option<ActiveLspServer>,
+    lsp_completion_trigger_chars: Vec<char>,
     /// Popup hướng dẫn cài LSP — `Some` khi binary chưa cài, `None` khi đã dismiss.
     active_lsp_guide: Option<LspInstallGuide>,
     /// Toast window-relative ngắn hạn cho các action nền.

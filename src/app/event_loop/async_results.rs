@@ -1,5 +1,24 @@
 use super::*;
 
+fn parse_lsp_completion_trigger_chars(capabilities_summary: &str) -> Vec<char> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(capabilities_summary) else {
+        return Vec::new();
+    };
+
+    value
+        .pointer("/completionProvider/triggerCharacters")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .filter_map(|entry| {
+            let mut chars = entry.chars();
+            let ch = chars.next()?;
+            chars.next().is_none().then_some(ch)
+        })
+        .collect()
+}
+
 impl AsyncResultRouter for AppShell {
     fn current_revision_for(&self, topic: RequestTopic) -> u64 {
         match topic {
@@ -264,13 +283,15 @@ impl AsyncResultRouter for AppShell {
             WorkerResultPayload::LspServerStarted {
                 server_name,
                 root_path,
-                ..
+                capabilities_summary,
             } => {
                 let started = ActiveLspServer {
                     server_name: server_name.clone(),
                     root_path: root_path.clone(),
                 };
                 self.active_lsp_server = Some(started.clone());
+                self.lsp_completion_trigger_chars =
+                    parse_lsp_completion_trigger_chars(&capabilities_summary);
                 if self.pending_lsp_server.as_ref() == Some(&started) {
                     self.pending_lsp_server = None;
                 }
@@ -283,6 +304,7 @@ impl AsyncResultRouter for AppShell {
             }
             WorkerResultPayload::LspServerStopped { .. } => {
                 self.active_lsp_server = None;
+                self.lsp_completion_trigger_chars.clear();
             }
             WorkerResultPayload::LspDiagnostics {
                 uri, diagnostics, ..

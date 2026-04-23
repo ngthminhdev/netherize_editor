@@ -603,6 +603,7 @@ impl AppShell {
                     && active_terminal_session.is_none()
                     && !references_active
                     && !diagnostics_active
+                    && !self.app_state.has_completion()
                     && self.app_state.active_fuzzy_picker_buffer().is_none()
                     && self.app_state.active_settings_buffer().is_none();
                 if show_diagnostic_hover {
