@@ -5,11 +5,8 @@ use cosmic_text::Metrics;
 
 use crate::{
     app::app_state::{
-<<<<<<< HEAD
-        AppState, DiagnosticsState, EditorOverlay, FloatingBoxStyle, OverlayColorToken,
-=======
-        AppState, EditorOverlay, FloatingBoxBlock, FloatingBoxStyle, OverlayColorToken,
->>>>>>> 64fd530 (Add syntax highlighting for preview and hover overlays)
+        AppState, DiagnosticsState, EditorOverlay, FloatingBoxBlock, FloatingBoxStyle,
+        OverlayColorToken,
         ReferencesBufferState,
     },
     core::mode::EditorMode,
