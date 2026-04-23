@@ -19,7 +19,7 @@ use crate::{
         async_bridge::{AppAsyncBridge, AsyncResultRouter},
         clipboard::SystemClipboard,
         command_palette::CommandPaletteMode,
-        input::{InputHandler, InputRouteOutcome},
+        input::{InputHandler, InputRouteOutcome, LeapState},
         input_map::{InputFocusContext, InputMap, KeybindingContext},
         persistence::AppPersistentState,
     },
@@ -69,8 +69,8 @@ mod welcome;
 
 use helpers::{
     build_preview_render_data, build_sidebar_rows, collect_explorer_entries, detect_git_branch,
-    language_id_for_path, parse_hover_markdown_blocks, region_color, scale_theme, scale_ui_config,
-    syntax_spans_to_styled,
+    diagnostic_spans_to_styled, language_id_for_path, parse_hover_markdown_blocks, region_color,
+    scale_theme, scale_ui_config, syntax_spans_to_styled,
 };
 use welcome::welcome_screen_content;
 
@@ -143,9 +143,9 @@ pub struct AppShell {
     last_buffer_terminal_bounds: Option<[f32; 4]>,
     sidebar_selection_quads: Vec<RegionDrawInstance>,
     suppress_next_palette_ime_commit: bool,
-    /// Leap/EasyMotion labels hiện tại cho active editor viewport.
-    /// `Some(labels)` khi đang ở PendingLeapLabel state, `None` khi không active.
-    leap_labels: Option<Vec<(char, usize)>>,
+    /// Leap/EasyMotion state hiện tại cho active editor viewport.
+    /// `typed_prefix` giữ các phím user đã gõ, `targets` giữ labels + char_idx.
+    leap_state: Option<LeapState>,
     git_overlay_revision: u64,
 }
 

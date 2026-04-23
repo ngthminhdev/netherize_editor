@@ -115,6 +115,7 @@ impl Renderer {
         let statusbar_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let palette_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let lsp_guide_text_system = make_text_system(panel_metrics, font_family.as_deref());
+        let diagnostic_hover_text_system = make_text_system(editor_metrics, font_family.as_deref());
         let toast_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let leap_label_text_system = make_text_system(leap_metrics, font_family.as_deref());
 
@@ -141,6 +142,8 @@ impl Renderer {
         let palette_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let lsp_guide_text_pipeline =
+            make_text_pipeline(&device, &atlas, surface_format, width, height);
+        let diagnostic_hover_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let toast_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
@@ -214,6 +217,11 @@ impl Renderer {
             lsp_guide_text_system,
             lsp_guide_text_pipeline,
             lsp_guide_scissor: None,
+            diagnostic_hover_text_system,
+            diagnostic_hover_text_pipeline,
+            diagnostic_hover_glyph_instances: Vec::new(),
+            diagnostic_hover_chrome_instances: Vec::new(),
+            diagnostic_hover_scissor: None,
             editor_padding_x: 14.0,
             editor_padding_y: 14.0,
             panel_padding: 10.0,
@@ -268,6 +276,10 @@ impl Renderer {
             theme.ui.panel_font_size,
             theme.ui.panel_line_height,
         ));
+        self.diagnostic_hover_text_system.set_metrics(Metrics::new(
+            theme.editor.font_size,
+            theme.editor.line_height,
+        ));
         self.toast_text_system.set_metrics(ui_metrics);
 
         let family = theme.editor.font_family.as_deref();
@@ -290,6 +302,7 @@ impl Renderer {
         self.statusbar_text_system.set_font_family(family);
         self.palette_text_system.set_font_family(family);
         self.lsp_guide_text_system.set_font_family(family);
+        self.diagnostic_hover_text_system.set_font_family(family);
         self.toast_text_system.set_font_family(family);
         self.leap_label_text_system.set_font_family(family);
 
@@ -341,6 +354,7 @@ impl Renderer {
             &mut self.statusbar_text_pipeline,
             &mut self.palette_text_pipeline,
             &mut self.lsp_guide_text_pipeline,
+            &mut self.diagnostic_hover_text_pipeline,
             &mut self.toast_text_pipeline,
             &mut self.leap_label_text_pipeline,
         ] {
@@ -423,25 +437,13 @@ impl Renderer {
                     &self.queue,
                     &self.editor_overlay_chrome_instances,
                 );
-                let topbar_inner_scissor = self.topbar_scissor.and_then(|[sx, sy, sw, sh]| {
-                    let inset_x = 4_u32;
-                    let inset_y = 2_u32;
-                    let clipped_w = sw.saturating_sub(inset_x.saturating_mul(2));
-                    let clipped_h = sh.saturating_sub(inset_y.saturating_mul(2));
-                    (clipped_w > 0 && clipped_h > 0).then_some([
-                        sx.saturating_add(inset_x),
-                        sy.saturating_add(inset_y),
-                        clipped_w,
-                        clipped_h,
-                    ])
-                });
                 draw_text_region(
                     &mut pass,
-                    topbar_inner_scissor,
+                    self.editor_overlay_scissor,
                     viewport_width,
                     viewport_height,
                     |render_pass| {
-                        self.topbar_text_pipeline.draw(render_pass);
+                        self.region_pipeline.draw(render_pass);
                     },
                 );
             }
@@ -536,7 +538,10 @@ impl Renderer {
 
             if let Some(header_batch) = self.buffer_terminal_header_batch {
                 let total_count = self.buffer_terminal_glyph_instances.len() as u32;
-                let body_start = header_batch.range.start.saturating_add(header_batch.range.count);
+                let body_start = header_batch
+                    .range
+                    .start
+                    .saturating_add(header_batch.range.count);
                 let body_count = total_count.saturating_sub(body_start);
                 if body_count > 0 {
                     draw_text_region(
@@ -601,7 +606,8 @@ impl Renderer {
                     viewport_width,
                     viewport_height,
                     |render_pass| {
-                        self.topbar_text_pipeline.draw_range(render_pass, batch.range);
+                        self.topbar_text_pipeline
+                            .draw_range(render_pass, batch.range);
                     },
                 );
             }
@@ -687,6 +693,35 @@ impl Renderer {
                 viewport_height,
                 |render_pass| {
                     self.toast_text_pipeline.draw(render_pass);
+                },
+            );
+
+            // 11. Diagnostic hover popup (topmost overlay).
+            if !self.diagnostic_hover_chrome_instances.is_empty() {
+                self.region_pipeline.upload_instances(
+                    &self.device,
+                    &self.queue,
+                    &self.diagnostic_hover_chrome_instances,
+                );
+                draw_text_region(
+                    &mut pass,
+                    self.diagnostic_hover_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        render_pass.set_scissor_rect(0, 0, viewport_width, viewport_height);
+                        self.region_pipeline.draw(render_pass);
+                    },
+                );
+            }
+            draw_text_region(
+                &mut pass,
+                self.diagnostic_hover_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    render_pass.set_scissor_rect(0, 0, viewport_width, viewport_height);
+                    self.diagnostic_hover_text_pipeline.draw(render_pass);
                 },
             );
         }

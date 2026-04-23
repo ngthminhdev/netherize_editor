@@ -365,14 +365,25 @@ impl AppShell {
         } else {
             self.focus_manager.current()
         };
+        let center_has_error_diagnostics = self
+            .app_state
+            .active_file()
+            .and_then(|path| self.app_state.diagnostics_for_path(path))
+            .is_some_and(|items| items.iter().any(|item| item.severity == Some(1)));
         // Ẩn focus ring khi terminal buffer đang chiếm center — focus ring
         // gây ra border nhấp nháy trên mỗi redraw từ PTY output.
         let center_has_terminal_buffer = self.app_state.active_terminal_session_id().is_some();
         if !center_has_terminal_buffer {
             if let Some(bounds) = focus_region_bounds(&layout.model, focus_target) {
+                let border_color =
+                    if focus_target == FocusTarget::CenterEditor && center_has_error_diagnostics {
+                        self.theme.ui.error.as_f32()
+                    } else {
+                        self.theme.ui.accent.as_f32()
+                    };
                 region_instances.extend(focus_ring_instances(
                     bounds,
-                    self.theme.ui.accent.as_f32(),
+                    border_color,
                     2.0,
                     self.ui_config.border_radius_px,
                     self.theme.editor.bg.as_f32(),
@@ -461,11 +472,15 @@ impl AppShell {
                                 &self.highlight_spans,
                                 &self.semantic_highlight_spans,
                             );
+                        let mut styled_spans =
+                            syntax_spans_to_styled(&effective_highlights, &self.theme);
+                        styled_spans
+                            .extend(diagnostic_spans_to_styled(&self.app_state, &self.theme));
                         renderer.update_editor_content(
                             &self.app_state.text_string(),
                             &self.app_state,
                             center_bounds,
-                            &syntax_spans_to_styled(&effective_highlights, &self.theme),
+                            &styled_spans,
                         );
                         renderer.update_editor_overlays(&self.app_state, center_bounds);
                     }
@@ -568,13 +583,32 @@ impl AppShell {
 
             if let Some(renderer) = self.renderer.as_mut() {
                 if active_terminal_session.is_none() && !references_active && !show_welcome {
-                    if let Some(labels) = &self.leap_labels {
-                        renderer.update_editor_leap_labels(labels, &self.app_state, center_bounds);
+                    if let Some(leap_state) = &self.leap_state {
+                        renderer.update_editor_leap_labels(
+                            &leap_state.targets,
+                            &leap_state.typed_prefix,
+                            &self.app_state,
+                            center_bounds,
+                        );
                     } else {
                         renderer.clear_leap_labels();
                     }
                 } else {
                     renderer.clear_leap_labels();
+                }
+            }
+
+            if let Some(renderer) = self.renderer.as_mut() {
+                let show_diagnostic_hover = !show_welcome
+                    && active_terminal_session.is_none()
+                    && !references_active
+                    && !diagnostics_active
+                    && self.app_state.active_fuzzy_picker_buffer().is_none()
+                    && self.app_state.active_settings_buffer().is_none();
+                if show_diagnostic_hover {
+                    renderer.update_diagnostic_hover_popup(&self.app_state, center_bounds);
+                } else {
+                    renderer.clear_diagnostic_hover_popup();
                 }
             }
 
@@ -585,6 +619,7 @@ impl AppShell {
             renderer.clear_welcome_logo();
             renderer.clear_buffer_terminal();
             renderer.clear_leap_labels();
+            renderer.clear_diagnostic_hover_popup();
         }
         self.last_show_welcome = Some(show_welcome);
 

@@ -879,7 +879,9 @@ impl Renderer {
                     if is_active { active_fg } else { inactive_fg },
                 ));
                 let batch_count = glyphs.len() as u32 - batch_start;
-                if let Some(scissor) = topbar_tab_text_scissor([tab_x, bounds[1], tab_width, bounds[3]]) {
+                if let Some(scissor) =
+                    topbar_tab_text_scissor([tab_x, bounds[1], tab_width, bounds[3]])
+                {
                     if batch_count > 0 {
                         text_batches.push(TextScissorBatch {
                             scissor,

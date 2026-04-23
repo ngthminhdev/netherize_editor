@@ -4,8 +4,7 @@ use std::sync::{
 };
 
 use crate::async_runtime::message::{
-    RequestTopic, WorkerEvent, WorkerEventKind, WorkerMessage, WorkerResult,
-    WorkerResultPayload,
+    RequestTopic, WorkerEvent, WorkerEventKind, WorkerMessage, WorkerResult, WorkerResultPayload,
 };
 
 fn async_trace_enabled() -> bool {
@@ -96,8 +95,10 @@ impl AppAsyncBridge {
                         }
                         WorkerMessage::Result(result) => {
                             let latest_revision = router.current_revision_for(result.topic);
-                            let bypass_revision_check =
-                                matches!(result.payload, WorkerResultPayload::LspDiagnostics { .. });
+                            let bypass_revision_check = matches!(
+                                result.payload,
+                                WorkerResultPayload::LspDiagnostics { .. }
+                            );
                             if !bypass_revision_check && result.revision_id < latest_revision {
                                 async_trace!(
                                     "[Bridge] stale result discarded request_id={} revision={} latest_revision={} topic={:?}",

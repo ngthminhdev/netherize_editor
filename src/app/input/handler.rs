@@ -331,7 +331,7 @@ impl InputHandler {
                     return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                         input_debug,
                         format!(
-                            "mode={} focus={} -> leap jump label {:?}",
+                            "mode={} focus={} -> leap label input {:?}",
                             context.mode.as_str(),
                             context.focus.as_str(),
                             ch,

@@ -131,7 +131,7 @@ impl AppShell {
             last_buffer_terminal_bounds: None,
             sidebar_selection_quads: Vec::new(),
             suppress_next_palette_ime_commit: false,
-            leap_labels: None,
+            leap_state: None,
             git_overlay_revision: 0,
         })
     }

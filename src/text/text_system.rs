@@ -186,12 +186,10 @@ impl TextSystem {
             return;
         }
 
-        let mut sanitized: Vec<StyledTextSpan> = spans
+        let sanitized: Vec<StyledTextSpan> = spans
             .iter()
             .filter_map(|span| Self::sanitize_span(text, *span))
             .collect();
-
-        sanitized.sort_by_key(|span| (span.start, span.end));
         if sanitized.is_empty() {
             self.set_text_with_color(text, default_color_rgba);
             return;
@@ -203,31 +201,45 @@ impl TextSystem {
             family,
         );
 
-        // Merge spans cùng màu nếu dính nhau/chồng nhau để giảm phân mảnh khi set_rich_text.
-        let mut merged: Vec<StyledTextSpan> = Vec::with_capacity(sanitized.len());
-        for span in sanitized {
-            if let Some(last) = merged.last_mut() {
-                if last.color_rgba == span.color_rgba
-                    && last.bold == span.bold
-                    && last.italic == span.italic
-                    && span.start <= last.end
-                {
-                    last.end = last.end.max(span.end);
-                    continue;
-                }
+        // Split on every span boundary and let later spans override earlier ones.
+        // This keeps diagnostic spans able to sit on top of syntax spans cleanly.
+        let mut boundaries = Vec::with_capacity(sanitized.len() * 2 + 2);
+        boundaries.push(0usize);
+        boundaries.push(text.len());
+        for span in &sanitized {
+            boundaries.push(span.start);
+            boundaries.push(span.end);
+        }
+        boundaries.sort_unstable();
+        boundaries.dedup();
+
+        let mut resolved_segments: Vec<(usize, usize, Option<StyledTextSpan>)> =
+            Vec::with_capacity(boundaries.len().saturating_sub(1));
+        for pair in boundaries.windows(2) {
+            let start = pair[0];
+            let end = pair[1];
+            if start >= end {
+                continue;
             }
-            merged.push(span);
+
+            let active_span = sanitized
+                .iter()
+                .rev()
+                .find(|span| span.start < end && span.end > start)
+                .copied();
+            if let Some(last) = resolved_segments.last_mut()
+                && last.2 == active_span
+                && last.1 == start
+            {
+                last.1 = end;
+                continue;
+            }
+            resolved_segments.push((start, end, active_span));
         }
 
-        let mut segments: Vec<(&str, Attrs<'_>)> = Vec::with_capacity(merged.len() * 2 + 1);
-        let mut cursor = 0usize;
-
-        for span in merged {
-            let start = span.start.max(cursor);
-            if cursor < start {
-                segments.push((&text[cursor..start], default_attrs.clone()));
-            }
-            if start < span.end {
+        let mut segments: Vec<(&str, Attrs<'_>)> = Vec::with_capacity(resolved_segments.len());
+        for (start, end, style) in resolved_segments {
+            let attrs = if let Some(span) = style {
                 let mut attrs = Attrs::new().color(Self::rgba_u8_to_color(span.color_rgba));
                 if span.bold {
                     attrs = attrs.weight(fontdb::Weight::BOLD);
@@ -235,17 +247,11 @@ impl TextSystem {
                 if span.italic {
                     attrs = attrs.style(fontdb::Style::Italic);
                 }
-                let attrs = apply_family(attrs, family);
-                segments.push((&text[start..span.end], attrs));
-                cursor = span.end;
-            }
-        }
-
-        if cursor < text.len() {
-            segments.push((&text[cursor..text.len()], default_attrs.clone()));
-        }
-        if segments.is_empty() {
-            segments.push((text, default_attrs.clone()));
+                apply_family(attrs, family)
+            } else {
+                default_attrs.clone()
+            };
+            segments.push((&text[start..end], attrs));
         }
 
         self.buffer.set_rich_text(
@@ -374,7 +380,7 @@ fn apply_family<'a>(attrs: Attrs<'a>, family: Option<&'a str>) -> Attrs<'a> {
 mod tests {
     use cosmic_text::Metrics;
 
-    use super::TextSystem;
+    use super::{StyledTextSpan, TextSystem};
 
     #[test]
     fn unbounded_height_shapes_deep_lines() {
@@ -393,5 +399,37 @@ mod tests {
             max_line >= total_lines.saturating_sub(2),
             "deep lines were not shaped: max_line={max_line}, total_lines={total_lines}"
         );
+    }
+
+    #[test]
+    fn later_spans_override_earlier_overlaps() {
+        let mut system = TextSystem::new(Metrics::new(16.0, 22.0), Some(300.0), Some(200.0));
+        system.set_text_with_spans(
+            "abcdef",
+            [0xF0, 0xF0, 0xF0, 0xFF],
+            &[
+                StyledTextSpan::new(0, 6, [0x22, 0x88, 0xFF, 0xFF]),
+                StyledTextSpan::with_style(2, 4, [0xFF, 0x55, 0x55, 0xFF], true, false),
+            ],
+        );
+
+        let glyphs = system.collect_visible_glyphs(0.0, 0.0, [1.0, 1.0, 1.0, 1.0]);
+        let mut colors_by_byte = glyphs
+            .into_iter()
+            .map(|glyph| (glyph.byte_start, glyph.color))
+            .collect::<Vec<_>>();
+        colors_by_byte.sort_by_key(|(byte_start, _)| *byte_start);
+
+        let blue =
+            TextSystem::rgba_f32_from_color(TextSystem::rgba_u8_to_color([0x22, 0x88, 0xFF, 0xFF]));
+        let red =
+            TextSystem::rgba_f32_from_color(TextSystem::rgba_u8_to_color([0xFF, 0x55, 0x55, 0xFF]));
+
+        assert_eq!(colors_by_byte[0].1, blue);
+        assert_eq!(colors_by_byte[1].1, blue);
+        assert_eq!(colors_by_byte[2].1, red);
+        assert_eq!(colors_by_byte[3].1, red);
+        assert_eq!(colors_by_byte[4].1, blue);
+        assert_eq!(colors_by_byte[5].1, blue);
     }
 }

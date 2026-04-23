@@ -192,7 +192,7 @@ pub enum Command {
     LeapStart,
     /// Nhận target char từ user, kích hoạt tìm kiếm và sinh labels.
     LeapActivate(char),
-    /// User đã chọn một label — nhảy cursor đến vị trí tương ứng.
+    /// Nhận thêm 1 ký tự label/prefix — command layer sẽ lọc live và nhảy khi đủ duy nhất.
     LeapJump(char),
     /// Hủy Leap session (Escape hoặc không tìm thấy kết quả).
     LeapCancel,

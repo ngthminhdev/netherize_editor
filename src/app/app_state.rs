@@ -1871,7 +1871,8 @@ impl AppState {
             return false;
         }
 
-        let cursor_after_first_line_break = insert_at + 1 + current_indent.chars().count() + indent_unit.chars().count();
+        let cursor_after_first_line_break =
+            insert_at + 1 + current_indent.chars().count() + indent_unit.chars().count();
         self.cursor_char_idx = cursor_after_first_line_break;
         let (_, col) = self.cursor_line_col();
         self.target_col = col;
@@ -1891,7 +1892,9 @@ impl AppState {
 
         let start = self.cursor_char_idx - 1;
         let delete_len = match (self.char_before_cursor(), self.char_at_cursor()) {
-            (Some(left), Some(right)) if matches_matching_bracket_pair(Some(left), Some(right)) => 2,
+            (Some(left), Some(right)) if matches_matching_bracket_pair(Some(left), Some(right)) => {
+                2
+            }
             _ => 1,
         };
 
@@ -3046,6 +3049,21 @@ impl AppState {
         self.text.char_to_byte(line_end_char)
     }
 
+    pub fn line_char_to_byte_idx(&self, line_idx: usize, char_in_line: usize) -> usize {
+        if self.text.len_lines() == 0 {
+            return 0;
+        }
+
+        let clamped_line = line_idx.min(self.text.len_lines().saturating_sub(1));
+        let line_start_char = self.text.line_to_char(clamped_line);
+        let target_char = line_start_char + char_in_line.min(self.max_col_for_line(clamped_line));
+        self.text.char_to_byte(target_char)
+    }
+
+    pub fn text_len_bytes(&self) -> usize {
+        self.text.len_bytes()
+    }
+
     pub fn text_string(&self) -> String {
         self.text.to_string()
     }
@@ -3356,9 +3374,9 @@ impl AppState {
                 .iter()
                 .enumerate()
                 .filter_map(|(original_idx, item)| {
-                    score_completion_match(&item.label, prefix).map(
-                        |(score, match_ranges)| (original_idx, item.clone(), score, match_ranges),
-                    )
+                    score_completion_match(&item.label, prefix).map(|(score, match_ranges)| {
+                        (original_idx, item.clone(), score, match_ranges)
+                    })
                 })
                 .collect::<Vec<_>>();
 
@@ -3375,7 +3393,8 @@ impl AppState {
         };
 
         let next_selected = if filtered_items.is_empty() { 0 } else { 0 };
-        let changed = state.filtered_items != filtered_items || state.selected_index != next_selected;
+        let changed =
+            state.filtered_items != filtered_items || state.selected_index != next_selected;
         if !changed {
             return false;
         }
@@ -4668,7 +4687,10 @@ mod tests {
 
         assert_eq!(state.text_string(), "");
         assert_eq!(state.cursor_char_idx(), 0);
-        assert_eq!(state.take_highlight_edits(), vec![HighlightEdit::delete(0, 2)]);
+        assert_eq!(
+            state.take_highlight_edits(),
+            vec![HighlightEdit::delete(0, 2)]
+        );
     }
 
     #[test]
@@ -4680,7 +4702,10 @@ mod tests {
 
         assert_eq!(state.text_string(), "");
         assert_eq!(state.cursor_char_idx(), 0);
-        assert_eq!(state.take_highlight_edits(), vec![HighlightEdit::delete(0, 2)]);
+        assert_eq!(
+            state.take_highlight_edits(),
+            vec![HighlightEdit::delete(0, 2)]
+        );
     }
 
     #[test]

@@ -6,6 +6,7 @@ use crate::{
         AppState, CompletionDisplayItem, DiagnosticsState, EditorOverlay, FloatingBoxBlock,
         FloatingBoxStyle, OverlayColorToken, ReferencesBufferState, SettingItem, SettingsState,
     },
+    async_runtime::message::LspDiagnostic,
     core::mode::EditorMode,
     render::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
@@ -91,6 +92,23 @@ fn wrap_text_lines(text: &str, max_chars: usize) -> Vec<String> {
     out
 }
 
+fn cursor_diagnostic(app_state: &AppState) -> Option<&LspDiagnostic> {
+    let cursor_line = app_state.cursor_line_col().0;
+    app_state
+        .active_file()
+        .and_then(|path| app_state.diagnostics_for_path(path))
+        .and_then(|items| {
+            items
+                .iter()
+                .filter(|diag| {
+                    let start_line = diag.range.start.line as usize;
+                    let end_line = diag.range.end.line as usize;
+                    cursor_line >= start_line && cursor_line <= end_line
+                })
+                .min_by_key(|diag| (diag.severity.unwrap_or(u32::MAX), diag.range.start.line))
+        })
+}
+
 struct EditorViewportGeometry {
     line_height: f32,
     font_size: f32,
@@ -142,6 +160,7 @@ impl Renderer {
         self.gutter_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
         self.clear_editor_overlays();
+        self.clear_diagnostic_hover_popup();
         self.editor_scissor = None;
     }
 
@@ -873,26 +892,15 @@ impl Renderer {
         let active_diagnostics = app_state
             .active_file()
             .and_then(|path| app_state.diagnostics_for_path(path));
-        let active_has_error = active_diagnostics
-            .is_some_and(|items| items.iter().any(|diag| diag.severity == Some(1)));
-        let cursor_line = app_state.cursor_line_col().0;
-        let cursor_diagnostic = app_state
-            .active_file()
-            .and_then(|path| app_state.diagnostics_for_path(path))
-            .and_then(|items| {
-                items
-                    .iter()
-                    .filter(|diag| {
-                        let start_line = diag.range.start.line as usize;
-                        let end_line = diag.range.end.line as usize;
-                        cursor_line >= start_line && cursor_line <= end_line
-                    })
-                    .min_by_key(|diag| (diag.severity.unwrap_or(u32::MAX), diag.range.start.line))
-            });
+        let active_has_visible_diagnostics = active_diagnostics.is_some_and(|items| {
+            items
+                .iter()
+                .any(|diag| matches!(diag.severity.unwrap_or(2), 1 | 2))
+        });
 
         if app_state.current_overlays().is_empty()
             && app_state.completion().is_none()
-            && cursor_diagnostic.is_none()
+            && !active_has_visible_diagnostics
         {
             self.editor_overlay_scissor = rect_to_scissor(center_bounds);
             let header_h = self.theme.ui.panel_line_height.max(20.0);
@@ -938,36 +946,6 @@ impl Renderer {
         self.editor_overlay_scissor = rect_to_scissor(center_bounds);
         let mut glyphs = Vec::new();
         let mut chrome_quads: Vec<RegionDrawInstance> = Vec::new();
-
-        if active_has_error {
-            let border = self.theme.ui.error.as_f32();
-            chrome_quads.push(RegionDrawInstance::new(
-                [center_bounds[0], center_bounds[1], center_bounds[2], 2.0],
-                border,
-            ));
-            chrome_quads.push(RegionDrawInstance::new(
-                [
-                    center_bounds[0],
-                    center_bounds[1] + center_bounds[3] - 2.0,
-                    center_bounds[2],
-                    2.0,
-                ],
-                border,
-            ));
-            chrome_quads.push(RegionDrawInstance::new(
-                [center_bounds[0], center_bounds[1], 2.0, center_bounds[3]],
-                border,
-            ));
-            chrome_quads.push(RegionDrawInstance::new(
-                [
-                    center_bounds[0] + center_bounds[2] - 2.0,
-                    center_bounds[1],
-                    2.0,
-                    center_bounds[3],
-                ],
-                border,
-            ));
-        }
 
         if let Some(diagnostics) = active_diagnostics {
             for diagnostic in diagnostics {
@@ -1311,10 +1289,8 @@ impl Renderer {
                         .with_radius(BADGE_RADIUS),
                 );
 
-                self.editor_overlay_text_system.set_size(
-                    Some((badge_w - 6.0).max(1.0)),
-                    Some(geometry.line_height),
-                );
+                self.editor_overlay_text_system
+                    .set_size(Some((badge_w - 6.0).max(1.0)), Some(geometry.line_height));
                 glyphs.extend(layout_panel_text(
                     icon,
                     &mut self.editor_overlay_text_system,
@@ -1344,91 +1320,130 @@ impl Renderer {
             }
         }
 
-        if let Some(diagnostic) = cursor_diagnostic {
-            const PAD_X: f32 = 10.0;
-            const PAD_Y: f32 = 6.0;
-            const BORDER: f32 = 1.0;
-
-            let severity = diagnostic.severity.unwrap_or(2);
-            let border_color = if severity == 1 {
-                self.theme.ui.error.as_f32()
-            } else {
-                self.theme.ui.warning.as_f32()
-            };
-            let text_color = border_color;
-            let mut bg_color = self.theme.ui.panel_bg.as_f32();
-            bg_color[3] = 0.98;
-            let char_w = (geometry.font_size * 0.6).max(1.0);
-            let max_popup_w = geometry.viewport_text_width.min(420.0).max(160.0);
-            let wrap_cols = ((max_popup_w - PAD_X * 2.0) / char_w).floor() as usize;
-            let wrapped = wrap_text_lines(&diagnostic.message, wrap_cols.max(16));
-            let longest = wrapped
-                .iter()
-                .map(|line| line.chars().count())
-                .max()
-                .unwrap_or(0);
-            let popup_w = (longest as f32 * char_w + PAD_X * 2.0)
-                .clamp(160.0, max_popup_w)
-                .min((viewport_right - geometry.viewport_text_left).max(160.0));
-            let popup_h = (wrapped.len().max(1) as f32 * geometry.line_height + PAD_Y * 2.0)
-                .max(geometry.line_height);
-
-            let anchor_line = diagnostic.range.start.line as usize;
-            let anchor_col = diagnostic.range.start.character as usize;
-            let anchor_x = ((geometry.origin_x + anchor_col as f32 * char_w) + 18.0).clamp(
-                geometry.viewport_text_left,
-                (viewport_right - popup_w).max(geometry.viewport_text_left),
-            );
-            let anchor_y = geometry.origin_y + anchor_line as f32 * geometry.line_height;
-            let mut popup_y = anchor_y + geometry.line_height;
-            if popup_y + popup_h > viewport_bottom {
-                popup_y = (anchor_y - popup_h).max(center_bounds[1]);
-            }
-
-            chrome_quads.push(RegionDrawInstance::new(
-                [
-                    anchor_x - BORDER,
-                    popup_y - BORDER,
-                    popup_w + BORDER * 2.0,
-                    popup_h + BORDER * 2.0,
-                ],
-                border_color,
-            ));
-            chrome_quads.push(RegionDrawInstance::new(
-                [anchor_x, popup_y, popup_w, popup_h],
-                bg_color,
-            ));
-            let mut scrim = self.theme.editor.bg.as_f32();
-            scrim[3] = 0.22;
-            chrome_quads.push(RegionDrawInstance::new(
-                [anchor_x, popup_y, popup_w, popup_h],
-                scrim,
-            ));
-
-            for (idx, line_text) in wrapped.iter().enumerate() {
-                let text_y = popup_y + PAD_Y + idx as f32 * geometry.line_height;
-                self.editor_overlay_text_system.set_size(
-                    Some((popup_w - PAD_X * 2.0).max(1.0)),
-                    Some(geometry.line_height),
-                );
-                glyphs.extend(layout_panel_text(
-                    line_text,
-                    &mut self.editor_overlay_text_system,
-                    &mut self.atlas,
-                    &self.queue,
-                    anchor_x + PAD_X,
-                    text_y,
-                    text_color,
-                ));
-            }
-        }
-
         self.editor_overlay_chrome_instances = chrome_quads;
         self.editor_overlay_glyph_instances = glyphs;
         self.editor_overlay_text_pipeline.upload_instances(
             &self.device,
             &self.queue,
             &self.editor_overlay_glyph_instances,
+        );
+    }
+
+    pub fn clear_diagnostic_hover_popup(&mut self) {
+        self.diagnostic_hover_scissor = None;
+        self.diagnostic_hover_chrome_instances.clear();
+        self.diagnostic_hover_glyph_instances.clear();
+        self.diagnostic_hover_text_pipeline
+            .upload_instances(&self.device, &self.queue, &[]);
+    }
+
+    pub fn update_diagnostic_hover_popup(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {
+        if center_bounds[2] < 1.0 || center_bounds[3] < 1.0 {
+            self.clear_diagnostic_hover_popup();
+            return;
+        }
+
+        let Some(diagnostic) = cursor_diagnostic(app_state) else {
+            self.clear_diagnostic_hover_popup();
+            return;
+        };
+
+        const PAD_X: f32 = 10.0;
+        const PAD_Y: f32 = 6.0;
+        const BORDER: f32 = 1.0;
+        const WINDOW_PAD: f32 = 12.0;
+
+        let geometry = editor_viewport_geometry(self, app_state, center_bounds);
+        let window_w = self.surface_state.config.width.max(1) as f32;
+        let window_h = self.surface_state.config.height.max(1) as f32;
+        let severity = diagnostic.severity.unwrap_or(2);
+        let border_color = if severity == 1 {
+            self.theme.ui.error.as_f32()
+        } else {
+            self.theme.ui.warning.as_f32()
+        };
+        let bg_color = self.theme.ui.panel_bg.as_f32();
+        let text_color = self.theme.ui.fg.as_f32();
+        let char_w = (geometry.font_size * 0.6).max(1.0);
+        let max_popup_w = (window_w - WINDOW_PAD * 2.0)
+            .min(geometry.viewport_text_width.max(160.0))
+            .clamp(160.0, 420.0);
+        let wrap_cols = ((max_popup_w - PAD_X * 2.0) / char_w).floor() as usize;
+        let wrapped = wrap_text_lines(&diagnostic.message, wrap_cols.max(16));
+        let longest = wrapped
+            .iter()
+            .map(|line| line.chars().count())
+            .max()
+            .unwrap_or(0);
+        let popup_w = (longest as f32 * char_w + PAD_X * 2.0).clamp(160.0, max_popup_w);
+        let popup_h = (wrapped.len().max(1) as f32 * geometry.line_height + PAD_Y * 2.0)
+            .max(geometry.line_height);
+
+        let anchor_line = diagnostic.range.start.line as usize;
+        let anchor_col = diagnostic.range.start.character as usize;
+        let mut anchor_x = geometry.viewport_text_left + 18.0;
+        let mut anchor_y = geometry.origin_y + anchor_line as f32 * geometry.line_height;
+        for run in self.text_system.buffer().layout_runs() {
+            if run.line_i != anchor_line {
+                continue;
+            }
+            anchor_x = run_x_for_byte(geometry.origin_x, &run, anchor_col) + 18.0;
+            anchor_y = geometry.origin_y + run.line_top;
+            break;
+        }
+
+        let max_popup_x = (window_w - popup_w - WINDOW_PAD).max(WINDOW_PAD);
+        let min_popup_x = geometry.viewport_text_left.max(WINDOW_PAD).min(max_popup_x);
+        let popup_x = anchor_x.clamp(min_popup_x, max_popup_x);
+        let mut popup_y = anchor_y + geometry.line_height;
+        if popup_y + popup_h > window_h - WINDOW_PAD {
+            popup_y = (anchor_y - popup_h).max(WINDOW_PAD);
+        }
+
+        self.diagnostic_hover_scissor = Some([
+            0,
+            0,
+            self.surface_state.config.width.max(1),
+            self.surface_state.config.height.max(1),
+        ]);
+        self.diagnostic_hover_chrome_instances = vec![
+            RegionDrawInstance::new(
+                [
+                    popup_x - BORDER,
+                    popup_y - BORDER,
+                    popup_w + BORDER * 2.0,
+                    popup_h + BORDER * 2.0,
+                ],
+                border_color,
+            ),
+            RegionDrawInstance::new([popup_x, popup_y, popup_w, popup_h], bg_color),
+        ];
+
+        self.diagnostic_hover_text_system
+            .set_metrics(Metrics::new(geometry.font_size, geometry.line_height));
+        let mut glyphs = Vec::new();
+        for (idx, line_text) in wrapped.iter().enumerate() {
+            let text_y = popup_y + PAD_Y + idx as f32 * geometry.line_height;
+            self.diagnostic_hover_text_system.set_size(
+                Some((popup_w - PAD_X * 2.0).max(1.0)),
+                Some(geometry.line_height),
+            );
+            glyphs.extend(layout_panel_text(
+                line_text,
+                &mut self.diagnostic_hover_text_system,
+                &mut self.atlas,
+                &self.queue,
+                popup_x + PAD_X,
+                text_y,
+                text_color,
+            ));
+        }
+
+        self.diagnostic_hover_glyph_instances = glyphs;
+        self.diagnostic_hover_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.diagnostic_hover_glyph_instances,
         );
     }
 
@@ -2309,7 +2324,10 @@ impl Renderer {
     }
 }
 
-fn completion_label_spans(item: &CompletionDisplayItem, match_color: [f32; 4]) -> Vec<StyledTextSpan> {
+fn completion_label_spans(
+    item: &CompletionDisplayItem,
+    match_color: [f32; 4],
+) -> Vec<StyledTextSpan> {
     let color = [
         (match_color[0] * 255.0) as u8,
         (match_color[1] * 255.0) as u8,

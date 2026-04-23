@@ -63,6 +63,57 @@ pub(super) fn syntax_spans_to_styled(
         .collect()
 }
 
+pub(super) fn diagnostic_spans_to_styled(
+    app_state: &AppState,
+    theme: &ThemeConfig,
+) -> Vec<StyledTextSpan> {
+    let Some(path) = app_state.active_file() else {
+        return Vec::new();
+    };
+    let Some(diagnostics) = app_state.diagnostics_for_path(path) else {
+        return Vec::new();
+    };
+
+    let mut ordered = diagnostics.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|diagnostic| diagnostic.severity.unwrap_or(u32::MAX));
+
+    ordered
+        .into_iter()
+        .filter_map(|diagnostic| {
+            let severity = diagnostic.severity.unwrap_or(2);
+            let color = match severity {
+                1 => theme.ui.error.as_u8(),
+                2 => theme.ui.warning.as_u8(),
+                _ => return None,
+            };
+
+            let start_line = diagnostic.range.start.line as usize;
+            let end_line = diagnostic.range.end.line as usize;
+            let start_byte = app_state
+                .line_char_to_byte_idx(start_line, diagnostic.range.start.character as usize);
+            let mut end_byte =
+                app_state.line_char_to_byte_idx(end_line, diagnostic.range.end.character as usize);
+            if end_byte <= start_byte {
+                end_byte = start_byte
+                    .saturating_add(1)
+                    .min(app_state.line_end_byte_idx(start_line))
+                    .min(app_state.text_len_bytes());
+            }
+            if end_byte <= start_byte {
+                return None;
+            }
+
+            Some(StyledTextSpan::with_style(
+                start_byte,
+                end_byte,
+                color,
+                severity == 1,
+                false,
+            ))
+        })
+        .collect()
+}
+
 pub(super) fn build_preview_render_data(
     lines: &[FilePreviewLine],
     path: &Path,

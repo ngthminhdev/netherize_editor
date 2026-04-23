@@ -2,6 +2,7 @@ use super::*;
 use crate::{
     app::clipboard::ClipboardProvider,
     app::command_palette::CommandPaletteMode,
+    app::input::{LeapState, LeapTarget, generate_leap_labels},
     core::command_dispatch::{
         DispatchReport, dispatch_command_with_clipboard_count,
         dispatch_command_with_clipboard_count_with_terminal,
@@ -1191,50 +1192,73 @@ impl AppShell {
                 true
             }
             Command::LeapActivate(target_char) => {
-                let labels = self.generate_editor_leap_labels(*target_char);
-                if labels.is_empty() {
-                    self.leap_labels = None;
+                let leap_state = self.generate_editor_leap_state(*target_char);
+                if leap_state.targets.is_empty() {
+                    self.leap_state = None;
                     false
                 } else {
                     self.input_handler.set_pending_leap_label();
-                    self.leap_labels = Some(labels);
+                    self.leap_state = Some(leap_state);
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                     true
                 }
             }
             Command::LeapJump(label_char) => {
-                let jumped = if let Some(labels) = self.leap_labels.take() {
-                    if let Some((_, char_idx)) = labels.iter().find(|(lc, _)| *lc == *label_char) {
-                        let changed = self.app_state.leap_jump_to_char(*char_idx);
-                        if changed {
-                            let viewport_lines = self.editor_viewport_lines();
-                            let prev_scroll = self.app_state.scroll_line;
-                            self.app_state.auto_scroll_to_cursor(viewport_lines);
-                            if self.app_state.scroll_line != prev_scroll {
-                                self.editor_needs_layout = true;
-                                self.editor_caret_needs_layout = false;
-                                self.submit_parse_for_active_buffer(true);
-                            } else {
-                                self.editor_caret_needs_layout = true;
-                            }
-                        }
-                        changed
-                    } else {
-                        false
-                    }
-                } else {
-                    false
+                let Some(mut leap_state) = self.leap_state.take() else {
+                    return false;
                 };
-                jumped
+
+                leap_state
+                    .typed_prefix
+                    .push(Self::normalize_leap_target(*label_char));
+
+                let matching_targets: Vec<LeapTarget> = leap_state
+                    .targets
+                    .iter()
+                    .filter(|target| target.label.starts_with(&leap_state.typed_prefix))
+                    .cloned()
+                    .collect();
+
+                if matching_targets.is_empty() {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    return true;
+                }
+
+                let resolved_target = matching_targets
+                    .iter()
+                    .find(|target| target.label == leap_state.typed_prefix)
+                    .or_else(|| (matching_targets.len() == 1).then_some(&matching_targets[0]))
+                    .cloned();
+
+                if let Some(target) = resolved_target {
+                    let changed = self.app_state.leap_jump_to_char(target.char_idx);
+                    let viewport_lines = self.editor_viewport_lines();
+                    let prev_scroll = self.app_state.scroll_line;
+                    self.app_state.auto_scroll_to_cursor(viewport_lines);
+                    if self.app_state.scroll_line != prev_scroll {
+                        self.submit_parse_for_active_buffer(true);
+                    }
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    changed || self.app_state.scroll_line != prev_scroll
+                } else {
+                    leap_state.targets = matching_targets;
+                    self.input_handler.set_pending_leap_label();
+                    self.leap_state = Some(leap_state);
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    true
+                }
             }
             Command::LeapCancel => {
-                let had_labels = self.leap_labels.take().is_some();
-                if had_labels {
+                let had_leap_state = self.leap_state.take().is_some();
+                if had_leap_state {
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                 }
-                had_labels
+                had_leap_state
             }
             Command::FilePickerConfirmSelection | Command::OpenFile(_) => {
                 if matches!(&command, Command::FilePickerConfirmSelection)
@@ -2509,7 +2533,7 @@ impl AppShell {
 
         self.base_theme = loaded_theme;
         self.apply_scaled_runtime_config();
-        self.leap_labels = None;
+        self.leap_state = None;
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_leap_labels();
         }
@@ -2540,13 +2564,8 @@ impl AppShell {
         }
     }
 
-    /// Quét viewport editor hiện tại, tìm tất cả ký tự `target` và gán labels 'a'-'z'.
-    fn generate_editor_leap_labels(&self, target: char) -> Vec<(char, usize)> {
-        const LABEL_CHARS: &[char] = &[
-            'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q',
-            'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
-        ];
-
+    /// Quét viewport editor hiện tại, tìm tất cả ký tự `target` và sinh labels động.
+    fn generate_editor_leap_state(&self, target: char) -> LeapState {
         let viewport_lines = self.editor_viewport_lines().max(1);
         let scroll_line = self.app_state.scroll_line;
         let total_chars = self.app_state.text_len_chars();
@@ -2559,18 +2578,13 @@ impl AppShell {
             .min(total_chars);
 
         if viewport_start_char >= viewport_end_char {
-            return Vec::new();
+            return LeapState::default();
         }
 
-        // Lấy text snapshot và scan
         let text = self.app_state.text_string();
         let target_lower = Self::normalize_leap_target(target);
+        let mut matches = Vec::new();
 
-        let mut labels: Vec<(char, usize)> = Vec::new();
-        let mut label_idx = 0usize;
-
-        // char_indices() trả về (byte_offset, char) — ta cần char_idx để map Rope
-        // Chuyển đổi: duyệt qua chars() với counter riêng
         let mut char_idx: usize = 0;
         for ch in text.chars() {
             if char_idx >= viewport_start_char && char_idx < viewport_end_char {
@@ -2580,12 +2594,7 @@ impl AppShell {
                     ch
                 };
                 if ch_lower == target_lower {
-                    if label_idx < LABEL_CHARS.len() {
-                        labels.push((LABEL_CHARS[label_idx], char_idx));
-                        label_idx += 1;
-                    } else {
-                        break; // Đủ 26 labels rồi
-                    }
+                    matches.push(char_idx);
                 }
             }
             char_idx += 1;
@@ -2594,7 +2603,12 @@ impl AppShell {
             }
         }
 
-        labels
+        let targets = generate_leap_labels(matches.len())
+            .into_iter()
+            .zip(matches)
+            .map(|(label, char_idx)| LeapTarget { label, char_idx })
+            .collect();
+        LeapState::new(targets)
     }
 }
 
@@ -2754,8 +2768,52 @@ mod tests {
 
         assert!(shell.handle_command(Command::LeapActivate('b')));
 
-        let labels = shell.leap_labels.as_ref().expect("editor leap labels");
-        assert_eq!(labels.as_slice(), [('a', 0)].as_ref());
+        let leap_state = shell.leap_state.as_ref().expect("editor leap state");
+        assert_eq!(leap_state.typed_prefix, "");
+        assert_eq!(leap_state.targets.len(), 1);
+        assert_eq!(leap_state.targets[0].label, "a");
+        assert_eq!(leap_state.targets[0].char_idx, 0);
+    }
+
+    #[test]
+    fn leap_generates_multi_char_labels_after_twenty_six_matches() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let text = (0..27).map(|_| "a").collect::<Vec<_>>().join(" ");
+        shell.app_state = AppState::from_text(PathBuf::from("editor-leap.txt"), &text);
+        shell.last_editor_bounds = Some([0.0, 0.0, 960.0, 240.0]);
+
+        assert!(shell.handle_command(Command::LeapActivate('a')));
+
+        let leap_state = shell.leap_state.as_ref().expect("editor leap state");
+        assert_eq!(leap_state.targets.len(), 27);
+        assert_eq!(leap_state.targets[0].label, "aa");
+        assert_eq!(leap_state.targets[25].label, "az");
+        assert_eq!(leap_state.targets[26].label, "ba");
+    }
+
+    #[test]
+    fn leap_filters_prefix_until_it_can_jump() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let text = (0..27).map(|_| "a").collect::<Vec<_>>().join(" ");
+        shell.app_state = AppState::from_text(PathBuf::from("editor-leap.txt"), &text);
+        shell.last_editor_bounds = Some([0.0, 0.0, 960.0, 240.0]);
+
+        assert!(shell.handle_command(Command::LeapActivate('a')));
+        assert!(shell.handle_command(Command::LeapJump('a')));
+
+        let leap_state = shell.leap_state.as_ref().expect("filtered leap state");
+        assert_eq!(leap_state.typed_prefix, "a");
+        assert_eq!(leap_state.targets.len(), 26);
+        assert!(
+            leap_state
+                .targets
+                .iter()
+                .all(|target| target.label.starts_with("a"))
+        );
+
+        assert!(shell.handle_command(Command::LeapJump('b')));
+        assert!(shell.leap_state.is_none());
+        assert_eq!(shell.app_state.cursor_line_col(), (0, 2));
     }
 
     #[test]

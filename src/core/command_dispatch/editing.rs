@@ -69,7 +69,10 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         }
         Command::Newline => {
             let changed = ctx.app_state.smart_insert_newline();
-            DispatchReport::success("Dispatch: applied to active buffer (insert newline)", changed)
+            DispatchReport::success(
+                "Dispatch: applied to active buffer (insert newline)",
+                changed,
+            )
         }
         Command::Backspace => {
             let changed = ctx.app_state.backspace();

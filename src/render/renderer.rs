@@ -200,6 +200,11 @@ pub struct Renderer {
     pub(super) lsp_guide_text_system: TextSystem,
     pub(super) lsp_guide_text_pipeline: TextPipeline,
     pub(super) lsp_guide_scissor: Option<[u32; 4]>,
+    pub(super) diagnostic_hover_text_system: TextSystem,
+    pub(super) diagnostic_hover_text_pipeline: TextPipeline,
+    pub(super) diagnostic_hover_glyph_instances: Vec<GlyphInstance>,
+    pub(super) diagnostic_hover_chrome_instances: Vec<RegionDrawInstance>,
+    pub(super) diagnostic_hover_scissor: Option<[u32; 4]>,
 
     // ── UI config knobs ───────────────────────────────────────────────────────
     pub(super) editor_padding_x: f32,

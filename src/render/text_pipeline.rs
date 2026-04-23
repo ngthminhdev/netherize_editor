@@ -224,7 +224,10 @@ impl TextPipeline {
             return;
         }
 
-        let end = range.start.saturating_add(range.count).min(self.instance_count);
+        let end = range
+            .start
+            .saturating_add(range.count)
+            .min(self.instance_count);
         if end <= range.start {
             return;
         }

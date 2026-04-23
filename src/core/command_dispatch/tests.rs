@@ -144,14 +144,16 @@ fn newline_between_braces_expands_block_with_indent() {
 fn auto_pair_and_smart_enter_group_into_insert_session_undo_transaction() {
     let mut app_state = AppState::new(unique_temp_path("pair_undo"));
 
-    let enter_insert = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterInsert));
+    let enter_insert =
+        dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterInsert));
     assert!(enter_insert.success);
 
     let pair = dispatch_command(&mut app_state, Command::InsertChar('{'));
     assert!(pair.success);
     assert_eq!(app_state.text_string(), "{}");
 
-    let exit_after_pair = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let exit_after_pair =
+        dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
     assert!(exit_after_pair.success);
 
     let undo_pair = dispatch_command(&mut app_state, Command::Undo);
@@ -159,14 +161,16 @@ fn auto_pair_and_smart_enter_group_into_insert_session_undo_transaction() {
     assert!(undo_pair.state_changed);
     assert_eq!(app_state.text_string(), "");
 
-    let reenter_insert = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterInsert));
+    let reenter_insert =
+        dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterInsert));
     assert!(reenter_insert.success);
     let _ = dispatch_command(&mut app_state, Command::InsertChar('{'));
     let smart_enter = dispatch_command(&mut app_state, Command::Newline);
     assert!(smart_enter.success);
     assert_eq!(app_state.text_string(), "{\n    \n}");
 
-    let exit_after_newline = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let exit_after_newline =
+        dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
     assert!(exit_after_newline.success);
 
     let undo_newline = dispatch_command(&mut app_state, Command::Undo);
@@ -179,7 +183,8 @@ fn auto_pair_and_smart_enter_group_into_insert_session_undo_transaction() {
 fn backspace_between_empty_pair_deletes_both_chars_in_insert_mode() {
     let mut app_state = AppState::new(unique_temp_path("smart_backspace_dispatch_pair"));
 
-    let enter_insert = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterInsert));
+    let enter_insert =
+        dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterInsert));
     assert!(enter_insert.success);
 
     let pair = dispatch_command(&mut app_state, Command::InsertChar('('));

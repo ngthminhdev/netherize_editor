@@ -458,13 +458,13 @@ impl AsyncResultRouter for AppShell {
                 if items.is_empty() {
                     return;
                 }
-                let changed =
-                    self.app_state
-                        .set_completion(crate::app::app_state::CompletionState::from_lsp_items(
-                            items,
-                            cursor_line,
-                            cursor_col,
-                        ));
+                let changed = self.app_state.set_completion(
+                    crate::app::app_state::CompletionState::from_lsp_items(
+                        items,
+                        cursor_line,
+                        cursor_col,
+                    ),
+                );
                 if changed {
                     self.editor_caret_needs_layout = true;
                     self.request_redraw();
