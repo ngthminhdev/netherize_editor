@@ -4,7 +4,7 @@ use winit::{
     keyboard::{Key, NamedKey},
 };
 
-impl ApplicationHandler for AppShell {
+impl ApplicationHandler<AppEvent> for AppShell {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -224,6 +224,18 @@ impl ApplicationHandler for AppShell {
         if self.app_state.workspace_is_inputting_filter() {
             self.sidebar_needs_layout = true;
             self.request_redraw();
+        }
+    }
+
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AppEvent) {
+        match event {
+            AppEvent::TerminalOutputReady => {
+                if self.pump_bridge() {
+                    self.terminal_needs_layout = true;
+                    self.buffer_terminal_needs_layout = true;
+                }
+                self.request_redraw();
+            }
         }
     }
 }

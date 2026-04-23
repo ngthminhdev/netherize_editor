@@ -9,7 +9,7 @@ use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalSize},
     event::{Ime, WindowEvent},
-    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
     window::{Fullscreen, Window, WindowId},
 };
 
@@ -205,11 +205,17 @@ struct TransientToast {
     expires_at: Instant,
 }
 
-pub fn run() -> Result<(), winit::error::EventLoopError> {
-    let event_loop = EventLoop::new()?;
-    event_loop.set_control_flow(ControlFlow::Wait);
+#[derive(Debug, Clone)]
+pub enum AppEvent {
+    TerminalOutputReady,
+}
 
-    let mut app = match AppShell::new() {
+pub fn run() -> Result<(), winit::error::EventLoopError> {
+    let event_loop = EventLoop::<AppEvent>::with_user_event().build()?;
+    event_loop.set_control_flow(ControlFlow::Wait);
+    let event_proxy = event_loop.create_proxy();
+
+    let mut app = match AppShell::new(event_proxy) {
         Ok(app) => app,
         Err(err) => {
             eprintln!("[fatal] AppShell::new failed: {err}");

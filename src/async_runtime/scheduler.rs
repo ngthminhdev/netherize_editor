@@ -18,7 +18,9 @@ use notify::{
 };
 use serde_json::Value;
 use tokio::{io::AsyncBufReadExt, sync::mpsc};
+use winit::event_loop::EventLoopProxy;
 
+use crate::app::event_loop::AppEvent;
 use crate::async_runtime::message::{
     FileSystemChangeKind, FileSystemEvent, FzfResultItem, FzfSearchMode, RequestSpec, RequestTopic,
     WorkerEvent, WorkerEventKind, WorkerFailure, WorkerFailureKind, WorkerMessage, WorkerRequest,
@@ -164,13 +166,15 @@ impl PtySessionRegistry {
 }
 
 impl AsyncScheduler {
-    pub fn new() -> Result<(Self, std_mpsc::Receiver<WorkerMessage>), String> {
+    pub fn new(
+        event_proxy: EventLoopProxy<AppEvent>,
+    ) -> Result<(Self, std_mpsc::Receiver<WorkerMessage>), String> {
         let runtime = build_worker_runtime()?;
 
         let (request_tx, request_rx) = mpsc::unbounded_channel();
         let (result_tx, result_rx) = std_mpsc::channel();
 
-        runtime.spawn(dispatch_loop(request_rx, result_tx));
+        runtime.spawn(dispatch_loop(request_rx, result_tx, event_proxy));
 
         let scheduler = Self {
             _runtime: runtime,
@@ -217,6 +221,7 @@ fn build_worker_runtime() -> Result<tokio::runtime::Runtime, String> {
 async fn dispatch_loop(
     mut request_rx: mpsc::UnboundedReceiver<WorkerRequest>,
     result_tx: std_mpsc::Sender<WorkerMessage>,
+    event_proxy: EventLoopProxy<AppEvent>,
 ) {
     let pty_sessions = Arc::new(PtySessionRegistry::default());
     let lsp_sessions = Arc::new(LspSessionRegistry::default());
@@ -249,8 +254,9 @@ async fn dispatch_loop(
         ) {
             let worker_tx = result_tx.clone();
             let pty_sessions = pty_sessions.clone();
+            let event_proxy = event_proxy.clone();
             tokio::spawn(async move {
-                run_pty_request(request, pty_sessions, worker_tx).await;
+                run_pty_request(request, pty_sessions, worker_tx, event_proxy).await;
             });
             continue;
         }
@@ -447,6 +453,7 @@ async fn run_pty_request(
     request: WorkerRequest,
     pty_sessions: Arc<PtySessionRegistry>,
     worker_tx: std_mpsc::Sender<WorkerMessage>,
+    event_proxy: EventLoopProxy<AppEvent>,
 ) {
     let started = WorkerEvent {
         request_id: request.request_id,
@@ -532,8 +539,14 @@ async fn run_pty_request(
     let pty_request = request.clone();
     let pty_sessions_for_task = pty_sessions.clone();
     let worker_tx_for_task = worker_tx.clone();
+    let event_proxy_for_task = event_proxy.clone();
     let worker_handle = tokio::task::spawn_blocking(move || {
-        execute_pty_request(&pty_request, &pty_sessions_for_task, &worker_tx_for_task)
+        execute_pty_request(
+            &pty_request,
+            &pty_sessions_for_task,
+            &worker_tx_for_task,
+            &event_proxy_for_task,
+        )
     });
 
     match worker_handle.await {
@@ -1058,6 +1071,7 @@ fn execute_pty_request(
     request: &WorkerRequest,
     pty_sessions: &Arc<PtySessionRegistry>,
     worker_tx: &std_mpsc::Sender<WorkerMessage>,
+    event_proxy: &EventLoopProxy<AppEvent>,
 ) -> Result<WorkerResultPayload, String> {
     match &request.payload {
         WorkerRequestPayload::SpawnPtyShell { shell, working_dir } => {
@@ -1073,6 +1087,7 @@ fn execute_pty_request(
                 spawned.process,
                 pty_sessions.clone(),
                 worker_tx.clone(),
+                event_proxy.clone(),
             )?;
 
             Ok(WorkerResultPayload::PtySpawned {
@@ -1098,6 +1113,7 @@ fn execute_pty_request(
                 spawned.process,
                 pty_sessions.clone(),
                 worker_tx.clone(),
+                event_proxy.clone(),
             )?;
 
             Ok(WorkerResultPayload::PtySpawned {
@@ -1157,6 +1173,7 @@ fn spawn_pty_output_reader(
     process: Arc<PtyProcess>,
     pty_sessions: Arc<PtySessionRegistry>,
     worker_tx: std_mpsc::Sender<WorkerMessage>,
+    event_proxy: EventLoopProxy<AppEvent>,
 ) -> Result<(), String> {
     let request_id = request.request_id;
     let revision_id = request.revision_id;
@@ -1195,6 +1212,7 @@ fn spawn_pty_output_reader(
                             payload: WorkerResultPayload::PtyOutput { session_id, chunk },
                         };
                         emit_message(&worker_tx, WorkerMessage::Result(result));
+                        let _ = event_proxy.send_event(AppEvent::TerminalOutputReady);
                     }
                     Err(err) => {
                         let failed = WorkerEvent {

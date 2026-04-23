@@ -1,12 +1,12 @@
 use super::*;
 
 impl AppShell {
-    pub fn new() -> Result<Self, String> {
+    pub fn new(event_proxy: EventLoopProxy<AppEvent>) -> Result<Self, String> {
         let save_path = PathBuf::new();
         let cwd = std::env::current_dir().unwrap_or_default();
         let now = Instant::now();
 
-        let (scheduler, rx) = AsyncScheduler::new()?;
+        let (scheduler, rx) = AsyncScheduler::new(event_proxy)?;
         let bridge = AppAsyncBridge::new(rx);
 
         // Load persisted state and restore most recent project if it still exists.
