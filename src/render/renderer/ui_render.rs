@@ -301,19 +301,23 @@ impl Renderer {
         self.buffer_terminal_text_system
             .set_size(Some(width), Some(header_h));
         let title = "[Terminal]";
-        let title_w = super::helpers::estimate_monospace_width(title, self.theme.ui.panel_font_size.max(1.0));
+        let title_w =
+            super::helpers::estimate_monospace_width(title, self.theme.ui.panel_font_size.max(1.0));
         let title_x = bounds[0] + ((bounds[2] - title_w) * 0.5).max(0.0);
-        self.buffer_terminal_cursor_instances.push(RegionDrawInstance::new(
-            [bounds[0], bounds[1], bounds[2], header_h + panel_padding],
-            self.theme.ui.panel_bg.as_f32(),
-        ));
+        self.buffer_terminal_cursor_instances
+            .push(RegionDrawInstance::new(
+                [bounds[0], bounds[1], bounds[2], header_h + panel_padding],
+                self.theme.ui.panel_bg.as_f32(),
+            ));
         let mut header_glyphs = super::helpers::layout_panel_text(
             title,
             &mut self.buffer_terminal_text_system,
             &mut self.atlas,
             &self.queue,
             title_x,
-            bounds[1] + panel_padding + ((header_h - self.theme.ui.panel_line_height).max(0.0) * 0.5),
+            bounds[1]
+                + panel_padding
+                + ((header_h - self.theme.ui.panel_line_height).max(0.0) * 0.5),
             self.theme.ui.fg.as_f32(),
         );
 

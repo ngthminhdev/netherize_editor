@@ -757,14 +757,38 @@ impl Renderer {
 
                 self.editor_overlay_text_system
                     .set_size(Some(preview_text_width), Some(line_height));
-                glyphs.extend(layout_panel_text(
+                let line_start = diagnostics
+                    .preview_lines
+                    .iter()
+                    .take(preview_start + slot)
+                    .map(|item| item.text.len() + 1)
+                    .sum::<usize>();
+                let line_end = line_start + line.text.len();
+                let line_spans: Vec<StyledTextSpan> = diagnostics
+                    .preview_spans
+                    .iter()
+                    .filter_map(|span| {
+                        if span.end <= line_start || span.start >= line_end {
+                            return None;
+                        }
+                        Some(StyledTextSpan::with_style(
+                            span.start.max(line_start) - line_start,
+                            span.end.min(line_end) - line_start,
+                            span.color_rgba,
+                            span.bold,
+                            span.italic,
+                        ))
+                    })
+                    .collect();
+                glyphs.extend(layout_panel_rich_text(
                     &clamp_monospace_text(&line.text, preview_text_width, font_size),
+                    &line_spans,
+                    if line.is_target { fg } else { fg_dim },
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
                     right_x + 10.0 + line_number_width,
                     row_y,
-                    if line.is_target { fg } else { fg_dim },
                 ));
             }
         } else {
@@ -803,11 +827,18 @@ impl Renderer {
             let title_w = estimate_monospace_width(title, self.theme.ui.panel_font_size.max(1.0));
             let title_x = center_bounds[0] + ((center_bounds[2] - title_w) * 0.5).max(0.0);
             self.editor_overlay_chrome_instances = vec![RegionDrawInstance::new(
-                [center_bounds[0], center_bounds[1], center_bounds[2], header_h],
+                [
+                    center_bounds[0],
+                    center_bounds[1],
+                    center_bounds[2],
+                    header_h,
+                ],
                 self.theme.ui.panel_bg.as_f32(),
             )];
-            self.editor_overlay_text_system
-                .set_size(Some((center_bounds[2] - self.editor_padding_x * 2.0).max(1.0)), Some(header_h));
+            self.editor_overlay_text_system.set_size(
+                Some((center_bounds[2] - self.editor_padding_x * 2.0).max(1.0)),
+                Some(header_h),
+            );
             self.editor_overlay_glyph_instances = layout_panel_text(
                 title,
                 &mut self.editor_overlay_text_system,

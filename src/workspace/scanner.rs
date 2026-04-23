@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::{fs, io::ErrorKind, path::Path};
 
 use crate::workspace::model::{WorkspaceIgnoreRules, WorkspaceNode, WorkspaceNodeType};
 
@@ -40,19 +40,35 @@ impl WorkspaceScanner {
         directory: &Path,
         nodes: &mut Vec<WorkspaceNode>,
     ) -> Result<(), String> {
-        let entries = fs::read_dir(directory)
-            .map_err(|err| format!("read_dir {:?} failed: {err}", directory))?;
+        let read_dir = match fs::read_dir(directory) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == ErrorKind::NotFound => {
+                // File watcher có thể báo event cho path vừa bị Git/xử lý nền xóa đi.
+                // Bỏ qua để tránh fail cả workspace rescan vì transient ENOENT.
+                return Ok(());
+            }
+            Err(err) => return Err(format!("read_dir {:?} failed: {err}", directory)),
+        };
 
-        let mut entries = entries
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|err| format!("read_dir entry {:?} failed: {err}", directory))?;
+        let mut entries = Vec::new();
+        for entry in read_dir {
+            match entry {
+                Ok(entry) => entries.push(entry),
+                Err(err) if err.kind() == ErrorKind::NotFound => continue,
+                Err(err) => {
+                    return Err(format!("read_dir entry {:?} failed: {err}", directory));
+                }
+            }
+        }
         entries.sort_by_key(|entry| entry.file_name());
 
         for entry in entries {
             let path = entry.path();
-            let file_type = entry
-                .file_type()
-                .map_err(|err| format!("file_type {:?} failed: {err}", path))?;
+            let file_type = match entry.file_type() {
+                Ok(file_type) => file_type,
+                Err(err) if err.kind() == ErrorKind::NotFound => continue,
+                Err(err) => return Err(format!("file_type {:?} failed: {err}", path)),
+            };
 
             if file_type.is_dir() {
                 if self.ignore_rules.should_ignore_dir(&path) {
@@ -78,8 +94,11 @@ impl WorkspaceScanner {
         file_type: WorkspaceNodeType,
         nodes: &mut Vec<WorkspaceNode>,
     ) -> Result<(), String> {
-        let metadata =
-            fs::metadata(path).map_err(|err| format!("metadata {:?} failed: {err}", path))?;
+        let metadata = match fs::metadata(path) {
+            Ok(metadata) => metadata,
+            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(()),
+            Err(err) => return Err(format!("metadata {:?} failed: {err}", path)),
+        };
         let modified_time = metadata.modified().ok();
 
         nodes.push(WorkspaceNode::new(
@@ -169,5 +188,45 @@ mod tests {
         assert!(result.is_err());
 
         let _ = fs::remove_file(file_path);
+    }
+
+    #[test]
+    fn push_node_skips_missing_path_without_failing() {
+        let root = unique_temp_dir("missing_push_node");
+        fs::create_dir_all(&root).expect("create root");
+        let ghost = root.join("ghost.txt");
+        fs::write(&ghost, "ghost").expect("write ghost");
+        fs::remove_file(&ghost).expect("remove ghost");
+
+        let scanner = WorkspaceScanner::new(WorkspaceIgnoreRules::default());
+        let mut nodes = Vec::new();
+
+        scanner
+            .push_node(&ghost, WorkspaceNodeType::File, &mut nodes)
+            .expect("missing path should be skipped");
+
+        assert!(nodes.is_empty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn scan_dir_recursive_treats_missing_directory_as_empty() {
+        let root = unique_temp_dir("missing_dir");
+        fs::create_dir_all(&root).expect("create root");
+        let deleted_dir = root.join("deleted");
+        fs::create_dir_all(&deleted_dir).expect("create deleted dir");
+        fs::remove_dir_all(&deleted_dir).expect("remove deleted dir");
+
+        let scanner = WorkspaceScanner::new(WorkspaceIgnoreRules::default());
+        let mut nodes = Vec::new();
+
+        scanner
+            .scan_dir_recursive(&deleted_dir, &mut nodes)
+            .expect("missing directory should be ignored");
+
+        assert!(nodes.is_empty());
+
+        let _ = fs::remove_dir_all(root);
     }
 }

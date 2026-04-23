@@ -487,9 +487,15 @@ impl AsyncResultRouter for AppShell {
                         .set_active_references_preview(lines, preview_text, preview_spans)
                 } else if self.app_state.active_buffer_is_diagnostics()
                     && active_diagnostics_preview_target(&self.app_state)
-                        == Some((file_path, target_line))
+                        == Some((file_path.clone(), target_line))
                 {
-                    self.app_state.set_active_diagnostics_preview(lines)
+                    let (preview_text, preview_spans) =
+                        build_preview_render_data(&lines, &file_path, &self.theme);
+                    self.app_state.set_active_diagnostics_preview(
+                        lines,
+                        preview_text,
+                        preview_spans,
+                    )
                 } else {
                     false
                 };

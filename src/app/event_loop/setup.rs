@@ -2,11 +2,23 @@ use super::*;
 
 impl AppShell {
     pub fn new(event_proxy: EventLoopProxy<AppEvent>) -> Result<Self, String> {
+        let (scheduler, rx) = AsyncScheduler::new(event_proxy)?;
+        Self::new_with_scheduler(scheduler, rx)
+    }
+
+    #[cfg(test)]
+    pub fn new_for_tests() -> Result<Self, String> {
+        let (scheduler, rx) = AsyncScheduler::new_for_tests()?;
+        Self::new_with_scheduler(scheduler, rx)
+    }
+
+    fn new_with_scheduler(
+        scheduler: AsyncScheduler,
+        rx: std::sync::mpsc::Receiver<crate::async_runtime::message::WorkerMessage>,
+    ) -> Result<Self, String> {
         let save_path = PathBuf::new();
         let cwd = std::env::current_dir().unwrap_or_default();
         let now = Instant::now();
-
-        let (scheduler, rx) = AsyncScheduler::new(event_proxy)?;
         let bridge = AppAsyncBridge::new(rx);
 
         // Load persisted state and restore most recent project if it still exists.
@@ -889,7 +901,7 @@ mod tests {
 
     #[test]
     fn build_context_marks_center_fuzzy_picker_buffer() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         let _ = shell.app_state.apply_mode_event(ModeEvent::EnterInsert);
         shell
             .app_state
@@ -914,7 +926,7 @@ mod tests {
         )
         .expect("write rust fixture");
 
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         shell
             .app_state
             .open_file(file_path.clone())

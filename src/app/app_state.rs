@@ -272,6 +272,8 @@ pub struct DiagnosticsState {
     pub results: Vec<DiagnosticItem>,
     pub selected_index: usize,
     pub preview_lines: Vec<FilePreviewLine>,
+    pub preview_text: String,
+    pub preview_spans: Vec<StyledTextSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1106,16 +1108,26 @@ impl AppState {
         false
     }
 
-    pub fn set_active_diagnostics_preview(&mut self, lines: Vec<FilePreviewLine>) -> bool {
+    pub fn set_active_diagnostics_preview(
+        &mut self,
+        lines: Vec<FilePreviewLine>,
+        preview_text: String,
+        preview_spans: Vec<StyledTextSpan>,
+    ) -> bool {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::Diagnostics(state),
             }) = self.buffers.get_mut(index)
             {
-                if state.preview_lines == lines {
+                if state.preview_lines == lines
+                    && state.preview_text == preview_text
+                    && state.preview_spans == preview_spans
+                {
                     return false;
                 }
                 state.preview_lines = lines;
+                state.preview_text = preview_text;
+                state.preview_spans = preview_spans;
                 self.bump_revision();
                 return true;
             }
@@ -1169,6 +1181,8 @@ impl AppState {
                 results: items,
                 selected_index: 0,
                 preview_lines: Vec::new(),
+                preview_text: String::new(),
+                preview_spans: Vec::new(),
             }),
         });
 
@@ -3090,6 +3104,8 @@ impl AppState {
         }
         state.selected_index = next;
         state.preview_lines.clear();
+        state.preview_text.clear();
+        state.preview_spans.clear();
         self.bump_revision();
         true
     }
@@ -3116,6 +3132,8 @@ impl AppState {
         }
         state.selected_index = next;
         state.preview_lines.clear();
+        state.preview_text.clear();
+        state.preview_spans.clear();
         self.bump_revision();
         true
     }

@@ -2595,7 +2595,7 @@ mod tests {
 
     #[test]
     fn move_to_first_line_uses_viewport_layout_path() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         let text = (0..80)
             .map(|idx| format!("line {idx}"))
             .collect::<Vec<_>>()
@@ -2618,7 +2618,7 @@ mod tests {
 
     #[test]
     fn toggle_terminal_command_closes_bottom_panel_after_second_press() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         assert!(!shell.panel_state.bottom.visible);
 
         assert!(shell.handle_command(Command::ToggleTerminal));
@@ -2632,7 +2632,7 @@ mod tests {
 
     #[test]
     fn toggle_bottom_dock_keeps_editor_focus_when_opening() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
         assert!(!shell.panel_state.bottom.visible);
 
@@ -2647,7 +2647,7 @@ mod tests {
 
     #[test]
     fn explorer_filter_commands_update_workspace_state() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         let root = std::env::temp_dir().join(format!(
             "netherize_explorer_filter_cmd_{}",
             std::process::id()
@@ -2673,7 +2673,7 @@ mod tests {
 
     #[test]
     fn leap_uses_editor_targets_even_when_explorer_is_focused() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         shell.app_state = AppState::from_text(PathBuf::from("editor-leap.txt"), "beta\nomega");
         shell.focus_manager.set(FocusTarget::LeftSidebar);
         shell.last_editor_bounds = Some([0.0, 0.0, 640.0, 240.0]);
@@ -2686,7 +2686,7 @@ mod tests {
 
     #[test]
     fn delete_confirmation_removes_selected_file_after_y() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         let root =
             std::env::temp_dir().join(format!("netherize_delete_confirm_{}", std::process::id()));
         std::fs::create_dir_all(&root).expect("create root");
@@ -2724,7 +2724,7 @@ mod tests {
 
     #[test]
     fn delete_confirmation_cancels_on_escape() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         shell.pending_confirmation = Some(PendingConfirmation {
             action: PendingConfirmationAction::Delete {
                 path: PathBuf::from("demo.txt"),
@@ -2740,7 +2740,7 @@ mod tests {
 
     #[test]
     fn dirty_buffer_close_opens_save_confirmation_prompt() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         let file_name = format!("netherize_dirty_close_prompt_{}.txt", std::process::id());
         let file_path = std::env::temp_dir().join(&file_name);
         let expected_prompt = format!("Save changes to {file_name} before closing? (y/n)");
@@ -2766,7 +2766,7 @@ mod tests {
 
     #[test]
     fn dirty_buffer_close_confirmation_yes_saves_then_closes() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         let file_path = std::env::temp_dir().join(format!(
             "netherize_dirty_close_yes_{}.txt",
             std::process::id()
@@ -2792,7 +2792,7 @@ mod tests {
 
     #[test]
     fn dirty_buffer_close_confirmation_no_discards_changes_and_closes() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         let file_path = std::env::temp_dir().join(format!(
             "netherize_dirty_close_no_{}.txt",
             std::process::id()
@@ -2818,7 +2818,7 @@ mod tests {
 
     #[test]
     fn opening_palette_arms_one_shot_ime_suppression() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
 
         assert!(shell.handle_command(Command::OpenCommandPalette));
         assert!(shell.app_state.is_command_palette_visible());
@@ -2829,7 +2829,7 @@ mod tests {
 
     #[test]
     fn first_real_keypress_after_palette_open_clears_ime_suppression() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
 
         assert!(shell.handle_command(Command::OpenCommandPalette));
         assert!(shell.suppress_next_palette_ime_commit);
@@ -2842,7 +2842,7 @@ mod tests {
 
     #[test]
     fn open_file_finder_keeps_center_focus_for_fuzzy_buffer() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
 
         assert!(shell.handle_command(Command::OpenFileFinder));
 
@@ -2854,7 +2854,7 @@ mod tests {
 
     #[test]
     fn search_in_files_keeps_center_focus_for_fuzzy_buffer() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
 
         assert!(shell.handle_command(Command::SearchInFiles));
 
@@ -2870,7 +2870,7 @@ mod tests {
 
     #[test]
     fn file_picker_confirm_scrolls_explorer_to_opened_file() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         let root =
             std::env::temp_dir().join(format!("netherize_picker_scroll_{}", std::process::id()));
         std::fs::create_dir_all(&root).expect("create workspace");
@@ -2917,7 +2917,7 @@ mod tests {
 
     #[test]
     fn open_theme_selector_opens_overlay_with_theme_profiles() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
 
         assert!(shell.handle_command(Command::OpenThemeSelector));
 
@@ -2936,7 +2936,7 @@ mod tests {
 
     #[test]
     fn confirming_theme_selector_reloads_theme_and_closes_overlay() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         shell.editor_needs_layout = false;
         shell.sidebar_needs_layout = false;
         shell.terminal_needs_layout = false;
@@ -2963,7 +2963,7 @@ mod tests {
 
     #[test]
     fn lsp_references_open_loading_buffer_immediately() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         let root = std::env::temp_dir().join(format!(
             "netherize_references_loading_{}",
             std::process::id()
@@ -3005,7 +3005,7 @@ mod tests {
 
     #[test]
     fn opening_fuzzy_buffer_marks_editor_layout_dirty() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         shell.editor_needs_layout = false;
         shell.editor_caret_needs_layout = true;
 
@@ -3017,7 +3017,7 @@ mod tests {
 
     #[test]
     fn fuzzy_picker_query_updates_mark_editor_layout_dirty() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         assert!(shell.handle_command(Command::SearchInFiles));
         shell.editor_needs_layout = false;
         shell.editor_caret_needs_layout = true;
@@ -3030,7 +3030,7 @@ mod tests {
 
     #[test]
     fn fuzzy_picker_selection_clears_stale_preview_lines() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         shell
             .app_state
             .open_fuzzy_picker_buffer(CommandPaletteMode::FilePicker);
@@ -3072,7 +3072,7 @@ mod tests {
 
     #[test]
     fn references_selection_clears_stale_preview_lines() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
         shell
             .app_state
             .open_references_buffer(
@@ -3121,14 +3121,14 @@ mod tests {
 
     #[test]
     fn startup_keeps_a_workspace_attached_for_global_search() {
-        let shell = AppShell::new().expect("create app shell");
+        let shell = AppShell::new_for_tests().expect("create app shell");
 
         assert!(shell.app_state.workspace_root_path().is_some());
     }
 
     #[test]
     fn welcome_hides_while_command_palette_is_visible() {
-        let mut shell = AppShell::new().expect("create app shell");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
 
         assert!(shell.should_show_welcome());
         assert!(shell.handle_command(Command::OpenCommandPalette));

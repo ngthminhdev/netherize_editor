@@ -195,6 +195,27 @@ impl AsyncScheduler {
         Ok((scheduler, result_rx))
     }
 
+    #[cfg(test)]
+    pub fn new_for_tests() -> Result<(Self, std_mpsc::Receiver<WorkerMessage>), String> {
+        let runtime = build_worker_runtime()?;
+        let (request_tx, mut request_rx) = mpsc::unbounded_channel();
+        let (result_tx, result_rx) = std_mpsc::channel();
+
+        runtime.spawn(async move { while request_rx.recv().await.is_some() {} });
+
+        runtime.spawn(async move {
+            let _hold_sender = result_tx;
+            std::future::pending::<()>().await;
+        });
+
+        let scheduler = Self {
+            _runtime: runtime,
+            request_tx,
+            next_request_id: Arc::new(AtomicU64::new(1)),
+        };
+        Ok((scheduler, result_rx))
+    }
+
     pub fn submit(&self, spec: RequestSpec) -> Result<WorkerRequest, String> {
         let request_id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
         let request = WorkerRequest {
