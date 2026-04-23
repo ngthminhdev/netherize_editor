@@ -26,6 +26,7 @@ use crate::render::glyph_instance::GlyphInstance;
 
 const EMPTY_TERMINAL_HINT: &str = "(terminal ready — press F12 to focus)";
 const SIDEBAR_FILTER_BAR_HEIGHT: f32 = 30.0;
+const TERMINAL_HEADER_PADDING_HEIGHT: f32 = 8.0;
 
 fn sidebar_list_top(bounds: [f32; 4], filter_state: Option<&SidebarFilterState>) -> f32 {
     bounds[1]
@@ -54,10 +55,6 @@ fn inset_scissor_rect(bounds: [f32; 4], inset_x: f32, inset_y: f32) -> Option<[u
 
 fn topbar_tab_text_scissor(bounds: [f32; 4]) -> Option<[u32; 4]> {
     inset_scissor_rect(bounds, 4.0, 2.0)
-}
-
-fn terminal_header_batch(bounds: [f32; 4], panel_padding: f32, header_h: f32) -> Option<[u32; 4]> {
-    inset_scissor_rect([bounds[0], bounds[1], bounds[2], header_h + panel_padding], 4.0, 2.0)
 }
 
 impl Renderer {
@@ -307,7 +304,7 @@ impl Renderer {
             crate::render::region_pipeline::RegionDrawInstance::new(bounds, terminal_bg_color);
 
         let origin_x = bounds[0] + panel_padding;
-        let header_h = self.theme.ui.panel_line_height.max(18.0);
+        let header_h = TERMINAL_HEADER_PADDING_HEIGHT;
         let origin_y = bounds[1] + panel_padding + header_h;
         let width = (bounds[2] - panel_padding * 2.0).max(1.0);
 
@@ -316,35 +313,12 @@ impl Renderer {
         let default_fg = self.theme.editor.fg.as_f32();
         let default_bg = terminal_bg_color;
 
-        self.buffer_terminal_text_system
-            .set_size(None, Some(header_h));
-        let title = "[Terminal]";
-        let title_w =
-            super::helpers::estimate_monospace_width(title, self.theme.ui.panel_font_size.max(1.0));
-        let title_x = bounds[0] + ((bounds[2] - title_w) * 0.5).max(0.0);
         self.buffer_terminal_cursor_instances
             .push(RegionDrawInstance::new(
                 [bounds[0], bounds[1], bounds[2], header_h + panel_padding],
                 self.theme.ui.panel_bg.as_f32(),
             ));
-        let mut header_glyphs = super::helpers::layout_panel_text(
-            title,
-            &mut self.buffer_terminal_text_system,
-            &mut self.atlas,
-            &self.queue,
-            title_x,
-            bounds[1]
-                + panel_padding
-                + ((header_h - self.theme.ui.panel_line_height).max(0.0) * 0.5),
-            self.theme.ui.fg.as_f32(),
-        );
-        let header_count = header_glyphs.len() as u32;
-        self.buffer_terminal_header_batch = terminal_header_batch(bounds, panel_padding, header_h)
-            .zip((header_count > 0).then_some(header_count))
-            .map(|(scissor, count)| TextScissorBatch {
-                scissor,
-                range: InstanceDrawRange { start: 0, count },
-            });
+        self.buffer_terminal_header_batch = None;
 
         if grid.used_rows() == 0 {
             self.buffer_terminal_text_system
@@ -378,10 +352,12 @@ impl Renderer {
                     width,
                 );
         }
-        header_glyphs.append(&mut self.buffer_terminal_glyph_instances);
-        self.buffer_terminal_glyph_instances = header_glyphs;
-
         self.buffer_terminal_cursor_instances.clear();
+        self.buffer_terminal_cursor_instances
+            .push(RegionDrawInstance::new(
+                [bounds[0], bounds[1], bounds[2], header_h + panel_padding],
+                self.theme.ui.panel_bg.as_f32(),
+            ));
         let clip_right = origin_x + width;
         Self::append_terminal_overlay_quads(
             &self.theme,
@@ -429,7 +405,7 @@ impl Renderer {
             return;
         }
         let panel_padding = panel_padding + 4.0;
-        let header_h = (theme.ui.panel_line_height + 4.0).max(20.0);
+        let header_h = TERMINAL_HEADER_PADDING_HEIGHT;
         let origin_x = bounds[0] + panel_padding;
         let origin_y = bounds[1] + panel_padding + header_h;
         let width = (bounds[2] - panel_padding * 2.0).max(1.0);
@@ -440,22 +416,10 @@ impl Renderer {
         let default_fg = theme.editor.fg.as_f32();
         let default_bg = theme.ui.terminal_bg.as_f32();
 
-        let title = "[Terminal]";
-        let title_w = estimate_monospace_width(title, theme.ui.panel_font_size.max(1.0));
-        let title_x = bounds[0] + ((bounds[2] - title_w) * 0.5).max(0.0);
         cursor_instances.push(RegionDrawInstance::new(
             [bounds[0], bounds[1], bounds[2], header_h + panel_padding],
             theme.ui.panel_bg.as_f32(),
         ));
-        let mut header_glyphs = layout_panel_text(
-            title,
-            text_system,
-            atlas,
-            queue,
-            title_x,
-            bounds[1] + panel_padding + ((header_h - theme.ui.panel_line_height).max(0.0) * 0.5),
-            theme.ui.fg.as_f32(),
-        );
 
         if grid.used_rows() == 0 {
             text_system.set_size(Some(width), Some(height));
@@ -487,10 +451,11 @@ impl Renderer {
                 width,
             );
         }
-        header_glyphs.append(glyph_instances);
-        *glyph_instances = header_glyphs;
-
         cursor_instances.clear();
+        cursor_instances.push(RegionDrawInstance::new(
+            [bounds[0], bounds[1], bounds[2], header_h + panel_padding],
+            theme.ui.panel_bg.as_f32(),
+        ));
         let clip_right = origin_x + width;
         Self::append_terminal_overlay_quads(
             theme,
