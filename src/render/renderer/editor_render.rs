@@ -969,6 +969,44 @@ impl Renderer {
             ));
         }
 
+        if let Some(diagnostics) = active_diagnostics {
+            for diagnostic in diagnostics {
+                let severity = diagnostic.severity.unwrap_or(2);
+                if severity != 1 && severity != 2 {
+                    continue;
+                }
+                let mut line_color = if severity == 1 {
+                    self.theme.ui.error.as_f32()
+                } else {
+                    self.theme.ui.warning.as_f32()
+                };
+                line_color[3] = if severity == 1 { 0.12 } else { 0.08 };
+
+                let start_line = diagnostic.range.start.line as usize;
+                let end_line = diagnostic.range.end.line as usize;
+                for run in self.text_system.buffer().layout_runs() {
+                    if run.line_i < start_line || run.line_i > end_line {
+                        continue;
+                    }
+                    let line_top = geometry.origin_y + run.line_top;
+                    let line_height_px = run.line_height.max(1.0);
+                    let line_bottom = line_top + line_height_px;
+                    if line_bottom <= viewport_top || line_top >= viewport_bottom {
+                        continue;
+                    }
+                    chrome_quads.push(RegionDrawInstance::new(
+                        [
+                            geometry.viewport_text_left,
+                            line_top,
+                            geometry.viewport_text_width,
+                            line_height_px,
+                        ],
+                        line_color,
+                    ));
+                }
+            }
+        }
+
         chrome_quads.extend(self.diagnostic_underline_quads(app_state, center_bounds));
 
         for overlay in app_state.current_overlays() {
@@ -1274,7 +1312,8 @@ impl Renderer {
                 self.theme.ui.warning.as_f32()
             };
             let text_color = border_color;
-            let bg_color = self.theme.ui.panel_bg.as_f32();
+            let mut bg_color = self.theme.ui.panel_bg.as_f32();
+            bg_color[3] = 0.98;
             let char_w = (geometry.font_size * 0.6).max(1.0);
             let max_popup_w = geometry.viewport_text_width.min(420.0).max(160.0);
             let wrap_cols = ((max_popup_w - PAD_X * 2.0) / char_w).floor() as usize;
@@ -1292,7 +1331,7 @@ impl Renderer {
 
             let anchor_line = diagnostic.range.start.line as usize;
             let anchor_col = diagnostic.range.start.character as usize;
-            let anchor_x = (geometry.origin_x + anchor_col as f32 * char_w).clamp(
+            let anchor_x = ((geometry.origin_x + anchor_col as f32 * char_w) + 18.0).clamp(
                 geometry.viewport_text_left,
                 (viewport_right - popup_w).max(geometry.viewport_text_left),
             );
@@ -1314,6 +1353,12 @@ impl Renderer {
             chrome_quads.push(RegionDrawInstance::new(
                 [anchor_x, popup_y, popup_w, popup_h],
                 bg_color,
+            ));
+            let mut scrim = self.theme.editor.bg.as_f32();
+            scrim[3] = 0.22;
+            chrome_quads.push(RegionDrawInstance::new(
+                [anchor_x, popup_y, popup_w, popup_h],
+                scrim,
             ));
 
             for (idx, line_text) in wrapped.iter().enumerate() {

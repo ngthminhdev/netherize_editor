@@ -992,14 +992,10 @@ impl Renderer {
         } else {
             0.0
         };
-        let right_x = (bounds[0] + bounds[2]
-            - self.statusbar_padding_x
-            - right_width
-            - diagnostics_width
-            - if show_diagnostics { 24.0 } else { 0.0 })
-        .max(bounds[0] + self.statusbar_padding_x);
-        let diag_x = right_x + right_width + if show_diagnostics { 24.0 } else { 0.0 };
-        let pending_x = pill_x + pill_width + self.statusbar_padding_x * 0.75;
+        let right_x = (bounds[0] + bounds[2] - self.statusbar_padding_x - right_width)
+            .max(bounds[0] + self.statusbar_padding_x);
+        let diag_x = pill_x + pill_width + self.statusbar_padding_x * 0.90;
+        let pending_x = diag_x + diagnostics_width + if show_diagnostics { 20.0 } else { 0.0 };
         let pending_gap = self.statusbar_padding_x;
         let pending_maxw = (right_x - pending_x - pending_gap).max(0.0);
         let pending_text = clamp_monospace_text(pending_keys, pending_maxw, font_size);
