@@ -318,8 +318,18 @@ fn generate_query_highlight_spans(
         };
         for capture in query_match.captures {
             let node = capture.node;
+            if node.is_error() || node.is_missing() {
+                continue;
+            }
+
+            let start = node.start_byte();
+            let end = node.end_byte();
+            if end <= start || end > source.len() {
+                continue;
+            }
+
             if let Some(window) = &sanitized_window
-                && (node.end_byte() <= window.start || node.start_byte() >= window.end)
+                && (end <= window.start || start >= window.end)
             {
                 continue;
             }
@@ -330,7 +340,7 @@ fn generate_query_highlight_spans(
             };
 
             raw_spans.push(HighlightSpan {
-                range: node.start_byte()..node.end_byte(),
+                range: start..end,
                 category,
             });
         }
