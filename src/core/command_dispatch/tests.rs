@@ -176,6 +176,45 @@ fn auto_pair_and_smart_enter_group_into_insert_session_undo_transaction() {
 }
 
 #[test]
+fn backspace_between_empty_pair_deletes_both_chars_in_insert_mode() {
+    let mut app_state = AppState::new(unique_temp_path("smart_backspace_dispatch_pair"));
+
+    let enter_insert = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterInsert));
+    assert!(enter_insert.success);
+
+    let pair = dispatch_command(&mut app_state, Command::InsertChar('('));
+    assert!(pair.success);
+    assert_eq!(app_state.text_string(), "()");
+
+    let backspace = dispatch_command(&mut app_state, Command::Backspace);
+    assert!(backspace.success);
+    assert!(backspace.state_changed);
+    assert_eq!(app_state.text_string(), "");
+
+    let exit_insert = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    assert!(exit_insert.success);
+
+    let undo = dispatch_command(&mut app_state, Command::Undo);
+    assert!(undo.success);
+    assert!(undo.state_changed);
+    assert_eq!(app_state.text_string(), "");
+}
+
+#[test]
+fn backspace_between_empty_quotes_deletes_both_chars() {
+    let mut app_state = AppState::new(unique_temp_path("smart_backspace_dispatch_quotes"));
+
+    let open = dispatch_command(&mut app_state, Command::InsertChar('"'));
+    assert!(open.success);
+    assert_eq!(app_state.text_string(), "\"\"");
+
+    let backspace = dispatch_command(&mut app_state, Command::Backspace);
+    assert!(backspace.success);
+    assert!(backspace.state_changed);
+    assert_eq!(app_state.text_string(), "");
+}
+
+#[test]
 fn insert_line_below_enters_insert_mode() {
     let mut app_state = AppState::from_text(unique_temp_path("save"), "abc\nxyz");
     let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));

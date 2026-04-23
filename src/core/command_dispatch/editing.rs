@@ -72,9 +72,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             DispatchReport::success("Dispatch: applied to active buffer (insert newline)", changed)
         }
         Command::Backspace => {
-            let before_cursor = ctx.app_state.cursor_char_idx();
-            ctx.app_state.backspace();
-            let changed = ctx.app_state.cursor_char_idx() != before_cursor;
+            let changed = ctx.app_state.backspace();
             DispatchReport::success(
                 if changed {
                     "Dispatch: applied to active buffer (backspace)".to_string()

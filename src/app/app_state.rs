@@ -1835,19 +1835,32 @@ impl AppState {
         true
     }
 
-    pub fn backspace(&mut self) {
+    pub fn backspace(&mut self) -> bool {
+        if self.visual_selection_range().is_some() {
+            return self.delete_visual_selection();
+        }
+
         if self.cursor_char_idx == 0 {
-            return;
+            return false;
         }
 
         let start = self.cursor_char_idx - 1;
-        self.apply_delete(start, 1);
-        self.cursor_char_idx -= 1;
+        let delete_len = match (self.char_before_cursor(), self.char_at_cursor()) {
+            (Some(left), Some(right)) if matches_matching_bracket_pair(Some(left), Some(right)) => 2,
+            _ => 1,
+        };
+
+        if !self.apply_delete(start, delete_len) {
+            return false;
+        }
+
+        self.cursor_char_idx = start;
 
         let (_, col) = self.cursor_line_col();
         self.target_col = col;
         self.dirty = true;
         self.bump_revision();
+        true
     }
 
     pub fn insert_line_below(&mut self) -> bool {
@@ -4203,7 +4216,11 @@ fn matching_close_char(open: char) -> Option<char> {
 fn matches_matching_bracket_pair(left: Option<char>, right: Option<char>) -> bool {
     matches!(
         (left, right),
-        (Some('('), Some(')')) | (Some('['), Some(']')) | (Some('{'), Some('}'))
+        (Some('('), Some(')'))
+            | (Some('['), Some(']'))
+            | (Some('{'), Some('}'))
+            | (Some('"'), Some('"'))
+            | (Some('\''), Some('\''))
     )
 }
 
@@ -4482,11 +4499,35 @@ mod tests {
             vec![HighlightEdit::insert(0, 1)]
         );
 
-        state.backspace();
+        assert!(state.backspace());
         assert_eq!(
             state.take_highlight_edits(),
             vec![HighlightEdit::delete(0, 1)]
         );
+    }
+
+    #[test]
+    fn backspace_between_empty_auto_pair_deletes_both_chars() {
+        let mut state = AppState::from_text(unique_temp_path("smart_backspace_pair"), "()");
+        state.move_right();
+
+        assert!(state.backspace());
+
+        assert_eq!(state.text_string(), "");
+        assert_eq!(state.cursor_char_idx(), 0);
+        assert_eq!(state.take_highlight_edits(), vec![HighlightEdit::delete(0, 2)]);
+    }
+
+    #[test]
+    fn backspace_between_empty_quotes_deletes_both_chars() {
+        let mut state = AppState::from_text(unique_temp_path("smart_backspace_quotes"), "\"\"");
+        state.move_right();
+
+        assert!(state.backspace());
+
+        assert_eq!(state.text_string(), "");
+        assert_eq!(state.cursor_char_idx(), 0);
+        assert_eq!(state.take_highlight_edits(), vec![HighlightEdit::delete(0, 2)]);
     }
 
     #[test]
