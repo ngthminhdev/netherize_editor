@@ -299,7 +299,7 @@ impl Renderer {
         let default_bg = terminal_bg_color;
 
         self.buffer_terminal_text_system
-            .set_size(Some(width), Some(header_h));
+            .set_size(None, Some(header_h));
         let title = "[Terminal]";
         let title_w =
             super::helpers::estimate_monospace_width(title, self.theme.ui.panel_font_size.max(1.0));
@@ -739,7 +739,7 @@ impl Renderer {
         let font_size = self.statusbar_font_size;
         let width = (bounds[2] - self.topbar_padding_x * 2.0).max(1.0);
         self.topbar_text_system
-            .set_size(Some(width), Some(bounds[3]));
+            .set_size(None, Some(bounds[3]));
         let origin_y = bounds[1] + ((bounds[3] - line_h) * 0.5).max(0.0);
         let active_fg = self.theme.ui.fg.as_f32();
         let inactive_fg = self.theme.ui.fg_dim.as_f32();
@@ -760,7 +760,7 @@ impl Renderer {
         let mut tab_x = bounds[0] + self.topbar_padding_x;
         let tab_gap = 6.0;
         let available_right = bounds[0] + bounds[2] - self.topbar_padding_x;
-        let tab_pad_x = 10.0;
+        let tab_pad_x = 14.0;
         let icon_gap = 6.0;
 
         if tabs.is_empty() {
