@@ -103,14 +103,7 @@ impl Renderer {
         center_bounds: [f32; 4],
         spans: &[StyledTextSpan],
     ) {
-        let header_h = (self.theme.ui.panel_line_height + 4.0).max(20.0);
-        let content_bounds = [
-            center_bounds[0],
-            center_bounds[1] + header_h,
-            center_bounds[2],
-            (center_bounds[3] - header_h).max(1.0),
-        ];
-        let geometry = editor_viewport_geometry(self, app_state, content_bounds);
+        let geometry = editor_viewport_geometry(self, app_state, center_bounds);
         let width = geometry.viewport_text_width;
 
         self.editor_scissor = rect_to_scissor(center_bounds);
@@ -172,28 +165,11 @@ impl Renderer {
             .upload_instances(&self.device, &self.queue, &self.glyph_instances);
         self.update_editor_gutter(
             app_state,
-            content_bounds,
+            center_bounds,
             geometry.line_height,
             geometry.font_size,
             app_state.total_lines().max(1).to_string().len().max(3),
             geometry.gutter_width,
-        );
-
-        self.editor_overlay_text_system
-            .set_size(Some((center_bounds[2] - self.editor_padding_x * 2.0).max(1.0)), Some(header_h));
-        self.editor_overlay_glyph_instances = layout_panel_text(
-            "[Main Editor]",
-            &mut self.editor_overlay_text_system,
-            &mut self.atlas,
-            &self.queue,
-            center_bounds[0] + self.editor_padding_x,
-            center_bounds[1] + 4.0,
-            self.theme.ui.fg_dim.as_f32(),
-        );
-        self.editor_overlay_text_pipeline.upload_instances(
-            &self.device,
-            &self.queue,
-            &self.editor_overlay_glyph_instances,
         );
     }
 
@@ -821,7 +797,31 @@ impl Renderer {
     /// Rebuild overlay glyph instances and floating-box chrome for the editor layer.
     pub fn update_editor_overlays(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {
         if app_state.current_overlays().is_empty() && app_state.completion().is_none() {
-            self.clear_editor_overlays();
+            self.editor_overlay_scissor = rect_to_scissor(center_bounds);
+            let header_h = self.theme.ui.panel_line_height.max(20.0);
+            let title = "[Main Editor]";
+            let title_w = estimate_monospace_width(title, self.theme.ui.panel_font_size.max(1.0));
+            let title_x = center_bounds[0] + ((center_bounds[2] - title_w) * 0.5).max(0.0);
+            self.editor_overlay_chrome_instances = vec![RegionDrawInstance::new(
+                [center_bounds[0], center_bounds[1], center_bounds[2], header_h],
+                self.theme.ui.panel_bg.as_f32(),
+            )];
+            self.editor_overlay_text_system
+                .set_size(Some((center_bounds[2] - self.editor_padding_x * 2.0).max(1.0)), Some(header_h));
+            self.editor_overlay_glyph_instances = layout_panel_text(
+                title,
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                title_x,
+                center_bounds[1] + ((header_h - self.theme.ui.panel_line_height).max(0.0) * 0.5),
+                self.theme.ui.fg.as_f32(),
+            );
+            self.editor_overlay_text_pipeline.upload_instances(
+                &self.device,
+                &self.queue,
+                &self.editor_overlay_glyph_instances,
+            );
             return;
         }
 
