@@ -270,7 +270,7 @@ impl Renderer {
     ) -> Option<crate::render::region_pipeline::RegionDrawInstance> {
         // Buffer terminal (lazygit, v.v.) chiếm toàn bộ center editor area.
         // Không có panel header → dùng editor padding thay vì panel_line_height.
-        let panel_padding = self.panel_padding;
+        let panel_padding = self.panel_padding + 4.0;
         let cursor_shape = self.cursor_shape;
         let cursor_beam_width = self.cursor_beam_width;
         let cursor_underline_height = self.cursor_underline_height;
@@ -289,13 +289,26 @@ impl Renderer {
             crate::render::region_pipeline::RegionDrawInstance::new(bounds, terminal_bg_color);
 
         let origin_x = bounds[0] + panel_padding;
-        let origin_y = bounds[1] + panel_padding;
+        let header_h = self.theme.ui.panel_line_height.max(18.0);
+        let origin_y = bounds[1] + panel_padding + header_h;
         let width = (bounds[2] - panel_padding * 2.0).max(1.0);
 
         self.buffer_terminal_scissor = super::helpers::rect_to_scissor(bounds);
 
         let default_fg = self.theme.editor.fg.as_f32();
         let default_bg = terminal_bg_color;
+
+        self.buffer_terminal_text_system
+            .set_size(Some(width), Some(header_h));
+        let mut header_glyphs = super::helpers::layout_panel_text(
+            "[Terminal]",
+            &mut self.buffer_terminal_text_system,
+            &mut self.atlas,
+            &self.queue,
+            bounds[0] + panel_padding,
+            bounds[1] + panel_padding,
+            self.theme.ui.fg.as_f32(),
+        );
 
         if grid.used_rows() == 0 {
             self.buffer_terminal_text_system
@@ -329,6 +342,8 @@ impl Renderer {
                     width,
                 );
         }
+        header_glyphs.append(&mut self.buffer_terminal_glyph_instances);
+        self.buffer_terminal_glyph_instances = header_glyphs;
 
         self.buffer_terminal_cursor_instances.clear();
         let clip_right = origin_x + width;
@@ -377,15 +392,27 @@ impl Renderer {
             cursor_instances.clear();
             return;
         }
+        let panel_padding = panel_padding + 4.0;
+        let header_h = (theme.ui.panel_line_height + 4.0).max(20.0);
         let origin_x = bounds[0] + panel_padding;
-        let origin_y = bounds[1] + panel_padding + theme.ui.panel_line_height;
+        let origin_y = bounds[1] + panel_padding + header_h;
         let width = (bounds[2] - panel_padding * 2.0).max(1.0);
-        let height = (bounds[3] - panel_padding * 2.0 - theme.ui.panel_line_height).max(1.0);
+        let height = (bounds[3] - panel_padding * 2.0 - header_h).max(1.0);
 
         *scissor = rect_to_scissor(bounds);
 
         let default_fg = theme.editor.fg.as_f32();
         let default_bg = theme.ui.terminal_bg.as_f32();
+
+        let mut header_glyphs = layout_panel_text(
+            "[Terminal]",
+            text_system,
+            atlas,
+            queue,
+            bounds[0] + panel_padding,
+            bounds[1] + panel_padding,
+            theme.ui.fg.as_f32(),
+        );
 
         if grid.used_rows() == 0 {
             text_system.set_size(Some(width), Some(height));
@@ -417,6 +444,8 @@ impl Renderer {
                 width,
             );
         }
+        header_glyphs.append(glyph_instances);
+        *glyph_instances = header_glyphs;
 
         cursor_instances.clear();
         let clip_right = origin_x + width;

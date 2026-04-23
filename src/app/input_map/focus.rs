@@ -27,8 +27,7 @@ impl InputMap {
             });
         }
 
-        if input.named_key == Some(NamedKey::Enter)
-        {
+        if input.named_key == Some(NamedKey::Enter) {
             return Some(KeybindingMatch {
                 command: Command::SettingsActivate,
                 reason: "settings: Enter -> SettingsActivate",

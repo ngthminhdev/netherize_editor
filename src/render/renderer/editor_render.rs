@@ -103,7 +103,14 @@ impl Renderer {
         center_bounds: [f32; 4],
         spans: &[StyledTextSpan],
     ) {
-        let geometry = editor_viewport_geometry(self, app_state, center_bounds);
+        let header_h = (self.theme.ui.panel_line_height + 4.0).max(20.0);
+        let content_bounds = [
+            center_bounds[0],
+            center_bounds[1] + header_h,
+            center_bounds[2],
+            (center_bounds[3] - header_h).max(1.0),
+        ];
+        let geometry = editor_viewport_geometry(self, app_state, content_bounds);
         let width = geometry.viewport_text_width;
 
         self.editor_scissor = rect_to_scissor(center_bounds);
@@ -165,11 +172,28 @@ impl Renderer {
             .upload_instances(&self.device, &self.queue, &self.glyph_instances);
         self.update_editor_gutter(
             app_state,
-            center_bounds,
+            content_bounds,
             geometry.line_height,
             geometry.font_size,
             app_state.total_lines().max(1).to_string().len().max(3),
             geometry.gutter_width,
+        );
+
+        self.editor_overlay_text_system
+            .set_size(Some((center_bounds[2] - self.editor_padding_x * 2.0).max(1.0)), Some(header_h));
+        self.editor_overlay_glyph_instances = layout_panel_text(
+            "[Main Editor]",
+            &mut self.editor_overlay_text_system,
+            &mut self.atlas,
+            &self.queue,
+            center_bounds[0] + self.editor_padding_x,
+            center_bounds[1] + 4.0,
+            self.theme.ui.fg_dim.as_f32(),
+        );
+        self.editor_overlay_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.editor_overlay_glyph_instances,
         );
     }
 
@@ -1822,12 +1846,30 @@ impl Renderer {
             let display_line = if idx == settings.selected_index {
                 if let Some(editing) = &settings.editing {
                     match (&editing.kind, item) {
-                        (crate::app::app_state::SettingsEditingKind::FontFamily, SettingItem::FontFamily { .. })
-                        | (crate::app::app_state::SettingsEditingKind::FontSize, SettingItem::FontSize { .. })
-                        | (crate::app::app_state::SettingsEditingKind::LineHeight, SettingItem::LineHeight { .. })
-                        | (crate::app::app_state::SettingsEditingKind::SidebarWidth, SettingItem::SidebarWidth { .. })
-                        | (crate::app::app_state::SettingsEditingKind::RightSidebarWidth, SettingItem::RightSidebarWidth { .. })
-                        | (crate::app::app_state::SettingsEditingKind::BottomPanelHeight, SettingItem::BottomPanelHeight { .. }) => {
+                        (
+                            crate::app::app_state::SettingsEditingKind::FontFamily,
+                            SettingItem::FontFamily { .. },
+                        )
+                        | (
+                            crate::app::app_state::SettingsEditingKind::FontSize,
+                            SettingItem::FontSize { .. },
+                        )
+                        | (
+                            crate::app::app_state::SettingsEditingKind::LineHeight,
+                            SettingItem::LineHeight { .. },
+                        )
+                        | (
+                            crate::app::app_state::SettingsEditingKind::SidebarWidth,
+                            SettingItem::SidebarWidth { .. },
+                        )
+                        | (
+                            crate::app::app_state::SettingsEditingKind::RightSidebarWidth,
+                            SettingItem::RightSidebarWidth { .. },
+                        )
+                        | (
+                            crate::app::app_state::SettingsEditingKind::BottomPanelHeight,
+                            SettingItem::BottomPanelHeight { .. },
+                        ) => {
                             format!("{: <20} {}_", item.title(), editing.draft)
                         }
                         _ => line.clone(),
