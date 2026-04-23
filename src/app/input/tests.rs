@@ -607,6 +607,54 @@ fn repeated_motion_key_dispatches_while_holding() {
 }
 
 #[test]
+fn repeated_backspace_dispatches_while_holding() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Insert);
+
+    let repeated = handler.route_repeated_normalized_input(
+        named_input(NamedKey::Backspace, Some(KeyCode::Backspace)),
+        &map,
+        context,
+    );
+    match repeated {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::Backspace);
+            assert_eq!(translated.repeat_count, 1);
+        }
+        other => panic!("expected repeated backspace dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn repeated_enter_dispatches_newline_while_holding() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Insert);
+
+    let repeated =
+        handler.route_repeated_normalized_input(named_input(NamedKey::Enter, None), &map, context);
+    match repeated {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::Newline);
+            assert_eq!(translated.repeat_count, 1);
+        }
+        other => panic!("expected repeated enter dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn repeated_toggle_command_is_ignored_while_holding() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+
+    let repeated =
+        handler.route_repeated_normalized_input(named_input(NamedKey::F12, None), &map, context);
+    assert!(repeated.is_none(), "held toggle/system keys should be ignored");
+}
+
+#[test]
 fn repeated_chord_prefix_is_ignored_while_pending() {
     let mut handler = InputHandler::new();
     let map = make_map();

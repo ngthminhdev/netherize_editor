@@ -283,10 +283,18 @@ impl Command {
                 | Self::MoveToFirstNonWhitespace
                 | Self::MoveToFirstLine
                 | Self::MoveToLastLine
+                | Self::Backspace
+                | Self::DeleteChar
+                | Self::DeleteWordForward
+                | Self::DeleteWordBackward
+                | Self::InsertChar(_)
+                | Self::Newline
                 | Self::ScrollHalfPageUp
                 | Self::ScrollHalfPageDown
                 | Self::SearchNext
                 | Self::SearchPrev
+                | Self::Undo
+                | Self::Redo
                 | Self::OverlaySelectNext
                 | Self::OverlaySelectPrev
                 | Self::ReferencesSelectNext
