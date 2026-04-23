@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::model::{
     EditorThemeTokens, FileIconThemeTokens, IconThemeTokens, SyntaxThemeTokens, ThemeColor,
     ThemeConfig, UiThemeTokens,
@@ -13,6 +15,10 @@ impl ThemeConfig {
             editor: builtin_editor_tokens(),
             syntax: builtin_syntax_tokens(),
             icons: builtin_icon_tokens(&ui),
+            exact_icons: HashMap::new(),
+            extension_icons: HashMap::new(),
+            default_file_icon: "📄".to_string(),
+            default_folder_icon: "📁".to_string(),
             ui,
         }
     }

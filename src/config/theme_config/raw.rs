@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -9,6 +11,8 @@ pub(in crate::config::theme_config) struct RawThemeFile {
     pub(in crate::config::theme_config) syntax: RawSyntax,
     #[serde(default)]
     pub(in crate::config::theme_config) icons: RawIcons,
+    #[serde(default)]
+    pub(in crate::config::theme_config) file_icons: RawFileIcons,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -119,4 +123,12 @@ pub(in crate::config::theme_config) struct RawIcons {
 pub(in crate::config::theme_config) struct RawFileIconTheme {
     pub(in crate::config::theme_config) glyph: Option<String>,
     pub(in crate::config::theme_config) color: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub(in crate::config::theme_config) struct RawFileIcons {
+    pub(in crate::config::theme_config) default_file: Option<String>,
+    pub(in crate::config::theme_config) default_folder: Option<String>,
+    pub(in crate::config::theme_config) extensions: Option<HashMap<String, String>>,
+    pub(in crate::config::theme_config) exact: Option<HashMap<String, String>>,
 }

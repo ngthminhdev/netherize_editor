@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
@@ -8,7 +8,7 @@ use super::{
         EditorThemeTokens, FileIconThemeTokens, IconThemeTokens, SyntaxThemeTokens, ThemeColor,
         ThemeConfig, UiThemeTokens,
     },
-    raw::{RawEditor, RawFileIconTheme, RawIcons, RawSyntax, RawThemeFile, RawUi},
+    raw::{RawEditor, RawFileIconTheme, RawFileIcons, RawIcons, RawSyntax, RawThemeFile, RawUi},
 };
 use crate::config::paths::{legacy_app_state_root, user_config_root};
 
@@ -119,6 +119,7 @@ impl ThemeConfig {
             ui: raw_ui,
             syntax: raw_syntax,
             icons: raw_icons,
+            file_icons: raw_file_icons,
         } = raw;
 
         let editor = parse_editor(&raw_editor)?;
@@ -133,8 +134,62 @@ impl ThemeConfig {
             ui,
             syntax,
             icons,
+            exact_icons: parse_exact_file_icons(&raw_file_icons),
+            extension_icons: parse_extension_file_icons(&raw_file_icons),
+            default_file_icon: raw_file_icons
+                .default_file
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("📄")
+                .to_string(),
+            default_folder_icon: raw_file_icons
+                .default_folder
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("📁")
+                .to_string(),
         })
     }
+}
+
+fn parse_extension_file_icons(raw: &RawFileIcons) -> HashMap<String, String> {
+    raw.extensions
+        .as_ref()
+        .map(|map| {
+            map.iter()
+                .filter_map(|(ext, icon)| {
+                    let ext = ext.trim().trim_start_matches('.').to_ascii_lowercase();
+                    let icon = icon.trim();
+                    if ext.is_empty() || icon.is_empty() {
+                        None
+                    } else {
+                        Some((ext, icon.to_string()))
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn parse_exact_file_icons(raw: &RawFileIcons) -> HashMap<String, String> {
+    raw.exact
+        .as_ref()
+        .map(|map| {
+            map.iter()
+                .filter_map(|(name, icon)| {
+                    let name = name.trim();
+                    let icon = icon.trim();
+                    if name.is_empty() || icon.is_empty() {
+                        None
+                    } else {
+                        Some((name.to_string(), icon.to_string()))
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn parse_editor(raw: &RawEditor) -> Result<EditorThemeTokens, String> {

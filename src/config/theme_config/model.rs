@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThemeColor {
@@ -140,6 +140,10 @@ pub struct ThemeConfig {
     pub ui: UiThemeTokens,
     pub syntax: SyntaxThemeTokens,
     pub icons: IconThemeTokens,
+    pub exact_icons: HashMap<String, String>,
+    pub extension_icons: HashMap<String, String>,
+    pub default_file_icon: String,
+    pub default_folder_icon: String,
 }
 
 #[derive(Debug, Clone)]
@@ -302,11 +306,36 @@ impl ThemeConfig {
             _ => &self.icons.default_file,
         }
     }
+
+    pub fn get_icon_for_file(&self, filename: &str, is_dir: bool) -> &str {
+        if is_dir {
+            return self.default_folder_icon.as_str();
+        }
+
+        if let Some(icon) = self.exact_icons.get(filename) {
+            return icon.as_str();
+        }
+
+        let extension = Path::new(filename)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase());
+
+        if let Some(ext) = extension.as_deref()
+            && let Some(icon) = self.extension_icons.get(ext)
+        {
+            return icon.as_str();
+        }
+
+        self.default_file_icon.as_str()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ThemeColor, linear_rgba_to_srgb_u8, srgb_to_linear};
+    use std::collections::HashMap;
+
+    use super::{ThemeColor, ThemeConfig, linear_rgba_to_srgb_u8, srgb_to_linear};
 
     #[test]
     fn parse_hex_color_supports_rgb_and_rgba() {
@@ -327,5 +356,27 @@ mod tests {
     fn linear_round_trip_preserves_srgb_bytes() {
         let color = ThemeColor::from_hex("#8080C0CC").expect("theme color should parse");
         assert_eq!(linear_rgba_to_srgb_u8(color.as_f32()), color.as_u8());
+    }
+
+    #[test]
+    fn file_icon_lookup_prefers_dir_then_exact_then_extension_then_default() {
+        let mut theme = ThemeConfig::builtin_dark();
+        theme.default_file_icon = "📄".to_string();
+        theme.default_folder_icon = "📁".to_string();
+        theme.exact_icons = HashMap::from([
+            ("Dockerfile".to_string(), "🐳".to_string()),
+            ("README.md".to_string(), "📘".to_string()),
+        ]);
+        theme.extension_icons = HashMap::from([
+            ("md".to_string(), "📝".to_string()),
+            ("sql".to_string(), "🗄️".to_string()),
+        ]);
+
+        assert_eq!(theme.get_icon_for_file("src", true), "📁");
+        assert_eq!(theme.get_icon_for_file("Dockerfile", false), "🐳");
+        assert_eq!(theme.get_icon_for_file("README.md", false), "📘");
+        assert_eq!(theme.get_icon_for_file("schema.SQL", false), "🗄️");
+        assert_eq!(theme.get_icon_for_file("notes.md", false), "📝");
+        assert_eq!(theme.get_icon_for_file("unknown.bin", false), "📄");
     }
 }

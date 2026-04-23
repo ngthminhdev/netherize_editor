@@ -185,6 +185,11 @@ impl Renderer {
             // 2. NerdFont icon (folder/filetype), colored per-filetype
             let nerd_str = format!("{} ", row.nerd_icon);
             let nerd_w = nerd_str.chars().count() as f32 * font_size * 0.60;
+            let icon_color = if row.is_selected && sidebar_focused {
+                accent
+            } else {
+                row.icon_color
+            };
             glyphs.extend(layout_panel_text(
                 &nerd_str,
                 &mut self.sidebar_text_system,
@@ -192,7 +197,7 @@ impl Renderer {
                 &self.queue,
                 x + arrow_w,
                 current_y,
-                row.icon_color,
+                icon_color,
             ));
 
             // 3. Label
@@ -727,15 +732,17 @@ impl Renderer {
             ));
         } else {
             for (idx, tab) in tabs.iter().enumerate() {
-                let icon = match &tab.kind {
-                    TopbarTabKind::Text { path } => {
-                        self.theme.file_icon_for_path(path, false, false)
-                    }
-                    TopbarTabKind::Terminal => self.theme.file_icon_for_extension("sh"),
-                    TopbarTabKind::References => self.theme.file_icon_for_extension("txt"),
-                    TopbarTabKind::FuzzyPicker => self.theme.file_icon_for_extension("fzf"),
+                let icon_glyph = match &tab.kind {
+                    TopbarTabKind::Text { path } => path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .map(|name| self.theme.get_icon_for_file(name, false).to_string())
+                        .unwrap_or_else(|| self.theme.default_file_icon.clone()),
+                    TopbarTabKind::Terminal => "".to_string(),
+                    TopbarTabKind::References => "📄".to_string(),
+                    TopbarTabKind::FuzzyPicker => "🔎".to_string(),
                 };
-                let icon_text = format!("{} ", icon.glyph);
+                let icon_text = format!("{} ", icon_glyph);
                 let icon_width = estimate_monospace_width(&icon_text, font_size);
                 let label_width = estimate_monospace_width(&tab.label, font_size);
                 let tab_width = (tab_pad_x * 2.0 + icon_width + icon_gap + label_width).min(width);
@@ -788,7 +795,7 @@ impl Renderer {
                     &self.queue,
                     icon_x,
                     origin_y,
-                    icon.color.as_f32(),
+                    if is_active { accent } else { inactive_fg },
                 ));
                 self.topbar_text_system.set_font_family(font_family);
                 glyphs.extend(layout_panel_text(
