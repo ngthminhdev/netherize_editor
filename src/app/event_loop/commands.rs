@@ -127,6 +127,10 @@ impl AppShell {
     }
 
     fn activate_selected_setting(&mut self) -> bool {
+        if self.app_state.settings_is_editing() {
+            return self.commit_settings_editing();
+        }
+
         let Some(selected) = self.app_state.active_settings_buffer().and_then(|state| state.selected_item()).cloned() else {
             return false;
         };
@@ -135,47 +139,18 @@ impl AppShell {
             crate::app::app_state::SettingItem::ThemeSelector { .. } => {
                 self.handle_command(Command::OpenThemeSelector)
             }
-            crate::app::app_state::SettingItem::FontFamily { current } => {
-                let next = if current.trim().is_empty() {
-                    self.base_theme
-                        .editor
-                        .nerd_font_family
-                        .clone()
-                        .unwrap_or_else(|| "monospace".to_string())
-                } else {
-                    String::new()
-                };
-                self.base_theme.editor.font_family = if next.trim().is_empty() {
-                    None
-                } else {
-                    Some(next.clone())
-                };
-                self.ui_config.editor.font_family = if next.trim().is_empty() {
-                    None
-                } else {
-                    Some(next.clone())
-                };
-                if let Some(state) = self.app_state.active_settings_buffer_mut()
-                    && let Some(crate::app::app_state::SettingItem::FontFamily { current }) =
-                        state.selected_item_mut()
-                {
-                    *current = next;
+            crate::app::app_state::SettingItem::FontFamily { .. }
+            | crate::app::app_state::SettingItem::FontSize { .. }
+            | crate::app::app_state::SettingItem::LineHeight { .. }
+            | crate::app::app_state::SettingItem::SidebarWidth { .. }
+            | crate::app::app_state::SettingItem::RightSidebarWidth { .. }
+            | crate::app::app_state::SettingItem::BottomPanelHeight { .. } => {
+                let changed = self.app_state.settings_begin_editing();
+                if changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
                 }
-                self.apply_scaled_runtime_config();
-                let _ = self.ui_config.save_user_override();
-                true
-            }
-            crate::app::app_state::SettingItem::SidebarWidth { current } => {
-                let _ = current;
-                self.adjust_selected_setting(20)
-            }
-            crate::app::app_state::SettingItem::RightSidebarWidth { current } => {
-                let _ = current;
-                self.adjust_selected_setting(20)
-            }
-            crate::app::app_state::SettingItem::BottomPanelHeight { current } => {
-                let _ = current;
-                self.adjust_selected_setting(20)
+                changed
             }
             crate::app::app_state::SettingItem::UiRounding { enabled, radius_px } => {
                 let next_radius = if !enabled || radius_px <= 0.0 {
@@ -201,6 +176,104 @@ impl AppShell {
                 true
             }
         }
+    }
+
+    fn commit_settings_editing(&mut self) -> bool {
+        let Some((kind, draft)) = self
+            .app_state
+            .active_settings_buffer()
+            .and_then(|state| state.editing.as_ref())
+            .map(|editing| (editing.kind.clone(), editing.draft.clone()))
+        else {
+            return false;
+        };
+
+        let trimmed = draft.trim();
+        let mut changed = false;
+
+        match kind {
+            crate::app::app_state::SettingsEditingKind::FontFamily => {
+                self.base_theme.editor.font_family = (!trimmed.is_empty()).then(|| trimmed.to_string());
+                self.ui_config.editor.font_family = (!trimmed.is_empty()).then(|| trimmed.to_string());
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::FontFamily { current }) = state.selected_item_mut()
+                {
+                    *current = trimmed.to_string();
+                }
+                changed = true;
+            }
+            crate::app::app_state::SettingsEditingKind::FontSize => {
+                if let Ok(value) = trimmed.parse::<f32>() {
+                    let value = value.clamp(8.0, 40.0);
+                    self.base_theme.editor.font_size = value;
+                    if let Some(state) = self.app_state.active_settings_buffer_mut()
+                        && let Some(crate::app::app_state::SettingItem::FontSize { current }) = state.selected_item_mut()
+                    {
+                        *current = value;
+                    }
+                    changed = true;
+                }
+            }
+            crate::app::app_state::SettingsEditingKind::LineHeight => {
+                if let Ok(value) = trimmed.parse::<f32>() {
+                    let value = value.clamp(10.0, 64.0);
+                    self.base_theme.editor.line_height = value;
+                    if let Some(state) = self.app_state.active_settings_buffer_mut()
+                        && let Some(crate::app::app_state::SettingItem::LineHeight { current }) = state.selected_item_mut()
+                    {
+                        *current = value;
+                    }
+                    changed = true;
+                }
+            }
+            crate::app::app_state::SettingsEditingKind::SidebarWidth => {
+                if let Ok(value) = trimmed.parse::<i32>() {
+                    let value = value.clamp(160, 640);
+                    self.ui_config.docks.left.size_px = value as f32;
+                    if let Some(state) = self.app_state.active_settings_buffer_mut()
+                        && let Some(crate::app::app_state::SettingItem::SidebarWidth { current }) = state.selected_item_mut()
+                    {
+                        *current = value;
+                    }
+                    changed = true;
+                }
+            }
+            crate::app::app_state::SettingsEditingKind::RightSidebarWidth => {
+                if let Ok(value) = trimmed.parse::<i32>() {
+                    let value = value.clamp(180, 720);
+                    self.ui_config.docks.right.size_px = value as f32;
+                    if let Some(state) = self.app_state.active_settings_buffer_mut()
+                        && let Some(crate::app::app_state::SettingItem::RightSidebarWidth { current }) = state.selected_item_mut()
+                    {
+                        *current = value;
+                    }
+                    changed = true;
+                }
+            }
+            crate::app::app_state::SettingsEditingKind::BottomPanelHeight => {
+                if let Ok(value) = trimmed.parse::<i32>() {
+                    let value = value.clamp(120, 520);
+                    self.ui_config.docks.bottom.size_px = value as f32;
+                    if let Some(state) = self.app_state.active_settings_buffer_mut()
+                        && let Some(crate::app::app_state::SettingItem::BottomPanelHeight { current }) = state.selected_item_mut()
+                    {
+                        *current = value;
+                    }
+                    changed = true;
+                }
+            }
+        }
+
+        if changed {
+            self.apply_scaled_runtime_config();
+            let _ = self.ui_config.save_user_override();
+        }
+        let cancelled = self.app_state.settings_cancel_editing();
+        if changed || cancelled {
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+        }
+        changed || cancelled
     }
 
     fn mark_focused_terminal_layout_dirty(&mut self) {
@@ -406,6 +479,8 @@ impl AppShell {
                 self.app_state.open_settings_buffer(
                     theme_profile,
                     font_family,
+                    self.base_theme.editor.font_size,
+                    self.base_theme.editor.line_height,
                     self.ui_config.docks.left.size_px.round() as i32,
                     self.ui_config.docks.right.size_px.round() as i32,
                     self.ui_config.docks.bottom.size_px.round() as i32,
@@ -436,6 +511,18 @@ impl AppShell {
             Command::SettingsAdjustDecrease => self.adjust_selected_setting(-20),
             Command::SettingsAdjustIncrease => self.adjust_selected_setting(20),
             Command::SettingsActivate => self.activate_selected_setting(),
+            Command::CloseFilePicker if self.app_state.active_buffer_is_settings() => {
+                if self.app_state.settings_is_editing() {
+                    let changed = self.app_state.settings_cancel_editing();
+                    if changed {
+                        self.editor_needs_layout = true;
+                        self.editor_caret_needs_layout = false;
+                    }
+                    changed
+                } else {
+                    self.close_current_buffer_now()
+                }
+            }
             Command::GitOpenLazygit => self.open_lazygit_buffer(),
             Command::GitBlameLine => self.submit_git_blame_line(),
             Command::LspHover => self.submit_lsp_hover(),
@@ -460,6 +547,28 @@ impl AppShell {
             | Command::FilePickerBackspaceQuery
             | Command::EditorPaste
             | Command::PasteSystemClipboard
+                if self.app_state.active_buffer_is_settings() && self.app_state.settings_is_editing() =>
+            {
+                let changed = match command {
+                    Command::FilePickerAppendQuery(text) => {
+                        self.app_state.settings_append_editing_text(&text)
+                    }
+                    Command::FilePickerBackspaceQuery => self.app_state.settings_backspace_editing(),
+                    Command::EditorPaste | Command::PasteSystemClipboard => {
+                        if let Ok(text) = self.clipboard.get_text() {
+                            self.app_state.settings_append_editing_text(&text)
+                        } else {
+                            false
+                        }
+                    }
+                    _ => false,
+                };
+                if changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                }
+                changed
+            }
             | Command::OverlaySelectNext
             | Command::OverlaySelectPrev
             | Command::FilePickerSelectNext

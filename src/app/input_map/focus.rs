@@ -57,8 +57,8 @@ impl InputMap {
             || (!input.has_command_modifier() && input.physical_key == Some(KeyQ))
         {
             return Some(KeybindingMatch {
-                command: Command::BufferCloseCurrent,
-                reason: "settings: Esc/q -> BufferCloseCurrent",
+                command: Command::CloseFilePicker,
+                reason: "settings: Esc/q -> cancel edit or close",
             });
         }
 

@@ -31,6 +31,8 @@ use crate::workspace::model::{WorkspaceModel, WorkspaceNodeType};
 pub enum SettingItem {
     ThemeSelector { current: String },
     FontFamily { current: String },
+    FontSize { current: f32 },
+    LineHeight { current: f32 },
     SidebarWidth { current: i32 },
     RightSidebarWidth { current: i32 },
     BottomPanelHeight { current: i32 },
@@ -42,6 +44,8 @@ impl SettingItem {
         match self {
             Self::ThemeSelector { .. } => "Theme",
             Self::FontFamily { .. } => "Font Family",
+            Self::FontSize { .. } => "Font Size",
+            Self::LineHeight { .. } => "Line Height",
             Self::SidebarWidth { .. } => "Left Dock Width",
             Self::RightSidebarWidth { .. } => "Right Dock Width",
             Self::BottomPanelHeight { .. } => "Bottom Dock Height",
@@ -51,15 +55,34 @@ impl SettingItem {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum SettingsEditingKind {
+    FontFamily,
+    FontSize,
+    LineHeight,
+    SidebarWidth,
+    RightSidebarWidth,
+    BottomPanelHeight,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SettingsEditingState {
+    pub kind: SettingsEditingKind,
+    pub draft: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SettingsState {
     pub selected_index: usize,
     pub items: Vec<SettingItem>,
+    pub editing: Option<SettingsEditingState>,
 }
 
 impl SettingsState {
     pub fn new(
         theme_profile: impl Into<String>,
         font_family: impl Into<String>,
+        font_size: f32,
+        line_height: f32,
         left_width: i32,
         right_width: i32,
         bottom_height: i32,
@@ -75,6 +98,12 @@ impl SettingsState {
                 SettingItem::FontFamily {
                     current: font_family.into(),
                 },
+                SettingItem::FontSize {
+                    current: font_size.max(1.0),
+                },
+                SettingItem::LineHeight {
+                    current: line_height.max(1.0),
+                },
                 SettingItem::SidebarWidth {
                     current: left_width.max(0),
                 },
@@ -89,6 +118,7 @@ impl SettingsState {
                     radius_px: border_radius_px.max(0.0),
                 },
             ],
+            editing: None,
         }
     }
 
@@ -116,6 +146,54 @@ impl SettingsState {
 
     pub fn selected_item_mut(&mut self) -> Option<&mut SettingItem> {
         self.items.get_mut(self.selected_index)
+    }
+
+    pub fn begin_editing(&mut self) -> bool {
+        let Some(item) = self.selected_item() else {
+            return false;
+        };
+        let (kind, draft) = match item {
+            SettingItem::FontFamily { current } => {
+                (SettingsEditingKind::FontFamily, current.clone())
+            }
+            SettingItem::FontSize { current } => {
+                (SettingsEditingKind::FontSize, format!("{current:.1}"))
+            }
+            SettingItem::LineHeight { current } => {
+                (SettingsEditingKind::LineHeight, format!("{current:.1}"))
+            }
+            SettingItem::SidebarWidth { current } => {
+                (SettingsEditingKind::SidebarWidth, current.to_string())
+            }
+            SettingItem::RightSidebarWidth { current } => {
+                (SettingsEditingKind::RightSidebarWidth, current.to_string())
+            }
+            SettingItem::BottomPanelHeight { current } => {
+                (SettingsEditingKind::BottomPanelHeight, current.to_string())
+            }
+            SettingItem::ThemeSelector { .. } | SettingItem::UiRounding { .. } => return false,
+        };
+        self.editing = Some(SettingsEditingState { kind, draft });
+        true
+    }
+
+    pub fn cancel_editing(&mut self) -> bool {
+        self.editing.take().is_some()
+    }
+
+    pub fn append_editing_text(&mut self, text: &str) -> bool {
+        let Some(editing) = &mut self.editing else {
+            return false;
+        };
+        editing.draft.push_str(text);
+        true
+    }
+
+    pub fn backspace_editing(&mut self) -> bool {
+        let Some(editing) = &mut self.editing else {
+            return false;
+        };
+        editing.draft.pop().is_some()
     }
 }
 
@@ -1131,6 +1209,56 @@ impl AppState {
             })
     }
 
+    pub fn settings_is_editing(&self) -> bool {
+        self.active_settings_buffer()
+            .and_then(|state| state.editing.as_ref())
+            .is_some()
+    }
+
+    pub fn settings_begin_editing(&mut self) -> bool {
+        let Some(state) = self.active_settings_buffer_mut() else {
+            return false;
+        };
+        let changed = state.begin_editing();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn settings_cancel_editing(&mut self) -> bool {
+        let Some(state) = self.active_settings_buffer_mut() else {
+            return false;
+        };
+        let changed = state.cancel_editing();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn settings_append_editing_text(&mut self, text: &str) -> bool {
+        let Some(state) = self.active_settings_buffer_mut() else {
+            return false;
+        };
+        let changed = state.append_editing_text(text);
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn settings_backspace_editing(&mut self) -> bool {
+        let Some(state) = self.active_settings_buffer_mut() else {
+            return false;
+        };
+        let changed = state.backspace_editing();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
     pub fn is_file_picker_open(&self) -> bool {
         self.command_palette.is_visible
             && self.command_palette.mode == CommandPaletteMode::FilePicker
@@ -1358,6 +1486,8 @@ impl AppState {
         &mut self,
         theme_profile: impl Into<String>,
         font_family: impl Into<String>,
+        font_size: f32,
+        line_height: f32,
         left_width: i32,
         right_width: i32,
         bottom_height: i32,
@@ -1379,6 +1509,8 @@ impl AppState {
         let state = SettingsState::new(
             theme_profile,
             font_family,
+            font_size,
+            line_height,
             left_width,
             right_width,
             bottom_height,

@@ -1754,6 +1754,8 @@ impl Renderer {
                 SettingItem::FontFamily { current } => {
                     if current.trim().is_empty() { "<default>".to_string() } else { current.clone() }
                 }
+                SettingItem::FontSize { current } => format!("{current:.1}"),
+                SettingItem::LineHeight { current } => format!("{current:.1}"),
                 SettingItem::SidebarWidth { current }
                 | SettingItem::RightSidebarWidth { current }
                 | SettingItem::BottomPanelHeight { current } => format!("{} px", current),
@@ -1769,10 +1771,29 @@ impl Renderer {
             };
 
             let line = format!("{: <20} {}", item.title(), value);
+            let display_line = if idx == settings.selected_index {
+                if let Some(editing) = &settings.editing {
+                    match (&editing.kind, item) {
+                        (crate::app::app_state::SettingsEditingKind::FontFamily, SettingItem::FontFamily { .. })
+                        | (crate::app::app_state::SettingsEditingKind::FontSize, SettingItem::FontSize { .. })
+                        | (crate::app::app_state::SettingsEditingKind::LineHeight, SettingItem::LineHeight { .. })
+                        | (crate::app::app_state::SettingsEditingKind::SidebarWidth, SettingItem::SidebarWidth { .. })
+                        | (crate::app::app_state::SettingsEditingKind::RightSidebarWidth, SettingItem::RightSidebarWidth { .. })
+                        | (crate::app::app_state::SettingsEditingKind::BottomPanelHeight, SettingItem::BottomPanelHeight { .. }) => {
+                            format!("{: <20} {}_", item.title(), editing.draft)
+                        }
+                        _ => line.clone(),
+                    }
+                } else {
+                    line.clone()
+                }
+            } else {
+                line.clone()
+            };
             self.editor_overlay_text_system
                 .set_size(Some((panel_w - 28.0).max(1.0)), Some(line_height));
             glyphs.extend(layout_panel_text(
-                &clamp_monospace_text(&line, (panel_w - 28.0).max(1.0), font_size),
+                &clamp_monospace_text(&display_line, (panel_w - 28.0).max(1.0), font_size),
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
