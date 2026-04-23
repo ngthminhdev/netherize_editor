@@ -1151,21 +1151,23 @@ impl AppState {
     }
 
     pub fn diagnostics_for_path(&self, path: &Path) -> Option<&[LspDiagnostic]> {
-        self.diagnostics.get(path).map(Vec::as_slice)
+        let normalized = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        self.diagnostics.get(&normalized).map(Vec::as_slice)
     }
 
     pub fn set_file_diagnostics(&mut self, path: PathBuf, diagnostics: Vec<LspDiagnostic>) -> bool {
+        let normalized = path.canonicalize().unwrap_or(path);
         if diagnostics.is_empty() {
-            let removed = self.diagnostics.remove(&path).is_some();
+            let removed = self.diagnostics.remove(&normalized).is_some();
             if removed {
                 self.bump_revision();
             }
             return removed;
         }
 
-        let changed = self.diagnostics.get(&path) != Some(&diagnostics);
+        let changed = self.diagnostics.get(&normalized) != Some(&diagnostics);
         if changed {
-            self.diagnostics.insert(path, diagnostics);
+            self.diagnostics.insert(normalized, diagnostics);
             self.bump_revision();
         }
         changed

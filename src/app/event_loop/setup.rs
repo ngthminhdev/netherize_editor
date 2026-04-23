@@ -817,6 +817,30 @@ impl AppShell {
         });
     }
 
+    pub(super) fn submit_lsp_did_change_for_active_file(&mut self) {
+        let Some(path) = self.app_state.active_file() else {
+            return;
+        };
+        let Some(desired) = self.desired_lsp_server_for_active_file() else {
+            return;
+        };
+        if self.active_lsp_server.as_ref() != Some(&desired) {
+            let _ = self.queue_lsp_server_start(desired);
+            return;
+        }
+
+        let version = self.app_state.revision().min(i32::MAX as u64) as i32;
+        self.submit(RequestSpec {
+            revision_id: self.app_state.revision(),
+            topic: RequestTopic::LspClient,
+            payload: WorkerRequestPayload::LspDidChange {
+                uri: path_to_lsp_uri(path),
+                version,
+                text: self.app_state.text_string(),
+            },
+        });
+    }
+
     /// Submit async task kiểm tra xem LSP binary cho `path` có được cài chưa.
     ///
     /// Nếu extension không có trong registry, request bị skip (worker sẽ fail

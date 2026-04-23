@@ -1411,6 +1411,7 @@ impl AppShell {
                 }
                 if report.state_changed && should_reparse {
                     self.submit_parse_for_active_buffer(!is_typing_edit);
+                    self.submit_lsp_did_change_for_active_file();
                 }
                 if report.success && should_notify_did_open {
                     self.submit_lsp_did_open_for_active_file();
