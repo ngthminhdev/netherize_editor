@@ -370,6 +370,7 @@ impl AppShell {
             let mut refresh_highlights_for_viewport = false;
             let active_terminal_session = self.app_state.active_terminal_session_id();
             let references_active = self.app_state.active_buffer_is_references();
+            let diagnostics_active = self.app_state.active_buffer_is_diagnostics();
 
             // ── Invariant guard ───────────────────────────────────────────────
             // Nếu terminal buffer đang chiếm center, đảm bảo editor GPU buffer
@@ -414,6 +415,15 @@ impl AppShell {
                         renderer.clear_buffer_terminal();
                         renderer.clear_editor_content();
                         renderer.update_fuzzy_picker_buffer_content(fuzzy_state, center_bounds);
+                    } else if diagnostics_active {
+                        renderer.clear_welcome_logo();
+                        renderer.clear_buffer_terminal();
+                        renderer.clear_editor_content();
+                        if let Some(diagnostics) = self.app_state.active_diagnostics_buffer() {
+                            renderer.update_diagnostics_buffer_content(diagnostics, center_bounds);
+                        } else {
+                            renderer.clear_editor_overlays();
+                        }
                     } else if references_active {
                         renderer.clear_welcome_logo();
                         renderer.clear_buffer_terminal();
@@ -476,6 +486,15 @@ impl AppShell {
                         renderer.clear_editor_content();
                         if let Some(references) = self.app_state.active_references_buffer() {
                             renderer.update_references_buffer_content(references, center_bounds);
+                        } else {
+                            renderer.clear_editor_overlays();
+                        }
+                    }
+                } else if diagnostics_active {
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.clear_editor_content();
+                        if let Some(diagnostics) = self.app_state.active_diagnostics_buffer() {
+                            renderer.update_diagnostics_buffer_content(diagnostics, center_bounds);
                         } else {
                             renderer.clear_editor_overlays();
                         }
@@ -607,6 +626,7 @@ impl AppShell {
                         },
                         BufferContent::Terminal(_) => TopbarTabKind::Terminal,
                         BufferContent::References(_) => TopbarTabKind::References,
+                        BufferContent::Diagnostics(_) => TopbarTabKind::Diagnostics,
                         BufferContent::FuzzyPicker(_) => TopbarTabKind::FuzzyPicker,
                     },
                 })
@@ -628,6 +648,18 @@ impl AppShell {
             let pending_keys = self.input_handler.get_pending_keys();
             let filetype = self.app_state.active_filetype_label();
             let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");
+            let (diagnostics_errors, diagnostics_warnings) = self
+                .app_state
+                .active_file()
+                .and_then(|path| self.app_state.diagnostics_for_path(path))
+                .map(|items| {
+                    items.iter().fold((0usize, 0usize), |(e, w), item| match item.severity {
+                        Some(1) => (e + 1, w),
+                        Some(2) => (e, w + 1),
+                        _ => (e, w),
+                    })
+                })
+                .unwrap_or((0, 0));
             if let Some(renderer) = self.renderer.as_mut() {
                 let pill_quads = renderer.update_statusbar_content(
                     mode,
@@ -636,6 +668,8 @@ impl AppShell {
                     filetype,
                     line,
                     col,
+                    diagnostics_errors,
+                    diagnostics_warnings,
                     status_bounds,
                 );
                 region_instances.extend(pill_quads);

@@ -291,6 +291,12 @@ impl AsyncResultRouter for AppShell {
                     "[AppShell] LSP diagnostics: {} issue(s) in {uri}",
                     diagnostics.len()
                 );
+                if let Some(path) = lsp_uri_to_path(&uri)
+                    && self.app_state.set_file_diagnostics(path, diagnostics)
+                {
+                    self.editor_needs_layout |= self.app_state.active_buffer_is_diagnostics();
+                    self.request_redraw();
+                }
             }
             WorkerResultPayload::LspLogMessage { level, message } => {
                 eprintln!("[LSP/{level}] {message}");
@@ -437,9 +443,14 @@ impl AsyncResultRouter for AppShell {
                     self.app_state.set_fuzzy_picker_preview(lines)
                 } else if self.app_state.active_buffer_is_references()
                     && active_references_preview_target(&self.app_state)
-                        == Some((file_path, target_line))
+                        == Some((file_path.clone(), target_line))
                 {
                     self.app_state.set_active_references_preview(lines)
+                } else if self.app_state.active_buffer_is_diagnostics()
+                    && active_diagnostics_preview_target(&self.app_state)
+                        == Some((file_path, target_line))
+                {
+                    self.app_state.set_active_diagnostics_preview(lines)
                 } else {
                     false
                 };
@@ -511,4 +522,9 @@ fn active_fuzzy_preview_target(app_state: &AppState) -> Option<(PathBuf, Option<
 fn active_references_preview_target(app_state: &AppState) -> Option<(PathBuf, Option<usize>)> {
     let item = app_state.selected_reference_item()?;
     Some((item.path.clone(), Some(item.line + 1)))
+}
+
+fn active_diagnostics_preview_target(app_state: &AppState) -> Option<(PathBuf, Option<usize>)> {
+    let item = app_state.selected_diagnostic_item()?;
+    Some((item.file_path.clone(), Some(item.line + 1)))
 }

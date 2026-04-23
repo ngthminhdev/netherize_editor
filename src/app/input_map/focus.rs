@@ -3,6 +3,60 @@ use winit::keyboard::KeyCode;
 use super::*;
 
 impl InputMap {
+    pub(super) fn resolve_diagnostics_focus(
+        &self,
+        input: &NormalizedInput,
+    ) -> Option<KeybindingMatch> {
+        use KeyCode::*;
+
+        if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowDown))
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyJ))
+            || (input.modifiers.control_key()
+                && !input.modifiers.super_key()
+                && input.physical_key == Some(KeyN))
+        {
+            return Some(KeybindingMatch {
+                command: Command::DiagnosticsSelectNext,
+                reason: "diagnostics: down/ctrl+n -> DiagnosticsSelectNext",
+            });
+        }
+
+        if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowUp))
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyK))
+            || (input.modifiers.control_key()
+                && !input.modifiers.super_key()
+                && input.physical_key == Some(KeyP))
+        {
+            return Some(KeybindingMatch {
+                command: Command::DiagnosticsSelectPrev,
+                reason: "diagnostics: up/ctrl+p -> DiagnosticsSelectPrev",
+            });
+        }
+
+        if input.named_key == Some(NamedKey::Escape)
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyQ))
+        {
+            return Some(KeybindingMatch {
+                command: Command::BufferCloseCurrent,
+                reason: "diagnostics: Esc/q -> BufferCloseCurrent",
+            });
+        }
+
+        if input.named_key == Some(NamedKey::Enter) {
+            return Some(KeybindingMatch {
+                command: Command::DiagnosticsOpenSelection,
+                reason: "diagnostics: Enter -> DiagnosticsOpenSelection",
+            });
+        }
+
+        resolved_keymap::resolve_global_command(&self.keymap, input, &self.open_file_path).map(
+            |command| KeybindingMatch {
+                command,
+                reason: "diagnostics: global binding",
+            },
+        )
+    }
+
     pub(super) fn resolve_references_focus(
         &self,
         input: &NormalizedInput,

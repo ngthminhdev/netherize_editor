@@ -27,6 +27,7 @@ use helpers::{insert_command_from_text, palette_query_from_text};
 pub enum InputFocusContext {
     Editor,
     References,
+    Diagnostics,
     Explorer,
     Inspector,
     BottomPanel,
@@ -43,6 +44,7 @@ impl InputFocusContext {
         match self {
             Self::Editor => "editor",
             Self::References => "references",
+            Self::Diagnostics => "diagnostics",
             Self::Explorer => "explorer",
             Self::Inspector => "inspector",
             Self::BottomPanel => "bottom_panel",
@@ -55,7 +57,12 @@ impl InputFocusContext {
     pub fn allows_leader(self) -> bool {
         matches!(
             self,
-            Self::Editor | Self::References | Self::Explorer | Self::Inspector | Self::FuzzyPicker
+            Self::Editor
+                | Self::References
+                | Self::Diagnostics
+                | Self::Explorer
+                | Self::Inspector
+                | Self::FuzzyPicker
         )
     }
 }
@@ -160,6 +167,9 @@ impl InputMap {
 
         if context.focus == InputFocusContext::References {
             return self.resolve_references_focus(input);
+        }
+        if context.focus == InputFocusContext::Diagnostics {
+            return self.resolve_diagnostics_focus(input);
         }
         if context.focus == InputFocusContext::FuzzyPicker {
             return self.resolve_fuzzy_picker_focus(input, context);
@@ -280,6 +290,7 @@ impl InputMap {
         match context.focus {
             InputFocusContext::Editor => editor_mode_str(context.mode),
             InputFocusContext::References => editor_mode_str(context.mode),
+            InputFocusContext::Diagnostics => editor_mode_str(context.mode),
             InputFocusContext::Explorer => "explorer",
             InputFocusContext::Inspector => "inspector",
             InputFocusContext::Terminal => editor_mode_str(context.mode),

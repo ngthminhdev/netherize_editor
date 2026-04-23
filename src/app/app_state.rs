@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -12,7 +13,9 @@ use crate::app::{
     },
     file_picker::FilePickerEntry,
 };
-use crate::async_runtime::message::{FilePreviewLine, FileSystemChangeKind, FileSystemEvent};
+use crate::async_runtime::message::{
+    FilePreviewLine, FileSystemChangeKind, FileSystemEvent, LspDiagnostic,
+};
 use crate::core::commands::{TextObjectKind, TextObjectModifier};
 use crate::core::mode::{
     EditorMode, ModeEvent, ModeState, ModeTransitionError, ModeTransitionResult,
@@ -82,6 +85,22 @@ pub struct ReferencesBufferState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiagnosticItem {
+    pub file_path: PathBuf,
+    pub line: usize,
+    pub col: usize,
+    pub message: String,
+    pub severity: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiagnosticsState {
+    pub results: Vec<DiagnosticItem>,
+    pub selected_index: usize,
+    pub preview_lines: Vec<FilePreviewLine>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuzzyState {
     pub mode: CommandPaletteMode,
     pub query: String,
@@ -147,6 +166,7 @@ pub enum BufferContent {
     Text(EditorBuffer),
     Terminal(PtyState),
     References(ReferencesBufferState),
+    Diagnostics(DiagnosticsState),
     FuzzyPicker(FuzzyState),
 }
 
@@ -166,6 +186,7 @@ impl BufferEntry {
                 .unwrap_or_else(|| buffer.path.display().to_string()),
             BufferContent::Terminal(state) => state.title.clone(),
             BufferContent::References(state) => state.title.clone(),
+            BufferContent::Diagnostics(_) => "[Diagnostics]".to_string(),
             BufferContent::FuzzyPicker(_) => "[Fuzzy Finder]".to_string(),
         }
     }
@@ -245,6 +266,7 @@ pub struct AppState {
     current_overlays: Vec<EditorOverlay>,
     jump_back_stack: Vec<(PathBuf, usize)>,
     jump_forward_stack: Vec<(PathBuf, usize)>,
+    diagnostics: HashMap<PathBuf, Vec<LspDiagnostic>>,
 }
 
 impl AppState {
@@ -280,6 +302,7 @@ impl AppState {
             current_overlays: Vec::new(),
             jump_back_stack: Vec::new(),
             jump_forward_stack: Vec::new(),
+            diagnostics: HashMap::new(),
         }
     }
 
@@ -315,6 +338,7 @@ impl AppState {
             current_overlays: Vec::new(),
             jump_back_stack: Vec::new(),
             jump_forward_stack: Vec::new(),
+            diagnostics: HashMap::new(),
         }
     }
 
@@ -858,6 +882,23 @@ impl AppState {
         false
     }
 
+    pub fn set_active_diagnostics_preview(&mut self, lines: Vec<FilePreviewLine>) -> bool {
+        if let Some(index) = self.active_buffer_index {
+            if let Some(BufferEntry {
+                content: BufferContent::Diagnostics(state),
+            }) = self.buffers.get_mut(index)
+            {
+                if state.preview_lines == lines {
+                    return false;
+                }
+                state.preview_lines = lines;
+                self.bump_revision();
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn active_fuzzy_picker_buffer(&self) -> Option<&FuzzyState> {
         if let Some(index) = self.active_buffer_index {
             if let Some(buffer) = self.buffers.get(index) {
@@ -867,6 +908,52 @@ impl AppState {
             }
         }
         None
+    }
+
+    pub fn diagnostics(&self) -> &HashMap<PathBuf, Vec<LspDiagnostic>> {
+        &self.diagnostics
+    }
+
+    pub fn diagnostics_for_path(&self, path: &Path) -> Option<&[LspDiagnostic]> {
+        self.diagnostics.get(path).map(Vec::as_slice)
+    }
+
+    pub fn set_file_diagnostics(&mut self, path: PathBuf, diagnostics: Vec<LspDiagnostic>) -> bool {
+        if diagnostics.is_empty() {
+            let removed = self.diagnostics.remove(&path).is_some();
+            if removed {
+                self.bump_revision();
+            }
+            return removed;
+        }
+
+        let changed = self.diagnostics.get(&path) != Some(&diagnostics);
+        if changed {
+            self.diagnostics.insert(path, diagnostics);
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn open_diagnostics_buffer(&mut self, items: Vec<DiagnosticItem>) -> Result<usize, String> {
+        if items.is_empty() {
+            return Err("cannot open diagnostics buffer without items".to_string());
+        }
+
+        self.buffers.push(BufferEntry {
+            content: BufferContent::Diagnostics(DiagnosticsState {
+                results: items,
+                selected_index: 0,
+                preview_lines: Vec::new(),
+            }),
+        });
+
+        let index = self.buffers.len().saturating_sub(1);
+        self.reset_text_editor_state();
+        self.active_buffer_index = Some(index);
+        let _ = self.clear_current_overlays();
+        self.bump_revision();
+        Ok(index)
     }
 
     pub fn active_buffer_is_fuzzy_picker(&self) -> bool {
@@ -1865,6 +1952,9 @@ impl AppState {
         if self.active_buffer_is_references() {
             return Err("cannot save references buffer".to_string());
         }
+        if self.active_buffer_is_diagnostics() {
+            return Err("cannot save diagnostics buffer".to_string());
+        }
 
         let path = self
             .active_file
@@ -2485,9 +2575,21 @@ impl AppState {
             .is_some_and(|buffer| matches!(buffer.content, BufferContent::References(_)))
     }
 
+    pub fn active_buffer_is_diagnostics(&self) -> bool {
+        self.active_buffer()
+            .is_some_and(|buffer| matches!(buffer.content, BufferContent::Diagnostics(_)))
+    }
+
     pub fn active_references_buffer(&self) -> Option<&ReferencesBufferState> {
         match self.active_buffer().map(|buffer| &buffer.content) {
             Some(BufferContent::References(state)) => Some(state),
+            _ => None,
+        }
+    }
+
+    pub fn active_diagnostics_buffer(&self) -> Option<&DiagnosticsState> {
+        match self.active_buffer().map(|buffer| &buffer.content) {
+            Some(BufferContent::Diagnostics(state)) => Some(state),
             _ => None,
         }
     }
@@ -2506,6 +2608,15 @@ impl AppState {
         self.selected_reference_item().cloned()
     }
 
+    pub fn selected_diagnostic_item(&self) -> Option<&DiagnosticItem> {
+        let state = self.active_diagnostics_buffer()?;
+        state.results.get(state.selected_index)
+    }
+
+    pub fn selected_diagnostic_item_cloned(&self) -> Option<DiagnosticItem> {
+        self.selected_diagnostic_item().cloned()
+    }
+
     pub fn active_terminal_session_id(&self) -> Option<u64> {
         match self.active_buffer().map(|buffer| &buffer.content) {
             Some(BufferContent::Terminal(state)) => state.session_id,
@@ -2520,6 +2631,7 @@ impl AppState {
                 BufferContent::Terminal(state) => state.session_id == Some(session_id),
                 BufferContent::Text(_)
                 | BufferContent::References(_)
+                | BufferContent::Diagnostics(_)
                 | BufferContent::FuzzyPicker(_) => false,
             })
     }
@@ -2572,6 +2684,54 @@ impl AppState {
         true
     }
 
+    pub fn diagnostics_select_next(&mut self) -> bool {
+        let Some(BufferContent::Diagnostics(state)) = self
+            .active_buffer_index
+            .and_then(|idx| self.buffers.get_mut(idx))
+            .map(|buffer| &mut buffer.content)
+        else {
+            return false;
+        };
+
+        if state.results.is_empty() {
+            return false;
+        }
+        let next = (state.selected_index + 1) % state.results.len();
+        if next == state.selected_index {
+            return false;
+        }
+        state.selected_index = next;
+        state.preview_lines.clear();
+        self.bump_revision();
+        true
+    }
+
+    pub fn diagnostics_select_prev(&mut self) -> bool {
+        let Some(BufferContent::Diagnostics(state)) = self
+            .active_buffer_index
+            .and_then(|idx| self.buffers.get_mut(idx))
+            .map(|buffer| &mut buffer.content)
+        else {
+            return false;
+        };
+
+        if state.results.is_empty() {
+            return false;
+        }
+        let next = if state.selected_index == 0 {
+            state.results.len().saturating_sub(1)
+        } else {
+            state.selected_index - 1
+        };
+        if next == state.selected_index {
+            return false;
+        }
+        state.selected_index = next;
+        state.preview_lines.clear();
+        self.bump_revision();
+        true
+    }
+
     pub fn current_overlays(&self) -> &[EditorOverlay] {
         &self.current_overlays
     }
@@ -2595,6 +2755,9 @@ impl AppState {
     pub fn active_filetype_label(&self) -> &'static str {
         if self.active_buffer_is_terminal() {
             return "Terminal";
+        }
+        if self.active_buffer_is_diagnostics() {
+            return "Diagnostics";
         }
         if self.active_buffer_is_references() {
             return "References";
@@ -3337,7 +3500,7 @@ impl AppState {
                 self.visual_line_mode = false;
                 self.external_conflict = None;
             }
-            BufferContent::References(_) | BufferContent::FuzzyPicker(_) => {
+            BufferContent::References(_) | BufferContent::Diagnostics(_) | BufferContent::FuzzyPicker(_) => {
                 self.reset_text_editor_state();
                 self.active_buffer_index = Some(index);
                 let _ = self.clear_current_overlays();

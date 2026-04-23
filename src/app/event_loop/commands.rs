@@ -279,9 +279,13 @@ impl AppShell {
             Command::LspGoToDefinition => self.submit_lsp_definition(true),
             Command::LspPreviewDefinition => self.submit_lsp_definition(false),
             Command::LspReferences => self.submit_lsp_references(),
+            Command::DiagnosticsOpenPicker => self.open_diagnostics_picker(),
             Command::ReferencesSelectNext => self.select_next_reference_item(),
             Command::ReferencesSelectPrev => self.select_prev_reference_item(),
             Command::ReferencesOpenSelection => self.open_selected_reference_item(),
+            Command::DiagnosticsSelectNext => self.select_next_diagnostic_item(),
+            Command::DiagnosticsSelectPrev => self.select_prev_diagnostic_item(),
+            Command::DiagnosticsOpenSelection => self.open_selected_diagnostic_item(),
             Command::JumpBack => return self.execute_jump_back(),
             Command::JumpForward => return self.execute_jump_forward(),
             Command::FilePickerAppendQuery(_)
@@ -1423,6 +1427,107 @@ impl AppShell {
         let vp = self.editor_viewport_lines();
         self.app_state.auto_scroll_to_cursor(vp);
         self.submit_lsp_check_for_path(item.path.clone());
+        self.submit_lsp_did_open_for_active_file();
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        let focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
+        if focus_changed {
+            self.input_handler.clear_pending_prefix();
+        }
+        true
+    }
+
+    fn open_diagnostics_picker(&mut self) -> bool {
+        let mut items = self
+            .app_state
+            .diagnostics()
+            .iter()
+            .flat_map(|(path, diagnostics)| {
+                diagnostics.iter().map(|diagnostic| crate::app::app_state::DiagnosticItem {
+                    file_path: path.clone(),
+                    line: diagnostic.range.start.line as usize,
+                    col: diagnostic.range.start.character as usize,
+                    message: diagnostic.message.clone(),
+                    severity: diagnostic.severity,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        if items.is_empty() {
+            return false;
+        }
+
+        items.sort_by(|a, b| {
+            a.severity
+                .unwrap_or(u32::MAX)
+                .cmp(&b.severity.unwrap_or(u32::MAX))
+                .then_with(|| a.file_path.cmp(&b.file_path))
+                .then_with(|| a.line.cmp(&b.line))
+                .then_with(|| a.col.cmp(&b.col))
+        });
+
+        if let Err(err) = self.app_state.open_diagnostics_buffer(items) {
+            eprintln!("[AppShell] diagnostics open buffer failed: {err}");
+            return false;
+        }
+
+        self.submit_diagnostics_preview_load();
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        let focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
+        if focus_changed {
+            self.input_handler.clear_pending_prefix();
+        }
+        self.request_redraw();
+        true
+    }
+
+    fn select_next_diagnostic_item(&mut self) -> bool {
+        let changed = self.app_state.diagnostics_select_next();
+        if changed {
+            self.submit_diagnostics_preview_load();
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+        }
+        changed
+    }
+
+    fn select_prev_diagnostic_item(&mut self) -> bool {
+        let changed = self.app_state.diagnostics_select_prev();
+        if changed {
+            self.submit_diagnostics_preview_load();
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+        }
+        changed
+    }
+
+    fn open_selected_diagnostic_item(&mut self) -> bool {
+        let Some(item) = self.app_state.selected_diagnostic_item_cloned() else {
+            return false;
+        };
+
+        let origin = self
+            .app_state
+            .active_file()
+            .map(PathBuf::from)
+            .map(|path| (path, self.app_state.cursor_line_col().0));
+
+        let _ = self.app_state.close_current_buffer();
+
+        if let Some((active_path, active_line)) = origin {
+            self.app_state.push_jump_entry(active_path, active_line);
+        }
+
+        if let Err(err) = self.app_state.open_file(item.file_path.clone()) {
+            eprintln!("[AppShell] diagnostics open_file failed: {err}");
+            return false;
+        }
+
+        self.app_state.jump_to_line_and_column(item.line, item.col);
+        let vp = self.editor_viewport_lines();
+        self.app_state.auto_scroll_to_cursor(vp);
+        self.submit_lsp_check_for_path(item.file_path.clone());
         self.submit_lsp_did_open_for_active_file();
         self.editor_needs_layout = true;
         self.editor_caret_needs_layout = false;

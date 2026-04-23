@@ -73,6 +73,7 @@ pub enum TopbarTabKind {
     Text { path: PathBuf },
     Terminal,
     References,
+    Diagnostics,
     FuzzyPicker,
 }
 
@@ -97,6 +98,8 @@ pub(super) struct StatusbarLayoutKey {
     pub(super) filetype: String,
     pub(super) line: usize,
     pub(super) col: usize,
+    pub(super) diagnostics_errors: usize,
+    pub(super) diagnostics_warnings: usize,
     pub(super) bounds: [f32; 4],
 }
 

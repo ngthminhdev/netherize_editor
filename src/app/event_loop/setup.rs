@@ -333,6 +333,9 @@ impl AppShell {
             FocusTarget::CenterEditor if self.app_state.active_buffer_is_fuzzy_picker() => {
                 InputFocusContext::FuzzyPicker
             }
+            FocusTarget::CenterEditor if self.app_state.active_buffer_is_diagnostics() => {
+                InputFocusContext::Diagnostics
+            }
             FocusTarget::CenterEditor if self.app_state.active_buffer_is_references() => {
                 InputFocusContext::References
             }
@@ -677,6 +680,26 @@ impl AppShell {
             topic: RequestTopic::FilePreview,
             payload: WorkerRequestPayload::LoadFilePreview {
                 file_path: item.path,
+                max_lines: 100,
+                target_line: Some(item.line + 1),
+            },
+        });
+    }
+
+    pub(super) fn submit_diagnostics_preview_load(&mut self) {
+        if !self.app_state.active_buffer_is_diagnostics() {
+            return;
+        }
+
+        let Some(item) = self.app_state.selected_diagnostic_item_cloned() else {
+            return;
+        };
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::FilePreview,
+            payload: WorkerRequestPayload::LoadFilePreview {
+                file_path: item.file_path,
                 max_lines: 100,
                 target_line: Some(item.line + 1),
             },

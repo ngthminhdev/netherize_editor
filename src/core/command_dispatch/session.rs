@@ -113,6 +113,10 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::ReferencesSelectNext
         | Command::ReferencesSelectPrev
         | Command::ReferencesOpenSelection
+        | Command::DiagnosticsOpenPicker
+        | Command::DiagnosticsSelectNext
+        | Command::DiagnosticsSelectPrev
+        | Command::DiagnosticsOpenSelection
         | Command::JumpBack
         | Command::JumpForward => DispatchReport::success_with_flags(
             "Dispatch: workbench navigation (handled by event loop)",

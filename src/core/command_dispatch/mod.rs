@@ -282,6 +282,10 @@ fn dispatch_command_with_clipboard_once(
         | Command::ReferencesSelectNext
         | Command::ReferencesSelectPrev
         | Command::ReferencesOpenSelection
+        | Command::DiagnosticsOpenPicker
+        | Command::DiagnosticsSelectNext
+        | Command::DiagnosticsSelectPrev
+        | Command::DiagnosticsOpenSelection
         | Command::JumpBack
         | Command::JumpForward => session::dispatch(&mut ctx, command),
     }

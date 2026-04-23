@@ -87,6 +87,7 @@ pub const LSP_HOVER: &str = "lsp.hover";
 pub const LSP_GO_TO_DEFINITION: &str = "lsp.go_to_definition";
 pub const LSP_PREVIEW_DEFINITION: &str = "lsp.preview_definition";
 pub const LSP_REFERENCES: &str = "lsp.references";
+pub const DIAGNOSTICS_OPEN_PICKER: &str = "diagnostics.open_picker";
 
 // ── Jump list navigation ─────────────────────────────────────────────────────
 pub const JUMP_BACK: &str = "editor.jump_back";
@@ -216,6 +217,7 @@ pub const ALL_IDS: &[&str] = &[
     LSP_GO_TO_DEFINITION,
     LSP_PREVIEW_DEFINITION,
     LSP_REFERENCES,
+    DIAGNOSTICS_OPEN_PICKER,
     JUMP_BACK,
     JUMP_FORWARD,
     FOCUS_EDITOR,
@@ -340,6 +342,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         LSP_GO_TO_DEFINITION => Some(Command::LspGoToDefinition),
         LSP_PREVIEW_DEFINITION => Some(Command::LspPreviewDefinition),
         LSP_REFERENCES => Some(Command::LspReferences),
+        DIAGNOSTICS_OPEN_PICKER => Some(Command::DiagnosticsOpenPicker),
         JUMP_BACK => Some(Command::JumpBack),
         JUMP_FORWARD => Some(Command::JumpForward),
         FOCUS_EDITOR => Some(Command::FocusEditor),

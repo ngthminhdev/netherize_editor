@@ -206,6 +206,14 @@ pub enum Command {
     ReferencesSelectPrev,
     /// References view: mở item đang chọn như `gd`.
     ReferencesOpenSelection,
+    /// Open workspace diagnostics picker.
+    DiagnosticsOpenPicker,
+    /// Diagnostics view: chọn item kế tiếp.
+    DiagnosticsSelectNext,
+    /// Diagnostics view: chọn item trước đó.
+    DiagnosticsSelectPrev,
+    /// Diagnostics view: mở item đang chọn.
+    DiagnosticsOpenSelection,
     /// ctrl+o: Nhảy lùi về vị trí trước trong jump list.
     JumpBack,
     /// ctrl+i: Nhảy tiến về vị trí sau trong jump list.
@@ -283,6 +291,8 @@ impl Command {
                 | Self::OverlaySelectPrev
                 | Self::ReferencesSelectNext
                 | Self::ReferencesSelectPrev
+                | Self::DiagnosticsSelectNext
+                | Self::DiagnosticsSelectPrev
                 | Self::ExplorerMoveUp
                 | Self::ExplorerMoveDown
                 | Self::ExplorerCollapseOrParent

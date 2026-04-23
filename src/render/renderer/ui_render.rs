@@ -732,6 +732,7 @@ impl Renderer {
             ));
         } else {
             for (idx, tab) in tabs.iter().enumerate() {
+<<<<<<< HEAD
                 let icon_glyph = match &tab.kind {
                     TopbarTabKind::Text { path } => path
                         .file_name()
@@ -741,6 +742,16 @@ impl Renderer {
                     TopbarTabKind::Terminal => "".to_string(),
                     TopbarTabKind::References => "📄".to_string(),
                     TopbarTabKind::FuzzyPicker => "🔎".to_string(),
+=======
+                let icon = match &tab.kind {
+                    TopbarTabKind::Text { path } => {
+                        self.theme.file_icon_for_path(path, false, false)
+                    }
+                    TopbarTabKind::Terminal => self.theme.file_icon_for_extension("sh"),
+                    TopbarTabKind::References => self.theme.file_icon_for_extension("txt"),
+                    TopbarTabKind::Diagnostics => self.theme.file_icon_for_extension("log"),
+                    TopbarTabKind::FuzzyPicker => self.theme.file_icon_for_extension("fzf"),
+>>>>>>> 3fe1b8d (Add diagnostics state, status bar, and picker)
                 };
                 let icon_text = format!("{} ", icon_glyph);
                 let icon_width = estimate_monospace_width(&icon_text, font_size);
@@ -834,6 +845,8 @@ impl Renderer {
         filetype: &str,
         line: usize,
         col: usize,
+        diagnostics_errors: usize,
+        diagnostics_warnings: usize,
         bounds: [f32; 4],
     ) -> Vec<RegionDrawInstance> {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
@@ -853,6 +866,8 @@ impl Renderer {
             filetype: filetype.to_string(),
             line,
             col,
+            diagnostics_errors,
+            diagnostics_warnings,
             bounds,
         };
         if self.last_statusbar_layout_key.as_ref() == Some(&layout_key) {
@@ -891,11 +906,14 @@ impl Renderer {
             line + 1,
             col + 1
         );
+        let diagnostics_label = format!("❌ {}  ⚠ {}", diagnostics_errors, diagnostics_warnings);
 
         let origin_y = bounds[1] + ((bounds[3] - line_h) * 0.5).max(0.0);
         let fg_dim = self.theme.ui.fg_dim.as_f32();
         let accent = self.theme.ui.accent.as_f32();
         let pill_fg = self.theme.ui.bg.as_f32();
+        let error_fg = [0.95, 0.32, 0.32, 1.0];
+        let warning_fg = [0.95, 0.78, 0.22, 1.0];
 
         let mut glyphs = layout_panel_text(
             &pill_text,
@@ -908,8 +926,15 @@ impl Renderer {
         );
 
         let right_width = estimate_monospace_width(&right_text, font_size);
-        let right_x = (bounds[0] + bounds[2] - self.statusbar_padding_x - right_width)
+        let diagnostics_width = estimate_monospace_width(&diagnostics_label, font_size);
+        let right_x = (bounds[0]
+            + bounds[2]
+            - self.statusbar_padding_x
+            - right_width
+            - diagnostics_width
+            - 24.0)
             .max(bounds[0] + self.statusbar_padding_x);
+        let diag_x = right_x + right_width + 24.0;
         let pending_x = pill_x + pill_width + self.statusbar_padding_x * 0.75;
         let pending_gap = self.statusbar_padding_x;
         let pending_maxw = (right_x - pending_x - pending_gap).max(0.0);
@@ -934,6 +959,26 @@ impl Renderer {
             right_x,
             origin_y,
             fg_dim,
+        ));
+        let error_part = format!("❌ {}", diagnostics_errors);
+        glyphs.extend(layout_panel_text(
+            &error_part,
+            &mut self.statusbar_text_system,
+            &mut self.atlas,
+            &self.queue,
+            diag_x,
+            origin_y,
+            error_fg,
+        ));
+        let warn_x = diag_x + estimate_monospace_width(&error_part, font_size) + 16.0;
+        glyphs.extend(layout_panel_text(
+            &format!("⚠ {}", diagnostics_warnings),
+            &mut self.statusbar_text_system,
+            &mut self.atlas,
+            &self.queue,
+            warn_x,
+            origin_y,
+            warning_fg,
         ));
 
         self.statusbar_glyph_instances = glyphs;
