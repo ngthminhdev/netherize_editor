@@ -186,6 +186,7 @@ impl Renderer {
             buffer_terminal_glyph_instances: Vec::new(),
             buffer_terminal_cursor_instances: Vec::new(),
             buffer_terminal_scissor: None,
+            buffer_terminal_header_batch: None,
             welcome_logo_text_system,
             welcome_logo_text_pipeline,
             welcome_logo_view_renderer: TerminalViewRenderer::default_monospace(),
@@ -196,6 +197,7 @@ impl Renderer {
             topbar_glyph_instances: Vec::new(),
             topbar_chrome_instances: Vec::new(),
             topbar_scissor: None,
+            topbar_text_batches: Vec::new(),
             last_topbar_layout_key: None,
             statusbar_text_system,
             statusbar_text_pipeline,
@@ -532,15 +534,48 @@ impl Renderer {
                 );
             }
 
-            draw_text_region(
-                &mut pass,
-                self.buffer_terminal_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.buffer_terminal_text_pipeline.draw(render_pass);
-                },
-            );
+            if let Some(header_batch) = self.buffer_terminal_header_batch {
+                let total_count = self.buffer_terminal_glyph_instances.len() as u32;
+                let body_start = header_batch.range.start.saturating_add(header_batch.range.count);
+                let body_count = total_count.saturating_sub(body_start);
+                if body_count > 0 {
+                    draw_text_region(
+                        &mut pass,
+                        self.buffer_terminal_scissor,
+                        viewport_width,
+                        viewport_height,
+                        |render_pass| {
+                            self.buffer_terminal_text_pipeline.draw_range(
+                                render_pass,
+                                crate::render::text_pipeline::InstanceDrawRange {
+                                    start: body_start,
+                                    count: body_count,
+                                },
+                            );
+                        },
+                    );
+                }
+                draw_text_region(
+                    &mut pass,
+                    Some(header_batch.scissor),
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.buffer_terminal_text_pipeline
+                            .draw_range(render_pass, header_batch.range);
+                    },
+                );
+            } else {
+                draw_text_region(
+                    &mut pass,
+                    self.buffer_terminal_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.buffer_terminal_text_pipeline.draw(render_pass);
+                    },
+                );
+            }
             if !self.buffer_terminal_cursor_instances.is_empty() {
                 self.region_pipeline.upload_instances(
                     &self.device,
@@ -559,27 +594,17 @@ impl Renderer {
             }
 
             // 7. TopBar.
-            let topbar_inner_scissor = self.topbar_scissor.and_then(|[sx, sy, sw, sh]| {
-                let inset_x = 4_u32;
-                let inset_y = 2_u32;
-                let clipped_w = sw.saturating_sub(inset_x.saturating_mul(2));
-                let clipped_h = sh.saturating_sub(inset_y.saturating_mul(2));
-                (clipped_w > 0 && clipped_h > 0).then_some([
-                    sx.saturating_add(inset_x),
-                    sy.saturating_add(inset_y),
-                    clipped_w,
-                    clipped_h,
-                ])
-            });
-            draw_text_region(
-                &mut pass,
-                topbar_inner_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.topbar_text_pipeline.draw(render_pass);
-                },
-            );
+            for batch in &self.topbar_text_batches {
+                draw_text_region(
+                    &mut pass,
+                    Some(batch.scissor),
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.topbar_text_pipeline.draw_range(render_pass, batch.range);
+                    },
+                );
+            }
 
             // 8. StatusBar.
             draw_text_region(

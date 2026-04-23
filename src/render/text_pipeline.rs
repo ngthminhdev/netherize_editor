@@ -38,6 +38,12 @@ pub struct TextPipeline {
     instance_count: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InstanceDrawRange {
+    pub start: u32,
+    pub count: u32,
+}
+
 impl TextPipeline {
     pub fn new(
         device: &wgpu::Device,
@@ -200,7 +206,26 @@ impl TextPipeline {
     }
 
     pub fn draw<'pass>(&'pass self, render_pass: &mut wgpu::RenderPass<'pass>) {
-        if self.instance_count == 0 {
+        self.draw_range(
+            render_pass,
+            InstanceDrawRange {
+                start: 0,
+                count: self.instance_count,
+            },
+        );
+    }
+
+    pub fn draw_range<'pass>(
+        &'pass self,
+        render_pass: &mut wgpu::RenderPass<'pass>,
+        range: InstanceDrawRange,
+    ) {
+        if self.instance_count == 0 || range.count == 0 || range.start >= self.instance_count {
+            return;
+        }
+
+        let end = range.start.saturating_add(range.count).min(self.instance_count);
+        if end <= range.start {
             return;
         }
 
@@ -209,7 +234,7 @@ impl TextPipeline {
         render_pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
         render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
         render_pass.set_index_buffer(self.quad_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        render_pass.draw_indexed(0..self.index_count, 0, 0..self.instance_count);
+        render_pass.draw_indexed(0..self.index_count, 0, range.start..end);
     }
 
     fn ensure_instance_capacity(&mut self, device: &wgpu::Device, required: usize) {

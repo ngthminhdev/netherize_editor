@@ -24,7 +24,7 @@ use crate::{
         glyph_instance::GlyphInstance,
         region_pipeline::{RegionDrawInstance, RegionPipeline},
         surface::SurfaceState,
-        text_pipeline::TextPipeline,
+        text_pipeline::{InstanceDrawRange, TextPipeline},
     },
     terminal::terminal_renderer::TerminalViewRenderer,
     text::{atlas::GlyphAtlas, text_system::TextSystem},
@@ -89,6 +89,12 @@ pub(super) struct TopbarLayoutKey {
     pub(super) tabs: Vec<TopbarTab>,
     pub(super) active_buffer_index: Option<usize>,
     pub(super) bounds: [f32; 4],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct TextScissorBatch {
+    pub(super) scissor: [u32; 4],
+    pub(super) range: InstanceDrawRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -170,6 +176,7 @@ pub struct Renderer {
     pub(super) topbar_glyph_instances: Vec<GlyphInstance>,
     pub(super) topbar_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) topbar_scissor: Option<[u32; 4]>,
+    pub(super) topbar_text_batches: Vec<TextScissorBatch>,
     pub(super) last_topbar_layout_key: Option<TopbarLayoutKey>,
 
     // ── StatusBar ─────────────────────────────────────────────────────────────
@@ -178,6 +185,7 @@ pub struct Renderer {
     pub(super) statusbar_glyph_instances: Vec<GlyphInstance>,
     pub(super) statusbar_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) statusbar_scissor: Option<[u32; 4]>,
+    pub(super) buffer_terminal_header_batch: Option<TextScissorBatch>,
     pub(super) last_statusbar_layout_key: Option<StatusbarLayoutKey>,
 
     // ── Command Palette / File Picker overlay ─────────────────────────────────

@@ -8,9 +8,10 @@ use crate::{
     render::{
         region_pipeline::RegionDrawInstance,
         renderer::{
-            Renderer, SidebarFilterState, SidebarRow, StatusbarLayoutKey, TopbarLayoutKey,
-            TopbarTab, TopbarTabKind,
+            Renderer, SidebarFilterState, SidebarRow, StatusbarLayoutKey, TextScissorBatch,
+            TopbarLayoutKey, TopbarTab, TopbarTabKind,
         },
+        text_pipeline::InstanceDrawRange,
     },
     terminal::grid::TerminalGrid,
     text::text_system::{StyledTextSpan, TextSystem},
@@ -41,6 +42,22 @@ fn sidebar_list_bottom(bounds: [f32; 4]) -> f32 {
 
 fn sidebar_filter_y(bounds: [f32; 4]) -> f32 {
     bounds[1]
+}
+
+fn inset_scissor_rect(bounds: [f32; 4], inset_x: f32, inset_y: f32) -> Option<[u32; 4]> {
+    let clip_x = bounds[0] + inset_x;
+    let clip_y = bounds[1] + inset_y;
+    let clip_width = (bounds[2] - inset_x * 2.0).max(0.0);
+    let clip_height = (bounds[3] - inset_y * 2.0).max(0.0);
+    rect_to_scissor([clip_x, clip_y, clip_width, clip_height])
+}
+
+fn topbar_tab_text_scissor(bounds: [f32; 4]) -> Option<[u32; 4]> {
+    inset_scissor_rect(bounds, 4.0, 2.0)
+}
+
+fn terminal_header_batch(bounds: [f32; 4], panel_padding: f32, header_h: f32) -> Option<[u32; 4]> {
+    inset_scissor_rect([bounds[0], bounds[1], bounds[2], header_h + panel_padding], 4.0, 2.0)
 }
 
 impl Renderer {
@@ -277,6 +294,7 @@ impl Renderer {
 
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
             self.buffer_terminal_scissor = None;
+            self.buffer_terminal_header_batch = None;
             self.buffer_terminal_cursor_instances.clear();
             self.buffer_terminal_text_pipeline
                 .upload_instances(&self.device, &self.queue, &[]);
@@ -320,6 +338,13 @@ impl Renderer {
                 + ((header_h - self.theme.ui.panel_line_height).max(0.0) * 0.5),
             self.theme.ui.fg.as_f32(),
         );
+        let header_count = header_glyphs.len() as u32;
+        self.buffer_terminal_header_batch = terminal_header_batch(bounds, panel_padding, header_h)
+            .zip((header_count > 0).then_some(header_count))
+            .map(|(scissor, count)| TextScissorBatch {
+                scissor,
+                range: InstanceDrawRange { start: 0, count },
+            });
 
         if grid.used_rows() == 0 {
             self.buffer_terminal_text_system
@@ -576,6 +601,7 @@ impl Renderer {
 
     pub fn clear_buffer_terminal(&mut self) {
         self.buffer_terminal_scissor = None;
+        self.buffer_terminal_header_batch = None;
         self.buffer_terminal_glyph_instances.clear();
         self.buffer_terminal_cursor_instances.clear();
         self.buffer_terminal_text_pipeline
@@ -719,6 +745,7 @@ impl Renderer {
             self.topbar_scissor = None;
             self.topbar_glyph_instances.clear();
             self.topbar_chrome_instances.clear();
+            self.topbar_text_batches.clear();
             self.last_topbar_layout_key = None;
             self.topbar_text_pipeline
                 .upload_instances(&self.device, &self.queue, &[]);
@@ -755,6 +782,7 @@ impl Renderer {
             .or(font_family);
 
         let mut glyphs = Vec::new();
+        let mut text_batches = Vec::new();
         let mut chrome = Vec::new();
         let mut tab_x = bounds[0] + self.topbar_padding_x;
         let tab_gap = 6.0;
@@ -763,6 +791,7 @@ impl Renderer {
         let icon_gap = 6.0;
 
         if tabs.is_empty() {
+            let start = glyphs.len() as u32;
             glyphs.extend(layout_panel_text(
                 "[ no file ]",
                 &mut self.topbar_text_system,
@@ -772,6 +801,15 @@ impl Renderer {
                 origin_y,
                 empty_fg,
             ));
+            let count = glyphs.len() as u32 - start;
+            if let Some(scissor) = topbar_tab_text_scissor([tab_x, bounds[1], width, bounds[3]]) {
+                if count > 0 {
+                    text_batches.push(TextScissorBatch {
+                        scissor,
+                        range: InstanceDrawRange { start, count },
+                    });
+                }
+            }
         } else {
             for (idx, tab) in tabs.iter().enumerate() {
                 let icon_glyph = match &tab.kind {
@@ -854,6 +892,7 @@ impl Renderer {
                 }
 
                 let icon_x = tab_x + tab_pad_x;
+                let batch_start = glyphs.len() as u32;
                 self.topbar_text_system.set_font_family(nerd_family);
                 glyphs.extend(layout_panel_text(
                     &icon_text,
@@ -874,6 +913,18 @@ impl Renderer {
                     origin_y,
                     if is_active { active_fg } else { inactive_fg },
                 ));
+                let batch_count = glyphs.len() as u32 - batch_start;
+                if let Some(scissor) = topbar_tab_text_scissor([tab_x, bounds[1], tab_width, bounds[3]]) {
+                    if batch_count > 0 {
+                        text_batches.push(TextScissorBatch {
+                            scissor,
+                            range: InstanceDrawRange {
+                                start: batch_start,
+                                count: batch_count,
+                            },
+                        });
+                    }
+                }
                 tab_x += tab_width + tab_gap;
             }
         }
@@ -884,6 +935,7 @@ impl Renderer {
             &self.queue,
             &self.topbar_glyph_instances,
         );
+        self.topbar_text_batches = text_batches;
         self.topbar_chrome_instances = chrome;
         self.last_topbar_layout_key = Some(layout_key);
         self.topbar_chrome_instances.clone()
