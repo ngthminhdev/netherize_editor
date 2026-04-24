@@ -69,7 +69,7 @@ pub struct LspClientProcess {
     next_rpc_id: AtomicU64,
     latest_revision: AtomicU64,
     latest_request_id: AtomicU64,
-    pending_response_tx: Mutex<Option<std_mpsc::SyncSender<(u64, Value)>>>,
+    pending_responses: Mutex<HashMap<u64, std_mpsc::SyncSender<Value>>>,
     open_documents: Mutex<HashSet<String>>,
 }
 
@@ -81,7 +81,7 @@ impl LspClientProcess {
             next_rpc_id: AtomicU64::new(1),
             latest_revision: AtomicU64::new(0),
             latest_request_id: AtomicU64::new(0),
-            pending_response_tx: Mutex::new(None),
+            pending_responses: Mutex::new(HashMap::new()),
             open_documents: Mutex::new(HashSet::new()),
         }
     }
@@ -130,25 +130,62 @@ impl LspClientProcess {
         block_on_runtime(self.send_request_async(method, params))
     }
 
-    pub fn register_pending_request(&self) -> std_mpsc::Receiver<(u64, Value)> {
+    /// Pre-allocate the next JSON-RPC request id without sending anything.
+    /// Call this before `register_pending_request` so both share the same id.
+    pub fn allocate_request_id(&self) -> u64 {
+        self.next_rpc_id.fetch_add(1, Ordering::Relaxed)
+    }
+
+    async fn send_request_with_id_async(
+        &self,
+        id: u64,
+        method: &str,
+        params: Value,
+    ) -> Result<(), String> {
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params,
+        });
+        let mut writer = self.writer.lock().await;
+        write_json_rpc_message_async(&mut *writer, &payload).await
+    }
+
+    pub fn send_request_with_id(
+        &self,
+        id: u64,
+        method: &str,
+        params: Value,
+    ) -> Result<(), String> {
+        block_on_runtime(self.send_request_with_id_async(id, method, params))
+    }
+
+    /// Register a channel for `id`. Must be called BEFORE `send_request_with_id`
+    /// to prevent a race where the response arrives before the rx is stored.
+    pub fn register_pending_request(&self, id: u64) -> std_mpsc::Receiver<Value> {
         let (tx, rx) = std_mpsc::sync_channel(4);
-        if let Ok(mut guard) = self.pending_response_tx.lock() {
-            *guard = Some(tx);
+        if let Ok(mut guard) = self.pending_responses.lock() {
+            guard.insert(id, tx);
         }
         rx
     }
 
+    /// Route the response to the correct waiting caller by request id.
+    /// Removes the sender from the map so a timeout cleanup is a no-op.
     pub fn deliver_response(&self, id: u64, value: Value) {
-        if let Ok(guard) = self.pending_response_tx.lock()
-            && let Some(tx) = guard.as_ref()
-        {
-            let _ = tx.try_send((id, value));
+        if let Ok(mut guard) = self.pending_responses.lock() {
+            if let Some(tx) = guard.remove(&id) {
+                let _ = tx.try_send(value);
+            }
         }
     }
 
-    pub fn clear_pending_request(&self) {
-        if let Ok(mut guard) = self.pending_response_tx.lock() {
-            *guard = None;
+    /// Remove a pending entry on timeout/cancellation.
+    /// Safe to call even if the entry was already consumed by `deliver_response`.
+    pub fn clear_pending_request(&self, id: u64) {
+        if let Ok(mut guard) = self.pending_responses.lock() {
+            guard.remove(&id);
         }
     }
 

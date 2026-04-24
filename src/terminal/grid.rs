@@ -240,7 +240,10 @@ impl TerminalGrid {
                     }
                     // 1: from beginning to cursor
                     1 => {
-                        let end = self.cursor_row * self.cols + self.cursor_col + 1;
+                        // Clamp to cols-1: cursor_col can equal cols in pending-wrap state
+                        // (after printing into the last column before the next char wraps).
+                        let safe_col = self.cursor_col.min(self.cols.saturating_sub(1));
+                        let end = self.cursor_row * self.cols + safe_col + 1;
                         for cell in &mut self.cells[..end] {
                             *cell = TerminalCell::blank();
                         }
@@ -267,8 +270,9 @@ impl TerminalGrid {
                         }
                     }
                     1 => {
-                        // From beginning to cursor
-                        let end = row_start + self.cursor_col + 1;
+                        // From beginning to cursor — clamp for pending-wrap state.
+                        let safe_col = self.cursor_col.min(self.cols.saturating_sub(1));
+                        let end = row_start + safe_col + 1;
                         for cell in &mut self.cells[row_start..end] {
                             *cell = TerminalCell::blank();
                         }

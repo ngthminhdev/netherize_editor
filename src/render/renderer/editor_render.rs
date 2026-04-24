@@ -57,16 +57,27 @@ fn wrap_text_lines(text: &str, max_chars: usize) -> Vec<String> {
 
         let mut current = String::new();
         for word in raw_line.split_whitespace() {
+            let word_chars: Vec<char> = word.chars().collect();
+            let word_len = word_chars.len();
             let current_len = current.chars().count();
-            let word_len = word.chars().count();
-            let next_len = if current.is_empty() {
-                word_len
-            } else {
-                current_len + 1 + word_len
-            };
-            if next_len > max_chars && !current.is_empty() {
-                out.push(current);
-                current = word.to_string();
+            let sep = if current.is_empty() { 0 } else { 1 };
+
+            // Flush current line if this word won't fit alongside it.
+            if !current.is_empty() && current_len + sep + word_len > max_chars {
+                out.push(std::mem::take(&mut current));
+            }
+
+            if word_len > max_chars {
+                // Oversized token: chunk into max_chars slices.
+                // current is guaranteed empty here (either was already empty,
+                // or was flushed above).
+                let mut start = 0;
+                while start + max_chars < word_len {
+                    out.push(word_chars[start..start + max_chars].iter().collect());
+                    start += max_chars;
+                }
+                // Last (partial) chunk goes into current — may merge with next word.
+                current = word_chars[start..].iter().collect();
             } else {
                 if !current.is_empty() {
                     current.push(' ');
@@ -75,15 +86,7 @@ fn wrap_text_lines(text: &str, max_chars: usize) -> Vec<String> {
             }
         }
 
-        if current.is_empty() {
-            let chars: Vec<char> = raw_line.chars().collect();
-            let mut start = 0usize;
-            while start < chars.len() {
-                let end = (start + max_chars).min(chars.len());
-                out.push(chars[start..end].iter().collect());
-                start = end;
-            }
-        } else {
+        if !current.is_empty() {
             out.push(current);
         }
     }

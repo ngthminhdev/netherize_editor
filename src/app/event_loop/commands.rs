@@ -2185,11 +2185,27 @@ impl AppShell {
         else {
             return false;
         };
-        let insert_text = item
+        let mut insert_text = item
             .insert_text
             .clone()
             .or(item.text_edit_text.clone())
             .unwrap_or(item.label.clone());
+        if insert_text.is_empty() {
+            return self.close_completion_popup();
+        }
+
+        // Deduplicate trigger char: some LSP servers include the trigger character
+        // (e.g. `.getInstance`) in insertText. If the char immediately left of the
+        // cursor is that same trigger char, strip it from the front of insertText
+        // to avoid doubling (e.g. `message..getInstance()`).
+        if let Some(char_left) = self.app_state.char_before_cursor() {
+            if self.lsp_completion_trigger_chars.contains(&char_left) {
+                if insert_text.starts_with(char_left) {
+                    insert_text = insert_text.chars().skip(1).collect();
+                }
+            }
+        }
+
         if insert_text.is_empty() {
             return self.close_completion_popup();
         }
@@ -3327,6 +3343,36 @@ mod tests {
             shell.app_state.text_string(),
             "MessageManager.getInstance()"
         );
+        assert!(shell.app_state.completion().is_none());
+    }
+
+    #[test]
+    fn completion_accept_deduplicates_trigger_char_in_insert_text() {
+        // Scenario: user typed "message." and LSP returns insertText = ".getInstance()"
+        // (trigger char included). Without dedup the result would be "message..getInstance()".
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        shell.app_state =
+            AppState::from_text(PathBuf::from("dedup_trigger.ts"), "message.");
+        shell.lsp_completion_trigger_chars = vec!['.'];
+        let cursor_col = "message.".chars().count();
+        let completion = crate::app::app_state::CompletionState::from_lsp_items(
+            vec![crate::async_runtime::message::LspCompletionItem {
+                label: "getInstance".to_string(),
+                detail: None,
+                insert_text: Some(".getInstance()".to_string()),
+                text_edit_text: None,
+                kind: Some(2),
+            }],
+            0,
+            cursor_col,
+            cursor_col,
+            String::new(),
+        );
+        assert!(shell.app_state.jump_to_line_and_column(0, cursor_col));
+        assert!(shell.app_state.set_completion(completion));
+
+        assert!(shell.handle_command(Command::CompletionAccept));
+        assert_eq!(shell.app_state.text_string(), "message.getInstance()");
         assert!(shell.app_state.completion().is_none());
     }
 

@@ -3941,7 +3941,7 @@ impl AppState {
         (self.cursor_char_idx < self.text.len_chars()).then(|| self.text.char(self.cursor_char_idx))
     }
 
-    fn char_before_cursor(&self) -> Option<char> {
+    pub fn char_before_cursor(&self) -> Option<char> {
         (self.cursor_char_idx > 0).then(|| self.text.char(self.cursor_char_idx - 1))
     }
 

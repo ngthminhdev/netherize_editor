@@ -979,34 +979,29 @@ fn execute_lsp_request(
 // ── LSP Interactive Requests (hover, definition, references) ─────────────────
 
 /// Gửi request và chờ response thông qua pending channel.
-/// Phải gọi `register_pending_request` TRƯỚC `send_request` để tránh race condition.
+/// Dùng per-request-id routing: mỗi request có kênh riêng, tránh request
+/// sau đè kênh của request trước khi có nhiều LSP call song song.
 fn lsp_request_response(
     session: &std::sync::Arc<crate::lsp::client::LspClientProcess>,
     method: &str,
     params: serde_json::Value,
     timeout_secs: u64,
 ) -> Result<serde_json::Value, String> {
-    // 1. Đăng ký trước để stdout reader biết chỗ deliver.
-    let rx = session.register_pending_request();
-    // 2. Gửi request.
-    let request_id = session.send_request(method, params)?;
-    // 3. Đợi response từ channel (chứ không phải từ reader trực tiếp).
+    // 1. Cấp phát id trước khi gửi để register đúng id.
+    let request_id = session.allocate_request_id();
+    // 2. Đăng ký kênh cho id này (phải trước send để tránh race).
+    let rx = session.register_pending_request(request_id);
+    // 3. Gửi request với id đã cấp phát.
+    session.send_request_with_id(request_id, method, params)?;
+    // 4. Đợi response — rx chỉ nhận đúng response cho request_id này.
     let deadline = std::time::Duration::from_secs(timeout_secs);
-    loop {
-        match rx.recv_timeout(deadline) {
-            Ok((id, value)) if id == request_id => {
-                session.clear_pending_request();
-                return Ok(value);
-            }
-            Ok(_) => {
-                // Message cho request khác — bỏ qua, tiếp tục đợi.
-            }
-            Err(_) => {
-                session.clear_pending_request();
-                return Err(format!(
-                    "lsp {method} request timed out after {timeout_secs}s"
-                ));
-            }
+    match rx.recv_timeout(deadline) {
+        Ok(value) => Ok(value),
+        Err(_) => {
+            session.clear_pending_request(request_id);
+            Err(format!(
+                "lsp {method} request timed out after {timeout_secs}s"
+            ))
         }
     }
 }

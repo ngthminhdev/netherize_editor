@@ -112,10 +112,12 @@ impl SyntaxEngine {
         source: &str,
         revision: u64,
     ) -> Result<&SyntaxTreeState, String> {
-        let previous_tree = self.current_tree.as_ref().map(|state| state.tree());
+        // Always full-reparse: incremental parse requires tree.edit(InputEdit{...}) to be
+        // called first whenever the source shrinks, otherwise tree-sitter panics with an
+        // out-of-range slice index when it tries to reuse nodes with stale byte offsets.
         let tree = self
             .parser
-            .parse(source, previous_tree)
+            .parse(source, None)
             .ok_or_else(|| "tree-sitter parser returned None tree".to_string())?;
 
         self.current_tree = Some(SyntaxTreeState::new(tree, self.language_id, revision));
