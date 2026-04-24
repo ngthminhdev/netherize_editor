@@ -18,9 +18,8 @@ use crate::{
 };
 
 use super::helpers::{
-    clamp_monospace_text, estimate_monospace_width, layout_panel_rich_text, layout_panel_text,
-    layout_panel_text_bold, layout_panel_text_italic, mode_display_label, mode_pill_color,
-    rect_to_scissor,
+    clamp_monospace_text, estimate_monospace_width, layout_panel_text, layout_panel_text_bold,
+    layout_panel_text_italic, mode_display_label, mode_pill_color, rect_to_scissor,
 };
 use crate::render::glyph_instance::GlyphInstance;
 
@@ -578,8 +577,8 @@ impl Renderer {
     /// Render centered welcome text into the dedicated welcome layer.
     pub fn update_welcome_screen_content(
         &mut self,
-        text: &str,
-        spans: &[StyledTextSpan],
+        _text: &str,
+        _spans: &[StyledTextSpan],
         bounds: [f32; 4],
     ) {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
@@ -588,83 +587,408 @@ impl Renderer {
         }
 
         self.welcome_logo_scissor = rect_to_scissor(bounds);
+        let mut glyphs = Vec::new();
+        let mut chrome = Vec::new();
+        let bg = self.theme.editor.bg.as_f32();
+        let panel = self.theme.ui.panel_bg.as_f32();
+        let border = self.theme.ui.border_color.as_f32();
+        let fg = self.theme.ui.fg.as_f32();
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let fg_ghost = self.theme.ui.fg_ghost.as_f32();
+        let accent = self.theme.ui.accent.as_f32();
 
-        let outer_margin = (self.panel_padding * 2.0).max(24.0);
-        let card_width = self
-            .welcome_card_max_width
-            .min((bounds[2] - outer_margin * 2.0).max(1.0))
-            .max(280.0_f32.min(bounds[2].max(1.0)));
-        let max_width = (card_width - self.welcome_card_padding_x * 2.0).max(1.0);
-        let font_size = self.theme.editor.font_size;
-        let line_height = self.theme.editor.line_height.max(font_size + 4.0);
+        chrome.push(RegionDrawInstance::new(bounds, bg));
 
-        use cosmic_text::Metrics;
-        self.welcome_logo_text_system
-            .set_metrics(Metrics::new(font_size, line_height));
-        self.welcome_logo_text_system
-            .set_size(Some(max_width), None);
-        self.welcome_logo_text_system.set_text_with_spans(
-            text,
-            self.theme.editor.fg.as_u8(),
-            spans,
-        );
-
-        let mut content_height = 0.0_f32;
-        for run in self.welcome_logo_text_system.buffer().layout_runs() {
-            content_height = content_height.max(run.line_top + run.line_height.max(1.0));
-        }
-        content_height = content_height.max(line_height);
-
-        let card_height = (content_height + self.welcome_card_padding_y * 2.0).min(bounds[3]);
-        let card_x = bounds[0] + ((bounds[2] - card_width) * 0.5).max(0.0);
-        let card_y = bounds[1] + ((bounds[3] - card_height) * 0.5).max(0.0);
-        let origin_x = card_x + self.welcome_card_padding_x;
-        let origin_y = card_y + self.welcome_card_padding_y;
-
-        let mut card_bg = self.theme.ui.panel_bg.as_f32();
-        card_bg[3] = card_bg[3].min(0.94);
-        let mut card_border = self.theme.ui.border_color.as_f32();
-        card_border[3] = 0.8;
-        let mut accent = self.theme.ui.accent.as_f32();
-        accent[3] = 0.85;
-
-        self.welcome_logo_chrome_instances = vec![
-            RegionDrawInstance::new([card_x, card_y, card_width, card_height], card_border)
-                .with_radius(self.welcome_border_radius_px + 1.0),
+        let left_w = bounds[2] * 0.55;
+        let divider_x = bounds[0] + left_w;
+        let body_top = bounds[1];
+        let body_h = bounds[3];
+        let mut glow = accent;
+        glow[3] = 0.055;
+        chrome.push(
             RegionDrawInstance::new(
                 [
-                    card_x + 1.0,
-                    card_y + 1.0,
-                    card_width - 2.0,
-                    card_height - 2.0,
+                    bounds[0] + left_w * 0.38,
+                    body_top + body_h * 0.20,
+                    left_w * 0.52,
+                    body_h * 0.30,
                 ],
-                card_bg,
+                glow,
             )
-            .with_radius(self.welcome_border_radius_px),
-            RegionDrawInstance::new(
-                [
-                    card_x + self.welcome_card_padding_x,
-                    card_y
-                        + self.welcome_card_padding_y
-                        + line_height * 3.0
-                        + self.welcome_section_gap,
-                    (card_width - self.welcome_card_padding_x * 2.0).max(1.0),
-                    1.0,
-                ],
-                accent,
-            ),
-        ];
-
-        self.welcome_logo_glyph_instances = layout_panel_rich_text(
-            text,
-            spans,
-            self.theme.editor.fg.as_f32(),
-            &mut self.welcome_logo_text_system,
-            &mut self.atlas,
-            &self.queue,
-            origin_x,
-            origin_y,
+            .with_radius(180.0),
         );
+        let mut divider = border;
+        divider[3] = 0.65;
+        chrome.push(RegionDrawInstance::new(
+            [divider_x, body_top + 40.0, 1.0, (body_h - 80.0).max(1.0)],
+            divider,
+        ));
+
+        let line = |this: &mut Renderer,
+                    glyphs: &mut Vec<GlyphInstance>,
+                    s: &str,
+                    x: f32,
+                    y: f32,
+                    size: f32,
+                    lh: f32,
+                    color: [f32; 4],
+                    bold: bool| {
+            this.welcome_logo_text_system
+                .set_metrics(Metrics::new(size, lh));
+            this.welcome_logo_text_system.set_size(None, Some(lh));
+            if bold {
+                glyphs.extend(layout_panel_text_bold(
+                    s,
+                    &mut this.welcome_logo_text_system,
+                    &mut this.atlas,
+                    &this.queue,
+                    x,
+                    y,
+                    color,
+                ));
+            } else {
+                glyphs.extend(layout_panel_text(
+                    s,
+                    &mut this.welcome_logo_text_system,
+                    &mut this.atlas,
+                    &this.queue,
+                    x,
+                    y,
+                    color,
+                ));
+            }
+        };
+
+        let cx = bounds[0] + left_w * 0.5;
+        let hero_top = body_top + body_h * 0.5 - 205.0;
+        let logo_size = 86.0;
+        let lx = cx - logo_size * 0.5;
+        let ly = hero_top;
+        let mut logo_glow = accent;
+        logo_glow[3] = 0.14;
+        chrome.push(
+            RegionDrawInstance::new(
+                [lx - 18.0, ly - 18.0, logo_size + 36.0, logo_size + 36.0],
+                logo_glow,
+            )
+            .with_radius(70.0),
+        );
+        // Geometric logo approximation: brackets + double chevrons from the HTML SVG.
+        let s = logo_size / 500.0;
+        for r in [
+            [130.0, 130.0, 25.0, 240.0],
+            [130.0, 130.0, 65.0, 25.0],
+            [130.0, 345.0, 65.0, 25.0],
+            [345.0, 130.0, 25.0, 90.0],
+            [305.0, 130.0, 65.0, 25.0],
+            [345.0, 245.0, 25.0, 125.0],
+            [305.0, 345.0, 65.0, 25.0],
+            [205.0, 215.0, 110.0, 28.0],
+            [225.0, 265.0, 110.0, 28.0],
+        ] {
+            chrome.push(
+                RegionDrawInstance::new([lx + r[0] * s, ly + r[1] * s, r[2] * s, r[3] * s], accent)
+                    .with_radius(3.0),
+            );
+        }
+
+        line(
+            self,
+            &mut glyphs,
+            "Netherize",
+            cx - 85.0,
+            hero_top + 118.0,
+            32.0,
+            38.0,
+            fg,
+            true,
+        );
+        line(
+            self,
+            &mut glyphs,
+            "GPU · Zero Latency · Keyboard Driven",
+            cx - 141.0,
+            hero_top + 156.0,
+            11.0,
+            16.0,
+            accent,
+            true,
+        );
+        let meta_y = hero_top + 212.0;
+        chrome.push(
+            RegionDrawInstance::new([cx - 190.0, meta_y - 2.0, 72.0, 20.0], panel).with_radius(4.0),
+        );
+        chrome.push(
+            RegionDrawInstance::new([cx - 190.0, meta_y - 2.0, 72.0, 20.0], border)
+                .with_radius(4.0),
+        );
+        line(
+            self,
+            &mut glyphs,
+            "v0.3.1-alpha   ·   Rust 1.78   ·   wgpu 0.20   ·   by",
+            cx - 184.0,
+            meta_y,
+            11.0,
+            16.0,
+            fg_ghost,
+            false,
+        );
+        line(
+            self,
+            &mut glyphs,
+            "ngthminhdev",
+            cx + 188.0,
+            meta_y,
+            11.0,
+            16.0,
+            fg,
+            true,
+        );
+
+        let actions = [
+            ("New buffer", ":new"),
+            ("Open project", "⌘ O"),
+            ("File finder", "spc ff"),
+            ("Word search", "spc fw"),
+        ];
+        let mut ax = cx - 248.0;
+        let ay = meta_y + 58.0;
+        for (label, key) in actions {
+            let w = 112.0 + key.len() as f32 * 5.0;
+            chrome.push(RegionDrawInstance::new([ax, ay, w, 32.0], panel).with_radius(7.0));
+            chrome.push(RegionDrawInstance::new([ax, ay, w, 32.0], border).with_radius(7.0));
+            line(
+                self,
+                &mut glyphs,
+                label,
+                ax + 12.0,
+                ay + 8.0,
+                12.0,
+                16.0,
+                fg_dim,
+                false,
+            );
+            let kw = key.chars().count() as f32 * 6.5 + 12.0;
+            let mut abg = accent;
+            abg[3] = 0.12;
+            chrome.push(
+                RegionDrawInstance::new([ax + w - kw - 10.0, ay + 8.0, kw, 16.0], abg)
+                    .with_radius(3.0),
+            );
+            line(
+                self,
+                &mut glyphs,
+                key,
+                ax + w - kw - 4.0,
+                ay + 8.0,
+                10.0,
+                14.0,
+                accent,
+                true,
+            );
+            ax += w + 10.0;
+        }
+        line(
+            self,
+            &mut glyphs,
+            "100% Rust · entire editor rendered on the GPU",
+            cx - 151.0,
+            ay + 76.0,
+            10.5,
+            17.0,
+            fg_ghost,
+            false,
+        );
+        line(
+            self,
+            &mut glyphs,
+            "no Electron · no compromise",
+            cx - 87.0,
+            ay + 94.0,
+            10.5,
+            17.0,
+            fg_ghost,
+            false,
+        );
+
+        let rx = divider_x + 28.0;
+        let rw = bounds[0] + bounds[2] - rx - 32.0;
+        let mut y = body_top + 36.0;
+        line(
+            self,
+            &mut glyphs,
+            "RECENT PROJECTS",
+            rx + 14.0,
+            y,
+            9.5,
+            14.0,
+            fg_ghost,
+            true,
+        );
+        y += 25.0;
+        let projects = [
+            ("Rust", "netherize", "~/work/netherize", "2m ago", true),
+            (
+                "Rust",
+                "wgpu-experiments",
+                "~/work/wgpu-experiments",
+                "3h ago",
+                false,
+            ),
+            (
+                "Rust",
+                "nz-lsp-client",
+                "~/work/nz-lsp-client",
+                "yesterday",
+                false,
+            ),
+            ("TOML", "dotfiles", "~/dotfiles", "3d ago", false),
+            ("TS", "aoo-site", "~/web/aoo-site", "1w ago", false),
+        ];
+        for (lang, name, path, ago, active) in projects {
+            if active {
+                let mut a = accent;
+                a[3] = 0.20;
+                chrome.push(RegionDrawInstance::new([rx, y - 1.0, rw, 42.0], a).with_radius(7.0));
+                chrome.push(
+                    RegionDrawInstance::new([rx, y + 5.0, 3.0, 30.0], accent).with_radius(2.0),
+                );
+            }
+            chrome.push(
+                RegionDrawInstance::new([rx + 14.0, y + 9.0, 34.0, 16.0], panel).with_radius(3.0),
+            );
+            line(
+                self,
+                &mut glyphs,
+                lang,
+                rx + 19.0,
+                y + 10.0,
+                9.0,
+                12.0,
+                if lang == "TS" {
+                    self.theme.ui.info.as_f32()
+                } else {
+                    accent
+                },
+                true,
+            );
+            line(
+                self,
+                &mut glyphs,
+                name,
+                rx + 60.0,
+                y + 3.0,
+                13.0,
+                16.0,
+                if active { fg } else { fg_dim },
+                active,
+            );
+            line(
+                self,
+                &mut glyphs,
+                path,
+                rx + 60.0,
+                y + 20.0,
+                10.0,
+                13.0,
+                fg_ghost,
+                false,
+            );
+            line(
+                self,
+                &mut glyphs,
+                ago,
+                rx + rw - 70.0,
+                y + 12.0,
+                10.0,
+                13.0,
+                fg_ghost,
+                false,
+            );
+            y += 44.0;
+        }
+        line(
+            self,
+            &mut glyphs,
+            "show all  →",
+            rx + 14.0,
+            y + 2.0,
+            10.0,
+            14.0,
+            accent,
+            false,
+        );
+        y += 54.0;
+        line(
+            self,
+            &mut glyphs,
+            "KEYBOARD SHORTCUTS",
+            rx,
+            y,
+            9.5,
+            14.0,
+            fg_ghost,
+            true,
+        );
+        y += 24.0;
+        let shortcuts = [
+            (vec!["⌘", "O"], "Open file or project"),
+            (vec!["<space>", "p", "j"], "Open recent projects"),
+            (vec!["<space>", "f", "f"], "File picker (fuzzy find)"),
+            (vec!["<space>", "f", "w"], "Find word / grep (fzf)"),
+        ];
+        for (keys, label) in shortcuts {
+            let row_y = y;
+            let mut kx = rx;
+            for k in keys {
+                let kw = k.chars().count() as f32 * 6.5 + 14.0;
+                chrome.push(RegionDrawInstance::new([kx, row_y, kw, 22.0], panel).with_radius(5.0));
+                chrome.push(
+                    RegionDrawInstance::new([kx, row_y + 21.0, kw, 2.0], bg).with_radius(2.0),
+                );
+                line(
+                    self,
+                    &mut glyphs,
+                    k,
+                    kx + 7.0,
+                    row_y + 4.0,
+                    11.0,
+                    14.0,
+                    fg,
+                    true,
+                );
+                kx += kw + 4.0;
+            }
+            line(
+                self,
+                &mut glyphs,
+                label,
+                rx + 172.0,
+                row_y + 4.0,
+                12.5,
+                16.0,
+                fg_dim,
+                false,
+            );
+            let mut sub = border;
+            sub[3] = 0.45;
+            chrome.push(RegionDrawInstance::new([rx, row_y + 34.0, rw, 1.0], sub));
+            y += 40.0;
+        }
+        line(
+            self,
+            &mut glyphs,
+            "press ? for all bindings   ·   :help for docs",
+            rx,
+            y + 8.0,
+            10.0,
+            14.0,
+            fg_ghost,
+            false,
+        );
+
+        self.welcome_logo_chrome_instances = chrome;
+        self.welcome_logo_glyph_instances = glyphs;
         self.welcome_logo_text_pipeline.upload_instances(
             &self.device,
             &self.queue,

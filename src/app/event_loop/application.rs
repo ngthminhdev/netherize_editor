@@ -708,30 +708,56 @@ impl AppShell {
             let mode = self.app_state.current_mode();
             let (line, col) = self.app_state.cursor_line_col();
             let pending_keys = self.input_handler.get_pending_keys();
-            let filetype = self.app_state.active_filetype_label();
-            let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");
-            let (diagnostics_errors, diagnostics_warnings) = self
-                .app_state
-                .active_file()
-                .and_then(|path| self.app_state.diagnostics_for_path(path))
-                .map(|items| {
-                    items
-                        .iter()
-                        .fold((0usize, 0usize), |(e, w), item| match item.severity {
-                            Some(1) => (e + 1, w),
-                            Some(2) => (e, w + 1),
-                            _ => (e, w),
-                        })
-                })
-                .unwrap_or((0, 0));
+            let (
+                filetype,
+                git_branch,
+                status_line,
+                status_col,
+                diagnostics_errors,
+                diagnostics_warnings,
+            ) = if show_welcome {
+                (
+                    "[welcome]",
+                    "ngthminhdev · rust-analyzer ready · 0.4ms/frame",
+                    0,
+                    0,
+                    0,
+                    0,
+                )
+            } else {
+                let filetype = self.app_state.active_filetype_label();
+                let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");
+                let (diagnostics_errors, diagnostics_warnings) = self
+                    .app_state
+                    .active_file()
+                    .and_then(|path| self.app_state.diagnostics_for_path(path))
+                    .map(|items| {
+                        items
+                            .iter()
+                            .fold((0usize, 0usize), |(e, w), item| match item.severity {
+                                Some(1) => (e + 1, w),
+                                Some(2) => (e, w + 1),
+                                _ => (e, w),
+                            })
+                    })
+                    .unwrap_or((0, 0));
+                (
+                    filetype,
+                    git_branch,
+                    line,
+                    col,
+                    diagnostics_errors,
+                    diagnostics_warnings,
+                )
+            };
             if let Some(renderer) = self.renderer.as_mut() {
                 let pill_quads = renderer.update_statusbar_content(
                     mode,
                     &pending_keys,
                     git_branch,
                     filetype,
-                    line,
-                    col,
+                    status_line,
+                    status_col,
                     diagnostics_errors,
                     diagnostics_warnings,
                     status_bounds,
