@@ -81,6 +81,14 @@ struct PtySessionRegistry {
     sessions: Mutex<HashMap<u64, Arc<PtyProcess>>>,
 }
 
+/// Per-file cache of `SyntaxEngine` instances.
+/// Preserving the engine across parse requests lets tree-sitter reuse the
+/// previously-built tree as a hint for incremental parsing.
+/// The `Mutex` is held only while swapping the engine in/out of the map, not
+/// during the parse itself, so concurrent parses for different files don't block
+/// each other.
+type SyntaxEngineCache = Mutex<HashMap<PathBuf, SyntaxEngine>>;
+
 #[derive(Default)]
 struct LspSessionRegistry {
     sessions: Mutex<HashMap<String, LspSessionHandle>>,
@@ -257,6 +265,8 @@ async fn dispatch_loop(
 ) {
     let pty_sessions = Arc::new(PtySessionRegistry::default());
     let lsp_sessions = Arc::new(LspSessionRegistry::default());
+    let syntax_engine_cache: Arc<SyntaxEngineCache> =
+        Arc::new(Mutex::new(HashMap::new()));
     let mut active_fzf_search: Option<tokio::task::JoinHandle<()>> = None;
 
     while let Some(request) = request_rx.recv().await {
@@ -326,6 +336,7 @@ async fn dispatch_loop(
         }
 
         let worker_tx = result_tx.clone();
+        let syntax_cache_for_job = syntax_engine_cache.clone();
         tokio::spawn(async move {
             let started = WorkerEvent {
                 request_id: request.request_id,
@@ -341,8 +352,9 @@ async fn dispatch_loop(
             );
 
             let job_request = request.clone();
-            let worker_handle =
-                tokio::spawn(async move { execute_virtual_job(&job_request).await });
+            let worker_handle = tokio::spawn(async move {
+                execute_virtual_job(&job_request, syntax_cache_for_job).await
+            });
 
             match worker_handle.await {
                 Ok(Ok(payload)) => {
@@ -1893,7 +1905,10 @@ fn format_relative_duration(value: u64, unit: &str) -> String {
     }
 }
 
-async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayload, String> {
+async fn execute_virtual_job(
+    request: &WorkerRequest,
+    syntax_cache: Arc<SyntaxEngineCache>,
+) -> Result<WorkerResultPayload, String> {
     match &request.payload {
         WorkerRequestPayload::ParseAndHighlight {
             file_path,
@@ -1902,6 +1917,7 @@ async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayl
             buffer_revision,
             viewport_line_start,
             viewport_line_count,
+            edit_hint,
         } => {
             let file_path = file_path.clone();
             let text_snapshot = text_snapshot.clone();
@@ -1909,6 +1925,7 @@ async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayl
             let buffer_revision = *buffer_revision;
             let viewport_line_start = *viewport_line_start;
             let viewport_line_count = *viewport_line_count;
+            let edit_hint = *edit_hint;
             let request_revision = request.revision_id;
 
             tokio::task::spawn_blocking(move || {
@@ -1916,12 +1933,36 @@ async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayl
                 let char_count = text_snapshot.chars().count();
                 let byte_count = text_snapshot.len();
 
+                // Retrieve or create the cached SyntaxEngine for this file.
+                // Remove it from the map so the lock is held only briefly.
+                let file_key = file_path.clone().unwrap_or_default();
+                let mut engine: SyntaxEngine = {
+                    let mut guard = syntax_cache
+                        .lock()
+                        .map_err(|_| "syntax engine cache lock poisoned".to_string())?;
+                    match guard.remove(&file_key) {
+                        Some(cached) if cached.language_id() == language_id => cached,
+                        _ => SyntaxEngine::new(language_id)
+                            .map_err(|err| format!("init syntax engine failed: {err}"))?,
+                    }
+                };
+
                 let parse_started = Instant::now();
-                let mut syntax_engine = SyntaxEngine::new(language_id)
-                    .map_err(|err| format!("init syntax engine failed: {err}"))?;
-                let tree = syntax_engine
-                    .parse_source(&text_snapshot, buffer_revision)
-                    .map_err(|err| format!("parse source failed: {err}"))?;
+                // Incremental parse when we have a single-edit hint; full reparse otherwise.
+                let tree = match edit_hint {
+                    Some(hint) => engine
+                        .parse_incremental(
+                            &text_snapshot,
+                            hint.start_byte,
+                            hint.old_end_byte,
+                            hint.new_end_byte,
+                            buffer_revision,
+                        )
+                        .map_err(|err| format!("incremental parse failed: {err}"))?,
+                    None => engine
+                        .parse_source(&text_snapshot, buffer_revision)
+                        .map_err(|err| format!("parse source failed: {err}"))?,
+                };
                 let parse_time_ms = parse_started.elapsed().as_millis();
 
                 let highlight_started = Instant::now();
@@ -1952,6 +1993,11 @@ async fn execute_virtual_job(request: &WorkerRequest) -> Result<WorkerResultPayl
                     highlight_time_ms,
                     total_time_ms
                 );
+
+                // Return engine to cache so the next parse reuses the tree.
+                if let Ok(mut guard) = syntax_cache.lock() {
+                    guard.insert(file_key, engine);
+                }
 
                 Ok(WorkerResultPayload::ParseAndHighlight {
                     file_path,

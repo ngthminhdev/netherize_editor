@@ -121,6 +121,7 @@ impl AppShell {
             accumulated_frame_count: 0,
             current_fps_metrics: "--.-ms | -- FPS".to_string(),
             last_parse_submit_at: None,
+            last_syntax_edit_hint: None,
             active_highlight_request_revision: 0,
             fzf_search_revision: 0,
             pending_parse_after_debounce: false,
@@ -512,6 +513,7 @@ impl AppShell {
             self.active_highlight_request_revision =
                 self.active_highlight_request_revision.saturating_add(1);
             self.pending_parse_after_debounce = false;
+            let edit_hint = self.last_syntax_edit_hint.take();
             self.submit(RequestSpec {
                 revision_id: self.active_highlight_request_revision,
                 topic: RequestTopic::ActiveBufferLayout,
@@ -522,6 +524,7 @@ impl AppShell {
                     buffer_revision: self.app_state.revision(),
                     viewport_line_start: self.app_state.scroll_line,
                     viewport_line_count,
+                    edit_hint,
                 },
             });
             self.last_parse_submit_at = Some(std::time::Instant::now());
@@ -587,7 +590,19 @@ impl AppShell {
             return false;
         };
 
-        match engine.parse_source(&text_snapshot, buffer_revision) {
+        // Use incremental parse when a fresh single-edit hint is available.
+        let hint = self.last_syntax_edit_hint.take();
+        let parse_result = match hint {
+            Some(h) => engine.parse_incremental(
+                &text_snapshot,
+                h.start_byte,
+                h.old_end_byte,
+                h.new_end_byte,
+                buffer_revision,
+            ),
+            None => engine.parse_source(&text_snapshot, buffer_revision),
+        };
+        match parse_result {
             Ok(tree) => {
                 self.highlight_spans =
                     crate::syntax::highlight::generate_highlight_spans(tree, &text_snapshot);
@@ -620,6 +635,9 @@ impl AppShell {
             return;
         }
 
+        // Multiple keystrokes accumulated during the debounce window; a single-edit
+        // hint would describe only one of them — discard it and do a full reparse.
+        self.last_syntax_edit_hint = None;
         self.submit_parse_for_active_buffer(true);
     }
 

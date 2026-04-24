@@ -75,6 +75,17 @@ pub struct WorkerRequest {
     pub payload: WorkerRequestPayload,
 }
 
+/// Byte-level description of a single edit applied to the buffer.
+/// Passed through to the worker so tree-sitter can do an incremental reparse
+/// instead of a full reparse.  Row/column positions are computed in the worker
+/// from the new text snapshot, which avoids the need to ship the old text.
+#[derive(Debug, Clone, Copy)]
+pub struct SyntaxEditHint {
+    pub start_byte: usize,
+    pub old_end_byte: usize,
+    pub new_end_byte: usize,
+}
+
 #[derive(Debug, Clone)]
 pub enum WorkerRequestPayload {
     ParseAndHighlight {
@@ -84,6 +95,10 @@ pub enum WorkerRequestPayload {
         buffer_revision: u64,
         viewport_line_start: usize,
         viewport_line_count: usize,
+        /// Single-edit hint for incremental tree-sitter reparse.
+        /// `None` when multiple edits accumulated (debounced typing, paste, undo/redo)
+        /// — the worker falls back to a full reparse in that case.
+        edit_hint: Option<SyntaxEditHint>,
     },
     MockParseBuffer {
         file_path: PathBuf,

@@ -105,16 +105,13 @@ impl SyntaxEngine {
         Self::new(LanguageId::Rust)
     }
 
-    /// Parse đồng bộ cho phase bootstrap.
-    /// Nếu đã có tree cũ thì truyền vào để mở đường cho incremental parse phase sau.
+    /// Full reparse — always correct, O(file size).
+    /// Use for first parse, language switch, or when edit coordinates are unavailable.
     pub fn parse_source(
         &mut self,
         source: &str,
         revision: u64,
     ) -> Result<&SyntaxTreeState, String> {
-        // Always full-reparse: incremental parse requires tree.edit(InputEdit{...}) to be
-        // called first whenever the source shrinks, otherwise tree-sitter panics with an
-        // out-of-range slice index when it tries to reuse nodes with stale byte offsets.
         let tree = self
             .parser
             .parse(source, None)
@@ -126,6 +123,56 @@ impl SyntaxEngine {
             .ok_or_else(|| "internal parser state missing after parse".to_string())
     }
 
+    /// Incremental reparse — O(changed region).
+    ///
+    /// Calls `tree.edit()` with the supplied byte ranges to update stale node
+    /// positions, then passes the edited tree to `parser.parse()` so tree-sitter
+    /// only re-parses the affected region.
+    ///
+    /// Row/column in the `InputEdit` is approximated from the *new* text; this is
+    /// acceptable because our highlight system uses byte ranges exclusively.
+    ///
+    /// Falls back to `parse_source` when no previous tree exists.
+    pub fn parse_incremental(
+        &mut self,
+        source: &str,
+        start_byte: usize,
+        old_end_byte: usize,
+        new_end_byte: usize,
+        revision: u64,
+    ) -> Result<&SyntaxTreeState, String> {
+        if self.current_tree.is_none() {
+            return self.parse_source(source, revision);
+        }
+
+        let edit = tree_sitter::InputEdit {
+            start_byte,
+            old_end_byte,
+            new_end_byte,
+            start_position: byte_to_point(source, start_byte),
+            old_end_position: byte_to_point(source, old_end_byte),
+            new_end_position: byte_to_point(source, new_end_byte),
+        };
+
+        // Update old tree's node positions in-place (required before passing as hint).
+        if let Some(state) = self.current_tree.as_mut() {
+            state.tree.edit(&edit);
+        }
+
+        // Parse incrementally: tree-sitter reuses unchanged nodes.
+        let new_tree = {
+            let old_tree = self.current_tree.as_ref().map(|s| &s.tree);
+            self.parser
+                .parse(source, old_tree)
+                .ok_or_else(|| "tree-sitter incremental parse returned None".to_string())?
+        };
+
+        self.current_tree = Some(SyntaxTreeState::new(new_tree, self.language_id, revision));
+        self.current_tree
+            .as_ref()
+            .ok_or_else(|| "internal state missing after incremental parse".to_string())
+    }
+
     pub fn current_tree(&self) -> Option<&SyntaxTreeState> {
         self.current_tree.as_ref()
     }
@@ -133,6 +180,23 @@ impl SyntaxEngine {
     pub fn language_id(&self) -> LanguageId {
         self.language_id
     }
+}
+
+/// Compute a tree-sitter `Point` (row, column in bytes) for the given byte offset.
+/// Scans the text up to `byte_offset`, counting newlines.  Used to build the
+/// `InputEdit` required by `parse_incremental`; accuracy is only needed for
+/// tree-sitter's internal node-position bookkeeping, not for our highlight output.
+fn byte_to_point(text: &str, byte_offset: usize) -> tree_sitter::Point {
+    let clamped = byte_offset.min(text.len());
+    // Walk back to the nearest UTF-8 character boundary.
+    let boundary = (0..=clamped)
+        .rev()
+        .find(|&i| text.is_char_boundary(i))
+        .unwrap_or(0);
+    let prefix = &text[..boundary];
+    let row = prefix.bytes().filter(|&b| b == b'\n').count();
+    let col = boundary - prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
+    tree_sitter::Point { row, column: col }
 }
 
 #[cfg(test)]

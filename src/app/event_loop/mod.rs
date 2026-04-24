@@ -25,8 +25,8 @@ use crate::{
     },
     async_runtime::{
         message::{
-            FzfSearchMode, RequestSpec, RequestTopic, WorkerEvent, WorkerRequestPayload,
-            WorkerResult, WorkerResultPayload,
+            FzfSearchMode, RequestSpec, RequestTopic, SyntaxEditHint, WorkerEvent,
+            WorkerRequestPayload, WorkerResult, WorkerResultPayload,
         },
         scheduler::AsyncScheduler,
     },
@@ -133,6 +133,11 @@ pub struct AppShell {
     accumulated_frame_count: u32,
     current_fps_metrics: String,
     last_parse_submit_at: Option<Instant>,
+    /// Edit hint for the next incremental tree-sitter parse.
+    /// Set to `Some` when exactly one edit occurred since the last reconcile.
+    /// Set to `None` when multiple edits accumulated (debounced typing, undo/redo,
+    /// paste) — the worker falls back to a full reparse in that case.
+    last_syntax_edit_hint: Option<SyntaxEditHint>,
     active_highlight_request_revision: u64,
     fzf_search_revision: u64,
     pending_parse_after_debounce: bool,

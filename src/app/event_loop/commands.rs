@@ -35,6 +35,19 @@ impl AppShell {
 
         crate::syntax::highlight::apply_highlight_edits(&mut self.highlight_spans, &edits);
         crate::syntax::highlight::apply_highlight_edits(&mut self.semantic_highlight_spans, &edits);
+
+        // Store an incremental-parse hint when the transaction was a single edit.
+        // Multiple edits (undo/redo, replace-all, paste of many chars) clear the hint
+        // so the worker falls back to a safe full reparse.
+        self.last_syntax_edit_hint = if edits.len() == 1 {
+            Some(SyntaxEditHint {
+                start_byte: edits[0].start,
+                old_end_byte: edits[0].old_end,
+                new_end_byte: edits[0].new_end,
+            })
+        } else {
+            None
+        };
     }
 
     fn dispatch_command_with_focused_terminal(
