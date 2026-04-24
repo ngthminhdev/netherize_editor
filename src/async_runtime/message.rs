@@ -326,7 +326,9 @@ pub enum WorkerResultPayload {
     LspServerStarted {
         server_name: String,
         root_path: PathBuf,
-        capabilities_summary: String,
+        /// Extracted từ ServerCapabilities.completionProvider.triggerCharacters.
+        /// Đã parse sẵn — app không cần deserialize raw JSON nữa.
+        completion_trigger_chars: Vec<char>,
     },
     LspServerStopped {
         exit_status: Option<i32>,

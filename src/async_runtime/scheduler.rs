@@ -99,6 +99,7 @@ struct LspSessionHandle {
     process: Arc<crate::lsp::client::LspClientProcess>,
     server_name: String,
     root_path: PathBuf,
+    capabilities: crate::lsp::capabilities::ServerCapabilities,
 }
 
 impl LspSessionRegistry {
@@ -114,15 +115,47 @@ impl LspSessionRegistry {
         Ok(guard.insert(server_key, session))
     }
 
-    fn get(
+    /// Tìm process theo binary name (không quan tâm workspace root trong key).
+    fn get_by_binary(
         &self,
-        server_key: &str,
+        binary: &str,
     ) -> Result<Option<Arc<crate::lsp::client::LspClientProcess>>, String> {
         let guard = self
             .sessions
             .lock()
             .map_err(|_| "lsp session lock poisoned".to_string())?;
-        Ok(guard.get(server_key).map(|session| session.process.clone()))
+        Ok(guard
+            .values()
+            .find(|s| s.server_name == binary)
+            .map(|s| s.process.clone()))
+    }
+
+    /// Trả về `LspSessionHandle` đầy đủ (kèm capabilities) theo binary name.
+    fn get_handle(
+        &self,
+        binary: &str,
+    ) -> Result<Option<LspSessionHandle>, String> {
+        let guard = self
+            .sessions
+            .lock()
+            .map_err(|_| "lsp session lock poisoned".to_string())?;
+        Ok(guard.values().find(|s| s.server_name == binary).cloned())
+    }
+
+    /// Tìm session handle cho file đang mở theo URI.
+    /// Dùng cho definition/references vốn không biết language_id.
+    fn get_handle_by_uri(
+        &self,
+        uri: &str,
+    ) -> Result<Option<LspSessionHandle>, String> {
+        let guard = self
+            .sessions
+            .lock()
+            .map_err(|_| "lsp session lock poisoned".to_string())?;
+        Ok(guard
+            .values()
+            .find(|session| session.process.is_document_open(uri))
+            .cloned())
     }
 
     fn take_any(&self) -> Result<Option<LspSessionHandle>, String> {
@@ -760,13 +793,19 @@ fn execute_lsp_request(
                 request.revision_id,
             ))?;
             let session = spawned.process.clone();
-            let server_key = spawned.server_name.clone();
+            // Key = "binary@/abs/root" để hỗ trợ cô lập theo workspace.
+            let server_key = format!(
+                "{}@{}",
+                spawned.server_name,
+                spawned.root_path.display()
+            );
             let previous = lsp_sessions.replace(
                 server_key,
                 LspSessionHandle {
                     process: session.clone(),
                     server_name: spawned.server_name.clone(),
                     root_path: spawned.root_path.clone(),
+                    capabilities: spawned.capabilities.clone(),
                 },
             )?;
 
@@ -797,7 +836,7 @@ fn execute_lsp_request(
             Ok(WorkerResultPayload::LspServerStarted {
                 server_name: spawned.server_name,
                 root_path: spawned.root_path,
-                capabilities_summary: spawned.capabilities_summary,
+                completion_trigger_chars: spawned.capabilities.completion_trigger_chars,
             })
         }
         WorkerRequestPayload::LspDidOpen {
@@ -812,7 +851,7 @@ fn execute_lsp_request(
             else {
                 return Err("lsp didOpen rejected: language profile not found".to_string());
             };
-            let Some(session) = lsp_sessions.get(server_key)? else {
+            let Some(session) = lsp_sessions.get_by_binary(server_key)? else {
                 return Err("lsp didOpen rejected: server is not running".to_string());
             };
             session.update_request_meta(request.request_id, request.revision_id);
@@ -903,18 +942,28 @@ fn execute_lsp_request(
             line,
             character,
         } => {
-            let Some(server_key) = language_profile_for_language_id(language_id)
-                .map(|profile| profile.lsp_binary)
-                .or(Some(language_id.as_str()))
-            else {
-                return Err("hover rejected: language profile not found".to_string());
-            };
-            let Some(session) = lsp_sessions.get(server_key)? else {
+            // Ưu tiên tìm theo uri (chính xác hơn khi multi-workspace).
+            // Fallback về binary-name lookup nếu document chưa được mark open.
+            let handle = lsp_sessions
+                .get_handle_by_uri(uri)?
+                .or_else(|| {
+                    language_profile_for_language_id(language_id)
+                        .map(|p| p.lsp_binary)
+                        .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
+                });
+            let Some(handle) = handle else {
                 return Err("hover rejected: LSP server not running".to_string());
             };
-            session.update_request_meta(request.request_id, request.revision_id);
-            // cursor_line/col không có trong request vì không cần cho hover rendering.
-            handle_lsp_hover(&session, uri, *line, *character, 0, 0)
+            if !handle.capabilities.hover {
+                return Err(format!(
+                    "hover rejected: {} does not advertise hoverProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_hover(&handle.process, uri, *line, *character, 0, 0)
         }
         WorkerRequestPayload::LspDefinitionRequest {
             uri,
@@ -922,36 +971,38 @@ fn execute_lsp_request(
             character,
             jump,
         } => {
-            let Some(session) = lsp_sessions
-                .sessions
-                .lock()
-                .map_err(|_| "lsp session lock poisoned".to_string())?
-                .values()
-                .find(|session| session.process.is_document_open(uri))
-                .map(|session| session.process.clone())
-            else {
+            let Some(handle) = lsp_sessions.get_handle_by_uri(uri)? else {
                 return Err("definition rejected: LSP server not running".to_string());
             };
-            session.update_request_meta(request.request_id, request.revision_id);
-            handle_lsp_definition(&session, uri, *line, *character, *jump)
+            if !handle.capabilities.definition {
+                return Err(format!(
+                    "definition rejected: {} does not advertise definitionProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_definition(&handle.process, uri, *line, *character, *jump)
         }
         WorkerRequestPayload::LspReferencesRequest {
             uri,
             line,
             character,
         } => {
-            let Some(session) = lsp_sessions
-                .sessions
-                .lock()
-                .map_err(|_| "lsp session lock poisoned".to_string())?
-                .values()
-                .find(|session| session.process.is_document_open(uri))
-                .map(|session| session.process.clone())
-            else {
+            let Some(handle) = lsp_sessions.get_handle_by_uri(uri)? else {
                 return Err("references rejected: LSP server not running".to_string());
             };
-            session.update_request_meta(request.request_id, request.revision_id);
-            handle_lsp_references(&session, uri, *line, *character)
+            if !handle.capabilities.references {
+                return Err(format!(
+                    "references rejected: {} does not advertise referencesProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_references(&handle.process, uri, *line, *character)
         }
         WorkerRequestPayload::LspCompletionRequest {
             language_id,
@@ -963,18 +1014,27 @@ fn execute_lsp_request(
             prefix_start_col,
             prefix,
         } => {
-            let Some(server_key) = language_profile_for_language_id(language_id)
-                .map(|profile| profile.lsp_binary)
-                .or(Some(language_id.as_str()))
-            else {
-                return Err("completion rejected: language profile not found".to_string());
-            };
-            let Some(session) = lsp_sessions.get(server_key)? else {
+            let handle = lsp_sessions
+                .get_handle_by_uri(uri)?
+                .or_else(|| {
+                    language_profile_for_language_id(language_id)
+                        .map(|p| p.lsp_binary)
+                        .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
+                });
+            let Some(handle) = handle else {
                 return Err("completion rejected: LSP server not running".to_string());
             };
-            session.update_request_meta(request.request_id, request.revision_id);
+            if !handle.capabilities.completion {
+                return Err(format!(
+                    "completion rejected: {} does not advertise completionProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
             handle_lsp_completion(
-                &session,
+                &handle.process,
                 uri,
                 *line,
                 *character,
@@ -1044,6 +1104,9 @@ fn parse_hover_content(result: &serde_json::Value) -> String {
     String::new()
 }
 
+/// TS server đôi khi trả về 50,000+ items — giới hạn để tránh allocate vài MB mỗi keystroke.
+const MAX_COMPLETION_ITEMS: usize = 200;
+
 fn parse_completion_items(
     result: &serde_json::Value,
 ) -> Vec<crate::async_runtime::message::LspCompletionItem> {
@@ -1058,6 +1121,7 @@ fn parse_completion_items(
         .map(|items| {
             items
                 .iter()
+                .take(MAX_COMPLETION_ITEMS)
                 .filter_map(|item| {
                     let label = item.get("label")?.as_str()?.to_string();
                     let detail = item

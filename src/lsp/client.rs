@@ -21,9 +21,12 @@ use tokio::{
 
 use crate::{
     async_runtime::message::{LspDiagnostic, LspPosition, LspRange},
-    lsp::registry::{
-        all_language_profiles, language_profile_for_binary, language_profile_for_extension,
-        language_profile_for_path,
+    lsp::{
+        capabilities::ServerCapabilities,
+        registry::{
+            all_language_profiles, language_profile_for_binary, language_profile_for_extension,
+            language_profile_for_path,
+        },
     },
 };
 
@@ -245,7 +248,10 @@ pub struct SpawnedLspServer {
     pub root_path: PathBuf,
     pub reader: BufReader<ChildStdout>,
     pub stderr: Option<BufReader<ChildStderr>>,
+    /// Raw JSON string kept cho UI display / backward-compat.
     pub capabilities_summary: String,
+    /// Parsed một lần tại init — dùng để gate requests trong scheduler.
+    pub capabilities: ServerCapabilities,
 }
 
 pub struct ParsedDiagnostics {
@@ -337,11 +343,13 @@ pub async fn spawn_lsp_server(
         return Err(format!("lsp initialize error: {}", error));
     }
 
-    let capabilities_summary = initialize_response
+    let caps_value = initialize_response
         .get("result")
         .and_then(|result| result.get("capabilities"))
-        .map(ToString::to_string)
-        .unwrap_or_else(|| "{}".to_string());
+        .cloned()
+        .unwrap_or(serde_json::Value::Object(Default::default()));
+    let capabilities_summary = caps_value.to_string();
+    let capabilities = ServerCapabilities::from_json(&caps_value);
 
     process
         .send_notification_async("initialized", json!({}))
@@ -354,6 +362,7 @@ pub async fn spawn_lsp_server(
         reader,
         stderr,
         capabilities_summary,
+        capabilities,
     })
 }
 
