@@ -307,8 +307,10 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
             open_report
         }
         CommandPaletteAction::OpenSearchMatch { path, line, column } => {
+            let changed = ctx.close_palette_and_exit_focus();
             let mut open_report = ctx.open_file(path.clone());
             if !open_report.success {
+                open_report.state_changed |= changed;
                 return open_report;
             }
 
@@ -316,7 +318,6 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
                 line.saturating_sub(1) as usize,
                 column.saturating_sub(1) as usize,
             );
-            let changed = ctx.close_palette_and_exit_focus();
             open_report.message = format!(
                 "Dispatch: live grep confirmed -> opened {}:{}:{}",
                 path.display(),

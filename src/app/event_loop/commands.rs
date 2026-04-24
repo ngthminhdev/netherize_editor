@@ -645,6 +645,28 @@ impl AppShell {
             | Command::FilePickerBackspaceQuery
             | Command::EditorPaste
             | Command::PasteSystemClipboard
+                if self.app_state.active_buffer_is_fuzzy_picker() =>
+            {
+                let report = {
+                    let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
+                    dispatch_palette_overlay_command(app_state, clipboard, command)
+                };
+                if !report.success {
+                    return report.request_redraw;
+                }
+                if report.state_changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                }
+                self.submit_active_palette_fzf_search();
+                self.submit_fuzzy_picker_preview_load();
+                self.request_redraw();
+                true
+            }
+            Command::FilePickerAppendQuery(_)
+            | Command::FilePickerBackspaceQuery
+            | Command::EditorPaste
+            | Command::PasteSystemClipboard
                 if self.app_state.current_mode() == EditorMode::PaletteFocus
                     && self.app_state.is_command_palette_visible() =>
             {
@@ -1814,6 +1836,8 @@ impl AppShell {
             return false;
         };
 
+        let closed = self.close_current_buffer_now();
+
         if let Some((origin_path, origin_line)) = self.app_state.active_references_origin() {
             self.app_state.push_jump_entry(origin_path, origin_line);
         }
@@ -1835,6 +1859,7 @@ impl AppShell {
         if focus_changed {
             self.input_handler.clear_pending_prefix();
         }
+        let _ = closed;
         true
     }
 
@@ -3271,6 +3296,52 @@ mod tests {
     }
 
     #[test]
+    fn fuzzy_picker_open_search_match_confirm_closes_results_buffer() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let root = std::env::temp_dir().join(format!(
+            "netherize_fuzzy_confirm_close_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("create workspace");
+        let target = root.join("match.rs");
+        std::fs::write(&target, "alpha\nbeta\ngamma\n").expect("write target");
+        let canonical_target = target.canonicalize().expect("canonical target");
+
+        shell
+            .app_state
+            .attach_workspace(root.clone())
+            .expect("attach workspace");
+        shell
+            .app_state
+            .open_fuzzy_picker_buffer(CommandPaletteMode::LiveGrep);
+        assert!(shell.handle_command(Command::FilePickerAppendQuery("beta".to_string())));
+        assert!(shell.app_state.set_command_palette_results(
+            CommandPaletteMode::LiveGrep,
+            "beta",
+            vec![
+                crate::app::command_palette::CommandPaletteItem::search_match(
+                    "match.rs:2".to_string(),
+                    Some("beta".to_string()),
+                    target.clone(),
+                    2,
+                    1,
+                )
+            ],
+        ));
+
+        assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+
+        assert!(!shell.app_state.active_buffer_is_fuzzy_picker());
+        assert_eq!(
+            shell.app_state.active_file(),
+            Some(canonical_target.as_path())
+        );
+        assert_eq!(shell.app_state.cursor_line_col(), (1, 0));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn references_selection_clears_stale_preview_lines() {
         let mut shell = AppShell::new_for_tests().expect("create app shell");
         shell
@@ -3320,6 +3391,48 @@ mod tests {
     }
 
     #[test]
+    fn references_open_selection_closes_results_buffer() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let root = std::env::temp_dir().join(format!(
+            "netherize_refs_confirm_close_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("create workspace");
+        let origin = root.join("origin.rs");
+        let target = root.join("target.rs");
+        std::fs::write(&origin, "origin\n").expect("write origin");
+        std::fs::write(&target, "one\ntwo\nthree\n").expect("write target");
+        let canonical_target = target.canonicalize().expect("canonical target");
+
+        shell
+            .app_state
+            .open_references_buffer(
+                "References (1)",
+                Some(origin.clone()),
+                0,
+                vec![crate::app::app_state::ReferencesBufferItem {
+                    path: target.clone(),
+                    relative_path: "target.rs".to_string(),
+                    line: 1,
+                    column: 0,
+                    summary: "Ln 2, Col 1".to_string(),
+                }],
+            )
+            .expect("open references buffer");
+
+        assert!(shell.handle_command(Command::ReferencesOpenSelection));
+
+        assert!(!shell.app_state.active_buffer_is_references());
+        assert_eq!(
+            shell.app_state.active_file(),
+            Some(canonical_target.as_path())
+        );
+        assert_eq!(shell.app_state.cursor_line_col(), (1, 0));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn startup_keeps_a_workspace_attached_for_global_search() {
         let shell = AppShell::new_for_tests().expect("create app shell");
 
@@ -3364,8 +3477,7 @@ mod tests {
         // Scenario: user typed "message." and LSP returns insertText = ".getInstance()"
         // (trigger char included). Without dedup the result would be "message..getInstance()".
         let mut shell = AppShell::new_for_tests().expect("create app shell");
-        shell.app_state =
-            AppState::from_text(PathBuf::from("dedup_trigger.ts"), "message.");
+        shell.app_state = AppState::from_text(PathBuf::from("dedup_trigger.ts"), "message.");
         shell.lsp_completion_trigger_chars = vec!['.'];
         let cursor_col = "message.".chars().count();
         let completion = crate::app::app_state::CompletionState::from_lsp_items(
