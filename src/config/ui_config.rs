@@ -208,12 +208,12 @@ impl UiConfig {
                 font_family: None,
             },
             welcome: WelcomeUiConfig {
-                version: "v0.3.1-alpha".to_string(),
-                card_max_width: 560.0,
-                card_padding_x: 42.0,
-                card_padding_y: 34.0,
+                version: "1.0.0".to_string(),
+                card_max_width: 1300.0,
+                card_padding_x: 28.0,
+                card_padding_y: 28.0,
                 section_gap: 16.0,
-                border_radius_px: 18.0,
+                border_radius_px: 8.0,
             },
             border_radius_px: 0.0,
         }

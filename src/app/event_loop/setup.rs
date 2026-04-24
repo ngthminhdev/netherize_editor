@@ -356,6 +356,9 @@ impl AppShell {
             FocusTarget::CenterEditor if self.app_state.active_buffer_is_settings() => {
                 InputFocusContext::SettingsTab
             }
+            FocusTarget::CenterEditor if self.app_state.active_buffer_is_cheat_sheet() => {
+                InputFocusContext::CheatSheet
+            }
             FocusTarget::CenterEditor if self.app_state.active_buffer_is_diagnostics() => {
                 InputFocusContext::Diagnostics
             }
@@ -981,6 +984,18 @@ mod tests {
 
         assert_eq!(context.mode, EditorMode::Insert);
         assert_eq!(context.focus, InputFocusContext::FuzzyPicker);
+        assert!(!context.command_palette_visible);
+    }
+
+    #[test]
+    fn build_context_marks_center_cheat_sheet_buffer() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        shell.app_state.open_cheat_sheet_buffer("1.0.0");
+
+        let context = shell.build_context();
+
+        assert_eq!(context.mode, EditorMode::Normal);
+        assert_eq!(context.focus, InputFocusContext::CheatSheet);
         assert!(!context.command_palette_visible);
     }
 

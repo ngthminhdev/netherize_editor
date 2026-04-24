@@ -2,10 +2,10 @@
 title = "Netherize Editor"
 width = 1920
 height = 1080
-startup_mode = "windowed"
+startup_mode = "maximized"
 auto_scale = true
 min_content_scale = 1.0
-max_content_scale = 2.0
+max_content_scale = 1.0
 
 [layout]
 region_gap = 2.0
@@ -45,9 +45,9 @@ line_height = 24.0
 relative_numbers = true
 
 [welcome]
-version = "v0.3.1-alpha"
-card_max_width = 560.0
-card_padding_x = 42.0
-card_padding_y = 34.0
-section_gap = 16.0
-border_radius_px = 18.0
+version = "1.0.0"
+card_max_width = 1300.0
+card_padding_x = 58.0
+card_padding_y = 58.0
+section_gap = 56.0
+border_radius_px = 8.0

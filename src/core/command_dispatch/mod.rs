@@ -221,6 +221,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::SearchInFiles
         | Command::OpenThemeSelector
         | Command::OpenSettings
+        | Command::OpenCheatSheet
         | Command::GitOpenLazygit
         | Command::GitBlameLine
         | Command::FilePickerAppendQuery(_)

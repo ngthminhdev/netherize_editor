@@ -872,6 +872,50 @@ fn leader_f_w_sequence_maps_to_search_in_files() {
 }
 
 #[test]
+fn leader_c_h_sequence_maps_to_open_cheat_sheet() {
+    let map = make_default_profile_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let space = input_from_named(NamedKey::Space);
+    let first = map
+        .resolve_sequence_start(&space, context)
+        .expect("space should start chord");
+    let pending = match first {
+        SequenceMatch::Pending(pending) => pending,
+        other => panic!("expected pending leader sequence, got {:?}", other),
+    };
+
+    let follow_c = NormalizedInput {
+        physical_key: Some(KeyCode::KeyC),
+        named_key: None,
+        text: Some("c".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let second = map
+        .resolve_sequence_next(&pending, &follow_c, context)
+        .expect("leader+c should still be pending");
+    let pending = match second {
+        SequenceMatch::Pending(pending) => pending,
+        other => panic!("expected second pending sequence, got {:?}", other),
+    };
+
+    let follow_h = NormalizedInput {
+        physical_key: Some(KeyCode::KeyH),
+        named_key: None,
+        text: Some("h".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let resolved = map
+        .resolve_sequence_next(&pending, &follow_h, context)
+        .expect("leader+c+h should resolve");
+    match resolved {
+        SequenceMatch::Dispatch(resolved) => {
+            assert_eq!(resolved.command, Command::OpenCheatSheet);
+        }
+        other => panic!("expected dispatch for leader c h, got {:?}", other),
+    }
+}
+
+#[test]
 fn fuzzy_picker_insert_text_appends_query() {
     let map = make_map();
     let resolved = map.resolve(
@@ -901,6 +945,25 @@ fn fuzzy_picker_normal_q_closes_buffer() {
             modifiers: ModifiersState::empty(),
         },
         KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::FuzzyPicker),
+    );
+
+    assert_eq!(
+        resolved.map(|matched| matched.command),
+        Some(Command::BufferCloseCurrent)
+    );
+}
+
+#[test]
+fn cheat_sheet_normal_q_closes_buffer() {
+    let map = make_map();
+    let resolved = map.resolve(
+        &NormalizedInput {
+            physical_key: Some(KeyCode::KeyQ),
+            named_key: None,
+            text: Some("q".to_string()),
+            modifiers: ModifiersState::empty(),
+        },
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::CheatSheet),
     );
 
     assert_eq!(
@@ -951,6 +1014,36 @@ fn fuzzy_picker_normal_j_selects_next() {
 fn leader_space_x_maps_to_close_current_buffer() {
     let map = make_map();
     let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let space = input_from_named(NamedKey::Space);
+    let first = map
+        .resolve_sequence_start(&space, context)
+        .expect("space should start chord");
+    let pending = match first {
+        SequenceMatch::Pending(pending) => pending,
+        other => panic!("expected pending leader sequence, got {:?}", other),
+    };
+
+    let follow_x = NormalizedInput {
+        physical_key: Some(KeyCode::KeyX),
+        named_key: None,
+        text: Some("x".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let resolved = map
+        .resolve_sequence_next(&pending, &follow_x, context)
+        .expect("leader+x should resolve");
+    match resolved {
+        SequenceMatch::Dispatch(resolved) => {
+            assert_eq!(resolved.command, Command::BufferCloseCurrent);
+        }
+        other => panic!("expected dispatch for leader x, got {:?}", other),
+    }
+}
+
+#[test]
+fn cheat_sheet_leader_x_maps_to_close_current_buffer() {
+    let map = make_default_profile_map();
+    let context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::CheatSheet);
     let space = input_from_named(NamedKey::Space);
     let first = map
         .resolve_sequence_start(&space, context)

@@ -90,6 +90,15 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             ),
             Err(report) => report,
         },
+        Command::OpenCheatSheet => {
+            let buffer_index = ctx.app_state.open_cheat_sheet_buffer("1.0.0");
+            let _ = ctx.close_palette_and_exit_focus();
+            DispatchReport::success_with_flags(
+                format!("Dispatch: cheat sheet buffer opened at index {buffer_index}"),
+                true,
+                true,
+            )
+        }
         Command::FilePickerAppendQuery(text) => match ctx.app_state.file_picker_append_query(&text)
         {
             Ok(changed) => DispatchReport::success(

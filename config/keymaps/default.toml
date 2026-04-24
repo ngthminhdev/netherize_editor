@@ -715,6 +715,11 @@ command = "app.open_theme_selector"
 
 [[bindings]]
 mode = "normal"
+key = "<leader>c h"
+command = "app.open_cheat_sheet"
+
+[[bindings]]
+mode = "normal"
 key = "<leader>g f"
 command = "git.open_lazygit"
 

@@ -791,6 +791,7 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
         ("app.search_in_files", "Search In Files"),
         ("app.open_workspace_symbols", "Open Workspace Symbols"),
         ("app.open_vim_command", "Open Vim Command"),
+        ("app.open_cheat_sheet", "Open Cheat Sheet"),
         ("app.toggle_terminal", "Toggle Terminal"),
         ("app.toggle_left_dock", "Toggle Left Dock"),
         ("app.focus_editor", "Focus Editor"),

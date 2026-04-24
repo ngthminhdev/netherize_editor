@@ -646,6 +646,14 @@ impl AppShell {
                 self.editor_caret_needs_layout = false;
                 true
             }
+            Command::OpenCheatSheet => {
+                self.app_state
+                    .open_cheat_sheet_buffer(self.ui_config.welcome.version.clone());
+                let _ = self.sync_focus_mode_for_active_buffer();
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+                true
+            }
             Command::SettingsSelectNext => {
                 let changed = self.app_state.settings_select_next();
                 if changed {
@@ -1544,6 +1552,15 @@ impl AppShell {
                     )
                 {
                     return self.confirm_theme_selection();
+                }
+
+                if matches!(&command, Command::FilePickerConfirmSelection)
+                    && let Some(crate::app::command_palette::CommandPaletteAction::ExecuteCommand(
+                        command_id,
+                    )) = self.app_state.command_palette_selected_action()
+                    && command_id == crate::core::command_ids::OPEN_CHEAT_SHEET
+                {
+                    return self.handle_command(Command::OpenCheatSheet);
                 }
 
                 if matches!(&command, Command::FilePickerConfirmSelection)
@@ -3374,6 +3391,25 @@ mod tests {
                 .command_palette_result_labels()
                 .contains(&"default-dark".to_string())
         );
+    }
+
+    #[test]
+    fn open_cheat_sheet_opens_center_buffer_tab() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+        assert!(shell.handle_command(Command::OpenCheatSheet));
+
+        assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+        assert!(shell.app_state.active_buffer_is_cheat_sheet());
+        assert_eq!(
+            shell
+                .app_state
+                .active_cheat_sheet_buffer()
+                .map(|state| state.version.as_str()),
+            Some("1.0.0")
+        );
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
     }
 
     #[test]

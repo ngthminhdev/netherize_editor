@@ -72,7 +72,7 @@ use helpers::{
     diagnostic_spans_to_styled, language_id_for_path, parse_hover_markdown_blocks, region_color,
     scale_theme, scale_ui_config, syntax_spans_to_styled,
 };
-use welcome::welcome_screen_content;
+use welcome::{cheat_sheet_screen_model, welcome_screen_model};
 
 /// Unified application shell: the single `ApplicationHandler` for the main window.
 ///
@@ -326,7 +326,9 @@ impl AppShell {
             if focus_changed {
                 self.input_handler.clear_pending_prefix();
             }
-        } else if self.app_state.active_buffer_is_settings() {
+        } else if self.app_state.active_buffer_is_settings()
+            || self.app_state.active_buffer_is_cheat_sheet()
+        {
             if matches!(
                 self.app_state.current_mode(),
                 EditorMode::TerminalFocus | EditorMode::TerminalNormal | EditorMode::PaletteFocus
