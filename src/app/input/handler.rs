@@ -543,12 +543,24 @@ impl InputHandler {
                     }
 
                     let doubled = match op {
-                        Operator::Delete if normalized.physical_key == Some(KeyCode::KeyD)
-                            || normalized.text.as_deref() == Some("d") => true,
-                        Operator::Change if normalized.physical_key == Some(KeyCode::KeyC)
-                            || normalized.text.as_deref() == Some("c") => true,
-                        Operator::Yank if normalized.physical_key == Some(KeyCode::KeyY)
-                            || normalized.text.as_deref() == Some("y") => true,
+                        Operator::Delete
+                            if normalized.physical_key == Some(KeyCode::KeyD)
+                                || normalized.text.as_deref() == Some("d") =>
+                        {
+                            true
+                        }
+                        Operator::Change
+                            if normalized.physical_key == Some(KeyCode::KeyC)
+                                || normalized.text.as_deref() == Some("c") =>
+                        {
+                            true
+                        }
+                        Operator::Yank
+                            if normalized.physical_key == Some(KeyCode::KeyY)
+                                || normalized.text.as_deref() == Some("y") =>
+                        {
+                            true
+                        }
                         _ => false,
                     };
                     if doubled {
@@ -822,15 +834,15 @@ impl InputHandler {
                 && !normalized.modifiers.alt_key()
                 && !normalized.modifiers.shift_key()
                 && (normalized.physical_key == Some(KeyCode::KeyD)
-                || normalized.text.as_deref() == Some("d")
-            ) {
+                    || normalized.text.as_deref() == Some("d"))
+            {
                 Some(Operator::Delete)
             } else if !normalized.has_command_modifier()
                 && !normalized.modifiers.alt_key()
                 && !normalized.modifiers.shift_key()
                 && (normalized.physical_key == Some(KeyCode::KeyC)
-                || normalized.text.as_deref() == Some("c")
-            ) {
+                    || normalized.text.as_deref() == Some("c"))
+            {
                 Some(Operator::Change)
             } else {
                 None

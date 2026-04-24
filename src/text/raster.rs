@@ -86,21 +86,15 @@ mod tests {
 
     #[test]
     fn color_alpha_conversion_reads_only_alpha_channel() {
-        let alpha = extract_alpha_from_image_data(
-            SwashContent::Color,
-            &[9, 8, 7, 6, 1, 2, 3, 4],
-            2,
-        );
+        let alpha =
+            extract_alpha_from_image_data(SwashContent::Color, &[9, 8, 7, 6, 1, 2, 3, 4], 2);
         assert_eq!(alpha, vec![6, 4]);
     }
 
     #[test]
     fn subpixel_alpha_conversion_uses_max_channel_per_pixel() {
-        let alpha = extract_alpha_from_image_data(
-            SwashContent::SubpixelMask,
-            &[1, 9, 3, 7, 2, 5],
-            2,
-        );
+        let alpha =
+            extract_alpha_from_image_data(SwashContent::SubpixelMask, &[1, 9, 3, 7, 2, 5], 2);
         assert_eq!(alpha, vec![9, 7]);
     }
 

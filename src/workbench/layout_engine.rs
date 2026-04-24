@@ -542,8 +542,16 @@ mod tests {
         let layout = engine.compute(PhysicalSize::new(1, 1), &state);
 
         for region in layout.model.flatten() {
-            assert!(region.bounds.width >= 0.0, "{} width < 0", region.id.label());
-            assert!(region.bounds.height >= 0.0, "{} height < 0", region.id.label());
+            assert!(
+                region.bounds.width >= 0.0,
+                "{} width < 0",
+                region.id.label()
+            );
+            assert!(
+                region.bounds.height >= 0.0,
+                "{} height < 0",
+                region.id.label()
+            );
             assert!(region.bounds.x >= 0.0, "{} x < 0", region.id.label());
             assert!(region.bounds.y >= 0.0, "{} y < 0", region.id.label());
         }

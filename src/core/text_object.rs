@@ -37,11 +37,9 @@ fn find_word_text_object(
 
     let mut anchor = cursor;
     if !is_word_char(text.char(anchor)) {
-        anchor = (cursor..len).find(|&i| is_word_char(text.char(i))).or_else(|| {
-            (0..cursor)
-                .rev()
-                .find(|&i| is_word_char(text.char(i)))
-        })?;
+        anchor = (cursor..len)
+            .find(|&i| is_word_char(text.char(i)))
+            .or_else(|| (0..cursor).rev().find(|&i| is_word_char(text.char(i))))?;
     }
 
     let mut start = anchor;

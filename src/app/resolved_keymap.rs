@@ -1155,7 +1155,10 @@ mod tests {
             text: Some("G".to_string()),
             modifiers: ModifiersState::SHIFT,
         };
-        assert_eq!(km.lookup_mode_only(&g_upper, "normal"), Some(command_ids::MOVE_TO_LAST_LINE));
+        assert_eq!(
+            km.lookup_mode_only(&g_upper, "normal"),
+            Some(command_ids::MOVE_TO_LAST_LINE)
+        );
 
         let ctrl_d = NormalizedInput {
             physical_key: Some(KeyCode::KeyD),

@@ -18,6 +18,11 @@ fn topbar_tab_text_scissor(bounds: [f32; 4]) -> Option<[u32; 4]> {
     inset_scissor_rect(bounds, 4.0, 2.0)
 }
 
+fn with_alpha(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
+    color[3] = alpha;
+    color
+}
+
 impl Renderer {
     pub fn update_topbar_content(
         &mut self,
@@ -52,10 +57,12 @@ impl Renderer {
         self.topbar_text_system.set_size(None, Some(bounds[3]));
         let origin_y = bounds[1] + ((bounds[3] - line_h) * 0.5).max(0.0);
         let active_fg = self.theme.ui.fg.as_f32();
-        let inactive_fg = self.theme.ui.fg_dim.as_f32();
+        let inactive_fg = with_alpha(self.theme.ui.fg_dim.as_f32(), 0.95);
         let empty_fg = self.theme.ui.fg_ghost.as_f32();
-        let active_bg = self.theme.ui.selection_bg.as_f32();
+        let active_bg = with_alpha(self.theme.ui.selection_bg.as_f32(), 0.78);
         let accent = self.theme.ui.accent.as_f32();
+        let top_bg = with_alpha(self.theme.ui.panel_bg.as_f32(), 0.92);
+        let border = with_alpha(self.theme.ui.border_color.as_f32(), 0.9);
         let font_family = self.theme.editor.font_family.as_deref();
         let nerd_family = self
             .theme
@@ -69,10 +76,21 @@ impl Renderer {
         let mut text_batches = Vec::new();
         let mut chrome = Vec::new();
         let mut tab_x = bounds[0] + self.topbar_padding_x;
-        let tab_gap = 6.0;
+        let tab_gap = 4.0;
         let available_right = bounds[0] + bounds[2] - self.topbar_padding_x;
-        let tab_pad_x = 14.0;
-        let icon_gap = 6.0;
+        let tab_pad_x = 10.0;
+        let icon_gap = 4.0;
+
+        chrome.push(RegionDrawInstance::new(bounds, top_bg));
+        chrome.push(RegionDrawInstance::new(
+            [
+                bounds[0],
+                (bounds[1] + bounds[3] - 1.0).max(bounds[1]),
+                bounds[2],
+                1.0_f32.min(bounds[3]),
+            ],
+            border,
+        ));
 
         if tabs.is_empty() {
             let start = glyphs.len() as u32;
@@ -144,20 +162,20 @@ impl Renderer {
                         RegionDrawInstance::new(
                             [
                                 tab_x,
-                                bounds[1] + 2.0,
+                                bounds[1] + 3.0,
                                 tab_width,
-                                (bounds[3] - 4.0).max(0.0),
+                                (bounds[3] - 6.0).max(0.0),
                             ],
                             active_bg,
                         )
-                        .with_radius(6.0),
+                        .with_radius(7.0),
                     );
                     chrome.push(RegionDrawInstance::new(
                         [
-                            tab_x,
+                            tab_x + 8.0,
                             (bounds[1] + bounds[3] - 2.0).max(bounds[1]),
-                            tab_width,
-                            2.0,
+                            (tab_width - 16.0).max(0.0),
+                            1.0,
                         ],
                         accent,
                     ));
@@ -169,11 +187,11 @@ impl Renderer {
                     chrome.push(RegionDrawInstance::new(
                         [
                             tab_x + tab_width + (tab_gap * 0.5_f32).floor(),
-                            bounds[1] + 8.0,
+                            bounds[1] + 9.0,
                             1.0,
-                            (bounds[3] - 16.0).max(0.0),
+                            (bounds[3] - 18.0).max(0.0),
                         ],
-                        sep_color,
+                        with_alpha(sep_color, 0.55),
                     ));
                 }
 

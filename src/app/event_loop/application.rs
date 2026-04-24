@@ -728,14 +728,7 @@ impl AppShell {
                 diagnostics_errors,
                 diagnostics_warnings,
             ) = if show_welcome {
-                (
-                    "[welcome]",
-                    "ngthminhdev · rust-analyzer ready · 0.4ms/frame",
-                    0,
-                    0,
-                    0,
-                    0,
-                )
+                ("Welcome", "", 0, 0, 0, 0)
             } else {
                 let filetype = self.app_state.active_filetype_label();
                 let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");

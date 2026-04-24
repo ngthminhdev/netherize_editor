@@ -16,7 +16,10 @@ use crate::{
             dispatch_command, dispatch_command_count, dispatch_command_with_clipboard,
             dispatch_command_with_clipboard_and_terminal, dispatch_command_with_terminal,
         },
-        commands::{Command, FindMotionKind, Motion, OperationTarget, Operator, TextObjectKind, TextObjectModifier},
+        commands::{
+            Command, FindMotionKind, Motion, OperationTarget, Operator, TextObjectKind,
+            TextObjectModifier,
+        },
         mode::{EditorMode, ModeEvent},
     },
     terminal::grid::TerminalGrid,
@@ -642,7 +645,8 @@ fn delete_to_line_end_alias_removes_suffix_and_stays_normal() {
 
 #[test]
 fn substitute_line_keeps_indent_cursor_target() {
-    let mut app_state = AppState::from_text(unique_temp_path("substitute_indent"), "    alpha\nnext");
+    let mut app_state =
+        AppState::from_text(unique_temp_path("substitute_indent"), "    alpha\nnext");
     let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
     let report = dispatch_command(&mut app_state, Command::SubstituteLine);
 

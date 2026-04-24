@@ -65,11 +65,18 @@ pub(super) struct PendingInput {
 
 #[derive(Debug, Clone)]
 pub(super) enum PendingState {
-    PendingOperator { op: Operator },
+    PendingOperator {
+        op: Operator,
+    },
     /// Đã nhận operator + g, chờ g tiếp theo để tạo motion gg.
-    OperatorG { op: Operator },
+    OperatorG {
+        op: Operator,
+    },
     /// Đã nhận operator (d/c/y) + find motion prefix (f/F/t/T) -> chờ target char.
-    OperatorFindChar { op: Operator, kind: FindMotionKind },
+    OperatorFindChar {
+        op: Operator,
+        kind: FindMotionKind,
+    },
     ReplaceChar,
     Leader,
     Sequence,
@@ -134,13 +141,25 @@ impl PendingState {
             },
             Self::OperatorFindChar { op, kind } => match (op, kind) {
                 (Operator::Delete, FindMotionKind::ForwardTo) => "pending delete find-char forward",
-                (Operator::Delete, FindMotionKind::ForwardTill) => "pending delete till-char forward",
-                (Operator::Delete, FindMotionKind::BackwardTo) => "pending delete find-char backward",
-                (Operator::Delete, FindMotionKind::BackwardTill) => "pending delete till-char backward",
+                (Operator::Delete, FindMotionKind::ForwardTill) => {
+                    "pending delete till-char forward"
+                }
+                (Operator::Delete, FindMotionKind::BackwardTo) => {
+                    "pending delete find-char backward"
+                }
+                (Operator::Delete, FindMotionKind::BackwardTill) => {
+                    "pending delete till-char backward"
+                }
                 (Operator::Change, FindMotionKind::ForwardTo) => "pending change find-char forward",
-                (Operator::Change, FindMotionKind::ForwardTill) => "pending change till-char forward",
-                (Operator::Change, FindMotionKind::BackwardTo) => "pending change find-char backward",
-                (Operator::Change, FindMotionKind::BackwardTill) => "pending change till-char backward",
+                (Operator::Change, FindMotionKind::ForwardTill) => {
+                    "pending change till-char forward"
+                }
+                (Operator::Change, FindMotionKind::BackwardTo) => {
+                    "pending change find-char backward"
+                }
+                (Operator::Change, FindMotionKind::BackwardTill) => {
+                    "pending change till-char backward"
+                }
                 (Operator::Yank, FindMotionKind::ForwardTo) => "pending yank find-char forward",
                 (Operator::Yank, FindMotionKind::ForwardTill) => "pending yank till-char forward",
                 (Operator::Yank, FindMotionKind::BackwardTo) => "pending yank find-char backward",

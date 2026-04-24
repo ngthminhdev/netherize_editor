@@ -255,17 +255,24 @@ mod tests {
         let (second, _) = allocate_region_in_state(state, 5, 2).expect("wrapped region");
 
         assert_eq!((first.x, first.y, first.width, first.height), (0, 0, 6, 3));
-        assert_eq!((second.x, second.y, second.width, second.height), (0, 3, 5, 2));
+        assert_eq!(
+            (second.x, second.y, second.width, second.height),
+            (0, 3, 5, 2)
+        );
     }
 
     #[test]
     fn uv_coordinates_stay_normalized_at_texture_edge() {
-        let (uv_min, uv_max) = atlas_uv_min_max(8, 4, AtlasRegion {
-            x: 6,
-            y: 1,
-            width: 2,
-            height: 3,
-        });
+        let (uv_min, uv_max) = atlas_uv_min_max(
+            8,
+            4,
+            AtlasRegion {
+                x: 6,
+                y: 1,
+                width: 2,
+                height: 3,
+            },
+        );
 
         assert_eq!(uv_min, [0.75, 0.25]);
         assert_eq!(uv_max, [1.0, 1.0]);

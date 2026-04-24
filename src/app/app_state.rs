@@ -2282,7 +2282,9 @@ impl AppState {
         if total_lines <= 1 {
             return false;
         }
-        let line_idx = self.text.char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
+        let line_idx = self
+            .text
+            .char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
         if line_idx + 1 >= total_lines {
             return false;
         }
@@ -2540,7 +2542,11 @@ impl AppState {
         true
     }
 
-    pub fn operation_text(&self, target: OperationTarget, op: Operator) -> Option<(String, ClipboardRecordKind)> {
+    pub fn operation_text(
+        &self,
+        target: OperationTarget,
+        op: Operator,
+    ) -> Option<(String, ClipboardRecordKind)> {
         let (start, end, linewise) = self.operation_range(target, op)?;
         let text = if linewise {
             self.linewise_text_for_range(start, end)?
@@ -2582,14 +2588,19 @@ impl AppState {
         true
     }
 
-    fn operation_range(&self, target: OperationTarget, op: Operator) -> Option<(usize, usize, bool)> {
+    fn operation_range(
+        &self,
+        target: OperationTarget,
+        op: Operator,
+    ) -> Option<(usize, usize, bool)> {
         match target {
             OperationTarget::CurrentLine => {
                 let (start, end) = self.current_line_delete_range()?;
                 Some((start, end, true))
             }
             OperationTarget::TextObject { modifier, kind } => {
-                let (start, end) = find_text_object_range(&self.text, self.cursor_char_idx, modifier, kind)?;
+                let (start, end) =
+                    find_text_object_range(&self.text, self.cursor_char_idx, modifier, kind)?;
                 Some((start, end, false))
             }
             OperationTarget::Motion(motion) => self.motion_range(motion, op),
@@ -2616,17 +2627,23 @@ impl AppState {
                 (end > cursor).then_some((cursor, end, false))
             }
             Motion::LineStart => {
-                let line = self.text.char_to_line(cursor.min(self.text.len_chars().saturating_sub(1).max(0)));
+                let line = self
+                    .text
+                    .char_to_line(cursor.min(self.text.len_chars().saturating_sub(1).max(0)));
                 let start = self.text.line_to_char(line);
                 (start < cursor).then_some((start, cursor, false))
             }
             Motion::LineEnd => {
-                let line = self.text.char_to_line(cursor.min(self.text.len_chars().saturating_sub(1).max(0)));
+                let line = self
+                    .text
+                    .char_to_line(cursor.min(self.text.len_chars().saturating_sub(1).max(0)));
                 let end = self.line_content_end_char_idx(line);
                 (end > cursor).then_some((cursor, end, false))
             }
             Motion::FirstNonWhitespace => {
-                let line = self.text.char_to_line(cursor.min(self.text.len_chars().saturating_sub(1).max(0)));
+                let line = self
+                    .text
+                    .char_to_line(cursor.min(self.text.len_chars().saturating_sub(1).max(0)));
                 let line_start = self.text.line_to_char(line);
                 let line_end = self.line_content_end_char_idx(line);
                 let mut target = line_start;
@@ -2646,34 +2663,48 @@ impl AppState {
                 }
             }
             Motion::FirstLine => Some((0, cursor, false)).filter(|(s, e, _)| s < e),
-            Motion::LastLine => Some((cursor, self.text.len_chars(), false)).filter(|(s, e, _)| s < e),
+            Motion::LastLine => {
+                Some((cursor, self.text.len_chars(), false)).filter(|(s, e, _)| s < e)
+            }
             Motion::FindChar(kind, target) => self.find_char_motion_range(kind, target),
         }
     }
 
-    fn find_char_motion_range(&self, kind: FindMotionKind, target: char) -> Option<(usize, usize, bool)> {
+    fn find_char_motion_range(
+        &self,
+        kind: FindMotionKind,
+        target: char,
+    ) -> Option<(usize, usize, bool)> {
         if self.text.len_chars() == 0 {
             return None;
         }
-        let cursor = self.cursor_char_idx.min(self.text.len_chars().saturating_sub(1));
+        let cursor = self
+            .cursor_char_idx
+            .min(self.text.len_chars().saturating_sub(1));
         let line = self.text.char_to_line(cursor);
         let line_start = self.text.line_to_char(line);
         let line_end = self.line_content_end_char_idx(line);
         match kind {
             FindMotionKind::ForwardTo => {
-                let hit = ((cursor + 1).min(line_end)..line_end).find(|&i| self.text.char(i) == target)?;
+                let hit = ((cursor + 1).min(line_end)..line_end)
+                    .find(|&i| self.text.char(i) == target)?;
                 Some((cursor, hit + 1, false))
             }
             FindMotionKind::ForwardTill => {
-                let hit = ((cursor + 1).min(line_end)..line_end).find(|&i| self.text.char(i) == target)?;
+                let hit = ((cursor + 1).min(line_end)..line_end)
+                    .find(|&i| self.text.char(i) == target)?;
                 (hit > cursor).then_some((cursor, hit, false))
             }
             FindMotionKind::BackwardTo => {
-                let hit = (line_start..cursor).rev().find(|&i| self.text.char(i) == target)?;
+                let hit = (line_start..cursor)
+                    .rev()
+                    .find(|&i| self.text.char(i) == target)?;
                 Some((hit, cursor + 1, false))
             }
             FindMotionKind::BackwardTill => {
-                let hit = (line_start..cursor).rev().find(|&i| self.text.char(i) == target)?;
+                let hit = (line_start..cursor)
+                    .rev()
+                    .find(|&i| self.text.char(i) == target)?;
                 (hit + 1 <= cursor).then_some((hit + 1, cursor + 1, false))
             }
         }
@@ -2783,7 +2814,9 @@ impl AppState {
         if total == 0 {
             return false;
         }
-        let current_line = self.text.char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
+        let current_line = self
+            .text
+            .char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
         let mut line = current_line.saturating_sub(1);
 
         if self.line_is_blank(current_line.min(total.saturating_sub(1))) {
@@ -2805,7 +2838,9 @@ impl AppState {
         if total == 0 {
             return false;
         }
-        let current_line = self.text.char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
+        let current_line = self
+            .text
+            .char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
         let mut line = current_line;
 
         if self.line_is_blank(line) {
@@ -2817,15 +2852,22 @@ impl AppState {
             line += 1;
         }
 
-        let changed = self.update_cursor_position(self.text.line_to_char(line.min(total.saturating_sub(1))));
+        let changed =
+            self.update_cursor_position(self.text.line_to_char(line.min(total.saturating_sub(1))));
         self.target_col = 0;
         changed
     }
 
     fn line_is_blank(&self, line_idx: usize) -> bool {
-        let start = self.text.line_to_char(line_idx.min(self.text.len_lines().saturating_sub(1)));
-        let end = self.line_content_end_char_idx(line_idx.min(self.text.len_lines().saturating_sub(1)));
-        self.text.slice(start..end).chars().all(|ch| ch == ' ' || ch == '\t')
+        let start = self
+            .text
+            .line_to_char(line_idx.min(self.text.len_lines().saturating_sub(1)));
+        let end =
+            self.line_content_end_char_idx(line_idx.min(self.text.len_lines().saturating_sub(1)));
+        self.text
+            .slice(start..end)
+            .chars()
+            .all(|ch| ch == ' ' || ch == '\t')
     }
 
     /// Nhảy đến `line_idx` (0-indexed). Dùng bởi `:N` vim command.
@@ -3123,7 +3165,9 @@ impl AppState {
     }
 
     pub fn substitute_current_line_text(&self) -> Option<String> {
-        let line_idx = self.text.char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
+        let line_idx = self
+            .text
+            .char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
         let start = self.first_non_blank_or_line_start(line_idx);
         let end = self.line_content_end_char_idx(line_idx);
         if start >= end {
@@ -5215,8 +5259,6 @@ mod tests {
             vec![HighlightEdit::delete(0, 2)]
         );
     }
-
-
 
     #[test]
     fn save_then_open_roundtrip() {

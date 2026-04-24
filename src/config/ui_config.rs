@@ -165,8 +165,8 @@ impl UiConfig {
             },
             layout: WorkbenchLayoutConfig {
                 region_gap: 2.0,
-                top_bar_height: 38.0,
-                status_bar_height: 36.0,
+                top_bar_height: 34.0,
+                status_bar_height: 22.0,
                 center_min_width: 320.0,
                 center_min_height: 180.0,
                 sidebar_min_width: 180.0,
@@ -200,8 +200,8 @@ impl UiConfig {
             },
             status_bar: StatusBarUiConfig {
                 padding_x: 14.0,
-                font_size: 15.0,
-                line_height: 24.0,
+                font_size: 11.0,
+                line_height: 14.0,
             },
             editor: EditorUiConfig {
                 relative_numbers: false,

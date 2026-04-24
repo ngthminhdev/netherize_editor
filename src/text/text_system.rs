@@ -447,7 +447,10 @@ mod tests {
         );
 
         let glyphs = system.collect_visible_glyphs(0.0, 0.0, [1.0, 1.0, 1.0, 1.0]);
-        assert!(!glyphs.is_empty(), "sanitized spans should still produce glyphs");
+        assert!(
+            !glyphs.is_empty(),
+            "sanitized spans should still produce glyphs"
+        );
 
         let starts: Vec<usize> = glyphs.iter().map(|glyph| glyph.byte_start).collect();
         assert!(starts.contains(&0));

@@ -11,6 +11,22 @@ use super::super::helpers::{
     mode_pill_color, rect_to_scissor,
 };
 
+fn with_alpha(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
+    color[3] = alpha;
+    color
+}
+
+fn push_badge(
+    chrome: &mut Vec<RegionDrawInstance>,
+    rect: [f32; 4],
+    fill: [f32; 4],
+    border: [f32; 4],
+    radius: f32,
+) {
+    chrome.push(RegionDrawInstance::new(rect, fill).with_radius(radius));
+    chrome.push(RegionDrawInstance::new(rect, border).with_radius(radius));
+}
+
 impl Renderer {
     pub fn update_statusbar_content(
         &mut self,
@@ -58,15 +74,15 @@ impl Renderer {
 
         let mode_label = mode_display_label(mode);
         let mode_color = mode_pill_color(mode, &self.theme);
-        let pill_text = format!("  {}  ", mode_label);
+        let pill_text = format!(" {} ", mode_label);
         let pill_width = estimate_monospace_width(&pill_text, font_size);
-        let pill_x = bounds[0] + self.statusbar_padding_x;
-        let pill_height = (bounds[3] - 6.0).max(line_h).min(bounds[3]);
-        let pill_y = bounds[1] + ((bounds[3] - pill_height) * 0.5).max(0.0);
+        let pill_x = bounds[0];
+        let pill_height = bounds[3].max(0.0);
+        let pill_y = bounds[1];
         let pill_rect = [pill_x, pill_y, pill_width, pill_height];
 
         let branch_label = if git_branch.trim().is_empty() {
-            "git: -".to_string()
+            String::new()
         } else {
             let b = git_branch.trim();
             if b.starts_with("git: ") {
@@ -75,25 +91,46 @@ impl Renderer {
                 format!("git: {b}")
             }
         };
-        let right_text = format!(
-            "{}  |  {filetype}  |  UTF-8  |  LF  |  Ln {}, Col {}",
-            branch_label,
-            line + 1,
-            col + 1
-        );
-        let show_diagnostics = diagnostics_errors > 0 || diagnostics_warnings > 0;
-        let diagnostics_label = if show_diagnostics {
-            format!("❌ {}  ⚠ {}", diagnostics_errors, diagnostics_warnings)
+        let mut right_parts = Vec::new();
+        if !branch_label.is_empty() {
+            right_parts.push(branch_label);
+        }
+        if !filetype.trim().is_empty() {
+            right_parts.push(filetype.trim().to_string());
+        }
+        right_parts.push("utf-8".to_string());
+        right_parts.push("LF".to_string());
+        right_parts.push(format!("Ln {}, Col {}", line + 1, col + 1));
+        let right_text = right_parts.join(" · ");
+
+        let show_errors = diagnostics_errors > 0;
+        let show_warnings = diagnostics_warnings > 0;
+        let error_badge_text = if show_errors {
+            format!("✗ {}", diagnostics_errors)
+        } else {
+            String::new()
+        };
+        let warning_badge_text = if show_warnings {
+            format!(
+                "{} warning{}",
+                diagnostics_warnings,
+                if diagnostics_warnings == 1 { "" } else { "s" }
+            )
         } else {
             String::new()
         };
 
         let origin_y = bounds[1] + ((bounds[3] - line_h) * 0.5).max(0.0);
-        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let fg_faint = with_alpha(self.theme.ui.fg_dim.as_f32(), 0.72);
         let accent = self.theme.ui.accent.as_f32();
         let pill_fg = self.theme.ui.bg.as_f32();
-        let error_fg = [0.95, 0.32, 0.32, 1.0];
-        let warning_fg = [0.95, 0.78, 0.22, 1.0];
+        let error_fg = self.theme.ui.error.as_f32();
+        let warning_fg = self.theme.ui.warning.as_f32();
+        let status_bg = with_alpha(self.theme.ui.status_bar_bg.as_f32(), 0.98);
+        let border = with_alpha(self.theme.ui.border_color.as_f32(), 0.85);
+        let badge_border = with_alpha(self.theme.ui.border_color.as_f32(), 0.9);
+        let error_badge_bg = with_alpha(error_fg, 0.12);
+        let warning_badge_bg = with_alpha(warning_fg, 0.12);
 
         let mut glyphs = layout_panel_text(
             &pill_text,
@@ -106,15 +143,30 @@ impl Renderer {
         );
 
         let right_width = estimate_monospace_width(&right_text, font_size);
-        let diagnostics_width = if show_diagnostics {
-            estimate_monospace_width(&diagnostics_label, font_size)
+        let error_badge_width = if show_errors {
+            estimate_monospace_width(&format!(" {} ", error_badge_text), font_size)
         } else {
             0.0
         };
+        let warning_badge_width = if show_warnings {
+            estimate_monospace_width(&format!(" {} ", warning_badge_text), font_size)
+        } else {
+            0.0
+        };
+        let badge_gap = 6.0;
+        let diagnostics_width = error_badge_width
+            + warning_badge_width
+            + if show_errors && show_warnings {
+                badge_gap
+            } else {
+                0.0
+            };
+        let show_diagnostics = show_errors || show_warnings;
         let right_x = (bounds[0] + bounds[2] - self.statusbar_padding_x - right_width)
             .max(bounds[0] + self.statusbar_padding_x);
-        let diag_x = pill_x + pill_width + self.statusbar_padding_x * 0.90;
-        let pending_x = diag_x + diagnostics_width + if show_diagnostics { 20.0 } else { 0.0 };
+        let left_gap = 8.0;
+        let diag_x = pill_x + pill_width + left_gap;
+        let pending_x = diag_x + diagnostics_width + if show_diagnostics { 14.0 } else { 0.0 };
         let pending_gap = self.statusbar_padding_x;
         let pending_maxw = (right_x - pending_x - pending_gap).max(0.0);
         let pending_text = clamp_monospace_text(pending_keys, pending_maxw, font_size);
@@ -127,7 +179,7 @@ impl Renderer {
                 &self.queue,
                 pending_x,
                 origin_y,
-                accent,
+                with_alpha(accent, 0.95),
             ));
         }
         glyphs.extend(layout_panel_text(
@@ -137,26 +189,58 @@ impl Renderer {
             &self.queue,
             right_x,
             origin_y,
-            fg_dim,
+            fg_faint,
         ));
-        if show_diagnostics {
-            let error_part = format!("❌ {}", diagnostics_errors);
+        let mut chrome = vec![
+            RegionDrawInstance::new(bounds, status_bg),
+            RegionDrawInstance::new(
+                [bounds[0], bounds[1], bounds[2], 1.0_f32.min(bounds[3])],
+                border,
+            ),
+            RegionDrawInstance::new(pill_rect, mode_color),
+        ];
+
+        let badge_height = (bounds[3] - 6.0).max(12.0);
+        let badge_y = bounds[1] + ((bounds[3] - badge_height) * 0.5).max(0.0);
+        let badge_radius = 5.0;
+        let mut current_badge_x = diag_x;
+
+        if show_errors {
+            let rect = [current_badge_x, badge_y, error_badge_width, badge_height];
+            push_badge(
+                &mut chrome,
+                rect,
+                error_badge_bg,
+                badge_border,
+                badge_radius,
+            );
             glyphs.extend(layout_panel_text(
-                &error_part,
+                &format!(" {} ", error_badge_text),
                 &mut self.statusbar_text_system,
                 &mut self.atlas,
                 &self.queue,
-                diag_x,
+                current_badge_x,
                 origin_y,
                 error_fg,
             ));
-            let warn_x = diag_x + estimate_monospace_width(&error_part, font_size) + 16.0;
+            current_badge_x += error_badge_width + if show_warnings { badge_gap } else { 0.0 };
+        }
+
+        if show_warnings {
+            let rect = [current_badge_x, badge_y, warning_badge_width, badge_height];
+            push_badge(
+                &mut chrome,
+                rect,
+                warning_badge_bg,
+                badge_border,
+                badge_radius,
+            );
             glyphs.extend(layout_panel_text(
-                &format!("⚠ {}", diagnostics_warnings),
+                &format!(" {} ", warning_badge_text),
                 &mut self.statusbar_text_system,
                 &mut self.atlas,
                 &self.queue,
-                warn_x,
+                current_badge_x,
                 origin_y,
                 warning_fg,
             ));
@@ -169,14 +253,7 @@ impl Renderer {
             &self.statusbar_glyph_instances,
         );
 
-        self.statusbar_chrome_instances = vec![
-            RegionDrawInstance::new(bounds, self.theme.ui.status_bar_bg.as_f32()),
-            RegionDrawInstance::new(
-                [bounds[0], bounds[1], bounds[2], 1.0_f32.min(bounds[3])],
-                self.theme.ui.border_color.as_f32(),
-            ),
-            RegionDrawInstance::new(pill_rect, mode_color),
-        ];
+        self.statusbar_chrome_instances = chrome;
         self.last_statusbar_layout_key = Some(layout_key);
         self.statusbar_chrome_instances.clone()
     }

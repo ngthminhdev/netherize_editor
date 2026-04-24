@@ -571,15 +571,13 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 changed,
             )
         }
-        Command::TextObjectAction { op, modifier, kind } => {
-            dispatch(
-                ctx,
-                Command::Operate {
-                    op,
-                    target: OperationTarget::TextObject { modifier, kind },
-                },
-            )
-        }
+        Command::TextObjectAction { op, modifier, kind } => dispatch(
+            ctx,
+            Command::Operate {
+                op,
+                target: OperationTarget::TextObject { modifier, kind },
+            },
+        ),
         Command::Operate { op, target } => {
             if op == Operator::Visual {
                 if let OperationTarget::TextObject { modifier, kind } = target {

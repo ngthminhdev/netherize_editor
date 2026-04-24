@@ -1163,4 +1163,3 @@ fn leader_sequence_is_not_started_in_insert_mode() {
     let context = KeybindingContext::for_mode(EditorMode::Insert);
     assert!(map.resolve_sequence_start(&start_input, context).is_none());
 }
-

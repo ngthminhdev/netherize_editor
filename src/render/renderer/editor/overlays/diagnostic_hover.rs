@@ -19,8 +19,7 @@ use cosmic_text::Metrics;
 use super::super::super::helpers::{
     caret_rect_for_mode, clamp_monospace_text, clamp_popup_width, clamp_x_in_bounds,
     estimate_monospace_width, gutter_width_for_editor, layout_panel_rich_text, layout_panel_text,
-    layout_panel_text_italic, rect_to_scissor,
-    should_draw_block_cursor,
+    layout_panel_text_italic, rect_to_scissor, should_draw_block_cursor,
 };
 use super::super::completion::{completion_kind_badge, completion_label_spans};
 use super::super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};

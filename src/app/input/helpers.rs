@@ -233,7 +233,9 @@ pub(super) fn motion_from_input(input: &NormalizedInput) -> Option<Motion> {
         Some("G") => Some(Motion::LastLine),
         _ => match input.physical_key {
             Some(KeyCode::Digit0) => Some(Motion::LineStart),
-            Some(KeyCode::Digit6) if input.modifiers.shift_key() => Some(Motion::FirstNonWhitespace),
+            Some(KeyCode::Digit6) if input.modifiers.shift_key() => {
+                Some(Motion::FirstNonWhitespace)
+            }
             Some(KeyCode::Digit4) if input.modifiers.shift_key() => Some(Motion::LineEnd),
             Some(KeyCode::KeyW) => Some(Motion::WordForward),
             Some(KeyCode::KeyB) if !input.modifiers.shift_key() => Some(Motion::WordBackward),
@@ -256,9 +258,13 @@ pub(super) fn find_motion_prefix_from_input(input: &NormalizedInput) -> Option<F
         Some("T") => Some(FindMotionKind::BackwardTill),
         _ => match input.physical_key {
             Some(KeyCode::KeyF) if !input.modifiers.shift_key() => Some(FindMotionKind::ForwardTo),
-            Some(KeyCode::KeyT) if !input.modifiers.shift_key() => Some(FindMotionKind::ForwardTill),
+            Some(KeyCode::KeyT) if !input.modifiers.shift_key() => {
+                Some(FindMotionKind::ForwardTill)
+            }
             Some(KeyCode::KeyF) if input.modifiers.shift_key() => Some(FindMotionKind::BackwardTo),
-            Some(KeyCode::KeyT) if input.modifiers.shift_key() => Some(FindMotionKind::BackwardTill),
+            Some(KeyCode::KeyT) if input.modifiers.shift_key() => {
+                Some(FindMotionKind::BackwardTill)
+            }
             _ => None,
         },
     }
