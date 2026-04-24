@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║  NETHERIZE EDITOR                                               ║
+  ║  Component Reference: Title Bar + Status Bar                    ║
+  ║                                                                  ║
+  ║  File này mô tả chi tiết 2 thanh bar của editor:               ║
+  ║    • Title Bar  — thanh trên cùng (traffic lights, breadcrumb)  ║
+  ║    • Status Bar — thanh dưới cùng (mode, file, diagnostics)     ║
+  ║                                                                  ║
+  ║  Mục đích: developer reference / design handoff                 ║
+  ║  Author: ngthminhdev                                            ║
+  ╚══════════════════════════════════════════════════════════════════╝
+-->
+<head>
+  <meta charset="UTF-8"/>
+  <title>Netherize — Bar Reference</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    /* ════════════════════════════════════════════════════
+       DESIGN TOKENS
+       ════════════════════════════════════════════════════ */
+    :root {
+      --bg:          oklch(0.165 0.028 255);
+      --window:      oklch(0.18  0.025 260);
+      --surface:     oklch(0.21  0.020 265);
+      --border:      oklch(0.28  0.020 265 / 0.6);
+      --fg:          oklch(0.92  0.010 280);
+      --fg-dim:      oklch(0.65  0.015 280);
+      --fg-faint:    oklch(0.48  0.015 280);
+      --fg-ghost:    oklch(0.38  0.015 280);
+      --accent:      oklch(0.82  0.18  135);   /* lime — current theme */
+      --good:        oklch(0.80  0.15  150);
+      --warn:        oklch(0.80  0.15   75);
+      --info:        oklch(0.80  0.14  230);
+      --err:         oklch(0.72  0.18   25);
+      --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+      --sans: "Inter", -apple-system, sans-serif;
+    }
+
+    /* ════════════════════════════════════════════════════
+       PAGE
+       ════════════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { background: oklch(0.11 0.01 270); font-family: var(--sans); color: var(--fg); }
+    body { padding: 48px 40px 80px; max-width: 1100px; margin: 0 auto; }
+
+    h1 {
+      font-size: 11px; font-weight: 700; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--accent);
+      font-family: var(--mono); margin-bottom: 6px;
+    }
+    .page-title {
+      font-size: 28px; font-weight: 700; letter-spacing: -0.6px;
+      color: var(--fg); margin-bottom: 6px;
+    }
+    .page-sub {
+      font-size: 13px; color: var(--fg-faint); line-height: 1.6;
+      margin-bottom: 56px;
+    }
+
+    /* ── Section wrapper ── */
+    .section { margin-bottom: 64px; }
+    .section-title {
+      font-family: var(--mono); font-size: 10px; font-weight: 700;
+      letter-spacing: 1.6px; text-transform: uppercase; color: var(--fg-faint);
+      display: flex; align-items: center; gap: 14px; margin-bottom: 20px;
+    }
+    .section-title::after {
+      content: ''; flex: 1; height: 0.5px; background: var(--border);
+    }
+
+    /* ── Live component preview box ── */
+    .preview-box {
+      background: var(--bg);
+      border: 0.5px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 32px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+    }
+    /* spacer between the two bars inside a preview */
+    .preview-spacer {
+      height: 32px;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .preview-spacer span {
+      font-family: var(--mono); font-size: 10px; color: var(--fg-ghost);
+      letter-spacing: 0.5px;
+    }
+
+    /* ════════════════════════════════════════════════════
+       ① TITLE BAR
+       Height: 34px · always at the very top of the window
+       ════════════════════════════════════════════════════ */
+    .title-bar {
+      height: 34px;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      border-bottom: 0.5px solid var(--border);
+      /* Gradient crée une légère profondeur */
+      background: linear-gradient(
+        to bottom,
+        oklch(0.21 0.020 260),
+        oklch(0.18 0.025 260)
+      );
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    /* — Traffic lights — */
+    .traffic-lights { display: flex; gap: 8px; align-items: center; }
+    .dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      border: 0.5px solid rgba(0,0,0,0.22);
+    }
+    .dot-close { background: #ff5f57; }
+    .dot-min   { background: #febc2e; }
+    .dot-max   { background: #28c840; }
+
+    /* — Breadcrumb (absolute center) — */
+    .title-center {
+      position: absolute; left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      display: flex; align-items: center; gap: 8px;
+      font-family: var(--mono); font-size: 11px;
+      color: var(--fg-dim); letter-spacing: 0.1px;
+      pointer-events: none; white-space: nowrap;
+    }
+    .bc-prefix { color: var(--fg-faint); }
+    .bc-sep    { color: var(--fg-ghost); }
+    .bc-file   { color: var(--fg-dim); }
+
+    /* — Branch (right) — */
+    .title-right {
+      margin-left: auto;
+      display: flex; align-items: center; gap: 6px;
+      font-family: var(--mono); font-size: 10.5px; color: var(--fg-faint);
+    }
+    .branch-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--good);
+    }
+
+    /* ════════════════════════════════════════════════════
+       ② STATUS BAR
+       Height: 22px · always at the very bottom of the window
+       ════════════════════════════════════════════════════ */
+    .status-bar {
+      height: 22px;
+      display: flex; align-items: center;
+      border-top: 0.5px solid var(--border);
+      background: var(--bg);
+      font-family: var(--mono); font-size: 10.5px;
+      letter-spacing: 0.3px; color: var(--fg-dim);
+      flex-shrink: 0;
+    }
+
+    /* Mode pill — leftmost item, full height, colored bg */
+    .mode-pill {
+      height: 100%;
+      display: flex; align-items: center;
+      padding: 0 10px;
+      font-weight: 700; letter-spacing: 0.8px; font-size: 10px;
+      flex-shrink: 0;
+    }
+    /* Mode colors */
+    .mode-normal  { background: var(--accent); color: oklch(0.15 0.02 135); }
+    .mode-insert  { background: oklch(0.82 0.14 200); color: oklch(0.12 0.02 200); }
+    .mode-visual  { background: oklch(0.78 0.15 310); color: oklch(0.12 0.02 310); }
+    .mode-debug   { background: var(--warn); color: oklch(0.12 0.02 75); }
+    .mode-find    { background: oklch(0.78 0.15 210); color: oklch(0.12 0.02 210); }
+    .mode-replace { background: oklch(0.72 0.18 25); color: oklch(0.95 0 0); }
+
+    /* Separator arrow */
+    .sb-arrow { padding: 0 8px; color: var(--fg-ghost); }
+
+    /* File path item */
+    .sb-file { color: var(--fg-dim); }
+    .sb-file.modified::after {
+      content: ' ●';
+      color: var(--accent); font-size: 9px;
+    }
+
+    /* Push right-side items to the right */
+    .sb-spacer { flex: 1; }
+
+    /* Generic status item */
+    .sb-item { padding: 0 10px; }
+    .sb-sep { color: var(--fg-ghost); padding: 0 2px; }
+    /* Semantic variants */
+    .c-good   { color: var(--good); }
+    .c-warn   { color: var(--warn); }
+    .c-err    { color: var(--err);  }
+    .c-info   { color: var(--info); }
+    .c-accent { color: var(--accent); }
+    .c-dim    { color: var(--fg-dim); }
+    .c-faint  { color: var(--fg-faint); }
+
+    /* ════════════════════════════════════════════════════
+       ANNOTATION SYSTEM
+       Arrows + labels pointing at specific parts
+       ════════════════════════════════════════════════════ */
+    .annotations {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 28px;
+      margin-bottom: 28px;
+    }
+    .ann {
+      display: flex; gap: 10px; align-items: flex-start;
+    }
+    .ann-num {
+      width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono); font-size: 9.5px; font-weight: 700;
+      background: var(--surface);
+      border: 0.5px solid var(--border);
+      color: var(--fg-dim);
+      margin-top: 1px;
+    }
+    .ann-num.hl {
+      background: oklch(0.82 0.18 135 / 0.15);
+      border-color: oklch(0.82 0.18 135 / 0.5);
+      color: var(--accent);
+    }
+    .ann-text { font-size: 12px; line-height: 1.6; }
+    .ann-text strong { color: var(--fg); font-weight: 600; }
+    .ann-text code {
+      font-family: var(--mono); font-size: 10.5px;
+      background: var(--surface); border: 0.5px solid var(--border);
+      border-radius: 3px; padding: 0 5px; color: var(--fg-dim);
+    }
+    .ann-text .val { color: var(--accent); font-family: var(--mono); font-size: 10.5px; }
+
+    /* ── Variants table ── */
+    .variants { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
+    .variant-row { display: flex; align-items: center; gap: 16px; }
+    .variant-label {
+      font-family: var(--mono); font-size: 10px; letter-spacing: 0.5px;
+      color: var(--fg-faint); width: 72px; flex-shrink: 0; text-align: right;
+    }
+    .variant-bar {
+      flex: 1;
+      background: var(--bg); border: 0.5px solid var(--border);
+      border-radius: 6px; overflow: hidden;
+    }
+
+    /* ── Spec table ── */
+    .spec-table {
+      width: 100%; border-collapse: collapse;
+      font-size: 12px;
+    }
+    .spec-table th {
+      text-align: left; font-family: var(--mono);
+      font-size: 9.5px; font-weight: 700; letter-spacing: 1.2px;
+      text-transform: uppercase; color: var(--fg-faint);
+      padding: 0 14px 10px;
+      border-bottom: 0.5px solid var(--border);
+    }
+    .spec-table td {
+      padding: 8px 14px;
+      border-bottom: 0.5px solid oklch(0.22 0.015 265 / 0.5);
+      vertical-align: middle;
+      font-family: var(--mono); font-size: 11.5px;
+    }
+    .spec-table tr:last-child td { border-bottom: none; }
+    .spec-table td:first-child { color: var(--fg-dim); font-weight: 500; }
+    .spec-table td:nth-child(2) { color: var(--fg-faint); }
+    .spec-table td:nth-child(3) { color: var(--accent); font-size: 11px; }
+    .spec-wrap {
+      background: var(--bg);
+      border: 0.5px solid var(--border);
+      border-radius: 10px; overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- PAGE HEADER -->
+  <h1>Netherize Editor</h1>
+  <div class="page-title">Title Bar &amp; Status Bar</div>
+  <p class="page-sub">
+    Hai thanh bar duy nhất luôn hiển thị — <strong style="color:var(--fg)">Title Bar</strong> ở trên cùng
+    và <strong style="color:var(--fg)">Status Bar</strong> ở dưới cùng.<br>
+    Mọi thông tin về file, trạng thái editor, vị trí con trỏ đều nằm ở đây.
+    Không có icon, không có menu — chỉ text.
+  </p>
+
+
+  <!--
+    ══════════════════════════════════════════════════════════
+    SECTION A — TITLE BAR
+    ══════════════════════════════════════════════════════════
+  -->
+  <div class="section">
+    <div class="section-title">A · Title Bar</div>
+
+    <!-- Live preview: title bar trong context window thật -->
+    <div class="preview-box">
+      <div class="title-bar">
+        <!-- Zone 1: Traffic lights (trái) -->
+        <div class="traffic-lights">
+          <div class="dot dot-close"></div>
+          <div class="dot dot-min"></div>
+          <div class="dot dot-max"></div>
+        </div>
+
+        <!-- Zone 2: Breadcrumb (center tuyệt đối) -->
+        <div class="title-center">
+          <span class="bc-prefix">~/work/</span>
+          <span>netherize</span>
+          <span class="bc-sep">·</span>
+          <span class="bc-file">src/renderer/glyph.rs</span>
+        </div>
+
+        <!-- Zone 3: Branch (phải) -->
+        <div class="title-right">
+          <div class="branch-dot"></div>
+          <span>feat/gpu-atlas</span>
+        </div>
+      </div>
+      <div class="preview-spacer">
+        <span>… editor content …</span>
+      </div>
+    </div>
+
+    <!-- Annotations -->
+    <div class="annotations">
+      <div class="ann">
+        <div class="ann-num hl">1</div>
+        <div class="ann-text">
+          <strong>Traffic lights</strong> — macOS window controls (đóng / thu nhỏ / phóng to).
+          Không có logic khác. Luôn nằm ở <code>left: 14px</code>.<br>
+          Màu: <span class="val">#ff5f57</span> · <span class="val">#febc2e</span> · <span class="val">#28c840</span>
+        </div>
+      </div>
+      <div class="ann">
+        <div class="ann-num hl">2</div>
+        <div class="ann-text">
+          <strong>Breadcrumb (center)</strong> — tên project + đường dẫn file hiện tại.<br>
+          Dùng <code>position: absolute; left: 50%</code> để luôn ở giữa window bất kể
+          độ rộng traffic lights hay branch indicator.<br>
+          Font: <code>JetBrains Mono 11px</code> · màu: <code>--fg-dim</code> và <code>--fg-faint</code>
+        </div>
+      </div>
+      <div class="ann">
+        <div class="ann-num hl">3</div>
+        <div class="ann-text">
+          <strong>Branch indicator</strong> — git branch hiện tại.<br>
+          Dot <span style="color:var(--good)">●</span> màu <code>--good</code> khi clean,
+          <span style="color:var(--warn)">●</span> <code>--warn</code> khi có changes.<br>
+          Font: <code>JetBrains Mono 10.5px</code>
+        </div>
+      </div>
+      <div class="ann">
+        <div class="ann-num">4</div>
+        <div class="ann-text">
+          <strong>Background</strong>: gradient <code>linear-gradient(to bottom, …260, …260)</code> —
+          tạo chiều sâu nhẹ từ trên xuống.<br>
+          Height cố định: <code>34px</code>.
+          Border-bottom: <code>0.5px solid --border</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- Spec table -->
+    <div class="spec-wrap">
+      <table class="spec-table">
+        <thead><tr><th>Property</th><th>Value</th><th>Token / Note</th></tr></thead>
+        <tbody>
+          <tr><td>height</td><td>34px</td><td>cố định, không co giãn</td></tr>
+          <tr><td>background</td><td>gradient oklch(0.21→0.18 / 260)</td><td>tạo depth nhẹ</td></tr>
+          <tr><td>border-bottom</td><td>0.5px</td><td>--border (60% opacity)</td></tr>
+          <tr><td>traffic lights</td><td>12×12px, gap 8px</td><td>left: 14px from edge</td></tr>
+          <tr><td>breadcrumb</td><td>absolute center</td><td>JetBrains Mono 11px, --fg-dim</td></tr>
+          <tr><td>prefix (~/work/)</td><td>--fg-faint</td><td>mờ hơn để nhấn mạnh tên file</td></tr>
+          <tr><td>separator (·)</td><td>--fg-ghost</td><td>rất mờ</td></tr>
+          <tr><td>branch dot</td><td>6×6px circle</td><td>--good khi clean, --warn khi dirty</td></tr>
+          <tr><td>branch text</td><td>JetBrains Mono 10.5px</td><td>--fg-faint, margin-left: auto</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!--
+    ══════════════════════════════════════════════════════════
+    SECTION B — STATUS BAR
+    ══════════════════════════════════════════════════════════
+  -->
+  <div class="section">
+    <div class="section-title">B · Status Bar</div>
+
+    <!-- Variant: NORMAL mode -->
+    <div class="variants">
+
+      <div class="variant-row">
+        <div class="variant-label">NORMAL</div>
+        <div class="variant-bar">
+          <div class="status-bar">
+            <div class="mode-pill mode-normal">NORMAL</div>
+            <span class="sb-arrow">❯</span>
+            <span class="sb-file">src/renderer/glyph.rs</span>
+            <div class="sb-spacer"></div>
+            <span class="sb-item c-good">✓ 0 errors</span>
+            <span class="sb-sep">·</span>
+            <span class="sb-item c-faint">2 warnings · rust-analyzer</span>
+            <span class="sb-item c-faint">Rust</span>
+            <span class="sb-item c-faint">utf-8</span>
+            <span class="sb-item c-faint">LF</span>
+            <span class="sb-item c-dim">Ln 19, Col 56</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="variant-row">
+        <div class="variant-label">INSERT</div>
+        <div class="variant-bar">
+          <div class="status-bar">
+            <div class="mode-pill mode-insert">INSERT</div>
+            <span class="sb-arrow">❯</span>
+            <span class="sb-file modified">src/renderer/glyph.rs</span>
+            <div class="sb-spacer"></div>
+            <span class="sb-item c-good">✓ 0 errors</span>
+            <span class="sb-sep">·</span>
+            <span class="sb-item c-faint">rust-analyzer</span>
+            <span class="sb-item c-faint">Rust</span>
+            <span class="sb-item c-faint">utf-8</span>
+            <span class="sb-item c-faint">LF</span>
+            <span class="sb-item c-dim">Ln 22, Col 14</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="variant-row">
+        <div class="variant-label">VISUAL</div>
+        <div class="variant-bar">
+          <div class="status-bar">
+            <div class="mode-pill mode-visual">VISUAL</div>
+            <span class="sb-arrow">❯</span>
+            <span class="sb-file">src/renderer/glyph.rs</span>
+            <div class="sb-spacer"></div>
+            <span class="sb-item c-accent">3 lines selected</span>
+            <span class="sb-item c-faint">Rust</span>
+            <span class="sb-item c-faint">utf-8</span>
+            <span class="sb-item c-dim">Ln 19–21, Col 56</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="variant-row">
+        <div class="variant-label">FIND</div>
+        <div class="variant-bar">
+          <div class="status-bar">
+            <div class="mode-pill mode-find">FIND</div>
+            <span class="sb-arrow">❯</span>
+            <span class="sb-file">src/renderer/glyph.rs</span>
+            <div class="sb-spacer"></div>
+            <span class="sb-item c-accent">⌘P</span>
+            <span class="sb-sep">·</span>
+            <span class="sb-item c-faint">8 of 847 matched</span>
+            <span class="sb-item c-faint">Rust</span>
+            <span class="sb-item c-dim">Ln 19, Col 56</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="variant-row">
+        <div class="variant-label">DEBUG</div>
+        <div class="variant-bar">
+          <div class="status-bar">
+            <div class="mode-pill mode-debug">DEBUG</div>
+            <span class="sb-arrow">❯</span>
+            <span class="sb-file">crates/nz-text/src/glyph.rs</span>
+            <div class="sb-spacer"></div>
+            <span class="sb-item" style="color:oklch(0.8 0.15 85)">● paused</span>
+            <span class="sb-sep">·</span>
+            <span class="sb-item c-faint">3 breakpoints · lldb</span>
+            <span class="sb-item c-faint">Rust</span>
+            <span class="sb-item c-dim">Ln 26, Col 28</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="variant-row">
+        <div class="variant-label">ERRORS</div>
+        <div class="variant-bar">
+          <div class="status-bar">
+            <div class="mode-pill mode-normal">NORMAL</div>
+            <span class="sb-arrow">❯</span>
+            <span class="sb-file">src/main.rs</span>
+            <div class="sb-spacer"></div>
+            <span class="sb-item c-err">✗ 3 errors</span>
+            <span class="sb-sep">·</span>
+            <span class="sb-item c-warn">1 warning</span>
+            <span class="sb-sep">·</span>
+            <span class="sb-item c-faint">rust-analyzer</span>
+            <span class="sb-item c-faint">Rust</span>
+            <span class="sb-item c-dim">Ln 4, Col 1</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /variants -->
+
+    <!-- Annotations for status bar zones -->
+    <div class="annotations">
+      <div class="ann">
+        <div class="ann-num hl">A</div>
+        <div class="ann-text">
+          <strong>Mode pill</strong> — phần tử đầu tiên, cao bằng toàn bộ status bar (<code>height: 100%</code>).
+          Màu nền thay đổi theo mode:<br>
+          <span class="val">NORMAL</span> → <code>--accent</code> &nbsp;
+          <span class="val">INSERT</span> → cyan &nbsp;
+          <span class="val">VISUAL</span> → lilac &nbsp;
+          <span class="val">DEBUG</span> → --warn &nbsp;
+          <span class="val">FIND</span> → blue<br>
+          Text luôn là màu tối để tương phản cao. Font 700 · 10px · letter-spacing 0.8px.
+        </div>
+      </div>
+      <div class="ann">
+        <div class="ann-num hl">B</div>
+        <div class="ann-text">
+          <strong>Arrow ❯ + file path</strong> — ngăn cách mode pill và tên file.<br>
+          Arrow <code>--fg-ghost</code>. File path <code>--fg-dim</code>.<br>
+          Nếu file đã được sửa nhưng chưa save: thêm <span class="val">●</span> sau tên
+          (<code>.modified::after</code>), màu <code>--accent</code>.
+        </div>
+      </div>
+      <div class="ann">
+        <div class="ann-num hl">C</div>
+        <div class="ann-text">
+          <strong>Spacer</strong> — <code>flex: 1</code> đẩy tất cả items phía sau sang bên phải.
+          Không có nội dung. Đây là điểm phân chia trái ↔ phải của status bar.
+        </div>
+      </div>
+      <div class="ann">
+        <div class="ann-num hl">D</div>
+        <div class="ann-text">
+          <strong>Diagnostics</strong> — kết quả từ rust-analyzer / LSP:<br>
+          <span style="color:var(--good)">✓ 0 errors</span> màu <code>--good</code> &nbsp;·&nbsp;
+          <span style="color:var(--err)">✗ 3 errors</span> màu <code>--err</code> &nbsp;·&nbsp;
+          <span style="color:var(--warn)">1 warning</span> màu <code>--warn</code>
+        </div>
+      </div>
+      <div class="ann">
+        <div class="ann-num">E</div>
+        <div class="ann-text">
+          <strong>Language · Encoding · EOL</strong> — <code>Rust</code> · <code>utf-8</code> · <code>LF</code>.
+          Tất cả màu <code>--fg-faint</code>. Chỉ hiện khi cần, ẩn đi trong một số mode.
+        </div>
+      </div>
+      <div class="ann">
+        <div class="ann-num hl">F</div>
+        <div class="ann-text">
+          <strong>Ln / Col</strong> — vị trí con trỏ, luôn ở vị trí cuối cùng bên phải.
+          Màu <code>--fg-dim</code> (sáng hơn các item phụ).
+          Font: <code>tabular-nums</code> để số không nhảy chiều rộng khi thay đổi.
+        </div>
+      </div>
+    </div>
+
+    <!-- Spec table -->
+    <div class="spec-wrap">
+      <table class="spec-table">
+        <thead><tr><th>Property</th><th>Value</th><th>Token / Note</th></tr></thead>
+        <tbody>
+          <tr><td>height</td><td>22px</td><td>cố định, nhỏ nhất có thể đọc được</td></tr>
+          <tr><td>background</td><td>--bg</td><td>cùng màu editor, không phân biệt</td></tr>
+          <tr><td>border-top</td><td>0.5px</td><td>--border (60% opacity)</td></tr>
+          <tr><td>font</td><td>JetBrains Mono 10.5px</td><td>letter-spacing: 0.3px</td></tr>
+          <tr><td>mode pill height</td><td>100%</td><td>= 22px, flush với border top/bottom</td></tr>
+          <tr><td>mode pill font</td><td>700 · 10px · ls 0.8px</td><td>uppercase, no padding vertical</td></tr>
+          <tr><td>item padding</td><td>0 10px</td><td>horizontal only</td></tr>
+          <tr><td>separator ·</td><td>--fg-ghost</td><td>rất mờ để không chiếm attention</td></tr>
+          <tr><td>modified indicator</td><td>● after filename</td><td>--accent · font-size 9px</td></tr>
+          <tr><td>Ln/Col</td><td>font-variant-numeric: tabular-nums</td><td>tránh layout shift</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!--
+    ══════════════════════════════════════════════════════════
+    SECTION C — FULL WINDOW CONTEXT
+    Xem 2 bar trong context của 1 cửa sổ thật
+    ══════════════════════════════════════════════════════════
+  -->
+  <div class="section">
+    <div class="section-title">C · Full window context</div>
+
+    <div class="preview-box">
+      <!-- Title bar -->
+      <div class="title-bar">
+        <div class="traffic-lights">
+          <div class="dot dot-close"></div>
+          <div class="dot dot-min"></div>
+          <div class="dot dot-max"></div>
+        </div>
+        <div class="title-center">
+          <span class="bc-prefix">~/work/</span>
+          <span>netherize</span>
+          <span class="bc-sep">·</span>
+          <span class="bc-file">src/renderer/glyph.rs</span>
+        </div>
+        <div class="title-right">
+          <div class="branch-dot"></div>
+          <span>feat/gpu-atlas</span>
+        </div>
+      </div>
+
+      <!-- Simulated editor body -->
+      <div style="
+        height: 120px; background: var(--bg);
+        display: flex; align-items: center; justify-content: center;
+        flex-direction: column; gap: 8px;
+      ">
+        <div style="
+          font-family: var(--mono); font-size: 11px; color: var(--fg-ghost);
+          letter-spacing: 0.4px;
+        ">← 34px Title Bar above</div>
+        <div style="
+          width: 60%; height: 0.5px; background: var(--border);
+        "></div>
+        <div style="
+          font-family: var(--mono); font-size: 11px; color: var(--fg-ghost);
+          letter-spacing: 0.4px;
+        ">editor content area (flex: 1, overflow: hidden)</div>
+        <div style="
+          width: 60%; height: 0.5px; background: var(--border);
+        "></div>
+        <div style="
+          font-family: var(--mono); font-size: 11px; color: var(--fg-ghost);
+          letter-spacing: 0.4px;
+        ">22px Status Bar below ↓</div>
+      </div>
+
+      <!-- Status bar -->
+      <div class="status-bar">
+        <div class="mode-pill mode-normal">NORMAL</div>
+        <span class="sb-arrow">❯</span>
+        <span class="sb-file">src/renderer/glyph.rs</span>
+        <div class="sb-spacer"></div>
+        <span class="sb-item c-good">✓ 0 errors</span>
+        <span class="sb-sep">·</span>
+        <span class="sb-item c-faint">2 warnings · rust-analyzer</span>
+        <span class="sb-item c-faint">Rust</span>
+        <span class="sb-item c-faint">utf-8</span>
+        <span class="sb-item c-faint">LF</span>
+        <span class="sb-item c-dim">Ln 19, Col 56</span>
+      </div>
+    </div>
+
+    <!-- Layout diagram -->
+    <div style="
+      background: var(--bg); border: 0.5px solid var(--border);
+      border-radius: 10px; padding: 20px 24px;
+      font-family: var(--mono); font-size: 11.5px; line-height: 2;
+      color: var(--fg-dim);
+    ">
+<span style="color:var(--fg-faint)">/* Window layout (flex-direction: column) */</span>
+<br>
+<span style="color:var(--accent)">┌─────────────────────────────────────────────────┐</span>
+<br>
+<span style="color:var(--accent)">│</span> <span style="color:var(--warn)">Title Bar</span>       height: <span style="color:var(--info)">34px</span>  flex-shrink: <span style="color:var(--info)">0</span>  <span style="color:var(--accent)">│</span>
+<br>
+<span style="color:var(--accent)">│</span>   [● ● ●]   [~/work/ · file.rs]   [branch ●]     <span style="color:var(--accent)">│</span>
+<br>
+<span style="color:var(--accent)">├─────────────────────────────────────────────────┤</span>
+<br>
+<span style="color:var(--accent)">│</span>                                                 <span style="color:var(--accent)">│</span>
+<br>
+<span style="color:var(--accent)">│</span>  <span style="color:var(--fg-ghost)">Editor content area          flex: 1</span>           <span style="color:var(--accent)">│</span>
+<br>
+<span style="color:var(--accent)">│</span>  <span style="color:var(--fg-ghost)">(file tree · code · terminal · debug panels)</span>   <span style="color:var(--accent)">│</span>
+<br>
+<span style="color:var(--accent)">│</span>                                                 <span style="color:var(--accent)">│</span>
+<br>
+<span style="color:var(--accent)">├─────────────────────────────────────────────────┤</span>
+<br>
+<span style="color:var(--accent)">│</span> <span style="color:var(--info)">Status Bar</span>      height: <span style="color:var(--info)">22px</span>  flex-shrink: <span style="color:var(--info)">0</span>  <span style="color:var(--accent)">│</span>
+<br>
+<span style="color:var(--accent)">│</span>   [MODE] ❯ [file]  ·········  [diag] [lang] [pos] <span style="color:var(--accent)">│</span>
+<br>
+<span style="color:var(--accent)">└─────────────────────────────────────────────────┘</span>
+    </div>
+  </div>
+
+  <script>
+    /* Scale page nếu viewport nhỏ hơn 1100px */
+    function checkWidth() {
+      const scale = Math.min(window.innerWidth / 1180, 1);
+      document.body.style.transform = scale < 1 ? `scale(${scale})` : '';
+      document.body.style.transformOrigin = 'top left';
+    }
+    checkWidth();
+    window.addEventListener('resize', checkWidth);
+  </script>
+
+</body>
+</html>

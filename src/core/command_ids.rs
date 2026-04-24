@@ -78,7 +78,7 @@ pub const OPEN_WORKSPACE_SYMBOLS: &str = "app.open_workspace_symbols";
 pub const SEARCH_IN_FILES: &str = "app.search_in_files";
 pub const OPEN_THEME_SELECTOR: &str = "app.open_theme_selector";
 pub const OPEN_SETTINGS: &str = "app.open_settings";
-pub const OPEN_HELP: &str = "app.open_help";
+pub const OPEN_CHEAT_SHEET: &str = "app.open_cheat_sheet";
 pub const GIT_OPEN_LAZYGIT: &str = "git.open_lazygit";
 pub const GIT_BLAME_LINE: &str = "git.blame_line";
 pub const TERMINAL_ENTER_NORMAL_MODE: &str = "terminal.enter_normal_mode";
@@ -228,6 +228,7 @@ pub const ALL_IDS: &[&str] = &[
     SEARCH_IN_FILES,
     OPEN_THEME_SELECTOR,
     OPEN_SETTINGS,
+    OPEN_CHEAT_SHEET,
     GIT_OPEN_LAZYGIT,
     GIT_BLAME_LINE,
     TERMINAL_ENTER_NORMAL_MODE,
@@ -372,7 +373,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         SEARCH_IN_FILES => Some(Command::SearchInFiles),
         OPEN_THEME_SELECTOR => Some(Command::OpenThemeSelector),
         OPEN_SETTINGS => Some(Command::OpenSettings),
-        OPEN_HELP => Some(Command::OpenHelp),
+        OPEN_CHEAT_SHEET => Some(Command::OpenCheatSheet),
         GIT_OPEN_LAZYGIT => Some(Command::GitOpenLazygit),
         GIT_BLAME_LINE => Some(Command::GitBlameLine),
         LSP_HOVER => Some(Command::LspHover),

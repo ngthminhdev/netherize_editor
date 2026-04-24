@@ -46,21 +46,21 @@ mode = "normal"
 key = "mod+,"
 command = "app.open_settings"
 
-[[bindings]]
-key = "Ctrl+="
-command = "ui.scale_up"
+# [[bindings]]
+# key = "Ctrl+="
+# command = "ui.scale_up"
 
-[[bindings]]
-key = "Ctrl+-"
-command = "ui.scale_down"
+# [[bindings]]
+# key = "Ctrl+-"
+# command = "ui.scale_down"
 
-[[bindings]]
-key = "Ctrl+0"
-command = "ui.scale_reset"
+# [[bindings]]
+# key = "Ctrl+0"
+# command = "ui.scale_reset"
 
-[[bindings]]
-key = "F10"
-command = "runner.smart_compile_and_run"
+# [[bindings]]
+# key = "F10"
+# command = "runner.smart_compile_and_run"
 
 # ───────────────── INSERT ─────────────────
 [[bindings]]
@@ -103,15 +103,15 @@ mode = "insert"
 key = "mod+v"
 command = "editor.paste"
 
-[[bindings]]
-mode = "insert"
-key = "Ctrl+j"
-command = "line.move_down"
+# [[bindings]]
+# mode = "insert"
+# key = "Ctrl+j"
+# command = "line.move_down"
 
-[[bindings]]
-mode = "insert"
-key = "Ctrl+k"
-command = "line.move_up"
+# [[bindings]]
+# mode = "insert"
+# key = "Ctrl+k"
+# command = "line.move_up"
 
 # ───────────────── NORMAL ─────────────────
 [[bindings]]

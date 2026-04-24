@@ -232,7 +232,6 @@ impl Renderer {
             statusbar_padding_x: 14.0,
             statusbar_font_size,
             statusbar_line_height,
-            welcome_version: "v0.3.1-alpha".to_string(),
             welcome_card_max_width: 560.0,
             welcome_card_padding_x: 42.0,
             welcome_card_padding_y: 34.0,
@@ -330,7 +329,6 @@ impl Renderer {
         self.statusbar_padding_x = ui.status_bar.padding_x;
         self.statusbar_font_size = ui.status_bar.font_size;
         self.statusbar_line_height = ui.status_bar.line_height;
-        self.welcome_version = ui.welcome.version.clone();
         self.welcome_card_max_width = ui.welcome.card_max_width;
         self.welcome_card_padding_x = ui.welcome.card_padding_x;
         self.welcome_card_padding_y = ui.welcome.card_padding_y;
