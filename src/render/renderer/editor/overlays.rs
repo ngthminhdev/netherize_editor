@@ -355,13 +355,21 @@ impl Renderer {
                 .max()
                 .unwrap_or(8);
             let visible_rows = completion.filtered_items.len().min(MAX_VISIBLE_ROWS).max(1);
-            let popup_w =
-                (max_len as f32 * char_w + PAD_X * 2.0).clamp(160.0, geometry.viewport_text_width);
+            let desired_popup_w = max_len as f32 * char_w + PAD_X * 2.0;
+            let available_popup_w = geometry.viewport_text_width.max(1.0);
+            let preferred_min_popup_w = 160.0_f32.min(available_popup_w);
+            let popup_w = desired_popup_w.clamp(preferred_min_popup_w, available_popup_w);
+            debug_assert!(
+                popup_w.is_finite() && popup_w >= 1.0,
+                "completion popup width must stay finite: desired={desired_popup_w}, viewport_text_width={}",
+                geometry.viewport_text_width
+            );
             let popup_h = (visible_rows as f32 * geometry.line_height + PAD_Y * 2.0)
                 .max(geometry.line_height);
 
+            let max_anchor_x = (viewport_right - popup_w).max(geometry.viewport_text_left);
             let anchor_x = (geometry.origin_x + completion.anchor_col as f32 * char_w)
-                .clamp(geometry.viewport_text_left, viewport_right - popup_w);
+                .clamp(geometry.viewport_text_left, max_anchor_x);
             let anchor_y = geometry.origin_y + completion.anchor_line as f32 * geometry.line_height;
             let mut popup_y = anchor_y + geometry.line_height;
             if popup_y + popup_h > viewport_bottom {
@@ -513,5 +521,29 @@ impl Renderer {
             &self.queue,
             &self.editor_overlay_glyph_instances,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn completion_popup_width_and_anchor_remain_valid_on_narrow_viewport() {
+        let char_w = 9.5_f32;
+        let max_len = 32usize;
+        let desired_popup_w = max_len as f32 * char_w + 20.0;
+        let viewport_text_width = 80.7749_f32;
+        let viewport_text_left = 110.525_f32;
+        let viewport_right = 191.2999_f32;
+        let anchor_candidate = 150.0_f32;
+
+        let available_popup_w = viewport_text_width.max(1.0);
+        let preferred_min_popup_w = 160.0_f32.min(available_popup_w);
+        let popup_w = desired_popup_w.clamp(preferred_min_popup_w, available_popup_w);
+        let max_anchor_x = (viewport_right - popup_w).max(viewport_text_left);
+        let anchor_x = anchor_candidate.clamp(viewport_text_left, max_anchor_x);
+
+        assert!((popup_w - 80.7749).abs() < 0.001);
+        assert!((max_anchor_x - viewport_text_left).abs() < 0.001);
+        assert!((anchor_x - viewport_text_left).abs() < 0.001);
     }
 }
