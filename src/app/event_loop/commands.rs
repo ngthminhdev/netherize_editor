@@ -738,14 +738,22 @@ impl AppShell {
             | Command::OverlaySelectPrev
             | Command::FilePickerSelectNext
             | Command::FilePickerSelectPrev
-                if self.app_state.buffers().is_empty() =>
+                if self.app_state.buffers().is_empty()
+                    && (!self.app_state.is_command_palette_visible()
+                        || self.app_state.command_palette_mode()
+                            == Some(CommandPaletteMode::RecentProjects)) =>
             {
                 self.app_state
                     .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
                 let report = dispatch_command(&mut self.app_state, command);
                 report.request_redraw || report.state_changed
             }
-            Command::FilePickerConfirmSelection if self.app_state.buffers().is_empty() => {
+            Command::FilePickerConfirmSelection
+                if self.app_state.buffers().is_empty()
+                    && (!self.app_state.is_command_palette_visible()
+                        || self.app_state.command_palette_mode()
+                            == Some(CommandPaletteMode::RecentProjects)) =>
+            {
                 self.app_state
                     .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
                 let selected = self.app_state.command_palette_selected_index().min(
@@ -3324,6 +3332,47 @@ mod tests {
             shell.app_state.command_palette_mode(),
             Some(CommandPaletteMode::LiveGrep)
         );
+        assert!(!shell.app_state.is_command_palette_visible());
+    }
+
+    #[test]
+    fn welcome_recent_projects_can_navigate_without_opening_palette() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let root = std::env::temp_dir().join(format!(
+            "netherize_welcome_recent_nav_{}",
+            std::process::id()
+        ));
+        let project_a = root.join("project_a");
+        let project_b = root.join("project_b");
+        std::fs::create_dir_all(&project_a).expect("create project a");
+        std::fs::create_dir_all(&project_b).expect("create project b");
+        shell.persistent_state.recent_projects = vec![project_a.clone(), project_b.clone()];
+
+        assert!(shell.app_state.buffers().is_empty());
+        assert!(!shell.app_state.is_command_palette_visible());
+
+        assert!(shell.handle_command(Command::OverlaySelectNext));
+
+        assert!(!shell.app_state.is_command_palette_visible());
+        assert_eq!(shell.app_state.command_palette_selected_index(), 1);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn colon_help_vim_command_opens_help_buffer() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+        assert!(shell.handle_command(Command::OpenVimCommand));
+        assert!(shell.handle_command(Command::FilePickerAppendQuery(":help".to_string())));
+        assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+
+        let help = shell
+            .app_state
+            .active_help_buffer()
+            .expect(":help should open the cheat sheet help buffer");
+        assert_eq!(help.title, "[Help]");
+        assert!(help.lines.iter().any(|line| line == "Netherize Help"));
         assert!(!shell.app_state.is_command_palette_visible());
     }
 

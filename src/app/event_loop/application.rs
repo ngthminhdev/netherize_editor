@@ -397,7 +397,6 @@ impl AppShell {
             let active_terminal_session = self.app_state.active_terminal_session_id();
             let references_active = self.app_state.active_buffer_is_references();
             let diagnostics_active = self.app_state.active_buffer_is_diagnostics();
-            let cheat_sheet_active = self.app_state.active_buffer_is_cheat_sheet();
 
             // ── Invariant guard ───────────────────────────────────────────────
             // Nếu terminal buffer đang chiếm center, đảm bảo editor GPU buffer
@@ -416,21 +415,19 @@ impl AppShell {
                 );
             }
 
-            if self.editor_needs_layout || bounds_changed || show_welcome_changed {
+            if self.editor_needs_layout || bounds_changed || show_welcome_changed || show_welcome {
                 if let Some(renderer) = self.renderer.as_mut() {
                     if show_welcome {
-                        let welcome = welcome_screen_model(
-                            &self.ui_config.welcome.version,
+                        let (text, styled) = welcome_screen_content(&self.theme);
+                        renderer.clear_editor_content();
+                        renderer.clear_buffer_terminal();
+                        renderer.update_welcome_screen_content(
+                            &text,
+                            &styled,
+                            center_bounds,
                             &self.persistent_state.recent_projects,
+                            self.app_state.command_palette_selected_index(),
                         );
-                        renderer.clear_editor_content();
-                        renderer.clear_buffer_terminal();
-                        renderer.update_welcome_screen_content(&welcome, center_bounds);
-                    } else if let Some(cheat_sheet) = self.app_state.active_cheat_sheet_buffer() {
-                        let model = cheat_sheet_screen_model(&cheat_sheet.version);
-                        renderer.clear_buffer_terminal();
-                        renderer.clear_editor_content();
-                        renderer.update_welcome_screen_content(&model, center_bounds);
                     } else if let Some(session_id) = active_terminal_session {
                         renderer.clear_welcome_logo();
                         renderer.clear_editor_content();
@@ -473,6 +470,11 @@ impl AppShell {
                         renderer.clear_buffer_terminal();
                         renderer.clear_editor_content();
                         renderer.update_settings_buffer_content(settings, center_bounds);
+                    } else if let Some(help) = self.app_state.active_help_buffer() {
+                        renderer.clear_welcome_logo();
+                        renderer.clear_buffer_terminal();
+                        renderer.clear_editor_content();
+                        renderer.update_help_buffer_content(help, center_bounds);
                     } else {
                         renderer.clear_welcome_logo();
                         renderer.clear_buffer_terminal();
@@ -499,10 +501,8 @@ impl AppShell {
                 self.editor_needs_layout = false;
                 self.editor_caret_needs_layout = false;
                 self.buffer_terminal_needs_layout = false;
-                refresh_highlights_for_viewport = bounds_changed
-                    && !show_welcome
-                    && active_terminal_session.is_none()
-                    && !cheat_sheet_active;
+                refresh_highlights_for_viewport =
+                    bounds_changed && !show_welcome && active_terminal_session.is_none();
             } else if self.editor_caret_needs_layout {
                 if let Some(session_id) = active_terminal_session {
                     // Terminal buffer đang active: xóa editor stale content và
@@ -550,12 +550,6 @@ impl AppShell {
                         renderer.clear_editor_content();
                         renderer.update_settings_buffer_content(settings, center_bounds);
                     }
-                } else if let Some(cheat_sheet) = self.app_state.active_cheat_sheet_buffer() {
-                    if let Some(renderer) = self.renderer.as_mut() {
-                        let model = cheat_sheet_screen_model(&cheat_sheet.version);
-                        renderer.clear_editor_content();
-                        renderer.update_welcome_screen_content(&model, center_bounds);
-                    }
                 } else if !show_welcome && let Some(renderer) = self.renderer.as_mut() {
                     renderer.update_editor_caret(&self.app_state, center_bounds);
                     renderer.update_editor_overlays(&self.app_state, center_bounds);
@@ -582,7 +576,6 @@ impl AppShell {
             if !show_welcome
                 && active_terminal_session.is_none()
                 && !references_active
-                && !cheat_sheet_active
                 && let Some(renderer) = self.renderer.as_ref()
             {
                 if self.app_state.current_mode() != EditorMode::Visual
@@ -600,11 +593,7 @@ impl AppShell {
             }
 
             if let Some(renderer) = self.renderer.as_mut() {
-                if active_terminal_session.is_none()
-                    && !references_active
-                    && !cheat_sheet_active
-                    && !show_welcome
-                {
+                if active_terminal_session.is_none() && !references_active && !show_welcome {
                     if let Some(leap_state) = &self.leap_state {
                         renderer.update_editor_leap_labels(
                             &leap_state.targets,
@@ -625,7 +614,6 @@ impl AppShell {
                     && active_terminal_session.is_none()
                     && !references_active
                     && !diagnostics_active
-                    && !cheat_sheet_active
                     && !self.app_state.has_completion()
                     && self.app_state.active_fuzzy_picker_buffer().is_none()
                     && self.app_state.active_settings_buffer().is_none();
@@ -713,7 +701,7 @@ impl AppShell {
                         BufferContent::Diagnostics(_) => TopbarTabKind::Diagnostics,
                         BufferContent::FuzzyPicker(_) => TopbarTabKind::FuzzyPicker,
                         BufferContent::SettingsTab(_) => TopbarTabKind::Settings,
-                        BufferContent::CheatSheet(_) => TopbarTabKind::CheatSheet,
+                        BufferContent::Help(_) => TopbarTabKind::Help,
                     },
                 })
                 .collect::<Vec<_>>();
@@ -790,7 +778,10 @@ impl AppShell {
             }
         }
 
-        if self.app_state.is_command_palette_visible() {
+        let welcome_recent_projects_active = show_welcome
+            && self.app_state.command_palette_mode() == Some(CommandPaletteMode::RecentProjects);
+
+        if self.app_state.is_command_palette_visible() && !welcome_recent_projects_active {
             let overlay_bounds = [
                 0.0,
                 0.0,

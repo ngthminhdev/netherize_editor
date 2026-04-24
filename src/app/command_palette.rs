@@ -837,13 +837,14 @@ fn workspace_symbol_items(query: &str, max_results: usize) -> Vec<CommandPalette
 
 fn vim_command_items(query: &str) -> Vec<CommandPaletteItem> {
     let trimmed = query.trim();
-    if trimmed.is_empty() {
+    let command_text = trimmed.strip_prefix(':').unwrap_or(trimmed).trim();
+    if command_text.is_empty() {
         // Không gợi ý gì cả — giống nvim thật: chờ người dùng gõ
         return Vec::new();
     }
 
     // Nếu query là số thuần tuý → jump to line
-    if let Ok(n) = trimmed.parse::<usize>() {
+    if let Ok(n) = command_text.parse::<usize>() {
         return vec![CommandPaletteItem {
             label: format!("Go to line {n}"),
             secondary_label: None,

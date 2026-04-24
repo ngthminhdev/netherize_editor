@@ -333,39 +333,44 @@ impl AppShell {
 
     pub(super) fn build_context(&self) -> KeybindingContext {
         let mode = self.app_state.current_mode();
-        let focus = match self.focus_manager.current() {
-            FocusTarget::LeftSidebar => InputFocusContext::Explorer,
-            FocusTarget::RightSidebar => InputFocusContext::Inspector,
-            FocusTarget::BottomPanel => {
-                if matches!(mode, EditorMode::TerminalFocus | EditorMode::TerminalNormal) {
-                    InputFocusContext::Terminal
-                } else {
-                    InputFocusContext::BottomPanel
+        let focus = if self.app_state.buffers().is_empty()
+            && (!self.app_state.is_command_palette_visible()
+                || self.app_state.command_palette_mode()
+                    == Some(CommandPaletteMode::RecentProjects))
+        {
+            InputFocusContext::Welcome
+        } else {
+            match self.focus_manager.current() {
+                FocusTarget::LeftSidebar => InputFocusContext::Explorer,
+                FocusTarget::RightSidebar => InputFocusContext::Inspector,
+                FocusTarget::BottomPanel => {
+                    if matches!(mode, EditorMode::TerminalFocus | EditorMode::TerminalNormal) {
+                        InputFocusContext::Terminal
+                    } else {
+                        InputFocusContext::BottomPanel
+                    }
                 }
-            }
-            FocusTarget::CenterEditor if self.app_state.active_buffer_is_terminal() => {
-                if mode == EditorMode::TerminalNormal {
-                    InputFocusContext::Terminal
-                } else {
-                    InputFocusContext::BufferTerminal
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_terminal() => {
+                    if mode == EditorMode::TerminalNormal {
+                        InputFocusContext::Terminal
+                    } else {
+                        InputFocusContext::BufferTerminal
+                    }
                 }
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_fuzzy_picker() => {
+                    InputFocusContext::FuzzyPicker
+                }
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_settings() => {
+                    InputFocusContext::SettingsTab
+                }
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_diagnostics() => {
+                    InputFocusContext::Diagnostics
+                }
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_references() => {
+                    InputFocusContext::References
+                }
+                _ => InputFocusContext::Editor,
             }
-            FocusTarget::CenterEditor if self.app_state.active_buffer_is_fuzzy_picker() => {
-                InputFocusContext::FuzzyPicker
-            }
-            FocusTarget::CenterEditor if self.app_state.active_buffer_is_settings() => {
-                InputFocusContext::SettingsTab
-            }
-            FocusTarget::CenterEditor if self.app_state.active_buffer_is_cheat_sheet() => {
-                InputFocusContext::CheatSheet
-            }
-            FocusTarget::CenterEditor if self.app_state.active_buffer_is_diagnostics() => {
-                InputFocusContext::Diagnostics
-            }
-            FocusTarget::CenterEditor if self.app_state.active_buffer_is_references() => {
-                InputFocusContext::References
-            }
-            _ => InputFocusContext::Editor,
         };
         KeybindingContext {
             mode,
@@ -988,15 +993,14 @@ mod tests {
     }
 
     #[test]
-    fn build_context_marks_center_cheat_sheet_buffer() {
+    fn build_context_uses_welcome_focus_even_when_sidebar_is_focused() {
         let mut shell = AppShell::new_for_tests().expect("create app shell");
-        shell.app_state.open_cheat_sheet_buffer("1.0.0");
+        let _ = shell.focus_manager.set(FocusTarget::RightSidebar);
 
         let context = shell.build_context();
 
-        assert_eq!(context.mode, EditorMode::Normal);
-        assert_eq!(context.focus, InputFocusContext::CheatSheet);
-        assert!(!context.command_palette_visible);
+        assert_eq!(context.focus, InputFocusContext::Welcome);
+        assert!(context.welcome_visible);
     }
 
     #[test]

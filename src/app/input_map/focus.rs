@@ -382,6 +382,25 @@ impl InputMap {
             });
         }
 
+        if input.modifiers.control_key() && !input.modifiers.super_key() {
+            use KeyCode::*;
+            match input.physical_key {
+                Some(KeyN) => {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectNext,
+                        reason: "palette focus: Ctrl+n -> SelectNext",
+                    });
+                }
+                Some(KeyP) => {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectPrev,
+                        reason: "palette focus: Ctrl+p -> SelectPrev",
+                    });
+                }
+                _ => {}
+            }
+        }
+
         if welcome_visible
             && palette_mode == Some(CommandPaletteMode::RecentProjects)
             && !input.has_command_modifier()

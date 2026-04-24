@@ -1,5 +1,7 @@
 //! Panel UI rendering: Explorer sidebar, Terminal, Welcome logo, TopBar, StatusBar.
 
+use std::path::PathBuf;
+
 use cosmic_text::Metrics;
 
 use crate::{
@@ -9,14 +11,12 @@ use crate::{
         region_pipeline::RegionDrawInstance,
         renderer::{
             Renderer, SidebarFilterState, SidebarRow, StatusbarLayoutKey, TextScissorBatch,
-            TopbarLayoutKey, TopbarTab, TopbarTabKind, WelcomeAccent, WelcomeLang,
-            WelcomeQuickAction, WelcomeRecentProject, WelcomeScreenKind, WelcomeScreenModel,
-            WelcomeSection, WelcomeShortcut,
+            TopbarLayoutKey, TopbarTab, TopbarTabKind,
         },
         text_pipeline::InstanceDrawRange,
     },
     terminal::grid::TerminalGrid,
-    text::text_system::TextSystem,
+    text::text_system::{StyledTextSpan, TextSystem},
 };
 
 use super::helpers::{
@@ -576,115 +576,496 @@ impl Renderer {
 
     // ── Welcome logo ───────────────────────────────────────────────────────────
 
-    /// Render the startup welcome dashboard into the dedicated welcome layer.
-    pub fn update_welcome_screen_content(&mut self, model: &WelcomeScreenModel, bounds: [f32; 4]) {
+    /// Render centered welcome text into the dedicated welcome layer.
+    pub fn update_welcome_screen_content(
+        &mut self,
+        _text: &str,
+        _spans: &[StyledTextSpan],
+        bounds: [f32; 4],
+        recent_projects: &[PathBuf],
+        selected_recent_index: usize,
+    ) {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
             self.clear_welcome_logo();
             return;
         }
 
         self.welcome_logo_scissor = rect_to_scissor(bounds);
-        let is_cheat_sheet = model.kind == WelcomeScreenKind::CheatSheet;
-        let colors = WelcomeRenderColors::from_theme(&self.theme);
-        let mut chrome = Vec::new();
         let mut glyphs = Vec::new();
+        let mut chrome = Vec::new();
+        let bg = self.theme.editor.bg.as_f32();
+        let panel = self.theme.ui.panel_bg.as_f32();
+        let border = self.theme.ui.border_color.as_f32();
+        let fg = self.theme.ui.fg.as_f32();
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let fg_ghost = self.theme.ui.fg_ghost.as_f32();
+        let accent = self.theme.ui.accent.as_f32();
+        let welcome_scale = (self.welcome_card_max_width / 560.0).clamp(0.5, 3.0);
+        let sx = |value: f32| value * welcome_scale;
+        let text_w = |text: &str, size: f32| estimate_monospace_width(text, size);
+        let centered_x = |center: f32, text: &str, size: f32| center - text_w(text, size) * 0.5;
 
-        if is_cheat_sheet {
-            let outer_margin = self.panel_padding.max(10.0);
-            let available_w = (bounds[2] - outer_margin * 2.0).max(1.0);
-            let page_width = available_w;
-            let columns = if page_width >= 980.0 {
-                4usize
-            } else if page_width >= 760.0 {
-                3usize
-            } else if page_width >= 520.0 {
-                2usize
+        chrome.push(RegionDrawInstance::new(bounds, bg));
+
+        let left_w = bounds[2] * 0.55;
+        let divider_x = bounds[0] + left_w;
+        let body_top = bounds[1];
+        let body_h = bounds[3];
+        let mut glow = accent;
+        glow[3] = 0.055;
+        chrome.push(
+            RegionDrawInstance::new(
+                [
+                    bounds[0] + left_w * 0.38,
+                    body_top + body_h * 0.20,
+                    left_w * 0.52,
+                    body_h * 0.30,
+                ],
+                glow,
+            )
+            .with_radius(sx(180.0)),
+        );
+        let mut divider = border;
+        divider[3] = 0.65;
+        chrome.push(RegionDrawInstance::new(
+            [
+                divider_x,
+                body_top + sx(40.0),
+                sx(1.0).max(1.0),
+                (body_h - sx(80.0)).max(1.0),
+            ],
+            divider,
+        ));
+
+        let line = |this: &mut Renderer,
+                    glyphs: &mut Vec<GlyphInstance>,
+                    s: &str,
+                    x: f32,
+                    y: f32,
+                    size: f32,
+                    lh: f32,
+                    color: [f32; 4],
+                    bold: bool| {
+            this.welcome_logo_text_system
+                .set_metrics(Metrics::new(size, lh));
+            this.welcome_logo_text_system.set_size(None, Some(lh));
+            if bold {
+                glyphs.extend(layout_panel_text_bold(
+                    s,
+                    &mut this.welcome_logo_text_system,
+                    &mut this.atlas,
+                    &this.queue,
+                    x,
+                    y,
+                    color,
+                ));
             } else {
-                1usize
-            };
-            let rows = model.sections.len().div_ceil(columns).max(1);
-            let raw_metrics = WelcomeRenderMetrics::new(
-                self.theme.editor.font_size,
-                self.theme.editor.line_height,
-                self.theme.ui.panel_font_size,
-                self.theme.ui.panel_line_height,
-                self.welcome_section_gap,
-            );
-            let raw_height = raw_metrics.page_height(rows);
-            let available_h = (bounds[3] - outer_margin * 2.0).max(1.0);
-            let scale = (available_h / raw_height).clamp(0.82, 1.0);
-            let metrics = raw_metrics.scaled(scale);
-            let page_height = metrics.page_height(rows).min(available_h);
-            let page_x = bounds[0] + ((bounds[2] - page_width) * 0.5).max(0.0);
-            let page_y = bounds[1] + outer_margin;
+                glyphs.extend(layout_panel_text(
+                    s,
+                    &mut this.welcome_logo_text_system,
+                    &mut this.atlas,
+                    &this.queue,
+                    x,
+                    y,
+                    color,
+                ));
+            }
+        };
 
-            self.render_welcome_header(
-                &mut glyphs,
-                &mut chrome,
-                model,
-                [page_x, page_y, page_width, metrics.header_h],
-                metrics,
-                colors,
+        let cx = bounds[0] + left_w * 0.5;
+        let hero_top = body_top + body_h * 0.5 - sx(205.0);
+        let logo_size = sx(86.0);
+        let lx = cx - logo_size * 0.5;
+        let ly = hero_top;
+        let mut logo_glow = accent;
+        logo_glow[3] = 0.14;
+        chrome.push(
+            RegionDrawInstance::new(
+                [
+                    lx - sx(18.0),
+                    ly - sx(18.0),
+                    logo_size + sx(36.0),
+                    logo_size + sx(36.0),
+                ],
+                logo_glow,
+            )
+            .with_radius(sx(70.0)),
+        );
+        // Geometric logo approximation: brackets + double chevrons from the HTML SVG.
+        let s = logo_size / 500.0;
+        for r in [
+            [130.0, 130.0, 25.0, 240.0],
+            [130.0, 130.0, 65.0, 25.0],
+            [130.0, 345.0, 65.0, 25.0],
+            [345.0, 130.0, 25.0, 90.0],
+            [305.0, 130.0, 65.0, 25.0],
+            [345.0, 245.0, 25.0, 125.0],
+            [305.0, 345.0, 65.0, 25.0],
+            [205.0, 215.0, 110.0, 28.0],
+            [225.0, 265.0, 110.0, 28.0],
+        ] {
+            chrome.push(
+                RegionDrawInstance::new([lx + r[0] * s, ly + r[1] * s, r[2] * s, r[3] * s], accent)
+                    .with_radius(sx(3.0)),
             );
-            let legend_y = page_y + metrics.header_h + metrics.gap;
-            self.render_welcome_legend(
+        }
+
+        let title = "Netherize";
+        let title_size = sx(32.0);
+        line(
+            self,
+            &mut glyphs,
+            title,
+            centered_x(cx, title, title_size),
+            hero_top + sx(118.0),
+            title_size,
+            sx(38.0),
+            fg,
+            true,
+        );
+        let tagline = "GPU · Zero Latency · Keyboard Driven";
+        let tagline_size = sx(11.0);
+        line(
+            self,
+            &mut glyphs,
+            tagline,
+            centered_x(cx, tagline, tagline_size),
+            hero_top + sx(156.0),
+            tagline_size,
+            sx(16.0),
+            accent,
+            true,
+        );
+        let meta_y = hero_top + sx(212.0);
+        chrome.push(
+            RegionDrawInstance::new(
+                [cx - sx(190.0), meta_y - sx(2.0), sx(72.0), sx(20.0)],
+                panel,
+            )
+            .with_radius(sx(4.0)),
+        );
+        chrome.push(
+            RegionDrawInstance::new(
+                [cx - sx(190.0), meta_y - sx(2.0), sx(72.0), sx(20.0)],
+                border,
+            )
+            .with_radius(sx(4.0)),
+        );
+        let meta_prefix = format!(
+            "{}   ·   Rust 1.78   ·   wgpu 0.20   ·   by ",
+            self.welcome_version
+        );
+        let meta_author = "ngthminhdev";
+        let meta_size = sx(11.0);
+        let meta_gap = sx(3.0);
+        let meta_w = text_w(&meta_prefix, meta_size) + text_w(meta_author, meta_size) + meta_gap;
+        let meta_x = cx - meta_w * 0.5;
+        line(
+            self,
+            &mut glyphs,
+            &meta_prefix,
+            meta_x,
+            meta_y,
+            meta_size,
+            sx(16.0),
+            fg_ghost,
+            false,
+        );
+        line(
+            self,
+            &mut glyphs,
+            meta_author,
+            meta_x + text_w(&meta_prefix, meta_size) + meta_gap,
+            meta_y,
+            meta_size,
+            sx(16.0),
+            fg,
+            true,
+        );
+
+        let actions = [
+            ("New buffer", ":new"),
+            ("Open project", "⌘ O"),
+            ("File finder", "spc ff"),
+            ("Word search", "spc fw"),
+        ];
+        let action_gap = sx(10.0);
+        let action_width = |label: &str, key: &str| {
+            (sx(112.0) + key.chars().count() as f32 * sx(5.0))
+                .max(sx(32.0) + text_w(label, sx(12.0)) + text_w(key, sx(10.0)))
+        };
+        let total_actions_w: f32 = actions
+            .iter()
+            .map(|(label, key)| action_width(label, key))
+            .sum::<f32>()
+            + action_gap * (actions.len().saturating_sub(1) as f32);
+        let mut ax = cx - total_actions_w * 0.5;
+        let ay = meta_y + sx(58.0);
+        for (label, key) in actions {
+            let w = action_width(label, key);
+            chrome.push(RegionDrawInstance::new([ax, ay, w, sx(32.0)], panel).with_radius(sx(7.0)));
+            chrome
+                .push(RegionDrawInstance::new([ax, ay, w, sx(32.0)], border).with_radius(sx(7.0)));
+            line(
+                self,
                 &mut glyphs,
-                &mut chrome,
-                model,
-                [page_x, legend_y, page_width, metrics.legend_h],
-                metrics,
-                colors,
+                label,
+                ax + sx(12.0),
+                ay + sx(8.0),
+                sx(12.0),
+                sx(16.0),
+                fg_dim,
+                false,
             );
-            let card_grid_y = legend_y + metrics.legend_h + metrics.gap;
-            let card_gap_total = metrics.gap * (columns.saturating_sub(1) as f32);
-            let card_w = ((page_width - card_gap_total) / columns as f32).max(1.0);
-            for (index, section) in model.sections.iter().enumerate() {
-                let col = index % columns;
-                let row = index / columns;
-                let x = page_x + col as f32 * (card_w + metrics.gap);
-                let y = card_grid_y + row as f32 * (metrics.card_h + metrics.gap);
-                self.render_welcome_section_card(
-                    &mut glyphs,
-                    &mut chrome,
-                    section,
-                    [x, y, card_w, metrics.card_h],
-                    metrics,
-                    colors,
+            let kw = key.chars().count() as f32 * sx(6.5) + sx(12.0);
+            let mut abg = accent;
+            abg[3] = 0.12;
+            chrome.push(
+                RegionDrawInstance::new([ax + w - kw - sx(10.0), ay + sx(8.0), kw, sx(16.0)], abg)
+                    .with_radius(sx(3.0)),
+            );
+            line(
+                self,
+                &mut glyphs,
+                key,
+                ax + w - kw - sx(4.0),
+                ay + sx(8.0),
+                sx(10.0),
+                sx(14.0),
+                accent,
+                true,
+            );
+            ax += w + action_gap;
+        }
+        let rust_line = "100% Rust · entire editor rendered on the GPU";
+        let rust_line_size = sx(10.5);
+        line(
+            self,
+            &mut glyphs,
+            rust_line,
+            centered_x(cx, rust_line, rust_line_size),
+            ay + sx(76.0),
+            rust_line_size,
+            sx(17.0),
+            fg_ghost,
+            false,
+        );
+        let no_electron_line = "no Electron · no compromise";
+        let no_electron_size = sx(10.5);
+        line(
+            self,
+            &mut glyphs,
+            no_electron_line,
+            centered_x(cx, no_electron_line, no_electron_size),
+            ay + sx(94.0),
+            no_electron_size,
+            sx(17.0),
+            fg_ghost,
+            false,
+        );
+
+        let rx = divider_x + sx(28.0);
+        let rw = bounds[0] + bounds[2] - rx - sx(32.0);
+        let mut y = body_top + sx(36.0);
+        line(
+            self,
+            &mut glyphs,
+            "RECENT PROJECTS",
+            rx + sx(14.0),
+            y,
+            sx(9.5),
+            sx(14.0),
+            fg_ghost,
+            true,
+        );
+        y += sx(25.0);
+        if recent_projects.is_empty() {
+            line(
+                self,
+                &mut glyphs,
+                "No recent projects yet",
+                rx + sx(14.0),
+                y + sx(8.0),
+                sx(12.0),
+                sx(16.0),
+                fg_dim,
+                false,
+            );
+            line(
+                self,
+                &mut glyphs,
+                "Open a folder with ⌘ O to pin it here.",
+                rx + sx(14.0),
+                y + sx(28.0),
+                sx(10.0),
+                sx(14.0),
+                fg_ghost,
+                false,
+            );
+            y += sx(74.0);
+        }
+        for (index, project) in recent_projects.iter().take(5).enumerate() {
+            let name = project
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("unknown");
+            let path = project.display().to_string();
+            let lang = project
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.to_ascii_uppercase())
+                .unwrap_or_else(|| "DIR".to_string());
+            let active = index == selected_recent_index;
+            if active {
+                let mut a = accent;
+                a[3] = 0.20;
+                chrome.push(
+                    RegionDrawInstance::new([rx, y - 1.0, rw, sx(42.0)], a).with_radius(sx(7.0)),
+                );
+                chrome.push(
+                    RegionDrawInstance::new([rx, y + sx(5.0), sx(3.0), sx(30.0)], accent)
+                        .with_radius(2.0),
                 );
             }
-            let footer_y = card_grid_y
-                + rows as f32 * metrics.card_h
-                + rows.saturating_sub(1) as f32 * metrics.gap;
-            self.render_welcome_footer(
+            chrome.push(
+                RegionDrawInstance::new([rx + sx(14.0), y + sx(9.0), sx(34.0), sx(16.0)], panel)
+                    .with_radius(sx(3.0)),
+            );
+            line(
+                self,
                 &mut glyphs,
-                model,
-                [page_x, footer_y, page_width, metrics.footer_h],
-                metrics,
-                colors,
+                &lang,
+                rx + sx(19.0),
+                y + sx(10.0),
+                sx(9.0),
+                sx(12.0),
+                if lang == "TS" {
+                    self.theme.ui.info.as_f32()
+                } else {
+                    accent
+                },
+                true,
             );
-            let _ = page_height;
-        } else {
-            let raw = WelcomeRenderMetrics::new(
-                self.theme.editor.font_size,
-                self.theme.editor.line_height,
-                self.theme.ui.panel_font_size,
-                self.theme.ui.panel_line_height,
-                self.welcome_section_gap,
+            line(
+                self,
+                &mut glyphs,
+                name,
+                rx + sx(60.0),
+                y + sx(3.0),
+                sx(13.0),
+                sx(16.0),
+                if active { fg } else { fg_dim },
+                active,
             );
-            // Estimate left-panel content height to derive a scale factor
-            let raw_logo: f32 = 72.0_f32.max(52.0);
-            let raw_btn_h: f32 = 28.0_f32.max(22.0);
-            let raw_btn_gap: f32 = 8.0_f32.max(5.0);
-            let raw_footer_lh = (raw.footer_font * 1.65_f32).max(14.0);
-            let needed_h = raw_logo + 20.0
-                + raw.title_line_h + raw.line_h + 6.0 + raw.line_h
-                + 32.0 + raw_btn_h + raw_btn_gap + raw_btn_h + 36.0
-                + raw_footer_lh + 4.0 + raw_footer_lh;
-            let available_h = (bounds[3] - 32.0).max(1.0);
-            let scale = (available_h / needed_h).clamp(0.70, 1.0);
-            let metrics = raw.scaled(scale);
-            self.render_welcome_two_panel(&mut glyphs, &mut chrome, model, bounds, metrics, colors);
+            line(
+                self,
+                &mut glyphs,
+                &path,
+                rx + sx(60.0),
+                y + sx(20.0),
+                sx(10.0),
+                sx(13.0),
+                fg_ghost,
+                false,
+            );
+            line(
+                self,
+                &mut glyphs,
+                if index == 0 { "latest" } else { "recent" },
+                rx + rw - sx(70.0),
+                y + sx(12.0),
+                sx(10.0),
+                sx(13.0),
+                fg_ghost,
+                false,
+            );
+            y += sx(44.0);
         }
+        line(
+            self,
+            &mut glyphs,
+            "show all  →",
+            rx + sx(14.0),
+            y + sx(2.0),
+            10.0,
+            14.0,
+            accent,
+            false,
+        );
+        y += sx(54.0);
+        line(
+            self,
+            &mut glyphs,
+            "KEYBOARD SHORTCUTS",
+            rx,
+            y,
+            sx(9.5),
+            sx(14.0),
+            fg_ghost,
+            true,
+        );
+        y += sx(24.0);
+        let shortcuts = [
+            (vec!["⌘", "O"], "Open file or project"),
+            (vec!["j", "k", "enter"], "Select recent project"),
+            (vec!["<space>", "f", "f"], "File picker (fuzzy find)"),
+            (vec!["<space>", "f", "w"], "Find word / grep (fzf)"),
+        ];
+        for (keys, label) in shortcuts {
+            let row_y = y;
+            let mut kx = rx;
+            for k in keys {
+                let kw = k.chars().count() as f32 * sx(6.5) + sx(14.0);
+                chrome.push(
+                    RegionDrawInstance::new([kx, row_y, kw, sx(22.0)], panel).with_radius(sx(5.0)),
+                );
+                chrome.push(
+                    RegionDrawInstance::new([kx, row_y + sx(21.0), kw, sx(2.0)], bg)
+                        .with_radius(sx(2.0)),
+                );
+                line(
+                    self,
+                    &mut glyphs,
+                    k,
+                    kx + sx(7.0),
+                    row_y + sx(4.0),
+                    sx(11.0),
+                    sx(14.0),
+                    fg,
+                    true,
+                );
+                kx += kw + sx(4.0);
+            }
+            line(
+                self,
+                &mut glyphs,
+                label,
+                rx + sx(172.0),
+                row_y + sx(4.0),
+                sx(12.5),
+                sx(16.0),
+                fg_dim,
+                false,
+            );
+            let mut sub = border;
+            sub[3] = 0.45;
+            chrome.push(RegionDrawInstance::new(
+                [rx, row_y + sx(34.0), rw, sx(1.0).max(1.0)],
+                sub,
+            ));
+            y += sx(40.0);
+        }
+        line(
+            self,
+            &mut glyphs,
+            "press ? for all bindings   ·   :help for docs",
+            rx,
+            y + sx(8.0),
+            sx(10.0),
+            sx(14.0),
+            fg_ghost,
+            false,
+        );
 
         self.welcome_logo_chrome_instances = chrome;
         self.welcome_logo_glyph_instances = glyphs;
@@ -693,1226 +1074,6 @@ impl Renderer {
             &self.queue,
             &self.welcome_logo_glyph_instances,
         );
-    }
-
-    fn render_welcome_header(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        chrome: &mut Vec<RegionDrawInstance>,
-        model: &WelcomeScreenModel,
-        bounds: [f32; 4],
-        metrics: WelcomeRenderMetrics,
-        colors: WelcomeRenderColors,
-    ) {
-        let logo = (52.0 * metrics.scale).max(42.0);
-        let logo_x = bounds[0];
-        let logo_y = bounds[1] + ((bounds[3] - logo) * 0.5).max(0.0);
-        chrome.push(
-            RegionDrawInstance::new([logo_x, logo_y, logo, logo], colors.border)
-                .with_radius(8.0 * metrics.scale),
-        );
-        chrome.push(
-            RegionDrawInstance::new(
-                [logo_x + 1.0, logo_y + 1.0, logo - 2.0, logo - 2.0],
-                colors.surface,
-            )
-            .with_radius(7.0 * metrics.scale),
-        );
-        let bar_w = (4.0 * metrics.scale).max(2.0);
-        let bar_h = logo * 0.58;
-        let bar_y = logo_y + logo * 0.21;
-        chrome.push(RegionDrawInstance::new(
-            [logo_x + logo * 0.26, bar_y, bar_w, bar_h],
-            colors.accent,
-        ));
-        chrome.push(RegionDrawInstance::new(
-            [logo_x + logo * 0.68, bar_y, bar_w, bar_h],
-            colors.accent,
-        ));
-        chrome.push(RegionDrawInstance::new(
-            [
-                logo_x + logo * 0.36,
-                logo_y + logo * 0.48,
-                logo * 0.28,
-                bar_w,
-            ],
-            colors.accent_dim,
-        ));
-
-        let title_x = logo_x + logo + 16.0 * metrics.scale;
-        let title_y = bounds[1] + 10.0 * metrics.scale;
-        self.append_welcome_text(
-            glyphs,
-            &model.title,
-            title_x,
-            title_y,
-            colors.fg,
-            metrics.title_font,
-            metrics.title_line_h,
-            PopupTextStyle::Bold,
-            Some(bounds[2] * 0.62),
-        );
-        self.append_welcome_text(
-            glyphs,
-            &model.subtitle,
-            title_x,
-            title_y + metrics.title_line_h,
-            colors.accent,
-            metrics.caption_font,
-            metrics.line_h,
-            PopupTextStyle::Normal,
-            Some(bounds[2] * 0.62),
-        );
-
-        let meta = clamp_monospace_text(&model.meta, bounds[2] * 0.34, metrics.caption_font);
-        let meta_w = estimate_monospace_width(&meta, metrics.caption_font);
-        self.append_welcome_text(
-            glyphs,
-            &meta,
-            bounds[0] + bounds[2] - meta_w,
-            title_y + metrics.line_h * 0.55,
-            colors.fg_ghost,
-            metrics.caption_font,
-            metrics.line_h,
-            PopupTextStyle::Normal,
-            Some(bounds[2] * 0.34),
-        );
-    }
-
-    fn render_welcome_legend(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        chrome: &mut Vec<RegionDrawInstance>,
-        model: &WelcomeScreenModel,
-        bounds: [f32; 4],
-        metrics: WelcomeRenderMetrics,
-        colors: WelcomeRenderColors,
-    ) {
-        chrome
-            .push(RegionDrawInstance::new(bounds, colors.border).with_radius(8.0 * metrics.scale));
-        chrome.push(
-            RegionDrawInstance::new(
-                [
-                    bounds[0] + 1.0,
-                    bounds[1] + 1.0,
-                    bounds[2] - 2.0,
-                    bounds[3] - 2.0,
-                ],
-                colors.surface,
-            )
-            .with_radius(7.0 * metrics.scale),
-        );
-
-        let mut x = bounds[0] + 14.0 * metrics.scale;
-        let y = bounds[1] + ((bounds[3] - metrics.key_h) * 0.5).max(0.0);
-        self.append_welcome_text(
-            glyphs,
-            "Legend:",
-            x,
-            y + 1.0 * metrics.scale,
-            colors.fg_dim,
-            metrics.body_font,
-            metrics.line_h,
-            PopupTextStyle::Bold,
-            Some(bounds[2]),
-        );
-        x += estimate_monospace_width("Legend:", metrics.body_font) + 14.0 * metrics.scale;
-
-        for shortcut in &model.legend {
-            let used = self.append_welcome_key_sequence(
-                glyphs,
-                chrome,
-                &shortcut.keys,
-                x,
-                y,
-                bounds[0] + bounds[2] - x,
-                metrics,
-                colors.accent,
-                colors,
-            );
-            x += used + 6.0 * metrics.scale;
-            let label = clamp_monospace_text(
-                &shortcut.label,
-                (bounds[0] + bounds[2] - x).max(1.0),
-                metrics.caption_font,
-            );
-            self.append_welcome_text(
-                glyphs,
-                &label,
-                x,
-                y + 2.0 * metrics.scale,
-                colors.fg_ghost,
-                metrics.caption_font,
-                metrics.line_h,
-                PopupTextStyle::Normal,
-                Some(bounds[0] + bounds[2] - x),
-            );
-            x += estimate_monospace_width(&label, metrics.caption_font) + 18.0 * metrics.scale;
-            if x > bounds[0] + bounds[2] - 72.0 * metrics.scale {
-                break;
-            }
-        }
-    }
-
-    fn render_welcome_section_card(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        chrome: &mut Vec<RegionDrawInstance>,
-        section: &WelcomeSection,
-        bounds: [f32; 4],
-        metrics: WelcomeRenderMetrics,
-        colors: WelcomeRenderColors,
-    ) {
-        let accent = colors.accent_for(section.accent);
-        chrome
-            .push(RegionDrawInstance::new(bounds, colors.border).with_radius(8.0 * metrics.scale));
-        chrome.push(
-            RegionDrawInstance::new(
-                [
-                    bounds[0] + 1.0,
-                    bounds[1] + 1.0,
-                    bounds[2] - 2.0,
-                    bounds[3] - 2.0,
-                ],
-                colors.panel,
-            )
-            .with_radius(7.0 * metrics.scale),
-        );
-        chrome.push(
-            RegionDrawInstance::new(
-                [
-                    bounds[0] + 1.0,
-                    bounds[1] + 1.0,
-                    bounds[2] - 2.0,
-                    metrics.card_header_h,
-                ],
-                colors.surface,
-            )
-            .with_radius(7.0 * metrics.scale),
-        );
-
-        let dot = (8.0 * metrics.scale).max(5.0);
-        chrome.push(
-            RegionDrawInstance::new(
-                [
-                    bounds[0] + metrics.card_pad_x,
-                    bounds[1] + (metrics.card_header_h - dot) * 0.5,
-                    dot,
-                    dot,
-                ],
-                accent,
-            )
-            .with_radius(dot * 0.5),
-        );
-
-        let title = section.title.to_ascii_uppercase();
-        let title_x = bounds[0] + metrics.card_pad_x + dot + 8.0 * metrics.scale;
-        let caption_w = estimate_monospace_width(&section.caption, metrics.caption_font);
-        let title_max_w = (bounds[2] - metrics.card_pad_x * 2.0 - dot - caption_w - 24.0).max(1.0);
-        let title = clamp_monospace_text(&title, title_max_w, metrics.section_font);
-        self.append_welcome_text(
-            glyphs,
-            &title,
-            title_x,
-            bounds[1] + 9.0 * metrics.scale,
-            accent,
-            metrics.section_font,
-            metrics.line_h,
-            PopupTextStyle::Bold,
-            Some(title_max_w),
-        );
-
-        let caption =
-            clamp_monospace_text(&section.caption, bounds[2] * 0.28, metrics.caption_font);
-        let caption_w = estimate_monospace_width(&caption, metrics.caption_font);
-        self.append_welcome_text(
-            glyphs,
-            &caption,
-            bounds[0] + bounds[2] - metrics.card_pad_x - caption_w,
-            bounds[1] + 9.0 * metrics.scale,
-            colors.fg_ghost,
-            metrics.caption_font,
-            metrics.line_h,
-            PopupTextStyle::Normal,
-            Some(bounds[2] * 0.28),
-        );
-
-        let inner_x = bounds[0] + metrics.card_pad_x;
-        let inner_w = (bounds[2] - metrics.card_pad_x * 2.0).max(1.0);
-        let key_area_w = (inner_w * 0.43)
-            .clamp(96.0 * metrics.scale, 156.0 * metrics.scale)
-            .min(inner_w * 0.62);
-        let label_x = inner_x + key_area_w + 10.0 * metrics.scale;
-        let label_w = (bounds[0] + bounds[2] - metrics.card_pad_x - label_x).max(1.0);
-        let mut row_y = bounds[1] + metrics.card_header_h + 8.0 * metrics.scale;
-
-        for shortcut in &section.shortcuts {
-            self.append_welcome_shortcut_row(
-                glyphs, chrome, shortcut, inner_x, label_x, row_y, key_area_w, label_w,
-                metrics.row_h, metrics, accent, colors,
-            );
-            row_y += metrics.row_h;
-            if row_y + metrics.row_h > bounds[1] + bounds[3] {
-                break;
-            }
-        }
-    }
-
-    fn append_welcome_shortcut_row(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        chrome: &mut Vec<RegionDrawInstance>,
-        shortcut: &WelcomeShortcut,
-        key_x: f32,
-        label_x: f32,
-        y: f32,
-        key_area_w: f32,
-        label_w: f32,
-        row_h: f32,
-        metrics: WelcomeRenderMetrics,
-        accent: [f32; 4],
-        colors: WelcomeRenderColors,
-    ) {
-        self.append_welcome_key_sequence(
-            glyphs,
-            chrome,
-            &shortcut.keys,
-            key_x,
-            y + (row_h - metrics.key_h) * 0.5,
-            key_area_w,
-            metrics,
-            accent,
-            colors,
-        );
-        let label = clamp_monospace_text(&shortcut.label, label_w, metrics.body_font);
-        let color = if shortcut.important {
-            colors.fg
-        } else {
-            colors.fg_dim
-        };
-        self.append_welcome_text(
-            glyphs,
-            &label,
-            label_x,
-            y + (row_h - metrics.line_h) * 0.5,
-            color,
-            metrics.body_font,
-            metrics.line_h,
-            PopupTextStyle::Normal,
-            Some(label_w),
-        );
-    }
-
-    fn append_welcome_key_sequence(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        chrome: &mut Vec<RegionDrawInstance>,
-        keys: &[String],
-        x: f32,
-        y: f32,
-        max_width: f32,
-        metrics: WelcomeRenderMetrics,
-        accent: [f32; 4],
-        colors: WelcomeRenderColors,
-    ) -> f32 {
-        let mut cursor_x = x;
-        let key_gap = 4.0 * metrics.scale;
-        for key in keys {
-            let remaining = x + max_width - cursor_x;
-            if remaining < 18.0 * metrics.scale {
-                break;
-            }
-            let label =
-                clamp_monospace_text(key, remaining - 8.0 * metrics.scale, metrics.key_font);
-            let text_w = estimate_monospace_width(&label, metrics.key_font);
-            let key_w = (text_w + 12.0 * metrics.scale)
-                .max(22.0 * metrics.scale)
-                .min(remaining);
-            let outer = alpha(accent, 0.58);
-            let inner = colors.key_bg;
-            chrome.push(
-                RegionDrawInstance::new([cursor_x, y, key_w, metrics.key_h], outer)
-                    .with_radius(4.0 * metrics.scale),
-            );
-            chrome.push(
-                RegionDrawInstance::new(
-                    [
-                        cursor_x + 1.0,
-                        y + 1.0,
-                        (key_w - 2.0).max(1.0),
-                        (metrics.key_h - 2.0).max(1.0),
-                    ],
-                    inner,
-                )
-                .with_radius(3.0 * metrics.scale),
-            );
-            self.append_welcome_text(
-                glyphs,
-                &label,
-                cursor_x + ((key_w - text_w) * 0.5).max(0.0),
-                y + ((metrics.key_h - metrics.line_h) * 0.5).max(0.0) + 1.0 * metrics.scale,
-                colors.fg,
-                metrics.key_font,
-                metrics.line_h,
-                PopupTextStyle::Bold,
-                Some(key_w),
-            );
-            cursor_x += key_w + key_gap;
-        }
-
-        (cursor_x - x - key_gap).max(0.0)
-    }
-
-    fn render_welcome_footer(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        model: &WelcomeScreenModel,
-        bounds: [f32; 4],
-        metrics: WelcomeRenderMetrics,
-        colors: WelcomeRenderColors,
-    ) {
-        let y = bounds[1] + ((bounds[3] - metrics.line_h) * 0.5).max(0.0);
-        let right = clamp_monospace_text(&model.footer_right, bounds[2] * 0.4, metrics.footer_font);
-        let right_w = estimate_monospace_width(&right, metrics.footer_font);
-        let left_max_w = (bounds[2] - right_w - 24.0 * metrics.scale).max(1.0);
-        let left = clamp_monospace_text(&model.footer_left, left_max_w, metrics.footer_font);
-        self.append_welcome_text(
-            glyphs,
-            &left,
-            bounds[0],
-            y,
-            colors.fg_ghost,
-            metrics.footer_font,
-            metrics.line_h,
-            PopupTextStyle::Normal,
-            Some(left_max_w),
-        );
-        self.append_welcome_text(
-            glyphs,
-            &right,
-            bounds[0] + bounds[2] - right_w,
-            y,
-            colors.fg_ghost,
-            metrics.footer_font,
-            metrics.line_h,
-            PopupTextStyle::Normal,
-            Some(right_w),
-        );
-    }
-
-    // ── Two-panel Welcome layout ───────────────────────────────────────────────
-
-    fn render_welcome_two_panel(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        chrome: &mut Vec<RegionDrawInstance>,
-        model: &WelcomeScreenModel,
-        bounds: [f32; 4],
-        metrics: WelcomeRenderMetrics,
-        colors: WelcomeRenderColors,
-    ) {
-        let left_w = (bounds[2] * 0.55).floor();
-        let right_w = bounds[2] - left_w;
-        let div_x = bounds[0] + left_w;
-        let div_margin = bounds[3] * 0.07;
-        chrome.push(RegionDrawInstance::new(
-            [div_x, bounds[1] + div_margin, 0.5, bounds[3] - div_margin * 2.0],
-            alpha(colors.border, 0.65),
-        ));
-
-        let left_pad = (left_w * 0.09).max(20.0);
-        let right_pad_l = (right_w * 0.08).max(18.0);
-        let right_pad_r = (right_w * 0.04).max(8.0);
-        let left_inner = [bounds[0] + left_pad, bounds[1], left_w - left_pad * 2.0, bounds[3]];
-        let right_inner = [
-            div_x + right_pad_l,
-            bounds[1],
-            (right_w - right_pad_l - right_pad_r).max(1.0),
-            bounds[3],
-        ];
-
-        self.render_welcome_hero(glyphs, chrome, model, left_inner, metrics, colors);
-        self.render_welcome_sidebar(glyphs, chrome, model, right_inner, metrics, colors);
-    }
-
-    fn render_welcome_hero(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        chrome: &mut Vec<RegionDrawInstance>,
-        model: &WelcomeScreenModel,
-        bounds: [f32; 4],
-        metrics: WelcomeRenderMetrics,
-        colors: WelcomeRenderColors,
-    ) {
-        let sc = metrics.scale;
-        let logo_size = (72.0 * sc).max(52.0);
-        let btn_h = (28.0 * sc).max(22.0);
-        let btn_gap = (8.0 * sc).max(5.0);
-        let footer_line_h = (metrics.footer_font * 1.65).max(14.0);
-        let btn_inner_gap = (8.0 * sc).max(5.0);
-
-        // Decide button row count up front (needed for correct total_h).
-        let btn_row_count: usize = if model.quick_actions.is_empty() {
-            0
-        } else {
-            let all_w: f32 = model.quick_actions.iter().map(|a| {
-                let label_w = a.label.chars().count() as f32 * metrics.body_font * 0.52;
-                let key_w = estimate_monospace_width(&a.key, metrics.key_font) + 8.0 * sc;
-                (12.0 * sc * 2.0 + label_w + 8.0 * sc + key_w + 2.0).ceil()
-            }).sum::<f32>() + btn_inner_gap * model.quick_actions.len().saturating_sub(1) as f32;
-            if all_w <= bounds[2] { 1 } else { 2 }
-        };
-        let btns_h = btn_h * btn_row_count as f32
-            + btn_gap * btn_row_count.saturating_sub(1) as f32;
-
-        let total_h = logo_size
-            + 20.0 * sc
-            + metrics.title_line_h
-            + metrics.line_h
-            + 6.0 * sc
-            + metrics.line_h
-            + 32.0 * sc
-            + btns_h
-            + 36.0 * sc
-            + footer_line_h
-            + 4.0 * sc
-            + footer_line_h;
-
-        let start_y = bounds[1] + ((bounds[3] - total_h) * 0.5).max(20.0 * sc);
-        let cx = bounds[0] + bounds[2] * 0.5;
-        let mut cy = start_y;
-
-        // Logo
-        let logo_x = cx - logo_size * 0.5;
-        self.render_welcome_logo_mark(glyphs, chrome, logo_x, cy, logo_size, metrics, colors);
-        cy += logo_size + 20.0 * sc;
-
-        // Title
-        let title_approx_w = model.title.chars().count() as f32 * metrics.title_font * 0.52;
-        let title_x = (cx - title_approx_w * 0.5).max(bounds[0]);
-        self.append_welcome_text(
-            glyphs,
-            &model.title,
-            title_x,
-            cy,
-            colors.fg,
-            metrics.title_font,
-            metrics.title_line_h,
-            PopupTextStyle::Bold,
-            Some(bounds[2]),
-        );
-        cy += metrics.title_line_h;
-
-        // Subtitle (uppercase, accent, spaced)
-        let sub = model.subtitle.to_ascii_uppercase();
-        let sub_w = estimate_monospace_width(&sub, metrics.caption_font);
-        let sub_x = (cx - sub_w * 0.5).max(bounds[0]);
-        self.append_welcome_text(
-            glyphs,
-            &sub,
-            sub_x,
-            cy,
-            colors.accent,
-            metrics.caption_font,
-            metrics.line_h,
-            PopupTextStyle::Normal,
-            Some(bounds[2]),
-        );
-        cy += metrics.line_h + 6.0 * sc;
-
-        // Meta row
-        self.render_welcome_meta_row(glyphs, chrome, model, cx, cy, bounds[2], metrics, colors);
-        cy += metrics.line_h + 32.0 * sc;
-
-        // Quick actions
-        self.render_welcome_quick_actions(
-            glyphs,
-            chrome,
-            &model.quick_actions,
-            cx,
-            cy,
-            bounds[2],
-            btn_h,
-            btn_gap,
-            metrics,
-            colors,
-        );
-        cy += btns_h + 36.0 * sc;
-
-        // Footer tagline (2 lines, centered)
-        let fl_w = estimate_monospace_width(&model.footer_left, metrics.footer_font);
-        let fl_x = (cx - fl_w * 0.5).max(bounds[0]);
-        self.append_welcome_text(
-            glyphs,
-            &model.footer_left,
-            fl_x,
-            cy,
-            colors.fg_ghost,
-            metrics.footer_font,
-            footer_line_h,
-            PopupTextStyle::Normal,
-            Some(bounds[2]),
-        );
-        cy += footer_line_h + 4.0 * sc;
-        let fr_w = estimate_monospace_width(&model.footer_right, metrics.footer_font);
-        let fr_x = (cx - fr_w * 0.5).max(bounds[0]);
-        self.append_welcome_text(
-            glyphs,
-            &model.footer_right,
-            fr_x,
-            cy,
-            colors.fg_ghost,
-            metrics.footer_font,
-            footer_line_h,
-            PopupTextStyle::Normal,
-            Some(bounds[2]),
-        );
-    }
-
-    fn render_welcome_logo_mark(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        chrome: &mut Vec<RegionDrawInstance>,
-        logo_x: f32,
-        logo_y: f32,
-        logo: f32,
-        metrics: WelcomeRenderMetrics,
-        colors: WelcomeRenderColors,
-    ) {
-        let sc = metrics.scale;
-        let thick = (logo * 0.054).max(2.5);
-
-        // Subtle accent glow background
-        chrome.push(
-            RegionDrawInstance::new([logo_x, logo_y, logo, logo], alpha(colors.accent, 0.09))
-                .with_radius(12.0 * sc),
-        );
-
-        // Left bracket [
-        let lx = logo_x + logo * 0.26;
-        let ly = logo_y + logo * 0.26;
-        let lh = logo * 0.48;
-        let cap_w = logo * 0.13;
-        chrome.push(RegionDrawInstance::new([lx, ly, thick, lh], colors.accent));
-        chrome.push(RegionDrawInstance::new([lx, ly, cap_w, thick], colors.accent));
-        chrome.push(RegionDrawInstance::new([lx, ly + lh - thick, cap_w, thick], colors.accent));
-
-        // Right bracket partial ] (two corners)
-        let rx = logo_x + logo * 0.61;
-        let rright = logo_x + logo * 0.74;
-        let corner_v = logo * 0.18;
-        chrome.push(RegionDrawInstance::new([rx, ly, rright - rx, thick], colors.accent));
-        chrome.push(RegionDrawInstance::new([rright - thick, ly, thick, corner_v], colors.accent));
-        chrome.push(RegionDrawInstance::new([rx, ly + lh - thick, rright - rx, thick], colors.accent));
-        chrome.push(RegionDrawInstance::new(
-            [rright - thick, ly + lh - corner_v, thick, corner_v],
-            colors.accent,
-        ));
-
-        // Chevron < (primary, accent color)
-        let ch_font = (logo * 0.34).max(16.0);
-        let ch_w = estimate_monospace_width("<", ch_font);
-        let ch_x = logo_x + logo * 0.395 - ch_w * 0.5;
-        let ch_y = logo_y + (logo - ch_font * 1.15) * 0.5;
-        self.append_welcome_text(
-            glyphs,
-            "<",
-            ch_x,
-            ch_y,
-            colors.accent,
-            ch_font,
-            ch_font * 1.2,
-            PopupTextStyle::Bold,
-            Some(logo * 0.4),
-        );
-        // Second chevron (dim, offset right+down)
-        self.append_welcome_text(
-            glyphs,
-            "<",
-            ch_x + logo * 0.10,
-            ch_y + logo * 0.065,
-            alpha(colors.accent, 0.50),
-            ch_font,
-            ch_font * 1.2,
-            PopupTextStyle::Bold,
-            Some(logo * 0.4),
-        );
-    }
-
-    fn render_welcome_meta_row(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        chrome: &mut Vec<RegionDrawInstance>,
-        model: &WelcomeScreenModel,
-        cx: f32,
-        y: f32,
-        avail_w: f32,
-        metrics: WelcomeRenderMetrics,
-        colors: WelcomeRenderColors,
-    ) {
-        let sc = metrics.scale;
-        let font = metrics.caption_font;
-        let sep = "  ·  ";
-        let ver = &model.meta_version;
-        let meta_rest = &model.meta;
-
-        let sep_w = estimate_monospace_width(sep, font);
-        let ver_text_w = estimate_monospace_width(ver, font);
-        let ver_pad = 6.0 * sc;
-        let badge_w = ver_text_w + ver_pad * 2.0;
-        let badge_h = (font * 1.55).max(metrics.line_h * 0.85);
-        let meta_rest_w = estimate_monospace_width(meta_rest, font);
-
-        let total_w = if ver.is_empty() {
-            meta_rest_w
-        } else {
-            badge_w + sep_w + meta_rest_w
-        };
-        let total_w = total_w.min(avail_w);
-        let mut x = cx - total_w * 0.5;
-
-        if !ver.is_empty() {
-            // Version badge
-            chrome.push(
-                RegionDrawInstance::new([x, y, badge_w, badge_h], alpha(colors.border, 1.0))
-                    .with_radius(4.0 * sc),
-            );
-            chrome.push(
-                RegionDrawInstance::new(
-                    [x + 1.0, y + 1.0, badge_w - 2.0, badge_h - 2.0],
-                    alpha(colors.surface, 0.95),
-                )
-                .with_radius(3.0 * sc),
-            );
-            self.append_welcome_text(
-                glyphs,
-                ver,
-                x + ver_pad,
-                y + (badge_h - metrics.line_h) * 0.5,
-                colors.fg_dim,
-                font,
-                metrics.line_h,
-                PopupTextStyle::Normal,
-                Some(badge_w),
-            );
-            x += badge_w;
-        }
-
-        let meta_full = if ver.is_empty() {
-            meta_rest.clone()
-        } else {
-            format!("{sep}{meta_rest}")
-        };
-        if let Some(by_pos) = meta_full.find("by ") {
-            let before = &meta_full[..by_pos + 3];
-            let author = &meta_full[by_pos + 3..];
-            let before_w = estimate_monospace_width(before, font);
-            self.append_welcome_text(
-                glyphs,
-                before,
-                x,
-                y,
-                colors.fg_ghost,
-                font,
-                metrics.line_h,
-                PopupTextStyle::Normal,
-                None,
-            );
-            self.append_welcome_text(
-                glyphs,
-                author,
-                x + before_w,
-                y,
-                colors.fg,
-                font,
-                metrics.line_h,
-                PopupTextStyle::Bold,
-                None,
-            );
-        } else {
-            self.append_welcome_text(
-                glyphs,
-                &meta_full,
-                x,
-                y,
-                colors.fg_ghost,
-                font,
-                metrics.line_h,
-                PopupTextStyle::Normal,
-                None,
-            );
-        }
-    }
-
-    fn render_welcome_quick_actions(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        chrome: &mut Vec<RegionDrawInstance>,
-        actions: &[WelcomeQuickAction],
-        cx: f32,
-        start_y: f32,
-        avail_w: f32,
-        btn_h: f32,
-        btn_gap: f32,
-        metrics: WelcomeRenderMetrics,
-        colors: WelcomeRenderColors,
-    ) -> usize {
-        if actions.is_empty() {
-            return 0;
-        }
-        let sc = metrics.scale;
-        let btn_inner_gap = (8.0 * sc).max(5.0);
-        let btn_widths: Vec<f32> = actions
-            .iter()
-            .map(|a| {
-                let label_w = a.label.chars().count() as f32 * metrics.body_font * 0.52;
-                let key_w = estimate_monospace_width(&a.key, metrics.key_font) + 8.0 * sc;
-                (12.0 * sc * 2.0 + label_w + 8.0 * sc + key_w + 2.0).ceil()
-            })
-            .collect();
-
-        // Prefer a single row; fall back to 3+rest split when they don't all fit.
-        let all_w: f32 = btn_widths.iter().sum::<f32>()
-            + btn_inner_gap * actions.len().saturating_sub(1) as f32;
-        let split = if all_w <= avail_w { actions.len() } else { 3.min(actions.len()) };
-
-        let row1_w: f32 = btn_widths[..split].iter().sum::<f32>()
-            + btn_inner_gap * (split.saturating_sub(1)) as f32;
-        let mut x = (cx - row1_w.min(avail_w) * 0.5).max(0.0);
-        for (action, &w) in actions[..split].iter().zip(btn_widths[..split].iter()) {
-            self.render_welcome_action_btn(glyphs, chrome, action, x, start_y, w, btn_h, metrics, colors);
-            x += w + btn_inner_gap;
-        }
-
-        if split < actions.len() {
-            let row2_w: f32 = btn_widths[split..].iter().sum::<f32>()
-                + btn_inner_gap * (actions.len() - split).saturating_sub(1) as f32;
-            let mut x = (cx - row2_w.min(avail_w) * 0.5).max(0.0);
-            let y2 = start_y + btn_h + btn_gap;
-            for (action, &w) in actions[split..].iter().zip(btn_widths[split..].iter()) {
-                self.render_welcome_action_btn(glyphs, chrome, action, x, y2, w, btn_h, metrics, colors);
-                x += w + btn_inner_gap;
-            }
-            2
-        } else {
-            1
-        }
-    }
-
-    fn render_welcome_action_btn(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        chrome: &mut Vec<RegionDrawInstance>,
-        action: &WelcomeQuickAction,
-        x: f32,
-        y: f32,
-        w: f32,
-        h: f32,
-        metrics: WelcomeRenderMetrics,
-        colors: WelcomeRenderColors,
-    ) {
-        let sc = metrics.scale;
-        let pad_x = 12.0 * sc;
-        let inner_gap = 8.0 * sc;
-        // Button border + fill
-        chrome.push(
-            RegionDrawInstance::new([x, y, w, h], alpha(colors.border, 0.85))
-                .with_radius(6.0 * sc),
-        );
-        chrome.push(
-            RegionDrawInstance::new([x + 1.0, y + 1.0, w - 2.0, h - 2.0], colors.surface)
-                .with_radius(5.0 * sc),
-        );
-        // Label
-        let label_w = action.label.chars().count() as f32 * metrics.body_font * 0.52;
-        self.append_welcome_text(
-            glyphs,
-            &action.label,
-            x + pad_x,
-            y + (h - metrics.line_h) * 0.5,
-            colors.fg_dim,
-            metrics.body_font,
-            metrics.line_h,
-            PopupTextStyle::Normal,
-            None,
-        );
-        // Key badge
-        let key_text_w = estimate_monospace_width(&action.key, metrics.key_font);
-        let key_badge_w = key_text_w + 8.0 * sc;
-        let key_x = x + pad_x + label_w + inner_gap;
-        let key_badge_h = (h - 8.0 * sc).max(h * 0.6);
-        let key_y = y + (h - key_badge_h) * 0.5;
-        chrome.push(
-            RegionDrawInstance::new([key_x, key_y, key_badge_w, key_badge_h], alpha(colors.accent, 0.30))
-                .with_radius(3.5 * sc),
-        );
-        chrome.push(
-            RegionDrawInstance::new(
-                [key_x + 0.5, key_y + 0.5, (key_badge_w - 1.0).max(1.0), (key_badge_h - 1.0).max(1.0)],
-                alpha(colors.accent, 0.12),
-            )
-            .with_radius(3.0 * sc),
-        );
-        self.append_welcome_text(
-            glyphs,
-            &action.key,
-            key_x + 4.0 * sc,
-            key_y + (key_badge_h - metrics.line_h) * 0.5,
-            colors.accent,
-            metrics.key_font,
-            metrics.line_h,
-            PopupTextStyle::Normal,
-            None,
-        );
-    }
-
-    fn render_welcome_sidebar(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        chrome: &mut Vec<RegionDrawInstance>,
-        model: &WelcomeScreenModel,
-        bounds: [f32; 4],
-        metrics: WelcomeRenderMetrics,
-        colors: WelcomeRenderColors,
-    ) {
-        let sc = metrics.scale;
-        let top_pad = (bounds[3] * 0.07).max(18.0 * sc);
-        let label_font = metrics.section_font;
-        let label_h = (label_font * 2.2).max(18.0);
-        let proj_row_h = (40.0 * sc).max(30.0);
-        let short_row_h = (28.0 * sc).max(22.0);
-        let mut y = bounds[1] + top_pad;
-
-        // ── Recent projects ──
-        if !model.recent_projects.is_empty() {
-            self.append_welcome_text(
-                glyphs,
-                "RECENT PROJECTS",
-                bounds[0],
-                y,
-                colors.fg_ghost,
-                label_font,
-                label_h,
-                PopupTextStyle::Normal,
-                Some(bounds[2]),
-            );
-            y += label_h;
-
-            for proj in &model.recent_projects {
-                self.render_welcome_recent_row(
-                    glyphs,
-                    chrome,
-                    proj,
-                    bounds[0],
-                    y,
-                    bounds[2],
-                    proj_row_h,
-                    metrics,
-                    colors,
-                );
-                y += proj_row_h;
-            }
-
-            // "show all →"
-            // let show_all = "show all  \u{2192}";
-            // self.append_welcome_text(
-            //     glyphs,
-            //     show_all,
-            //     bounds[0] + 8.0 * sc,
-            //     y + 3.0 * sc,
-            //     colors.accent,
-            //     metrics.caption_font,
-            //     label_h * 0.85,
-            //     PopupTextStyle::Normal,
-            //     Some(bounds[2]),
-            // );
-            y += label_h * 0.85 + 16.0 * sc;
-        }
-
-        // ── Keyboard shortcuts ──
-        if !model.sidebar_shortcuts.is_empty() {
-            self.append_welcome_text(
-                glyphs,
-                "KEYBOARD SHORTCUTS",
-                bounds[0],
-                y,
-                colors.fg_ghost,
-                label_font,
-                label_h,
-                PopupTextStyle::Normal,
-                Some(bounds[2]),
-            );
-            y += label_h;
-
-            let key_area_w = (120.0 * sc).clamp(90.0, bounds[2] * 0.52);
-            let label_x = bounds[0] + key_area_w;
-            let label_w = (bounds[2] - key_area_w).max(1.0);
-
-            for shortcut in &model.sidebar_shortcuts {
-                // Separator
-                chrome.push(RegionDrawInstance::new(
-                    [bounds[0], y + short_row_h - 0.5, bounds[2], 0.5],
-                    alpha(colors.border, 0.38),
-                ));
-                self.append_welcome_shortcut_row(
-                    glyphs,
-                    chrome,
-                    shortcut,
-                    bounds[0],
-                    label_x,
-                    y,
-                    key_area_w,
-                    label_w,
-                    short_row_h,
-                    metrics,
-                    colors.accent,
-                    colors,
-                );
-                y += short_row_h;
-                if y + short_row_h > bounds[1] + bounds[3] - 24.0 * sc {
-                    break;
-                }
-            }
-
-            // Hint
-            if !model.shortcuts_hint.is_empty() {
-                y += 8.0 * sc;
-                self.render_welcome_shortcuts_hint(
-                    glyphs,
-                    &model.shortcuts_hint,
-                    bounds[0],
-                    y,
-                    bounds[2],
-                    metrics,
-                    colors,
-                );
-            }
-        }
-    }
-
-    fn render_welcome_recent_row(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        chrome: &mut Vec<RegionDrawInstance>,
-        proj: &WelcomeRecentProject,
-        x: f32,
-        y: f32,
-        w: f32,
-        h: f32,
-        metrics: WelcomeRenderMetrics,
-        colors: WelcomeRenderColors,
-    ) {
-        let sc = metrics.scale;
-
-        if proj.active {
-            chrome.push(
-                RegionDrawInstance::new([x, y, w, h], alpha(colors.accent, 0.10))
-                    .with_radius(5.0 * sc),
-            );
-            let rail_w = 2.5 * sc;
-            let rail_mg = h * 0.15;
-            chrome.push(
-                RegionDrawInstance::new([x, y + rail_mg, rail_w, h - rail_mg * 2.0], colors.accent)
-                    .with_radius(rail_w * 0.5),
-            );
-        }
-
-        // Lang badge
-        let badge_font = metrics.caption_font;
-        let badge_label = proj.lang.label();
-        let badge_text_w = estimate_monospace_width(badge_label, badge_font);
-        let badge_pad = 5.0 * sc;
-        let badge_w = badge_text_w + badge_pad * 2.0;
-        let badge_h = (badge_font * 1.85).max(14.0);
-        let badge_off = if proj.active { 8.0 * sc } else { 2.0 * sc };
-        let badge_x = x + badge_off;
-        let badge_y = y + (h - badge_h) * 0.5;
-
-        let lang_color = match &proj.lang {
-            WelcomeLang::Rust => colors.leader,
-            WelcomeLang::TypeScript => colors.lsp,
-            _ => colors.fg_ghost,
-        };
-
-        chrome.push(
-            RegionDrawInstance::new([badge_x, badge_y, badge_w, badge_h], alpha(colors.border, 0.9))
-                .with_radius(3.0 * sc),
-        );
-        chrome.push(
-            RegionDrawInstance::new(
-                [badge_x + 1.0, badge_y + 1.0, badge_w - 2.0, badge_h - 2.0],
-                colors.surface,
-            )
-            .with_radius(2.5 * sc),
-        );
-        self.append_welcome_text(
-            glyphs,
-            badge_label,
-            badge_x + badge_pad,
-            badge_y + (badge_h - metrics.line_h) * 0.5,
-            lang_color,
-            badge_font,
-            metrics.line_h,
-            PopupTextStyle::Bold,
-            None,
-        );
-
-        // Name + path
-        let info_x = badge_x + badge_w + 10.0 * sc;
-        let ago_w = estimate_monospace_width(&proj.ago, metrics.caption_font);
-        let info_w = (x + w - info_x - ago_w - 8.0 * sc).max(1.0);
-
-        let name_color = if proj.active { colors.fg } else { colors.fg_dim };
-        let name_style = if proj.active { PopupTextStyle::Bold } else { PopupTextStyle::Normal };
-        let name_y = y + (h * 0.20).max(3.0 * sc);
-        self.append_welcome_text(
-            glyphs,
-            &proj.name,
-            info_x,
-            name_y,
-            name_color,
-            metrics.body_font,
-            metrics.line_h,
-            name_style,
-            Some(info_w),
-        );
-        let path = clamp_monospace_text(&proj.path, info_w, metrics.caption_font);
-        self.append_welcome_text(
-            glyphs,
-            &path,
-            info_x,
-            name_y + metrics.line_h,
-            colors.fg_ghost,
-            metrics.caption_font,
-            metrics.line_h,
-            PopupTextStyle::Normal,
-            Some(info_w),
-        );
-
-        // Time ago (right-aligned)
-        let ago_x = x + w - ago_w;
-        self.append_welcome_text(
-            glyphs,
-            &proj.ago,
-            ago_x,
-            y + (h - metrics.line_h) * 0.5,
-            colors.fg_ghost,
-            metrics.caption_font,
-            metrics.line_h,
-            PopupTextStyle::Normal,
-            None,
-        );
-    }
-
-    fn render_welcome_shortcuts_hint(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        hint: &str,
-        x: f32,
-        y: f32,
-        avail_w: f32,
-        metrics: WelcomeRenderMetrics,
-        colors: WelcomeRenderColors,
-    ) {
-        // Render hint with highlighted segments (text between ? and :help styled in accent)
-        let font = metrics.caption_font;
-        let line_h = metrics.line_h;
-        let mut cursor_x = x;
-        // Simple segmented render: split on highlighted tokens
-        let segments: Vec<(&str, bool)> = {
-            let mut segs = Vec::new();
-            let mut remaining = hint;
-            while !remaining.is_empty() {
-                if let Some(pos) = remaining.find('?') {
-                    if pos > 0 {
-                        segs.push((&remaining[..pos], false));
-                    }
-                    segs.push((&remaining[pos..pos + 1], true));
-                    remaining = &remaining[pos + 1..];
-                } else if let Some(pos) = remaining.find(":help") {
-                    if pos > 0 {
-                        segs.push((&remaining[..pos], false));
-                    }
-                    segs.push((&remaining[pos..pos + 5], true));
-                    remaining = &remaining[pos + 5..];
-                } else {
-                    segs.push((remaining, false));
-                    remaining = "";
-                }
-            }
-            segs
-        };
-        for (seg, highlighted) in segments {
-            if seg.is_empty() {
-                continue;
-            }
-            let color = if highlighted { colors.accent } else { colors.fg_ghost };
-            let seg_w = estimate_monospace_width(seg, font);
-            if cursor_x + seg_w > x + avail_w {
-                break;
-            }
-            self.append_welcome_text(
-                glyphs,
-                seg,
-                cursor_x,
-                y,
-                color,
-                font,
-                line_h,
-                PopupTextStyle::Normal,
-                Some(avail_w - (cursor_x - x)),
-            );
-            cursor_x += seg_w;
-        }
-    }
-
-    fn append_welcome_text(
-        &mut self,
-        glyphs: &mut Vec<GlyphInstance>,
-        text: &str,
-        x: f32,
-        y: f32,
-        color: [f32; 4],
-        font_size: f32,
-        line_height: f32,
-        style: PopupTextStyle,
-        max_width: Option<f32>,
-    ) {
-        self.welcome_logo_text_system
-            .set_metrics(Metrics::new(font_size, line_height));
-        self.welcome_logo_text_system
-            .set_size(max_width, Some(line_height * 2.0));
-
-        let mut next = match style {
-            PopupTextStyle::Normal => layout_panel_text(
-                text,
-                &mut self.welcome_logo_text_system,
-                &mut self.atlas,
-                &self.queue,
-                x,
-                y,
-                color,
-            ),
-            PopupTextStyle::Bold => layout_panel_text_bold(
-                text,
-                &mut self.welcome_logo_text_system,
-                &mut self.atlas,
-                &self.queue,
-                x,
-                y,
-                color,
-            ),
-            PopupTextStyle::Italic => layout_panel_text_italic(
-                text,
-                &mut self.welcome_logo_text_system,
-                &mut self.atlas,
-                &self.queue,
-                x,
-                y,
-                color,
-            ),
-        };
-        glyphs.append(&mut next);
     }
 
     /// Render ANSI art into the welcome-logo layer (separate from the real PTY panel).
@@ -2078,7 +1239,7 @@ impl Renderer {
                         self.theme.file_icon_for_extension("fzf").glyph.clone()
                     }
                     TopbarTabKind::Settings => "⚙".to_string(),
-                    TopbarTabKind::CheatSheet => "?".to_string(),
+                    TopbarTabKind::Help => "?".to_string(),
                 };
                 let icon_color = match &tab.kind {
                     TopbarTabKind::Text { path } => self
@@ -2091,7 +1252,7 @@ impl Renderer {
                     TopbarTabKind::Diagnostics => self.theme.icons.default_file.color.as_f32(),
                     TopbarTabKind::FuzzyPicker => self.theme.ui.accent.as_f32(),
                     TopbarTabKind::Settings => self.theme.ui.accent.as_f32(),
-                    TopbarTabKind::CheatSheet => self.theme.ui.warning.as_f32(),
+                    TopbarTabKind::Help => self.theme.ui.accent.as_f32(),
                 };
                 let icon_text = format!("{} ", icon_glyph);
                 let icon_width = estimate_monospace_width(&icon_text, font_size);
@@ -2612,159 +1773,6 @@ impl Renderer {
         self.toast_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct WelcomeRenderMetrics {
-    scale: f32,
-    gap: f32,
-    header_h: f32,
-    legend_h: f32,
-    footer_h: f32,
-    card_h: f32,
-    card_header_h: f32,
-    card_pad_x: f32,
-    row_h: f32,
-    key_h: f32,
-    title_font: f32,
-    title_line_h: f32,
-    section_font: f32,
-    body_font: f32,
-    caption_font: f32,
-    key_font: f32,
-    footer_font: f32,
-    line_h: f32,
-}
-
-impl WelcomeRenderMetrics {
-    fn new(
-        editor_font: f32,
-        editor_line_h: f32,
-        panel_font: f32,
-        panel_line_h: f32,
-        section_gap: f32,
-    ) -> Self {
-        let title_font = (editor_font * 1.48).max(22.0);
-        let body_font = (panel_font * 0.96).max(12.0);
-        let line_h = panel_line_h.max(body_font + 7.0);
-        Self {
-            scale: 1.0,
-            gap: section_gap.max(14.0),
-            header_h: 76.0,
-            legend_h: 42.0,
-            footer_h: 30.0,
-            card_h: 190.0,
-            card_header_h: 32.0,
-            card_pad_x: 14.0,
-            row_h: 24.0,
-            key_h: 20.0,
-            title_font,
-            title_line_h: editor_line_h.max(title_font + 6.0),
-            section_font: (panel_font * 0.82).max(10.0),
-            body_font,
-            caption_font: (panel_font * 0.78).max(9.5),
-            key_font: (panel_font * 0.78).max(9.5),
-            footer_font: (panel_font * 0.76).max(9.0),
-            line_h,
-        }
-    }
-
-    fn scaled(self, scale: f32) -> Self {
-        Self {
-            scale,
-            gap: self.gap * scale,
-            header_h: self.header_h * scale,
-            legend_h: self.legend_h * scale,
-            footer_h: self.footer_h * scale,
-            card_h: self.card_h * scale,
-            card_header_h: self.card_header_h * scale,
-            card_pad_x: self.card_pad_x * scale,
-            row_h: self.row_h * scale,
-            key_h: self.key_h * scale,
-            title_font: (self.title_font * scale).max(18.0),
-            title_line_h: (self.title_line_h * scale).max(24.0),
-            section_font: (self.section_font * scale).max(9.0),
-            body_font: (self.body_font * scale).max(10.5),
-            caption_font: (self.caption_font * scale).max(8.5),
-            key_font: (self.key_font * scale).max(8.5),
-            footer_font: (self.footer_font * scale).max(8.0),
-            line_h: (self.line_h * scale).max(16.0),
-        }
-    }
-
-    fn page_height(self, rows: usize) -> f32 {
-        self.header_h
-            + self.gap
-            + self.legend_h
-            + self.gap
-            + rows as f32 * self.card_h
-            + rows.saturating_sub(1) as f32 * self.gap
-            + self.footer_h
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct WelcomeRenderColors {
-    surface: [f32; 4],
-    panel: [f32; 4],
-    border: [f32; 4],
-    key_bg: [f32; 4],
-    fg: [f32; 4],
-    fg_dim: [f32; 4],
-    fg_ghost: [f32; 4],
-    accent: [f32; 4],
-    accent_dim: [f32; 4],
-    normal: [f32; 4],
-    insert: [f32; 4],
-    visual: [f32; 4],
-    leader: [f32; 4],
-    lsp: [f32; 4],
-    explorer: [f32; 4],
-    terminal: [f32; 4],
-    palette: [f32; 4],
-}
-
-impl WelcomeRenderColors {
-    fn from_theme(theme: &crate::config::theme_config::ThemeConfig) -> Self {
-        Self {
-            surface: alpha(theme.ui.overlay_bg.as_f32(), 0.90),
-            panel: alpha(theme.ui.panel_bg.as_f32(), 0.94),
-            border: alpha(theme.ui.border_color.as_f32(), 0.82),
-            key_bg: alpha(theme.ui.bg.as_f32(), 0.72),
-            fg: theme.ui.fg.as_f32(),
-            fg_dim: theme.ui.fg_dim.as_f32(),
-            fg_ghost: theme.ui.fg_ghost.as_f32(),
-            accent: theme.ui.accent.as_f32(),
-            accent_dim: alpha(theme.ui.accent.as_f32(), 0.62),
-            normal: theme.ui.mode_normal.as_f32(),
-            insert: theme.ui.mode_insert.as_f32(),
-            visual: theme.ui.mode_visual.as_f32(),
-            leader: theme.ui.amber.as_f32(),
-            lsp: theme.ui.info.as_f32(),
-            explorer: theme.ui.warning.as_f32(),
-            terminal: theme.ui.error.as_f32(),
-            palette: theme.ui.magenta.as_f32(),
-        }
-    }
-
-    fn accent_for(self, accent: WelcomeAccent) -> [f32; 4] {
-        match accent {
-            WelcomeAccent::Global => self.accent,
-            WelcomeAccent::Normal => self.normal,
-            WelcomeAccent::Insert => self.insert,
-            WelcomeAccent::Visual => self.visual,
-            WelcomeAccent::Leader => self.leader,
-            WelcomeAccent::Lsp => self.lsp,
-            WelcomeAccent::Explorer => self.explorer,
-            WelcomeAccent::Terminal => self.terminal,
-            WelcomeAccent::Palette => self.palette,
-        }
-    }
-}
-
-fn alpha(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
-    color[3] = alpha;
-    color
 }
 
 #[derive(Debug, Clone, Copy)]

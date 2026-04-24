@@ -27,6 +27,8 @@ use helpers::{insert_command_from_text, palette_query_from_text};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputFocusContext {
     Editor,
+    /// Welcome home screen owns input independently of editor/sidebar focus.
+    Welcome,
     References,
     Diagnostics,
     Explorer,
@@ -46,6 +48,7 @@ impl InputFocusContext {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Editor => "editor",
+            Self::Welcome => "welcome",
             Self::References => "references",
             Self::Diagnostics => "diagnostics",
             Self::Explorer => "explorer",
@@ -63,6 +66,7 @@ impl InputFocusContext {
         matches!(
             self,
             Self::Editor
+                | Self::Welcome
                 | Self::References
                 | Self::Diagnostics
                 | Self::Explorer
@@ -214,23 +218,39 @@ impl InputMap {
             return self.resolve_bottom_panel_focus(input);
         }
 
-        if context.welcome_visible && !input.has_command_modifier() {
+        if context.welcome_visible {
             match input.physical_key {
-                Some(KeyCode::KeyJ) => {
+                Some(KeyCode::KeyJ) if !input.has_command_modifier() => {
                     return Some(KeybindingMatch {
                         command: Command::OverlaySelectNext,
                         reason: "welcome recent projects: j -> SelectNext",
                     });
                 }
-                Some(KeyCode::KeyK) => {
+                Some(KeyCode::KeyK) if !input.has_command_modifier() => {
                     return Some(KeybindingMatch {
                         command: Command::OverlaySelectPrev,
                         reason: "welcome recent projects: k -> SelectPrev",
                     });
                 }
+                Some(KeyCode::KeyN)
+                    if input.modifiers.control_key() && !input.modifiers.super_key() =>
+                {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectNext,
+                        reason: "welcome recent projects: Ctrl+n -> SelectNext",
+                    });
+                }
+                Some(KeyCode::KeyP)
+                    if input.modifiers.control_key() && !input.modifiers.super_key() =>
+                {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectPrev,
+                        reason: "welcome recent projects: Ctrl+p -> SelectPrev",
+                    });
+                }
                 _ => {}
             }
-            if input.named_key == Some(NamedKey::Enter) {
+            if !input.has_command_modifier() && input.named_key == Some(NamedKey::Enter) {
                 return Some(KeybindingMatch {
                     command: Command::FilePickerConfirmSelection,
                     reason: "welcome recent projects: Enter -> ConfirmSelection",
@@ -331,7 +351,12 @@ impl InputMap {
         if !context.focus.allows_leader() {
             return false;
         }
-        if context.welcome_visible && context.focus == InputFocusContext::Editor {
+        if context.welcome_visible
+            && matches!(
+                context.focus,
+                InputFocusContext::Editor | InputFocusContext::Welcome
+            )
+        {
             return true;
         }
         if context.focus == InputFocusContext::Editor {
@@ -343,6 +368,7 @@ impl InputMap {
     fn sequence_mode_str(&self, context: KeybindingContext) -> &'static str {
         match context.focus {
             InputFocusContext::Editor if context.welcome_visible => "normal",
+            InputFocusContext::Welcome => "normal",
             InputFocusContext::Editor => editor_mode_str(context.mode),
             InputFocusContext::References => editor_mode_str(context.mode),
             InputFocusContext::Diagnostics => editor_mode_str(context.mode),

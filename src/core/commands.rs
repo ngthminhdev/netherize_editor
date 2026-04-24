@@ -93,7 +93,7 @@ pub enum Command {
     SearchInFiles,
     OpenThemeSelector,
     OpenSettings,
-    OpenCheatSheet,
+    OpenHelp,
     FilePickerAppendQuery(String),
     FilePickerBackspaceQuery,
     OverlaySelectNext,

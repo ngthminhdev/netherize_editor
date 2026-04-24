@@ -605,6 +605,44 @@ fn recent_projects_jk_only_work_from_welcome_context() {
 }
 
 #[test]
+fn welcome_palette_modes_support_ctrl_np_navigation() {
+    let map = make_default_profile_map();
+    let input_ctrl_n = NormalizedInput {
+        physical_key: Some(KeyCode::KeyN),
+        named_key: None,
+        text: Some("n".to_string()),
+        modifiers: ModifiersState::CONTROL,
+    };
+    let input_ctrl_p = NormalizedInput {
+        physical_key: Some(KeyCode::KeyP),
+        named_key: None,
+        text: Some("p".to_string()),
+        modifiers: ModifiersState::CONTROL,
+    };
+
+    for mode in [
+        CommandPaletteMode::FilePicker,
+        CommandPaletteMode::ThemeSelector,
+        CommandPaletteMode::CommandPalette,
+    ] {
+        let mut context = KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true);
+        context.command_palette_mode = Some(mode);
+        context.welcome_visible = true;
+
+        assert_eq!(
+            map.translate(&input_ctrl_n, context),
+            Some(Command::OverlaySelectNext),
+            "Ctrl+n should select next in {mode:?} on welcome page"
+        );
+        assert_eq!(
+            map.translate(&input_ctrl_p, context),
+            Some(Command::OverlaySelectPrev),
+            "Ctrl+p should select previous in {mode:?} on welcome page"
+        );
+    }
+}
+
+#[test]
 fn welcome_recent_projects_use_direct_jk_enter() {
     let map = make_default_profile_map();
     let input_j = NormalizedInput {
@@ -620,9 +658,22 @@ fn welcome_recent_projects_use_direct_jk_enter() {
         modifiers: ModifiersState::empty(),
     };
     let input_enter = input_from_named(NamedKey::Enter);
+    let input_ctrl_n = NormalizedInput {
+        physical_key: Some(KeyCode::KeyN),
+        named_key: None,
+        text: Some("n".to_string()),
+        modifiers: ModifiersState::CONTROL,
+    };
+    let input_ctrl_p = NormalizedInput {
+        physical_key: Some(KeyCode::KeyP),
+        named_key: None,
+        text: Some("p".to_string()),
+        modifiers: ModifiersState::CONTROL,
+    };
 
     let mut context = KeybindingContext::for_mode(EditorMode::Insert);
     context.welcome_visible = true;
+    context.focus = InputFocusContext::Welcome;
 
     assert_eq!(
         map.translate(&input_j, context),
@@ -635,6 +686,44 @@ fn welcome_recent_projects_use_direct_jk_enter() {
     assert_eq!(
         map.translate(&input_enter, context),
         Some(Command::FilePickerConfirmSelection)
+    );
+    assert_eq!(
+        map.translate(&input_ctrl_n, context),
+        Some(Command::OverlaySelectNext)
+    );
+    assert_eq!(
+        map.translate(&input_ctrl_p, context),
+        Some(Command::OverlaySelectPrev)
+    );
+}
+
+#[test]
+fn welcome_recent_projects_jk_are_not_taken_by_sidebar_focus() {
+    let map = make_default_profile_map();
+    let input_j = NormalizedInput {
+        physical_key: Some(KeyCode::KeyJ),
+        named_key: None,
+        text: Some("j".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let input_k = NormalizedInput {
+        physical_key: Some(KeyCode::KeyK),
+        named_key: None,
+        text: Some("k".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+
+    let mut context = KeybindingContext::for_mode(EditorMode::Insert);
+    context.welcome_visible = true;
+    context.focus = InputFocusContext::Welcome;
+
+    assert_eq!(
+        map.translate(&input_j, context),
+        Some(Command::OverlaySelectNext)
+    );
+    assert_eq!(
+        map.translate(&input_k, context),
+        Some(Command::OverlaySelectPrev)
     );
 }
 
