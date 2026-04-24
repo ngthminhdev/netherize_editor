@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 
 use ropey::Rope;
@@ -514,6 +515,7 @@ pub struct AppState {
     terminal_panel_open: bool,
     external_conflict: Option<String>,
     external_notice: Option<String>,
+    last_saved_at: Option<Instant>,
     clipboard_record: Option<ClipboardRecord>,
     history: EditHistory,
     current_transaction: Option<Transaction>,
@@ -526,6 +528,8 @@ pub struct AppState {
 }
 
 impl AppState {
+    const SELF_SAVE_IGNORE_WINDOW: Duration = Duration::from_millis(500);
+
     pub fn new(default_save_path: PathBuf) -> Self {
         Self {
             text: Rope::new(),
@@ -551,6 +555,7 @@ impl AppState {
             terminal_panel_open: false,
             external_conflict: None,
             external_notice: None,
+            last_saved_at: None,
             clipboard_record: None,
             history: EditHistory::new(),
             current_transaction: None,
@@ -588,6 +593,7 @@ impl AppState {
             terminal_panel_open: false,
             external_conflict: None,
             external_notice: None,
+            last_saved_at: None,
             clipboard_record: None,
             history: EditHistory::new(),
             current_transaction: None,
@@ -1749,8 +1755,17 @@ impl AppState {
 
             match event.kind {
                 FileSystemChangeKind::Modify | FileSystemChangeKind::Create => {
-                    match self.open_file(active_path.clone()) {
+                    if matches!(event.kind, FileSystemChangeKind::Modify)
+                        && self.should_ignore_self_save_event()
+                    {
+                        continue;
+                    }
+
+                    match self.load_buffer_from_file(&active_path) {
                         Ok(()) => {
+                            self.active_file = Some(active_path.clone());
+                            self.register_open_text_buffer(active_path.clone());
+                            self.dirty = false;
                             let note = format!(
                                 "auto reloaded active file from disk: {}",
                                 active_path.display()
@@ -2480,6 +2495,7 @@ impl AppState {
 
         fs::write(&path, self.text.to_string())
             .map_err(|err| format!("save file {:?} failed: {err}", path))?;
+        self.last_saved_at = Some(Instant::now());
 
         let canonical_path = path
             .canonicalize()
@@ -4131,7 +4147,21 @@ impl AppState {
         self.revision += 1;
     }
 
+    fn should_ignore_self_save_event(&self) -> bool {
+        self.last_saved_at.is_some_and(|saved_at| {
+            Instant::now().saturating_duration_since(saved_at) < Self::SELF_SAVE_IGNORE_WINDOW
+        })
+    }
+
     fn load_buffer_from_file(&mut self, canonical_path: &Path) -> Result<(), String> {
+        let content = fs::read_to_string(canonical_path)
+            .map_err(|err| format!("open file {:?} failed: {err}", canonical_path))?;
+        self.replace_text_buffer_preserving_view(content.as_str());
+        let _ = self.refresh_active_search_highlights();
+        Ok(())
+    }
+
+    fn load_buffer_from_file_resetting_view(&mut self, canonical_path: &Path) -> Result<(), String> {
         let content = fs::read_to_string(canonical_path)
             .map_err(|err| format!("open file {:?} failed: {err}", canonical_path))?;
         self.text = Rope::from(content.as_str());
@@ -4144,6 +4174,31 @@ impl AppState {
         self.clear_history();
         let _ = self.refresh_active_search_highlights();
         Ok(())
+    }
+
+    fn replace_text_buffer_preserving_view(&mut self, content: &str) {
+        let old_cursor = self.cursor_char_idx;
+        let old_selection_anchor = self.selection_anchor_char_idx;
+        let old_scroll_line = self.scroll_line;
+        let old_scroll_column = self.scroll_column;
+        let old_visual_line_mode = self.visual_line_mode;
+
+        self.text = Rope::from(content);
+
+        let max_char_idx = self.text.len_chars();
+        self.cursor_char_idx = old_cursor.min(max_char_idx);
+        self.selection_anchor_char_idx = old_selection_anchor.map(|anchor| anchor.min(max_char_idx));
+
+        if self.selection_anchor_char_idx == Some(self.cursor_char_idx) {
+            self.selection_anchor_char_idx = None;
+        }
+
+        let (_, clamped_col) = self.cursor_line_col();
+        self.target_col = clamped_col;
+        self.scroll_line = old_scroll_line.min(self.text.len_lines().saturating_sub(1));
+        self.scroll_column = old_scroll_column;
+        self.visual_line_mode = old_visual_line_mode && self.selection_anchor_char_idx.is_some();
+        self.clear_history();
     }
 
     fn register_open_text_buffer(&mut self, active_path: PathBuf) {
@@ -4221,7 +4276,7 @@ impl AppState {
 
         match buffer.content {
             BufferContent::Text(buffer) => {
-                self.load_buffer_from_file(&buffer.path)?;
+                self.load_buffer_from_file_resetting_view(&buffer.path)?;
                 self.active_file = Some(buffer.path.clone());
                 self.active_buffer_index = Some(index);
                 self.selection_anchor_char_idx = None;
@@ -4643,7 +4698,7 @@ mod tests {
     use std::{
         fs,
         path::PathBuf,
-        time::{SystemTime, UNIX_EPOCH},
+        time::{Instant, SystemTime, UNIX_EPOCH},
     };
 
     use crate::app::command_palette::{CommandPaletteItem, CommandPaletteMode};
@@ -5226,6 +5281,106 @@ mod tests {
             .expect("apply external dirty");
         assert!(dirty_report.conflict_detected);
         assert!(state.external_conflict_message().is_some());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn save_file_preserves_cursor_and_selection_state() {
+        let root = unique_temp_dir("save_preserve_cursor");
+        fs::create_dir_all(&root).expect("create temp dir");
+        let file_path = root.join("sample.rs");
+        fs::write(&file_path, "alpha\nbeta\ngamma\n").expect("write initial");
+
+        let mut state = AppState::new(unique_temp_path("save_preserve_cursor_fallback"));
+        state.open_file(file_path.clone()).expect("open file");
+        state.move_down();
+        assert!(state.move_to_line_end());
+        state
+            .apply_mode_event(ModeEvent::EnterVisual)
+            .expect("enter visual");
+        assert!(state.begin_visual_selection());
+        state.move_left();
+
+        let cursor_before = state.cursor_char_idx();
+        let selection_before = state.selection_anchor_char_idx;
+
+        let saved_path = state.save_file().expect("save file");
+
+        assert_eq!(saved_path, file_path.canonicalize().expect("canonicalize"));
+        assert_eq!(state.cursor_char_idx(), cursor_before);
+        assert_eq!(state.selection_anchor_char_idx, selection_before);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn self_save_modify_event_is_ignored_without_reloading_cursor() {
+        let root = unique_temp_dir("self_save_ignore");
+        fs::create_dir_all(&root).expect("create temp dir");
+        let file_path = root.join("main.rs");
+        fs::write(&file_path, "one\ntwo\nthree\n").expect("write initial");
+
+        let mut state = AppState::new(unique_temp_path("self_save_ignore_fallback"));
+        state.open_file(file_path.clone()).expect("open file");
+        state.move_down();
+        assert!(state.move_to_line_end());
+        let cursor_before = state.cursor_char_idx();
+
+        state.save_file().expect("save file");
+
+        fs::write(&file_path, "changed externally but should be ignored in debounce window\n")
+            .expect("rewrite file quickly");
+
+        let report = state
+            .apply_external_file_events(&[FileSystemEvent {
+                kind: FileSystemChangeKind::Modify,
+                path: file_path.clone(),
+                new_path: None,
+            }])
+            .expect("apply modify event");
+
+        assert!(!report.active_file_reloaded);
+        assert_eq!(state.cursor_char_idx(), cursor_before);
+        assert!(!state.preview(128).contains("changed externally"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn external_reload_clamps_cursor_and_selection_to_new_buffer_length() {
+        let root = unique_temp_dir("external_reload_clamp");
+        fs::create_dir_all(&root).expect("create temp dir");
+        let file_path = root.join("main.rs");
+        fs::write(&file_path, "alpha\nbeta\ngamma\ndelta").expect("write initial");
+
+        let mut state = AppState::new(unique_temp_path("external_reload_clamp_fallback"));
+        state.open_file(file_path.clone()).expect("open file");
+        assert!(state.move_to_last_line());
+        assert!(state.move_to_line_end());
+        state
+            .apply_mode_event(ModeEvent::EnterVisual)
+            .expect("enter visual");
+        assert!(state.begin_visual_selection());
+        state.move_up();
+
+        fs::write(&file_path, "x\n").expect("write shorter file");
+        state.last_saved_at = Some(Instant::now() - AppState::SELF_SAVE_IGNORE_WINDOW);
+
+        let report = state
+            .apply_external_file_events(&[FileSystemEvent {
+                kind: FileSystemChangeKind::Modify,
+                path: file_path.clone(),
+                new_path: None,
+            }])
+            .expect("apply external modify");
+
+        assert!(report.active_file_reloaded);
+        assert!(state.preview(16).starts_with('x'));
+        assert_eq!(state.cursor_char_idx(), state.len_chars());
+        assert!(state
+            .selection_anchor_char_idx
+            .is_none_or(|anchor| anchor <= state.len_chars()));
 
         let _ = fs::remove_dir_all(root);
     }
