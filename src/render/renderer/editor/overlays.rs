@@ -21,10 +21,13 @@ use cosmic_text::Metrics;
 use super::super::helpers::{
     caret_rect_for_mode, clamp_monospace_text, clamp_popup_width, clamp_x_in_bounds,
     estimate_monospace_width, gutter_width_for_editor, layout_panel_rich_text, layout_panel_text,
-    layout_panel_text_italic, rect_to_scissor,
-    should_draw_block_cursor,
+    layout_panel_text_italic, rect_to_scissor, should_draw_block_cursor,
 };
 use super::completion::{completion_kind_badge, completion_label_spans};
+
+const DIAGNOSTIC_SEVERITY_ERROR: u32 = 1;
+const DIAGNOSTIC_SEVERITY_WARNING: u32 = 2;
+
 use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
 use crate::text::text_system::StyledTextSpan;
 impl Renderer {
@@ -33,9 +36,12 @@ impl Renderer {
             .active_file()
             .and_then(|path| app_state.diagnostics_for_path(path));
         let active_has_visible_diagnostics = active_diagnostics.is_some_and(|items| {
-            items
-                .iter()
-                .any(|diag| matches!(diag.severity.unwrap_or(2), 1 | 2))
+            items.iter().any(|diag| {
+                matches!(
+                    diag.severity.unwrap_or(DIAGNOSTIC_SEVERITY_WARNING),
+                    DIAGNOSTIC_SEVERITY_ERROR | DIAGNOSTIC_SEVERITY_WARNING
+                )
+            })
         });
 
         if app_state.current_overlays().is_empty()
@@ -89,16 +95,21 @@ impl Renderer {
 
         if let Some(diagnostics) = active_diagnostics {
             for diagnostic in diagnostics {
-                let severity = diagnostic.severity.unwrap_or(2);
-                if severity != 1 && severity != 2 {
+                let severity = diagnostic.severity.unwrap_or(DIAGNOSTIC_SEVERITY_WARNING);
+                if severity != DIAGNOSTIC_SEVERITY_ERROR && severity != DIAGNOSTIC_SEVERITY_WARNING
+                {
                     continue;
                 }
-                let mut line_color = if severity == 1 {
+                let mut line_color = if severity == DIAGNOSTIC_SEVERITY_ERROR {
                     self.theme.ui.error.as_f32()
                 } else {
                     self.theme.ui.warning.as_f32()
                 };
-                line_color[3] = if severity == 1 { 0.12 } else { 0.08 };
+                line_color[3] = if severity == DIAGNOSTIC_SEVERITY_ERROR {
+                    0.12
+                } else {
+                    0.08
+                };
 
                 let start_line = diagnostic.range.start.line as usize;
                 let end_line = diagnostic.range.end.line as usize;
@@ -121,6 +132,19 @@ impl Renderer {
                         ],
                         line_color,
                     ));
+                    if severity == DIAGNOSTIC_SEVERITY_WARNING {
+                        let mut warning_rail = self.theme.ui.warning.as_f32();
+                        warning_rail[3] = 0.72;
+                        chrome_quads.push(RegionDrawInstance::new(
+                            [
+                                geometry.viewport_text_left,
+                                line_top + 2.0,
+                                2.0,
+                                (line_height_px - 4.0).max(1.0),
+                            ],
+                            warning_rail,
+                        ));
+                    }
                 }
             }
         }
@@ -208,11 +232,8 @@ impl Renderer {
                         })
                         .sum::<usize>();
                     let desired_popup_w = max_len as f32 * char_w + PAD_X * 2.0;
-                    let popup_w = clamp_popup_width(
-                        desired_popup_w,
-                        120.0,
-                        geometry.viewport_text_width,
-                    );
+                    let popup_w =
+                        clamp_popup_width(desired_popup_w, 120.0, geometry.viewport_text_width);
                     debug_assert!(
                         popup_w.is_finite() && popup_w >= 1.0,
                         "floating overlay popup width must stay finite: desired={desired_popup_w}, viewport_text_width={}",

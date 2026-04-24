@@ -24,6 +24,9 @@ use super::super::helpers::{
 use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
 use crate::text::text_system::StyledTextSpan;
 
+const DIAGNOSTIC_SEVERITY_ERROR: u32 = 1;
+const DIAGNOSTIC_SEVERITY_WARNING: u32 = 2;
+
 impl Renderer {
     pub fn current_line_highlight_quad(
         &self,
@@ -248,11 +251,11 @@ impl Renderer {
 
         let mut quads = Vec::new();
         for diagnostic in diagnostics {
-            let severity = diagnostic.severity.unwrap_or(2);
-            if severity != 1 && severity != 2 {
+            let severity = diagnostic.severity.unwrap_or(DIAGNOSTIC_SEVERITY_WARNING);
+            if severity != DIAGNOSTIC_SEVERITY_ERROR && severity != DIAGNOSTIC_SEVERITY_WARNING {
                 continue;
             }
-            let color = if severity == 1 {
+            let color = if severity == DIAGNOSTIC_SEVERITY_ERROR {
                 self.theme.ui.error.as_f32()
             } else {
                 self.theme.ui.warning.as_f32()
@@ -305,12 +308,30 @@ impl Renderer {
                 let left = start_x.min(end_x).max(text_area_x);
                 let right = start_x.max(end_x).min(text_area_x + text_area_w);
                 let width = (right - left).max(6.0);
-                let underline_h = 2.0;
-                let underline_y = line_top + (line_height_px - underline_h).max(0.0);
-                quads.push(RegionDrawInstance::new(
-                    [left, underline_y, width, underline_h],
-                    color,
-                ));
+                if severity == DIAGNOSTIC_SEVERITY_ERROR {
+                    let underline_h = 2.0;
+                    let underline_y = line_top + (line_height_px - underline_h).max(0.0);
+                    quads.push(RegionDrawInstance::new(
+                        [left, underline_y, width, underline_h],
+                        color,
+                    ));
+                } else {
+                    let mut warning_color = color;
+                    warning_color[3] = warning_color[3].clamp(0.9, 1.0);
+                    let top_h = 2.0;
+                    let bottom_h = 1.0;
+                    let gap = 1.0;
+                    let bottom_y = line_top + (line_height_px - bottom_h).max(0.0);
+                    let top_y = (bottom_y - gap - top_h).max(line_top);
+                    quads.push(RegionDrawInstance::new(
+                        [left, top_y, width, top_h],
+                        warning_color,
+                    ));
+                    quads.push(RegionDrawInstance::new(
+                        [left, bottom_y, width, bottom_h],
+                        warning_color,
+                    ));
+                }
             }
         }
 
