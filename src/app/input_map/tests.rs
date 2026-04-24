@@ -287,6 +287,17 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::InsertAtLineStart),
         },
         Case {
+            name: "normal Shift+C -> ChangeToLineEnd",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyC),
+                named_key: None,
+                text: Some("C".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::ChangeToLineEnd),
+        },
+        Case {
             name: "global F12 -> FocusTerminal",
             context: KeybindingContext::for_mode(EditorMode::Normal),
             input: input_from_named(NamedKey::F12),
@@ -335,6 +346,28 @@ fn table_driven_keybinding_resolution() {
                 modifiers: ModifiersState::CONTROL,
             },
             expected: Some(Command::ScrollHalfPageDown),
+        },
+        Case {
+            name: "normal { -> MoveParagraphUp",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::BracketLeft),
+                named_key: None,
+                text: Some("{".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::MoveParagraphUp),
+        },
+        Case {
+            name: "normal } -> MoveParagraphDown",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::BracketRight),
+                named_key: None,
+                text: Some("}".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::MoveParagraphDown),
         },
         Case {
             name: "explorer w -> ExplorerCollapseOrParent",

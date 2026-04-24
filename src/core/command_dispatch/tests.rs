@@ -613,6 +613,41 @@ fn operate_delete_find_forward_includes_target_char() {
 }
 
 #[test]
+fn change_to_line_end_alias_enters_insert_and_removes_suffix() {
+    let mut app_state = AppState::from_text(unique_temp_path("change_to_eol"), "alpha beta");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let _ = dispatch_command(&mut app_state, Command::MoveRight);
+    let _ = dispatch_command(&mut app_state, Command::MoveRight);
+
+    let report = dispatch_command(&mut app_state, Command::ChangeToLineEnd);
+
+    assert!(report.success);
+    assert_eq!(app_state.text_string(), "al");
+    assert_eq!(app_state.current_mode(), EditorMode::Insert);
+}
+
+#[test]
+fn paragraph_motions_jump_between_blank_line_separated_blocks() {
+    let mut app_state = AppState::from_text(
+        unique_temp_path("paragraph_motion"),
+        "one\ntwo\n\nthree\nfour\n\nfive\n",
+    );
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    let down = dispatch_command(&mut app_state, Command::MoveParagraphDown);
+    assert!(down.success);
+    assert_eq!(app_state.cursor_line_col().0, 3);
+
+    let down_again = dispatch_command(&mut app_state, Command::MoveParagraphDown);
+    assert!(down_again.success);
+    assert_eq!(app_state.cursor_line_col().0, 6);
+
+    let up = dispatch_command(&mut app_state, Command::MoveParagraphUp);
+    assert!(up.success);
+    assert_eq!(app_state.cursor_line_col().0, 3);
+}
+
+#[test]
 fn paste_after_participates_in_undo_transaction() {
     let mut app_state = AppState::from_text(unique_temp_path("paste_after"), "abc");
     let mut clipboard = MockClipboard {

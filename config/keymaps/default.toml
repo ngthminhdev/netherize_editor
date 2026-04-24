@@ -194,6 +194,11 @@ command = "editor.append_at_line_end"
 
 [[bindings]]
 mode = "normal"
+key = "C"
+command = "editor.change_to_line_end"
+
+[[bindings]]
+mode = "normal"
 key = "a"
 command = "editor.append_after_cursor"
 
@@ -309,6 +314,16 @@ command = "editor.scroll_half_page_up"
 mode = "normal"
 key = "ctrl+d"
 command = "editor.scroll_half_page_down"
+
+[[bindings]]
+mode = "normal"
+key = "{"
+command = "editor.move_paragraph_up"
+
+[[bindings]]
+mode = "normal"
+key = "}"
+command = "editor.move_paragraph_down"
 
 # ───────────────── VISUAL ─────────────────
 [[bindings]]

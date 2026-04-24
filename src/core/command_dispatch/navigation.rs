@@ -134,6 +134,14 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             let changed = ctx.app_state.move_to_last_line();
             DispatchReport::success("Dispatch: move to last line", changed)
         }
+        Command::MoveParagraphUp => {
+            let changed = ctx.app_state.move_paragraph_up();
+            DispatchReport::success("Dispatch: move paragraph up", changed)
+        }
+        Command::MoveParagraphDown => {
+            let changed = ctx.app_state.move_paragraph_down();
+            DispatchReport::success("Dispatch: move paragraph down", changed)
+        }
         Command::ScrollHalfPageUp | Command::ScrollHalfPageDown | Command::CenterCursorLine => {
             DispatchReport::success_with_flags(
                 "Dispatch: scroll (handled by event loop)",

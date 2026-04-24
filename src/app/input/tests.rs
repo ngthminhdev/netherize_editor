@@ -1019,6 +1019,32 @@ fn normal_mode_ctrl_d_dispatches_scroll_half_page_down() {
 }
 
 #[test]
+fn normal_mode_shift_c_dispatches_change_to_line_end() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let now = std::time::Instant::now();
+
+    let mapped = handler.route_normalized_input(
+        NormalizedInput {
+            physical_key: Some(KeyCode::KeyC),
+            named_key: None,
+            text: Some("C".to_string()),
+            modifiers: ModifiersState::SHIFT,
+        },
+        &map,
+        context,
+        now,
+    );
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::ChangeToLineEnd);
+        }
+        other => panic!("expected Shift+C dispatch, got {:?}", other),
+    }
+}
+
+#[test]
 fn terminal_focus_ctrl_q_enters_terminal_normal_mode() {
     let mut handler = InputHandler::new();
     let map = make_map();

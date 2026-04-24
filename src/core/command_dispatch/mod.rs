@@ -182,6 +182,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::ChangeSelection
         | Command::ChangeWordForward
         | Command::ChangeWordBackward
+        | Command::ChangeToLineEnd
         | Command::PasteAfter
         | Command::PasteBefore
         | Command::EditorPaste
@@ -203,6 +204,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::MoveToFirstNonWhitespace
         | Command::MoveToFirstLine
         | Command::MoveToLastLine
+        | Command::MoveParagraphUp
+        | Command::MoveParagraphDown
         | Command::ScrollHalfPageUp
         | Command::ScrollHalfPageDown
         | Command::CenterCursorLine

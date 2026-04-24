@@ -589,6 +589,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("normal"), ch('O'), INSERT_LINE_ABOVE);
     km.insert(Some("normal"), ch('I'), INSERT_AT_LINE_START);
     km.insert(Some("normal"), ch('A'), APPEND_AT_LINE_END);
+    km.insert(Some("normal"), ch('C'), CHANGE_TO_LINE_END);
     km.insert(Some("normal"), ph(KeyCode::KeyA), APPEND_AFTER_CURSOR);
     km.insert(Some("normal"), ch('S'), SUBSTITUTE_LINE);
     km.insert(Some("normal"), ph(KeyCode::KeyX), DELETE_CHAR);
@@ -606,6 +607,8 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         KeySpec::CtrlPlus(KeyCode::KeyD),
         SCROLL_HALF_PAGE_DOWN,
     );
+    km.insert(Some("normal"), ch('{'), MOVE_PARAGRAPH_UP);
+    km.insert(Some("normal"), ch('}'), MOVE_PARAGRAPH_DOWN);
     km.insert(Some("normal"), mp(KeyCode::KeyH), BUFFER_PREV);
     km.insert(Some("normal"), mp(KeyCode::KeyL), BUFFER_NEXT);
     km.insert(Some("normal"), mp(KeyCode::KeyR), REDO);

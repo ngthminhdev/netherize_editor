@@ -2707,6 +2707,52 @@ impl AppState {
         changed
     }
 
+    pub fn move_paragraph_up(&mut self) -> bool {
+        let total = self.text.len_lines();
+        if total == 0 {
+            return false;
+        }
+        let current_line = self.text.char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
+        let mut line = current_line.saturating_sub(1);
+
+        while line > 0 && self.line_is_blank(line) {
+            line = line.saturating_sub(1);
+        }
+        while line > 0 && !self.line_is_blank(line.saturating_sub(1)) {
+            line = line.saturating_sub(1);
+        }
+
+        let changed = self.update_cursor_position(self.text.line_to_char(line));
+        self.target_col = 0;
+        changed
+    }
+
+    pub fn move_paragraph_down(&mut self) -> bool {
+        let total = self.text.len_lines();
+        if total == 0 {
+            return false;
+        }
+        let current_line = self.text.char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
+        let mut line = current_line;
+
+        while line + 1 < total && !self.line_is_blank(line) {
+            line += 1;
+        }
+        while line + 1 < total && self.line_is_blank(line) {
+            line += 1;
+        }
+
+        let changed = self.update_cursor_position(self.text.line_to_char(line.min(total.saturating_sub(1))));
+        self.target_col = 0;
+        changed
+    }
+
+    fn line_is_blank(&self, line_idx: usize) -> bool {
+        let start = self.text.line_to_char(line_idx.min(self.text.len_lines().saturating_sub(1)));
+        let end = self.line_content_end_char_idx(line_idx.min(self.text.len_lines().saturating_sub(1)));
+        self.text.slice(start..end).chars().all(|ch| ch == ' ' || ch == '\t')
+    }
+
     /// Nhảy đến `line_idx` (0-indexed). Dùng bởi `:N` vim command.
     /// Trả về true nếu cursor thực sự thay đổi.
     pub fn jump_to_line(&mut self, line_idx: usize) -> bool {

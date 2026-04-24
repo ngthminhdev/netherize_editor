@@ -533,6 +533,13 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 target: OperationTarget::Motion(crate::core::commands::Motion::WordBackward),
             },
         ),
+        Command::ChangeToLineEnd => dispatch(
+            ctx,
+            Command::Operate {
+                op: Operator::Change,
+                target: OperationTarget::Motion(crate::core::commands::Motion::LineEnd),
+            },
+        ),
         Command::ReplaceChar(ch) => {
             let changed = ctx.app_state.replace_char_at_cursor(ch);
             ctx.commit_text_transaction(changed);

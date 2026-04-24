@@ -82,6 +82,7 @@ pub enum Command {
     ChangeSelection,
     ChangeWordForward,
     ChangeWordBackward,
+    ChangeToLineEnd,
     PasteAfter,
     PasteBefore,
     EditorPaste,
@@ -102,6 +103,8 @@ pub enum Command {
     MoveToFirstNonWhitespace,
     MoveToFirstLine,
     MoveToLastLine,
+    MoveParagraphUp,
+    MoveParagraphDown,
     ScrollHalfPageUp,
     ScrollHalfPageDown,
     CenterCursorLine,
@@ -289,6 +292,7 @@ impl Command {
                 | Self::DeleteWordBackward
                 | Self::ChangeWordForward
                 | Self::ChangeWordBackward
+                | Self::ChangeToLineEnd
                 | Self::MoveLeft
                 | Self::MoveRight
                 | Self::MoveUp
@@ -301,6 +305,8 @@ impl Command {
                 | Self::MoveToFirstNonWhitespace
                 | Self::MoveToFirstLine
                 | Self::MoveToLastLine
+                | Self::MoveParagraphUp
+                | Self::MoveParagraphDown
                 | Self::ScrollHalfPageUp
                 | Self::ScrollHalfPageDown
                 | Self::CenterCursorLine
@@ -344,6 +350,8 @@ impl Command {
                 | Self::MoveToFirstNonWhitespace
                 | Self::MoveToFirstLine
                 | Self::MoveToLastLine
+                | Self::MoveParagraphUp
+                | Self::MoveParagraphDown
                 | Self::Backspace
                 | Self::DeleteChar
                 | Self::DeleteWordForward
