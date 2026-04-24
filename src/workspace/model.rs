@@ -4,7 +4,7 @@ use std::{
     time::SystemTime,
 };
 
-use crate::workspace::scanner::WorkspaceScanner;
+use crate::workspace::scanner::{WorkspaceScanOptions, WorkspaceScanner};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceNodeType {
@@ -93,6 +93,8 @@ pub struct WorkspaceModel {
     pub root_path: PathBuf,
     pub nodes: Vec<WorkspaceNode>,
     pub ignore_rules: WorkspaceIgnoreRules,
+    show_hidden: bool,
+    show_ignored: bool,
     expanded_paths: BTreeSet<PathBuf>,
     selected_path: Option<PathBuf>,
     scroll_offset: f32,
@@ -112,12 +114,15 @@ impl WorkspaceModel {
         let canonical_root = root_path
             .canonicalize()
             .unwrap_or_else(|_| root_path.clone());
-        let scanner = WorkspaceScanner::new(ignore_rules.clone());
+        let scan_options = WorkspaceScanOptions::default();
+        let scanner = WorkspaceScanner::new(ignore_rules.clone(), scan_options);
         let nodes = scanner.scan(&canonical_root)?;
         let mut model = Self {
             root_path: canonical_root,
             nodes,
             ignore_rules,
+            show_hidden: scan_options.show_hidden,
+            show_ignored: scan_options.show_ignored,
             expanded_paths: BTreeSet::new(),
             selected_path: None,
             scroll_offset: 0.0,
@@ -130,10 +135,44 @@ impl WorkspaceModel {
     }
 
     pub fn rescan(&mut self) -> Result<(), String> {
-        let scanner = WorkspaceScanner::new(self.ignore_rules.clone());
+        let scanner = WorkspaceScanner::new(self.ignore_rules.clone(), self.scan_options());
         self.nodes = scanner.scan(&self.root_path)?;
         self.prune_explorer_state();
         Ok(())
+    }
+
+    pub fn show_hidden(&self) -> bool {
+        self.show_hidden
+    }
+
+    pub fn show_ignored(&self) -> bool {
+        self.show_ignored
+    }
+
+    pub fn set_show_hidden(&mut self, show_hidden: bool) -> bool {
+        if self.show_hidden == show_hidden {
+            return false;
+        }
+        self.show_hidden = show_hidden;
+        true
+    }
+
+    pub fn set_show_ignored(&mut self, show_ignored: bool) -> bool {
+        if self.show_ignored == show_ignored {
+            return false;
+        }
+        self.show_ignored = show_ignored;
+        true
+    }
+
+    pub fn toggle_show_hidden(&mut self) -> bool {
+        self.show_hidden = !self.show_hidden;
+        true
+    }
+
+    pub fn toggle_show_ignored(&mut self) -> bool {
+        self.show_ignored = !self.show_ignored;
+        true
     }
 
     pub fn is_expanded(&self, path: &Path) -> bool {
@@ -393,7 +432,14 @@ impl WorkspaceModel {
         path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
     }
 
-    fn visible_node_paths(&self) -> Vec<PathBuf> {
+    fn scan_options(&self) -> WorkspaceScanOptions {
+        WorkspaceScanOptions {
+            show_hidden: self.show_hidden,
+            show_ignored: self.show_ignored,
+        }
+    }
+
+    pub fn visible_node_paths(&self) -> Vec<PathBuf> {
         let mut node_types: HashMap<PathBuf, WorkspaceNodeType> = HashMap::new();
         let mut children_map: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
 

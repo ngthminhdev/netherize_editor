@@ -160,6 +160,12 @@ pub enum Command {
     ExplorerCreateFolder,
     ExplorerStartFilter,
     ExplorerClearFilter,
+    ExplorerToggleHidden,
+    ExplorerToggleIgnored,
+    ExplorerMoveToTop,
+    ExplorerMoveToBottom,
+    ExplorerRenameFull,
+    ExplorerRenameBase,
     // Legacy aliases (kept for backward compatibility with old keymaps/tests).
     ExplorerExpandCollapse,
     ExplorerOpenFile,

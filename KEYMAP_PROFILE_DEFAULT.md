@@ -160,6 +160,12 @@ command = "editor.delete_word_backward"
 [[bindings]] mode = "explorer", key = "l", command = "explorer.expand_or_child"
 [[bindings]] mode = "explorer", key = "ArrowRight", command = "explorer.expand_or_child"
 [[bindings]] mode = "explorer", key = "Enter", command = "explorer.toggle_or_open"
+[[bindings]] mode = "explorer", key = "g g", command = "explorer.move_to_top"
+[[bindings]] mode = "explorer", key = "G", command = "explorer.move_to_bottom"
+[[bindings]] mode = "explorer", key = "H", command = "explorer.toggle_hidden"
+[[bindings]] mode = "explorer", key = "I", command = "explorer.toggle_ignored"
+[[bindings]] mode = "explorer", key = "r", command = "explorer.rename_full"
+[[bindings]] mode = "explorer", key = "R", command = "explorer.rename_base"
 
 # ───────────────── WINDOW / PANEL FOCUS ─────────────────
 [[bindings]] mode = "normal", key = "<leader>h", command = "app.focus_explorer"

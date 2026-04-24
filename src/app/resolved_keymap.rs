@@ -739,6 +739,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("explorer"), ch('A'), EXPLORER_CREATE_FOLDER);
     km.insert(Some("explorer"), ph(KeyCode::KeyF), EXPLORER_START_FILTER);
     km.insert(Some("explorer"), ch('F'), EXPLORER_CLEAR_FILTER);
+    km.insert(Some("explorer"), ch('H'), EXPLORER_TOGGLE_HIDDEN);
+    km.insert(Some("explorer"), ch('I'), EXPLORER_TOGGLE_IGNORED);
+    km.insert(Some("explorer"), ch('G'), EXPLORER_MOVE_TO_BOTTOM);
+    km.insert(Some("explorer"), ph(KeyCode::KeyR), EXPLORER_RENAME_FULL);
+    km.insert(Some("explorer"), ch('R'), EXPLORER_RENAME_BASE);
 
     // ── Global Ctrl+W → focus back to editor ─────────────────────────────────
     km.insert(None, mp(KeyCode::KeyW), FOCUS_BACK);
@@ -778,6 +783,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         Some("normal"),
         seq(&[ph(KeyCode::KeyG), ph(KeyCode::KeyG)]),
         MOVE_TO_FIRST_LINE,
+    );
+    km.insert_sequence(
+        Some("explorer"),
+        seq(&[ph(KeyCode::KeyG), ph(KeyCode::KeyG)]),
+        EXPLORER_MOVE_TO_TOP,
     );
     km.insert_sequence(
         Some("normal"),

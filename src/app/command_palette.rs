@@ -27,6 +27,10 @@ pub enum CommandPaletteMode {
     ExplorerCreateFolder,
     /// Explorer delete confirmation overlay.
     ExplorerDeleteConfirm,
+    /// Explorer prompt để đổi tên đầy đủ file đang chọn.
+    ExplorerRenameFull,
+    /// Explorer prompt để đổi tên file, preselect base name và giữ extension.
+    ExplorerRenameBase,
     /// Dirty buffer close confirmation overlay.
     BufferCloseConfirm,
     /// Recent Projects picker — hiện danh sách project đã mở gần đây.
@@ -49,6 +53,7 @@ impl CommandPaletteMode {
             Self::ExplorerCreateFile => "file> ",
             Self::ExplorerCreateFolder => "dir> ",
             Self::ExplorerDeleteConfirm => "delete> ",
+            Self::ExplorerRenameFull | Self::ExplorerRenameBase => "rename> ",
             Self::BufferCloseConfirm => "close> ",
             Self::RecentProjects => "project> ",
             Self::ThemeSelector => "Select Theme> ",
@@ -67,6 +72,7 @@ impl CommandPaletteMode {
             Self::ExplorerCreateFile => "enter a new file path...",
             Self::ExplorerCreateFolder => "enter a new folder path...",
             Self::ExplorerDeleteConfirm => "Delete selected item? (y/n)",
+            Self::ExplorerRenameFull | Self::ExplorerRenameBase => "enter a new file name...",
             Self::BufferCloseConfirm => "Save changes before closing? (y/n)",
             Self::RecentProjects => "no recent projects",
             Self::ThemeSelector => "type to filter themes...",
@@ -85,6 +91,7 @@ impl CommandPaletteMode {
             Self::ExplorerCreateFile => "NEW FILE",
             Self::ExplorerCreateFolder => "NEW FOLDER",
             Self::ExplorerDeleteConfirm => "DELETE",
+            Self::ExplorerRenameFull | Self::ExplorerRenameBase => "RENAME",
             Self::BufferCloseConfirm => "CLOSE",
             Self::RecentProjects => "RECENT",
             Self::ThemeSelector => "THEMES",
@@ -253,6 +260,8 @@ pub struct CommandPalette {
     pub results: Vec<CommandPaletteItem>,
     pub selected_index: usize,
     pub is_visible: bool,
+    pub cursor_byte: usize,
+    pub selection_range: Option<(usize, usize)>,
     max_results: usize,
     /// Items pre-populated externally (e.g. recent projects). Used by
     /// RecentProjects mode where `refresh_results` would otherwise clear them.
@@ -267,6 +276,8 @@ impl Default for CommandPalette {
             results: Vec::new(),
             selected_index: 0,
             is_visible: false,
+            cursor_byte: 0,
+            selection_range: None,
             max_results: DEFAULT_MAX_RESULTS,
             static_items: Vec::new(),
         }
@@ -279,6 +290,8 @@ impl CommandPalette {
         self.query.clear();
         self.selected_index = 0;
         self.is_visible = true;
+        self.cursor_byte = 0;
+        self.selection_range = None;
         self.static_items.clear();
         self.refresh_results(workspace);
         self.results.len()
@@ -295,6 +308,8 @@ impl CommandPalette {
         self.query.clear();
         self.selected_index = 0;
         self.is_visible = true;
+        self.cursor_byte = 0;
+        self.selection_range = None;
         self.static_items = items.clone();
         self.results = items;
         self.results.len()
@@ -307,6 +322,8 @@ impl CommandPalette {
         self.selected_index = 0;
         self.results.clear();
         self.static_items.clear();
+        self.cursor_byte = 0;
+        self.selection_range = None;
         was_open
     }
 
@@ -314,7 +331,14 @@ impl CommandPalette {
         if text.is_empty() || !self.is_visible {
             return false;
         }
-        self.query.push_str(text);
+        if let Some((start, end)) = self.normalized_selection_range() {
+            self.query.replace_range(start..end, text);
+            self.cursor_byte = start + text.len();
+            self.selection_range = None;
+        } else {
+            self.query.push_str(text);
+            self.cursor_byte = self.query.len();
+        }
         self.selected_index = 0;
         self.refresh_results(workspace);
         true
@@ -329,6 +353,8 @@ impl CommandPalette {
         }
         self.query = text.to_string();
         self.selected_index = 0;
+        self.cursor_byte = self.query.len();
+        self.selection_range = None;
         self.refresh_results(workspace);
         true
     }
@@ -337,7 +363,14 @@ impl CommandPalette {
         if !self.is_visible || self.query.is_empty() {
             return false;
         }
-        self.query.pop();
+        if let Some((start, end)) = self.normalized_selection_range() {
+            self.query.replace_range(start..end, "");
+            self.cursor_byte = start;
+            self.selection_range = None;
+        } else {
+            self.query.pop();
+            self.cursor_byte = self.query.len();
+        }
         self.selected_index = 0;
         self.refresh_results(workspace);
         true
@@ -432,6 +465,8 @@ impl CommandPalette {
             CommandPaletteMode::ExplorerCreateFile
             | CommandPaletteMode::ExplorerCreateFolder
             | CommandPaletteMode::ExplorerDeleteConfirm
+            | CommandPaletteMode::ExplorerRenameFull
+            | CommandPaletteMode::ExplorerRenameBase
             | CommandPaletteMode::BufferCloseConfirm => Vec::new(),
             CommandPaletteMode::RecentProjects => unreachable!("handled above"),
             CommandPaletteMode::ThemeSelector => unreachable!("handled above"),
@@ -453,6 +488,31 @@ impl CommandPalette {
         let old_selected = self.selected_action();
         self.refresh_results(workspace);
         old_results != self.results || old_selected != self.selected_action()
+    }
+
+    pub fn set_selection_range(&mut self, range: Option<(usize, usize)>) -> bool {
+        let normalized = range.map(|(start, end)| {
+            let start = start.min(self.query.len());
+            let end = end.min(self.query.len());
+            if start <= end {
+                (start, end)
+            } else {
+                (end, start)
+            }
+        });
+        if self.selection_range == normalized {
+            return false;
+        }
+        self.selection_range = normalized;
+        true
+    }
+
+    fn normalized_selection_range(&self) -> Option<(usize, usize)> {
+        self.selection_range.and_then(|(start, end)| {
+            let start = start.min(self.query.len());
+            let end = end.min(self.query.len());
+            (start < end).then_some((start, end))
+        })
     }
 
     pub fn replace_results(&mut self, results: Vec<CommandPaletteItem>) -> bool {
@@ -494,6 +554,8 @@ impl CommandPalette {
                 | CommandPaletteMode::ExplorerCreateFile
                 | CommandPaletteMode::ExplorerCreateFolder
                 | CommandPaletteMode::ExplorerDeleteConfirm
+                | CommandPaletteMode::ExplorerRenameFull
+                | CommandPaletteMode::ExplorerRenameBase
                 | CommandPaletteMode::BufferCloseConfirm
         );
         let requested_visible_rows = if show_results {

@@ -271,6 +271,12 @@ fn dispatch_command_with_clipboard_once(
         | Command::ExplorerCreateFolder
         | Command::ExplorerStartFilter
         | Command::ExplorerClearFilter
+        | Command::ExplorerToggleHidden
+        | Command::ExplorerToggleIgnored
+        | Command::ExplorerMoveToTop
+        | Command::ExplorerMoveToBottom
+        | Command::ExplorerRenameFull
+        | Command::ExplorerRenameBase
         | Command::ExplorerExpandCollapse
         | Command::ExplorerOpenFile
         | Command::NextPanelTab

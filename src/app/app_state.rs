@@ -525,6 +525,7 @@ pub struct AppState {
     jump_back_stack: Vec<(PathBuf, usize)>,
     jump_forward_stack: Vec<(PathBuf, usize)>,
     diagnostics: HashMap<PathBuf, Vec<LspDiagnostic>>,
+    pending_explorer_rename_path: Option<PathBuf>,
 }
 
 impl AppState {
@@ -565,6 +566,7 @@ impl AppState {
             jump_back_stack: Vec::new(),
             jump_forward_stack: Vec::new(),
             diagnostics: HashMap::new(),
+            pending_explorer_rename_path: None,
         }
     }
 
@@ -603,6 +605,7 @@ impl AppState {
             jump_back_stack: Vec::new(),
             jump_forward_stack: Vec::new(),
             diagnostics: HashMap::new(),
+            pending_explorer_rename_path: None,
         }
     }
 
@@ -641,6 +644,25 @@ impl AppState {
         self.workspace_model
             .as_ref()
             .map(WorkspaceModel::filter_query)
+    }
+
+    pub fn workspace_show_hidden(&self) -> bool {
+        self.workspace_model
+            .as_ref()
+            .is_some_and(WorkspaceModel::show_hidden)
+    }
+
+    pub fn workspace_show_ignored(&self) -> bool {
+        self.workspace_model
+            .as_ref()
+            .is_some_and(WorkspaceModel::show_ignored)
+    }
+
+    pub fn workspace_visible_node_paths(&self) -> Vec<PathBuf> {
+        self.workspace_model
+            .as_ref()
+            .map(WorkspaceModel::visible_node_paths)
+            .unwrap_or_default()
     }
 
     pub fn workspace_has_active_filter(&self) -> bool {
@@ -758,6 +780,18 @@ impl AppState {
         Ok(true)
     }
 
+    pub fn workspace_toggle_show_hidden(&mut self) -> bool {
+        self.workspace_model
+            .as_mut()
+            .is_some_and(WorkspaceModel::toggle_show_hidden)
+    }
+
+    pub fn workspace_toggle_show_ignored(&mut self) -> bool {
+        self.workspace_model
+            .as_mut()
+            .is_some_and(WorkspaceModel::toggle_show_ignored)
+    }
+
     pub fn workspace_file_count(&self) -> usize {
         self.workspace_model
             .as_ref()
@@ -779,6 +813,8 @@ impl AppState {
                 | CommandPaletteMode::LiveGrep
                 | CommandPaletteMode::ExplorerCreateFile
                 | CommandPaletteMode::ExplorerCreateFolder
+                | CommandPaletteMode::ExplorerRenameFull
+                | CommandPaletteMode::ExplorerRenameBase
         ) && workspace.is_none()
         {
             return Err("workspace is not attached".to_string());
@@ -952,6 +988,8 @@ impl AppState {
                 | CommandPaletteMode::LiveGrep
                 | CommandPaletteMode::ExplorerCreateFile
                 | CommandPaletteMode::ExplorerCreateFolder
+                | CommandPaletteMode::ExplorerRenameFull
+                | CommandPaletteMode::ExplorerRenameBase
         ) && workspace.is_none()
         {
             return Err("workspace is not attached".to_string());
@@ -972,6 +1010,8 @@ impl AppState {
                 | CommandPaletteMode::LiveGrep
                 | CommandPaletteMode::ExplorerCreateFile
                 | CommandPaletteMode::ExplorerCreateFolder
+                | CommandPaletteMode::ExplorerRenameFull
+                | CommandPaletteMode::ExplorerRenameBase
         ) && workspace.is_none()
         {
             return Err("workspace is not attached".to_string());
@@ -1003,6 +1043,8 @@ impl AppState {
                 | CommandPaletteMode::LiveGrep
                 | CommandPaletteMode::ExplorerCreateFile
                 | CommandPaletteMode::ExplorerCreateFolder
+                | CommandPaletteMode::ExplorerRenameFull
+                | CommandPaletteMode::ExplorerRenameBase
         ) && workspace.is_none()
         {
             return Err("workspace is not attached".to_string());
@@ -1107,6 +1149,22 @@ impl AppState {
         overlay_bounds: [f32; 4],
     ) -> Option<CommandPaletteRenderModel> {
         self.command_palette.render(theme, overlay_bounds)
+    }
+
+    pub fn set_command_palette_selection_range(&mut self, range: Option<(usize, usize)>) -> bool {
+        self.command_palette.set_selection_range(range)
+    }
+
+    pub fn pending_explorer_rename_path(&self) -> Option<&Path> {
+        self.pending_explorer_rename_path.as_deref()
+    }
+
+    pub fn set_pending_explorer_rename_path(&mut self, path: Option<PathBuf>) -> bool {
+        if self.pending_explorer_rename_path == path {
+            return false;
+        }
+        self.pending_explorer_rename_path = path;
+        true
     }
 
     pub fn open_file_picker(&mut self) -> Result<usize, String> {
@@ -4161,7 +4219,10 @@ impl AppState {
         Ok(())
     }
 
-    fn load_buffer_from_file_resetting_view(&mut self, canonical_path: &Path) -> Result<(), String> {
+    fn load_buffer_from_file_resetting_view(
+        &mut self,
+        canonical_path: &Path,
+    ) -> Result<(), String> {
         let content = fs::read_to_string(canonical_path)
             .map_err(|err| format!("open file {:?} failed: {err}", canonical_path))?;
         self.text = Rope::from(content.as_str());
@@ -4187,7 +4248,8 @@ impl AppState {
 
         let max_char_idx = self.text.len_chars();
         self.cursor_char_idx = old_cursor.min(max_char_idx);
-        self.selection_anchor_char_idx = old_selection_anchor.map(|anchor| anchor.min(max_char_idx));
+        self.selection_anchor_char_idx =
+            old_selection_anchor.map(|anchor| anchor.min(max_char_idx));
 
         if self.selection_anchor_char_idx == Some(self.cursor_char_idx) {
             self.selection_anchor_char_idx = None;
@@ -5329,8 +5391,11 @@ mod tests {
 
         state.save_file().expect("save file");
 
-        fs::write(&file_path, "changed externally but should be ignored in debounce window\n")
-            .expect("rewrite file quickly");
+        fs::write(
+            &file_path,
+            "changed externally but should be ignored in debounce window\n",
+        )
+        .expect("rewrite file quickly");
 
         let report = state
             .apply_external_file_events(&[FileSystemEvent {
@@ -5378,9 +5443,11 @@ mod tests {
         assert!(report.active_file_reloaded);
         assert!(state.preview(16).starts_with('x'));
         assert_eq!(state.cursor_char_idx(), state.len_chars());
-        assert!(state
-            .selection_anchor_char_idx
-            .is_none_or(|anchor| anchor <= state.len_chars()));
+        assert!(
+            state
+                .selection_anchor_char_idx
+                .is_none_or(|anchor| anchor <= state.len_chars())
+        );
 
         let _ = fs::remove_dir_all(root);
     }

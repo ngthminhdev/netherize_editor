@@ -23,6 +23,66 @@ fn dispatch_palette_overlay_command(
 }
 
 impl AppShell {
+    fn explorer_selected_entry(&mut self) -> Option<ExplorerEntry> {
+        self.ensure_explorer_snapshot();
+        if self.explorer_snapshot.entries.is_empty() {
+            self.explorer_cursor = 0;
+            return None;
+        }
+        self.explorer_cursor = self
+            .explorer_cursor
+            .min(self.explorer_snapshot.entries.len().saturating_sub(1));
+        self.explorer_snapshot
+            .entries
+            .get(self.explorer_cursor)
+            .cloned()
+    }
+
+    fn explorer_rename_base_selection(name: &str) -> (usize, usize) {
+        match name.rfind('.') {
+            Some(0) | None => (0, name.len()),
+            Some(dot_index) => (0, dot_index),
+        }
+    }
+
+    fn open_explorer_rename_prompt(&mut self, rename_base_only: bool) -> bool {
+        let Some(selected) = self.explorer_selected_entry() else {
+            return false;
+        };
+        if selected.file_type != WorkspaceNodeType::File {
+            return false;
+        }
+        let Some(file_name) = selected
+            .path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(str::to_string)
+        else {
+            return false;
+        };
+
+        let mode = if rename_base_only {
+            CommandPaletteMode::ExplorerRenameBase
+        } else {
+            CommandPaletteMode::ExplorerRenameFull
+        };
+        if !self.open_prompt_overlay(mode) {
+            return false;
+        }
+        let _ = self
+            .app_state
+            .set_pending_explorer_rename_path(Some(selected.path.clone()));
+        let _ = self.app_state.set_command_palette_query(&file_name);
+        let _ = self
+            .app_state
+            .set_command_palette_selection_range(if rename_base_only {
+                Some(Self::explorer_rename_base_selection(&file_name))
+            } else {
+                None
+            });
+        true
+    }
+
     pub(super) fn handle_command(&mut self, command: Command) -> bool {
         self.handle_command_with_count(command, 1)
     }
@@ -689,6 +749,12 @@ impl AppShell {
                 }
 
                 match self.app_state.command_palette_mode() {
+                    Some(
+                        CommandPaletteMode::ExplorerCreateFile
+                        | CommandPaletteMode::ExplorerCreateFolder
+                        | CommandPaletteMode::ExplorerRenameFull
+                        | CommandPaletteMode::ExplorerRenameBase,
+                    ) => {}
                     Some(CommandPaletteMode::FilePicker | CommandPaletteMode::LiveGrep) => {
                         self.submit_active_palette_fzf_search();
                     }
@@ -712,6 +778,8 @@ impl AppShell {
                     Some(
                         CommandPaletteMode::ExplorerCreateFile
                             | CommandPaletteMode::ExplorerCreateFolder
+                            | CommandPaletteMode::ExplorerRenameFull
+                            | CommandPaletteMode::ExplorerRenameBase
                             | CommandPaletteMode::ExplorerDeleteConfirm
                     )
                 );
@@ -803,6 +871,64 @@ impl AppShell {
                 }
                 changed
             }
+            Command::ExplorerToggleHidden => {
+                let changed = self.app_state.workspace_toggle_show_hidden();
+                if !changed {
+                    return false;
+                }
+                let Ok(rescanned) = self.app_state.rescan_workspace() else {
+                    return false;
+                };
+                if rescanned {
+                    self.mark_explorer_dirty();
+                    true
+                } else {
+                    false
+                }
+            }
+            Command::ExplorerToggleIgnored => {
+                let changed = self.app_state.workspace_toggle_show_ignored();
+                if !changed {
+                    return false;
+                }
+                let Ok(rescanned) = self.app_state.rescan_workspace() else {
+                    return false;
+                };
+                if rescanned {
+                    self.mark_explorer_dirty();
+                    true
+                } else {
+                    false
+                }
+            }
+            Command::ExplorerMoveToTop => {
+                self.ensure_explorer_snapshot();
+                if self.explorer_snapshot.entries.is_empty() {
+                    self.explorer_cursor = 0;
+                    return false;
+                }
+                self.explorer_cursor = 0;
+                let _ = self
+                    .app_state
+                    .workspace_select_path(&self.explorer_snapshot.entries[0].path);
+                self.sidebar_needs_layout = true;
+                true
+            }
+            Command::ExplorerMoveToBottom => {
+                self.ensure_explorer_snapshot();
+                if self.explorer_snapshot.entries.is_empty() {
+                    self.explorer_cursor = 0;
+                    return false;
+                }
+                self.explorer_cursor = self.explorer_snapshot.entries.len().saturating_sub(1);
+                let _ = self.app_state.workspace_select_path(
+                    &self.explorer_snapshot.entries[self.explorer_cursor].path,
+                );
+                self.sidebar_needs_layout = true;
+                true
+            }
+            Command::ExplorerRenameFull => self.open_explorer_rename_prompt(false),
+            Command::ExplorerRenameBase => self.open_explorer_rename_prompt(true),
             Command::ExplorerDeleteNode => self.begin_explorer_delete_confirmation(),
             Command::FocusEditor | Command::FocusBack => {
                 let mut changed = self.release_focus_mode_to_editor();
@@ -1302,6 +1428,8 @@ impl AppShell {
                         Some(
                             CommandPaletteMode::ExplorerCreateFile
                                 | CommandPaletteMode::ExplorerCreateFolder
+                                | CommandPaletteMode::ExplorerRenameFull
+                                | CommandPaletteMode::ExplorerRenameBase
                         )
                     )
                 {
@@ -1909,7 +2037,6 @@ impl AppShell {
         self.request_redraw();
         true
     }
-
     fn select_next_diagnostic_item(&mut self) -> bool {
         let changed = self.app_state.diagnostics_select_next();
         if changed {
@@ -2367,44 +2494,86 @@ impl AppShell {
         let Some(mode) = self.app_state.command_palette_mode() else {
             return false;
         };
-        let Some(target_path) = self.resolve_explorer_creation_target() else {
-            return false;
-        };
+        let target_path = match mode {
+            crate::app::command_palette::CommandPaletteMode::ExplorerCreateFile
+            | crate::app::command_palette::CommandPaletteMode::ExplorerCreateFolder => {
+                let Some(target_path) = self.resolve_explorer_creation_target() else {
+                    return false;
+                };
 
-        let create_result = match mode {
-            crate::app::command_palette::CommandPaletteMode::ExplorerCreateFile => {
-                if let Some(parent) = target_path.parent()
-                    && let Err(err) = std::fs::create_dir_all(parent)
-                {
+                let create_result = match mode {
+                    crate::app::command_palette::CommandPaletteMode::ExplorerCreateFile => {
+                        if let Some(parent) = target_path.parent()
+                            && let Err(err) = std::fs::create_dir_all(parent)
+                        {
+                            eprintln!(
+                                "[AppShell] explorer create parent directories failed for {}: {err}",
+                                target_path.display()
+                            );
+                            return false;
+                        }
+                        std::fs::OpenOptions::new()
+                            .write(true)
+                            .create_new(true)
+                            .open(&target_path)
+                            .map(|_| ())
+                    }
+                    crate::app::command_palette::CommandPaletteMode::ExplorerCreateFolder => {
+                        std::fs::create_dir_all(&target_path)
+                    }
+                    _ => unreachable!(),
+                };
+
+                if let Err(err) = create_result {
                     eprintln!(
-                        "[AppShell] explorer create parent directories failed for {}: {err}",
+                        "[AppShell] explorer create failed for {}: {err}",
                         target_path.display()
                     );
                     return false;
                 }
-                std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&target_path)
-                    .map(|_| ())
+                target_path
             }
-            crate::app::command_palette::CommandPaletteMode::ExplorerCreateFolder => {
-                std::fs::create_dir_all(&target_path)
+            crate::app::command_palette::CommandPaletteMode::ExplorerRenameFull
+            | crate::app::command_palette::CommandPaletteMode::ExplorerRenameBase => {
+                let Some(old_path) = self
+                    .app_state
+                    .pending_explorer_rename_path()
+                    .map(PathBuf::from)
+                else {
+                    return false;
+                };
+                let Some(parent) = old_path.parent().map(PathBuf::from) else {
+                    return false;
+                };
+                let new_name = self.app_state.command_palette_query_text().trim();
+                if new_name.is_empty()
+                    || new_name.contains(std::path::MAIN_SEPARATOR)
+                    || new_name.contains('/')
+                    || new_name.contains('\\')
+                {
+                    return false;
+                }
+                let new_path = parent.join(new_name);
+                if new_path == old_path || new_path.exists() {
+                    return false;
+                }
+                if let Err(err) = std::fs::rename(&old_path, &new_path) {
+                    eprintln!(
+                        "[AppShell] explorer rename failed from {} to {}: {err}",
+                        old_path.display(),
+                        new_path.display()
+                    );
+                    return false;
+                }
+                let _ = self.app_state.set_pending_explorer_rename_path(None);
+                new_path
             }
             _ => return false,
         };
 
-        if let Err(err) = create_result {
-            eprintln!(
-                "[AppShell] explorer create failed for {}: {err}",
-                target_path.display()
-            );
-            return false;
-        }
-
         if let Err(err) = self.app_state.rescan_workspace() {
             eprintln!(
-                "[AppShell] workspace rescan failed after explorer create for {}: {err}",
+                "[AppShell] workspace rescan failed after explorer prompt confirm for {}: {err}",
                 target_path.display()
             );
         }
@@ -2779,6 +2948,20 @@ mod tests {
         assert_eq!(shell.app_state.scroll_line, 0);
         assert!(shell.editor_needs_layout);
         assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn explorer_rename_base_selection_keeps_extension() {
+        assert_eq!(AppShell::explorer_rename_base_selection("main.rs"), (0, 4));
+        assert_eq!(
+            AppShell::explorer_rename_base_selection("archive.tar.gz"),
+            (0, 11)
+        );
+        assert_eq!(AppShell::explorer_rename_base_selection("README"), (0, 6));
+        assert_eq!(
+            AppShell::explorer_rename_base_selection(".gitignore"),
+            (0, 10)
+        );
     }
 
     #[test]

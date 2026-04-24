@@ -617,6 +617,31 @@ command = "explorer.clear_filter"
 
 [[bindings]]
 mode = "explorer"
+key = "H"
+command = "explorer.toggle_hidden"
+
+[[bindings]]
+mode = "explorer"
+key = "I"
+command = "explorer.toggle_ignored"
+
+[[bindings]]
+mode = "explorer"
+key = "G"
+command = "explorer.move_to_bottom"
+
+[[bindings]]
+mode = "explorer"
+key = "r"
+command = "explorer.rename_full"
+
+[[bindings]]
+mode = "explorer"
+key = "R"
+command = "explorer.rename_base"
+
+[[bindings]]
+mode = "explorer"
 key = "mod+h"
 command = "app.prev_panel_tab"
 
