@@ -200,6 +200,41 @@ pub(super) fn gutter_width_for_editor(
     gutter_digits as f32 * gutter_char_w + 18.0
 }
 
+pub(super) fn clamp_popup_width(
+    desired_width: f32,
+    preferred_min_width: f32,
+    available_width: f32,
+) -> f32 {
+    let available_width = if available_width.is_nan() {
+        1.0
+    } else {
+        available_width.max(1.0)
+    };
+    let preferred_min_width = if preferred_min_width.is_nan() {
+        1.0
+    } else {
+        preferred_min_width.min(available_width).max(1.0)
+    };
+    let desired_width = if desired_width.is_nan() {
+        preferred_min_width
+    } else {
+        desired_width
+    };
+
+    desired_width.clamp(preferred_min_width, available_width)
+}
+
+pub(super) fn clamp_x_in_bounds(x: f32, min_x: f32, max_x: f32) -> f32 {
+    let min_x = if min_x.is_nan() { 0.0 } else { min_x };
+    let max_x = if max_x.is_nan() {
+        min_x
+    } else {
+        max_x.max(min_x)
+    };
+    let x = if x.is_nan() { min_x } else { x };
+    x.clamp(min_x, max_x)
+}
+
 // ── Caret geometry ────────────────────────────────────────────────────────────
 
 /// Build the caret rect for the current mode.
@@ -258,6 +293,31 @@ pub(super) fn caret_rect_for_mode(
         width,
         height,
         color,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clamp_popup_width, clamp_x_in_bounds};
+
+    #[test]
+    fn clamp_popup_width_saturates_to_available_width_when_viewport_is_narrow() {
+        let popup_w = clamp_popup_width(324.0, 160.0, 80.7749);
+        assert!((popup_w - 80.7749).abs() < 0.001);
+    }
+
+    #[test]
+    fn clamp_popup_width_handles_nan_inputs() {
+        assert_eq!(clamp_popup_width(f32::NAN, 160.0, 80.0), 80.0);
+        assert_eq!(clamp_popup_width(120.0, f32::NAN, 80.0), 80.0);
+        assert_eq!(clamp_popup_width(120.0, 160.0, f32::NAN), 1.0);
+    }
+
+    #[test]
+    fn clamp_x_in_bounds_normalizes_inverted_and_nan_ranges() {
+        assert_eq!(clamp_x_in_bounds(150.0, 110.525, 80.7749), 110.525);
+        assert_eq!(clamp_x_in_bounds(f32::NAN, 20.0, 80.0), 20.0);
+        assert_eq!(clamp_x_in_bounds(50.0, f32::NAN, 80.0), 50.0);
     }
 }
 

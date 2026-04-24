@@ -9,7 +9,8 @@ use crate::{
 };
 
 use super::super::helpers::{
-    layout_panel_text, layout_panel_text_bold, layout_panel_text_italic, rect_to_scissor,
+    clamp_popup_width, layout_panel_text, layout_panel_text_bold, layout_panel_text_italic,
+    rect_to_scissor,
 };
 
 impl Renderer {
@@ -27,8 +28,8 @@ impl Renderer {
         const INNER_PAD_Y: f32 = 18.0;
         const BLOCK_GAP: f32 = 8.0;
 
-        let popup_available_w = (window_w - MARGIN_X * 2.0).max(160.0);
-        let popup_w = popup_available_w.min(MODAL_W);
+        let popup_available_w = (window_w - MARGIN_X * 2.0).max(1.0);
+        let popup_w = clamp_popup_width(MODAL_W, 160.0, popup_available_w);
         let content_w = (popup_w - INNER_PAD_X * 2.0).max(1.0);
 
         let bg_color = self.theme.ui.panel_bg.as_f32();

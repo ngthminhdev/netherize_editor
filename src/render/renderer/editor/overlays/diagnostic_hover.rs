@@ -17,8 +17,9 @@ use crate::{
 use cosmic_text::Metrics;
 
 use super::super::super::helpers::{
-    caret_rect_for_mode, clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
-    layout_panel_rich_text, layout_panel_text, layout_panel_text_italic, rect_to_scissor,
+    caret_rect_for_mode, clamp_monospace_text, clamp_popup_width, clamp_x_in_bounds,
+    estimate_monospace_width, gutter_width_for_editor, layout_panel_rich_text, layout_panel_text,
+    layout_panel_text_italic, rect_to_scissor,
     should_draw_block_cursor,
 };
 use super::super::completion::{completion_kind_badge, completion_label_spans};
@@ -75,8 +76,7 @@ impl Renderer {
             .max()
             .unwrap_or(0);
         let desired_popup_w = longest as f32 * char_w + PAD_X * 2.0;
-        let preferred_min_popup_w = 160.0_f32.min(max_popup_w.max(1.0));
-        let popup_w = desired_popup_w.clamp(preferred_min_popup_w, max_popup_w.max(1.0));
+        let popup_w = clamp_popup_width(desired_popup_w, 160.0, max_popup_w);
         debug_assert!(
             popup_w.is_finite() && popup_w >= 1.0,
             "diagnostic popup width must stay finite: desired={desired_popup_w}, available_popup_w={available_popup_w}, max_popup_w={max_popup_w}"
@@ -99,7 +99,7 @@ impl Renderer {
 
         let max_popup_x = (window_w - popup_w - WINDOW_PAD).max(WINDOW_PAD);
         let min_popup_x = geometry.viewport_text_left.max(WINDOW_PAD).min(max_popup_x);
-        let popup_x = anchor_x.clamp(min_popup_x, max_popup_x);
+        let popup_x = clamp_x_in_bounds(anchor_x, min_popup_x, max_popup_x);
         let mut popup_y = anchor_y + geometry.line_height;
         if popup_y + popup_h > window_h - WINDOW_PAD {
             popup_y = (anchor_y - popup_h).max(WINDOW_PAD);
@@ -155,6 +155,8 @@ impl Renderer {
 
 #[cfg(test)]
 mod tests {
+    use crate::render::renderer::helpers::{clamp_popup_width, clamp_x_in_bounds};
+
     #[test]
     fn diagnostic_popup_width_handles_narrow_viewport_without_panicking() {
         const PAD_X: f32 = 10.0;
@@ -169,12 +171,12 @@ mod tests {
             .min(viewport_text_width)
             .max(1.0);
         let max_popup_w = (viewport_text_width * 0.5).min(available_popup_w).max(1.0);
-        let preferred_min_popup_w = 160.0_f32.min(max_popup_w.max(1.0));
-        let popup_w = (longest as f32 * char_w + PAD_X * 2.0)
-            .clamp(preferred_min_popup_w, max_popup_w.max(1.0));
+        let popup_w = clamp_popup_width(longest as f32 * char_w + PAD_X * 2.0, 160.0, max_popup_w);
+        let popup_x = clamp_x_in_bounds(150.0, 110.525, 80.7749);
 
         assert!((max_popup_w - 55.2625).abs() < 0.001);
         assert!((popup_w - 55.2625).abs() < 0.001);
+        assert!((popup_x - 110.525).abs() < 0.001);
     }
 
     #[test]
@@ -191,9 +193,7 @@ mod tests {
             .min(viewport_text_width)
             .max(1.0);
         let max_popup_w = (viewport_text_width * 0.5).min(available_popup_w).max(1.0);
-        let preferred_min_popup_w = 160.0_f32.min(max_popup_w.max(1.0));
-        let popup_w = (longest as f32 * char_w + PAD_X * 2.0)
-            .clamp(preferred_min_popup_w, max_popup_w.max(1.0));
+        let popup_w = clamp_popup_width(longest as f32 * char_w + PAD_X * 2.0, 160.0, max_popup_w);
 
         assert_eq!(available_popup_w, 1200.0);
         assert_eq!(max_popup_w, 600.0);

@@ -19,8 +19,9 @@ use crate::{
 use cosmic_text::Metrics;
 
 use super::super::helpers::{
-    caret_rect_for_mode, clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
-    layout_panel_rich_text, layout_panel_text, layout_panel_text_italic, rect_to_scissor,
+    caret_rect_for_mode, clamp_monospace_text, clamp_popup_width, clamp_x_in_bounds,
+    estimate_monospace_width, gutter_width_for_editor, layout_panel_rich_text, layout_panel_text,
+    layout_panel_text_italic, rect_to_scissor,
     should_draw_block_cursor,
 };
 use super::completion::{completion_kind_badge, completion_label_spans};
@@ -207,9 +208,11 @@ impl Renderer {
                         })
                         .sum::<usize>();
                     let desired_popup_w = max_len as f32 * char_w + PAD_X * 2.0;
-                    let available_popup_w = geometry.viewport_text_width.max(1.0);
-                    let preferred_min_popup_w = 120.0_f32.min(available_popup_w);
-                    let popup_w = desired_popup_w.clamp(preferred_min_popup_w, available_popup_w);
+                    let popup_w = clamp_popup_width(
+                        desired_popup_w,
+                        120.0,
+                        geometry.viewport_text_width,
+                    );
                     debug_assert!(
                         popup_w.is_finite() && popup_w >= 1.0,
                         "floating overlay popup width must stay finite: desired={desired_popup_w}, viewport_text_width={}",
@@ -356,9 +359,7 @@ impl Renderer {
                 .unwrap_or(8);
             let visible_rows = completion.filtered_items.len().min(MAX_VISIBLE_ROWS).max(1);
             let desired_popup_w = max_len as f32 * char_w + PAD_X * 2.0;
-            let available_popup_w = geometry.viewport_text_width.max(1.0);
-            let preferred_min_popup_w = 160.0_f32.min(available_popup_w);
-            let popup_w = desired_popup_w.clamp(preferred_min_popup_w, available_popup_w);
+            let popup_w = clamp_popup_width(desired_popup_w, 160.0, geometry.viewport_text_width);
             debug_assert!(
                 popup_w.is_finite() && popup_w >= 1.0,
                 "completion popup width must stay finite: desired={desired_popup_w}, viewport_text_width={}",
@@ -368,8 +369,11 @@ impl Renderer {
                 .max(geometry.line_height);
 
             let max_anchor_x = (viewport_right - popup_w).max(geometry.viewport_text_left);
-            let anchor_x = (geometry.origin_x + completion.anchor_col as f32 * char_w)
-                .clamp(geometry.viewport_text_left, max_anchor_x);
+            let anchor_x = clamp_x_in_bounds(
+                geometry.origin_x + completion.anchor_col as f32 * char_w,
+                geometry.viewport_text_left,
+                max_anchor_x,
+            );
             let anchor_y = geometry.origin_y + completion.anchor_line as f32 * geometry.line_height;
             let mut popup_y = anchor_y + geometry.line_height;
             if popup_y + popup_h > viewport_bottom {
