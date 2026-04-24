@@ -131,10 +131,7 @@ impl LspSessionRegistry {
     }
 
     /// Trả về `LspSessionHandle` đầy đủ (kèm capabilities) theo binary name.
-    fn get_handle(
-        &self,
-        binary: &str,
-    ) -> Result<Option<LspSessionHandle>, String> {
+    fn get_handle(&self, binary: &str) -> Result<Option<LspSessionHandle>, String> {
         let guard = self
             .sessions
             .lock()
@@ -144,10 +141,7 @@ impl LspSessionRegistry {
 
     /// Tìm session handle cho file đang mở theo URI.
     /// Dùng cho definition/references vốn không biết language_id.
-    fn get_handle_by_uri(
-        &self,
-        uri: &str,
-    ) -> Result<Option<LspSessionHandle>, String> {
+    fn get_handle_by_uri(&self, uri: &str) -> Result<Option<LspSessionHandle>, String> {
         let guard = self
             .sessions
             .lock()
@@ -306,8 +300,7 @@ async fn dispatch_loop(
 ) {
     let pty_sessions = Arc::new(PtySessionRegistry::default());
     let lsp_sessions = Arc::new(LspSessionRegistry::default());
-    let syntax_engine_cache: Arc<SyntaxEngineCache> =
-        Arc::new(Mutex::new(HashMap::new()));
+    let syntax_engine_cache: Arc<SyntaxEngineCache> = Arc::new(Mutex::new(HashMap::new()));
     let mut active_fzf_search: Option<tokio::task::JoinHandle<()>> = None;
 
     while let Some(request) = request_rx.recv().await {
@@ -802,11 +795,7 @@ fn execute_lsp_request(
             ))?;
             let session = spawned.process.clone();
             // Key = "binary@/abs/root" để hỗ trợ cô lập theo workspace.
-            let server_key = format!(
-                "{}@{}",
-                spawned.server_name,
-                spawned.root_path.display()
-            );
+            let server_key = format!("{}@{}", spawned.server_name, spawned.root_path.display());
             let previous = lsp_sessions.replace(
                 server_key,
                 LspSessionHandle {
@@ -966,13 +955,11 @@ fn execute_lsp_request(
         } => {
             // Ưu tiên tìm theo uri (chính xác hơn khi multi-workspace).
             // Fallback về binary-name lookup nếu document chưa được mark open.
-            let handle = lsp_sessions
-                .get_handle_by_uri(uri)?
-                .or_else(|| {
-                    language_profile_for_language_id(language_id)
-                        .map(|p| p.lsp_binary)
-                        .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
-                });
+            let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
+                language_profile_for_language_id(language_id)
+                    .map(|p| p.lsp_binary)
+                    .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
+            });
             let Some(handle) = handle else {
                 return Err("hover rejected: LSP server not running".to_string());
             };
@@ -1036,13 +1023,11 @@ fn execute_lsp_request(
             prefix_start_col,
             prefix,
         } => {
-            let handle = lsp_sessions
-                .get_handle_by_uri(uri)?
-                .or_else(|| {
-                    language_profile_for_language_id(language_id)
-                        .map(|p| p.lsp_binary)
-                        .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
-                });
+            let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
+                language_profile_for_language_id(language_id)
+                    .map(|p| p.lsp_binary)
+                    .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
+            });
             let Some(handle) = handle else {
                 return Err("completion rejected: LSP server not running".to_string());
             };

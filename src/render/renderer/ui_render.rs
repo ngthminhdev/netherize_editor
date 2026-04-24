@@ -1,5 +1,7 @@
 //! Panel UI rendering: Explorer sidebar, Terminal, Welcome logo, TopBar, StatusBar.
 
+use std::path::PathBuf;
+
 use cosmic_text::Metrics;
 
 use crate::{
@@ -580,6 +582,8 @@ impl Renderer {
         _text: &str,
         _spans: &[StyledTextSpan],
         bounds: [f32; 4],
+        recent_projects: &[PathBuf],
+        selected_recent_index: usize,
     ) {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
             self.clear_welcome_logo();
@@ -596,6 +600,10 @@ impl Renderer {
         let fg_dim = self.theme.ui.fg_dim.as_f32();
         let fg_ghost = self.theme.ui.fg_ghost.as_f32();
         let accent = self.theme.ui.accent.as_f32();
+        let welcome_scale = (self.welcome_card_max_width / 560.0).clamp(0.5, 3.0);
+        let sx = |value: f32| value * welcome_scale;
+        let text_w = |text: &str, size: f32| estimate_monospace_width(text, size);
+        let centered_x = |center: f32, text: &str, size: f32| center - text_w(text, size) * 0.5;
 
         chrome.push(RegionDrawInstance::new(bounds, bg));
 
@@ -615,12 +623,17 @@ impl Renderer {
                 ],
                 glow,
             )
-            .with_radius(180.0),
+            .with_radius(sx(180.0)),
         );
         let mut divider = border;
         divider[3] = 0.65;
         chrome.push(RegionDrawInstance::new(
-            [divider_x, body_top + 40.0, 1.0, (body_h - 80.0).max(1.0)],
+            [
+                divider_x,
+                body_top + sx(40.0),
+                sx(1.0).max(1.0),
+                (body_h - sx(80.0)).max(1.0),
+            ],
             divider,
         ));
 
@@ -660,18 +673,23 @@ impl Renderer {
         };
 
         let cx = bounds[0] + left_w * 0.5;
-        let hero_top = body_top + body_h * 0.5 - 205.0;
-        let logo_size = 86.0;
+        let hero_top = body_top + body_h * 0.5 - sx(205.0);
+        let logo_size = sx(86.0);
         let lx = cx - logo_size * 0.5;
         let ly = hero_top;
         let mut logo_glow = accent;
         logo_glow[3] = 0.14;
         chrome.push(
             RegionDrawInstance::new(
-                [lx - 18.0, ly - 18.0, logo_size + 36.0, logo_size + 36.0],
+                [
+                    lx - sx(18.0),
+                    ly - sx(18.0),
+                    logo_size + sx(36.0),
+                    logo_size + sx(36.0),
+                ],
                 logo_glow,
             )
-            .with_radius(70.0),
+            .with_radius(sx(70.0)),
         );
         // Geometric logo approximation: brackets + double chevrons from the HTML SVG.
         let s = logo_size / 500.0;
@@ -688,59 +706,79 @@ impl Renderer {
         ] {
             chrome.push(
                 RegionDrawInstance::new([lx + r[0] * s, ly + r[1] * s, r[2] * s, r[3] * s], accent)
-                    .with_radius(3.0),
+                    .with_radius(sx(3.0)),
             );
         }
 
+        let title = "Netherize";
+        let title_size = sx(32.0);
         line(
             self,
             &mut glyphs,
-            "Netherize",
-            cx - 85.0,
-            hero_top + 118.0,
-            32.0,
-            38.0,
+            title,
+            centered_x(cx, title, title_size),
+            hero_top + sx(118.0),
+            title_size,
+            sx(38.0),
             fg,
             true,
         );
+        let tagline = "GPU · Zero Latency · Keyboard Driven";
+        let tagline_size = sx(11.0);
         line(
             self,
             &mut glyphs,
-            "GPU · Zero Latency · Keyboard Driven",
-            cx - 141.0,
-            hero_top + 156.0,
-            11.0,
-            16.0,
+            tagline,
+            centered_x(cx, tagline, tagline_size),
+            hero_top + sx(156.0),
+            tagline_size,
+            sx(16.0),
             accent,
             true,
         );
-        let meta_y = hero_top + 212.0;
+        let meta_y = hero_top + sx(212.0);
         chrome.push(
-            RegionDrawInstance::new([cx - 190.0, meta_y - 2.0, 72.0, 20.0], panel).with_radius(4.0),
+            RegionDrawInstance::new(
+                [cx - sx(190.0), meta_y - sx(2.0), sx(72.0), sx(20.0)],
+                panel,
+            )
+            .with_radius(sx(4.0)),
         );
         chrome.push(
-            RegionDrawInstance::new([cx - 190.0, meta_y - 2.0, 72.0, 20.0], border)
-                .with_radius(4.0),
+            RegionDrawInstance::new(
+                [cx - sx(190.0), meta_y - sx(2.0), sx(72.0), sx(20.0)],
+                border,
+            )
+            .with_radius(sx(4.0)),
         );
+        let meta_prefix = format!(
+            "{}   ·   Rust 1.78   ·   wgpu 0.20   ·   by ",
+            self.welcome_version
+        );
+        let meta_author = "ngthminhdev";
+        let meta_size = sx(11.0);
+        let meta_gap = sx(3.0);
+        let meta_w = text_w(&meta_prefix, meta_size) + text_w(meta_author, meta_size) + meta_gap;
+        let meta_x = cx - meta_w * 0.5;
         line(
             self,
             &mut glyphs,
-            "v0.3.1-alpha   ·   Rust 1.78   ·   wgpu 0.20   ·   by",
-            cx - 184.0,
+            &meta_prefix,
+            meta_x,
             meta_y,
-            11.0,
-            16.0,
+            meta_size,
+            sx(16.0),
             fg_ghost,
             false,
         );
         line(
             self,
             &mut glyphs,
-            "ngthminhdev",
-            cx + 188.0,
+            meta_author,
+            meta_x + text_w(&meta_prefix, meta_size) + meta_gap,
             meta_y,
-            11.0,
-            16.0,
+            meta_size,
+            sx(16.0),
             fg,
             true,
         );
@@ -751,120 +789,156 @@ impl Renderer {
             ("File finder", "spc ff"),
             ("Word search", "spc fw"),
         ];
-        let mut ax = cx - 248.0;
-        let ay = meta_y + 58.0;
+        let action_gap = sx(10.0);
+        let action_width = |label: &str, key: &str| {
+            (sx(112.0) + key.chars().count() as f32 * sx(5.0))
+                .max(sx(32.0) + text_w(label, sx(12.0)) + text_w(key, sx(10.0)))
+        };
+        let total_actions_w: f32 = actions
+            .iter()
+            .map(|(label, key)| action_width(label, key))
+            .sum::<f32>()
+            + action_gap * (actions.len().saturating_sub(1) as f32);
+        let mut ax = cx - total_actions_w * 0.5;
+        let ay = meta_y + sx(58.0);
         for (label, key) in actions {
-            let w = 112.0 + key.len() as f32 * 5.0;
-            chrome.push(RegionDrawInstance::new([ax, ay, w, 32.0], panel).with_radius(7.0));
-            chrome.push(RegionDrawInstance::new([ax, ay, w, 32.0], border).with_radius(7.0));
+            let w = action_width(label, key);
+            chrome.push(RegionDrawInstance::new([ax, ay, w, sx(32.0)], panel).with_radius(sx(7.0)));
+            chrome
+                .push(RegionDrawInstance::new([ax, ay, w, sx(32.0)], border).with_radius(sx(7.0)));
             line(
                 self,
                 &mut glyphs,
                 label,
-                ax + 12.0,
-                ay + 8.0,
-                12.0,
-                16.0,
+                ax + sx(12.0),
+                ay + sx(8.0),
+                sx(12.0),
+                sx(16.0),
                 fg_dim,
                 false,
             );
-            let kw = key.chars().count() as f32 * 6.5 + 12.0;
+            let kw = key.chars().count() as f32 * sx(6.5) + sx(12.0);
             let mut abg = accent;
             abg[3] = 0.12;
             chrome.push(
-                RegionDrawInstance::new([ax + w - kw - 10.0, ay + 8.0, kw, 16.0], abg)
-                    .with_radius(3.0),
+                RegionDrawInstance::new([ax + w - kw - sx(10.0), ay + sx(8.0), kw, sx(16.0)], abg)
+                    .with_radius(sx(3.0)),
             );
             line(
                 self,
                 &mut glyphs,
                 key,
-                ax + w - kw - 4.0,
-                ay + 8.0,
-                10.0,
-                14.0,
+                ax + w - kw - sx(4.0),
+                ay + sx(8.0),
+                sx(10.0),
+                sx(14.0),
                 accent,
                 true,
             );
-            ax += w + 10.0;
+            ax += w + action_gap;
         }
+        let rust_line = "100% Rust · entire editor rendered on the GPU";
+        let rust_line_size = sx(10.5);
         line(
             self,
             &mut glyphs,
-            "100% Rust · entire editor rendered on the GPU",
-            cx - 151.0,
-            ay + 76.0,
-            10.5,
-            17.0,
+            rust_line,
+            centered_x(cx, rust_line, rust_line_size),
+            ay + sx(76.0),
+            rust_line_size,
+            sx(17.0),
             fg_ghost,
             false,
         );
+        let no_electron_line = "no Electron · no compromise";
+        let no_electron_size = sx(10.5);
         line(
             self,
             &mut glyphs,
-            "no Electron · no compromise",
-            cx - 87.0,
-            ay + 94.0,
-            10.5,
-            17.0,
+            no_electron_line,
+            centered_x(cx, no_electron_line, no_electron_size),
+            ay + sx(94.0),
+            no_electron_size,
+            sx(17.0),
             fg_ghost,
             false,
         );
 
-        let rx = divider_x + 28.0;
-        let rw = bounds[0] + bounds[2] - rx - 32.0;
-        let mut y = body_top + 36.0;
+        let rx = divider_x + sx(28.0);
+        let rw = bounds[0] + bounds[2] - rx - sx(32.0);
+        let mut y = body_top + sx(36.0);
         line(
             self,
             &mut glyphs,
             "RECENT PROJECTS",
-            rx + 14.0,
+            rx + sx(14.0),
             y,
-            9.5,
-            14.0,
+            sx(9.5),
+            sx(14.0),
             fg_ghost,
             true,
         );
-        y += 25.0;
-        let projects = [
-            ("Rust", "netherize", "~/work/netherize", "2m ago", true),
-            (
-                "Rust",
-                "wgpu-experiments",
-                "~/work/wgpu-experiments",
-                "3h ago",
+        y += sx(25.0);
+        if recent_projects.is_empty() {
+            line(
+                self,
+                &mut glyphs,
+                "No recent projects yet",
+                rx + sx(14.0),
+                y + sx(8.0),
+                sx(12.0),
+                sx(16.0),
+                fg_dim,
                 false,
-            ),
-            (
-                "Rust",
-                "nz-lsp-client",
-                "~/work/nz-lsp-client",
-                "yesterday",
-                false,
-            ),
-            ("TOML", "dotfiles", "~/dotfiles", "3d ago", false),
-            ("TS", "aoo-site", "~/web/aoo-site", "1w ago", false),
-        ];
-        for (lang, name, path, ago, active) in projects {
-            if active {
-                let mut a = accent;
-                a[3] = 0.20;
-                chrome.push(RegionDrawInstance::new([rx, y - 1.0, rw, 42.0], a).with_radius(7.0));
-                chrome.push(
-                    RegionDrawInstance::new([rx, y + 5.0, 3.0, 30.0], accent).with_radius(2.0),
-                );
-            }
-            chrome.push(
-                RegionDrawInstance::new([rx + 14.0, y + 9.0, 34.0, 16.0], panel).with_radius(3.0),
             );
             line(
                 self,
                 &mut glyphs,
-                lang,
-                rx + 19.0,
-                y + 10.0,
-                9.0,
-                12.0,
+                "Open a folder with ⌘ O to pin it here.",
+                rx + sx(14.0),
+                y + sx(28.0),
+                sx(10.0),
+                sx(14.0),
+                fg_ghost,
+                false,
+            );
+            y += sx(74.0);
+        }
+        for (index, project) in recent_projects.iter().take(5).enumerate() {
+            let name = project
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("unknown");
+            let path = project.display().to_string();
+            let lang = project
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.to_ascii_uppercase())
+                .unwrap_or_else(|| "DIR".to_string());
+            let active = index == selected_recent_index;
+            if active {
+                let mut a = accent;
+                a[3] = 0.20;
+                chrome.push(
+                    RegionDrawInstance::new([rx, y - 1.0, rw, sx(42.0)], a).with_radius(sx(7.0)),
+                );
+                chrome.push(
+                    RegionDrawInstance::new([rx, y + sx(5.0), sx(3.0), sx(30.0)], accent)
+                        .with_radius(2.0),
+                );
+            }
+            chrome.push(
+                RegionDrawInstance::new([rx + sx(14.0), y + sx(9.0), sx(34.0), sx(16.0)], panel)
+                    .with_radius(sx(3.0)),
+            );
+            line(
+                self,
+                &mut glyphs,
+                &lang,
+                rx + sx(19.0),
+                y + sx(10.0),
+                sx(9.0),
+                sx(12.0),
                 if lang == "TS" {
                     self.theme.ui.info.as_f32()
                 } else {
@@ -876,61 +950,61 @@ impl Renderer {
                 self,
                 &mut glyphs,
                 name,
-                rx + 60.0,
-                y + 3.0,
-                13.0,
-                16.0,
+                rx + sx(60.0),
+                y + sx(3.0),
+                sx(13.0),
+                sx(16.0),
                 if active { fg } else { fg_dim },
                 active,
             );
             line(
                 self,
                 &mut glyphs,
-                path,
-                rx + 60.0,
-                y + 20.0,
-                10.0,
-                13.0,
+                &path,
+                rx + sx(60.0),
+                y + sx(20.0),
+                sx(10.0),
+                sx(13.0),
                 fg_ghost,
                 false,
             );
             line(
                 self,
                 &mut glyphs,
-                ago,
-                rx + rw - 70.0,
-                y + 12.0,
-                10.0,
-                13.0,
+                if index == 0 { "latest" } else { "recent" },
+                rx + rw - sx(70.0),
+                y + sx(12.0),
+                sx(10.0),
+                sx(13.0),
                 fg_ghost,
                 false,
             );
-            y += 44.0;
+            y += sx(44.0);
         }
         line(
             self,
             &mut glyphs,
             "show all  →",
-            rx + 14.0,
-            y + 2.0,
+            rx + sx(14.0),
+            y + sx(2.0),
             10.0,
             14.0,
             accent,
             false,
         );
-        y += 54.0;
+        y += sx(54.0);
         line(
             self,
             &mut glyphs,
             "KEYBOARD SHORTCUTS",
             rx,
             y,
-            9.5,
-            14.0,
+            sx(9.5),
+            sx(14.0),
             fg_ghost,
             true,
         );
-        y += 24.0;
+        y += sx(24.0);
         let shortcuts = [
             (vec!["⌘", "O"], "Open file or project"),
             (vec!["<space>", "p", "j"], "Open recent projects"),
@@ -941,48 +1015,54 @@ impl Renderer {
             let row_y = y;
             let mut kx = rx;
             for k in keys {
-                let kw = k.chars().count() as f32 * 6.5 + 14.0;
-                chrome.push(RegionDrawInstance::new([kx, row_y, kw, 22.0], panel).with_radius(5.0));
+                let kw = k.chars().count() as f32 * sx(6.5) + sx(14.0);
                 chrome.push(
-                    RegionDrawInstance::new([kx, row_y + 21.0, kw, 2.0], bg).with_radius(2.0),
+                    RegionDrawInstance::new([kx, row_y, kw, sx(22.0)], panel).with_radius(sx(5.0)),
+                );
+                chrome.push(
+                    RegionDrawInstance::new([kx, row_y + sx(21.0), kw, sx(2.0)], bg)
+                        .with_radius(sx(2.0)),
                 );
                 line(
                     self,
                     &mut glyphs,
                     k,
-                    kx + 7.0,
-                    row_y + 4.0,
-                    11.0,
-                    14.0,
+                    kx + sx(7.0),
+                    row_y + sx(4.0),
+                    sx(11.0),
+                    sx(14.0),
                     fg,
                     true,
                 );
-                kx += kw + 4.0;
+                kx += kw + sx(4.0);
             }
             line(
                 self,
                 &mut glyphs,
                 label,
-                rx + 172.0,
-                row_y + 4.0,
-                12.5,
-                16.0,
+                rx + sx(172.0),
+                row_y + sx(4.0),
+                sx(12.5),
+                sx(16.0),
                 fg_dim,
                 false,
             );
             let mut sub = border;
             sub[3] = 0.45;
-            chrome.push(RegionDrawInstance::new([rx, row_y + 34.0, rw, 1.0], sub));
-            y += 40.0;
+            chrome.push(RegionDrawInstance::new(
+                [rx, row_y + sx(34.0), rw, sx(1.0).max(1.0)],
+                sub,
+            ));
+            y += sx(40.0);
         }
         line(
             self,
             &mut glyphs,
             "press ? for all bindings   ·   :help for docs",
             rx,
-            y + 8.0,
-            10.0,
-            14.0,
+            y + sx(8.0),
+            sx(10.0),
+            sx(14.0),
             fg_ghost,
             false,
         );

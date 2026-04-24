@@ -165,12 +165,7 @@ impl LspClientProcess {
         write_json_rpc_message_async(writer, &payload).await
     }
 
-    pub fn send_request_with_id(
-        &self,
-        id: u64,
-        method: &str,
-        params: Value,
-    ) -> Result<(), String> {
+    pub fn send_request_with_id(&self, id: u64, method: &str, params: Value) -> Result<(), String> {
         block_on_runtime(self.send_request_with_id_async(id, method, params))
     }
 

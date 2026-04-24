@@ -334,6 +334,8 @@ impl InputMap {
         &self,
         input: &NormalizedInput,
         palette_visible: bool,
+        palette_mode: Option<CommandPaletteMode>,
+        welcome_visible: bool,
     ) -> Option<KeybindingMatch> {
         if !palette_visible {
             if input.named_key == Some(NamedKey::Escape) {
@@ -355,6 +357,28 @@ impl InputMap {
                 command,
                 reason: "palette focus: palette-mode keymap binding",
             });
+        }
+
+        if welcome_visible
+            && palette_mode == Some(CommandPaletteMode::RecentProjects)
+            && !input.has_command_modifier()
+        {
+            use KeyCode::*;
+            match input.physical_key {
+                Some(KeyJ) => {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectNext,
+                        reason: "welcome recent projects palette: j -> SelectNext",
+                    });
+                }
+                Some(KeyK) => {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectPrev,
+                        reason: "welcome recent projects palette: k -> SelectPrev",
+                    });
+                }
+                _ => {}
+            }
         }
 
         if let Some(named) = input.named_key {

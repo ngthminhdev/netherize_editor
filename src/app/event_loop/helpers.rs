@@ -237,6 +237,12 @@ pub(super) fn scale_ui_config(base: &UiConfig, scale: f32) -> UiConfig {
     ui.status_bar.padding_x = scale_metric(ui.status_bar.padding_x, scale, 4.0);
     ui.status_bar.font_size = scale_metric(ui.status_bar.font_size, scale, 8.0);
     ui.status_bar.line_height = scale_metric(ui.status_bar.line_height, scale, 12.0);
+
+    ui.welcome.card_max_width = scale_metric(ui.welcome.card_max_width, scale, 320.0);
+    ui.welcome.card_padding_x = scale_metric(ui.welcome.card_padding_x, scale, 12.0);
+    ui.welcome.card_padding_y = scale_metric(ui.welcome.card_padding_y, scale, 12.0);
+    ui.welcome.section_gap = scale_metric(ui.welcome.section_gap, scale, 6.0);
+    ui.welcome.border_radius_px = scale_metric(ui.welcome.border_radius_px, scale, 4.0);
     ui
 }
 

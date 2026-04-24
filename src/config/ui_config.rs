@@ -94,8 +94,9 @@ pub struct EditorUiConfig {
     pub font_family: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct WelcomeUiConfig {
+    pub version: String,
     pub card_max_width: f32,
     pub card_padding_x: f32,
     pub card_padding_y: f32,
@@ -207,6 +208,7 @@ impl UiConfig {
                 font_family: None,
             },
             welcome: WelcomeUiConfig {
+                version: "v0.3.1-alpha".to_string(),
                 card_max_width: 560.0,
                 card_padding_x: 42.0,
                 card_padding_y: 34.0,
@@ -429,6 +431,10 @@ impl UiConfig {
                 font_family: raw.editor.font_family,
             },
             welcome: WelcomeUiConfig {
+                version: raw
+                    .welcome
+                    .version
+                    .unwrap_or_else(|| fallback.welcome.version.clone()),
                 card_max_width: parse_positive_f32(
                     "welcome",
                     "card_max_width",
@@ -636,6 +642,7 @@ struct RawEditorSection {
 
 #[derive(Debug, Default, Deserialize)]
 struct RawWelcome {
+    version: Option<String>,
     card_max_width: Option<f32>,
     card_padding_x: Option<f32>,
     card_padding_y: Option<f32>,

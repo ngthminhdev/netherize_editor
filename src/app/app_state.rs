@@ -922,6 +922,16 @@ impl AppState {
         Ok(())
     }
 
+    pub fn sync_welcome_recent_projects(&mut self, recent: &[std::path::PathBuf]) -> bool {
+        use crate::app::command_palette::CommandPaletteItem;
+        let items: Vec<_> = recent
+            .iter()
+            .map(|path| CommandPaletteItem::recent_project(path))
+            .collect();
+        self.command_palette
+            .set_hidden_items(CommandPaletteMode::RecentProjects, items)
+    }
+
     pub fn open_theme_selector_palette(
         &mut self,
         themes: &[crate::config::theme_config::ThemeProfileEntry],

@@ -1,9 +1,10 @@
 use std::path::{Path, PathBuf};
 
-use winit::keyboard::NamedKey;
+use winit::keyboard::{KeyCode, NamedKey};
 
 use crate::{
     app::{
+        command_palette::CommandPaletteMode,
         input::NormalizedInput,
         resolved_keymap::{self, KeySpec, ResolvedKeymap, SequenceLookup, build, editor_mode_str},
     },
@@ -75,6 +76,8 @@ pub struct KeybindingContext {
     pub mode: EditorMode,
     pub focus: InputFocusContext,
     pub command_palette_visible: bool,
+    pub command_palette_mode: Option<CommandPaletteMode>,
+    pub welcome_visible: bool,
     pub completion_visible: bool,
 }
 
@@ -88,6 +91,8 @@ impl KeybindingContext {
             mode,
             focus,
             command_palette_visible: false,
+            command_palette_mode: None,
+            welcome_visible: false,
             completion_visible: false,
         }
     }
@@ -107,6 +112,8 @@ impl KeybindingContext {
             mode,
             focus,
             command_palette_visible: false,
+            command_palette_mode: None,
+            welcome_visible: false,
             completion_visible: false,
         }
     }
@@ -162,7 +169,12 @@ impl InputMap {
         context: KeybindingContext,
     ) -> Option<KeybindingMatch> {
         if context.command_palette_visible || context.mode == EditorMode::PaletteFocus {
-            return self.resolve_palette_focus(input, context.command_palette_visible);
+            return self.resolve_palette_focus(
+                input,
+                context.command_palette_visible,
+                context.command_palette_mode,
+                context.welcome_visible,
+            );
         }
 
         // BufferTerminal (lazygit, v.v.): bypass keymap hoàn toàn,
@@ -194,6 +206,30 @@ impl InputMap {
         }
         if context.focus == InputFocusContext::BottomPanel {
             return self.resolve_bottom_panel_focus(input);
+        }
+
+        if context.welcome_visible && !input.has_command_modifier() {
+            match input.physical_key {
+                Some(KeyCode::KeyJ) => {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectNext,
+                        reason: "welcome recent projects: j -> SelectNext",
+                    });
+                }
+                Some(KeyCode::KeyK) => {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectPrev,
+                        reason: "welcome recent projects: k -> SelectPrev",
+                    });
+                }
+                _ => {}
+            }
+            if input.named_key == Some(NamedKey::Enter) {
+                return Some(KeybindingMatch {
+                    command: Command::FilePickerConfirmSelection,
+                    reason: "welcome recent projects: Enter -> ConfirmSelection",
+                });
+            }
         }
 
         let mode_str = editor_mode_str(context.mode);
@@ -289,6 +325,9 @@ impl InputMap {
         if !context.focus.allows_leader() {
             return false;
         }
+        if context.welcome_visible && context.focus == InputFocusContext::Editor {
+            return true;
+        }
         if context.focus == InputFocusContext::Editor {
             return matches!(context.mode, EditorMode::Normal | EditorMode::Visual);
         }
@@ -297,6 +336,7 @@ impl InputMap {
 
     fn sequence_mode_str(&self, context: KeybindingContext) -> &'static str {
         match context.focus {
+            InputFocusContext::Editor if context.welcome_visible => "normal",
             InputFocusContext::Editor => editor_mode_str(context.mode),
             InputFocusContext::References => editor_mode_str(context.mode),
             InputFocusContext::Diagnostics => editor_mode_str(context.mode),

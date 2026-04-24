@@ -315,6 +315,28 @@ impl CommandPalette {
         self.results.len()
     }
 
+    pub fn set_hidden_items(
+        &mut self,
+        mode: CommandPaletteMode,
+        items: Vec<CommandPaletteItem>,
+    ) -> bool {
+        let selected_index = self.selected_index;
+        let changed = self.mode != mode || self.results.len() != items.len();
+        self.mode = mode;
+        self.query.clear();
+        self.is_visible = false;
+        self.cursor_byte = 0;
+        self.selection_range = None;
+        self.static_items = items.clone();
+        self.results = items;
+        self.selected_index = if self.results.is_empty() {
+            0
+        } else {
+            selected_index.min(self.results.len() - 1)
+        };
+        changed
+    }
+
     pub fn close(&mut self) -> bool {
         let was_open = self.is_visible;
         self.is_visible = false;

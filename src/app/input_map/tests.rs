@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use winit::keyboard::{KeyCode, ModifiersState, NamedKey};
 
 use crate::{
-    app::resolved_keymap::{build, builtin_defaults},
+    app::{
+        command_palette::CommandPaletteMode,
+        resolved_keymap::{build, builtin_defaults},
+    },
     config::keymap_loader::KeymapLoader,
     core::{
         commands::Command,
@@ -557,6 +560,124 @@ fn ctrl_s_maps_to_save_file() {
         map.translate(&input, KeybindingContext::for_mode(EditorMode::Insert)),
         Some(Command::SaveFile)
     );
+}
+
+#[test]
+fn recent_projects_jk_only_work_from_welcome_context() {
+    let map = make_default_profile_map();
+    let input_j = NormalizedInput {
+        physical_key: Some(KeyCode::KeyJ),
+        named_key: None,
+        text: Some("j".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let input_ctrl_n = NormalizedInput {
+        physical_key: Some(KeyCode::KeyN),
+        named_key: None,
+        text: Some("n".to_string()),
+        modifiers: ModifiersState::CONTROL,
+    };
+
+    let mut normal_palette_context =
+        KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true);
+    normal_palette_context.command_palette_mode = Some(CommandPaletteMode::RecentProjects);
+
+    assert_eq!(
+        map.translate(&input_j, normal_palette_context),
+        Some(Command::FilePickerAppendQuery("j".to_string()))
+    );
+    assert_eq!(
+        map.translate(&input_ctrl_n, normal_palette_context),
+        Some(Command::OverlaySelectNext)
+    );
+
+    let mut welcome_palette_context = normal_palette_context;
+    welcome_palette_context.welcome_visible = true;
+
+    assert_eq!(
+        map.translate(&input_j, welcome_palette_context),
+        Some(Command::OverlaySelectNext)
+    );
+    assert_eq!(
+        map.translate(&input_ctrl_n, welcome_palette_context),
+        Some(Command::OverlaySelectNext)
+    );
+}
+
+#[test]
+fn welcome_recent_projects_use_direct_jk_enter() {
+    let map = make_default_profile_map();
+    let input_j = NormalizedInput {
+        physical_key: Some(KeyCode::KeyJ),
+        named_key: None,
+        text: Some("j".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let input_k = NormalizedInput {
+        physical_key: Some(KeyCode::KeyK),
+        named_key: None,
+        text: Some("k".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let input_enter = input_from_named(NamedKey::Enter);
+
+    let mut context = KeybindingContext::for_mode(EditorMode::Insert);
+    context.welcome_visible = true;
+
+    assert_eq!(
+        map.translate(&input_j, context),
+        Some(Command::OverlaySelectNext)
+    );
+    assert_eq!(
+        map.translate(&input_k, context),
+        Some(Command::OverlaySelectPrev)
+    );
+    assert_eq!(
+        map.translate(&input_enter, context),
+        Some(Command::FilePickerConfirmSelection)
+    );
+}
+
+#[test]
+fn welcome_context_can_open_recent_projects_with_leader_sequence() {
+    let map = make_default_profile_map();
+    let input_space = input_from_named(NamedKey::Space);
+    let input_p = NormalizedInput {
+        physical_key: Some(KeyCode::KeyP),
+        named_key: None,
+        text: Some("p".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let input_j = NormalizedInput {
+        physical_key: Some(KeyCode::KeyJ),
+        named_key: None,
+        text: Some("j".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+
+    let mut context = KeybindingContext::for_mode(EditorMode::Insert);
+    context.welcome_visible = true;
+
+    let SequenceMatch::Pending(sequence) = map
+        .resolve_sequence_start(&input_space, context)
+        .expect("welcome leader should start a sequence even outside normal mode")
+    else {
+        panic!("welcome leader should be pending");
+    };
+    let SequenceMatch::Pending(sequence) = map
+        .resolve_sequence_next(&sequence, &input_p, context)
+        .expect("welcome leader p should remain pending")
+    else {
+        panic!("welcome leader p should be pending");
+    };
+    let SequenceMatch::Dispatch(matched) = map
+        .resolve_sequence_next(&sequence, &input_j, context)
+        .expect("welcome leader p j should dispatch recent projects")
+    else {
+        panic!("welcome leader p j should dispatch");
+    };
+
+    assert_eq!(matched.command, Command::OpenRecentProjects);
 }
 
 #[test]

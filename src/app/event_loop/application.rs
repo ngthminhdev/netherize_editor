@@ -415,13 +415,19 @@ impl AppShell {
                 );
             }
 
-            if self.editor_needs_layout || bounds_changed || show_welcome_changed {
+            if self.editor_needs_layout || bounds_changed || show_welcome_changed || show_welcome {
                 if let Some(renderer) = self.renderer.as_mut() {
                     if show_welcome {
                         let (text, styled) = welcome_screen_content(&self.theme);
                         renderer.clear_editor_content();
                         renderer.clear_buffer_terminal();
-                        renderer.update_welcome_screen_content(&text, &styled, center_bounds);
+                        renderer.update_welcome_screen_content(
+                            &text,
+                            &styled,
+                            center_bounds,
+                            &self.persistent_state.recent_projects,
+                            self.app_state.command_palette_selected_index(),
+                        );
                     } else if let Some(session_id) = active_terminal_session {
                         renderer.clear_welcome_logo();
                         renderer.clear_editor_content();
@@ -766,7 +772,10 @@ impl AppShell {
             }
         }
 
-        if self.app_state.is_command_palette_visible() {
+        let welcome_recent_projects_active = show_welcome
+            && self.app_state.command_palette_mode() == Some(CommandPaletteMode::RecentProjects);
+
+        if self.app_state.is_command_palette_visible() && !welcome_recent_projects_active {
             let overlay_bounds = [
                 0.0,
                 0.0,

@@ -368,6 +368,8 @@ impl AppShell {
             mode,
             focus,
             command_palette_visible: self.app_state.is_command_palette_visible(),
+            command_palette_mode: self.app_state.command_palette_mode(),
+            welcome_visible: self.app_state.buffers().is_empty(),
             completion_visible: self.app_state.has_completion(),
         }
     }

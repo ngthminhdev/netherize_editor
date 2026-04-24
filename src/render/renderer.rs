@@ -217,6 +217,7 @@ pub struct Renderer {
     pub(super) statusbar_padding_x: f32,
     pub(super) statusbar_font_size: f32,
     pub(super) statusbar_line_height: f32,
+    pub(super) welcome_version: String,
     pub(super) welcome_card_max_width: f32,
     pub(super) welcome_card_padding_x: f32,
     pub(super) welcome_card_padding_y: f32,

@@ -1,6 +1,5 @@
 use super::*;
 
-
 impl AsyncResultRouter for AppShell {
     fn current_revision_for(&self, topic: RequestTopic) -> u64 {
         match topic {

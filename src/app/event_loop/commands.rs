@@ -730,6 +730,46 @@ impl AppShell {
             | Command::OverlaySelectPrev
             | Command::FilePickerSelectNext
             | Command::FilePickerSelectPrev
+                if self.app_state.buffers().is_empty() =>
+            {
+                self.app_state
+                    .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
+                let report = dispatch_command(&mut self.app_state, command);
+                report.request_redraw || report.state_changed
+            }
+            Command::FilePickerConfirmSelection if self.app_state.buffers().is_empty() => {
+                self.app_state
+                    .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
+                let selected = self.app_state.command_palette_selected_index().min(
+                    self.persistent_state
+                        .recent_projects
+                        .len()
+                        .saturating_sub(1),
+                );
+                let Some(root) = self.persistent_state.recent_projects.get(selected).cloned()
+                else {
+                    return false;
+                };
+                match self.app_state.attach_workspace(root.clone()) {
+                    Ok(()) => {
+                        self.persistent_state.push_recent(root);
+                        self.persistent_state.save();
+                        self.workspace_git_branch = self
+                            .app_state
+                            .workspace_root_path()
+                            .and_then(detect_git_branch);
+                        true
+                    }
+                    Err(err) => {
+                        eprintln!("[AppShell] recent project open failed: {err}");
+                        false
+                    }
+                }
+            }
+            Command::OverlaySelectNext
+            | Command::OverlaySelectPrev
+            | Command::FilePickerSelectNext
+            | Command::FilePickerSelectPrev
                 if self.app_state.active_buffer_is_fuzzy_picker() =>
             {
                 let _ = self.app_state.clear_completion();
