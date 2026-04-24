@@ -2786,10 +2786,12 @@ impl AppState {
         let current_line = self.text.char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
         let mut line = current_line.saturating_sub(1);
 
-        while line > 0 && self.line_is_blank(line) {
-            line = line.saturating_sub(1);
+        if self.line_is_blank(current_line.min(total.saturating_sub(1))) {
+            while line > 0 && self.line_is_blank(line) {
+                line = line.saturating_sub(1);
+            }
         }
-        while line > 0 && !self.line_is_blank(line.saturating_sub(1)) {
+        while line > 0 && !self.line_is_blank(line) {
             line = line.saturating_sub(1);
         }
 
@@ -2806,10 +2808,12 @@ impl AppState {
         let current_line = self.text.char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
         let mut line = current_line;
 
-        while line + 1 < total && !self.line_is_blank(line) {
-            line += 1;
+        if self.line_is_blank(line) {
+            while line + 1 < total && self.line_is_blank(line) {
+                line += 1;
+            }
         }
-        while line + 1 < total && self.line_is_blank(line) {
+        while line + 1 < total && !self.line_is_blank(line) {
             line += 1;
         }
 

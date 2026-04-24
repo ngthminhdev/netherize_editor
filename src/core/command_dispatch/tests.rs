@@ -674,15 +674,15 @@ fn paragraph_motions_jump_between_blank_line_separated_blocks() {
 
     let down = dispatch_command(&mut app_state, Command::MoveParagraphDown);
     assert!(down.success);
-    assert_eq!(app_state.cursor_line_col().0, 3);
+    assert_eq!(app_state.cursor_line_col().0, 2);
 
     let down_again = dispatch_command(&mut app_state, Command::MoveParagraphDown);
     assert!(down_again.success);
-    assert_eq!(app_state.cursor_line_col().0, 6);
+    assert_eq!(app_state.cursor_line_col().0, 5);
 
     let up = dispatch_command(&mut app_state, Command::MoveParagraphUp);
     assert!(up.success);
-    assert_eq!(app_state.cursor_line_col().0, 3);
+    assert_eq!(app_state.cursor_line_col().0, 2);
 }
 
 #[test]
