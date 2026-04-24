@@ -3,3 +3,5 @@
 !/benchmarks/inputs/.gitkeep
 /benchmarks/baselines/
 /flamegraph.svg
+
+5mb.json
