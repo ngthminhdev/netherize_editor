@@ -392,6 +392,28 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::MoveParagraphDown),
         },
         Case {
+            name: "visual { -> MoveParagraphUp",
+            context: KeybindingContext::for_mode(EditorMode::Visual),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::BracketLeft),
+                named_key: None,
+                text: Some("{".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::MoveParagraphUp),
+        },
+        Case {
+            name: "visual } -> MoveParagraphDown",
+            context: KeybindingContext::for_mode(EditorMode::Visual),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::BracketRight),
+                named_key: None,
+                text: Some("}".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::MoveParagraphDown),
+        },
+        Case {
             name: "explorer w -> ExplorerCollapseOrParent",
             context: KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer),
             input: NormalizedInput {

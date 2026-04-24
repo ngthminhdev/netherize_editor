@@ -686,6 +686,31 @@ fn paragraph_motions_jump_between_blank_line_separated_blocks() {
 }
 
 #[test]
+fn visual_paragraph_motions_expand_selection_to_blank_separators() {
+    let mut app_state = AppState::from_text(
+        unique_temp_path("visual_paragraph_motion"),
+        "one\ntwo\n\nthree\nfour\n\nfive\n",
+    );
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterVisual));
+
+    let down = dispatch_command(&mut app_state, Command::MoveParagraphDown);
+    assert!(down.success);
+    let selection = app_state
+        .visual_selection_range()
+        .expect("selection after visual paragraph down");
+    assert_eq!(selection.start_line, 0);
+    assert_eq!(selection.end_line, 2);
+
+    let down_again = dispatch_command(&mut app_state, Command::MoveParagraphDown);
+    assert!(down_again.success);
+    let selection = app_state
+        .visual_selection_range()
+        .expect("selection after second visual paragraph down");
+    assert_eq!(selection.start_line, 0);
+    assert_eq!(selection.end_line, 5);
+}
+
+#[test]
 fn paste_after_participates_in_undo_transaction() {
     let mut app_state = AppState::from_text(unique_temp_path("paste_after"), "abc");
     let mut clipboard = MockClipboard {

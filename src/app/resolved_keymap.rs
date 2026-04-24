@@ -633,6 +633,8 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("visual"), ch('$'), MOVE_TO_LINE_END);
     km.insert(Some("visual"), ch('^'), MOVE_TO_FIRST_NON_WHITESPACE);
     km.insert(Some("visual"), ch('G'), MOVE_TO_LAST_LINE);
+    km.insert(Some("visual"), ch('{'), MOVE_PARAGRAPH_UP);
+    km.insert(Some("visual"), ch('}'), MOVE_PARAGRAPH_DOWN);
     km.insert(Some("visual"), ph(KeyCode::KeyD), DELETE_SELECTION);
     km.insert(Some("visual"), ph(KeyCode::KeyC), CHANGE_SELECTION);
     km.insert(Some("visual"), ph(KeyCode::KeyX), DELETE_SELECTION);
