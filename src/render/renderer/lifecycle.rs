@@ -627,7 +627,36 @@ impl Renderer {
                 );
             }
 
-            // 7. TopBar.
+            // 7. Welcome empty-state chrome/text. This layer is populated when the
+            // app has no open buffers; keep it below the top/status bars and
+            // below palette overlays, but above the center background.
+            if !self.welcome_logo_chrome_instances.is_empty() {
+                self.region_pipeline.upload_instances(
+                    &self.device,
+                    &self.queue,
+                    &self.welcome_logo_chrome_instances,
+                );
+                draw_text_region(
+                    &mut pass,
+                    self.welcome_logo_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline.draw(render_pass);
+                    },
+                );
+            }
+            draw_text_region(
+                &mut pass,
+                self.welcome_logo_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.welcome_logo_text_pipeline.draw(render_pass);
+                },
+            );
+
+            // 8. TopBar.
             for batch in &self.topbar_text_batches {
                 draw_text_region(
                     &mut pass,
@@ -641,7 +670,7 @@ impl Renderer {
                 );
             }
 
-            // 8. StatusBar.
+            // 9. StatusBar.
             draw_text_region(
                 &mut pass,
                 self.statusbar_scissor,
@@ -652,7 +681,7 @@ impl Renderer {
                 },
             );
 
-            // 9. Command palette chrome (scrim + box) above editor text.
+            // 10. Command palette chrome (scrim + box) above editor text.
             if !self.palette_chrome_instances.is_empty() {
                 self.region_pipeline.upload_instances(
                     &self.device,
@@ -662,7 +691,7 @@ impl Renderer {
                 self.region_pipeline.draw(&mut pass);
             }
 
-            // 10. Command palette / file picker text (topmost layer).
+            // 11. Command palette / file picker text (topmost layer).
             draw_text_region(
                 &mut pass,
                 self.palette_scissor,
@@ -725,7 +754,7 @@ impl Renderer {
                 },
             );
 
-            // 11. Diagnostic hover popup (topmost overlay).
+            // 12. Diagnostic hover popup (topmost overlay).
             if !self.diagnostic_hover_chrome_instances.is_empty() {
                 self.region_pipeline.upload_instances(
                     &self.device,
