@@ -1,0 +1,205 @@
+# Theme metadata shown after the profile is loaded.
+[theme]
+name = "bearded-solarized-zed"
+description = "Bearded Theme Solarized palette adapted for Netherize Editor runtime themes"
+
+# Core editor surface: text buffer, caret, selection, and gutter.
+[editor]
+# Main text canvas background for the center editor region.
+bg = "#132c34"
+# Default foreground color for plain text in the editor.
+fg = "#c3e0e9"
+# Caret / cursor color in insert, normal, and visual rendering.
+cursor = "#47cfc4"
+# Selection fill used by visual mode and selected ranges.
+selection = "#1a3c47"
+# Background behind line numbers.
+gutter = "#132c34"
+# Active line-number color in the gutter.
+gutter_active = "#66afc7"
+# Editor text metrics for cosmic-text layout.
+font_size = 15.0
+line_height = 26.0
+# Primary font for editor text, overlays, top bar, and status bar.
+font_family = "Google Sans Code"
+# Nerd Font used for explorer/file icons and terminal glyph fallback.
+nerd_font_family = "Hack Nerd Font"
+
+# Shared UI chrome colors and workbench sizing tokens.
+[ui]
+# Window clear color behind every region and palette pill foreground base.
+bg = "#10252c"
+# Left/right sidebar region background.
+sidebar_bg = "#10252c"
+# Generic chrome background for top bar, cards, and inspector surfaces.
+panel_bg = "#10252c"
+# Bottom terminal panel and terminal-buffer background.
+terminal_bg = "#132c34"
+# Scrim + modal panel background for command palette and Leap overlay.
+overlay_bg = "#10252cD9"
+# Status bar region background.
+status_bar_bg = "#10252c"
+# Borders, separators, and subtle region dividers.
+border_color = "#0b191e"
+# Active row / selected tab / focused list item background.
+selection_bg = "#1e4451"
+
+# Shared foreground tokens for labels and chrome text.
+fg = "#c3e0e9"
+fg_dim = "#9eccdb"
+fg_ghost = "#367b90"
+
+# Accent and semantic colors used across overlays, status pills, icons, and diagnostics.
+accent = "#47cfc4"
+cyan = "#26bbae"
+magenta = "#df96d9"
+amber = "#e2ae10"
+success = "#a5b82e"
+warning = "#e2ae10"
+info = "#4db0f7"
+error = "#f45645"
+
+# Mode badge colors in the status bar.
+mode_normal = "#47cfc4"
+mode_insert = "#a5b82e"
+mode_visual = "#df96d9"
+
+# Sidebar and panel text metrics.
+sidebar_font_size = 15.0
+sidebar_line_height = 22.0
+panel_font_size = 14.0
+panel_line_height = 22.0
+
+# Theme-driven workbench chrome sizes.
+sidebar_width = 280.0
+right_sidebar_width = 320.0
+bottom_panel_height = 220.0
+top_bar_height = 36.0
+status_bar_height = 32.0
+
+# Disclosure markers and file-picker bullet glyph.
+[icons]
+# Marker for plain files in the explorer tree.
+explorer_file_marker = "·"
+# Marker for collapsed folders.
+explorer_folder_collapsed_marker = "▶"
+# Marker for expanded folders.
+explorer_folder_expanded_marker = "▼"
+# Dot marker rendered in file picker style rows.
+file_picker_dot = "●"
+
+# Folder icons in the explorer tree.
+[icons.folder_closed]
+glyph = "\uF07B"
+color = "#e2ae10"
+
+[icons.folder_open]
+glyph = "\uF07C"
+color = "#e2ae10"
+
+# Generic fallback file icon.
+[icons.default_file]
+glyph = "\uF15B"
+color = "#367b90"
+
+# Extension-specific file icons used by the explorer and fuzzy lists.
+[icons.rust]
+glyph = "\uE7A8"
+color = "#e8913b"
+
+[icons.javascript]
+glyph = "\uE781"
+color = "#e2ae10"
+
+[icons.typescript]
+glyph = "\uE628"
+color = "#4db0f7"
+
+[icons.tsx]
+glyph = "\uE7BA"
+color = "#4db0f7"
+
+[icons.jsx]
+glyph = "\uE7BA"
+color = "#e2ae10"
+
+[icons.python]
+glyph = "\uE73C"
+color = "#4db0f7"
+
+[icons.go]
+glyph = "\uE724"
+color = "#26bbae"
+
+[icons.config]
+glyph = "\uE615"
+color = "#367b90"
+
+[icons.json]
+glyph = "\uE60B"
+color = "#e2ae10"
+
+[icons.markdown]
+glyph = "\uF48A"
+color = "#4db0f7"
+
+[icons.html]
+glyph = "\uE736"
+color = "#f45645"
+
+[icons.css]
+glyph = "\uE749"
+color = "#4db0f7"
+
+[icons.sass]
+glyph = "\uE603"
+color = "#df96d9"
+
+[icons.shell]
+glyph = "\uF489"
+color = "#a5b82e"
+
+[icons.git]
+glyph = "\uF1D3"
+color = "#e8913b"
+
+[icons.lock]
+glyph = "\uF13E"
+color = "#367b90"
+
+[icons.image]
+glyph = "\uF1C5"
+color = "#a5b82e"
+
+# Syntax colors consumed by the tree-sitter highlight categories currently rendered.
+[syntax]
+# Keywords like `fn`, `let`, `match`.
+keyword = "#e2ae10"
+# String literals.
+string = "#a5b82e"
+# Function names and callable symbols.
+function = "#4db0f7"
+# Comments and muted inline docs.
+comment = "#367b90"
+# Type names.
+type = "#858bf7"
+# Numeric literals.
+number = "#f45645"
+# Plain variable names that do not fall into a richer semantic bucket.
+identifier = "#c3e0e9"
+# Function and closure parameters.
+parameter = "#df96d9"
+# Struct field declarations and member access like `self.name`.
+field = "#c3e0e9"
+# Struct literal property labels like `Demo { name: value }`.
+property = "#c3e0e9"
+# Named constants such as `MAX_SIZE` and boolean literals.
+constant = "#f45645"
+# Operators such as `=`, `+`, `&&`, `->`.
+operator = "#e2ae10"
+# Punctuation such as commas, braces, and separators.
+punctuation = "#c3e0e966"
+# Macro invocation highlight.
+macro = "#4db0f7"
+# Rust lifetime highlight.
+lifetime = "#e8913b"

@@ -1,0 +1,245 @@
+# Theme metadata shown after the profile is loaded.
+[theme]
+name = "bearded-arc-zed"
+description = "Bearded Arc palette adapted for Netherize Editor runtime themes"
+
+# Core editor surface: text buffer, caret, selection, and gutter.
+[editor]
+# Main text canvas background for the center editor region.
+bg = "#1c2433"
+# Default foreground color for plain text in the editor.
+fg = "#d0d7e4"
+# Caret / cursor color in insert, normal, and visual rendering.
+cursor = "#22ECDB"
+# Selection fill used by visual mode and selected ranges.
+selection = "#253043"
+# Background behind line numbers.
+gutter = "#1c2433"
+# Active line-number color in the gutter.
+gutter_active = "#4a5e84"
+# Editor text metrics for cosmic-text layout.
+font_size = 15.0
+line_height = 26.0
+# Primary font for editor text, overlays, top bar, and status bar.
+font_family = "Google Sans Code"
+# Nerd Font used for explorer/file icons and terminal glyph fallback.
+nerd_font_family = "Hack Nerd Font"
+
+# Shared UI chrome colors and workbench sizing tokens.
+[ui]
+# Window clear color behind every region and palette pill foreground base.
+bg = "#181f2c"
+# Left/right sidebar region background.
+sidebar_bg = "#181f2c"
+# Generic chrome background for top bar, cards, and inspector surfaces.
+panel_bg = "#181f2c"
+# Bottom terminal panel and terminal-buffer background.
+terminal_bg = "#1c2433"
+# Scrim + modal panel background for command palette and Leap overlay.
+overlay_bg = "#181f2cD9"
+# Status bar region background.
+status_bar_bg = "#181f2c"
+# Borders, separators, and subtle region dividers.
+border_color = "#11161f"
+# Active row / selected tab / focused list item background.
+selection_bg = "#2a364d"
+
+# Shared foreground tokens for labels and chrome text.
+fg = "#d0d7e4"
+fg_dim = "#afbbd2"
+fg_ghost = "#7d91b8"
+
+# Accent and semantic colors used across overlays, status pills, icons, and diagnostics.
+accent = "#8196b5"
+cyan = "#22ECDB"
+magenta = "#F38CEC"
+amber = "#EACD61"
+success = "#3CEC85"
+warning = "#FF955C"
+info = "#69C3FF"
+error = "#E35535"
+
+# Mode badge colors in the status bar.
+mode_normal = "#22ECDB"
+mode_insert = "#3CEC85"
+mode_visual = "#F38CEC"
+
+# Sidebar and panel text metrics.
+sidebar_font_size = 15.0
+sidebar_line_height = 22.0
+panel_font_size = 14.0
+panel_line_height = 22.0
+
+# Theme-driven workbench chrome sizes.
+sidebar_width = 280.0
+right_sidebar_width = 320.0
+bottom_panel_height = 220.0
+top_bar_height = 36.0
+status_bar_height = 32.0
+
+# Disclosure markers and file-picker bullet glyph.
+[icons]
+# Marker for plain files in the explorer tree.
+explorer_file_marker = "·"
+# Marker for collapsed folders.
+explorer_folder_collapsed_marker = "▶"
+# Marker for expanded folders.
+explorer_folder_expanded_marker = "▼"
+# Dot marker rendered in file picker style rows.
+file_picker_dot = "●"
+
+# Folder icons in the explorer tree.
+[icons.folder_closed]
+glyph = "\uF07B"
+color = "#EACD61"
+
+[icons.folder_open]
+glyph = "\uF07C"
+color = "#EACD61"
+
+# Generic fallback file icon.
+[icons.default_file]
+glyph = "\uF15B"
+color = "#4a5e84"
+
+# Extension-specific file icons used by the explorer and fuzzy lists.
+[icons.rust]
+glyph = "\uE7A8"
+color = "#FF955C"
+
+[icons.javascript]
+glyph = "\uE781"
+color = "#EACD61"
+
+[icons.typescript]
+glyph = "\uE628"
+color = "#69C3FF"
+
+[icons.tsx]
+glyph = "\uE7BA"
+color = "#69C3FF"
+
+[icons.jsx]
+glyph = "\uE7BA"
+color = "#EACD61"
+
+[icons.python]
+glyph = "\uE73C"
+color = "#69C3FF"
+
+[icons.go]
+glyph = "\uE724"
+color = "#22ECDB"
+
+[icons.config]
+glyph = "\uE615"
+color = "#4a5e84"
+
+[icons.json]
+glyph = "\uE60B"
+color = "#EACD61"
+
+[icons.markdown]
+glyph = "\uF48A"
+color = "#69C3FF"
+
+[icons.html]
+glyph = "\uE736"
+color = "#E35535"
+
+[icons.css]
+glyph = "\uE749"
+color = "#69C3FF"
+
+[icons.sass]
+glyph = "\uE603"
+color = "#F38CEC"
+
+[icons.shell]
+glyph = "\uF489"
+color = "#3CEC85"
+
+[icons.git]
+glyph = "\uF1D3"
+color = "#FF955C"
+
+[icons.lock]
+glyph = "\uF13E"
+color = "#4a5e84"
+
+[icons.image]
+glyph = "\uF1C5"
+color = "#3CEC85"
+
+[file_icons]
+default_file = "📄"
+default_folder = "📁"
+
+[file_icons.extensions]
+rs = ""
+ts = ""
+tsx = ""
+js = ""
+jsx = ""
+go = ""
+json = ""
+jsonc = ""
+yaml = ""
+yml = ""
+toml = ""
+sql = ""
+md = ""
+mdx = ""
+dockerfile = ""
+sh = ""
+bash = ""
+zsh = ""
+fish = ""
+lock = ""
+
+[file_icons.exact]
+Dockerfile = ""
+"docker-compose.yml" = ""
+"docker-compose.yaml" = ""
+".gitignore" = ""
+".gitattributes" = ""
+".gitmodules" = ""
+"package.json" = ""
+"package-lock.json" = ""
+"tsconfig.json" = ""
+"Cargo.toml" = ""
+Makefile = ""
+"README.md" = ""
+
+# Syntax colors consumed by the tree-sitter highlight categories currently rendered.
+[syntax]
+# Keywords like `fn`, `let`, `match`.
+keyword = "#EACD61"
+# String literals.
+string = "#3CEC85"
+# Function names and callable symbols.
+function = "#69C3FF"
+# Comments and muted inline docs.
+comment = "#4a5e84"
+# Type names.
+type = "#B78AFF"
+# Numeric literals.
+number = "#E35535"
+# Plain variable names that do not fall into a richer semantic bucket.
+identifier = "#d0d7e4"
+# Function and closure parameters.
+parameter = "#22ECDB"
+# Struct field declarations and member access like `self.name`.
+field = "#69C3FF"
+# Struct literal property labels like `Demo { name: value }`.
+property = "#d0d7e4"
+# Named constants such as `MAX_SIZE` and boolean literals.
+constant = "#FF955C"
+# Operators such as `=`, `+`, `&&`, `->`.
+operator = "#afbbd2"
+# Punctuation such as commas, braces, and separators.
+punctuation = "#8196b5"
+# Macro invocation highlight.
+macro = "#69C3FF"
+# Rust lifetime highlight.
+lifetime = "#FF955C"

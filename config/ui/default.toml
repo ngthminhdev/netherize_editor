@@ -1,0 +1,45 @@
+[window]
+title = "Netherize Editor"
+width = 1920
+height = 1080
+startup_mode = "maximized"
+auto_scale = true
+min_content_scale = 1.0
+max_content_scale = 1.0
+
+[layout]
+region_gap = 2.0
+top_bar_height = 38.0
+status_bar_height = 36.0
+center_min_width = 320.0
+center_min_height = 180.0
+sidebar_min_width = 180.0
+bottom_min_height = 120.0
+
+[docks]
+left_visible = false
+left_size_px = 280.0
+right_visible = false
+right_size_px = 300.0
+bottom_visible = false
+bottom_size_px = 500.0
+overlay_visible = false
+
+[cursor]
+shape = "nvim"
+beam_width = 1.8
+block_width = 10.0
+underline_height = 2.0
+
+[spacing]
+editor_padding = 14.0
+panel_padding = 10.0
+explorer_padding = 10.0
+
+[status_bar]
+padding_x = 14.0
+font_size = 15.0
+line_height = 24.0
+
+[editor]
+relative_numbers = true
