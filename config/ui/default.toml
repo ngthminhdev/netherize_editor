@@ -43,3 +43,10 @@ line_height = 24.0
 
 [editor]
 relative_numbers = true
+
+[welcome]
+card_max_width = 560.0
+card_padding_x = 42.0
+card_padding_y = 34.0
+section_gap = 16.0
+border_radius_px = 18.0

@@ -194,6 +194,7 @@ impl Renderer {
             welcome_logo_text_pipeline,
             welcome_logo_view_renderer: TerminalViewRenderer::default_monospace(),
             welcome_logo_glyph_instances: Vec::new(),
+            welcome_logo_chrome_instances: Vec::new(),
             welcome_logo_scissor: None,
             topbar_text_system,
             topbar_text_pipeline,
@@ -231,6 +232,11 @@ impl Renderer {
             statusbar_padding_x: 14.0,
             statusbar_font_size,
             statusbar_line_height,
+            welcome_card_max_width: 560.0,
+            welcome_card_padding_x: 42.0,
+            welcome_card_padding_y: 34.0,
+            welcome_section_gap: 16.0,
+            welcome_border_radius_px: 18.0,
             cursor_shape: CursorShape::Block,
             cursor_beam_width: 1.8,
             cursor_block_width: 10.0,
@@ -323,6 +329,11 @@ impl Renderer {
         self.statusbar_padding_x = ui.status_bar.padding_x;
         self.statusbar_font_size = ui.status_bar.font_size;
         self.statusbar_line_height = ui.status_bar.line_height;
+        self.welcome_card_max_width = ui.welcome.card_max_width;
+        self.welcome_card_padding_x = ui.welcome.card_padding_x;
+        self.welcome_card_padding_y = ui.welcome.card_padding_y;
+        self.welcome_section_gap = ui.welcome.section_gap;
+        self.welcome_border_radius_px = ui.welcome.border_radius_px;
         self.cursor_shape = ui.cursor.shape;
         self.cursor_beam_width = ui.cursor.beam_width;
         self.cursor_block_width = ui.cursor.block_width;
@@ -458,7 +469,23 @@ impl Renderer {
                 },
             );
 
-            // 3. Welcome ANSI logo.
+            // 3. Welcome screen card/chrome + text.
+            if !self.welcome_logo_chrome_instances.is_empty() {
+                self.region_pipeline.upload_instances(
+                    &self.device,
+                    &self.queue,
+                    &self.welcome_logo_chrome_instances,
+                );
+                draw_text_region(
+                    &mut pass,
+                    self.welcome_logo_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline.draw(render_pass);
+                    },
+                );
+            }
             draw_text_region(
                 &mut pass,
                 self.welcome_logo_scissor,

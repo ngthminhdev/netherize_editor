@@ -94,6 +94,15 @@ pub struct EditorUiConfig {
     pub font_family: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct WelcomeUiConfig {
+    pub card_max_width: f32,
+    pub card_padding_x: f32,
+    pub card_padding_y: f32,
+    pub section_gap: f32,
+    pub border_radius_px: f32,
+}
+
 #[derive(Debug, Clone)]
 pub struct UiConfig {
     pub window: WindowUiConfig,
@@ -103,6 +112,7 @@ pub struct UiConfig {
     pub spacing: SpacingUiConfig,
     pub status_bar: StatusBarUiConfig,
     pub editor: EditorUiConfig,
+    pub welcome: WelcomeUiConfig,
     pub border_radius_px: f32,
 }
 
@@ -195,6 +205,13 @@ impl UiConfig {
             editor: EditorUiConfig {
                 relative_numbers: false,
                 font_family: None,
+            },
+            welcome: WelcomeUiConfig {
+                card_max_width: 560.0,
+                card_padding_x: 42.0,
+                card_padding_y: 34.0,
+                section_gap: 16.0,
+                border_radius_px: 18.0,
             },
             border_radius_px: 0.0,
         }
@@ -411,6 +428,41 @@ impl UiConfig {
                 relative_numbers: raw.editor.relative_numbers.unwrap_or(false),
                 font_family: raw.editor.font_family,
             },
+            welcome: WelcomeUiConfig {
+                card_max_width: parse_positive_f32(
+                    "welcome",
+                    "card_max_width",
+                    raw.welcome
+                        .card_max_width
+                        .unwrap_or(fallback.welcome.card_max_width),
+                )?,
+                card_padding_x: parse_positive_f32(
+                    "welcome",
+                    "card_padding_x",
+                    raw.welcome
+                        .card_padding_x
+                        .unwrap_or(fallback.welcome.card_padding_x),
+                )?,
+                card_padding_y: parse_positive_f32(
+                    "welcome",
+                    "card_padding_y",
+                    raw.welcome
+                        .card_padding_y
+                        .unwrap_or(fallback.welcome.card_padding_y),
+                )?,
+                section_gap: parse_positive_f32(
+                    "welcome",
+                    "section_gap",
+                    raw.welcome
+                        .section_gap
+                        .unwrap_or(fallback.welcome.section_gap),
+                )?,
+                border_radius_px: raw
+                    .welcome
+                    .border_radius_px
+                    .unwrap_or(fallback.welcome.border_radius_px)
+                    .max(0.0),
+            },
             border_radius_px: raw.border_radius_px.unwrap_or(fallback.border_radius_px),
         };
         config.validate()?;
@@ -516,6 +568,8 @@ struct RawUiFile {
     status_bar: RawStatusBar,
     #[serde(default)]
     editor: RawEditorSection,
+    #[serde(default)]
+    welcome: RawWelcome,
     border_radius_px: Option<f32>,
 }
 
@@ -578,6 +632,15 @@ struct RawStatusBar {
 struct RawEditorSection {
     relative_numbers: Option<bool>,
     font_family: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RawWelcome {
+    card_max_width: Option<f32>,
+    card_padding_x: Option<f32>,
+    card_padding_y: Option<f32>,
+    section_gap: Option<f32>,
+    border_radius_px: Option<f32>,
 }
 
 #[derive(Debug, Serialize)]

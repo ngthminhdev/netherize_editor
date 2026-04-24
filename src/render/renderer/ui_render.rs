@@ -589,7 +589,12 @@ impl Renderer {
 
         self.welcome_logo_scissor = rect_to_scissor(bounds);
 
-        let max_width = (bounds[2] - self.panel_padding * 2.0).max(1.0);
+        let outer_margin = (self.panel_padding * 2.0).max(24.0);
+        let card_width = self
+            .welcome_card_max_width
+            .min((bounds[2] - outer_margin * 2.0).max(1.0))
+            .max(280.0_f32.min(bounds[2].max(1.0)));
+        let max_width = (card_width - self.welcome_card_padding_x * 2.0).max(1.0);
         let font_size = self.theme.editor.font_size;
         let line_height = self.theme.editor.line_height.max(font_size + 4.0);
 
@@ -604,20 +609,51 @@ impl Renderer {
             spans,
         );
 
-        let mut content_width = 0.0_f32;
         let mut content_height = 0.0_f32;
         for run in self.welcome_logo_text_system.buffer().layout_runs() {
-            content_width = content_width.max(run.line_w.max(1.0));
             content_height = content_height.max(run.line_top + run.line_height.max(1.0));
         }
-        content_width = content_width.min(max_width).max(1.0);
         content_height = content_height.max(line_height);
 
-        let origin_x = bounds[0] + ((bounds[2] - content_width) * 0.5).max(self.panel_padding);
-        let origin_y = bounds[1]
-            + ((bounds[3] - content_height) * 0.5)
-                .max(self.panel_padding)
-                .min((bounds[3] - content_height - self.panel_padding).max(self.panel_padding));
+        let card_height = (content_height + self.welcome_card_padding_y * 2.0).min(bounds[3]);
+        let card_x = bounds[0] + ((bounds[2] - card_width) * 0.5).max(0.0);
+        let card_y = bounds[1] + ((bounds[3] - card_height) * 0.5).max(0.0);
+        let origin_x = card_x + self.welcome_card_padding_x;
+        let origin_y = card_y + self.welcome_card_padding_y;
+
+        let mut card_bg = self.theme.ui.panel_bg.as_f32();
+        card_bg[3] = card_bg[3].min(0.94);
+        let mut card_border = self.theme.ui.border_color.as_f32();
+        card_border[3] = 0.8;
+        let mut accent = self.theme.ui.accent.as_f32();
+        accent[3] = 0.85;
+
+        self.welcome_logo_chrome_instances = vec![
+            RegionDrawInstance::new([card_x, card_y, card_width, card_height], card_border)
+                .with_radius(self.welcome_border_radius_px + 1.0),
+            RegionDrawInstance::new(
+                [
+                    card_x + 1.0,
+                    card_y + 1.0,
+                    card_width - 2.0,
+                    card_height - 2.0,
+                ],
+                card_bg,
+            )
+            .with_radius(self.welcome_border_radius_px),
+            RegionDrawInstance::new(
+                [
+                    card_x + self.welcome_card_padding_x,
+                    card_y
+                        + self.welcome_card_padding_y
+                        + line_height * 3.0
+                        + self.welcome_section_gap,
+                    (card_width - self.welcome_card_padding_x * 2.0).max(1.0),
+                    1.0,
+                ],
+                accent,
+            ),
+        ];
 
         self.welcome_logo_glyph_instances = layout_panel_rich_text(
             text,
@@ -641,12 +677,14 @@ impl Renderer {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
             self.welcome_logo_scissor = None;
             self.welcome_logo_glyph_instances.clear();
+            self.welcome_logo_chrome_instances.clear();
             self.welcome_logo_text_pipeline
                 .upload_instances(&self.device, &self.queue, &[]);
             return;
         }
 
         self.welcome_logo_scissor = rect_to_scissor(bounds);
+        self.welcome_logo_chrome_instances.clear();
 
         let width = bounds[2].max(1.0);
         let height = bounds[3].max(1.0);
@@ -693,6 +731,7 @@ impl Renderer {
     pub fn clear_welcome_logo(&mut self) {
         self.welcome_logo_scissor = None;
         self.welcome_logo_glyph_instances.clear();
+        self.welcome_logo_chrome_instances.clear();
         self.welcome_logo_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
     }

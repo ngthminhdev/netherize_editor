@@ -6,11 +6,15 @@ pub(super) fn welcome_screen_content(theme: &ThemeConfig) -> (String, Vec<Styled
         "Zero-latency keyboard-first editor",
         "Author: ngthminhdev",
         "",
-        "╭────────────────── Start ───────────────────╮",
-        "│  [ Cmd + O ]      Open Project / File      │",
-        "│  [ Space p j ]    Recent Projects          │",
-        "│  [ Space f f ]    Find File                │",
-        "╰────────────────────────────────────────────╯",
+        "START",
+        "  Cmd + O       Open Project / File",
+        "  Space p j     Recent Projects",
+        "  Space f f     Find File",
+        "",
+        "WORKFLOW",
+        "  Space g g     Open Git Panel",
+        "  F12           Toggle Terminal",
+        "  Space /       Command Palette",
     ];
     let text = lines.join("\n");
     let mut styled = Vec::new();
@@ -30,30 +34,26 @@ pub(super) fn welcome_screen_content(theme: &ThemeConfig) -> (String, Vec<Styled
     );
     push_span(&mut styled, &text, "Author: ngthminhdev", magenta);
 
-    push_span(
-        &mut styled,
-        &text,
-        "╭────────────────── Start ───────────────────╮",
-        fg_ghost,
-    );
-    push_span(
-        &mut styled,
-        &text,
-        "╰────────────────────────────────────────────╯",
-        fg_ghost,
-    );
+    push_span(&mut styled, &text, "START", fg_ghost);
+    push_span(&mut styled, &text, "WORKFLOW", fg_ghost);
 
-    push_span(&mut styled, &text, "[ Cmd + O ]", accent);
+    push_span(&mut styled, &text, "Cmd + O", accent);
     push_span(&mut styled, &text, "Open Project / File", fg_dim);
 
-    push_span(&mut styled, &text, "[ Space p j ]", accent);
+    push_span(&mut styled, &text, "Space p j", accent);
     push_span(&mut styled, &text, "Recent Projects", fg_dim);
 
-    push_span(&mut styled, &text, "[ Space f f ]", accent);
+    push_span(&mut styled, &text, "Space f f", accent);
     push_span(&mut styled, &text, "Find File", fg_dim);
 
-    // push_span(&mut styled, &text, "[ Space b ]", accent);
-    // push_span(&mut styled, &text, "New Buffer", fg_dim);
+    push_span(&mut styled, &text, "Space g g", accent);
+    push_span(&mut styled, &text, "Open Git Panel", fg_dim);
+
+    push_span(&mut styled, &text, "F12", accent);
+    push_span(&mut styled, &text, "Toggle Terminal", fg_dim);
+
+    push_span(&mut styled, &text, "Space /", accent);
+    push_span(&mut styled, &text, "Command Palette", fg_dim);
 
     (text, styled)
 }

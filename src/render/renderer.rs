@@ -168,6 +168,7 @@ pub struct Renderer {
     pub(super) welcome_logo_text_pipeline: TextPipeline,
     pub(super) welcome_logo_view_renderer: TerminalViewRenderer,
     pub(super) welcome_logo_glyph_instances: Vec<GlyphInstance>,
+    pub(super) welcome_logo_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) welcome_logo_scissor: Option<[u32; 4]>,
 
     // ── TopBar ────────────────────────────────────────────────────────────────
@@ -216,6 +217,11 @@ pub struct Renderer {
     pub(super) statusbar_padding_x: f32,
     pub(super) statusbar_font_size: f32,
     pub(super) statusbar_line_height: f32,
+    pub(super) welcome_card_max_width: f32,
+    pub(super) welcome_card_padding_x: f32,
+    pub(super) welcome_card_padding_y: f32,
+    pub(super) welcome_section_gap: f32,
+    pub(super) welcome_border_radius_px: f32,
     pub(super) cursor_shape: CursorShape,
     pub(super) cursor_beam_width: f32,
     pub(super) cursor_block_width: f32,
