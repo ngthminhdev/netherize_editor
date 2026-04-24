@@ -481,12 +481,21 @@ fn capture_category(capture_name: &str) -> Option<HighlightCategory> {
         "lifetime" => Some(HighlightCategory::Lifetime),
         "field" => Some(HighlightCategory::Field),
         "property" => Some(HighlightCategory::Property),
+        "constructor" => Some(HighlightCategory::Type),
+        "type.builtin" | "builtin.type" => Some(HighlightCategory::Type),
+        "constant.builtin" | "constant.builtin.boolean" => Some(HighlightCategory::Constant),
+        "function.builtin" | "function.method" | "method.call" => Some(HighlightCategory::Function),
+        "module" | "namespace" => Some(HighlightCategory::Type),
+        "tag" | "tag.builtin" => Some(HighlightCategory::Type),
+        "label" => Some(HighlightCategory::Property),
         "identifier" => Some(HighlightCategory::Identifier),
         "operator" => Some(HighlightCategory::Operator),
         _ if capture_name.starts_with("comment") => Some(HighlightCategory::Comment),
         _ if capture_name.starts_with("keyword") => Some(HighlightCategory::Keyword),
         _ if capture_name.starts_with("string") => Some(HighlightCategory::String),
+        _ if capture_name.starts_with("embedded") => Some(HighlightCategory::String),
         _ if capture_name.starts_with("type") => Some(HighlightCategory::Type),
+        _ if capture_name.starts_with("constructor") => Some(HighlightCategory::Type),
         _ if capture_name.starts_with("function") || capture_name.starts_with("method") => {
             Some(HighlightCategory::Function)
         }
@@ -503,6 +512,11 @@ fn capture_category(capture_name: &str) -> Option<HighlightCategory> {
         }
         _ if capture_name.starts_with("field") => Some(HighlightCategory::Field),
         _ if capture_name.starts_with("property") => Some(HighlightCategory::Property),
+        _ if capture_name.starts_with("label") => Some(HighlightCategory::Property),
+        _ if capture_name.starts_with("module") || capture_name.starts_with("namespace") => {
+            Some(HighlightCategory::Type)
+        }
+        _ if capture_name.starts_with("tag") => Some(HighlightCategory::Type),
         _ if capture_name.starts_with("constant")
             || capture_name == "boolean"
             || capture_name == "enum_member" =>
@@ -665,6 +679,28 @@ fn transform_span_by_edit(span: HighlightSpan, edit: HighlightEdit) -> Option<Hi
         range: new_start..new_end,
         category: span.category,
     })
+}
+
+pub fn expand_merge_window(
+    existing: &[HighlightSpan],
+    replacement: &[HighlightSpan],
+    mut window: Range<usize>,
+) -> Range<usize> {
+    for span in existing {
+        if span.range.end > window.start && span.range.start < window.end {
+            window.start = window.start.min(span.range.start);
+            window.end = window.end.max(span.range.end);
+        }
+    }
+
+    for span in replacement {
+        if span.range.end > window.start && span.range.start < window.end {
+            window.start = window.start.min(span.range.start);
+            window.end = window.end.max(span.range.end);
+        }
+    }
+
+    window
 }
 
 fn coalesce_spans(mut spans: Vec<HighlightSpan>) -> Vec<HighlightSpan> {
@@ -981,6 +1017,23 @@ func greet(name string) string {
     }
 
     #[test]
+    fn expand_merge_window_absorbs_intersecting_existing_and_replacement_spans() {
+        let existing = vec![HighlightSpan {
+            range: 0..10,
+            category: HighlightCategory::Comment,
+        }];
+        let replacement = vec![HighlightSpan {
+            range: 4..6,
+            category: HighlightCategory::Keyword,
+        }];
+
+        assert_eq!(
+            super::expand_merge_window(&existing, &replacement, 5..6),
+            0..10
+        );
+    }
+
+    #[test]
     fn semantic_overrides_replace_tree_sitter_in_same_range() {
         let base = vec![
             HighlightSpan {
@@ -1023,5 +1076,25 @@ func greet(name string) string {
         assert!(should_highlight_inline("fn main() {}\n"));
         let large = "x".repeat(super::INLINE_TREE_SITTER_BYTE_THRESHOLD + 1);
         assert!(!should_highlight_inline(&large));
+    }
+
+    #[test]
+    fn capture_category_maps_high_value_builtin_and_structure_tokens() {
+        assert_eq!(
+            super::capture_category("function.builtin"),
+            Some(HighlightCategory::Function)
+        );
+        assert_eq!(
+            super::capture_category("constant.builtin.boolean"),
+            Some(HighlightCategory::Constant)
+        );
+        assert_eq!(
+            super::capture_category("module"),
+            Some(HighlightCategory::Type)
+        );
+        assert_eq!(
+            super::capture_category("label"),
+            Some(HighlightCategory::Property)
+        );
     }
 }

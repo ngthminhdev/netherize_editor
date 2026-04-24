@@ -47,6 +47,14 @@ impl AsyncResultRouter for AppShell {
                     return;
                 }
 
+                let covered_byte_range = covered_byte_range.map(|window| {
+                    crate::syntax::highlight::expand_merge_window(
+                        &self.highlight_spans,
+                        &spans,
+                        window,
+                    )
+                });
+
                 crate::syntax::highlight::merge_highlight_spans(
                     &mut self.highlight_spans,
                     spans,
