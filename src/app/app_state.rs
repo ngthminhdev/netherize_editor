@@ -624,6 +624,43 @@ impl AppState {
         Ok(())
     }
 
+    pub fn clear_workspace_session_state(&mut self) -> bool {
+        let mut changed = false;
+
+        changed |= !self.diagnostics.is_empty();
+        self.diagnostics.clear();
+
+        changed |= !self.buffers.is_empty();
+        self.buffers.clear();
+
+        changed |= self.active_buffer_index.is_some();
+        self.active_buffer_index = None;
+
+        changed |= self.command_palette.is_visible;
+        changed |= self.close_command_palette();
+
+        changed |= self.pending_explorer_rename_path.is_some();
+        self.pending_explorer_rename_path = None;
+
+        changed |= !self.jump_back_stack.is_empty() || !self.jump_forward_stack.is_empty();
+        self.jump_back_stack.clear();
+        self.jump_forward_stack.clear();
+
+        let had_active_file = self.active_file.is_some();
+        let had_text = self.text.len_chars() > 0;
+        let had_dirty = self.dirty;
+        self.reset_text_editor_state();
+        changed |= had_active_file || had_text || had_dirty;
+
+        changed |= self.clear_current_overlays();
+
+        if changed {
+            self.bump_revision();
+        }
+
+        changed
+    }
+
     pub fn workspace_root_path(&self) -> Option<&Path> {
         self.workspace_model
             .as_ref()

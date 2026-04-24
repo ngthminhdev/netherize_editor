@@ -184,6 +184,14 @@ impl LspSessionRegistry {
         }
         Ok(None)
     }
+
+    fn drain_all(&self) -> Result<Vec<LspSessionHandle>, String> {
+        let mut guard = self
+            .sessions
+            .lock()
+            .map_err(|_| "lsp session lock poisoned".to_string())?;
+        Ok(std::mem::take(&mut *guard).into_values().collect())
+    }
 }
 
 impl PtySessionRegistry {
@@ -830,7 +838,7 @@ fn execute_lsp_request(
                 previous
                     .process
                     .update_request_meta(request.request_id, request.revision_id);
-                let _ = previous.process.graceful_shutdown();
+                let _ = previous.process.shutdown_and_exit();
             }
 
             Ok(WorkerResultPayload::LspServerStarted {
@@ -930,10 +938,24 @@ fn execute_lsp_request(
             session
                 .process
                 .update_request_meta(request.request_id, request.revision_id);
-            let exit_status = session.process.graceful_shutdown()?;
+            let exit_status = session.process.shutdown_and_exit()?;
             Ok(WorkerResultPayload::LspServerStopped {
                 exit_status,
                 reason: "shutdown requested by app".to_string(),
+            })
+        }
+        WorkerRequestPayload::ShutdownAllLspServers => {
+            let sessions = lsp_sessions.drain_all()?;
+            let mut last_exit_status = None;
+            for session in sessions {
+                session
+                    .process
+                    .update_request_meta(request.request_id, request.revision_id);
+                last_exit_status = session.process.shutdown_and_exit()?;
+            }
+            Ok(WorkerResultPayload::LspServerStopped {
+                exit_status: last_exit_status,
+                reason: "all lsp servers shutdown for workspace switch".to_string(),
             })
         }
         WorkerRequestPayload::LspHoverRequest {
@@ -2227,6 +2249,9 @@ async fn execute_virtual_job(
             .await
             .map_err(|err| format!("file preview join error: {err}"))?;
             Ok(result)
+        }
+        WorkerRequestPayload::ShutdownAllLspServers => {
+            Err("execute_virtual_job received non-virtual payload".to_string())
         }
     }
 }

@@ -23,6 +23,58 @@ fn dispatch_palette_overlay_command(
 }
 
 impl AppShell {
+    fn prepare_for_workspace_switch(&mut self) {
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspClient,
+            payload: WorkerRequestPayload::ShutdownAllLspServers,
+        });
+
+        self.app_state.clear_workspace_session_state();
+        self.active_lsp_server = None;
+        self.pending_lsp_server = None;
+        self.lsp_completion_trigger_chars.clear();
+        self.active_lsp_guide = None;
+        self.highlight_spans.clear();
+        self.semantic_highlight_spans.clear();
+    }
+
+    fn switch_workspace_to(&mut self, root_path: PathBuf) -> bool {
+        self.prepare_for_workspace_switch();
+
+        if let Err(err) = self.app_state.attach_workspace(root_path.clone()) {
+            eprintln!("[AppShell] attach_workspace failed: {err}");
+            return false;
+        }
+
+        self.persistent_state.push_recent(root_path.clone());
+        self.persistent_state.save();
+
+        self.mark_explorer_dirty();
+        if !self.panel_state.left.visible {
+            self.panel_state.left.visible = true;
+            self.sidebar_needs_layout = true;
+        }
+        self.workspace_git_branch = self
+            .app_state
+            .workspace_root_path()
+            .and_then(detect_git_branch);
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::WorkspaceWatch,
+            payload: WorkerRequestPayload::StartFileWatch {
+                root_path: root_path.clone(),
+            },
+        });
+
+        self.sync_lsp_server_for_workspace();
+
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        true
+    }
+
     fn explorer_selected_entry(&mut self) -> Option<ExplorerEntry> {
         self.ensure_explorer_snapshot();
         if self.explorer_snapshot.entries.is_empty() {
@@ -2645,36 +2697,7 @@ impl AppShell {
             return false;
         };
 
-        if let Err(err) = self.app_state.attach_workspace(folder.clone()) {
-            eprintln!("[AppShell] attach_workspace failed: {err}");
-            return false;
-        }
-
-        self.persistent_state.push_recent(folder.clone());
-        self.persistent_state.save();
-
-        self.mark_explorer_dirty();
-        if !self.panel_state.left.visible {
-            self.panel_state.left.visible = true;
-            self.sidebar_needs_layout = true;
-        }
-        self.workspace_git_branch = self
-            .app_state
-            .workspace_root_path()
-            .and_then(detect_git_branch);
-
-        self.submit(RequestSpec {
-            revision_id: 0,
-            topic: RequestTopic::WorkspaceWatch,
-            payload: WorkerRequestPayload::StartFileWatch {
-                root_path: folder.clone(),
-            },
-        });
-        self.sync_lsp_server_for_workspace();
-
-        self.editor_needs_layout = true;
-        self.editor_caret_needs_layout = false;
-        true
+        self.switch_workspace_to(folder)
     }
 
     fn open_recent_projects_palette(&mut self) -> bool {
@@ -2726,36 +2749,7 @@ impl AppShell {
             self.input_handler.clear_pending_prefix();
         }
 
-        if let Err(err) = self.app_state.attach_workspace(path.clone()) {
-            eprintln!("[AppShell] attach_workspace from recent failed: {err}");
-            return changed;
-        }
-
-        self.persistent_state.push_recent(path.clone());
-        self.persistent_state.save();
-
-        self.mark_explorer_dirty();
-        if !self.panel_state.left.visible {
-            self.panel_state.left.visible = true;
-            self.sidebar_needs_layout = true;
-        }
-        self.workspace_git_branch = self
-            .app_state
-            .workspace_root_path()
-            .and_then(detect_git_branch);
-
-        self.submit(RequestSpec {
-            revision_id: 0,
-            topic: RequestTopic::WorkspaceWatch,
-            payload: WorkerRequestPayload::StartFileWatch {
-                root_path: path.clone(),
-            },
-        });
-        self.sync_lsp_server_for_workspace();
-
-        self.editor_needs_layout = true;
-        self.editor_caret_needs_layout = false;
-        true
+        changed | self.switch_workspace_to(path)
     }
 
     fn confirm_theme_selection(&mut self) -> bool {

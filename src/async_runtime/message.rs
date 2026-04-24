@@ -214,6 +214,7 @@ pub enum WorkerRequestPayload {
         prefix: String,
     },
     StopLspServer,
+    ShutdownAllLspServers,
 }
 
 /// Loại location từ LSP — dùng cho definition và references.
