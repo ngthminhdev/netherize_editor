@@ -64,7 +64,9 @@ impl Renderer {
         let available_popup_w = (window_w - WINDOW_PAD * 2.0)
             .min(geometry.viewport_text_width)
             .max(1.0);
-        let max_popup_w = available_popup_w.min(420.0);
+        let max_popup_w = (geometry.viewport_text_width * 0.5)
+            .min(available_popup_w)
+            .max(1.0);
         let wrap_cols = ((max_popup_w - PAD_X * 2.0) / char_w).floor() as usize;
         let wrapped = wrap_text_lines(&diagnostic.message, wrap_cols.max(16));
         let longest = wrapped
@@ -166,12 +168,35 @@ mod tests {
         let available_popup_w = (window_w - WINDOW_PAD * 2.0)
             .min(viewport_text_width)
             .max(1.0);
-        let max_popup_w = available_popup_w.min(420.0);
+        let max_popup_w = (viewport_text_width * 0.5).min(available_popup_w).max(1.0);
         let preferred_min_popup_w = 160.0_f32.min(max_popup_w.max(1.0));
         let popup_w = (longest as f32 * char_w + PAD_X * 2.0)
             .clamp(preferred_min_popup_w, max_popup_w.max(1.0));
 
-        assert!((max_popup_w - 80.7749).abs() < 0.001);
-        assert!((popup_w - 80.7749).abs() < 0.001);
+        assert!((max_popup_w - 55.2625).abs() < 0.001);
+        assert!((popup_w - 55.2625).abs() < 0.001);
+    }
+
+    #[test]
+    fn diagnostic_popup_width_uses_half_of_editor_viewport_when_space_allows() {
+        const PAD_X: f32 = 10.0;
+        const WINDOW_PAD: f32 = 12.0;
+
+        let window_w = 1600.0;
+        let viewport_text_width = 1200.0;
+        let char_w = 9.5;
+        let longest = 200usize;
+
+        let available_popup_w = (window_w - WINDOW_PAD * 2.0)
+            .min(viewport_text_width)
+            .max(1.0);
+        let max_popup_w = (viewport_text_width * 0.5).min(available_popup_w).max(1.0);
+        let preferred_min_popup_w = 160.0_f32.min(max_popup_w.max(1.0));
+        let popup_w = (longest as f32 * char_w + PAD_X * 2.0)
+            .clamp(preferred_min_popup_w, max_popup_w.max(1.0));
+
+        assert_eq!(available_popup_w, 1200.0);
+        assert_eq!(max_popup_w, 600.0);
+        assert_eq!(popup_w, 600.0);
     }
 }
