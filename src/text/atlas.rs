@@ -144,47 +144,130 @@ impl GlyphAtlas {
 
     /// Convert atlas pixel region -> uv normalized [0..1].
     pub fn uv_min_max(&self, region: AtlasRegion) -> ([f32; 2], [f32; 2]) {
-        let w = self.width as f32;
-        let h = self.height as f32;
-        let uv_min = [region.x as f32 / w, region.y as f32 / h];
-        let uv_max = [
-            (region.x + region.width) as f32 / w,
-            (region.y + region.height) as f32 / h,
-        ];
-        (uv_min, uv_max)
+        atlas_uv_min_max(self.width, self.height, region)
     }
 
     /// Shelf packing đơn giản:
     /// - đặt glyph trên một hàng
     /// - hết ngang thì xuống hàng mới
     fn allocate_region(&mut self, width: u32, height: u32) -> Option<AtlasRegion> {
-        if width == 0 || height == 0 {
-            return None;
-        }
-        if width > self.width || height > self.height {
-            return None;
-        }
+        let state = AtlasPackingState {
+            atlas_width: self.width,
+            atlas_height: self.height,
+            next_x: self.next_x,
+            next_y: self.next_y,
+            row_height: self.row_height,
+        };
+        let (region, next) = allocate_region_in_state(state, width, height)?;
+        self.next_x = next.next_x;
+        self.next_y = next.next_y;
+        self.row_height = next.row_height;
+        Some(region)
+    }
+}
 
-        if self.next_x + width > self.width {
-            self.next_x = 0;
-            self.next_y = self.next_y.saturating_add(self.row_height);
-            self.row_height = 0;
-        }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AtlasPackingState {
+    atlas_width: u32,
+    atlas_height: u32,
+    next_x: u32,
+    next_y: u32,
+    row_height: u32,
+}
 
-        if self.next_y + height > self.height {
-            return None;
-        }
+fn atlas_uv_min_max(width: u32, height: u32, region: AtlasRegion) -> ([f32; 2], [f32; 2]) {
+    let w = width as f32;
+    let h = height as f32;
+    let uv_min = [region.x as f32 / w, region.y as f32 / h];
+    let uv_max = [
+        (region.x + region.width) as f32 / w,
+        (region.y + region.height) as f32 / h,
+    ];
+    (uv_min, uv_max)
+}
 
-        let region = AtlasRegion {
-            x: self.next_x,
-            y: self.next_y,
-            width,
-            height,
+fn allocate_region_in_state(
+    mut state: AtlasPackingState,
+    width: u32,
+    height: u32,
+) -> Option<(AtlasRegion, AtlasPackingState)> {
+    if width == 0 || height == 0 {
+        return None;
+    }
+    if width > state.atlas_width || height > state.atlas_height {
+        return None;
+    }
+
+    if state.next_x + width > state.atlas_width {
+        state.next_x = 0;
+        state.next_y = state.next_y.saturating_add(state.row_height);
+        state.row_height = 0;
+    }
+
+    if state.next_y + height > state.atlas_height {
+        return None;
+    }
+
+    let region = AtlasRegion {
+        x: state.next_x,
+        y: state.next_y,
+        width,
+        height,
+    };
+
+    state.next_x += width;
+    state.row_height = state.row_height.max(height);
+
+    Some((region, state))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AtlasPackingState, AtlasRegion, allocate_region_in_state, atlas_uv_min_max};
+
+    #[test]
+    fn zero_sized_and_oversized_regions_are_rejected() {
+        let state = AtlasPackingState {
+            atlas_width: 16,
+            atlas_height: 16,
+            next_x: 0,
+            next_y: 0,
+            row_height: 0,
         };
 
-        self.next_x += width;
-        self.row_height = self.row_height.max(height);
+        assert!(allocate_region_in_state(state, 0, 4).is_none());
+        assert!(allocate_region_in_state(state, 4, 0).is_none());
+        assert!(allocate_region_in_state(state, 17, 4).is_none());
+        assert!(allocate_region_in_state(state, 4, 17).is_none());
+    }
 
-        Some(region)
+    #[test]
+    fn allocation_wraps_to_next_row_without_overlap() {
+        let state = AtlasPackingState {
+            atlas_width: 10,
+            atlas_height: 10,
+            next_x: 0,
+            next_y: 0,
+            row_height: 0,
+        };
+
+        let (first, state) = allocate_region_in_state(state, 6, 3).expect("first region");
+        let (second, _) = allocate_region_in_state(state, 5, 2).expect("wrapped region");
+
+        assert_eq!((first.x, first.y, first.width, first.height), (0, 0, 6, 3));
+        assert_eq!((second.x, second.y, second.width, second.height), (0, 3, 5, 2));
+    }
+
+    #[test]
+    fn uv_coordinates_stay_normalized_at_texture_edge() {
+        let (uv_min, uv_max) = atlas_uv_min_max(8, 4, AtlasRegion {
+            x: 6,
+            y: 1,
+            width: 2,
+            height: 3,
+        });
+
+        assert_eq!(uv_min, [0.75, 0.25]);
+        assert_eq!(uv_max, [1.0, 1.0]);
     }
 }

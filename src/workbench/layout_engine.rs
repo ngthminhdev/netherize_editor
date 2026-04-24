@@ -519,6 +519,8 @@ mod tests {
             .find(RegionId::BottomPanel)
             .expect("bottom panel region");
 
+        assert!(bottom.x >= left.width - 0.001);
+        assert!((bottom.x - center.x).abs() <= 0.001);
         assert!(
             (bottom.x - left.width).abs() <= 0.001,
             "bottom panel should start after left sidebar: bottom.x={} left.width={}",
@@ -530,6 +532,40 @@ mod tests {
             "bottom panel width should match center pane: bottom.width={} center.width={}",
             bottom.width,
             center.width
+        );
+    }
+
+    #[test]
+    fn tiny_window_preserves_non_negative_bounds() {
+        let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
+        let state = WorkbenchPanelState::default();
+        let layout = engine.compute(PhysicalSize::new(1, 1), &state);
+
+        for region in layout.model.flatten() {
+            assert!(region.bounds.width >= 0.0, "{} width < 0", region.id.label());
+            assert!(region.bounds.height >= 0.0, "{} height < 0", region.id.label());
+            assert!(region.bounds.x >= 0.0, "{} x < 0", region.id.label());
+            assert!(region.bounds.y >= 0.0, "{} y < 0", region.id.label());
+        }
+    }
+
+    #[test]
+    fn sidebars_shrink_before_center_drops_below_minimum() {
+        let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
+        let mut state = WorkbenchPanelState::default();
+        state.left.visible = true;
+        state.right.visible = true;
+        state.left.size_px = 500.0;
+        state.right.size_px = 500.0;
+
+        let layout = engine.compute(PhysicalSize::new(700, 500), &state);
+        let center = layout.model.find(RegionId::Center).expect("center region");
+
+        assert!(
+            center.width >= engine.config.center_min_width - 0.001,
+            "center width dropped below min: {} < {}",
+            center.width,
+            engine.config.center_min_width
         );
     }
 }
