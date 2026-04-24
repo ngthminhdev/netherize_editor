@@ -145,6 +145,15 @@ impl SyntaxEngine {
             return self.parse_source(source, revision);
         }
 
+        let source_len = source.len();
+        let start_byte = start_byte.min(source_len);
+        let old_end_byte = old_end_byte.min(source_len);
+        let new_end_byte = new_end_byte.min(source_len);
+
+        if start_byte > old_end_byte || start_byte > new_end_byte {
+            return self.parse_source(source, revision);
+        }
+
         let edit = tree_sitter::InputEdit {
             start_byte,
             old_end_byte,
@@ -258,6 +267,21 @@ mod tests {
             .expect("parse go");
 
         assert_eq!(state.language_id().as_str(), "go");
+        assert_eq!(state.root_node().kind(), "source_file");
+    }
+
+    #[test]
+    fn incremental_parse_clamps_out_of_range_edit_bytes_instead_of_panicking() {
+        let mut engine = SyntaxEngine::new(LanguageId::Go).expect("init go parser");
+        let _ = engine
+            .parse_source("package main\n\nfunc main() {}\n", 1)
+            .expect("parse go");
+
+        let state = engine
+            .parse_incremental("package main\n\nfunc main() {}", 200, 220, 218, 2)
+            .expect("incremental parse should fall back safely");
+
+        assert_eq!(state.revision(), 2);
         assert_eq!(state.root_node().kind(), "source_file");
     }
 }

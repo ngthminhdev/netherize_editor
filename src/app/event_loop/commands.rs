@@ -2993,6 +2993,83 @@ mod tests {
     }
 
     #[test]
+    fn move_to_last_line_uses_viewport_layout_path() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let text = (0..120)
+            .map(|idx| format!("line {idx}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        shell.app_state = AppState::from_text(PathBuf::from("g-layout.txt"), &text);
+        let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+        shell.app_state.move_to_first_line();
+        shell.app_state.scroll_line = 0;
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+
+        let changed = shell.handle_command(Command::MoveToLastLine);
+
+        assert!(changed);
+        let (cursor_line, _) = shell.app_state.cursor_line_col();
+        assert_eq!(cursor_line, shell.app_state.total_lines().saturating_sub(1));
+        assert!(shell.app_state.scroll_line > 0);
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn center_cursor_line_uses_viewport_layout_path() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let text = (0..80)
+            .map(|idx| format!("line {idx}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        shell.app_state = AppState::from_text(PathBuf::from("zz-layout.txt"), &text);
+        let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+        for _ in 0..30 {
+            shell.app_state.move_down();
+        }
+        shell.app_state.scroll_line = 0;
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+        let viewport_lines = shell.editor_viewport_lines();
+
+        let changed = shell.handle_command(Command::CenterCursorLine);
+
+        assert!(changed);
+        let (cursor_line, _) = shell.app_state.cursor_line_col();
+        assert_eq!(
+            shell.app_state.scroll_line,
+            cursor_line.saturating_sub(viewport_lines / 2)
+        );
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn scroll_half_page_down_uses_viewport_layout_path() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let text = (0..100)
+            .map(|idx| format!("line {idx}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        shell.app_state = AppState::from_text(PathBuf::from("ctrl-d-layout.txt"), &text);
+        let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+        shell.app_state.scroll_line = 0;
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+        let half = (shell.editor_viewport_lines() / 2).max(1);
+
+        let changed = shell.handle_command(Command::ScrollHalfPageDown);
+
+        assert!(changed);
+        let (cursor_line, _) = shell.app_state.cursor_line_col();
+        assert_eq!(cursor_line, half);
+        assert_eq!(shell.app_state.scroll_line, half);
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
     fn explorer_rename_base_selection_keeps_extension() {
         assert_eq!(AppShell::explorer_rename_base_selection("main.rs"), (0, 4));
         assert_eq!(

@@ -3,7 +3,7 @@ use std::time::Instant;
 use winit::keyboard::KeyCode;
 
 use crate::app::{input_map::PendingSequence, resolved_keymap::KeySpec};
-use crate::core::commands::{Operator, TextObjectModifier};
+use crate::core::commands::{FindMotionKind, Operator, TextObjectModifier};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeapTarget {
@@ -65,10 +65,11 @@ pub(super) struct PendingInput {
 
 #[derive(Debug, Clone)]
 pub(super) enum PendingState {
-    OperatorDelete,
-    OperatorChange,
-    /// 'y' trong Normal mode -> chờ 'i'/'a' rồi bracket để yank text object.
-    OperatorYank,
+    PendingOperator { op: Operator },
+    /// Đã nhận operator + g, chờ g tiếp theo để tạo motion gg.
+    OperatorG { op: Operator },
+    /// Đã nhận operator (d/c/y) + find motion prefix (f/F/t/T) -> chờ target char.
+    OperatorFindChar { op: Operator, kind: FindMotionKind },
     ReplaceChar,
     Leader,
     Sequence,
@@ -93,10 +94,14 @@ pub(super) fn classify_pending_state(sequence: &PendingSequence) -> PendingState
             return PendingState::Leader;
         }
         if matches!(sequence.steps[0], KeySpec::Physical(KeyCode::KeyD)) {
-            return PendingState::OperatorDelete;
+            return PendingState::PendingOperator {
+                op: Operator::Delete,
+            };
         }
         if matches!(sequence.steps[0], KeySpec::Physical(KeyCode::KeyC)) {
-            return PendingState::OperatorChange;
+            return PendingState::PendingOperator {
+                op: Operator::Change,
+            };
         }
     }
     PendingState::Sequence
@@ -106,18 +111,42 @@ impl PendingState {
     pub(super) fn uses_operator_count(&self) -> bool {
         matches!(
             self,
-            Self::OperatorDelete
-                | Self::OperatorChange
-                | Self::OperatorYank
+            Self::PendingOperator { .. }
+                | Self::OperatorG { .. }
+                | Self::OperatorFindChar { .. }
                 | Self::OperatorWithObject { .. }
         )
     }
 
     pub(super) fn as_str(&self) -> &'static str {
         match self {
-            Self::OperatorDelete => "pending operator delete",
-            Self::OperatorChange => "pending operator change",
-            Self::OperatorYank => "pending operator yank",
+            Self::PendingOperator { op } => match op {
+                Operator::Delete => "pending operator delete",
+                Operator::Change => "pending operator change",
+                Operator::Yank => "pending operator yank",
+                Operator::Visual => "pending operator visual",
+            },
+            Self::OperatorG { op } => match op {
+                Operator::Delete => "pending delete g-motion",
+                Operator::Change => "pending change g-motion",
+                Operator::Yank => "pending yank g-motion",
+                Operator::Visual => "pending visual g-motion",
+            },
+            Self::OperatorFindChar { op, kind } => match (op, kind) {
+                (Operator::Delete, FindMotionKind::ForwardTo) => "pending delete find-char forward",
+                (Operator::Delete, FindMotionKind::ForwardTill) => "pending delete till-char forward",
+                (Operator::Delete, FindMotionKind::BackwardTo) => "pending delete find-char backward",
+                (Operator::Delete, FindMotionKind::BackwardTill) => "pending delete till-char backward",
+                (Operator::Change, FindMotionKind::ForwardTo) => "pending change find-char forward",
+                (Operator::Change, FindMotionKind::ForwardTill) => "pending change till-char forward",
+                (Operator::Change, FindMotionKind::BackwardTo) => "pending change find-char backward",
+                (Operator::Change, FindMotionKind::BackwardTill) => "pending change till-char backward",
+                (Operator::Yank, FindMotionKind::ForwardTo) => "pending yank find-char forward",
+                (Operator::Yank, FindMotionKind::ForwardTill) => "pending yank till-char forward",
+                (Operator::Yank, FindMotionKind::BackwardTo) => "pending yank find-char backward",
+                (Operator::Yank, FindMotionKind::BackwardTill) => "pending yank till-char backward",
+                (Operator::Visual, _) => "pending visual find-char",
+            },
             Self::ReplaceChar => "pending replace char",
             Self::Leader => "pending leader",
             Self::Sequence => "pending sequence",

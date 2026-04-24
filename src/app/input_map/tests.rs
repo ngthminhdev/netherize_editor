@@ -326,6 +326,17 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::BufferPrev),
         },
         Case {
+            name: "normal ctrl+d -> ScrollHalfPageDown",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyD),
+                named_key: None,
+                text: Some("d".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::ScrollHalfPageDown),
+        },
+        Case {
             name: "explorer w -> ExplorerCollapseOrParent",
             context: KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer),
             input: NormalizedInput {
@@ -875,48 +886,6 @@ fn resolve_contains_reason_for_dispatch_trace() {
 }
 
 #[test]
-fn leader_and_chord_resolution_work() {
-    let map = make_map();
-    let context = KeybindingContext::for_mode(EditorMode::Normal);
-    let space = input_from_named(NamedKey::Space);
-    let first = map
-        .resolve_sequence_start(&space, context)
-        .expect("space should start chord");
-
-    let follow_f = NormalizedInput {
-        physical_key: Some(KeyCode::KeyF),
-        named_key: None,
-        text: Some("f".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-    let pending = match first {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!(
-            "expected pending sequence after leader start, got {:?}",
-            other
-        ),
-    };
-
-    let second = map
-        .resolve_sequence_next(&pending, &follow_f, context)
-        .expect("leader+f should still be pending");
-    let pending = match second {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!("expected second pending sequence, got {:?}", other),
-    };
-
-    let third = map
-        .resolve_sequence_next(&pending, &follow_f, context)
-        .expect("leader+f+f should resolve");
-    match third {
-        SequenceMatch::Dispatch(resolved) => {
-            assert_eq!(resolved.command, Command::OpenFilePicker);
-        }
-        other => panic!("expected dispatch for leader f f, got {:?}", other),
-    }
-}
-
-#[test]
 fn leader_f_w_sequence_maps_to_search_in_files() {
     let map = make_map();
     let context = KeybindingContext::for_mode(EditorMode::Normal);
@@ -1118,176 +1087,3 @@ fn leader_sequence_is_not_started_in_insert_mode() {
     assert!(map.resolve_sequence_start(&start_input, context).is_none());
 }
 
-#[test]
-fn dw_sequence_maps_to_delete_word_forward() {
-    let map = make_map();
-    let context = KeybindingContext::for_mode(EditorMode::Normal);
-    let d = NormalizedInput {
-        physical_key: Some(KeyCode::KeyD),
-        named_key: None,
-        text: Some("d".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-    let w = NormalizedInput {
-        physical_key: Some(KeyCode::KeyW),
-        named_key: None,
-        text: Some("w".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-
-    let first = map
-        .resolve_sequence_start(&d, context)
-        .expect("first d should start sequence");
-    let pending = match first {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!("expected pending after d, got {:?}", other),
-    };
-
-    let second = map
-        .resolve_sequence_next(&pending, &w, context)
-        .expect("d w should resolve");
-    match second {
-        SequenceMatch::Dispatch(resolved) => {
-            assert_eq!(resolved.command, Command::DeleteWordForward);
-        }
-        other => panic!("expected dispatch for d w, got {:?}", other),
-    }
-}
-
-#[test]
-fn dd_sequence_maps_to_delete_current_line() {
-    let map = make_map();
-    let context = KeybindingContext::for_mode(EditorMode::Normal);
-    let d = NormalizedInput {
-        physical_key: Some(KeyCode::KeyD),
-        named_key: None,
-        text: Some("d".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-
-    let first = map
-        .resolve_sequence_start(&d, context)
-        .expect("first d should start sequence");
-    let pending = match first {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!("expected pending for first d, got {:?}", other),
-    };
-
-    let second = map
-        .resolve_sequence_next(&pending, &d, context)
-        .expect("second d should resolve");
-    match second {
-        SequenceMatch::Dispatch(resolved) => {
-            assert_eq!(resolved.command, Command::DeleteCurrentLine);
-        }
-        other => panic!("expected dispatch for d d, got {:?}", other),
-    }
-}
-
-#[test]
-fn db_sequence_maps_to_delete_word_backward() {
-    let map = make_map();
-    let context = KeybindingContext::for_mode(EditorMode::Normal);
-    let d = NormalizedInput {
-        physical_key: Some(KeyCode::KeyD),
-        named_key: None,
-        text: Some("d".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-    let b = NormalizedInput {
-        physical_key: Some(KeyCode::KeyB),
-        named_key: None,
-        text: Some("b".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-
-    let first = map
-        .resolve_sequence_start(&d, context)
-        .expect("first d should start sequence");
-    let pending = match first {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!("expected pending after first d, got {:?}", other),
-    };
-
-    let second = map
-        .resolve_sequence_next(&pending, &b, context)
-        .expect("d b should resolve");
-    match second {
-        SequenceMatch::Dispatch(resolved) => {
-            assert_eq!(resolved.command, Command::DeleteWordBackward);
-        }
-        other => panic!("expected dispatch for d b, got {:?}", other),
-    }
-}
-
-#[test]
-fn cw_sequence_maps_to_change_word_forward() {
-    let map = make_map();
-    let context = KeybindingContext::for_mode(EditorMode::Normal);
-    let c = NormalizedInput {
-        physical_key: Some(KeyCode::KeyC),
-        named_key: None,
-        text: Some("c".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-    let w = NormalizedInput {
-        physical_key: Some(KeyCode::KeyW),
-        named_key: None,
-        text: Some("w".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-
-    let first = map
-        .resolve_sequence_start(&c, context)
-        .expect("first c should start sequence");
-    let pending = match first {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!("expected pending after c, got {:?}", other),
-    };
-
-    let second = map
-        .resolve_sequence_next(&pending, &w, context)
-        .expect("c w should resolve");
-    match second {
-        SequenceMatch::Dispatch(resolved) => {
-            assert_eq!(resolved.command, Command::ChangeWordForward);
-        }
-        other => panic!("expected dispatch for c w, got {:?}", other),
-    }
-}
-
-#[test]
-fn cb_sequence_maps_to_change_word_backward() {
-    let map = make_map();
-    let context = KeybindingContext::for_mode(EditorMode::Normal);
-    let c = NormalizedInput {
-        physical_key: Some(KeyCode::KeyC),
-        named_key: None,
-        text: Some("c".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-    let b = NormalizedInput {
-        physical_key: Some(KeyCode::KeyB),
-        named_key: None,
-        text: Some("b".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-
-    let first = map
-        .resolve_sequence_start(&c, context)
-        .expect("first c should start sequence");
-    let pending = match first {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!("expected pending after c, got {:?}", other),
-    };
-
-    let second = map
-        .resolve_sequence_next(&pending, &b, context)
-        .expect("c b should resolve");
-    match second {
-        SequenceMatch::Dispatch(resolved) => {
-            assert_eq!(resolved.command, Command::ChangeWordBackward);
-        }
-        other => panic!("expected dispatch for c b, got {:?}", other),
-    }
-}

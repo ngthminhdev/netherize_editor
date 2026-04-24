@@ -189,7 +189,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::Undo
         | Command::Redo
         | Command::ReplaceChar(_)
-        | Command::TextObjectAction { .. } => editing::dispatch(&mut ctx, command),
+        | Command::TextObjectAction { .. }
+        | Command::Operate { .. } => editing::dispatch(&mut ctx, command),
         Command::MoveLeft
         | Command::MoveRight
         | Command::MoveUp

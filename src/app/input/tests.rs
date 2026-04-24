@@ -9,7 +9,7 @@ use crate::{
     },
     config::keymap_loader::KeymapLoader,
     core::{
-        commands::Command,
+        commands::{Command, Motion, OperationTarget, Operator},
         mode::{EditorMode, ModeEvent},
     },
 };
@@ -173,7 +173,13 @@ fn d_d_maps_to_delete_current_line() {
     let second = handler.route_normalized_input(char_input('d', KeyCode::KeyD), &map, context, t0);
     match second {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::DeleteCurrentLine);
+            assert_eq!(
+                translated.command,
+                Command::Operate {
+                    op: Operator::Delete,
+                    target: OperationTarget::CurrentLine,
+                }
+            );
         }
         other => panic!("expected dd dispatch, got {:?}", other),
     }
@@ -214,7 +220,13 @@ fn y_y_maps_to_yank_current_line() {
     let second = handler.route_normalized_input(char_input('y', KeyCode::KeyY), &map, context, t0);
     match second {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::YankCurrentLine);
+            assert_eq!(
+                translated.command,
+                Command::Operate {
+                    op: Operator::Yank,
+                    target: OperationTarget::CurrentLine,
+                }
+            );
         }
         other => panic!("expected yy dispatch, got {:?}", other),
     }
@@ -233,7 +245,13 @@ fn y_e_maps_to_yank_to_word_end() {
     let second = handler.route_normalized_input(char_input('e', KeyCode::KeyE), &map, context, t0);
     match second {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::YankToWordEnd);
+            assert_eq!(
+                translated.command,
+                Command::Operate {
+                    op: Operator::Yank,
+                    target: OperationTarget::Motion(Motion::WordEnd),
+                }
+            );
         }
         other => panic!("expected ye dispatch, got {:?}", other),
     }
@@ -321,12 +339,18 @@ fn d_2_w_uses_motion_count_inside_operator_pending() {
 
     let count = handler.route_normalized_input(char_input('2', KeyCode::Digit2), &map, context, t0);
     assert!(matches!(count, Some(InputRouteOutcome::NoDispatch { .. })));
-    assert_eq!(handler.get_pending_keys(), "d 2");
+    assert_eq!(handler.get_pending_keys(), "2");
 
     let second = handler.route_normalized_input(char_input('w', KeyCode::KeyW), &map, context, t0);
     match second {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::DeleteWordForward);
+            assert_eq!(
+                translated.command,
+                Command::Operate {
+                    op: Operator::Delete,
+                    target: OperationTarget::Motion(Motion::WordForward),
+                }
+            );
             assert_eq!(translated.repeat_count, 2);
         }
         other => panic!("expected d2w dispatch, got {:?}", other),
@@ -345,12 +369,18 @@ fn three_d_w_preserves_operator_count() {
 
     let first = handler.route_normalized_input(char_input('d', KeyCode::KeyD), &map, context, t0);
     assert!(matches!(first, Some(InputRouteOutcome::NoDispatch { .. })));
-    assert_eq!(handler.get_pending_keys(), "3 d");
+    assert_eq!(handler.get_pending_keys(), "3");
 
     let second = handler.route_normalized_input(char_input('w', KeyCode::KeyW), &map, context, t0);
     match second {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::DeleteWordForward);
+            assert_eq!(
+                translated.command,
+                Command::Operate {
+                    op: Operator::Delete,
+                    target: OperationTarget::Motion(Motion::WordForward),
+                }
+            );
             assert_eq!(translated.repeat_count, 3);
         }
         other => panic!("expected 3dw dispatch, got {:?}", other),
@@ -376,12 +406,18 @@ fn operator_and_motion_counts_multiply() {
         motion_count,
         Some(InputRouteOutcome::NoDispatch { .. })
     ));
-    assert_eq!(handler.get_pending_keys(), "3 d 2");
+    assert_eq!(handler.get_pending_keys(), "3 2");
 
     let second = handler.route_normalized_input(char_input('w', KeyCode::KeyW), &map, context, t0);
     match second {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::DeleteWordForward);
+            assert_eq!(
+                translated.command,
+                Command::Operate {
+                    op: Operator::Delete,
+                    target: OperationTarget::Motion(Motion::WordForward),
+                }
+            );
             assert_eq!(translated.repeat_count, 6);
         }
         other => panic!("expected 3d2w dispatch, got {:?}", other),
@@ -401,7 +437,13 @@ fn c_w_maps_to_change_word_forward() {
     let second = handler.route_normalized_input(char_input('w', KeyCode::KeyW), &map, context, t0);
     match second {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::ChangeWordForward);
+            assert_eq!(
+                translated.command,
+                Command::Operate {
+                    op: Operator::Change,
+                    target: OperationTarget::Motion(Motion::WordForward),
+                }
+            );
         }
         other => panic!("expected cw dispatch, got {:?}", other),
     }
@@ -420,7 +462,13 @@ fn c_b_maps_to_change_word_backward() {
     let second = handler.route_normalized_input(char_input('b', KeyCode::KeyB), &map, context, t0);
     match second {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::ChangeWordBackward);
+            assert_eq!(
+                translated.command,
+                Command::Operate {
+                    op: Operator::Change,
+                    target: OperationTarget::Motion(Motion::WordBackward),
+                }
+            );
         }
         other => panic!("expected cb dispatch, got {:?}", other),
     }
@@ -687,17 +735,23 @@ fn repeated_chord_prefix_is_ignored_while_pending() {
 
     let first = handler.route_normalized_input(char_input('d', KeyCode::KeyD), &map, context, now);
     assert!(matches!(first, Some(InputRouteOutcome::NoDispatch { .. })));
-    assert_eq!(handler.get_pending_keys(), "d");
+    assert_eq!(handler.get_pending_keys(), "");
 
     let repeated =
         handler.route_repeated_normalized_input(char_input('d', KeyCode::KeyD), &map, context);
     assert!(repeated.is_none(), "held d should not auto-complete dd");
-    assert_eq!(handler.get_pending_keys(), "d");
+    assert_eq!(handler.get_pending_keys(), "");
 
     let next = handler.route_normalized_input(char_input('w', KeyCode::KeyW), &map, context, now);
     match next {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::DeleteWordForward);
+            assert_eq!(
+                translated.command,
+                Command::Operate {
+                    op: Operator::Delete,
+                    target: OperationTarget::Motion(Motion::WordForward),
+                }
+            );
         }
         other => panic!("expected dw dispatch after ignored repeat, got {:?}", other),
     }
@@ -784,7 +838,7 @@ fn get_pending_keys_returns_operator_prefix() {
     let now = std::time::Instant::now();
 
     let _ = handler.route_normalized_input(char_input('d', KeyCode::KeyD), &map, context, now);
-    assert_eq!(handler.get_pending_keys(), "d");
+    assert_eq!(handler.get_pending_keys(), "");
 }
 
 #[test]
@@ -946,6 +1000,22 @@ fn completion_popup_shift_tab_is_not_intercepted() {
         ),
         "Shift+Tab should no longer be intercepted as completion previous"
     );
+}
+
+#[test]
+fn normal_mode_ctrl_d_dispatches_scroll_half_page_down() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let now = std::time::Instant::now();
+
+    let mapped = handler.route_normalized_input(ctrl_input('d', KeyCode::KeyD), &map, context, now);
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::ScrollHalfPageDown);
+        }
+        other => panic!("expected ctrl+d dispatch, got {:?}", other),
+    }
 }
 
 #[test]

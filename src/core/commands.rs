@@ -18,8 +18,40 @@ pub enum TextObjectModifier {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextObjectKind {
+    Word,
     Quote(char),
     Bracket(char, char),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindMotionKind {
+    ForwardTo,
+    ForwardTill,
+    BackwardTo,
+    BackwardTill,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Motion {
+    WordForward,
+    WordBackward,
+    WordEnd,
+    LineStart,
+    LineEnd,
+    FirstNonWhitespace,
+    FirstLine,
+    LastLine,
+    FindChar(FindMotionKind, char),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OperationTarget {
+    Motion(Motion),
+    TextObject {
+        modifier: TextObjectModifier,
+        kind: TextObjectKind,
+    },
+    CurrentLine,
 }
 
 /// Command là giao diện trung gian giữa input layer và editor core.
@@ -193,6 +225,10 @@ pub enum Command {
         modifier: TextObjectModifier,
         kind: TextObjectKind,
     },
+    Operate {
+        op: Operator,
+        target: OperationTarget,
+    },
 
     // ── Leap / EasyMotion navigation (Module 07 Phase 3) ──────────────────────
     /// Bắt đầu Leap session — InputHandler chuyển sang PendingLeapChar state.
@@ -276,6 +312,7 @@ impl Command {
                 | Self::PasteBefore
                 | Self::Undo
                 | Self::Redo
+                | Self::Operate { .. }
         )
     }
 
@@ -288,6 +325,7 @@ impl Command {
                 | Self::DeleteWordBackward
                 | Self::PasteAfter
                 | Self::PasteBefore
+                | Self::Operate { .. }
         )
     }
 

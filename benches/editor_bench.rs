@@ -2,6 +2,11 @@ use std::path::{Path, PathBuf};
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use netherize_editor::app::app_state::AppState;
+use netherize_editor::core::{
+    command_dispatch::dispatch_command,
+    commands::{Command, Motion, OperationTarget, Operator},
+    mode::ModeEvent,
+};
 
 const INPUTS_DIR: &str = "benchmarks/inputs";
 const FILE_10K: &str = "rust_10k_lines.rs";
@@ -57,9 +62,34 @@ fn bench_edit_loop_latency(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_operator_motion_pipeline(c: &mut Criterion) {
+    let mut group = c.benchmark_group("operator_motion_pipeline");
+    group.bench_function("dw_undo_loop_10k", |b| {
+        b.iter(|| {
+            let mut app_state = AppState::from_text(
+                PathBuf::from("bench_scratch.txt"),
+                "alpha beta gamma delta epsilon zeta eta theta\n",
+            );
+            let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+            for _ in 0..10_000 {
+                let _ = dispatch_command(
+                    &mut app_state,
+                    Command::Operate {
+                        op: Operator::Delete,
+                        target: OperationTarget::Motion(Motion::WordForward),
+                    },
+                );
+                let _ = dispatch_command(&mut app_state, Command::Undo);
+            }
+        });
+    });
+    group.finish();
+}
+
 criterion_group!(
     editor_benches,
     bench_open_large_file,
-    bench_edit_loop_latency
+    bench_edit_loop_latency,
+    bench_operator_motion_pipeline
 );
 criterion_main!(editor_benches);

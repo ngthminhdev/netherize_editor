@@ -12,9 +12,72 @@ pub fn find_text_object_range(
     }
 
     match kind {
+        TextObjectKind::Word => find_word_text_object(text, cursor_char_idx, modifier),
         TextObjectKind::Quote(q) => find_quote_text_object(text, cursor_char_idx, modifier, q),
         TextObjectKind::Bracket(open_char, close_char) => {
             find_bracket_text_object(text, cursor_char_idx, modifier, open_char, close_char)
+        }
+    }
+}
+
+fn is_word_char(ch: char) -> bool {
+    ch.is_alphanumeric() || ch == '_'
+}
+
+fn find_word_text_object(
+    text: &Rope,
+    cursor: usize,
+    modifier: TextObjectModifier,
+) -> Option<(usize, usize)> {
+    let len = text.len_chars();
+    if len == 0 {
+        return None;
+    }
+    let cursor = cursor.min(len.saturating_sub(1));
+
+    let mut anchor = cursor;
+    if !is_word_char(text.char(anchor)) {
+        anchor = (cursor..len).find(|&i| is_word_char(text.char(i))).or_else(|| {
+            (0..cursor)
+                .rev()
+                .find(|&i| is_word_char(text.char(i)))
+        })?;
+    }
+
+    let mut start = anchor;
+    while start > 0 && is_word_char(text.char(start - 1)) {
+        start -= 1;
+    }
+
+    let mut end = anchor + 1;
+    while end < len && is_word_char(text.char(end)) {
+        end += 1;
+    }
+
+    match modifier {
+        TextObjectModifier::Inner => Some((start, end)),
+        TextObjectModifier::Around => {
+            let mut around_start = start;
+            let mut around_end = end;
+            while around_end < len {
+                let ch = text.char(around_end);
+                if ch == ' ' || ch == '\t' {
+                    around_end += 1;
+                } else {
+                    break;
+                }
+            }
+            if around_end == end {
+                while around_start > 0 {
+                    let ch = text.char(around_start - 1);
+                    if ch == ' ' || ch == '\t' {
+                        around_start -= 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            Some((around_start, around_end))
         }
     }
 }

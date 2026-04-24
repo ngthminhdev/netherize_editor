@@ -2,6 +2,7 @@ use std::{
     fs,
     time::{SystemTime, UNIX_EPOCH},
 };
+use sysinfo::{Pid, ProcessesToUpdate, System};
 
 use crate::{
     app::{
@@ -15,7 +16,7 @@ use crate::{
             dispatch_command, dispatch_command_count, dispatch_command_with_clipboard,
             dispatch_command_with_clipboard_and_terminal, dispatch_command_with_terminal,
         },
-        commands::Command,
+        commands::{Command, FindMotionKind, Motion, OperationTarget, Operator, TextObjectKind, TextObjectModifier},
         mode::{EditorMode, ModeEvent},
     },
     terminal::grid::TerminalGrid,
@@ -249,14 +250,14 @@ fn append_change_and_replace_dispatch_work() {
     assert!(change.success);
     assert!(change.state_changed);
     assert_eq!(app_state.current_mode(), EditorMode::Insert);
-    assert_eq!(app_state.text_string(), "bar");
+    assert_eq!(app_state.text_string(), "   bar");
 
     let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
     let replace = dispatch_command(&mut app_state, Command::ReplaceChar('X'));
     assert!(replace.success);
     assert!(replace.state_changed);
     assert_eq!(app_state.current_mode(), EditorMode::Normal);
-    assert_eq!(app_state.text_string(), "Xar");
+    assert_eq!(app_state.text_string(), "X  bar");
 }
 
 #[test]
@@ -537,6 +538,81 @@ fn yank_to_word_end_copies_suffix_of_current_word_to_clipboard() {
 }
 
 #[test]
+fn operate_change_word_forward_uses_cw_semantics_like_ce() {
+    let mut app_state = AppState::from_text(unique_temp_path("operate_cw"), "hello world");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    let report = dispatch_command(
+        &mut app_state,
+        Command::Operate {
+            op: Operator::Change,
+            target: OperationTarget::Motion(Motion::WordForward),
+        },
+    );
+
+    assert!(report.success);
+    assert_eq!(app_state.text_string(), " world");
+    assert_eq!(app_state.current_mode(), EditorMode::Insert);
+}
+
+#[test]
+fn operate_delete_line_end_matches_dollar_motion() {
+    let mut app_state = AppState::from_text(unique_temp_path("operate_dollar"), "abc def\nzzz");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let _ = dispatch_command(&mut app_state, Command::MoveRight);
+    let _ = dispatch_command(&mut app_state, Command::MoveRight);
+
+    let report = dispatch_command(
+        &mut app_state,
+        Command::Operate {
+            op: Operator::Delete,
+            target: OperationTarget::Motion(Motion::LineEnd),
+        },
+    );
+
+    assert!(report.success);
+    assert_eq!(app_state.text_string(), "ab\nzzz");
+}
+
+#[test]
+fn operate_delete_inner_word_removes_current_word() {
+    let mut app_state = AppState::from_text(unique_temp_path("operate_diw"), "one two three");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let _ = dispatch_command(&mut app_state, Command::MoveWordForward);
+
+    let report = dispatch_command(
+        &mut app_state,
+        Command::Operate {
+            op: Operator::Delete,
+            target: OperationTarget::TextObject {
+                modifier: TextObjectModifier::Inner,
+                kind: TextObjectKind::Word,
+            },
+        },
+    );
+
+    assert!(report.success);
+    assert_eq!(app_state.text_string(), "one  three");
+}
+
+#[test]
+fn operate_delete_find_forward_includes_target_char() {
+    let mut app_state = AppState::from_text(unique_temp_path("operate_df"), "abc def ghi");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    let report = dispatch_command(
+        &mut app_state,
+        Command::Operate {
+            op: Operator::Delete,
+            target: OperationTarget::Motion(Motion::FindChar(FindMotionKind::ForwardTo, 'd')),
+        },
+    );
+
+    assert!(report.success);
+    assert_eq!(app_state.text_string(), "ef ghi");
+}
+
+#[test]
 fn paste_after_participates_in_undo_transaction() {
     let mut app_state = AppState::from_text(unique_temp_path("paste_after"), "abc");
     let mut clipboard = MockClipboard {
@@ -758,6 +834,39 @@ fn buffer_dispatch_commands_cycle_and_close_current() {
     );
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn repeated_operator_undo_cycles_do_not_show_runaway_memory_growth() {
+    let mut system = System::new_all();
+    let pid = Pid::from_u32(std::process::id());
+    system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+    let before = system.process(pid).map(|p| p.memory()).unwrap_or(0);
+
+    let mut app_state = AppState::from_text(
+        unique_temp_path("memory_operator_regression"),
+        &"alpha beta gamma delta epsilon zeta eta theta\n".repeat(512),
+    );
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    for _ in 0..2_000 {
+        let _ = dispatch_command(
+            &mut app_state,
+            Command::Operate {
+                op: Operator::Delete,
+                target: OperationTarget::Motion(Motion::WordForward),
+            },
+        );
+        let _ = dispatch_command(&mut app_state, Command::Undo);
+    }
+
+    system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+    let after = system.process(pid).map(|p| p.memory()).unwrap_or(before);
+
+    assert!(
+        after <= before.saturating_add(64 * 1024 * 1024),
+        "memory grew too much: before={before} after={after}"
+    );
 }
 
 #[test]

@@ -215,36 +215,10 @@ command = "editor.delete_char"
 # `yy` và `ye` được xử lý trong InputHandler yank-pending để dùng chung
 # flow với `yi(` / `ya{`, nên không khai báo static chord ở đây.
 
-# operators
-[[bindings]]
-mode = "normal"
-key = "d d"
-command = "editor.delete_current_line"
-
 [[bindings]]
 mode = "normal"
 key = "g c c"
 command = "editor.toggle_line_comment"
-
-[[bindings]]
-mode = "normal"
-key = "d w"
-command = "editor.delete_word_forward"
-
-[[bindings]]
-mode = "normal"
-key = "d b"
-command = "editor.delete_word_backward"
-
-[[bindings]]
-mode = "normal"
-key = "c w"
-command = "editor.change_word_forward"
-
-[[bindings]]
-mode = "normal"
-key = "c b"
-command = "editor.change_word_backward"
 
 # `r<char>` cần payload ký tự động nên được xử lý trong InputHandler pending state,
 # không khai báo static binding ở đây.

@@ -596,6 +596,16 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("normal"), ch('P'), PASTE_BEFORE);
     km.insert(Some("normal"), mp(KeyCode::KeyV), EDITOR_PASTE);
     km.insert(Some("normal"), ph(KeyCode::KeyU), UNDO);
+    km.insert(
+        Some("normal"),
+        KeySpec::CtrlPlus(KeyCode::KeyU),
+        SCROLL_HALF_PAGE_UP,
+    );
+    km.insert(
+        Some("normal"),
+        KeySpec::CtrlPlus(KeyCode::KeyD),
+        SCROLL_HALF_PAGE_DOWN,
+    );
     km.insert(Some("normal"), mp(KeyCode::KeyH), BUFFER_PREV);
     km.insert(Some("normal"), mp(KeyCode::KeyL), BUFFER_NEXT);
     km.insert(Some("normal"), mp(KeyCode::KeyR), REDO);
@@ -751,33 +761,8 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     // ── Chord bindings (multi-step sequences) ─────────────────────────────────
     km.insert_sequence(
         Some("normal"),
-        seq(&[ph(KeyCode::KeyD), ph(KeyCode::KeyD)]),
-        DELETE_CURRENT_LINE,
-    );
-    km.insert_sequence(
-        Some("normal"),
         seq(&[ph(KeyCode::KeyG), ph(KeyCode::KeyC), ph(KeyCode::KeyC)]),
         TOGGLE_LINE_COMMENT,
-    );
-    km.insert_sequence(
-        Some("normal"),
-        seq(&[ph(KeyCode::KeyD), ph(KeyCode::KeyW)]),
-        DELETE_WORD_FORWARD,
-    );
-    km.insert_sequence(
-        Some("normal"),
-        seq(&[ph(KeyCode::KeyD), ph(KeyCode::KeyB)]),
-        DELETE_WORD_BACKWARD,
-    );
-    km.insert_sequence(
-        Some("normal"),
-        seq(&[ph(KeyCode::KeyC), ph(KeyCode::KeyW)]),
-        CHANGE_WORD_FORWARD,
-    );
-    km.insert_sequence(
-        Some("normal"),
-        seq(&[ph(KeyCode::KeyC), ph(KeyCode::KeyB)]),
-        CHANGE_WORD_BACKWARD,
     );
     km.insert_sequence(
         Some("normal"),
@@ -1153,17 +1138,27 @@ mod tests {
     }
 
     #[test]
-    fn builtin_defaults_include_dd_chord() {
+    fn builtin_defaults_include_expected_static_chords() {
         use winit::keyboard::ModifiersState;
         let km = builtin_defaults();
-        let steps = vec![
-            KeySpec::Physical(KeyCode::KeyD),
-            KeySpec::Physical(KeyCode::KeyD),
-        ];
-        let found = km.lookup_sequence(&steps, "normal");
+
+        let g_upper = NormalizedInput {
+            physical_key: Some(KeyCode::KeyG),
+            named_key: None,
+            text: Some("G".to_string()),
+            modifiers: ModifiersState::SHIFT,
+        };
+        assert_eq!(km.lookup_mode_only(&g_upper, "normal"), Some(command_ids::MOVE_TO_LAST_LINE));
+
+        let ctrl_d = NormalizedInput {
+            physical_key: Some(KeyCode::KeyD),
+            named_key: None,
+            text: Some("d".to_string()),
+            modifiers: ModifiersState::CONTROL,
+        };
         assert_eq!(
-            found,
-            SequenceLookup::Exact(command_ids::DELETE_CURRENT_LINE)
+            km.lookup_mode_only(&ctrl_d, "normal"),
+            Some(command_ids::SCROLL_HALF_PAGE_DOWN)
         );
 
         let leader_steps = vec![
@@ -1174,19 +1169,19 @@ mod tests {
         let search = km.lookup_sequence(&leader_steps, "normal");
         assert_eq!(search, SequenceLookup::Exact(command_ids::OPEN_FILE_PICKER));
 
-        let db_steps = vec![
-            KeySpec::Physical(KeyCode::KeyD),
-            KeySpec::Physical(KeyCode::KeyB),
-        ];
-        let db = km.lookup_sequence(&db_steps, "normal");
-        assert_eq!(db, SequenceLookup::Exact(command_ids::DELETE_WORD_BACKWARD));
-
         let gg_steps = vec![
             KeySpec::Physical(KeyCode::KeyG),
             KeySpec::Physical(KeyCode::KeyG),
         ];
         let gg = km.lookup_sequence(&gg_steps, "normal");
         assert_eq!(gg, SequenceLookup::Exact(command_ids::MOVE_TO_FIRST_LINE));
+
+        let zz_steps = vec![
+            KeySpec::Physical(KeyCode::KeyZ),
+            KeySpec::Physical(KeyCode::KeyZ),
+        ];
+        let zz = km.lookup_sequence(&zz_steps, "normal");
+        assert_eq!(zz, SequenceLookup::Exact(command_ids::CENTER_CURSOR_LINE));
 
         let candidates = sequence_step_candidates(
             &NormalizedInput {

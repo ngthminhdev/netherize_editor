@@ -18,7 +18,9 @@ use crate::app::{
 use crate::async_runtime::message::{
     FilePreviewLine, FileSystemChangeKind, FileSystemEvent, LspCompletionItem, LspDiagnostic,
 };
-use crate::core::commands::{TextObjectKind, TextObjectModifier};
+use crate::core::commands::{
+    FindMotionKind, Motion, OperationTarget, Operator, TextObjectKind, TextObjectModifier,
+};
 use crate::core::mode::{
     EditorMode, ModeEvent, ModeState, ModeTransitionError, ModeTransitionResult,
 };
@@ -2465,6 +2467,145 @@ impl AppState {
         self.dirty = true;
         self.bump_revision();
         true
+    }
+
+    pub fn operation_text(&self, target: OperationTarget, op: Operator) -> Option<(String, ClipboardRecordKind)> {
+        let (start, end, linewise) = self.operation_range(target, op)?;
+        let text = if linewise {
+            self.linewise_text_for_range(start, end)?
+        } else {
+            self.char_range_text(start, end)?
+        };
+        Some((
+            text,
+            if linewise {
+                ClipboardRecordKind::Linewise
+            } else {
+                ClipboardRecordKind::Charwise
+            },
+        ))
+    }
+
+    pub fn apply_operation(&mut self, target: OperationTarget, op: Operator) -> bool {
+        let Some((start, end, linewise)) = self.operation_range(target, op) else {
+            return false;
+        };
+        if op == Operator::Yank {
+            return false;
+        }
+
+        if linewise && op == Operator::Change {
+            return self.substitute_current_line();
+        }
+
+        if end <= start {
+            return false;
+        }
+
+        self.apply_delete(start, end - start);
+        self.cursor_char_idx = start.min(self.text.len_chars());
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
+    fn operation_range(&self, target: OperationTarget, op: Operator) -> Option<(usize, usize, bool)> {
+        match target {
+            OperationTarget::CurrentLine => {
+                let (start, end) = self.current_line_delete_range()?;
+                Some((start, end, true))
+            }
+            OperationTarget::TextObject { modifier, kind } => {
+                let (start, end) = find_text_object_range(&self.text, self.cursor_char_idx, modifier, kind)?;
+                Some((start, end, false))
+            }
+            OperationTarget::Motion(motion) => self.motion_range(motion, op),
+        }
+    }
+
+    fn motion_range(&self, motion: Motion, op: Operator) -> Option<(usize, usize, bool)> {
+        let cursor = self.cursor_char_idx.min(self.text.len_chars());
+        match motion {
+            Motion::WordForward => {
+                let end = if op == Operator::Change {
+                    word_end_at_or_after(&self.text, cursor).map(|idx| idx.saturating_add(1))?
+                } else {
+                    next_word_start(&self.text, cursor)
+                };
+                (end > cursor).then_some((cursor, end, false))
+            }
+            Motion::WordBackward => {
+                let start = previous_word_start(&self.text, cursor);
+                (start < cursor).then_some((start, cursor, false))
+            }
+            Motion::WordEnd => {
+                let end = word_end_at_or_after(&self.text, cursor)?.saturating_add(1);
+                (end > cursor).then_some((cursor, end, false))
+            }
+            Motion::LineStart => {
+                let line = self.text.char_to_line(cursor.min(self.text.len_chars().saturating_sub(1).max(0)));
+                let start = self.text.line_to_char(line);
+                (start < cursor).then_some((start, cursor, false))
+            }
+            Motion::LineEnd => {
+                let line = self.text.char_to_line(cursor.min(self.text.len_chars().saturating_sub(1).max(0)));
+                let end = self.line_content_end_char_idx(line);
+                (end > cursor).then_some((cursor, end, false))
+            }
+            Motion::FirstNonWhitespace => {
+                let line = self.text.char_to_line(cursor.min(self.text.len_chars().saturating_sub(1).max(0)));
+                let line_start = self.text.line_to_char(line);
+                let line_end = self.line_content_end_char_idx(line);
+                let mut target = line_start;
+                for idx in line_start..line_end {
+                    let ch = self.text.char(idx);
+                    if ch != ' ' && ch != '\t' {
+                        target = idx;
+                        break;
+                    }
+                }
+                if target < cursor {
+                    Some((target, cursor, false))
+                } else if target > cursor {
+                    Some((cursor, target, false))
+                } else {
+                    None
+                }
+            }
+            Motion::FirstLine => Some((0, cursor, false)).filter(|(s, e, _)| s < e),
+            Motion::LastLine => Some((cursor, self.text.len_chars(), false)).filter(|(s, e, _)| s < e),
+            Motion::FindChar(kind, target) => self.find_char_motion_range(kind, target),
+        }
+    }
+
+    fn find_char_motion_range(&self, kind: FindMotionKind, target: char) -> Option<(usize, usize, bool)> {
+        if self.text.len_chars() == 0 {
+            return None;
+        }
+        let cursor = self.cursor_char_idx.min(self.text.len_chars().saturating_sub(1));
+        let line = self.text.char_to_line(cursor);
+        let line_start = self.text.line_to_char(line);
+        let line_end = self.line_content_end_char_idx(line);
+        match kind {
+            FindMotionKind::ForwardTo => {
+                let hit = ((cursor + 1).min(line_end)..line_end).find(|&i| self.text.char(i) == target)?;
+                Some((cursor, hit + 1, false))
+            }
+            FindMotionKind::ForwardTill => {
+                let hit = ((cursor + 1).min(line_end)..line_end).find(|&i| self.text.char(i) == target)?;
+                (hit > cursor).then_some((cursor, hit, false))
+            }
+            FindMotionKind::BackwardTo => {
+                let hit = (line_start..cursor).rev().find(|&i| self.text.char(i) == target)?;
+                Some((hit, cursor + 1, false))
+            }
+            FindMotionKind::BackwardTill => {
+                let hit = (line_start..cursor).rev().find(|&i| self.text.char(i) == target)?;
+                (hit + 1 <= cursor).then_some((hit + 1, cursor + 1, false))
+            }
+        }
     }
 
     pub fn move_left(&mut self) {
@@ -4961,6 +5102,8 @@ mod tests {
             vec![HighlightEdit::delete(0, 2)]
         );
     }
+
+
 
     #[test]
     fn save_then_open_roundtrip() {
