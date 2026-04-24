@@ -1045,6 +1045,32 @@ fn normal_mode_shift_c_dispatches_change_to_line_end() {
 }
 
 #[test]
+fn normal_mode_shift_d_dispatches_delete_to_line_end() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let now = std::time::Instant::now();
+
+    let mapped = handler.route_normalized_input(
+        NormalizedInput {
+            physical_key: Some(KeyCode::KeyD),
+            named_key: None,
+            text: Some("D".to_string()),
+            modifiers: ModifiersState::SHIFT,
+        },
+        &map,
+        context,
+        now,
+    );
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::DeleteToLineEnd);
+        }
+        other => panic!("expected Shift+D dispatch, got {:?}", other),
+    }
+}
+
+#[test]
 fn terminal_focus_ctrl_q_enters_terminal_normal_mode() {
     let mut handler = InputHandler::new();
     let map = make_map();

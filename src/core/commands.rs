@@ -72,6 +72,7 @@ pub enum Command {
     DeleteChar,
     DeleteSelection,
     DeleteCurrentLine,
+    DeleteToLineEnd,
     ToggleLineComment,
     ToggleSelectionComment,
     DeleteWordForward,
@@ -83,6 +84,7 @@ pub enum Command {
     ChangeWordForward,
     ChangeWordBackward,
     ChangeToLineEnd,
+    JoinLines,
     PasteAfter,
     PasteBefore,
     EditorPaste,
@@ -288,11 +290,13 @@ impl Command {
             self,
             Self::DeleteChar
                 | Self::DeleteCurrentLine
+                | Self::DeleteToLineEnd
                 | Self::DeleteWordForward
                 | Self::DeleteWordBackward
                 | Self::ChangeWordForward
                 | Self::ChangeWordBackward
                 | Self::ChangeToLineEnd
+                | Self::JoinLines
                 | Self::MoveLeft
                 | Self::MoveRight
                 | Self::MoveUp

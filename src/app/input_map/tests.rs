@@ -298,6 +298,28 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::ChangeToLineEnd),
         },
         Case {
+            name: "normal Shift+D -> DeleteToLineEnd",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyD),
+                named_key: None,
+                text: Some("D".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::DeleteToLineEnd),
+        },
+        Case {
+            name: "normal Shift+J -> JoinLines",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyJ),
+                named_key: None,
+                text: Some("J".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::JoinLines),
+        },
+        Case {
             name: "global F12 -> FocusTerminal",
             context: KeybindingContext::for_mode(EditorMode::Normal),
             input: input_from_named(NamedKey::F12),

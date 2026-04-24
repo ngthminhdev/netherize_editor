@@ -627,6 +627,44 @@ fn change_to_line_end_alias_enters_insert_and_removes_suffix() {
 }
 
 #[test]
+fn delete_to_line_end_alias_removes_suffix_and_stays_normal() {
+    let mut app_state = AppState::from_text(unique_temp_path("delete_to_eol"), "alpha beta");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let _ = dispatch_command(&mut app_state, Command::MoveRight);
+    let _ = dispatch_command(&mut app_state, Command::MoveRight);
+
+    let report = dispatch_command(&mut app_state, Command::DeleteToLineEnd);
+
+    assert!(report.success);
+    assert_eq!(app_state.text_string(), "al");
+    assert_eq!(app_state.current_mode(), EditorMode::Normal);
+}
+
+#[test]
+fn substitute_line_keeps_indent_cursor_target() {
+    let mut app_state = AppState::from_text(unique_temp_path("substitute_indent"), "    alpha\nnext");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let report = dispatch_command(&mut app_state, Command::SubstituteLine);
+
+    assert!(report.success);
+    assert_eq!(app_state.current_mode(), EditorMode::Insert);
+    assert_eq!(app_state.cursor_line_col(), (0, 4));
+    assert_eq!(app_state.text_string(), "    \nnext");
+}
+
+#[test]
+fn join_lines_alias_merges_next_line_like_shift_j() {
+    let mut app_state = AppState::from_text(unique_temp_path("join_lines"), "alpha\n  beta\n");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    let report = dispatch_command(&mut app_state, Command::JoinLines);
+
+    assert!(report.success);
+    assert_eq!(app_state.text_string(), "alpha beta\n");
+    assert_eq!(app_state.current_mode(), EditorMode::Normal);
+}
+
+#[test]
 fn paragraph_motions_jump_between_blank_line_separated_blocks() {
     let mut app_state = AppState::from_text(
         unique_temp_path("paragraph_motion"),

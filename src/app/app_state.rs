@@ -2255,17 +2255,17 @@ impl AppState {
 
     pub fn substitute_current_line(&mut self) -> bool {
         let line_idx = self.text.char_to_line(self.cursor_char_idx);
-        let line_start = self.text.line_to_char(line_idx);
         let line_end = self.line_content_end_char_idx(line_idx);
         let old_cursor = self.cursor_char_idx;
+        let indent_target = self.first_non_blank_or_line_start(line_idx);
 
-        let text_changed = line_end > line_start;
+        let text_changed = line_end > indent_target;
         if text_changed {
-            self.apply_delete(line_start, line_end - line_start);
+            self.apply_delete(indent_target, line_end - indent_target);
             self.dirty = true;
         }
 
-        self.cursor_char_idx = line_start.min(self.text.len_chars());
+        self.cursor_char_idx = indent_target.min(self.text.len_chars());
         let (_, col) = self.cursor_line_col();
         self.target_col = col;
 
@@ -2275,6 +2275,77 @@ impl AppState {
             return true;
         }
         false
+    }
+
+    pub fn join_line_below(&mut self) -> bool {
+        let total_lines = self.text.len_lines();
+        if total_lines <= 1 {
+            return false;
+        }
+        let line_idx = self.text.char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
+        if line_idx + 1 >= total_lines {
+            return false;
+        }
+
+        let line_end_char = if line_idx + 1 < total_lines {
+            self.text.line_to_char(line_idx + 1)
+        } else {
+            return false;
+        };
+        if line_end_char == 0 || self.text.char(line_end_char.saturating_sub(1)) != '\n' {
+            return false;
+        }
+
+        let next_line = line_idx + 1;
+        let next_start = self.text.line_to_char(next_line);
+        let next_end = self.line_content_end_char_idx(next_line);
+        let has_next_text = next_start < next_end;
+        let mut remove_len = 1usize;
+        let mut insert_space = false;
+        if has_next_text {
+            let mut trim = 0usize;
+            while next_start + trim < next_end {
+                let ch = self.text.char(next_start + trim);
+                if ch == ' ' || ch == '\t' {
+                    trim += 1;
+                } else {
+                    break;
+                }
+            }
+            remove_len += trim;
+            let prev_end = self.line_content_end_char_idx(line_idx);
+            let prev_non_blank = prev_end > 0 && self.text.char(prev_end.saturating_sub(1)) != ' ';
+            insert_space = prev_non_blank;
+        }
+
+        let delete_index = line_end_char.saturating_sub(1);
+        let changed = self.apply_delete(delete_index, remove_len);
+        if !changed {
+            return false;
+        }
+        if insert_space {
+            let _ = self.apply_insert(delete_index, " ".to_string());
+        }
+        let line_end = self.line_content_end_char_idx(line_idx);
+        let target = self.cursor_char_idx.min(line_end);
+        self.cursor_char_idx = target;
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
+    fn first_non_blank_or_line_start(&self, line_idx: usize) -> usize {
+        let line_start = self.text.line_to_char(line_idx);
+        let line_end = self.line_content_end_char_idx(line_idx);
+        for idx in line_start..line_end {
+            let ch = self.text.char(idx);
+            if ch != ' ' && ch != '\t' {
+                return idx;
+            }
+        }
+        line_start
     }
 
     pub fn delete_char_at_cursor(&mut self) -> bool {
@@ -3048,7 +3119,12 @@ impl AppState {
     }
 
     pub fn substitute_current_line_text(&self) -> Option<String> {
-        let (start, end) = self.current_line_content_range()?;
+        let line_idx = self.text.char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
+        let start = self.first_non_blank_or_line_start(line_idx);
+        let end = self.line_content_end_char_idx(line_idx);
+        if start >= end {
+            return None;
+        }
         self.char_range_text(start, end)
     }
 
@@ -4043,19 +4119,6 @@ impl AppState {
         }
 
         Some(self.text.slice(start..end).to_string())
-    }
-
-    fn current_line_content_range(&self) -> Option<(usize, usize)> {
-        if self.text.len_chars() == 0 {
-            return None;
-        }
-
-        let line_idx = self
-            .text
-            .char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
-        let line_start = self.text.line_to_char(line_idx);
-        let line_end = self.line_content_end_char_idx(line_idx);
-        (line_start < line_end).then_some((line_start, line_end))
     }
 
     fn linewise_text_for_range(&self, start: usize, end: usize) -> Option<String> {

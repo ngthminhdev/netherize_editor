@@ -172,6 +172,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::DeleteChar
         | Command::DeleteSelection
         | Command::DeleteCurrentLine
+        | Command::DeleteToLineEnd
         | Command::ToggleLineComment
         | Command::ToggleSelectionComment
         | Command::DeleteWordForward
@@ -183,6 +184,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::ChangeWordForward
         | Command::ChangeWordBackward
         | Command::ChangeToLineEnd
+        | Command::JoinLines
         | Command::PasteAfter
         | Command::PasteBefore
         | Command::EditorPaste

@@ -229,6 +229,13 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 target: OperationTarget::CurrentLine,
             },
         ),
+        Command::DeleteToLineEnd => dispatch(
+            ctx,
+            Command::Operate {
+                op: Operator::Delete,
+                target: OperationTarget::Motion(crate::core::commands::Motion::LineEnd),
+            },
+        ),
         Command::ToggleLineComment => {
             let changed = ctx.app_state.toggle_line_comment();
             ctx.commit_text_transaction(changed);
@@ -540,6 +547,18 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 target: OperationTarget::Motion(crate::core::commands::Motion::LineEnd),
             },
         ),
+        Command::JoinLines => {
+            let changed = ctx.app_state.join_line_below();
+            ctx.commit_text_transaction(changed);
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: joined line below".to_string()
+                } else {
+                    "Dispatch: join lines ignored".to_string()
+                },
+                changed,
+            )
+        }
         Command::ReplaceChar(ch) => {
             let changed = ctx.app_state.replace_char_at_cursor(ch);
             ctx.commit_text_transaction(changed);

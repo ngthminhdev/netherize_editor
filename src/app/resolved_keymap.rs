@@ -590,8 +590,10 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("normal"), ch('I'), INSERT_AT_LINE_START);
     km.insert(Some("normal"), ch('A'), APPEND_AT_LINE_END);
     km.insert(Some("normal"), ch('C'), CHANGE_TO_LINE_END);
+    km.insert(Some("normal"), ch('D'), DELETE_TO_LINE_END);
     km.insert(Some("normal"), ph(KeyCode::KeyA), APPEND_AFTER_CURSOR);
     km.insert(Some("normal"), ch('S'), SUBSTITUTE_LINE);
+    km.insert(Some("normal"), ch('J'), JOIN_LINES);
     km.insert(Some("normal"), ph(KeyCode::KeyX), DELETE_CHAR);
     km.insert(Some("normal"), ph(KeyCode::KeyP), PASTE_AFTER);
     km.insert(Some("normal"), ch('P'), PASTE_BEFORE);
