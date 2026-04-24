@@ -1,17 +1,17 @@
 //! Core renderer types and module layout.
 //!
 //! Heavy per-region rendering logic lives in child modules:
-//! - [`editor_render`]  — editor content, caret, gutter, visual selection
-//! - [`ui_render`]      — sidebar, terminal, welcome logo, topbar, statusbar
-//! - [`palette_render`] — command palette, file picker, leap label overlay
+//! - [`editor`]         — editor content, caret, gutter, visual selection
+//! - [`ui`]             — sidebar, terminal, welcome logo, topbar, statusbar
+//! - [`palette`]        — command palette, file picker, leap label overlay
 //! - [`lifecycle`]      — GPU init, theme/config application, resize, render loop
 //! - [`helpers`]        — pure free functions shared by all render modules
 
-mod editor_render;
+mod editor;
 mod helpers;
 mod lifecycle;
-mod palette_render;
-mod ui_render;
+mod palette;
+mod ui;
 
 use std::path::PathBuf;
 
