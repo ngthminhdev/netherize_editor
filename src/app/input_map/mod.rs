@@ -41,7 +41,6 @@ pub enum InputFocusContext {
     BufferTerminal,
     FuzzyPicker,
     SettingsTab,
-    CheatSheet,
 }
 
 impl InputFocusContext {
@@ -58,7 +57,6 @@ impl InputFocusContext {
             Self::BufferTerminal => "buffer_terminal",
             Self::FuzzyPicker => "fuzzy_picker",
             Self::SettingsTab => "settings_tab",
-            Self::CheatSheet => "cheat_sheet",
         }
     }
 
@@ -73,7 +71,6 @@ impl InputFocusContext {
                 | Self::Inspector
                 | Self::FuzzyPicker
                 | Self::SettingsTab
-                | Self::CheatSheet
         )
     }
 }
@@ -201,9 +198,6 @@ impl InputMap {
         }
         if context.focus == InputFocusContext::SettingsTab {
             return self.resolve_settings_focus(input);
-        }
-        if context.focus == InputFocusContext::CheatSheet {
-            return self.resolve_cheat_sheet_focus(input);
         }
         if context.focus == InputFocusContext::Terminal {
             return self.resolve_terminal_focus(input, context.mode);
@@ -379,7 +373,6 @@ impl InputMap {
             InputFocusContext::BottomPanel => "bottom_panel",
             InputFocusContext::FuzzyPicker => editor_mode_str(context.mode),
             InputFocusContext::SettingsTab => editor_mode_str(context.mode),
-            InputFocusContext::CheatSheet => editor_mode_str(context.mode),
         }
     }
 

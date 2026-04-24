@@ -90,11 +90,14 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             ),
             Err(report) => report,
         },
-        Command::OpenCheatSheet => {
-            let buffer_index = ctx.app_state.open_cheat_sheet_buffer("1.0.0");
-            let _ = ctx.close_palette_and_exit_focus();
+        Command::OpenHelp => {
+            let _ = ctx.app_state.close_command_palette();
+            if ctx.app_state.current_mode() == EditorMode::PaletteFocus {
+                let _ = ctx.app_state.apply_mode_event(ModeEvent::ExitFocus);
+            }
+            let index = ctx.app_state.open_help_buffer();
             DispatchReport::success_with_flags(
-                format!("Dispatch: cheat sheet buffer opened at index {buffer_index}"),
+                format!("Dispatch: help buffer opened at index {index}"),
                 true,
                 true,
             )
@@ -365,7 +368,7 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
             } else if command_text == "bd" {
                 dispatch_command(ctx.app_state, Command::BufferCloseCurrent)
             } else if command_text == "h" || command_text == "help" {
-                dispatch_command(ctx.app_state, Command::OpenCheatSheet)
+                dispatch_command(ctx.app_state, Command::OpenHelp)
             } else if let Ok(line_number) = command_text.parse::<usize>() {
                 let target_line = line_number
                     .saturating_sub(1)

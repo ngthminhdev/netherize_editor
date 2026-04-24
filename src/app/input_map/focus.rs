@@ -123,29 +123,6 @@ impl InputMap {
         )
     }
 
-    pub(super) fn resolve_cheat_sheet_focus(
-        &self,
-        input: &NormalizedInput,
-    ) -> Option<KeybindingMatch> {
-        use KeyCode::*;
-
-        if input.named_key == Some(NamedKey::Escape)
-            || (!input.has_command_modifier() && input.physical_key == Some(KeyQ))
-        {
-            return Some(KeybindingMatch {
-                command: Command::BufferCloseCurrent,
-                reason: "cheat sheet: Esc/q -> BufferCloseCurrent",
-            });
-        }
-
-        resolved_keymap::resolve_global_command(&self.keymap, input, &self.open_file_path).map(
-            |command| KeybindingMatch {
-                command,
-                reason: "cheat sheet: global binding",
-            },
-        )
-    }
-
     pub(super) fn resolve_references_focus(
         &self,
         input: &NormalizedInput,

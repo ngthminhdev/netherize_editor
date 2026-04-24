@@ -57,148 +57,6 @@ pub struct SidebarFilterState {
     pub show_cursor: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WelcomeAccent {
-    Global,
-    Normal,
-    Insert,
-    Visual,
-    Leader,
-    Lsp,
-    Explorer,
-    Terminal,
-    Palette,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WelcomeScreenKind {
-    Welcome,
-    CheatSheet,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WelcomeShortcut {
-    pub keys: Vec<String>,
-    pub label: String,
-    pub important: bool,
-}
-
-impl WelcomeShortcut {
-    pub fn new(keys: &[&str], label: &str) -> Self {
-        Self {
-            keys: keys.iter().map(|key| (*key).to_string()).collect(),
-            label: label.to_string(),
-            important: false,
-        }
-    }
-
-    pub fn important(mut self) -> Self {
-        self.important = true;
-        self
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WelcomeSection {
-    pub title: String,
-    pub caption: String,
-    pub accent: WelcomeAccent,
-    pub shortcuts: Vec<WelcomeShortcut>,
-}
-
-impl WelcomeSection {
-    pub fn new(
-        title: &str,
-        caption: &str,
-        accent: WelcomeAccent,
-        shortcuts: Vec<WelcomeShortcut>,
-    ) -> Self {
-        Self {
-            title: title.to_string(),
-            caption: caption.to_string(),
-            accent,
-            shortcuts,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WelcomeQuickAction {
-    pub label: String,
-    pub key: String,
-}
-
-impl WelcomeQuickAction {
-    pub fn new(label: &str, key: &str) -> Self {
-        Self {
-            label: label.to_string(),
-            key: key.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WelcomeLang {
-    Rust,
-    TypeScript,
-    Toml,
-    Other(String),
-}
-
-impl WelcomeLang {
-    pub fn label(&self) -> &str {
-        match self {
-            Self::Rust => "RUST",
-            Self::TypeScript => "TS",
-            Self::Toml => "TOML",
-            Self::Other(s) => s.as_str(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WelcomeRecentProject {
-    pub name: String,
-    pub path: String,
-    pub lang: WelcomeLang,
-    pub ago: String,
-    pub active: bool,
-}
-
-impl WelcomeRecentProject {
-    pub fn new(name: &str, path: &str, lang: WelcomeLang, ago: &str) -> Self {
-        Self {
-            name: name.to_string(),
-            path: path.to_string(),
-            lang,
-            ago: ago.to_string(),
-            active: false,
-        }
-    }
-
-    pub fn active(mut self) -> Self {
-        self.active = true;
-        self
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WelcomeScreenModel {
-    pub kind: WelcomeScreenKind,
-    pub title: String,
-    pub subtitle: String,
-    pub meta: String,
-    pub meta_version: String,
-    pub legend: Vec<WelcomeShortcut>,
-    pub sections: Vec<WelcomeSection>,
-    pub footer_left: String,
-    pub footer_right: String,
-    pub quick_actions: Vec<WelcomeQuickAction>,
-    pub recent_projects: Vec<WelcomeRecentProject>,
-    pub sidebar_shortcuts: Vec<WelcomeShortcut>,
-    pub shortcuts_hint: String,
-}
-
 #[derive(Debug)]
 pub enum RenderError {
     Timeout,
@@ -218,7 +76,7 @@ pub enum TopbarTabKind {
     Diagnostics,
     FuzzyPicker,
     Settings,
-    CheatSheet,
+    Help,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -360,6 +218,7 @@ pub struct Renderer {
     pub(super) statusbar_padding_x: f32,
     pub(super) statusbar_font_size: f32,
     pub(super) statusbar_line_height: f32,
+    pub(super) welcome_version: String,
     pub(super) welcome_card_max_width: f32,
     pub(super) welcome_card_padding_x: f32,
     pub(super) welcome_card_padding_y: f32,

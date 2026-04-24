@@ -237,11 +237,6 @@ pub struct PtyState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CheatSheetState {
-    pub version: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReferencesBufferItem {
     pub path: PathBuf,
     pub relative_path: String,
@@ -281,6 +276,48 @@ pub struct DiagnosticsState {
     pub preview_lines: Vec<FilePreviewLine>,
     pub preview_text: String,
     pub preview_spans: Vec<StyledTextSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HelpState {
+    pub title: String,
+    pub lines: Vec<String>,
+}
+
+impl HelpState {
+    pub fn new() -> Self {
+        Self {
+            title: "[Help]".to_string(),
+            lines: vec![
+                "Netherize Help".to_string(),
+                "".to_string(),
+                "Command palette".to_string(),
+                "  Ctrl+P / Cmd+P        Open file picker".to_string(),
+                "  Ctrl+Shift+P          Open command palette".to_string(),
+                "  :help or :h           Open this help buffer".to_string(),
+                "".to_string(),
+                "Buffers".to_string(),
+                "  :bn / :bp             Next / previous buffer".to_string(),
+                "  :bd                   Close current buffer".to_string(),
+                "  :enew                 New scratch buffer".to_string(),
+                "".to_string(),
+                "Navigation".to_string(),
+                "  h j k l               Move cursor in normal mode".to_string(),
+                "  gg / G                First / last line".to_string(),
+                "  /                     Search in file".to_string(),
+                "".to_string(),
+                "Editing".to_string(),
+                "  i / a                 Enter insert mode".to_string(),
+                "  Esc                   Return to normal mode".to_string(),
+                "  :w                    Save current file".to_string(),
+                "".to_string(),
+                "Tools".to_string(),
+                "  Open Settings         Configure editor UI".to_string(),
+                "  Search in Files       Live grep workspace".to_string(),
+                "  Diagnostics           Open diagnostics picker".to_string(),
+            ],
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -419,7 +456,7 @@ pub enum BufferContent {
     Diagnostics(DiagnosticsState),
     FuzzyPicker(FuzzyState),
     SettingsTab(SettingsState),
-    CheatSheet(CheatSheetState),
+    Help(HelpState),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -441,7 +478,7 @@ impl BufferEntry {
             BufferContent::Diagnostics(_) => "[Diagnostics]".to_string(),
             BufferContent::FuzzyPicker(_) => "[Fuzzy Finder]".to_string(),
             BufferContent::SettingsTab(_) => "[Settings]".to_string(),
-            BufferContent::CheatSheet(_) => "[Cheat Sheet]".to_string(),
+            BufferContent::Help(state) => state.title.clone(),
         }
     }
 }
@@ -929,6 +966,16 @@ impl AppState {
         Ok(())
     }
 
+    pub fn sync_welcome_recent_projects(&mut self, recent: &[std::path::PathBuf]) -> bool {
+        use crate::app::command_palette::CommandPaletteItem;
+        let items: Vec<_> = recent
+            .iter()
+            .map(|path| CommandPaletteItem::recent_project(path))
+            .collect();
+        self.command_palette
+            .set_hidden_items(CommandPaletteMode::RecentProjects, items)
+    }
+
     pub fn open_theme_selector_palette(
         &mut self,
         themes: &[crate::config::theme_config::ThemeProfileEntry],
@@ -1366,21 +1413,16 @@ impl AppState {
             .is_some_and(|buffer| matches!(buffer.content, BufferContent::SettingsTab(_)))
     }
 
-    pub fn active_buffer_is_cheat_sheet(&self) -> bool {
-        self.active_buffer()
-            .is_some_and(|buffer| matches!(buffer.content, BufferContent::CheatSheet(_)))
-    }
-
-    pub fn active_cheat_sheet_buffer(&self) -> Option<&CheatSheetState> {
+    pub fn active_settings_buffer(&self) -> Option<&SettingsState> {
         match self.active_buffer().map(|buffer| &buffer.content) {
-            Some(BufferContent::CheatSheet(state)) => Some(state),
+            Some(BufferContent::SettingsTab(state)) => Some(state),
             _ => None,
         }
     }
 
-    pub fn active_settings_buffer(&self) -> Option<&SettingsState> {
+    pub fn active_help_buffer(&self) -> Option<&HelpState> {
         match self.active_buffer().map(|buffer| &buffer.content) {
-            Some(BufferContent::SettingsTab(state)) => Some(state),
+            Some(BufferContent::Help(state)) => Some(state),
             _ => None,
         }
     }
@@ -1514,6 +1556,18 @@ impl AppState {
         self.selection_anchor_char_idx = None;
         self.visual_line_mode = false;
         self.external_conflict = None;
+        self.bump_revision();
+        index
+    }
+
+    pub fn open_help_buffer(&mut self) -> usize {
+        self.buffers.push(BufferEntry {
+            content: BufferContent::Help(HelpState::new()),
+        });
+        let index = self.buffers.len().saturating_sub(1);
+        self.reset_text_editor_state();
+        self.active_buffer_index = Some(index);
+        let _ = self.clear_current_overlays();
         self.bump_revision();
         index
     }
@@ -1704,38 +1758,6 @@ impl AppState {
         );
         self.buffers.push(BufferEntry {
             content: BufferContent::SettingsTab(state),
-        });
-
-        let index = self.buffers.len().saturating_sub(1);
-        self.reset_text_editor_state();
-        self.active_buffer_index = Some(index);
-        let _ = self.clear_current_overlays();
-        self.bump_revision();
-        index
-    }
-
-    pub fn open_cheat_sheet_buffer(&mut self, version: impl Into<String>) -> usize {
-        let version = version.into();
-        if let Some(existing_idx) = self
-            .buffers
-            .iter()
-            .position(|buffer| matches!(buffer.content, BufferContent::CheatSheet(_)))
-        {
-            if let Some(BufferEntry {
-                content: BufferContent::CheatSheet(state),
-            }) = self.buffers.get_mut(existing_idx)
-            {
-                state.version = version;
-            }
-            self.reset_text_editor_state();
-            self.active_buffer_index = Some(existing_idx);
-            let _ = self.clear_current_overlays();
-            self.bump_revision();
-            return existing_idx;
-        }
-
-        self.buffers.push(BufferEntry {
-            content: BufferContent::CheatSheet(CheatSheetState { version }),
         });
 
         let index = self.buffers.len().saturating_sub(1);
@@ -2633,9 +2655,6 @@ impl AppState {
         if self.active_buffer_is_diagnostics() {
             return Err("cannot save diagnostics buffer".to_string());
         }
-        if self.active_buffer_is_cheat_sheet() {
-            return Err("cannot save cheat sheet buffer".to_string());
-        }
 
         let path = self
             .active_file
@@ -3402,7 +3421,7 @@ impl AppState {
                 | BufferContent::Diagnostics(_)
                 | BufferContent::FuzzyPicker(_)
                 | BufferContent::SettingsTab(_)
-                | BufferContent::CheatSheet(_) => false,
+                | BufferContent::Help(_) => false,
             })
     }
 
@@ -4450,7 +4469,7 @@ impl AppState {
             | BufferContent::Diagnostics(_)
             | BufferContent::FuzzyPicker(_)
             | BufferContent::SettingsTab(_)
-            | BufferContent::CheatSheet(_) => {
+            | BufferContent::Help(_) => {
                 self.reset_text_editor_state();
                 self.active_buffer_index = Some(index);
                 let _ = self.clear_current_overlays();
@@ -5010,38 +5029,6 @@ mod tests {
         assert!(state.text_string().is_empty());
 
         let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn cheat_sheet_buffer_reuses_tab_and_closes_like_normal_buffer() {
-        let mut state = AppState::new(unique_temp_path("cheat_sheet_buffer"));
-
-        let first_idx = state.open_cheat_sheet_buffer("1.0.0");
-        assert_eq!(state.buffers().len(), 1);
-        assert_eq!(state.active_buffer_index(), Some(first_idx));
-        assert!(state.active_buffer_is_cheat_sheet());
-        assert_eq!(
-            state
-                .active_cheat_sheet_buffer()
-                .map(|state| state.version.as_str()),
-            Some("1.0.0")
-        );
-        assert_eq!(state.buffers()[first_idx].label(), "[Cheat Sheet]");
-        assert!(state.save_file().is_err());
-
-        let second_idx = state.open_cheat_sheet_buffer("1.0.1");
-        assert_eq!(first_idx, second_idx);
-        assert_eq!(state.buffers().len(), 1);
-        assert_eq!(
-            state
-                .active_cheat_sheet_buffer()
-                .map(|state| state.version.as_str()),
-            Some("1.0.1")
-        );
-
-        assert!(state.close_current_buffer().expect("close cheat sheet"));
-        assert!(state.buffers().is_empty());
-        assert!(state.active_buffer_index().is_none());
     }
 
     #[test]
