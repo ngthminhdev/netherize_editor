@@ -211,9 +211,28 @@ impl AppShell {
             if base_width > 0.0 && base_height > 0.0 {
                 content_scale = (logical_width / base_width).min(logical_height / base_height);
             }
-            content_scale = content_scale.clamp(
-                self.ui_config.window.min_content_scale,
-                self.ui_config.window.max_content_scale,
+            let min_scale = self.ui_config.window.min_content_scale;
+            let max_scale = self.ui_config.window.max_content_scale;
+            let lower = match (min_scale.is_nan(), max_scale.is_nan()) {
+                (true, true) => 1.0,
+                (true, false) => max_scale,
+                (false, true) => min_scale,
+                (false, false) => min_scale.min(max_scale),
+            };
+            let upper = match (min_scale.is_nan(), max_scale.is_nan()) {
+                (true, true) => 1.0,
+                (true, false) => max_scale,
+                (false, true) => min_scale,
+                (false, false) => min_scale.max(max_scale),
+            };
+            content_scale = if content_scale.is_nan() {
+                lower
+            } else {
+                content_scale.clamp(lower, upper)
+            };
+            debug_assert!(
+                content_scale.is_finite(),
+                "content_scale must be finite after normalization: min_scale={min_scale}, max_scale={max_scale}, logical_width={logical_width}, logical_height={logical_height}"
             );
         }
 

@@ -61,9 +61,10 @@ impl Renderer {
         let bg_color = self.theme.ui.panel_bg.as_f32();
         let text_color = self.theme.ui.fg.as_f32();
         let char_w = (geometry.font_size * 0.6).max(1.0);
-        let max_popup_w = (window_w - WINDOW_PAD * 2.0)
-            .min(geometry.viewport_text_width.max(160.0))
-            .clamp(160.0, 420.0);
+        let available_popup_w = (window_w - WINDOW_PAD * 2.0)
+            .min(geometry.viewport_text_width)
+            .max(1.0);
+        let max_popup_w = available_popup_w.min(420.0);
         let wrap_cols = ((max_popup_w - PAD_X * 2.0) / char_w).floor() as usize;
         let wrapped = wrap_text_lines(&diagnostic.message, wrap_cols.max(16));
         let longest = wrapped
@@ -71,7 +72,13 @@ impl Renderer {
             .map(|line| line.chars().count())
             .max()
             .unwrap_or(0);
-        let popup_w = (longest as f32 * char_w + PAD_X * 2.0).clamp(160.0, max_popup_w);
+        let desired_popup_w = longest as f32 * char_w + PAD_X * 2.0;
+        let preferred_min_popup_w = 160.0_f32.min(max_popup_w.max(1.0));
+        let popup_w = desired_popup_w.clamp(preferred_min_popup_w, max_popup_w.max(1.0));
+        debug_assert!(
+            popup_w.is_finite() && popup_w >= 1.0,
+            "diagnostic popup width must stay finite: desired={desired_popup_w}, available_popup_w={available_popup_w}, max_popup_w={max_popup_w}"
+        );
         let popup_h = (wrapped.len().max(1) as f32 * geometry.line_height + PAD_Y * 2.0)
             .max(geometry.line_height);
 
@@ -141,5 +148,30 @@ impl Renderer {
             &self.queue,
             &self.diagnostic_hover_glyph_instances,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn diagnostic_popup_width_handles_narrow_viewport_without_panicking() {
+        const PAD_X: f32 = 10.0;
+        const WINDOW_PAD: f32 = 12.0;
+
+        let window_w = 104.7749;
+        let viewport_text_width = 110.525;
+        let char_w = 9.5;
+        let longest = 32usize;
+
+        let available_popup_w = (window_w - WINDOW_PAD * 2.0)
+            .min(viewport_text_width)
+            .max(1.0);
+        let max_popup_w = available_popup_w.min(420.0);
+        let preferred_min_popup_w = 160.0_f32.min(max_popup_w.max(1.0));
+        let popup_w = (longest as f32 * char_w + PAD_X * 2.0)
+            .clamp(preferred_min_popup_w, max_popup_w.max(1.0));
+
+        assert!((max_popup_w - 80.7749).abs() < 0.001);
+        assert!((popup_w - 80.7749).abs() < 0.001);
     }
 }

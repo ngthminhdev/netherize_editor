@@ -109,6 +109,17 @@ pub(super) fn cursor_diagnostic(app_state: &AppState) -> Option<&LspDiagnostic> 
         })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::wrap_text_lines;
+
+    #[test]
+    fn wrap_text_lines_keeps_output_non_empty() {
+        let wrapped = wrap_text_lines("hello world", 3);
+        assert!(!wrapped.is_empty());
+    }
+}
+
 pub(super) struct EditorViewportGeometry {
     pub(super) line_height: f32,
     pub(super) font_size: f32,

@@ -206,8 +206,15 @@ impl Renderer {
                             }
                         })
                         .sum::<usize>();
-                    let popup_w = (max_len as f32 * char_w + PAD_X * 2.0)
-                        .clamp(120.0, geometry.viewport_text_width);
+                    let desired_popup_w = max_len as f32 * char_w + PAD_X * 2.0;
+                    let available_popup_w = geometry.viewport_text_width.max(1.0);
+                    let preferred_min_popup_w = 120.0_f32.min(available_popup_w);
+                    let popup_w = desired_popup_w.clamp(preferred_min_popup_w, available_popup_w);
+                    debug_assert!(
+                        popup_w.is_finite() && popup_w >= 1.0,
+                        "floating overlay popup width must stay finite: desired={desired_popup_w}, viewport_text_width={}",
+                        geometry.viewport_text_width
+                    );
                     let popup_h = (line_count as f32 * geometry.line_height + PAD_Y * 2.0)
                         .max(geometry.line_height);
 
