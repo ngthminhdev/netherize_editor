@@ -206,6 +206,27 @@ impl AppShell {
         )
     }
 
+    fn finalize_settings_change(&mut self) -> bool {
+        self.apply_scaled_runtime_config();
+        let _ = self.ui_config.save_user_override();
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        true
+    }
+
+    fn update_active_settings_edit_draft(&mut self, text: String) -> bool {
+        let Some(state) = self.app_state.active_settings_buffer_mut() else {
+            return false;
+        };
+        let Some(editing) = &mut state.editing else {
+            return false;
+        };
+        editing.draft = text;
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        true
+    }
+
     fn adjust_selected_setting(&mut self, delta: i32) -> bool {
         let Some(selected) = self
             .app_state
@@ -216,9 +237,57 @@ impl AppShell {
             return false;
         };
 
+        if self.app_state.settings_is_editing() {
+            return match selected {
+                crate::app::app_state::SettingItem::FontSize { current } => {
+                    let next = (current + delta as f32 * 0.5).clamp(8.0, 40.0);
+                    self.update_active_settings_edit_draft(format!("{next:.1}"))
+                }
+                crate::app::app_state::SettingItem::LineHeight { current } => {
+                    let next = (current + delta as f32 * 0.5).clamp(10.0, 64.0);
+                    self.update_active_settings_edit_draft(format!("{next:.1}"))
+                }
+                crate::app::app_state::SettingItem::SidebarWidth { current } => {
+                    let next = (current + delta * 20).clamp(160, 640);
+                    self.update_active_settings_edit_draft(next.to_string())
+                }
+                crate::app::app_state::SettingItem::RightSidebarWidth { current } => {
+                    let next = (current + delta * 20).clamp(180, 720);
+                    self.update_active_settings_edit_draft(next.to_string())
+                }
+                crate::app::app_state::SettingItem::BottomPanelHeight { current } => {
+                    let next = (current + delta * 20).clamp(120, 520);
+                    self.update_active_settings_edit_draft(next.to_string())
+                }
+                _ => false,
+            };
+        }
+
         match selected {
+            crate::app::app_state::SettingItem::FontSize { current } => {
+                let next = (current + delta as f32 * 0.5).clamp(8.0, 40.0);
+                self.base_theme.editor.font_size = next;
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::FontSize { current }) =
+                        state.selected_item_mut()
+                {
+                    *current = next;
+                }
+                self.finalize_settings_change()
+            }
+            crate::app::app_state::SettingItem::LineHeight { current } => {
+                let next = (current + delta as f32 * 0.5).clamp(10.0, 64.0);
+                self.base_theme.editor.line_height = next;
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::LineHeight { current }) =
+                        state.selected_item_mut()
+                {
+                    *current = next;
+                }
+                self.finalize_settings_change()
+            }
             crate::app::app_state::SettingItem::SidebarWidth { current } => {
-                let next = (current + delta).clamp(160, 640);
+                let next = (current + delta * 20).clamp(160, 640);
                 self.ui_config.docks.left.size_px = next as f32;
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
                     && let Some(crate::app::app_state::SettingItem::SidebarWidth { current }) =
@@ -226,12 +295,10 @@ impl AppShell {
                 {
                     *current = next;
                 }
-                self.apply_scaled_runtime_config();
-                let _ = self.ui_config.save_user_override();
-                true
+                self.finalize_settings_change()
             }
             crate::app::app_state::SettingItem::RightSidebarWidth { current } => {
-                let next = (current + delta).clamp(180, 720);
+                let next = (current + delta * 20).clamp(180, 720);
                 self.ui_config.docks.right.size_px = next as f32;
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
                     && let Some(crate::app::app_state::SettingItem::RightSidebarWidth { current }) =
@@ -239,12 +306,10 @@ impl AppShell {
                 {
                     *current = next;
                 }
-                self.apply_scaled_runtime_config();
-                let _ = self.ui_config.save_user_override();
-                true
+                self.finalize_settings_change()
             }
             crate::app::app_state::SettingItem::BottomPanelHeight { current } => {
-                let next = (current + delta).clamp(120, 520);
+                let next = (current + delta * 20).clamp(120, 520);
                 self.ui_config.docks.bottom.size_px = next as f32;
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
                     && let Some(crate::app::app_state::SettingItem::BottomPanelHeight { current }) =
@@ -252,9 +317,7 @@ impl AppShell {
                 {
                     *current = next;
                 }
-                self.apply_scaled_runtime_config();
-                let _ = self.ui_config.save_user_override();
-                true
+                self.finalize_settings_change()
             }
             _ => false,
         }
@@ -286,6 +349,12 @@ impl AppShell {
             | crate::app::app_state::SettingItem::BottomPanelHeight { .. } => {
                 let changed = self.app_state.settings_begin_editing();
                 if changed {
+                    if let Ok(result) = self
+                        .app_state
+                        .apply_mode_event(crate::core::mode::ModeEvent::EnterInsert)
+                    {
+                        let _ = result.changed;
+                    }
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                 }
@@ -419,6 +488,14 @@ impl AppShell {
         }
         let cancelled = self.app_state.settings_cancel_editing();
         if changed || cancelled {
+            if self.app_state.current_mode() == crate::core::mode::EditorMode::Insert {
+                if let Ok(result) = self
+                    .app_state
+                    .apply_mode_event(crate::core::mode::ModeEvent::Escape)
+                {
+                    let _ = result.changed;
+                }
+            }
             self.editor_needs_layout = true;
             self.editor_caret_needs_layout = false;
         }
@@ -662,13 +739,21 @@ impl AppShell {
                 }
                 changed
             }
-            Command::SettingsAdjustDecrease => self.adjust_selected_setting(-20),
-            Command::SettingsAdjustIncrease => self.adjust_selected_setting(20),
+            Command::SettingsAdjustDecrease => self.adjust_selected_setting(-1),
+            Command::SettingsAdjustIncrease => self.adjust_selected_setting(1),
             Command::SettingsActivate => self.activate_selected_setting(),
             Command::CloseFilePicker if self.app_state.active_buffer_is_settings() => {
                 if self.app_state.settings_is_editing() {
                     let changed = self.app_state.settings_cancel_editing();
                     if changed {
+                        if self.app_state.current_mode() == crate::core::mode::EditorMode::Insert {
+                            if let Ok(result) = self
+                                .app_state
+                                .apply_mode_event(crate::core::mode::ModeEvent::Escape)
+                            {
+                                let _ = result.changed;
+                            }
+                        }
                         self.editor_needs_layout = true;
                         self.editor_caret_needs_layout = false;
                     }

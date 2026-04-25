@@ -980,6 +980,83 @@ fn completion_popup_arrow_keys_still_navigate_items() {
 }
 
 #[test]
+fn settings_focus_arrow_keys_adjust_values() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::SettingsTab);
+    let now = std::time::Instant::now();
+
+    let left = handler.route_normalized_input(
+        named_input(NamedKey::ArrowLeft, Some(KeyCode::ArrowLeft)),
+        &map,
+        context,
+        now,
+    );
+    match left {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::SettingsAdjustDecrease);
+        }
+        other => panic!("expected settings decrease dispatch, got {:?}", other),
+    }
+
+    let right = handler.route_normalized_input(
+        named_input(NamedKey::ArrowRight, Some(KeyCode::ArrowRight)),
+        &map,
+        context,
+        now,
+    );
+    match right {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::SettingsAdjustIncrease);
+        }
+        other => panic!("expected settings increase dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn settings_focus_text_input_routes_to_editing_append() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::with_focus(EditorMode::Insert, InputFocusContext::SettingsTab);
+    let now = std::time::Instant::now();
+
+    let typed = handler.route_normalized_input(char_input('a', KeyCode::KeyA), &map, context, now);
+    match typed {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::FilePickerAppendQuery("a".to_string())
+            );
+        }
+        other => panic!("expected settings text append dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn settings_focus_j_and_k_navigate_in_normal_mode() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::SettingsTab);
+    let now = std::time::Instant::now();
+
+    let down = handler.route_normalized_input(char_input('j', KeyCode::KeyJ), &map, context, now);
+    match down {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::SettingsSelectNext);
+        }
+        other => panic!("expected settings next dispatch, got {:?}", other),
+    }
+
+    let up = handler.route_normalized_input(char_input('k', KeyCode::KeyK), &map, context, now);
+    match up {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::SettingsSelectPrev);
+        }
+        other => panic!("expected settings prev dispatch, got {:?}", other),
+    }
+}
+
+#[test]
 fn completion_popup_shift_tab_is_not_intercepted() {
     let mut handler = InputHandler::new();
     let map = make_map();

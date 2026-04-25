@@ -197,7 +197,7 @@ impl InputMap {
             return self.resolve_fuzzy_picker_focus(input, context);
         }
         if context.focus == InputFocusContext::SettingsTab {
-            return self.resolve_settings_focus(input);
+            return self.resolve_settings_focus(input, context);
         }
         if context.focus == InputFocusContext::Terminal {
             return self.resolve_terminal_focus(input, context.mode);

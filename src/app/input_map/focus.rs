@@ -1,13 +1,63 @@
 use winit::keyboard::KeyCode;
 
+use super::helpers::palette_query_from_text;
 use super::*;
 
 impl InputMap {
     pub(super) fn resolve_settings_focus(
         &self,
         input: &NormalizedInput,
+        context: KeybindingContext,
     ) -> Option<KeybindingMatch> {
         use KeyCode::*;
+
+        let is_insert = context.mode == EditorMode::Insert;
+
+        if is_insert {
+            if input.has_command_modifier() && input.physical_key == Some(KeyV) {
+                return Some(KeybindingMatch {
+                    command: Command::EditorPaste,
+                    reason: "settings edit: mod+v -> EditorPaste",
+                });
+            }
+
+            if input.named_key == Some(NamedKey::Escape) {
+                return Some(KeybindingMatch {
+                    command: Command::CloseFilePicker,
+                    reason: "settings edit: Esc -> cancel edit",
+                });
+            }
+
+            if input.named_key == Some(NamedKey::Enter) {
+                return Some(KeybindingMatch {
+                    command: Command::SettingsActivate,
+                    reason: "settings edit: Enter -> commit edit",
+                });
+            }
+
+            if input.named_key == Some(NamedKey::Backspace) {
+                return Some(KeybindingMatch {
+                    command: Command::FilePickerBackspaceQuery,
+                    reason: "settings edit: Backspace -> delete editing char",
+                });
+            }
+
+            if input.named_key == Some(NamedKey::Space) {
+                return Some(KeybindingMatch {
+                    command: Command::FilePickerAppendQuery(" ".to_string()),
+                    reason: "settings edit: Space -> append editing char",
+                });
+            }
+
+            if let Some(command) = palette_query_from_text(&input.text) {
+                return Some(KeybindingMatch {
+                    command,
+                    reason: "settings edit: text input -> append editing char",
+                });
+            }
+
+            return None;
+        }
 
         if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowDown))
             || (!input.has_command_modifier() && input.physical_key == Some(KeyJ))
