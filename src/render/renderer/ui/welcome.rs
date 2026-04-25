@@ -10,9 +10,14 @@ use crate::{
     text::text_system::StyledTextSpan,
 };
 
-use super::super::helpers::{
-    ShortcutHintSegment, estimate_monospace_width, layout_panel_text, layout_panel_text_bold,
-    layout_shortcut_hint, rect_to_scissor,
+use super::super::{
+    components::{
+        HighlightChipStyle, ShortcutHintSegment, layout_shortcut_hint,
+        push_centered_highlight_chip,
+    },
+    helpers::{
+        estimate_monospace_width, layout_panel_text, layout_panel_text_bold, rect_to_scissor,
+    },
 };
 
 impl Renderer {
@@ -176,51 +181,58 @@ impl Renderer {
             true,
         );
         let meta_y = hero_top + sx(212.0);
-        chrome.push(
-            RegionDrawInstance::new(
-                [cx - sx(190.0), meta_y - sx(2.0), sx(72.0), sx(20.0)],
-                panel,
-            )
-            .with_radius(sx(4.0)),
-        );
-        chrome.push(
-            RegionDrawInstance::new(
-                [cx - sx(190.0), meta_y - sx(2.0), sx(72.0), sx(20.0)],
-                border,
-            )
-            .with_radius(sx(4.0)),
-        );
-        let meta_prefix = format!(
-            "{}   ·   Rust 1.78   ·   wgpu 0.20   ·   by ",
-            self.welcome_version
-        );
-        let meta_author = "ngthminhdev";
         let meta_size = sx(11.0);
-        let meta_gap = sx(3.0);
-        let meta_w = text_w(&meta_prefix, meta_size) + text_w(meta_author, meta_size) + meta_gap;
-        let meta_x = cx - meta_w * 0.5;
-        line(
-            self,
-            &mut glyphs,
-            &meta_prefix,
-            meta_x,
-            meta_y,
-            meta_size,
-            sx(16.0),
-            fg_ghost,
-            false,
-        );
-        line(
-            self,
-            &mut glyphs,
-            meta_author,
-            meta_x + text_w(&meta_prefix, meta_size) + meta_gap,
-            meta_y,
-            meta_size,
-            sx(16.0),
-            fg,
-            true,
-        );
+        let meta_line_height = sx(16.0);
+        let meta_chip_height = sx(30.0);
+        let meta_chip_gap = sx(10.0);
+        let meta_chip_padding_x = sx(14.0);
+        let version_label = self.welcome_version.clone();
+        let meta_chips = [
+            (version_label, fg, true),
+            ("Rust 1.78".to_string(), fg_ghost, false),
+            ("wgpu 0.20".to_string(), fg_ghost, false),
+            ("by ngthminhdev".to_string(), fg, true),
+        ];
+        let meta_total_w: f32 = meta_chips
+            .iter()
+            .map(|(label, _, _)| text_w(label.as_str(), meta_size) + meta_chip_padding_x * 2.0)
+            .sum::<f32>()
+            + meta_chip_gap * (meta_chips.len().saturating_sub(1) as f32);
+        let mut meta_center_x = cx - meta_total_w * 0.5;
+        let mut meta_border = border;
+        meta_border[3] = 0.92;
+        let mut meta_fill = panel;
+        meta_fill[3] = 0.98;
+
+        for (label, color, bold) in &meta_chips {
+            let label = label.as_str();
+            let chip_w = text_w(label, meta_size) + meta_chip_padding_x * 2.0;
+            push_centered_highlight_chip(
+                &mut chrome,
+                meta_center_x + chip_w * 0.5,
+                meta_y - (meta_chip_height - meta_line_height) * 0.5,
+                chip_w,
+                meta_chip_height,
+                HighlightChipStyle {
+                    bg: meta_fill,
+                    border: meta_border,
+                    radius: sx(6.0),
+                    border_thickness: sx(1.0),
+                },
+            );
+            line(
+                self,
+                &mut glyphs,
+                label,
+                meta_center_x + (chip_w - text_w(label, meta_size)) * 0.5,
+                meta_y,
+                meta_size,
+                meta_line_height,
+                *color,
+                *bold,
+            );
+            meta_center_x += chip_w + meta_chip_gap;
+        }
 
         let actions = [
             ("Open project", [ShortcutHintSegment::Keys(&["⌘", "O"])]),

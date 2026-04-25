@@ -234,8 +234,8 @@ impl UiConfig {
                 smooth_scroll_snap_epsilon: 0.01,
             },
             welcome: WelcomeUiConfig {
-                version: "v0.3.1-alpha".to_string(),
-                card_max_width: 560.0,
+                version: "v1.0.0-alpha".to_string(),
+                card_max_width: 60.0,
                 card_padding_x: 42.0,
                 card_padding_y: 34.0,
                 section_gap: 16.0,

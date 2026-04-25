@@ -5,9 +5,11 @@ use crate::{
     render::{region_pipeline::RegionDrawInstance, renderer::Renderer},
 };
 
-use super::super::helpers::{
-    clamp_monospace_text, estimate_monospace_width, layout_panel_text, layout_shortcut_hint,
-    rect_to_scissor, ShortcutHintSegment,
+use super::super::{
+    components::{ShortcutHintSegment, layout_shortcut_hint},
+    helpers::{
+        clamp_monospace_text, estimate_monospace_width, layout_panel_text, rect_to_scissor,
+    },
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
