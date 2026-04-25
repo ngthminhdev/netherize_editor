@@ -14,10 +14,12 @@ use crate::app::{
     },
     file_picker::FilePickerEntry,
     match_ranges::score_label_match,
+    resolved_keymap::parse_key_sequence,
 };
 use crate::async_runtime::message::{
     FilePreviewLine, FileSystemChangeKind, FileSystemEvent, LspCompletionItem, LspDiagnostic,
 };
+use crate::config::keymap_loader::KeymapLoader;
 use crate::core::commands::{
     FindMotionKind, Motion, OperationTarget, Operator, TextObjectKind, TextObjectModifier,
 };
@@ -307,38 +309,117 @@ pub struct HelpState {
 
 impl HelpState {
     pub fn new() -> Self {
+        Self::from_bindings(&KeymapLoader::load_active(None))
+    }
+
+    pub fn from_bindings(bindings: &[crate::config::keymap_config::KeyBinding]) -> Self {
         Self {
             title: "[Help]".to_string(),
-            lines: vec![
-                "Netherize Help".to_string(),
-                "".to_string(),
-                "Command palette".to_string(),
-                "  Ctrl+P / Cmd+P        Open file picker".to_string(),
-                "  Ctrl+Shift+P          Open command palette".to_string(),
-                "  :help or :h           Open this help buffer".to_string(),
-                "".to_string(),
-                "Buffers".to_string(),
-                "  :bn / :bp             Next / previous buffer".to_string(),
-                "  :bd                   Close current buffer".to_string(),
-                "  :enew                 New scratch buffer".to_string(),
-                "".to_string(),
-                "Navigation".to_string(),
-                "  h j k l               Move cursor in normal mode".to_string(),
-                "  gg / G                First / last line".to_string(),
-                "  /                     Search in file".to_string(),
-                "".to_string(),
-                "Editing".to_string(),
-                "  i / a                 Enter insert mode".to_string(),
-                "  Esc                   Return to normal mode".to_string(),
-                "  :w                    Save current file".to_string(),
-                "".to_string(),
-                "Tools".to_string(),
-                "  Open Settings         Configure editor UI".to_string(),
-                "  Search in Files       Live grep workspace".to_string(),
-                "  Diagnostics           Open diagnostics picker".to_string(),
-            ],
+            lines: build_help_lines(bindings),
         }
     }
+}
+
+fn build_help_lines(bindings: &[crate::config::keymap_config::KeyBinding]) -> Vec<String> {
+    let mut lines = vec![
+        "Netherize Help".to_string(),
+        "".to_string(),
+        "Command palette".to_string(),
+    ];
+
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "app.open_file_picker",
+        "Open file picker",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "app.open_command_palette",
+        "Open command palette",
+    );
+    lines.push("  :help / :h            Open this help buffer".to_string());
+    lines.push("".to_string());
+
+    lines.push("Buffers".to_string());
+    lines.push("  :bn / :bp             Next / previous buffer".to_string());
+    lines.push("  :bd                   Close current buffer".to_string());
+    lines.push("  :enew                 New scratch buffer".to_string());
+    lines.push("".to_string());
+
+    lines.push("Navigation".to_string());
+    append_help_binding(&mut lines, bindings, "editor.move_left", "Move left");
+    append_help_binding(&mut lines, bindings, "editor.move_down", "Move down");
+    append_help_binding(&mut lines, bindings, "editor.move_up", "Move up");
+    append_help_binding(&mut lines, bindings, "editor.move_right", "Move right");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.open_in_file_search",
+        "Search in current file",
+    );
+    lines.push("".to_string());
+
+    lines.push("Editing".to_string());
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "mode.enter_insert",
+        "Enter insert mode",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "mode.enter_normal",
+        "Return to normal mode",
+    );
+    lines.push("  :w                    Save current file".to_string());
+    lines.push("".to_string());
+
+    lines.push("Tools".to_string());
+    append_help_binding(&mut lines, bindings, "app.open_settings", "Open settings");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "app.search_in_files",
+        "Search in files",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "diagnostics.open_picker",
+        "Open diagnostics picker",
+    );
+
+    lines
+}
+
+fn append_help_binding(
+    lines: &mut Vec<String>,
+    bindings: &[crate::config::keymap_config::KeyBinding],
+    command_id: &str,
+    label: &str,
+) {
+    let keys = bindings
+        .iter()
+        .filter(|binding| binding.command == command_id)
+        .filter_map(|binding| format_key_binding_for_help(&binding.key))
+        .collect::<Vec<_>>();
+
+    if keys.is_empty() {
+        return;
+    }
+
+    lines.push(format!("  {:<22} {}", keys.join(" / "), label));
+}
+
+fn format_key_binding_for_help(key: &str) -> Option<String> {
+    let parts = parse_key_sequence(key)?
+        .into_iter()
+        .map(|spec| spec.display_token())
+        .collect::<Vec<_>>();
+    Some(parts.join(" "))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2968,7 +3049,8 @@ impl AppState {
 
     pub fn scroll_half_page_down(&mut self, half: usize) {
         let total = self.text.len_lines();
-        self.target_scroll_y = (self.target_scroll_y + half as f32).min(total.saturating_sub(1) as f32);
+        self.target_scroll_y =
+            (self.target_scroll_y + half as f32).min(total.saturating_sub(1) as f32);
         let new_line = (self.cursor_line_col().0 + half).min(total.saturating_sub(1));
         self.cursor_char_idx = self.text.line_to_char(new_line);
         self.target_col = 0;
@@ -2982,9 +3064,7 @@ impl AppState {
         let target_line = self.target_scroll_y.floor().max(0.0) as usize;
         if cursor_line < target_line + margin {
             self.target_scroll_y = cursor_line.saturating_sub(margin) as f32;
-        } else if viewport_lines > margin
-            && cursor_line + margin >= target_line + viewport_lines
-        {
+        } else if viewport_lines > margin && cursor_line + margin >= target_line + viewport_lines {
             self.target_scroll_y = (cursor_line + margin + 1 - viewport_lines) as f32;
         }
     }
@@ -5258,6 +5338,7 @@ mod tests {
 
     use crate::app::command_palette::{CommandPaletteItem, CommandPaletteMode};
     use crate::async_runtime::message::{FilePreviewLine, FileSystemChangeKind, FileSystemEvent};
+    use crate::config::keymap_config::KeyBinding;
     use crate::core::commands::{TextObjectKind, TextObjectModifier};
     use crate::core::mode::{EditorMode, ModeEvent};
 
@@ -5325,6 +5406,44 @@ mod tests {
         assert_eq!(
             state.take_highlight_edits(),
             vec![HighlightEdit::delete(0, 2)]
+        );
+    }
+
+    #[test]
+    fn help_buffer_uses_config_driven_keymap_content() {
+        let bindings = vec![
+            KeyBinding {
+                key: "mod+p".to_string(),
+                mode: Some("normal".to_string()),
+                command: "app.open_file_picker".to_string(),
+            },
+            KeyBinding {
+                key: "<leader>/".to_string(),
+                mode: Some("normal".to_string()),
+                command: "app.open_command_palette".to_string(),
+            },
+            KeyBinding {
+                key: "j".to_string(),
+                mode: Some("normal".to_string()),
+                command: "editor.move_down".to_string(),
+            },
+        ];
+
+        let help = super::HelpState::from_bindings(&bindings);
+        assert!(
+            help.lines
+                .iter()
+                .any(|line| line.contains("mod+p") && line.contains("Open file picker"))
+        );
+        assert!(
+            help.lines
+                .iter()
+                .any(|line| line.contains("<Space> /") && line.contains("Open command palette"))
+        );
+        assert!(
+            help.lines
+                .iter()
+                .any(|line| line.contains("j") && line.contains("Move down"))
         );
     }
 
