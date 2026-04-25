@@ -135,6 +135,7 @@ impl AppShell {
             suppress_next_palette_ime_commit: false,
             leap_state: None,
             git_overlay_revision: 0,
+            last_scroll_animation_tick: now,
         })
     }
 
@@ -551,7 +552,7 @@ impl AppShell {
                     text_snapshot: self.app_state.text_string(),
                     language_id,
                     buffer_revision: self.app_state.revision(),
-                    viewport_line_start: self.app_state.scroll_line,
+                    viewport_line_start: self.app_state.scroll_line(),
                     viewport_line_count,
                     edit_hint,
                 },

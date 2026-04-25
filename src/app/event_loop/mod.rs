@@ -153,6 +153,7 @@ pub struct AppShell {
     /// `typed_prefix` giữ các phím user đã gõ, `targets` giữ labels + char_idx.
     leap_state: Option<LeapState>,
     git_overlay_revision: u64,
+    last_scroll_animation_tick: Instant,
 }
 
 const DEBUG_UI_ENABLED: bool = false;

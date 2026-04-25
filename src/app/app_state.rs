@@ -550,7 +550,8 @@ pub struct AppState {
     active_buffer_index: Option<usize>,
     default_save_path: PathBuf,
     dirty: bool,
-    pub scroll_line: usize,
+    pub target_scroll_y: f32,
+    pub current_scroll_y: f32,
     pub scroll_column: usize,
     workspace_model: Option<WorkspaceModel>,
     command_palette: CommandPalette,
@@ -591,7 +592,8 @@ impl AppState {
             active_buffer_index: None,
             default_save_path,
             dirty: false,
-            scroll_line: 0,
+            target_scroll_y: 0.0,
+            current_scroll_y: 0.0,
             scroll_column: 0,
             workspace_model: None,
             command_palette: CommandPalette::default(),
@@ -630,7 +632,8 @@ impl AppState {
             active_buffer_index: None,
             default_save_path,
             dirty: false,
-            scroll_line: 0,
+            target_scroll_y: 0.0,
+            current_scroll_y: 0.0,
             scroll_column: 0,
             workspace_model: None,
             command_palette: CommandPalette::default(),
@@ -2788,8 +2791,8 @@ impl AppState {
 
     pub fn move_to_first_line(&mut self) -> bool {
         let cursor_changed = self.update_cursor_position(0);
-        let scroll_changed = if self.scroll_line != 0 {
-            self.scroll_line = 0;
+        let scroll_changed = if self.target_scroll_y != 0.0 {
+            self.target_scroll_y = 0.0;
             true
         } else {
             false
@@ -2882,7 +2885,7 @@ impl AppState {
         if changed {
             // Dùng auto_scroll_to_cursor sẽ được gọi bởi renderer
             // Ở đây chỉ reset scroll_line về target_line để viewport thấy dòng đó
-            self.scroll_line = target_line.saturating_sub(10);
+            self.target_scroll_y = target_line.saturating_sub(10) as f32;
             self.bump_revision();
         }
         changed
@@ -2890,11 +2893,11 @@ impl AppState {
 
     pub fn center_cursor_line(&mut self, viewport_lines: usize) {
         let (cursor_line, _) = self.cursor_line_col();
-        self.scroll_line = cursor_line.saturating_sub(viewport_lines / 2);
+        self.target_scroll_y = cursor_line.saturating_sub(viewport_lines / 2) as f32;
     }
 
     pub fn scroll_half_page_up(&mut self, half: usize) {
-        self.scroll_line = self.scroll_line.saturating_sub(half);
+        self.target_scroll_y = (self.target_scroll_y - half as f32).max(0.0);
         let new_line = self.cursor_line_col().0.saturating_sub(half);
         self.cursor_char_idx = self.text.line_to_char(new_line);
         self.target_col = 0;
@@ -2903,24 +2906,37 @@ impl AppState {
 
     pub fn scroll_half_page_down(&mut self, half: usize) {
         let total = self.text.len_lines();
-        self.scroll_line = (self.scroll_line + half).min(total.saturating_sub(1));
+        self.target_scroll_y = (self.target_scroll_y + half as f32).min(total.saturating_sub(1) as f32);
         let new_line = (self.cursor_line_col().0 + half).min(total.saturating_sub(1));
         self.cursor_char_idx = self.text.line_to_char(new_line);
         self.target_col = 0;
         self.bump_revision();
     }
 
-    /// Adjust scroll_line so the cursor is within the viewport.
+    /// Adjust target_scroll_y so the cursor is within the viewport.
     pub fn auto_scroll_to_cursor(&mut self, viewport_lines: usize) {
         let (cursor_line, _) = self.cursor_line_col();
         let margin = 3usize;
-        if cursor_line < self.scroll_line + margin {
-            self.scroll_line = cursor_line.saturating_sub(margin);
+        let target_line = self.target_scroll_y.floor().max(0.0) as usize;
+        if cursor_line < target_line + margin {
+            self.target_scroll_y = cursor_line.saturating_sub(margin) as f32;
         } else if viewport_lines > margin
-            && cursor_line + margin >= self.scroll_line + viewport_lines
+            && cursor_line + margin >= target_line + viewport_lines
         {
-            self.scroll_line = cursor_line + margin + 1 - viewport_lines;
+            self.target_scroll_y = (cursor_line + margin + 1 - viewport_lines) as f32;
         }
+    }
+
+    pub fn scroll_line(&self) -> usize {
+        self.target_scroll_y.floor().max(0.0) as usize
+    }
+
+    pub fn set_target_scroll_line(&mut self, line: usize) {
+        self.target_scroll_y = line.min(self.text.len_lines().saturating_sub(1)) as f32;
+    }
+
+    pub fn snap_current_scroll_to_target(&mut self) {
+        self.current_scroll_y = self.target_scroll_y;
     }
 
     pub fn open_file(&mut self, path: PathBuf) -> Result<(), String> {
@@ -4637,7 +4653,8 @@ impl AppState {
         self.text = Rope::from(content.as_str());
         self.cursor_char_idx = 0;
         self.target_col = 0;
-        self.scroll_line = 0;
+        self.target_scroll_y = 0.0;
+        self.current_scroll_y = 0.0;
         self.scroll_column = 0;
         self.selection_anchor_char_idx = None;
         self.visual_line_mode = false;
@@ -4649,7 +4666,8 @@ impl AppState {
     fn replace_text_buffer_preserving_view(&mut self, content: &str) {
         let old_cursor = self.cursor_char_idx;
         let old_selection_anchor = self.selection_anchor_char_idx;
-        let old_scroll_line = self.scroll_line;
+        let old_target_scroll_y = self.target_scroll_y;
+        let old_current_scroll_y = self.current_scroll_y;
         let old_scroll_column = self.scroll_column;
         let old_visual_line_mode = self.visual_line_mode;
 
@@ -4666,7 +4684,9 @@ impl AppState {
 
         let (_, clamped_col) = self.cursor_line_col();
         self.target_col = clamped_col;
-        self.scroll_line = old_scroll_line.min(self.text.len_lines().saturating_sub(1));
+        let max_scroll = self.text.len_lines().saturating_sub(1) as f32;
+        self.target_scroll_y = old_target_scroll_y.min(max_scroll);
+        self.current_scroll_y = old_current_scroll_y.min(max_scroll);
         self.scroll_column = old_scroll_column;
         self.visual_line_mode = old_visual_line_mode && self.selection_anchor_char_idx.is_some();
         self.clear_history();
@@ -4782,7 +4802,8 @@ impl AppState {
         self.text = Rope::new();
         self.cursor_char_idx = 0;
         self.target_col = 0;
-        self.scroll_line = 0;
+        self.target_scroll_y = 0.0;
+        self.current_scroll_y = 0.0;
         self.scroll_column = 0;
         self.active_file = None;
         self.selection_anchor_char_idx = None;

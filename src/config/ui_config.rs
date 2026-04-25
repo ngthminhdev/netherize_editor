@@ -92,6 +92,9 @@ pub struct SpacingUiConfig {
 pub struct EditorUiConfig {
     pub relative_numbers: bool,
     pub font_family: Option<String>,
+    pub smooth_scroll_enabled: bool,
+    pub smooth_scroll_lerp_rate: f32,
+    pub smooth_scroll_snap_epsilon: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -206,6 +209,9 @@ impl UiConfig {
             editor: EditorUiConfig {
                 relative_numbers: false,
                 font_family: None,
+                smooth_scroll_enabled: true,
+                smooth_scroll_lerp_rate: 18.0,
+                smooth_scroll_snap_epsilon: 0.01,
             },
             welcome: WelcomeUiConfig {
                 version: "v0.3.1-alpha".to_string(),
@@ -429,6 +435,24 @@ impl UiConfig {
             editor: EditorUiConfig {
                 relative_numbers: raw.editor.relative_numbers.unwrap_or(false),
                 font_family: raw.editor.font_family,
+                smooth_scroll_enabled: raw
+                    .editor
+                    .smooth_scroll_enabled
+                    .unwrap_or(fallback.editor.smooth_scroll_enabled),
+                smooth_scroll_lerp_rate: parse_positive_f32(
+                    "editor",
+                    "smooth_scroll_lerp_rate",
+                    raw.editor
+                        .smooth_scroll_lerp_rate
+                        .unwrap_or(fallback.editor.smooth_scroll_lerp_rate),
+                )?,
+                smooth_scroll_snap_epsilon: parse_positive_f32(
+                    "editor",
+                    "smooth_scroll_snap_epsilon",
+                    raw.editor
+                        .smooth_scroll_snap_epsilon
+                        .unwrap_or(fallback.editor.smooth_scroll_snap_epsilon),
+                )?,
             },
             welcome: WelcomeUiConfig {
                 version: raw
@@ -638,6 +662,9 @@ struct RawStatusBar {
 struct RawEditorSection {
     relative_numbers: Option<bool>,
     font_family: Option<String>,
+    smooth_scroll_enabled: Option<bool>,
+    smooth_scroll_lerp_rate: Option<f32>,
+    smooth_scroll_snap_epsilon: Option<f32>,
 }
 
 #[derive(Debug, Default, Deserialize)]

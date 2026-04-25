@@ -1518,11 +1518,12 @@ impl AppShell {
                         let (cursor_line, _) = self.app_state.cursor_line_col();
                         // Scroll viewport so cursor sits near the bottom (scrolloff = 3).
                         let margin = 3usize;
-                        self.app_state.scroll_line = if cursor_line + margin + 1 >= viewport_lines {
+                        let target_line = if cursor_line + margin + 1 >= viewport_lines {
                             cursor_line + margin + 1 - viewport_lines
                         } else {
                             0
                         };
+                        self.app_state.set_target_scroll_line(target_line);
                     }
                     _ => {}
                 }
@@ -1581,14 +1582,14 @@ impl AppShell {
                 if let Some(target) = resolved_target {
                     let changed = self.app_state.leap_jump_to_char(target.char_idx);
                     let viewport_lines = self.editor_viewport_lines();
-                    let prev_scroll = self.app_state.scroll_line;
+                    let prev_scroll = self.app_state.target_scroll_y;
                     self.app_state.auto_scroll_to_cursor(viewport_lines);
-                    if self.app_state.scroll_line != prev_scroll {
+                    if (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON {
                         self.submit_parse_for_active_buffer(true);
                     }
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
-                    changed || self.app_state.scroll_line != prev_scroll
+                    changed || (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON
                 } else {
                     leap_state.targets = matching_targets;
                     self.input_handler.set_pending_leap_label();
@@ -1647,10 +1648,10 @@ impl AppShell {
                 {
                     let report = dispatch_command(&mut self.app_state, command);
                     if report.state_changed {
-                        let prev_scroll = self.app_state.scroll_line;
+                        let prev_scroll = self.app_state.target_scroll_y;
                         let viewport_lines = self.editor_viewport_lines();
                         self.app_state.auto_scroll_to_cursor(viewport_lines);
-                        if self.app_state.scroll_line != prev_scroll {
+                        if (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON {
                             self.editor_needs_layout = true;
                             self.editor_caret_needs_layout = false;
                         } else {
@@ -1805,10 +1806,10 @@ impl AppShell {
                 }
 
                 if report.state_changed && is_cursor_move {
-                    let prev_scroll = self.app_state.scroll_line;
+                    let prev_scroll = self.app_state.target_scroll_y;
                     let viewport_lines = self.editor_viewport_lines();
                     self.app_state.auto_scroll_to_cursor(viewport_lines);
-                    if self.app_state.scroll_line != prev_scroll {
+                    if (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON {
                         self.editor_needs_layout = true;
                         self.editor_caret_needs_layout = false;
                         self.submit_parse_for_active_buffer(true);
@@ -2940,7 +2941,7 @@ impl AppShell {
     /// Quét viewport editor hiện tại, tìm tất cả ký tự `target` và sinh labels động.
     fn generate_editor_leap_state(&self, target: char) -> LeapState {
         let viewport_lines = self.editor_viewport_lines().max(1);
-        let scroll_line = self.app_state.scroll_line;
+        let scroll_line = self.app_state.scroll_line();
         let total_chars = self.app_state.text_len_chars();
 
         // char_idx range [viewport_start_char, viewport_end_char)
@@ -3064,7 +3065,7 @@ mod tests {
         shell.app_state = AppState::from_text(PathBuf::from("gg-layout.txt"), &text);
         let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
         assert!(shell.app_state.move_to_last_line());
-        shell.app_state.scroll_line = 24;
+        shell.app_state.set_target_scroll_line(24);
         shell.editor_needs_layout = false;
         shell.editor_caret_needs_layout = true;
 
@@ -3072,7 +3073,7 @@ mod tests {
 
         assert!(changed);
         assert_eq!(shell.app_state.cursor_line_col(), (0, 0));
-        assert_eq!(shell.app_state.scroll_line, 0);
+        assert_eq!(shell.app_state.scroll_line(), 0);
         assert!(shell.editor_needs_layout);
         assert!(!shell.editor_caret_needs_layout);
     }
@@ -3087,7 +3088,7 @@ mod tests {
         shell.app_state = AppState::from_text(PathBuf::from("g-layout.txt"), &text);
         let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
         shell.app_state.move_to_first_line();
-        shell.app_state.scroll_line = 0;
+        shell.app_state.set_target_scroll_line(0);
         shell.editor_needs_layout = false;
         shell.editor_caret_needs_layout = true;
 
@@ -3096,7 +3097,7 @@ mod tests {
         assert!(changed);
         let (cursor_line, _) = shell.app_state.cursor_line_col();
         assert_eq!(cursor_line, shell.app_state.total_lines().saturating_sub(1));
-        assert!(shell.app_state.scroll_line > 0);
+        assert!(shell.app_state.scroll_line() > 0);
         assert!(shell.editor_needs_layout);
         assert!(!shell.editor_caret_needs_layout);
     }
@@ -3113,7 +3114,7 @@ mod tests {
         for _ in 0..30 {
             shell.app_state.move_down();
         }
-        shell.app_state.scroll_line = 0;
+        shell.app_state.set_target_scroll_line(0);
         shell.editor_needs_layout = false;
         shell.editor_caret_needs_layout = true;
         let viewport_lines = shell.editor_viewport_lines();
@@ -3123,7 +3124,7 @@ mod tests {
         assert!(changed);
         let (cursor_line, _) = shell.app_state.cursor_line_col();
         assert_eq!(
-            shell.app_state.scroll_line,
+            shell.app_state.scroll_line(),
             cursor_line.saturating_sub(viewport_lines / 2)
         );
         assert!(shell.editor_needs_layout);
@@ -3139,7 +3140,7 @@ mod tests {
             .join("\n");
         shell.app_state = AppState::from_text(PathBuf::from("ctrl-d-layout.txt"), &text);
         let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
-        shell.app_state.scroll_line = 0;
+        shell.app_state.set_target_scroll_line(0);
         shell.editor_needs_layout = false;
         shell.editor_caret_needs_layout = true;
         let half = (shell.editor_viewport_lines() / 2).max(1);
@@ -3149,7 +3150,7 @@ mod tests {
         assert!(changed);
         let (cursor_line, _) = shell.app_state.cursor_line_col();
         assert_eq!(cursor_line, half);
-        assert_eq!(shell.app_state.scroll_line, half);
+        assert_eq!(shell.app_state.scroll_line(), half);
         assert!(shell.editor_needs_layout);
         assert!(!shell.editor_caret_needs_layout);
     }

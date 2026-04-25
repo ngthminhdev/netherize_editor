@@ -43,6 +43,9 @@ line_height = 14.0
 
 [editor]
 relative_numbers = true
+smooth_scroll_enabled = true
+smooth_scroll_lerp_rate = 18.0
+smooth_scroll_snap_epsilon = 0.01
 
 [welcome]
 version = "v0.3.1-alpha"

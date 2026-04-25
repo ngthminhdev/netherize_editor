@@ -38,7 +38,7 @@ impl Renderer {
         let line_height = self.theme.editor.line_height;
         let font_size = self.theme.editor.font_size;
         let total_lines = app_state.total_lines().max(1);
-        let scroll_y = app_state.scroll_line as f32 * line_height;
+        let scroll_y = app_state.current_scroll_y * line_height;
         let gutter_digits = total_lines.to_string().len().max(3);
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
         let origin_x = center_bounds[0] + self.editor_padding_x + gutter_width;

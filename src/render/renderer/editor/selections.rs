@@ -40,7 +40,7 @@ impl Renderer {
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
         let text_area_x = center_bounds[0] + self.editor_padding_x + gutter_width;
         let text_area_w = (center_bounds[2] - self.editor_padding_x - gutter_width).max(1.0);
-        let scroll_y = app_state.scroll_line as f32 * line_height;
+        let scroll_y = app_state.current_scroll_y * line_height;
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
         let caret_layout =
             compute_caret_layout(&self.text_system, app_state, [text_area_x, origin_y]);
@@ -87,7 +87,7 @@ impl Renderer {
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
         let text_area_x = center_bounds[0] + self.editor_padding_x + gutter_width;
         let text_area_w = (center_bounds[2] - self.editor_padding_x - gutter_width).max(1.0);
-        let scroll_y = app_state.scroll_line as f32 * line_height;
+        let scroll_y = app_state.current_scroll_y * line_height;
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
 
         let viewport_top = center_bounds[1] + self.editor_padding_y;
@@ -151,7 +151,7 @@ impl Renderer {
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
         let text_area_x = center_bounds[0] + self.editor_padding_x + gutter_width;
         let text_area_w = (center_bounds[2] - self.editor_padding_x - gutter_width).max(1.0);
-        let scroll_y = app_state.scroll_line as f32 * line_height;
+        let scroll_y = app_state.current_scroll_y * line_height;
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
 
         let viewport_top = center_bounds[1] + self.editor_padding_y;
@@ -243,7 +243,7 @@ impl Renderer {
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
         let text_area_x = center_bounds[0] + self.editor_padding_x + gutter_width;
         let text_area_w = (center_bounds[2] - self.editor_padding_x - gutter_width).max(1.0);
-        let scroll_y = app_state.scroll_line as f32 * line_height;
+        let scroll_y = app_state.current_scroll_y * line_height;
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
         let viewport_top = center_bounds[1] + self.editor_padding_y;
         let viewport_bottom =
@@ -350,7 +350,7 @@ impl Renderer {
         gutter_width: f32,
     ) {
         let total_lines = app_state.total_lines().max(1);
-        let scroll_line = app_state.scroll_line;
+        let scroll_line = app_state.current_scroll_y.floor().max(0.0) as usize;
         let scroll_y = scroll_line as f32 * line_height;
         let (cursor_line, _) = app_state.cursor_line_col();
         let gutter_bg_color = self.theme.editor.gutter.as_f32();

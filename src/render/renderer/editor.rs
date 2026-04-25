@@ -140,7 +140,7 @@ pub(super) fn editor_viewport_geometry(
     let total_lines = app_state.total_lines().max(1);
     let gutter_digits = total_lines.to_string().len().max(3);
     let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
-    let scroll_y = app_state.scroll_line as f32 * line_height;
+    let scroll_y = app_state.current_scroll_y * line_height;
     let scroll_x = app_state.scroll_column as f32 * (font_size * 0.6).max(1.0);
     let viewport_text_left = center_bounds[0] + renderer.editor_padding_x + gutter_width;
     let origin_x = viewport_text_left - scroll_x;
