@@ -208,15 +208,22 @@ pub struct SyntaxThemeTokens {
     pub comment: ThemeColor,
     pub r#type: ThemeColor,
     pub number: ThemeColor,
+    pub boolean: ThemeColor,
     pub identifier: ThemeColor,
+    pub variable: ThemeColor,
     pub parameter: ThemeColor,
     pub field: ThemeColor,
     pub property: ThemeColor,
     pub constant: ThemeColor,
     pub operator: ThemeColor,
     pub punctuation: ThemeColor,
+    pub escape: ThemeColor,
     pub r#macro: ThemeColor,
     pub lifetime: ThemeColor,
+    pub constructor: ThemeColor,
+    pub attribute: ThemeColor,
+    pub namespace: ThemeColor,
+    pub tag: ThemeColor,
 }
 
 #[derive(Debug, Clone)]

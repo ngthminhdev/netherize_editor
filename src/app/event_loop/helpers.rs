@@ -28,8 +28,14 @@ pub(super) fn syntax_spans_to_styled(
                     theme.syntax.function.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::Number => theme.syntax.number.as_u8(),
+                crate::syntax::highlight::HighlightCategory::Boolean => {
+                    theme.syntax.boolean.as_u8()
+                }
                 crate::syntax::highlight::HighlightCategory::Identifier => {
                     theme.syntax.identifier.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::Variable => {
+                    theme.syntax.variable.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::Parameter => {
                     theme.syntax.parameter.as_u8()
@@ -47,10 +53,21 @@ pub(super) fn syntax_spans_to_styled(
                 crate::syntax::highlight::HighlightCategory::Punctuation => {
                     theme.syntax.punctuation.as_u8()
                 }
+                crate::syntax::highlight::HighlightCategory::Escape => theme.syntax.escape.as_u8(),
                 crate::syntax::highlight::HighlightCategory::Macro => theme.syntax.r#macro.as_u8(),
                 crate::syntax::highlight::HighlightCategory::Lifetime => {
                     theme.syntax.lifetime.as_u8()
                 }
+                crate::syntax::highlight::HighlightCategory::Constructor => {
+                    theme.syntax.constructor.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::Attribute => {
+                    theme.syntax.attribute.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::Namespace => {
+                    theme.syntax.namespace.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::Tag => theme.syntax.tag.as_u8(),
             };
             StyledTextSpan::with_style(
                 span.range.start,

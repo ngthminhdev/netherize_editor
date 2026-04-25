@@ -83,15 +83,22 @@ fn builtin_syntax_tokens() -> SyntaxThemeTokens {
         comment: rgb(109, 116, 131),
         r#type: rgb(245, 182, 58),
         number: rgb(255, 123, 114),
+        boolean: rgb(245, 182, 58),
         identifier: rgb(242, 244, 248),
+        variable: rgb(242, 244, 248),
         parameter: rgb(155, 229, 100),
         field: rgb(73, 198, 248),
         property: rgb(183, 191, 204),
         constant: rgb(245, 182, 58),
         operator: rgb(183, 191, 204),
         punctuation: rgb(143, 152, 170),
+        escape: rgb(255, 123, 114),
         r#macro: rgb(231, 122, 233),
         lifetime: rgb(255, 123, 114),
+        constructor: rgb(245, 182, 58),
+        attribute: rgb(231, 122, 233),
+        namespace: rgb(245, 182, 58),
+        tag: rgb(245, 182, 58),
     }
 }
 

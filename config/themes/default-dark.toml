@@ -243,3 +243,17 @@ punctuation = "#8196b5"
 macro = "#69C3FF"
 # Rust lifetime highlight.
 lifetime = "#FF955C"
+# Boolean literals (`true`, `false`).
+boolean = "#FF955C"
+# Escape sequences inside strings/chars.
+escape = "#FF955C"
+# Local variables and bindings.
+variable = "#d0d7e4"
+# Constructors, enum variants, and nominal type definitions.
+constructor = "#B78AFF"
+# Attributes/annotations.
+attribute = "#EACD61"
+# Module/namespace qualifiers.
+namespace = "#B78AFF"
+# Markup/JSX-style tags.
+tag = "#B78AFF"

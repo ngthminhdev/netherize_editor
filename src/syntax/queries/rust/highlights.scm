@@ -12,11 +12,11 @@
 (char_literal) @syntax.string
 (string_literal) @syntax.string
 (raw_string_literal) @syntax.string
-(escape_sequence) @syntax.string
+(escape_sequence) @syntax.escape
 
 (integer_literal) @syntax.number
 (float_literal) @syntax.number
-(boolean_literal) @syntax.constant
+(boolean_literal) @syntax.boolean
 
 ; Type names
 
@@ -36,8 +36,24 @@
  (#match? @syntax.type "^[A-Z]"))
 ((scoped_type_identifier
   path: (scoped_identifier
-    name: (identifier) @syntax.type))
- (#match? @syntax.type "^[A-Z]"))
+    name: (identifier) @syntax.namespace))
+ (#match? @syntax.namespace "^[A-Z]"))
+
+(scoped_identifier path: (identifier) @syntax.namespace)
+(scoped_type_identifier path: (identifier) @syntax.namespace)
+
+; Constructors, variants, and attributes
+
+(struct_item name: (type_identifier) @syntax.constructor)
+(enum_item name: (type_identifier) @syntax.constructor)
+(union_item name: (type_identifier) @syntax.constructor)
+(trait_item name: (type_identifier) @syntax.constructor)
+(impl_item type: (type_identifier) @syntax.constructor)
+(tuple_struct_pattern type: (identifier) @syntax.constructor)
+(struct_pattern type: (type_identifier) @syntax.constructor)
+(scoped_identifier name: (identifier) @syntax.constructor)
+
+(attribute_item) @syntax.attribute
 
 ; Functions and macros
 
@@ -74,6 +90,11 @@
 (parameter pattern: (identifier) @syntax.parameter)
 (self_parameter (self) @syntax.parameter)
 (closure_parameters (identifier) @syntax.parameter)
+
+; Variables
+
+(let_declaration pattern: (identifier) @syntax.variable)
+(for_expression pattern: (identifier) @syntax.variable)
 
 ; Member access vs struct literal properties
 

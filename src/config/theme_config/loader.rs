@@ -333,10 +333,26 @@ fn parse_syntax(raw: &RawSyntax) -> Result<SyntaxThemeTokens, String> {
         comment: parse_color("syntax", "comment", &raw.comment)?,
         r#type: parse_color("syntax", "type", &raw.r#type)?,
         number: parse_color("syntax", "number", &raw.number)?,
+        boolean: parse_color(
+            "syntax",
+            "boolean",
+            raw.boolean
+                .as_deref()
+                .or(raw.constant.as_deref())
+                .unwrap_or(raw.number.as_str()),
+        )?,
         identifier: parse_color(
             "syntax",
             "identifier",
             raw.identifier.as_deref().unwrap_or("#d0d7e4"),
+        )?,
+        variable: parse_color(
+            "syntax",
+            "variable",
+            raw.variable
+                .as_deref()
+                .or(raw.identifier.as_deref())
+                .unwrap_or("#d0d7e4"),
         )?,
         parameter: parse_color(
             "syntax",
@@ -382,6 +398,14 @@ fn parse_syntax(raw: &RawSyntax) -> Result<SyntaxThemeTokens, String> {
             "punctuation",
             raw.punctuation.as_deref().unwrap_or("#8f98aa"),
         )?,
+        escape: parse_color(
+            "syntax",
+            "escape",
+            raw.escape
+                .as_deref()
+                .or(raw.constant.as_deref())
+                .unwrap_or(raw.number.as_str()),
+        )?,
         r#macro: parse_color(
             "syntax",
             "macro",
@@ -391,6 +415,26 @@ fn parse_syntax(raw: &RawSyntax) -> Result<SyntaxThemeTokens, String> {
             "syntax",
             "lifetime",
             raw.lifetime.as_deref().unwrap_or(raw.number.as_str()),
+        )?,
+        constructor: parse_color(
+            "syntax",
+            "constructor",
+            raw.constructor.as_deref().unwrap_or(raw.r#type.as_str()),
+        )?,
+        attribute: parse_color(
+            "syntax",
+            "attribute",
+            raw.attribute.as_deref().unwrap_or(raw.keyword.as_str()),
+        )?,
+        namespace: parse_color(
+            "syntax",
+            "namespace",
+            raw.namespace.as_deref().unwrap_or(raw.r#type.as_str()),
+        )?,
+        tag: parse_color(
+            "syntax",
+            "tag",
+            raw.tag.as_deref().unwrap_or(raw.r#type.as_str()),
         )?,
     })
 }

@@ -80,15 +80,22 @@ pub(in crate::config::theme_config) struct RawSyntax {
     pub(in crate::config::theme_config) comment: String,
     pub(in crate::config::theme_config) r#type: String,
     pub(in crate::config::theme_config) number: String,
+    pub(in crate::config::theme_config) boolean: Option<String>,
     pub(in crate::config::theme_config) identifier: Option<String>,
+    pub(in crate::config::theme_config) variable: Option<String>,
     pub(in crate::config::theme_config) parameter: Option<String>,
     pub(in crate::config::theme_config) field: Option<String>,
     pub(in crate::config::theme_config) property: Option<String>,
     pub(in crate::config::theme_config) constant: Option<String>,
     pub(in crate::config::theme_config) operator: Option<String>,
     pub(in crate::config::theme_config) punctuation: Option<String>,
+    pub(in crate::config::theme_config) escape: Option<String>,
     pub(in crate::config::theme_config) r#macro: Option<String>,
     pub(in crate::config::theme_config) lifetime: Option<String>,
+    pub(in crate::config::theme_config) constructor: Option<String>,
+    pub(in crate::config::theme_config) attribute: Option<String>,
+    pub(in crate::config::theme_config) namespace: Option<String>,
+    pub(in crate::config::theme_config) tag: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
