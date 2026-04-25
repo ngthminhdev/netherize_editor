@@ -7,6 +7,7 @@
 //! - [`lifecycle`]      — GPU init, theme/config application, resize, render loop
 //! - [`helpers`]        — pure free functions shared by all render modules
 
+mod components;
 mod editor;
 mod helpers;
 mod lifecycle;

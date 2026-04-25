@@ -80,6 +80,11 @@ command = "editor.newline"
 
 [[bindings]]
 mode = "insert"
+key = "Tab"
+command = "editor.insert_tab"
+
+[[bindings]]
+mode = "insert"
 key = "ArrowLeft"
 command = "editor.move_left"
 

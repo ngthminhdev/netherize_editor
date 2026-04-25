@@ -247,6 +247,10 @@ impl AppShell {
                     let next = (current + delta as f32 * 0.5).clamp(10.0, 64.0);
                     self.update_active_settings_edit_draft(format!("{next:.1}"))
                 }
+                crate::app::app_state::SettingItem::IndentTabWidth { current } => {
+                    let next = (current as i32 + delta).clamp(1, 8) as u8;
+                    self.update_active_settings_edit_draft(next.to_string())
+                }
                 crate::app::app_state::SettingItem::SidebarWidth { current } => {
                     let next = (current + delta * 20).clamp(160, 640);
                     self.update_active_settings_edit_draft(next.to_string())
@@ -267,6 +271,7 @@ impl AppShell {
             crate::app::app_state::SettingItem::FontSize { current } => {
                 let next = (current + delta as f32 * 0.5).clamp(8.0, 40.0);
                 self.base_theme.editor.font_size = next;
+                self.ui_config.editor.font_size = next;
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
                     && let Some(crate::app::app_state::SettingItem::FontSize { current }) =
                         state.selected_item_mut()
@@ -278,6 +283,7 @@ impl AppShell {
             crate::app::app_state::SettingItem::LineHeight { current } => {
                 let next = (current + delta as f32 * 0.5).clamp(10.0, 64.0);
                 self.base_theme.editor.line_height = next;
+                self.ui_config.editor.line_height = next;
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
                     && let Some(crate::app::app_state::SettingItem::LineHeight { current }) =
                         state.selected_item_mut()
@@ -319,6 +325,18 @@ impl AppShell {
                 }
                 self.finalize_settings_change()
             }
+            crate::app::app_state::SettingItem::IndentTabWidth { current } => {
+                let next = (current as i32 + delta).clamp(1, 8) as u8;
+                self.ui_config.indent.tab_width = next;
+                self.app_state.set_indent_config(self.ui_config.indent);
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::IndentTabWidth { current }) =
+                        state.selected_item_mut()
+                {
+                    *current = next;
+                }
+                self.finalize_settings_change()
+            }
             _ => false,
         }
     }
@@ -341,9 +359,26 @@ impl AppShell {
             crate::app::app_state::SettingItem::ThemeSelector { .. } => {
                 self.handle_command(Command::OpenThemeSelector)
             }
+            crate::app::app_state::SettingItem::IndentInsertSpaces { enabled } => {
+                let next = !enabled;
+                self.ui_config.indent.insert_spaces = next;
+                self.app_state.set_indent_config(self.ui_config.indent);
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::IndentInsertSpaces {
+                        enabled,
+                    }) = state.selected_item_mut()
+                {
+                    *enabled = next;
+                }
+                let _ = self.ui_config.save_user_override();
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+                true
+            }
             crate::app::app_state::SettingItem::FontFamily { .. }
             | crate::app::app_state::SettingItem::FontSize { .. }
             | crate::app::app_state::SettingItem::LineHeight { .. }
+            | crate::app::app_state::SettingItem::IndentTabWidth { .. }
             | crate::app::app_state::SettingItem::SidebarWidth { .. }
             | crate::app::app_state::SettingItem::RightSidebarWidth { .. }
             | crate::app::app_state::SettingItem::BottomPanelHeight { .. } => {
@@ -417,6 +452,7 @@ impl AppShell {
                 if let Ok(value) = trimmed.parse::<f32>() {
                     let value = value.clamp(8.0, 40.0);
                     self.base_theme.editor.font_size = value;
+                    self.ui_config.editor.font_size = value;
                     if let Some(state) = self.app_state.active_settings_buffer_mut()
                         && let Some(crate::app::app_state::SettingItem::FontSize { current }) =
                             state.selected_item_mut()
@@ -430,6 +466,7 @@ impl AppShell {
                 if let Ok(value) = trimmed.parse::<f32>() {
                     let value = value.clamp(10.0, 64.0);
                     self.base_theme.editor.line_height = value;
+                    self.ui_config.editor.line_height = value;
                     if let Some(state) = self.app_state.active_settings_buffer_mut()
                         && let Some(crate::app::app_state::SettingItem::LineHeight { current }) =
                             state.selected_item_mut()
@@ -472,6 +509,21 @@ impl AppShell {
                     self.ui_config.docks.bottom.size_px = value as f32;
                     if let Some(state) = self.app_state.active_settings_buffer_mut()
                         && let Some(crate::app::app_state::SettingItem::BottomPanelHeight {
+                            current,
+                        }) = state.selected_item_mut()
+                    {
+                        *current = value;
+                    }
+                    changed = true;
+                }
+            }
+            crate::app::app_state::SettingsEditingKind::IndentTabWidth => {
+                if let Ok(value) = trimmed.parse::<u8>() {
+                    let value = value.clamp(1, 8);
+                    self.ui_config.indent.tab_width = value;
+                    self.app_state.set_indent_config(self.ui_config.indent);
+                    if let Some(state) = self.app_state.active_settings_buffer_mut()
+                        && let Some(crate::app::app_state::SettingItem::IndentTabWidth {
                             current,
                         }) = state.selected_item_mut()
                     {
@@ -712,6 +764,8 @@ impl AppShell {
                     font_family,
                     self.base_theme.editor.font_size,
                     self.base_theme.editor.line_height,
+                    self.ui_config.indent.tab_width,
+                    self.ui_config.indent.insert_spaces,
                     self.ui_config.docks.left.size_px.round() as i32,
                     self.ui_config.docks.right.size_px.round() as i32,
                     self.ui_config.docks.bottom.size_px.round() as i32,

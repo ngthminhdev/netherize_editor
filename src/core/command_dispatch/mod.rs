@@ -162,6 +162,7 @@ fn dispatch_command_with_clipboard_once(
         Command::InsertChar(_)
         | Command::InsertText(_)
         | Command::Newline
+        | Command::InsertTab
         | Command::Backspace
         | Command::InsertLineBelow
         | Command::InsertLineAbove

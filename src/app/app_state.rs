@@ -26,6 +26,7 @@ use crate::core::mode::{
 };
 use crate::core::text_object::find_text_object_range;
 use crate::core::transaction::{CursorState, EditAction, EditHistory, Transaction};
+use crate::config::ui_config::IndentConfig;
 use crate::editor_core::filetype_label_for_path;
 use crate::syntax::highlight::HighlightEdit;
 use crate::text::text_system::StyledTextSpan;
@@ -37,6 +38,8 @@ pub enum SettingItem {
     FontFamily { current: String },
     FontSize { current: f32 },
     LineHeight { current: f32 },
+    IndentTabWidth { current: u8 },
+    IndentInsertSpaces { enabled: bool },
     SidebarWidth { current: i32 },
     RightSidebarWidth { current: i32 },
     BottomPanelHeight { current: i32 },
@@ -50,6 +53,8 @@ impl SettingItem {
             Self::FontFamily { .. } => "Font Family",
             Self::FontSize { .. } => "Font Size",
             Self::LineHeight { .. } => "Line Height",
+            Self::IndentTabWidth { .. } => "Tab Width",
+            Self::IndentInsertSpaces { .. } => "Indent Style",
             Self::SidebarWidth { .. } => "Left Dock Width",
             Self::RightSidebarWidth { .. } => "Right Dock Width",
             Self::BottomPanelHeight { .. } => "Bottom Dock Height",
@@ -63,6 +68,7 @@ pub enum SettingsEditingKind {
     FontFamily,
     FontSize,
     LineHeight,
+    IndentTabWidth,
     SidebarWidth,
     RightSidebarWidth,
     BottomPanelHeight,
@@ -87,6 +93,8 @@ impl SettingsState {
         font_family: impl Into<String>,
         font_size: f32,
         line_height: f32,
+        tab_width: u8,
+        insert_spaces: bool,
         left_width: i32,
         right_width: i32,
         bottom_height: i32,
@@ -107,6 +115,12 @@ impl SettingsState {
                 },
                 SettingItem::LineHeight {
                     current: line_height.max(1.0),
+                },
+                SettingItem::IndentTabWidth {
+                    current: tab_width.max(1),
+                },
+                SettingItem::IndentInsertSpaces {
+                    enabled: insert_spaces,
                 },
                 SettingItem::SidebarWidth {
                     current: left_width.max(0),
@@ -175,7 +189,12 @@ impl SettingsState {
             SettingItem::BottomPanelHeight { current } => {
                 (SettingsEditingKind::BottomPanelHeight, current.to_string())
             }
-            SettingItem::ThemeSelector { .. } | SettingItem::UiRounding { .. } => return false,
+            SettingItem::IndentTabWidth { current } => {
+                (SettingsEditingKind::IndentTabWidth, current.to_string())
+            }
+            SettingItem::ThemeSelector { .. }
+            | SettingItem::UiRounding { .. }
+            | SettingItem::IndentInsertSpaces { .. } => return false,
         };
         self.editing = Some(SettingsEditingState { kind, draft });
         true
@@ -573,6 +592,7 @@ pub struct AppState {
     jump_forward_stack: Vec<(PathBuf, usize)>,
     diagnostics: HashMap<PathBuf, Vec<LspDiagnostic>>,
     pending_explorer_rename_path: Option<PathBuf>,
+    indent_config: IndentConfig,
 }
 
 impl AppState {
@@ -615,6 +635,7 @@ impl AppState {
             jump_forward_stack: Vec::new(),
             diagnostics: HashMap::new(),
             pending_explorer_rename_path: None,
+            indent_config: IndentConfig::default(),
         }
     }
 
@@ -655,7 +676,12 @@ impl AppState {
             jump_forward_stack: Vec::new(),
             diagnostics: HashMap::new(),
             pending_explorer_rename_path: None,
+            indent_config: IndentConfig::default(),
         }
+    }
+
+    pub fn set_indent_config(&mut self, config: IndentConfig) {
+        self.indent_config = config;
     }
 
     pub fn ensure_probe_file(path: &Path, content: &str) -> Result<(), String> {
@@ -1732,6 +1758,8 @@ impl AppState {
         font_family: impl Into<String>,
         font_size: f32,
         line_height: f32,
+        tab_width: u8,
+        insert_spaces: bool,
         left_width: i32,
         right_width: i32,
         bottom_height: i32,
@@ -1755,6 +1783,8 @@ impl AppState {
             font_family,
             font_size,
             line_height,
+            tab_width,
+            insert_spaces,
             left_width,
             right_width,
             bottom_height,
@@ -2000,6 +2030,24 @@ impl AppState {
         Ok(report)
     }
 
+    pub fn insert_tab(&mut self) -> bool {
+        let text = if self.indent_config.insert_spaces {
+            " ".repeat(self.indent_config.tab_width as usize)
+        } else {
+            "\t".to_string()
+        };
+        let char_count = text.chars().count();
+        if !self.apply_insert(self.cursor_char_idx, text) {
+            return false;
+        }
+        self.cursor_char_idx += char_count;
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
     pub fn insert_char(&mut self, ch: char) {
         self.apply_insert(self.cursor_char_idx, ch.to_string());
         self.cursor_char_idx += 1;
@@ -2048,7 +2096,18 @@ impl AppState {
         let right = self.char_at_cursor();
 
         if !matches_matching_bracket_pair(left, right) {
-            self.insert_char('\n');
+            let (line_idx, _) = self.cursor_line_col();
+            let indent = self.line_indent_string(line_idx);
+            let indent_char_count = indent.chars().count();
+            let insert_at = self.cursor_char_idx;
+            if !self.apply_insert(insert_at, format!("\n{}", indent)) {
+                return false;
+            }
+            self.cursor_char_idx = insert_at + 1 + indent_char_count;
+            let (_, col) = self.cursor_line_col();
+            self.target_col = col;
+            self.dirty = true;
+            self.bump_revision();
             return true;
         }
 
@@ -2105,11 +2164,14 @@ impl AppState {
     pub fn insert_line_below(&mut self) -> bool {
         let line_idx = self.text.char_to_line(self.cursor_char_idx);
         let insert_at = self.line_content_end_char_idx(line_idx);
+        let indent = self.line_indent_string(line_idx);
+        let indent_char_count = indent.chars().count();
 
-        self.apply_insert(insert_at, "\n".to_string());
+        self.apply_insert(insert_at, format!("\n{}", indent));
         let target_line = (line_idx + 1).min(self.text.len_lines().saturating_sub(1));
-        self.cursor_char_idx = self.text.line_to_char(target_line);
-        self.target_col = 0;
+        self.cursor_char_idx = self.text.line_to_char(target_line) + indent_char_count;
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
         self.dirty = true;
         self.bump_revision();
         true
@@ -4459,10 +4521,10 @@ impl AppState {
     }
 
     fn indent_unit_for_line(&self, current_indent: &str) -> String {
-        if current_indent.contains('\t') {
+        if current_indent.contains('\t') || !self.indent_config.insert_spaces {
             "\t".to_string()
         } else {
-            "    ".to_string()
+            " ".repeat(self.indent_config.tab_width as usize)
         }
     }
 

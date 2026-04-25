@@ -92,9 +92,26 @@ pub struct SpacingUiConfig {
 pub struct EditorUiConfig {
     pub relative_numbers: bool,
     pub font_family: Option<String>,
+    pub font_size: f32,
+    pub line_height: f32,
     pub smooth_scroll_enabled: bool,
     pub smooth_scroll_lerp_rate: f32,
     pub smooth_scroll_snap_epsilon: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IndentConfig {
+    pub tab_width: u8,
+    pub insert_spaces: bool,
+}
+
+impl Default for IndentConfig {
+    fn default() -> Self {
+        Self {
+            tab_width: 4,
+            insert_spaces: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -117,6 +134,7 @@ pub struct UiConfig {
     pub status_bar: StatusBarUiConfig,
     pub editor: EditorUiConfig,
     pub welcome: WelcomeUiConfig,
+    pub indent: IndentConfig,
     pub border_radius_px: f32,
 }
 
@@ -209,6 +227,8 @@ impl UiConfig {
             editor: EditorUiConfig {
                 relative_numbers: false,
                 font_family: None,
+                font_size: 14.0,
+                line_height: 20.0,
                 smooth_scroll_enabled: true,
                 smooth_scroll_lerp_rate: 18.0,
                 smooth_scroll_snap_epsilon: 0.01,
@@ -221,6 +241,7 @@ impl UiConfig {
                 section_gap: 16.0,
                 border_radius_px: 18.0,
             },
+            indent: IndentConfig::default(),
             border_radius_px: 0.0,
         }
     }
@@ -435,6 +456,18 @@ impl UiConfig {
             editor: EditorUiConfig {
                 relative_numbers: raw.editor.relative_numbers.unwrap_or(false),
                 font_family: raw.editor.font_family,
+                font_size: parse_positive_f32(
+                    "editor",
+                    "font_size",
+                    raw.editor.font_size.unwrap_or(fallback.editor.font_size),
+                )?,
+                line_height: parse_positive_f32(
+                    "editor",
+                    "line_height",
+                    raw.editor
+                        .line_height
+                        .unwrap_or(fallback.editor.line_height),
+                )?,
                 smooth_scroll_enabled: raw
                     .editor
                     .smooth_scroll_enabled
@@ -493,6 +526,17 @@ impl UiConfig {
                     .unwrap_or(fallback.welcome.border_radius_px)
                     .max(0.0),
             },
+            indent: IndentConfig {
+                tab_width: raw
+                    .indent
+                    .tab_width
+                    .unwrap_or(fallback.indent.tab_width)
+                    .max(1),
+                insert_spaces: raw
+                    .indent
+                    .insert_spaces
+                    .unwrap_or(fallback.indent.insert_spaces),
+            },
             border_radius_px: raw.border_radius_px.unwrap_or(fallback.border_radius_px),
         };
         config.validate()?;
@@ -510,6 +554,9 @@ impl UiConfig {
         if let Ok(override_config) = Self::from_raw(raw) {
             self.docks = override_config.docks;
             self.editor.font_family = override_config.editor.font_family;
+            self.editor.font_size = override_config.editor.font_size;
+            self.editor.line_height = override_config.editor.line_height;
+            self.indent = override_config.indent;
             self.border_radius_px = override_config.border_radius_px;
         }
         self
@@ -600,6 +647,8 @@ struct RawUiFile {
     editor: RawEditorSection,
     #[serde(default)]
     welcome: RawWelcome,
+    #[serde(default)]
+    indent: RawIndent,
     border_radius_px: Option<f32>,
 }
 
@@ -662,9 +711,17 @@ struct RawStatusBar {
 struct RawEditorSection {
     relative_numbers: Option<bool>,
     font_family: Option<String>,
+    font_size: Option<f32>,
+    line_height: Option<f32>,
     smooth_scroll_enabled: Option<bool>,
     smooth_scroll_lerp_rate: Option<f32>,
     smooth_scroll_snap_epsilon: Option<f32>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RawIndent {
+    tab_width: Option<u8>,
+    insert_spaces: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -681,7 +738,14 @@ struct RawWelcome {
 struct UserUiConfigFile {
     docks: UserUiDocks,
     editor: UserUiEditor,
+    indent: UserUiIndent,
     border_radius_px: f32,
+}
+
+#[derive(Debug, Serialize)]
+struct UserUiIndent {
+    tab_width: u8,
+    insert_spaces: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -699,6 +763,8 @@ struct UserUiDocks {
 struct UserUiEditor {
     relative_numbers: bool,
     font_family: Option<String>,
+    font_size: f32,
+    line_height: f32,
 }
 
 impl From<&UiConfig> for UserUiConfigFile {
@@ -716,6 +782,12 @@ impl From<&UiConfig> for UserUiConfigFile {
             editor: UserUiEditor {
                 relative_numbers: value.editor.relative_numbers,
                 font_family: value.editor.font_family.clone(),
+                font_size: value.editor.font_size,
+                line_height: value.editor.line_height,
+            },
+            indent: UserUiIndent {
+                tab_width: value.indent.tab_width,
+                insert_spaces: value.indent.insert_spaces,
             },
             border_radius_px: value.border_radius_px,
         }

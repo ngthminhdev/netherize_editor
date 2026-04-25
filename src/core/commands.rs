@@ -63,6 +63,7 @@ pub enum Command {
     InsertText(String),
     Newline,
     Backspace,
+    InsertTab,
     InsertLineBelow,
     InsertLineAbove,
     InsertAtLineStart,
@@ -361,6 +362,7 @@ impl Command {
                 | Self::DeleteWordForward
                 | Self::DeleteWordBackward
                 | Self::InsertChar(_)
+                | Self::InsertTab
                 | Self::Newline
                 | Self::ScrollHalfPageUp
                 | Self::ScrollHalfPageDown

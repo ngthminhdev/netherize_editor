@@ -54,6 +54,7 @@ impl AppShell {
         let base_theme = ThemeConfig::load_preferred(persistent_state.configured_theme_profile());
         let theme = base_theme.clone();
         let ui_config = UiConfig::load_active();
+        app_state.set_indent_config(ui_config.indent);
         let layout_engine = WorkbenchLayoutEngine::new(
             crate::workbench::layout_engine::WorkbenchLayoutConfig::from_ui_theme(&theme.ui),
         );

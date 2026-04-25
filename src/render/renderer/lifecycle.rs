@@ -229,7 +229,7 @@ impl Renderer {
             statusbar_padding_x: 14.0,
             statusbar_font_size,
             statusbar_line_height,
-            welcome_version: "v0.3.1-alpha".to_string(),
+            welcome_version: "v1.0.0-alpha".to_string(),
             welcome_card_max_width: 560.0,
             welcome_card_padding_x: 42.0,
             welcome_card_padding_y: 34.0,

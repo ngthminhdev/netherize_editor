@@ -27,6 +27,7 @@ pub const SEARCH_WORD_UNDER_CURSOR: &str = "editor.search_word_under_cursor";
 pub const CLEAR_SEARCH_HIGHLIGHTS: &str = "editor.clear_search_highlights";
 pub const BACKSPACE: &str = "editor.backspace";
 pub const NEWLINE: &str = "editor.newline";
+pub const INSERT_TAB: &str = "editor.insert_tab";
 pub const INSERT_LINE_BELOW: &str = "editor.insert_line_below";
 pub const INSERT_LINE_ABOVE: &str = "editor.insert_line_above";
 pub const INSERT_AT_LINE_START: &str = "editor.insert_at_line_start";
@@ -191,6 +192,7 @@ pub const ALL_IDS: &[&str] = &[
     CLEAR_SEARCH_HIGHLIGHTS,
     BACKSPACE,
     NEWLINE,
+    INSERT_TAB,
     INSERT_LINE_BELOW,
     INSERT_LINE_ABOVE,
     INSERT_AT_LINE_START,
@@ -332,6 +334,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         CLEAR_SEARCH_HIGHLIGHTS => Some(Command::ClearSearchHighlights),
         BACKSPACE => Some(Command::Backspace),
         NEWLINE => Some(Command::Newline),
+        INSERT_TAB => Some(Command::InsertTab),
         INSERT_LINE_BELOW => Some(Command::InsertLineBelow),
         INSERT_LINE_ABOVE => Some(Command::InsertLineAbove),
         INSERT_AT_LINE_START => Some(Command::InsertAtLineStart),

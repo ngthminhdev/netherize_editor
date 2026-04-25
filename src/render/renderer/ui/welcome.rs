@@ -11,7 +11,8 @@ use crate::{
 };
 
 use super::super::helpers::{
-    estimate_monospace_width, layout_panel_text, layout_panel_text_bold, rect_to_scissor,
+    ShortcutHintSegment, estimate_monospace_width, layout_panel_text, layout_panel_text_bold,
+    layout_shortcut_hint, rect_to_scissor,
 };
 
 impl Renderer {
@@ -222,28 +223,49 @@ impl Renderer {
         );
 
         let actions = [
-            ("New buffer", ":new"),
-            ("Open project", "⌘ O"),
-            ("File finder", "spc ff"),
-            ("Word search", "spc fw"),
+            ("Open project", [ShortcutHintSegment::Keys(&["⌘", "O"])]),
+            (
+                "File finder",
+                [ShortcutHintSegment::Keys(&["<space>", "f", "f"])],
+            ),
+            (
+                "Word search",
+                [ShortcutHintSegment::Keys(&["<space>", "f", "w"])],
+            ),
+            ("Cheat Sheet", [ShortcutHintSegment::Keys(&[":", "help"])]),
         ];
         let action_gap = sx(10.0);
-        let action_width = |label: &str, key: &str| {
-            (sx(112.0) + key.chars().count() as f32 * sx(5.0))
-                .max(sx(32.0) + text_w(label, sx(12.0)) + text_w(key, sx(10.0)))
+        let action_width = |label: &str, segments: &[ShortcutHintSegment<'_>]| {
+            let key_width: f32 = segments
+                .iter()
+                .map(|segment| match segment {
+                    ShortcutHintSegment::Text(text) => text_w(text, sx(10.0)) + sx(8.0),
+                    ShortcutHintSegment::Keys(keys) => {
+                        let key_gap = sx(4.0);
+                        keys.iter()
+                            .map(|key| text_w(key, sx(10.0)) + sx(12.8))
+                            .sum::<f32>()
+                            + key_gap * (keys.len().saturating_sub(1) as f32)
+                    }
+                })
+                .sum();
+            (sx(132.0) + key_width).max(sx(36.0) + text_w(label, sx(12.0)) + key_width)
         };
         let total_actions_w: f32 = actions
             .iter()
-            .map(|(label, key)| action_width(label, key))
+            .map(|(label, segments)| action_width(label, segments))
             .sum::<f32>()
             + action_gap * (actions.len().saturating_sub(1) as f32);
         let mut ax = cx - total_actions_w * 0.5;
         let ay = meta_y + sx(58.0);
-        for (label, key) in actions {
-            let w = action_width(label, key);
-            chrome.push(RegionDrawInstance::new([ax, ay, w, sx(32.0)], panel).with_radius(sx(7.0)));
+        for (label, segments) in actions {
+            let w = action_width(label, &segments);
             chrome
                 .push(RegionDrawInstance::new([ax, ay, w, sx(32.0)], border).with_radius(sx(7.0)));
+            chrome.push(
+                RegionDrawInstance::new([ax + sx(1.0), ay + sx(1.0), w - sx(2.0), sx(30.0)], panel)
+                    .with_radius(sx(6.0)),
+            );
             line(
                 self,
                 &mut glyphs,
@@ -255,24 +277,41 @@ impl Renderer {
                 fg_dim,
                 false,
             );
-            let kw = key.chars().count() as f32 * sx(6.5) + sx(12.0);
-            let mut abg = accent;
-            abg[3] = 0.12;
-            chrome.push(
-                RegionDrawInstance::new([ax + w - kw - sx(10.0), ay + sx(8.0), kw, sx(16.0)], abg)
-                    .with_radius(sx(3.0)),
-            );
-            line(
-                self,
-                &mut glyphs,
-                key,
-                ax + w - kw - sx(4.0),
-                ay + sx(8.0),
+            self.welcome_logo_text_system
+                .set_metrics(Metrics::new(sx(10.0), sx(14.0)));
+            let mut action_key_bg = panel;
+            action_key_bg[3] = 0.98;
+            let mut action_key_shadow = border;
+            action_key_shadow[3] = 0.95;
+            glyphs.extend(layout_shortcut_hint(
+                &segments,
+                &mut self.welcome_logo_text_system,
+                &mut self.atlas,
+                &self.queue,
+                &mut chrome,
+                ax + w
+                    - sx(10.0)
+                    - segments
+                        .iter()
+                        .map(|segment| match segment {
+                            ShortcutHintSegment::Text(text) => text_w(text, sx(10.0)) + sx(8.0),
+                            ShortcutHintSegment::Keys(keys) => {
+                                let key_gap = sx(4.0);
+                                keys.iter()
+                                    .map(|key| text_w(key, sx(10.0)) + sx(12.8))
+                                    .sum::<f32>()
+                                    + key_gap * (keys.len().saturating_sub(1) as f32)
+                            }
+                        })
+                        .sum::<f32>(),
+                ay + sx(5.0),
                 sx(10.0),
                 sx(14.0),
                 accent,
-                true,
-            );
+                action_key_bg,
+                action_key_shadow,
+                fg,
+            ));
             ax += w + action_gap;
         }
         let rust_line = "100% Rust · entire editor rendered on the GPU";
@@ -444,47 +483,54 @@ impl Renderer {
         );
         y += sx(24.0);
         let shortcuts = [
-            (vec!["⌘", "O"], "Open file or project"),
-            (vec!["j", "k", "enter"], "Select recent project"),
-            (vec!["<space>", "f", "f"], "File picker (fuzzy find)"),
-            (vec!["<space>", "f", "w"], "Find word / grep (fzf)"),
+            (
+                [
+                    ShortcutHintSegment::Keys(&["⌘", "O"]),
+                    ShortcutHintSegment::Text("Open file or project"),
+                ],
+                sx(172.0),
+            ),
+            (
+                [
+                    ShortcutHintSegment::Keys(&["j", "k", "enter"]),
+                    ShortcutHintSegment::Text("Select recent project"),
+                ],
+                sx(172.0),
+            ),
+            (
+                [
+                    ShortcutHintSegment::Keys(&["<space>", "f", "f"]),
+                    ShortcutHintSegment::Text("File picker (fuzzy find)"),
+                ],
+                sx(172.0),
+            ),
+            (
+                [
+                    ShortcutHintSegment::Keys(&["<space>", "f", "w"]),
+                    ShortcutHintSegment::Text("Find word / grep (fzf)"),
+                ],
+                sx(172.0),
+            ),
         ];
-        for (keys, label) in shortcuts {
+        for (segments, _) in shortcuts {
             let row_y = y;
-            let mut kx = rx;
-            for k in keys {
-                let kw = k.chars().count() as f32 * sx(6.5) + sx(14.0);
-                chrome.push(
-                    RegionDrawInstance::new([kx, row_y, kw, sx(22.0)], panel).with_radius(sx(5.0)),
-                );
-                chrome.push(
-                    RegionDrawInstance::new([kx, row_y + sx(21.0), kw, sx(2.0)], bg)
-                        .with_radius(sx(2.0)),
-                );
-                line(
-                    self,
-                    &mut glyphs,
-                    k,
-                    kx + sx(7.0),
-                    row_y + sx(4.0),
-                    sx(11.0),
-                    sx(14.0),
-                    fg,
-                    true,
-                );
-                kx += kw + sx(4.0);
-            }
-            line(
-                self,
-                &mut glyphs,
-                label,
-                rx + sx(172.0),
-                row_y + sx(4.0),
-                sx(12.5),
-                sx(16.0),
+            self.welcome_logo_text_system
+                .set_metrics(Metrics::new(sx(11.0), sx(14.0)));
+            glyphs.extend(layout_shortcut_hint(
+                &segments,
+                &mut self.welcome_logo_text_system,
+                &mut self.atlas,
+                &self.queue,
+                &mut chrome,
+                rx,
+                row_y,
+                sx(11.0),
+                sx(14.0),
                 fg_dim,
-                false,
-            );
+                panel,
+                bg,
+                fg,
+            ));
             let mut sub = border;
             sub[3] = 0.45;
             chrome.push(RegionDrawInstance::new(

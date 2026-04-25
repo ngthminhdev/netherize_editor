@@ -6,13 +6,15 @@ use crate::{
 };
 
 use super::super::helpers::{
-    clamp_monospace_text, estimate_monospace_width, layout_panel_text, rect_to_scissor,
+    clamp_monospace_text, estimate_monospace_width, layout_panel_text, layout_shortcut_hint,
+    rect_to_scissor, ShortcutHintSegment,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SettingsSection {
     Appearance,
     Typography,
+    Editor,
     Layout,
 }
 
@@ -21,6 +23,7 @@ impl SettingsSection {
         match self {
             Self::Appearance => "APPEARANCE",
             Self::Typography => "TYPOGRAPHY",
+            Self::Editor => "EDITOR",
             Self::Layout => "LAYOUT",
         }
     }
@@ -32,6 +35,9 @@ impl SettingItem {
             Self::ThemeSelector { .. } | Self::UiRounding { .. } => SettingsSection::Appearance,
             Self::FontFamily { .. } | Self::FontSize { .. } | Self::LineHeight { .. } => {
                 SettingsSection::Typography
+            }
+            Self::IndentTabWidth { .. } | Self::IndentInsertSpaces { .. } => {
+                SettingsSection::Editor
             }
             Self::SidebarWidth { .. }
             | Self::RightSidebarWidth { .. }
@@ -50,6 +56,12 @@ impl SettingItem {
             Self::FontSize { .. } => "Base text size. Use h/l for quick ±0.5 adjustments.",
             Self::LineHeight { .. } => {
                 "Vertical spacing between lines for denser or calmer presentation."
+            }
+            Self::IndentTabWidth { .. } => {
+                "Spaces inserted per Tab key press. Use h/l or Enter to edit (range 1–8)."
+            }
+            Self::IndentInsertSpaces { .. } => {
+                "Press Enter to toggle: spaces keep indent visible; tabs compress display."
             }
             Self::SidebarWidth { .. } => {
                 "Reserved width for the left dock when the workspace sidebar is shown."
@@ -77,6 +89,10 @@ impl SettingItem {
                 }
             }
             Self::FontSize { current } | Self::LineHeight { current } => format!("{current:.1}"),
+            Self::IndentTabWidth { current } => current.to_string(),
+            Self::IndentInsertSpaces { enabled } => {
+                if *enabled { "true" } else { "false" }.to_string()
+            }
             Self::SidebarWidth { current }
             | Self::RightSidebarWidth { current }
             | Self::BottomPanelHeight { current } => current.to_string(),
@@ -101,6 +117,10 @@ impl SettingItem {
                 }
             }
             Self::FontSize { current } | Self::LineHeight { current } => format!("{current:.1}"),
+            Self::IndentTabWidth { current } => format!("{current} spaces"),
+            Self::IndentInsertSpaces { enabled } => {
+                if *enabled { "Spaces" } else { "Tabs" }.to_string()
+            }
             Self::SidebarWidth { current }
             | Self::RightSidebarWidth { current }
             | Self::BottomPanelHeight { current } => format!("{current} px"),
@@ -133,6 +153,7 @@ fn current_row_value(settings: &SettingsState, item: &SettingItem, is_selected: 
         (SettingsEditingKind::FontFamily, SettingItem::FontFamily { .. })
         | (SettingsEditingKind::FontSize, SettingItem::FontSize { .. })
         | (SettingsEditingKind::LineHeight, SettingItem::LineHeight { .. })
+        | (SettingsEditingKind::IndentTabWidth, SettingItem::IndentTabWidth { .. })
         | (SettingsEditingKind::SidebarWidth, SettingItem::SidebarWidth { .. })
         | (SettingsEditingKind::RightSidebarWidth, SettingItem::RightSidebarWidth { .. })
         | (SettingsEditingKind::BottomPanelHeight, SettingItem::BottomPanelHeight { .. }) => {
@@ -159,6 +180,19 @@ fn settings_preview_lines(settings: &SettingsState) -> Vec<String> {
     for item in &settings.items {
         if let SettingItem::FontFamily { .. } = item {
             lines.push(format!("font_family = {}", item.preview_value()));
+        }
+    }
+
+    lines.extend(["".to_string(), "[indent]".to_string()]);
+    for item in &settings.items {
+        match item {
+            SettingItem::IndentTabWidth { .. } => {
+                lines.push(format!("tab_width = {}", item.preview_value()))
+            }
+            SettingItem::IndentInsertSpaces { .. } => {
+                lines.push(format!("insert_spaces = {}", item.preview_value()))
+            }
+            _ => {}
         }
     }
 
@@ -233,7 +267,7 @@ impl Renderer {
         let right_x = left_x + left_w + gap;
 
         let titlebar_h = line_height + 10.0;
-        let header_h = line_height + 24.0 + titlebar_h;
+        let header_h = line_height * 2.0 + 32.0 + titlebar_h;
         let footer_h = line_height + 12.0;
         let content_top = panel_y + header_h;
         let content_bottom = panel_y + panel_h;
@@ -355,11 +389,11 @@ impl Renderer {
             accent,
         ));
 
-        let key_col_w = 220.0;
-        let value_col_w = 160.0;
-        let desc_x_offset = 220.0;
-        let section_gap = 12.0;
-        let row_h = line_height * 2.0 + 14.0;
+        let key_col_w = 400.0;
+        let value_col_w = 300.0;
+        let desc_x_offset = 410.0;
+        let section_gap = 14.0;
+        let row_h = line_height * 2.0 + 18.0;
         let mut current_y = content_top + 8.0;
         let mut last_section: Option<SettingsSection> = None;
 
@@ -369,8 +403,10 @@ impl Renderer {
                 if last_section.is_some() {
                     current_y += section_gap;
                 }
+                self.editor_overlay_text_system
+                    .set_size(Some(key_col_w), Some(line_height));
                 glyphs.extend(layout_panel_text(
-                    section.label(),
+                    &clamp_monospace_text(section.label(), key_col_w, font_size),
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
@@ -380,9 +416,9 @@ impl Renderer {
                 ));
                 chrome.push(RegionDrawInstance::new(
                     [
-                        left_x + 14.0 + 140.0,
+                        left_x + 14.0 + key_col_w,
                         current_y + 7.0,
-                        (left_w - 170.0).max(1.0),
+                        (left_w - (key_col_w + 30.0)).max(1.0),
                         1.0,
                     ],
                     divider,
@@ -445,9 +481,10 @@ impl Renderer {
             ));
 
             match item {
-                SettingItem::UiRounding { enabled, .. } => {
-                    let toggle_w = 34.0;
-                    let toggle_h = 18.0;
+                SettingItem::UiRounding { enabled, .. }
+                | SettingItem::IndentInsertSpaces { enabled } => {
+                    let toggle_w = 40.0;
+                    let toggle_h = 20.0;
                     let toggle_x = left_x + left_w - toggle_w - 18.0;
                     let toggle_y = current_y + (row_h - toggle_h) * 0.5;
                     chrome.push(
@@ -459,24 +496,44 @@ impl Renderer {
                                 with_alpha(fg_ghost, 0.28)
                             },
                         )
-                        .with_radius(9.0),
+                        .with_radius(10.0),
                     );
                     chrome.push(
                         RegionDrawInstance::new(
                             [
                                 if *enabled {
-                                    toggle_x + toggle_w - 14.0
+                                    toggle_x + toggle_w - 16.0
                                 } else {
                                     toggle_x + 2.0
                                 },
                                 toggle_y + 2.0,
-                                14.0,
-                                14.0,
+                                16.0,
+                                16.0,
                             ],
                             if *enabled { editor_bg } else { fg_dim },
                         )
-                        .with_radius(7.0),
+                        .with_radius(8.0),
                     );
+                    let badge_label = match item {
+                        SettingItem::IndentInsertSpaces { enabled } => {
+                            if *enabled { "SPC" } else { "TAB" }
+                        }
+                        _ => "",
+                    };
+                    if !badge_label.is_empty() {
+                        let badge_x = toggle_x - estimate_monospace_width(badge_label, font_size) - 10.0;
+                        self.editor_overlay_text_system
+                            .set_size(Some(80.0), Some(line_height));
+                        glyphs.extend(layout_panel_text(
+                            badge_label,
+                            &mut self.editor_overlay_text_system,
+                            &mut self.atlas,
+                            &self.queue,
+                            badge_x,
+                            toggle_y + (toggle_h - line_height) * 0.5,
+                            if *enabled { accent } else { fg_ghost },
+                        ));
+                    }
                 }
                 _ => {
                     chrome.push(
@@ -553,42 +610,42 @@ impl Renderer {
             ));
         }
 
-        let left_status = if settings.editing.is_some() {
-            "EDIT  Enter commit · Backspace delete · Esc cancel"
-        } else {
-            "NAV   Enter edit/open · h/l adjust · j/k move"
-        };
         self.editor_overlay_text_system
             .set_size(Some(left_text_width), Some(line_height));
-        glyphs.extend(layout_panel_text(
-            &clamp_monospace_text(left_status, left_text_width, font_size),
+        let footer_y = content_bottom - footer_h + 4.0;
+        let left_status = if settings.editing.is_some() {
+            [
+                ShortcutHintSegment::Keys(&["EDIT"]),
+                ShortcutHintSegment::Text("type to change  ·"),
+                ShortcutHintSegment::Keys(&["Enter"]),
+                ShortcutHintSegment::Text("commit  ·"),
+                ShortcutHintSegment::Keys(&["Esc"]),
+                ShortcutHintSegment::Text("cancel"),
+            ]
+        } else {
+            [
+                ShortcutHintSegment::Keys(&["NAV"]),
+                ShortcutHintSegment::Text("Enter edit  ·"),
+                ShortcutHintSegment::Keys(&["h", "l"]),
+                ShortcutHintSegment::Text("adjust  ·"),
+                ShortcutHintSegment::Keys(&["j", "k"]),
+                ShortcutHintSegment::Text("move"),
+            ]
+        };
+        glyphs.extend(layout_shortcut_hint(
+            &left_status,
             &mut self.editor_overlay_text_system,
             &mut self.atlas,
             &self.queue,
+            &mut chrome,
             left_x + 10.0,
-            content_bottom - footer_h + 4.0,
-            fg_dim,
-        ));
-
-        self.editor_overlay_text_system
-            .set_size(Some(left_text_width), Some(line_height));
-        let left_status = if settings.editing.is_some() {
-            "EDIT  ·  type to change  ·  Enter commit  ·  Esc cancel"
-        } else {
-            "NAV  ·  Enter edit  ·  h/l adjust  ·  j/k move"
-        };
-        glyphs.extend(layout_panel_text(
-            &clamp_monospace_text(left_status, left_text_width, font_size),
-            &mut self.editor_overlay_text_system,
-            &mut self.atlas,
-            &self.queue,
-            left_x + 10.0,
-            content_bottom - footer_h + 4.0,
-            if settings.editing.is_some() {
-                accent
-            } else {
-                fg_dim
-            },
+            footer_y,
+            font_size,
+            line_height,
+            if settings.editing.is_some() { accent } else { fg_dim },
+            panel_bg,
+            divider,
+            fg,
         ));
 
         self.editor_overlay_chrome_instances = chrome;
