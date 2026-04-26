@@ -821,6 +821,7 @@ impl AppShell {
             Command::LspGoToDefinition => self.submit_lsp_definition(true),
             Command::LspPreviewDefinition => self.submit_lsp_definition(false),
             Command::LspReferences => self.submit_lsp_references(),
+            Command::LspFormatDocument => self.submit_lsp_format_document(),
             Command::TriggerCompletion => self.submit_lsp_completion(),
             Command::CompletionNext => self.select_next_completion_item(),
             Command::CompletionPrev => self.select_prev_completion_item(),
@@ -2183,6 +2184,26 @@ impl AppShell {
         }
         self.request_redraw();
         changed || focus_changed
+    }
+
+    fn submit_lsp_format_document(&mut self) -> bool {
+        self.force_flush_lsp_did_change_for_active_file();
+        let Some((language_id, uri, _line, _character)) = self.lsp_cursor_context() else {
+            return false;
+        };
+        let indent = self.app_state.indent_config();
+        let changed = self.app_state.clear_current_overlays();
+        self.submit(RequestSpec {
+            revision_id: self.app_state.revision(),
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspFormattingRequest {
+                language_id,
+                uri,
+                tab_size: indent.tab_width as u32,
+                insert_spaces: indent.insert_spaces,
+            },
+        });
+        changed
     }
 
     fn select_next_reference_item(&mut self) -> bool {

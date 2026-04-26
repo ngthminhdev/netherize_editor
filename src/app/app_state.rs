@@ -4040,6 +4040,35 @@ impl AppState {
         true
     }
 
+    pub fn indent_config(&self) -> IndentConfig {
+        self.indent_config
+    }
+
+    pub fn replace_active_document_text_preserve_cursor(&mut self, text: &str) -> bool {
+        if self.active_text_buffer().is_none() {
+            return false;
+        }
+
+        if self.text.to_string() == text {
+            return false;
+        }
+
+        let (cursor_line, cursor_col) = self.cursor_line_col();
+        self.text = Rope::from(text);
+
+        let max_line = self.text.len_lines().saturating_sub(1);
+        let clamped_line = cursor_line.min(max_line);
+        let line_start = self.text.line_to_char(clamped_line);
+        let max_col = self.max_col_for_line(clamped_line);
+        self.cursor_char_idx = line_start + cursor_col.min(max_col);
+        self.target_col = self.cursor_line_col().1;
+        self.dirty = true;
+        self.search_highlights.clear();
+        self.clear_completion();
+        self.bump_revision();
+        true
+    }
+
     pub fn completion_select_next(&mut self) -> bool {
         let Some(state) = self.completion.as_mut() else {
             return false;

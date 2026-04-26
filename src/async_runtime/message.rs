@@ -202,6 +202,13 @@ pub enum WorkerRequestPayload {
         line: u32,
         character: u32,
     },
+    /// textDocument/formatting request.
+    LspFormattingRequest {
+        language_id: String,
+        uri: String,
+        tab_size: u32,
+        insert_spaces: bool,
+    },
     /// textDocument/completion request.
     LspCompletionRequest {
         language_id: String,
@@ -254,6 +261,12 @@ pub struct LspCompletionItem {
     pub insert_text: Option<String>,
     pub text_edit_text: Option<String>,
     pub kind: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LspTextEdit {
+    pub range: LspRange,
+    pub new_text: String,
 }
 
 /// Result worker trả về main thread.
@@ -378,6 +391,11 @@ pub enum WorkerResultPayload {
     /// textDocument/references response.
     LspReferencesResult {
         locations: Vec<LspLocation>,
+    },
+    /// textDocument/formatting response.
+    LspFormattingResult {
+        uri: String,
+        edits: Vec<LspTextEdit>,
     },
     /// textDocument/completion response.
     LspCompletionResult {

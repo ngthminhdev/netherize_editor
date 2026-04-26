@@ -34,6 +34,15 @@ fn input_from_named(named_key: NamedKey) -> NormalizedInput {
     }
 }
 
+fn input_from_physical(key: KeyCode, text: &str) -> NormalizedInput {
+    NormalizedInput {
+        physical_key: Some(key),
+        named_key: None,
+        text: Some(text.to_string()),
+        modifiers: ModifiersState::empty(),
+    }
+}
+
 #[test]
 fn table_driven_keybinding_resolution() {
     struct Case {
@@ -633,6 +642,38 @@ fn table_driven_keybinding_resolution() {
             .map(|matched| matched.command);
         assert_eq!(actual, case.expected, "case={}", case.name);
     }
+}
+
+#[test]
+fn default_profile_leader_f_m_routes_to_lsp_format_document() {
+    let map = make_default_profile_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+
+    let first = map.resolve_sequence_start(&input_from_named(NamedKey::Space), context);
+    let SequenceMatch::Pending(first_pending) = first.expect("leader should start pending") else {
+        panic!("expected pending leader sequence");
+    };
+
+    let second = map.resolve_sequence_next(
+        &first_pending,
+        &input_from_physical(KeyCode::KeyF, "f"),
+        context,
+    );
+    let SequenceMatch::Pending(second_pending) = second.expect("leader f should stay pending")
+    else {
+        panic!("expected pending leader f sequence");
+    };
+
+    let third = map.resolve_sequence_next(
+        &second_pending,
+        &input_from_physical(KeyCode::KeyM, "m"),
+        context,
+    );
+    let SequenceMatch::Dispatch(matched) = third.expect("leader f m should dispatch") else {
+        panic!("expected dispatch for leader f m");
+    };
+
+    assert_eq!(matched.command, Command::LspFormatDocument);
 }
 
 #[test]

@@ -95,6 +95,7 @@ pub const LSP_HOVER: &str = "lsp.hover";
 pub const LSP_GO_TO_DEFINITION: &str = "lsp.go_to_definition";
 pub const LSP_PREVIEW_DEFINITION: &str = "lsp.preview_definition";
 pub const LSP_REFERENCES: &str = "lsp.references";
+pub const LSP_FORMAT_DOCUMENT: &str = "lsp.format_document";
 pub const LSP_TRIGGER_COMPLETION: &str = "lsp.trigger_completion";
 pub const COMPLETION_NEXT: &str = "completion.next";
 pub const COMPLETION_PREV: &str = "completion.prev";
@@ -243,6 +244,7 @@ pub const ALL_IDS: &[&str] = &[
     LSP_GO_TO_DEFINITION,
     LSP_PREVIEW_DEFINITION,
     LSP_REFERENCES,
+    LSP_FORMAT_DOCUMENT,
     LSP_TRIGGER_COMPLETION,
     COMPLETION_NEXT,
     COMPLETION_PREV,
@@ -392,6 +394,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         LSP_GO_TO_DEFINITION => Some(Command::LspGoToDefinition),
         LSP_PREVIEW_DEFINITION => Some(Command::LspPreviewDefinition),
         LSP_REFERENCES => Some(Command::LspReferences),
+        LSP_FORMAT_DOCUMENT => Some(Command::LspFormatDocument),
         LSP_TRIGGER_COMPLETION => Some(Command::TriggerCompletion),
         COMPLETION_NEXT => Some(Command::CompletionNext),
         COMPLETION_PREV => Some(Command::CompletionPrev),

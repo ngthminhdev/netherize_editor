@@ -465,6 +465,40 @@ impl AsyncResultRouter for AppShell {
                     self.request_redraw();
                 }
             }
+            WorkerResultPayload::LspFormattingResult { uri, edits } => {
+                let Some(path) = lsp_uri_to_path(&uri) else {
+                    eprintln!("[AppShell] LSP formatting: cannot parse URI {uri}");
+                    return;
+                };
+                let Some(active_path) = self.app_state.active_file().map(PathBuf::from) else {
+                    return;
+                };
+                if active_path != path {
+                    return;
+                }
+
+                let mut formatted = self.app_state.text_string();
+                if !edits.is_empty() {
+                    match apply_lsp_text_edits(&formatted, &edits) {
+                        Ok(next) => formatted = next,
+                        Err(err) => {
+                            eprintln!("[AppShell] LSP formatting apply failed: {err}");
+                            return;
+                        }
+                    }
+                }
+
+                let changed = self
+                    .app_state
+                    .replace_active_document_text_preserve_cursor(&formatted);
+                if changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = true;
+                    self.submit_parse_for_active_buffer(true);
+                    self.force_flush_lsp_did_change_for_active_file();
+                    self.request_redraw();
+                }
+            }
             WorkerResultPayload::LspCompletionResult {
                 items,
                 cursor_line,
@@ -544,6 +578,59 @@ fn lsp_uri_to_path(uri: &str) -> Option<std::path::PathBuf> {
     let url = url::Url::parse(uri).ok()?;
     let path = url.to_file_path().ok()?;
     path.canonicalize().ok().or(Some(path))
+}
+
+fn apply_lsp_text_edits(
+    source: &str,
+    edits: &[crate::async_runtime::message::LspTextEdit],
+) -> Result<String, String> {
+    fn utf16_code_unit_to_byte_idx(text: &str, utf16_units: u32) -> Option<usize> {
+        let target = utf16_units as usize;
+        let mut seen = 0usize;
+        for (byte_idx, ch) in text.char_indices() {
+            if seen == target {
+                return Some(byte_idx);
+            }
+            seen += ch.len_utf16();
+            if seen > target {
+                return None;
+            }
+        }
+        (seen == target).then_some(text.len())
+    }
+
+    fn lsp_position_to_byte_idx(text: &str, line: u32, character: u32) -> Option<usize> {
+        let mut lines = text.split_inclusive('\n');
+        let mut byte_offset = 0usize;
+        for _ in 0..line {
+            byte_offset += lines.next()?.len();
+        }
+        let line_text = lines.next().unwrap_or("");
+        let line_without_newline = line_text.strip_suffix('\n').unwrap_or(line_text);
+        let byte_in_line = utf16_code_unit_to_byte_idx(line_without_newline, character)
+            .or_else(|| utf16_code_unit_to_byte_idx(line_text, character))?;
+        Some(byte_offset + byte_in_line)
+    }
+
+    let mut resolved = Vec::with_capacity(edits.len());
+    for edit in edits {
+        let start =
+            lsp_position_to_byte_idx(source, edit.range.start.line, edit.range.start.character)
+                .ok_or_else(|| "invalid LSP formatting start position".to_string())?;
+        let end = lsp_position_to_byte_idx(source, edit.range.end.line, edit.range.end.character)
+            .ok_or_else(|| "invalid LSP formatting end position".to_string())?;
+        if start > end || end > source.len() {
+            return Err("invalid LSP formatting edit range".to_string());
+        }
+        resolved.push((start, end, edit.new_text.as_str()));
+    }
+
+    resolved.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+    let mut result = source.to_string();
+    for (start, end, replacement) in resolved {
+        result.replace_range(start..end, replacement);
+    }
+    Ok(result)
 }
 
 /// Đọc ~(context*2+1) dòng code quanh `center_line` từ file để preview (gD).

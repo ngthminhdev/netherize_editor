@@ -183,6 +183,7 @@ command = "editor.delete_word_backward"
 
 [[bindings]] mode = "normal", key = "<leader>f f", command = "app.open_file_finder"
 [[bindings]] mode = "normal", key = "<leader>f a", command = "files.find_all_hidden_no_ignore"
+[[bindings]] mode = "normal", key = "<leader>f m", command = "lsp.format_document"
 [[bindings]] mode = "normal", key = "<leader>f w", command = "app.search_in_files"
 [[bindings]] mode = "normal", key = "<leader>f b", command = "search.buffers"
 [[bindings]] mode = "normal", key = "<leader>f h", command = "search.help_tags"

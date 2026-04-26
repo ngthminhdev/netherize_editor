@@ -136,6 +136,34 @@ fn leader_space_f_w_maps_to_search_in_files() {
 }
 
 #[test]
+fn leader_space_f_m_maps_to_format_document() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let t0 = std::time::Instant::now();
+
+    let start = handler.route_normalized_input(
+        named_input(NamedKey::Space, Some(KeyCode::Space)),
+        &map,
+        context,
+        t0,
+    );
+    assert!(matches!(start, Some(InputRouteOutcome::NoDispatch { .. })));
+
+    let follow = handler.route_normalized_input(char_input('f', KeyCode::KeyF), &map, context, t0);
+    assert!(matches!(follow, Some(InputRouteOutcome::NoDispatch { .. })));
+
+    let resolved =
+        handler.route_normalized_input(char_input('m', KeyCode::KeyM), &map, context, t0);
+    match resolved {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::LspFormatDocument);
+        }
+        other => panic!("expected dispatch, got {:?}", other),
+    }
+}
+
+#[test]
 fn fuzzy_picker_normal_mode_allows_leader_close_sequence() {
     let mut handler = InputHandler::new();
     let map = make_map();

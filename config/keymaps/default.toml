@@ -230,6 +230,11 @@ mode = "normal"
 key = "g c c"
 command = "editor.toggle_line_comment"
 
+[[bindings]]
+mode = "normal"
+key = "<leader>f m"
+command = "lsp.format_document"
+
 # `r<char>` cần payload ký tự động nên được xử lý trong InputHandler pending state,
 # không khai báo static binding ở đây.
 

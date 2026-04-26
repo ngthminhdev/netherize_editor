@@ -324,6 +324,7 @@ async fn dispatch_loop(
             WorkerRequestPayload::SpawnPtyShell { .. }
                 | WorkerRequestPayload::SpawnPtyCommand { .. }
                 | WorkerRequestPayload::SpawnDetachedShellCommand { .. }
+                | WorkerRequestPayload::LspFormattingRequest { .. }
                 | WorkerRequestPayload::WritePtyInput { .. }
                 | WorkerRequestPayload::ResizePtySession { .. }
                 | WorkerRequestPayload::ClosePtySession { .. }
@@ -1013,6 +1014,31 @@ fn execute_lsp_request(
                 .update_request_meta(request.request_id, request.revision_id);
             handle_lsp_references(&handle.process, uri, *line, *character)
         }
+        WorkerRequestPayload::LspFormattingRequest {
+            language_id,
+            uri,
+            tab_size,
+            insert_spaces,
+        } => {
+            let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
+                language_profile_for_language_id(language_id)
+                    .map(|p| p.lsp_binary)
+                    .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
+            });
+            let Some(handle) = handle else {
+                return Err("formatting rejected: LSP server not running".to_string());
+            };
+            if !handle.capabilities.document_formatting {
+                return Err(format!(
+                    "formatting rejected: {} does not advertise documentFormattingProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_formatting(&handle.process, uri, *tab_size, *insert_spaces)
+        }
         WorkerRequestPayload::LspCompletionRequest {
             language_id,
             uri,
@@ -1219,6 +1245,36 @@ fn parse_locations(result: &serde_json::Value) -> Vec<crate::async_runtime::mess
         .collect()
 }
 
+fn parse_text_edits(result: &serde_json::Value) -> Vec<crate::async_runtime::message::LspTextEdit> {
+    use crate::async_runtime::message::{LspPosition, LspRange, LspTextEdit};
+
+    result
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            let start_line = item.pointer("/range/start/line")?.as_u64()? as u32;
+            let start_character = item.pointer("/range/start/character")?.as_u64()? as u32;
+            let end_line = item.pointer("/range/end/line")?.as_u64()? as u32;
+            let end_character = item.pointer("/range/end/character")?.as_u64()? as u32;
+            let new_text = item.get("newText")?.as_str()?.to_string();
+            Some(LspTextEdit {
+                range: LspRange {
+                    start: LspPosition {
+                        line: start_line,
+                        character: start_character,
+                    },
+                    end: LspPosition {
+                        line: end_line,
+                        character: end_character,
+                    },
+                },
+                new_text,
+            })
+        })
+        .collect()
+}
+
 /// Execute hover request trong execute_lsp_request.
 fn handle_lsp_hover(
     session: &std::sync::Arc<crate::lsp::client::LspClientProcess>,
@@ -1276,6 +1332,38 @@ fn handle_lsp_definition(
         return Err("definition: no locations returned".to_string());
     }
     Ok(WorkerResultPayload::LspDefinitionResult { locations, jump })
+}
+
+fn handle_lsp_formatting(
+    session: &std::sync::Arc<crate::lsp::client::LspClientProcess>,
+    uri: &str,
+    tab_size: u32,
+    insert_spaces: bool,
+) -> Result<WorkerResultPayload, String> {
+    use serde_json::json;
+
+    let params = json!({
+        "textDocument": { "uri": uri },
+        "options": {
+            "tabSize": tab_size,
+            "insertSpaces": insert_spaces,
+        }
+    });
+    let response = lsp_request_response(session, "textDocument/formatting", params, 15)?;
+    let result = response
+        .get("result")
+        .ok_or_else(|| "formatting: no result".to_string())?;
+    if result.is_null() {
+        return Ok(WorkerResultPayload::LspFormattingResult {
+            uri: uri.to_string(),
+            edits: Vec::new(),
+        });
+    }
+
+    Ok(WorkerResultPayload::LspFormattingResult {
+        uri: uri.to_string(),
+        edits: parse_text_edits(result),
+    })
 }
 
 /// Execute references request trong execute_lsp_request.
@@ -2208,6 +2296,7 @@ async fn execute_virtual_job(
         | WorkerRequestPayload::LspHoverRequest { .. }
         | WorkerRequestPayload::LspDefinitionRequest { .. }
         | WorkerRequestPayload::LspReferencesRequest { .. }
+        | WorkerRequestPayload::LspFormattingRequest { .. }
         | WorkerRequestPayload::LspCompletionRequest { .. }
         | WorkerRequestPayload::StopLspServer => {
             Err("LSP request should be handled by dedicated LSP runner".to_string())

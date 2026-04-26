@@ -299,6 +299,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::LspGoToDefinition
         | Command::LspPreviewDefinition
         | Command::LspReferences
+        | Command::LspFormatDocument
         | Command::TriggerCompletion
         | Command::CompletionNext
         | Command::CompletionPrev
