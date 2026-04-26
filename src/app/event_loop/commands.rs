@@ -1729,39 +1729,37 @@ impl AppShell {
                 };
                 self.reconcile_highlight_spans_with_pending_edits();
 
-                if report.success {
+                // Lấy file sau dispatch để detect thay đổi.
+                let file_after = self.app_state.active_file().map(PathBuf::from);
+                let file_changed = report.success && file_after != file_before;
+
+                if file_changed {
+                    // Chỉ xóa highlight và reload LSP khi file thực sự thay đổi.
+                    // Không clear khi chỉ save (:w) vì sẽ làm mất highlight tại cursor.
                     self.clear_highlight_layers();
 
-                    // Lấy file vừa được mở
-                    let file_after = self.app_state.active_file().map(PathBuf::from);
-
-                    // Chỉ reveal khi file thực sự thay đổi
-                    if let Some(ref path) = file_after
-                        && file_after != file_before
-                    {
+                    if let Some(ref path) = file_after {
                         self.explorer_reveal_file(path);
                     }
-
-                    let viewport_lines = self.editor_viewport_lines();
-                    self.app_state.auto_scroll_to_cursor(viewport_lines);
 
                     self.submit_lsp_did_open_for_active_file();
                     let _ = self.sync_focus_mode_for_active_buffer();
 
-                    // Trigger async LSP install check khi mở file mới.
-                    // Chỉ check khi file thực sự thay đổi (tránh spam check).
-                    if let Some(ref path) = file_after
-                        && file_after != file_before
-                    {
+                    if let Some(ref path) = file_after {
                         self.submit_lsp_check_for_path(path.clone());
                     }
+                }
+
+                if report.success {
+                    let viewport_lines = self.editor_viewport_lines();
+                    self.app_state.auto_scroll_to_cursor(viewport_lines);
                 }
 
                 if report.state_changed {
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                 }
-                if report.state_changed || report.success {
+                if report.state_changed || file_changed {
                     self.submit_parse_for_active_buffer(true);
                 }
 

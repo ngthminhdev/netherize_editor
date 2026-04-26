@@ -324,7 +324,6 @@ async fn dispatch_loop(
             WorkerRequestPayload::SpawnPtyShell { .. }
                 | WorkerRequestPayload::SpawnPtyCommand { .. }
                 | WorkerRequestPayload::SpawnDetachedShellCommand { .. }
-                | WorkerRequestPayload::LspFormattingRequest { .. }
                 | WorkerRequestPayload::WritePtyInput { .. }
                 | WorkerRequestPayload::ResizePtySession { .. }
                 | WorkerRequestPayload::ClosePtySession { .. }
@@ -347,6 +346,7 @@ async fn dispatch_loop(
                 | WorkerRequestPayload::LspHoverRequest { .. }
                 | WorkerRequestPayload::LspDefinitionRequest { .. }
                 | WorkerRequestPayload::LspReferencesRequest { .. }
+                | WorkerRequestPayload::LspFormattingRequest { .. }
                 | WorkerRequestPayload::LspCompletionRequest { .. }
                 | WorkerRequestPayload::StopLspServer
         ) {
