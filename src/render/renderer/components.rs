@@ -1,19 +1,9 @@
 use crate::{
-    render::{
-        glyph_instance::GlyphInstance,
-        region_pipeline::RegionDrawInstance,
-    },
-    text::{
-        atlas::GlyphAtlas,
-        text_system::TextSystem,
-    },
+    render::{glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance},
+    text::{atlas::GlyphAtlas, text_system::TextSystem},
 };
 
-use super::helpers::{
-    estimate_monospace_width,
-    layout_panel_text,
-    layout_panel_text_bold,
-};
+use super::helpers::{estimate_monospace_width, layout_panel_text, layout_panel_text_bold};
 
 #[derive(Clone, Copy)]
 pub(super) enum ShortcutHintSegment<'a> {

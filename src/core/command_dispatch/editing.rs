@@ -76,10 +76,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         }
         Command::InsertTab => {
             let changed = ctx.app_state.insert_tab();
-            DispatchReport::success(
-                "Dispatch: applied to active buffer (insert tab)",
-                changed,
-            )
+            DispatchReport::success("Dispatch: applied to active buffer (insert tab)", changed)
         }
         Command::Backspace => {
             let changed = ctx.app_state.backspace();

@@ -135,8 +135,6 @@ fn collect_instances(
     instances
 }
 
-
-
 // ── GPU draw helper ────────────────────────────────────────────────────────────
 
 /// Draw text content clipped to `scissor`, then reset to full viewport.

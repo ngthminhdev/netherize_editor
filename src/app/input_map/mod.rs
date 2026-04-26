@@ -22,7 +22,7 @@ mod helpers;
 #[cfg(test)]
 mod tests;
 
-use helpers::{insert_command_from_text};
+use helpers::insert_command_from_text;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputFocusContext {

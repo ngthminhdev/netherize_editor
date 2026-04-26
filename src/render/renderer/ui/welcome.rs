@@ -12,8 +12,7 @@ use crate::{
 
 use super::super::{
     components::{
-        HighlightChipStyle, ShortcutHintSegment, layout_shortcut_hint,
-        push_centered_highlight_chip,
+        HighlightChipStyle, ShortcutHintSegment, layout_shortcut_hint, push_centered_highlight_chip,
     },
     helpers::{
         estimate_monospace_width, layout_panel_text, layout_panel_text_bold, rect_to_scissor,

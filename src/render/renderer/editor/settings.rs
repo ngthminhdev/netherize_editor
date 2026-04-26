@@ -7,9 +7,7 @@ use crate::{
 
 use super::super::{
     components::{ShortcutHintSegment, layout_shortcut_hint},
-    helpers::{
-        clamp_monospace_text, estimate_monospace_width, layout_panel_text, rect_to_scissor,
-    },
+    helpers::{clamp_monospace_text, estimate_monospace_width, layout_panel_text, rect_to_scissor},
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -518,12 +516,17 @@ impl Renderer {
                     );
                     let badge_label = match item {
                         SettingItem::IndentInsertSpaces { enabled } => {
-                            if *enabled { "SPC" } else { "TAB" }
+                            if *enabled {
+                                "SPC"
+                            } else {
+                                "TAB"
+                            }
                         }
                         _ => "",
                     };
                     if !badge_label.is_empty() {
-                        let badge_x = toggle_x - estimate_monospace_width(badge_label, font_size) - 10.0;
+                        let badge_x =
+                            toggle_x - estimate_monospace_width(badge_label, font_size) - 10.0;
                         self.editor_overlay_text_system
                             .set_size(Some(80.0), Some(line_height));
                         glyphs.extend(layout_panel_text(
@@ -644,7 +647,11 @@ impl Renderer {
             footer_y,
             font_size,
             line_height,
-            if settings.editing.is_some() { accent } else { fg_dim },
+            if settings.editing.is_some() {
+                accent
+            } else {
+                fg_dim
+            },
             panel_bg,
             divider,
             fg,

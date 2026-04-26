@@ -20,6 +20,7 @@ use crate::async_runtime::message::{
     FilePreviewLine, FileSystemChangeKind, FileSystemEvent, LspCompletionItem, LspDiagnostic,
 };
 use crate::config::keymap_loader::KeymapLoader;
+use crate::config::ui_config::IndentConfig;
 use crate::core::commands::{
     FindMotionKind, Motion, OperationTarget, Operator, TextObjectKind, TextObjectModifier,
 };
@@ -28,7 +29,6 @@ use crate::core::mode::{
 };
 use crate::core::text_object::find_text_object_range;
 use crate::core::transaction::{CursorState, EditAction, EditHistory, Transaction};
-use crate::config::ui_config::IndentConfig;
 use crate::editor_core::filetype_label_for_path;
 use crate::syntax::highlight::HighlightEdit;
 use crate::text::text_system::StyledTextSpan;
