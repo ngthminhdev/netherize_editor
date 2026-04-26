@@ -215,6 +215,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         self.flush_pending_parse_after_debounce();
+        self.flush_pending_lsp_did_change_after_debounce();
         if self.tick_smooth_scroll_animation() {
             self.request_redraw();
         }

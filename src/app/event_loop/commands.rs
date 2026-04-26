@@ -1876,7 +1876,11 @@ impl AppShell {
                 }
                 if report.state_changed && should_reparse {
                     self.submit_parse_for_active_buffer(!is_typing_edit);
-                    self.submit_lsp_did_change_for_active_file();
+                    if is_typing_edit {
+                        self.submit_lsp_did_change_for_active_file();
+                    } else {
+                        self.force_flush_lsp_did_change_for_active_file();
+                    }
                 }
                 if report.success
                     && let Some(ch) = auto_trigger_char

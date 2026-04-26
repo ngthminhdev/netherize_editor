@@ -122,10 +122,12 @@ impl AppShell {
             accumulated_frame_count: 0,
             current_fps_metrics: "--.-ms | -- FPS".to_string(),
             last_parse_submit_at: None,
+            last_lsp_did_change_submit_at: None,
             last_syntax_edit_hint: None,
             active_highlight_request_revision: 0,
             fzf_search_revision: 0,
             pending_parse_after_debounce: false,
+            pending_lsp_did_change_after_debounce: false,
             last_editor_bounds: None,
             last_show_welcome: None,
             last_sidebar_bounds: None,
@@ -868,6 +870,10 @@ impl AppShell {
     }
 
     pub(super) fn submit_lsp_did_change_for_active_file(&mut self) {
+        self.submit_lsp_did_change_for_active_file_with_priority(false);
+    }
+
+    fn submit_lsp_did_change_for_active_file_with_priority(&mut self, force: bool) {
         let Some(path) = self.app_state.active_file() else {
             return;
         };
@@ -876,6 +882,14 @@ impl AppShell {
         };
         if self.active_lsp_server.as_ref() != Some(&desired) {
             let _ = self.queue_lsp_server_start(desired);
+            return;
+        }
+
+        if !force
+            && let Some(last) = self.last_lsp_did_change_submit_at
+            && last.elapsed() < LSP_DID_CHANGE_DEBOUNCE_INTERVAL
+        {
+            self.pending_lsp_did_change_after_debounce = true;
             return;
         }
 
@@ -889,10 +903,12 @@ impl AppShell {
                 text: self.app_state.text_string(),
             },
         });
+        self.pending_lsp_did_change_after_debounce = false;
+        self.last_lsp_did_change_submit_at = Some(Instant::now());
     }
 
     pub(super) fn force_flush_lsp_did_change_for_active_file(&mut self) -> bool {
-        let Some(path) = self.app_state.active_file() else {
+        let Some(_path) = self.app_state.active_file() else {
             return false;
         };
         let Some(desired) = self.desired_lsp_server_for_active_file() else {
@@ -903,17 +919,15 @@ impl AppShell {
             return false;
         }
 
-        let version = self.app_state.revision().min(i32::MAX as u64) as i32;
-        self.submit(RequestSpec {
-            revision_id: self.app_state.revision(),
-            topic: RequestTopic::LspClient,
-            payload: WorkerRequestPayload::LspDidChange {
-                uri: path_to_lsp_uri(path),
-                version,
-                text: self.app_state.text_string(),
-            },
-        });
+        self.submit_lsp_did_change_for_active_file_with_priority(true);
         true
+    }
+
+    pub(super) fn flush_pending_lsp_did_change_after_debounce(&mut self) {
+        if !self.pending_lsp_did_change_after_debounce {
+            return;
+        }
+        self.submit_lsp_did_change_for_active_file_with_priority(false);
     }
 
     /// Submit async task kiểm tra xem LSP binary cho `path` có được cài chưa.
