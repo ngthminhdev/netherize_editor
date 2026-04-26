@@ -243,6 +243,13 @@ fn parse_ui(raw: &RawUi, raw_editor: &RawEditor) -> Result<UiThemeTokens, String
             "selection_bg",
             raw.selection_bg.as_deref().unwrap_or("#094771"),
         )?,
+        dirty_indicator: parse_color(
+            "ui",
+            "dirty_indicator",
+            raw.dirty_indicator
+                .as_deref()
+                .unwrap_or(raw.accent.as_deref().unwrap_or("#9BE564")),
+        )?,
         fg: parse_color(
             "ui",
             "fg",

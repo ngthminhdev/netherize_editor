@@ -47,6 +47,7 @@ pub(in crate::config::theme_config) struct RawUi {
     pub(in crate::config::theme_config) status_bar_bg: String,
     pub(in crate::config::theme_config) border_color: String,
     pub(in crate::config::theme_config) selection_bg: Option<String>,
+    pub(in crate::config::theme_config) dirty_indicator: Option<String>,
     pub(in crate::config::theme_config) fg: Option<String>,
     pub(in crate::config::theme_config) fg_dim: Option<String>,
     pub(in crate::config::theme_config) fg_ghost: Option<String>,

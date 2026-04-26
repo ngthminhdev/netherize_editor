@@ -735,7 +735,8 @@ impl AppShell {
                 .app_state
                 .buffers()
                 .iter()
-                .map(|buffer| TopbarTab {
+                .enumerate()
+                .map(|(idx, buffer)| TopbarTab {
                     label: buffer.label(),
                     kind: match &buffer.content {
                         BufferContent::Text(text) => TopbarTabKind::Text {
@@ -748,6 +749,10 @@ impl AppShell {
                         BufferContent::SettingsTab(_) => TopbarTabKind::Settings,
                         BufferContent::Help(_) => TopbarTabKind::Help,
                     },
+                    is_dirty: buffer.is_dirty(
+                        self.app_state.active_buffer_index() == Some(idx),
+                        self.app_state.is_dirty(),
+                    ),
                 })
                 .collect::<Vec<_>>();
             if let Some(renderer) = self.renderer.as_mut() {

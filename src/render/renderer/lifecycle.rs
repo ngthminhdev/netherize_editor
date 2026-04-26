@@ -226,6 +226,7 @@ impl Renderer {
             sidebar_base_padding: 10.0,
             sidebar_indent_per_depth: 15.0,
             topbar_padding_x: 14.0,
+            topbar_dirty_gap: 6.0,
             statusbar_padding_x: 14.0,
             statusbar_font_size,
             statusbar_line_height,
@@ -324,6 +325,7 @@ impl Renderer {
         self.sidebar_base_padding = ui.spacing.explorer_padding;
         self.sidebar_indent_per_depth = (ui.spacing.explorer_padding * 1.5).max(10.0);
         self.topbar_padding_x = ui.status_bar.padding_x;
+        self.topbar_dirty_gap = ui.spacing.topbar_dirty_gap;
         self.statusbar_padding_x = ui.status_bar.padding_x;
         self.statusbar_font_size = ui.status_bar.font_size;
         self.statusbar_line_height = ui.status_bar.line_height;

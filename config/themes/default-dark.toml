@@ -43,6 +43,8 @@ status_bar_bg = "#181f2c"
 border_color = "#11161f"
 # Active row / selected tab / focused list item background.
 selection_bg = "#2a364d"
+# Unsaved topbar tab marker color.
+dirty_indicator = "#F5B63A"
 
 # Shared foreground tokens for labels and chrome text.
 fg = "#d0d7e4"

@@ -86,6 +86,7 @@ pub struct SpacingUiConfig {
     pub editor_padding: f32,
     pub panel_padding: f32,
     pub explorer_padding: f32,
+    pub topbar_dirty_gap: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -218,6 +219,7 @@ impl UiConfig {
                 editor_padding: 14.0,
                 panel_padding: 10.0,
                 explorer_padding: 10.0,
+                topbar_dirty_gap: 6.0,
             },
             status_bar: StatusBarUiConfig {
                 padding_x: 14.0,
@@ -428,6 +430,13 @@ impl UiConfig {
                     raw.spacing
                         .explorer_padding
                         .unwrap_or(fallback.spacing.explorer_padding),
+                )?,
+                topbar_dirty_gap: parse_positive_f32(
+                    "spacing",
+                    "topbar_dirty_gap",
+                    raw.spacing
+                        .topbar_dirty_gap
+                        .unwrap_or(fallback.spacing.topbar_dirty_gap),
                 )?,
             },
             status_bar: StatusBarUiConfig {
@@ -698,6 +707,7 @@ struct RawSpacing {
     editor_padding: Option<f32>,
     panel_padding: Option<f32>,
     explorer_padding: Option<f32>,
+    topbar_dirty_gap: Option<f32>,
 }
 
 #[derive(Debug, Default, Deserialize)]

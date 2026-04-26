@@ -49,6 +49,7 @@ fn builtin_ui_tokens() -> UiThemeTokens {
         status_bar_bg: rgb(11, 14, 22),
         border_color: rgb(43, 48, 64),
         selection_bg: rgb(34, 39, 54),
+        dirty_indicator: rgb(245, 182, 58),
         fg: rgb(242, 244, 248),
         fg_dim: rgb(183, 191, 204),
         fg_ghost: rgb(109, 116, 131),

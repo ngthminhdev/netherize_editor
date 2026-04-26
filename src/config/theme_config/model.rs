@@ -170,6 +170,7 @@ pub struct UiThemeTokens {
     pub status_bar_bg: ThemeColor,
     pub border_color: ThemeColor,
     pub selection_bg: ThemeColor,
+    pub dirty_indicator: ThemeColor,
     pub fg: ThemeColor,
     pub fg_dim: ThemeColor,
     pub fg_ghost: ThemeColor,

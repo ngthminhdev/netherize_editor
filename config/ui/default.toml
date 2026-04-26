@@ -35,6 +35,7 @@ underline_height = 2.0
 editor_padding = 14.0
 panel_padding = 10.0
 explorer_padding = 10.0
+topbar_dirty_gap = 6.0
 
 [status_bar]
 padding_x = 14.0

@@ -59,6 +59,7 @@ impl Renderer {
         let active_fg = self.theme.ui.fg.as_f32();
         let inactive_fg = with_alpha(self.theme.ui.fg_dim.as_f32(), 0.95);
         let empty_fg = self.theme.ui.fg_ghost.as_f32();
+        let dirty_fg = self.theme.ui.dirty_indicator.as_f32();
         let active_bg = with_alpha(self.theme.ui.selection_bg.as_f32(), 0.78);
         let accent = self.theme.ui.accent.as_f32();
         let top_bg = with_alpha(self.theme.ui.panel_bg.as_f32(), 0.92);
@@ -80,6 +81,8 @@ impl Renderer {
         let available_right = bounds[0] + bounds[2] - self.topbar_padding_x;
         let tab_pad_x = 10.0;
         let icon_gap = 4.0;
+        let dirty_marker = "•";
+        let dirty_gap = self.topbar_dirty_gap;
 
         chrome.push(RegionDrawInstance::new(bounds, top_bg));
         chrome.push(RegionDrawInstance::new(
@@ -151,7 +154,19 @@ impl Renderer {
                 let icon_text = format!("{} ", icon_glyph);
                 let icon_width = estimate_monospace_width(&icon_text, font_size);
                 let label_width = estimate_monospace_width(&tab.label, font_size);
-                let tab_width = (tab_pad_x * 2.0 + icon_width + icon_gap + label_width).min(width);
+                let dirty_marker_width = if tab.is_dirty {
+                    estimate_monospace_width(dirty_marker, font_size)
+                } else {
+                    0.0
+                };
+                let dirty_extra_width = if tab.is_dirty {
+                    dirty_gap + dirty_marker_width
+                } else {
+                    0.0
+                };
+                let tab_width =
+                    (tab_pad_x * 2.0 + icon_width + icon_gap + label_width + dirty_extra_width)
+                        .min(width);
                 if tab_x + tab_width > available_right {
                     break;
                 }
@@ -217,6 +232,17 @@ impl Renderer {
                     origin_y,
                     if is_active { active_fg } else { inactive_fg },
                 ));
+                if tab.is_dirty {
+                    glyphs.extend(layout_panel_text(
+                        dirty_marker,
+                        &mut self.topbar_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        icon_x + icon_width + icon_gap + label_width + dirty_gap,
+                        origin_y,
+                        dirty_fg,
+                    ));
+                }
                 let batch_count = glyphs.len() as u32 - batch_start;
                 if let Some(scissor) =
                     topbar_tab_text_scissor([tab_x, bounds[1], tab_width, bounds[3]])

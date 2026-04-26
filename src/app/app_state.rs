@@ -583,6 +583,18 @@ impl BufferEntry {
             BufferContent::Help(state) => state.title.clone(),
         }
     }
+
+    pub fn is_dirty(&self, is_active: bool, active_editor_dirty: bool) -> bool {
+        match &self.content {
+            BufferContent::Text(_) => is_active && active_editor_dirty,
+            BufferContent::Terminal(_)
+            | BufferContent::References(_)
+            | BufferContent::Diagnostics(_)
+            | BufferContent::FuzzyPicker(_)
+            | BufferContent::SettingsTab(_)
+            | BufferContent::Help(_) => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

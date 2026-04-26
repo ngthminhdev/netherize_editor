@@ -84,6 +84,7 @@ pub enum TopbarTabKind {
 pub struct TopbarTab {
     pub label: String,
     pub kind: TopbarTabKind,
+    pub is_dirty: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -216,6 +217,7 @@ pub struct Renderer {
     pub(super) sidebar_base_padding: f32,
     pub(super) sidebar_indent_per_depth: f32,
     pub(super) topbar_padding_x: f32,
+    pub(super) topbar_dirty_gap: f32,
     pub(super) statusbar_padding_x: f32,
     pub(super) statusbar_font_size: f32,
     pub(super) statusbar_line_height: f32,
