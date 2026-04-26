@@ -288,10 +288,15 @@ impl AsyncResultRouter for AppShell {
                     server_name,
                     root_path.display()
                 );
-                self.submit_lsp_did_open_for_active_file();
+                if self.pending_lsp_document_sync.is_some() {
+                    let _ = self.force_flush_lsp_did_change_for_active_file();
+                } else {
+                    self.submit_lsp_did_open_for_active_file();
+                }
             }
             WorkerResultPayload::LspServerStopped { .. } => {
                 self.active_lsp_server = None;
+                self.pending_lsp_document_sync = None;
                 self.lsp_completion_trigger_chars.clear();
             }
             WorkerResultPayload::LspDiagnostics {

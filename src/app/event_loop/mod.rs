@@ -133,7 +133,6 @@ pub struct AppShell {
     accumulated_frame_count: u32,
     current_fps_metrics: String,
     last_parse_submit_at: Option<Instant>,
-    last_lsp_did_change_submit_at: Option<Instant>,
     /// Edit hint for the next incremental tree-sitter parse.
     /// Set to `Some` when exactly one edit occurred since the last reconcile.
     /// Set to `None` when multiple edits accumulated (debounced typing, undo/redo,
@@ -142,7 +141,7 @@ pub struct AppShell {
     active_highlight_request_revision: u64,
     fzf_search_revision: u64,
     pending_parse_after_debounce: bool,
-    pending_lsp_did_change_after_debounce: bool,
+    pending_lsp_document_sync: Option<PendingLspDocumentSync>,
     last_editor_bounds: Option<[f32; 4]>,
     last_show_welcome: Option<bool>,
     last_sidebar_bounds: Option<[f32; 4]>,
@@ -160,7 +159,7 @@ pub struct AppShell {
 
 const DEBUG_UI_ENABLED: bool = false;
 const PARSE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(80);
-const LSP_DID_CHANGE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(140);
+const LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(500);
 const FPS_METRICS_UPDATE_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone)]
@@ -214,6 +213,13 @@ struct LspInstallGuide {
 struct TransientToast {
     message: String,
     expires_at: Instant,
+}
+
+#[derive(Debug, Clone)]
+struct PendingLspDocumentSync {
+    path: PathBuf,
+    revision: u64,
+    queued_at: Instant,
 }
 
 #[derive(Debug, Clone)]

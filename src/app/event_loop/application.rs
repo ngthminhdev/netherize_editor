@@ -213,7 +213,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         self.flush_pending_parse_after_debounce();
         self.flush_pending_lsp_did_change_after_debounce();
         if self.tick_smooth_scroll_animation() {
@@ -228,6 +228,12 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.app_state.workspace_is_inputting_filter() {
             self.sidebar_needs_layout = true;
             self.request_redraw();
+        }
+
+        if let Some(deadline) = self.next_lsp_did_change_flush_deadline() {
+            event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
+        } else {
+            event_loop.set_control_flow(ControlFlow::Wait);
         }
     }
 

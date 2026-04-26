@@ -122,12 +122,11 @@ impl AppShell {
             accumulated_frame_count: 0,
             current_fps_metrics: "--.-ms | -- FPS".to_string(),
             last_parse_submit_at: None,
-            last_lsp_did_change_submit_at: None,
             last_syntax_edit_hint: None,
             active_highlight_request_revision: 0,
             fzf_search_revision: 0,
             pending_parse_after_debounce: false,
-            pending_lsp_did_change_after_debounce: false,
+            pending_lsp_document_sync: None,
             last_editor_bounds: None,
             last_show_welcome: None,
             last_sidebar_bounds: None,
@@ -845,6 +844,7 @@ impl AppShell {
     }
 
     pub(super) fn submit_lsp_did_open_for_active_file(&mut self) {
+        self.pending_lsp_document_sync = None;
         let Some(path) = self.app_state.active_file() else {
             return;
         };
@@ -870,10 +870,7 @@ impl AppShell {
     }
 
     pub(super) fn submit_lsp_did_change_for_active_file(&mut self) {
-        self.submit_lsp_did_change_for_active_file_with_priority(false);
-    }
-
-    fn submit_lsp_did_change_for_active_file_with_priority(&mut self, force: bool) {
+        self.pending_lsp_document_sync = None;
         let Some(path) = self.app_state.active_file() else {
             return;
         };
@@ -882,14 +879,6 @@ impl AppShell {
         };
         if self.active_lsp_server.as_ref() != Some(&desired) {
             let _ = self.queue_lsp_server_start(desired);
-            return;
-        }
-
-        if !force
-            && let Some(last) = self.last_lsp_did_change_submit_at
-            && last.elapsed() < LSP_DID_CHANGE_DEBOUNCE_INTERVAL
-        {
-            self.pending_lsp_did_change_after_debounce = true;
             return;
         }
 
@@ -903,12 +892,11 @@ impl AppShell {
                 text: self.app_state.text_string(),
             },
         });
-        self.pending_lsp_did_change_after_debounce = false;
-        self.last_lsp_did_change_submit_at = Some(Instant::now());
     }
 
     pub(super) fn force_flush_lsp_did_change_for_active_file(&mut self) -> bool {
-        let Some(_path) = self.app_state.active_file() else {
+        self.pending_lsp_document_sync = None;
+        let Some(path) = self.app_state.active_file() else {
             return false;
         };
         let Some(desired) = self.desired_lsp_server_for_active_file() else {
@@ -919,15 +907,60 @@ impl AppShell {
             return false;
         }
 
-        self.submit_lsp_did_change_for_active_file_with_priority(true);
+        let version = self.app_state.revision().min(i32::MAX as u64) as i32;
+        self.submit(RequestSpec {
+            revision_id: self.app_state.revision(),
+            topic: RequestTopic::LspClient,
+            payload: WorkerRequestPayload::LspDidChange {
+                uri: path_to_lsp_uri(path),
+                version,
+                text: self.app_state.text_string(),
+            },
+        });
         true
     }
 
-    pub(super) fn flush_pending_lsp_did_change_after_debounce(&mut self) {
-        if !self.pending_lsp_did_change_after_debounce {
+    pub(super) fn queue_lsp_did_change_for_active_file(&mut self) {
+        let Some(path) = self.app_state.active_file().map(PathBuf::from) else {
+            self.pending_lsp_document_sync = None;
+            return;
+        };
+        if self.desired_lsp_server_for_active_file().is_none() {
+            self.pending_lsp_document_sync = None;
             return;
         }
-        self.submit_lsp_did_change_for_active_file_with_priority(false);
+
+        self.pending_lsp_document_sync = Some(PendingLspDocumentSync {
+            path,
+            revision: self.app_state.revision(),
+            queued_at: Instant::now(),
+        });
+    }
+
+    pub(super) fn flush_pending_lsp_did_change_after_debounce(&mut self) {
+        let Some(pending) = self.pending_lsp_document_sync.as_ref() else {
+            return;
+        };
+
+        if pending.queued_at.elapsed() < LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL {
+            return;
+        }
+
+        let active_path = self.app_state.active_file().map(PathBuf::from);
+        if active_path.as_ref() != Some(&pending.path)
+            || self.app_state.revision() != pending.revision
+        {
+            self.pending_lsp_document_sync = None;
+            return;
+        }
+
+        let _ = self.force_flush_lsp_did_change_for_active_file();
+    }
+
+    pub(super) fn next_lsp_did_change_flush_deadline(&self) -> Option<Instant> {
+        self.pending_lsp_document_sync
+            .as_ref()
+            .map(|pending| pending.queued_at + LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL)
     }
 
     /// Submit async task kiểm tra xem LSP binary cho `path` có được cài chưa.

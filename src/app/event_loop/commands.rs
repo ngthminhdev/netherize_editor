@@ -33,6 +33,7 @@ impl AppShell {
         self.app_state.clear_workspace_session_state();
         self.active_lsp_server = None;
         self.pending_lsp_server = None;
+        self.pending_lsp_document_sync = None;
         self.lsp_completion_trigger_chars.clear();
         self.active_lsp_guide = None;
         self.highlight_spans.clear();
@@ -364,9 +365,8 @@ impl AppShell {
                 self.ui_config.indent.insert_spaces = next;
                 self.app_state.set_indent_config(self.ui_config.indent);
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
-                    && let Some(crate::app::app_state::SettingItem::IndentInsertSpaces {
-                        enabled,
-                    }) = state.selected_item_mut()
+                    && let Some(crate::app::app_state::SettingItem::IndentInsertSpaces { enabled }) =
+                        state.selected_item_mut()
                 {
                     *enabled = next;
                 }
@@ -523,9 +523,8 @@ impl AppShell {
                     self.ui_config.indent.tab_width = value;
                     self.app_state.set_indent_config(self.ui_config.indent);
                     if let Some(state) = self.app_state.active_settings_buffer_mut()
-                        && let Some(crate::app::app_state::SettingItem::IndentTabWidth {
-                            current,
-                        }) = state.selected_item_mut()
+                        && let Some(crate::app::app_state::SettingItem::IndentTabWidth { current }) =
+                            state.selected_item_mut()
                     {
                         *current = value;
                     }
@@ -1057,7 +1056,7 @@ impl AppShell {
                     self.editor_caret_needs_layout = true;
                     let viewport_lines = self.editor_viewport_lines();
                     self.app_state.auto_scroll_to_cursor(viewport_lines);
-                    self.submit_lsp_did_open_for_active_file();
+                    self.queue_lsp_did_change_for_active_file();
                 }
                 let completion_changed = if report.state_changed {
                     self.refresh_open_completion_after_text_edit()
@@ -2111,6 +2110,7 @@ impl AppShell {
     }
 
     fn submit_lsp_hover(&mut self) -> bool {
+        self.force_flush_lsp_did_change_for_active_file();
         let Some((language_id, uri, line, character)) = self.lsp_cursor_context() else {
             return false;
         };
@@ -2130,6 +2130,7 @@ impl AppShell {
 
     /// `jump = true` => gd (go to definition). `jump = false` => gD (peek preview).
     fn submit_lsp_definition(&mut self, jump: bool) -> bool {
+        self.force_flush_lsp_did_change_for_active_file();
         let Some((_language_id, uri, line, character)) = self.lsp_cursor_context() else {
             return false;
         };
@@ -2148,6 +2149,7 @@ impl AppShell {
     }
 
     fn submit_lsp_references(&mut self) -> bool {
+        self.force_flush_lsp_did_change_for_active_file();
         let Some((_language_id, uri, line, character)) = self.lsp_cursor_context() else {
             return false;
         };
