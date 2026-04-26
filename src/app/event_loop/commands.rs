@@ -47,6 +47,7 @@ impl AppShell {
             eprintln!("[AppShell] attach_workspace failed: {err}");
             return false;
         }
+        let _ = self.app_state.dismiss_initial_launch_welcome();
 
         self.persistent_state.push_recent(root_path.clone());
         self.persistent_state.save();

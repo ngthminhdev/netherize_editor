@@ -45,9 +45,19 @@ impl AppShell {
         if !restored_workspace && let Err(err) = app_state.attach_workspace(cwd) {
             eprintln!("[AppShell] cwd workspace attach skipped: {err}");
         }
-        // Welcome visibility depends on open tabs, not workspace attachment, so
-        // we can still restore/attach a workspace here and keep the centered
-        // empty-state UI when no buffer is open.
+
+        for cli_path in std::env::args_os().skip(1).map(PathBuf::from) {
+            if cli_path.is_file()
+                && let Err(err) = app_state.open_file(cli_path.clone())
+            {
+                eprintln!(
+                    "[AppShell] CLI file open skipped ({}): {err}",
+                    cli_path.display()
+                );
+            }
+        }
+        // Welcome visibility is controlled by AppState's one-shot initial launch
+        // flag, not by workspace attachment or later buffer-list emptiness.
 
         let workspace_git_branch = app_state.workspace_root_path().and_then(detect_git_branch);
 
@@ -355,7 +365,8 @@ impl AppShell {
 
     pub(super) fn build_context(&self) -> KeybindingContext {
         let mode = self.app_state.current_mode();
-        let focus = if self.app_state.buffers().is_empty()
+        let focus = if self.app_state.is_initial_launch_welcome()
+            && self.app_state.buffers().is_empty()
             && (!self.app_state.is_command_palette_visible()
                 || self.app_state.command_palette_mode()
                     == Some(CommandPaletteMode::RecentProjects))

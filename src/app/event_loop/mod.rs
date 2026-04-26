@@ -245,7 +245,8 @@ pub fn run() -> Result<(), winit::error::EventLoopError> {
 
 impl AppShell {
     fn should_show_welcome(&self) -> bool {
-        self.app_state.buffers().is_empty()
+        self.app_state.is_initial_launch_welcome()
+            && self.app_state.buffers().is_empty()
             && (!self.app_state.is_command_palette_visible()
                 || self.app_state.command_palette_mode()
                     == Some(CommandPaletteMode::RecentProjects))

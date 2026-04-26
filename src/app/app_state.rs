@@ -686,6 +686,7 @@ pub struct AppState {
     diagnostics: HashMap<PathBuf, Vec<LspDiagnostic>>,
     pending_explorer_rename_path: Option<PathBuf>,
     indent_config: IndentConfig,
+    is_initial_launch_welcome: bool,
 }
 
 impl AppState {
@@ -729,6 +730,7 @@ impl AppState {
             diagnostics: HashMap::new(),
             pending_explorer_rename_path: None,
             indent_config: IndentConfig::default(),
+            is_initial_launch_welcome: true,
         }
     }
 
@@ -770,7 +772,25 @@ impl AppState {
             diagnostics: HashMap::new(),
             pending_explorer_rename_path: None,
             indent_config: IndentConfig::default(),
+            is_initial_launch_welcome: false,
         }
+    }
+
+    pub fn is_initial_launch_welcome(&self) -> bool {
+        self.is_initial_launch_welcome
+    }
+
+    pub fn set_initial_launch_welcome(&mut self, enabled: bool) -> bool {
+        if self.is_initial_launch_welcome == enabled {
+            return false;
+        }
+        self.is_initial_launch_welcome = enabled;
+        self.bump_revision();
+        true
+    }
+
+    pub fn dismiss_initial_launch_welcome(&mut self) -> bool {
+        self.set_initial_launch_welcome(false)
     }
 
     pub fn set_indent_config(&mut self, config: IndentConfig) {
@@ -1505,6 +1525,7 @@ impl AppState {
             return Err("cannot open diagnostics buffer without items".to_string());
         }
 
+        self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::Diagnostics(DiagnosticsState {
                 results: items,
@@ -1667,6 +1688,7 @@ impl AppState {
         title: impl Into<String>,
         working_dir: Option<PathBuf>,
     ) -> usize {
+        self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::Terminal(PtyState {
                 session_id: None,
@@ -1685,6 +1707,7 @@ impl AppState {
     }
 
     pub fn open_help_buffer(&mut self) -> usize {
+        self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::Help(HelpState::new()),
         });
@@ -1707,6 +1730,7 @@ impl AppState {
             return Err("cannot open references buffer without items".to_string());
         }
 
+        self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::References(ReferencesBufferState {
                 title: title.into(),
@@ -1738,6 +1762,7 @@ impl AppState {
         origin_line: usize,
         pending_request_id: u64,
     ) -> usize {
+        self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::References(ReferencesBufferState {
                 title: title.into(),
@@ -1833,6 +1858,7 @@ impl AppState {
 
     pub fn open_fuzzy_picker_buffer(&mut self, mode: CommandPaletteMode) -> usize {
         let state = FuzzyState::new(mode);
+        self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::FuzzyPicker(state),
         });
@@ -1864,6 +1890,7 @@ impl AppState {
             .iter()
             .position(|buffer| matches!(buffer.content, BufferContent::SettingsTab(_)))
         {
+            self.is_initial_launch_welcome = false;
             self.reset_text_editor_state();
             self.active_buffer_index = Some(existing_idx);
             let _ = self.clear_current_overlays();
@@ -1884,6 +1911,7 @@ impl AppState {
             ui_rounding_enabled,
             border_radius_px,
         );
+        self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::SettingsTab(state),
         });
@@ -3097,6 +3125,7 @@ impl AppState {
         let canonical_path = path
             .canonicalize()
             .map_err(|err| format!("canonicalize file {:?} failed: {err}", path))?;
+        self.is_initial_launch_welcome = false;
         let language_id = crate::lsp::registry::language_profile_for_path(&canonical_path)
             .map(|profile| profile.language_id.to_string());
         let active_idx = match self
@@ -3154,11 +3183,13 @@ impl AppState {
         let changed = self.active_file.is_some()
             || self.active_buffer_index.is_some()
             || self.dirty
-            || self.text.len_chars() > 0;
+            || self.text.len_chars() > 0
+            || self.is_initial_launch_welcome;
         if !changed {
             return false;
         }
 
+        self.is_initial_launch_welcome = false;
         self.reset_text_editor_state();
         self.active_buffer_index = None;
         let _ = self.clear_current_overlays();
