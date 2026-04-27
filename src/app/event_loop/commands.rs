@@ -725,16 +725,19 @@ impl AppShell {
             | Command::OpenWorkspaceSymbols
             | Command::OpenInFileSearch
             | Command::SearchInFiles
-            | Command::OpenThemeSelector => {
-                let opens_fuzzy_buffer =
-                    matches!(command, Command::OpenFileFinder | Command::SearchInFiles);
+            | Command::OpenThemeSelector
+            | Command::OpenHelp => {
+                let opens_center_buffer = matches!(
+                    command,
+                    Command::OpenFileFinder | Command::SearchInFiles | Command::OpenHelp
+                );
                 let report = dispatch_command(&mut self.app_state, command);
                 if report.success {
-                    if opens_fuzzy_buffer {
+                    if opens_center_buffer {
                         self.editor_needs_layout = true;
                         self.editor_caret_needs_layout = false;
                     }
-                    let focus_changed = if opens_fuzzy_buffer {
+                    let focus_changed = if opens_center_buffer {
                         self.clear_palette_ime_commit_suppression();
                         self.focus_manager.set(FocusTarget::CenterEditor)
                     } else {
@@ -3597,8 +3600,21 @@ mod tests {
             .app_state
             .active_help_buffer()
             .expect(":help should open the cheat sheet help buffer");
-        assert_eq!(help.title, "[Help]");
-        assert!(help.lines.iter().any(|line| line == "Netherize Help"));
+        assert_eq!(help.title, "[Cheat Sheet]");
+        assert!(
+            help.lines
+                .iter()
+                .any(|line| line == "Netherize Cheat Sheet")
+        );
+        assert!(
+            help.lines
+                .iter()
+                .any(|line| { line.contains("mod+p") && line.contains("Open command palette") })
+        );
+        assert_eq!(
+            shell.app_state.buffers().last().unwrap().label(),
+            "[Cheat Sheet]"
+        );
         assert!(!shell.app_state.is_command_palette_visible());
     }
 

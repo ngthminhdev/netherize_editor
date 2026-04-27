@@ -302,27 +302,95 @@ pub struct DiagnosticsState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HelpSection {
+    pub title: String,
+    pub mode_hint: String,
+    pub entries: Vec<HelpEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HelpEntry {
+    pub keys: Vec<String>,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelpState {
     pub title: String,
+    pub subtitle: String,
+    pub profile_name: String,
+    pub source_label: String,
+    pub sections: Vec<HelpSection>,
     pub lines: Vec<String>,
 }
 
 impl HelpState {
     pub fn new() -> Self {
-        Self::from_bindings(&KeymapLoader::load_active(None))
+        Self::from_bindings(
+            "nvim-ultimate",
+            "default.toml",
+            &KeymapLoader::load_active(None),
+        )
     }
 
-    pub fn from_bindings(bindings: &[crate::config::keymap_config::KeyBinding]) -> Self {
+    pub fn from_bindings(
+        profile_name: &str,
+        source_label: &str,
+        bindings: &[crate::config::keymap_config::KeyBinding],
+    ) -> Self {
         Self {
-            title: "[Help]".to_string(),
-            lines: build_help_lines(bindings),
+            title: "[Cheat Sheet]".to_string(),
+            subtitle: "KEYMAP CHEAT SHEET".to_string(),
+            profile_name: profile_name.to_string(),
+            source_label: source_label.to_string(),
+            sections: build_help_sections(bindings),
+            lines: build_help_lines(profile_name, source_label, bindings),
         }
     }
 }
 
-fn build_help_lines(bindings: &[crate::config::keymap_config::KeyBinding]) -> Vec<String> {
+fn build_help_sections(bindings: &[crate::config::keymap_config::KeyBinding]) -> Vec<HelpSection> {
+    let specs = [
+        (None, "GLOBAL", "any mode"),
+        (Some("insert"), "INSERT", "mode = insert"),
+        (Some("palette"), "PALETTE", "mode = palette"),
+        (Some("normal"), "NORMAL", "mode = normal"),
+        (Some("visual"), "VISUAL", "mode = visual"),
+    ];
+
+    specs
+        .into_iter()
+        .filter_map(|(mode, title, mode_hint)| {
+            let entries = bindings
+                .iter()
+                .filter(|binding| binding.mode.as_deref() == mode)
+                .filter_map(|binding| {
+                    Some(HelpEntry {
+                        keys: format_key_binding_for_help(&binding.key)?
+                            .split(' ')
+                            .map(str::to_string)
+                            .collect(),
+                        label: command_label_for_help(&binding.command),
+                    })
+                })
+                .collect::<Vec<_>>();
+            (!entries.is_empty()).then_some(HelpSection {
+                title: title.to_string(),
+                mode_hint: mode_hint.to_string(),
+                entries,
+            })
+        })
+        .collect()
+}
+
+fn build_help_lines(
+    profile_name: &str,
+    source_label: &str,
+    bindings: &[crate::config::keymap_config::KeyBinding],
+) -> Vec<String> {
     let mut lines = vec![
-        "Netherize Help".to_string(),
+        "Netherize Cheat Sheet".to_string(),
+        format!("profile: {profile_name} · source: {source_label}"),
         "".to_string(),
         "Command palette".to_string(),
     ];
@@ -339,7 +407,7 @@ fn build_help_lines(bindings: &[crate::config::keymap_config::KeyBinding]) -> Ve
         "app.open_command_palette",
         "Open command palette",
     );
-    lines.push("  :help / :h            Open this help buffer".to_string());
+    lines.push("  :help / :h            Open this cheat sheet buffer".to_string());
     lines.push("".to_string());
 
     lines.push("Buffers".to_string());
@@ -393,6 +461,84 @@ fn build_help_lines(bindings: &[crate::config::keymap_config::KeyBinding]) -> Ve
     );
 
     lines
+}
+
+fn command_label_for_help(command_id: &str) -> String {
+    let label = match command_id {
+        "editor.save_file" => "Save file",
+        "editor.open_folder" => "Open folder / project",
+        "app.open_command_palette" => "Command palette",
+        "app.open_settings" => "Open settings",
+        "app.focus_explorer" => "Focus explorer",
+        "app.toggle_left_dock" => "Toggle left dock",
+        "app.focus_back" => "Focus back to editor",
+        "app.toggle_bottom_dock" => "Toggle bottom dock",
+        "app.focus_terminal" => "Focus terminal",
+        "mode.enter_normal" => "→ Normal mode",
+        "mode.enter_insert" => "Insert mode",
+        "mode.enter_visual" => "→ Visual mode",
+        "mode.enter_visual_line" => "→ Visual line",
+        "editor.move_left" => "Move left",
+        "editor.move_down" => "Move down",
+        "editor.move_up" => "Move up",
+        "editor.move_right" => "Move right",
+        "editor.move_word_forward" => "Word forward",
+        "editor.move_word_backward" => "Word backward",
+        "editor.move_word_end" => "Word end",
+        "editor.move_to_line_start" => "Line start",
+        "editor.move_to_line_end" => "Line end",
+        "editor.move_to_first_non_whitespace" => "First non-whitespace",
+        "editor.move_to_first_line" => "First line",
+        "editor.move_to_last_line" => "Last line",
+        "editor.scroll_half_page_up" => "½ page up",
+        "editor.scroll_half_page_down" => "½ page down",
+        "editor.center_cursor_line" => "Center cursor line",
+        "editor.search_next" => "Next match",
+        "editor.search_prev" => "Prev match",
+        "editor.search_word_under_cursor" => "Search word under cursor",
+        "editor.clear_search_highlights" => "Clear highlights",
+        "editor.open_in_file_search" => "Search in file",
+        "editor.delete_char" => "Delete char",
+        "editor.delete_current_line" => "Delete line",
+        "editor.delete_word_forward" => "Delete word →",
+        "editor.delete_word_backward" => "Delete word ←",
+        "editor.change_word_forward" => "Change word →",
+        "editor.change_word_backward" => "Change word ←",
+        "editor.toggle_line_comment" => "Toggle line comment",
+        "editor.toggle_selection_comment" => "Toggle comment",
+        "editor.paste" => "Paste",
+        "editor.undo" => "Undo",
+        "editor.redo" => "Redo",
+        "editor.insert_tab" => "Insert tab",
+        "editor.newline" => "New line",
+        "editor.backspace" => "Backspace",
+        "editor.append_after_cursor" => "Append after cursor",
+        "editor.append_at_line_end" => "Append at line end",
+        "editor.insert_at_line_start" => "Insert at line start",
+        "editor.insert_line_below" => "New line below",
+        "editor.insert_line_above" => "New line above",
+        "editor.delete_selection" => "Delete selection",
+        "editor.yank_selection" => "Yank selection",
+        "editor.change_selection" => "Change selection",
+        "completion.next" => "Select next",
+        "completion.prev" => "Select previous",
+        "completion.accept" => "Accept completion",
+        "completion.close" => "Close completion",
+        "app.open_file_picker" => "Open file picker",
+        "app.search_in_files" => "Search in files",
+        "app.open_workspace_symbols" => "Workspace symbols",
+        "buffer.next" => "Next buffer",
+        "buffer.prev" => "Prev buffer",
+        "buffer.close_current" => "Close current buffer",
+        "app.next_panel_tab" => "Next panel tab",
+        "app.prev_panel_tab" => "Prev panel tab",
+        "lsp.hover" => "Hover docs",
+        "lsp.go_to_definition" => "Go to definition",
+        "lsp.references" => "References",
+        "lsp.format_document" => "Format document",
+        _ => command_id,
+    };
+    label.to_string()
 }
 
 fn append_help_binding(
@@ -5501,7 +5647,16 @@ mod tests {
             },
         ];
 
-        let help = super::HelpState::from_bindings(&bindings);
+        let help = super::HelpState::from_bindings("test-profile", "test.toml", &bindings);
+        assert_eq!(help.profile_name, "test-profile");
+        assert_eq!(help.source_label, "test.toml");
+        assert!(help.sections.iter().any(|section| {
+            section.title == "NORMAL"
+                && section
+                    .entries
+                    .iter()
+                    .any(|entry| entry.keys == vec!["mod+p"] && entry.label == "Open file picker")
+        }));
         assert!(
             help.lines
                 .iter()
