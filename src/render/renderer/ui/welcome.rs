@@ -117,39 +117,29 @@ impl Renderer {
 
         let cx = bounds[0] + left_w * 0.5;
         let hero_top = body_top + body_h * 0.5 - sx(205.0);
-        let logo_size = sx(86.0);
-        let lx = cx - logo_size * 0.5;
-        let ly = hero_top;
-        let mut logo_glow = accent;
-        logo_glow[3] = 0.14;
-        chrome.push(
-            RegionDrawInstance::new(
-                [
-                    lx - sx(18.0),
-                    ly - sx(18.0),
-                    logo_size + sx(36.0),
-                    logo_size + sx(36.0),
-                ],
-                logo_glow,
-            )
-            .with_radius(sx(70.0)),
-        );
-        // Geometric logo approximation: brackets + double chevrons from the HTML SVG.
-        let s = logo_size / 500.0;
-        for r in [
-            [130.0, 130.0, 25.0, 240.0],
-            [130.0, 130.0, 65.0, 25.0],
-            [130.0, 345.0, 65.0, 25.0],
-            [345.0, 130.0, 25.0, 90.0],
-            [305.0, 130.0, 65.0, 25.0],
-            [345.0, 245.0, 25.0, 125.0],
-            [305.0, 345.0, 65.0, 25.0],
-            [205.0, 215.0, 110.0, 28.0],
-            [225.0, 265.0, 110.0, 28.0],
-        ] {
-            chrome.push(
-                RegionDrawInstance::new([lx + r[0] * s, ly + r[1] * s, r[2] * s, r[3] * s], accent)
-                    .with_radius(sx(3.0)),
+        let logo_text = include_str!("../../../../assets/app_logo.ansi");
+        let logo_lines: Vec<&str> = logo_text.lines().collect();
+        let logo_font_size = sx(4.0);
+        let logo_line_height = sx(5.0);
+        let logo_width = logo_lines
+            .iter()
+            .map(|line| text_w(line, logo_font_size))
+            .fold(0.0, f32::max);
+        let logo_height = logo_lines.len() as f32 * logo_line_height;
+        let logo_x = cx - logo_width * 0.5;
+        let logo_y = hero_top + sx(6.0);
+
+        for (idx, logo_line) in logo_lines.iter().enumerate() {
+            line(
+                self,
+                &mut glyphs,
+                logo_line,
+                logo_x,
+                logo_y + idx as f32 * logo_line_height,
+                logo_font_size,
+                logo_line_height,
+                fg,
+                true,
             );
         }
 
@@ -160,7 +150,7 @@ impl Renderer {
             &mut glyphs,
             title,
             centered_x(cx, title, title_size),
-            hero_top + sx(118.0),
+            logo_y + logo_height + sx(12.0),
             title_size,
             sx(38.0),
             fg,
@@ -173,13 +163,13 @@ impl Renderer {
             &mut glyphs,
             tagline,
             centered_x(cx, tagline, tagline_size),
-            hero_top + sx(156.0),
+            logo_y + logo_height + sx(50.0),
             tagline_size,
             sx(16.0),
             accent,
             true,
         );
-        let meta_y = hero_top + sx(212.0);
+        let meta_y = logo_y + logo_height + sx(106.0);
         let meta_size = sx(11.0);
         let meta_line_height = sx(16.0);
         let meta_chip_height = sx(30.0);

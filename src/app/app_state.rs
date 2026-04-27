@@ -690,7 +690,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    const SELF_SAVE_IGNORE_WINDOW: Duration = Duration::from_millis(500);
+    const SELF_SAVE_IGNORE_WINDOW: Duration = Duration::from_secs(2);
 
     pub fn new(default_save_path: PathBuf) -> Self {
         Self {
