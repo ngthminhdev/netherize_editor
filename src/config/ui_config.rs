@@ -186,7 +186,10 @@ impl UiConfig {
                 max_content_scale: 2.0,
             },
             layout: WorkbenchLayoutConfig {
-                region_gap: 2.0,
+                outer_gap: 10.0,
+                panel_gap: 8.0,
+                inner_padding: 12.0,
+                round_ui: true,
                 top_bar_height: 34.0,
                 status_bar_height: 22.0,
                 center_min_width: 320.0,
@@ -244,7 +247,7 @@ impl UiConfig {
                 border_radius_px: 18.0,
             },
             indent: IndentConfig::default(),
-            border_radius_px: 0.0,
+            border_radius_px: 10.0,
         }
     }
 
@@ -289,11 +292,24 @@ impl UiConfig {
                 )?,
             },
             layout: WorkbenchLayoutConfig {
-                region_gap: parse_positive_f32(
+                outer_gap: parse_non_negative_f32(
                     "layout",
-                    "region_gap",
-                    raw.layout.region_gap.unwrap_or(fallback.layout.region_gap),
+                    "outer_gap",
+                    raw.layout.outer_gap.unwrap_or(fallback.layout.outer_gap),
                 )?,
+                panel_gap: parse_non_negative_f32(
+                    "layout",
+                    "panel_gap",
+                    raw.layout.panel_gap.unwrap_or(fallback.layout.panel_gap),
+                )?,
+                inner_padding: parse_non_negative_f32(
+                    "layout",
+                    "inner_padding",
+                    raw.layout
+                        .inner_padding
+                        .unwrap_or(fallback.layout.inner_padding),
+                )?,
+                round_ui: raw.layout.round_ui.unwrap_or(fallback.layout.round_ui),
                 top_bar_height: parse_positive_f32(
                     "layout",
                     "top_bar_height",
@@ -546,7 +562,14 @@ impl UiConfig {
                     .insert_spaces
                     .unwrap_or(fallback.indent.insert_spaces),
             },
-            border_radius_px: raw.border_radius_px.unwrap_or(fallback.border_radius_px),
+            border_radius_px: raw
+                .border_radius_px
+                .unwrap_or(if fallback.layout.round_ui {
+                    fallback.border_radius_px
+                } else {
+                    0.0
+                })
+                .max(0.0),
         };
         config.validate()?;
         Ok(config)
@@ -635,6 +658,14 @@ fn parse_positive_f32(section: &str, token: &str, value: f32) -> Result<f32, Str
     }
 }
 
+fn parse_non_negative_f32(section: &str, token: &str, value: f32) -> Result<f32, String> {
+    if value >= 0.0 {
+        Ok(value)
+    } else {
+        Err(format!("{section}.{token}: expected >= 0, got {value}"))
+    }
+}
+
 fn parse_positive_u32(section: &str, token: &str, value: u32) -> Result<u32, String> {
     if value > 0 {
         Ok(value)
@@ -701,7 +732,10 @@ struct RawWindow {
 
 #[derive(Debug, Default, Deserialize)]
 struct RawLayout {
-    region_gap: Option<f32>,
+    outer_gap: Option<f32>,
+    panel_gap: Option<f32>,
+    inner_padding: Option<f32>,
+    round_ui: Option<bool>,
     top_bar_height: Option<f32>,
     status_bar_height: Option<f32>,
     center_min_width: Option<f32>,

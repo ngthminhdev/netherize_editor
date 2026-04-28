@@ -224,6 +224,8 @@ pub struct Renderer {
     pub(super) editor_padding_x: f32,
     pub(super) editor_padding_y: f32,
     pub(super) panel_padding: f32,
+    pub(super) panel_corner_radius: f32,
+    pub(super) round_ui: bool,
     pub(super) sidebar_base_padding: f32,
     pub(super) sidebar_indent_per_depth: f32,
     pub(super) topbar_padding_x: f32,

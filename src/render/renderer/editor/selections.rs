@@ -26,6 +26,7 @@ use crate::text::text_system::StyledTextSpan;
 
 const DIAGNOSTIC_SEVERITY_ERROR: u32 = 1;
 const DIAGNOSTIC_SEVERITY_WARNING: u32 = 2;
+const EDITOR_FRAME_INSET: f32 = 4.0;
 
 fn leading_indent_columns(app_state: &AppState, line_idx: usize, tab_width: usize) -> usize {
     let text = app_state.line_string(line_idx);
@@ -46,12 +47,13 @@ impl Renderer {
         app_state: &AppState,
         center_bounds: [f32; 4],
     ) -> Vec<RegionDrawInstance> {
+        let gutter_inset_left = self.editor_padding_x + 6.0 + EDITOR_FRAME_INSET;
         let line_height = self.theme.editor.line_height;
         let font_size = self.theme.editor.font_size;
         let total_lines = app_state.total_lines().max(1);
         let gutter_digits = total_lines.to_string().len().max(3);
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
-        let text_area_x = center_bounds[0] + self.editor_padding_x + gutter_width;
+        let text_area_x = center_bounds[0] + gutter_inset_left + gutter_width;
         let scroll_y = app_state.current_scroll_y * line_height;
         let scroll_x = app_state.scroll_column as f32 * (font_size * 0.6).max(1.0);
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
@@ -107,13 +109,15 @@ impl Renderer {
         app_state: &AppState,
         center_bounds: [f32; 4],
     ) -> Option<RegionDrawInstance> {
+        let gutter_inset_left = self.editor_padding_x + 6.0 + EDITOR_FRAME_INSET;
         let line_height = self.theme.editor.line_height;
         let font_size = self.theme.editor.font_size;
         let total_lines = app_state.total_lines().max(1);
         let gutter_digits = total_lines.to_string().len().max(3);
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
-        let text_area_x = center_bounds[0] + self.editor_padding_x + gutter_width;
-        let text_area_w = (center_bounds[2] - self.editor_padding_x - gutter_width).max(1.0);
+        let text_area_x = center_bounds[0] + gutter_inset_left + gutter_width;
+        let text_area_w =
+            (center_bounds[2] - gutter_inset_left - self.editor_padding_x - gutter_width).max(1.0);
         let scroll_y = app_state.current_scroll_y * line_height;
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
         let caret_layout =
@@ -159,8 +163,10 @@ impl Renderer {
         let total_lines = app_state.total_lines().max(1);
         let gutter_digits = total_lines.to_string().len().max(3);
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
-        let text_area_x = center_bounds[0] + self.editor_padding_x + gutter_width;
-        let text_area_w = (center_bounds[2] - self.editor_padding_x - gutter_width).max(1.0);
+        let gutter_inset_left = self.editor_padding_x + 6.0 + EDITOR_FRAME_INSET;
+        let text_area_x = center_bounds[0] + gutter_inset_left + gutter_width;
+        let text_area_w =
+            (center_bounds[2] - gutter_inset_left - self.editor_padding_x - gutter_width).max(1.0);
         let scroll_y = app_state.current_scroll_y * line_height;
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
 
@@ -423,6 +429,7 @@ impl Renderer {
         gutter_digits: usize,
         gutter_width: f32,
     ) {
+        let gutter_inset_left = self.editor_padding_x + 6.0;
         let total_lines = app_state.total_lines().max(1);
         let scroll_line = app_state.current_scroll_y.floor().max(0.0) as usize;
         let scroll_y = scroll_line as f32 * line_height;
@@ -430,7 +437,7 @@ impl Renderer {
         let gutter_bg_color = self.theme.editor.gutter.as_f32();
         let gutter_text_color = self.theme.ui.fg_dim.as_f32();
         let gutter_active_color = self.theme.editor.gutter_active.as_f32();
-        let gutter_x = center_bounds[0] + self.editor_padding_x;
+        let gutter_x = center_bounds[0] + gutter_inset_left;
 
         let gutter_font_size = (font_size + 3.0).min(line_height - 2.0).max(8.0);
         self.gutter_text_system
@@ -447,7 +454,12 @@ impl Renderer {
 
         // Clear gutter background to avoid stale pixels from previous frame.
         quads.push(RegionDrawInstance::new(
-            [gutter_x, center_bounds[1], gutter_width, center_bounds[3]],
+            [
+                gutter_x,
+                center_bounds[1] + EDITOR_FRAME_INSET,
+                gutter_width,
+                (center_bounds[3] - EDITOR_FRAME_INSET * 2.0).max(0.0),
+            ],
             gutter_bg_color,
         ));
 

@@ -405,6 +405,13 @@ impl AppShell {
             self.ensure_explorer_snapshot();
         }
 
+        let panel_radius = if self.layout_engine.config.round_ui {
+            self.ui_config.border_radius_px
+        } else {
+            0.0
+        };
+        let mut default_outline = self.theme.ui.accent.as_f32();
+        default_outline[3] = default_outline[3].max(0.95);
         let mut region_instances: Vec<RegionDrawInstance> = flat_regions
             .iter()
             .copied()
@@ -415,17 +422,19 @@ impl AppShell {
                     && region.id != RegionId::StatusBar
                     && !(show_welcome && !workspace_attached && region.id == RegionId::LeftSidebar)
             })
-            .map(|region| {
-                RegionDrawInstance::new(
+            .flat_map(|region| {
+                focus_ring_instances(
                     [
                         region.bounds.x,
                         region.bounds.y,
                         region.bounds.width,
                         region.bounds.height,
                     ],
+                    default_outline,
+                    3.0,
+                    panel_radius,
                     region_color(region.id, &self.theme),
                 )
-                .with_radius(self.ui_config.border_radius_px)
             })
             .collect();
         let focus_target = if show_welcome && !workspace_attached {
@@ -447,14 +456,25 @@ impl AppShell {
                     if focus_target == FocusTarget::CenterEditor && center_has_error_diagnostics {
                         self.theme.ui.error.as_f32()
                     } else {
-                        self.theme.ui.accent.as_f32()
+                        self.theme.ui.cyan.as_f32()
                     };
                 region_instances.extend(focus_ring_instances(
                     bounds,
                     border_color,
                     2.0,
-                    self.ui_config.border_radius_px,
-                    self.theme.editor.bg.as_f32(),
+                    panel_radius,
+                    region_color(
+                        match focus_target {
+                            FocusTarget::CenterEditor => RegionId::Center,
+                            FocusTarget::LeftSidebar => RegionId::LeftSidebar,
+                            FocusTarget::RightSidebar => RegionId::RightSidebar,
+                            FocusTarget::BottomPanel => RegionId::BottomPanel,
+                            FocusTarget::TopBar => RegionId::TopBar,
+                            FocusTarget::StatusBar => RegionId::StatusBar,
+                            FocusTarget::OverlayLayer => RegionId::Center,
+                        },
+                        &self.theme,
+                    ),
                 ));
             }
         }

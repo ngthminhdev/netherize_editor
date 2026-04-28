@@ -59,7 +59,7 @@ impl Renderer {
             [c[0], c[1], c[2], 0.55]
         };
 
-        let width = (bounds[2] - self.panel_padding * 2.0).max(1.0);
+        let width = (bounds[2] - self.sidebar_base_padding * 2.0).max(1.0);
         self.sidebar_text_system.set_size(Some(width), Some(line_h));
 
         let mut glyphs = Vec::new();
@@ -77,10 +77,16 @@ impl Renderer {
                 + self.panel_padding
                 + ((SIDEBAR_FILTER_BAR_HEIGHT - self.panel_padding * 2.0 - line_h).max(0.0) * 0.5);
 
-            selection_quads.push(RegionDrawInstance::new(
-                [bounds[0], filter_y, bounds[2], SIDEBAR_FILTER_BAR_HEIGHT],
-                panel_bg,
-            ));
+            selection_quads.push(
+                RegionDrawInstance::new(
+                    [bounds[0], filter_y, bounds[2], SIDEBAR_FILTER_BAR_HEIGHT],
+                    panel_bg,
+                )
+                .with_radius(
+                    self.panel_corner_radius
+                        .min(SIDEBAR_FILTER_BAR_HEIGHT * 0.45),
+                ),
+            );
             selection_quads.push(RegionDrawInstance::new(
                 [
                     bounds[0],
@@ -136,15 +142,18 @@ impl Renderer {
 
             let label_base_color = row.git_color.unwrap_or(fg_dim);
             let label_color = if row.is_selected {
-                selection_quads.push(RegionDrawInstance::new(
-                    [
-                        bounds[0] + 2.0,
-                        current_y,
-                        (bounds[2] - 4.0).max(0.0),
-                        line_h,
-                    ],
-                    sel_bg,
-                ));
+                selection_quads.push(
+                    RegionDrawInstance::new(
+                        [
+                            bounds[0] + self.panel_padding * 0.35,
+                            current_y,
+                            (bounds[2] - self.panel_padding * 0.7).max(0.0),
+                            line_h,
+                        ],
+                        sel_bg,
+                    )
+                    .with_radius((line_h * 0.3).min(self.panel_corner_radius)),
+                );
                 if sidebar_focused {
                     accent
                 } else {

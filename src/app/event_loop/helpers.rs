@@ -311,7 +311,9 @@ pub(super) fn scale_theme(base: &ThemeConfig, scale: f32) -> ThemeConfig {
 
 pub(super) fn scale_ui_config(base: &UiConfig, scale: f32) -> UiConfig {
     let mut ui = base.clone();
-    ui.layout.region_gap = scale_metric(ui.layout.region_gap, scale, 1.0);
+    ui.layout.outer_gap = scale_metric(ui.layout.outer_gap, scale, 0.0);
+    ui.layout.panel_gap = scale_metric(ui.layout.panel_gap, scale, 0.0);
+    ui.layout.inner_padding = scale_metric(ui.layout.inner_padding, scale, 0.0);
     ui.layout.top_bar_height = scale_metric(ui.layout.top_bar_height, scale, 20.0);
     ui.layout.status_bar_height = scale_metric(ui.layout.status_bar_height, scale, 18.0);
     ui.layout.center_min_width = scale_metric(ui.layout.center_min_width, scale, 240.0);

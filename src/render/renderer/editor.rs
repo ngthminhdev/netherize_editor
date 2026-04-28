@@ -135,6 +135,7 @@ pub(super) fn editor_viewport_geometry(
     app_state: &AppState,
     center_bounds: [f32; 4],
 ) -> EditorViewportGeometry {
+    let left_inset = renderer.editor_padding_x + 10.0;
     let line_height = renderer.theme.editor.line_height;
     let font_size = renderer.theme.editor.font_size;
     let total_lines = app_state.total_lines().max(1);
@@ -142,11 +143,11 @@ pub(super) fn editor_viewport_geometry(
     let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
     let scroll_y = app_state.current_scroll_y * line_height;
     let scroll_x = app_state.scroll_column as f32 * (font_size * 0.6).max(1.0);
-    let viewport_text_left = center_bounds[0] + renderer.editor_padding_x + gutter_width;
+    let viewport_text_left = center_bounds[0] + left_inset + gutter_width;
     let origin_x = viewport_text_left - scroll_x;
     let origin_y = center_bounds[1] + renderer.editor_padding_y + line_height - scroll_y;
     let viewport_text_width =
-        (center_bounds[2] - renderer.editor_padding_x - gutter_width).max(1.0);
+        (center_bounds[2] - left_inset - renderer.editor_padding_x - gutter_width).max(1.0);
 
     EditorViewportGeometry {
         line_height,

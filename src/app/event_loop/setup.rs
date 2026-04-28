@@ -349,7 +349,10 @@ impl AppShell {
         }
         self.layout_engine.config =
             crate::workbench::layout_engine::WorkbenchLayoutConfig::from_ui_theme(&scaled_theme.ui);
-        self.layout_engine.config.region_gap = scaled_ui.layout.region_gap;
+        self.layout_engine.config.outer_gap = scaled_ui.layout.outer_gap;
+        self.layout_engine.config.panel_gap = scaled_ui.layout.panel_gap;
+        self.layout_engine.config.inner_padding = scaled_ui.layout.inner_padding;
+        self.layout_engine.config.round_ui = scaled_ui.layout.round_ui;
         self.layout_engine.config.center_min_width = scaled_ui.layout.center_min_width;
         self.layout_engine.config.center_min_height = scaled_ui.layout.center_min_height;
         self.layout_engine.config.sidebar_min_width = scaled_ui.layout.sidebar_min_width;
@@ -379,7 +382,7 @@ impl AppShell {
 
     pub(super) fn sync_terminal_layout(&mut self, bounds: [f32; 4]) -> bool {
         let scaled_ui = scale_ui_config(&self.ui_config, self.runtime_scale);
-        let panel_padding = scaled_ui.spacing.panel_padding;
+        let panel_padding = scaled_ui.layout.inner_padding;
         let line_height = self.theme.ui.panel_line_height.max(1.0);
         let cell_width = (self.theme.ui.panel_font_size * 0.6).max(1.0);
 
@@ -418,7 +421,7 @@ impl AppShell {
         };
 
         let scaled_ui = scale_ui_config(&self.ui_config, self.runtime_scale);
-        let panel_padding = scaled_ui.spacing.panel_padding;
+        let panel_padding = scaled_ui.layout.inner_padding;
         let line_height = self.theme.ui.panel_line_height.max(1.0);
         let cell_width = (self.theme.ui.panel_font_size * 0.6).max(1.0);
 

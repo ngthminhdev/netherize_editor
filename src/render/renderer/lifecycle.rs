@@ -233,6 +233,8 @@ impl Renderer {
             editor_padding_x: 14.0,
             editor_padding_y: 14.0,
             panel_padding: 10.0,
+            panel_corner_radius: 10.0,
+            round_ui: true,
             sidebar_base_padding: 10.0,
             sidebar_indent_per_depth: 15.0,
             topbar_padding_x: 14.0,
@@ -329,11 +331,17 @@ impl Renderer {
     }
 
     pub fn apply_ui_config(&mut self, ui: &UiConfig) {
-        self.editor_padding_x = ui.spacing.editor_padding;
-        self.editor_padding_y = ui.spacing.editor_padding;
-        self.panel_padding = ui.spacing.panel_padding;
-        self.sidebar_base_padding = ui.spacing.explorer_padding;
-        self.sidebar_indent_per_depth = (ui.spacing.explorer_padding * 1.5).max(10.0);
+        self.editor_padding_x = ui.layout.inner_padding.max(ui.spacing.editor_padding);
+        self.editor_padding_y = ui.layout.inner_padding.max(ui.spacing.editor_padding);
+        self.panel_padding = ui.layout.inner_padding.max(ui.spacing.panel_padding);
+        self.panel_corner_radius = if ui.layout.round_ui {
+            ui.border_radius_px.max(0.0)
+        } else {
+            0.0
+        };
+        self.round_ui = ui.layout.round_ui;
+        self.sidebar_base_padding = ui.layout.inner_padding.max(ui.spacing.explorer_padding);
+        self.sidebar_indent_per_depth = (self.sidebar_base_padding * 1.5).max(10.0);
         self.topbar_padding_x = ui.status_bar.padding_x;
         self.topbar_dirty_gap = ui.spacing.topbar_dirty_gap;
         self.statusbar_padding_x = ui.status_bar.padding_x;
