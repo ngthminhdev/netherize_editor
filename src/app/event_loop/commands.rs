@@ -1991,6 +1991,7 @@ impl AppShell {
                 if is_typing_edit {
                     let _ = self.app_state.clear_completion();
                 }
+                let prev_dirty = self.app_state.is_dirty();
                 let report = {
                     let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
                     dispatch_command_with_clipboard_count(
@@ -2005,6 +2006,9 @@ impl AppShell {
                     self.clear_highlight_layers();
                     self.mark_explorer_dirty();
                     let _ = self.sync_focus_mode_for_active_buffer();
+                }
+                if self.app_state.is_dirty() != prev_dirty {
+                    self.mark_explorer_dirty();
                 }
 
                 if report.state_changed && is_cursor_move {
@@ -2051,6 +2055,8 @@ impl AppShell {
                 }
                 Command::SaveFile => {
                     self.submit_active_file_history_save();
+                    self.submit_workspace_git_status_refresh();
+                    self.submit_active_buffer_git_diff_refresh();
                 }
                 _ if should_persist_history_after => {
                     self.submit_active_file_history_save();

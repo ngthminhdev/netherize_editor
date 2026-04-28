@@ -832,9 +832,13 @@ impl AppState {
 }
 
 fn build_history_diff_lines(current_text: &str, historical_text: &str) -> Vec<FilePreviewLine> {
+    const MAX_LCS_LINES: usize = 2000;
+
     let current_lines: Vec<&str> = current_text.lines().collect();
     let historical_lines: Vec<&str> = historical_text.lines().collect();
-    let max_len = current_lines.len().max(historical_lines.len());
+    let m = current_lines.len();
+    let n = historical_lines.len();
+
     let mut out = vec![
         FilePreviewLine {
             line_number: 1,
@@ -848,36 +852,80 @@ fn build_history_diff_lines(current_text: &str, historical_text: &str) -> Vec<Fi
         },
     ];
 
-    for idx in 0..max_len {
-        match (current_lines.get(idx), historical_lines.get(idx)) {
-            (Some(current), Some(old)) if current == old => out.push(FilePreviewLine {
-                line_number: idx + 1,
-                text: format!("  {current}"),
-                is_target: false,
-            }),
-            (Some(current), Some(old)) => {
-                out.push(FilePreviewLine {
-                    line_number: idx + 1,
-                    text: format!("- {current}"),
-                    is_target: true,
-                });
-                out.push(FilePreviewLine {
-                    line_number: idx + 1,
-                    text: format!("+ {old}"),
-                    is_target: true,
-                });
+    if m <= MAX_LCS_LINES && n <= MAX_LCS_LINES {
+        // LCS-based diff: correctly handles inserted/deleted lines
+        let mut dp = vec![vec![0u16; n + 1]; m + 1];
+        for i in (0..m).rev() {
+            for j in (0..n).rev() {
+                dp[i][j] = if current_lines[i] == historical_lines[j] {
+                    dp[i + 1][j + 1].saturating_add(1)
+                } else {
+                    dp[i + 1][j].max(dp[i][j + 1])
+                };
             }
-            (Some(current), None) => out.push(FilePreviewLine {
-                line_number: idx + 1,
-                text: format!("- {current}"),
-                is_target: true,
-            }),
-            (None, Some(old)) => out.push(FilePreviewLine {
-                line_number: idx + 1,
-                text: format!("+ {old}"),
-                is_target: true,
-            }),
-            (None, None) => {}
+        }
+
+        let mut i = 0;
+        let mut j = 0;
+        while i < m || j < n {
+            if i < m && j < n && current_lines[i] == historical_lines[j] {
+                out.push(FilePreviewLine {
+                    line_number: i + 1,
+                    text: format!("  {}", current_lines[i]),
+                    is_target: false,
+                });
+                i += 1;
+                j += 1;
+            } else if i < m && (j >= n || dp[i + 1][j] >= dp[i][j + 1]) {
+                out.push(FilePreviewLine {
+                    line_number: i + 1,
+                    text: format!("- {}", current_lines[i]),
+                    is_target: true,
+                });
+                i += 1;
+            } else {
+                out.push(FilePreviewLine {
+                    line_number: j + 1,
+                    text: format!("+ {}", historical_lines[j]),
+                    is_target: true,
+                });
+                j += 1;
+            }
+        }
+    } else {
+        // Fallback for very large files: naive line-by-line comparison
+        let max_len = m.max(n);
+        for idx in 0..max_len {
+            match (current_lines.get(idx), historical_lines.get(idx)) {
+                (Some(c), Some(h)) if c == h => out.push(FilePreviewLine {
+                    line_number: idx + 1,
+                    text: format!("  {c}"),
+                    is_target: false,
+                }),
+                (Some(c), Some(h)) => {
+                    out.push(FilePreviewLine {
+                        line_number: idx + 1,
+                        text: format!("- {c}"),
+                        is_target: true,
+                    });
+                    out.push(FilePreviewLine {
+                        line_number: idx + 1,
+                        text: format!("+ {h}"),
+                        is_target: true,
+                    });
+                }
+                (Some(c), None) => out.push(FilePreviewLine {
+                    line_number: idx + 1,
+                    text: format!("- {c}"),
+                    is_target: true,
+                }),
+                (None, Some(h)) => out.push(FilePreviewLine {
+                    line_number: idx + 1,
+                    text: format!("+ {h}"),
+                    is_target: true,
+                }),
+                (None, None) => {}
+            }
         }
     }
 

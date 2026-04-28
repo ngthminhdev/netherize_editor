@@ -10,6 +10,7 @@ use crate::workspace::scanner::{WorkspaceScanOptions, WorkspaceScanner};
 pub enum WorkspaceGitStatus {
     Modified,
     Added,
+    Dirty,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

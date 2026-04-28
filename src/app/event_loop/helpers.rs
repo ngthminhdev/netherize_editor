@@ -495,7 +495,15 @@ fn collect_visible_explorer_entries(
             depth,
             is_expanded,
             name: name.to_string(),
-            git_status: app_state.workspace_git_status(child),
+            git_status: {
+                    let is_dirty = app_state.active_file() == Some(child)
+                        && app_state.is_dirty();
+                    if is_dirty {
+                        Some(WorkspaceGitStatus::Dirty)
+                    } else {
+                        app_state.workspace_git_status(child)
+                    }
+                },
         });
 
         if file_type == WorkspaceNodeType::Folder && is_expanded {
@@ -559,11 +567,13 @@ pub(super) fn build_sidebar_rows(
                 git_marker: match entry.git_status {
                     Some(WorkspaceGitStatus::Modified) => Some('M'),
                     Some(WorkspaceGitStatus::Added) => Some('A'),
+                    Some(WorkspaceGitStatus::Dirty) => Some('●'),
                     None => None,
                 },
                 git_color: match entry.git_status {
                     Some(WorkspaceGitStatus::Modified) => Some(theme.git.modified_sidebar.as_f32()),
                     Some(WorkspaceGitStatus::Added) => Some(theme.git.added_sidebar.as_f32()),
+                    Some(WorkspaceGitStatus::Dirty) => Some(theme.git.modified_sidebar.as_f32()),
                     None => None,
                 },
                 is_selected: idx == selected,

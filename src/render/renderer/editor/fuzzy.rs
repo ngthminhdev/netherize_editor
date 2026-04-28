@@ -238,12 +238,13 @@ impl Renderer {
                         [right_x + 6.0, row_y, (right_w - 12.0).max(1.0), line_height],
                         bg,
                     ));
-                }
-                if line.is_target {
+                } else if line.is_target {
                     chrome.push(RegionDrawInstance::new(
                         [right_x + 6.0, row_y, (right_w - 12.0).max(1.0), line_height],
                         selection_bg,
                     ));
+                }
+                if line.is_target {
                     chrome.push(RegionDrawInstance::new(
                         [right_x + 6.0, row_y, 3.0, line_height],
                         accent,
