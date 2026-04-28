@@ -820,6 +820,7 @@ impl AppShell {
                 }
             }
             Command::GitOpenLazygit => self.open_lazygit_buffer(),
+            Command::GitOpenLazydocker => self.open_lazydocker_buffer(),
             Command::GitBlameLine => self.submit_git_blame_line(),
             Command::LspHover => self.submit_lsp_hover(),
             Command::LspGoToDefinition => self.submit_lsp_definition(true),
@@ -2073,6 +2074,35 @@ impl AppShell {
             topic: RequestTopic::TerminalPty,
             payload: WorkerRequestPayload::SpawnPtyCommand {
                 program: "lazygit".to_string(),
+                args: Vec::new(),
+                working_dir: Some(workspace_root),
+            },
+        });
+
+        true
+    }
+
+    fn open_lazydocker_buffer(&mut self) -> bool {
+        let Some(workspace_root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
+            eprintln!("[AppShell] lazydocker open skipped: workspace is not attached");
+            return false;
+        };
+
+        let buffer_index = self
+            .app_state
+            .open_terminal_buffer("[Lazydocker]", Some(workspace_root.clone()));
+        self.pending_lazydocker_buffer_index = Some(buffer_index);
+        self.buffer_terminal_needs_layout = true;
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        self.clear_highlight_layers();
+        let _ = self.sync_focus_mode_for_active_buffer();
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::TerminalPty,
+            payload: WorkerRequestPayload::SpawnPtyCommand {
+                program: "lazydocker".to_string(),
                 args: Vec::new(),
                 working_dir: Some(workspace_root),
             },

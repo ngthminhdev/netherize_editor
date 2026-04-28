@@ -841,6 +841,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert_sequence(
         Some("normal"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyD), ph(KeyCode::KeyF)]),
+        DOCKER_OPEN_LAZYDOCKER,
+    );
+    km.insert_sequence(
+        Some("normal"),
         seq(&[KeySpec::Leader, ph(KeyCode::KeyG), ph(KeyCode::KeyL)]),
         GIT_BLAME_LINE,
     );

@@ -109,6 +109,7 @@ impl AppShell {
             pty_session_id: None,
             terminal_buffer_grids: HashMap::new(),
             pending_lazygit_buffer_index: None,
+            pending_lazydocker_buffer_index: None,
             highlight_spans: Vec::new(),
             semantic_highlight_spans: Vec::new(),
             syntax_engine: None,

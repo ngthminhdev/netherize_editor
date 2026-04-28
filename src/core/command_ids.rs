@@ -86,6 +86,7 @@ pub const OPEN_THEME_SELECTOR: &str = "app.open_theme_selector";
 pub const OPEN_SETTINGS: &str = "app.open_settings";
 pub const OPEN_HELP: &str = "app.open_help";
 pub const GIT_OPEN_LAZYGIT: &str = "git.open_lazygit";
+pub const DOCKER_OPEN_LAZYDOCKER: &str = "docker.open_lazydocker";
 pub const GIT_BLAME_LINE: &str = "git.blame_line";
 pub const TERMINAL_ENTER_NORMAL_MODE: &str = "terminal.enter_normal_mode";
 pub const TERMINAL_PASTE: &str = "terminal.paste";
@@ -237,6 +238,7 @@ pub const ALL_IDS: &[&str] = &[
     OPEN_THEME_SELECTOR,
     OPEN_SETTINGS,
     GIT_OPEN_LAZYGIT,
+    DOCKER_OPEN_LAZYDOCKER,
     GIT_BLAME_LINE,
     TERMINAL_ENTER_NORMAL_MODE,
     TERMINAL_PASTE,
@@ -389,6 +391,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         OPEN_SETTINGS => Some(Command::OpenSettings),
         OPEN_HELP => Some(Command::OpenHelp),
         GIT_OPEN_LAZYGIT => Some(Command::GitOpenLazygit),
+        DOCKER_OPEN_LAZYDOCKER => Some(Command::GitOpenLazydocker),
         GIT_BLAME_LINE => Some(Command::GitBlameLine),
         LSP_HOVER => Some(Command::LspHover),
         LSP_GO_TO_DEFINITION => Some(Command::LspGoToDefinition),

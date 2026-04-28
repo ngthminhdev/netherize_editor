@@ -142,6 +142,7 @@ pub enum Command {
     SettingsAdjustIncrease,
     SettingsActivate,
     GitOpenLazygit,
+    GitOpenLazydocker,
     GitBlameLine,
     // Legacy aliases (kept for backward compatibility with old keymaps/tests).
     FilePickerSelectNext,

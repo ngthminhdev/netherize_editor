@@ -230,6 +230,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::OpenSettings
         | Command::OpenHelp
         | Command::GitOpenLazygit
+        | Command::GitOpenLazydocker
         | Command::GitBlameLine
         | Command::FilePickerAppendQuery(_)
         | Command::FilePickerBackspaceQuery

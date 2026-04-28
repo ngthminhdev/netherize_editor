@@ -93,6 +93,7 @@ pub struct AppShell {
     pty_session_id: Option<u64>,
     terminal_buffer_grids: HashMap<u64, TerminalGrid>,
     pending_lazygit_buffer_index: Option<usize>,
+    pending_lazydocker_buffer_index: Option<usize>,
     highlight_spans: Vec<HighlightSpan>,
     semantic_highlight_spans: Vec<HighlightSpan>,
     syntax_engine: Option<SyntaxEngine>,

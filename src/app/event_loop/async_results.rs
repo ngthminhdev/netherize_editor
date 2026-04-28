@@ -132,7 +132,11 @@ impl AsyncResultRouter for AppShell {
                 if self.maybe_refresh_workspace_git_branch(true) {
                     self.request_redraw();
                 }
-                if let Some(buffer_index) = self.pending_lazygit_buffer_index.take() {
+                if let Some(buffer_index) = self
+                    .pending_lazygit_buffer_index
+                    .take()
+                    .or_else(|| self.pending_lazydocker_buffer_index.take())
+                {
                     eprintln!(
                         "[AppShell] terminal buffer ready: session={session_id} command={shell} dir={}",
                         working_dir.display()

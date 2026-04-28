@@ -345,7 +345,52 @@ pub(super) fn terminal_input_payload(input: &NormalizedInput) -> Option<String> 
         return Some(text.to_string());
     }
 
+    if !input.modifiers.control_key()
+        && let Some(payload) = shifted_letter_payload(input.physical_key, input.modifiers.shift_key())
+    {
+        if input.modifiers.alt_key() {
+            return Some(format!("\u{1b}{payload}"));
+        }
+        return Some(payload.to_string());
+    }
+
     None
+}
+
+fn shifted_letter_payload(physical_key: Option<KeyCode>, shifted: bool) -> Option<&'static str> {
+    if !shifted {
+        return None;
+    }
+
+    match physical_key? {
+        KeyCode::KeyA => Some("A"),
+        KeyCode::KeyB => Some("B"),
+        KeyCode::KeyC => Some("C"),
+        KeyCode::KeyD => Some("D"),
+        KeyCode::KeyE => Some("E"),
+        KeyCode::KeyF => Some("F"),
+        KeyCode::KeyG => Some("G"),
+        KeyCode::KeyH => Some("H"),
+        KeyCode::KeyI => Some("I"),
+        KeyCode::KeyJ => Some("J"),
+        KeyCode::KeyK => Some("K"),
+        KeyCode::KeyL => Some("L"),
+        KeyCode::KeyM => Some("M"),
+        KeyCode::KeyN => Some("N"),
+        KeyCode::KeyO => Some("O"),
+        KeyCode::KeyP => Some("P"),
+        KeyCode::KeyQ => Some("Q"),
+        KeyCode::KeyR => Some("R"),
+        KeyCode::KeyS => Some("S"),
+        KeyCode::KeyT => Some("T"),
+        KeyCode::KeyU => Some("U"),
+        KeyCode::KeyV => Some("V"),
+        KeyCode::KeyW => Some("W"),
+        KeyCode::KeyX => Some("X"),
+        KeyCode::KeyY => Some("Y"),
+        KeyCode::KeyZ => Some("Z"),
+        _ => None,
+    }
 }
 
 fn control_sequence_for_physical(physical_key: Option<KeyCode>) -> Option<&'static str> {

@@ -13,7 +13,6 @@
 //!   - `ESC[J`, `ESC[K`  (erase display / line)
 //!   - `ESC[?...h/l`     (private mode: alt-screen, mouse, etc.)
 //!   - `ESC]...` (OSC)   (title, color set, etc.)
-//!   - `ESC(`/`ESC)`     (charset switching)
 
 // ─── Màu sắc ────────────────────────────────────────────────────────────────
 
@@ -97,6 +96,18 @@ pub enum AnsiEvent {
 
 // ─── Parser state machine ────────────────────────────────────────────────────
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TerminalCharset {
+    Ascii,
+    DecSpecialGraphics,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CharsetTarget {
+    G0,
+    G1,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum ParseState {
     /// Đang đọc ký tự bình thường.
@@ -107,8 +118,10 @@ enum ParseState {
     Csi { buf: Vec<u8> },
     /// Đang đọc OSC (`ESC]`), bỏ qua cho đến ST (ESC\ hoặc BEL).
     Osc,
-    /// Sau ESC, thấy `(` hoặc `)` — charset indicator, bỏ qua 1 byte.
-    CharsetSelect,
+    /// Vừa thấy ESC trong OSC — consume `\` nếu đây là ST terminator.
+    OscEsc,
+    /// Sau ESC, thấy `(` hoặc `)` — charset indicator cho G0/G1.
+    CharsetSelect(CharsetTarget),
 }
 
 /// Bộ parser streaming — dùng bằng cách gọi `parse_chunk` lặp lại.
@@ -117,6 +130,9 @@ enum ParseState {
 /// giúp tránh allocation trung gian khi chunk lớn.
 pub struct AnsiParser {
     state: ParseState,
+    g0_charset: TerminalCharset,
+    g1_charset: TerminalCharset,
+    invoked_charset: CharsetTarget,
     /// UTF-8 partial decode buffer (tối đa 4 bytes).
     utf8_buf: [u8; 4],
     utf8_len: usize,
@@ -126,6 +142,9 @@ impl AnsiParser {
     pub fn new() -> Self {
         Self {
             state: ParseState::Normal,
+            g0_charset: TerminalCharset::Ascii,
+            g1_charset: TerminalCharset::Ascii,
+            invoked_charset: CharsetTarget::G0,
             utf8_buf: [0u8; 4],
             utf8_len: 0,
         }
@@ -144,15 +163,13 @@ impl AnsiParser {
     }
 
     fn feed_byte(&mut self, byte: u8, emit: &mut impl FnMut(AnsiEvent)) {
-        match &self.state {
+        match self.state {
             ParseState::Normal => self.handle_normal(byte, emit),
             ParseState::EscapeStart => self.handle_escape_start(byte, emit),
             ParseState::Csi { .. } => self.handle_csi(byte, emit),
             ParseState::Osc => self.handle_osc(byte),
-            ParseState::CharsetSelect => {
-                // Bỏ qua byte define charset (G0/G1), quay về Normal.
-                self.state = ParseState::Normal;
-            }
+            ParseState::OscEsc => self.handle_osc_esc(byte),
+            ParseState::CharsetSelect(target) => self.handle_charset_select(byte, target),
         }
     }
 
@@ -175,6 +192,15 @@ impl AnsiParser {
                 self.flush_utf8(emit);
                 emit(AnsiEvent::Backspace);
             }
+            // SO/SI invoke G1/G0 charset (DEC VT behavior used by ncurses TUIs).
+            0x0e => {
+                self.flush_utf8(emit);
+                self.invoked_charset = CharsetTarget::G1;
+            }
+            0x0f => {
+                self.flush_utf8(emit);
+                self.invoked_charset = CharsetTarget::G0;
+            }
             // Control chars khác (BEL, TAB, NUL, …) — bỏ qua nhưng flush trước.
             0x00..=0x1f | 0x7f => {
                 self.flush_utf8(emit);
@@ -190,7 +216,7 @@ impl AnsiParser {
                     self.utf8_len += 1;
                     // Nếu sequence hoàn chỉnh → emit.
                     if let Some(ch) = try_decode_utf8(&self.utf8_buf[..self.utf8_len]) {
-                        emit(AnsiEvent::PrintChar(ch));
+                        emit(AnsiEvent::PrintChar(self.map_print_char(ch)));
                         self.utf8_len = 0;
                     }
                 } else {
@@ -220,8 +246,11 @@ impl AnsiParser {
             b']' => {
                 self.state = ParseState::Osc;
             }
-            b'(' | b')' => {
-                self.state = ParseState::CharsetSelect;
+            b'(' => {
+                self.state = ParseState::CharsetSelect(CharsetTarget::G0);
+            }
+            b')' => {
+                self.state = ParseState::CharsetSelect(CharsetTarget::G1);
             }
             // ESC M = reverse index (scroll up), ESC= / ESC>, etc. — bỏ qua.
             _ => {
@@ -267,11 +296,50 @@ impl AnsiParser {
                 self.state = ParseState::Normal;
             }
             0x1b => {
-                // Có thể bắt đầu ESC\ string terminator — đơn giản hóa: chờ byte tiếp theo.
-                // Vì state đang Osc, byte tiếp theo `\` sẽ lại gọi handle_osc → Normal.
-                self.state = ParseState::Normal;
+                self.state = ParseState::OscEsc;
             }
             _ => { /* bỏ qua */ }
+        }
+    }
+
+    fn handle_osc_esc(&mut self, byte: u8) {
+        // OSC ST = ESC \. Consume both bytes so the trailing backslash is not rendered.
+        if byte == b'\\' {
+            self.state = ParseState::Normal;
+        } else {
+            // Not an ST terminator. Stay inside OSC and continue discarding the payload.
+            self.state = ParseState::Osc;
+        }
+    }
+
+    fn handle_charset_select(&mut self, byte: u8, target: CharsetTarget) {
+        self.state = ParseState::Normal;
+
+        let charset = match byte {
+            b'0' => TerminalCharset::DecSpecialGraphics,
+            b'B' => TerminalCharset::Ascii,
+            _ => return,
+        };
+
+        match target {
+            CharsetTarget::G0 => {
+                self.g0_charset = charset;
+            }
+            CharsetTarget::G1 => {
+                self.g1_charset = charset;
+            }
+        }
+    }
+
+    fn map_print_char(&self, ch: char) -> char {
+        let charset = match self.invoked_charset {
+            CharsetTarget::G0 => self.g0_charset,
+            CharsetTarget::G1 => self.g1_charset,
+        };
+
+        match charset {
+            TerminalCharset::Ascii => ch,
+            TerminalCharset::DecSpecialGraphics => map_dec_special_graphics(ch),
         }
     }
 }
@@ -423,6 +491,44 @@ fn parse_first_param(param_str: &str, default: usize) -> usize {
         .next()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(default)
+}
+
+fn map_dec_special_graphics(ch: char) -> char {
+    match ch {
+        '_' => ' ',
+        '`' => '◆',
+        'a' => '▒',
+        'b' => '\t',
+        'c' => '␌',
+        'd' => '␍',
+        'e' => '␊',
+        'f' => '°',
+        'g' => '±',
+        'h' => '␤',
+        'i' => '␋',
+        'j' => '┘',
+        'k' => '┐',
+        'l' => '┌',
+        'm' => '└',
+        'n' => '┼',
+        'o' => '⎺',
+        'p' => '⎻',
+        'q' => '─',
+        'r' => '⎼',
+        's' => '⎽',
+        't' => '├',
+        'u' => '┤',
+        'v' => '┴',
+        'w' => '┬',
+        'x' => '│',
+        'y' => '≤',
+        'z' => '≥',
+        '{' => 'π',
+        '|' => '≠',
+        '}' => '£',
+        '~' => '·',
+        _ => ch,
+    }
 }
 
 /// Thử decode một UTF-8 sequence không hoàn chỉnh.
@@ -610,6 +716,65 @@ mod tests {
         // OSC bị bỏ qua, chỉ emit "hello"
         assert!(events.iter().any(|e| *e == AnsiEvent::PrintChar('h')));
         assert!(!events.iter().any(|e| *e == AnsiEvent::PrintChar('0')));
+    }
+
+    #[test]
+    fn osc_st_terminator_consumes_backslash() {
+        let events = collect_events("\x1b]8;;https://example.com\x1b\\link");
+        assert_eq!(
+            events,
+            vec![
+                AnsiEvent::PrintChar('l'),
+                AnsiEvent::PrintChar('i'),
+                AnsiEvent::PrintChar('n'),
+                AnsiEvent::PrintChar('k'),
+            ]
+        );
+    }
+
+    #[test]
+    fn dec_special_graphics_maps_line_drawing_chars() {
+        let events = collect_events("\x1b(0lqxkmjtnuuvw\x1b(B");
+        assert_eq!(
+            events,
+            vec![
+                AnsiEvent::PrintChar('┌'),
+                AnsiEvent::PrintChar('─'),
+                AnsiEvent::PrintChar('│'),
+                AnsiEvent::PrintChar('┐'),
+                AnsiEvent::PrintChar('└'),
+                AnsiEvent::PrintChar('┘'),
+                AnsiEvent::PrintChar('├'),
+                AnsiEvent::PrintChar('┼'),
+                AnsiEvent::PrintChar('┤'),
+                AnsiEvent::PrintChar('┤'),
+                AnsiEvent::PrintChar('┴'),
+                AnsiEvent::PrintChar('┬'),
+            ]
+        );
+    }
+
+    #[test]
+    fn dec_special_graphics_resets_back_to_ascii() {
+        let events = collect_events("\x1b(0q\x1b(Bq");
+        assert_eq!(
+            events,
+            vec![AnsiEvent::PrintChar('─'), AnsiEvent::PrintChar('q')]
+        );
+    }
+
+    #[test]
+    fn dec_special_graphics_supports_g1_invocation_with_so_si() {
+        let events = collect_events("\x1b)0q\x0eqx\x0fq");
+        assert_eq!(
+            events,
+            vec![
+                AnsiEvent::PrintChar('q'),
+                AnsiEvent::PrintChar('─'),
+                AnsiEvent::PrintChar('│'),
+                AnsiEvent::PrintChar('q'),
+            ]
+        );
     }
 
     #[test]
