@@ -211,6 +211,26 @@ impl InputHandler {
         }
 
         let input_debug = normalized.debug_label();
+
+        if matches!(
+            context.focus,
+            InputFocusContext::BufferTerminal | InputFocusContext::Terminal
+        ) && let Some(payload) = terminal_input_payload(&normalized)
+        {
+            self.clear_pending_counts();
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> repeated terminal raw input",
+                    context.mode.as_str(),
+                    context.focus.as_str()
+                ),
+                Command::TerminalWriteInput(payload),
+                1,
+                false,
+            )));
+        }
+
         let resolved = input_map.resolve(&normalized, context)?;
         if !resolved.command.supports_press_and_hold_repeat() {
             return None;

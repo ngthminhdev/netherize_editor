@@ -1263,6 +1263,70 @@ fn buffer_terminal_shifted_letter_without_text_routes_uppercase_raw_input() {
 }
 
 #[test]
+fn buffer_terminal_shifted_letter_with_lowercase_text_routes_uppercase_raw_input() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::BufferTerminal);
+    let now = std::time::Instant::now();
+
+    let mapped = handler.route_normalized_input(
+        NormalizedInput {
+            physical_key: Some(KeyCode::KeyR),
+            named_key: None,
+            text: Some("r".to_string()),
+            modifiers: ModifiersState::SHIFT,
+        },
+        &map,
+        context,
+        now,
+    );
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::TerminalWriteInput("R".to_string())
+            );
+        }
+        other => panic!(
+            "expected shifted buffer terminal text to forward uppercase raw input, got {:?}",
+            other
+        ),
+    }
+}
+
+#[test]
+fn buffer_terminal_repeated_printable_input_still_routes_raw_input() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::BufferTerminal);
+
+    let mapped = handler.route_repeated_normalized_input(
+        NormalizedInput {
+            physical_key: Some(KeyCode::KeyR),
+            named_key: None,
+            text: Some("R".to_string()),
+            modifiers: ModifiersState::SHIFT,
+        },
+        &map,
+        context,
+    );
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::TerminalWriteInput("R".to_string())
+            );
+        }
+        other => panic!(
+            "expected repeated buffer terminal key to forward raw input, got {:?}",
+            other
+        ),
+    }
+}
+
+#[test]
 fn terminal_focus_ctrl_h_routes_raw_control_char() {
     let mut handler = InputHandler::new();
     let map = make_map();
