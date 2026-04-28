@@ -808,6 +808,69 @@ fn welcome_palette_modes_support_ctrl_np_navigation() {
 }
 
 #[test]
+fn palette_focus_empty_welcome_routes_selection_without_visible_overlay() {
+    let map = make_default_profile_map();
+    let input_ctrl_n = NormalizedInput {
+        physical_key: Some(KeyCode::KeyN),
+        named_key: None,
+        text: Some("n".to_string()),
+        modifiers: ModifiersState::CONTROL,
+    };
+    let input_ctrl_p = NormalizedInput {
+        physical_key: Some(KeyCode::KeyP),
+        named_key: None,
+        text: Some("p".to_string()),
+        modifiers: ModifiersState::CONTROL,
+    };
+    let input_j = NormalizedInput {
+        physical_key: Some(KeyCode::KeyJ),
+        named_key: None,
+        text: Some("j".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let input_k = NormalizedInput {
+        physical_key: Some(KeyCode::KeyK),
+        named_key: None,
+        text: Some("k".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let input_enter = input_from_named(NamedKey::Enter);
+    let input_text = NormalizedInput {
+        physical_key: Some(KeyCode::KeyA),
+        named_key: None,
+        text: Some("a".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+
+    let mut context = KeybindingContext::for_mode(EditorMode::PaletteFocus);
+    context.welcome_visible = true;
+    context.focus = InputFocusContext::Welcome;
+    context.command_palette_mode = Some(CommandPaletteMode::RecentProjects);
+
+    assert_eq!(
+        map.translate(&input_ctrl_n, context),
+        Some(Command::OverlaySelectNext)
+    );
+    assert_eq!(
+        map.translate(&input_ctrl_p, context),
+        Some(Command::OverlaySelectPrev)
+    );
+    assert_eq!(
+        map.translate(&input_j, context),
+        Some(Command::OverlaySelectNext)
+    );
+    assert_eq!(
+        map.translate(&input_k, context),
+        Some(Command::OverlaySelectPrev)
+    );
+    assert_eq!(
+        map.translate(&input_enter, context),
+        Some(Command::FilePickerConfirmSelection)
+    );
+    assert_eq!(map.translate(&input_text, context), None);
+}
+
+#[test]
 fn welcome_recent_projects_use_direct_jk_enter() {
     let map = make_default_profile_map();
     let input_j = NormalizedInput {

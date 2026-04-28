@@ -422,6 +422,53 @@ impl InputMap {
         welcome_visible: bool,
     ) -> Option<KeybindingMatch> {
         if !palette_visible {
+            if welcome_visible {
+                if input.modifiers.control_key() && !input.modifiers.super_key() {
+                    use KeyCode::*;
+                    match input.physical_key {
+                        Some(KeyN) => {
+                            return Some(KeybindingMatch {
+                                command: Command::OverlaySelectNext,
+                                reason: "palette focus without visible overlay: welcome Ctrl+n -> SelectNext",
+                            });
+                        }
+                        Some(KeyP) => {
+                            return Some(KeybindingMatch {
+                                command: Command::OverlaySelectPrev,
+                                reason: "palette focus without visible overlay: welcome Ctrl+p -> SelectPrev",
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+
+                if !input.has_command_modifier() {
+                    use KeyCode::*;
+                    match input.physical_key {
+                        Some(KeyJ) => {
+                            return Some(KeybindingMatch {
+                                command: Command::OverlaySelectNext,
+                                reason: "palette focus without visible overlay: welcome j -> SelectNext",
+                            });
+                        }
+                        Some(KeyK) => {
+                            return Some(KeybindingMatch {
+                                command: Command::OverlaySelectPrev,
+                                reason: "palette focus without visible overlay: welcome k -> SelectPrev",
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+
+                if input.named_key == Some(NamedKey::Enter) {
+                    return Some(KeybindingMatch {
+                        command: Command::FilePickerConfirmSelection,
+                        reason: "palette focus without visible overlay: welcome Enter -> ConfirmSelection",
+                    });
+                }
+            }
+
             if input.named_key == Some(NamedKey::Escape) {
                 return Some(KeybindingMatch {
                     command: Command::SwitchMode(ModeEvent::ExitFocus),
