@@ -892,7 +892,6 @@ enum CommentEdit {
     Delete { at: usize, len_chars: usize },
 }
 
-
 pub(super) fn active_comment_syntax_for_path(path: &Path) -> Option<CommentSyntax> {
     if let Some(file_name) = path.file_name().and_then(|name| name.to_str())
         && file_name.eq_ignore_ascii_case("makefile")
@@ -920,7 +919,11 @@ pub(super) fn active_comment_syntax_for_path(path: &Path) -> Option<CommentSynta
     Some(CommentSyntax { line_prefix })
 }
 
-pub(super) fn line_comment_plan(text: &Rope, line_idx: usize, line_prefix: &str) -> LineCommentPlan {
+pub(super) fn line_comment_plan(
+    text: &Rope,
+    line_idx: usize,
+    line_prefix: &str,
+) -> LineCommentPlan {
     let clamped_line = line_idx.min(text.len_lines().saturating_sub(1));
     let line_start = text.line_to_char(clamped_line);
     let line_text = text.line(clamped_line).to_string();
@@ -993,7 +996,11 @@ pub(super) fn shift_char_position(position: usize, delta: isize) -> usize {
     }
 }
 
-pub(super) fn adjust_cursor_after_insert(cursor: usize, insert_at: usize, len_chars: usize) -> usize {
+pub(super) fn adjust_cursor_after_insert(
+    cursor: usize,
+    insert_at: usize,
+    len_chars: usize,
+) -> usize {
     if insert_at <= cursor {
         cursor.saturating_add(len_chars)
     } else {
@@ -1001,7 +1008,11 @@ pub(super) fn adjust_cursor_after_insert(cursor: usize, insert_at: usize, len_ch
     }
 }
 
-pub(super) fn adjust_cursor_after_delete(cursor: usize, delete_at: usize, len_chars: usize) -> usize {
+pub(super) fn adjust_cursor_after_delete(
+    cursor: usize,
+    delete_at: usize,
+    len_chars: usize,
+) -> usize {
     if delete_at >= cursor {
         return cursor;
     }
@@ -1159,7 +1170,11 @@ pub(super) fn word_end_from_cursor(text: &Rope, cursor: usize) -> Option<usize> 
     Some(i)
 }
 
-pub(super) fn collect_search_highlights(text: &str, query: &str, whole_word: bool) -> Vec<(usize, usize)> {
+pub(super) fn collect_search_highlights(
+    text: &str,
+    query: &str,
+    whole_word: bool,
+) -> Vec<(usize, usize)> {
     if query.is_empty() {
         return Vec::new();
     }
@@ -1212,7 +1227,10 @@ pub(super) fn build_completion_display_items(
         .collect()
 }
 
-pub(super) fn score_completion_match(label: &str, query: &str) -> Option<(i64, Vec<(usize, usize)>)> {
+pub(super) fn score_completion_match(
+    label: &str,
+    query: &str,
+) -> Option<(i64, Vec<(usize, usize)>)> {
     score_label_match(label, query)
 }
 
@@ -1268,4 +1286,3 @@ pub(super) fn load_image_buffer(path: &Path) -> ImageBuffer {
         },
     }
 }
-

@@ -1,5 +1,5 @@
-use super::*;
 use super::overlays::load_image_buffer;
+use super::*;
 
 impl AppState {
     pub fn open_file(&mut self, path: PathBuf) -> Result<(), String> {
@@ -502,4 +502,3 @@ impl AppState {
         true
     }
 }
-

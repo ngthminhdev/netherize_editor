@@ -48,7 +48,6 @@ mod tests;
 
 pub use settings::*;
 
-
 #[derive(Debug, Clone, Default)]
 pub struct ExternalChangeReport {
     pub workspace_reloaded: bool,
@@ -808,5 +807,3 @@ impl AppState {
             .map_err(|err| format!("create probe file {:?} failed: {err}", path))
     }
 }
-
-

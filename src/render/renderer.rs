@@ -108,6 +108,7 @@ pub(super) struct StatusbarLayoutKey {
     pub(super) pending_keys: String,
     pub(super) git_branch: String,
     pub(super) filetype: String,
+    pub(super) search_match_position: Option<(usize, usize)>,
     pub(super) line: usize,
     pub(super) col: usize,
     pub(super) diagnostics_errors: usize,

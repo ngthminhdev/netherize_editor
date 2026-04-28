@@ -34,6 +34,7 @@ impl Renderer {
         pending_keys: &str,
         git_branch: &str,
         filetype: &str,
+        search_match_position: Option<(usize, usize)>,
         line: usize,
         col: usize,
         diagnostics_errors: usize,
@@ -55,6 +56,7 @@ impl Renderer {
             pending_keys: pending_keys.to_string(),
             git_branch: git_branch.to_string(),
             filetype: filetype.to_string(),
+            search_match_position,
             line,
             col,
             diagnostics_errors,
@@ -97,6 +99,9 @@ impl Renderer {
         }
         if !filetype.trim().is_empty() {
             right_parts.push(filetype.trim().to_string());
+        }
+        if let Some((current, total)) = search_match_position {
+            right_parts.push(format!("{current}/{total}"));
         }
         right_parts.push("utf-8".to_string());
         right_parts.push("LF".to_string());

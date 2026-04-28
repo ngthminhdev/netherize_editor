@@ -872,12 +872,15 @@ mod tests {
         assert!(state.set_in_file_search_query("alpha"));
         assert_eq!(state.search_highlights().len(), 2);
         assert_eq!(state.last_search_query(), "alpha");
+        assert_eq!(state.active_search_match_position(), Some((1, 2)));
 
         assert!(state.search_next());
         assert_eq!(state.cursor_char_idx(), 11);
+        assert_eq!(state.active_search_match_position(), Some((2, 2)));
 
         assert!(state.search_prev());
         assert_eq!(state.cursor_char_idx(), 0);
+        assert_eq!(state.active_search_match_position(), Some((1, 2)));
     }
 
     #[test]
@@ -888,6 +891,7 @@ mod tests {
         assert_eq!(state.last_search_query(), "foo");
         assert_eq!(state.search_highlights().len(), 2);
         assert_eq!(state.cursor_char_idx(), 11);
+        assert_eq!(state.active_search_match_position(), Some((2, 2)));
     }
 
     #[test]
@@ -896,11 +900,32 @@ mod tests {
 
         assert!(state.set_in_file_search_query("alpha"));
         assert_eq!(state.search_highlights().len(), 2);
+        assert_eq!(state.active_search_match_position(), Some((1, 2)));
 
         assert!(state.clear_search_highlights());
         assert!(state.last_search_query().is_empty());
         assert!(state.search_highlights().is_empty());
+        assert_eq!(state.active_search_match_position(), None);
         assert!(!state.clear_search_highlights());
+    }
+
+    #[test]
+    fn active_search_match_position_tracks_next_match_from_intermediate_cursor() {
+        let mut state = AppState::from_text(
+            unique_temp_path("search_position"),
+            "alpha beta alpha gamma alpha",
+        );
+
+        assert!(state.set_in_file_search_query("alpha"));
+        assert!(state.move_cursor_to_char_idx(8));
+
+        assert_eq!(state.active_search_match_position(), Some((2, 3)));
+
+        assert!(state.search_next());
+        assert_eq!(state.active_search_match_position(), Some((2, 3)));
+
+        assert!(state.search_next());
+        assert_eq!(state.active_search_match_position(), Some((3, 3)));
     }
 
     // ── find_text_object_bounds tests ────────────────────────────────────────
@@ -1157,5 +1182,4 @@ mod tests {
         assert!(state.undo());
         assert_eq!(state.text_string(), "MessageManager.ge");
     }
-
 }

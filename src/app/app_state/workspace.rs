@@ -224,5 +224,4 @@ impl AppState {
             })
             .unwrap_or(0)
     }
-
 }

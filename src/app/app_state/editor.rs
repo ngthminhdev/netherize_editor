@@ -1,8 +1,8 @@
-use super::*;
 use super::overlays::{
-    matching_close_char, matches_matching_bracket_pair, next_word_start, previous_word_start,
+    matches_matching_bracket_pair, matching_close_char, next_word_start, previous_word_start,
     word_end_at_or_after,
 };
+use super::*;
 
 impl AppState {
     pub fn insert_tab(&mut self) -> bool {
@@ -647,7 +647,11 @@ impl AppState {
         }
     }
 
-    pub(super) fn motion_range(&self, motion: Motion, op: Operator) -> Option<(usize, usize, bool)> {
+    pub(super) fn motion_range(
+        &self,
+        motion: Motion,
+        op: Operator,
+    ) -> Option<(usize, usize, bool)> {
         let cursor = self.cursor_char_idx.min(self.text.len_chars());
         match motion {
             Motion::WordForward => {
@@ -975,4 +979,3 @@ impl AppState {
         self.current_scroll_y = self.target_scroll_y;
     }
 }
-

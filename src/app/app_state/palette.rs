@@ -1,5 +1,5 @@
-use super::*;
 use super::overlays::path_matches;
+use super::*;
 
 impl AppState {
     pub fn open_command_palette_mode(&mut self, mode: CommandPaletteMode) -> Result<usize, String> {
@@ -1122,6 +1122,4 @@ impl AppState {
 
         Ok(report)
     }
-
 }
-

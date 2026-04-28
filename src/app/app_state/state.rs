@@ -1,5 +1,5 @@
-use super::*;
 use super::overlays::{build_completion_display_items, is_completion_identifier_char};
+use super::*;
 
 impl AppState {
     pub fn undo(&mut self) -> bool {
@@ -116,6 +116,27 @@ impl AppState {
 
     pub fn search_highlights(&self) -> &[(usize, usize)] {
         &self.search_highlights
+    }
+
+    pub fn active_search_match_position(&self) -> Option<(usize, usize)> {
+        let total = self.search_highlights.len();
+        if self.last_search_query.is_empty() || total == 0 {
+            return None;
+        }
+
+        let cursor_byte = self.cursor_byte_idx();
+        let current_idx = self
+            .search_highlights
+            .iter()
+            .position(|(start, end)| *start <= cursor_byte && cursor_byte < *end)
+            .or_else(|| {
+                self.search_highlights
+                    .iter()
+                    .position(|(start, _)| *start > cursor_byte)
+            })
+            .unwrap_or(0);
+
+        Some((current_idx + 1, total))
     }
 
     pub fn remember_clipboard_text(&mut self, text: String, kind: ClipboardRecordKind) {
@@ -576,4 +597,3 @@ impl AppState {
         true
     }
 }
-

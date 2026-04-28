@@ -834,6 +834,7 @@ impl AppShell {
                     &pending_keys,
                     git_branch,
                     filetype,
+                    self.app_state.active_search_match_position(),
                     status_line,
                     status_col,
                     diagnostics_errors,
