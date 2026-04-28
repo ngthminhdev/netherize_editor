@@ -54,20 +54,7 @@ impl Renderer {
         let divider_x = bounds[0] + left_w;
         let body_top = bounds[1];
         let body_h = bounds[3];
-        let mut glow = accent;
-        glow[3] = 0.055;
-        chrome.push(
-            RegionDrawInstance::new(
-                [
-                    bounds[0] + left_w * 0.38,
-                    body_top + body_h * 0.20,
-                    left_w * 0.52,
-                    body_h * 0.30,
-                ],
-                glow,
-            )
-            .with_radius(sx(180.0)),
-        );
+
         let mut divider = border;
         divider[3] = 0.65;
         chrome.push(RegionDrawInstance::new(
