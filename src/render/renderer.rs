@@ -141,6 +141,8 @@ pub struct Renderer {
     pub(super) editor_overlay_scissor: Option<[u32; 4]>,
     pub(super) image_pipeline: ImagePipeline,
     pub(super) image_scissor: Option<[u32; 4]>,
+    pub(super) welcome_image_pipeline: ImagePipeline,
+    pub(super) welcome_image_scissor: Option<[u32; 4]>,
 
     // ── Gutter (line numbers) ─────────────────────────────────────────────────
     pub(super) gutter_text_system: TextSystem,

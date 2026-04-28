@@ -85,6 +85,8 @@ impl Renderer {
         let caret_pipeline = CaretPipeline::new(&device, surface_format, width, height);
         let image_pipeline =
             crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
+        let welcome_image_pipeline =
+            crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
 
         let theme = ThemeConfig::builtin_dark();
         let clear_color = theme_color_to_wgpu(theme.ui.bg);
@@ -170,6 +172,8 @@ impl Renderer {
             editor_overlay_scissor: None,
             image_pipeline,
             image_scissor: None,
+            welcome_image_pipeline,
+            welcome_image_scissor: None,
             gutter_text_system,
             gutter_text_pipeline,
             gutter_glyph_instances: Vec::new(),

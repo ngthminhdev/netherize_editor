@@ -878,8 +878,14 @@ impl AppShell {
                         || self.app_state.command_palette_mode()
                             == Some(CommandPaletteMode::RecentProjects)) =>
             {
-                self.app_state
-                    .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
+                // Only sync (which hides the palette) when the palette is not already
+                // open. When the RecentProjects palette is open (via space-pj),
+                // sync_welcome_recent_projects calls set_hidden_items → is_visible=false,
+                // which would close the palette before the navigation runs.
+                if !self.app_state.is_command_palette_visible() {
+                    self.app_state
+                        .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
+                }
                 let report = dispatch_command(&mut self.app_state, command);
                 report.request_redraw || report.state_changed
             }

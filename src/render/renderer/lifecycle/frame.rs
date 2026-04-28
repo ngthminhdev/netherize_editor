@@ -55,15 +55,6 @@ impl Renderer {
             // 2. Editor text + caret + cursor overlay + gutter.
             draw_text_region(
                 &mut pass,
-                self.image_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.image_pipeline.draw(render_pass);
-                },
-            );
-            draw_text_region(
-                &mut pass,
                 self.editor_scissor,
                 viewport_width,
                 viewport_height,
@@ -92,6 +83,17 @@ impl Renderer {
                 );
             }
 
+            // Cheat sheet logo: drawn after editor overlay chrome, before text.
+            draw_text_region(
+                &mut pass,
+                self.image_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.image_pipeline.draw(render_pass);
+                },
+            );
+
             draw_text_region(
                 &mut pass,
                 self.editor_overlay_scissor,
@@ -119,6 +121,16 @@ impl Renderer {
                     },
                 );
             }
+            // Welcome logo PNG: drawn after chrome background, before text.
+            draw_text_region(
+                &mut pass,
+                self.welcome_image_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.welcome_image_pipeline.draw(render_pass);
+                },
+            );
             draw_text_region(
                 &mut pass,
                 self.welcome_logo_scissor,
@@ -277,6 +289,15 @@ impl Renderer {
                     },
                 );
             }
+            draw_text_region(
+                &mut pass,
+                self.welcome_image_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.welcome_image_pipeline.draw(render_pass);
+                },
+            );
             draw_text_region(
                 &mut pass,
                 self.welcome_logo_scissor,

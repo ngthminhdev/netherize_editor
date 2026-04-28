@@ -1,5 +1,7 @@
 #![allow(unused_imports)]
 
+use std::sync::OnceLock;
+
 use crate::{
     app::app_state::{
         AppState, CompletionDisplayItem, DiagnosticsState, EditorOverlay, FloatingBoxBlock,
@@ -27,9 +29,26 @@ use super::super::{
 use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
 use crate::text::text_system::StyledTextSpan;
 
+fn cheat_sheet_logo_rgba() -> Option<&'static (u32, u32, Vec<u8>)> {
+    static LOGO: OnceLock<Option<(u32, u32, Vec<u8>)>> = OnceLock::new();
+    LOGO.get_or_init(|| {
+        image::load_from_memory(include_bytes!("../../../../assets/app_logo.png"))
+            .ok()
+            .map(|image| {
+                let rgba = image.to_rgba8();
+                let width = rgba.width();
+                let height = rgba.height();
+                (width, height, rgba.into_raw())
+            })
+    })
+    .as_ref()
+}
+
 impl Renderer {
     pub fn update_help_buffer_content(&mut self, help: &HelpState, center_bounds: [f32; 4]) {
         if center_bounds[2] < 1.0 || center_bounds[3] < 1.0 {
+            self.image_pipeline.clear();
+            self.image_scissor = None;
             self.clear_editor_overlays();
             return;
         }
@@ -66,10 +85,10 @@ impl Renderer {
         card_border[3] = 0.72;
 
         // ── sizing constants (tweak here) ──────────────────────────────────────
-        let hdr_logo_x = 168.0;
+        let hdr_logo_x = 176.0;
         let hdr_accent_x = 24.0;
-        let hdr_accent_y = 28.0;
-        let hdr_accent_size = 68.0;
+        let hdr_accent_y = 24.0;
+        let hdr_accent_size = 120.0;
         let hdr_subtitle_gap = 24.0;
         let hdr_meta_col_w = 420.0;
         let hdr_meta_lh_gap = 28.0;
@@ -114,6 +133,37 @@ impl Renderer {
             editor_bg,
         )];
 
+        self.image_scissor = rect_to_scissor(center_bounds);
+        if let Some((logo_width, logo_height, rgba)) = cheat_sheet_logo_rgba() {
+            let max_logo_w = hdr_accent_size;
+            let max_logo_h = hdr_accent_size;
+            let scale = (max_logo_w / *logo_width as f32)
+                .min(max_logo_h / *logo_height as f32)
+                .max(0.01);
+            let draw_w = *logo_width as f32 * scale;
+            let draw_h = *logo_height as f32 * scale;
+            let rect = [
+                panel_x + hdr_accent_x + (hdr_accent_size - draw_w) * 0.5,
+                panel_y + hdr_accent_y + (hdr_accent_size - draw_h) * 0.5,
+                draw_w,
+                draw_h,
+            ];
+            self.image_pipeline.upload_rgba(
+                &self.device,
+                &self.queue,
+                rgba,
+                *logo_width,
+                *logo_height,
+                rect,
+                [
+                    self.surface_state.config.width,
+                    self.surface_state.config.height,
+                ],
+            );
+        } else {
+            self.image_pipeline.clear();
+        }
+
         self.editor_overlay_text_system
             .set_metrics(Metrics::new(title_size, title_size + 8.0));
         self.editor_overlay_text_system.set_size(
@@ -128,15 +178,6 @@ impl Renderer {
             panel_x + hdr_logo_x,
             panel_y,
             fg,
-        ));
-        chrome.push(RegionDrawInstance::new(
-            [
-                panel_x + hdr_accent_x,
-                panel_y + hdr_accent_y,
-                hdr_accent_size,
-                hdr_accent_size,
-            ],
-            accent,
         ));
         self.editor_overlay_text_system
             .set_metrics(Metrics::new(font_size, line_height));

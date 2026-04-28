@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::OnceLock};
 
 use cosmic_text::Metrics;
 
@@ -12,12 +12,33 @@ use crate::{
 
 use super::super::{
     components::{
-        HighlightChipStyle, ShortcutHintSegment, layout_shortcut_hint, push_centered_highlight_chip,
+        HighlightChipStyle, layout_help_keycaps, push_centered_highlight_chip,
     },
     helpers::{
         estimate_monospace_width, layout_panel_text, layout_panel_text_bold, rect_to_scissor,
     },
 };
+
+struct BundledLogo {
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+}
+
+fn bundled_logo() -> Option<&'static BundledLogo> {
+    static LOGO: OnceLock<Option<BundledLogo>> = OnceLock::new();
+    LOGO.get_or_init(|| {
+        let bytes = include_bytes!("../../../../assets/app_logo.png");
+        let decoded = image::load_from_memory(bytes).ok()?;
+        let rgba = decoded.to_rgba8();
+        Some(BundledLogo {
+            width: rgba.width(),
+            height: rgba.height(),
+            rgba: rgba.into_raw(),
+        })
+    })
+    .as_ref()
+}
 
 impl Renderer {
     pub fn update_welcome_screen_content(
@@ -104,30 +125,32 @@ impl Renderer {
 
         let cx = bounds[0] + left_w * 0.5;
         let hero_top = body_top + body_h * 0.5 - sx(205.0);
-        let logo_text = include_str!("../../../../assets/app_logo.ansi");
-        let logo_lines: Vec<&str> = logo_text.lines().collect();
-        let logo_font_size = sx(4.0);
-        let logo_line_height = sx(5.0);
-        let logo_width = logo_lines
-            .iter()
-            .map(|line| text_w(line, logo_font_size))
-            .fold(0.0, f32::max);
-        let logo_height = logo_lines.len() as f32 * logo_line_height;
-        let logo_x = cx - logo_width * 0.5;
+        let logo_max_w = (left_w - sx(88.0)).max(sx(180.0));
+        let logo_max_h = sx(280.0);
         let logo_y = hero_top + sx(6.0);
+        let mut logo_height = sx(120.0);
 
-        for (idx, logo_line) in logo_lines.iter().enumerate() {
-            line(
-                self,
-                &mut glyphs,
-                logo_line,
-                logo_x,
-                logo_y + idx as f32 * logo_line_height,
-                logo_font_size,
-                logo_line_height,
-                fg,
-                true,
+        if let Some(logo) = bundled_logo() {
+            let scale = (logo_max_w / logo.width as f32)
+                .min(logo_max_h / logo.height.max(1) as f32)
+                .min(1.0);
+            let draw_w = (logo.width as f32 * scale).max(1.0);
+            let draw_h = (logo.height as f32 * scale).max(1.0);
+            let rect = [cx - draw_w * 0.5, logo_y, draw_w, draw_h];
+            self.welcome_image_scissor = self.welcome_logo_scissor;
+            self.welcome_image_pipeline.upload_rgba(
+                &self.device,
+                &self.queue,
+                &logo.rgba,
+                logo.width,
+                logo.height,
+                rect,
+                [
+                    self.surface_state.config.width,
+                    self.surface_state.config.height,
+                ],
             );
+            logo_height = draw_h;
         }
 
         let title = "Netherize";
@@ -165,8 +188,8 @@ impl Renderer {
         let version_label = self.welcome_version.clone();
         let meta_chips = [
             (version_label, fg, true),
-            ("Rust 1.78".to_string(), fg_ghost, false),
-            ("wgpu 0.20".to_string(), fg_ghost, false),
+            ("Rust 1.92".to_string(), fg_ghost, false),
+            ("wgpu 0.29".to_string(), fg_ghost, false),
             ("by ngthminhdev".to_string(), fg, true),
         ];
         let meta_total_w: f32 = meta_chips
@@ -210,98 +233,7 @@ impl Renderer {
             meta_center_x += chip_w + meta_chip_gap;
         }
 
-        let actions = [
-            ("Open project", [ShortcutHintSegment::Keys(&["⌘", "O"])]),
-            (
-                "File finder",
-                [ShortcutHintSegment::Keys(&["<space>", "f", "f"])],
-            ),
-            (
-                "Word search",
-                [ShortcutHintSegment::Keys(&["<space>", "f", "w"])],
-            ),
-            ("Cheat Sheet", [ShortcutHintSegment::Keys(&[":", "help"])]),
-        ];
-        let action_gap = sx(10.0);
-        let action_width = |label: &str, segments: &[ShortcutHintSegment<'_>]| {
-            let key_width: f32 = segments
-                .iter()
-                .map(|segment| match segment {
-                    ShortcutHintSegment::Text(text) => text_w(text, sx(10.0)) + sx(8.0),
-                    ShortcutHintSegment::Keys(keys) => {
-                        let key_gap = sx(4.0);
-                        keys.iter()
-                            .map(|key| text_w(key, sx(10.0)) + sx(12.8))
-                            .sum::<f32>()
-                            + key_gap * (keys.len().saturating_sub(1) as f32)
-                    }
-                })
-                .sum();
-            (sx(132.0) + key_width).max(sx(36.0) + text_w(label, sx(12.0)) + key_width)
-        };
-        let total_actions_w: f32 = actions
-            .iter()
-            .map(|(label, segments)| action_width(label, segments))
-            .sum::<f32>()
-            + action_gap * (actions.len().saturating_sub(1) as f32);
-        let mut ax = cx - total_actions_w * 0.5;
         let ay = meta_y + sx(58.0);
-        for (label, segments) in actions {
-            let w = action_width(label, &segments);
-            chrome
-                .push(RegionDrawInstance::new([ax, ay, w, sx(32.0)], border).with_radius(sx(7.0)));
-            chrome.push(
-                RegionDrawInstance::new([ax + sx(1.0), ay + sx(1.0), w - sx(2.0), sx(30.0)], panel)
-                    .with_radius(sx(6.0)),
-            );
-            line(
-                self,
-                &mut glyphs,
-                label,
-                ax + sx(12.0),
-                ay + sx(8.0),
-                sx(12.0),
-                sx(16.0),
-                fg_dim,
-                false,
-            );
-            self.welcome_logo_text_system
-                .set_metrics(Metrics::new(sx(10.0), sx(14.0)));
-            let mut action_key_bg = panel;
-            action_key_bg[3] = 0.98;
-            let mut action_key_shadow = border;
-            action_key_shadow[3] = 0.95;
-            glyphs.extend(layout_shortcut_hint(
-                &segments,
-                &mut self.welcome_logo_text_system,
-                &mut self.atlas,
-                &self.queue,
-                &mut chrome,
-                ax + w
-                    - sx(10.0)
-                    - segments
-                        .iter()
-                        .map(|segment| match segment {
-                            ShortcutHintSegment::Text(text) => text_w(text, sx(10.0)) + sx(8.0),
-                            ShortcutHintSegment::Keys(keys) => {
-                                let key_gap = sx(4.0);
-                                keys.iter()
-                                    .map(|key| text_w(key, sx(10.0)) + sx(12.8))
-                                    .sum::<f32>()
-                                    + key_gap * (keys.len().saturating_sub(1) as f32)
-                            }
-                        })
-                        .sum::<f32>(),
-                ay + sx(5.0),
-                sx(10.0),
-                sx(14.0),
-                accent,
-                action_key_bg,
-                action_key_shadow,
-                fg,
-            ));
-            ax += w + action_gap;
-        }
         let rust_line = "100% Rust · entire editor rendered on the GPU";
         let rust_line_size = sx(10.5);
         line(
@@ -471,61 +403,55 @@ impl Renderer {
         );
         y += sx(24.0);
         let shortcuts = [
-            (
-                [
-                    ShortcutHintSegment::Keys(&["⌘", "O"]),
-                    ShortcutHintSegment::Text("Open file or project"),
-                ],
-                sx(172.0),
-            ),
-            (
-                [
-                    ShortcutHintSegment::Keys(&["j", "k", "enter"]),
-                    ShortcutHintSegment::Text("Select recent project"),
-                ],
-                sx(172.0),
-            ),
-            (
-                [
-                    ShortcutHintSegment::Keys(&["<space>", "f", "f"]),
-                    ShortcutHintSegment::Text("File picker (fuzzy find)"),
-                ],
-                sx(172.0),
-            ),
-            (
-                [
-                    ShortcutHintSegment::Keys(&["<space>", "f", "w"]),
-                    ShortcutHintSegment::Text("Find word / grep (fzf)"),
-                ],
-                sx(172.0),
-            ),
+            (&["⌘", "O"][..], "Open file or project"),
+            (&[":", "help"][..], "Open cheats sheet"),
+            (&["j", "k", "enter"][..], "Select recent project"),
+            (&["<space>", "f", "f"][..], "File picker (fuzzy find)"),
+            (&["<space>", "f", "w"][..], "Find word / grep (fzf)"),
         ];
-        for (segments, _) in shortcuts {
+        let shortcut_key_font_size = sx(14.0);
+        let shortcut_row_height = sx(52.0);
+        let shortcut_label_x = rx + sx(210.0);
+        for (keys, label) in shortcuts {
             let row_y = y;
             self.welcome_logo_text_system
-                .set_metrics(Metrics::new(sx(11.0), sx(14.0)));
-            glyphs.extend(layout_shortcut_hint(
-                &segments,
+                .set_metrics(Metrics::new(shortcut_key_font_size, sx(18.0)));
+            glyphs.extend(layout_help_keycaps(
+                keys,
                 &mut self.welcome_logo_text_system,
                 &mut self.atlas,
                 &self.queue,
                 &mut chrome,
                 rx,
                 row_y,
-                sx(11.0),
-                sx(14.0),
-                fg_dim,
-                panel,
-                bg,
+                shortcut_key_font_size,
+                shortcut_row_height,
                 fg,
+                fg_dim,
+                accent,
+                self.theme.ui.info.as_f32(),
+                self.theme.ui.warning.as_f32(),
+                self.theme.ui.error.as_f32(),
+                panel,
             ));
+            line(
+                self,
+                &mut glyphs,
+                label,
+                shortcut_label_x,
+                row_y + sx(17.0),
+                sx(13.0),
+                sx(18.0),
+                fg_dim,
+                false,
+            );
             let mut sub = border;
             sub[3] = 0.45;
             chrome.push(RegionDrawInstance::new(
-                [rx, row_y + sx(34.0), rw, sx(1.0).max(1.0)],
+                [rx, row_y + shortcut_row_height, rw, sx(1.0).max(1.0)],
                 sub,
             ));
-            y += sx(40.0);
+            y += shortcut_row_height + sx(8.0);
         }
         line(
             self,
@@ -610,6 +536,8 @@ impl Renderer {
         self.welcome_logo_chrome_instances.clear();
         self.welcome_logo_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
+        self.welcome_image_pipeline.clear();
+        self.welcome_image_scissor = None;
     }
 
     // ── TopBar ─────────────────────────────────────────────────────────────────
