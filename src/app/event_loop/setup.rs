@@ -148,6 +148,7 @@ impl AppShell {
             leap_state: None,
             git_overlay_revision: 0,
             last_scroll_animation_tick: now,
+            last_git_branch_refresh_at: now,
         })
     }
 
@@ -210,6 +211,34 @@ impl AppShell {
         if let Some(window) = &self.window {
             window.request_redraw();
         }
+    }
+
+    pub(super) fn refresh_workspace_git_branch(&mut self) -> bool {
+        let next_branch = self
+            .app_state
+            .workspace_root_path()
+            .and_then(detect_git_branch);
+        if self.workspace_git_branch == next_branch {
+            return false;
+        }
+        self.workspace_git_branch = next_branch;
+        true
+    }
+
+    pub(super) fn maybe_refresh_workspace_git_branch(&mut self, force: bool) -> bool {
+        let now = Instant::now();
+        if !force
+            && now.saturating_duration_since(self.last_git_branch_refresh_at)
+                < GIT_BRANCH_REFRESH_INTERVAL
+        {
+            return false;
+        }
+        self.last_git_branch_refresh_at = now;
+        self.refresh_workspace_git_branch()
+    }
+
+    pub(super) fn next_git_branch_refresh_deadline(&self) -> Instant {
+        self.last_git_branch_refresh_at + GIT_BRANCH_REFRESH_INTERVAL
     }
 
     pub(super) fn update_runtime_scaling_for_window(&mut self, scale_factor: f64) {

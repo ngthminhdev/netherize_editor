@@ -216,6 +216,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         self.flush_pending_parse_after_debounce();
         self.flush_pending_lsp_did_change_after_debounce();
+        if self.maybe_refresh_workspace_git_branch(false) {
+            self.request_redraw();
+        }
         if self.tick_smooth_scroll_animation() {
             self.request_redraw();
         }
@@ -230,7 +233,15 @@ impl ApplicationHandler<AppEvent> for AppShell {
             self.request_redraw();
         }
 
-        if let Some(deadline) = self.next_lsp_did_change_flush_deadline() {
+        let mut next_deadline = Some(self.next_git_branch_refresh_deadline());
+        if let Some(lsp_deadline) = self.next_lsp_did_change_flush_deadline() {
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(lsp_deadline),
+                None => lsp_deadline,
+            });
+        }
+
+        if let Some(deadline) = next_deadline {
             event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
         } else {
             event_loop.set_control_flow(ControlFlow::Wait);
@@ -636,7 +647,8 @@ impl AppShell {
                 {
                     region_instances.push(quad);
                 }
-                region_instances.extend(renderer.indent_guide_quads(&self.app_state, center_bounds));
+                region_instances
+                    .extend(renderer.indent_guide_quads(&self.app_state, center_bounds));
                 region_instances
                     .extend(renderer.search_highlight_quads(&self.app_state, center_bounds));
                 if self.app_state.current_mode() == EditorMode::Visual {

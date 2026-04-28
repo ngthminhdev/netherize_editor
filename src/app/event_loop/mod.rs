@@ -155,12 +155,14 @@ pub struct AppShell {
     leap_state: Option<LeapState>,
     git_overlay_revision: u64,
     last_scroll_animation_tick: Instant,
+    last_git_branch_refresh_at: Instant,
 }
 
 const DEBUG_UI_ENABLED: bool = false;
 const PARSE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(80);
 const LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(500);
 const FPS_METRICS_UPDATE_INTERVAL: Duration = Duration::from_millis(500);
+const GIT_BRANCH_REFRESH_INTERVAL: Duration = Duration::from_millis(750);
 
 #[derive(Debug, Clone)]
 struct ExplorerEntry {

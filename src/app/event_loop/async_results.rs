@@ -84,6 +84,9 @@ impl AsyncResultRouter for AppShell {
                         eprintln!("[AppShell] fs-event apply failed: {err}");
                     }
                 }
+                if self.maybe_refresh_workspace_git_branch(true) {
+                    self.request_redraw();
+                }
                 self.sync_explorer_expanded_with_workspace();
                 self.editor_needs_layout = true;
                 self.editor_caret_needs_layout = false;
@@ -126,6 +129,9 @@ impl AsyncResultRouter for AppShell {
                 shell,
                 working_dir,
             } => {
+                if self.maybe_refresh_workspace_git_branch(true) {
+                    self.request_redraw();
+                }
                 if let Some(buffer_index) = self.pending_lazygit_buffer_index.take() {
                     eprintln!(
                         "[AppShell] terminal buffer ready: session={session_id} command={shell} dir={}",

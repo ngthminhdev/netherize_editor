@@ -56,7 +56,8 @@ impl Renderer {
         let scroll_x = app_state.scroll_column as f32 * (font_size * 0.6).max(1.0);
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
         let viewport_top = center_bounds[1] + self.editor_padding_y;
-        let viewport_bottom = viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
+        let viewport_bottom =
+            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
         let tab_width = app_state.indent_config().tab_width as usize;
         let char_width = (font_size * 0.6).max(1.0);
         let guide_step = char_width * tab_width.max(1) as f32;

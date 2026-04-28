@@ -10,7 +10,11 @@ use crate::{
 
 const BRACKET_PAIRS: &[(char, char)] = &[('(', ')'), ('[', ']'), ('{', '}')];
 
-fn byte_inside_any_span(byte_idx: usize, spans: &[HighlightSpan], categories: &[crate::syntax::highlight::HighlightCategory]) -> bool {
+fn byte_inside_any_span(
+    byte_idx: usize,
+    spans: &[HighlightSpan],
+    categories: &[crate::syntax::highlight::HighlightCategory],
+) -> bool {
     spans.iter().any(|span| {
         span.range.start <= byte_idx
             && byte_idx < span.range.end
@@ -18,7 +22,11 @@ fn byte_inside_any_span(byte_idx: usize, spans: &[HighlightSpan], categories: &[
     })
 }
 
-fn rainbow_bracket_spans(text: &str, syntax_spans: &[HighlightSpan], theme: &ThemeConfig) -> Vec<StyledTextSpan> {
+fn rainbow_bracket_spans(
+    text: &str,
+    syntax_spans: &[HighlightSpan],
+    theme: &ThemeConfig,
+) -> Vec<StyledTextSpan> {
     let palette: Vec<[u8; 4]> = theme
         .editor
         .rainbow_brackets
@@ -47,17 +55,28 @@ fn rainbow_bracket_spans(text: &str, syntax_spans: &[HighlightSpan], theme: &The
         if let Some((_, close)) = BRACKET_PAIRS.iter().find(|(open, _)| *open == ch) {
             let depth = stack.len();
             let color = palette[depth % palette.len()];
-            out.push(StyledTextSpan::new(byte_idx, byte_idx + ch.len_utf8(), color));
+            out.push(StyledTextSpan::new(
+                byte_idx,
+                byte_idx + ch.len_utf8(),
+                color,
+            ));
             stack.push((ch, *close as usize));
             continue;
         }
 
         if let Some(pair_idx) = BRACKET_PAIRS.iter().position(|(_, close)| *close == ch) {
-            if let Some(open_pos) = stack.iter().rposition(|(open, _)| *open == BRACKET_PAIRS[pair_idx].0) {
+            if let Some(open_pos) = stack
+                .iter()
+                .rposition(|(open, _)| *open == BRACKET_PAIRS[pair_idx].0)
+            {
                 let depth = open_pos;
                 stack.truncate(open_pos);
                 let color = palette[depth % palette.len()];
-                out.push(StyledTextSpan::new(byte_idx, byte_idx + ch.len_utf8(), color));
+                out.push(StyledTextSpan::new(
+                    byte_idx,
+                    byte_idx + ch.len_utf8(),
+                    color,
+                ));
             }
         }
     }
@@ -231,18 +250,17 @@ pub(super) fn parse_hover_markdown_blocks(
         }
     };
 
-    let flush_code = |blocks: &mut Vec<FloatingBoxBlock>,
-                      code_lines: &mut Vec<String>,
-                      code_language: &str| {
-        let text = code_lines.join("\n");
-        code_lines.clear();
-        if text.trim().is_empty() {
-            return;
-        }
-        let raw_spans = highlight_snippet(&text, code_language, theme);
-        let spans = syntax_spans_to_styled(&raw_spans, &text, theme);
-        blocks.push(FloatingBoxBlock::Code { text, spans });
-    };
+    let flush_code =
+        |blocks: &mut Vec<FloatingBoxBlock>, code_lines: &mut Vec<String>, code_language: &str| {
+            let text = code_lines.join("\n");
+            code_lines.clear();
+            if text.trim().is_empty() {
+                return;
+            }
+            let raw_spans = highlight_snippet(&text, code_language, theme);
+            let spans = syntax_spans_to_styled(&raw_spans, &text, theme);
+            blocks.push(FloatingBoxBlock::Code { text, spans });
+        };
 
     for line in content.lines() {
         let trimmed = line.trim_start();
