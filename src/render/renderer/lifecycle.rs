@@ -83,6 +83,8 @@ impl Renderer {
         let surface_format = surface_state.config.format;
         let region_pipeline = RegionPipeline::new(&device, surface_format, width, height);
         let caret_pipeline = CaretPipeline::new(&device, surface_format, width, height);
+        let image_pipeline =
+            crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
 
         let theme = ThemeConfig::builtin_dark();
         let clear_color = theme_color_to_wgpu(theme.ui.bg);
@@ -166,6 +168,8 @@ impl Renderer {
             editor_overlay_glyph_instances: Vec::new(),
             editor_overlay_chrome_instances: Vec::new(),
             editor_overlay_scissor: None,
+            image_pipeline,
+            image_scissor: None,
             gutter_text_system,
             gutter_text_pipeline,
             gutter_glyph_instances: Vec::new(),

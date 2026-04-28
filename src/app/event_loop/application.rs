@@ -520,6 +520,8 @@ impl AppShell {
                         renderer.clear_buffer_terminal();
                         renderer.clear_editor_content();
                         renderer.update_help_buffer_content(help, center_bounds);
+                    } else if let Some(image) = self.app_state.active_image_buffer() {
+                        renderer.update_image_content(image, center_bounds);
                     } else {
                         renderer.clear_welcome_logo();
                         renderer.clear_buffer_terminal();
@@ -594,6 +596,10 @@ impl AppShell {
                     if let Some(renderer) = self.renderer.as_mut() {
                         renderer.clear_editor_content();
                         renderer.update_settings_buffer_content(settings, center_bounds);
+                    }
+                } else if let Some(image) = self.app_state.active_image_buffer() {
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.update_image_content(image, center_bounds);
                     }
                 } else if !show_welcome && let Some(renderer) = self.renderer.as_mut() {
                     renderer.update_editor_caret(&self.app_state, center_bounds);
@@ -741,6 +747,9 @@ impl AppShell {
                     kind: match &buffer.content {
                         BufferContent::Text(text) => TopbarTabKind::Text {
                             path: text.path.clone(),
+                        },
+                        BufferContent::Image(image) => TopbarTabKind::Image {
+                            path: image.path.clone(),
                         },
                         BufferContent::Terminal(_) => TopbarTabKind::Terminal,
                         BufferContent::References(_) => TopbarTabKind::References,

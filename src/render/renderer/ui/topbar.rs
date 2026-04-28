@@ -123,6 +123,11 @@ impl Renderer {
                         .file_icon_for_path(path, false, false)
                         .glyph
                         .clone(),
+                    TopbarTabKind::Image { path } => self
+                        .theme
+                        .file_icon_for_path(path, false, false)
+                        .glyph
+                        .clone(),
                     TopbarTabKind::Terminal => {
                         self.theme.file_icon_for_extension("sh").glyph.clone()
                     }
@@ -140,6 +145,11 @@ impl Renderer {
                 };
                 let icon_color = match &tab.kind {
                     TopbarTabKind::Text { path } => self
+                        .theme
+                        .icon_theme_for_path(path, false, false)
+                        .color
+                        .as_f32(),
+                    TopbarTabKind::Image { path } => self
                         .theme
                         .icon_theme_for_path(path, false, false)
                         .color

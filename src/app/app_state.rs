@@ -253,6 +253,27 @@ pub struct EditorBuffer {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageBuffer {
+    pub path: PathBuf,
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Option<Vec<u8>>,
+    pub error: Option<String>,
+}
+
+pub fn is_supported_image_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "png" | "jpg" | "jpeg" | "gif" | "bmp" | "ico" | "webp"
+            )
+        })
+        .unwrap_or(false)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PtyState {
     pub session_id: Option<u64>,
     pub title: String,
@@ -699,6 +720,7 @@ impl FuzzyState {
 #[derive(Debug, Clone, PartialEq)]
 pub enum BufferContent {
     Text(EditorBuffer),
+    Image(ImageBuffer),
     Terminal(PtyState),
     References(ReferencesBufferState),
     Diagnostics(DiagnosticsState),
@@ -721,6 +743,12 @@ impl BufferEntry {
                 .and_then(|name| name.to_str())
                 .map(str::to_string)
                 .unwrap_or_else(|| buffer.path.display().to_string()),
+            BufferContent::Image(buffer) => buffer
+                .path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| buffer.path.display().to_string()),
             BufferContent::Terminal(state) => state.title.clone(),
             BufferContent::References(state) => state.title.clone(),
             BufferContent::Diagnostics(_) => "[Diagnostics]".to_string(),
@@ -733,7 +761,8 @@ impl BufferEntry {
     pub fn is_dirty(&self, is_active: bool, active_editor_dirty: bool) -> bool {
         match &self.content {
             BufferContent::Text(_) => is_active && active_editor_dirty,
-            BufferContent::Terminal(_)
+            BufferContent::Image(_)
+            | BufferContent::Terminal(_)
             | BufferContent::References(_)
             | BufferContent::Diagnostics(_)
             | BufferContent::FuzzyPicker(_)
@@ -3272,6 +3301,20 @@ impl AppState {
             .canonicalize()
             .map_err(|err| format!("canonicalize file {:?} failed: {err}", path))?;
         self.is_initial_launch_welcome = false;
+        if is_supported_image_path(&canonical_path) {
+            let active_idx = match self.buffers.iter().position(|buffer| {
+                matches!(&buffer.content, BufferContent::Image(buffer) if buffer.path == canonical_path)
+            }) {
+                Some(idx) => idx,
+                None => {
+                    let image = load_image_buffer(&canonical_path);
+                    self.buffers.push(BufferEntry { content: BufferContent::Image(image) });
+                    self.buffers.len().saturating_sub(1)
+                }
+            };
+            self.activate_buffer_index(active_idx)?;
+            return Ok(());
+        }
         let language_id = crate::lsp::registry::language_profile_for_path(&canonical_path)
             .map(|profile| profile.language_id.to_string());
         let active_idx = match self
@@ -4015,6 +4058,13 @@ impl AppState {
             .is_some_and(|buffer| matches!(buffer.content, BufferContent::Terminal(_)))
     }
 
+    pub fn active_image_buffer(&self) -> Option<&ImageBuffer> {
+        match self.active_buffer().map(|buffer| &buffer.content) {
+            Some(BufferContent::Image(state)) => Some(state),
+            _ => None,
+        }
+    }
+
     pub fn active_buffer_is_references(&self) -> bool {
         self.active_buffer()
             .is_some_and(|buffer| matches!(buffer.content, BufferContent::References(_)))
@@ -4075,6 +4125,7 @@ impl AppState {
             .position(|buffer| match &buffer.content {
                 BufferContent::Terminal(state) => state.session_id == Some(session_id),
                 BufferContent::Text(_)
+                | BufferContent::Image(_)
                 | BufferContent::References(_)
                 | BufferContent::Diagnostics(_)
                 | BufferContent::FuzzyPicker(_)
@@ -5136,6 +5187,15 @@ impl AppState {
                 self.visual_line_mode = false;
                 let _ = self.workspace_expand_to_path(&buffer.path);
             }
+            BufferContent::Image(buffer) => {
+                self.reset_text_editor_state();
+                let refreshed = load_image_buffer(&buffer.path);
+                if let Some(slot) = self.buffers.get_mut(index) {
+                    slot.content = BufferContent::Image(refreshed);
+                }
+                self.active_buffer_index = Some(index);
+                let _ = self.workspace_expand_to_path(&buffer.path);
+            }
             BufferContent::Terminal(_) => {
                 self.active_file = None;
                 self.active_buffer_index = Some(index);
@@ -5543,6 +5603,28 @@ fn path_matches(left: &Path, right: &Path) -> bool {
     match (left.canonicalize(), right.canonicalize()) {
         (Ok(left), Ok(right)) => left == right,
         _ => false,
+    }
+}
+
+fn load_image_buffer(path: &Path) -> ImageBuffer {
+    match image::open(path) {
+        Ok(dynamic) => {
+            let rgba = dynamic.to_rgba8();
+            ImageBuffer {
+                path: path.to_path_buf(),
+                width: rgba.width(),
+                height: rgba.height(),
+                rgba: Some(rgba.into_raw()),
+                error: None,
+            }
+        }
+        Err(err) => ImageBuffer {
+            path: path.to_path_buf(),
+            width: 0,
+            height: 0,
+            rgba: None,
+            error: Some(format!("image decode failed: {err}")),
+        },
     }
 }
 

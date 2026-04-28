@@ -285,9 +285,9 @@ pub(super) fn layout_help_keycaps(
         .next()
         .map(|run| run.line_y)
         .unwrap_or(key_line_height);
-    let key_text_y = key_origin_y + ((key_height - key_line_height) * 0.5).max(0.0)
-        + key_line_height
-        - key_line_y;
+    let key_text_y =
+        key_origin_y + ((key_height - key_line_height) * 0.5).max(0.0) + key_line_height
+            - key_line_y;
 
     for key in keys.iter().copied() {
         text_system.set_text_bold_color(key, dummy);
@@ -302,8 +302,11 @@ pub(super) fn layout_help_keycaps(
         let palette = help_keycap_palette(key, fg, fg_dim, accent, info, warning, error, panel_bg);
 
         chrome.push(
-            RegionDrawInstance::new([cursor_x, key_origin_y, key_width, key_height], palette.border)
-                .with_radius(key_radius),
+            RegionDrawInstance::new(
+                [cursor_x, key_origin_y, key_width, key_height],
+                palette.border,
+            )
+            .with_radius(key_radius),
         );
         chrome.push(
             RegionDrawInstance::new(

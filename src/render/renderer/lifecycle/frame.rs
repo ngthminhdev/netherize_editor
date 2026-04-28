@@ -55,6 +55,15 @@ impl Renderer {
             // 2. Editor text + caret + cursor overlay + gutter.
             draw_text_region(
                 &mut pass,
+                self.image_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.image_pipeline.draw(render_pass);
+                },
+            );
+            draw_text_region(
+                &mut pass,
                 self.editor_scissor,
                 viewport_width,
                 viewport_height,

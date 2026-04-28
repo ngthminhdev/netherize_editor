@@ -3,8 +3,8 @@
 use crate::{
     app::app_state::{
         AppState, CompletionDisplayItem, DiagnosticsState, EditorOverlay, FloatingBoxBlock,
-        FloatingBoxStyle, HelpState, OverlayColorToken, ReferencesBufferState, SettingItem,
-        SettingsState,
+        FloatingBoxStyle, HelpState, ImageBuffer, OverlayColorToken, ReferencesBufferState,
+        SettingItem, SettingsState,
     },
     async_runtime::message::LspDiagnostic,
     config::theme_config::ThemeConfig,
@@ -38,6 +38,69 @@ impl Renderer {
         self.clear_editor_overlays();
         self.clear_diagnostic_hover_popup();
         self.editor_scissor = None;
+        self.image_pipeline.clear();
+        self.image_scissor = None;
+    }
+
+    pub fn update_image_content(&mut self, image: &ImageBuffer, center_bounds: [f32; 4]) {
+        self.clear_buffer_terminal();
+        self.clear_welcome_logo();
+        self.clear_editor_content();
+        self.editor_scissor = rect_to_scissor(center_bounds);
+        self.image_scissor = rect_to_scissor(center_bounds);
+
+        if let (Some(rgba), 1..) = (image.rgba.as_deref(), image.width) {
+            let padding = 24.0;
+            let avail_w = (center_bounds[2] - padding * 2.0).max(1.0);
+            let avail_h = (center_bounds[3] - padding * 2.0).max(1.0);
+            let scale = (avail_w / image.width as f32)
+                .min(avail_h / image.height.max(1) as f32)
+                .min(1.0);
+            let draw_w = image.width as f32 * scale;
+            let draw_h = image.height as f32 * scale;
+            let rect = [
+                center_bounds[0] + (center_bounds[2] - draw_w) * 0.5,
+                center_bounds[1] + (center_bounds[3] - draw_h) * 0.5,
+                draw_w,
+                draw_h,
+            ];
+            self.image_pipeline.upload_rgba(
+                &self.device,
+                &self.queue,
+                rgba,
+                image.width,
+                image.height,
+                rect,
+                [
+                    self.surface_state.config.width,
+                    self.surface_state.config.height,
+                ],
+            );
+        }
+
+        let status = image
+            .error
+            .clone()
+            .unwrap_or_else(|| format!("{} × {} px · fit to viewport", image.width, image.height));
+        self.editor_overlay_scissor = rect_to_scissor(center_bounds);
+        self.editor_overlay_glyph_instances = layout_panel_text(
+            &status,
+            &mut self.editor_overlay_text_system,
+            &mut self.atlas,
+            &self.queue,
+            center_bounds[0] + self.editor_padding_x,
+            center_bounds[1] + self.editor_padding_y,
+            if image.error.is_some() {
+                self.theme.ui.error.as_f32()
+            } else {
+                self.theme.ui.fg_ghost.as_f32()
+            },
+        );
+        self.editor_overlay_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.editor_overlay_glyph_instances,
+        );
     }
 
     /// Rebuild glyph instances and caret for the center editor region.
@@ -48,6 +111,13 @@ impl Renderer {
         center_bounds: [f32; 4],
         spans: &[StyledTextSpan],
     ) {
+        // Text/scratch/no-tab surfaces share the center viewport with image buffers.
+        // Always drop any previously uploaded image texture/quad before rebuilding
+        // text content; otherwise closing the last image tab can leave the final
+        // image visible behind the now-empty editor surface.
+        self.image_pipeline.clear();
+        self.image_scissor = None;
+
         let geometry = editor_viewport_geometry(self, app_state, center_bounds);
         let width = geometry.viewport_text_width;
 
@@ -123,6 +193,9 @@ impl Renderer {
     /// Must honor the same mode → shape mapping as `update_editor_content`, otherwise
     /// h/j/k/l in Normal mode would collapse the block caret back to a thin bar.
     pub fn update_editor_caret(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {
+        self.image_pipeline.clear();
+        self.image_scissor = None;
+
         let geometry = editor_viewport_geometry(self, app_state, center_bounds);
 
         let caret_layout = compute_caret_layout(

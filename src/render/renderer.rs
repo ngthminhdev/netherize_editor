@@ -23,6 +23,7 @@ use crate::{
     render::{
         caret::CaretPipeline,
         glyph_instance::GlyphInstance,
+        image_pipeline::ImagePipeline,
         region_pipeline::{RegionDrawInstance, RegionPipeline},
         surface::SurfaceState,
         text_pipeline::{InstanceDrawRange, TextPipeline},
@@ -72,6 +73,7 @@ pub enum RenderError {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TopbarTabKind {
     Text { path: PathBuf },
+    Image { path: PathBuf },
     Terminal,
     References,
     Diagnostics,
@@ -137,6 +139,8 @@ pub struct Renderer {
     pub(super) editor_overlay_glyph_instances: Vec<GlyphInstance>,
     pub(super) editor_overlay_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) editor_overlay_scissor: Option<[u32; 4]>,
+    pub(super) image_pipeline: ImagePipeline,
+    pub(super) image_scissor: Option<[u32; 4]>,
 
     // ── Gutter (line numbers) ─────────────────────────────────────────────────
     pub(super) gutter_text_system: TextSystem,
