@@ -415,6 +415,7 @@ impl AsyncResultRouter for AppShell {
                             extension,
                             &self.theme,
                         ),
+                        &preview_text,
                         &self.theme,
                     );
                     let changed =

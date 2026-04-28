@@ -8,11 +8,69 @@ use crate::{
     syntax::highlight::highlight_snippet,
 };
 
+const BRACKET_PAIRS: &[(char, char)] = &[('(', ')'), ('[', ']'), ('{', '}')];
+
+fn byte_inside_any_span(byte_idx: usize, spans: &[HighlightSpan], categories: &[crate::syntax::highlight::HighlightCategory]) -> bool {
+    spans.iter().any(|span| {
+        span.range.start <= byte_idx
+            && byte_idx < span.range.end
+            && categories.contains(&span.category)
+    })
+}
+
+fn rainbow_bracket_spans(text: &str, syntax_spans: &[HighlightSpan], theme: &ThemeConfig) -> Vec<StyledTextSpan> {
+    let palette: Vec<[u8; 4]> = theme
+        .editor
+        .rainbow_brackets
+        .iter()
+        .map(|color| color.as_u8())
+        .collect();
+    if palette.is_empty() || text.is_empty() {
+        return Vec::new();
+    }
+
+    let ignored = [
+        crate::syntax::highlight::HighlightCategory::String,
+        crate::syntax::highlight::HighlightCategory::Comment,
+    ];
+    let mut out = Vec::new();
+    let mut stack: Vec<(char, usize)> = Vec::new();
+
+    for (byte_idx, ch) in text.char_indices() {
+        if !matches!(ch, '(' | ')' | '[' | ']' | '{' | '}') {
+            continue;
+        }
+        if byte_inside_any_span(byte_idx, syntax_spans, &ignored) {
+            continue;
+        }
+
+        if let Some((_, close)) = BRACKET_PAIRS.iter().find(|(open, _)| *open == ch) {
+            let depth = stack.len();
+            let color = palette[depth % palette.len()];
+            out.push(StyledTextSpan::new(byte_idx, byte_idx + ch.len_utf8(), color));
+            stack.push((ch, *close as usize));
+            continue;
+        }
+
+        if let Some(pair_idx) = BRACKET_PAIRS.iter().position(|(_, close)| *close == ch) {
+            if let Some(open_pos) = stack.iter().rposition(|(open, _)| *open == BRACKET_PAIRS[pair_idx].0) {
+                let depth = open_pos;
+                stack.truncate(open_pos);
+                let color = palette[depth % palette.len()];
+                out.push(StyledTextSpan::new(byte_idx, byte_idx + ch.len_utf8(), color));
+            }
+        }
+    }
+
+    out
+}
+
 pub(super) fn syntax_spans_to_styled(
     spans: &[HighlightSpan],
+    text: &str,
     theme: &ThemeConfig,
 ) -> Vec<StyledTextSpan> {
-    spans
+    let mut styled: Vec<StyledTextSpan> = spans
         .iter()
         .map(|span| {
             let color = match span.category {
@@ -77,7 +135,9 @@ pub(super) fn syntax_spans_to_styled(
                 span.category.is_italic(),
             )
         })
-        .collect()
+        .collect();
+    styled.extend(rainbow_bracket_spans(text, spans, theme));
+    styled
 }
 
 pub(super) fn diagnostic_spans_to_styled(
@@ -148,7 +208,8 @@ pub(super) fn build_preview_render_data(
         .extension()
         .and_then(|ext| ext.to_str())
         .unwrap_or_default();
-    let spans = syntax_spans_to_styled(&highlight_snippet(&text, extension, theme), theme);
+    let raw_spans = highlight_snippet(&text, extension, theme);
+    let spans = syntax_spans_to_styled(&raw_spans, &text, theme);
     (text, spans)
 }
 
@@ -178,7 +239,8 @@ pub(super) fn parse_hover_markdown_blocks(
         if text.trim().is_empty() {
             return;
         }
-        let spans = syntax_spans_to_styled(&highlight_snippet(&text, code_language, theme), theme);
+        let raw_spans = highlight_snippet(&text, code_language, theme);
+        let spans = syntax_spans_to_styled(&raw_spans, &text, theme);
         blocks.push(FloatingBoxBlock::Code { text, spans });
     };
 
@@ -556,7 +618,7 @@ mod tests {
             },
         ];
 
-        let styled = syntax_spans_to_styled(&spans, &theme);
+        let styled = syntax_spans_to_styled(&spans, "comment macro param", &theme);
 
         assert_eq!(styled[0].color_rgba, theme.syntax.comment.as_u8());
         assert!(styled[0].italic);

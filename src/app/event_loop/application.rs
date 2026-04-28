@@ -530,12 +530,13 @@ impl AppShell {
                                 &self.highlight_spans,
                                 &self.semantic_highlight_spans,
                             );
+                        let text = self.app_state.text_string();
                         let mut styled_spans =
-                            syntax_spans_to_styled(&effective_highlights, &self.theme);
+                            syntax_spans_to_styled(&effective_highlights, &text, &self.theme);
                         styled_spans
                             .extend(diagnostic_spans_to_styled(&self.app_state, &self.theme));
                         renderer.update_editor_content(
-                            &self.app_state.text_string(),
+                            &text,
                             &self.app_state,
                             center_bounds,
                             &styled_spans,
@@ -635,6 +636,7 @@ impl AppShell {
                 {
                     region_instances.push(quad);
                 }
+                region_instances.extend(renderer.indent_guide_quads(&self.app_state, center_bounds));
                 region_instances
                     .extend(renderer.search_highlight_quads(&self.app_state, center_bounds));
                 if self.app_state.current_mode() == EditorMode::Visual {

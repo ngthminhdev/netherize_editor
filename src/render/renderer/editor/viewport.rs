@@ -35,6 +35,7 @@ impl Renderer {
         self.gutter_glyph_instances.clear();
         self.gutter_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
+        self.last_editor_chrome_instances.clear();
         self.clear_editor_overlays();
         self.clear_diagnostic_hover_popup();
         self.editor_scissor = None;

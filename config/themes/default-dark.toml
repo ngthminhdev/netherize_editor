@@ -17,6 +17,10 @@ selection = "#253043"
 gutter = "#1c2433"
 # Active line-number color in the gutter.
 gutter_active = "#4a5e84"
+# Subtle vertical indentation guides in the code area.
+indent_guide = "#8196b540"
+# Nested bracket colors used for rainbow-style pair rendering.
+rainbow_brackets = ["#22ECDB", "#F38CEC", "#EACD61", "#3CEC85", "#FF955C", "#B78AFF"]
 # Editor text metrics for cosmic-text layout.
 font_size = 15.0
 line_height = 26.0

@@ -178,6 +178,7 @@ impl Renderer {
             gutter_text_pipeline,
             gutter_glyph_instances: Vec::new(),
             relative_numbers: false,
+            last_editor_chrome_instances: Vec::new(),
             sidebar_text_system,
             sidebar_text_pipeline,
             sidebar_glyph_instances: Vec::new(),

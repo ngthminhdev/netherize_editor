@@ -30,6 +30,8 @@ pub(in crate::config::theme_config) struct RawEditor {
     pub(in crate::config::theme_config) selection: String,
     pub(in crate::config::theme_config) gutter: String,
     pub(in crate::config::theme_config) gutter_active: Option<String>,
+    pub(in crate::config::theme_config) indent_guide: Option<String>,
+    pub(in crate::config::theme_config) rainbow_brackets: Option<Vec<String>>,
     pub(in crate::config::theme_config) font_size: Option<f32>,
     pub(in crate::config::theme_config) line_height: Option<f32>,
     pub(in crate::config::theme_config) font_family: Option<String>,

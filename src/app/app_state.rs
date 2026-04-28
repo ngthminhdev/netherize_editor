@@ -4019,6 +4019,15 @@ impl AppState {
         self.text.to_string()
     }
 
+    pub fn line_string(&self, line_idx: usize) -> String {
+        if self.text.len_lines() == 0 {
+            return String::new();
+        }
+        self.text
+            .line(line_idx.min(self.text.len_lines().saturating_sub(1)))
+            .to_string()
+    }
+
     pub fn take_highlight_edits(&mut self) -> Vec<HighlightEdit> {
         std::mem::take(&mut self.pending_highlight_edits)
     }

@@ -149,6 +149,7 @@ pub struct Renderer {
     pub(super) gutter_text_pipeline: TextPipeline,
     pub(super) gutter_glyph_instances: Vec<GlyphInstance>,
     pub relative_numbers: bool,
+    pub(super) last_editor_chrome_instances: Vec<RegionDrawInstance>,
 
     // ── Explorer sidebar ──────────────────────────────────────────────────────
     pub(super) sidebar_text_system: TextSystem,

@@ -193,6 +193,35 @@ fn parse_exact_file_icons(raw: &RawFileIcons) -> HashMap<String, String> {
 }
 
 fn parse_editor(raw: &RawEditor) -> Result<EditorThemeTokens, String> {
+    let rainbow_brackets = if let Some(colors) = raw.rainbow_brackets.as_ref() {
+        let parsed = colors
+            .iter()
+            .enumerate()
+            .map(|(idx, value)| parse_color("editor", &format!("rainbow_brackets[{idx}]"), value))
+            .collect::<Result<Vec<_>, _>>()?;
+        if parsed.is_empty() {
+            vec![
+                ThemeColor::from_rgba_u8(47, 211, 246, 255),
+                ThemeColor::from_rgba_u8(231, 122, 233, 255),
+                ThemeColor::from_rgba_u8(245, 182, 58, 255),
+                ThemeColor::from_rgba_u8(155, 229, 100, 255),
+                ThemeColor::from_rgba_u8(255, 123, 114, 255),
+                ThemeColor::from_rgba_u8(183, 138, 255, 255),
+            ]
+        } else {
+            parsed
+        }
+    } else {
+        vec![
+            ThemeColor::from_rgba_u8(47, 211, 246, 255),
+            ThemeColor::from_rgba_u8(231, 122, 233, 255),
+            ThemeColor::from_rgba_u8(245, 182, 58, 255),
+            ThemeColor::from_rgba_u8(155, 229, 100, 255),
+            ThemeColor::from_rgba_u8(255, 123, 114, 255),
+            ThemeColor::from_rgba_u8(183, 138, 255, 255),
+        ]
+    };
+
     Ok(EditorThemeTokens {
         bg: parse_color("editor", "bg", &raw.bg)?,
         fg: parse_color("editor", "fg", &raw.fg)?,
@@ -204,6 +233,12 @@ fn parse_editor(raw: &RawEditor) -> Result<EditorThemeTokens, String> {
             "gutter_active",
             raw.gutter_active.as_deref().unwrap_or(raw.fg.as_str()),
         )?,
+        indent_guide: parse_color(
+            "editor",
+            "indent_guide",
+            raw.indent_guide.as_deref().unwrap_or("#8f98aa38"),
+        )?,
+        rainbow_brackets,
         font_size: parse_positive_size("editor", "font_size", raw.font_size.unwrap_or(17.0))?,
         line_height: parse_positive_size("editor", "line_height", raw.line_height.unwrap_or(26.0))?,
         font_family: raw

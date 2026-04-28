@@ -154,6 +154,8 @@ pub struct EditorThemeTokens {
     pub selection: ThemeColor,
     pub gutter: ThemeColor,
     pub gutter_active: ThemeColor,
+    pub indent_guide: ThemeColor,
+    pub rainbow_brackets: Vec<ThemeColor>,
     pub font_size: f32,
     pub line_height: f32,
     pub font_family: Option<String>,

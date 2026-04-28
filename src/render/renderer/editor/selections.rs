@@ -27,7 +27,80 @@ use crate::text::text_system::StyledTextSpan;
 const DIAGNOSTIC_SEVERITY_ERROR: u32 = 1;
 const DIAGNOSTIC_SEVERITY_WARNING: u32 = 2;
 
+fn leading_indent_columns(app_state: &AppState, line_idx: usize, tab_width: usize) -> usize {
+    let text = app_state.line_string(line_idx);
+    let mut cols = 0usize;
+    for ch in text.chars() {
+        match ch {
+            ' ' => cols += 1,
+            '\t' => cols += tab_width.max(1),
+            _ => break,
+        }
+    }
+    cols
+}
+
 impl Renderer {
+    pub fn indent_guide_quads(
+        &self,
+        app_state: &AppState,
+        center_bounds: [f32; 4],
+    ) -> Vec<RegionDrawInstance> {
+        let line_height = self.theme.editor.line_height;
+        let font_size = self.theme.editor.font_size;
+        let total_lines = app_state.total_lines().max(1);
+        let gutter_digits = total_lines.to_string().len().max(3);
+        let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
+        let text_area_x = center_bounds[0] + self.editor_padding_x + gutter_width;
+        let scroll_y = app_state.current_scroll_y * line_height;
+        let scroll_x = app_state.scroll_column as f32 * (font_size * 0.6).max(1.0);
+        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
+        let viewport_top = center_bounds[1] + self.editor_padding_y;
+        let viewport_bottom = viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
+        let tab_width = app_state.indent_config().tab_width as usize;
+        let char_width = (font_size * 0.6).max(1.0);
+        let guide_step = char_width * tab_width.max(1) as f32;
+        if guide_step <= 0.0 {
+            return Vec::new();
+        }
+
+        let mut color = self.theme.editor.indent_guide.as_f32();
+        color[3] = color[3].clamp(0.08, 0.22);
+        let mut quads = Vec::new();
+        let mut last_drawn_line: Option<usize> = None;
+
+        for run in self.text_system.buffer().layout_runs() {
+            let line_idx = run.line_i;
+            if last_drawn_line == Some(line_idx) {
+                continue;
+            }
+            last_drawn_line = Some(line_idx);
+
+            let line_top = origin_y + run.line_top;
+            let line_height_px = run.line_height.max(1.0);
+            let line_bottom = line_top + line_height_px;
+            if line_bottom <= viewport_top || line_top >= viewport_bottom {
+                continue;
+            }
+
+            let indent_columns = leading_indent_columns(app_state, line_idx, tab_width);
+            let full_levels = indent_columns / tab_width.max(1);
+            if full_levels == 0 {
+                continue;
+            }
+
+            for level in 0..full_levels {
+                let x = text_area_x - scroll_x + guide_step * level as f32 + guide_step * 0.5;
+                quads.push(RegionDrawInstance::new(
+                    [x, line_top + 1.0, 1.0, (line_height_px - 2.0).max(1.0)],
+                    color,
+                ));
+            }
+        }
+
+        quads
+    }
+
     pub fn current_line_highlight_quad(
         &self,
         app_state: &AppState,
