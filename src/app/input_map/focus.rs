@@ -230,7 +230,41 @@ impl InputMap {
     pub(super) fn resolve_explorer_focus(
         &self,
         input: &NormalizedInput,
+        welcome_visible: bool,
     ) -> Option<KeybindingMatch> {
+        if welcome_visible {
+            if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowDown))
+                || (!input.has_command_modifier() && input.physical_key == Some(KeyCode::KeyJ))
+                || (input.modifiers.control_key()
+                    && !input.modifiers.super_key()
+                    && input.physical_key == Some(KeyCode::KeyN))
+            {
+                return Some(KeybindingMatch {
+                    command: Command::OverlaySelectNext,
+                    reason: "welcome explorer focus: down/j/Ctrl+n -> SelectNext",
+                });
+            }
+
+            if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowUp))
+                || (!input.has_command_modifier() && input.physical_key == Some(KeyCode::KeyK))
+                || (input.modifiers.control_key()
+                    && !input.modifiers.super_key()
+                    && input.physical_key == Some(KeyCode::KeyP))
+            {
+                return Some(KeybindingMatch {
+                    command: Command::OverlaySelectPrev,
+                    reason: "welcome explorer focus: up/k/Ctrl+p -> SelectPrev",
+                });
+            }
+
+            if input.named_key == Some(NamedKey::Enter) {
+                return Some(KeybindingMatch {
+                    command: Command::FilePickerConfirmSelection,
+                    reason: "welcome explorer focus: Enter -> ConfirmSelection",
+                });
+            }
+        }
+
         if let Some(command) = resolved_keymap::resolve_command_mode_only(
             &self.keymap,
             input,

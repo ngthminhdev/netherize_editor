@@ -734,6 +734,42 @@ fn recent_projects_jk_only_work_from_welcome_context() {
 }
 
 #[test]
+fn welcome_explorer_focus_routes_jk_to_recent_project_selection() {
+    let map = make_default_profile_map();
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer);
+    context.welcome_visible = true;
+
+    assert_eq!(
+        map.translate(&input_from_physical(KeyCode::KeyJ, "j"), context),
+        Some(Command::OverlaySelectNext)
+    );
+    assert_eq!(
+        map.translate(&input_from_physical(KeyCode::KeyK, "k"), context),
+        Some(Command::OverlaySelectPrev)
+    );
+    assert_eq!(
+        map.translate(&input_from_named(NamedKey::Enter), context),
+        Some(Command::FilePickerConfirmSelection)
+    );
+}
+
+#[test]
+fn explorer_focus_jk_still_use_explorer_commands_outside_welcome() {
+    let map = make_default_profile_map();
+    let context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer);
+
+    assert_eq!(
+        map.translate(&input_from_physical(KeyCode::KeyJ, "j"), context),
+        Some(Command::ExplorerMoveDown)
+    );
+    assert_eq!(
+        map.translate(&input_from_physical(KeyCode::KeyK, "k"), context),
+        Some(Command::ExplorerMoveUp)
+    );
+}
+
+#[test]
 fn welcome_palette_modes_support_ctrl_np_navigation() {
     let map = make_default_profile_map();
     let input_ctrl_n = NormalizedInput {

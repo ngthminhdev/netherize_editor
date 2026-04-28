@@ -203,7 +203,7 @@ impl InputMap {
             return self.resolve_terminal_focus(input, context.mode);
         }
         if context.focus == InputFocusContext::Explorer {
-            return self.resolve_explorer_focus(input);
+            return self.resolve_explorer_focus(input, context.welcome_visible);
         }
         if context.focus == InputFocusContext::Inspector {
             return self.resolve_inspector_focus(input);

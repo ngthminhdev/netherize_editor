@@ -365,11 +365,13 @@ impl AppShell {
 
     pub(super) fn build_context(&self) -> KeybindingContext {
         let mode = self.app_state.current_mode();
-        let focus = if self.app_state.is_initial_launch_welcome()
+        let welcome_visible = self.app_state.is_initial_launch_welcome()
             && self.app_state.buffers().is_empty()
             && (!self.app_state.is_command_palette_visible()
                 || self.app_state.command_palette_mode()
-                    == Some(CommandPaletteMode::RecentProjects))
+                    == Some(CommandPaletteMode::RecentProjects));
+        let focus = if welcome_visible
+            && !matches!(self.focus_manager.current(), FocusTarget::LeftSidebar)
         {
             InputFocusContext::Welcome
         } else {
@@ -410,7 +412,7 @@ impl AppShell {
             focus,
             command_palette_visible: self.app_state.is_command_palette_visible(),
             command_palette_mode: self.app_state.command_palette_mode(),
-            welcome_visible: self.app_state.buffers().is_empty(),
+            welcome_visible,
             completion_visible: self.app_state.has_completion(),
         }
     }
