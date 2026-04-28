@@ -6,6 +6,7 @@ pub enum SettingItem {
     LineHeight { current: f32 },
     IndentTabWidth { current: u8 },
     IndentInsertSpaces { enabled: bool },
+    InlineSuggestion { enabled: bool },
     SidebarWidth { current: i32 },
     RightSidebarWidth { current: i32 },
     BottomPanelHeight { current: i32 },
@@ -21,6 +22,7 @@ impl SettingItem {
             Self::LineHeight { .. } => "Line Height",
             Self::IndentTabWidth { .. } => "Tab Width",
             Self::IndentInsertSpaces { .. } => "Indent Style",
+            Self::InlineSuggestion { .. } => "Inline Suggestion",
             Self::SidebarWidth { .. } => "Left Dock Width",
             Self::RightSidebarWidth { .. } => "Right Dock Width",
             Self::BottomPanelHeight { .. } => "Bottom Dock Height",
@@ -88,6 +90,7 @@ impl SettingsState {
                 SettingItem::IndentInsertSpaces {
                     enabled: insert_spaces,
                 },
+                SettingItem::InlineSuggestion { enabled: false },
                 SettingItem::SidebarWidth {
                     current: left_width.max(0),
                 },
@@ -160,7 +163,8 @@ impl SettingsState {
             }
             SettingItem::ThemeSelector { .. }
             | SettingItem::UiRounding { .. }
-            | SettingItem::IndentInsertSpaces { .. } => return false,
+            | SettingItem::IndentInsertSpaces { .. }
+            | SettingItem::InlineSuggestion { .. } => return false,
         };
         self.editing = Some(SettingsEditingState { kind, draft });
         true

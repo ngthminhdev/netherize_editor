@@ -15,6 +15,7 @@ enum SettingsSection {
     Appearance,
     Typography,
     Editor,
+    Ai,
     Layout,
 }
 
@@ -24,6 +25,7 @@ impl SettingsSection {
             Self::Appearance => "APPEARANCE",
             Self::Typography => "TYPOGRAPHY",
             Self::Editor => "EDITOR",
+            Self::Ai => "AI",
             Self::Layout => "LAYOUT",
         }
     }
@@ -39,6 +41,7 @@ impl SettingItem {
             Self::IndentTabWidth { .. } | Self::IndentInsertSpaces { .. } => {
                 SettingsSection::Editor
             }
+            Self::InlineSuggestion { .. } => SettingsSection::Ai,
             Self::SidebarWidth { .. }
             | Self::RightSidebarWidth { .. }
             | Self::BottomPanelHeight { .. } => SettingsSection::Layout,
@@ -62,6 +65,9 @@ impl SettingItem {
             }
             Self::IndentInsertSpaces { .. } => {
                 "Press Enter to toggle: spaces keep indent visible; tabs compress display."
+            }
+            Self::InlineSuggestion { .. } => {
+                "Disabled temporarily while the inline suggestion pipeline is being stabilized."
             }
             Self::SidebarWidth { .. } => {
                 "Reserved width for the left dock when the workspace sidebar is shown."
@@ -90,7 +96,7 @@ impl SettingItem {
             }
             Self::FontSize { current } | Self::LineHeight { current } => format!("{current:.1}"),
             Self::IndentTabWidth { current } => current.to_string(),
-            Self::IndentInsertSpaces { enabled } => {
+            Self::IndentInsertSpaces { enabled } | Self::InlineSuggestion { enabled } => {
                 if *enabled { "true" } else { "false" }.to_string()
             }
             Self::SidebarWidth { current }
@@ -120,6 +126,9 @@ impl SettingItem {
             Self::IndentTabWidth { current } => format!("{current} spaces"),
             Self::IndentInsertSpaces { enabled } => {
                 if *enabled { "Spaces" } else { "Tabs" }.to_string()
+            }
+            Self::InlineSuggestion { enabled } => {
+                if *enabled { "Enabled" } else { "Disabled" }.to_string()
             }
             Self::SidebarWidth { current }
             | Self::RightSidebarWidth { current }
@@ -193,6 +202,13 @@ fn settings_preview_lines(settings: &SettingsState) -> Vec<String> {
                 lines.push(format!("insert_spaces = {}", item.preview_value()))
             }
             _ => {}
+        }
+    }
+
+    lines.extend(["".to_string(), "[ai.inline_completion]".to_string()]);
+    for item in &settings.items {
+        if let SettingItem::InlineSuggestion { .. } = item {
+            lines.push(format!("enabled = {}", item.preview_value()));
         }
     }
 
@@ -482,7 +498,8 @@ impl Renderer {
 
             match item {
                 SettingItem::UiRounding { enabled, .. }
-                | SettingItem::IndentInsertSpaces { enabled } => {
+                | SettingItem::IndentInsertSpaces { enabled }
+                | SettingItem::InlineSuggestion { enabled } => {
                     let toggle_w = 40.0;
                     let toggle_h = 20.0;
                     let toggle_x = left_x + left_w - toggle_w - 18.0;
@@ -522,6 +539,7 @@ impl Renderer {
                                 "TAB"
                             }
                         }
+                        SettingItem::InlineSuggestion { .. } => "OFF",
                         _ => "",
                     };
                     if !badge_label.is_empty() {

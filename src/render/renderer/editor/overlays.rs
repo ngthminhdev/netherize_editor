@@ -66,7 +66,7 @@ impl Renderer {
                 Some((center_bounds[2] - self.editor_padding_x * 2.0).max(1.0)),
                 Some(header_h),
             );
-            self.editor_overlay_glyph_instances = layout_panel_text(
+            let mut header_glyphs = layout_panel_text(
                 title,
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
@@ -75,6 +75,15 @@ impl Renderer {
                 center_bounds[1] + ((header_h - self.theme.ui.panel_line_height).max(0.0) * 0.5),
                 self.theme.ui.fg.as_f32(),
             );
+            let geometry = editor_viewport_geometry(self, app_state, center_bounds);
+            let ghost_glyphs = self.collect_inline_suggestion_glyphs(
+                app_state,
+                geometry.origin_x,
+                geometry.origin_y,
+                geometry.viewport_text_width,
+            );
+            header_glyphs.extend(ghost_glyphs);
+            self.editor_overlay_glyph_instances = header_glyphs;
             self.editor_overlay_text_pipeline.upload_instances(
                 &self.device,
                 &self.queue,
@@ -538,6 +547,14 @@ impl Renderer {
                 }
             }
         }
+
+        let ghost_glyphs = self.collect_inline_suggestion_glyphs(
+            app_state,
+            geometry.origin_x,
+            geometry.origin_y,
+            geometry.viewport_text_width,
+        );
+        glyphs.extend(ghost_glyphs);
 
         self.editor_overlay_chrome_instances = chrome_quads;
         self.editor_overlay_glyph_instances = glyphs;

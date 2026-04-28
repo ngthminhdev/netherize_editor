@@ -376,6 +376,11 @@ impl AppShell {
                 self.editor_caret_needs_layout = false;
                 true
             }
+            crate::app::app_state::SettingItem::InlineSuggestion { .. } => {
+                // Inline suggestions are intentionally disabled for now.
+                // Keep the settings row visible, but do not allow toggling it on.
+                false
+            }
             crate::app::app_state::SettingItem::FontFamily { .. }
             | crate::app::app_state::SettingItem::FontSize { .. }
             | crate::app::app_state::SettingItem::LineHeight { .. }
@@ -847,11 +852,13 @@ impl AppShell {
             Command::AiAcceptInline => {
                 let report = dispatch_command(&mut self.app_state, command);
                 if report.state_changed {
+                    self.reconcile_highlight_spans_with_pending_edits();
                     self.editor_needs_layout = true;
-                    self.editor_caret_needs_layout = false;
+                    self.editor_caret_needs_layout = true;
+                    let viewport_lines = self.editor_viewport_lines();
+                    self.app_state.auto_scroll_to_cursor(viewport_lines);
                     self.queue_lsp_did_change_for_active_file();
-                    self.pending_parse_after_debounce = true;
-                    self.last_parse_submit_at = Some(Instant::now());
+                    self.submit_parse_for_active_buffer(true);
                 }
                 report.request_redraw || report.state_changed
             }

@@ -81,7 +81,7 @@ command = "editor.newline"
 [[bindings]]
 mode = "insert"
 key = "Tab"
-command = "ai.accept_inline"
+command = "editor.insert_tab"
 
 [[bindings]]
 mode = "insert"

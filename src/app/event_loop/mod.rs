@@ -238,6 +238,7 @@ struct PendingLspDocumentSync {
 #[derive(Debug, Clone)]
 pub enum AppEvent {
     TerminalOutputReady,
+    AiInlineReady,
 }
 
 pub fn run() -> Result<(), winit::error::EventLoopError> {

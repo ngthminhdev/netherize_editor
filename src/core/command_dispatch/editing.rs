@@ -79,17 +79,12 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             DispatchReport::success("Dispatch: applied to active buffer (insert tab)", changed)
         }
         Command::AiAcceptInline => {
-            let had_inline = ctx.app_state.inline_suggestion().is_some();
-            let changed = if had_inline {
-                ctx.app_state.accept_inline_suggestion()
-            } else {
-                ctx.app_state.insert_tab()
-            };
+            let changed = ctx.app_state.accept_inline_suggestion();
             DispatchReport::success(
-                if had_inline {
+                if changed {
                     "Dispatch: applied to active buffer (accept inline suggestion)"
                 } else {
-                    "Dispatch: applied to active buffer (insert tab)"
+                    "Dispatch: accept inline suggestion ignored (no suggestion)"
                 },
                 changed,
             )

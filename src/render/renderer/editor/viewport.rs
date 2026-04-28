@@ -179,7 +179,6 @@ impl Renderer {
 
         self.text_pipeline
             .upload_instances(&self.device, &self.queue, &self.glyph_instances);
-        self.render_inline_suggestion(app_state, geometry.origin_x, geometry.origin_y, width);
         self.update_editor_gutter(
             app_state,
             center_bounds,
@@ -245,28 +244,25 @@ impl Renderer {
             app_state.total_lines().max(1).to_string().len().max(3),
             geometry.gutter_width,
         );
-        self.render_inline_suggestion(app_state, geometry.origin_x, geometry.origin_y, geometry.viewport_text_width);
     }
 
-    fn render_inline_suggestion(
+    /// Collect ghost text glyph instances for the inline AI suggestion.
+    /// Returns an empty Vec if there is no active suggestion or it is empty.
+    /// The caller is responsible for uploading the returned glyphs together with
+    /// any other overlay content so they share a single pipeline upload.
+    pub(super) fn collect_inline_suggestion_glyphs(
         &mut self,
         app_state: &AppState,
         origin_x: f32,
         origin_y: f32,
         width: f32,
-    ) {
-        self.editor_overlay_glyph_instances.clear();
-        self.editor_overlay_scissor = self.editor_scissor;
+    ) -> Vec<GlyphInstance> {
         let Some(suggestion) = app_state.inline_suggestion() else {
-            self.editor_overlay_text_pipeline
-                .upload_instances(&self.device, &self.queue, &[]);
-            return;
+            return Vec::new();
         };
         let first_line = suggestion.lines().next().unwrap_or_default();
         if first_line.is_empty() {
-            self.editor_overlay_text_pipeline
-                .upload_instances(&self.device, &self.queue, &[]);
-            return;
+            return Vec::new();
         }
 
         self.editor_overlay_text_system
@@ -277,13 +273,13 @@ impl Renderer {
             .set_text_with_color(first_line, color);
 
         let caret = compute_caret_layout(&self.text_system, app_state, [origin_x, origin_y]);
-        let glyphs = self.editor_overlay_text_system.collect_visible_glyphs(
+        let raw_glyphs = self.editor_overlay_text_system.collect_visible_glyphs(
             caret.x,
             caret.top,
             self.theme.ui.fg_ghost.as_f32(),
         );
-        let mut instances = Vec::with_capacity(glyphs.len());
-        for glyph in glyphs {
+        let mut instances = Vec::with_capacity(raw_glyphs.len());
+        for glyph in raw_glyphs {
             let entry = if let Some(entry) = self.atlas.get(glyph.cache_key) {
                 entry
             } else {
@@ -312,11 +308,6 @@ impl Renderer {
                 glyph.color,
             ));
         }
-        self.editor_overlay_glyph_instances = instances;
-        self.editor_overlay_text_pipeline.upload_instances(
-            &self.device,
-            &self.queue,
-            &self.editor_overlay_glyph_instances,
-        );
+        instances
     }
 }

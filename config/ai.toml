@@ -1,0 +1,12 @@
+[inline_completion]
+enabled = true
+debounce_ms = 300
+prefix_chars = 1200
+suffix_chars = 400
+max_tokens = 96
+
+[inline_completion.provider]
+api_url = "https://api.krouter.net/v1"
+model = "cx/gpt-5.4"
+api_key = "sk-9aa9be1d95d96de8-znost6-d6a5b001"
+endpoint_kind = "chat"

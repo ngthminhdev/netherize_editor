@@ -72,6 +72,7 @@ impl AppState {
         let result = self.mode_state.apply(event)?;
         if result.from == EditorMode::Insert && result.to != EditorMode::Insert {
             let _ = self.commit_transaction();
+            self.inline_suggestion = None;
         }
         Ok(result)
     }

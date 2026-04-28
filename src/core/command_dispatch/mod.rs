@@ -163,6 +163,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::InsertText(_)
         | Command::Newline
         | Command::InsertTab
+        | Command::AiAcceptInline
         | Command::Backspace
         | Command::InsertLineBelow
         | Command::InsertLineAbove
@@ -306,7 +307,6 @@ fn dispatch_command_with_clipboard_once(
         | Command::CompletionPrev
         | Command::CompletionAccept
         | Command::CompletionClose
-        | Command::AiAcceptInline
         | Command::ReferencesSelectNext
         | Command::ReferencesSelectPrev
         | Command::ReferencesOpenSelection

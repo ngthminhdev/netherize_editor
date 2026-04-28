@@ -42,17 +42,13 @@ impl AiConfig {
     }
 
     pub fn inline_completion(&self) -> Option<&InlineCompletionConfig> {
-        let cfg = self.inline_completion.as_ref()?;
-        if cfg.enabled == Some(false) {
-            return None;
-        }
-        Some(cfg)
+        None
     }
 }
 
 impl InlineCompletionConfig {
     pub fn debounce_ms(&self) -> u64 {
-        self.debounce_ms.unwrap_or(300)
+        self.debounce_ms.unwrap_or(80)
     }
 
     pub fn prefix_chars(&self) -> usize {

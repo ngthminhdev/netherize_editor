@@ -372,6 +372,7 @@ async fn dispatch_loop(
 
         if matches!(request.payload, WorkerRequestPayload::AiInlineCompletionRequest { .. }) {
             let worker_tx = result_tx.clone();
+            let ai_event_proxy = event_proxy.clone();
             tokio::spawn(async move {
                 let started = WorkerEvent {
                     request_id: request.request_id,
@@ -400,6 +401,7 @@ async fn dispatch_loop(
                                 kind: WorkerEventKind::Completed,
                             }),
                         );
+                        let _ = ai_event_proxy.send_event(AppEvent::AiInlineReady);
                     }
                     Err(message) => {
                         emit_message(
@@ -2675,7 +2677,10 @@ async fn execute_ai_inline_request(request: &WorkerRequest) -> Result<WorkerResu
         return Err("ai inline request payload mismatch".to_string());
     };
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
     let endpoint = match endpoint_kind.as_deref() {
         Some("responses") => format!("{}/responses", api_url.trim_end_matches('/')),
         Some(path) if path.starts_with('/') => format!("{}{}", api_url.trim_end_matches('/'), path),
