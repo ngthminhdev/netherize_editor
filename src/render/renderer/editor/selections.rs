@@ -485,6 +485,29 @@ impl Renderer {
                 ));
             }
 
+            if let Some(diff_kind) = app_state
+                .active_buffer_git_diff()
+                .and_then(|diff| {
+                    diff.ranges
+                        .iter()
+                        .find(|range| abs_line >= range.start_line && abs_line <= range.end_line)
+                })
+                .map(|range| range.kind)
+            {
+                let diff_color = match diff_kind {
+                    crate::app::app_state::GitDiffKind::Added => {
+                        self.theme.git.added_gutter.as_f32()
+                    }
+                    crate::app::app_state::GitDiffKind::Modified => {
+                        self.theme.git.modified_gutter.as_f32()
+                    }
+                };
+                quads.push(RegionDrawInstance::new(
+                    [gutter_x + 2.0, line_top_y, 3.0, run.line_height.max(1.0)],
+                    diff_color,
+                ));
+            }
+
             let num_str = if self.relative_numbers {
                 let dist = abs_line.abs_diff(cursor_line);
                 if dist == 0 {
@@ -519,8 +542,6 @@ impl Renderer {
             &self.queue,
             &self.gutter_glyph_instances,
         );
-        // Gutter background quads uploaded to region_pipeline (drawn before text in render()).
-        self.region_pipeline
-            .upload_instances(&self.device, &self.queue, &quads);
+        self.last_editor_chrome_instances = quads;
     }
 }

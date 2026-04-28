@@ -289,6 +289,11 @@ impl AppState {
         }
     }
 
+    pub fn active_buffer_git_diff(&self) -> Option<&BufferGitDiff> {
+        self.active_buffer()
+            .and_then(|buffer| buffer.git_diff.as_ref())
+    }
+
     pub fn active_buffer_is_terminal(&self) -> bool {
         self.active_buffer()
             .is_some_and(|buffer| matches!(buffer.content, BufferContent::Terminal(_)))
@@ -511,7 +516,11 @@ impl AppState {
     pub fn set_inline_suggestion(&mut self, suggestion: Option<String>) -> bool {
         let normalized = suggestion.and_then(|text| {
             let trimmed = text.replace("\r\n", "\n").replace('\r', "\n");
-            if trimmed.is_empty() { None } else { Some(trimmed) }
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
         });
         if self.inline_suggestion == normalized {
             return false;

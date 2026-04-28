@@ -49,7 +49,6 @@ impl Renderer {
         let line_h = self.theme.ui.sidebar_line_height;
         let font_size = self.theme.ui.sidebar_font_size;
 
-        let fg = self.theme.ui.fg.as_f32();
         let fg_dim = self.theme.ui.fg_dim.as_f32();
         let fg_ghost = self.theme.ui.fg_ghost.as_f32();
         let accent = self.theme.ui.accent.as_f32();
@@ -135,6 +134,7 @@ impl Renderer {
                 + self.sidebar_base_padding
                 + row.depth as f32 * self.sidebar_indent_per_depth;
 
+            let label_base_color = row.git_color.unwrap_or(fg_dim);
             let label_color = if row.is_selected {
                 selection_quads.push(RegionDrawInstance::new(
                     [
@@ -145,9 +145,13 @@ impl Renderer {
                     ],
                     sel_bg,
                 ));
-                if sidebar_focused { accent } else { fg }
+                if sidebar_focused {
+                    accent
+                } else {
+                    label_base_color
+                }
             } else {
-                fg_dim
+                label_base_color
             };
 
             // 1. Disclosure arrow (▶ ▼ ·)
@@ -177,16 +181,40 @@ impl Renderer {
                 icon_color,
             ));
 
-            // 3. Label
-            glyphs.extend(layout_panel_text(
-                &row.label,
-                &mut self.sidebar_text_system,
-                &mut self.atlas,
-                &self.queue,
-                x + arrow_w + nerd_w,
-                current_y,
-                label_color,
-            ));
+            if let (Some(marker), Some(color)) = (row.git_marker, row.git_color) {
+                let marker_text = format!("{} ", marker);
+                glyphs.extend(layout_panel_text(
+                    &marker_text,
+                    &mut self.sidebar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    x + arrow_w + nerd_w,
+                    current_y,
+                    color,
+                ));
+
+                let marker_w = marker_text.chars().count() as f32 * font_size * 0.60;
+                glyphs.extend(layout_panel_text(
+                    &row.label,
+                    &mut self.sidebar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    x + arrow_w + nerd_w + marker_w,
+                    current_y,
+                    label_color,
+                ));
+            } else {
+                // 3. Label
+                glyphs.extend(layout_panel_text(
+                    &row.label,
+                    &mut self.sidebar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    x + arrow_w + nerd_w,
+                    current_y,
+                    label_color,
+                ));
+            }
 
             current_y += line_h;
         }

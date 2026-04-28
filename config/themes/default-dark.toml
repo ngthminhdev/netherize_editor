@@ -81,6 +81,12 @@ sidebar_width = 280.0
 right_sidebar_width = 320.0
 bottom_panel_height = 220.0
 top_bar_height = 36.0
+
+[git]
+modified_sidebar = "#E2C08D"
+added_sidebar = "#7FD68C"
+modified_gutter = "#E2C08D"
+added_gutter = "#50D890"
 status_bar_height = 32.0
 
 # Disclosure markers and file-picker bullet glyph.

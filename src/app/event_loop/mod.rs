@@ -58,7 +58,7 @@ use crate::{
         panel_state::WorkbenchPanelState,
         region_model::RegionId,
     },
-    workspace::model::WorkspaceNodeType,
+    workspace::model::{WorkspaceGitStatus, WorkspaceNodeType},
 };
 
 mod application;
@@ -177,6 +177,7 @@ struct ExplorerEntry {
     depth: usize,
     is_expanded: bool,
     name: String,
+    git_status: Option<WorkspaceGitStatus>,
 }
 
 #[derive(Debug, Clone, Default)]

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use super::model::{
-    EditorThemeTokens, FileIconThemeTokens, IconThemeTokens, SyntaxThemeTokens, ThemeColor,
-    ThemeConfig, UiThemeTokens,
+    EditorThemeTokens, FileIconThemeTokens, GitThemeTokens, IconThemeTokens, SyntaxThemeTokens,
+    ThemeColor, ThemeConfig, UiThemeTokens,
 };
 
 impl ThemeConfig {
@@ -13,6 +13,7 @@ impl ThemeConfig {
             name: "builtin-dark".to_string(),
             description: Some("Vibrant dark theme optimized for 0-latency wgpu rendering".into()),
             editor: builtin_editor_tokens(),
+            git: builtin_git_tokens(),
             syntax: builtin_syntax_tokens(),
             icons: builtin_icon_tokens(&ui),
             exact_icons: HashMap::new(),
@@ -109,6 +110,15 @@ fn builtin_syntax_tokens() -> SyntaxThemeTokens {
         attribute: rgb(231, 122, 233),
         namespace: rgb(245, 182, 58),
         tag: rgb(245, 182, 58),
+    }
+}
+
+fn builtin_git_tokens() -> GitThemeTokens {
+    GitThemeTokens {
+        modified_sidebar: rgb(226, 192, 141),
+        added_sidebar: rgb(127, 214, 140),
+        modified_gutter: rgb(226, 192, 141),
+        added_gutter: rgb(80, 216, 144),
     }
 }
 

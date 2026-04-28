@@ -8,11 +8,21 @@ pub(in crate::config::theme_config) struct RawThemeFile {
     pub(in crate::config::theme_config) theme: RawThemeMeta,
     pub(in crate::config::theme_config) editor: RawEditor,
     pub(in crate::config::theme_config) ui: RawUi,
+    #[serde(default)]
+    pub(in crate::config::theme_config) git: RawGit,
     pub(in crate::config::theme_config) syntax: RawSyntax,
     #[serde(default)]
     pub(in crate::config::theme_config) icons: RawIcons,
     #[serde(default)]
     pub(in crate::config::theme_config) file_icons: RawFileIcons,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub(in crate::config::theme_config) struct RawGit {
+    pub(in crate::config::theme_config) modified_sidebar: Option<String>,
+    pub(in crate::config::theme_config) added_sidebar: Option<String>,
+    pub(in crate::config::theme_config) modified_gutter: Option<String>,
+    pub(in crate::config::theme_config) added_gutter: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]

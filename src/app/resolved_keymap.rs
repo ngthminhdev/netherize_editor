@@ -561,7 +561,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("insert"), nk(NamedKey::ArrowUp), MOVE_UP);
     km.insert(Some("insert"), nk(NamedKey::ArrowDown), MOVE_DOWN);
     km.insert(Some("insert"), mp(KeyCode::KeyV), EDITOR_PASTE);
-    km.insert(Some("insert"), KeySpec::CtrlPlus(KeyCode::KeyJ), AI_ACCEPT_INLINE);
+    km.insert(
+        Some("insert"),
+        KeySpec::CtrlPlus(KeyCode::KeyJ),
+        AI_ACCEPT_INLINE,
+    );
 
     // ── Normal mode ───────────────────────────────────────────────────────────
     km.insert(

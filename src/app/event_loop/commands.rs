@@ -70,6 +70,9 @@ impl AppShell {
             },
         });
 
+        self.submit_workspace_git_status_refresh();
+        self.submit_active_buffer_git_diff_refresh();
+
         self.sync_lsp_server_for_workspace();
 
         self.editor_needs_layout = true;

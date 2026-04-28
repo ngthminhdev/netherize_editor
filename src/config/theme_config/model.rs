@@ -138,6 +138,7 @@ pub struct ThemeConfig {
     pub description: Option<String>,
     pub editor: EditorThemeTokens,
     pub ui: UiThemeTokens,
+    pub git: GitThemeTokens,
     pub syntax: SyntaxThemeTokens,
     pub icons: IconThemeTokens,
     pub exact_icons: HashMap<String, String>,
@@ -201,6 +202,14 @@ pub struct UiThemeTokens {
     pub top_bar_height: f32,
     /// Height of the status bar, px.
     pub status_bar_height: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct GitThemeTokens {
+    pub modified_sidebar: ThemeColor,
+    pub added_sidebar: ThemeColor,
+    pub modified_gutter: ThemeColor,
+    pub added_gutter: ThemeColor,
 }
 
 #[derive(Debug, Clone)]

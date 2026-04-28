@@ -265,10 +265,13 @@ impl Renderer {
             return Vec::new();
         }
 
-        self.editor_overlay_text_system
-            .set_metrics(Metrics::new(self.theme.editor.font_size, self.theme.editor.line_height));
+        self.editor_overlay_text_system.set_metrics(Metrics::new(
+            self.theme.editor.font_size,
+            self.theme.editor.line_height,
+        ));
         self.editor_overlay_text_system.set_size(Some(width), None);
-        let color = crate::config::theme_config::linear_rgba_to_srgb_u8(self.theme.ui.fg_ghost.as_f32());
+        let color =
+            crate::config::theme_config::linear_rgba_to_srgb_u8(self.theme.ui.fg_ghost.as_f32());
         self.editor_overlay_text_system
             .set_text_with_color(first_line, color);
 
@@ -289,7 +292,10 @@ impl Renderer {
                 ) else {
                     continue;
                 };
-                let Ok(entry) = self.atlas.get_or_insert(&self.queue, glyph.cache_key, &rasterized) else {
+                let Ok(entry) = self
+                    .atlas
+                    .get_or_insert(&self.queue, glyph.cache_key, &rasterized)
+                else {
                     continue;
                 };
                 entry

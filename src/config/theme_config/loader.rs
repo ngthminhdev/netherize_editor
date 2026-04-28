@@ -5,10 +5,12 @@ use std::{
 
 use super::{
     model::{
-        EditorThemeTokens, FileIconThemeTokens, IconThemeTokens, SyntaxThemeTokens, ThemeColor,
-        ThemeConfig, UiThemeTokens,
+        EditorThemeTokens, FileIconThemeTokens, GitThemeTokens, IconThemeTokens, SyntaxThemeTokens,
+        ThemeColor, ThemeConfig, UiThemeTokens,
     },
-    raw::{RawEditor, RawFileIconTheme, RawFileIcons, RawIcons, RawSyntax, RawThemeFile, RawUi},
+    raw::{
+        RawEditor, RawFileIconTheme, RawFileIcons, RawGit, RawIcons, RawSyntax, RawThemeFile, RawUi,
+    },
 };
 use crate::config::paths::{legacy_app_state_root, user_config_root};
 
@@ -117,6 +119,7 @@ impl ThemeConfig {
             theme,
             editor: raw_editor,
             ui: raw_ui,
+            git: raw_git,
             syntax: raw_syntax,
             icons: raw_icons,
             file_icons: raw_file_icons,
@@ -124,6 +127,7 @@ impl ThemeConfig {
 
         let editor = parse_editor(&raw_editor)?;
         let ui = parse_ui(&raw_ui, &raw_editor)?;
+        let git = parse_git(&raw_git, &ui)?;
         let syntax = parse_syntax(&raw_syntax)?;
         let icons = parse_icons(&raw_icons, &ui)?;
 
@@ -132,6 +136,7 @@ impl ThemeConfig {
             description: theme.description,
             editor,
             ui,
+            git,
             syntax,
             icons,
             exact_icons: parse_exact_file_icons(&raw_file_icons),
@@ -477,6 +482,40 @@ fn parse_syntax(raw: &RawSyntax) -> Result<SyntaxThemeTokens, String> {
             "syntax",
             "tag",
             raw.tag.as_deref().unwrap_or(raw.r#type.as_str()),
+        )?,
+    })
+}
+
+fn parse_git(raw: &RawGit, ui: &UiThemeTokens) -> Result<GitThemeTokens, String> {
+    Ok(GitThemeTokens {
+        modified_sidebar: parse_color(
+            "git",
+            "modified_sidebar",
+            raw.modified_sidebar.as_deref().unwrap_or("#E2C08D"),
+        )?,
+        added_sidebar: parse_color(
+            "git",
+            "added_sidebar",
+            raw.added_sidebar.as_deref().unwrap_or("#7FD68C"),
+        )?,
+        modified_gutter: parse_color(
+            "git",
+            "modified_gutter",
+            raw.modified_gutter
+                .as_deref()
+                .or(raw.modified_sidebar.as_deref())
+                .unwrap_or_else(|| {
+                    let _ = ui.warning;
+                    "#E2C08D"
+                }),
+        )?,
+        added_gutter: parse_color(
+            "git",
+            "added_gutter",
+            raw.added_gutter
+                .as_deref()
+                .or(raw.added_sidebar.as_deref())
+                .unwrap_or("#50D890"),
         )?,
     })
 }

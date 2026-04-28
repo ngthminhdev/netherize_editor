@@ -341,7 +341,10 @@ pub(super) fn terminal_input_payload(input: &NormalizedInput) -> Option<String> 
         }
         let payload = if input.modifiers.shift_key()
             && text.chars().count() == 1
-            && text.chars().next().is_some_and(|ch| ch.is_ascii_lowercase())
+            && text
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_lowercase())
         {
             text.to_ascii_uppercase()
         } else {
@@ -354,7 +357,8 @@ pub(super) fn terminal_input_payload(input: &NormalizedInput) -> Option<String> 
     }
 
     if !input.modifiers.control_key()
-        && let Some(payload) = shifted_letter_payload(input.physical_key, input.modifiers.shift_key())
+        && let Some(payload) =
+            shifted_letter_payload(input.physical_key, input.modifiers.shift_key())
     {
         if input.modifiers.alt_key() {
             return Some(format!("\u{1b}{payload}"));

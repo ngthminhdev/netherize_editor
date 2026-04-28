@@ -2,6 +2,25 @@ use std::{ops::Range, path::PathBuf};
 
 use crate::syntax::{highlight::HighlightSpan, syntax_engine::LanguageId};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GitFileStatus {
+    Modified,
+    Added,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GitDiffKind {
+    Added,
+    Modified,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitDiffRange {
+    pub start_line: usize,
+    pub end_line: usize,
+    pub kind: GitDiffKind,
+}
+
 /// Topic giúp app biết result thuộc subsystem nào để so revision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RequestTopic {
@@ -158,6 +177,14 @@ pub enum WorkerRequestPayload {
         workspace_root: PathBuf,
         file_path: PathBuf,
         line_number: usize,
+    },
+    RefreshWorkspaceGitStatus {
+        workspace_root: PathBuf,
+    },
+    ComputeBufferGitDiff {
+        workspace_root: PathBuf,
+        file_path: PathBuf,
+        text_snapshot: String,
     },
     LoadFilePreview {
         file_path: PathBuf,
@@ -426,6 +453,14 @@ pub enum WorkerResultPayload {
         file_path: PathBuf,
         line_number: usize,
         summary: String,
+    },
+    WorkspaceGitStatus {
+        workspace_root: PathBuf,
+        statuses: Vec<(PathBuf, GitFileStatus)>,
+    },
+    BufferGitDiff {
+        file_path: PathBuf,
+        ranges: Vec<GitDiffRange>,
     },
     FilePreviewLoaded {
         file_path: PathBuf,

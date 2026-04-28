@@ -1,4 +1,5 @@
 use super::*;
+use crate::workspace::model::WorkspaceGitStatus;
 
 impl AppState {
     pub fn attach_workspace(&mut self, root_path: PathBuf) -> Result<(), String> {
@@ -52,6 +53,34 @@ impl AppState {
 
     pub fn workspace_nodes(&self) -> Option<&[crate::workspace::model::WorkspaceNode]> {
         self.workspace_model.as_ref().map(|m| m.nodes.as_slice())
+    }
+
+    pub fn workspace_git_status(&self, path: &Path) -> Option<WorkspaceGitStatus> {
+        self.workspace_model
+            .as_ref()
+            .and_then(|model| model.git_status_for_path(path))
+    }
+
+    pub fn workspace_set_git_statuses(
+        &mut self,
+        statuses: HashMap<PathBuf, WorkspaceGitStatus>,
+    ) -> bool {
+        self.workspace_model
+            .as_mut()
+            .is_some_and(|model| model.set_git_statuses(statuses))
+    }
+
+    pub fn set_buffer_git_diff(&mut self, path: &Path, diff: Option<BufferGitDiff>) -> bool {
+        let Some(index) = self.buffers.iter().position(
+            |buffer| matches!(&buffer.content, BufferContent::Text(text) if text.path == path),
+        ) else {
+            return false;
+        };
+        if self.buffers[index].git_diff == diff {
+            return false;
+        }
+        self.buffers[index].git_diff = diff;
+        true
     }
 
     pub fn workspace_selected_path(&self) -> Option<&Path> {

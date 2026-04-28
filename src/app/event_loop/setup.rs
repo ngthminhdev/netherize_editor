@@ -257,6 +257,37 @@ impl AppShell {
         self.refresh_workspace_git_branch()
     }
 
+    pub(super) fn submit_workspace_git_status_refresh(&mut self) {
+        let Some(workspace_root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
+            return;
+        };
+        self.git_overlay_revision = self.git_overlay_revision.saturating_add(1);
+        self.submit(RequestSpec {
+            revision_id: self.git_overlay_revision,
+            topic: RequestTopic::Git,
+            payload: WorkerRequestPayload::RefreshWorkspaceGitStatus { workspace_root },
+        });
+    }
+
+    pub(super) fn submit_active_buffer_git_diff_refresh(&mut self) {
+        let Some(workspace_root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
+            return;
+        };
+        let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
+            return;
+        };
+        self.git_overlay_revision = self.git_overlay_revision.saturating_add(1);
+        self.submit(RequestSpec {
+            revision_id: self.git_overlay_revision,
+            topic: RequestTopic::Git,
+            payload: WorkerRequestPayload::ComputeBufferGitDiff {
+                workspace_root,
+                file_path,
+                text_snapshot: self.app_state.text_string(),
+            },
+        });
+    }
+
     pub(super) fn next_git_branch_refresh_deadline(&self) -> Instant {
         self.last_git_branch_refresh_at + GIT_BRANCH_REFRESH_INTERVAL
     }
@@ -622,6 +653,7 @@ impl AppShell {
                 },
             });
             self.last_parse_submit_at = Some(std::time::Instant::now());
+            self.submit_active_buffer_git_diff_refresh();
         } else {
             self.pending_parse_after_debounce = false;
         }

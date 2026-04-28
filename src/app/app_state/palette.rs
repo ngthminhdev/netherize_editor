@@ -120,6 +120,7 @@ impl AppState {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::FuzzyPicker(state),
+                ..
             }) = self.buffers.get(index)
             {
                 return Some(state.mode);
@@ -136,6 +137,7 @@ impl AppState {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::FuzzyPicker(state),
+                ..
             }) = self.buffers.get(index)
             {
                 return &state.query;
@@ -148,6 +150,7 @@ impl AppState {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::FuzzyPicker(state),
+                ..
             }) = self.buffers.get(index)
             {
                 return state.selected_index;
@@ -160,6 +163,7 @@ impl AppState {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::FuzzyPicker(state),
+                ..
             }) = self.buffers.get(index)
             {
                 return state
@@ -180,6 +184,7 @@ impl AppState {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::FuzzyPicker(state),
+                ..
             }) = self.buffers.get_mut(index)
             {
                 let changed = state.append_query(text);
@@ -235,6 +240,7 @@ impl AppState {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::FuzzyPicker(state),
+                ..
             }) = self.buffers.get_mut(index)
             {
                 let changed = state.backspace_query();
@@ -268,6 +274,7 @@ impl AppState {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::FuzzyPicker(state),
+                ..
             }) = self.buffers.get_mut(index)
             {
                 let changed = state.select_next();
@@ -284,6 +291,7 @@ impl AppState {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::FuzzyPicker(state),
+                ..
             }) = self.buffers.get_mut(index)
             {
                 let changed = state.select_prev();
@@ -300,6 +308,7 @@ impl AppState {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::FuzzyPicker(state),
+                ..
             }) = self.buffers.get(index)
             {
                 return state
@@ -320,6 +329,7 @@ impl AppState {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::FuzzyPicker(state),
+                ..
             }) = self.buffers.get_mut(index)
             {
                 if state.mode == mode && state.query == query {
@@ -394,6 +404,7 @@ impl AppState {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::FuzzyPicker(state),
+                ..
             }) = self.buffers.get_mut(index)
             {
                 state.preview_lines = lines;
@@ -415,6 +426,7 @@ impl AppState {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::References(state),
+                ..
             }) = self.buffers.get_mut(index)
             {
                 state.preview_lines = lines;
@@ -436,6 +448,7 @@ impl AppState {
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::Diagnostics(state),
+                ..
             }) = self.buffers.get_mut(index)
             {
                 if state.preview_lines == lines
@@ -506,6 +519,7 @@ impl AppState {
                 preview_text: String::new(),
                 preview_spans: Vec::new(),
             }),
+            git_diff: None,
         });
 
         let index = self.buffers.len().saturating_sub(1);
@@ -667,6 +681,7 @@ impl AppState {
                 title: title.into(),
                 working_dir,
             }),
+            git_diff: None,
         });
         let index = self.buffers.len().saturating_sub(1);
         self.active_buffer_index = Some(index);
@@ -682,6 +697,7 @@ impl AppState {
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::Help(HelpState::new()),
+            git_diff: None,
         });
         let index = self.buffers.len().saturating_sub(1);
         self.reset_text_editor_state();
@@ -717,6 +733,7 @@ impl AppState {
                 status_message: None,
                 pending_request_id: None,
             }),
+            git_diff: None,
         });
 
         let index = self.buffers.len().saturating_sub(1);
@@ -749,6 +766,7 @@ impl AppState {
                 status_message: Some("Loading references...".to_string()),
                 pending_request_id: Some(pending_request_id),
             }),
+            git_diff: None,
         });
 
         let index = self.buffers.len().saturating_sub(1);
@@ -833,6 +851,7 @@ impl AppState {
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::FuzzyPicker(state),
+            git_diff: None,
         });
 
         let index = self.buffers.len().saturating_sub(1);
@@ -886,6 +905,7 @@ impl AppState {
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::SettingsTab(state),
+            git_diff: None,
         });
 
         let index = self.buffers.len().saturating_sub(1);

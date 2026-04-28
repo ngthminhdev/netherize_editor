@@ -495,6 +495,7 @@ fn collect_visible_explorer_entries(
             depth,
             is_expanded,
             name: name.to_string(),
+            git_status: app_state.workspace_git_status(child),
         });
 
         if file_type == WorkspaceNodeType::Folder && is_expanded {
@@ -531,6 +532,8 @@ pub(super) fn build_sidebar_rows(
             } else {
                 "(no files)".to_string()
             },
+            git_marker: None,
+            git_color: None,
             is_selected: false,
         }];
     }
@@ -553,6 +556,16 @@ pub(super) fn build_sidebar_rows(
                 nerd_icon: icon,
                 icon_color: icon_theme.color.as_f32(),
                 label: entry.name.clone(),
+                git_marker: match entry.git_status {
+                    Some(WorkspaceGitStatus::Modified) => Some('M'),
+                    Some(WorkspaceGitStatus::Added) => Some('A'),
+                    None => None,
+                },
+                git_color: match entry.git_status {
+                    Some(WorkspaceGitStatus::Modified) => Some(theme.git.modified_sidebar.as_f32()),
+                    Some(WorkspaceGitStatus::Added) => Some(theme.git.added_sidebar.as_f32()),
+                    None => None,
+                },
                 is_selected: idx == selected,
             }
         })

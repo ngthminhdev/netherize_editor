@@ -761,6 +761,10 @@ impl AppShell {
             }
         }
 
+        if let Some(renderer) = self.renderer.as_ref() {
+            region_instances.extend(renderer.editor_chrome_instances().iter().copied());
+        }
+
         if let Some(top) = layout.model.find(RegionId::TopBar) {
             let top_bounds = [top.x, top.y, top.width, top.height];
             let tabs = self

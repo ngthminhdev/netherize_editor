@@ -7,6 +7,12 @@ use std::{
 use crate::workspace::scanner::{WorkspaceScanOptions, WorkspaceScanner};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceGitStatus {
+    Modified,
+    Added,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceNodeType {
     File,
     Folder,
@@ -100,6 +106,7 @@ pub struct WorkspaceModel {
     scroll_offset: f32,
     filter_query: String,
     is_inputting_filter: bool,
+    git_statuses: HashMap<PathBuf, WorkspaceGitStatus>,
 }
 
 impl WorkspaceModel {
@@ -128,6 +135,7 @@ impl WorkspaceModel {
             scroll_offset: 0.0,
             filter_query: String::new(),
             is_inputting_filter: false,
+            git_statuses: HashMap::new(),
         };
         model.expanded_paths.insert(model.root_path.clone());
         model.prune_explorer_state();
@@ -509,6 +517,18 @@ impl WorkspaceModel {
             &mut out,
         );
         out
+    }
+
+    pub fn git_status_for_path(&self, path: &Path) -> Option<WorkspaceGitStatus> {
+        self.git_statuses.get(path).copied()
+    }
+
+    pub fn set_git_statuses(&mut self, statuses: HashMap<PathBuf, WorkspaceGitStatus>) -> bool {
+        if self.git_statuses == statuses {
+            return false;
+        }
+        self.git_statuses = statuses;
+        true
     }
 
     fn compute_visible_filter_matches(

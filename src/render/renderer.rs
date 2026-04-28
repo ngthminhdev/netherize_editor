@@ -49,6 +49,8 @@ pub struct SidebarRow {
     /// RGBA color for `nerd_icon` — per-filetype.
     pub icon_color: [f32; 4],
     pub label: String,
+    pub git_marker: Option<char>,
+    pub git_color: Option<[f32; 4]>,
     pub is_selected: bool,
 }
 
@@ -259,4 +261,10 @@ pub struct Renderer {
     pub(super) toast_glyph_instances: Vec<GlyphInstance>,
     pub(super) toast_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) toast_scissor: Option<[u32; 4]>,
+}
+
+impl Renderer {
+    pub fn editor_chrome_instances(&self) -> &[RegionDrawInstance] {
+        &self.last_editor_chrome_instances
+    }
 }

@@ -761,6 +761,7 @@ impl AppState {
                 path: active_path,
                 language_id,
             }),
+            git_diff: None,
         });
         self.active_buffer_index = Some(self.buffers.len().saturating_sub(1));
     }

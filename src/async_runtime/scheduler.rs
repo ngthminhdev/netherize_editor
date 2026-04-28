@@ -370,7 +370,10 @@ async fn dispatch_loop(
             continue;
         }
 
-        if matches!(request.payload, WorkerRequestPayload::AiInlineCompletionRequest { .. }) {
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::AiInlineCompletionRequest { .. }
+        ) {
             let worker_tx = result_tx.clone();
             let ai_event_proxy = event_proxy.clone();
             tokio::spawn(async move {
@@ -2118,6 +2121,174 @@ fn format_relative_duration(value: u64, unit: &str) -> String {
     }
 }
 
+async fn run_workspace_git_status(
+    workspace_root: PathBuf,
+) -> Result<Vec<(PathBuf, crate::async_runtime::message::GitFileStatus)>, String> {
+    use tokio::process::Command;
+
+    let output = Command::new("git")
+        .kill_on_drop(true)
+        .args(["status", "--porcelain", "--untracked-files=all"])
+        .current_dir(&workspace_root)
+        .output()
+        .await
+        .map_err(|err| format!("git status failed: {err}"))?;
+
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut statuses = Vec::new();
+    for line in stdout.lines() {
+        if line.len() < 4 {
+            continue;
+        }
+        let status_code = &line[..2];
+        let rel = line[3..].trim();
+        let rel = rel.split(" -> ").last().unwrap_or(rel).trim();
+        let Some(kind) = parse_git_file_status(status_code) else {
+            continue;
+        };
+        let path = workspace_root.join(rel);
+        let normalized = path.canonicalize().unwrap_or(path);
+        statuses.push((normalized, kind));
+    }
+    Ok(statuses)
+}
+
+fn parse_git_file_status(
+    status_code: &str,
+) -> Option<crate::async_runtime::message::GitFileStatus> {
+    if status_code.contains('A') || status_code == "??" {
+        Some(crate::async_runtime::message::GitFileStatus::Added)
+    } else if status_code.contains('M') {
+        Some(crate::async_runtime::message::GitFileStatus::Modified)
+    } else {
+        None
+    }
+}
+
+async fn run_buffer_git_diff(
+    workspace_root: PathBuf,
+    file_path: PathBuf,
+    text_snapshot: String,
+) -> Result<Vec<crate::async_runtime::message::GitDiffRange>, String> {
+    use tokio::process::Command;
+
+    let mut temp_path = std::env::temp_dir();
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    temp_path.push(format!(
+        "netherize_git_diff_{}_{}.tmp",
+        std::process::id(),
+        stamp
+    ));
+
+    let relative_path = file_path
+        .strip_prefix(&workspace_root)
+        .unwrap_or(file_path.as_path())
+        .to_string_lossy()
+        .to_string();
+
+    let output = Command::new("git")
+        .kill_on_drop(true)
+        .args(["show", &format!("HEAD:{relative_path}")])
+        .current_dir(&workspace_root)
+        .output()
+        .await
+        .map_err(|err| format!("git show failed: {err}"))?;
+
+    let baseline = if output.status.success() {
+        String::from_utf8_lossy(&output.stdout).to_string()
+    } else {
+        String::new()
+    };
+
+    tokio::fs::write(&temp_path, text_snapshot)
+        .await
+        .map_err(|err| format!("write temp diff file failed: {err}"))?;
+
+    let diff_output = Command::new("git")
+        .kill_on_drop(true)
+        .args([
+            "diff",
+            "--no-index",
+            "--unified=0",
+            "--no-color",
+            "--",
+            &file_path.to_string_lossy(),
+            &temp_path.to_string_lossy(),
+        ])
+        .current_dir(&workspace_root)
+        .output()
+        .await
+        .map_err(|err| format!("git diff failed: {err}"));
+
+    let _ = tokio::fs::remove_file(&temp_path).await;
+
+    let diff_output = diff_output?;
+    let stdout = String::from_utf8_lossy(&diff_output.stdout).to_string();
+    Ok(parse_git_diff_ranges(&stdout, baseline.is_empty()))
+}
+
+fn parse_git_diff_ranges(
+    diff_text: &str,
+    baseline_missing: bool,
+) -> Vec<crate::async_runtime::message::GitDiffRange> {
+    use crate::async_runtime::message::{GitDiffKind, GitDiffRange};
+
+    let mut ranges = Vec::new();
+    for line in diff_text.lines() {
+        let Some(header) = line.strip_prefix("@@ ") else {
+            continue;
+        };
+        let Some((old_part, rest)) = header.split_once(' ') else {
+            continue;
+        };
+        let Some(new_part) = rest.strip_prefix('+') else {
+            continue;
+        };
+        let old_part = old_part.trim_start_matches('-');
+        let new_part = new_part.trim_end_matches(" @@");
+
+        let (_old_start, old_count) = parse_diff_span(old_part);
+        let (new_start, new_count) = parse_diff_span(new_part);
+
+        if new_count == 0 {
+            continue;
+        }
+
+        let kind = if baseline_missing || (old_count == 0 && new_count > 0) {
+            GitDiffKind::Added
+        } else {
+            GitDiffKind::Modified
+        };
+
+        let start_line = new_start.saturating_sub(1);
+        let end_line = start_line + new_count.saturating_sub(1);
+        ranges.push(GitDiffRange {
+            start_line,
+            end_line,
+            kind,
+        });
+    }
+    ranges
+}
+
+fn parse_diff_span(span: &str) -> (usize, usize) {
+    if let Some((start, count)) = span.split_once(',') {
+        (
+            start.trim().parse::<usize>().unwrap_or(0),
+            count.trim().parse::<usize>().unwrap_or(1),
+        )
+    } else {
+        (span.trim().parse::<usize>().unwrap_or(0), 1)
+    }
+}
+
 async fn execute_virtual_job(
     request: &WorkerRequest,
     syntax_cache: Arc<SyntaxEngineCache>,
@@ -2331,6 +2502,26 @@ async fn execute_virtual_job(
                 line_number,
                 summary,
             })
+        }
+        WorkerRequestPayload::RefreshWorkspaceGitStatus { workspace_root } => {
+            let workspace_root = workspace_root.clone();
+            let statuses = run_workspace_git_status(workspace_root.clone()).await?;
+            Ok(WorkerResultPayload::WorkspaceGitStatus {
+                workspace_root,
+                statuses,
+            })
+        }
+        WorkerRequestPayload::ComputeBufferGitDiff {
+            workspace_root,
+            file_path,
+            text_snapshot,
+        } => {
+            let workspace_root = workspace_root.clone();
+            let file_path = file_path.clone();
+            let text_snapshot = text_snapshot.clone();
+            let ranges =
+                run_buffer_git_diff(workspace_root, file_path.clone(), text_snapshot).await?;
+            Ok(WorkerResultPayload::BufferGitDiff { file_path, ranges })
         }
         WorkerRequestPayload::StartFileWatch { .. } => {
             Err("StartFileWatch request should be handled by dedicated watch loop".to_string())
@@ -2673,7 +2864,8 @@ async fn execute_ai_inline_request(request: &WorkerRequest) -> Result<WorkerResu
         language_id,
         file_path,
         max_tokens,
-    } = &request.payload else {
+    } = &request.payload
+    else {
         return Err("ai inline request payload mismatch".to_string());
     };
 
@@ -2690,7 +2882,10 @@ async fn execute_ai_inline_request(request: &WorkerRequest) -> Result<WorkerResu
     let system = "You are an inline code completion engine. Return only the continuation text to insert at the cursor. Do not repeat the prefix. Do not add markdown fences or explanations.";
     let user = format!(
         "File: {}\nLanguage: {}\n\nPrefix:\n{}\n\nSuffix:\n{}\n\nReturn only the best continuation for the cursor position.",
-        file_path.as_ref().map(|p| p.display().to_string()).unwrap_or_default(),
+        file_path
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default(),
         language_id.clone().unwrap_or_default(),
         prefix,
         suffix,
@@ -2711,7 +2906,10 @@ async fn execute_ai_inline_request(request: &WorkerRequest) -> Result<WorkerResu
     if let Some(key) = api_key.as_ref().filter(|key| !key.is_empty()) {
         req = req.bearer_auth(key);
     }
-    let response = req.send().await.map_err(|err| format!("ai request failed: {err}"))?;
+    let response = req
+        .send()
+        .await
+        .map_err(|err| format!("ai request failed: {err}"))?;
     let status = response.status();
     let json: serde_json::Value = response
         .json()
@@ -2729,11 +2927,7 @@ async fn execute_ai_inline_request(request: &WorkerRequest) -> Result<WorkerResu
                 .get("message")
                 .and_then(|message| message.get("content"))
                 .and_then(|content| content.as_str())
-                .or_else(|| {
-                    choice
-                        .get("text")
-                        .and_then(|content| content.as_str())
-                })
+                .or_else(|| choice.get("text").and_then(|content| content.as_str()))
         })
         .unwrap_or_default()
         .to_string();
@@ -2743,6 +2937,31 @@ async fn execute_ai_inline_request(request: &WorkerRequest) -> Result<WorkerResu
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+
+    use super::parse_git_diff_ranges;
+
+    #[test]
+    fn compute_git_diff_ranges_marks_added_and_modified_lines() {
+        let added = parse_git_diff_ranges("@@ -2,0 +3,1 @@\n", false);
+        assert!(added.iter().any(|range| {
+            range.start_line == 2
+                && range.end_line == 2
+                && matches!(
+                    range.kind,
+                    crate::async_runtime::message::GitDiffKind::Added
+                )
+        }));
+
+        let modified = parse_git_diff_ranges("@@ -2,1 +2,1 @@\n", false);
+        assert!(modified.iter().any(|range| {
+            range.start_line == 1
+                && range.end_line == 1
+                && matches!(
+                    range.kind,
+                    crate::async_runtime::message::GitDiffKind::Modified
+                )
+        }));
+    }
 
     use notify::{Event as NotifyEvent, EventKind as NotifyEventKind, event::ModifyKind};
 

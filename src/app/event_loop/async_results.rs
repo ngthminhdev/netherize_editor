@@ -88,6 +88,8 @@ impl AsyncResultRouter for AppShell {
                 if self.maybe_refresh_workspace_git_branch(true) {
                     self.request_redraw();
                 }
+                self.submit_workspace_git_status_refresh();
+                self.submit_active_buffer_git_diff_refresh();
                 self.sync_explorer_expanded_with_workspace();
                 self.editor_needs_layout = true;
                 self.editor_caret_needs_layout = false;
@@ -572,7 +574,53 @@ impl AsyncResultRouter for AppShell {
                 } else {
                     false
                 };
-                if changed {
+                if changed {}
+            }
+            WorkerResultPayload::WorkspaceGitStatus {
+                workspace_root,
+                statuses,
+            } => {
+                if self.app_state.workspace_root_path() != Some(workspace_root.as_path()) {
+                    return;
+                }
+                let mapped = statuses
+                    .into_iter()
+                    .map(|(path, status)| {
+                        let status = match status {
+                            crate::async_runtime::message::GitFileStatus::Modified => {
+                                crate::workspace::model::WorkspaceGitStatus::Modified
+                            }
+                            crate::async_runtime::message::GitFileStatus::Added => {
+                                crate::workspace::model::WorkspaceGitStatus::Added
+                            }
+                        };
+                        (path, status)
+                    })
+                    .collect();
+                if self.app_state.workspace_set_git_statuses(mapped) {
+                    self.mark_explorer_dirty();
+                    self.request_redraw();
+                }
+            }
+            WorkerResultPayload::BufferGitDiff { file_path, ranges } => {
+                let diff = crate::app::app_state::BufferGitDiff {
+                    ranges: ranges
+                        .into_iter()
+                        .map(|range| crate::app::app_state::GitDiffRange {
+                            start_line: range.start_line,
+                            end_line: range.end_line,
+                            kind: match range.kind {
+                                crate::async_runtime::message::GitDiffKind::Added => {
+                                    crate::app::app_state::GitDiffKind::Added
+                                }
+                                crate::async_runtime::message::GitDiffKind::Modified => {
+                                    crate::app::app_state::GitDiffKind::Modified
+                                }
+                            },
+                        })
+                        .collect(),
+                };
+                if self.app_state.set_buffer_git_diff(&file_path, Some(diff)) {
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                     self.request_redraw();
