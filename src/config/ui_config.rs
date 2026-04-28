@@ -560,15 +560,42 @@ impl UiConfig {
         let Ok(raw) = toml::from_str::<RawUiFile>(&content) else {
             return self;
         };
+        // Apply only explicitly-set editor font fields directly from raw (not through
+        // from_raw, which fills missing fields with fallback values and would incorrectly
+        // overwrite the profile defaults with builtin defaults).
+        if let Some(fs) = raw.editor.font_size {
+            self.editor.font_size = fs.clamp(8.0, 40.0);
+        }
+        if let Some(lh) = raw.editor.line_height {
+            self.editor.line_height = lh.clamp(10.0, 64.0);
+        }
+        if raw.editor.font_family.is_some() {
+            self.editor.font_family = raw.editor.font_family.clone();
+        }
         if let Ok(override_config) = Self::from_raw(raw) {
             self.docks = override_config.docks;
-            self.editor.font_family = override_config.editor.font_family;
-            self.editor.font_size = override_config.editor.font_size;
-            self.editor.line_height = override_config.editor.line_height;
             self.indent = override_config.indent;
             self.border_radius_px = override_config.border_radius_px;
         }
         self
+    }
+
+    /// Returns the editor fields that are **explicitly** set in the user override file.
+    /// Used at startup to sync `base_theme` without affecting fresh installs that have
+    /// no ui.toml (where the theme file is the correct source of truth).
+    pub fn load_user_editor_overrides() -> (Option<f32>, Option<f32>, Option<String>) {
+        let path = Self::user_override_path();
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            return (None, None, None);
+        };
+        let Ok(raw) = toml::from_str::<RawUiFile>(&content) else {
+            return (None, None, None);
+        };
+        (
+            raw.editor.font_size.map(|v| v.clamp(8.0, 40.0)),
+            raw.editor.line_height.map(|v| v.clamp(10.0, 64.0)),
+            raw.editor.font_family,
+        )
     }
 
     pub fn user_override_path() -> PathBuf {

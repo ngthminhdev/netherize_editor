@@ -61,9 +61,24 @@ impl AppShell {
 
         let workspace_git_branch = app_state.workspace_root_path().and_then(detect_git_branch);
 
-        let base_theme = ThemeConfig::load_preferred(persistent_state.configured_theme_profile());
-        let theme = base_theme.clone();
+        let mut base_theme =
+            ThemeConfig::load_preferred(persistent_state.configured_theme_profile());
         let ui_config = UiConfig::load_active();
+        // Sync explicitly user-set editor metrics from ui.toml → base_theme so that
+        // apply_scaled_runtime_config() renders with the persisted values, not the
+        // theme-file defaults.  Fields absent from ui.toml leave base_theme unchanged.
+        let (user_font_size, user_line_height, user_font_family) =
+            UiConfig::load_user_editor_overrides();
+        if let Some(fs) = user_font_size {
+            base_theme.editor.font_size = fs;
+        }
+        if let Some(lh) = user_line_height {
+            base_theme.editor.line_height = lh;
+        }
+        if let Some(family) = user_font_family {
+            base_theme.editor.font_family = Some(family);
+        }
+        let theme = base_theme.clone();
         app_state.set_indent_config(ui_config.indent);
         let layout_engine = WorkbenchLayoutEngine::new(
             crate::workbench::layout_engine::WorkbenchLayoutConfig::from_ui_theme(&theme.ui),
