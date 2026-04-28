@@ -143,6 +143,7 @@ pub struct AppShell {
     last_syntax_edit_hint: Option<SyntaxEditHint>,
     active_highlight_request_revision: u64,
     fzf_search_revision: u64,
+    local_history_revision: u64,
     pending_parse_after_debounce: bool,
     ai_inline_revision: u64,
     pending_ai_inline_request: Option<PendingAiInlineRequest>,

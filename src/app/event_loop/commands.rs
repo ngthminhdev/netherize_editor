@@ -620,6 +620,39 @@ impl AppShell {
         command: Command,
         repeat_count: usize,
     ) -> bool {
+        let command_for_post_hooks = command.clone();
+        let should_persist_history_after = matches!(
+            command_for_post_hooks,
+            Command::InsertChar(_)
+                | Command::InsertText(_)
+                | Command::Newline
+                | Command::Backspace
+                | Command::InsertTab
+                | Command::InsertLineBelow
+                | Command::InsertLineAbove
+                | Command::InsertAtLineStart
+                | Command::AppendAtLineEnd
+                | Command::AppendAfterCursor
+                | Command::SubstituteLine
+                | Command::DeleteChar
+                | Command::DeleteSelection
+                | Command::DeleteCurrentLine
+                | Command::DeleteToLineEnd
+                | Command::ToggleLineComment
+                | Command::ToggleSelectionComment
+                | Command::DeleteWordForward
+                | Command::DeleteWordBackward
+                | Command::ChangeSelection
+                | Command::ChangeWordForward
+                | Command::ChangeWordBackward
+                | Command::ChangeToLineEnd
+                | Command::JoinLines
+                | Command::PasteAfter
+                | Command::PasteBefore
+                | Command::EditorPaste
+                | Command::Undo
+                | Command::Redo
+        );
         let is_insert_typing = matches!(
             command,
             Command::InsertChar(_)
@@ -640,7 +673,7 @@ impl AppShell {
             return changed;
         }
 
-        match &command {
+        let changed = match &command {
             Command::ToggleTerminal => {
                 let report = dispatch_command(&mut self.app_state, command);
                 let is_open = self.app_state.is_terminal_panel_open();
@@ -745,11 +778,15 @@ impl AppShell {
             | Command::OpenWorkspaceSymbols
             | Command::OpenInFileSearch
             | Command::SearchInFiles
+            | Command::OpenFileHistory
             | Command::OpenThemeSelector
             | Command::OpenHelp => {
                 let opens_center_buffer = matches!(
                     command,
-                    Command::OpenFileFinder | Command::SearchInFiles | Command::OpenHelp
+                    Command::OpenFileFinder
+                        | Command::SearchInFiles
+                        | Command::OpenFileHistory
+                        | Command::OpenHelp
                 );
                 let report = dispatch_command(&mut self.app_state, command);
                 if report.success {
@@ -766,6 +803,36 @@ impl AppShell {
                     };
                     if focus_changed {
                         self.input_handler.clear_pending_prefix();
+                    }
+                    if matches!(command_for_post_hooks, Command::OpenFileHistory)
+                        && !self.app_state.command_palette_result_labels().is_empty()
+                    {
+                        let _ = self.app_state.preview_file_history_index(0);
+                        if let Some((lines, preview_text)) =
+                            self.app_state.build_file_history_diff_preview()
+                        {
+                            let extension = self
+                                .app_state
+                                .active_fuzzy_picker_buffer()
+                                .and_then(|state| state.source_file_path.as_ref())
+                                .and_then(|path| path.extension())
+                                .and_then(|ext| ext.to_str())
+                                .unwrap_or_default();
+                            let preview_spans = syntax_spans_to_styled(
+                                &crate::syntax::highlight::highlight_snippet(
+                                    &preview_text,
+                                    extension,
+                                    &self.theme,
+                                ),
+                                &preview_text,
+                                &self.theme,
+                            );
+                            let _ = self.app_state.set_fuzzy_picker_preview(
+                                lines,
+                                preview_text,
+                                preview_spans,
+                            );
+                        }
                     }
                 }
                 report.request_redraw
@@ -980,8 +1047,44 @@ impl AppShell {
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                 }
-                self.submit_active_palette_fzf_search();
-                self.submit_fuzzy_picker_preview_load();
+                if self.app_state.command_palette_mode() == Some(CommandPaletteMode::FileHistory) {
+                    if let Some(
+                        crate::app::command_palette::CommandPaletteAction::SelectFileHistoryEntry(
+                            index,
+                        ),
+                    ) = self.app_state.command_palette_selected_action()
+                    {
+                        let _ = self.app_state.preview_file_history_index(index);
+                        if let Some((lines, preview_text)) =
+                            self.app_state.build_file_history_diff_preview()
+                        {
+                            let extension = self
+                                .app_state
+                                .active_fuzzy_picker_buffer()
+                                .and_then(|state| state.source_file_path.as_ref())
+                                .and_then(|path| path.extension())
+                                .and_then(|ext| ext.to_str())
+                                .unwrap_or_default();
+                            let preview_spans = syntax_spans_to_styled(
+                                &crate::syntax::highlight::highlight_snippet(
+                                    &preview_text,
+                                    extension,
+                                    &self.theme,
+                                ),
+                                &preview_text,
+                                &self.theme,
+                            );
+                            let _ = self.app_state.set_fuzzy_picker_preview(
+                                lines,
+                                preview_text,
+                                preview_spans,
+                            );
+                        }
+                    }
+                } else {
+                    self.submit_active_palette_fzf_search();
+                    self.submit_fuzzy_picker_preview_load();
+                }
                 report.request_redraw || report.state_changed
             }
             Command::FilePickerAppendQuery(_)
@@ -1939,7 +2042,24 @@ impl AppShell {
 
                 report.request_redraw
             }
+        };
+
+        if changed {
+            match &command_for_post_hooks {
+                Command::OpenFile(_) | Command::BufferNext | Command::BufferPrev => {
+                    self.submit_active_file_history_load();
+                }
+                Command::SaveFile => {
+                    self.submit_active_file_history_save();
+                }
+                _ if should_persist_history_after => {
+                    self.submit_active_file_history_save();
+                }
+                _ => {}
+            }
         }
+
+        changed
     }
 
     fn handle_terminal_paste(&mut self) -> bool {
@@ -3890,6 +4010,45 @@ mod tests {
                 .preview_lines
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn open_file_history_opens_center_fuzzy_buffer_tab() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = std::env::temp_dir().join("netherize_file_history_buffer_test.txt");
+        std::fs::write(&file_path, "hello\n").expect("write file");
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+
+        let _ = dispatch_command(
+            &mut shell.app_state,
+            Command::SwitchMode(crate::core::mode::ModeEvent::EnterInsert),
+        );
+        let _ = dispatch_command(
+            &mut shell.app_state,
+            Command::InsertText("world".to_string()),
+        );
+        let _ = dispatch_command(&mut shell.app_state, Command::SaveFile);
+
+        assert!(shell.handle_command(Command::OpenFileHistory));
+        assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+        let fuzzy = shell
+            .app_state
+            .active_fuzzy_picker_buffer()
+            .expect("file history should open as fuzzy buffer");
+        assert_eq!(fuzzy.mode, CommandPaletteMode::FileHistory);
+        assert!(
+            !fuzzy.results.is_empty(),
+            "history list should not be empty"
+        );
+        assert!(
+            !fuzzy.preview_lines.is_empty(),
+            "history diff preview should be populated"
+        );
+
+        let _ = std::fs::remove_file(file_path);
     }
 
     #[test]

@@ -39,6 +39,8 @@ pub enum CommandPaletteMode {
     ThemeSelector,
     /// LSP References — danh sách tĩnh kết quả `gr` từ LSP server.
     LspReferences,
+    /// Local file history picker with live editor preview.
+    FileHistory,
 }
 
 impl CommandPaletteMode {
@@ -58,6 +60,7 @@ impl CommandPaletteMode {
             Self::RecentProjects => "project> ",
             Self::ThemeSelector => "Select Theme> ",
             Self::LspReferences => "refs> ",
+            Self::FileHistory => "history> ",
         }
     }
 
@@ -77,6 +80,7 @@ impl CommandPaletteMode {
             Self::RecentProjects => "no recent projects",
             Self::ThemeSelector => "type to filter themes...",
             Self::LspReferences => "no references found",
+            Self::FileHistory => "no local history entries",
         }
     }
 
@@ -96,6 +100,7 @@ impl CommandPaletteMode {
             Self::RecentProjects => "RECENT",
             Self::ThemeSelector => "THEMES",
             Self::LspReferences => "REFS",
+            Self::FileHistory => "HISTORY",
         }
     }
 
@@ -108,6 +113,7 @@ impl CommandPaletteMode {
                 | Self::RecentProjects
                 | Self::ThemeSelector
                 | Self::LspReferences
+                | Self::FileHistory
         )
     }
 }
@@ -124,6 +130,7 @@ pub enum CommandPaletteAction {
     ExecuteVimCommand(String),
     SelectTheme(String),
     JumpToSymbol(String),
+    SelectFileHistoryEntry(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -190,6 +197,18 @@ impl CommandPaletteItem {
             label: name.to_string(),
             secondary_label: None,
             action: CommandPaletteAction::JumpToSymbol(name.to_string()),
+        }
+    }
+
+    pub fn file_history_entry(
+        label: String,
+        secondary_label: Option<String>,
+        index: usize,
+    ) -> Self {
+        Self {
+            label,
+            secondary_label,
+            action: CommandPaletteAction::SelectFileHistoryEntry(index),
         }
     }
 
@@ -430,7 +449,10 @@ impl CommandPalette {
 
     pub fn refresh_results(&mut self, _workspace: Option<&WorkspaceModel>) {
         // LspReferences: static list, never overwrite with fzf results.
-        if matches!(self.mode, CommandPaletteMode::LspReferences) {
+        if matches!(
+            self.mode,
+            CommandPaletteMode::LspReferences | CommandPaletteMode::FileHistory
+        ) {
             self.results = self.static_items.clone();
             if self.results.is_empty() {
                 self.selected_index = 0;
@@ -493,6 +515,7 @@ impl CommandPalette {
             CommandPaletteMode::RecentProjects => unreachable!("handled above"),
             CommandPaletteMode::ThemeSelector => unreachable!("handled above"),
             CommandPaletteMode::LspReferences => unreachable!("handled above"),
+            CommandPaletteMode::FileHistory => unreachable!("handled above"),
         };
 
         if self.results.is_empty() {

@@ -155,6 +155,31 @@ impl AppState {
         self.target_col = state.target_col.min(self.max_col_for_line(line_idx));
     }
 
+    pub(super) fn snapshot_editor_view(&self) -> EditorViewSnapshot {
+        EditorViewSnapshot {
+            text: self.text.clone(),
+            cursor: self.cursor_state(),
+            selection_anchor_char_idx: self.selection_anchor_char_idx,
+            visual_line_mode: self.visual_line_mode,
+            target_scroll_y: self.target_scroll_y,
+            current_scroll_y: self.current_scroll_y,
+            scroll_column: self.scroll_column,
+            dirty: self.dirty,
+        }
+    }
+
+    pub(super) fn restore_editor_view(&mut self, snapshot: &EditorViewSnapshot) {
+        self.text = snapshot.text.clone();
+        self.restore_cursor_state(snapshot.cursor);
+        self.selection_anchor_char_idx = snapshot.selection_anchor_char_idx;
+        self.visual_line_mode = snapshot.visual_line_mode;
+        self.target_scroll_y = snapshot.target_scroll_y;
+        self.current_scroll_y = snapshot.current_scroll_y;
+        self.scroll_column = snapshot.scroll_column;
+        self.dirty = snapshot.dirty;
+        let _ = self.refresh_active_search_highlights();
+    }
+
     pub(super) fn ensure_current_transaction(&mut self) -> &mut Transaction {
         if self.current_transaction.is_none() {
             self.current_transaction = Some(Transaction::new(self.cursor_state()));

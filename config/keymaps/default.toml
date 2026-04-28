@@ -709,6 +709,11 @@ command = "app.search_in_files"
 
 [[bindings]]
 mode = "normal"
+key = "<leader>f h"
+command = "app.open_file_history"
+
+[[bindings]]
+mode = "normal"
 key = "<leader>t h"
 command = "app.open_theme_selector"
 

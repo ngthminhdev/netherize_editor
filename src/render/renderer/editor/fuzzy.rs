@@ -70,6 +70,8 @@ impl Renderer {
         let fg_ghost = self.theme.ui.fg_ghost.as_f32();
         let selection_bg = self.theme.ui.selection_bg.as_f32();
         let warning = self.theme.ui.warning.as_f32();
+        let added_bg = [0.10, 0.34, 0.20, 0.34];
+        let removed_bg = [0.42, 0.14, 0.16, 0.34];
 
         let mut glyphs = Vec::new();
         let mut chrome = vec![
@@ -85,6 +87,7 @@ impl Renderer {
         let title = match fuzzy_state.mode {
             crate::app::command_palette::CommandPaletteMode::FilePicker => "File Picker",
             crate::app::command_palette::CommandPaletteMode::LiveGrep => "Live Grep",
+            crate::app::command_palette::CommandPaletteMode::FileHistory => "File History",
             _ => "Search",
         };
         let left_header = format!("{}  > {}", title, fuzzy_state.query);
@@ -118,7 +121,12 @@ impl Renderer {
             fg,
         ));
 
-        let help_text = "Type to search  |  Ctrl+N/P / Up/Down to navigate  |  Enter to open";
+        let help_text = match fuzzy_state.mode {
+            crate::app::command_palette::CommandPaletteMode::FileHistory => {
+                "J/K / Ctrl+N/P / Up/Down to preview  |  Enter to accept  |  Esc/Q to close"
+            }
+            _ => "Type to search  |  Ctrl+N/P / Up/Down to navigate  |  Enter to open",
+        };
         self.editor_overlay_text_system
             .set_size(Some((panel_w - 20.0).max(1.0)), Some(line_height));
         glyphs.extend(layout_panel_text(
@@ -218,6 +226,19 @@ impl Renderer {
                 .enumerate()
             {
                 let row_y = content_top + slot as f32 * line_height;
+                let line_bg = if line.text.starts_with("+ ") {
+                    Some(added_bg)
+                } else if line.text.starts_with("- ") {
+                    Some(removed_bg)
+                } else {
+                    None
+                };
+                if let Some(bg) = line_bg {
+                    chrome.push(RegionDrawInstance::new(
+                        [right_x + 6.0, row_y, (right_w - 12.0).max(1.0), line_height],
+                        bg,
+                    ));
+                }
                 if line.is_target {
                     chrome.push(RegionDrawInstance::new(
                         [right_x + 6.0, row_y, (right_w - 12.0).max(1.0), line_height],

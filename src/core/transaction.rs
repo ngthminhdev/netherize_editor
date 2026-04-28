@@ -1,16 +1,18 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct CursorState {
     pub char_idx: usize,
     pub target_col: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EditAction {
     Insert { index: usize, text: String },
     Delete { index: usize, text: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Transaction {
     pub actions: Vec<EditAction>,
     pub before_cursor: CursorState,
@@ -31,7 +33,7 @@ impl Transaction {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EditHistory {
     pub undo_stack: Vec<Transaction>,
     pub redo_stack: Vec<Transaction>,

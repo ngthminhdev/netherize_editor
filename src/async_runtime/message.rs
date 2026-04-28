@@ -1,5 +1,7 @@
 use std::{ops::Range, path::PathBuf};
 
+use serde::{Deserialize, Serialize};
+
 use crate::syntax::{highlight::HighlightSpan, syntax_engine::LanguageId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +39,14 @@ pub enum RequestTopic {
     FzfSearch,
     FilePreview,
     AiInlineCompletion,
+    LocalHistory,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistedHistoryEnvelope {
+    pub version: u32,
+    pub file_path: PathBuf,
+    pub history: crate::core::transaction::EditHistory,
 }
 
 /// Which search mode the fzf worker is running.
@@ -190,6 +200,14 @@ pub enum WorkerRequestPayload {
         file_path: PathBuf,
         max_lines: usize,
         target_line: Option<usize>,
+    },
+    LoadLocalHistory {
+        file_path: PathBuf,
+    },
+    SaveLocalHistory {
+        file_path: PathBuf,
+        history: PersistedHistoryEnvelope,
+        max_bytes: usize,
     },
     LspDidOpen {
         uri: String,
@@ -466,6 +484,15 @@ pub enum WorkerResultPayload {
         file_path: PathBuf,
         target_line: Option<usize>,
         lines: Vec<FilePreviewLine>,
+    },
+    LocalHistoryLoaded {
+        file_path: PathBuf,
+        history: Option<PersistedHistoryEnvelope>,
+    },
+    LocalHistorySaved {
+        file_path: PathBuf,
+        bytes_written: usize,
+        trimmed_transactions: usize,
     },
     AiInlineCompletionResult {
         suggestion: String,

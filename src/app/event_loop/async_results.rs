@@ -5,6 +5,7 @@ impl AsyncResultRouter for AppShell {
         match topic {
             RequestTopic::ActiveBufferLayout => self.active_highlight_request_revision,
             RequestTopic::FzfSearch => self.fzf_search_revision,
+            RequestTopic::LocalHistory => self.local_history_revision,
             RequestTopic::Git => self.git_overlay_revision,
             RequestTopic::AiInlineCompletion => self.ai_inline_revision,
             _ => 0,
@@ -127,6 +128,17 @@ impl AsyncResultRouter for AppShell {
                     self.request_redraw();
                 }
             }
+            WorkerResultPayload::LocalHistoryLoaded { file_path, history } => {
+                if self
+                    .app_state
+                    .reconcile_loaded_file_history(&file_path, history)
+                {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    self.request_redraw();
+                }
+            }
+            WorkerResultPayload::LocalHistorySaved { .. } => {}
             WorkerResultPayload::PtySpawned {
                 session_id,
                 shell,

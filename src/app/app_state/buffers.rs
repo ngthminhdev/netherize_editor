@@ -58,6 +58,10 @@ impl AppState {
             return Err("cannot save diagnostics buffer".to_string());
         }
 
+        let _ = self.cancel_file_history_preview();
+
+        let _ = self.commit_transaction();
+
         let path = self
             .active_file
             .clone()
@@ -503,6 +507,14 @@ impl AppState {
         transaction.after_cursor = self.cursor_state();
         self.history.undo_stack.push(transaction);
         self.history.redo_stack.clear();
+        if let Some(path) = self.active_file.clone() {
+            self.stored_file_histories.insert(
+                path,
+                StoredFileHistory {
+                    history: self.history.clone(),
+                },
+            );
+        }
         true
     }
 }

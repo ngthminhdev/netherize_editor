@@ -153,6 +153,7 @@ impl AppShell {
             last_syntax_edit_hint: None,
             active_highlight_request_revision: 0,
             fzf_search_revision: 0,
+            local_history_revision: 0,
             pending_parse_after_debounce: false,
             ai_inline_revision: 0,
             pending_ai_inline_request: None,
@@ -906,6 +907,37 @@ impl AppShell {
                 file_path: path,
                 max_lines: 100,
                 target_line,
+            },
+        });
+    }
+
+    pub(super) fn submit_active_file_history_load(&mut self) {
+        let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
+            return;
+        };
+        self.local_history_revision = self.local_history_revision.saturating_add(1);
+        self.submit(RequestSpec {
+            revision_id: self.local_history_revision,
+            topic: RequestTopic::LocalHistory,
+            payload: WorkerRequestPayload::LoadLocalHistory { file_path },
+        });
+    }
+
+    pub(super) fn submit_active_file_history_save(&mut self) {
+        let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
+            return;
+        };
+        let Some(history) = self.app_state.active_file_history_envelope() else {
+            return;
+        };
+        self.local_history_revision = self.local_history_revision.saturating_add(1);
+        self.submit(RequestSpec {
+            revision_id: self.local_history_revision,
+            topic: RequestTopic::LocalHistory,
+            payload: WorkerRequestPayload::SaveLocalHistory {
+                file_path,
+                history,
+                max_bytes: 1024 * 1024,
             },
         });
     }

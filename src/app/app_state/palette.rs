@@ -106,7 +106,17 @@ impl AppState {
             .open_with_items(CommandPaletteMode::ThemeSelector, items))
     }
 
+    pub fn open_file_history_palette(
+        &mut self,
+        items: Vec<crate::app::command_palette::CommandPaletteItem>,
+    ) -> Result<usize, String> {
+        Ok(self
+            .command_palette
+            .open_with_items(CommandPaletteMode::FileHistory, items))
+    }
+
     pub fn close_command_palette(&mut self) -> bool {
+        let _ = self.cancel_file_history_preview();
         let changed = self.command_palette.close();
         self.sync_file_picker_cache();
         changed
@@ -187,6 +197,9 @@ impl AppState {
                 ..
             }) = self.buffers.get_mut(index)
             {
+                if state.mode == CommandPaletteMode::FileHistory {
+                    return Ok(false);
+                }
                 let changed = state.append_query(text);
                 self.bump_revision();
                 return Ok(changed);
@@ -243,6 +256,9 @@ impl AppState {
                 ..
             }) = self.buffers.get_mut(index)
             {
+                if state.mode == CommandPaletteMode::FileHistory {
+                    return Ok(false);
+                }
                 let changed = state.backspace_query();
                 self.bump_revision();
                 return Ok(changed);
@@ -847,7 +863,10 @@ impl AppState {
     }
 
     pub fn open_fuzzy_picker_buffer(&mut self, mode: CommandPaletteMode) -> usize {
-        let state = FuzzyState::new(mode);
+        let mut state = FuzzyState::new(mode);
+        if mode == CommandPaletteMode::FileHistory {
+            state.source_file_path = self.active_file.clone();
+        }
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::FuzzyPicker(state),

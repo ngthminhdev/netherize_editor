@@ -17,15 +17,17 @@ use notify::{
     Event as NotifyEvent, EventKind as NotifyEventKind, RecursiveMode, Watcher, event::ModifyKind,
 };
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use tokio::{io::AsyncBufReadExt, sync::mpsc};
 use winit::event_loop::EventLoopProxy;
 
 use crate::app::event_loop::AppEvent;
 use crate::async_runtime::message::{
-    FileSystemChangeKind, FileSystemEvent, FzfResultItem, FzfSearchMode, RequestSpec, RequestTopic,
-    WorkerEvent, WorkerEventKind, WorkerFailure, WorkerFailureKind, WorkerMessage, WorkerRequest,
-    WorkerRequestPayload, WorkerResult, WorkerResultPayload,
+    FileSystemChangeKind, FileSystemEvent, FzfResultItem, FzfSearchMode, PersistedHistoryEnvelope,
+    RequestSpec, RequestTopic, WorkerEvent, WorkerEventKind, WorkerFailure, WorkerFailureKind,
+    WorkerMessage, WorkerRequest, WorkerRequestPayload, WorkerResult, WorkerResultPayload,
 };
+use crate::config::paths::user_config_root;
 use crate::lsp::client::{
     build_did_change_notification, build_did_close_notification, build_did_open_notification,
     parse_publish_diagnostics, parse_window_log_message, read_json_rpc_message_async,
@@ -372,6 +374,18 @@ async fn dispatch_loop(
 
         if matches!(
             request.payload,
+            WorkerRequestPayload::LoadLocalHistory { .. }
+                | WorkerRequestPayload::SaveLocalHistory { .. }
+        ) {
+            let worker_tx = result_tx.clone();
+            tokio::spawn(async move {
+                run_local_history_request(request, worker_tx).await;
+            });
+            continue;
+        }
+
+        if matches!(
+            request.payload,
             WorkerRequestPayload::AiInlineCompletionRequest { .. }
         ) {
             let worker_tx = result_tx.clone();
@@ -509,6 +523,145 @@ async fn dispatch_loop(
             }
         });
     }
+}
+
+fn local_history_path_for_file(file_path: &std::path::Path) -> PathBuf {
+    let mut hasher = Sha256::new();
+    hasher.update(file_path.to_string_lossy().as_bytes());
+    let hash = format!("{:x}", hasher.finalize());
+    user_config_root()
+        .join("history")
+        .join(format!("{hash}.hist"))
+}
+
+async fn run_local_history_request(
+    request: WorkerRequest,
+    worker_tx: std_mpsc::Sender<WorkerMessage>,
+) {
+    let started = WorkerEvent {
+        request_id: request.request_id,
+        revision_id: request.revision_id,
+        topic: request.topic,
+        kind: WorkerEventKind::Started,
+    };
+    emit_message(&worker_tx, WorkerMessage::Event(started));
+
+    let result = match request.payload {
+        WorkerRequestPayload::LoadLocalHistory { file_path } => {
+            execute_load_local_history(file_path)
+                .await
+                .map(|payload| WorkerResult {
+                    request_id: request.request_id,
+                    revision_id: request.revision_id,
+                    topic: request.topic,
+                    payload,
+                })
+        }
+        WorkerRequestPayload::SaveLocalHistory {
+            file_path,
+            history,
+            max_bytes,
+        } => execute_save_local_history(file_path, history, max_bytes)
+            .await
+            .map(|payload| WorkerResult {
+                request_id: request.request_id,
+                revision_id: request.revision_id,
+                topic: request.topic,
+                payload,
+            }),
+        _ => Err("unsupported local history request".to_string()),
+    };
+
+    match result {
+        Ok(result) => {
+            emit_message(&worker_tx, WorkerMessage::Result(result));
+            emit_message(
+                &worker_tx,
+                WorkerMessage::Event(WorkerEvent {
+                    request_id: request.request_id,
+                    revision_id: request.revision_id,
+                    topic: request.topic,
+                    kind: WorkerEventKind::Completed,
+                }),
+            );
+        }
+        Err(message) => {
+            emit_message(
+                &worker_tx,
+                WorkerMessage::Event(WorkerEvent {
+                    request_id: request.request_id,
+                    revision_id: request.revision_id,
+                    topic: request.topic,
+                    kind: WorkerEventKind::Failed {
+                        error: WorkerFailure {
+                            kind: WorkerFailureKind::Execution,
+                            message,
+                        },
+                    },
+                }),
+            );
+        }
+    }
+}
+
+async fn execute_load_local_history(file_path: PathBuf) -> Result<WorkerResultPayload, String> {
+    let history_path = local_history_path_for_file(&file_path);
+    let bytes = match tokio::fs::read(&history_path).await {
+        Ok(bytes) => bytes,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(WorkerResultPayload::LocalHistoryLoaded {
+                file_path,
+                history: None,
+            });
+        }
+        Err(err) => {
+            return Err(format!(
+                "read local history {:?} failed: {err}",
+                history_path
+            ));
+        }
+    };
+
+    let history = serde_json::from_slice::<PersistedHistoryEnvelope>(&bytes)
+        .map_err(|err| format!("parse local history {:?} failed: {err}", history_path))?;
+    Ok(WorkerResultPayload::LocalHistoryLoaded {
+        file_path,
+        history: Some(history),
+    })
+}
+
+async fn execute_save_local_history(
+    file_path: PathBuf,
+    mut history: PersistedHistoryEnvelope,
+    max_bytes: usize,
+) -> Result<WorkerResultPayload, String> {
+    let history_path = local_history_path_for_file(&file_path);
+    if let Some(parent) = history_path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|err| format!("create local history dir {:?} failed: {err}", parent))?;
+    }
+
+    let mut trimmed_transactions = 0usize;
+    let bytes = loop {
+        let encoded = serde_json::to_vec(&history)
+            .map_err(|err| format!("serialize local history {:?} failed: {err}", file_path))?;
+        if encoded.len() <= max_bytes || history.history.undo_stack.is_empty() {
+            break encoded;
+        }
+        history.history.undo_stack.remove(0);
+        trimmed_transactions += 1;
+    };
+
+    tokio::fs::write(&history_path, &bytes)
+        .await
+        .map_err(|err| format!("write local history {:?} failed: {err}", history_path))?;
+
+    Ok(WorkerResultPayload::LocalHistorySaved {
+        file_path,
+        bytes_written: bytes.len(),
+        trimmed_transactions,
+    })
 }
 
 async fn run_file_watch_request(
@@ -2571,6 +2724,10 @@ async fn execute_virtual_job(
             .await
             .map_err(|err| format!("file preview join error: {err}"))?;
             Ok(result)
+        }
+        WorkerRequestPayload::LoadLocalHistory { .. }
+        | WorkerRequestPayload::SaveLocalHistory { .. } => {
+            Err("local history request should be handled by dedicated history runner".to_string())
         }
         WorkerRequestPayload::ShutdownAllLspServers => {
             Err("execute_virtual_job received non-virtual payload".to_string())

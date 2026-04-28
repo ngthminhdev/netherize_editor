@@ -130,6 +130,7 @@ pub enum Command {
     OpenInFileSearch,
     SearchInFiles,
     OpenThemeSelector,
+    OpenFileHistory,
     OpenSettings,
     OpenHelp,
     FilePickerAppendQuery(String),

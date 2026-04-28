@@ -2,6 +2,191 @@ use super::overlays::{build_completion_display_items, is_completion_identifier_c
 use super::*;
 
 impl AppState {
+    pub fn active_file_history_envelope(&self) -> Option<PersistedHistoryEnvelope> {
+        let file_path = self.active_file.clone()?;
+        Some(PersistedHistoryEnvelope {
+            version: 1,
+            file_path,
+            history: self.history.clone(),
+        })
+    }
+
+    pub fn reconcile_loaded_file_history(
+        &mut self,
+        file_path: &Path,
+        envelope: Option<PersistedHistoryEnvelope>,
+    ) -> bool {
+        let Some(active_file) = self.active_file.as_ref() else {
+            return false;
+        };
+        if active_file != file_path {
+            if let Some(envelope) = envelope {
+                self.stored_file_histories.insert(
+                    file_path.to_path_buf(),
+                    StoredFileHistory {
+                        history: envelope.history,
+                    },
+                );
+                return true;
+            }
+            return false;
+        }
+
+        let loaded_history = envelope.map(|item| item.history).unwrap_or_default();
+        self.history = loaded_history.clone();
+        self.current_transaction = None;
+        self.stored_file_histories.insert(
+            file_path.to_path_buf(),
+            StoredFileHistory {
+                history: loaded_history,
+            },
+        );
+        self.bump_revision();
+        true
+    }
+
+    pub fn file_history_picker_items(
+        &self,
+    ) -> Vec<crate::app::command_palette::CommandPaletteItem> {
+        let file_path = if let Some(index) = self.active_buffer_index {
+            self.buffers
+                .get(index)
+                .and_then(|buffer| match &buffer.content {
+                    BufferContent::FuzzyPicker(state)
+                        if state.mode == CommandPaletteMode::FileHistory =>
+                    {
+                        state.source_file_path.as_ref()
+                    }
+                    _ => None,
+                })
+        } else {
+            None
+        }
+        .or(self.active_file.as_ref());
+
+        let Some(active_file) = file_path else {
+            return Vec::new();
+        };
+        let history = self
+            .stored_file_histories
+            .get(active_file)
+            .map(|stored| &stored.history)
+            .unwrap_or(&self.history);
+        history
+            .undo_stack
+            .iter()
+            .enumerate()
+            .rev()
+            .map(|(index, transaction)| {
+                let summary = summarize_transaction(transaction);
+                crate::app::command_palette::CommandPaletteItem::file_history_entry(
+                    format!("#{index} {summary}"),
+                    Some(format!("{} edits", transaction.actions.len())),
+                    index,
+                )
+            })
+            .collect()
+    }
+
+    pub fn build_file_history_diff_preview(&self) -> Option<(Vec<FilePreviewLine>, String)> {
+        let Some(session) = self.file_history_preview.as_ref() else {
+            return None;
+        };
+        let baseline_text = session.baseline_view.text.to_string();
+        let historical_text = self.text.to_string();
+        let lines = build_history_diff_lines(&baseline_text, &historical_text);
+        let preview_text = lines
+            .iter()
+            .map(|line| line.text.clone())
+            .collect::<Vec<_>>()
+            .join("\n");
+        Some((lines, preview_text))
+    }
+
+    pub fn begin_file_history_preview_session(&mut self) -> bool {
+        let Some(_file_path) = self.active_file.clone() else {
+            return false;
+        };
+        if self.file_history_preview.is_some() {
+            return false;
+        }
+        self.file_history_preview = Some(FileHistoryPreviewSession {
+            baseline_view: self.snapshot_editor_view(),
+            baseline_history: self.history.clone(),
+            preview_index: None,
+        });
+        true
+    }
+
+    pub fn preview_file_history_index(&mut self, transaction_index: usize) -> bool {
+        let Some((baseline_view, baseline_history)) =
+            self.file_history_preview.as_ref().map(|session| {
+                (
+                    session.baseline_view.clone(),
+                    session.baseline_history.clone(),
+                )
+            })
+        else {
+            return false;
+        };
+        let undo_len = baseline_history.undo_stack.len();
+        if transaction_index >= undo_len {
+            return false;
+        }
+
+        let rollback_count = undo_len.saturating_sub(transaction_index + 1);
+        self.restore_editor_view(&baseline_view);
+        self.history = baseline_history.clone();
+        self.current_transaction = None;
+        for _ in 0..rollback_count {
+            let _ = self.undo();
+        }
+        if let Some(session) = self.file_history_preview.as_mut() {
+            session.preview_index = Some(transaction_index);
+        }
+        self.history = baseline_history;
+        self.current_transaction = None;
+        self.dirty = baseline_view.dirty;
+        self.bump_revision();
+        true
+    }
+
+    pub fn accept_file_history_preview(&mut self) -> bool {
+        let Some(session) = self.file_history_preview.take() else {
+            return false;
+        };
+        let Some(preview_index) = session.preview_index else {
+            self.history = session.baseline_history;
+            return false;
+        };
+
+        let keep_len = preview_index + 1;
+        self.history.undo_stack.truncate(keep_len);
+        self.history.redo_stack.clear();
+        if let Some(path) = self.active_file.clone() {
+            self.stored_file_histories.insert(
+                path,
+                StoredFileHistory {
+                    history: self.history.clone(),
+                },
+            );
+        }
+        self.current_transaction = None;
+        self.bump_revision();
+        true
+    }
+
+    pub fn cancel_file_history_preview(&mut self) -> bool {
+        let Some(session) = self.file_history_preview.take() else {
+            return false;
+        };
+        self.restore_editor_view(&session.baseline_view);
+        self.history = session.baseline_history;
+        self.current_transaction = None;
+        self.bump_revision();
+        true
+    }
+
     pub fn undo(&mut self) -> bool {
         let Some(transaction) = self.history.undo_stack.pop() else {
             return false;
@@ -643,5 +828,91 @@ impl AppState {
         state.typed_prefix = prefix.to_string();
         self.bump_revision();
         true
+    }
+}
+
+fn build_history_diff_lines(current_text: &str, historical_text: &str) -> Vec<FilePreviewLine> {
+    let current_lines: Vec<&str> = current_text.lines().collect();
+    let historical_lines: Vec<&str> = historical_text.lines().collect();
+    let max_len = current_lines.len().max(historical_lines.len());
+    let mut out = vec![
+        FilePreviewLine {
+            line_number: 1,
+            text: "--- current".to_string(),
+            is_target: false,
+        },
+        FilePreviewLine {
+            line_number: 1,
+            text: "+++ history".to_string(),
+            is_target: false,
+        },
+    ];
+
+    for idx in 0..max_len {
+        match (current_lines.get(idx), historical_lines.get(idx)) {
+            (Some(current), Some(old)) if current == old => out.push(FilePreviewLine {
+                line_number: idx + 1,
+                text: format!("  {current}"),
+                is_target: false,
+            }),
+            (Some(current), Some(old)) => {
+                out.push(FilePreviewLine {
+                    line_number: idx + 1,
+                    text: format!("- {current}"),
+                    is_target: true,
+                });
+                out.push(FilePreviewLine {
+                    line_number: idx + 1,
+                    text: format!("+ {old}"),
+                    is_target: true,
+                });
+            }
+            (Some(current), None) => out.push(FilePreviewLine {
+                line_number: idx + 1,
+                text: format!("- {current}"),
+                is_target: true,
+            }),
+            (None, Some(old)) => out.push(FilePreviewLine {
+                line_number: idx + 1,
+                text: format!("+ {old}"),
+                is_target: true,
+            }),
+            (None, None) => {}
+        }
+    }
+
+    if out.len() == 2 {
+        out.push(FilePreviewLine {
+            line_number: 1,
+            text: "  (selected history matches current buffer)".to_string(),
+            is_target: false,
+        });
+    }
+
+    out
+}
+
+fn summarize_transaction(transaction: &Transaction) -> String {
+    let mut inserts = 0usize;
+    let mut deletes = 0usize;
+    let mut chars = 0usize;
+    for action in &transaction.actions {
+        match action {
+            EditAction::Insert { text, .. } => {
+                inserts += 1;
+                chars += text.chars().count();
+            }
+            EditAction::Delete { text, .. } => {
+                deletes += 1;
+                chars += text.chars().count();
+            }
+        }
+    }
+    if inserts > 0 && deletes == 0 {
+        format!("inserted {chars} chars")
+    } else if deletes > 0 && inserts == 0 {
+        format!("deleted {chars} chars")
+    } else {
+        format!("modified {chars} chars")
     }
 }

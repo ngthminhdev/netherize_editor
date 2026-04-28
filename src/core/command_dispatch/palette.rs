@@ -163,6 +163,24 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 Err(report) => report,
             }
         }
+        Command::OpenFileHistory => {
+            let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterInsert);
+            let _ = ctx.app_state.begin_file_history_preview_session();
+            let buffer_index = ctx
+                .app_state
+                .open_fuzzy_picker_buffer(CommandPaletteMode::FileHistory);
+            let items = ctx.app_state.file_history_picker_items();
+            let _ = ctx.app_state.set_command_palette_results(
+                CommandPaletteMode::FileHistory,
+                "",
+                items,
+            );
+            DispatchReport::success_with_flags(
+                format!("Dispatch: file history buffer opened at index {buffer_index}"),
+                true,
+                true,
+            )
+        }
         _ => unreachable!("palette::dispatch received non-palette command"),
     }
 }
@@ -408,6 +426,16 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
                 false,
             )
         }
+        CommandPaletteAction::SelectFileHistoryEntry(index) => {
+            let changed = ctx.app_state.preview_file_history_index(index);
+            let closed = ctx.close_palette_and_exit_focus();
+            let accepted = ctx.app_state.accept_file_history_preview();
+            DispatchReport::success_with_flags(
+                format!("Dispatch: file history confirmed -> entry #{index}"),
+                true,
+                changed || closed || accepted,
+            )
+        }
     }
 }
 
@@ -416,9 +444,16 @@ fn close_picker(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
         ctx.app_state.command_palette_mode(),
         Some(CommandPaletteMode::InFileSearch)
     );
+    let cancels_file_history = matches!(
+        ctx.app_state.command_palette_mode(),
+        Some(CommandPaletteMode::FileHistory)
+    );
     let mut changed = ctx.close_palette_and_exit_focus();
     if clears_search {
         changed |= ctx.app_state.clear_search_highlights();
+    }
+    if cancels_file_history {
+        changed |= ctx.app_state.cancel_file_history_preview();
     }
 
     DispatchReport::success(

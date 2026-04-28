@@ -83,6 +83,7 @@ pub const OPEN_VIM_COMMAND: &str = "app.open_vim_command";
 pub const OPEN_WORKSPACE_SYMBOLS: &str = "app.open_workspace_symbols";
 pub const SEARCH_IN_FILES: &str = "app.search_in_files";
 pub const OPEN_THEME_SELECTOR: &str = "app.open_theme_selector";
+pub const OPEN_FILE_HISTORY: &str = "app.open_file_history";
 pub const OPEN_SETTINGS: &str = "app.open_settings";
 pub const OPEN_HELP: &str = "app.open_help";
 pub const GIT_OPEN_LAZYGIT: &str = "git.open_lazygit";
@@ -237,6 +238,7 @@ pub const ALL_IDS: &[&str] = &[
     OPEN_WORKSPACE_SYMBOLS,
     SEARCH_IN_FILES,
     OPEN_THEME_SELECTOR,
+    OPEN_FILE_HISTORY,
     OPEN_SETTINGS,
     GIT_OPEN_LAZYGIT,
     DOCKER_OPEN_LAZYDOCKER,
@@ -390,6 +392,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         OPEN_WORKSPACE_SYMBOLS => Some(Command::OpenWorkspaceSymbols),
         SEARCH_IN_FILES => Some(Command::SearchInFiles),
         OPEN_THEME_SELECTOR => Some(Command::OpenThemeSelector),
+        OPEN_FILE_HISTORY => Some(Command::OpenFileHistory),
         OPEN_SETTINGS => Some(Command::OpenSettings),
         OPEN_HELP => Some(Command::OpenHelp),
         GIT_OPEN_LAZYGIT => Some(Command::GitOpenLazygit),

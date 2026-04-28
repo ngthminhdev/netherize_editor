@@ -228,6 +228,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::OpenWorkspaceSymbols
         | Command::SearchInFiles
         | Command::OpenThemeSelector
+        | Command::OpenFileHistory
         | Command::OpenSettings
         | Command::OpenHelp
         | Command::GitOpenLazygit

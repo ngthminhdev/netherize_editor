@@ -1337,6 +1337,97 @@ fn redo_stack_is_cleared_after_new_committed_edit() {
 }
 
 #[test]
+fn undo_restores_exact_snapshots_after_30_edit_and_save_steps() {
+    let file_path = unique_temp_path("undo_30_save_steps");
+    let mut app_state = AppState::new(file_path.clone());
+
+    let enter_insert = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterInsert),
+    );
+    assert!(enter_insert.success);
+
+    let mut expected_states = vec![app_state.text_string()];
+
+    for step in 0..30usize {
+        let report = if step % 2 == 0 {
+            let text = format!("step_{step:02}");
+            dispatch_command(&mut app_state, Command::InsertText(text))
+        } else {
+            dispatch_command(&mut app_state, Command::Newline)
+        };
+        assert!(report.success, "edit step {step} should succeed");
+        assert!(report.state_changed, "edit step {step} should change state");
+
+        let save = dispatch_command(&mut app_state, Command::SaveFile);
+        assert!(save.success, "save step {step} should succeed");
+
+        expected_states.push(app_state.text_string());
+    }
+
+    let exit_insert = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
+    );
+    assert!(exit_insert.success);
+
+    assert_eq!(expected_states.len(), 31, "initial + 30 edit snapshots");
+
+    for undo_idx in (1..expected_states.len()).rev() {
+        let undo = dispatch_command(&mut app_state, Command::Undo);
+        assert!(undo.success, "undo at snapshot {undo_idx} should succeed");
+        assert!(
+            undo.state_changed,
+            "undo at snapshot {undo_idx} should change state"
+        );
+        assert_eq!(
+            app_state.text_string(),
+            expected_states[undo_idx - 1],
+            "undo should restore exact snapshot for step {}",
+            undo_idx - 1
+        );
+    }
+
+    let extra_undo = dispatch_command(&mut app_state, Command::Undo);
+    assert!(extra_undo.success);
+    assert!(
+        !extra_undo.state_changed,
+        "undo past beginning should no-op"
+    );
+    assert_eq!(app_state.text_string(), expected_states[0]);
+
+    let _ = fs::remove_file(file_path);
+}
+
+#[test]
+fn save_does_not_write_previewed_history_state_back_to_disk() {
+    let file_path = unique_temp_path("save_not_preview_state");
+    let mut app_state = AppState::new(file_path.clone());
+
+    let _ = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterInsert),
+    );
+    let _ = dispatch_command(&mut app_state, Command::InsertText("old".to_string()));
+    let _ = dispatch_command(&mut app_state, Command::SaveFile);
+    let _ = dispatch_command(&mut app_state, Command::InsertText(" new".to_string()));
+    let _ = dispatch_command(&mut app_state, Command::SaveFile);
+
+    assert!(app_state.begin_file_history_preview_session());
+    assert!(app_state.preview_file_history_index(0));
+    assert_eq!(app_state.text_string(), "old");
+
+    let save = dispatch_command(&mut app_state, Command::SaveFile);
+    assert!(save.success);
+
+    let disk_text = fs::read_to_string(&file_path).expect("read saved file");
+    assert_eq!(disk_text, "old new");
+    assert_eq!(app_state.text_string(), "old new");
+
+    let _ = fs::remove_file(file_path);
+}
+
+#[test]
 fn toggle_terminal_command_closes_panel_when_pressed_again() {
     let mut app_state = AppState::new(unique_temp_path("save"));
     let _ = dispatch_command(
