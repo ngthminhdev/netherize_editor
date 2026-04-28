@@ -268,6 +268,8 @@ pub enum Command {
     CompletionAccept,
     /// Completion popup: đóng popup.
     CompletionClose,
+    /// Accept AI inline ghost-text suggestion into the real buffer.
+    AiAcceptInline,
     /// References view: chọn item kế tiếp.
     ReferencesSelectNext,
     /// References view: chọn item trước đó.

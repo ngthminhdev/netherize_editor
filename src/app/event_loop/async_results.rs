@@ -6,6 +6,7 @@ impl AsyncResultRouter for AppShell {
             RequestTopic::ActiveBufferLayout => self.active_highlight_request_revision,
             RequestTopic::FzfSearch => self.fzf_search_revision,
             RequestTopic::Git => self.git_overlay_revision,
+            RequestTopic::AiInlineCompletion => self.ai_inline_revision,
             _ => 0,
         }
     }
@@ -572,6 +573,13 @@ impl AsyncResultRouter for AppShell {
                     false
                 };
                 if changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    self.request_redraw();
+                }
+            }
+            WorkerResultPayload::AiInlineCompletionResult { suggestion } => {
+                if self.app_state.set_inline_suggestion(Some(suggestion)) {
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                     self.request_redraw();

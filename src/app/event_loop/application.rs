@@ -215,6 +215,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         self.flush_pending_parse_after_debounce();
+        self.flush_pending_ai_inline_completion();
         self.flush_pending_lsp_did_change_after_debounce();
         if self.maybe_refresh_workspace_git_branch(false) {
             self.request_redraw();
@@ -238,6 +239,12 @@ impl ApplicationHandler<AppEvent> for AppShell {
             next_deadline = Some(match next_deadline {
                 Some(existing) => existing.min(lsp_deadline),
                 None => lsp_deadline,
+            });
+        }
+        if let Some(ai_deadline) = self.next_ai_inline_flush_deadline() {
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(ai_deadline),
+                None => ai_deadline,
             });
         }
 

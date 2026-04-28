@@ -504,6 +504,44 @@ impl AppState {
         true
     }
 
+    pub fn inline_suggestion(&self) -> Option<&str> {
+        self.inline_suggestion.as_deref()
+    }
+
+    pub fn set_inline_suggestion(&mut self, suggestion: Option<String>) -> bool {
+        let normalized = suggestion.and_then(|text| {
+            let trimmed = text.replace("\r\n", "\n").replace('\r', "\n");
+            if trimmed.is_empty() { None } else { Some(trimmed) }
+        });
+        if self.inline_suggestion == normalized {
+            return false;
+        }
+        self.inline_suggestion = normalized;
+        self.bump_revision();
+        true
+    }
+
+    pub fn clear_inline_suggestion(&mut self) -> bool {
+        self.set_inline_suggestion(None)
+    }
+
+    pub fn accept_inline_suggestion(&mut self) -> bool {
+        let Some(suggestion) = self.inline_suggestion.clone() else {
+            return false;
+        };
+        let char_count = suggestion.chars().count();
+        if !self.apply_insert(self.cursor_char_idx, suggestion) {
+            return false;
+        }
+        self.cursor_char_idx += char_count;
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.inline_suggestion = None;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
     pub fn indent_config(&self) -> IndentConfig {
         self.indent_config
     }
@@ -529,6 +567,7 @@ impl AppState {
         self.dirty = true;
         self.search_highlights.clear();
         self.clear_completion();
+        self.clear_inline_suggestion();
         self.bump_revision();
         true
     }

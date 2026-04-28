@@ -108,6 +108,7 @@ impl Renderer {
             Metrics::new(theme.editor.font_size * 2.0, theme.editor.line_height * 2.0);
 
         let text_system = make_text_system(editor_metrics, font_family.as_deref());
+        let editor_overlay_text_system = make_text_system(editor_metrics, font_family.as_deref());
         let gutter_text_system = make_text_system(editor_metrics, font_family.as_deref());
         let sidebar_text_system = make_text_system(ui_metrics, nerd_family.as_deref());
         let terminal_text_system = make_text_system(panel_metrics, font_family.as_deref());
@@ -165,7 +166,7 @@ impl Renderer {
             caret_pipeline,
             editor_cursor_overlay_pipeline,
             editor_scissor: None,
-            editor_overlay_text_system: make_text_system(editor_metrics, font_family.as_deref()),
+            editor_overlay_text_system,
             editor_overlay_text_pipeline,
             editor_overlay_glyph_instances: Vec::new(),
             editor_overlay_chrome_instances: Vec::new(),

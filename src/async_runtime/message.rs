@@ -17,6 +17,7 @@ pub enum RequestTopic {
     LspRequest,
     FzfSearch,
     FilePreview,
+    AiInlineCompletion,
 }
 
 /// Which search mode the fzf worker is running.
@@ -220,6 +221,17 @@ pub enum WorkerRequestPayload {
         prefix_start_col: usize,
         prefix: String,
     },
+    AiInlineCompletionRequest {
+        api_url: String,
+        api_key: Option<String>,
+        model: String,
+        endpoint_kind: Option<String>,
+        prefix: String,
+        suffix: String,
+        language_id: Option<String>,
+        file_path: Option<PathBuf>,
+        max_tokens: u32,
+    },
     StopLspServer,
     ShutdownAllLspServers,
 }
@@ -419,6 +431,9 @@ pub enum WorkerResultPayload {
         file_path: PathBuf,
         target_line: Option<usize>,
         lines: Vec<FilePreviewLine>,
+    },
+    AiInlineCompletionResult {
+        suggestion: String,
     },
 }
 

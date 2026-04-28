@@ -612,6 +612,18 @@ impl AppShell {
         command: Command,
         repeat_count: usize,
     ) -> bool {
+        let is_insert_typing = matches!(
+            command,
+            Command::InsertChar(_)
+                | Command::InsertText(_)
+                | Command::Backspace
+                | Command::Newline
+                | Command::InsertTab
+        ) && self.app_state.current_mode() == EditorMode::Insert;
+        if is_insert_typing {
+            let _ = self.app_state.clear_inline_suggestion();
+            self.pending_ai_inline_request = None;
+        }
         if matches!(command, Command::TerminalPaste) {
             return self.handle_terminal_paste();
         }
@@ -832,6 +844,17 @@ impl AppShell {
             Command::CompletionPrev => self.select_prev_completion_item(),
             Command::CompletionAccept => self.accept_completion_item(),
             Command::CompletionClose => self.close_completion_popup(),
+            Command::AiAcceptInline => {
+                let report = dispatch_command(&mut self.app_state, command);
+                if report.state_changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    self.queue_lsp_did_change_for_active_file();
+                    self.pending_parse_after_debounce = true;
+                    self.last_parse_submit_at = Some(Instant::now());
+                }
+                report.request_redraw || report.state_changed
+            }
             Command::DiagnosticsOpenPicker => self.open_diagnostics_picker(),
             Command::ReferencesSelectNext => self.select_next_reference_item(),
             Command::ReferencesSelectPrev => self.select_prev_reference_item(),
@@ -1069,6 +1092,9 @@ impl AppShell {
                     let viewport_lines = self.editor_viewport_lines();
                     self.app_state.auto_scroll_to_cursor(viewport_lines);
                     self.queue_lsp_did_change_for_active_file();
+                    self.pending_parse_after_debounce = true;
+                    self.last_parse_submit_at = Some(Instant::now());
+                    self.queue_ai_inline_completion();
                 }
                 let completion_changed = if report.state_changed {
                     self.refresh_open_completion_after_text_edit()

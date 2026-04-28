@@ -81,7 +81,7 @@ command = "editor.newline"
 [[bindings]]
 mode = "insert"
 key = "Tab"
-command = "editor.insert_tab"
+command = "ai.accept_inline"
 
 [[bindings]]
 mode = "insert"
@@ -111,7 +111,7 @@ command = "editor.paste"
 [[bindings]]
 mode = "insert"
 key = "Ctrl+j"
-command = "line.move_down"
+command = "ai.accept_inline"
 
 [[bindings]]
 mode = "insert"

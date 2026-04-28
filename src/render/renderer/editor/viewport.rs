@@ -179,6 +179,7 @@ impl Renderer {
 
         self.text_pipeline
             .upload_instances(&self.device, &self.queue, &self.glyph_instances);
+        self.render_inline_suggestion(app_state, geometry.origin_x, geometry.origin_y, width);
         self.update_editor_gutter(
             app_state,
             center_bounds,
@@ -243,6 +244,79 @@ impl Renderer {
             geometry.font_size,
             app_state.total_lines().max(1).to_string().len().max(3),
             geometry.gutter_width,
+        );
+        self.render_inline_suggestion(app_state, geometry.origin_x, geometry.origin_y, geometry.viewport_text_width);
+    }
+
+    fn render_inline_suggestion(
+        &mut self,
+        app_state: &AppState,
+        origin_x: f32,
+        origin_y: f32,
+        width: f32,
+    ) {
+        self.editor_overlay_glyph_instances.clear();
+        self.editor_overlay_scissor = self.editor_scissor;
+        let Some(suggestion) = app_state.inline_suggestion() else {
+            self.editor_overlay_text_pipeline
+                .upload_instances(&self.device, &self.queue, &[]);
+            return;
+        };
+        let first_line = suggestion.lines().next().unwrap_or_default();
+        if first_line.is_empty() {
+            self.editor_overlay_text_pipeline
+                .upload_instances(&self.device, &self.queue, &[]);
+            return;
+        }
+
+        self.editor_overlay_text_system
+            .set_metrics(Metrics::new(self.theme.editor.font_size, self.theme.editor.line_height));
+        self.editor_overlay_text_system.set_size(Some(width), None);
+        let color = crate::config::theme_config::linear_rgba_to_srgb_u8(self.theme.ui.fg_ghost.as_f32());
+        self.editor_overlay_text_system
+            .set_text_with_color(first_line, color);
+
+        let caret = compute_caret_layout(&self.text_system, app_state, [origin_x, origin_y]);
+        let glyphs = self.editor_overlay_text_system.collect_visible_glyphs(
+            caret.x,
+            caret.top,
+            self.theme.ui.fg_ghost.as_f32(),
+        );
+        let mut instances = Vec::with_capacity(glyphs.len());
+        for glyph in glyphs {
+            let entry = if let Some(entry) = self.atlas.get(glyph.cache_key) {
+                entry
+            } else {
+                let Some(rasterized) = crate::text::raster::rasterize_glyph_alpha(
+                    &mut self.editor_overlay_text_system,
+                    glyph.cache_key,
+                ) else {
+                    continue;
+                };
+                let Ok(entry) = self.atlas.get_or_insert(&self.queue, glyph.cache_key, &rasterized) else {
+                    continue;
+                };
+                entry
+            };
+            if entry.region.width == 0 || entry.region.height == 0 {
+                continue;
+            }
+            let (uv_min, uv_max) = self.atlas.uv_min_max(entry.region);
+            let top_left_x = glyph.physical_x + entry.placement_left;
+            let top_left_y = glyph.physical_y - entry.placement_top;
+            instances.push(GlyphInstance::new(
+                [top_left_x as f32, top_left_y as f32],
+                [entry.region.width as f32, entry.region.height as f32],
+                uv_min,
+                uv_max,
+                glyph.color,
+            ));
+        }
+        self.editor_overlay_glyph_instances = instances;
+        self.editor_overlay_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.editor_overlay_glyph_instances,
         );
     }
 }

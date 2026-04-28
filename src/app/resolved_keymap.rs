@@ -555,11 +555,13 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("insert"), nk(NamedKey::Escape), ENTER_NORMAL);
     km.insert(Some("insert"), nk(NamedKey::Backspace), BACKSPACE);
     km.insert(Some("insert"), nk(NamedKey::Enter), NEWLINE);
+    km.insert(Some("insert"), nk(NamedKey::Tab), AI_ACCEPT_INLINE);
     km.insert(Some("insert"), nk(NamedKey::ArrowLeft), MOVE_LEFT);
     km.insert(Some("insert"), nk(NamedKey::ArrowRight), MOVE_RIGHT);
     km.insert(Some("insert"), nk(NamedKey::ArrowUp), MOVE_UP);
     km.insert(Some("insert"), nk(NamedKey::ArrowDown), MOVE_DOWN);
     km.insert(Some("insert"), mp(KeyCode::KeyV), EDITOR_PASTE);
+    km.insert(Some("insert"), KeySpec::CtrlPlus(KeyCode::KeyJ), AI_ACCEPT_INLINE);
 
     // ── Normal mode ───────────────────────────────────────────────────────────
     km.insert(

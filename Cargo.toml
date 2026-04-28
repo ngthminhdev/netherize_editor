@@ -22,6 +22,7 @@ toml = "0.8"
 swash = "0.2.7"
 sysinfo = "0.37.2"
 tokio = { version = "1.52.1", features = ["io-util", "rt-multi-thread", "sync", "time", "process"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 tree-sitter = "0.25.8"
 tree-sitter-bash = "0.25.1"
 tree-sitter-dockerfile = "0.2.0"

@@ -63,6 +63,7 @@ impl AppShell {
 
         let mut base_theme =
             ThemeConfig::load_preferred(persistent_state.configured_theme_profile());
+        let ai_config = AiConfig::load();
         let ui_config = UiConfig::load_active();
         // Sync explicitly user-set editor metrics from ui.toml → base_theme so that
         // apply_scaled_runtime_config() renders with the persisted values, not the
@@ -128,6 +129,7 @@ impl AppShell {
             base_theme,
             theme,
             ui_config,
+            ai_config,
             runtime_scale: 0.0,
             layout_engine,
             panel_state,
@@ -152,6 +154,8 @@ impl AppShell {
             active_highlight_request_revision: 0,
             fzf_search_revision: 0,
             pending_parse_after_debounce: false,
+            ai_inline_revision: 0,
+            pending_ai_inline_request: None,
             pending_lsp_document_sync: None,
             last_editor_bounds: None,
             last_show_welcome: None,
@@ -729,6 +733,83 @@ impl AppShell {
         // hint would describe only one of them — discard it and do a full reparse.
         self.last_syntax_edit_hint = None;
         self.submit_parse_for_active_buffer(true);
+    }
+
+    pub(super) fn queue_ai_inline_completion(&mut self) {
+        if self.app_state.current_mode() != EditorMode::Insert {
+            self.pending_ai_inline_request = None;
+            return;
+        }
+        if self.app_state.active_buffer_is_terminal() || self.app_state.active_file().is_none() {
+            self.pending_ai_inline_request = None;
+            return;
+        }
+        if self.ai_config.inline_completion().is_none() {
+            self.pending_ai_inline_request = None;
+            return;
+        }
+        self.ai_inline_revision = self.ai_inline_revision.saturating_add(1);
+        self.pending_ai_inline_request = Some(PendingAiInlineRequest {
+            revision: self.ai_inline_revision,
+            queued_at: Instant::now(),
+        });
+    }
+
+    pub(super) fn flush_pending_ai_inline_completion(&mut self) {
+        let Some(pending) = self.pending_ai_inline_request.as_ref() else {
+            return;
+        };
+        let Some(cfg) = self.ai_config.inline_completion().cloned() else {
+            self.pending_ai_inline_request = None;
+            return;
+        };
+        if pending.queued_at.elapsed() < Duration::from_millis(cfg.debounce_ms()) {
+            return;
+        }
+        let revision = pending.revision;
+        self.pending_ai_inline_request = None;
+        let api_url = cfg.provider.api_url.clone();
+        let api_key = cfg.provider.api_key.clone();
+        let model = cfg.provider.model.clone();
+        let endpoint_kind = cfg.provider.endpoint_kind.clone();
+        let max_tokens = cfg.max_tokens();
+
+        let text = self.app_state.text_string();
+        let cursor = self.app_state.cursor_char_idx();
+        let prefix_take = cfg.prefix_chars();
+        let suffix_take = cfg.suffix_chars();
+        let prefix: String = text.chars().take(cursor).collect();
+        let suffix: String = text.chars().skip(cursor).take(suffix_take).collect();
+        let prefix_chars: Vec<char> = prefix.chars().collect();
+        let prefix = prefix_chars
+            .iter()
+            .skip(prefix_chars.len().saturating_sub(prefix_take))
+            .collect::<String>();
+        if prefix.trim().is_empty() && suffix.trim().is_empty() {
+            return;
+        }
+        let language_id = self.app_state.active_file().map(language_id_for_path);
+        self.submit(RequestSpec {
+            revision_id: revision,
+            topic: RequestTopic::AiInlineCompletion,
+            payload: WorkerRequestPayload::AiInlineCompletionRequest {
+                api_url,
+                api_key,
+                model,
+                endpoint_kind,
+                prefix,
+                suffix,
+                language_id,
+                file_path: self.app_state.active_file().map(PathBuf::from),
+                max_tokens,
+            },
+        });
+    }
+
+    pub(super) fn next_ai_inline_flush_deadline(&self) -> Option<Instant> {
+        let pending = self.pending_ai_inline_request.as_ref()?;
+        let cfg = self.ai_config.inline_completion()?;
+        Some(pending.queued_at + Duration::from_millis(cfg.debounce_ms()))
     }
 
     pub(super) fn submit_active_palette_fzf_search(&mut self) {

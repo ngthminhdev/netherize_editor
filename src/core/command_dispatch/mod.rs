@@ -306,6 +306,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::CompletionPrev
         | Command::CompletionAccept
         | Command::CompletionClose
+        | Command::AiAcceptInline
         | Command::ReferencesSelectNext
         | Command::ReferencesSelectPrev
         | Command::ReferencesOpenSelection
