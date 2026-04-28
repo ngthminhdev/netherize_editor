@@ -7,6 +7,7 @@ use crate::{
     },
 };
 
+use super::super::components::{estimate_help_keycaps_width, layout_help_keycaps};
 use super::super::helpers::{
     clamp_monospace_text, estimate_monospace_width, ext_icon_dot, gutter_width_for_editor,
     layout_panel_text, layout_panel_text_bold, rect_to_scissor,
@@ -15,10 +16,262 @@ use super::super::helpers::{
 impl Renderer {
     // ── Minimalist palette (Command / Symbol / VimCommand) ─────────────────────
 
+    fn render_confirmation_palette(&mut self, model: &CommandPaletteRenderModel) {
+        let [panel_x, panel_y, panel_w, panel_h] = model.panel_bounds;
+        self.palette_scissor = rect_to_scissor(model.panel_bounds);
+
+        let inner_width = (panel_w - model.panel_padding * 2.0).max(1.0);
+        self.palette_text_system
+            .set_size(Some(inner_width), Some(model.line_height));
+
+        let mut quads: Vec<RegionDrawInstance> = Vec::new();
+        let mut glyphs: Vec<GlyphInstance> = Vec::new();
+
+        let font_size = self.theme.ui.sidebar_font_size;
+        let line_h = model.line_height.max(18.0);
+        let text_x = panel_x + model.panel_padding + 10.0;
+        let mut row_top = panel_y + model.panel_padding;
+
+        let mut danger = model.warning_color;
+        danger[3] = 0.98;
+        let mut danger_border = model.warning_color;
+        danger_border[3] = 0.85;
+        let mut frame_border = model.border_color;
+        frame_border[3] = frame_border[3].max(0.95);
+        let mut inner_panel = model.panel_bg;
+        inner_panel[3] = inner_panel[3].max(0.98);
+        let mut hairline = model.border_color;
+        hairline[3] *= 0.45;
+        let mut subdued = model.hint_color;
+        subdued[3] = subdued[3].max(0.82);
+
+        let prompt = model.prompt_query.trim();
+        let body_text = prompt
+            .strip_suffix("(y/n)")
+            .map(str::trim_end)
+            .unwrap_or(prompt)
+            .trim_end_matches('?')
+            .trim();
+
+        let (action_label, subject_label, descriptor) =
+            if let Some(rest) = body_text.strip_prefix("Delete ") {
+                (
+                    "DELETE",
+                    rest.trim(),
+                    "This action removes the selected item immediately.",
+                )
+            } else if let Some(rest) = body_text.strip_prefix("Save changes to ") {
+                (
+                    "SAVE BEFORE CLOSE",
+                    rest.trim_end_matches(" before closing").trim(),
+                    "Confirm whether to save your edits before closing the buffer.",
+                )
+            } else {
+                (model.title.as_str(), body_text, "Confirm this action.")
+            };
+
+        quads.push(RegionDrawInstance::new(
+            model.overlay_bounds,
+            model.scrim_color,
+        ));
+        quads.push(
+            RegionDrawInstance::new(
+                [panel_x - 1.0, panel_y - 1.0, panel_w + 2.0, panel_h + 2.0],
+                frame_border,
+            )
+            .with_radius(18.0),
+        );
+        quads.push(RegionDrawInstance::new(model.panel_bounds, inner_panel).with_radius(17.0));
+
+        let header_h = (line_h + 14.0).max(30.0);
+        let badge_text = format!(" {} ", action_label);
+        let badge_w = badge_text.chars().count() as f32 * font_size * 0.60 + 20.0;
+        quads.push(
+            RegionDrawInstance::new([text_x, row_top, badge_w, header_h], danger_border)
+                .with_radius(header_h * 0.42),
+        );
+        quads.push(
+            RegionDrawInstance::new(
+                [
+                    text_x + 1.0,
+                    row_top + 1.0,
+                    (badge_w - 2.0).max(1.0),
+                    (header_h - 2.0).max(1.0),
+                ],
+                danger,
+            )
+            .with_radius((header_h * 0.42 - 1.0).max(4.0)),
+        );
+        glyphs.extend(layout_panel_text_bold(
+            &badge_text,
+            &mut self.palette_text_system,
+            &mut self.atlas,
+            &self.queue,
+            text_x + 8.0,
+            row_top + ((header_h - line_h) * 0.5).max(0.0),
+            self.theme.ui.bg.as_f32(),
+        ));
+
+        let prompt_prefix_x = text_x + badge_w + 14.0;
+        glyphs.extend(layout_panel_text(
+            &model.prompt_prefix,
+            &mut self.palette_text_system,
+            &mut self.atlas,
+            &self.queue,
+            prompt_prefix_x,
+            row_top + ((header_h - line_h) * 0.5).max(0.0),
+            subdued,
+        ));
+
+        row_top += header_h + 14.0;
+        quads.push(RegionDrawInstance::new(
+            [text_x, row_top, inner_width - 20.0, 1.0],
+            hairline,
+        ));
+        row_top += 14.0;
+
+        glyphs.extend(layout_panel_text(
+            descriptor,
+            &mut self.palette_text_system,
+            &mut self.atlas,
+            &self.queue,
+            text_x,
+            row_top,
+            model.hint_color,
+        ));
+        row_top += line_h + 4.0;
+
+        let filename_text = format!("“{subject_label}”");
+        let filename_w = estimate_monospace_width(&filename_text, font_size);
+        let filename_chip_w = (filename_w + 28.0).min(inner_width - 20.0).max(160.0);
+        let filename_chip_h = line_h + 16.0;
+        quads.push(
+            RegionDrawInstance::new(
+                [text_x, row_top, filename_chip_w, filename_chip_h],
+                frame_border,
+            )
+            .with_radius(12.0),
+        );
+        let mut filename_fill = model.selection_bg;
+        filename_fill[3] = 0.40;
+        quads.push(
+            RegionDrawInstance::new(
+                [
+                    text_x + 1.0,
+                    row_top + 1.0,
+                    (filename_chip_w - 2.0).max(1.0),
+                    (filename_chip_h - 2.0).max(1.0),
+                ],
+                filename_fill,
+            )
+            .with_radius(11.0),
+        );
+        glyphs.extend(layout_panel_text_bold(
+            &filename_text,
+            &mut self.palette_text_system,
+            &mut self.atlas,
+            &self.queue,
+            text_x + 14.0,
+            row_top + ((filename_chip_h - line_h) * 0.5).max(0.0),
+            model.text_color,
+        ));
+
+        let content_bottom_y = row_top + filename_chip_h;
+        let footer_y =
+            (panel_y + panel_h - model.panel_padding - line_h - 18.0).max(content_bottom_y + 20.0);
+        quads.push(RegionDrawInstance::new(
+            [text_x, footer_y - 12.0, inner_width - 20.0, 1.0],
+            hairline,
+        ));
+
+        glyphs.extend(layout_panel_text(
+            "Choose with the keyboard:",
+            &mut self.palette_text_system,
+            &mut self.atlas,
+            &self.queue,
+            text_x,
+            footer_y,
+            model.hint_color,
+        ));
+
+        let yes_x =
+            text_x + estimate_monospace_width("Choose with the keyboard:", font_size) + 18.0;
+        glyphs.extend(layout_help_keycaps(
+            &["Y"],
+            &mut self.palette_text_system,
+            &mut self.atlas,
+            &self.queue,
+            &mut quads,
+            yes_x,
+            footer_y - 10.0,
+            font_size * 0.88,
+            line_h + 20.0,
+            model.text_color,
+            model.label_color,
+            model.match_color,
+            model.info_color,
+            model.warning_color,
+            model.warning_color,
+            inner_panel,
+        ));
+        let yes_w = estimate_help_keycaps_width(&["Y"], font_size * 0.88);
+        glyphs.extend(layout_panel_text(
+            "confirm",
+            &mut self.palette_text_system,
+            &mut self.atlas,
+            &self.queue,
+            yes_x + yes_w + 10.0,
+            footer_y,
+            model.label_color,
+        ));
+
+        let no_x = yes_x + yes_w + estimate_monospace_width("confirm", font_size) + 42.0;
+        glyphs.extend(layout_help_keycaps(
+            &["N"],
+            &mut self.palette_text_system,
+            &mut self.atlas,
+            &self.queue,
+            &mut quads,
+            no_x,
+            footer_y - 10.0,
+            font_size * 0.88,
+            line_h + 20.0,
+            model.text_color,
+            model.label_color,
+            model.match_color,
+            model.info_color,
+            model.warning_color,
+            model.warning_color,
+            inner_panel,
+        ));
+        let no_w = estimate_help_keycaps_width(&["N"], font_size * 0.88);
+        glyphs.extend(layout_panel_text(
+            "cancel",
+            &mut self.palette_text_system,
+            &mut self.atlas,
+            &self.queue,
+            no_x + no_w + 10.0,
+            footer_y,
+            model.label_color,
+        ));
+
+        self.palette_chrome_instances = quads;
+        self.palette_glyph_instances = glyphs;
+    }
+
     /// Single-line input box, TRUE center of screen.
     /// Results rendered below prompt with subtle row separators.
     /// VimCommand mode: prompt only, no results, no separator.
     pub(super) fn render_command_palette_minimalist(&mut self, model: &CommandPaletteRenderModel) {
+        if matches!(
+            model.mode,
+            crate::app::command_palette::CommandPaletteMode::ExplorerDeleteConfirm
+                | crate::app::command_palette::CommandPaletteMode::BufferCloseConfirm
+        ) {
+            self.render_confirmation_palette(model);
+            return;
+        }
+
         let [panel_x, panel_y, panel_w, panel_h] = model.panel_bounds;
         self.palette_scissor = rect_to_scissor(model.panel_bounds);
 
