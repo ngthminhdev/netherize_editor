@@ -16,7 +16,6 @@ impl AppState {
                     let image = load_image_buffer(&canonical_path);
                     self.buffers.push(BufferEntry {
                         content: BufferContent::Image(image),
-                        git_diff: None,
                     });
                     self.buffers.len().saturating_sub(1)
                 }
@@ -34,11 +33,10 @@ impl AppState {
             Some(idx) => idx,
             None => {
                 self.buffers.push(BufferEntry {
-                    content: BufferContent::Text(EditorBuffer {
-                        path: canonical_path.clone(),
+                    content: BufferContent::Text(EditorBuffer::new(
+                        canonical_path.clone(),
                         language_id,
-                    }),
-                    git_diff: None,
+                    )),
                 });
                 self.buffers.len().saturating_sub(1)
             }

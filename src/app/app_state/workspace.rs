@@ -70,19 +70,138 @@ impl AppState {
             .is_some_and(|model| model.set_git_statuses(statuses))
     }
 
-    pub fn set_buffer_git_diff(&mut self, path: &Path, diff: Option<BufferGitDiff>) -> bool {
+    pub fn set_buffer_git_baseline(&mut self, path: &Path, baseline: Option<String>) -> bool {
         let Some(index) = self.buffers.iter().position(
             |buffer| matches!(&buffer.content, BufferContent::Text(text) if text.path == path),
         ) else {
             return false;
         };
-        if self.buffers[index].git_diff == diff {
+        let BufferContent::Text(buffer) = &mut self.buffers[index].content else {
+            return false;
+        };
+        if buffer.git_baseline == baseline {
             return false;
         }
-        self.buffers[index].git_diff = diff;
+        buffer.git_baseline = baseline;
         true
     }
 
+    pub fn recalculate_active_buffer_git_diff(&mut self) -> bool {
+        let Some(idx) = self.active_buffer_index else {
+            return false;
+        };
+        let Some(entry) = self.buffers.get_mut(idx) else {
+            return false;
+        };
+        let BufferContent::Text(buffer) = &mut entry.content else {
+            return false;
+        };
+        let current_text = self.text.to_string();
+        recalculate_git_diff(buffer, &current_text)
+    }
+}
+
+pub fn recalculate_git_diff(buffer: &mut EditorBuffer, current_text: &str) -> bool {
+    let Some(baseline) = buffer.git_baseline.as_deref() else {
+        if buffer.git_line_statuses.is_empty() {
+            return false;
+        }
+        buffer.git_line_statuses.clear();
+        return true;
+    };
+
+    let new_statuses = compute_git_line_statuses(baseline, current_text);
+    if buffer.git_line_statuses == new_statuses {
+        return false;
+    }
+    buffer.git_line_statuses = new_statuses;
+    true
+}
+
+fn compute_git_line_statuses(baseline: &str, current: &str) -> HashMap<usize, GitLineStatus> {
+    use similar::{ChangeTag, TextDiff};
+
+    let diff = TextDiff::from_lines(baseline, current);
+    let mut statuses: HashMap<usize, GitLineStatus> = HashMap::new();
+
+    let mut in_delete_block = false;
+    let mut in_modify_block = false;
+    let mut last_new_idx: usize = 0;
+
+    for change in diff.iter_all_changes() {
+        match change.tag() {
+            ChangeTag::Equal => {
+                if in_delete_block && !in_modify_block {
+                    if let Some(idx) = change.new_index() {
+                        statuses.entry(idx).or_insert(GitLineStatus::DeletedAbove);
+                    }
+                }
+                in_delete_block = false;
+                in_modify_block = false;
+                if let Some(idx) = change.new_index() {
+                    last_new_idx = idx;
+                }
+            }
+            ChangeTag::Delete => {
+                in_delete_block = true;
+            }
+            ChangeTag::Insert => {
+                let idx = change.new_index().unwrap_or(last_new_idx + 1);
+                last_new_idx = idx;
+                if in_delete_block {
+                    in_modify_block = true;
+                    statuses.insert(idx, GitLineStatus::Modified);
+                } else {
+                    statuses.entry(idx).or_insert(GitLineStatus::Added);
+                }
+            }
+        }
+    }
+
+    // Trailing deletion at end of file
+    if in_delete_block && !in_modify_block {
+        statuses
+            .entry(last_new_idx)
+            .or_insert(GitLineStatus::DeletedBelow);
+    }
+
+    statuses
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GitLineStatus, compute_git_line_statuses};
+
+    #[test]
+    fn git_line_statuses_use_new_buffer_indexes_for_inserts() {
+        let statuses = compute_git_line_statuses("a\nb\n", "a\n\nb\n");
+
+        assert!(matches!(statuses.get(&1), Some(GitLineStatus::Added)));
+        assert!(!statuses.contains_key(&2));
+    }
+
+    #[test]
+    fn git_line_statuses_mark_replacement_as_modified() {
+        let statuses = compute_git_line_statuses("a\nold\nc\n", "a\nnew\nc\n");
+
+        assert!(matches!(statuses.get(&1), Some(GitLineStatus::Modified)));
+    }
+
+    #[test]
+    fn git_line_statuses_anchor_deleted_lines_to_current_buffer() {
+        let middle = compute_git_line_statuses("a\nremoved\nc\n", "a\nc\n");
+        assert!(matches!(middle.get(&1), Some(GitLineStatus::DeletedAbove)));
+
+        let trailing = compute_git_line_statuses("a\nremoved\n", "a\n");
+        assert!(matches!(
+            trailing.get(&0),
+            Some(GitLineStatus::DeletedBelow)
+        ));
+    }
+}
+
+// Re-open impl block for workspace methods that follow
+impl AppState {
     pub fn workspace_selected_path(&self) -> Option<&Path> {
         self.workspace_model
             .as_ref()

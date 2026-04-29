@@ -506,17 +506,12 @@ impl AppState {
     pub fn set_file_diagnostics(&mut self, path: PathBuf, diagnostics: Vec<LspDiagnostic>) -> bool {
         let normalized = path.canonicalize().unwrap_or(path);
         if diagnostics.is_empty() {
-            let removed = self.diagnostics.remove(&normalized).is_some();
-            if removed {
-                self.bump_revision();
-            }
-            return removed;
+            return self.diagnostics.remove(&normalized).is_some();
         }
 
         let changed = self.diagnostics.get(&normalized) != Some(&diagnostics);
         if changed {
             self.diagnostics.insert(normalized, diagnostics);
-            self.bump_revision();
         }
         changed
     }
@@ -535,7 +530,6 @@ impl AppState {
                 preview_text: String::new(),
                 preview_spans: Vec::new(),
             }),
-            git_diff: None,
         });
 
         let index = self.buffers.len().saturating_sub(1);
@@ -697,7 +691,6 @@ impl AppState {
                 title: title.into(),
                 working_dir,
             }),
-            git_diff: None,
         });
         let index = self.buffers.len().saturating_sub(1);
         self.active_buffer_index = Some(index);
@@ -713,7 +706,6 @@ impl AppState {
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::Help(HelpState::new()),
-            git_diff: None,
         });
         let index = self.buffers.len().saturating_sub(1);
         self.reset_text_editor_state();
@@ -749,7 +741,6 @@ impl AppState {
                 status_message: None,
                 pending_request_id: None,
             }),
-            git_diff: None,
         });
 
         let index = self.buffers.len().saturating_sub(1);
@@ -782,7 +773,6 @@ impl AppState {
                 status_message: Some("Loading references...".to_string()),
                 pending_request_id: Some(pending_request_id),
             }),
-            git_diff: None,
         });
 
         let index = self.buffers.len().saturating_sub(1);
@@ -870,7 +860,6 @@ impl AppState {
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::FuzzyPicker(state),
-            git_diff: None,
         });
 
         let index = self.buffers.len().saturating_sub(1);
@@ -924,7 +913,6 @@ impl AppState {
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::SettingsTab(state),
-            git_diff: None,
         });
 
         let index = self.buffers.len().saturating_sub(1);

@@ -474,9 +474,9 @@ impl AppState {
         }
     }
 
-    pub fn active_buffer_git_diff(&self) -> Option<&BufferGitDiff> {
-        self.active_buffer()
-            .and_then(|buffer| buffer.git_diff.as_ref())
+    pub fn active_buffer_git_line_statuses(&self) -> Option<&HashMap<usize, GitLineStatus>> {
+        self.active_text_buffer()
+            .map(|buffer| &buffer.git_line_statuses)
     }
 
     pub fn active_buffer_is_terminal(&self) -> bool {

@@ -87,6 +87,7 @@ modified_sidebar = "#E2C08D"
 added_sidebar = "#7FD68C"
 modified_gutter = "#E2C08D"
 added_gutter = "#50D890"
+deleted_gutter = "#F14C4C"
 status_bar_height = 32.0
 
 # Disclosure markers and file-picker bullet glyph.

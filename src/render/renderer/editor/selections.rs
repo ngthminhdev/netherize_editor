@@ -497,27 +497,35 @@ impl Renderer {
                 ));
             }
 
-            if let Some(diff_kind) = app_state
-                .active_buffer_git_diff()
-                .and_then(|diff| {
-                    diff.ranges
-                        .iter()
-                        .find(|range| abs_line >= range.start_line && abs_line <= range.end_line)
-                })
-                .map(|range| range.kind)
+            if let Some(status) = app_state
+                .active_buffer_git_line_statuses()
+                .and_then(|statuses| statuses.get(&abs_line))
             {
-                let diff_color = match diff_kind {
-                    crate::app::app_state::GitDiffKind::Added => {
-                        self.theme.git.added_gutter.as_f32()
-                    }
-                    crate::app::app_state::GitDiffKind::Modified => {
-                        self.theme.git.modified_gutter.as_f32()
-                    }
+                let marker_height = run.line_height.max(1.0);
+                let (rect, color) = match status {
+                    crate::app::app_state::GitLineStatus::Added => (
+                        [gutter_x + 2.0, line_top_y, 3.0, marker_height],
+                        self.theme.git.added_gutter.as_f32(),
+                    ),
+                    crate::app::app_state::GitLineStatus::Modified => (
+                        [gutter_x + 2.0, line_top_y, 3.0, marker_height],
+                        self.theme.git.modified_gutter.as_f32(),
+                    ),
+                    crate::app::app_state::GitLineStatus::DeletedAbove => (
+                        [gutter_x + 1.0, line_top_y, 4.0, 2.0],
+                        self.theme.git.deleted_gutter.as_f32(),
+                    ),
+                    crate::app::app_state::GitLineStatus::DeletedBelow => (
+                        [
+                            gutter_x + 1.0,
+                            line_top_y + (marker_height - 2.0).max(0.0),
+                            4.0,
+                            2.0,
+                        ],
+                        self.theme.git.deleted_gutter.as_f32(),
+                    ),
                 };
-                quads.push(RegionDrawInstance::new(
-                    [gutter_x + 2.0, line_top_y, 3.0, run.line_height.max(1.0)],
-                    diff_color,
-                ));
+                quads.push(RegionDrawInstance::new(rect, color));
             }
 
             let num_str = if self.relative_numbers {

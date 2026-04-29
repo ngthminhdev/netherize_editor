@@ -23,6 +23,7 @@ pub(in crate::config::theme_config) struct RawGit {
     pub(in crate::config::theme_config) added_sidebar: Option<String>,
     pub(in crate::config::theme_config) modified_gutter: Option<String>,
     pub(in crate::config::theme_config) added_gutter: Option<String>,
+    pub(in crate::config::theme_config) deleted_gutter: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]

@@ -525,10 +525,36 @@ impl WorkspaceModel {
     }
 
     pub fn set_git_statuses(&mut self, statuses: HashMap<PathBuf, WorkspaceGitStatus>) -> bool {
-        if self.git_statuses == statuses {
+        let mut with_parents: HashMap<PathBuf, WorkspaceGitStatus> = HashMap::new();
+        for (path, status) in statuses {
+            with_parents.insert(path.clone(), status);
+
+            let mut current = path.parent();
+            while let Some(parent) = current {
+                if !parent.starts_with(&self.root_path) {
+                    break;
+                }
+                with_parents
+                    .entry(parent.to_path_buf())
+                    .and_modify(|existing| {
+                        if matches!(*existing, WorkspaceGitStatus::Added)
+                            && matches!(status, WorkspaceGitStatus::Modified)
+                        {
+                            *existing = WorkspaceGitStatus::Modified;
+                        }
+                    })
+                    .or_insert(status);
+                if parent == self.root_path {
+                    break;
+                }
+                current = parent.parent();
+            }
+        }
+
+        if self.git_statuses == with_parents {
             return false;
         }
-        self.git_statuses = statuses;
+        self.git_statuses = with_parents;
         true
     }
 

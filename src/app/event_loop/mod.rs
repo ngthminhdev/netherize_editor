@@ -136,6 +136,7 @@ pub struct AppShell {
     accumulated_frame_count: u32,
     current_fps_metrics: String,
     last_parse_submit_at: Option<Instant>,
+    last_git_diff_recalc_at: Option<Instant>,
     /// Edit hint for the next incremental tree-sitter parse.
     /// Set to `Some` when exactly one edit occurred since the last reconcile.
     /// Set to `None` when multiple edits accumulated (debounced typing, undo/redo,
@@ -145,6 +146,7 @@ pub struct AppShell {
     fzf_search_revision: u64,
     local_history_revision: u64,
     pending_parse_after_debounce: bool,
+    pending_git_diff_after_debounce: bool,
     ai_inline_revision: u64,
     pending_ai_inline_request: Option<PendingAiInlineRequest>,
     pending_lsp_document_sync: Option<PendingLspDocumentSync>,
@@ -166,6 +168,7 @@ pub struct AppShell {
 
 const DEBUG_UI_ENABLED: bool = false;
 const PARSE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(80);
+const GIT_DIFF_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(80);
 const LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(500);
 const FPS_METRICS_UPDATE_INTERVAL: Duration = Duration::from_millis(500);
 const GIT_BRANCH_REFRESH_INTERVAL: Duration = Duration::from_millis(750);

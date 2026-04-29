@@ -210,6 +210,7 @@ pub struct GitThemeTokens {
     pub added_sidebar: ThemeColor,
     pub modified_gutter: ThemeColor,
     pub added_gutter: ThemeColor,
+    pub deleted_gutter: ThemeColor,
 }
 
 #[derive(Debug, Clone)]

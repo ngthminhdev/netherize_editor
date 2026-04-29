@@ -498,14 +498,16 @@ fn collect_visible_explorer_entries(
             is_expanded,
             name: name.to_string(),
             git_status: {
-                    let is_dirty = app_state.active_file() == Some(child)
-                        && app_state.is_dirty();
-                    if is_dirty {
-                        Some(WorkspaceGitStatus::Dirty)
-                    } else {
-                        app_state.workspace_git_status(child)
-                    }
-                },
+                let is_dirty_path = app_state.is_dirty()
+                    && app_state
+                        .active_file()
+                        .is_some_and(|active| active.starts_with(child));
+                if is_dirty_path {
+                    Some(WorkspaceGitStatus::Dirty)
+                } else {
+                    app_state.workspace_git_status(child)
+                }
+            },
         });
 
         if file_type == WorkspaceNodeType::Folder && is_expanded {

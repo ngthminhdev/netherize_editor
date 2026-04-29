@@ -10,19 +10,6 @@ pub enum GitFileStatus {
     Added,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GitDiffKind {
-    Added,
-    Modified,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GitDiffRange {
-    pub start_line: usize,
-    pub end_line: usize,
-    pub kind: GitDiffKind,
-}
-
 /// Topic giúp app biết result thuộc subsystem nào để so revision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RequestTopic {
@@ -191,10 +178,9 @@ pub enum WorkerRequestPayload {
     RefreshWorkspaceGitStatus {
         workspace_root: PathBuf,
     },
-    ComputeBufferGitDiff {
+    FetchGitBaseline {
         workspace_root: PathBuf,
         file_path: PathBuf,
-        text_snapshot: String,
     },
     LoadFilePreview {
         file_path: PathBuf,
@@ -476,9 +462,9 @@ pub enum WorkerResultPayload {
         workspace_root: PathBuf,
         statuses: Vec<(PathBuf, GitFileStatus)>,
     },
-    BufferGitDiff {
+    BufferGitBaseline {
         file_path: PathBuf,
-        ranges: Vec<GitDiffRange>,
+        baseline: Option<String>,
     },
     FilePreviewLoaded {
         file_path: PathBuf,

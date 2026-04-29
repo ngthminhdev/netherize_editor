@@ -77,24 +77,27 @@ pub enum ClipboardRecordKind {
 pub struct EditorBuffer {
     pub path: PathBuf,
     pub language_id: Option<String>,
+    pub git_baseline: Option<String>,
+    pub git_line_statuses: HashMap<usize, GitLineStatus>,
+}
+
+impl EditorBuffer {
+    pub fn new(path: PathBuf, language_id: Option<String>) -> Self {
+        Self {
+            path,
+            language_id,
+            git_baseline: None,
+            git_line_statuses: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GitDiffKind {
+pub enum GitLineStatus {
     Added,
     Modified,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GitDiffRange {
-    pub start_line: usize,
-    pub end_line: usize,
-    pub kind: GitDiffKind,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct BufferGitDiff {
-    pub ranges: Vec<GitDiffRange>,
+    DeletedAbove,
+    DeletedBelow,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -610,7 +613,6 @@ pub enum BufferContent {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BufferEntry {
     pub content: BufferContent,
-    pub git_diff: Option<BufferGitDiff>,
 }
 
 impl BufferEntry {

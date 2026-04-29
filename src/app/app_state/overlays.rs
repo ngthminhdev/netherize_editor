@@ -782,11 +782,7 @@ impl AppState {
         }
 
         self.buffers.push(BufferEntry {
-            content: BufferContent::Text(EditorBuffer {
-                path: active_path,
-                language_id,
-            }),
-            git_diff: None,
+            content: BufferContent::Text(EditorBuffer::new(active_path, language_id)),
         });
         self.active_buffer_index = Some(self.buffers.len().saturating_sub(1));
     }

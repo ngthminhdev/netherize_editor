@@ -150,11 +150,13 @@ impl AppShell {
             accumulated_frame_count: 0,
             current_fps_metrics: "--.-ms | -- FPS".to_string(),
             last_parse_submit_at: None,
+            last_git_diff_recalc_at: None,
             last_syntax_edit_hint: None,
             active_highlight_request_revision: 0,
             fzf_search_revision: 0,
             local_history_revision: 0,
             pending_parse_after_debounce: false,
+            pending_git_diff_after_debounce: false,
             ai_inline_revision: 0,
             pending_ai_inline_request: None,
             pending_lsp_document_sync: None,
@@ -270,23 +272,66 @@ impl AppShell {
         });
     }
 
-    pub(super) fn submit_active_buffer_git_diff_refresh(&mut self) {
+    pub(super) fn submit_active_buffer_git_baseline_refresh(&mut self) {
         let Some(workspace_root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
             return;
         };
         let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
             return;
         };
+        self.pending_git_diff_after_debounce = false;
+        self.last_git_diff_recalc_at = None;
         self.git_overlay_revision = self.git_overlay_revision.saturating_add(1);
         self.submit(RequestSpec {
             revision_id: self.git_overlay_revision,
             topic: RequestTopic::Git,
-            payload: WorkerRequestPayload::ComputeBufferGitDiff {
+            payload: WorkerRequestPayload::FetchGitBaseline {
                 workspace_root,
                 file_path,
-                text_snapshot: self.app_state.text_string(),
             },
         });
+    }
+
+    pub(super) fn refresh_active_buffer_git_diff_state(&mut self) {
+        if self.app_state.recalculate_active_buffer_git_diff() {
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+            self.request_redraw();
+        }
+        self.last_git_diff_recalc_at = Some(Instant::now());
+        self.pending_git_diff_after_debounce = false;
+    }
+
+    pub(super) fn schedule_active_buffer_git_diff_recalculation(&mut self, force: bool) {
+        if !force
+            && let Some(last) = self.last_git_diff_recalc_at
+            && last.elapsed() < GIT_DIFF_DEBOUNCE_INTERVAL
+        {
+            self.pending_git_diff_after_debounce = true;
+            return;
+        }
+
+        self.refresh_active_buffer_git_diff_state();
+    }
+
+    pub(super) fn flush_pending_git_diff_after_debounce(&mut self) {
+        if !self.pending_git_diff_after_debounce {
+            return;
+        }
+
+        if let Some(last) = self.last_git_diff_recalc_at
+            && last.elapsed() < GIT_DIFF_DEBOUNCE_INTERVAL
+        {
+            return;
+        }
+
+        self.refresh_active_buffer_git_diff_state();
+    }
+
+    pub(super) fn next_git_diff_recalc_deadline(&self) -> Option<Instant> {
+        self.pending_git_diff_after_debounce
+            .then(|| self.last_git_diff_recalc_at.unwrap_or_else(Instant::now))
+            .map(|last| last + GIT_DIFF_DEBOUNCE_INTERVAL)
     }
 
     pub(super) fn next_git_branch_refresh_deadline(&self) -> Instant {
@@ -615,15 +660,15 @@ impl AppShell {
     }
 
     pub(super) fn submit_parse_for_active_buffer(&mut self, force: bool) {
-        if self.refresh_inline_syntax_highlighting() {
-            return;
-        }
-
         if !force
             && let Some(last) = self.last_parse_submit_at
             && last.elapsed() < PARSE_DEBOUNCE_INTERVAL
         {
             self.pending_parse_after_debounce = true;
+            return;
+        }
+
+        if self.refresh_inline_syntax_highlighting() {
             return;
         }
 
@@ -657,7 +702,6 @@ impl AppShell {
                 },
             });
             self.last_parse_submit_at = Some(std::time::Instant::now());
-            self.submit_active_buffer_git_diff_refresh();
         } else {
             self.pending_parse_after_debounce = false;
         }

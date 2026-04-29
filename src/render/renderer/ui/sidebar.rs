@@ -155,7 +155,7 @@ impl Renderer {
                     .with_radius((line_h * 0.3).min(self.panel_corner_radius)),
                 );
                 if sidebar_focused {
-                    accent
+                    row.git_color.unwrap_or(accent)
                 } else {
                     label_base_color
                 }

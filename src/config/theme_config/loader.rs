@@ -517,6 +517,11 @@ fn parse_git(raw: &RawGit, ui: &UiThemeTokens) -> Result<GitThemeTokens, String>
                 .or(raw.added_sidebar.as_deref())
                 .unwrap_or("#50D890"),
         )?,
+        deleted_gutter: parse_color(
+            "git",
+            "deleted_gutter",
+            raw.deleted_gutter.as_deref().unwrap_or("#F14C4C"),
+        )?,
     })
 }
 

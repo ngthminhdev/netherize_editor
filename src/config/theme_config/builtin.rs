@@ -117,8 +117,9 @@ fn builtin_git_tokens() -> GitThemeTokens {
     GitThemeTokens {
         modified_sidebar: rgb(226, 192, 141),
         added_sidebar: rgb(127, 214, 140),
-        modified_gutter: rgb(226, 192, 141),
+        modified_gutter: rgb(86, 156, 214),
         added_gutter: rgb(80, 216, 144),
+        deleted_gutter: rgb(241, 76, 76),
     }
 }
 

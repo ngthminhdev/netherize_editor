@@ -2322,29 +2322,28 @@ fn parse_git_file_status(
     }
 }
 
-async fn run_buffer_git_diff(
+async fn run_fetch_git_baseline(
     workspace_root: PathBuf,
     file_path: PathBuf,
-    text_snapshot: String,
-) -> Result<Vec<crate::async_runtime::message::GitDiffRange>, String> {
+) -> Result<Option<String>, String> {
     use tokio::process::Command;
-
-    let mut temp_path = std::env::temp_dir();
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    temp_path.push(format!(
-        "netherize_git_diff_{}_{}.tmp",
-        std::process::id(),
-        stamp
-    ));
 
     let relative_path = file_path
         .strip_prefix(&workspace_root)
         .unwrap_or(file_path.as_path())
         .to_string_lossy()
         .to_string();
+
+    let head_output = Command::new("git")
+        .kill_on_drop(true)
+        .args(["rev-parse", "--verify", "HEAD"])
+        .current_dir(&workspace_root)
+        .output()
+        .await
+        .map_err(|err| format!("git rev-parse failed: {err}"))?;
+    if !head_output.status.success() {
+        return Ok(None);
+    }
 
     let output = Command::new("git")
         .kill_on_drop(true)
@@ -2354,91 +2353,10 @@ async fn run_buffer_git_diff(
         .await
         .map_err(|err| format!("git show failed: {err}"))?;
 
-    let baseline = if output.status.success() {
-        String::from_utf8_lossy(&output.stdout).to_string()
+    if output.status.success() {
+        Ok(Some(String::from_utf8_lossy(&output.stdout).to_string()))
     } else {
-        String::new()
-    };
-
-    tokio::fs::write(&temp_path, text_snapshot)
-        .await
-        .map_err(|err| format!("write temp diff file failed: {err}"))?;
-
-    let diff_output = Command::new("git")
-        .kill_on_drop(true)
-        .args([
-            "diff",
-            "--no-index",
-            "--unified=0",
-            "--no-color",
-            "--",
-            &file_path.to_string_lossy(),
-            &temp_path.to_string_lossy(),
-        ])
-        .current_dir(&workspace_root)
-        .output()
-        .await
-        .map_err(|err| format!("git diff failed: {err}"));
-
-    let _ = tokio::fs::remove_file(&temp_path).await;
-
-    let diff_output = diff_output?;
-    let stdout = String::from_utf8_lossy(&diff_output.stdout).to_string();
-    Ok(parse_git_diff_ranges(&stdout, baseline.is_empty()))
-}
-
-fn parse_git_diff_ranges(
-    diff_text: &str,
-    baseline_missing: bool,
-) -> Vec<crate::async_runtime::message::GitDiffRange> {
-    use crate::async_runtime::message::{GitDiffKind, GitDiffRange};
-
-    let mut ranges = Vec::new();
-    for line in diff_text.lines() {
-        let Some(header) = line.strip_prefix("@@ ") else {
-            continue;
-        };
-        let Some((old_part, rest)) = header.split_once(' ') else {
-            continue;
-        };
-        let Some(new_part) = rest.strip_prefix('+') else {
-            continue;
-        };
-        let old_part = old_part.trim_start_matches('-');
-        let new_part = new_part.trim_end_matches(" @@");
-
-        let (_old_start, old_count) = parse_diff_span(old_part);
-        let (new_start, new_count) = parse_diff_span(new_part);
-
-        if new_count == 0 {
-            continue;
-        }
-
-        let kind = if baseline_missing || (old_count == 0 && new_count > 0) {
-            GitDiffKind::Added
-        } else {
-            GitDiffKind::Modified
-        };
-
-        let start_line = new_start.saturating_sub(1);
-        let end_line = start_line + new_count.saturating_sub(1);
-        ranges.push(GitDiffRange {
-            start_line,
-            end_line,
-            kind,
-        });
-    }
-    ranges
-}
-
-fn parse_diff_span(span: &str) -> (usize, usize) {
-    if let Some((start, count)) = span.split_once(',') {
-        (
-            start.trim().parse::<usize>().unwrap_or(0),
-            count.trim().parse::<usize>().unwrap_or(1),
-        )
-    } else {
-        (span.trim().parse::<usize>().unwrap_or(0), 1)
+        Ok(Some(String::new()))
     }
 }
 
@@ -2664,17 +2582,17 @@ async fn execute_virtual_job(
                 statuses,
             })
         }
-        WorkerRequestPayload::ComputeBufferGitDiff {
+        WorkerRequestPayload::FetchGitBaseline {
             workspace_root,
             file_path,
-            text_snapshot,
         } => {
             let workspace_root = workspace_root.clone();
             let file_path = file_path.clone();
-            let text_snapshot = text_snapshot.clone();
-            let ranges =
-                run_buffer_git_diff(workspace_root, file_path.clone(), text_snapshot).await?;
-            Ok(WorkerResultPayload::BufferGitDiff { file_path, ranges })
+            let baseline = run_fetch_git_baseline(workspace_root, file_path.clone()).await?;
+            Ok(WorkerResultPayload::BufferGitBaseline {
+                file_path,
+                baseline,
+            })
         }
         WorkerRequestPayload::StartFileWatch { .. } => {
             Err("StartFileWatch request should be handled by dedicated watch loop".to_string())
@@ -3094,31 +3012,6 @@ async fn execute_ai_inline_request(request: &WorkerRequest) -> Result<WorkerResu
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
-
-    use super::parse_git_diff_ranges;
-
-    #[test]
-    fn compute_git_diff_ranges_marks_added_and_modified_lines() {
-        let added = parse_git_diff_ranges("@@ -2,0 +3,1 @@\n", false);
-        assert!(added.iter().any(|range| {
-            range.start_line == 2
-                && range.end_line == 2
-                && matches!(
-                    range.kind,
-                    crate::async_runtime::message::GitDiffKind::Added
-                )
-        }));
-
-        let modified = parse_git_diff_ranges("@@ -2,1 +2,1 @@\n", false);
-        assert!(modified.iter().any(|range| {
-            range.start_line == 1
-                && range.end_line == 1
-                && matches!(
-                    range.kind,
-                    crate::async_runtime::message::GitDiffKind::Modified
-                )
-        }));
-    }
 
     use notify::{Event as NotifyEvent, EventKind as NotifyEventKind, event::ModifyKind};
 

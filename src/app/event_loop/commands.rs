@@ -71,7 +71,7 @@ impl AppShell {
         });
 
         self.submit_workspace_git_status_refresh();
-        self.submit_active_buffer_git_diff_refresh();
+        self.submit_active_buffer_git_baseline_refresh();
 
         self.sync_lsp_server_for_workspace();
 
@@ -2027,6 +2027,7 @@ impl AppShell {
                     self.editor_caret_needs_layout = false;
                 }
                 if report.state_changed && should_reparse {
+                    self.schedule_active_buffer_git_diff_recalculation(!is_typing_edit);
                     self.submit_parse_for_active_buffer(!is_typing_edit);
                     if is_typing_edit {
                         self.submit_lsp_did_change_for_active_file();
@@ -2051,12 +2052,13 @@ impl AppShell {
         if changed {
             match &command_for_post_hooks {
                 Command::OpenFile(_) | Command::BufferNext | Command::BufferPrev => {
+                    self.submit_active_buffer_git_baseline_refresh();
                     self.submit_active_file_history_load();
                 }
                 Command::SaveFile => {
                     self.submit_active_file_history_save();
                     self.submit_workspace_git_status_refresh();
-                    self.submit_active_buffer_git_diff_refresh();
+                    self.submit_active_buffer_git_baseline_refresh();
                 }
                 _ if should_persist_history_after => {
                     self.submit_active_file_history_save();

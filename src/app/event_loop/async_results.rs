@@ -90,7 +90,7 @@ impl AsyncResultRouter for AppShell {
                     self.request_redraw();
                 }
                 self.submit_workspace_git_status_refresh();
-                self.submit_active_buffer_git_diff_refresh();
+                self.submit_active_buffer_git_baseline_refresh();
                 self.sync_explorer_expanded_with_workspace();
                 self.editor_needs_layout = true;
                 self.editor_caret_needs_layout = false;
@@ -614,25 +614,17 @@ impl AsyncResultRouter for AppShell {
                     self.request_redraw();
                 }
             }
-            WorkerResultPayload::BufferGitDiff { file_path, ranges } => {
-                let diff = crate::app::app_state::BufferGitDiff {
-                    ranges: ranges
-                        .into_iter()
-                        .map(|range| crate::app::app_state::GitDiffRange {
-                            start_line: range.start_line,
-                            end_line: range.end_line,
-                            kind: match range.kind {
-                                crate::async_runtime::message::GitDiffKind::Added => {
-                                    crate::app::app_state::GitDiffKind::Added
-                                }
-                                crate::async_runtime::message::GitDiffKind::Modified => {
-                                    crate::app::app_state::GitDiffKind::Modified
-                                }
-                            },
-                        })
-                        .collect(),
+            WorkerResultPayload::BufferGitBaseline {
+                file_path,
+                baseline,
+            } => {
+                let baseline_changed = self.app_state.set_buffer_git_baseline(&file_path, baseline);
+                let status_changed = if self.app_state.active_file() == Some(file_path.as_path()) {
+                    self.app_state.recalculate_active_buffer_git_diff()
+                } else {
+                    false
                 };
-                if self.app_state.set_buffer_git_diff(&file_path, Some(diff)) {
+                if baseline_changed || status_changed {
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                     self.request_redraw();
