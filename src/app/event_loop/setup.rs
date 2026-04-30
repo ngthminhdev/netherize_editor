@@ -125,6 +125,7 @@ impl AppShell {
             pending_lsp_server: None,
             lsp_completion_trigger_chars: Vec::new(),
             active_lsp_guide: None,
+            dismissed_lsp_binaries: HashSet::new(),
             transient_toast: None,
             base_theme,
             theme,

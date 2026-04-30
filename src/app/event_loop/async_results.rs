@@ -370,7 +370,7 @@ impl AsyncResultRouter for AppShell {
                 is_installed,
                 ..
             } => {
-                if !is_installed {
+                if !is_installed && !self.dismissed_lsp_binaries.contains(&binary) {
                     // Hiển thị popup hướng dẫn cài LSP.
                     self.active_lsp_guide = Some(LspInstallGuide {
                         binary,
@@ -378,7 +378,7 @@ impl AsyncResultRouter for AppShell {
                     });
                     self.request_redraw();
                 }
-                // Nếu đã cài: không cần làm gì (LSP đã/sẽ được start qua submit_lsp_did_open).
+                // Nếu đã cài hoặc user đã dismiss: không cần làm gì.
             }
             WorkerResultPayload::LspHoverResult { content, .. } => {
                 use crate::app::app_state::{EditorOverlay, FloatingBoxStyle};

@@ -2125,7 +2125,9 @@ impl AppShell {
     }
 
     pub(super) fn dismiss_lsp_guide(&mut self) {
-        self.active_lsp_guide = None;
+        if let Some(guide) = self.active_lsp_guide.take() {
+            self.dismissed_lsp_binaries.insert(guide.binary);
+        }
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_lsp_guide_popup();
         }

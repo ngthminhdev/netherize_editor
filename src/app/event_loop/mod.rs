@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -110,6 +110,8 @@ pub struct AppShell {
     lsp_completion_trigger_chars: Vec<char>,
     /// Popup hướng dẫn cài LSP — `Some` khi binary chưa cài, `None` khi đã dismiss.
     active_lsp_guide: Option<LspInstallGuide>,
+    /// Các binary LSP mà user đã dismiss guide — không show lại trong session này.
+    dismissed_lsp_binaries: HashSet<String>,
     /// Toast window-relative ngắn hạn cho các action nền.
     transient_toast: Option<TransientToast>,
     base_theme: ThemeConfig,
