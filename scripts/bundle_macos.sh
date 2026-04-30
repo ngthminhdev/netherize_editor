@@ -3,8 +3,10 @@ set -euo pipefail
 
 APP_NAME="Netherize"
 BINARY="netherize_editor"
+VERSION="${1:-v1.0.0-alpha}"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE="$PROJECT_DIR/target/$APP_NAME.app"
+ZIP="$PROJECT_DIR/target/${APP_NAME}-${VERSION}-macos.zip"
 LOGO_SRC="$PROJECT_DIR/assets/app_logo_black.png"
 
 # ── 1. Build ───────────────────────────────────────────────────────────────────
@@ -77,11 +79,18 @@ PLIST
 # ── 7. Codesign (ad-hoc, no developer account needed) ─────────────────────────
 codesign --force --deep --sign - "$BUNDLE" 2>/dev/null && echo "Ad-hoc signed" || echo "Codesign skipped (install Xcode CLT if needed)"
 
+# ── 8. Zip for GitHub Release ─────────────────────────────────────────────────
+echo "Creating release zip → $ZIP"
+rm -f "$ZIP"
+cd "$PROJECT_DIR/target"
+zip -r --symlinks "$(basename "$ZIP")" "$APP_NAME.app" >/dev/null
+cd "$PROJECT_DIR"
+
 echo ""
-echo "Bundle ready: $BUNDLE"
+echo "Bundle : $BUNDLE"
+echo "Release : $ZIP ($(du -sh "$ZIP" | cut -f1))"
 echo ""
-echo "Install to /Applications:"
+echo "Upload $ZIP to GitHub Releases as attachment."
+echo ""
+echo "Install locally:"
 echo "  cp -r '$BUNDLE' /Applications/"
-echo ""
-echo "Or open directly:"
-echo "  open '$BUNDLE'"
