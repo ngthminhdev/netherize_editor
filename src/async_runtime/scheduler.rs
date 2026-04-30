@@ -76,6 +76,11 @@ const FULL_BUFFER_HIGHLIGHT_LINE_THRESHOLD: usize = 1_500;
 const VIEWPORT_HIGHLIGHT_OVERSCAN_MULTIPLIER: usize = 3;
 const VIEWPORT_HIGHLIGHT_MIN_OVERSCAN_LINES: usize = 48;
 const FILE_WATCH_BATCH_WINDOW: Duration = Duration::from_millis(50);
+const LSP_HOVER_TIMEOUT_SECS: u64 = 10;
+const LSP_DEFINITION_TIMEOUT_SECS: u64 = 10;
+const LSP_REFERENCES_TIMEOUT_SECS: u64 = 15;
+const LSP_COMPLETION_TIMEOUT_SECS: u64 = 10;
+const LSP_FORMATTING_TIMEOUT_SECS: u64 = 15;
 
 #[derive(Default)]
 struct PtySessionRegistry {
@@ -354,8 +359,9 @@ async fn dispatch_loop(
         ) {
             let worker_tx = result_tx.clone();
             let lsp_sessions = lsp_sessions.clone();
+            let event_proxy = event_proxy.clone();
             tokio::spawn(async move {
-                run_lsp_request(request, lsp_sessions, worker_tx).await;
+                run_lsp_request(request, lsp_sessions, worker_tx, event_proxy).await;
             });
             continue;
         }
@@ -365,8 +371,9 @@ async fn dispatch_loop(
                 handle.abort();
             }
             let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
             let handle = tokio::spawn(async move {
-                run_fzf_request(request, worker_tx).await;
+                run_fzf_request(request, worker_tx, event_proxy).await;
             });
             active_fzf_search = Some(handle);
             continue;
@@ -378,8 +385,9 @@ async fn dispatch_loop(
                 | WorkerRequestPayload::SaveLocalHistory { .. }
         ) {
             let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
             tokio::spawn(async move {
-                run_local_history_request(request, worker_tx).await;
+                run_local_history_request(request, worker_tx, event_proxy).await;
             });
             continue;
         }
@@ -443,6 +451,7 @@ async fn dispatch_loop(
 
         let worker_tx = result_tx.clone();
         let syntax_cache_for_job = syntax_engine_cache.clone();
+        let event_proxy = event_proxy.clone();
         tokio::spawn(async move {
             let started = WorkerEvent {
                 request_id: request.request_id,
@@ -470,7 +479,7 @@ async fn dispatch_loop(
                         topic: request.topic,
                         payload,
                     };
-                    emit_message(&worker_tx, WorkerMessage::Result(result));
+                    emit_message_and_wake(&worker_tx, &event_proxy, WorkerMessage::Result(result));
 
                     let completed = WorkerEvent {
                         request_id: request.request_id,
@@ -478,7 +487,11 @@ async fn dispatch_loop(
                         topic: request.topic,
                         kind: WorkerEventKind::Completed,
                     };
-                    emit_message(&worker_tx, WorkerMessage::Event(completed));
+                    emit_message_and_wake(
+                        &worker_tx,
+                        &event_proxy,
+                        WorkerMessage::Event(completed),
+                    );
                     async_trace!(
                         "[Worker] completed request_id={} revision={}",
                         request.request_id,
@@ -497,7 +510,11 @@ async fn dispatch_loop(
                             },
                         },
                     };
-                    emit_message(&worker_tx, WorkerMessage::Event(failed));
+                    emit_message_and_wake(
+                        &worker_tx,
+                        &event_proxy,
+                        WorkerMessage::Event(failed),
+                    );
                     async_trace!(
                         "[Worker] failed request_id={} revision={}",
                         request.request_id,
@@ -513,7 +530,11 @@ async fn dispatch_loop(
                             error: failure_from_join_error(join_error),
                         },
                     };
-                    emit_message(&worker_tx, WorkerMessage::Event(failed));
+                    emit_message_and_wake(
+                        &worker_tx,
+                        &event_proxy,
+                        WorkerMessage::Event(failed),
+                    );
                     async_trace!(
                         "[Worker] failed (panic/cancelled) request_id={} revision={}",
                         request.request_id,
@@ -537,6 +558,7 @@ fn local_history_path_for_file(file_path: &std::path::Path) -> PathBuf {
 async fn run_local_history_request(
     request: WorkerRequest,
     worker_tx: std_mpsc::Sender<WorkerMessage>,
+    event_proxy: EventLoopProxy<AppEvent>,
 ) {
     let request_id = request.request_id;
     let revision_id = request.revision_id;
@@ -560,9 +582,10 @@ async fn run_local_history_request(
                     payload,
                 }) {
                 Ok(result) => {
-                    emit_message(&worker_tx, WorkerMessage::Result(result));
-                    emit_message(
+                    emit_message_and_wake(&worker_tx, &event_proxy, WorkerMessage::Result(result));
+                    emit_message_and_wake(
                         &worker_tx,
+                        &event_proxy,
                         WorkerMessage::Event(WorkerEvent {
                             request_id,
                             revision_id,
@@ -572,7 +595,14 @@ async fn run_local_history_request(
                     );
                 }
                 Err(message) => {
-                    emit_local_history_failure(&worker_tx, request_id, revision_id, topic, message)
+                    emit_local_history_failure(
+                        &worker_tx,
+                        &event_proxy,
+                        request_id,
+                        revision_id,
+                        topic,
+                        message,
+                    )
                 }
             }
         }
@@ -603,8 +633,9 @@ async fn run_local_history_request(
                     }),
                 );
             }
-            Ok(_) => emit_message(
+            Ok(_) => emit_message_and_wake(
                 &worker_tx,
+                &event_proxy,
                 WorkerMessage::Event(WorkerEvent {
                     request_id,
                     revision_id,
@@ -613,11 +644,19 @@ async fn run_local_history_request(
                 }),
             ),
             Err(message) => {
-                emit_local_history_failure(&worker_tx, request_id, revision_id, topic, message)
+                emit_local_history_failure(
+                    &worker_tx,
+                    &event_proxy,
+                    request_id,
+                    revision_id,
+                    topic,
+                    message,
+                )
             }
         },
         _ => emit_local_history_failure(
             &worker_tx,
+            &event_proxy,
             request_id,
             revision_id,
             topic,
@@ -628,13 +667,15 @@ async fn run_local_history_request(
 
 fn emit_local_history_failure(
     worker_tx: &std_mpsc::Sender<WorkerMessage>,
+    event_proxy: &EventLoopProxy<AppEvent>,
     request_id: u64,
     revision_id: u64,
     topic: RequestTopic,
     message: String,
 ) {
-    emit_message(
+    emit_message_and_wake(
         worker_tx,
+        event_proxy,
         WorkerMessage::Event(WorkerEvent {
             request_id,
             revision_id,
@@ -809,8 +850,13 @@ async fn run_pty_request(
     } = &request.payload
     {
         let result = (|| async {
-            let mut child = tokio::process::Command::new("sh");
-            child.arg("-c").arg(command);
+            // Use the user's login shell so that .zprofile/.zshrc PATH entries
+            // (Homebrew, Go, nvm, pyenv, etc.) are available for install commands.
+            let login_shell =
+                std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+            let mut child = tokio::process::Command::new(&login_shell);
+            child.arg("-lc").arg(command);
+            child.env("PATH", crate::lsp::client::patched_env_path());
             if let Some(dir) = working_dir {
                 child.current_dir(dir);
             }
@@ -949,6 +995,7 @@ async fn run_lsp_request(
     request: WorkerRequest,
     lsp_sessions: Arc<LspSessionRegistry>,
     worker_tx: std_mpsc::Sender<WorkerMessage>,
+    event_proxy: EventLoopProxy<AppEvent>,
 ) {
     let started = WorkerEvent {
         request_id: request.request_id,
@@ -978,7 +1025,7 @@ async fn run_lsp_request(
                 topic: request.topic,
                 payload,
             };
-            emit_message(&worker_tx, WorkerMessage::Result(result));
+            emit_message_and_wake(&worker_tx, &event_proxy, WorkerMessage::Result(result));
 
             let completed = WorkerEvent {
                 request_id: request.request_id,
@@ -986,7 +1033,7 @@ async fn run_lsp_request(
                 topic: request.topic,
                 kind: WorkerEventKind::Completed,
             };
-            emit_message(&worker_tx, WorkerMessage::Event(completed));
+            emit_message_and_wake(&worker_tx, &event_proxy, WorkerMessage::Event(completed));
             async_trace!(
                 "[Worker] completed lsp request_id={} revision={}",
                 request.request_id,
@@ -1005,7 +1052,7 @@ async fn run_lsp_request(
                     },
                 },
             };
-            emit_message(&worker_tx, WorkerMessage::Event(failed));
+            emit_message_and_wake(&worker_tx, &event_proxy, WorkerMessage::Event(failed));
             async_trace!(
                 "[Worker] failed lsp request_id={} revision={}",
                 request.request_id,
@@ -1021,7 +1068,7 @@ async fn run_lsp_request(
                     error: failure_from_join_error(join_error),
                 },
             };
-            emit_message(&worker_tx, WorkerMessage::Event(failed));
+            emit_message_and_wake(&worker_tx, &event_proxy, WorkerMessage::Event(failed));
             async_trace!(
                 "[Worker] failed (panic/cancelled) lsp request_id={} revision={}",
                 request.request_id,
@@ -1545,7 +1592,8 @@ fn handle_lsp_hover(
         "textDocument": { "uri": uri },
         "position": { "line": line, "character": character }
     });
-    let response = lsp_request_response(session, "textDocument/hover", params, 10)?;
+    let response =
+        lsp_request_response(session, "textDocument/hover", params, LSP_HOVER_TIMEOUT_SECS)?;
     let result = response
         .get("result")
         .ok_or_else(|| "hover: no result".to_string())?;
@@ -1576,7 +1624,12 @@ fn handle_lsp_definition(
         "textDocument": { "uri": uri },
         "position": { "line": line, "character": character }
     });
-    let response = lsp_request_response(session, "textDocument/definition", params, 10)?;
+    let response = lsp_request_response(
+        session,
+        "textDocument/definition",
+        params,
+        LSP_DEFINITION_TIMEOUT_SECS,
+    )?;
     let result = response
         .get("result")
         .ok_or_else(|| "definition: no result".to_string())?;
@@ -1605,7 +1658,12 @@ fn handle_lsp_formatting(
             "insertSpaces": insert_spaces,
         }
     });
-    let response = lsp_request_response(session, "textDocument/formatting", params, 15)?;
+    let response = lsp_request_response(
+        session,
+        "textDocument/formatting",
+        params,
+        LSP_FORMATTING_TIMEOUT_SECS,
+    )?;
     let result = response
         .get("result")
         .ok_or_else(|| "formatting: no result".to_string())?;
@@ -1635,7 +1693,12 @@ fn handle_lsp_references(
         "position": { "line": line, "character": character },
         "context": { "includeDeclaration": true }
     });
-    let response = lsp_request_response(session, "textDocument/references", params, 15)?;
+    let response = lsp_request_response(
+        session,
+        "textDocument/references",
+        params,
+        LSP_REFERENCES_TIMEOUT_SECS,
+    )?;
     let result = response
         .get("result")
         .ok_or_else(|| "references: no result".to_string())?;
@@ -1664,7 +1727,12 @@ fn handle_lsp_completion(
         "textDocument": { "uri": uri },
         "position": { "line": line, "character": character }
     });
-    let response = lsp_request_response(session, "textDocument/completion", params, 10)?;
+    let response = lsp_request_response(
+        session,
+        "textDocument/completion",
+        params,
+        LSP_COMPLETION_TIMEOUT_SECS,
+    )?;
     let result = response
         .get("result")
         .ok_or_else(|| "completion: no result".to_string())?;
@@ -1993,7 +2061,11 @@ fn spawn_lsp_stderr_logger(
 
 const MAX_FZF_RESULTS: usize = 48;
 
-async fn run_fzf_request(request: WorkerRequest, worker_tx: std_mpsc::Sender<WorkerMessage>) {
+async fn run_fzf_request(
+    request: WorkerRequest,
+    worker_tx: std_mpsc::Sender<WorkerMessage>,
+    event_proxy: EventLoopProxy<AppEvent>,
+) {
     let started = WorkerEvent {
         request_id: request.request_id,
         revision_id: request.revision_id,
@@ -2010,14 +2082,14 @@ async fn run_fzf_request(request: WorkerRequest, worker_tx: std_mpsc::Sender<Wor
                 topic: request.topic,
                 payload,
             };
-            emit_message(&worker_tx, WorkerMessage::Result(result));
+            emit_message_and_wake(&worker_tx, &event_proxy, WorkerMessage::Result(result));
             let completed = WorkerEvent {
                 request_id: request.request_id,
                 revision_id: request.revision_id,
                 topic: request.topic,
                 kind: WorkerEventKind::Completed,
             };
-            emit_message(&worker_tx, WorkerMessage::Event(completed));
+            emit_message_and_wake(&worker_tx, &event_proxy, WorkerMessage::Event(completed));
         }
         Err(message) => {
             let failed = WorkerEvent {
@@ -2031,7 +2103,7 @@ async fn run_fzf_request(request: WorkerRequest, worker_tx: std_mpsc::Sender<Wor
                     },
                 },
             };
-            emit_message(&worker_tx, WorkerMessage::Event(failed));
+            emit_message_and_wake(&worker_tx, &event_proxy, WorkerMessage::Event(failed));
         }
     }
 }
@@ -2412,6 +2484,7 @@ async fn execute_virtual_job(
 ) -> Result<WorkerResultPayload, String> {
     match &request.payload {
         WorkerRequestPayload::ParseAndHighlight {
+            buffer_id,
             file_path,
             text_snapshot,
             language_id,
@@ -2420,6 +2493,7 @@ async fn execute_virtual_job(
             viewport_line_count,
             edit_hint,
         } => {
+            let buffer_id = buffer_id.clone();
             let file_path = file_path.clone();
             let text_snapshot = text_snapshot.clone();
             let language_id = *language_id;
@@ -2436,7 +2510,7 @@ async fn execute_virtual_job(
 
                 // Retrieve or create the cached SyntaxEngine for this file.
                 // Remove it from the map so the lock is held only briefly.
-                let file_key = file_path.clone().unwrap_or_default();
+                let file_key = buffer_id.clone();
                 let mut engine: SyntaxEngine = {
                     let mut guard = syntax_cache
                         .lock()
@@ -2501,6 +2575,7 @@ async fn execute_virtual_job(
                 }
 
                 Ok(WorkerResultPayload::ParseAndHighlight {
+                    buffer_id,
                     file_path,
                     language_id,
                     buffer_revision,
@@ -2946,6 +3021,15 @@ fn emit_message(tx: &std_mpsc::Sender<WorkerMessage>, message: WorkerMessage) {
     if let Err(err) = tx.send(message) {
         eprintln!("[Scheduler] bridge send failed: {err}");
     }
+}
+
+fn emit_message_and_wake(
+    tx: &std_mpsc::Sender<WorkerMessage>,
+    event_proxy: &EventLoopProxy<AppEvent>,
+    message: WorkerMessage,
+) {
+    emit_message(tx, message);
+    let _ = event_proxy.send_event(AppEvent::WorkerMessageReady);
 }
 
 fn failure_from_join_error(join_error: tokio::task::JoinError) -> WorkerFailure {

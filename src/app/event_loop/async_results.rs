@@ -51,16 +51,21 @@ impl AsyncResultRouter for AppShell {
         let revision_id = result.revision_id;
         match result.payload {
             WorkerResultPayload::ParseAndHighlight {
+                buffer_id,
                 file_path,
                 spans,
                 buffer_revision,
                 covered_byte_range,
                 ..
             } => {
+                let active_buffer_id = self.app_state.active_file().map(PathBuf::from);
+                if active_buffer_id.as_ref() != Some(&buffer_id) {
+                    return;
+                }
                 if buffer_revision != self.app_state.revision() {
                     return;
                 }
-                if file_path != self.app_state.active_file().map(PathBuf::from) {
+                if file_path != active_buffer_id {
                     return;
                 }
 
@@ -79,6 +84,7 @@ impl AsyncResultRouter for AppShell {
                 );
                 self.editor_needs_layout = true;
                 self.editor_caret_needs_layout = false;
+                self.request_redraw();
             }
             WorkerResultPayload::FileSystemEvents { events, .. } => {
                 match self.app_state.apply_external_file_events(&events) {
@@ -429,6 +435,7 @@ impl AsyncResultRouter for AppShell {
                     self.app_state.jump_to_line(target_line);
                     let vp = self.editor_viewport_lines();
                     self.app_state.auto_scroll_to_cursor(vp);
+                    self.invalidate_highlights_and_parse_active_buffer();
                     self.submit_lsp_check_for_path(path);
                     self.submit_lsp_did_open_for_active_file();
                     self.editor_needs_layout = true;
@@ -817,6 +824,7 @@ fn active_diagnostics_preview_target(app_state: &AppState) -> Option<(PathBuf, O
 #[cfg(test)]
 mod tests {
     use std::{
+        fs,
         path::PathBuf,
         time::{SystemTime, UNIX_EPOCH},
     };
@@ -828,6 +836,10 @@ mod tests {
             WorkerFailure, WorkerFailureKind, WorkerResult, WorkerResultPayload,
         },
         lsp::client::path_to_lsp_uri,
+        syntax::{
+            highlight::{HighlightCategory, HighlightSpan},
+            syntax_engine::LanguageId,
+        },
     };
 
     use super::AppShell;
@@ -838,6 +850,106 @@ mod tests {
             .expect("clock drift")
             .as_nanos();
         std::env::temp_dir().join(format!("netherize_async_results_{suffix}_{nanos}"))
+    }
+
+    fn write_temp_file(suffix: &str, contents: &str) -> PathBuf {
+        let path = unique_temp_path(suffix);
+        fs::write(&path, contents).expect("write temp file");
+        path.canonicalize().expect("canonical temp file")
+    }
+
+    fn parse_highlight_result(buffer_id: PathBuf, buffer_revision: u64) -> WorkerResult {
+        WorkerResult {
+            request_id: 1,
+            revision_id: 1,
+            topic: RequestTopic::ActiveBufferLayout,
+            payload: WorkerResultPayload::ParseAndHighlight {
+                buffer_id: buffer_id.clone(),
+                file_path: Some(buffer_id),
+                language_id: LanguageId::Rust,
+                buffer_revision,
+                spans: vec![HighlightSpan {
+                    range: 0..2,
+                    category: HighlightCategory::Keyword,
+                }],
+                covered_byte_range: None,
+                line_count: 1,
+                char_count: 10,
+                byte_count: 10,
+                parse_time_ms: 1,
+                highlight_time_ms: 1,
+            },
+        }
+    }
+
+    #[test]
+    fn parse_highlight_result_for_inactive_buffer_is_rejected() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let old_file = write_temp_file("old_highlight.rs", "fn old() {}\n");
+        let active_file = write_temp_file("active_highlight.rs", "fn active() {}\n");
+
+        shell
+            .app_state
+            .open_file(old_file.clone())
+            .expect("open old file");
+        shell
+            .app_state
+            .open_file(active_file)
+            .expect("open active file");
+        let active_revision = shell.app_state.revision();
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            parse_highlight_result(old_file, active_revision),
+        );
+
+        assert!(shell.highlight_spans.is_empty());
+        assert!(!shell.editor_needs_layout);
+    }
+
+    #[test]
+    fn parse_highlight_result_for_stale_revision_is_rejected() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = write_temp_file("stale_highlight.rs", "fn stale() {}\n");
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        let stale_revision = shell.app_state.revision().saturating_sub(1);
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            parse_highlight_result(file_path, stale_revision),
+        );
+
+        assert!(shell.highlight_spans.is_empty());
+        assert!(!shell.editor_needs_layout);
+    }
+
+    #[test]
+    fn parse_highlight_result_for_active_buffer_revision_is_applied() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = write_temp_file("fresh_highlight.rs", "fn fresh() {}\n");
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        let active_revision = shell.app_state.revision();
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            parse_highlight_result(file_path, active_revision),
+        );
+
+        assert_eq!(shell.highlight_spans.len(), 1);
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
     }
 
     #[test]

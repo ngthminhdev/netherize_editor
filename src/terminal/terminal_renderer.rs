@@ -117,7 +117,7 @@ impl TerminalViewRenderer {
                 // Dùng full block glyph để giả lập background cell màu.
                 text_system.set_size(Some(self.cell_width), Some(self.cell_height));
                 text_system.set_text("█");
-                let bg_glyphs = text_system.collect_visible_glyphs(0.0, 0.0, bg_rgba);
+                let bg_glyphs = text_system.collect_visible_glyphs(0.0, 0.0, bg_rgba, None);
 
                 for vg in bg_glyphs {
                     let atlas_entry = if let Some(existing) = atlas.get(vg.cache_key) {
@@ -125,7 +125,7 @@ impl TerminalViewRenderer {
                     } else {
                         match rasterize_glyph_alpha(text_system, vg.cache_key) {
                             Some(rasterized) => {
-                                match atlas.get_or_insert(queue, vg.cache_key, &rasterized) {
+                                match atlas.get_or_reserve(vg.cache_key, &rasterized) {
                                     Ok(entry) => entry,
                                     Err(err) => {
                                         eprintln!("[TerminalRenderer] atlas insert failed: {err}");
@@ -172,17 +172,17 @@ impl TerminalViewRenderer {
             text_system.set_text(&ch_str);
 
             // Thu thập glyph từ layout (origin 0,0 — ta tính thêm screen offset sau).
-            let visible_glyphs = text_system.collect_visible_glyphs(0.0, 0.0, fg_rgba);
+            let visible_glyphs = text_system.collect_visible_glyphs(0.0, 0.0, fg_rgba, None);
 
             for vg in visible_glyphs {
                 // Kiểm tra cache trước khi rasterize.
                 let atlas_entry = if let Some(existing) = atlas.get(vg.cache_key) {
                     existing
                 } else {
-                    // Rasterize và insert vào atlas.
+                    // Rasterize và reserve trong atlas (upload qua flush_pending sau).
                     match rasterize_glyph_alpha(text_system, vg.cache_key) {
                         Some(rasterized) => {
-                            match atlas.get_or_insert(queue, vg.cache_key, &rasterized) {
+                            match atlas.get_or_reserve(vg.cache_key, &rasterized) {
                                 Ok(entry) => entry,
                                 Err(err) => {
                                     // Atlas đầy hoặc glyph quá lớn — bỏ qua cell này.
@@ -219,6 +219,7 @@ impl TerminalViewRenderer {
             }
         }
 
+        atlas.flush_pending(queue);
         instances
     }
 

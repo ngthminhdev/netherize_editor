@@ -276,6 +276,11 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     self.request_redraw();
                 }
             }
+            AppEvent::WorkerMessageReady => {
+                if self.pump_bridge() {
+                    self.request_redraw();
+                }
+            }
         }
     }
 }

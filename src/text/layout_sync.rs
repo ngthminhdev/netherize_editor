@@ -39,6 +39,7 @@ pub fn rebuild_layout_projection(
     atlas: &mut GlyphAtlas,
     queue: &wgpu::Queue,
     viewport_origin: [f32; 2],
+    viewport_clip: Option<(f32, f32)>,
     text_color: [f32; 4],
     cursor_overlay_color: [f32; 4],
     styled_spans: &[StyledTextSpan],
@@ -49,8 +50,12 @@ pub fn rebuild_layout_projection(
     let (cursor_line, _) = app_state.cursor_line_col();
     let cursor_byte_in_line = app_state.cursor_byte_in_line();
 
-    let visible_glyphs =
-        text_system.collect_visible_glyphs(viewport_origin[0], viewport_origin[1], text_color);
+    let visible_glyphs = text_system.collect_visible_glyphs(
+        viewport_origin[0],
+        viewport_origin[1],
+        text_color,
+        viewport_clip,
+    );
     let mut glyph_instances = Vec::with_capacity(visible_glyphs.len());
     let mut cursor_overlay: Option<GlyphInstance> = None;
 
@@ -62,7 +67,7 @@ pub fn rebuild_layout_projection(
                 continue;
             };
 
-            atlas.get_or_insert(queue, glyph.cache_key, &rasterized)?
+            atlas.get_or_reserve(glyph.cache_key, &rasterized)?
         };
 
         if entry.region.width == 0 || entry.region.height == 0 {
@@ -98,6 +103,8 @@ pub fn rebuild_layout_projection(
         }
     }
 
+    atlas.flush_pending(queue);
+
     let caret_layout = compute_caret_layout(text_system, app_state, viewport_origin);
     Ok(LayoutProjection {
         glyph_instances,
@@ -122,7 +129,7 @@ pub fn compute_cursor_overlay(
     let cursor_byte_in_line = app_state.cursor_byte_in_line();
 
     let target = text_system
-        .collect_visible_glyphs(viewport_origin[0], viewport_origin[1], overlay_color)
+        .collect_visible_glyphs(viewport_origin[0], viewport_origin[1], overlay_color, None)
         .into_iter()
         .find(|g| {
             g.line_i == cursor_line
@@ -140,7 +147,9 @@ pub fn compute_cursor_overlay(
         let Some(rasterized) = rasterize_glyph_alpha(text_system, glyph.cache_key) else {
             return Ok(None);
         };
-        atlas.get_or_insert(queue, glyph.cache_key, &rasterized)?
+        let entry = atlas.get_or_reserve(glyph.cache_key, &rasterized)?;
+        atlas.flush_pending(queue);
+        entry
     };
 
     if entry.region.width == 0 || entry.region.height == 0 {

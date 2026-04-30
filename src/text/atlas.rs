@@ -33,6 +33,15 @@ pub struct GlyphAtlas {
     next_y: u32,
     row_height: u32,
     entries: HashMap<CacheKey, AtlasEntry>,
+    /// Glyph mới cache miss trong frame hiện tại. Tích lũy CPU-side rồi gọi
+    /// `flush_pending()` 1 lần cuối batch để gộp `queue.write_texture` —
+    /// tránh N submit GPU khi mở file mới (mỗi glyph riêng = 1 submit).
+    pending: Vec<PendingGlyphUpload>,
+}
+
+struct PendingGlyphUpload {
+    region: AtlasRegion,
+    alpha: Vec<u8>,
 }
 
 impl GlyphAtlas {
@@ -74,6 +83,7 @@ impl GlyphAtlas {
             next_y: 0,
             row_height: 0,
             entries: HashMap::new(),
+            pending: Vec::new(),
         }
     }
 
@@ -89,10 +99,11 @@ impl GlyphAtlas {
         self.entries.get(&cache_key).copied()
     }
 
-    /// Lấy entry nếu đã có, nếu chưa thì pack + upload vào atlas.
-    pub fn get_or_insert(
+    /// Lấy entry nếu đã có, nếu chưa thì reserve region + queue alpha vào
+    /// `pending`. **Không upload GPU ở đây** — caller phải gọi `flush_pending()`
+    /// sau khi gom xong tất cả glyph của batch (thường là cuối render path).
+    pub fn get_or_reserve(
         &mut self,
-        queue: &wgpu::Queue,
         cache_key: CacheKey,
         rasterized: &RasterizedGlyph,
     ) -> Result<AtlasEntry, String> {
@@ -109,29 +120,10 @@ impl GlyphAtlas {
                 )
             })?;
 
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d {
-                    x: region.x,
-                    y: region.y,
-                    z: 0,
-                },
-                aspect: wgpu::TextureAspect::All,
-            },
-            &rasterized.alpha,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(rasterized.width),
-                rows_per_image: Some(rasterized.height),
-            },
-            wgpu::Extent3d {
-                width: rasterized.width,
-                height: rasterized.height,
-                depth_or_array_layers: 1,
-            },
-        );
+        self.pending.push(PendingGlyphUpload {
+            region,
+            alpha: rasterized.alpha.clone(),
+        });
 
         let entry = AtlasEntry {
             region,
@@ -140,6 +132,40 @@ impl GlyphAtlas {
         };
         self.entries.insert(cache_key, entry);
         Ok(entry)
+    }
+
+    /// Upload toàn bộ glyph mới reserve trong batch. Idempotent khi rỗng.
+    /// Mỗi region được upload riêng (chỉ phần đã reserve, không upload toàn
+    /// texture); nếu nội dung text không đổi thì `pending` rỗng → no-op.
+    pub fn flush_pending(&mut self, queue: &wgpu::Queue) {
+        if self.pending.is_empty() {
+            return;
+        }
+        for pending in self.pending.drain(..) {
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: pending.region.x,
+                        y: pending.region.y,
+                        z: 0,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &pending.alpha,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(pending.region.width),
+                    rows_per_image: Some(pending.region.height),
+                },
+                wgpu::Extent3d {
+                    width: pending.region.width,
+                    height: pending.region.height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
     }
 
     /// Convert atlas pixel region -> uv normalized [0..1].

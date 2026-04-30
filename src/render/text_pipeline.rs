@@ -23,6 +23,10 @@ impl ScreenUniform {
     }
 }
 
+/// Số instance pre-allocate. Đủ ~16k glyph cho 1 viewport 4K (≈ 200 dòng × 80
+/// glyph) — tránh chuỗi realloc 1→2→4→…→N khi mở file lớn lần đầu.
+const MIN_INSTANCE_CAPACITY: usize = 16_384;
+
 /// TextPipeline:
 /// - bind atlas texture + sampler + uniform screen size
 /// - vẽ N glyph instances bằng một draw call indexed instancing
@@ -163,10 +167,9 @@ impl TextPipeline {
             usage: wgpu::BufferUsages::INDEX,
         });
 
-        // Khởi tạo tối thiểu 1 instance để tránh buffer zero-sized.
         let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Netherize Text Instance Buffer"),
-            size: std::mem::size_of::<GlyphInstance>() as u64,
+            size: (MIN_INSTANCE_CAPACITY * std::mem::size_of::<GlyphInstance>()) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -179,7 +182,7 @@ impl TextPipeline {
             quad_index_buffer,
             index_count: QUAD_INDICES.len() as u32,
             instance_buffer,
-            instance_capacity: 1,
+            instance_capacity: MIN_INSTANCE_CAPACITY,
             instance_count: 0,
         }
     }
@@ -245,7 +248,7 @@ impl TextPipeline {
             return;
         }
 
-        let new_capacity = required.next_power_of_two();
+        let new_capacity = required.next_power_of_two().max(MIN_INSTANCE_CAPACITY);
         let new_size = (new_capacity * std::mem::size_of::<GlyphInstance>()) as u64;
 
         self.instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {

@@ -73,6 +73,14 @@ impl AppShell {
         self.submit_workspace_git_status_refresh();
         self.submit_active_buffer_git_baseline_refresh();
 
+        // Navigate the bottom-panel terminal to the new workspace root so the
+        // user's shell follows the project switch. Ctrl-U clears any partial
+        // input before issuing the cd command.
+        if let Some(session_id) = self.pty_session_id {
+            let quoted = shell_quote_path(&root_path);
+            self.forward_to_terminal_session(session_id, &format!("\x15cd {quoted}\r"));
+        }
+
         self.sync_lsp_server_for_workspace();
 
         self.editor_needs_layout = true;
@@ -695,7 +703,8 @@ impl AppShell {
                             .active_file()
                             .and_then(|path| path.parent())
                             .map(PathBuf::from)
-                            .or_else(|| std::env::current_dir().ok());
+                            .or_else(|| self.app_state.workspace_root_path().map(PathBuf::from))
+                            .or_else(|| std::env::current_dir().ok().filter(|p| p != &PathBuf::from("/")));
                         self.submit(RequestSpec {
                             revision_id: 0,
                             topic: RequestTopic::TerminalPty,
@@ -734,7 +743,8 @@ impl AppShell {
                         .active_file()
                         .and_then(|path| path.parent())
                         .map(PathBuf::from)
-                        .or_else(|| std::env::current_dir().ok());
+                        .or_else(|| self.app_state.workspace_root_path().map(PathBuf::from))
+                        .or_else(|| std::env::current_dir().ok().filter(|p| p != &PathBuf::from("/")));
                     self.submit(RequestSpec {
                         revision_id: 0,
                         topic: RequestTopic::TerminalPty,
@@ -1393,7 +1403,8 @@ impl AppShell {
                         .active_file()
                         .and_then(|path| path.parent())
                         .map(PathBuf::from)
-                        .or_else(|| std::env::current_dir().ok());
+                        .or_else(|| self.app_state.workspace_root_path().map(PathBuf::from))
+                        .or_else(|| std::env::current_dir().ok().filter(|p| p != &PathBuf::from("/")));
                     self.submit(RequestSpec {
                         revision_id: 0,
                         topic: RequestTopic::TerminalPty,
@@ -1882,11 +1893,13 @@ impl AppShell {
                 // Lấy file sau dispatch để detect thay đổi.
                 let file_after = self.app_state.active_file().map(PathBuf::from);
                 let file_changed = report.success && file_after != file_before;
+                let mut parsed_after_file_change = false;
 
                 if file_changed {
                     // Chỉ xóa highlight và reload LSP khi file thực sự thay đổi.
                     // Không clear khi chỉ save (:w) vì sẽ làm mất highlight tại cursor.
-                    self.clear_highlight_layers();
+                    self.invalidate_highlights_and_parse_active_buffer();
+                    parsed_after_file_change = true;
 
                     if let Some(ref path) = file_after {
                         self.explorer_reveal_file(path);
@@ -1910,7 +1923,9 @@ impl AppShell {
                     self.editor_caret_needs_layout = false;
                 }
                 if report.state_changed || file_changed {
-                    self.submit_parse_for_active_buffer(true);
+                    if !parsed_after_file_change {
+                        self.submit_parse_for_active_buffer(true);
+                    }
                 }
 
                 // Sau FilePickerConfirmSelection: đóng palette và về editor
@@ -1928,6 +1943,7 @@ impl AppShell {
                     &command,
                     Command::BufferNext | Command::BufferPrev | Command::BufferCloseCurrent
                 );
+                let mut parsed_after_buffer_switch = false;
 
                 let is_cursor_move = matches!(
                     &command,
@@ -2003,7 +2019,8 @@ impl AppShell {
                 };
                 self.reconcile_highlight_spans_with_pending_edits();
                 if report.success && should_notify_did_open {
-                    self.clear_highlight_layers();
+                    self.invalidate_highlights_and_parse_active_buffer();
+                    parsed_after_buffer_switch = true;
                     self.mark_explorer_dirty();
                     let _ = self.sync_focus_mode_for_active_buffer();
                 }
@@ -2028,7 +2045,9 @@ impl AppShell {
                 }
                 if report.state_changed && should_reparse {
                     self.schedule_active_buffer_git_diff_recalculation(!is_typing_edit);
-                    self.submit_parse_for_active_buffer(!is_typing_edit);
+                    if !parsed_after_buffer_switch {
+                        self.submit_parse_for_active_buffer(!is_typing_edit);
+                    }
                     if is_typing_edit {
                         self.submit_lsp_did_change_for_active_file();
                     } else {
@@ -2451,6 +2470,7 @@ impl AppShell {
             .jump_to_line_and_column(item.line, item.column);
         let vp = self.editor_viewport_lines();
         self.app_state.auto_scroll_to_cursor(vp);
+        self.invalidate_highlights_and_parse_active_buffer();
         self.submit_lsp_check_for_path(item.path.clone());
         self.submit_lsp_did_open_for_active_file();
         self.editor_needs_layout = true;
@@ -2554,6 +2574,7 @@ impl AppShell {
         self.app_state.jump_to_line_and_column(item.line, item.col);
         let vp = self.editor_viewport_lines();
         self.app_state.auto_scroll_to_cursor(vp);
+        self.invalidate_highlights_and_parse_active_buffer();
         self.submit_lsp_check_for_path(item.file_path.clone());
         self.submit_lsp_did_open_for_active_file();
         self.editor_needs_layout = true;
@@ -2576,6 +2597,7 @@ impl AppShell {
         self.app_state.jump_to_line(line);
         let vp = self.editor_viewport_lines();
         self.app_state.auto_scroll_to_cursor(vp);
+        self.invalidate_highlights_and_parse_active_buffer();
         self.submit_lsp_check_for_path(path);
         self.submit_lsp_did_open_for_active_file();
         self.editor_needs_layout = true;
@@ -2593,6 +2615,7 @@ impl AppShell {
         self.app_state.jump_to_line(line);
         let vp = self.editor_viewport_lines();
         self.app_state.auto_scroll_to_cursor(vp);
+        self.invalidate_highlights_and_parse_active_buffer();
         self.submit_lsp_check_for_path(path);
         self.submit_lsp_did_open_for_active_file();
         self.editor_needs_layout = true;
@@ -3270,6 +3293,13 @@ impl AppShell {
             .collect();
         LeapState::new(targets)
     }
+}
+
+/// Wraps a filesystem path in single quotes suitable for POSIX shell, escaping
+/// any embedded single-quote characters so the path can be safely passed to cd.
+fn shell_quote_path(path: &std::path::Path) -> String {
+    let s = path.to_string_lossy();
+    format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 fn normalize_terminal_paste_text(text: &str) -> String {

@@ -1,11 +1,16 @@
 #![allow(unused_imports)]
 
+use std::time::{Duration, Instant};
+
 use crate::render::region_pipeline::RegionDrawInstance;
 
-use super::super::{RenderError, Renderer, helpers::draw_text_region};
+use super::super::{helpers::draw_text_region, RenderError, Renderer};
+
+const FRAME_TIME_WARN_THRESHOLD: Duration = Duration::from_millis(8);
 
 impl Renderer {
     pub fn render(&mut self, region_instances: &[RegionDrawInstance]) -> Result<(), RenderError> {
+        let frame_started_at = Instant::now();
         let frame = match self.surface_state.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(texture) => texture,
             wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
@@ -437,6 +442,16 @@ impl Renderer {
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
+        let frame_time = frame_started_at.elapsed();
+        if frame_time > FRAME_TIME_WARN_THRESHOLD {
+            eprintln!(
+                "[Renderer] slow frame: {:.2}ms before present (target <= 8.00ms for 120FPS, regions={}, size={}x{})",
+                frame_time.as_secs_f64() * 1_000.0,
+                region_instances.len(),
+                self.surface_state.config.width,
+                self.surface_state.config.height
+            );
+        }
         frame.present();
         Ok(())
     }

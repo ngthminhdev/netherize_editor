@@ -100,7 +100,7 @@ fn collect_instances(
     origin_y: f32,
     color: [f32; 4],
 ) -> Vec<GlyphInstance> {
-    let visible = text_system.collect_visible_glyphs(origin_x, origin_y, color);
+    let visible = text_system.collect_visible_glyphs(origin_x, origin_y, color, None);
     let mut instances = Vec::with_capacity(visible.len());
 
     for glyph in visible {
@@ -110,7 +110,7 @@ fn collect_instances(
             let Some(rasterized) = rasterize_glyph_alpha(text_system, glyph.cache_key) else {
                 continue;
             };
-            match atlas.get_or_insert(queue, glyph.cache_key, &rasterized) {
+            match atlas.get_or_reserve(glyph.cache_key, &rasterized) {
                 Ok(e) => e,
                 Err(_) => continue,
             }
@@ -132,6 +132,7 @@ fn collect_instances(
         ));
     }
 
+    atlas.flush_pending(queue);
     instances
 }
 
