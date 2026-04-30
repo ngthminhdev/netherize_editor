@@ -78,11 +78,12 @@ impl AppState {
             .enumerate()
             .rev()
             .map(|(index, transaction)| {
-                let summary = summarize_transaction(transaction);
+                let (label, tone) = file_history_transaction_label(transaction);
                 crate::app::command_palette::CommandPaletteItem::file_history_entry(
-                    format!("#{index} {summary}"),
-                    Some(format!("{} edits", transaction.actions.len())),
+                    label,
+                    Some(file_history_transaction_secondary(index, transaction)),
                     index,
+                    tone,
                 )
             })
             .collect()
@@ -92,9 +93,11 @@ impl AppState {
         let Some(session) = self.file_history_preview.as_ref() else {
             return None;
         };
-        let baseline_text = session.baseline_view.text.to_string();
-        let historical_text = self.text.to_string();
-        let lines = build_history_diff_lines(&baseline_text, &historical_text);
+        let Some(preview_index) = session.preview_index else {
+            return None;
+        };
+        let transaction = session.baseline_history.undo_stack.get(preview_index)?;
+        let lines = build_transaction_diff_preview_lines(transaction);
         let preview_text = lines
             .iter()
             .map(|line| line.text.clone())
@@ -114,6 +117,7 @@ impl AppState {
             baseline_view: self.snapshot_editor_view(),
             baseline_history: self.history.clone(),
             preview_index: None,
+            preview_view: None,
         });
         true
     }
@@ -134,19 +138,29 @@ impl AppState {
             return false;
         }
 
-        let rollback_count = undo_len.saturating_sub(transaction_index + 1);
-        self.restore_editor_view(&baseline_view);
-        self.history = baseline_history.clone();
-        self.current_transaction = None;
-        for _ in 0..rollback_count {
-            let _ = self.undo();
+        let mut preview_view = baseline_view.clone();
+        for transaction in baseline_history
+            .undo_stack
+            .iter()
+            .skip(transaction_index + 1)
+            .rev()
+        {
+            if !undo_edit_on_rope(&mut preview_view.text, &transaction.edit) {
+                return false;
+            }
         }
+        if let Some(transaction) = baseline_history.undo_stack.get(transaction_index) {
+            preview_view.cursor = transaction.after_cursor;
+            preview_view.selection_anchor_char_idx = None;
+            preview_view.visual_line_mode = false;
+        }
+
+        self.restore_editor_view(&preview_view);
+        self.current_transaction = None;
         if let Some(session) = self.file_history_preview.as_mut() {
             session.preview_index = Some(transaction_index);
+            session.preview_view = Some(preview_view);
         }
-        self.history = baseline_history;
-        self.current_transaction = None;
-        self.dirty = baseline_view.dirty;
         self.bump_revision();
         true
     }
@@ -159,8 +173,16 @@ impl AppState {
             self.history = session.baseline_history;
             return false;
         };
+        let Some(preview_view) = session.preview_view else {
+            self.history = session.baseline_history;
+            return false;
+        };
 
+        self.restore_editor_view(&preview_view);
+        self.dirty = session.baseline_view.dirty
+            || preview_index + 1 < session.baseline_history.undo_stack.len();
         let keep_len = preview_index + 1;
+        self.history = session.baseline_history;
         self.history.undo_stack.truncate(keep_len);
         self.history.redo_stack.clear();
         if let Some(path) = self.active_file.clone() {
@@ -193,17 +215,9 @@ impl AppState {
         };
 
         self.current_transaction = None;
-        for action in transaction.actions.iter().rev() {
-            match action {
-                EditAction::Insert { index, text } => {
-                    self.record_delete_highlight_edit(*index, text.chars().count());
-                    let _ = self.apply_delete_raw(*index, text.chars().count());
-                }
-                EditAction::Delete { index, text } => {
-                    self.record_insert_highlight_edit(*index, text);
-                    self.apply_insert_raw(*index, text);
-                }
-            }
+        if !transaction.edit.is_empty() && !self.undo_edit_transaction(&transaction.edit) {
+            self.history.undo_stack.push(transaction);
+            return false;
         }
 
         self.restore_cursor_state(transaction.before_cursor);
@@ -221,17 +235,9 @@ impl AppState {
         };
 
         self.current_transaction = None;
-        for action in &transaction.actions {
-            match action {
-                EditAction::Insert { index, text } => {
-                    self.record_insert_highlight_edit(*index, text);
-                    self.apply_insert_raw(*index, text);
-                }
-                EditAction::Delete { index, text } => {
-                    self.record_delete_highlight_edit(*index, text.chars().count());
-                    let _ = self.apply_delete_raw(*index, text.chars().count());
-                }
-            }
+        if !transaction.edit.is_empty() && !self.redo_edit_transaction(&transaction.edit) {
+            self.history.redo_stack.push(transaction);
+            return false;
         }
 
         self.restore_cursor_state(transaction.after_cursor);
@@ -240,6 +246,64 @@ impl AppState {
         self.dirty = true;
         self.history.undo_stack.push(transaction);
         self.bump_revision();
+        true
+    }
+
+    fn undo_edit_transaction(&mut self, edit: &EditTransaction) -> bool {
+        if edit.is_empty() {
+            return false;
+        }
+        if !range_matches_rope(
+            &self.text,
+            edit.start_char_idx,
+            edit.inserted_len_chars(),
+            &edit.inserted_text,
+        ) {
+            return false;
+        }
+
+        if !edit.inserted_text.is_empty() {
+            self.record_delete_highlight_edit(edit.start_char_idx, edit.inserted_len_chars());
+            if self
+                .apply_delete_raw(edit.start_char_idx, edit.inserted_len_chars())
+                .is_none()
+            {
+                return false;
+            }
+        }
+        if !edit.deleted_text.is_empty() {
+            self.record_insert_highlight_edit(edit.start_char_idx, &edit.deleted_text);
+            self.apply_insert_raw(edit.start_char_idx, &edit.deleted_text);
+        }
+        true
+    }
+
+    fn redo_edit_transaction(&mut self, edit: &EditTransaction) -> bool {
+        if edit.is_empty() {
+            return false;
+        }
+        if !range_matches_rope(
+            &self.text,
+            edit.start_char_idx,
+            edit.deleted_len_chars(),
+            &edit.deleted_text,
+        ) {
+            return false;
+        }
+
+        if !edit.deleted_text.is_empty() {
+            self.record_delete_highlight_edit(edit.start_char_idx, edit.deleted_len_chars());
+            if self
+                .apply_delete_raw(edit.start_char_idx, edit.deleted_len_chars())
+                .is_none()
+            {
+                return false;
+            }
+        }
+        if !edit.inserted_text.is_empty() {
+            self.record_insert_highlight_edit(edit.start_char_idx, &edit.inserted_text);
+            self.apply_insert_raw(edit.start_char_idx, &edit.inserted_text);
+        }
         true
     }
 
@@ -831,108 +895,89 @@ impl AppState {
     }
 }
 
-fn build_history_diff_lines(current_text: &str, historical_text: &str) -> Vec<FilePreviewLine> {
-    const MAX_LCS_LINES: usize = 2000;
+fn file_history_transaction_label(
+    transaction: &Transaction,
+) -> (String, crate::app::command_palette::CommandPaletteItemTone) {
+    let edit = &transaction.edit;
+    let inserted = diff_preview_text(&edit.inserted_text, 30);
+    let deleted = diff_preview_text(&edit.deleted_text, 30);
 
-    let current_lines: Vec<&str> = current_text.lines().collect();
-    let historical_lines: Vec<&str> = historical_text.lines().collect();
-    let m = current_lines.len();
-    let n = historical_lines.len();
+    match (
+        !edit.inserted_text.is_empty(),
+        !edit.deleted_text.is_empty(),
+    ) {
+        (true, false) => (
+            format!("[+ {inserted}]"),
+            crate::app::command_palette::CommandPaletteItemTone::Added,
+        ),
+        (false, true) => (
+            format!("[- {deleted}]"),
+            crate::app::command_palette::CommandPaletteItemTone::Removed,
+        ),
+        (true, true) => (
+            format!("[- {deleted}] [+ {inserted}]"),
+            crate::app::command_palette::CommandPaletteItemTone::Modified,
+        ),
+        (false, false) => (
+            "[no-op]".to_string(),
+            crate::app::command_palette::CommandPaletteItemTone::Default,
+        ),
+    }
+}
 
+fn file_history_transaction_secondary(index: usize, transaction: &Transaction) -> String {
+    let edit = &transaction.edit;
+    match (
+        !edit.inserted_text.is_empty(),
+        !edit.deleted_text.is_empty(),
+    ) {
+        (true, false) => format!(
+            "#{index} · inserted {} chars @ {}",
+            edit.inserted_len_chars(),
+            edit.start_char_idx
+        ),
+        (false, true) => format!(
+            "#{index} · deleted {} chars @ {}",
+            edit.deleted_len_chars(),
+            edit.start_char_idx
+        ),
+        (true, true) => format!(
+            "#{index} · replaced {} -> {} chars @ {}",
+            edit.deleted_len_chars(),
+            edit.inserted_len_chars(),
+            edit.start_char_idx
+        ),
+        (false, false) => format!("#{index} · no text delta"),
+    }
+}
+
+fn build_transaction_diff_preview_lines(transaction: &Transaction) -> Vec<FilePreviewLine> {
+    let edit = &transaction.edit;
     let mut out = vec![
         FilePreviewLine {
-            line_number: 1,
-            text: "--- current".to_string(),
+            line_number: edit.start_char_idx,
+            text: format!("@@ char {} @@", edit.start_char_idx),
             is_target: false,
         },
         FilePreviewLine {
-            line_number: 1,
-            text: "+++ history".to_string(),
+            line_number: edit.start_char_idx,
+            text: "--- deleted".to_string(),
             is_target: false,
         },
     ];
 
-    if m <= MAX_LCS_LINES && n <= MAX_LCS_LINES {
-        // LCS-based diff: correctly handles inserted/deleted lines
-        let mut dp = vec![vec![0u16; n + 1]; m + 1];
-        for i in (0..m).rev() {
-            for j in (0..n).rev() {
-                dp[i][j] = if current_lines[i] == historical_lines[j] {
-                    dp[i + 1][j + 1].saturating_add(1)
-                } else {
-                    dp[i + 1][j].max(dp[i][j + 1])
-                };
-            }
-        }
+    push_delta_preview_lines(&mut out, "-", &edit.deleted_text, edit.start_char_idx);
+    out.push(FilePreviewLine {
+        line_number: edit.start_char_idx,
+        text: "+++ inserted".to_string(),
+        is_target: false,
+    });
+    push_delta_preview_lines(&mut out, "+", &edit.inserted_text, edit.start_char_idx);
 
-        let mut i = 0;
-        let mut j = 0;
-        while i < m || j < n {
-            if i < m && j < n && current_lines[i] == historical_lines[j] {
-                out.push(FilePreviewLine {
-                    line_number: i + 1,
-                    text: format!("  {}", current_lines[i]),
-                    is_target: false,
-                });
-                i += 1;
-                j += 1;
-            } else if i < m && (j >= n || dp[i + 1][j] >= dp[i][j + 1]) {
-                out.push(FilePreviewLine {
-                    line_number: i + 1,
-                    text: format!("- {}", current_lines[i]),
-                    is_target: true,
-                });
-                i += 1;
-            } else {
-                out.push(FilePreviewLine {
-                    line_number: j + 1,
-                    text: format!("+ {}", historical_lines[j]),
-                    is_target: true,
-                });
-                j += 1;
-            }
-        }
-    } else {
-        // Fallback for very large files: naive line-by-line comparison
-        let max_len = m.max(n);
-        for idx in 0..max_len {
-            match (current_lines.get(idx), historical_lines.get(idx)) {
-                (Some(c), Some(h)) if c == h => out.push(FilePreviewLine {
-                    line_number: idx + 1,
-                    text: format!("  {c}"),
-                    is_target: false,
-                }),
-                (Some(c), Some(h)) => {
-                    out.push(FilePreviewLine {
-                        line_number: idx + 1,
-                        text: format!("- {c}"),
-                        is_target: true,
-                    });
-                    out.push(FilePreviewLine {
-                        line_number: idx + 1,
-                        text: format!("+ {h}"),
-                        is_target: true,
-                    });
-                }
-                (Some(c), None) => out.push(FilePreviewLine {
-                    line_number: idx + 1,
-                    text: format!("- {c}"),
-                    is_target: true,
-                }),
-                (None, Some(h)) => out.push(FilePreviewLine {
-                    line_number: idx + 1,
-                    text: format!("+ {h}"),
-                    is_target: true,
-                }),
-                (None, None) => {}
-            }
-        }
-    }
-
-    if out.len() == 2 {
+    if edit.is_empty() {
         out.push(FilePreviewLine {
-            line_number: 1,
-            text: "  (selected history matches current buffer)".to_string(),
+            line_number: edit.start_char_idx,
+            text: "  (selected history entry has no text delta)".to_string(),
             is_target: false,
         });
     }
@@ -940,27 +985,92 @@ fn build_history_diff_lines(current_text: &str, historical_text: &str) -> Vec<Fi
     out
 }
 
-fn summarize_transaction(transaction: &Transaction) -> String {
-    let mut inserts = 0usize;
-    let mut deletes = 0usize;
-    let mut chars = 0usize;
-    for action in &transaction.actions {
-        match action {
-            EditAction::Insert { text, .. } => {
-                inserts += 1;
-                chars += text.chars().count();
-            }
-            EditAction::Delete { text, .. } => {
-                deletes += 1;
-                chars += text.chars().count();
-            }
+fn push_delta_preview_lines(
+    out: &mut Vec<FilePreviewLine>,
+    prefix: &str,
+    text: &str,
+    start_char_idx: usize,
+) {
+    if text.is_empty() {
+        out.push(FilePreviewLine {
+            line_number: start_char_idx,
+            text: format!("{prefix} <empty>"),
+            is_target: false,
+        });
+        return;
+    }
+
+    for (offset, line) in text.lines().enumerate() {
+        out.push(FilePreviewLine {
+            line_number: start_char_idx + offset,
+            text: format!("{prefix} {line}"),
+            is_target: true,
+        });
+    }
+    if text.ends_with('\n') {
+        out.push(FilePreviewLine {
+            line_number: start_char_idx + text.lines().count(),
+            text: format!("{prefix} <newline>"),
+            is_target: true,
+        });
+    }
+}
+
+fn diff_preview_text(text: &str, max_chars: usize) -> String {
+    if text.is_empty() {
+        return "<empty>".to_string();
+    }
+
+    let mut preview = String::new();
+    for ch in text.chars().take(max_chars) {
+        match ch {
+            '\n' => preview.push_str("\\n"),
+            '\t' => preview.push_str("\\t"),
+            '\r' => preview.push_str("\\r"),
+            _ => preview.push(ch),
         }
     }
-    if inserts > 0 && deletes == 0 {
-        format!("inserted {chars} chars")
-    } else if deletes > 0 && inserts == 0 {
-        format!("deleted {chars} chars")
-    } else {
-        format!("modified {chars} chars")
+    if text.chars().count() > max_chars {
+        preview.push_str("...");
     }
+    preview
+}
+
+fn undo_edit_on_rope(text: &mut Rope, edit: &EditTransaction) -> bool {
+    if edit.is_empty() {
+        return true;
+    }
+    if !range_matches_rope(
+        text,
+        edit.start_char_idx,
+        edit.inserted_len_chars(),
+        &edit.inserted_text,
+    ) {
+        return false;
+    }
+
+    if !edit.inserted_text.is_empty() {
+        text.remove(edit.start_char_idx..edit.start_char_idx + edit.inserted_len_chars());
+    }
+    if !edit.deleted_text.is_empty() {
+        text.insert(edit.start_char_idx, &edit.deleted_text);
+    }
+    true
+}
+
+fn range_matches_rope(
+    text: &Rope,
+    start_char_idx: usize,
+    len_chars: usize,
+    expected: &str,
+) -> bool {
+    if expected.is_empty() && len_chars == 0 {
+        return start_char_idx <= text.len_chars();
+    }
+
+    let end_char_idx = start_char_idx.saturating_add(len_chars);
+    if start_char_idx > text.len_chars() || end_char_idx > text.len_chars() {
+        return false;
+    }
+    text.slice(start_char_idx..end_char_idx).to_string() == expected
 }

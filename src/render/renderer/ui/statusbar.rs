@@ -27,6 +27,9 @@ fn push_badge(
     chrome.push(RegionDrawInstance::new(rect, border).with_radius(radius));
 }
 
+const STATUSBAR_PADDING_TOP: f32 = 3.0;
+const STATUSBAR_PADDING_BOTTOM: f32 = 2.0;
+
 impl Renderer {
     pub fn update_statusbar_content(
         &mut self,
@@ -71,16 +74,20 @@ impl Renderer {
         let line_h = self.statusbar_line_height;
         let font_size = self.statusbar_font_size;
         let width = (bounds[2] - self.statusbar_padding_x * 2.0).max(1.0);
+        let content_top = STATUSBAR_PADDING_TOP.min((bounds[3] * 0.4).max(0.0));
+        let content_bottom = STATUSBAR_PADDING_BOTTOM.min((bounds[3] * 0.35).max(0.0));
+        let content_y = bounds[1] + content_top;
+        let content_h = (bounds[3] - content_top - content_bottom).max(1.0);
         self.statusbar_text_system
-            .set_size(Some(width), Some(bounds[3]));
+            .set_size(Some(width), Some(content_h));
 
         let mode_label = mode_display_label(mode);
         let mode_color = mode_pill_color(mode, &self.theme);
         let pill_text = format!(" {} ", mode_label);
         let pill_width = estimate_monospace_width(&pill_text, font_size);
         let pill_x = bounds[0];
-        let pill_height = bounds[3].max(0.0);
-        let pill_y = bounds[1];
+        let pill_height = content_h.max(0.0);
+        let pill_y = content_y;
         let pill_rect = [pill_x, pill_y, pill_width, pill_height];
 
         let branch_label = if git_branch.trim().is_empty() {
@@ -125,7 +132,7 @@ impl Renderer {
             String::new()
         };
 
-        let origin_y = bounds[1] + ((bounds[3] - line_h) * 0.5).max(0.0);
+        let origin_y = content_y + ((content_h - line_h) * 0.5).max(0.0);
         let fg_faint = with_alpha(self.theme.ui.fg_dim.as_f32(), 0.72);
         let accent = self.theme.ui.accent.as_f32();
         let pill_fg = self.theme.ui.bg.as_f32();
@@ -205,8 +212,8 @@ impl Renderer {
             RegionDrawInstance::new(pill_rect, mode_color),
         ];
 
-        let badge_height = (bounds[3] - 6.0).max(12.0);
-        let badge_y = bounds[1] + ((bounds[3] - badge_height) * 0.5).max(0.0);
+        let badge_height = (content_h - 4.0).max(12.0).min(content_h.max(1.0));
+        let badge_y = content_y + ((content_h - badge_height) * 0.5).max(0.0);
         let badge_radius = 5.0;
         let mut current_badge_x = diag_x;
 

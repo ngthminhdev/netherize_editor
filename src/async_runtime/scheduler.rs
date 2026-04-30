@@ -538,70 +538,115 @@ async fn run_local_history_request(
     request: WorkerRequest,
     worker_tx: std_mpsc::Sender<WorkerMessage>,
 ) {
+    let request_id = request.request_id;
+    let revision_id = request.revision_id;
+    let topic = request.topic;
     let started = WorkerEvent {
-        request_id: request.request_id,
-        revision_id: request.revision_id,
-        topic: request.topic,
+        request_id,
+        revision_id,
+        topic,
         kind: WorkerEventKind::Started,
     };
     emit_message(&worker_tx, WorkerMessage::Event(started));
 
-    let result = match request.payload {
+    match request.payload {
         WorkerRequestPayload::LoadLocalHistory { file_path } => {
-            execute_load_local_history(file_path)
+            match execute_load_local_history(file_path)
                 .await
                 .map(|payload| WorkerResult {
-                    request_id: request.request_id,
-                    revision_id: request.revision_id,
-                    topic: request.topic,
+                    request_id,
+                    revision_id,
+                    topic,
                     payload,
-                })
+                }) {
+                Ok(result) => {
+                    emit_message(&worker_tx, WorkerMessage::Result(result));
+                    emit_message(
+                        &worker_tx,
+                        WorkerMessage::Event(WorkerEvent {
+                            request_id,
+                            revision_id,
+                            topic,
+                            kind: WorkerEventKind::Completed,
+                        }),
+                    );
+                }
+                Err(message) => {
+                    emit_local_history_failure(&worker_tx, request_id, revision_id, topic, message)
+                }
+            }
         }
         WorkerRequestPayload::SaveLocalHistory {
             file_path,
             history,
             max_bytes,
-        } => execute_save_local_history(file_path, history, max_bytes)
-            .await
-            .map(|payload| WorkerResult {
-                request_id: request.request_id,
-                revision_id: request.revision_id,
-                topic: request.topic,
-                payload,
-            }),
-        _ => Err("unsupported local history request".to_string()),
-    };
-
-    match result {
-        Ok(result) => {
-            emit_message(&worker_tx, WorkerMessage::Result(result));
-            emit_message(
+        } => match execute_save_local_history(file_path, history, max_bytes).await {
+            Ok(WorkerResultPayload::LocalHistorySaved {
+                bytes_written,
+                trimmed_transactions,
+                ..
+            }) => {
+                async_trace!(
+                    "[Worker] saved local history request_id={} revision={} bytes={} trimmed={}",
+                    request_id,
+                    revision_id,
+                    bytes_written,
+                    trimmed_transactions
+                );
+                emit_message(
+                    &worker_tx,
+                    WorkerMessage::Event(WorkerEvent {
+                        request_id,
+                        revision_id,
+                        topic,
+                        kind: WorkerEventKind::Completed,
+                    }),
+                );
+            }
+            Ok(_) => emit_message(
                 &worker_tx,
                 WorkerMessage::Event(WorkerEvent {
-                    request_id: request.request_id,
-                    revision_id: request.revision_id,
-                    topic: request.topic,
+                    request_id,
+                    revision_id,
+                    topic,
                     kind: WorkerEventKind::Completed,
                 }),
-            );
-        }
-        Err(message) => {
-            emit_message(
-                &worker_tx,
-                WorkerMessage::Event(WorkerEvent {
-                    request_id: request.request_id,
-                    revision_id: request.revision_id,
-                    topic: request.topic,
-                    kind: WorkerEventKind::Failed {
-                        error: WorkerFailure {
-                            kind: WorkerFailureKind::Execution,
-                            message,
-                        },
-                    },
-                }),
-            );
-        }
+            ),
+            Err(message) => {
+                emit_local_history_failure(&worker_tx, request_id, revision_id, topic, message)
+            }
+        },
+        _ => emit_local_history_failure(
+            &worker_tx,
+            request_id,
+            revision_id,
+            topic,
+            "unsupported local history request".to_string(),
+        ),
     }
+}
+
+fn emit_local_history_failure(
+    worker_tx: &std_mpsc::Sender<WorkerMessage>,
+    request_id: u64,
+    revision_id: u64,
+    topic: RequestTopic,
+    message: String,
+) {
+    emit_message(
+        worker_tx,
+        WorkerMessage::Event(WorkerEvent {
+            request_id,
+            revision_id,
+            topic,
+            kind: WorkerEventKind::Failed {
+                error: WorkerFailure {
+                    kind: WorkerFailureKind::Execution,
+                    message,
+                },
+            },
+        }),
+    );
 }
 
 async fn execute_load_local_history(file_path: PathBuf) -> Result<WorkerResultPayload, String> {
@@ -1223,6 +1268,7 @@ fn execute_lsp_request(
                 .process
                 .update_request_meta(request.request_id, request.revision_id);
             handle_lsp_references(&handle.process, uri, *line, *character)
+                .map(|locations| WorkerResultPayload::LspReferencesResult { locations })
         }
         WorkerRequestPayload::LspFormattingRequest {
             language_id,
@@ -1582,7 +1628,7 @@ fn handle_lsp_references(
     uri: &str,
     line: u32,
     character: u32,
-) -> Result<WorkerResultPayload, String> {
+) -> Result<Vec<crate::async_runtime::message::LspLocation>, String> {
     use serde_json::json;
     let params = json!({
         "textDocument": { "uri": uri },
@@ -1600,7 +1646,7 @@ fn handle_lsp_references(
     if locations.is_empty() {
         return Err("references: empty result".to_string());
     }
-    Ok(WorkerResultPayload::LspReferencesResult { locations })
+    Ok(locations)
 }
 
 fn handle_lsp_completion(

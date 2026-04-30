@@ -29,7 +29,7 @@ use crate::core::mode::{
     EditorMode, ModeEvent, ModeState, ModeTransitionError, ModeTransitionResult,
 };
 use crate::core::text_object::find_text_object_range;
-use crate::core::transaction::{CursorState, EditAction, EditHistory, Transaction};
+use crate::core::transaction::{CursorState, EditHistory, EditTransaction, Transaction};
 use crate::editor_core::filetype_label_for_path;
 use crate::syntax::highlight::HighlightEdit;
 use crate::text::text_system::StyledTextSpan;
@@ -529,10 +529,17 @@ struct EditorViewSnapshot {
 }
 
 #[derive(Debug, Clone)]
+struct PendingTransaction {
+    before_text: Rope,
+    before_cursor: CursorState,
+}
+
+#[derive(Debug, Clone)]
 struct FileHistoryPreviewSession {
     baseline_view: EditorViewSnapshot,
     baseline_history: EditHistory,
     preview_index: Option<usize>,
+    preview_view: Option<EditorViewSnapshot>,
 }
 
 impl FuzzyState {
@@ -734,7 +741,7 @@ pub struct AppState {
     clipboard_record: Option<ClipboardRecord>,
     history: EditHistory,
     stored_file_histories: HashMap<PathBuf, StoredFileHistory>,
-    current_transaction: Option<Transaction>,
+    current_transaction: Option<PendingTransaction>,
     file_history_preview: Option<FileHistoryPreviewSession>,
     pending_highlight_edits: Vec<HighlightEdit>,
     current_overlays: Vec<EditorOverlay>,

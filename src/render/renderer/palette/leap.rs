@@ -45,9 +45,10 @@ impl Renderer {
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
 
         let label_color = self.theme.ui.cyan.as_f32();
-        let char_bg_color = self.theme.ui.panel_bg.as_f32();
+        let mut char_bg_color = self.theme.ui.panel_bg.as_f32();
+        char_bg_color[3] = char_bg_color[3].min(0.82);
         let mut overlay_color = self.theme.ui.overlay_bg.as_f32();
-        overlay_color[3] = overlay_color[3].min(0.40);
+        overlay_color[3] = overlay_color[3].min(0.28);
 
         let label_map: std::collections::HashMap<usize, &str> = labels
             .iter()

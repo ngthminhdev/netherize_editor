@@ -109,6 +109,15 @@ impl WorkbenchLayoutEngine {
         Self { config }
     }
 
+    fn status_bar_top_gap(&self, status_h: f32) -> f32 {
+        if status_h <= 0.0 {
+            return 0.0;
+        }
+        (self.config.panel_gap.max(0.0) * 0.35)
+            .clamp(3.0, 6.0)
+            .min(status_h * 0.5)
+    }
+
     pub fn compute(
         &self,
         size: PhysicalSize<u32>,
@@ -128,11 +137,14 @@ impl WorkbenchLayoutEngine {
         let top_h = self
             .config
             .top_bar_height
-            .min(viewport_bounds.height.max(0.0));
-        let remain_after_top = (viewport_bounds.height - top_h).max(0.0);
-        let status_h = self.config.status_bar_height.min(remain_after_top.max(0.0));
+            .min((height - outer_gap).max(0.0));
+        let remain_after_top = (height - outer_gap - top_h).max(0.0);
+        let status_h = self.config.status_bar_height.min(remain_after_top);
+        let status_top_gap = self
+            .status_bar_top_gap(status_h)
+            .min(remain_after_top - status_h);
         let body_y = viewport_bounds.y + top_h;
-        let body_h = (viewport_bounds.height - top_h - status_h).max(0.0);
+        let body_h = (height - outer_gap - top_h - status_h - status_top_gap).max(0.0);
 
         let (center_h, bottom_h, vertical_gap) =
             self.compute_vertical_split(body_h, panels.bottom.visible, panels.bottom.size_px);
@@ -158,12 +170,7 @@ impl WorkbenchLayoutEngine {
 
         let top_bar = RegionNode::new(
             RegionId::TopBar,
-            RegionBounds::new(
-                viewport_bounds.x,
-                viewport_bounds.y,
-                viewport_bounds.width,
-                top_h,
-            ),
+            RegionBounds::new(viewport_bounds.x, 0.0, viewport_bounds.width, top_h),
             true,
         );
         let left_sidebar = RegionNode::new(
@@ -191,7 +198,7 @@ impl WorkbenchLayoutEngine {
             RegionId::StatusBar,
             RegionBounds::new(
                 viewport_bounds.x + status_inset_x,
-                body_y + body_h,
+                (height - status_h).max(0.0),
                 (viewport_bounds.width - status_inset_x * 2.0).max(0.0),
                 status_h,
             ),
@@ -254,9 +261,12 @@ impl WorkbenchLayoutEngine {
         let height = size.height as f32;
         let outer_gap = self.config.outer_gap.max(0.0);
         let usable_width = (width - outer_gap * 2.0).max(0.0);
-        let body_h =
-            (height - outer_gap * 2.0 - self.config.top_bar_height - self.config.status_bar_height)
-                .max(0.0);
+        let body_h = (height
+            - outer_gap
+            - self.config.top_bar_height
+            - self.config.status_bar_height
+            - self.status_bar_top_gap(self.config.status_bar_height))
+        .max(0.0);
         let gap = self.config.panel_gap.max(0.0);
 
         match handle {
@@ -548,13 +558,68 @@ mod tests {
             .model
             .find(RegionId::StatusBar)
             .expect("status bar region");
-        let expected_body_height =
-            viewport.height as f32 - top.height - status.height - engine.config.outer_gap * 2.0;
+        let expected_body_height = viewport.height as f32
+            - top.height
+            - status.height
+            - engine.status_bar_top_gap(status.height)
+            - engine.config.outer_gap;
 
         assert!(
             (left.height - expected_body_height).abs() <= 0.001,
             "left sidebar should fill body height: left.height={} expected={expected_body_height}",
             left.height
+        );
+    }
+
+    #[test]
+    fn status_bar_keeps_gap_from_body_regions() {
+        let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
+        let mut state = WorkbenchPanelState::default();
+        state.left.visible = true;
+        state.bottom.visible = true;
+
+        let layout = engine.compute(PhysicalSize::new(1280, 800), &state);
+        let center = layout.model.find(RegionId::Center).expect("center region");
+        let bottom = layout
+            .model
+            .find(RegionId::BottomPanel)
+            .expect("bottom region");
+        let status = layout
+            .model
+            .find(RegionId::StatusBar)
+            .expect("status bar region");
+        let expected_gap = engine.status_bar_top_gap(status.height);
+        let body_bottom = (bottom.y + bottom.height).max(center.y + center.height);
+
+        assert!(
+            status.y >= body_bottom + expected_gap - 0.001,
+            "status bar should be padded below body regions: status.y={} body_bottom={} expected_gap={}",
+            status.y,
+            body_bottom,
+            expected_gap
+        );
+    }
+
+    #[test]
+    fn chrome_regions_pin_to_window_edges_vertically() {
+        let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
+        let layout = engine.compute(
+            PhysicalSize::new(1280, 800),
+            &WorkbenchPanelState::default(),
+        );
+        let top = layout.model.find(RegionId::TopBar).expect("top bar region");
+        let status = layout
+            .model
+            .find(RegionId::StatusBar)
+            .expect("status bar region");
+
+        assert!(
+            (top.y - 0.0).abs() <= 0.001,
+            "top bar should touch window top"
+        );
+        assert!(
+            ((status.y + status.height) - 800.0).abs() <= 0.001,
+            "status bar should touch window bottom"
         );
     }
 

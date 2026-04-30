@@ -133,11 +133,21 @@ pub enum CommandPaletteAction {
     SelectFileHistoryEntry(usize),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CommandPaletteItemTone {
+    #[default]
+    Default,
+    Added,
+    Removed,
+    Modified,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandPaletteItem {
     pub label: String,
     pub secondary_label: Option<String>,
     pub action: CommandPaletteAction,
+    pub tone: CommandPaletteItemTone,
 }
 
 impl CommandPaletteItem {
@@ -146,6 +156,7 @@ impl CommandPaletteItem {
             label: relative_path,
             secondary_label: None,
             action: CommandPaletteAction::OpenFile(absolute_path),
+            tone: CommandPaletteItemTone::Default,
         }
     }
 
@@ -159,6 +170,7 @@ impl CommandPaletteItem {
             label: name,
             secondary_label: None,
             action: CommandPaletteAction::OpenFile(path.to_path_buf()),
+            tone: CommandPaletteItemTone::Default,
         }
     }
 
@@ -173,6 +185,7 @@ impl CommandPaletteItem {
             label,
             secondary_label,
             action: CommandPaletteAction::OpenSearchMatch { path, line, column },
+            tone: CommandPaletteItemTone::Default,
         }
     }
 
@@ -181,6 +194,7 @@ impl CommandPaletteItem {
             label: label.to_string(),
             secondary_label: None,
             action: CommandPaletteAction::ExecuteCommand(id.to_string()),
+            tone: CommandPaletteItemTone::Default,
         }
     }
 
@@ -189,6 +203,7 @@ impl CommandPaletteItem {
             label: name.to_string(),
             secondary_label: Some(path.display().to_string()),
             action: CommandPaletteAction::SelectTheme(name.to_string()),
+            tone: CommandPaletteItemTone::Default,
         }
     }
 
@@ -197,6 +212,7 @@ impl CommandPaletteItem {
             label: name.to_string(),
             secondary_label: None,
             action: CommandPaletteAction::JumpToSymbol(name.to_string()),
+            tone: CommandPaletteItemTone::Default,
         }
     }
 
@@ -204,11 +220,13 @@ impl CommandPaletteItem {
         label: String,
         secondary_label: Option<String>,
         index: usize,
+        tone: CommandPaletteItemTone,
     ) -> Self {
         Self {
             label,
             secondary_label,
             action: CommandPaletteAction::SelectFileHistoryEntry(index),
+            tone,
         }
     }
 
@@ -222,6 +240,7 @@ impl CommandPaletteItem {
             },
             secondary_label: None,
             action: CommandPaletteAction::ExecuteVimCommand(trimmed.to_string()),
+            tone: CommandPaletteItemTone::Default,
         }
     }
 }
@@ -769,6 +788,8 @@ impl CommandPalette {
 
         let mut scrim = theme.ui.overlay_bg.as_f32();
         scrim[3] = scrim[3].max(0.72);
+        let mut panel_bg = theme.ui.panel_bg.as_f32();
+        panel_bg[3] = panel_bg[3].max(0.98);
 
         Some(CommandPaletteRenderModel {
             mode: self.mode,
@@ -791,7 +812,7 @@ impl CommandPalette {
             total_results: self.results.len(),
             show_results,
             border_color: theme.ui.border_color.as_f32(),
-            panel_bg: theme.ui.overlay_bg.as_f32(),
+            panel_bg,
             selection_bg: theme.ui.selection_bg.as_f32(),
             text_color: theme.ui.fg.as_f32(),
             hint_color: theme.syntax.comment.as_f32(),
@@ -887,6 +908,7 @@ fn vim_command_items(query: &str) -> Vec<CommandPaletteItem> {
             label: format!("Go to line {n}"),
             secondary_label: None,
             action: CommandPaletteAction::ExecuteVimCommand(trimmed.to_string()),
+            tone: CommandPaletteItemTone::Default,
         }];
     }
 
@@ -1033,5 +1055,31 @@ mod tests {
             empty_model.scroll_offset_rows,
             populated_model.scroll_offset_rows
         );
+    }
+
+    #[test]
+    fn render_uses_opaque_panel_background_separate_from_scrim() {
+        let palette = CommandPalette {
+            mode: CommandPaletteMode::ThemeSelector,
+            is_visible: true,
+            results: vec![make_item("default-dark")],
+            ..CommandPalette::default()
+        };
+
+        let theme = ThemeConfig::builtin_dark();
+        let model = palette
+            .render(&theme, [0.0, 0.0, 1200.0, 800.0])
+            .expect("render model");
+
+        let expected_panel = theme.ui.panel_bg.as_f32();
+        let expected_scrim = theme.ui.overlay_bg.as_f32();
+        assert_eq!(model.panel_bg[0], expected_panel[0]);
+        assert_eq!(model.panel_bg[1], expected_panel[1]);
+        assert_eq!(model.panel_bg[2], expected_panel[2]);
+        assert!(model.panel_bg[3] >= 0.98);
+        assert_eq!(model.scrim_color[0], expected_scrim[0]);
+        assert_eq!(model.scrim_color[1], expected_scrim[1]);
+        assert_eq!(model.scrim_color[2], expected_scrim[2]);
+        assert!(model.scrim_color[3] >= 0.72);
     }
 }

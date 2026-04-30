@@ -495,14 +495,12 @@ impl AppState {
     }
 
     pub fn commit_transaction(&mut self) -> bool {
-        let Some(mut transaction) = self.current_transaction.take() else {
+        let Some(pending) = self.current_transaction.take() else {
             return false;
         };
-        if transaction.is_empty() {
-            return false;
-        }
+        let edit = compact_edit_delta(&pending.before_text, &self.text);
 
-        transaction.after_cursor = self.cursor_state();
+        let transaction = Transaction::new(edit, pending.before_cursor, self.cursor_state());
         self.history.undo_stack.push(transaction);
         self.history.redo_stack.clear();
         if let Some(path) = self.active_file.clone() {
@@ -515,4 +513,38 @@ impl AppState {
         }
         true
     }
+}
+
+fn compact_edit_delta(before: &Rope, after: &Rope) -> EditTransaction {
+    let before_len = before.len_chars();
+    let after_len = after.len_chars();
+    let shared_len = before_len.min(after_len);
+
+    let mut start_char_idx = 0usize;
+    while start_char_idx < shared_len && before.char(start_char_idx) == after.char(start_char_idx) {
+        start_char_idx += 1;
+    }
+
+    let mut before_end = before_len;
+    let mut after_end = after_len;
+    while before_end > start_char_idx
+        && after_end > start_char_idx
+        && before.char(before_end - 1) == after.char(after_end - 1)
+    {
+        before_end -= 1;
+        after_end -= 1;
+    }
+
+    let deleted_text = if start_char_idx < before_end {
+        before.slice(start_char_idx..before_end).to_string()
+    } else {
+        String::new()
+    };
+    let inserted_text = if start_char_idx < after_end {
+        after.slice(start_char_idx..after_end).to_string()
+    } else {
+        String::new()
+    };
+
+    EditTransaction::new(start_char_idx, deleted_text, inserted_text)
 }

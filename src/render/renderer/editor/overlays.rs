@@ -27,6 +27,7 @@ use super::completion::{completion_kind_badge, completion_label_spans};
 
 const DIAGNOSTIC_SEVERITY_ERROR: u32 = 1;
 const DIAGNOSTIC_SEVERITY_WARNING: u32 = 2;
+const MAIN_EDITOR_HEADER_INSET: f32 = 3.0;
 
 use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
 use crate::text::text_system::StyledTextSpan;
@@ -52,19 +53,16 @@ impl Renderer {
             let header_h = self.theme.ui.panel_line_height.max(20.0);
             let title = "[Main Editor]";
             let title_w = estimate_monospace_width(title, self.theme.ui.panel_font_size.max(1.0));
-            let title_x = center_bounds[0] + ((center_bounds[2] - title_w) * 0.5).max(0.0);
+            let header_rect =
+                main_editor_header_rect(center_bounds, header_h, MAIN_EDITOR_HEADER_INSET);
+            let title_x = header_rect[0] + ((header_rect[2] - title_w) * 0.5).max(0.0);
             self.editor_overlay_chrome_instances = vec![RegionDrawInstance::new(
-                [
-                    center_bounds[0],
-                    center_bounds[1],
-                    center_bounds[2],
-                    header_h,
-                ],
+                header_rect,
                 self.theme.ui.panel_bg.as_f32(),
             )];
             self.editor_overlay_text_system.set_size(
-                Some((center_bounds[2] - self.editor_padding_x * 2.0).max(1.0)),
-                Some(header_h),
+                Some((header_rect[2] - self.editor_padding_x * 2.0).max(1.0)),
+                Some(header_rect[3].max(1.0)),
             );
             let mut header_glyphs = layout_panel_text(
                 title,
@@ -72,7 +70,8 @@ impl Renderer {
                 &mut self.atlas,
                 &self.queue,
                 title_x,
-                center_bounds[1] + ((header_h - self.theme.ui.panel_line_height).max(0.0) * 0.5),
+                header_rect[1]
+                    + ((header_rect[3] - self.theme.ui.panel_line_height).max(0.0) * 0.5),
                 self.theme.ui.fg.as_f32(),
             );
             let geometry = editor_viewport_geometry(self, app_state, center_bounds);
@@ -566,8 +565,32 @@ impl Renderer {
     }
 }
 
+fn main_editor_header_rect(center_bounds: [f32; 4], header_h: f32, inset: f32) -> [f32; 4] {
+    let [x, y, w, h] = center_bounds;
+    let inset = inset.max(0.0).min(w * 0.5).min(h * 0.5);
+    let header_y = y + inset;
+    let header_bottom = (y + header_h).min(y + h);
+    let header_height = (header_bottom - header_y).max(0.0);
+
+    [
+        x + inset,
+        header_y,
+        (w - inset * 2.0).max(0.0),
+        header_height,
+    ]
+}
+
 #[cfg(test)]
 mod tests {
+    use super::main_editor_header_rect;
+
+    #[test]
+    fn main_editor_header_rect_leaves_room_for_top_stroke() {
+        let rect = main_editor_header_rect([40.0, 80.0, 600.0, 320.0], 24.0, 3.0);
+
+        assert_eq!(rect, [43.0, 83.0, 594.0, 21.0]);
+    }
+
     #[test]
     fn completion_popup_width_and_anchor_remain_valid_on_narrow_viewport() {
         let char_w = 9.5_f32;

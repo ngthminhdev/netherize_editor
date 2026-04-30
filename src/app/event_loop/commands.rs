@@ -2359,8 +2359,9 @@ impl AppShell {
         let mut changed = self.app_state.clear_current_overlays();
         let origin_path = self.app_state.active_file().map(PathBuf::from);
         let origin_line = self.app_state.cursor_line_col().0;
+        self.references_request_revision = self.references_request_revision.saturating_add(1);
         let Some(request) = self.submit(RequestSpec {
-            revision_id: 0,
+            revision_id: self.references_request_revision,
             topic: RequestTopic::LspRequest,
             payload: WorkerRequestPayload::LspReferencesRequest {
                 uri,
@@ -3896,12 +3897,15 @@ mod tests {
             .app_state
             .set_command_palette_query("default-dark")
             .expect("set theme query");
+        let expected_theme_name = ThemeConfig::load("default-dark")
+            .expect("default-dark theme should load")
+            .name;
         assert!(shell.handle_command(Command::FilePickerConfirmSelection));
 
         assert!(!shell.app_state.is_command_palette_visible());
         assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
-        assert_eq!(shell.base_theme.name, "bearded-arc-zed");
-        assert_eq!(shell.theme.name, "bearded-arc-zed");
+        assert_eq!(shell.base_theme.name, expected_theme_name);
+        assert_eq!(shell.theme.name, expected_theme_name);
         assert_eq!(
             shell.persistent_state.configured_theme_profile(),
             Some("default-dark")

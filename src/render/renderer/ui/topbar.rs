@@ -23,6 +23,9 @@ fn with_alpha(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
     color
 }
 
+const TOPBAR_PADDING_TOP: f32 = 0.0;
+const TOPBAR_PADDING_BOTTOM: f32 = 6.0;
+
 impl Renderer {
     pub fn update_topbar_content(
         &mut self,
@@ -54,8 +57,12 @@ impl Renderer {
         let line_h = self.statusbar_line_height;
         let font_size = self.statusbar_font_size;
         let width = (bounds[2] - self.topbar_padding_x * 2.0).max(1.0);
-        self.topbar_text_system.set_size(None, Some(bounds[3]));
-        let origin_y = bounds[1] + ((bounds[3] - line_h) * 0.5).max(0.0);
+        let content_top = TOPBAR_PADDING_TOP.min((bounds[3] * 0.3).max(0.0));
+        let content_bottom = TOPBAR_PADDING_BOTTOM.min((bounds[3] * 0.45).max(0.0));
+        let content_y = bounds[1] + content_top;
+        let content_h = (bounds[3] - content_top - content_bottom).max(1.0);
+        self.topbar_text_system.set_size(None, Some(content_h));
+        let origin_y = content_y + ((content_h - line_h) * 0.5).max(0.0);
         let active_fg = self.theme.ui.fg.as_f32();
         let inactive_fg = with_alpha(self.theme.ui.fg_dim.as_f32(), 0.95);
         let empty_fg = self.theme.ui.fg_ghost.as_f32();
@@ -107,7 +114,7 @@ impl Renderer {
                 empty_fg,
             ));
             let count = glyphs.len() as u32 - start;
-            if let Some(scissor) = topbar_tab_text_scissor([tab_x, bounds[1], width, bounds[3]]) {
+            if let Some(scissor) = topbar_tab_text_scissor([tab_x, content_y, width, content_h]) {
                 if count > 0 {
                     text_batches.push(TextScissorBatch {
                         scissor,
@@ -185,12 +192,7 @@ impl Renderer {
                 if is_active {
                     chrome.push(
                         RegionDrawInstance::new(
-                            [
-                                tab_x,
-                                bounds[1] + 3.0,
-                                tab_width,
-                                (bounds[3] - 6.0).max(0.0),
-                            ],
+                            [tab_x, content_y, tab_width, content_h.max(0.0)],
                             active_bg,
                         )
                         .with_radius(7.0),
@@ -198,7 +200,7 @@ impl Renderer {
                     chrome.push(RegionDrawInstance::new(
                         [
                             tab_x + 8.0,
-                            (bounds[1] + bounds[3] - 2.0).max(bounds[1]),
+                            (content_y + content_h - 2.0).max(content_y),
                             (tab_width - 16.0).max(0.0),
                             1.0,
                         ],
@@ -212,9 +214,9 @@ impl Renderer {
                     chrome.push(RegionDrawInstance::new(
                         [
                             tab_x + tab_width + (tab_gap * 0.5_f32).floor(),
-                            bounds[1] + 9.0,
+                            content_y + 8.0,
                             1.0,
-                            (bounds[3] - 18.0).max(0.0),
+                            (content_h - 16.0).max(0.0),
                         ],
                         with_alpha(sep_color, 0.55),
                     ));
@@ -255,7 +257,7 @@ impl Renderer {
                 }
                 let batch_count = glyphs.len() as u32 - batch_start;
                 if let Some(scissor) =
-                    topbar_tab_text_scissor([tab_x, bounds[1], tab_width, bounds[3]])
+                    topbar_tab_text_scissor([tab_x, content_y, tab_width, content_h])
                 {
                     if batch_count > 0 {
                         text_batches.push(TextScissorBatch {

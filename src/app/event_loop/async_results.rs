@@ -13,27 +13,42 @@ impl AsyncResultRouter for AppShell {
     }
 
     fn on_worker_event(&mut self, event: WorkerEvent) {
+        let request_id = event.request_id;
+        let revision_id = event.revision_id;
+        let topic = event.topic;
         if let crate::async_runtime::message::WorkerEventKind::Failed { error } = event.kind {
-            if event.topic == RequestTopic::LspClient {
+            if topic == RequestTopic::LspClient {
                 self.pending_lsp_server = None;
             }
-            if self.app_state.fail_pending_references_buffer(
-                event.request_id,
-                friendly_references_status(&error.message),
-            ) {
+            let references_status = if revision_id < self.references_request_revision {
+                stale_references_status()
+            } else {
+                friendly_references_status(&error.message)
+            };
+            if self
+                .app_state
+                .fail_pending_references_buffer(request_id, references_status)
+            {
                 self.editor_needs_layout = true;
                 self.editor_caret_needs_layout = false;
-                self.request_redraw();
+            }
+            if topic == RequestTopic::LspRequest && revision_id < self.references_request_revision {
+                eprintln!(
+                    "[AppShell] stale references failure ignored request_id={} revision={} latest_revision={}",
+                    request_id, revision_id, self.references_request_revision
+                );
             }
             eprintln!(
                 "[AppShell] worker {:?} failed (revision={}): {}",
-                event.topic, event.revision_id, error.message
+                topic, revision_id, error.message
             );
+            self.request_redraw();
         }
     }
 
     fn on_worker_result(&mut self, result: WorkerResult) {
         let request_id = result.request_id;
+        let revision_id = result.revision_id;
         match result.payload {
             WorkerResultPayload::ParseAndHighlight {
                 file_path,
@@ -461,6 +476,21 @@ impl AsyncResultRouter for AppShell {
                 }
             }
             WorkerResultPayload::LspReferencesResult { locations, .. } => {
+                if revision_id < self.references_request_revision {
+                    if self
+                        .app_state
+                        .fail_pending_references_buffer(request_id, stale_references_status())
+                    {
+                        self.editor_needs_layout = true;
+                        self.editor_caret_needs_layout = false;
+                    }
+                    eprintln!(
+                        "[AppShell] stale references result ignored request_id={} revision={} latest_revision={}",
+                        request_id, revision_id, self.references_request_revision
+                    );
+                    self.request_redraw();
+                    return;
+                }
                 let workspace_root = self.app_state.workspace_root_path().map(PathBuf::from);
                 let items: Vec<crate::app::app_state::ReferencesBufferItem> = locations
                     .iter()
@@ -488,8 +518,8 @@ impl AsyncResultRouter for AppShell {
                     self.submit_references_preview_load();
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
-                    self.request_redraw();
                 }
+                self.request_redraw();
             }
             WorkerResultPayload::LspFormattingResult { uri, edits } => {
                 let Some(path) = lsp_uri_to_path(&uri) else {
@@ -586,7 +616,11 @@ impl AsyncResultRouter for AppShell {
                 } else {
                     false
                 };
-                if changed {}
+                if changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    self.request_redraw();
+                }
             }
             WorkerResultPayload::WorkspaceGitStatus {
                 workspace_root,
@@ -641,7 +675,22 @@ impl AsyncResultRouter for AppShell {
         }
     }
 
-    fn on_stale_result(&mut self, _stale: WorkerResult) {}
+    fn on_stale_result(&mut self, stale: WorkerResult) {
+        if let WorkerResultPayload::LspReferencesResult { .. } = stale.payload {
+            if self
+                .app_state
+                .fail_pending_references_buffer(stale.request_id, stale_references_status())
+            {
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+            }
+            eprintln!(
+                "[AppShell] bridge discarded stale references result request_id={} revision={} latest_revision={}",
+                stale.request_id, stale.revision_id, self.references_request_revision
+            );
+            self.request_redraw();
+        }
+    }
 }
 
 /// Convert `file:///path/to/file` URI thành PathBuf.
@@ -741,6 +790,10 @@ fn friendly_references_status(message: &str) -> String {
     }
 }
 
+fn stale_references_status() -> String {
+    "References request superseded by newer request".to_string()
+}
+
 fn active_fuzzy_preview_target(app_state: &AppState) -> Option<(PathBuf, Option<usize>)> {
     match app_state.command_palette_selected_action()? {
         crate::app::command_palette::CommandPaletteAction::OpenFile(path) => Some((path, None)),
@@ -759,4 +812,205 @@ fn active_references_preview_target(app_state: &AppState) -> Option<(PathBuf, Op
 fn active_diagnostics_preview_target(app_state: &AppState) -> Option<(PathBuf, Option<usize>)> {
     let item = app_state.selected_diagnostic_item()?;
     Some((item.file_path.clone(), Some(item.line + 1)))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use crate::{
+        app::{app_state::ReferencesBufferItem, async_bridge::AsyncResultRouter},
+        async_runtime::message::{
+            FilePreviewLine, LspLocation, RequestTopic, WorkerEvent, WorkerEventKind,
+            WorkerFailure, WorkerFailureKind, WorkerResult, WorkerResultPayload,
+        },
+        lsp::client::path_to_lsp_uri,
+    };
+
+    use super::AppShell;
+
+    fn unique_temp_path(suffix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock drift")
+            .as_nanos();
+        std::env::temp_dir().join(format!("netherize_async_results_{suffix}_{nanos}"))
+    }
+
+    #[test]
+    fn references_result_clears_loading_and_populates_items() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = unique_temp_path("references_result.rs");
+        shell.app_state.open_pending_references_buffer(
+            "References",
+            Some(file_path.clone()),
+            0,
+            41,
+        );
+        shell.references_request_revision = 1;
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 41,
+                revision_id: 1,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspReferencesResult {
+                    locations: vec![LspLocation {
+                        uri: path_to_lsp_uri(&file_path),
+                        line: 7,
+                        character: 3,
+                    }],
+                },
+            },
+        );
+
+        let references = shell
+            .app_state
+            .active_references_buffer()
+            .expect("references buffer");
+        assert!(!references.loading);
+        assert_eq!(references.pending_request_id, None);
+        assert_eq!(references.items.len(), 1);
+        assert_eq!(references.items[0].line, 7);
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn stale_references_result_stops_loading_and_keeps_items_empty() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = unique_temp_path("stale_references_result.rs");
+        shell.app_state.open_pending_references_buffer(
+            "References",
+            Some(file_path.clone()),
+            0,
+            52,
+        );
+        shell.references_request_revision = 2;
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 52,
+                revision_id: 1,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspReferencesResult {
+                    locations: vec![LspLocation {
+                        uri: path_to_lsp_uri(&file_path),
+                        line: 4,
+                        character: 1,
+                    }],
+                },
+            },
+        );
+
+        let references = shell
+            .app_state
+            .active_references_buffer()
+            .expect("references buffer");
+        assert!(!references.loading);
+        assert_eq!(references.pending_request_id, None);
+        assert!(references.items.is_empty());
+        assert_eq!(
+            references.status_message.as_deref(),
+            Some("References request superseded by newer request")
+        );
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn failed_references_event_clears_loading_buffer() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        shell
+            .app_state
+            .open_pending_references_buffer("References", None, 0, 77);
+        shell.references_request_revision = 3;
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+
+        AsyncResultRouter::on_worker_event(
+            &mut shell,
+            WorkerEvent {
+                request_id: 77,
+                revision_id: 3,
+                topic: RequestTopic::LspRequest,
+                kind: WorkerEventKind::Failed {
+                    error: WorkerFailure {
+                        kind: WorkerFailureKind::Execution,
+                        message: "references: timed out waiting for response".to_string(),
+                    },
+                },
+            },
+        );
+
+        let references = shell
+            .app_state
+            .active_references_buffer()
+            .expect("references buffer");
+        assert!(!references.loading);
+        assert_eq!(
+            references.status_message.as_deref(),
+            Some("References request timed out")
+        );
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn references_preview_result_marks_editor_layout_dirty() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = unique_temp_path("references_preview.rs");
+        shell
+            .app_state
+            .open_references_buffer(
+                "References (1)",
+                None,
+                0,
+                vec![ReferencesBufferItem {
+                    path: file_path.clone(),
+                    relative_path: "references_preview.rs".to_string(),
+                    line: 4,
+                    column: 0,
+                    summary: "Ln 5, Col 1".to_string(),
+                }],
+            )
+            .expect("open references buffer");
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 1,
+                revision_id: 0,
+                topic: RequestTopic::FilePreview,
+                payload: WorkerResultPayload::FilePreviewLoaded {
+                    file_path,
+                    target_line: Some(5),
+                    lines: vec![FilePreviewLine {
+                        line_number: 5,
+                        text: "demo()".to_string(),
+                        is_target: true,
+                    }],
+                },
+            },
+        );
+
+        let references = shell
+            .app_state
+            .active_references_buffer()
+            .expect("references buffer");
+        assert_eq!(references.preview_lines.len(), 1);
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
 }

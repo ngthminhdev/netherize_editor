@@ -325,6 +325,23 @@ impl Renderer {
 
         self.clear_color = theme_color_to_wgpu(theme.ui.bg);
         self.theme = theme;
+        self.topbar_scissor = None;
+        self.topbar_glyph_instances.clear();
+        self.topbar_chrome_instances.clear();
+        self.topbar_text_batches.clear();
+        self.topbar_text_pipeline
+            .upload_instances(&self.device, &self.queue, &[]);
+        self.statusbar_scissor = None;
+        self.statusbar_glyph_instances.clear();
+        self.statusbar_chrome_instances.clear();
+        self.buffer_terminal_header_batch = None;
+        self.statusbar_text_pipeline
+            .upload_instances(&self.device, &self.queue, &[]);
+        self.clear_sidebar();
+        self.clear_palette();
+        self.clear_editor_overlays();
+        self.clear_diagnostic_hover_popup();
+        self.clear_leap_labels();
         self.last_topbar_layout_key = None;
         self.last_statusbar_layout_key = None;
         self.last_palette_model = None;

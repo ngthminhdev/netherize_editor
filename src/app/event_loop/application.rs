@@ -419,6 +419,24 @@ impl AppShell {
         };
         let mut default_outline = self.theme.ui.accent.as_f32();
         default_outline[3] = default_outline[3].max(0.95);
+        let focus_target = if show_welcome && !workspace_attached {
+            FocusTarget::CenterEditor
+        } else {
+            self.focus_manager.current()
+        };
+        let center_has_error_diagnostics = self
+            .app_state
+            .active_file()
+            .and_then(|path| self.app_state.diagnostics_for_path(path))
+            .is_some_and(|items| items.iter().any(|item| item.severity == Some(1)));
+        let focus_region = focus_target_region_id(focus_target);
+        let mut focused_outline =
+            if focus_target == FocusTarget::CenterEditor && center_has_error_diagnostics {
+                self.theme.ui.error.as_f32()
+            } else {
+                self.theme.ui.cyan.as_f32()
+            };
+        focused_outline[3] = focused_outline[3].max(0.95);
         let mut region_instances: Vec<RegionDrawInstance> = flat_regions
             .iter()
             .copied()
@@ -430,6 +448,11 @@ impl AppShell {
                     && !(show_welcome && !workspace_attached && region.id == RegionId::LeftSidebar)
             })
             .flat_map(|region| {
+                let outline_color = if Some(region.id) == focus_region {
+                    focused_outline
+                } else {
+                    default_outline
+                };
                 focus_ring_instances(
                     [
                         region.bounds.x,
@@ -437,54 +460,13 @@ impl AppShell {
                         region.bounds.width,
                         region.bounds.height,
                     ],
-                    default_outline,
+                    outline_color,
                     3.0,
                     panel_radius,
                     region_color(region.id, &self.theme),
                 )
             })
             .collect();
-        let focus_target = if show_welcome && !workspace_attached {
-            FocusTarget::CenterEditor
-        } else {
-            self.focus_manager.current()
-        };
-        let center_has_error_diagnostics = self
-            .app_state
-            .active_file()
-            .and_then(|path| self.app_state.diagnostics_for_path(path))
-            .is_some_and(|items| items.iter().any(|item| item.severity == Some(1)));
-        // Ẩn focus ring khi terminal buffer đang chiếm center — focus ring
-        // gây ra border nhấp nháy trên mỗi redraw từ PTY output.
-        let center_has_terminal_buffer = self.app_state.active_terminal_session_id().is_some();
-        if !center_has_terminal_buffer {
-            if let Some(bounds) = focus_region_bounds(&layout.model, focus_target) {
-                let border_color =
-                    if focus_target == FocusTarget::CenterEditor && center_has_error_diagnostics {
-                        self.theme.ui.error.as_f32()
-                    } else {
-                        self.theme.ui.cyan.as_f32()
-                    };
-                region_instances.extend(focus_ring_instances(
-                    bounds,
-                    border_color,
-                    2.0,
-                    panel_radius,
-                    region_color(
-                        match focus_target {
-                            FocusTarget::CenterEditor => RegionId::Center,
-                            FocusTarget::LeftSidebar => RegionId::LeftSidebar,
-                            FocusTarget::RightSidebar => RegionId::RightSidebar,
-                            FocusTarget::BottomPanel => RegionId::BottomPanel,
-                            FocusTarget::TopBar => RegionId::TopBar,
-                            FocusTarget::StatusBar => RegionId::StatusBar,
-                            FocusTarget::OverlayLayer => RegionId::Center,
-                        },
-                        &self.theme,
-                    ),
-                ));
-            }
-        }
 
         if let Some(center_bounds) = center_bounds {
             let bounds_changed = self.last_editor_bounds != Some(center_bounds);
@@ -1007,24 +989,16 @@ impl AppShell {
     }
 }
 
-fn focus_region_bounds(
-    model: &crate::workbench::region_model::RegionModel,
-    target: FocusTarget,
-) -> Option<[f32; 4]> {
-    let region_id = match target {
-        FocusTarget::CenterEditor => RegionId::Center,
-        FocusTarget::LeftSidebar => RegionId::LeftSidebar,
-        FocusTarget::RightSidebar => RegionId::RightSidebar,
-        FocusTarget::BottomPanel => RegionId::BottomPanel,
-        FocusTarget::TopBar => RegionId::TopBar,
-        FocusTarget::StatusBar => RegionId::StatusBar,
-        FocusTarget::OverlayLayer => return None,
-    };
-    let region = model.find(region_id)?;
-    if region.width <= 0.0 || region.height <= 0.0 {
-        return None;
+fn focus_target_region_id(target: FocusTarget) -> Option<RegionId> {
+    match target {
+        FocusTarget::CenterEditor => Some(RegionId::Center),
+        FocusTarget::LeftSidebar => Some(RegionId::LeftSidebar),
+        FocusTarget::RightSidebar => Some(RegionId::RightSidebar),
+        FocusTarget::BottomPanel => Some(RegionId::BottomPanel),
+        FocusTarget::TopBar => Some(RegionId::TopBar),
+        FocusTarget::StatusBar => Some(RegionId::StatusBar),
+        FocusTarget::OverlayLayer => None,
     }
-    Some([region.x, region.y, region.width, region.height])
 }
 
 fn focus_ring_instances(
@@ -1056,4 +1030,36 @@ fn focus_ring_instances(
         );
     }
     instances
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{focus_ring_instances, focus_target_region_id};
+    use crate::workbench::{focus_manager::FocusTarget, region_model::RegionId};
+
+    #[test]
+    fn focus_target_region_id_maps_center_editor() {
+        assert_eq!(
+            focus_target_region_id(FocusTarget::CenterEditor),
+            Some(RegionId::Center)
+        );
+        assert_eq!(focus_target_region_id(FocusTarget::OverlayLayer), None);
+    }
+
+    #[test]
+    fn focus_ring_keeps_outline_and_panel_fill() {
+        let instances = focus_ring_instances(
+            [12.0, 24.0, 320.0, 180.0],
+            [0.7, 0.3, 1.0, 1.0],
+            3.0,
+            10.0,
+            [0.08, 0.08, 0.1, 1.0],
+        );
+
+        assert_eq!(
+            instances.len(),
+            2,
+            "panel regions should still render both outline and fill"
+        );
+    }
 }

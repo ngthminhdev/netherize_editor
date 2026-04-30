@@ -143,6 +143,7 @@ pub struct AppShell {
     /// paste) — the worker falls back to a full reparse in that case.
     last_syntax_edit_hint: Option<SyntaxEditHint>,
     active_highlight_request_revision: u64,
+    references_request_revision: u64,
     fzf_search_revision: u64,
     local_history_revision: u64,
     pending_parse_after_debounce: bool,

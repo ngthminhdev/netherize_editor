@@ -6,6 +6,7 @@ use crate::{
         FloatingBoxStyle, HelpState, OverlayColorToken, ReferencesBufferState, SettingItem,
         SettingsState,
     },
+    app::command_palette::CommandPaletteItemTone,
     async_runtime::message::LspDiagnostic,
     config::theme_config::ThemeConfig,
     core::mode::EditorMode,
@@ -70,6 +71,9 @@ impl Renderer {
         let fg_ghost = self.theme.ui.fg_ghost.as_f32();
         let selection_bg = self.theme.ui.selection_bg.as_f32();
         let warning = self.theme.ui.warning.as_f32();
+        let added_fg = self.theme.git.added_gutter.as_f32();
+        let removed_fg = self.theme.git.deleted_gutter.as_f32();
+        let modified_fg = self.theme.git.modified_gutter.as_f32();
         let added_bg = [0.10, 0.34, 0.20, 0.34];
         let removed_bg = [0.42, 0.14, 0.16, 0.34];
 
@@ -166,6 +170,18 @@ impl Renderer {
 
             self.editor_overlay_text_system
                 .set_size(Some(left_text_width), Some(line_height));
+            let row_label_color = match item.tone {
+                CommandPaletteItemTone::Added => added_fg,
+                CommandPaletteItemTone::Removed => removed_fg,
+                CommandPaletteItemTone::Modified => modified_fg,
+                CommandPaletteItemTone::Default => {
+                    if is_selected {
+                        fg
+                    } else {
+                        fg_dim
+                    }
+                }
+            };
             glyphs.extend(layout_panel_text(
                 &clamp_monospace_text(&item.label, left_text_width, font_size),
                 &mut self.editor_overlay_text_system,
@@ -173,7 +189,7 @@ impl Renderer {
                 &self.queue,
                 left_x + 14.0,
                 row_y + 4.0,
-                if is_selected { fg } else { fg_dim },
+                row_label_color,
             ));
 
             let summary = item.secondary_label.clone().unwrap_or_default();

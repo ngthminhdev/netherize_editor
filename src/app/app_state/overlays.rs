@@ -180,13 +180,13 @@ impl AppState {
         let _ = self.refresh_active_search_highlights();
     }
 
-    pub(super) fn ensure_current_transaction(&mut self) -> &mut Transaction {
+    pub(super) fn ensure_current_transaction(&mut self) {
         if self.current_transaction.is_none() {
-            self.current_transaction = Some(Transaction::new(self.cursor_state()));
+            self.current_transaction = Some(PendingTransaction {
+                before_text: self.text.clone(),
+                before_cursor: self.cursor_state(),
+            });
         }
-        self.current_transaction
-            .as_mut()
-            .expect("current transaction initialized")
     }
 
     pub(super) fn apply_insert(&mut self, index: usize, text: String) -> bool {
@@ -194,15 +194,10 @@ impl AppState {
             return false;
         }
 
+        self.ensure_current_transaction();
         let insert_at = index.min(self.text.len_chars());
         self.record_insert_highlight_edit(insert_at, &text);
         self.apply_insert_raw(insert_at, &text);
-        self.ensure_current_transaction()
-            .actions
-            .push(EditAction::Insert {
-                index: insert_at,
-                text,
-            });
         true
     }
 
@@ -212,14 +207,11 @@ impl AppState {
         }
 
         let end = (index + len_chars).min(self.text.len_chars());
+        self.ensure_current_transaction();
         self.record_delete_highlight_edit(index, end - index);
-        let Some(text) = self.apply_delete_raw(index, end - index) else {
+        if self.apply_delete_raw(index, end - index).is_none() {
             return false;
-        };
-
-        self.ensure_current_transaction()
-            .actions
-            .push(EditAction::Delete { index, text });
+        }
         true
     }
 

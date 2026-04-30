@@ -1182,4 +1182,76 @@ mod tests {
         assert!(state.undo());
         assert_eq!(state.text_string(), "MessageManager.ge");
     }
+
+    #[test]
+    fn committed_history_transaction_stores_single_delta() {
+        let mut state = AppState::from_text(unique_temp_path("history_delta"), "hello world");
+        assert!(state.jump_to_line_and_column(0, "hello ".chars().count()));
+
+        assert!(state.apply_delete("hello ".chars().count(), "world".chars().count()));
+        assert!(state.insert_text_at_cursor("rust"));
+        assert!(state.commit_transaction());
+
+        assert_eq!(state.history.undo_stack.len(), 1);
+        let edit = &state.history.undo_stack[0].edit;
+        assert_eq!(edit.start_char_idx, "hello ".chars().count());
+        assert_eq!(edit.deleted_text, "world");
+        assert_eq!(edit.inserted_text, "rust");
+        assert!(state.undo());
+        assert_eq!(state.text_string(), "hello world");
+        assert!(state.redo());
+        assert_eq!(state.text_string(), "hello rust");
+    }
+
+    #[test]
+    fn file_history_picker_uses_delta_label_and_preview() {
+        let file_path = unique_temp_path("history_picker_delta");
+        let mut state = AppState::new(file_path.clone());
+        state.active_file = Some(file_path);
+
+        assert!(state.insert_text_at_cursor("alpha"));
+        assert!(state.commit_transaction());
+
+        let items = state.file_history_picker_items();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].label, "[+ alpha]");
+        assert_eq!(
+            items[0].tone,
+            crate::app::command_palette::CommandPaletteItemTone::Added
+        );
+
+        assert!(state.begin_file_history_preview_session());
+        assert!(state.preview_file_history_index(0));
+        let (_lines, preview_text) = state
+            .build_file_history_diff_preview()
+            .expect("delta preview");
+        assert!(preview_text.contains("+++ inserted"));
+        assert!(preview_text.contains("+ alpha"));
+    }
+
+    #[test]
+    fn file_history_preview_replays_on_temp_rope_without_rewriting_history() {
+        let file_path = unique_temp_path("history_temp_preview");
+        let mut state = AppState::new(file_path.clone());
+        state.active_file = Some(file_path);
+
+        assert!(state.insert_text_at_cursor("old"));
+        assert!(state.commit_transaction());
+        assert!(state.insert_text_at_cursor(" new"));
+        assert!(state.commit_transaction());
+        assert_eq!(state.text_string(), "old new");
+        assert_eq!(state.history.undo_stack.len(), 2);
+
+        assert!(state.begin_file_history_preview_session());
+        assert!(state.preview_file_history_index(0));
+
+        assert_eq!(state.text_string(), "old");
+        assert_eq!(state.history.undo_stack.len(), 2);
+        assert!(state.history.redo_stack.is_empty());
+
+        assert!(state.cancel_file_history_preview());
+        assert_eq!(state.text_string(), "old new");
+        assert_eq!(state.history.undo_stack.len(), 2);
+        assert!(state.history.redo_stack.is_empty());
+    }
 }

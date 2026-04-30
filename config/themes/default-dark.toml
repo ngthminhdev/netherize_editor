@@ -1,6 +1,6 @@
 # Theme metadata shown after the profile is loaded.
 [theme]
-name = "bearded-arc-zed"
+name = "bearded-arc"
 description = "Bearded Arc palette adapted for Netherize Editor runtime themes"
 
 # Core editor surface: text buffer, caret, selection, and gutter.

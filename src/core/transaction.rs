@@ -7,29 +7,56 @@ pub struct CursorState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum EditAction {
-    Insert { index: usize, text: String },
-    Delete { index: usize, text: String },
+pub struct EditTransaction {
+    pub start_char_idx: usize,
+    pub deleted_text: String,
+    pub inserted_text: String,
+}
+
+impl EditTransaction {
+    pub fn new(start_char_idx: usize, deleted_text: String, inserted_text: String) -> Self {
+        Self {
+            start_char_idx,
+            deleted_text,
+            inserted_text,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.deleted_text.is_empty() && self.inserted_text.is_empty()
+    }
+
+    pub fn deleted_len_chars(&self) -> usize {
+        self.deleted_text.chars().count()
+    }
+
+    pub fn inserted_len_chars(&self) -> usize {
+        self.inserted_text.chars().count()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Transaction {
-    pub actions: Vec<EditAction>,
+    pub edit: EditTransaction,
     pub before_cursor: CursorState,
     pub after_cursor: CursorState,
 }
 
 impl Transaction {
-    pub fn new(before_cursor: CursorState) -> Self {
+    pub fn new(
+        edit: EditTransaction,
+        before_cursor: CursorState,
+        after_cursor: CursorState,
+    ) -> Self {
         Self {
-            actions: Vec::new(),
             before_cursor,
-            after_cursor: before_cursor,
+            after_cursor,
+            edit,
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.actions.is_empty()
+        self.edit.is_empty()
     }
 }
 
