@@ -126,6 +126,13 @@ impl Renderer {
         // Allow cosmic-text to shape full height; scissor clips the visible region.
         self.text_system.set_size(Some(width), None);
 
+        // Cull glyphs ngoài viewport (overscan 1 dòng mỗi đầu) — file 10k dòng
+        // chỉ build instance cho ~100 dòng visible thay vì toàn buffer.
+        let clip_top = geometry.viewport_text_top - geometry.line_height;
+        let clip_bottom =
+            geometry.viewport_text_top + geometry.viewport_text_height + geometry.line_height;
+        let viewport_clip = Some((clip_top, clip_bottom));
+
         let result = rebuild_layout_projection(
             text,
             app_state,
@@ -133,6 +140,7 @@ impl Renderer {
             &mut self.atlas,
             &self.queue,
             [geometry.origin_x, geometry.origin_y],
+            viewport_clip,
             self.theme.editor.fg.as_f32(),
             self.theme.editor.bg.as_f32(),
             spans,
@@ -280,6 +288,7 @@ impl Renderer {
             caret.x,
             caret.top,
             self.theme.ui.fg_ghost.as_f32(),
+            None,
         );
         let mut instances = Vec::with_capacity(raw_glyphs.len());
         for glyph in raw_glyphs {
@@ -292,9 +301,7 @@ impl Renderer {
                 ) else {
                     continue;
                 };
-                let Ok(entry) = self
-                    .atlas
-                    .get_or_insert(&self.queue, glyph.cache_key, &rasterized)
+                let Ok(entry) = self.atlas.get_or_reserve(glyph.cache_key, &rasterized)
                 else {
                     continue;
                 };
@@ -314,6 +321,7 @@ impl Renderer {
                 glyph.color,
             ));
         }
+        self.atlas.flush_pending(&self.queue);
         instances
     }
 }

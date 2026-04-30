@@ -45,6 +45,19 @@ impl PtyProvider {
             command.cwd(cwd);
         }
         command.env("TERM", "xterm-256color");
+        // macOS .app bundles inherit a minimal PATH from launchd; augment with
+        // Homebrew and standard user-tool paths so lazygit etc. are found.
+        #[cfg(target_os = "macos")]
+        {
+            let current_path = std::env::var("PATH").unwrap_or_default();
+            let brew_paths = "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin";
+            let augmented = if current_path.contains("/opt/homebrew/bin") {
+                current_path
+            } else {
+                format!("{brew_paths}:{current_path}")
+            };
+            command.env("PATH", augmented);
+        }
         for arg in args {
             command.arg(arg);
         }

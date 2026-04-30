@@ -31,6 +31,8 @@ use crate::{
     },
 };
 
+const LSP_INITIALIZE_TIMEOUT: Duration = Duration::from_secs(10);
+
 #[derive(Debug, Clone)]
 pub struct LspEntry {
     pub binary: &'static str,
@@ -47,9 +49,269 @@ pub fn lsp_entry_for_extension(ext: &str) -> Option<LspEntry> {
     })
 }
 
+/// Resolves the active nvm Node version's bin directory.
+///
+/// Reads `~/.nvm/alias/default`, resolves partial versions (e.g. `"22"` →
+/// `"v22.20.0"`) and lts aliases (e.g. `"lts/iron"`), then returns the
+/// matching `bin/` directory path.
+fn resolve_nvm_bin(home: &str) -> Option<String> {
+    let nvm_dir = format!("{home}/.nvm");
+    if !std::path::Path::new(&nvm_dir).exists() {
+        return None;
+    }
+
+    let alias_raw =
+        std::fs::read_to_string(format!("{nvm_dir}/alias/default")).ok()?;
+    let alias = alias_raw.trim();
+
+    // "lts/iron" → read ~/.nvm/alias/lts/iron for the concrete version
+    let version_spec = if let Some(lts_name) = alias.strip_prefix("lts/") {
+        let lts_raw = std::fs::read_to_string(
+            format!("{nvm_dir}/alias/lts/{lts_name}"),
+        )
+        .ok()?;
+        lts_raw.trim().to_string()
+    } else {
+        alias.to_string()
+    };
+
+    // Normalise: "22" → "v22", "v22.20.0" stays as-is
+    let prefix = if version_spec.starts_with('v') {
+        version_spec.clone()
+    } else {
+        format!("v{version_spec}")
+    };
+
+    let versions_dir = format!("{nvm_dir}/versions/node");
+
+    // Exact match first
+    let exact = format!("{versions_dir}/{prefix}/bin");
+    if std::path::Path::new(&exact).exists() {
+        return Some(exact);
+    }
+
+    // Partial match: find the highest version whose name starts with the prefix
+    // (e.g. "v22" matches "v22.20.0").
+    let mut matches: Vec<String> = std::fs::read_dir(&versions_dir)
+        .ok()?
+        .filter_map(|e| {
+            let name = e.ok()?.file_name().to_string_lossy().to_string();
+            name.starts_with(&prefix).then_some(name)
+        })
+        .collect();
+    matches.sort();
+
+    let bin = format!("{versions_dir}/{}/bin", matches.last()?);
+    std::path::Path::new(&bin).exists().then_some(bin)
+}
+
+/// Parses a Go version string like `"go1.24.11"` into a `(major, minor, patch)`
+/// tuple for ordering.  Unrecognised strings sort as `(0, 0, 0)`.
+fn parse_go_version(name: &str) -> (u32, u32, u32) {
+    let s = name.strip_prefix("go").unwrap_or(name);
+    let mut parts = s.splitn(3, '.');
+    let major = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+    let minor = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+    let patch = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+    (major, minor, patch)
+}
+
+/// Returns gvm Go bin directories sorted **newest version first** under `gvm_root`.
+///
+/// Scans `<gvm_root>/gos/` and `<gvm_root>/pkgsets/` so that `gopls` (or any
+/// Go tool) is found regardless of which version installed it and whether
+/// `--default` was used.  Newest-first ordering ensures that a freshly
+/// installed `gopls@latest` (in the newest pkgset) takes priority over an
+/// older version installed in an older pkgset.
+/// The caller resolves `gvm_root` from `$GVM_ROOT` or the `~/.gvm` fallback.
+fn resolve_gvm_paths(gvm_root: &str) -> Vec<String> {
+    if !std::path::Path::new(gvm_root).exists() {
+        return vec![];
+    }
+
+    let mut paths = vec![format!("{gvm_root}/bin")];
+
+    // Collect and sort Go version names (newest first) so that the latest
+    // pkgset bin — where `gopls@latest` lives — appears first in PATH.
+    let sorted_versions = |subdir: &str| -> Vec<String> {
+        let Ok(entries) = std::fs::read_dir(format!("{gvm_root}/{subdir}")) else {
+            return vec![];
+        };
+        let mut names: Vec<String> = entries
+            .flatten()
+            .filter_map(|e| {
+                let n = e.file_name().to_string_lossy().into_owned();
+                // Keep only entries that look like Go versions ("go1.x.y").
+                n.starts_with("go").then_some(n)
+            })
+            .collect();
+        names.sort_by(|a, b| parse_go_version(b).cmp(&parse_go_version(a)));
+        names
+    };
+
+    // pkgsets first: this is where `go install golang.org/x/tools/gopls@latest`
+    // puts the binary — take priority over the bare Go toolchain bin.
+    for ver in sorted_versions("pkgsets") {
+        let bin = format!("{gvm_root}/pkgsets/{ver}/global/bin");
+        if std::path::Path::new(&bin).is_dir() {
+            paths.push(bin);
+        }
+    }
+
+    // gos: the Go toolchain binaries (`go`, `gofmt`) per version, newest first.
+    for ver in sorted_versions("gos") {
+        let bin = format!("{gvm_root}/gos/{ver}/bin");
+        if std::path::Path::new(&bin).is_dir() {
+            paths.push(bin);
+        }
+    }
+
+    paths
+}
+
+/// Probes the user's login shell **once per process** and caches the result.
+///
+/// Spawning an interactive login shell (`-ilc`) sources `~/.zshrc` and
+/// `~/.bash_profile`, so version managers (nvm, gvm, rbenv, pyenv, volta …)
+/// are fully initialised — giving us the exact `$PATH` the user sees in a
+/// terminal.  stderr is discarded so shell startup chatter (nvm banners,
+/// "Now using node …") never contaminates the stdout we parse.
+///
+/// Returns `None` when every candidate shell fails or emits empty output
+/// (sandboxed build, CI runner, missing shell binary).
+fn extract_path_from_login_shell() -> Option<String> {
+    static CACHED: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    CACHED
+        .get_or_init(|| {
+            let shell_var = std::env::var("SHELL").unwrap_or_default();
+            let candidates: Vec<String> = {
+                let mut v: Vec<String> = vec![];
+                if !shell_var.is_empty() {
+                    v.push(shell_var);
+                }
+                for s in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
+                    v.push(s.to_string());
+                }
+                // Deduplicate while preserving preference order.
+                let mut seen = HashSet::new();
+                v.into_iter().filter(|s| seen.insert(s.clone())).collect()
+            };
+
+            for shell in &candidates {
+                let Ok(output) = std::process::Command::new(shell)
+                    .args(["-ilc", "printenv PATH"])
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null())
+                    .output()
+                else {
+                    continue;
+                };
+                if !output.status.success() {
+                    continue;
+                }
+                let Ok(raw) = String::from_utf8(output.stdout) else {
+                    continue;
+                };
+                let trimmed = raw.trim().to_string();
+                // Sanity-check: a real PATH is non-empty and contains at least one '/'.
+                if !trimmed.is_empty() && trimmed.contains('/') {
+                    return Some(trimmed);
+                }
+            }
+            None
+        })
+        .clone()
+}
+
+/// Returns an augmented `PATH` by first attempting a live login-shell probe
+/// and then falling back to a hard-coded augmentation list.
+///
+/// **Primary (Task 1):** spawns `$SHELL -ilc "printenv PATH"` once per
+/// process (result is cached via `OnceLock`) to capture the exact PATH the
+/// user's shell exposes — nvm, gvm, rbenv, cargo, Homebrew, and all other
+/// user-managed version managers are included automatically.
+///
+/// **Fallback (Task 2):** if the shell probe fails, prepends a curated list
+/// of well-known directories for nvm (`current` symlink + alias resolution),
+/// gvm, plain `~/go/bin`, cargo, Homebrew, and Netherize-managed LSP bins.
+pub fn patched_env_path() -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let netherize_bin = format!("{home}/.local/share/netherize/bin");
+
+    // Primary: one-shot login-shell extraction (nvm, gvm, cargo, etc. all active).
+    if let Some(live_path) = extract_path_from_login_shell() {
+        // Inject Netherize-managed LSP binaries at front — not present in the user shell.
+        return if live_path.split(':').any(|seg| seg == netherize_bin.as_str()) {
+            live_path
+        } else {
+            format!("{netherize_bin}:{live_path}")
+        };
+    }
+
+    // Fallback: static augmentation for sandboxed / CI environments.
+    static_patched_env_path()
+}
+
+/// Static PATH augmentation — fallback when the login-shell probe is unavailable.
+///
+/// Prepends directories commonly absent when the app launches as a macOS .app
+/// bundle (launchd provides only a minimal system PATH, omitting Homebrew,
+/// Cargo, nvm, gvm, and npm-global bins).
+fn static_patched_env_path() -> String {
+    let current = std::env::var("PATH").unwrap_or_default();
+    let home = std::env::var("HOME").unwrap_or_default();
+
+    // User-managed version managers take priority over system package managers
+    // (Homebrew, /usr/local) so that freshly installed tool versions win.
+    let mut candidates: Vec<String> = vec![];
+
+    // Cargo — rust-analyzer and other Rust tools.
+    candidates.push(format!("{home}/.cargo/bin"));
+
+    // gvm — newest pkgset/gos bin first (gopls@latest lives in pkgset).
+    let gvm_root = std::env::var("GVM_ROOT")
+        .unwrap_or_else(|_| format!("{home}/.gvm"));
+    candidates.extend(resolve_gvm_paths(&gvm_root));
+    // gvm bare bin directory (shell wrappers: go, gofmt, gvm itself).
+    candidates.push(format!("{home}/.gvm/bin"));
+
+    // Plain ~/go/bin fallback for Go installs without gvm.
+    candidates.push(format!("{home}/go/bin"));
+
+    // nvm — smart alias resolution first, then belt-and-suspenders current symlink.
+    if let Some(nvm_bin) = resolve_nvm_bin(&home) {
+        candidates.push(nvm_bin);
+    }
+    candidates.push(format!("{home}/.nvm/versions/node/current/bin"));
+
+    // npm global with custom prefix.
+    candidates.push(format!("{home}/.npm-global/bin"));
+
+    // Homebrew (system fallback — lower priority than user-managed tools).
+    candidates.push("/opt/homebrew/bin".to_string());
+    candidates.push("/opt/homebrew/sbin".to_string());
+    candidates.push("/usr/local/bin".to_string());
+    candidates.push("/usr/local/sbin".to_string());
+
+    // Netherize-managed LSP binaries.
+    candidates.push(format!("{home}/.local/share/netherize/bin"));
+
+    let mut extra: Vec<String> = candidates
+        .into_iter()
+        .filter(|p| !p.is_empty() && !current.split(':').any(|seg| seg == p.as_str()))
+        .collect();
+
+    if extra.is_empty() {
+        return current;
+    }
+    extra.push(current);
+    extra.join(":")
+}
+
 pub fn check_lsp_installed(binary: &str) -> bool {
     std::process::Command::new("which")
         .arg(binary)
+        .env("PATH", patched_env_path())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
@@ -313,6 +575,7 @@ pub async fn spawn_lsp_server(
     if let Some(profile) = language_profile_for_binary(&server_name) {
         command.args(profile.launch_args);
     }
+    command.env("PATH", patched_env_path());
     command.current_dir(root_path);
     command.stdin(Stdio::piped());
     command.stdout(Stdio::piped());
@@ -371,9 +634,21 @@ pub async fn spawn_lsp_server(
         )
         .await?;
 
-    let initialize_response = wait_for_json_rpc_response_async(&mut reader, init_request_id)
-        .await?
-        .ok_or_else(|| "lsp initialize returned EOF".to_string())?;
+    let initialize_response = match tokio::time::timeout(
+        LSP_INITIALIZE_TIMEOUT,
+        wait_for_json_rpc_response_async(&mut reader, init_request_id),
+    )
+    .await
+    {
+        Ok(response) => response?,
+        Err(_) => {
+            return Err(format!(
+                "lsp initialize timed out after {}s",
+                LSP_INITIALIZE_TIMEOUT.as_secs()
+            ));
+        }
+    }
+    .ok_or_else(|| "lsp initialize returned EOF".to_string())?;
 
     if let Some(error) = initialize_response.get("error") {
         return Err(format!("lsp initialize error: {}", error));
@@ -872,5 +1147,104 @@ mod tests {
         assert_eq!(server.as_deref(), Some("custom-lsp"));
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    // ── patched_env_path helpers ──────────────────────────────────────────────
+
+    fn temp_dir(label: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos();
+        std::env::temp_dir().join(format!("netherize_{label}_{stamp}"))
+    }
+
+    #[test]
+    fn resolve_nvm_bin_exact_version() {
+        use super::resolve_nvm_bin;
+
+        let root = temp_dir("nvm_exact");
+        let bin = root.join("versions/node/v22.20.0/bin");
+        fs::create_dir_all(&bin).unwrap();
+        fs::create_dir_all(root.join("alias")).unwrap();
+        fs::write(root.join("alias/default"), "v22.20.0").unwrap();
+
+        let home = root.to_string_lossy();
+        // Override NVM_DIR by passing home so that resolve_nvm_bin looks in <home>/.nvm
+        // The function appends "/.nvm" to `home`, so we place the structure under root/.nvm
+        let nvm_root = root.join(".nvm");
+        fs::create_dir_all(nvm_root.join("versions/node/v22.20.0/bin")).unwrap();
+        fs::create_dir_all(nvm_root.join("alias")).unwrap();
+        fs::write(nvm_root.join("alias/default"), "v22.20.0").unwrap();
+
+        let result = resolve_nvm_bin(&home).expect("should resolve");
+        assert!(result.ends_with("v22.20.0/bin"), "got: {result}");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolve_nvm_bin_partial_version() {
+        use super::resolve_nvm_bin;
+
+        let root = temp_dir("nvm_partial");
+        let nvm_root = root.join(".nvm");
+        // Three v22 installs; resolver should pick highest (v22.20.0).
+        for v in ["v22.18.0", "v22.19.1", "v22.20.0"] {
+            fs::create_dir_all(nvm_root.join(format!("versions/node/{v}/bin"))).unwrap();
+        }
+        fs::create_dir_all(nvm_root.join("alias")).unwrap();
+        // Alias contains partial "22" (no leading 'v', no patch).
+        fs::write(nvm_root.join("alias/default"), "22").unwrap();
+
+        let home = root.to_string_lossy();
+        let result = resolve_nvm_bin(&home).expect("should resolve partial");
+        assert!(result.ends_with("v22.20.0/bin"), "got: {result}");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolve_nvm_bin_lts_alias() {
+        use super::resolve_nvm_bin;
+
+        let root = temp_dir("nvm_lts");
+        let nvm_root = root.join(".nvm");
+        fs::create_dir_all(nvm_root.join("versions/node/v20.19.5/bin")).unwrap();
+        fs::create_dir_all(nvm_root.join("alias/lts")).unwrap();
+        // default → lts/iron → v20.19.5
+        fs::write(nvm_root.join("alias/default"), "lts/iron").unwrap();
+        fs::write(nvm_root.join("alias/lts/iron"), "v20.19.5").unwrap();
+
+        let home = root.to_string_lossy();
+        let result = resolve_nvm_bin(&home).expect("should resolve lts");
+        assert!(result.ends_with("v20.19.5/bin"), "got: {result}");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolve_gvm_paths_scans_all_installed_versions() {
+        use super::resolve_gvm_paths;
+
+        let gvm_root = temp_dir("gvm_root");
+        // Simulate two installed versions; only go1.25.4 has gopls in its pkgset.
+        for v in ["go1.24.11", "go1.25.4"] {
+            fs::create_dir_all(gvm_root.join(format!("gos/{v}/bin"))).unwrap();
+            fs::create_dir_all(gvm_root.join(format!("pkgsets/{v}/global/bin"))).unwrap();
+        }
+        fs::create_dir_all(gvm_root.join("bin")).unwrap();
+        // No environments/default — proves we don't depend on it.
+
+        let paths = resolve_gvm_paths(&gvm_root.to_string_lossy());
+
+        assert!(paths.iter().any(|p| p.contains("go1.24.11/bin")), "{paths:?}");
+        assert!(paths.iter().any(|p| p.contains("go1.25.4/bin")), "{paths:?}");
+        assert!(
+            paths.iter().any(|p| p.contains("go1.25.4") && p.ends_with("global/bin")),
+            "{paths:?}"
+        );
+
+        let _ = fs::remove_dir_all(gvm_root);
     }
 }

@@ -16,7 +16,7 @@ selection = "#1a3c47"
 # Background behind line numbers.
 gutter = "#132c34"
 # Active line-number color in the gutter.
-gutter_active = "#66afc7"
+gutter_active = "#c3e0e9"
 # Editor text metrics for cosmic-text layout.
 font_size = 15.0
 line_height = 26.0

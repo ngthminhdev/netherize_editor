@@ -106,6 +106,9 @@ pub struct SyntaxEditHint {
 #[derive(Debug, Clone)]
 pub enum WorkerRequestPayload {
     ParseAndHighlight {
+        /// Stable identity of the text buffer this request was created for.
+        /// For file-backed buffers this is the canonical path.
+        buffer_id: PathBuf,
         file_path: Option<PathBuf>,
         text_snapshot: String,
         language_id: LanguageId,
@@ -324,6 +327,9 @@ pub struct WorkerResult {
 #[derive(Debug, Clone)]
 pub enum WorkerResultPayload {
     ParseAndHighlight {
+        /// Stable identity copied from the request so the main thread can
+        /// reconcile async results against the currently active buffer.
+        buffer_id: PathBuf,
         file_path: Option<PathBuf>,
         language_id: LanguageId,
         buffer_revision: u64,

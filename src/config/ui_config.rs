@@ -239,7 +239,7 @@ impl UiConfig {
                 smooth_scroll_snap_epsilon: 0.01,
             },
             welcome: WelcomeUiConfig {
-                version: "v1.0.0-alpha".to_string(),
+                version: crate::APP_VERSION.to_string(),
                 card_max_width: 60.0,
                 card_padding_x: 42.0,
                 card_padding_y: 34.0,

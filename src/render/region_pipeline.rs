@@ -80,6 +80,10 @@ impl RegionDrawInstance {
     }
 }
 
+/// Số region instance pre-allocate (panels, selections, gutter highlights, …).
+/// 256 đủ cho UI dense ở 4K mà không phải realloc.
+const MIN_INSTANCE_CAPACITY: usize = 256;
+
 pub struct RegionPipeline {
     render_pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
@@ -184,7 +188,7 @@ impl RegionPipeline {
 
         let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Netherize Region Instance Buffer"),
-            size: std::mem::size_of::<RegionInstanceRaw>() as u64,
+            size: (MIN_INSTANCE_CAPACITY * std::mem::size_of::<RegionInstanceRaw>()) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -197,7 +201,7 @@ impl RegionPipeline {
             quad_index_buffer,
             index_count: QUAD_INDICES.len() as u32,
             instance_buffer,
-            instance_capacity: 1,
+            instance_capacity: MIN_INSTANCE_CAPACITY,
             instance_count: 0,
         }
     }
@@ -250,7 +254,7 @@ impl RegionPipeline {
             return;
         }
 
-        let new_capacity = required.next_power_of_two();
+        let new_capacity = required.next_power_of_two().max(MIN_INSTANCE_CAPACITY);
         let new_size = (new_capacity * std::mem::size_of::<RegionInstanceRaw>()) as u64;
         self.instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Netherize Region Instance Buffer (Resized)"),

@@ -282,15 +282,32 @@ impl TextSystem {
     ///
     /// `origin_x`, `origin_y` là offset pixel trong window.
     /// Ví dụ origin=(40, 80) sẽ đẩy text vào trong màn hình thay vì dính góc.
+    ///
+    /// `viewport_clip` (None = không cull) là cặp `(top_y, bottom_y)` trong window
+    /// space. Khi Some, các run nằm hoàn toàn ngoài khoảng này bị bỏ qua —
+    /// quan trọng với file lớn (10k dòng @ 4K) để tránh build instance cho
+    /// mọi dòng. Cosmic-text trả `layout_runs()` theo thứ tự `line_top` tăng
+    /// dần nên có thể `break` sớm khi vượt đáy.
     pub fn collect_visible_glyphs(
         &self,
         origin_x: f32,
         origin_y: f32,
         fallback_color: [f32; 4],
+        viewport_clip: Option<(f32, f32)>,
     ) -> Vec<VisibleGlyph> {
         let mut glyphs = Vec::new();
 
         for run in self.buffer.layout_runs() {
+            if let Some((clip_top, clip_bottom)) = viewport_clip {
+                let line_top_window = origin_y + run.line_top;
+                let line_bottom_window = line_top_window + run.line_height;
+                if line_bottom_window < clip_top {
+                    continue;
+                }
+                if line_top_window > clip_bottom {
+                    break;
+                }
+            }
             for glyph in run.glyphs {
                 let physical = glyph.physical((origin_x, origin_y + run.line_y), 1.0);
                 let color = glyph
@@ -392,7 +409,7 @@ mod tests {
 
         let mut system = TextSystem::new(Metrics::new(16.0, 22.0), Some(900.0), None);
         system.set_text(&text);
-        let glyphs = system.collect_visible_glyphs(0.0, 0.0, [1.0, 1.0, 1.0, 1.0]);
+        let glyphs = system.collect_visible_glyphs(0.0, 0.0, [1.0, 1.0, 1.0, 1.0], None);
         let max_line = glyphs.iter().map(|glyph| glyph.line_i).max().unwrap_or(0);
 
         assert!(
@@ -413,7 +430,7 @@ mod tests {
             ],
         );
 
-        let glyphs = system.collect_visible_glyphs(0.0, 0.0, [1.0, 1.0, 1.0, 1.0]);
+        let glyphs = system.collect_visible_glyphs(0.0, 0.0, [1.0, 1.0, 1.0, 1.0], None);
         let mut colors_by_byte = glyphs
             .into_iter()
             .map(|glyph| (glyph.byte_start, glyph.color))
@@ -446,7 +463,7 @@ mod tests {
             ],
         );
 
-        let glyphs = system.collect_visible_glyphs(0.0, 0.0, [1.0, 1.0, 1.0, 1.0]);
+        let glyphs = system.collect_visible_glyphs(0.0, 0.0, [1.0, 1.0, 1.0, 1.0], None);
         assert!(
             !glyphs.is_empty(),
             "sanitized spans should still produce glyphs"
@@ -464,7 +481,7 @@ mod tests {
         system.set_font_family(Some("__netherize_missing_font_family__"));
         system.set_text("fallback text abc 123");
 
-        let glyphs = system.collect_visible_glyphs(0.0, 0.0, [1.0, 1.0, 1.0, 1.0]);
+        let glyphs = system.collect_visible_glyphs(0.0, 0.0, [1.0, 1.0, 1.0, 1.0], None);
         assert!(
             !glyphs.is_empty(),
             "missing font family should still shape text via fallback"

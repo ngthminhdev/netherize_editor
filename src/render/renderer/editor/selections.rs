@@ -540,9 +540,9 @@ impl Renderer {
             };
             let label = format!("{:>width$} ", num_str, width = gutter_digits);
             let color = if abs_line == cursor_line {
-                gutter_text_color
-            } else {
                 gutter_active_color
+            } else {
+                gutter_text_color
             };
 
             gutter_glyphs.extend(layout_panel_text(
