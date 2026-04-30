@@ -46,8 +46,19 @@ criterion = { version = "0.5.1", default-features = true }
 name = "editor_bench"
 harness = false
 
-[profile.release]
+# For profiling / flamegraph (cargo build --profile profiling)
+[profile.profiling]
+inherits = "release"
 debug = true
+
+# Optimized IDE build (cargo build --release)
+[profile.release]
+opt-level = 3
+lto = "thin"          # faster than "fat", still good gains on wgpu/tree-sitter
+codegen-units = 1     # single unit → best inlining across crates
+strip = "debuginfo"   # remove debug symbols → smaller binary, fast startup
+debug = false
+panic = "abort"       # removes unwinding machinery (~10% size reduction)
 
 [profile.bench]
 debug = true
