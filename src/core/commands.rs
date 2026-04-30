@@ -18,8 +18,40 @@ pub enum TextObjectModifier {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextObjectKind {
+    Word,
     Quote(char),
     Bracket(char, char),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindMotionKind {
+    ForwardTo,
+    ForwardTill,
+    BackwardTo,
+    BackwardTill,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Motion {
+    WordForward,
+    WordBackward,
+    WordEnd,
+    LineStart,
+    LineEnd,
+    FirstNonWhitespace,
+    FirstLine,
+    LastLine,
+    FindChar(FindMotionKind, char),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OperationTarget {
+    Motion(Motion),
+    TextObject {
+        modifier: TextObjectModifier,
+        kind: TextObjectKind,
+    },
+    CurrentLine,
 }
 
 /// Command là giao diện trung gian giữa input layer và editor core.
@@ -31,6 +63,7 @@ pub enum Command {
     InsertText(String),
     Newline,
     Backspace,
+    InsertTab,
     InsertLineBelow,
     InsertLineAbove,
     InsertAtLineStart,
@@ -40,6 +73,7 @@ pub enum Command {
     DeleteChar,
     DeleteSelection,
     DeleteCurrentLine,
+    DeleteToLineEnd,
     ToggleLineComment,
     ToggleSelectionComment,
     DeleteWordForward,
@@ -50,6 +84,8 @@ pub enum Command {
     ChangeSelection,
     ChangeWordForward,
     ChangeWordBackward,
+    ChangeToLineEnd,
+    JoinLines,
     PasteAfter,
     PasteBefore,
     EditorPaste,
@@ -70,6 +106,8 @@ pub enum Command {
     MoveToFirstNonWhitespace,
     MoveToFirstLine,
     MoveToLastLine,
+    MoveParagraphUp,
+    MoveParagraphDown,
     ScrollHalfPageUp,
     ScrollHalfPageDown,
     CenterCursorLine,
@@ -92,7 +130,9 @@ pub enum Command {
     OpenInFileSearch,
     SearchInFiles,
     OpenThemeSelector,
+    OpenFileHistory,
     OpenSettings,
+    OpenHelp,
     FilePickerAppendQuery(String),
     FilePickerBackspaceQuery,
     OverlaySelectNext,
@@ -103,6 +143,7 @@ pub enum Command {
     SettingsAdjustIncrease,
     SettingsActivate,
     GitOpenLazygit,
+    GitOpenLazydocker,
     GitBlameLine,
     // Legacy aliases (kept for backward compatibility with old keymaps/tests).
     FilePickerSelectNext,
@@ -192,6 +233,10 @@ pub enum Command {
         modifier: TextObjectModifier,
         kind: TextObjectKind,
     },
+    Operate {
+        op: Operator,
+        target: OperationTarget,
+    },
 
     // ── Leap / EasyMotion navigation (Module 07 Phase 3) ──────────────────────
     /// Bắt đầu Leap session — InputHandler chuyển sang PendingLeapChar state.
@@ -212,6 +257,8 @@ pub enum Command {
     LspPreviewDefinition,
     /// gr: Gửi textDocument/references, mở danh sách tham chiếu.
     LspReferences,
+    /// Format active document via LSP textDocument/formatting.
+    LspFormatDocument,
     /// ctrl+space trong insert mode: gửi textDocument/completion.
     TriggerCompletion,
     /// Completion popup: chọn item kế tiếp.
@@ -222,6 +269,8 @@ pub enum Command {
     CompletionAccept,
     /// Completion popup: đóng popup.
     CompletionClose,
+    /// Accept AI inline ghost-text suggestion into the real buffer.
+    AiAcceptInline,
     /// References view: chọn item kế tiếp.
     ReferencesSelectNext,
     /// References view: chọn item trước đó.
@@ -248,10 +297,13 @@ impl Command {
             self,
             Self::DeleteChar
                 | Self::DeleteCurrentLine
+                | Self::DeleteToLineEnd
                 | Self::DeleteWordForward
                 | Self::DeleteWordBackward
                 | Self::ChangeWordForward
                 | Self::ChangeWordBackward
+                | Self::ChangeToLineEnd
+                | Self::JoinLines
                 | Self::MoveLeft
                 | Self::MoveRight
                 | Self::MoveUp
@@ -264,6 +316,8 @@ impl Command {
                 | Self::MoveToFirstNonWhitespace
                 | Self::MoveToFirstLine
                 | Self::MoveToLastLine
+                | Self::MoveParagraphUp
+                | Self::MoveParagraphDown
                 | Self::ScrollHalfPageUp
                 | Self::ScrollHalfPageDown
                 | Self::CenterCursorLine
@@ -275,6 +329,7 @@ impl Command {
                 | Self::PasteBefore
                 | Self::Undo
                 | Self::Redo
+                | Self::Operate { .. }
         )
     }
 
@@ -287,6 +342,7 @@ impl Command {
                 | Self::DeleteWordBackward
                 | Self::PasteAfter
                 | Self::PasteBefore
+                | Self::Operate { .. }
         )
     }
 
@@ -305,11 +361,14 @@ impl Command {
                 | Self::MoveToFirstNonWhitespace
                 | Self::MoveToFirstLine
                 | Self::MoveToLastLine
+                | Self::MoveParagraphUp
+                | Self::MoveParagraphDown
                 | Self::Backspace
                 | Self::DeleteChar
                 | Self::DeleteWordForward
                 | Self::DeleteWordBackward
                 | Self::InsertChar(_)
+                | Self::InsertTab
                 | Self::Newline
                 | Self::ScrollHalfPageUp
                 | Self::ScrollHalfPageDown

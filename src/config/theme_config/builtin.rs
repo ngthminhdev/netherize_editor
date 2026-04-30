@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use super::model::{
-    EditorThemeTokens, FileIconThemeTokens, IconThemeTokens, SyntaxThemeTokens, ThemeColor,
-    ThemeConfig, UiThemeTokens,
+    EditorThemeTokens, FileIconThemeTokens, GitThemeTokens, IconThemeTokens, SyntaxThemeTokens,
+    ThemeColor, ThemeConfig, UiThemeTokens,
 };
 
 impl ThemeConfig {
@@ -13,6 +13,7 @@ impl ThemeConfig {
             name: "builtin-dark".to_string(),
             description: Some("Vibrant dark theme optimized for 0-latency wgpu rendering".into()),
             editor: builtin_editor_tokens(),
+            git: builtin_git_tokens(),
             syntax: builtin_syntax_tokens(),
             icons: builtin_icon_tokens(&ui),
             exact_icons: HashMap::new(),
@@ -32,6 +33,15 @@ fn builtin_editor_tokens() -> EditorThemeTokens {
         selection: rgb(30, 37, 53),
         gutter: rgb(13, 16, 23),
         gutter_active: rgb(216, 222, 234),
+        indent_guide: rgba(143, 152, 170, 56),
+        rainbow_brackets: vec![
+            rgb(47, 211, 246),
+            rgb(231, 122, 233),
+            rgb(245, 182, 58),
+            rgb(155, 229, 100),
+            rgb(255, 123, 114),
+            rgb(183, 138, 255),
+        ],
         font_size: 15.0,
         line_height: 26.0,
         font_family: None,
@@ -46,9 +56,10 @@ fn builtin_ui_tokens() -> UiThemeTokens {
         panel_bg: rgb(18, 22, 34),
         terminal_bg: rgb(11, 15, 24),
         overlay_bg: rgba(5, 7, 12, 217),
-        status_bar_bg: rgb(17, 17, 17),
-        border_color: rgb(30, 37, 53),
-        selection_bg: rgb(30, 37, 53),
+        status_bar_bg: rgb(11, 14, 22),
+        border_color: rgb(43, 48, 64),
+        selection_bg: rgb(34, 39, 54),
+        dirty_indicator: rgb(245, 182, 58),
         fg: rgb(242, 244, 248),
         fg_dim: rgb(183, 191, 204),
         fg_ghost: rgb(109, 116, 131),
@@ -63,15 +74,15 @@ fn builtin_ui_tokens() -> UiThemeTokens {
         mode_normal: rgb(47, 211, 246),
         mode_insert: rgb(155, 229, 100),
         mode_visual: rgb(231, 122, 233),
-        sidebar_font_size: 15.0,
-        sidebar_line_height: 22.0,
+        sidebar_font_size: 11.0,
+        sidebar_line_height: 14.0,
         panel_font_size: 14.0,
         panel_line_height: 22.0,
         sidebar_width: 280.0,
         right_sidebar_width: 320.0,
         bottom_panel_height: 220.0,
-        top_bar_height: 36.0,
-        status_bar_height: 32.0,
+        top_bar_height: 34.0,
+        status_bar_height: 22.0,
     }
 }
 
@@ -83,15 +94,32 @@ fn builtin_syntax_tokens() -> SyntaxThemeTokens {
         comment: rgb(109, 116, 131),
         r#type: rgb(245, 182, 58),
         number: rgb(255, 123, 114),
+        boolean: rgb(245, 182, 58),
         identifier: rgb(242, 244, 248),
+        variable: rgb(242, 244, 248),
         parameter: rgb(155, 229, 100),
         field: rgb(73, 198, 248),
         property: rgb(183, 191, 204),
         constant: rgb(245, 182, 58),
         operator: rgb(183, 191, 204),
         punctuation: rgb(143, 152, 170),
+        escape: rgb(255, 123, 114),
         r#macro: rgb(231, 122, 233),
         lifetime: rgb(255, 123, 114),
+        constructor: rgb(245, 182, 58),
+        attribute: rgb(231, 122, 233),
+        namespace: rgb(245, 182, 58),
+        tag: rgb(245, 182, 58),
+    }
+}
+
+fn builtin_git_tokens() -> GitThemeTokens {
+    GitThemeTokens {
+        modified_sidebar: rgb(226, 192, 141),
+        added_sidebar: rgb(127, 214, 140),
+        modified_gutter: rgb(86, 156, 214),
+        added_gutter: rgb(80, 216, 144),
+        deleted_gutter: rgb(241, 76, 76),
     }
 }
 

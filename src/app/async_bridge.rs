@@ -238,4 +238,80 @@ mod tests {
         assert_eq!(stats.failed, 1);
         assert_eq!(router.failed_events, 1);
     }
+
+    #[test]
+    fn bridge_accepts_same_revision_result() {
+        let (tx, rx) = mpsc::channel();
+        let mut bridge = AppAsyncBridge::new(rx);
+        let mut router = RouterMock::default();
+        router.revisions.insert(RequestTopic::FzfSearch, 5);
+
+        tx.send(WorkerMessage::Result(WorkerResult {
+            request_id: 9,
+            revision_id: 5,
+            topic: RequestTopic::FzfSearch,
+            payload: WorkerResultPayload::FzfResults {
+                query: "foo".to_string(),
+                mode: crate::async_runtime::message::FzfSearchMode::FindFile,
+                items: Vec::new(),
+            },
+        }))
+        .expect("send equal revision result");
+
+        let stats = bridge.pump(&mut router);
+        assert_eq!(stats.accepted, 1);
+        assert_eq!(stats.stale, 0);
+        assert_eq!(router.accepted, vec![5]);
+    }
+
+    #[test]
+    fn lsp_diagnostics_bypass_stale_revision_filter() {
+        let (tx, rx) = mpsc::channel();
+        let mut bridge = AppAsyncBridge::new(rx);
+        let mut router = RouterMock::default();
+        router.revisions.insert(RequestTopic::LspClient, 99);
+
+        tx.send(WorkerMessage::Result(WorkerResult {
+            request_id: 11,
+            revision_id: 1,
+            topic: RequestTopic::LspClient,
+            payload: WorkerResultPayload::LspDiagnostics {
+                uri: "file:///tmp/demo.rs".to_string(),
+                diagnostics: Vec::new(),
+                version: None,
+            },
+        }))
+        .expect("send diagnostics result");
+
+        let stats = bridge.pump(&mut router);
+        assert_eq!(stats.accepted, 1);
+        assert_eq!(stats.stale, 0);
+        assert_eq!(router.accepted, vec![1]);
+    }
+
+    #[test]
+    fn bridge_tracks_multiple_worker_failure_events() {
+        let (tx, rx) = mpsc::channel();
+        let mut bridge = AppAsyncBridge::new(rx);
+        let mut router = RouterMock::default();
+
+        for request_id in [101u64, 102u64] {
+            tx.send(WorkerMessage::Event(WorkerEvent {
+                request_id,
+                revision_id: request_id,
+                topic: RequestTopic::TerminalPty,
+                kind: WorkerEventKind::Failed {
+                    error: crate::async_runtime::message::WorkerFailure {
+                        kind: crate::async_runtime::message::WorkerFailureKind::Execution,
+                        message: format!("failure-{request_id}"),
+                    },
+                },
+            }))
+            .expect("send failed event");
+        }
+
+        let stats = bridge.pump(&mut router);
+        assert_eq!(stats.failed, 2);
+        assert_eq!(router.failed_events, 2);
+    }
 }

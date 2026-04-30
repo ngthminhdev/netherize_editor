@@ -1,6 +1,6 @@
 # Theme metadata shown after the profile is loaded.
 [theme]
-name = "bearded-solarized-zed"
+name = "bearded-solarized"
 description = "Bearded Theme Solarized palette adapted for Netherize Editor runtime themes"
 
 # Core editor surface: text buffer, caret, selection, and gutter.
@@ -75,6 +75,13 @@ sidebar_width = 280.0
 right_sidebar_width = 320.0
 bottom_panel_height = 220.0
 top_bar_height = 36.0
+
+[git]
+modified_sidebar = "#e8913b"
+added_sidebar = "#3CEC85"
+modified_gutter = "#e8913b"
+added_gutter = "#3CEC85"
+deleted_gutter = "#dc322f"
 status_bar_height = 32.0
 
 # Disclosure markers and file-picker bullet glyph.
@@ -203,3 +210,17 @@ punctuation = "#c3e0e966"
 macro = "#4db0f7"
 # Rust lifetime highlight.
 lifetime = "#e8913b"
+# Boolean literals (`true`, `false`).
+boolean = "#FF955C"
+# Escape sequences inside strings/chars.
+escape = "#FF955C"
+# Local variables and bindings.
+variable = "#d0d7e4"
+# Constructors, enum variants, and nominal type definitions.
+constructor = "#B78AFF"
+# Attributes/annotations.
+attribute = "#EACD61"
+# Module/namespace qualifiers.
+namespace = "#B78AFF"
+# Markup/JSX-style tags.
+tag = "#B78AFF"

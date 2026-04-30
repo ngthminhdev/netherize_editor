@@ -23,6 +23,63 @@ fn dispatch_palette_overlay_command(
 }
 
 impl AppShell {
+    fn prepare_for_workspace_switch(&mut self) {
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspClient,
+            payload: WorkerRequestPayload::ShutdownAllLspServers,
+        });
+
+        self.app_state.clear_workspace_session_state();
+        self.active_lsp_server = None;
+        self.pending_lsp_server = None;
+        self.pending_lsp_document_sync = None;
+        self.lsp_completion_trigger_chars.clear();
+        self.active_lsp_guide = None;
+        self.highlight_spans.clear();
+        self.semantic_highlight_spans.clear();
+    }
+
+    fn switch_workspace_to(&mut self, root_path: PathBuf) -> bool {
+        self.prepare_for_workspace_switch();
+
+        if let Err(err) = self.app_state.attach_workspace(root_path.clone()) {
+            eprintln!("[AppShell] attach_workspace failed: {err}");
+            return false;
+        }
+        let _ = self.app_state.dismiss_initial_launch_welcome();
+
+        self.persistent_state.push_recent(root_path.clone());
+        self.persistent_state.save();
+
+        self.mark_explorer_dirty();
+        if !self.panel_state.left.visible {
+            self.panel_state.left.visible = true;
+            self.sidebar_needs_layout = true;
+        }
+        self.workspace_git_branch = self
+            .app_state
+            .workspace_root_path()
+            .and_then(detect_git_branch);
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::WorkspaceWatch,
+            payload: WorkerRequestPayload::StartFileWatch {
+                root_path: root_path.clone(),
+            },
+        });
+
+        self.submit_workspace_git_status_refresh();
+        self.submit_active_buffer_git_baseline_refresh();
+
+        self.sync_lsp_server_for_workspace();
+
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        true
+    }
+
     fn explorer_selected_entry(&mut self) -> Option<ExplorerEntry> {
         self.ensure_explorer_snapshot();
         if self.explorer_snapshot.entries.is_empty() {
@@ -154,6 +211,27 @@ impl AppShell {
         )
     }
 
+    fn finalize_settings_change(&mut self) -> bool {
+        self.apply_scaled_runtime_config();
+        let _ = self.ui_config.save_user_override();
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        true
+    }
+
+    fn update_active_settings_edit_draft(&mut self, text: String) -> bool {
+        let Some(state) = self.app_state.active_settings_buffer_mut() else {
+            return false;
+        };
+        let Some(editing) = &mut state.editing else {
+            return false;
+        };
+        editing.draft = text;
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        true
+    }
+
     fn adjust_selected_setting(&mut self, delta: i32) -> bool {
         let Some(selected) = self
             .app_state
@@ -164,9 +242,63 @@ impl AppShell {
             return false;
         };
 
+        if self.app_state.settings_is_editing() {
+            return match selected {
+                crate::app::app_state::SettingItem::FontSize { current } => {
+                    let next = (current + delta as f32 * 0.5).clamp(8.0, 40.0);
+                    self.update_active_settings_edit_draft(format!("{next:.1}"))
+                }
+                crate::app::app_state::SettingItem::LineHeight { current } => {
+                    let next = (current + delta as f32 * 0.5).clamp(10.0, 64.0);
+                    self.update_active_settings_edit_draft(format!("{next:.1}"))
+                }
+                crate::app::app_state::SettingItem::IndentTabWidth { current } => {
+                    let next = (current as i32 + delta).clamp(1, 8) as u8;
+                    self.update_active_settings_edit_draft(next.to_string())
+                }
+                crate::app::app_state::SettingItem::SidebarWidth { current } => {
+                    let next = (current + delta * 20).clamp(160, 640);
+                    self.update_active_settings_edit_draft(next.to_string())
+                }
+                crate::app::app_state::SettingItem::RightSidebarWidth { current } => {
+                    let next = (current + delta * 20).clamp(180, 720);
+                    self.update_active_settings_edit_draft(next.to_string())
+                }
+                crate::app::app_state::SettingItem::BottomPanelHeight { current } => {
+                    let next = (current + delta * 20).clamp(120, 520);
+                    self.update_active_settings_edit_draft(next.to_string())
+                }
+                _ => false,
+            };
+        }
+
         match selected {
+            crate::app::app_state::SettingItem::FontSize { current } => {
+                let next = (current + delta as f32 * 0.5).clamp(8.0, 40.0);
+                self.base_theme.editor.font_size = next;
+                self.ui_config.editor.font_size = next;
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::FontSize { current }) =
+                        state.selected_item_mut()
+                {
+                    *current = next;
+                }
+                self.finalize_settings_change()
+            }
+            crate::app::app_state::SettingItem::LineHeight { current } => {
+                let next = (current + delta as f32 * 0.5).clamp(10.0, 64.0);
+                self.base_theme.editor.line_height = next;
+                self.ui_config.editor.line_height = next;
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::LineHeight { current }) =
+                        state.selected_item_mut()
+                {
+                    *current = next;
+                }
+                self.finalize_settings_change()
+            }
             crate::app::app_state::SettingItem::SidebarWidth { current } => {
-                let next = (current + delta).clamp(160, 640);
+                let next = (current + delta * 20).clamp(160, 640);
                 self.ui_config.docks.left.size_px = next as f32;
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
                     && let Some(crate::app::app_state::SettingItem::SidebarWidth { current }) =
@@ -174,12 +306,10 @@ impl AppShell {
                 {
                     *current = next;
                 }
-                self.apply_scaled_runtime_config();
-                let _ = self.ui_config.save_user_override();
-                true
+                self.finalize_settings_change()
             }
             crate::app::app_state::SettingItem::RightSidebarWidth { current } => {
-                let next = (current + delta).clamp(180, 720);
+                let next = (current + delta * 20).clamp(180, 720);
                 self.ui_config.docks.right.size_px = next as f32;
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
                     && let Some(crate::app::app_state::SettingItem::RightSidebarWidth { current }) =
@@ -187,12 +317,10 @@ impl AppShell {
                 {
                     *current = next;
                 }
-                self.apply_scaled_runtime_config();
-                let _ = self.ui_config.save_user_override();
-                true
+                self.finalize_settings_change()
             }
             crate::app::app_state::SettingItem::BottomPanelHeight { current } => {
-                let next = (current + delta).clamp(120, 520);
+                let next = (current + delta * 20).clamp(120, 520);
                 self.ui_config.docks.bottom.size_px = next as f32;
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
                     && let Some(crate::app::app_state::SettingItem::BottomPanelHeight { current }) =
@@ -200,9 +328,19 @@ impl AppShell {
                 {
                     *current = next;
                 }
-                self.apply_scaled_runtime_config();
-                let _ = self.ui_config.save_user_override();
-                true
+                self.finalize_settings_change()
+            }
+            crate::app::app_state::SettingItem::IndentTabWidth { current } => {
+                let next = (current as i32 + delta).clamp(1, 8) as u8;
+                self.ui_config.indent.tab_width = next;
+                self.app_state.set_indent_config(self.ui_config.indent);
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::IndentTabWidth { current }) =
+                        state.selected_item_mut()
+                {
+                    *current = next;
+                }
+                self.finalize_settings_change()
             }
             _ => false,
         }
@@ -226,14 +364,41 @@ impl AppShell {
             crate::app::app_state::SettingItem::ThemeSelector { .. } => {
                 self.handle_command(Command::OpenThemeSelector)
             }
+            crate::app::app_state::SettingItem::IndentInsertSpaces { enabled } => {
+                let next = !enabled;
+                self.ui_config.indent.insert_spaces = next;
+                self.app_state.set_indent_config(self.ui_config.indent);
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::IndentInsertSpaces { enabled }) =
+                        state.selected_item_mut()
+                {
+                    *enabled = next;
+                }
+                let _ = self.ui_config.save_user_override();
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+                true
+            }
+            crate::app::app_state::SettingItem::InlineSuggestion { .. } => {
+                // Inline suggestions are intentionally disabled for now.
+                // Keep the settings row visible, but do not allow toggling it on.
+                false
+            }
             crate::app::app_state::SettingItem::FontFamily { .. }
             | crate::app::app_state::SettingItem::FontSize { .. }
             | crate::app::app_state::SettingItem::LineHeight { .. }
+            | crate::app::app_state::SettingItem::IndentTabWidth { .. }
             | crate::app::app_state::SettingItem::SidebarWidth { .. }
             | crate::app::app_state::SettingItem::RightSidebarWidth { .. }
             | crate::app::app_state::SettingItem::BottomPanelHeight { .. } => {
                 let changed = self.app_state.settings_begin_editing();
                 if changed {
+                    if let Ok(result) = self
+                        .app_state
+                        .apply_mode_event(crate::core::mode::ModeEvent::EnterInsert)
+                    {
+                        let _ = result.changed;
+                    }
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                 }
@@ -296,6 +461,7 @@ impl AppShell {
                 if let Ok(value) = trimmed.parse::<f32>() {
                     let value = value.clamp(8.0, 40.0);
                     self.base_theme.editor.font_size = value;
+                    self.ui_config.editor.font_size = value;
                     if let Some(state) = self.app_state.active_settings_buffer_mut()
                         && let Some(crate::app::app_state::SettingItem::FontSize { current }) =
                             state.selected_item_mut()
@@ -309,6 +475,7 @@ impl AppShell {
                 if let Ok(value) = trimmed.parse::<f32>() {
                     let value = value.clamp(10.0, 64.0);
                     self.base_theme.editor.line_height = value;
+                    self.ui_config.editor.line_height = value;
                     if let Some(state) = self.app_state.active_settings_buffer_mut()
                         && let Some(crate::app::app_state::SettingItem::LineHeight { current }) =
                             state.selected_item_mut()
@@ -359,6 +526,20 @@ impl AppShell {
                     changed = true;
                 }
             }
+            crate::app::app_state::SettingsEditingKind::IndentTabWidth => {
+                if let Ok(value) = trimmed.parse::<u8>() {
+                    let value = value.clamp(1, 8);
+                    self.ui_config.indent.tab_width = value;
+                    self.app_state.set_indent_config(self.ui_config.indent);
+                    if let Some(state) = self.app_state.active_settings_buffer_mut()
+                        && let Some(crate::app::app_state::SettingItem::IndentTabWidth { current }) =
+                            state.selected_item_mut()
+                    {
+                        *current = value;
+                    }
+                    changed = true;
+                }
+            }
         }
 
         if changed {
@@ -367,6 +548,14 @@ impl AppShell {
         }
         let cancelled = self.app_state.settings_cancel_editing();
         if changed || cancelled {
+            if self.app_state.current_mode() == crate::core::mode::EditorMode::Insert {
+                if let Ok(result) = self
+                    .app_state
+                    .apply_mode_event(crate::core::mode::ModeEvent::Escape)
+                {
+                    let _ = result.changed;
+                }
+            }
             self.editor_needs_layout = true;
             self.editor_caret_needs_layout = false;
         }
@@ -431,6 +620,51 @@ impl AppShell {
         command: Command,
         repeat_count: usize,
     ) -> bool {
+        let command_for_post_hooks = command.clone();
+        let should_persist_history_after = matches!(
+            command_for_post_hooks,
+            Command::InsertChar(_)
+                | Command::InsertText(_)
+                | Command::Newline
+                | Command::Backspace
+                | Command::InsertTab
+                | Command::InsertLineBelow
+                | Command::InsertLineAbove
+                | Command::InsertAtLineStart
+                | Command::AppendAtLineEnd
+                | Command::AppendAfterCursor
+                | Command::SubstituteLine
+                | Command::DeleteChar
+                | Command::DeleteSelection
+                | Command::DeleteCurrentLine
+                | Command::DeleteToLineEnd
+                | Command::ToggleLineComment
+                | Command::ToggleSelectionComment
+                | Command::DeleteWordForward
+                | Command::DeleteWordBackward
+                | Command::ChangeSelection
+                | Command::ChangeWordForward
+                | Command::ChangeWordBackward
+                | Command::ChangeToLineEnd
+                | Command::JoinLines
+                | Command::PasteAfter
+                | Command::PasteBefore
+                | Command::EditorPaste
+                | Command::Undo
+                | Command::Redo
+        );
+        let is_insert_typing = matches!(
+            command,
+            Command::InsertChar(_)
+                | Command::InsertText(_)
+                | Command::Backspace
+                | Command::Newline
+                | Command::InsertTab
+        ) && self.app_state.current_mode() == EditorMode::Insert;
+        if is_insert_typing {
+            let _ = self.app_state.clear_inline_suggestion();
+            self.pending_ai_inline_request = None;
+        }
         if matches!(command, Command::TerminalPaste) {
             return self.handle_terminal_paste();
         }
@@ -439,7 +673,7 @@ impl AppShell {
             return changed;
         }
 
-        match &command {
+        let changed = match &command {
             Command::ToggleTerminal => {
                 let report = dispatch_command(&mut self.app_state, command);
                 let is_open = self.app_state.is_terminal_panel_open();
@@ -544,16 +778,23 @@ impl AppShell {
             | Command::OpenWorkspaceSymbols
             | Command::OpenInFileSearch
             | Command::SearchInFiles
-            | Command::OpenThemeSelector => {
-                let opens_fuzzy_buffer =
-                    matches!(command, Command::OpenFileFinder | Command::SearchInFiles);
+            | Command::OpenFileHistory
+            | Command::OpenThemeSelector
+            | Command::OpenHelp => {
+                let opens_center_buffer = matches!(
+                    command,
+                    Command::OpenFileFinder
+                        | Command::SearchInFiles
+                        | Command::OpenFileHistory
+                        | Command::OpenHelp
+                );
                 let report = dispatch_command(&mut self.app_state, command);
                 if report.success {
-                    if opens_fuzzy_buffer {
+                    if opens_center_buffer {
                         self.editor_needs_layout = true;
                         self.editor_caret_needs_layout = false;
                     }
-                    let focus_changed = if opens_fuzzy_buffer {
+                    let focus_changed = if opens_center_buffer {
                         self.clear_palette_ime_commit_suppression();
                         self.focus_manager.set(FocusTarget::CenterEditor)
                     } else {
@@ -562,6 +803,36 @@ impl AppShell {
                     };
                     if focus_changed {
                         self.input_handler.clear_pending_prefix();
+                    }
+                    if matches!(command_for_post_hooks, Command::OpenFileHistory)
+                        && !self.app_state.command_palette_result_labels().is_empty()
+                    {
+                        let _ = self.app_state.preview_file_history_index(0);
+                        if let Some((lines, preview_text)) =
+                            self.app_state.build_file_history_diff_preview()
+                        {
+                            let extension = self
+                                .app_state
+                                .active_fuzzy_picker_buffer()
+                                .and_then(|state| state.source_file_path.as_ref())
+                                .and_then(|path| path.extension())
+                                .and_then(|ext| ext.to_str())
+                                .unwrap_or_default();
+                            let preview_spans = syntax_spans_to_styled(
+                                &crate::syntax::highlight::highlight_snippet(
+                                    &preview_text,
+                                    extension,
+                                    &self.theme,
+                                ),
+                                &preview_text,
+                                &self.theme,
+                            );
+                            let _ = self.app_state.set_fuzzy_picker_preview(
+                                lines,
+                                preview_text,
+                                preview_spans,
+                            );
+                        }
                     }
                 }
                 report.request_redraw
@@ -583,6 +854,8 @@ impl AppShell {
                     font_family,
                     self.base_theme.editor.font_size,
                     self.base_theme.editor.line_height,
+                    self.ui_config.indent.tab_width,
+                    self.ui_config.indent.insert_spaces,
                     self.ui_config.docks.left.size_px.round() as i32,
                     self.ui_config.docks.right.size_px.round() as i32,
                     self.ui_config.docks.bottom.size_px.round() as i32,
@@ -610,13 +883,21 @@ impl AppShell {
                 }
                 changed
             }
-            Command::SettingsAdjustDecrease => self.adjust_selected_setting(-20),
-            Command::SettingsAdjustIncrease => self.adjust_selected_setting(20),
+            Command::SettingsAdjustDecrease => self.adjust_selected_setting(-1),
+            Command::SettingsAdjustIncrease => self.adjust_selected_setting(1),
             Command::SettingsActivate => self.activate_selected_setting(),
             Command::CloseFilePicker if self.app_state.active_buffer_is_settings() => {
                 if self.app_state.settings_is_editing() {
                     let changed = self.app_state.settings_cancel_editing();
                     if changed {
+                        if self.app_state.current_mode() == crate::core::mode::EditorMode::Insert {
+                            if let Ok(result) = self
+                                .app_state
+                                .apply_mode_event(crate::core::mode::ModeEvent::Escape)
+                            {
+                                let _ = result.changed;
+                            }
+                        }
                         self.editor_needs_layout = true;
                         self.editor_caret_needs_layout = false;
                     }
@@ -626,16 +907,31 @@ impl AppShell {
                 }
             }
             Command::GitOpenLazygit => self.open_lazygit_buffer(),
+            Command::GitOpenLazydocker => self.open_lazydocker_buffer(),
             Command::GitBlameLine => self.submit_git_blame_line(),
             Command::LspHover => self.submit_lsp_hover(),
             Command::LspGoToDefinition => self.submit_lsp_definition(true),
             Command::LspPreviewDefinition => self.submit_lsp_definition(false),
             Command::LspReferences => self.submit_lsp_references(),
+            Command::LspFormatDocument => self.submit_lsp_format_document(),
             Command::TriggerCompletion => self.submit_lsp_completion(),
             Command::CompletionNext => self.select_next_completion_item(),
             Command::CompletionPrev => self.select_prev_completion_item(),
             Command::CompletionAccept => self.accept_completion_item(),
             Command::CompletionClose => self.close_completion_popup(),
+            Command::AiAcceptInline => {
+                let report = dispatch_command(&mut self.app_state, command);
+                if report.state_changed {
+                    self.reconcile_highlight_spans_with_pending_edits();
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = true;
+                    let viewport_lines = self.editor_viewport_lines();
+                    self.app_state.auto_scroll_to_cursor(viewport_lines);
+                    self.queue_lsp_did_change_for_active_file();
+                    self.submit_parse_for_active_buffer(true);
+                }
+                report.request_redraw || report.state_changed
+            }
             Command::DiagnosticsOpenPicker => self.open_diagnostics_picker(),
             Command::ReferencesSelectNext => self.select_next_reference_item(),
             Command::ReferencesSelectPrev => self.select_prev_reference_item(),
@@ -678,6 +974,60 @@ impl AppShell {
             | Command::OverlaySelectPrev
             | Command::FilePickerSelectNext
             | Command::FilePickerSelectPrev
+                if self.app_state.buffers().is_empty()
+                    && (!self.app_state.is_command_palette_visible()
+                        || self.app_state.command_palette_mode()
+                            == Some(CommandPaletteMode::RecentProjects)) =>
+            {
+                // Only sync (which hides the palette) when the palette is not already
+                // open. When the RecentProjects palette is open (via space-pj),
+                // sync_welcome_recent_projects calls set_hidden_items → is_visible=false,
+                // which would close the palette before the navigation runs.
+                if !self.app_state.is_command_palette_visible() {
+                    self.app_state
+                        .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
+                }
+                let report = dispatch_command(&mut self.app_state, command);
+                report.request_redraw || report.state_changed
+            }
+            Command::FilePickerConfirmSelection
+                if self.app_state.buffers().is_empty()
+                    && (!self.app_state.is_command_palette_visible()
+                        || self.app_state.command_palette_mode()
+                            == Some(CommandPaletteMode::RecentProjects)) =>
+            {
+                self.app_state
+                    .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
+                let selected = self.app_state.command_palette_selected_index().min(
+                    self.persistent_state
+                        .recent_projects
+                        .len()
+                        .saturating_sub(1),
+                );
+                let Some(root) = self.persistent_state.recent_projects.get(selected).cloned()
+                else {
+                    return false;
+                };
+                match self.app_state.attach_workspace(root.clone()) {
+                    Ok(()) => {
+                        self.persistent_state.push_recent(root);
+                        self.persistent_state.save();
+                        self.workspace_git_branch = self
+                            .app_state
+                            .workspace_root_path()
+                            .and_then(detect_git_branch);
+                        true
+                    }
+                    Err(err) => {
+                        eprintln!("[AppShell] recent project open failed: {err}");
+                        false
+                    }
+                }
+            }
+            Command::OverlaySelectNext
+            | Command::OverlaySelectPrev
+            | Command::FilePickerSelectNext
+            | Command::FilePickerSelectPrev
                 if self.app_state.active_buffer_is_fuzzy_picker() =>
             {
                 let _ = self.app_state.clear_completion();
@@ -697,8 +1047,44 @@ impl AppShell {
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                 }
-                self.submit_active_palette_fzf_search();
-                self.submit_fuzzy_picker_preview_load();
+                if self.app_state.command_palette_mode() == Some(CommandPaletteMode::FileHistory) {
+                    if let Some(
+                        crate::app::command_palette::CommandPaletteAction::SelectFileHistoryEntry(
+                            index,
+                        ),
+                    ) = self.app_state.command_palette_selected_action()
+                    {
+                        let _ = self.app_state.preview_file_history_index(index);
+                        if let Some((lines, preview_text)) =
+                            self.app_state.build_file_history_diff_preview()
+                        {
+                            let extension = self
+                                .app_state
+                                .active_fuzzy_picker_buffer()
+                                .and_then(|state| state.source_file_path.as_ref())
+                                .and_then(|path| path.extension())
+                                .and_then(|ext| ext.to_str())
+                                .unwrap_or_default();
+                            let preview_spans = syntax_spans_to_styled(
+                                &crate::syntax::highlight::highlight_snippet(
+                                    &preview_text,
+                                    extension,
+                                    &self.theme,
+                                ),
+                                &preview_text,
+                                &self.theme,
+                            );
+                            let _ = self.app_state.set_fuzzy_picker_preview(
+                                lines,
+                                preview_text,
+                                preview_spans,
+                            );
+                        }
+                    }
+                } else {
+                    self.submit_active_palette_fzf_search();
+                    self.submit_fuzzy_picker_preview_load();
+                }
                 report.request_redraw || report.state_changed
             }
             Command::FilePickerAppendQuery(_)
@@ -818,7 +1204,10 @@ impl AppShell {
                     self.editor_caret_needs_layout = true;
                     let viewport_lines = self.editor_viewport_lines();
                     self.app_state.auto_scroll_to_cursor(viewport_lines);
-                    self.submit_lsp_did_open_for_active_file();
+                    self.queue_lsp_did_change_for_active_file();
+                    self.pending_parse_after_debounce = true;
+                    self.last_parse_submit_at = Some(Instant::now());
+                    self.queue_ai_inline_completion();
                 }
                 let completion_changed = if report.state_changed {
                     self.refresh_open_completion_after_text_edit()
@@ -1333,11 +1722,12 @@ impl AppShell {
                         let (cursor_line, _) = self.app_state.cursor_line_col();
                         // Scroll viewport so cursor sits near the bottom (scrolloff = 3).
                         let margin = 3usize;
-                        self.app_state.scroll_line = if cursor_line + margin + 1 >= viewport_lines {
+                        let target_line = if cursor_line + margin + 1 >= viewport_lines {
                             cursor_line + margin + 1 - viewport_lines
                         } else {
                             0
                         };
+                        self.app_state.set_target_scroll_line(target_line);
                     }
                     _ => {}
                 }
@@ -1396,14 +1786,14 @@ impl AppShell {
                 if let Some(target) = resolved_target {
                     let changed = self.app_state.leap_jump_to_char(target.char_idx);
                     let viewport_lines = self.editor_viewport_lines();
-                    let prev_scroll = self.app_state.scroll_line;
+                    let prev_scroll = self.app_state.target_scroll_y;
                     self.app_state.auto_scroll_to_cursor(viewport_lines);
-                    if self.app_state.scroll_line != prev_scroll {
+                    if (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON {
                         self.submit_parse_for_active_buffer(true);
                     }
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
-                    changed || self.app_state.scroll_line != prev_scroll
+                    changed || (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON
                 } else {
                     leap_state.targets = matching_targets;
                     self.input_handler.set_pending_leap_label();
@@ -1462,10 +1852,10 @@ impl AppShell {
                 {
                     let report = dispatch_command(&mut self.app_state, command);
                     if report.state_changed {
-                        let prev_scroll = self.app_state.scroll_line;
+                        let prev_scroll = self.app_state.target_scroll_y;
                         let viewport_lines = self.editor_viewport_lines();
                         self.app_state.auto_scroll_to_cursor(viewport_lines);
-                        if self.app_state.scroll_line != prev_scroll {
+                        if (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON {
                             self.editor_needs_layout = true;
                             self.editor_caret_needs_layout = false;
                         } else {
@@ -1489,39 +1879,37 @@ impl AppShell {
                 };
                 self.reconcile_highlight_spans_with_pending_edits();
 
-                if report.success {
+                // Lấy file sau dispatch để detect thay đổi.
+                let file_after = self.app_state.active_file().map(PathBuf::from);
+                let file_changed = report.success && file_after != file_before;
+
+                if file_changed {
+                    // Chỉ xóa highlight và reload LSP khi file thực sự thay đổi.
+                    // Không clear khi chỉ save (:w) vì sẽ làm mất highlight tại cursor.
                     self.clear_highlight_layers();
 
-                    // Lấy file vừa được mở
-                    let file_after = self.app_state.active_file().map(PathBuf::from);
-
-                    // Chỉ reveal khi file thực sự thay đổi
-                    if let Some(ref path) = file_after
-                        && file_after != file_before
-                    {
+                    if let Some(ref path) = file_after {
                         self.explorer_reveal_file(path);
                     }
-
-                    let viewport_lines = self.editor_viewport_lines();
-                    self.app_state.auto_scroll_to_cursor(viewport_lines);
 
                     self.submit_lsp_did_open_for_active_file();
                     let _ = self.sync_focus_mode_for_active_buffer();
 
-                    // Trigger async LSP install check khi mở file mới.
-                    // Chỉ check khi file thực sự thay đổi (tránh spam check).
-                    if let Some(ref path) = file_after
-                        && file_after != file_before
-                    {
+                    if let Some(ref path) = file_after {
                         self.submit_lsp_check_for_path(path.clone());
                     }
+                }
+
+                if report.success {
+                    let viewport_lines = self.editor_viewport_lines();
+                    self.app_state.auto_scroll_to_cursor(viewport_lines);
                 }
 
                 if report.state_changed {
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                 }
-                if report.state_changed || report.success {
+                if report.state_changed || file_changed {
                     self.submit_parse_for_active_buffer(true);
                 }
 
@@ -1603,6 +1991,7 @@ impl AppShell {
                 if is_typing_edit {
                     let _ = self.app_state.clear_completion();
                 }
+                let prev_dirty = self.app_state.is_dirty();
                 let report = {
                     let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
                     dispatch_command_with_clipboard_count(
@@ -1618,12 +2007,15 @@ impl AppShell {
                     self.mark_explorer_dirty();
                     let _ = self.sync_focus_mode_for_active_buffer();
                 }
+                if self.app_state.is_dirty() != prev_dirty {
+                    self.mark_explorer_dirty();
+                }
 
                 if report.state_changed && is_cursor_move {
-                    let prev_scroll = self.app_state.scroll_line;
+                    let prev_scroll = self.app_state.target_scroll_y;
                     let viewport_lines = self.editor_viewport_lines();
                     self.app_state.auto_scroll_to_cursor(viewport_lines);
-                    if self.app_state.scroll_line != prev_scroll {
+                    if (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON {
                         self.editor_needs_layout = true;
                         self.editor_caret_needs_layout = false;
                         self.submit_parse_for_active_buffer(true);
@@ -1635,8 +2027,13 @@ impl AppShell {
                     self.editor_caret_needs_layout = false;
                 }
                 if report.state_changed && should_reparse {
+                    self.schedule_active_buffer_git_diff_recalculation(!is_typing_edit);
                     self.submit_parse_for_active_buffer(!is_typing_edit);
-                    self.submit_lsp_did_change_for_active_file();
+                    if is_typing_edit {
+                        self.submit_lsp_did_change_for_active_file();
+                    } else {
+                        self.force_flush_lsp_did_change_for_active_file();
+                    }
                 }
                 if report.success
                     && let Some(ch) = auto_trigger_char
@@ -1650,7 +2047,27 @@ impl AppShell {
 
                 report.request_redraw
             }
+        };
+
+        if changed {
+            match &command_for_post_hooks {
+                Command::OpenFile(_) | Command::BufferNext | Command::BufferPrev => {
+                    self.submit_active_buffer_git_baseline_refresh();
+                    self.submit_active_file_history_load();
+                }
+                Command::SaveFile => {
+                    self.submit_active_file_history_save();
+                    self.submit_workspace_git_status_refresh();
+                    self.submit_active_buffer_git_baseline_refresh();
+                }
+                _ if should_persist_history_after => {
+                    self.submit_active_file_history_save();
+                }
+                _ => {}
+            }
         }
+
+        changed
     }
 
     fn handle_terminal_paste(&mut self) -> bool {
@@ -1829,6 +2246,35 @@ impl AppShell {
         true
     }
 
+    fn open_lazydocker_buffer(&mut self) -> bool {
+        let Some(workspace_root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
+            eprintln!("[AppShell] lazydocker open skipped: workspace is not attached");
+            return false;
+        };
+
+        let buffer_index = self
+            .app_state
+            .open_terminal_buffer("[Lazydocker]", Some(workspace_root.clone()));
+        self.pending_lazydocker_buffer_index = Some(buffer_index);
+        self.buffer_terminal_needs_layout = true;
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        self.clear_highlight_layers();
+        let _ = self.sync_focus_mode_for_active_buffer();
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::TerminalPty,
+            payload: WorkerRequestPayload::SpawnPtyCommand {
+                program: "lazydocker".to_string(),
+                args: Vec::new(),
+                working_dir: Some(workspace_root),
+            },
+        });
+
+        true
+    }
+
     fn submit_git_blame_line(&mut self) -> bool {
         if self.app_state.active_buffer_is_terminal() {
             return false;
@@ -1867,6 +2313,7 @@ impl AppShell {
     }
 
     fn submit_lsp_hover(&mut self) -> bool {
+        self.force_flush_lsp_did_change_for_active_file();
         let Some((language_id, uri, line, character)) = self.lsp_cursor_context() else {
             return false;
         };
@@ -1886,6 +2333,7 @@ impl AppShell {
 
     /// `jump = true` => gd (go to definition). `jump = false` => gD (peek preview).
     fn submit_lsp_definition(&mut self, jump: bool) -> bool {
+        self.force_flush_lsp_did_change_for_active_file();
         let Some((_language_id, uri, line, character)) = self.lsp_cursor_context() else {
             return false;
         };
@@ -1904,14 +2352,16 @@ impl AppShell {
     }
 
     fn submit_lsp_references(&mut self) -> bool {
+        self.force_flush_lsp_did_change_for_active_file();
         let Some((_language_id, uri, line, character)) = self.lsp_cursor_context() else {
             return false;
         };
         let mut changed = self.app_state.clear_current_overlays();
         let origin_path = self.app_state.active_file().map(PathBuf::from);
         let origin_line = self.app_state.cursor_line_col().0;
+        self.references_request_revision = self.references_request_revision.saturating_add(1);
         let Some(request) = self.submit(RequestSpec {
-            revision_id: 0,
+            revision_id: self.references_request_revision,
             topic: RequestTopic::LspRequest,
             payload: WorkerRequestPayload::LspReferencesRequest {
                 uri,
@@ -1937,6 +2387,26 @@ impl AppShell {
         }
         self.request_redraw();
         changed || focus_changed
+    }
+
+    fn submit_lsp_format_document(&mut self) -> bool {
+        self.force_flush_lsp_did_change_for_active_file();
+        let Some((language_id, uri, _line, _character)) = self.lsp_cursor_context() else {
+            return false;
+        };
+        let indent = self.app_state.indent_config();
+        let changed = self.app_state.clear_current_overlays();
+        self.submit(RequestSpec {
+            revision_id: self.app_state.revision(),
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspFormattingRequest {
+                language_id,
+                uri,
+                tab_size: indent.tab_width as u32,
+                insert_spaces: indent.insert_spaces,
+            },
+        });
+        changed
     }
 
     fn select_next_reference_item(&mut self) -> bool {
@@ -2645,36 +3115,7 @@ impl AppShell {
             return false;
         };
 
-        if let Err(err) = self.app_state.attach_workspace(folder.clone()) {
-            eprintln!("[AppShell] attach_workspace failed: {err}");
-            return false;
-        }
-
-        self.persistent_state.push_recent(folder.clone());
-        self.persistent_state.save();
-
-        self.mark_explorer_dirty();
-        if !self.panel_state.left.visible {
-            self.panel_state.left.visible = true;
-            self.sidebar_needs_layout = true;
-        }
-        self.workspace_git_branch = self
-            .app_state
-            .workspace_root_path()
-            .and_then(detect_git_branch);
-
-        self.submit(RequestSpec {
-            revision_id: 0,
-            topic: RequestTopic::WorkspaceWatch,
-            payload: WorkerRequestPayload::StartFileWatch {
-                root_path: folder.clone(),
-            },
-        });
-        self.sync_lsp_server_for_workspace();
-
-        self.editor_needs_layout = true;
-        self.editor_caret_needs_layout = false;
-        true
+        self.switch_workspace_to(folder)
     }
 
     fn open_recent_projects_palette(&mut self) -> bool {
@@ -2726,36 +3167,7 @@ impl AppShell {
             self.input_handler.clear_pending_prefix();
         }
 
-        if let Err(err) = self.app_state.attach_workspace(path.clone()) {
-            eprintln!("[AppShell] attach_workspace from recent failed: {err}");
-            return changed;
-        }
-
-        self.persistent_state.push_recent(path.clone());
-        self.persistent_state.save();
-
-        self.mark_explorer_dirty();
-        if !self.panel_state.left.visible {
-            self.panel_state.left.visible = true;
-            self.sidebar_needs_layout = true;
-        }
-        self.workspace_git_branch = self
-            .app_state
-            .workspace_root_path()
-            .and_then(detect_git_branch);
-
-        self.submit(RequestSpec {
-            revision_id: 0,
-            topic: RequestTopic::WorkspaceWatch,
-            payload: WorkerRequestPayload::StartFileWatch {
-                root_path: path.clone(),
-            },
-        });
-        self.sync_lsp_server_for_workspace();
-
-        self.editor_needs_layout = true;
-        self.editor_caret_needs_layout = false;
-        true
+        changed | self.switch_workspace_to(path)
     }
 
     fn confirm_theme_selection(&mut self) -> bool {
@@ -2813,7 +3225,7 @@ impl AppShell {
     /// Quét viewport editor hiện tại, tìm tất cả ký tự `target` và sinh labels động.
     fn generate_editor_leap_state(&self, target: char) -> LeapState {
         let viewport_lines = self.editor_viewport_lines().max(1);
-        let scroll_line = self.app_state.scroll_line;
+        let scroll_line = self.app_state.scroll_line();
         let total_chars = self.app_state.text_len_chars();
 
         // char_idx range [viewport_start_char, viewport_end_char)
@@ -2937,7 +3349,7 @@ mod tests {
         shell.app_state = AppState::from_text(PathBuf::from("gg-layout.txt"), &text);
         let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
         assert!(shell.app_state.move_to_last_line());
-        shell.app_state.scroll_line = 24;
+        shell.app_state.set_target_scroll_line(24);
         shell.editor_needs_layout = false;
         shell.editor_caret_needs_layout = true;
 
@@ -2945,7 +3357,84 @@ mod tests {
 
         assert!(changed);
         assert_eq!(shell.app_state.cursor_line_col(), (0, 0));
-        assert_eq!(shell.app_state.scroll_line, 0);
+        assert_eq!(shell.app_state.scroll_line(), 0);
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn move_to_last_line_uses_viewport_layout_path() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let text = (0..120)
+            .map(|idx| format!("line {idx}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        shell.app_state = AppState::from_text(PathBuf::from("g-layout.txt"), &text);
+        let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+        shell.app_state.move_to_first_line();
+        shell.app_state.set_target_scroll_line(0);
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+
+        let changed = shell.handle_command(Command::MoveToLastLine);
+
+        assert!(changed);
+        let (cursor_line, _) = shell.app_state.cursor_line_col();
+        assert_eq!(cursor_line, shell.app_state.total_lines().saturating_sub(1));
+        assert!(shell.app_state.scroll_line() > 0);
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn center_cursor_line_uses_viewport_layout_path() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let text = (0..80)
+            .map(|idx| format!("line {idx}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        shell.app_state = AppState::from_text(PathBuf::from("zz-layout.txt"), &text);
+        let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+        for _ in 0..30 {
+            shell.app_state.move_down();
+        }
+        shell.app_state.set_target_scroll_line(0);
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+        let viewport_lines = shell.editor_viewport_lines();
+
+        let changed = shell.handle_command(Command::CenterCursorLine);
+
+        assert!(changed);
+        let (cursor_line, _) = shell.app_state.cursor_line_col();
+        assert_eq!(
+            shell.app_state.scroll_line(),
+            cursor_line.saturating_sub(viewport_lines / 2)
+        );
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn scroll_half_page_down_uses_viewport_layout_path() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let text = (0..100)
+            .map(|idx| format!("line {idx}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        shell.app_state = AppState::from_text(PathBuf::from("ctrl-d-layout.txt"), &text);
+        let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+        shell.app_state.set_target_scroll_line(0);
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+        let half = (shell.editor_viewport_lines() / 2).max(1);
+
+        let changed = shell.handle_command(Command::ScrollHalfPageDown);
+
+        assert!(changed);
+        let (cursor_line, _) = shell.app_state.cursor_line_col();
+        assert_eq!(cursor_line, half);
+        assert_eq!(shell.app_state.scroll_line(), half);
         assert!(shell.editor_needs_layout);
         assert!(!shell.editor_caret_needs_layout);
     }
@@ -3277,6 +3766,60 @@ mod tests {
     }
 
     #[test]
+    fn welcome_recent_projects_can_navigate_without_opening_palette() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let root = std::env::temp_dir().join(format!(
+            "netherize_welcome_recent_nav_{}",
+            std::process::id()
+        ));
+        let project_a = root.join("project_a");
+        let project_b = root.join("project_b");
+        std::fs::create_dir_all(&project_a).expect("create project a");
+        std::fs::create_dir_all(&project_b).expect("create project b");
+        shell.persistent_state.recent_projects = vec![project_a.clone(), project_b.clone()];
+
+        assert!(shell.app_state.buffers().is_empty());
+        assert!(!shell.app_state.is_command_palette_visible());
+
+        assert!(shell.handle_command(Command::OverlaySelectNext));
+
+        assert!(!shell.app_state.is_command_palette_visible());
+        assert_eq!(shell.app_state.command_palette_selected_index(), 1);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn colon_help_vim_command_opens_help_buffer() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+        assert!(shell.handle_command(Command::OpenVimCommand));
+        assert!(shell.handle_command(Command::FilePickerAppendQuery(":help".to_string())));
+        assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+
+        let help = shell
+            .app_state
+            .active_help_buffer()
+            .expect(":help should open the cheat sheet help buffer");
+        assert_eq!(help.title, "[Cheat Sheet]");
+        assert!(
+            help.lines
+                .iter()
+                .any(|line| line == "Netherize Cheat Sheet")
+        );
+        assert!(
+            help.lines
+                .iter()
+                .any(|line| { line.contains("mod+p") && line.contains("Open command palette") })
+        );
+        assert_eq!(
+            shell.app_state.buffers().last().unwrap().label(),
+            "[Cheat Sheet]"
+        );
+        assert!(!shell.app_state.is_command_palette_visible());
+    }
+
+    #[test]
     fn file_picker_confirm_scrolls_explorer_to_opened_file() {
         let mut shell = AppShell::new_for_tests().expect("create app shell");
         let root =
@@ -3354,12 +3897,15 @@ mod tests {
             .app_state
             .set_command_palette_query("default-dark")
             .expect("set theme query");
+        let expected_theme_name = ThemeConfig::load("default-dark")
+            .expect("default-dark theme should load")
+            .name;
         assert!(shell.handle_command(Command::FilePickerConfirmSelection));
 
         assert!(!shell.app_state.is_command_palette_visible());
         assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
-        assert_eq!(shell.base_theme.name, "bearded-arc-zed");
-        assert_eq!(shell.theme.name, "bearded-arc-zed");
+        assert_eq!(shell.base_theme.name, expected_theme_name);
+        assert_eq!(shell.theme.name, expected_theme_name);
         assert_eq!(
             shell.persistent_state.configured_theme_profile(),
             Some("default-dark")
@@ -3476,6 +4022,45 @@ mod tests {
                 .preview_lines
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn open_file_history_opens_center_fuzzy_buffer_tab() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = std::env::temp_dir().join("netherize_file_history_buffer_test.txt");
+        std::fs::write(&file_path, "hello\n").expect("write file");
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+
+        let _ = dispatch_command(
+            &mut shell.app_state,
+            Command::SwitchMode(crate::core::mode::ModeEvent::EnterInsert),
+        );
+        let _ = dispatch_command(
+            &mut shell.app_state,
+            Command::InsertText("world".to_string()),
+        );
+        let _ = dispatch_command(&mut shell.app_state, Command::SaveFile);
+
+        assert!(shell.handle_command(Command::OpenFileHistory));
+        assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+        let fuzzy = shell
+            .app_state
+            .active_fuzzy_picker_buffer()
+            .expect("file history should open as fuzzy buffer");
+        assert_eq!(fuzzy.mode, CommandPaletteMode::FileHistory);
+        assert!(
+            !fuzzy.results.is_empty(),
+            "history list should not be empty"
+        );
+        assert!(
+            !fuzzy.preview_lines.is_empty(),
+            "history diff preview should be populated"
+        );
+
+        let _ = std::fs::remove_file(file_path);
     }
 
     #[test]

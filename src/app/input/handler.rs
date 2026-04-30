@@ -15,9 +15,10 @@ use crate::{
 
 use super::{
     helpers::{
-        inner_or_around_from_input, is_modifier_only_key, numeric_count_digit_from_input,
-        printable_char_from_input, replace_char_from_input, should_start_replace_pending,
-        should_start_yank_pending, terminal_input_payload, text_object_kind_from_input,
+        find_motion_prefix_from_input, inner_or_around_from_input, is_modifier_only_key,
+        motion_from_input, numeric_count_digit_from_input, printable_char_from_input,
+        replace_char_from_input, should_start_replace_pending, should_start_yank_pending,
+        terminal_input_payload, text_object_kind_from_input,
     },
     model::{InputRouteOutcome, NormalizedInput, TranslatedInput},
     pending::{PendingInput, PendingState, classify_pending_state},
@@ -210,6 +211,26 @@ impl InputHandler {
         }
 
         let input_debug = normalized.debug_label();
+
+        if matches!(
+            context.focus,
+            InputFocusContext::BufferTerminal | InputFocusContext::Terminal
+        ) && let Some(payload) = terminal_input_payload(&normalized)
+        {
+            self.clear_pending_counts();
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> repeated terminal raw input",
+                    context.mode.as_str(),
+                    context.focus.as_str()
+                ),
+                Command::TerminalWriteInput(payload),
+                1,
+                false,
+            )));
+        }
+
         let resolved = input_map.resolve(&normalized, context)?;
         if !resolved.command.supports_press_and_hold_repeat() {
             return None;
@@ -501,47 +522,29 @@ impl InputHandler {
                     });
                 }
 
-                PendingState::OperatorDelete
-                | PendingState::OperatorChange
-                | PendingState::OperatorYank => {
-                    if matches!(pending.state, PendingState::OperatorYank) {
-                        let yank_command = if normalized.physical_key == Some(KeyCode::KeyY)
-                            || normalized.text.as_deref() == Some("y")
-                        {
-                            Some(Command::YankCurrentLine)
-                        } else if normalized.physical_key == Some(KeyCode::KeyE)
-                            || normalized.text.as_deref() == Some("e")
-                        {
-                            Some(Command::YankToWordEnd)
-                        } else {
-                            None
-                        };
-
-                        if let Some(command) = yank_command {
-                            self.clear_pending_input();
-                            let (repeat_count, count_ignored) = self
-                                .consume_repeat_count_for_command(&command, Some(&pending.state));
-                            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
-                                input_debug,
-                                format!(
-                                    "mode={} focus={} -> pending operator yank resolved",
-                                    context.mode.as_str(),
-                                    context.focus.as_str()
-                                ),
-                                command,
-                                repeat_count,
-                                count_ignored,
-                            )));
-                        }
+                PendingState::PendingOperator { op } => {
+                    let op = *op;
+                    if let Some(find_kind) = find_motion_prefix_from_input(&normalized) {
+                        self.pending_input = Some(PendingInput {
+                            sequence: None,
+                            state: PendingState::OperatorFindChar {
+                                op,
+                                kind: find_kind,
+                            },
+                            started_at: now,
+                        });
+                        return Some(InputRouteOutcome::NoDispatch {
+                            input_debug,
+                            route_debug: format!(
+                                "mode={} focus={} -> {}: waiting find target char",
+                                context.mode.as_str(),
+                                context.focus.as_str(),
+                                pending.state.as_str(),
+                            ),
+                        });
                     }
 
                     if let Some(modifier) = inner_or_around_from_input(&normalized) {
-                        let op = match &pending.state {
-                            PendingState::OperatorDelete => Operator::Delete,
-                            PendingState::OperatorChange => Operator::Change,
-                            PendingState::OperatorYank => Operator::Yank,
-                            _ => unreachable!(),
-                        };
                         self.pending_input = Some(PendingInput {
                             state: PendingState::OperatorWithObject { op, modifier },
                             sequence: None,
@@ -558,6 +561,159 @@ impl InputHandler {
                             ),
                         });
                     }
+
+                    let doubled = match op {
+                        Operator::Delete
+                            if normalized.physical_key == Some(KeyCode::KeyD)
+                                || normalized.text.as_deref() == Some("d") =>
+                        {
+                            true
+                        }
+                        Operator::Change
+                            if normalized.physical_key == Some(KeyCode::KeyC)
+                                || normalized.text.as_deref() == Some("c") =>
+                        {
+                            true
+                        }
+                        Operator::Yank
+                            if normalized.physical_key == Some(KeyCode::KeyY)
+                                || normalized.text.as_deref() == Some("y") =>
+                        {
+                            true
+                        }
+                        _ => false,
+                    };
+                    if doubled {
+                        let command = Command::Operate {
+                            op,
+                            target: crate::core::commands::OperationTarget::CurrentLine,
+                        };
+                        self.clear_pending_input();
+                        let (repeat_count, count_ignored) =
+                            self.consume_repeat_count_for_command(&command, Some(&pending.state));
+                        return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                            input_debug,
+                            format!(
+                                "mode={} focus={} -> pending operator linewise resolved",
+                                context.mode.as_str(),
+                                context.focus.as_str()
+                            ),
+                            command,
+                            repeat_count,
+                            count_ignored,
+                        )));
+                    }
+
+                    if normalized.physical_key == Some(KeyCode::KeyG)
+                        || normalized.text.as_deref() == Some("g")
+                    {
+                        self.pending_input = Some(PendingInput {
+                            sequence: None,
+                            state: PendingState::OperatorG { op },
+                            started_at: now,
+                        });
+                        return Some(InputRouteOutcome::NoDispatch {
+                            input_debug,
+                            route_debug: format!(
+                                "mode={} focus={} -> {}: waiting second g",
+                                context.mode.as_str(),
+                                context.focus.as_str(),
+                                pending.state.as_str(),
+                            ),
+                        });
+                    }
+
+                    let motion = motion_from_input(&normalized);
+                    if let Some(motion) = motion {
+                        let command = Command::Operate {
+                            op,
+                            target: crate::core::commands::OperationTarget::Motion(motion),
+                        };
+                        self.clear_pending_input();
+                        let (repeat_count, count_ignored) =
+                            self.consume_repeat_count_for_command(&command, Some(&pending.state));
+                        return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                            input_debug,
+                            format!(
+                                "mode={} focus={} -> pending operator motion resolved",
+                                context.mode.as_str(),
+                                context.focus.as_str()
+                            ),
+                            command,
+                            repeat_count,
+                            count_ignored,
+                        )));
+                    }
+                }
+
+                PendingState::OperatorG { op } => {
+                    if normalized.physical_key == Some(KeyCode::KeyG)
+                        || normalized.text.as_deref() == Some("g")
+                    {
+                        let command = Command::Operate {
+                            op: *op,
+                            target: crate::core::commands::OperationTarget::Motion(
+                                crate::core::commands::Motion::FirstLine,
+                            ),
+                        };
+                        self.clear_pending_input();
+                        let (repeat_count, count_ignored) =
+                            self.consume_repeat_count_for_command(&command, Some(&pending.state));
+                        return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                            input_debug,
+                            format!(
+                                "mode={} focus={} -> pending operator gg resolved",
+                                context.mode.as_str(),
+                                context.focus.as_str()
+                            ),
+                            command,
+                            repeat_count,
+                            count_ignored,
+                        )));
+                    }
+                    self.reset_prefix();
+                    return Some(InputRouteOutcome::NoDispatch {
+                        input_debug,
+                        route_debug: format!(
+                            "mode={} focus={} -> pending operator g-motion reset",
+                            context.mode.as_str(),
+                            context.focus.as_str()
+                        ),
+                    });
+                }
+
+                PendingState::OperatorFindChar { op, kind } => {
+                    if let Some(ch) = replace_char_from_input(&normalized) {
+                        let command = Command::Operate {
+                            op: *op,
+                            target: crate::core::commands::OperationTarget::Motion(
+                                crate::core::commands::Motion::FindChar(*kind, ch),
+                            ),
+                        };
+                        self.clear_pending_input();
+                        let (repeat_count, count_ignored) =
+                            self.consume_repeat_count_for_command(&command, Some(&pending.state));
+                        return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                            input_debug,
+                            format!(
+                                "mode={} focus={} -> pending operator find-char resolved",
+                                context.mode.as_str(),
+                                context.focus.as_str()
+                            ),
+                            command,
+                            repeat_count,
+                            count_ignored,
+                        )));
+                    }
+                    self.reset_prefix();
+                    return Some(InputRouteOutcome::NoDispatch {
+                        input_debug,
+                        route_debug: format!(
+                            "mode={} focus={} -> pending operator find-char reset",
+                            context.mode.as_str(),
+                            context.focus.as_str()
+                        ),
+                    });
                 }
 
                 _ => {}
@@ -680,7 +836,7 @@ impl InputHandler {
             }
             self.pending_input = Some(PendingInput {
                 sequence: None,
-                state: PendingState::OperatorYank,
+                state: PendingState::PendingOperator { op: Operator::Yank },
                 started_at: now,
             });
             return Some(InputRouteOutcome::NoDispatch {
@@ -691,6 +847,46 @@ impl InputHandler {
                     context.focus.as_str(),
                 ),
             });
+        }
+
+        if context.focus == InputFocusContext::Editor && context.mode == EditorMode::Normal {
+            let op = if !normalized.has_command_modifier()
+                && !normalized.modifiers.alt_key()
+                && !normalized.modifiers.shift_key()
+                && (normalized.physical_key == Some(KeyCode::KeyD)
+                    || normalized.text.as_deref() == Some("d"))
+            {
+                Some(Operator::Delete)
+            } else if !normalized.has_command_modifier()
+                && !normalized.modifiers.alt_key()
+                && !normalized.modifiers.shift_key()
+                && (normalized.physical_key == Some(KeyCode::KeyC)
+                    || normalized.text.as_deref() == Some("c"))
+            {
+                Some(Operator::Change)
+            } else {
+                None
+            };
+
+            if let Some(op) = op {
+                if self.operator_count.is_none() {
+                    self.operator_count = self.pending_count.take();
+                }
+                self.pending_input = Some(PendingInput {
+                    sequence: None,
+                    state: PendingState::PendingOperator { op },
+                    started_at: now,
+                });
+                return Some(InputRouteOutcome::NoDispatch {
+                    input_debug,
+                    route_debug: format!(
+                        "mode={} focus={} -> pending operator {:?} start",
+                        context.mode.as_str(),
+                        context.focus.as_str(),
+                        op
+                    ),
+                });
+            }
         }
 
         if context.focus == InputFocusContext::Editor && context.mode == EditorMode::Visual {

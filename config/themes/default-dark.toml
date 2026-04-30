@@ -1,6 +1,6 @@
 # Theme metadata shown after the profile is loaded.
 [theme]
-name = "bearded-arc-zed"
+name = "bearded-arc"
 description = "Bearded Arc palette adapted for Netherize Editor runtime themes"
 
 # Core editor surface: text buffer, caret, selection, and gutter.
@@ -17,6 +17,10 @@ selection = "#253043"
 gutter = "#1c2433"
 # Active line-number color in the gutter.
 gutter_active = "#4a5e84"
+# Subtle vertical indentation guides in the code area.
+indent_guide = "#8196b540"
+# Nested bracket colors used for rainbow-style pair rendering.
+rainbow_brackets = ["#22ECDB", "#F38CEC", "#EACD61", "#3CEC85", "#FF955C", "#B78AFF"]
 # Editor text metrics for cosmic-text layout.
 font_size = 15.0
 line_height = 26.0
@@ -43,6 +47,8 @@ status_bar_bg = "#181f2c"
 border_color = "#11161f"
 # Active row / selected tab / focused list item background.
 selection_bg = "#2a364d"
+# Unsaved topbar tab marker color.
+dirty_indicator = "#F5B63A"
 
 # Shared foreground tokens for labels and chrome text.
 fg = "#d0d7e4"
@@ -75,6 +81,13 @@ sidebar_width = 280.0
 right_sidebar_width = 320.0
 bottom_panel_height = 220.0
 top_bar_height = 36.0
+
+[git]
+modified_sidebar = "#E2C08D"
+added_sidebar = "#7FD68C"
+modified_gutter = "#E2C08D"
+added_gutter = "#50D890"
+deleted_gutter = "#F14C4C"
 status_bar_height = 32.0
 
 # Disclosure markers and file-picker bullet glyph.
@@ -211,35 +224,57 @@ Dockerfile = ""
 Makefile = ""
 "README.md" = ""
 
-# Syntax colors consumed by the tree-sitter highlight categories currently rendered.
 [syntax]
+# ── Lõi ngôn ngữ (Core) ──
 # Keywords like `fn`, `let`, `match`.
 keyword = "#EACD61"
-# String literals.
-string = "#3CEC85"
-# Function names and callable symbols.
-function = "#69C3FF"
-# Comments and muted inline docs.
-comment = "#4a5e84"
-# Type names.
-type = "#B78AFF"
-# Numeric literals.
-number = "#E35535"
-# Plain variable names that do not fall into a richer semantic bucket.
-identifier = "#d0d7e4"
-# Function and closure parameters.
-parameter = "#22ECDB"
-# Struct field declarations and member access like `self.name`.
-field = "#69C3FF"
-# Struct literal property labels like `Demo { name: value }`.
-property = "#d0d7e4"
-# Named constants such as `MAX_SIZE` and boolean literals.
-constant = "#FF955C"
 # Operators such as `=`, `+`, `&&`, `->`.
 operator = "#afbbd2"
 # Punctuation such as commas, braces, and separators.
 punctuation = "#8196b5"
+
+# ── Giá trị (Literals) ──
+# String literals.
+string = "#3CEC85"
+# Numeric literals.
+number = "#E35535"
+# Boolean literals (true/false).
+boolean = "#FF955C"       # [MỚI] Dùng màu Cam Peach đồng bộ với constant
+# Escape sequences inside strings (e.g., \n, \t).
+escape = "#E35535"        # [MỚI] Dùng màu Đỏ Cam (tương phản cực tốt trên nền string xanh lá #3CEC85)
+
+# ── Định danh (Identifiers) ──
+# Plain variable names that do not fall into a richer semantic bucket.
+identifier = "#d0d7e4"
+# Local variables.
+variable = "#d0d7e4"      # [MỚI] Cùng tone với identifier, giữ code base không bị "loè loẹt"
+# Function names and callable symbols.
+function = "#69C3FF"
 # Macro invocation highlight.
 macro = "#69C3FF"
+# Function and closure parameters.
+parameter = "#22ECDB"
+
+# ── Hướng đối tượng & Cấu trúc (OOP & Structs) ──
+# Type names.
+type = "#B78AFF"
+# Constructor functions (e.g., String::new).
+constructor = "#B78AFF"   # [MỚI] Đồng màu với Type để phân biệt rõ hàm khởi tạo với hàm thông thường
+# Struct field declarations and member access like `self.name`.
+field = "#69C3FF"
+# Struct literal property labels like `Demo { name: value }`.
+property = "#d0d7e4"
+# Named constants such as `MAX_SIZE`.
+constant = "#FF955C"
+
+# ── Đặc tả ngôn ngữ (Language-specific) ──
+# Comments and muted inline docs.
+comment = "#4a5e84"
+# Decorators and attributes like `#[derive(Debug)]` or `@Controller`.
+attribute = "#EACD61"     # [MỚI] Dùng màu Vàng Gold giống keyword để làm nổi bật các annotation
+# Module namespaces (e.g., `std::` in Rust).
+namespace = "#B78AFF"     # [MỚI] Dùng màu Tím giống type để tách biệt các crate/module khỏi biến thông thường
 # Rust lifetime highlight.
 lifetime = "#FF955C"
+# HTML/XML/JSX Tags.
+tag = "#69C3FF"           # [MỚI] Dùng màu Xanh Blue giống function cho các thẻ tag

@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use winit::keyboard::{KeyCode, ModifiersState, NamedKey};
 
 use crate::{
-    app::resolved_keymap::{build, builtin_defaults},
+    app::{
+        command_palette::CommandPaletteMode,
+        resolved_keymap::{build, builtin_defaults},
+    },
     config::keymap_loader::KeymapLoader,
     core::{
         commands::Command,
@@ -27,6 +30,15 @@ fn input_from_named(named_key: NamedKey) -> NormalizedInput {
         physical_key: None,
         named_key: Some(named_key),
         text: None,
+        modifiers: ModifiersState::empty(),
+    }
+}
+
+fn input_from_physical(key: KeyCode, text: &str) -> NormalizedInput {
+    NormalizedInput {
+        physical_key: Some(key),
+        named_key: None,
+        text: Some(text.to_string()),
         modifiers: ModifiersState::empty(),
     }
 }
@@ -284,6 +296,39 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::InsertAtLineStart),
         },
         Case {
+            name: "normal Shift+C -> ChangeToLineEnd",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyC),
+                named_key: None,
+                text: Some("C".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::ChangeToLineEnd),
+        },
+        Case {
+            name: "normal Shift+D -> DeleteToLineEnd",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyD),
+                named_key: None,
+                text: Some("D".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::DeleteToLineEnd),
+        },
+        Case {
+            name: "normal Shift+J -> JoinLines",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyJ),
+                named_key: None,
+                text: Some("J".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::JoinLines),
+        },
+        Case {
             name: "global F12 -> FocusTerminal",
             context: KeybindingContext::for_mode(EditorMode::Normal),
             input: input_from_named(NamedKey::F12),
@@ -321,6 +366,61 @@ fn table_driven_keybinding_resolution() {
                 modifiers: ModifiersState::CONTROL,
             },
             expected: Some(Command::BufferPrev),
+        },
+        Case {
+            name: "normal ctrl+d -> ScrollHalfPageDown",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyD),
+                named_key: None,
+                text: Some("d".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::ScrollHalfPageDown),
+        },
+        Case {
+            name: "normal { -> MoveParagraphUp",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::BracketLeft),
+                named_key: None,
+                text: Some("{".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::MoveParagraphUp),
+        },
+        Case {
+            name: "normal } -> MoveParagraphDown",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::BracketRight),
+                named_key: None,
+                text: Some("}".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::MoveParagraphDown),
+        },
+        Case {
+            name: "visual { -> MoveParagraphUp",
+            context: KeybindingContext::for_mode(EditorMode::Visual),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::BracketLeft),
+                named_key: None,
+                text: Some("{".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::MoveParagraphUp),
+        },
+        Case {
+            name: "visual } -> MoveParagraphDown",
+            context: KeybindingContext::for_mode(EditorMode::Visual),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::BracketRight),
+                named_key: None,
+                text: Some("}".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::MoveParagraphDown),
         },
         Case {
             name: "explorer w -> ExplorerCollapseOrParent",
@@ -545,6 +645,38 @@ fn table_driven_keybinding_resolution() {
 }
 
 #[test]
+fn default_profile_leader_f_m_routes_to_lsp_format_document() {
+    let map = make_default_profile_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+
+    let first = map.resolve_sequence_start(&input_from_named(NamedKey::Space), context);
+    let SequenceMatch::Pending(first_pending) = first.expect("leader should start pending") else {
+        panic!("expected pending leader sequence");
+    };
+
+    let second = map.resolve_sequence_next(
+        &first_pending,
+        &input_from_physical(KeyCode::KeyF, "f"),
+        context,
+    );
+    let SequenceMatch::Pending(second_pending) = second.expect("leader f should stay pending")
+    else {
+        panic!("expected pending leader f sequence");
+    };
+
+    let third = map.resolve_sequence_next(
+        &second_pending,
+        &input_from_physical(KeyCode::KeyM, "m"),
+        context,
+    );
+    let SequenceMatch::Dispatch(matched) = third.expect("leader f m should dispatch") else {
+        panic!("expected dispatch for leader f m");
+    };
+
+    assert_eq!(matched.command, Command::LspFormatDocument);
+}
+
+#[test]
 fn ctrl_s_maps_to_save_file() {
     let map = make_map();
     let input = NormalizedInput {
@@ -557,6 +689,312 @@ fn ctrl_s_maps_to_save_file() {
         map.translate(&input, KeybindingContext::for_mode(EditorMode::Insert)),
         Some(Command::SaveFile)
     );
+}
+
+#[test]
+fn recent_projects_jk_only_work_from_welcome_context() {
+    let map = make_default_profile_map();
+    let input_j = NormalizedInput {
+        physical_key: Some(KeyCode::KeyJ),
+        named_key: None,
+        text: Some("j".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let input_ctrl_n = NormalizedInput {
+        physical_key: Some(KeyCode::KeyN),
+        named_key: None,
+        text: Some("n".to_string()),
+        modifiers: ModifiersState::CONTROL,
+    };
+
+    let mut normal_palette_context =
+        KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true);
+    normal_palette_context.command_palette_mode = Some(CommandPaletteMode::RecentProjects);
+
+    assert_eq!(
+        map.translate(&input_j, normal_palette_context),
+        Some(Command::FilePickerAppendQuery("j".to_string()))
+    );
+    assert_eq!(
+        map.translate(&input_ctrl_n, normal_palette_context),
+        Some(Command::OverlaySelectNext)
+    );
+
+    let mut welcome_palette_context = normal_palette_context;
+    welcome_palette_context.welcome_visible = true;
+
+    assert_eq!(
+        map.translate(&input_j, welcome_palette_context),
+        Some(Command::OverlaySelectNext)
+    );
+    assert_eq!(
+        map.translate(&input_ctrl_n, welcome_palette_context),
+        Some(Command::OverlaySelectNext)
+    );
+}
+
+#[test]
+fn welcome_explorer_focus_routes_jk_to_recent_project_selection() {
+    let map = make_default_profile_map();
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer);
+    context.welcome_visible = true;
+
+    assert_eq!(
+        map.translate(&input_from_physical(KeyCode::KeyJ, "j"), context),
+        Some(Command::OverlaySelectNext)
+    );
+    assert_eq!(
+        map.translate(&input_from_physical(KeyCode::KeyK, "k"), context),
+        Some(Command::OverlaySelectPrev)
+    );
+    assert_eq!(
+        map.translate(&input_from_named(NamedKey::Enter), context),
+        Some(Command::FilePickerConfirmSelection)
+    );
+}
+
+#[test]
+fn explorer_focus_jk_still_use_explorer_commands_outside_welcome() {
+    let map = make_default_profile_map();
+    let context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer);
+
+    assert_eq!(
+        map.translate(&input_from_physical(KeyCode::KeyJ, "j"), context),
+        Some(Command::ExplorerMoveDown)
+    );
+    assert_eq!(
+        map.translate(&input_from_physical(KeyCode::KeyK, "k"), context),
+        Some(Command::ExplorerMoveUp)
+    );
+}
+
+#[test]
+fn welcome_palette_modes_support_ctrl_np_navigation() {
+    let map = make_default_profile_map();
+    let input_ctrl_n = NormalizedInput {
+        physical_key: Some(KeyCode::KeyN),
+        named_key: None,
+        text: Some("n".to_string()),
+        modifiers: ModifiersState::CONTROL,
+    };
+    let input_ctrl_p = NormalizedInput {
+        physical_key: Some(KeyCode::KeyP),
+        named_key: None,
+        text: Some("p".to_string()),
+        modifiers: ModifiersState::CONTROL,
+    };
+
+    for mode in [
+        CommandPaletteMode::FilePicker,
+        CommandPaletteMode::ThemeSelector,
+        CommandPaletteMode::CommandPalette,
+    ] {
+        let mut context = KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true);
+        context.command_palette_mode = Some(mode);
+        context.welcome_visible = true;
+
+        assert_eq!(
+            map.translate(&input_ctrl_n, context),
+            Some(Command::OverlaySelectNext),
+            "Ctrl+n should select next in {mode:?} on welcome page"
+        );
+        assert_eq!(
+            map.translate(&input_ctrl_p, context),
+            Some(Command::OverlaySelectPrev),
+            "Ctrl+p should select previous in {mode:?} on welcome page"
+        );
+    }
+}
+
+#[test]
+fn palette_focus_empty_welcome_routes_selection_without_visible_overlay() {
+    let map = make_default_profile_map();
+    let input_ctrl_n = NormalizedInput {
+        physical_key: Some(KeyCode::KeyN),
+        named_key: None,
+        text: Some("n".to_string()),
+        modifiers: ModifiersState::CONTROL,
+    };
+    let input_ctrl_p = NormalizedInput {
+        physical_key: Some(KeyCode::KeyP),
+        named_key: None,
+        text: Some("p".to_string()),
+        modifiers: ModifiersState::CONTROL,
+    };
+    let input_j = NormalizedInput {
+        physical_key: Some(KeyCode::KeyJ),
+        named_key: None,
+        text: Some("j".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let input_k = NormalizedInput {
+        physical_key: Some(KeyCode::KeyK),
+        named_key: None,
+        text: Some("k".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let input_enter = input_from_named(NamedKey::Enter);
+    let input_text = NormalizedInput {
+        physical_key: Some(KeyCode::KeyA),
+        named_key: None,
+        text: Some("a".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+
+    let mut context = KeybindingContext::for_mode(EditorMode::PaletteFocus);
+    context.welcome_visible = true;
+    context.focus = InputFocusContext::Welcome;
+    context.command_palette_mode = Some(CommandPaletteMode::RecentProjects);
+
+    assert_eq!(
+        map.translate(&input_ctrl_n, context),
+        Some(Command::OverlaySelectNext)
+    );
+    assert_eq!(
+        map.translate(&input_ctrl_p, context),
+        Some(Command::OverlaySelectPrev)
+    );
+    assert_eq!(
+        map.translate(&input_j, context),
+        Some(Command::OverlaySelectNext)
+    );
+    assert_eq!(
+        map.translate(&input_k, context),
+        Some(Command::OverlaySelectPrev)
+    );
+    assert_eq!(
+        map.translate(&input_enter, context),
+        Some(Command::FilePickerConfirmSelection)
+    );
+    assert_eq!(map.translate(&input_text, context), None);
+}
+
+#[test]
+fn welcome_recent_projects_use_direct_jk_enter() {
+    let map = make_default_profile_map();
+    let input_j = NormalizedInput {
+        physical_key: Some(KeyCode::KeyJ),
+        named_key: None,
+        text: Some("j".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let input_k = NormalizedInput {
+        physical_key: Some(KeyCode::KeyK),
+        named_key: None,
+        text: Some("k".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let input_enter = input_from_named(NamedKey::Enter);
+    let input_ctrl_n = NormalizedInput {
+        physical_key: Some(KeyCode::KeyN),
+        named_key: None,
+        text: Some("n".to_string()),
+        modifiers: ModifiersState::CONTROL,
+    };
+    let input_ctrl_p = NormalizedInput {
+        physical_key: Some(KeyCode::KeyP),
+        named_key: None,
+        text: Some("p".to_string()),
+        modifiers: ModifiersState::CONTROL,
+    };
+
+    let mut context = KeybindingContext::for_mode(EditorMode::Insert);
+    context.welcome_visible = true;
+    context.focus = InputFocusContext::Welcome;
+
+    assert_eq!(
+        map.translate(&input_j, context),
+        Some(Command::OverlaySelectNext)
+    );
+    assert_eq!(
+        map.translate(&input_k, context),
+        Some(Command::OverlaySelectPrev)
+    );
+    assert_eq!(
+        map.translate(&input_enter, context),
+        Some(Command::FilePickerConfirmSelection)
+    );
+    assert_eq!(
+        map.translate(&input_ctrl_n, context),
+        Some(Command::OverlaySelectNext)
+    );
+    assert_eq!(
+        map.translate(&input_ctrl_p, context),
+        Some(Command::OverlaySelectPrev)
+    );
+}
+
+#[test]
+fn welcome_recent_projects_jk_are_not_taken_by_sidebar_focus() {
+    let map = make_default_profile_map();
+    let input_j = NormalizedInput {
+        physical_key: Some(KeyCode::KeyJ),
+        named_key: None,
+        text: Some("j".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let input_k = NormalizedInput {
+        physical_key: Some(KeyCode::KeyK),
+        named_key: None,
+        text: Some("k".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+
+    let mut context = KeybindingContext::for_mode(EditorMode::Insert);
+    context.welcome_visible = true;
+    context.focus = InputFocusContext::Welcome;
+
+    assert_eq!(
+        map.translate(&input_j, context),
+        Some(Command::OverlaySelectNext)
+    );
+    assert_eq!(
+        map.translate(&input_k, context),
+        Some(Command::OverlaySelectPrev)
+    );
+}
+
+#[test]
+fn welcome_context_can_open_recent_projects_with_leader_sequence() {
+    let map = make_default_profile_map();
+    let input_space = input_from_named(NamedKey::Space);
+    let input_p = NormalizedInput {
+        physical_key: Some(KeyCode::KeyP),
+        named_key: None,
+        text: Some("p".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let input_j = NormalizedInput {
+        physical_key: Some(KeyCode::KeyJ),
+        named_key: None,
+        text: Some("j".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+
+    let mut context = KeybindingContext::for_mode(EditorMode::Insert);
+    context.welcome_visible = true;
+
+    let SequenceMatch::Pending(sequence) = map
+        .resolve_sequence_start(&input_space, context)
+        .expect("welcome leader should start a sequence even outside normal mode")
+    else {
+        panic!("welcome leader should be pending");
+    };
+    let SequenceMatch::Pending(sequence) = map
+        .resolve_sequence_next(&sequence, &input_p, context)
+        .expect("welcome leader p should remain pending")
+    else {
+        panic!("welcome leader p should be pending");
+    };
+    let SequenceMatch::Dispatch(matched) = map
+        .resolve_sequence_next(&sequence, &input_j, context)
+        .expect("welcome leader p j should dispatch recent projects")
+    else {
+        panic!("welcome leader p j should dispatch");
+    };
+
+    assert_eq!(matched.command, Command::OpenRecentProjects);
 }
 
 #[test]
@@ -662,48 +1100,6 @@ fn resolve_contains_reason_for_dispatch_trace() {
         .expect("should resolve");
     assert_eq!(resolved.command, Command::MoveDown);
     assert!(!resolved.reason.is_empty());
-}
-
-#[test]
-fn leader_and_chord_resolution_work() {
-    let map = make_map();
-    let context = KeybindingContext::for_mode(EditorMode::Normal);
-    let space = input_from_named(NamedKey::Space);
-    let first = map
-        .resolve_sequence_start(&space, context)
-        .expect("space should start chord");
-
-    let follow_f = NormalizedInput {
-        physical_key: Some(KeyCode::KeyF),
-        named_key: None,
-        text: Some("f".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-    let pending = match first {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!(
-            "expected pending sequence after leader start, got {:?}",
-            other
-        ),
-    };
-
-    let second = map
-        .resolve_sequence_next(&pending, &follow_f, context)
-        .expect("leader+f should still be pending");
-    let pending = match second {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!("expected second pending sequence, got {:?}", other),
-    };
-
-    let third = map
-        .resolve_sequence_next(&pending, &follow_f, context)
-        .expect("leader+f+f should resolve");
-    match third {
-        SequenceMatch::Dispatch(resolved) => {
-            assert_eq!(resolved.command, Command::OpenFilePicker);
-        }
-        other => panic!("expected dispatch for leader f f, got {:?}", other),
-    }
 }
 
 #[test]
@@ -906,178 +1302,4 @@ fn leader_sequence_is_not_started_in_insert_mode() {
     let start_input = input_from_named(NamedKey::Space);
     let context = KeybindingContext::for_mode(EditorMode::Insert);
     assert!(map.resolve_sequence_start(&start_input, context).is_none());
-}
-
-#[test]
-fn dw_sequence_maps_to_delete_word_forward() {
-    let map = make_map();
-    let context = KeybindingContext::for_mode(EditorMode::Normal);
-    let d = NormalizedInput {
-        physical_key: Some(KeyCode::KeyD),
-        named_key: None,
-        text: Some("d".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-    let w = NormalizedInput {
-        physical_key: Some(KeyCode::KeyW),
-        named_key: None,
-        text: Some("w".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-
-    let first = map
-        .resolve_sequence_start(&d, context)
-        .expect("first d should start sequence");
-    let pending = match first {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!("expected pending after d, got {:?}", other),
-    };
-
-    let second = map
-        .resolve_sequence_next(&pending, &w, context)
-        .expect("d w should resolve");
-    match second {
-        SequenceMatch::Dispatch(resolved) => {
-            assert_eq!(resolved.command, Command::DeleteWordForward);
-        }
-        other => panic!("expected dispatch for d w, got {:?}", other),
-    }
-}
-
-#[test]
-fn dd_sequence_maps_to_delete_current_line() {
-    let map = make_map();
-    let context = KeybindingContext::for_mode(EditorMode::Normal);
-    let d = NormalizedInput {
-        physical_key: Some(KeyCode::KeyD),
-        named_key: None,
-        text: Some("d".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-
-    let first = map
-        .resolve_sequence_start(&d, context)
-        .expect("first d should start sequence");
-    let pending = match first {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!("expected pending for first d, got {:?}", other),
-    };
-
-    let second = map
-        .resolve_sequence_next(&pending, &d, context)
-        .expect("second d should resolve");
-    match second {
-        SequenceMatch::Dispatch(resolved) => {
-            assert_eq!(resolved.command, Command::DeleteCurrentLine);
-        }
-        other => panic!("expected dispatch for d d, got {:?}", other),
-    }
-}
-
-#[test]
-fn db_sequence_maps_to_delete_word_backward() {
-    let map = make_map();
-    let context = KeybindingContext::for_mode(EditorMode::Normal);
-    let d = NormalizedInput {
-        physical_key: Some(KeyCode::KeyD),
-        named_key: None,
-        text: Some("d".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-    let b = NormalizedInput {
-        physical_key: Some(KeyCode::KeyB),
-        named_key: None,
-        text: Some("b".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-
-    let first = map
-        .resolve_sequence_start(&d, context)
-        .expect("first d should start sequence");
-    let pending = match first {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!("expected pending after first d, got {:?}", other),
-    };
-
-    let second = map
-        .resolve_sequence_next(&pending, &b, context)
-        .expect("d b should resolve");
-    match second {
-        SequenceMatch::Dispatch(resolved) => {
-            assert_eq!(resolved.command, Command::DeleteWordBackward);
-        }
-        other => panic!("expected dispatch for d b, got {:?}", other),
-    }
-}
-
-#[test]
-fn cw_sequence_maps_to_change_word_forward() {
-    let map = make_map();
-    let context = KeybindingContext::for_mode(EditorMode::Normal);
-    let c = NormalizedInput {
-        physical_key: Some(KeyCode::KeyC),
-        named_key: None,
-        text: Some("c".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-    let w = NormalizedInput {
-        physical_key: Some(KeyCode::KeyW),
-        named_key: None,
-        text: Some("w".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-
-    let first = map
-        .resolve_sequence_start(&c, context)
-        .expect("first c should start sequence");
-    let pending = match first {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!("expected pending after c, got {:?}", other),
-    };
-
-    let second = map
-        .resolve_sequence_next(&pending, &w, context)
-        .expect("c w should resolve");
-    match second {
-        SequenceMatch::Dispatch(resolved) => {
-            assert_eq!(resolved.command, Command::ChangeWordForward);
-        }
-        other => panic!("expected dispatch for c w, got {:?}", other),
-    }
-}
-
-#[test]
-fn cb_sequence_maps_to_change_word_backward() {
-    let map = make_map();
-    let context = KeybindingContext::for_mode(EditorMode::Normal);
-    let c = NormalizedInput {
-        physical_key: Some(KeyCode::KeyC),
-        named_key: None,
-        text: Some("c".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-    let b = NormalizedInput {
-        physical_key: Some(KeyCode::KeyB),
-        named_key: None,
-        text: Some("b".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-
-    let first = map
-        .resolve_sequence_start(&c, context)
-        .expect("first c should start sequence");
-    let pending = match first {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!("expected pending after c, got {:?}", other),
-    };
-
-    let second = map
-        .resolve_sequence_next(&pending, &b, context)
-        .expect("c b should resolve");
-    match second {
-        SequenceMatch::Dispatch(resolved) => {
-            assert_eq!(resolved.command, Command::ChangeWordBackward);
-        }
-        other => panic!("expected dispatch for c b, got {:?}", other),
-    }
 }

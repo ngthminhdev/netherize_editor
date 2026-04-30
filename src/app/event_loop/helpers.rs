@@ -8,11 +8,88 @@ use crate::{
     syntax::highlight::highlight_snippet,
 };
 
-pub(super) fn syntax_spans_to_styled(
+const BRACKET_PAIRS: &[(char, char)] = &[('(', ')'), ('[', ']'), ('{', '}')];
+
+fn byte_inside_any_span(
+    byte_idx: usize,
     spans: &[HighlightSpan],
+    categories: &[crate::syntax::highlight::HighlightCategory],
+) -> bool {
+    spans.iter().any(|span| {
+        span.range.start <= byte_idx
+            && byte_idx < span.range.end
+            && categories.contains(&span.category)
+    })
+}
+
+fn rainbow_bracket_spans(
+    text: &str,
+    syntax_spans: &[HighlightSpan],
     theme: &ThemeConfig,
 ) -> Vec<StyledTextSpan> {
-    spans
+    let palette: Vec<[u8; 4]> = theme
+        .editor
+        .rainbow_brackets
+        .iter()
+        .map(|color| color.as_u8())
+        .collect();
+    if palette.is_empty() || text.is_empty() {
+        return Vec::new();
+    }
+
+    let ignored = [
+        crate::syntax::highlight::HighlightCategory::String,
+        crate::syntax::highlight::HighlightCategory::Comment,
+    ];
+    let mut out = Vec::new();
+    let mut stack: Vec<(char, usize)> = Vec::new();
+
+    for (byte_idx, ch) in text.char_indices() {
+        if !matches!(ch, '(' | ')' | '[' | ']' | '{' | '}') {
+            continue;
+        }
+        if byte_inside_any_span(byte_idx, syntax_spans, &ignored) {
+            continue;
+        }
+
+        if let Some((_, close)) = BRACKET_PAIRS.iter().find(|(open, _)| *open == ch) {
+            let depth = stack.len();
+            let color = palette[depth % palette.len()];
+            out.push(StyledTextSpan::new(
+                byte_idx,
+                byte_idx + ch.len_utf8(),
+                color,
+            ));
+            stack.push((ch, *close as usize));
+            continue;
+        }
+
+        if let Some(pair_idx) = BRACKET_PAIRS.iter().position(|(_, close)| *close == ch) {
+            if let Some(open_pos) = stack
+                .iter()
+                .rposition(|(open, _)| *open == BRACKET_PAIRS[pair_idx].0)
+            {
+                let depth = open_pos;
+                stack.truncate(open_pos);
+                let color = palette[depth % palette.len()];
+                out.push(StyledTextSpan::new(
+                    byte_idx,
+                    byte_idx + ch.len_utf8(),
+                    color,
+                ));
+            }
+        }
+    }
+
+    out
+}
+
+pub(super) fn syntax_spans_to_styled(
+    spans: &[HighlightSpan],
+    text: &str,
+    theme: &ThemeConfig,
+) -> Vec<StyledTextSpan> {
+    let mut styled: Vec<StyledTextSpan> = spans
         .iter()
         .map(|span| {
             let color = match span.category {
@@ -28,8 +105,14 @@ pub(super) fn syntax_spans_to_styled(
                     theme.syntax.function.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::Number => theme.syntax.number.as_u8(),
+                crate::syntax::highlight::HighlightCategory::Boolean => {
+                    theme.syntax.boolean.as_u8()
+                }
                 crate::syntax::highlight::HighlightCategory::Identifier => {
                     theme.syntax.identifier.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::Variable => {
+                    theme.syntax.variable.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::Parameter => {
                     theme.syntax.parameter.as_u8()
@@ -47,10 +130,21 @@ pub(super) fn syntax_spans_to_styled(
                 crate::syntax::highlight::HighlightCategory::Punctuation => {
                     theme.syntax.punctuation.as_u8()
                 }
+                crate::syntax::highlight::HighlightCategory::Escape => theme.syntax.escape.as_u8(),
                 crate::syntax::highlight::HighlightCategory::Macro => theme.syntax.r#macro.as_u8(),
                 crate::syntax::highlight::HighlightCategory::Lifetime => {
                     theme.syntax.lifetime.as_u8()
                 }
+                crate::syntax::highlight::HighlightCategory::Constructor => {
+                    theme.syntax.constructor.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::Attribute => {
+                    theme.syntax.attribute.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::Namespace => {
+                    theme.syntax.namespace.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::Tag => theme.syntax.tag.as_u8(),
             };
             StyledTextSpan::with_style(
                 span.range.start,
@@ -60,7 +154,9 @@ pub(super) fn syntax_spans_to_styled(
                 span.category.is_italic(),
             )
         })
-        .collect()
+        .collect();
+    styled.extend(rainbow_bracket_spans(text, spans, theme));
+    styled
 }
 
 pub(super) fn diagnostic_spans_to_styled(
@@ -131,7 +227,8 @@ pub(super) fn build_preview_render_data(
         .extension()
         .and_then(|ext| ext.to_str())
         .unwrap_or_default();
-    let spans = syntax_spans_to_styled(&highlight_snippet(&text, extension, theme), theme);
+    let raw_spans = highlight_snippet(&text, extension, theme);
+    let spans = syntax_spans_to_styled(&raw_spans, &text, theme);
     (text, spans)
 }
 
@@ -153,17 +250,17 @@ pub(super) fn parse_hover_markdown_blocks(
         }
     };
 
-    let flush_code = |blocks: &mut Vec<FloatingBoxBlock>,
-                      code_lines: &mut Vec<String>,
-                      code_language: &str| {
-        let text = code_lines.join("\n");
-        code_lines.clear();
-        if text.trim().is_empty() {
-            return;
-        }
-        let spans = syntax_spans_to_styled(&highlight_snippet(&text, code_language, theme), theme);
-        blocks.push(FloatingBoxBlock::Code { text, spans });
-    };
+    let flush_code =
+        |blocks: &mut Vec<FloatingBoxBlock>, code_lines: &mut Vec<String>, code_language: &str| {
+            let text = code_lines.join("\n");
+            code_lines.clear();
+            if text.trim().is_empty() {
+                return;
+            }
+            let raw_spans = highlight_snippet(&text, code_language, theme);
+            let spans = syntax_spans_to_styled(&raw_spans, &text, theme);
+            blocks.push(FloatingBoxBlock::Code { text, spans });
+        };
 
     for line in content.lines() {
         let trimmed = line.trim_start();
@@ -214,7 +311,9 @@ pub(super) fn scale_theme(base: &ThemeConfig, scale: f32) -> ThemeConfig {
 
 pub(super) fn scale_ui_config(base: &UiConfig, scale: f32) -> UiConfig {
     let mut ui = base.clone();
-    ui.layout.region_gap = scale_metric(ui.layout.region_gap, scale, 1.0);
+    ui.layout.outer_gap = scale_metric(ui.layout.outer_gap, scale, 0.0);
+    ui.layout.panel_gap = scale_metric(ui.layout.panel_gap, scale, 0.0);
+    ui.layout.inner_padding = scale_metric(ui.layout.inner_padding, scale, 0.0);
     ui.layout.top_bar_height = scale_metric(ui.layout.top_bar_height, scale, 20.0);
     ui.layout.status_bar_height = scale_metric(ui.layout.status_bar_height, scale, 18.0);
     ui.layout.center_min_width = scale_metric(ui.layout.center_min_width, scale, 240.0);
@@ -237,6 +336,12 @@ pub(super) fn scale_ui_config(base: &UiConfig, scale: f32) -> UiConfig {
     ui.status_bar.padding_x = scale_metric(ui.status_bar.padding_x, scale, 4.0);
     ui.status_bar.font_size = scale_metric(ui.status_bar.font_size, scale, 8.0);
     ui.status_bar.line_height = scale_metric(ui.status_bar.line_height, scale, 12.0);
+
+    ui.welcome.card_max_width = scale_metric(ui.welcome.card_max_width, scale, 320.0);
+    ui.welcome.card_padding_x = scale_metric(ui.welcome.card_padding_x, scale, 12.0);
+    ui.welcome.card_padding_y = scale_metric(ui.welcome.card_padding_y, scale, 12.0);
+    ui.welcome.section_gap = scale_metric(ui.welcome.section_gap, scale, 6.0);
+    ui.welcome.border_radius_px = scale_metric(ui.welcome.border_radius_px, scale, 4.0);
     ui
 }
 
@@ -392,6 +497,17 @@ fn collect_visible_explorer_entries(
             depth,
             is_expanded,
             name: name.to_string(),
+            git_status: {
+                let is_dirty_path = app_state.is_dirty()
+                    && app_state
+                        .active_file()
+                        .is_some_and(|active| active.starts_with(child));
+                if is_dirty_path {
+                    Some(WorkspaceGitStatus::Dirty)
+                } else {
+                    app_state.workspace_git_status(child)
+                }
+            },
         });
 
         if file_type == WorkspaceNodeType::Folder && is_expanded {
@@ -428,6 +544,8 @@ pub(super) fn build_sidebar_rows(
             } else {
                 "(no files)".to_string()
             },
+            git_marker: None,
+            git_color: None,
             is_selected: false,
         }];
     }
@@ -450,6 +568,18 @@ pub(super) fn build_sidebar_rows(
                 nerd_icon: icon,
                 icon_color: icon_theme.color.as_f32(),
                 label: entry.name.clone(),
+                git_marker: match entry.git_status {
+                    Some(WorkspaceGitStatus::Modified) => Some('M'),
+                    Some(WorkspaceGitStatus::Added) => Some('A'),
+                    Some(WorkspaceGitStatus::Dirty) => Some('●'),
+                    None => None,
+                },
+                git_color: match entry.git_status {
+                    Some(WorkspaceGitStatus::Modified) => Some(theme.git.modified_sidebar.as_f32()),
+                    Some(WorkspaceGitStatus::Added) => Some(theme.git.added_sidebar.as_f32()),
+                    Some(WorkspaceGitStatus::Dirty) => Some(theme.git.modified_sidebar.as_f32()),
+                    None => None,
+                },
                 is_selected: idx == selected,
             }
         })
@@ -533,7 +663,7 @@ mod tests {
             },
         ];
 
-        let styled = syntax_spans_to_styled(&spans, &theme);
+        let styled = syntax_spans_to_styled(&spans, "comment macro param", &theme);
 
         assert_eq!(styled[0].color_rgba, theme.syntax.comment.as_u8());
         assert!(styled[0].italic);

@@ -1,6 +1,8 @@
 //! Renderer lifecycle: GPU bootstrap, theme/config application, resize handling,
 //! and the top-level render pass ordering.
 
+mod frame;
+
 use std::sync::Arc;
 
 use cosmic_text::Metrics;
@@ -12,19 +14,14 @@ use crate::{
         ui_config::{CursorShape, UiConfig},
     },
     render::{
-        caret::CaretPipeline,
-        region_pipeline::{RegionDrawInstance, RegionPipeline},
-        surface::SurfaceState,
+        caret::CaretPipeline, region_pipeline::RegionPipeline, surface::SurfaceState,
         text_pipeline::TextPipeline,
     },
     terminal::terminal_renderer::TerminalViewRenderer,
     text::{atlas::GlyphAtlas, text_system::TextSystem},
 };
 
-use super::{
-    ATLAS_SIZE, RenderError, Renderer,
-    helpers::{draw_text_region, theme_color_to_wgpu},
-};
+use super::{ATLAS_SIZE, Renderer, helpers::theme_color_to_wgpu};
 
 fn make_text_system(metrics: Metrics, family: Option<&str>) -> TextSystem {
     let mut text_system = TextSystem::new(metrics, None, None);
@@ -86,6 +83,10 @@ impl Renderer {
         let surface_format = surface_state.config.format;
         let region_pipeline = RegionPipeline::new(&device, surface_format, width, height);
         let caret_pipeline = CaretPipeline::new(&device, surface_format, width, height);
+        let image_pipeline =
+            crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
+        let welcome_image_pipeline =
+            crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
 
         let theme = ThemeConfig::builtin_dark();
         let clear_color = theme_color_to_wgpu(theme.ui.bg);
@@ -107,6 +108,7 @@ impl Renderer {
             Metrics::new(theme.editor.font_size * 2.0, theme.editor.line_height * 2.0);
 
         let text_system = make_text_system(editor_metrics, font_family.as_deref());
+        let editor_overlay_text_system = make_text_system(editor_metrics, font_family.as_deref());
         let gutter_text_system = make_text_system(editor_metrics, font_family.as_deref());
         let sidebar_text_system = make_text_system(ui_metrics, nerd_family.as_deref());
         let terminal_text_system = make_text_system(panel_metrics, font_family.as_deref());
@@ -164,15 +166,20 @@ impl Renderer {
             caret_pipeline,
             editor_cursor_overlay_pipeline,
             editor_scissor: None,
-            editor_overlay_text_system: make_text_system(editor_metrics, font_family.as_deref()),
+            editor_overlay_text_system,
             editor_overlay_text_pipeline,
             editor_overlay_glyph_instances: Vec::new(),
             editor_overlay_chrome_instances: Vec::new(),
             editor_overlay_scissor: None,
+            image_pipeline,
+            image_scissor: None,
+            welcome_image_pipeline,
+            welcome_image_scissor: None,
             gutter_text_system,
             gutter_text_pipeline,
             gutter_glyph_instances: Vec::new(),
             relative_numbers: false,
+            last_editor_chrome_instances: Vec::new(),
             sidebar_text_system,
             sidebar_text_pipeline,
             sidebar_glyph_instances: Vec::new(),
@@ -194,6 +201,7 @@ impl Renderer {
             welcome_logo_text_pipeline,
             welcome_logo_view_renderer: TerminalViewRenderer::default_monospace(),
             welcome_logo_glyph_instances: Vec::new(),
+            welcome_logo_chrome_instances: Vec::new(),
             welcome_logo_scissor: None,
             topbar_text_system,
             topbar_text_pipeline,
@@ -225,12 +233,21 @@ impl Renderer {
             editor_padding_x: 14.0,
             editor_padding_y: 14.0,
             panel_padding: 10.0,
+            panel_corner_radius: 10.0,
+            round_ui: true,
             sidebar_base_padding: 10.0,
             sidebar_indent_per_depth: 15.0,
             topbar_padding_x: 14.0,
+            topbar_dirty_gap: 6.0,
             statusbar_padding_x: 14.0,
             statusbar_font_size,
             statusbar_line_height,
+            welcome_version: "v1.0.0-alpha".to_string(),
+            welcome_card_max_width: 560.0,
+            welcome_card_padding_x: 42.0,
+            welcome_card_padding_y: 34.0,
+            welcome_section_gap: 16.0,
+            welcome_border_radius_px: 18.0,
             cursor_shape: CursorShape::Block,
             cursor_beam_width: 1.8,
             cursor_block_width: 10.0,
@@ -308,21 +325,51 @@ impl Renderer {
 
         self.clear_color = theme_color_to_wgpu(theme.ui.bg);
         self.theme = theme;
+        self.topbar_scissor = None;
+        self.topbar_glyph_instances.clear();
+        self.topbar_chrome_instances.clear();
+        self.topbar_text_batches.clear();
+        self.topbar_text_pipeline
+            .upload_instances(&self.device, &self.queue, &[]);
+        self.statusbar_scissor = None;
+        self.statusbar_glyph_instances.clear();
+        self.statusbar_chrome_instances.clear();
+        self.buffer_terminal_header_batch = None;
+        self.statusbar_text_pipeline
+            .upload_instances(&self.device, &self.queue, &[]);
+        self.clear_sidebar();
+        self.clear_palette();
+        self.clear_editor_overlays();
+        self.clear_diagnostic_hover_popup();
+        self.clear_leap_labels();
         self.last_topbar_layout_key = None;
         self.last_statusbar_layout_key = None;
         self.last_palette_model = None;
     }
 
     pub fn apply_ui_config(&mut self, ui: &UiConfig) {
-        self.editor_padding_x = ui.spacing.editor_padding;
-        self.editor_padding_y = ui.spacing.editor_padding;
-        self.panel_padding = ui.spacing.panel_padding;
-        self.sidebar_base_padding = ui.spacing.explorer_padding;
-        self.sidebar_indent_per_depth = (ui.spacing.explorer_padding * 1.5).max(10.0);
+        self.editor_padding_x = ui.layout.inner_padding.max(ui.spacing.editor_padding);
+        self.editor_padding_y = ui.layout.inner_padding.max(ui.spacing.editor_padding);
+        self.panel_padding = ui.layout.inner_padding.max(ui.spacing.panel_padding);
+        self.panel_corner_radius = if ui.layout.round_ui {
+            ui.border_radius_px.max(0.0)
+        } else {
+            0.0
+        };
+        self.round_ui = ui.layout.round_ui;
+        self.sidebar_base_padding = ui.layout.inner_padding.max(ui.spacing.explorer_padding);
+        self.sidebar_indent_per_depth = (self.sidebar_base_padding * 1.5).max(10.0);
         self.topbar_padding_x = ui.status_bar.padding_x;
+        self.topbar_dirty_gap = ui.spacing.topbar_dirty_gap;
         self.statusbar_padding_x = ui.status_bar.padding_x;
         self.statusbar_font_size = ui.status_bar.font_size;
         self.statusbar_line_height = ui.status_bar.line_height;
+        self.welcome_version = ui.welcome.version.clone();
+        self.welcome_card_max_width = ui.welcome.card_max_width;
+        self.welcome_card_padding_x = ui.welcome.card_padding_x;
+        self.welcome_card_padding_y = ui.welcome.card_padding_y;
+        self.welcome_section_gap = ui.welcome.section_gap;
+        self.welcome_border_radius_px = ui.welcome.border_radius_px;
         self.cursor_shape = ui.cursor.shape;
         self.cursor_beam_width = ui.cursor.beam_width;
         self.cursor_block_width = ui.cursor.block_width;
@@ -368,366 +415,5 @@ impl Renderer {
 
     pub fn reconfigure_surface(&self) {
         self.surface_state.reconfigure(&self.device);
-    }
-
-    pub fn render(&mut self, region_instances: &[RegionDrawInstance]) -> Result<(), RenderError> {
-        let frame = match self.surface_state.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(texture) => texture,
-            wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
-            wgpu::CurrentSurfaceTexture::Timeout => return Err(RenderError::Timeout),
-            wgpu::CurrentSurfaceTexture::Occluded => return Err(RenderError::Occluded),
-            wgpu::CurrentSurfaceTexture::Outdated => return Err(RenderError::Outdated),
-            wgpu::CurrentSurfaceTexture::Lost => return Err(RenderError::Lost),
-            wgpu::CurrentSurfaceTexture::Validation => return Err(RenderError::Validation),
-        };
-
-        self.region_pipeline
-            .upload_instances(&self.device, &self.queue, region_instances);
-
-        let view = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Netherize Encoder"),
-            });
-
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Netherize RenderPass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(self.clear_color),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-
-            let viewport_width = self.surface_state.config.width;
-            let viewport_height = self.surface_state.config.height;
-
-            // 1. Panel backgrounds (no scissor).
-            self.region_pipeline.draw(&mut pass);
-
-            // 2. Editor text + caret + cursor overlay + gutter.
-            draw_text_region(
-                &mut pass,
-                self.editor_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.text_pipeline.draw(render_pass);
-                    self.caret_pipeline.draw(render_pass);
-                    self.editor_cursor_overlay_pipeline.draw(render_pass);
-                    self.gutter_text_pipeline.draw(render_pass);
-                },
-            );
-
-            if !self.editor_overlay_chrome_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.editor_overlay_chrome_instances,
-                );
-                draw_text_region(
-                    &mut pass,
-                    self.editor_overlay_scissor,
-                    viewport_width,
-                    viewport_height,
-                    |render_pass| {
-                        self.region_pipeline.draw(render_pass);
-                    },
-                );
-            }
-
-            draw_text_region(
-                &mut pass,
-                self.editor_overlay_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.editor_overlay_text_pipeline.draw(render_pass);
-                },
-            );
-
-            // 3. Welcome ANSI logo.
-            draw_text_region(
-                &mut pass,
-                self.welcome_logo_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.welcome_logo_text_pipeline.draw(render_pass);
-                },
-            );
-
-            // 4. Explorer sidebar.
-            draw_text_region(
-                &mut pass,
-                self.sidebar_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.sidebar_text_pipeline.draw(render_pass);
-                },
-            );
-
-            // 5. Leap label overlay: dim + per-char bg + label chars.
-            if !self.leap_label_glyph_instances.is_empty() {
-                if !self.leap_label_bg_instances.is_empty() {
-                    self.region_pipeline.upload_instances(
-                        &self.device,
-                        &self.queue,
-                        &self.leap_label_bg_instances,
-                    );
-                    draw_text_region(
-                        &mut pass,
-                        self.leap_label_scissor,
-                        viewport_width,
-                        viewport_height,
-                        |render_pass| {
-                            self.region_pipeline.draw(render_pass);
-                        },
-                    );
-                }
-                draw_text_region(
-                    &mut pass,
-                    self.leap_label_scissor,
-                    viewport_width,
-                    viewport_height,
-                    |render_pass| {
-                        self.leap_label_text_pipeline.draw(render_pass);
-                    },
-                );
-            }
-
-            // 6. Terminal panel.
-            draw_text_region(
-                &mut pass,
-                self.terminal_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.terminal_text_pipeline.draw(render_pass);
-                },
-            );
-            if !self.terminal_cursor_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.terminal_cursor_instances,
-                );
-                draw_text_region(
-                    &mut pass,
-                    self.terminal_scissor,
-                    viewport_width,
-                    viewport_height,
-                    |render_pass| {
-                        self.region_pipeline.draw(render_pass);
-                    },
-                );
-            }
-
-            if let Some(header_batch) = self.buffer_terminal_header_batch {
-                let total_count = self.buffer_terminal_glyph_instances.len() as u32;
-                let body_start = header_batch
-                    .range
-                    .start
-                    .saturating_add(header_batch.range.count);
-                let body_count = total_count.saturating_sub(body_start);
-                if body_count > 0 {
-                    draw_text_region(
-                        &mut pass,
-                        self.buffer_terminal_scissor,
-                        viewport_width,
-                        viewport_height,
-                        |render_pass| {
-                            self.buffer_terminal_text_pipeline.draw_range(
-                                render_pass,
-                                crate::render::text_pipeline::InstanceDrawRange {
-                                    start: body_start,
-                                    count: body_count,
-                                },
-                            );
-                        },
-                    );
-                }
-                draw_text_region(
-                    &mut pass,
-                    Some(header_batch.scissor),
-                    viewport_width,
-                    viewport_height,
-                    |render_pass| {
-                        self.buffer_terminal_text_pipeline
-                            .draw_range(render_pass, header_batch.range);
-                    },
-                );
-            } else {
-                draw_text_region(
-                    &mut pass,
-                    self.buffer_terminal_scissor,
-                    viewport_width,
-                    viewport_height,
-                    |render_pass| {
-                        self.buffer_terminal_text_pipeline.draw(render_pass);
-                    },
-                );
-            }
-            if !self.buffer_terminal_cursor_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.buffer_terminal_cursor_instances,
-                );
-                draw_text_region(
-                    &mut pass,
-                    self.buffer_terminal_scissor,
-                    viewport_width,
-                    viewport_height,
-                    |render_pass| {
-                        self.region_pipeline.draw(render_pass);
-                    },
-                );
-            }
-
-            // 7. TopBar.
-            for batch in &self.topbar_text_batches {
-                draw_text_region(
-                    &mut pass,
-                    Some(batch.scissor),
-                    viewport_width,
-                    viewport_height,
-                    |render_pass| {
-                        self.topbar_text_pipeline
-                            .draw_range(render_pass, batch.range);
-                    },
-                );
-            }
-
-            // 8. StatusBar.
-            draw_text_region(
-                &mut pass,
-                self.statusbar_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.statusbar_text_pipeline.draw(render_pass);
-                },
-            );
-
-            // 9. Command palette chrome (scrim + box) above editor text.
-            if !self.palette_chrome_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.palette_chrome_instances,
-                );
-                self.region_pipeline.draw(&mut pass);
-            }
-
-            // 10. Command palette / file picker text (topmost layer).
-            draw_text_region(
-                &mut pass,
-                self.palette_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.palette_text_pipeline.draw(render_pass);
-                },
-            );
-
-            if !self.lsp_guide_chrome_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.lsp_guide_chrome_instances,
-                );
-                draw_text_region(
-                    &mut pass,
-                    self.lsp_guide_scissor,
-                    viewport_width,
-                    viewport_height,
-                    |render_pass| {
-                        self.region_pipeline.draw(render_pass);
-                    },
-                );
-            }
-            draw_text_region(
-                &mut pass,
-                self.lsp_guide_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.lsp_guide_text_pipeline.draw(render_pass);
-                },
-            );
-
-            if !self.toast_chrome_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.toast_chrome_instances,
-                );
-                draw_text_region(
-                    &mut pass,
-                    self.toast_scissor,
-                    viewport_width,
-                    viewport_height,
-                    |render_pass| {
-                        self.region_pipeline.draw(render_pass);
-                    },
-                );
-            }
-            draw_text_region(
-                &mut pass,
-                self.toast_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.toast_text_pipeline.draw(render_pass);
-                },
-            );
-
-            // 11. Diagnostic hover popup (topmost overlay).
-            if !self.diagnostic_hover_chrome_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.diagnostic_hover_chrome_instances,
-                );
-                draw_text_region(
-                    &mut pass,
-                    self.diagnostic_hover_scissor,
-                    viewport_width,
-                    viewport_height,
-                    |render_pass| {
-                        render_pass.set_scissor_rect(0, 0, viewport_width, viewport_height);
-                        self.region_pipeline.draw(render_pass);
-                    },
-                );
-            }
-            draw_text_region(
-                &mut pass,
-                self.diagnostic_hover_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    render_pass.set_scissor_rect(0, 0, viewport_width, viewport_height);
-                    self.diagnostic_hover_text_pipeline.draw(render_pass);
-                },
-            );
-        }
-
-        self.queue.submit(std::iter::once(encoder.finish()));
-        frame.present();
-        Ok(())
     }
 }

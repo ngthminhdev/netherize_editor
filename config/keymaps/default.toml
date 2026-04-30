@@ -80,6 +80,11 @@ command = "editor.newline"
 
 [[bindings]]
 mode = "insert"
+key = "Tab"
+command = "editor.insert_tab"
+
+[[bindings]]
+mode = "insert"
 key = "ArrowLeft"
 command = "editor.move_left"
 
@@ -106,7 +111,7 @@ command = "editor.paste"
 [[bindings]]
 mode = "insert"
 key = "Ctrl+j"
-command = "line.move_down"
+command = "ai.accept_inline"
 
 [[bindings]]
 mode = "insert"
@@ -194,6 +199,11 @@ command = "editor.append_at_line_end"
 
 [[bindings]]
 mode = "normal"
+key = "C"
+command = "editor.change_to_line_end"
+
+[[bindings]]
+mode = "normal"
 key = "a"
 command = "editor.append_after_cursor"
 
@@ -215,12 +225,6 @@ command = "editor.delete_char"
 # `yy` và `ye` được xử lý trong InputHandler yank-pending để dùng chung
 # flow với `yi(` / `ya{`, nên không khai báo static chord ở đây.
 
-# operators
-[[bindings]]
-mode = "normal"
-key = "d d"
-command = "editor.delete_current_line"
-
 [[bindings]]
 mode = "normal"
 key = "g c c"
@@ -228,23 +232,8 @@ command = "editor.toggle_line_comment"
 
 [[bindings]]
 mode = "normal"
-key = "d w"
-command = "editor.delete_word_forward"
-
-[[bindings]]
-mode = "normal"
-key = "d b"
-command = "editor.delete_word_backward"
-
-[[bindings]]
-mode = "normal"
-key = "c w"
-command = "editor.change_word_forward"
-
-[[bindings]]
-mode = "normal"
-key = "c b"
-command = "editor.change_word_backward"
+key = "<leader>f m"
+command = "lsp.format_document"
 
 # `r<char>` cần payload ký tự động nên được xử lý trong InputHandler pending state,
 # không khai báo static binding ở đây.
@@ -335,6 +324,16 @@ command = "editor.scroll_half_page_up"
 mode = "normal"
 key = "ctrl+d"
 command = "editor.scroll_half_page_down"
+
+[[bindings]]
+mode = "normal"
+key = "{"
+command = "editor.move_paragraph_up"
+
+[[bindings]]
+mode = "normal"
+key = "}"
+command = "editor.move_paragraph_down"
 
 # ───────────────── VISUAL ─────────────────
 [[bindings]]
@@ -707,6 +706,11 @@ command = "app.open_file_picker"
 mode = "normal"
 key = "<leader>f w"
 command = "app.search_in_files"
+
+[[bindings]]
+mode = "normal"
+key = "<leader>f h"
+command = "app.open_file_history"
 
 [[bindings]]
 mode = "normal"

@@ -1,6 +1,14 @@
 use std::{ops::Range, path::PathBuf};
 
+use serde::{Deserialize, Serialize};
+
 use crate::syntax::{highlight::HighlightSpan, syntax_engine::LanguageId};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GitFileStatus {
+    Modified,
+    Added,
+}
 
 /// Topic giúp app biết result thuộc subsystem nào để so revision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -17,6 +25,15 @@ pub enum RequestTopic {
     LspRequest,
     FzfSearch,
     FilePreview,
+    AiInlineCompletion,
+    LocalHistory,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistedHistoryEnvelope {
+    pub version: u32,
+    pub file_path: PathBuf,
+    pub history: crate::core::transaction::EditHistory,
 }
 
 /// Which search mode the fzf worker is running.
@@ -158,10 +175,25 @@ pub enum WorkerRequestPayload {
         file_path: PathBuf,
         line_number: usize,
     },
+    RefreshWorkspaceGitStatus {
+        workspace_root: PathBuf,
+    },
+    FetchGitBaseline {
+        workspace_root: PathBuf,
+        file_path: PathBuf,
+    },
     LoadFilePreview {
         file_path: PathBuf,
         max_lines: usize,
         target_line: Option<usize>,
+    },
+    LoadLocalHistory {
+        file_path: PathBuf,
+    },
+    SaveLocalHistory {
+        file_path: PathBuf,
+        history: PersistedHistoryEnvelope,
+        max_bytes: usize,
     },
     LspDidOpen {
         uri: String,
@@ -202,6 +234,13 @@ pub enum WorkerRequestPayload {
         line: u32,
         character: u32,
     },
+    /// textDocument/formatting request.
+    LspFormattingRequest {
+        language_id: String,
+        uri: String,
+        tab_size: u32,
+        insert_spaces: bool,
+    },
     /// textDocument/completion request.
     LspCompletionRequest {
         language_id: String,
@@ -213,7 +252,19 @@ pub enum WorkerRequestPayload {
         prefix_start_col: usize,
         prefix: String,
     },
+    AiInlineCompletionRequest {
+        api_url: String,
+        api_key: Option<String>,
+        model: String,
+        endpoint_kind: Option<String>,
+        prefix: String,
+        suffix: String,
+        language_id: Option<String>,
+        file_path: Option<PathBuf>,
+        max_tokens: u32,
+    },
     StopLspServer,
+    ShutdownAllLspServers,
 }
 
 /// Loại location từ LSP — dùng cho definition và references.
@@ -253,6 +304,12 @@ pub struct LspCompletionItem {
     pub insert_text: Option<String>,
     pub text_edit_text: Option<String>,
     pub kind: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LspTextEdit {
+    pub range: LspRange,
+    pub new_text: String,
 }
 
 /// Result worker trả về main thread.
@@ -326,7 +383,9 @@ pub enum WorkerResultPayload {
     LspServerStarted {
         server_name: String,
         root_path: PathBuf,
-        capabilities_summary: String,
+        /// Extracted từ ServerCapabilities.completionProvider.triggerCharacters.
+        /// Đã parse sẵn — app không cần deserialize raw JSON nữa.
+        completion_trigger_chars: Vec<char>,
     },
     LspServerStopped {
         exit_status: Option<i32>,
@@ -376,6 +435,11 @@ pub enum WorkerResultPayload {
     LspReferencesResult {
         locations: Vec<LspLocation>,
     },
+    /// textDocument/formatting response.
+    LspFormattingResult {
+        uri: String,
+        edits: Vec<LspTextEdit>,
+    },
     /// textDocument/completion response.
     LspCompletionResult {
         items: Vec<LspCompletionItem>,
@@ -394,10 +458,30 @@ pub enum WorkerResultPayload {
         line_number: usize,
         summary: String,
     },
+    WorkspaceGitStatus {
+        workspace_root: PathBuf,
+        statuses: Vec<(PathBuf, GitFileStatus)>,
+    },
+    BufferGitBaseline {
+        file_path: PathBuf,
+        baseline: Option<String>,
+    },
     FilePreviewLoaded {
         file_path: PathBuf,
         target_line: Option<usize>,
         lines: Vec<FilePreviewLine>,
+    },
+    LocalHistoryLoaded {
+        file_path: PathBuf,
+        history: Option<PersistedHistoryEnvelope>,
+    },
+    LocalHistorySaved {
+        file_path: PathBuf,
+        bytes_written: usize,
+        trimmed_transactions: usize,
+    },
+    AiInlineCompletionResult {
+        suggestion: String,
     },
 }
 

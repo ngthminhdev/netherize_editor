@@ -213,8 +213,17 @@ impl ApplicationHandler<AppEvent> for AppShell {
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         self.flush_pending_parse_after_debounce();
+        self.flush_pending_git_diff_after_debounce();
+        self.flush_pending_ai_inline_completion();
+        self.flush_pending_lsp_did_change_after_debounce();
+        if self.maybe_refresh_workspace_git_branch(false) {
+            self.request_redraw();
+        }
+        if self.tick_smooth_scroll_animation() {
+            self.request_redraw();
+        }
         if self.pump_bridge() {
             self.request_redraw();
         }
@@ -224,6 +233,32 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.app_state.workspace_is_inputting_filter() {
             self.sidebar_needs_layout = true;
             self.request_redraw();
+        }
+
+        let mut next_deadline = Some(self.next_git_branch_refresh_deadline());
+        if let Some(lsp_deadline) = self.next_lsp_did_change_flush_deadline() {
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(lsp_deadline),
+                None => lsp_deadline,
+            });
+        }
+        if let Some(ai_deadline) = self.next_ai_inline_flush_deadline() {
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(ai_deadline),
+                None => ai_deadline,
+            });
+        }
+        if let Some(git_diff_deadline) = self.next_git_diff_recalc_deadline() {
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(git_diff_deadline),
+                None => git_diff_deadline,
+            });
+        }
+
+        if let Some(deadline) = next_deadline {
+            event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
+        } else {
+            event_loop.set_control_flow(ControlFlow::Wait);
         }
     }
 
@@ -236,11 +271,51 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 }
                 self.request_redraw();
             }
+            AppEvent::AiInlineReady => {
+                if self.pump_bridge() {
+                    self.request_redraw();
+                }
+            }
         }
     }
 }
 
 impl AppShell {
+    fn tick_smooth_scroll_animation(&mut self) -> bool {
+        let now = Instant::now();
+        let dt = now
+            .saturating_duration_since(self.last_scroll_animation_tick)
+            .as_secs_f32();
+        self.last_scroll_animation_tick = now;
+
+        let target = self.app_state.target_scroll_y;
+        let current = self.app_state.current_scroll_y;
+        let epsilon = self.ui_config.editor.smooth_scroll_snap_epsilon;
+        let delta = target - current;
+        if delta.abs() <= epsilon {
+            if delta != 0.0 {
+                self.app_state.current_scroll_y = target;
+                self.editor_needs_layout = true;
+            }
+            return false;
+        }
+
+        if !self.ui_config.editor.smooth_scroll_enabled {
+            self.app_state.current_scroll_y = target;
+            self.editor_needs_layout = true;
+            return false;
+        }
+
+        let rate = self.ui_config.editor.smooth_scroll_lerp_rate;
+        let alpha = (1.0 - (-rate * dt.max(0.0)).exp()).clamp(0.0, 1.0);
+        self.app_state.current_scroll_y = current + delta * alpha;
+        if (target - self.app_state.current_scroll_y).abs() <= epsilon {
+            self.app_state.current_scroll_y = target;
+        }
+        self.editor_needs_layout = true;
+        (target - self.app_state.current_scroll_y).abs() > epsilon
+    }
+
     fn handle_explorer_filter_ime_commit(&mut self, text: &str) -> bool {
         if self.focus_manager.current() != FocusTarget::LeftSidebar
             || !self.app_state.workspace_is_inputting_filter()
@@ -337,29 +412,13 @@ impl AppShell {
             self.ensure_explorer_snapshot();
         }
 
-        let mut region_instances: Vec<RegionDrawInstance> = flat_regions
-            .iter()
-            .copied()
-            .filter(|region| {
-                region.visible
-                    && region.id != RegionId::Root
-                    && region.id != RegionId::OverlayLayer
-                    && region.id != RegionId::StatusBar
-                    && !(show_welcome && !workspace_attached && region.id == RegionId::LeftSidebar)
-            })
-            .map(|region| {
-                RegionDrawInstance::new(
-                    [
-                        region.bounds.x,
-                        region.bounds.y,
-                        region.bounds.width,
-                        region.bounds.height,
-                    ],
-                    region_color(region.id, &self.theme),
-                )
-                .with_radius(self.ui_config.border_radius_px)
-            })
-            .collect();
+        let panel_radius = if self.layout_engine.config.round_ui {
+            self.ui_config.border_radius_px
+        } else {
+            0.0
+        };
+        let mut default_outline = self.theme.ui.accent.as_f32();
+        default_outline[3] = default_outline[3].max(0.95);
         let focus_target = if show_welcome && !workspace_attached {
             FocusTarget::CenterEditor
         } else {
@@ -370,26 +429,44 @@ impl AppShell {
             .active_file()
             .and_then(|path| self.app_state.diagnostics_for_path(path))
             .is_some_and(|items| items.iter().any(|item| item.severity == Some(1)));
-        // Ẩn focus ring khi terminal buffer đang chiếm center — focus ring
-        // gây ra border nhấp nháy trên mỗi redraw từ PTY output.
-        let center_has_terminal_buffer = self.app_state.active_terminal_session_id().is_some();
-        if !center_has_terminal_buffer {
-            if let Some(bounds) = focus_region_bounds(&layout.model, focus_target) {
-                let border_color =
-                    if focus_target == FocusTarget::CenterEditor && center_has_error_diagnostics {
-                        self.theme.ui.error.as_f32()
-                    } else {
-                        self.theme.ui.accent.as_f32()
-                    };
-                region_instances.extend(focus_ring_instances(
-                    bounds,
-                    border_color,
-                    2.0,
-                    self.ui_config.border_radius_px,
-                    self.theme.editor.bg.as_f32(),
-                ));
-            }
-        }
+        let focus_region = focus_target_region_id(focus_target);
+        let mut focused_outline =
+            if focus_target == FocusTarget::CenterEditor && center_has_error_diagnostics {
+                self.theme.ui.error.as_f32()
+            } else {
+                self.theme.ui.cyan.as_f32()
+            };
+        focused_outline[3] = focused_outline[3].max(0.95);
+        let mut region_instances: Vec<RegionDrawInstance> = flat_regions
+            .iter()
+            .copied()
+            .filter(|region| {
+                region.visible
+                    && region.id != RegionId::Root
+                    && region.id != RegionId::OverlayLayer
+                    && region.id != RegionId::StatusBar
+                    && !(show_welcome && !workspace_attached && region.id == RegionId::LeftSidebar)
+            })
+            .flat_map(|region| {
+                let outline_color = if Some(region.id) == focus_region {
+                    focused_outline
+                } else {
+                    default_outline
+                };
+                focus_ring_instances(
+                    [
+                        region.bounds.x,
+                        region.bounds.y,
+                        region.bounds.width,
+                        region.bounds.height,
+                    ],
+                    outline_color,
+                    3.0,
+                    panel_radius,
+                    region_color(region.id, &self.theme),
+                )
+            })
+            .collect();
 
         if let Some(center_bounds) = center_bounds {
             let bounds_changed = self.last_editor_bounds != Some(center_bounds);
@@ -415,13 +492,19 @@ impl AppShell {
                 );
             }
 
-            if self.editor_needs_layout || bounds_changed || show_welcome_changed {
+            if self.editor_needs_layout || bounds_changed || show_welcome_changed || show_welcome {
                 if let Some(renderer) = self.renderer.as_mut() {
                     if show_welcome {
                         let (text, styled) = welcome_screen_content(&self.theme);
                         renderer.clear_editor_content();
                         renderer.clear_buffer_terminal();
-                        renderer.update_welcome_screen_content(&text, &styled, center_bounds);
+                        renderer.update_welcome_screen_content(
+                            &text,
+                            &styled,
+                            center_bounds,
+                            &self.persistent_state.recent_projects,
+                            self.app_state.command_palette_selected_index(),
+                        );
                     } else if let Some(session_id) = active_terminal_session {
                         renderer.clear_welcome_logo();
                         renderer.clear_editor_content();
@@ -464,6 +547,13 @@ impl AppShell {
                         renderer.clear_buffer_terminal();
                         renderer.clear_editor_content();
                         renderer.update_settings_buffer_content(settings, center_bounds);
+                    } else if let Some(help) = self.app_state.active_help_buffer() {
+                        renderer.clear_welcome_logo();
+                        renderer.clear_buffer_terminal();
+                        renderer.clear_editor_content();
+                        renderer.update_help_buffer_content(help, center_bounds);
+                    } else if let Some(image) = self.app_state.active_image_buffer() {
+                        renderer.update_image_content(image, center_bounds);
                     } else {
                         renderer.clear_welcome_logo();
                         renderer.clear_buffer_terminal();
@@ -472,12 +562,13 @@ impl AppShell {
                                 &self.highlight_spans,
                                 &self.semantic_highlight_spans,
                             );
+                        let text = self.app_state.text_string();
                         let mut styled_spans =
-                            syntax_spans_to_styled(&effective_highlights, &self.theme);
+                            syntax_spans_to_styled(&effective_highlights, &text, &self.theme);
                         styled_spans
                             .extend(diagnostic_spans_to_styled(&self.app_state, &self.theme));
                         renderer.update_editor_content(
-                            &self.app_state.text_string(),
+                            &text,
                             &self.app_state,
                             center_bounds,
                             &styled_spans,
@@ -539,6 +630,10 @@ impl AppShell {
                         renderer.clear_editor_content();
                         renderer.update_settings_buffer_content(settings, center_bounds);
                     }
+                } else if let Some(image) = self.app_state.active_image_buffer() {
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.update_image_content(image, center_bounds);
+                    }
                 } else if !show_welcome && let Some(renderer) = self.renderer.as_mut() {
                     renderer.update_editor_caret(&self.app_state, center_bounds);
                     renderer.update_editor_overlays(&self.app_state, center_bounds);
@@ -573,6 +668,8 @@ impl AppShell {
                 {
                     region_instances.push(quad);
                 }
+                region_instances
+                    .extend(renderer.indent_guide_quads(&self.app_state, center_bounds));
                 region_instances
                     .extend(renderer.search_highlight_quads(&self.app_state, center_bounds));
                 if self.app_state.current_mode() == EditorMode::Visual {
@@ -673,24 +770,37 @@ impl AppShell {
             }
         }
 
+        if let Some(renderer) = self.renderer.as_ref() {
+            region_instances.extend(renderer.editor_chrome_instances().iter().copied());
+        }
+
         if let Some(top) = layout.model.find(RegionId::TopBar) {
             let top_bounds = [top.x, top.y, top.width, top.height];
             let tabs = self
                 .app_state
                 .buffers()
                 .iter()
-                .map(|buffer| TopbarTab {
+                .enumerate()
+                .map(|(idx, buffer)| TopbarTab {
                     label: buffer.label(),
                     kind: match &buffer.content {
                         BufferContent::Text(text) => TopbarTabKind::Text {
                             path: text.path.clone(),
+                        },
+                        BufferContent::Image(image) => TopbarTabKind::Image {
+                            path: image.path.clone(),
                         },
                         BufferContent::Terminal(_) => TopbarTabKind::Terminal,
                         BufferContent::References(_) => TopbarTabKind::References,
                         BufferContent::Diagnostics(_) => TopbarTabKind::Diagnostics,
                         BufferContent::FuzzyPicker(_) => TopbarTabKind::FuzzyPicker,
                         BufferContent::SettingsTab(_) => TopbarTabKind::Settings,
+                        BufferContent::Help(_) => TopbarTabKind::Help,
                     },
+                    is_dirty: buffer.is_dirty(
+                        self.app_state.active_buffer_index() == Some(idx),
+                        self.app_state.is_dirty(),
+                    ),
                 })
                 .collect::<Vec<_>>();
             if let Some(renderer) = self.renderer.as_mut() {
@@ -708,30 +818,50 @@ impl AppShell {
             let mode = self.app_state.current_mode();
             let (line, col) = self.app_state.cursor_line_col();
             let pending_keys = self.input_handler.get_pending_keys();
-            let filetype = self.app_state.active_filetype_label();
-            let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");
-            let (diagnostics_errors, diagnostics_warnings) = self
-                .app_state
-                .active_file()
-                .and_then(|path| self.app_state.diagnostics_for_path(path))
-                .map(|items| {
-                    items
-                        .iter()
-                        .fold((0usize, 0usize), |(e, w), item| match item.severity {
-                            Some(1) => (e + 1, w),
-                            Some(2) => (e, w + 1),
-                            _ => (e, w),
-                        })
-                })
-                .unwrap_or((0, 0));
+            let (
+                filetype,
+                git_branch,
+                status_line,
+                status_col,
+                diagnostics_errors,
+                diagnostics_warnings,
+            ) = if show_welcome {
+                ("Welcome", "", 0, 0, 0, 0)
+            } else {
+                let filetype = self.app_state.active_filetype_label();
+                let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");
+                let (diagnostics_errors, diagnostics_warnings) = self
+                    .app_state
+                    .active_file()
+                    .and_then(|path| self.app_state.diagnostics_for_path(path))
+                    .map(|items| {
+                        items
+                            .iter()
+                            .fold((0usize, 0usize), |(e, w), item| match item.severity {
+                                Some(1) => (e + 1, w),
+                                Some(2) => (e, w + 1),
+                                _ => (e, w),
+                            })
+                    })
+                    .unwrap_or((0, 0));
+                (
+                    filetype,
+                    git_branch,
+                    line,
+                    col,
+                    diagnostics_errors,
+                    diagnostics_warnings,
+                )
+            };
             if let Some(renderer) = self.renderer.as_mut() {
                 let pill_quads = renderer.update_statusbar_content(
                     mode,
                     &pending_keys,
                     git_branch,
                     filetype,
-                    line,
-                    col,
+                    self.app_state.active_search_match_position(),
+                    status_line,
+                    status_col,
                     diagnostics_errors,
                     diagnostics_warnings,
                     status_bounds,
@@ -740,7 +870,10 @@ impl AppShell {
             }
         }
 
-        if self.app_state.is_command_palette_visible() {
+        let welcome_recent_projects_active = show_welcome
+            && self.app_state.command_palette_mode() == Some(CommandPaletteMode::RecentProjects);
+
+        if self.app_state.is_command_palette_visible() && !welcome_recent_projects_active {
             let overlay_bounds = [
                 0.0,
                 0.0,
@@ -856,24 +989,16 @@ impl AppShell {
     }
 }
 
-fn focus_region_bounds(
-    model: &crate::workbench::region_model::RegionModel,
-    target: FocusTarget,
-) -> Option<[f32; 4]> {
-    let region_id = match target {
-        FocusTarget::CenterEditor => RegionId::Center,
-        FocusTarget::LeftSidebar => RegionId::LeftSidebar,
-        FocusTarget::RightSidebar => RegionId::RightSidebar,
-        FocusTarget::BottomPanel => RegionId::BottomPanel,
-        FocusTarget::TopBar => RegionId::TopBar,
-        FocusTarget::StatusBar => RegionId::StatusBar,
-        FocusTarget::OverlayLayer => return None,
-    };
-    let region = model.find(region_id)?;
-    if region.width <= 0.0 || region.height <= 0.0 {
-        return None;
+fn focus_target_region_id(target: FocusTarget) -> Option<RegionId> {
+    match target {
+        FocusTarget::CenterEditor => Some(RegionId::Center),
+        FocusTarget::LeftSidebar => Some(RegionId::LeftSidebar),
+        FocusTarget::RightSidebar => Some(RegionId::RightSidebar),
+        FocusTarget::BottomPanel => Some(RegionId::BottomPanel),
+        FocusTarget::TopBar => Some(RegionId::TopBar),
+        FocusTarget::StatusBar => Some(RegionId::StatusBar),
+        FocusTarget::OverlayLayer => None,
     }
-    Some([region.x, region.y, region.width, region.height])
 }
 
 fn focus_ring_instances(
@@ -905,4 +1030,36 @@ fn focus_ring_instances(
         );
     }
     instances
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{focus_ring_instances, focus_target_region_id};
+    use crate::workbench::{focus_manager::FocusTarget, region_model::RegionId};
+
+    #[test]
+    fn focus_target_region_id_maps_center_editor() {
+        assert_eq!(
+            focus_target_region_id(FocusTarget::CenterEditor),
+            Some(RegionId::Center)
+        );
+        assert_eq!(focus_target_region_id(FocusTarget::OverlayLayer), None);
+    }
+
+    #[test]
+    fn focus_ring_keeps_outline_and_panel_fill() {
+        let instances = focus_ring_instances(
+            [12.0, 24.0, 320.0, 180.0],
+            [0.7, 0.3, 1.0, 1.0],
+            3.0,
+            10.0,
+            [0.08, 0.08, 0.1, 1.0],
+        );
+
+        assert_eq!(
+            instances.len(),
+            2,
+            "panel regions should still render both outline and fill"
+        );
+    }
 }

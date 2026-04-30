@@ -162,6 +162,8 @@ fn dispatch_command_with_clipboard_once(
         Command::InsertChar(_)
         | Command::InsertText(_)
         | Command::Newline
+        | Command::InsertTab
+        | Command::AiAcceptInline
         | Command::Backspace
         | Command::InsertLineBelow
         | Command::InsertLineAbove
@@ -172,6 +174,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::DeleteChar
         | Command::DeleteSelection
         | Command::DeleteCurrentLine
+        | Command::DeleteToLineEnd
         | Command::ToggleLineComment
         | Command::ToggleSelectionComment
         | Command::DeleteWordForward
@@ -182,6 +185,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::ChangeSelection
         | Command::ChangeWordForward
         | Command::ChangeWordBackward
+        | Command::ChangeToLineEnd
+        | Command::JoinLines
         | Command::PasteAfter
         | Command::PasteBefore
         | Command::EditorPaste
@@ -189,7 +194,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::Undo
         | Command::Redo
         | Command::ReplaceChar(_)
-        | Command::TextObjectAction { .. } => editing::dispatch(&mut ctx, command),
+        | Command::TextObjectAction { .. }
+        | Command::Operate { .. } => editing::dispatch(&mut ctx, command),
         Command::MoveLeft
         | Command::MoveRight
         | Command::MoveUp
@@ -202,6 +208,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::MoveToFirstNonWhitespace
         | Command::MoveToFirstLine
         | Command::MoveToLastLine
+        | Command::MoveParagraphUp
+        | Command::MoveParagraphDown
         | Command::ScrollHalfPageUp
         | Command::ScrollHalfPageDown
         | Command::CenterCursorLine
@@ -220,8 +228,11 @@ fn dispatch_command_with_clipboard_once(
         | Command::OpenWorkspaceSymbols
         | Command::SearchInFiles
         | Command::OpenThemeSelector
+        | Command::OpenFileHistory
         | Command::OpenSettings
+        | Command::OpenHelp
         | Command::GitOpenLazygit
+        | Command::GitOpenLazydocker
         | Command::GitBlameLine
         | Command::FilePickerAppendQuery(_)
         | Command::FilePickerBackspaceQuery
@@ -291,6 +302,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::LspGoToDefinition
         | Command::LspPreviewDefinition
         | Command::LspReferences
+        | Command::LspFormatDocument
         | Command::TriggerCompletion
         | Command::CompletionNext
         | Command::CompletionPrev

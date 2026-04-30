@@ -31,6 +31,7 @@ use crate::{
         scheduler::AsyncScheduler,
     },
     config::{
+        ai_config::AiConfig,
         keymap_loader::KeymapLoader,
         theme_config::ThemeConfig,
         ui_config::{UiConfig, WindowStartupMode},
@@ -57,7 +58,7 @@ use crate::{
         panel_state::WorkbenchPanelState,
         region_model::RegionId,
     },
-    workspace::model::WorkspaceNodeType,
+    workspace::model::{WorkspaceGitStatus, WorkspaceNodeType},
 };
 
 mod application;
@@ -93,6 +94,7 @@ pub struct AppShell {
     pty_session_id: Option<u64>,
     terminal_buffer_grids: HashMap<u64, TerminalGrid>,
     pending_lazygit_buffer_index: Option<usize>,
+    pending_lazydocker_buffer_index: Option<usize>,
     highlight_spans: Vec<HighlightSpan>,
     semantic_highlight_spans: Vec<HighlightSpan>,
     syntax_engine: Option<SyntaxEngine>,
@@ -113,6 +115,7 @@ pub struct AppShell {
     base_theme: ThemeConfig,
     theme: ThemeConfig,
     ui_config: UiConfig,
+    ai_config: AiConfig,
     runtime_scale: f32,
     layout_engine: WorkbenchLayoutEngine,
     panel_state: WorkbenchPanelState,
@@ -133,14 +136,21 @@ pub struct AppShell {
     accumulated_frame_count: u32,
     current_fps_metrics: String,
     last_parse_submit_at: Option<Instant>,
+    last_git_diff_recalc_at: Option<Instant>,
     /// Edit hint for the next incremental tree-sitter parse.
     /// Set to `Some` when exactly one edit occurred since the last reconcile.
     /// Set to `None` when multiple edits accumulated (debounced typing, undo/redo,
     /// paste) — the worker falls back to a full reparse in that case.
     last_syntax_edit_hint: Option<SyntaxEditHint>,
     active_highlight_request_revision: u64,
+    references_request_revision: u64,
     fzf_search_revision: u64,
+    local_history_revision: u64,
     pending_parse_after_debounce: bool,
+    pending_git_diff_after_debounce: bool,
+    ai_inline_revision: u64,
+    pending_ai_inline_request: Option<PendingAiInlineRequest>,
+    pending_lsp_document_sync: Option<PendingLspDocumentSync>,
     last_editor_bounds: Option<[f32; 4]>,
     last_show_welcome: Option<bool>,
     last_sidebar_bounds: Option<[f32; 4]>,
@@ -153,11 +163,16 @@ pub struct AppShell {
     /// `typed_prefix` giữ các phím user đã gõ, `targets` giữ labels + char_idx.
     leap_state: Option<LeapState>,
     git_overlay_revision: u64,
+    last_scroll_animation_tick: Instant,
+    last_git_branch_refresh_at: Instant,
 }
 
 const DEBUG_UI_ENABLED: bool = false;
 const PARSE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(80);
+const GIT_DIFF_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(80);
+const LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(500);
 const FPS_METRICS_UPDATE_INTERVAL: Duration = Duration::from_millis(500);
+const GIT_BRANCH_REFRESH_INTERVAL: Duration = Duration::from_millis(750);
 
 #[derive(Debug, Clone)]
 struct ExplorerEntry {
@@ -167,6 +182,7 @@ struct ExplorerEntry {
     depth: usize,
     is_expanded: bool,
     name: String,
+    git_status: Option<WorkspaceGitStatus>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -213,8 +229,22 @@ struct TransientToast {
 }
 
 #[derive(Debug, Clone)]
+struct PendingAiInlineRequest {
+    revision: u64,
+    queued_at: Instant,
+}
+
+#[derive(Debug, Clone)]
+struct PendingLspDocumentSync {
+    path: PathBuf,
+    revision: u64,
+    queued_at: Instant,
+}
+
+#[derive(Debug, Clone)]
 pub enum AppEvent {
     TerminalOutputReady,
+    AiInlineReady,
 }
 
 pub fn run() -> Result<(), winit::error::EventLoopError> {
@@ -235,7 +265,11 @@ pub fn run() -> Result<(), winit::error::EventLoopError> {
 
 impl AppShell {
     fn should_show_welcome(&self) -> bool {
-        self.app_state.buffers().is_empty() && !self.app_state.is_command_palette_visible()
+        self.app_state.is_initial_launch_welcome()
+            && self.app_state.buffers().is_empty()
+            && (!self.app_state.is_command_palette_visible()
+                || self.app_state.command_palette_mode()
+                    == Some(CommandPaletteMode::RecentProjects))
     }
 
     fn arm_palette_ime_commit_suppression(&mut self) {

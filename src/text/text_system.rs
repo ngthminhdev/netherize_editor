@@ -432,4 +432,42 @@ mod tests {
         assert_eq!(colors_by_byte[4].1, blue);
         assert_eq!(colors_by_byte[5].1, blue);
     }
+
+    #[test]
+    fn invalid_utf8_span_boundaries_are_sanitized_without_dropping_valid_text() {
+        let text = "a🦀z";
+        let mut system = TextSystem::new(Metrics::new(16.0, 22.0), Some(300.0), Some(200.0));
+        system.set_text_with_spans(
+            text,
+            [0xEE, 0xEE, 0xEE, 0xFF],
+            &[
+                StyledTextSpan::with_style(1, 3, [0xFF, 0x66, 0x66, 0xFF], true, false),
+                StyledTextSpan::new(0, text.len() + 10, [0x66, 0xAA, 0xFF, 0xFF]),
+            ],
+        );
+
+        let glyphs = system.collect_visible_glyphs(0.0, 0.0, [1.0, 1.0, 1.0, 1.0]);
+        assert!(
+            !glyphs.is_empty(),
+            "sanitized spans should still produce glyphs"
+        );
+
+        let starts: Vec<usize> = glyphs.iter().map(|glyph| glyph.byte_start).collect();
+        assert!(starts.contains(&0));
+        assert!(starts.contains(&1));
+        assert!(starts.contains(&(text.len() - 1)));
+    }
+
+    #[test]
+    fn missing_font_family_falls_back_to_default_font_resolution() {
+        let mut system = TextSystem::new(Metrics::new(16.0, 22.0), Some(400.0), Some(200.0));
+        system.set_font_family(Some("__netherize_missing_font_family__"));
+        system.set_text("fallback text abc 123");
+
+        let glyphs = system.collect_visible_glyphs(0.0, 0.0, [1.0, 1.0, 1.0, 1.0]);
+        assert!(
+            !glyphs.is_empty(),
+            "missing font family should still shape text via fallback"
+        );
+    }
 }

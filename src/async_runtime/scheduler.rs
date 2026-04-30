@@ -17,15 +17,17 @@ use notify::{
     Event as NotifyEvent, EventKind as NotifyEventKind, RecursiveMode, Watcher, event::ModifyKind,
 };
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use tokio::{io::AsyncBufReadExt, sync::mpsc};
 use winit::event_loop::EventLoopProxy;
 
 use crate::app::event_loop::AppEvent;
 use crate::async_runtime::message::{
-    FileSystemChangeKind, FileSystemEvent, FzfResultItem, FzfSearchMode, RequestSpec, RequestTopic,
-    WorkerEvent, WorkerEventKind, WorkerFailure, WorkerFailureKind, WorkerMessage, WorkerRequest,
-    WorkerRequestPayload, WorkerResult, WorkerResultPayload,
+    FileSystemChangeKind, FileSystemEvent, FzfResultItem, FzfSearchMode, PersistedHistoryEnvelope,
+    RequestSpec, RequestTopic, WorkerEvent, WorkerEventKind, WorkerFailure, WorkerFailureKind,
+    WorkerMessage, WorkerRequest, WorkerRequestPayload, WorkerResult, WorkerResultPayload,
 };
+use crate::config::paths::user_config_root;
 use crate::lsp::client::{
     build_did_change_notification, build_did_close_notification, build_did_open_notification,
     parse_publish_diagnostics, parse_window_log_message, read_json_rpc_message_async,
@@ -99,6 +101,7 @@ struct LspSessionHandle {
     process: Arc<crate::lsp::client::LspClientProcess>,
     server_name: String,
     root_path: PathBuf,
+    capabilities: crate::lsp::capabilities::ServerCapabilities,
 }
 
 impl LspSessionRegistry {
@@ -114,15 +117,41 @@ impl LspSessionRegistry {
         Ok(guard.insert(server_key, session))
     }
 
-    fn get(
+    /// Tìm process theo binary name (không quan tâm workspace root trong key).
+    fn get_by_binary(
         &self,
-        server_key: &str,
+        binary: &str,
     ) -> Result<Option<Arc<crate::lsp::client::LspClientProcess>>, String> {
         let guard = self
             .sessions
             .lock()
             .map_err(|_| "lsp session lock poisoned".to_string())?;
-        Ok(guard.get(server_key).map(|session| session.process.clone()))
+        Ok(guard
+            .values()
+            .find(|s| s.server_name == binary)
+            .map(|s| s.process.clone()))
+    }
+
+    /// Trả về `LspSessionHandle` đầy đủ (kèm capabilities) theo binary name.
+    fn get_handle(&self, binary: &str) -> Result<Option<LspSessionHandle>, String> {
+        let guard = self
+            .sessions
+            .lock()
+            .map_err(|_| "lsp session lock poisoned".to_string())?;
+        Ok(guard.values().find(|s| s.server_name == binary).cloned())
+    }
+
+    /// Tìm session handle cho file đang mở theo URI.
+    /// Dùng cho definition/references vốn không biết language_id.
+    fn get_handle_by_uri(&self, uri: &str) -> Result<Option<LspSessionHandle>, String> {
+        let guard = self
+            .sessions
+            .lock()
+            .map_err(|_| "lsp session lock poisoned".to_string())?;
+        Ok(guard
+            .values()
+            .find(|session| session.process.is_document_open(uri))
+            .cloned())
     }
 
     fn take_any(&self) -> Result<Option<LspSessionHandle>, String> {
@@ -150,6 +179,14 @@ impl LspSessionRegistry {
             return Ok(guard.remove(&language_id));
         }
         Ok(None)
+    }
+
+    fn drain_all(&self) -> Result<Vec<LspSessionHandle>, String> {
+        let mut guard = self
+            .sessions
+            .lock()
+            .map_err(|_| "lsp session lock poisoned".to_string())?;
+        Ok(std::mem::take(&mut *guard).into_values().collect())
     }
 }
 
@@ -265,8 +302,7 @@ async fn dispatch_loop(
 ) {
     let pty_sessions = Arc::new(PtySessionRegistry::default());
     let lsp_sessions = Arc::new(LspSessionRegistry::default());
-    let syntax_engine_cache: Arc<SyntaxEngineCache> =
-        Arc::new(Mutex::new(HashMap::new()));
+    let syntax_engine_cache: Arc<SyntaxEngineCache> = Arc::new(Mutex::new(HashMap::new()));
     let mut active_fzf_search: Option<tokio::task::JoinHandle<()>> = None;
 
     while let Some(request) = request_rx.recv().await {
@@ -312,6 +348,7 @@ async fn dispatch_loop(
                 | WorkerRequestPayload::LspHoverRequest { .. }
                 | WorkerRequestPayload::LspDefinitionRequest { .. }
                 | WorkerRequestPayload::LspReferencesRequest { .. }
+                | WorkerRequestPayload::LspFormattingRequest { .. }
                 | WorkerRequestPayload::LspCompletionRequest { .. }
                 | WorkerRequestPayload::StopLspServer
         ) {
@@ -332,6 +369,75 @@ async fn dispatch_loop(
                 run_fzf_request(request, worker_tx).await;
             });
             active_fzf_search = Some(handle);
+            continue;
+        }
+
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::LoadLocalHistory { .. }
+                | WorkerRequestPayload::SaveLocalHistory { .. }
+        ) {
+            let worker_tx = result_tx.clone();
+            tokio::spawn(async move {
+                run_local_history_request(request, worker_tx).await;
+            });
+            continue;
+        }
+
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::AiInlineCompletionRequest { .. }
+        ) {
+            let worker_tx = result_tx.clone();
+            let ai_event_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                let started = WorkerEvent {
+                    request_id: request.request_id,
+                    revision_id: request.revision_id,
+                    topic: request.topic,
+                    kind: WorkerEventKind::Started,
+                };
+                emit_message(&worker_tx, WorkerMessage::Event(started));
+                match execute_ai_inline_request(&request).await {
+                    Ok(payload) => {
+                        emit_message(
+                            &worker_tx,
+                            WorkerMessage::Result(WorkerResult {
+                                request_id: request.request_id,
+                                revision_id: request.revision_id,
+                                topic: request.topic,
+                                payload,
+                            }),
+                        );
+                        emit_message(
+                            &worker_tx,
+                            WorkerMessage::Event(WorkerEvent {
+                                request_id: request.request_id,
+                                revision_id: request.revision_id,
+                                topic: request.topic,
+                                kind: WorkerEventKind::Completed,
+                            }),
+                        );
+                        let _ = ai_event_proxy.send_event(AppEvent::AiInlineReady);
+                    }
+                    Err(message) => {
+                        emit_message(
+                            &worker_tx,
+                            WorkerMessage::Event(WorkerEvent {
+                                request_id: request.request_id,
+                                revision_id: request.revision_id,
+                                topic: request.topic,
+                                kind: WorkerEventKind::Failed {
+                                    error: WorkerFailure {
+                                        kind: WorkerFailureKind::Execution,
+                                        message,
+                                    },
+                                },
+                            }),
+                        );
+                    }
+                }
+            });
             continue;
         }
 
@@ -417,6 +523,190 @@ async fn dispatch_loop(
             }
         });
     }
+}
+
+fn local_history_path_for_file(file_path: &std::path::Path) -> PathBuf {
+    let mut hasher = Sha256::new();
+    hasher.update(file_path.to_string_lossy().as_bytes());
+    let hash = format!("{:x}", hasher.finalize());
+    user_config_root()
+        .join("history")
+        .join(format!("{hash}.hist"))
+}
+
+async fn run_local_history_request(
+    request: WorkerRequest,
+    worker_tx: std_mpsc::Sender<WorkerMessage>,
+) {
+    let request_id = request.request_id;
+    let revision_id = request.revision_id;
+    let topic = request.topic;
+    let started = WorkerEvent {
+        request_id,
+        revision_id,
+        topic,
+        kind: WorkerEventKind::Started,
+    };
+    emit_message(&worker_tx, WorkerMessage::Event(started));
+
+    match request.payload {
+        WorkerRequestPayload::LoadLocalHistory { file_path } => {
+            match execute_load_local_history(file_path)
+                .await
+                .map(|payload| WorkerResult {
+                    request_id,
+                    revision_id,
+                    topic,
+                    payload,
+                }) {
+                Ok(result) => {
+                    emit_message(&worker_tx, WorkerMessage::Result(result));
+                    emit_message(
+                        &worker_tx,
+                        WorkerMessage::Event(WorkerEvent {
+                            request_id,
+                            revision_id,
+                            topic,
+                            kind: WorkerEventKind::Completed,
+                        }),
+                    );
+                }
+                Err(message) => {
+                    emit_local_history_failure(&worker_tx, request_id, revision_id, topic, message)
+                }
+            }
+        }
+        WorkerRequestPayload::SaveLocalHistory {
+            file_path,
+            history,
+            max_bytes,
+        } => match execute_save_local_history(file_path, history, max_bytes).await {
+            Ok(WorkerResultPayload::LocalHistorySaved {
+                bytes_written,
+                trimmed_transactions,
+                ..
+            }) => {
+                async_trace!(
+                    "[Worker] saved local history request_id={} revision={} bytes={} trimmed={}",
+                    request_id,
+                    revision_id,
+                    bytes_written,
+                    trimmed_transactions
+                );
+                emit_message(
+                    &worker_tx,
+                    WorkerMessage::Event(WorkerEvent {
+                        request_id,
+                        revision_id,
+                        topic,
+                        kind: WorkerEventKind::Completed,
+                    }),
+                );
+            }
+            Ok(_) => emit_message(
+                &worker_tx,
+                WorkerMessage::Event(WorkerEvent {
+                    request_id,
+                    revision_id,
+                    topic,
+                    kind: WorkerEventKind::Completed,
+                }),
+            ),
+            Err(message) => {
+                emit_local_history_failure(&worker_tx, request_id, revision_id, topic, message)
+            }
+        },
+        _ => emit_local_history_failure(
+            &worker_tx,
+            request_id,
+            revision_id,
+            topic,
+            "unsupported local history request".to_string(),
+        ),
+    }
+}
+
+fn emit_local_history_failure(
+    worker_tx: &std_mpsc::Sender<WorkerMessage>,
+    request_id: u64,
+    revision_id: u64,
+    topic: RequestTopic,
+    message: String,
+) {
+    emit_message(
+        worker_tx,
+        WorkerMessage::Event(WorkerEvent {
+            request_id,
+            revision_id,
+            topic,
+            kind: WorkerEventKind::Failed {
+                error: WorkerFailure {
+                    kind: WorkerFailureKind::Execution,
+                    message,
+                },
+            },
+        }),
+    );
+}
+
+async fn execute_load_local_history(file_path: PathBuf) -> Result<WorkerResultPayload, String> {
+    let history_path = local_history_path_for_file(&file_path);
+    let bytes = match tokio::fs::read(&history_path).await {
+        Ok(bytes) => bytes,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(WorkerResultPayload::LocalHistoryLoaded {
+                file_path,
+                history: None,
+            });
+        }
+        Err(err) => {
+            return Err(format!(
+                "read local history {:?} failed: {err}",
+                history_path
+            ));
+        }
+    };
+
+    let history = serde_json::from_slice::<PersistedHistoryEnvelope>(&bytes)
+        .map_err(|err| format!("parse local history {:?} failed: {err}", history_path))?;
+    Ok(WorkerResultPayload::LocalHistoryLoaded {
+        file_path,
+        history: Some(history),
+    })
+}
+
+async fn execute_save_local_history(
+    file_path: PathBuf,
+    mut history: PersistedHistoryEnvelope,
+    max_bytes: usize,
+) -> Result<WorkerResultPayload, String> {
+    let history_path = local_history_path_for_file(&file_path);
+    if let Some(parent) = history_path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|err| format!("create local history dir {:?} failed: {err}", parent))?;
+    }
+
+    let mut trimmed_transactions = 0usize;
+    let bytes = loop {
+        let encoded = serde_json::to_vec(&history)
+            .map_err(|err| format!("serialize local history {:?} failed: {err}", file_path))?;
+        if encoded.len() <= max_bytes || history.history.undo_stack.is_empty() {
+            break encoded;
+        }
+        history.history.undo_stack.remove(0);
+        trimmed_transactions += 1;
+    };
+
+    tokio::fs::write(&history_path, &bytes)
+        .await
+        .map_err(|err| format!("write local history {:?} failed: {err}", history_path))?;
+
+    Ok(WorkerResultPayload::LocalHistorySaved {
+        file_path,
+        bytes_written: bytes.len(),
+        trimmed_transactions,
+    })
 }
 
 async fn run_file_watch_request(
@@ -760,13 +1050,15 @@ fn execute_lsp_request(
                 request.revision_id,
             ))?;
             let session = spawned.process.clone();
-            let server_key = spawned.server_name.clone();
+            // Key = "binary@/abs/root" để hỗ trợ cô lập theo workspace.
+            let server_key = format!("{}@{}", spawned.server_name, spawned.root_path.display());
             let previous = lsp_sessions.replace(
                 server_key,
                 LspSessionHandle {
                     process: session.clone(),
                     server_name: spawned.server_name.clone(),
                     root_path: spawned.root_path.clone(),
+                    capabilities: spawned.capabilities.clone(),
                 },
             )?;
 
@@ -791,13 +1083,13 @@ fn execute_lsp_request(
                 previous
                     .process
                     .update_request_meta(request.request_id, request.revision_id);
-                let _ = previous.process.graceful_shutdown();
+                let _ = previous.process.shutdown_and_exit();
             }
 
             Ok(WorkerResultPayload::LspServerStarted {
                 server_name: spawned.server_name,
                 root_path: spawned.root_path,
-                capabilities_summary: spawned.capabilities_summary,
+                completion_trigger_chars: spawned.capabilities.completion_trigger_chars,
             })
         }
         WorkerRequestPayload::LspDidOpen {
@@ -812,7 +1104,7 @@ fn execute_lsp_request(
             else {
                 return Err("lsp didOpen rejected: language profile not found".to_string());
             };
-            let Some(session) = lsp_sessions.get(server_key)? else {
+            let Some(session) = lsp_sessions.get_by_binary(server_key)? else {
                 return Err("lsp didOpen rejected: server is not running".to_string());
             };
             session.update_request_meta(request.request_id, request.revision_id);
@@ -891,10 +1183,24 @@ fn execute_lsp_request(
             session
                 .process
                 .update_request_meta(request.request_id, request.revision_id);
-            let exit_status = session.process.graceful_shutdown()?;
+            let exit_status = session.process.shutdown_and_exit()?;
             Ok(WorkerResultPayload::LspServerStopped {
                 exit_status,
                 reason: "shutdown requested by app".to_string(),
+            })
+        }
+        WorkerRequestPayload::ShutdownAllLspServers => {
+            let sessions = lsp_sessions.drain_all()?;
+            let mut last_exit_status = None;
+            for session in sessions {
+                session
+                    .process
+                    .update_request_meta(request.request_id, request.revision_id);
+                last_exit_status = session.process.shutdown_and_exit()?;
+            }
+            Ok(WorkerResultPayload::LspServerStopped {
+                exit_status: last_exit_status,
+                reason: "all lsp servers shutdown for workspace switch".to_string(),
             })
         }
         WorkerRequestPayload::LspHoverRequest {
@@ -903,18 +1209,26 @@ fn execute_lsp_request(
             line,
             character,
         } => {
-            let Some(server_key) = language_profile_for_language_id(language_id)
-                .map(|profile| profile.lsp_binary)
-                .or(Some(language_id.as_str()))
-            else {
-                return Err("hover rejected: language profile not found".to_string());
-            };
-            let Some(session) = lsp_sessions.get(server_key)? else {
+            // Ưu tiên tìm theo uri (chính xác hơn khi multi-workspace).
+            // Fallback về binary-name lookup nếu document chưa được mark open.
+            let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
+                language_profile_for_language_id(language_id)
+                    .map(|p| p.lsp_binary)
+                    .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
+            });
+            let Some(handle) = handle else {
                 return Err("hover rejected: LSP server not running".to_string());
             };
-            session.update_request_meta(request.request_id, request.revision_id);
-            // cursor_line/col không có trong request vì không cần cho hover rendering.
-            handle_lsp_hover(&session, uri, *line, *character, 0, 0)
+            if !handle.capabilities.hover {
+                return Err(format!(
+                    "hover rejected: {} does not advertise hoverProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_hover(&handle.process, uri, *line, *character, 0, 0)
         }
         WorkerRequestPayload::LspDefinitionRequest {
             uri,
@@ -922,36 +1236,64 @@ fn execute_lsp_request(
             character,
             jump,
         } => {
-            let Some(session) = lsp_sessions
-                .sessions
-                .lock()
-                .map_err(|_| "lsp session lock poisoned".to_string())?
-                .values()
-                .find(|session| session.process.is_document_open(uri))
-                .map(|session| session.process.clone())
-            else {
+            let Some(handle) = lsp_sessions.get_handle_by_uri(uri)? else {
                 return Err("definition rejected: LSP server not running".to_string());
             };
-            session.update_request_meta(request.request_id, request.revision_id);
-            handle_lsp_definition(&session, uri, *line, *character, *jump)
+            if !handle.capabilities.definition {
+                return Err(format!(
+                    "definition rejected: {} does not advertise definitionProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_definition(&handle.process, uri, *line, *character, *jump)
         }
         WorkerRequestPayload::LspReferencesRequest {
             uri,
             line,
             character,
         } => {
-            let Some(session) = lsp_sessions
-                .sessions
-                .lock()
-                .map_err(|_| "lsp session lock poisoned".to_string())?
-                .values()
-                .find(|session| session.process.is_document_open(uri))
-                .map(|session| session.process.clone())
-            else {
+            let Some(handle) = lsp_sessions.get_handle_by_uri(uri)? else {
                 return Err("references rejected: LSP server not running".to_string());
             };
-            session.update_request_meta(request.request_id, request.revision_id);
-            handle_lsp_references(&session, uri, *line, *character)
+            if !handle.capabilities.references {
+                return Err(format!(
+                    "references rejected: {} does not advertise referencesProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_references(&handle.process, uri, *line, *character)
+                .map(|locations| WorkerResultPayload::LspReferencesResult { locations })
+        }
+        WorkerRequestPayload::LspFormattingRequest {
+            language_id,
+            uri,
+            tab_size,
+            insert_spaces,
+        } => {
+            let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
+                language_profile_for_language_id(language_id)
+                    .map(|p| p.lsp_binary)
+                    .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
+            });
+            let Some(handle) = handle else {
+                return Err("formatting rejected: LSP server not running".to_string());
+            };
+            if !handle.capabilities.document_formatting {
+                return Err(format!(
+                    "formatting rejected: {} does not advertise documentFormattingProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_formatting(&handle.process, uri, *tab_size, *insert_spaces)
         }
         WorkerRequestPayload::LspCompletionRequest {
             language_id,
@@ -963,18 +1305,25 @@ fn execute_lsp_request(
             prefix_start_col,
             prefix,
         } => {
-            let Some(server_key) = language_profile_for_language_id(language_id)
-                .map(|profile| profile.lsp_binary)
-                .or(Some(language_id.as_str()))
-            else {
-                return Err("completion rejected: language profile not found".to_string());
-            };
-            let Some(session) = lsp_sessions.get(server_key)? else {
+            let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
+                language_profile_for_language_id(language_id)
+                    .map(|p| p.lsp_binary)
+                    .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
+            });
+            let Some(handle) = handle else {
                 return Err("completion rejected: LSP server not running".to_string());
             };
-            session.update_request_meta(request.request_id, request.revision_id);
+            if !handle.capabilities.completion {
+                return Err(format!(
+                    "completion rejected: {} does not advertise completionProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
             handle_lsp_completion(
-                &session,
+                &handle.process,
                 uri,
                 *line,
                 *character,
@@ -1044,6 +1393,9 @@ fn parse_hover_content(result: &serde_json::Value) -> String {
     String::new()
 }
 
+/// TS server đôi khi trả về 50,000+ items — giới hạn để tránh allocate vài MB mỗi keystroke.
+const MAX_COMPLETION_ITEMS: usize = 200;
+
 fn parse_completion_items(
     result: &serde_json::Value,
 ) -> Vec<crate::async_runtime::message::LspCompletionItem> {
@@ -1058,6 +1410,7 @@ fn parse_completion_items(
         .map(|items| {
             items
                 .iter()
+                .take(MAX_COMPLETION_ITEMS)
                 .filter_map(|item| {
                     let label = item.get("label")?.as_str()?.to_string();
                     let detail = item
@@ -1148,6 +1501,36 @@ fn parse_locations(result: &serde_json::Value) -> Vec<crate::async_runtime::mess
         .collect()
 }
 
+fn parse_text_edits(result: &serde_json::Value) -> Vec<crate::async_runtime::message::LspTextEdit> {
+    use crate::async_runtime::message::{LspPosition, LspRange, LspTextEdit};
+
+    result
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            let start_line = item.pointer("/range/start/line")?.as_u64()? as u32;
+            let start_character = item.pointer("/range/start/character")?.as_u64()? as u32;
+            let end_line = item.pointer("/range/end/line")?.as_u64()? as u32;
+            let end_character = item.pointer("/range/end/character")?.as_u64()? as u32;
+            let new_text = item.get("newText")?.as_str()?.to_string();
+            Some(LspTextEdit {
+                range: LspRange {
+                    start: LspPosition {
+                        line: start_line,
+                        character: start_character,
+                    },
+                    end: LspPosition {
+                        line: end_line,
+                        character: end_character,
+                    },
+                },
+                new_text,
+            })
+        })
+        .collect()
+}
+
 /// Execute hover request trong execute_lsp_request.
 fn handle_lsp_hover(
     session: &std::sync::Arc<crate::lsp::client::LspClientProcess>,
@@ -1207,13 +1590,45 @@ fn handle_lsp_definition(
     Ok(WorkerResultPayload::LspDefinitionResult { locations, jump })
 }
 
+fn handle_lsp_formatting(
+    session: &std::sync::Arc<crate::lsp::client::LspClientProcess>,
+    uri: &str,
+    tab_size: u32,
+    insert_spaces: bool,
+) -> Result<WorkerResultPayload, String> {
+    use serde_json::json;
+
+    let params = json!({
+        "textDocument": { "uri": uri },
+        "options": {
+            "tabSize": tab_size,
+            "insertSpaces": insert_spaces,
+        }
+    });
+    let response = lsp_request_response(session, "textDocument/formatting", params, 15)?;
+    let result = response
+        .get("result")
+        .ok_or_else(|| "formatting: no result".to_string())?;
+    if result.is_null() {
+        return Ok(WorkerResultPayload::LspFormattingResult {
+            uri: uri.to_string(),
+            edits: Vec::new(),
+        });
+    }
+
+    Ok(WorkerResultPayload::LspFormattingResult {
+        uri: uri.to_string(),
+        edits: parse_text_edits(result),
+    })
+}
+
 /// Execute references request trong execute_lsp_request.
 fn handle_lsp_references(
     session: &std::sync::Arc<crate::lsp::client::LspClientProcess>,
     uri: &str,
     line: u32,
     character: u32,
-) -> Result<WorkerResultPayload, String> {
+) -> Result<Vec<crate::async_runtime::message::LspLocation>, String> {
     use serde_json::json;
     let params = json!({
         "textDocument": { "uri": uri },
@@ -1231,7 +1646,7 @@ fn handle_lsp_references(
     if locations.is_empty() {
         return Err("references: empty result".to_string());
     }
-    Ok(WorkerResultPayload::LspReferencesResult { locations })
+    Ok(locations)
 }
 
 fn handle_lsp_completion(
@@ -1905,6 +2320,92 @@ fn format_relative_duration(value: u64, unit: &str) -> String {
     }
 }
 
+async fn run_workspace_git_status(
+    workspace_root: PathBuf,
+) -> Result<Vec<(PathBuf, crate::async_runtime::message::GitFileStatus)>, String> {
+    use tokio::process::Command;
+
+    let output = Command::new("git")
+        .kill_on_drop(true)
+        .args(["status", "--porcelain", "--untracked-files=all"])
+        .current_dir(&workspace_root)
+        .output()
+        .await
+        .map_err(|err| format!("git status failed: {err}"))?;
+
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut statuses = Vec::new();
+    for line in stdout.lines() {
+        if line.len() < 4 {
+            continue;
+        }
+        let status_code = &line[..2];
+        let rel = line[3..].trim();
+        let rel = rel.split(" -> ").last().unwrap_or(rel).trim();
+        let Some(kind) = parse_git_file_status(status_code) else {
+            continue;
+        };
+        let path = workspace_root.join(rel);
+        let normalized = path.canonicalize().unwrap_or(path);
+        statuses.push((normalized, kind));
+    }
+    Ok(statuses)
+}
+
+fn parse_git_file_status(
+    status_code: &str,
+) -> Option<crate::async_runtime::message::GitFileStatus> {
+    if status_code.contains('A') || status_code == "??" {
+        Some(crate::async_runtime::message::GitFileStatus::Added)
+    } else if status_code.contains('M') {
+        Some(crate::async_runtime::message::GitFileStatus::Modified)
+    } else {
+        None
+    }
+}
+
+async fn run_fetch_git_baseline(
+    workspace_root: PathBuf,
+    file_path: PathBuf,
+) -> Result<Option<String>, String> {
+    use tokio::process::Command;
+
+    let relative_path = file_path
+        .strip_prefix(&workspace_root)
+        .unwrap_or(file_path.as_path())
+        .to_string_lossy()
+        .to_string();
+
+    let head_output = Command::new("git")
+        .kill_on_drop(true)
+        .args(["rev-parse", "--verify", "HEAD"])
+        .current_dir(&workspace_root)
+        .output()
+        .await
+        .map_err(|err| format!("git rev-parse failed: {err}"))?;
+    if !head_output.status.success() {
+        return Ok(None);
+    }
+
+    let output = Command::new("git")
+        .kill_on_drop(true)
+        .args(["show", &format!("HEAD:{relative_path}")])
+        .current_dir(&workspace_root)
+        .output()
+        .await
+        .map_err(|err| format!("git show failed: {err}"))?;
+
+    if output.status.success() {
+        Ok(Some(String::from_utf8_lossy(&output.stdout).to_string()))
+    } else {
+        Ok(Some(String::new()))
+    }
+}
+
 async fn execute_virtual_job(
     request: &WorkerRequest,
     syntax_cache: Arc<SyntaxEngineCache>,
@@ -2119,6 +2620,26 @@ async fn execute_virtual_job(
                 summary,
             })
         }
+        WorkerRequestPayload::RefreshWorkspaceGitStatus { workspace_root } => {
+            let workspace_root = workspace_root.clone();
+            let statuses = run_workspace_git_status(workspace_root.clone()).await?;
+            Ok(WorkerResultPayload::WorkspaceGitStatus {
+                workspace_root,
+                statuses,
+            })
+        }
+        WorkerRequestPayload::FetchGitBaseline {
+            workspace_root,
+            file_path,
+        } => {
+            let workspace_root = workspace_root.clone();
+            let file_path = file_path.clone();
+            let baseline = run_fetch_git_baseline(workspace_root, file_path.clone()).await?;
+            Ok(WorkerResultPayload::BufferGitBaseline {
+                file_path,
+                baseline,
+            })
+        }
         WorkerRequestPayload::StartFileWatch { .. } => {
             Err("StartFileWatch request should be handled by dedicated watch loop".to_string())
         }
@@ -2137,12 +2658,16 @@ async fn execute_virtual_job(
         | WorkerRequestPayload::LspHoverRequest { .. }
         | WorkerRequestPayload::LspDefinitionRequest { .. }
         | WorkerRequestPayload::LspReferencesRequest { .. }
+        | WorkerRequestPayload::LspFormattingRequest { .. }
         | WorkerRequestPayload::LspCompletionRequest { .. }
         | WorkerRequestPayload::StopLspServer => {
             Err("LSP request should be handled by dedicated LSP runner".to_string())
         }
         WorkerRequestPayload::FzfSearch { .. } => {
             Err("FzfSearch request should be handled by dedicated fzf runner".to_string())
+        }
+        WorkerRequestPayload::AiInlineCompletionRequest { .. } => {
+            Err("AI inline completion request should be handled by dedicated AI runner".to_string())
         }
         WorkerRequestPayload::LoadFilePreview {
             file_path,
@@ -2163,6 +2688,13 @@ async fn execute_virtual_job(
             .await
             .map_err(|err| format!("file preview join error: {err}"))?;
             Ok(result)
+        }
+        WorkerRequestPayload::LoadLocalHistory { .. }
+        | WorkerRequestPayload::SaveLocalHistory { .. } => {
+            Err("local history request should be handled by dedicated history runner".to_string())
+        }
+        WorkerRequestPayload::ShutdownAllLspServers => {
+            Err("execute_virtual_job received non-virtual payload".to_string())
         }
     }
 }
@@ -2440,6 +2972,87 @@ fn panic_payload_to_string(payload: Box<dyn Any + Send + 'static>) -> String {
     } else {
         "non-string panic payload".to_string()
     }
+}
+
+async fn execute_ai_inline_request(request: &WorkerRequest) -> Result<WorkerResultPayload, String> {
+    let WorkerRequestPayload::AiInlineCompletionRequest {
+        api_url,
+        api_key,
+        model,
+        endpoint_kind,
+        prefix,
+        suffix,
+        language_id,
+        file_path,
+        max_tokens,
+    } = &request.payload
+    else {
+        return Err("ai inline request payload mismatch".to_string());
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
+    let endpoint = match endpoint_kind.as_deref() {
+        Some("responses") => format!("{}/responses", api_url.trim_end_matches('/')),
+        Some(path) if path.starts_with('/') => format!("{}{}", api_url.trim_end_matches('/'), path),
+        _ => format!("{}/chat/completions", api_url.trim_end_matches('/')),
+    };
+
+    let system = "You are an inline code completion engine. Return only the continuation text to insert at the cursor. Do not repeat the prefix. Do not add markdown fences or explanations.";
+    let user = format!(
+        "File: {}\nLanguage: {}\n\nPrefix:\n{}\n\nSuffix:\n{}\n\nReturn only the best continuation for the cursor position.",
+        file_path
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default(),
+        language_id.clone().unwrap_or_default(),
+        prefix,
+        suffix,
+    );
+
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user}
+        ],
+        "temperature": 0.2,
+        "max_tokens": max_tokens,
+        "stream": false
+    });
+
+    let mut req = client.post(endpoint).json(&body);
+    if let Some(key) = api_key.as_ref().filter(|key| !key.is_empty()) {
+        req = req.bearer_auth(key);
+    }
+    let response = req
+        .send()
+        .await
+        .map_err(|err| format!("ai request failed: {err}"))?;
+    let status = response.status();
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|err| format!("ai response decode failed: {err}"))?;
+    if !status.is_success() {
+        return Err(format!("ai request error {}: {}", status, json));
+    }
+    let suggestion = json
+        .get("choices")
+        .and_then(|choices| choices.as_array())
+        .and_then(|choices| choices.first())
+        .and_then(|choice| {
+            choice
+                .get("message")
+                .and_then(|message| message.get("content"))
+                .and_then(|content| content.as_str())
+                .or_else(|| choice.get("text").and_then(|content| content.as_str()))
+        })
+        .unwrap_or_default()
+        .to_string();
+    Ok(WorkerResultPayload::AiInlineCompletionResult { suggestion })
 }
 
 #[cfg(test)]

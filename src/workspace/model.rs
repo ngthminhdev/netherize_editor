@@ -7,6 +7,13 @@ use std::{
 use crate::workspace::scanner::{WorkspaceScanOptions, WorkspaceScanner};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceGitStatus {
+    Modified,
+    Added,
+    Dirty,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceNodeType {
     File,
     Folder,
@@ -100,6 +107,7 @@ pub struct WorkspaceModel {
     scroll_offset: f32,
     filter_query: String,
     is_inputting_filter: bool,
+    git_statuses: HashMap<PathBuf, WorkspaceGitStatus>,
 }
 
 impl WorkspaceModel {
@@ -128,6 +136,7 @@ impl WorkspaceModel {
             scroll_offset: 0.0,
             filter_query: String::new(),
             is_inputting_filter: false,
+            git_statuses: HashMap::new(),
         };
         model.expanded_paths.insert(model.root_path.clone());
         model.prune_explorer_state();
@@ -509,6 +518,44 @@ impl WorkspaceModel {
             &mut out,
         );
         out
+    }
+
+    pub fn git_status_for_path(&self, path: &Path) -> Option<WorkspaceGitStatus> {
+        self.git_statuses.get(path).copied()
+    }
+
+    pub fn set_git_statuses(&mut self, statuses: HashMap<PathBuf, WorkspaceGitStatus>) -> bool {
+        let mut with_parents: HashMap<PathBuf, WorkspaceGitStatus> = HashMap::new();
+        for (path, status) in statuses {
+            with_parents.insert(path.clone(), status);
+
+            let mut current = path.parent();
+            while let Some(parent) = current {
+                if !parent.starts_with(&self.root_path) {
+                    break;
+                }
+                with_parents
+                    .entry(parent.to_path_buf())
+                    .and_modify(|existing| {
+                        if matches!(*existing, WorkspaceGitStatus::Added)
+                            && matches!(status, WorkspaceGitStatus::Modified)
+                        {
+                            *existing = WorkspaceGitStatus::Modified;
+                        }
+                    })
+                    .or_insert(status);
+                if parent == self.root_path {
+                    break;
+                }
+                current = parent.parent();
+            }
+        }
+
+        if self.git_statuses == with_parents {
+            return false;
+        }
+        self.git_statuses = with_parents;
+        true
     }
 
     fn compute_visible_filter_matches(

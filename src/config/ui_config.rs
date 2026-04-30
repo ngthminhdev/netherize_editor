@@ -86,12 +86,43 @@ pub struct SpacingUiConfig {
     pub editor_padding: f32,
     pub panel_padding: f32,
     pub explorer_padding: f32,
+    pub topbar_dirty_gap: f32,
 }
 
 #[derive(Debug, Clone)]
 pub struct EditorUiConfig {
     pub relative_numbers: bool,
     pub font_family: Option<String>,
+    pub font_size: f32,
+    pub line_height: f32,
+    pub smooth_scroll_enabled: bool,
+    pub smooth_scroll_lerp_rate: f32,
+    pub smooth_scroll_snap_epsilon: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IndentConfig {
+    pub tab_width: u8,
+    pub insert_spaces: bool,
+}
+
+impl Default for IndentConfig {
+    fn default() -> Self {
+        Self {
+            tab_width: 4,
+            insert_spaces: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WelcomeUiConfig {
+    pub version: String,
+    pub card_max_width: f32,
+    pub card_padding_x: f32,
+    pub card_padding_y: f32,
+    pub section_gap: f32,
+    pub border_radius_px: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -103,6 +134,8 @@ pub struct UiConfig {
     pub spacing: SpacingUiConfig,
     pub status_bar: StatusBarUiConfig,
     pub editor: EditorUiConfig,
+    pub welcome: WelcomeUiConfig,
+    pub indent: IndentConfig,
     pub border_radius_px: f32,
 }
 
@@ -153,9 +186,12 @@ impl UiConfig {
                 max_content_scale: 2.0,
             },
             layout: WorkbenchLayoutConfig {
-                region_gap: 2.0,
-                top_bar_height: 38.0,
-                status_bar_height: 36.0,
+                outer_gap: 10.0,
+                panel_gap: 8.0,
+                inner_padding: 12.0,
+                round_ui: true,
+                top_bar_height: 34.0,
+                status_bar_height: 22.0,
                 center_min_width: 320.0,
                 center_min_height: 180.0,
                 sidebar_min_width: 180.0,
@@ -186,17 +222,32 @@ impl UiConfig {
                 editor_padding: 14.0,
                 panel_padding: 10.0,
                 explorer_padding: 10.0,
+                topbar_dirty_gap: 6.0,
             },
             status_bar: StatusBarUiConfig {
                 padding_x: 14.0,
-                font_size: 15.0,
-                line_height: 24.0,
+                font_size: 11.0,
+                line_height: 14.0,
             },
             editor: EditorUiConfig {
                 relative_numbers: false,
                 font_family: None,
+                font_size: 14.0,
+                line_height: 20.0,
+                smooth_scroll_enabled: true,
+                smooth_scroll_lerp_rate: 18.0,
+                smooth_scroll_snap_epsilon: 0.01,
             },
-            border_radius_px: 0.0,
+            welcome: WelcomeUiConfig {
+                version: "v1.0.0-alpha".to_string(),
+                card_max_width: 60.0,
+                card_padding_x: 42.0,
+                card_padding_y: 34.0,
+                section_gap: 16.0,
+                border_radius_px: 18.0,
+            },
+            indent: IndentConfig::default(),
+            border_radius_px: 10.0,
         }
     }
 
@@ -241,11 +292,24 @@ impl UiConfig {
                 )?,
             },
             layout: WorkbenchLayoutConfig {
-                region_gap: parse_positive_f32(
+                outer_gap: parse_non_negative_f32(
                     "layout",
-                    "region_gap",
-                    raw.layout.region_gap.unwrap_or(fallback.layout.region_gap),
+                    "outer_gap",
+                    raw.layout.outer_gap.unwrap_or(fallback.layout.outer_gap),
                 )?,
+                panel_gap: parse_non_negative_f32(
+                    "layout",
+                    "panel_gap",
+                    raw.layout.panel_gap.unwrap_or(fallback.layout.panel_gap),
+                )?,
+                inner_padding: parse_non_negative_f32(
+                    "layout",
+                    "inner_padding",
+                    raw.layout
+                        .inner_padding
+                        .unwrap_or(fallback.layout.inner_padding),
+                )?,
+                round_ui: raw.layout.round_ui.unwrap_or(fallback.layout.round_ui),
                 top_bar_height: parse_positive_f32(
                     "layout",
                     "top_bar_height",
@@ -383,6 +447,13 @@ impl UiConfig {
                         .explorer_padding
                         .unwrap_or(fallback.spacing.explorer_padding),
                 )?,
+                topbar_dirty_gap: parse_positive_f32(
+                    "spacing",
+                    "topbar_dirty_gap",
+                    raw.spacing
+                        .topbar_dirty_gap
+                        .unwrap_or(fallback.spacing.topbar_dirty_gap),
+                )?,
             },
             status_bar: StatusBarUiConfig {
                 padding_x: parse_positive_f32(
@@ -410,8 +481,95 @@ impl UiConfig {
             editor: EditorUiConfig {
                 relative_numbers: raw.editor.relative_numbers.unwrap_or(false),
                 font_family: raw.editor.font_family,
+                font_size: parse_positive_f32(
+                    "editor",
+                    "font_size",
+                    raw.editor.font_size.unwrap_or(fallback.editor.font_size),
+                )?,
+                line_height: parse_positive_f32(
+                    "editor",
+                    "line_height",
+                    raw.editor
+                        .line_height
+                        .unwrap_or(fallback.editor.line_height),
+                )?,
+                smooth_scroll_enabled: raw
+                    .editor
+                    .smooth_scroll_enabled
+                    .unwrap_or(fallback.editor.smooth_scroll_enabled),
+                smooth_scroll_lerp_rate: parse_positive_f32(
+                    "editor",
+                    "smooth_scroll_lerp_rate",
+                    raw.editor
+                        .smooth_scroll_lerp_rate
+                        .unwrap_or(fallback.editor.smooth_scroll_lerp_rate),
+                )?,
+                smooth_scroll_snap_epsilon: parse_positive_f32(
+                    "editor",
+                    "smooth_scroll_snap_epsilon",
+                    raw.editor
+                        .smooth_scroll_snap_epsilon
+                        .unwrap_or(fallback.editor.smooth_scroll_snap_epsilon),
+                )?,
             },
-            border_radius_px: raw.border_radius_px.unwrap_or(fallback.border_radius_px),
+            welcome: WelcomeUiConfig {
+                version: raw
+                    .welcome
+                    .version
+                    .unwrap_or_else(|| fallback.welcome.version.clone()),
+                card_max_width: parse_positive_f32(
+                    "welcome",
+                    "card_max_width",
+                    raw.welcome
+                        .card_max_width
+                        .unwrap_or(fallback.welcome.card_max_width),
+                )?,
+                card_padding_x: parse_positive_f32(
+                    "welcome",
+                    "card_padding_x",
+                    raw.welcome
+                        .card_padding_x
+                        .unwrap_or(fallback.welcome.card_padding_x),
+                )?,
+                card_padding_y: parse_positive_f32(
+                    "welcome",
+                    "card_padding_y",
+                    raw.welcome
+                        .card_padding_y
+                        .unwrap_or(fallback.welcome.card_padding_y),
+                )?,
+                section_gap: parse_positive_f32(
+                    "welcome",
+                    "section_gap",
+                    raw.welcome
+                        .section_gap
+                        .unwrap_or(fallback.welcome.section_gap),
+                )?,
+                border_radius_px: raw
+                    .welcome
+                    .border_radius_px
+                    .unwrap_or(fallback.welcome.border_radius_px)
+                    .max(0.0),
+            },
+            indent: IndentConfig {
+                tab_width: raw
+                    .indent
+                    .tab_width
+                    .unwrap_or(fallback.indent.tab_width)
+                    .max(1),
+                insert_spaces: raw
+                    .indent
+                    .insert_spaces
+                    .unwrap_or(fallback.indent.insert_spaces),
+            },
+            border_radius_px: raw
+                .border_radius_px
+                .unwrap_or(if fallback.layout.round_ui {
+                    fallback.border_radius_px
+                } else {
+                    0.0
+                })
+                .max(0.0),
         };
         config.validate()?;
         Ok(config)
@@ -425,12 +583,42 @@ impl UiConfig {
         let Ok(raw) = toml::from_str::<RawUiFile>(&content) else {
             return self;
         };
+        // Apply only explicitly-set editor font fields directly from raw (not through
+        // from_raw, which fills missing fields with fallback values and would incorrectly
+        // overwrite the profile defaults with builtin defaults).
+        if let Some(fs) = raw.editor.font_size {
+            self.editor.font_size = fs.clamp(8.0, 40.0);
+        }
+        if let Some(lh) = raw.editor.line_height {
+            self.editor.line_height = lh.clamp(10.0, 64.0);
+        }
+        if raw.editor.font_family.is_some() {
+            self.editor.font_family = raw.editor.font_family.clone();
+        }
         if let Ok(override_config) = Self::from_raw(raw) {
             self.docks = override_config.docks;
-            self.editor.font_family = override_config.editor.font_family;
+            self.indent = override_config.indent;
             self.border_radius_px = override_config.border_radius_px;
         }
         self
+    }
+
+    /// Returns the editor fields that are **explicitly** set in the user override file.
+    /// Used at startup to sync `base_theme` without affecting fresh installs that have
+    /// no ui.toml (where the theme file is the correct source of truth).
+    pub fn load_user_editor_overrides() -> (Option<f32>, Option<f32>, Option<String>) {
+        let path = Self::user_override_path();
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            return (None, None, None);
+        };
+        let Ok(raw) = toml::from_str::<RawUiFile>(&content) else {
+            return (None, None, None);
+        };
+        (
+            raw.editor.font_size.map(|v| v.clamp(8.0, 40.0)),
+            raw.editor.line_height.map(|v| v.clamp(10.0, 64.0)),
+            raw.editor.font_family,
+        )
     }
 
     pub fn user_override_path() -> PathBuf {
@@ -467,6 +655,14 @@ fn parse_positive_f32(section: &str, token: &str, value: f32) -> Result<f32, Str
         Ok(value)
     } else {
         Err(format!("{section}.{token}: expected > 0, got {value}"))
+    }
+}
+
+fn parse_non_negative_f32(section: &str, token: &str, value: f32) -> Result<f32, String> {
+    if value >= 0.0 {
+        Ok(value)
+    } else {
+        Err(format!("{section}.{token}: expected >= 0, got {value}"))
     }
 }
 
@@ -516,6 +712,10 @@ struct RawUiFile {
     status_bar: RawStatusBar,
     #[serde(default)]
     editor: RawEditorSection,
+    #[serde(default)]
+    welcome: RawWelcome,
+    #[serde(default)]
+    indent: RawIndent,
     border_radius_px: Option<f32>,
 }
 
@@ -532,7 +732,10 @@ struct RawWindow {
 
 #[derive(Debug, Default, Deserialize)]
 struct RawLayout {
-    region_gap: Option<f32>,
+    outer_gap: Option<f32>,
+    panel_gap: Option<f32>,
+    inner_padding: Option<f32>,
+    round_ui: Option<bool>,
     top_bar_height: Option<f32>,
     status_bar_height: Option<f32>,
     center_min_width: Option<f32>,
@@ -565,6 +768,7 @@ struct RawSpacing {
     editor_padding: Option<f32>,
     panel_padding: Option<f32>,
     explorer_padding: Option<f32>,
+    topbar_dirty_gap: Option<f32>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -578,13 +782,41 @@ struct RawStatusBar {
 struct RawEditorSection {
     relative_numbers: Option<bool>,
     font_family: Option<String>,
+    font_size: Option<f32>,
+    line_height: Option<f32>,
+    smooth_scroll_enabled: Option<bool>,
+    smooth_scroll_lerp_rate: Option<f32>,
+    smooth_scroll_snap_epsilon: Option<f32>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RawIndent {
+    tab_width: Option<u8>,
+    insert_spaces: Option<bool>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RawWelcome {
+    version: Option<String>,
+    card_max_width: Option<f32>,
+    card_padding_x: Option<f32>,
+    card_padding_y: Option<f32>,
+    section_gap: Option<f32>,
+    border_radius_px: Option<f32>,
 }
 
 #[derive(Debug, Serialize)]
 struct UserUiConfigFile {
     docks: UserUiDocks,
     editor: UserUiEditor,
+    indent: UserUiIndent,
     border_radius_px: f32,
+}
+
+#[derive(Debug, Serialize)]
+struct UserUiIndent {
+    tab_width: u8,
+    insert_spaces: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -602,6 +834,8 @@ struct UserUiDocks {
 struct UserUiEditor {
     relative_numbers: bool,
     font_family: Option<String>,
+    font_size: f32,
+    line_height: f32,
 }
 
 impl From<&UiConfig> for UserUiConfigFile {
@@ -619,6 +853,12 @@ impl From<&UiConfig> for UserUiConfigFile {
             editor: UserUiEditor {
                 relative_numbers: value.editor.relative_numbers,
                 font_family: value.editor.font_family.clone(),
+                font_size: value.editor.font_size,
+                line_height: value.editor.line_height,
+            },
+            indent: UserUiIndent {
+                tab_width: value.indent.tab_width,
+                insert_spaces: value.indent.insert_spaces,
             },
             border_radius_px: value.border_radius_px,
         }

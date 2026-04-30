@@ -8,11 +8,22 @@ pub(in crate::config::theme_config) struct RawThemeFile {
     pub(in crate::config::theme_config) theme: RawThemeMeta,
     pub(in crate::config::theme_config) editor: RawEditor,
     pub(in crate::config::theme_config) ui: RawUi,
+    #[serde(default)]
+    pub(in crate::config::theme_config) git: RawGit,
     pub(in crate::config::theme_config) syntax: RawSyntax,
     #[serde(default)]
     pub(in crate::config::theme_config) icons: RawIcons,
     #[serde(default)]
     pub(in crate::config::theme_config) file_icons: RawFileIcons,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub(in crate::config::theme_config) struct RawGit {
+    pub(in crate::config::theme_config) modified_sidebar: Option<String>,
+    pub(in crate::config::theme_config) added_sidebar: Option<String>,
+    pub(in crate::config::theme_config) modified_gutter: Option<String>,
+    pub(in crate::config::theme_config) added_gutter: Option<String>,
+    pub(in crate::config::theme_config) deleted_gutter: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -30,6 +41,8 @@ pub(in crate::config::theme_config) struct RawEditor {
     pub(in crate::config::theme_config) selection: String,
     pub(in crate::config::theme_config) gutter: String,
     pub(in crate::config::theme_config) gutter_active: Option<String>,
+    pub(in crate::config::theme_config) indent_guide: Option<String>,
+    pub(in crate::config::theme_config) rainbow_brackets: Option<Vec<String>>,
     pub(in crate::config::theme_config) font_size: Option<f32>,
     pub(in crate::config::theme_config) line_height: Option<f32>,
     pub(in crate::config::theme_config) font_family: Option<String>,
@@ -47,6 +60,7 @@ pub(in crate::config::theme_config) struct RawUi {
     pub(in crate::config::theme_config) status_bar_bg: String,
     pub(in crate::config::theme_config) border_color: String,
     pub(in crate::config::theme_config) selection_bg: Option<String>,
+    pub(in crate::config::theme_config) dirty_indicator: Option<String>,
     pub(in crate::config::theme_config) fg: Option<String>,
     pub(in crate::config::theme_config) fg_dim: Option<String>,
     pub(in crate::config::theme_config) fg_ghost: Option<String>,
@@ -80,15 +94,22 @@ pub(in crate::config::theme_config) struct RawSyntax {
     pub(in crate::config::theme_config) comment: String,
     pub(in crate::config::theme_config) r#type: String,
     pub(in crate::config::theme_config) number: String,
+    pub(in crate::config::theme_config) boolean: Option<String>,
     pub(in crate::config::theme_config) identifier: Option<String>,
+    pub(in crate::config::theme_config) variable: Option<String>,
     pub(in crate::config::theme_config) parameter: Option<String>,
     pub(in crate::config::theme_config) field: Option<String>,
     pub(in crate::config::theme_config) property: Option<String>,
     pub(in crate::config::theme_config) constant: Option<String>,
     pub(in crate::config::theme_config) operator: Option<String>,
     pub(in crate::config::theme_config) punctuation: Option<String>,
+    pub(in crate::config::theme_config) escape: Option<String>,
     pub(in crate::config::theme_config) r#macro: Option<String>,
     pub(in crate::config::theme_config) lifetime: Option<String>,
+    pub(in crate::config::theme_config) constructor: Option<String>,
+    pub(in crate::config::theme_config) attribute: Option<String>,
+    pub(in crate::config::theme_config) namespace: Option<String>,
+    pub(in crate::config::theme_config) tag: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]

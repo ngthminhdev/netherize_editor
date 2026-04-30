@@ -72,6 +72,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         Command::ToggleBottomDock
         | Command::ToggleLeftDock
         | Command::GitOpenLazygit
+        | Command::GitOpenLazydocker
         | Command::GitBlameLine
         | Command::FocusEditor
         | Command::FocusExplorer

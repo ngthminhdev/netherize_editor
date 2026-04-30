@@ -10,6 +10,7 @@ use std::{
         atomic::{AtomicU64, Ordering},
         mpsc as std_mpsc,
     },
+    time::{Duration, Instant},
 };
 
 use serde_json::{Value, json};
@@ -21,9 +22,12 @@ use tokio::{
 
 use crate::{
     async_runtime::message::{LspDiagnostic, LspPosition, LspRange},
-    lsp::registry::{
-        all_language_profiles, language_profile_for_binary, language_profile_for_extension,
-        language_profile_for_path,
+    lsp::{
+        capabilities::ServerCapabilities,
+        registry::{
+            all_language_profiles, language_profile_for_binary, language_profile_for_extension,
+            language_profile_for_path,
+        },
     },
 };
 
@@ -65,7 +69,7 @@ pub fn lsp_entry_and_status_for_path(path: &Path) -> Option<(LspEntry, bool)> {
 
 pub struct LspClientProcess {
     child: AsyncMutex<Child>,
-    writer: AsyncMutex<ChildStdin>,
+    writer: AsyncMutex<Option<ChildStdin>>,
     next_rpc_id: AtomicU64,
     latest_revision: AtomicU64,
     latest_request_id: AtomicU64,
@@ -77,7 +81,7 @@ impl LspClientProcess {
     fn new(child: Child, writer: ChildStdin) -> Self {
         Self {
             child: AsyncMutex::new(child),
-            writer: AsyncMutex::new(writer),
+            writer: AsyncMutex::new(Some(writer)),
             next_rpc_id: AtomicU64::new(1),
             latest_revision: AtomicU64::new(0),
             latest_request_id: AtomicU64::new(0),
@@ -106,7 +110,10 @@ impl LspClientProcess {
             "params": params,
         });
         let mut writer = self.writer.lock().await;
-        write_json_rpc_message_async(&mut *writer, &payload).await
+        let writer = writer
+            .as_mut()
+            .ok_or_else(|| format!("lsp writer unavailable while sending notification {method}"))?;
+        write_json_rpc_message_async(writer, &payload).await
     }
 
     pub fn send_notification(&self, method: &str, params: Value) -> Result<(), String> {
@@ -122,7 +129,10 @@ impl LspClientProcess {
             "params": params,
         });
         let mut writer = self.writer.lock().await;
-        write_json_rpc_message_async(&mut *writer, &payload).await?;
+        let writer = writer
+            .as_mut()
+            .ok_or_else(|| format!("lsp writer unavailable while sending request {method}"))?;
+        write_json_rpc_message_async(writer, &payload).await?;
         Ok(request_id)
     }
 
@@ -149,15 +159,13 @@ impl LspClientProcess {
             "params": params,
         });
         let mut writer = self.writer.lock().await;
-        write_json_rpc_message_async(&mut *writer, &payload).await
+        let writer = writer
+            .as_mut()
+            .ok_or_else(|| format!("lsp writer unavailable while sending request {method}"))?;
+        write_json_rpc_message_async(writer, &payload).await
     }
 
-    pub fn send_request_with_id(
-        &self,
-        id: u64,
-        method: &str,
-        params: Value,
-    ) -> Result<(), String> {
+    pub fn send_request_with_id(&self, id: u64, method: &str, params: Value) -> Result<(), String> {
         block_on_runtime(self.send_request_with_id_async(id, method, params))
     }
 
@@ -214,28 +222,59 @@ impl LspClientProcess {
         }
     }
 
-    async fn graceful_shutdown_async(&self) -> Result<Option<i32>, String> {
-        let _ = self.send_request_async("shutdown", Value::Null).await;
+    async fn shutdown_and_exit_async(&self) -> Result<Option<i32>, String> {
+        let shutdown_request_id = self.allocate_request_id();
+        let shutdown_rx = self.register_pending_request(shutdown_request_id);
+
+        if let Err(err) = self
+            .send_request_with_id_async(shutdown_request_id, "shutdown", Value::Null)
+            .await
+        {
+            self.clear_pending_request(shutdown_request_id);
+            return Err(err);
+        }
+
+        let _shutdown_response = shutdown_rx.recv_timeout(Duration::from_secs(2)).ok();
+        self.clear_pending_request(shutdown_request_id);
+
         let _ = self.send_notification_async("exit", Value::Null).await;
 
-        let mut child = self.child.lock().await;
-        let status = match child.try_wait() {
-            Ok(Some(status)) => Some(status.code().unwrap_or_default()),
-            Ok(None) => {
-                let _ = child.start_kill();
-                match child.wait().await {
-                    Ok(status) => Some(status.code().unwrap_or_default()),
-                    Err(_) => None,
-                }
-            }
-            Err(err) => return Err(format!("lsp try_wait failed: {err}")),
-        };
+        {
+            let mut writer = self.writer.lock().await;
+            *writer = None;
+        }
+
+        if let Ok(mut guard) = self.pending_responses.lock() {
+            guard.clear();
+        }
         self.clear_open_documents();
-        Ok(status)
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut child = self.child.lock().await;
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => return Ok(status.code()),
+                Ok(None) if Instant::now() < deadline => {
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
+                Ok(None) => {
+                    let _ = child.start_kill();
+                    return match child.wait().await {
+                        Ok(status) => Ok(status.code()),
+                        Err(_) => Ok(None),
+                    };
+                }
+                Err(err) => return Err(format!("lsp try_wait failed: {err}")),
+            }
+        }
+    }
+
+    pub fn shutdown_and_exit(&self) -> Result<Option<i32>, String> {
+        block_on_runtime(self.shutdown_and_exit_async())
     }
 
     pub fn graceful_shutdown(&self) -> Result<Option<i32>, String> {
-        block_on_runtime(self.graceful_shutdown_async())
+        self.shutdown_and_exit()
     }
 }
 
@@ -245,7 +284,10 @@ pub struct SpawnedLspServer {
     pub root_path: PathBuf,
     pub reader: BufReader<ChildStdout>,
     pub stderr: Option<BufReader<ChildStderr>>,
+    /// Raw JSON string kept cho UI display / backward-compat.
     pub capabilities_summary: String,
+    /// Parsed một lần tại init — dùng để gate requests trong scheduler.
+    pub capabilities: ServerCapabilities,
 }
 
 pub struct ParsedDiagnostics {
@@ -337,11 +379,13 @@ pub async fn spawn_lsp_server(
         return Err(format!("lsp initialize error: {}", error));
     }
 
-    let capabilities_summary = initialize_response
+    let caps_value = initialize_response
         .get("result")
         .and_then(|result| result.get("capabilities"))
-        .map(ToString::to_string)
-        .unwrap_or_else(|| "{}".to_string());
+        .cloned()
+        .unwrap_or(serde_json::Value::Object(Default::default()));
+    let capabilities_summary = caps_value.to_string();
+    let capabilities = ServerCapabilities::from_json(&caps_value);
 
     process
         .send_notification_async("initialized", json!({}))
@@ -354,6 +398,7 @@ pub async fn spawn_lsp_server(
         reader,
         stderr,
         capabilities_summary,
+        capabilities,
     })
 }
 

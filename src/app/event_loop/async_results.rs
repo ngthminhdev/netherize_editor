@@ -1,56 +1,54 @@
 use super::*;
 
-fn parse_lsp_completion_trigger_chars(capabilities_summary: &str) -> Vec<char> {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(capabilities_summary) else {
-        return Vec::new();
-    };
-
-    value
-        .pointer("/completionProvider/triggerCharacters")
-        .and_then(serde_json::Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(serde_json::Value::as_str)
-        .filter_map(|entry| {
-            let mut chars = entry.chars();
-            let ch = chars.next()?;
-            chars.next().is_none().then_some(ch)
-        })
-        .collect()
-}
-
 impl AsyncResultRouter for AppShell {
     fn current_revision_for(&self, topic: RequestTopic) -> u64 {
         match topic {
             RequestTopic::ActiveBufferLayout => self.active_highlight_request_revision,
             RequestTopic::FzfSearch => self.fzf_search_revision,
+            RequestTopic::LocalHistory => self.local_history_revision,
             RequestTopic::Git => self.git_overlay_revision,
+            RequestTopic::AiInlineCompletion => self.ai_inline_revision,
             _ => 0,
         }
     }
 
     fn on_worker_event(&mut self, event: WorkerEvent) {
+        let request_id = event.request_id;
+        let revision_id = event.revision_id;
+        let topic = event.topic;
         if let crate::async_runtime::message::WorkerEventKind::Failed { error } = event.kind {
-            if event.topic == RequestTopic::LspClient {
+            if topic == RequestTopic::LspClient {
                 self.pending_lsp_server = None;
             }
-            if self.app_state.fail_pending_references_buffer(
-                event.request_id,
-                friendly_references_status(&error.message),
-            ) {
+            let references_status = if revision_id < self.references_request_revision {
+                stale_references_status()
+            } else {
+                friendly_references_status(&error.message)
+            };
+            if self
+                .app_state
+                .fail_pending_references_buffer(request_id, references_status)
+            {
                 self.editor_needs_layout = true;
                 self.editor_caret_needs_layout = false;
-                self.request_redraw();
+            }
+            if topic == RequestTopic::LspRequest && revision_id < self.references_request_revision {
+                eprintln!(
+                    "[AppShell] stale references failure ignored request_id={} revision={} latest_revision={}",
+                    request_id, revision_id, self.references_request_revision
+                );
             }
             eprintln!(
                 "[AppShell] worker {:?} failed (revision={}): {}",
-                event.topic, event.revision_id, error.message
+                topic, revision_id, error.message
             );
+            self.request_redraw();
         }
     }
 
     fn on_worker_result(&mut self, result: WorkerResult) {
         let request_id = result.request_id;
+        let revision_id = result.revision_id;
         match result.payload {
             WorkerResultPayload::ParseAndHighlight {
                 file_path,
@@ -65,6 +63,14 @@ impl AsyncResultRouter for AppShell {
                 if file_path != self.app_state.active_file().map(PathBuf::from) {
                     return;
                 }
+
+                let covered_byte_range = covered_byte_range.map(|window| {
+                    crate::syntax::highlight::expand_merge_window(
+                        &self.highlight_spans,
+                        &spans,
+                        window,
+                    )
+                });
 
                 crate::syntax::highlight::merge_highlight_spans(
                     &mut self.highlight_spans,
@@ -95,6 +101,11 @@ impl AsyncResultRouter for AppShell {
                         eprintln!("[AppShell] fs-event apply failed: {err}");
                     }
                 }
+                if self.maybe_refresh_workspace_git_branch(true) {
+                    self.request_redraw();
+                }
+                self.submit_workspace_git_status_refresh();
+                self.submit_active_buffer_git_baseline_refresh();
                 self.sync_explorer_expanded_with_workspace();
                 self.editor_needs_layout = true;
                 self.editor_caret_needs_layout = false;
@@ -132,12 +143,30 @@ impl AsyncResultRouter for AppShell {
                     self.request_redraw();
                 }
             }
+            WorkerResultPayload::LocalHistoryLoaded { file_path, history } => {
+                if self
+                    .app_state
+                    .reconcile_loaded_file_history(&file_path, history)
+                {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    self.request_redraw();
+                }
+            }
+            WorkerResultPayload::LocalHistorySaved { .. } => {}
             WorkerResultPayload::PtySpawned {
                 session_id,
                 shell,
                 working_dir,
             } => {
-                if let Some(buffer_index) = self.pending_lazygit_buffer_index.take() {
+                if self.maybe_refresh_workspace_git_branch(true) {
+                    self.request_redraw();
+                }
+                if let Some(buffer_index) = self
+                    .pending_lazygit_buffer_index
+                    .take()
+                    .or_else(|| self.pending_lazydocker_buffer_index.take())
+                {
                     eprintln!(
                         "[AppShell] terminal buffer ready: session={session_id} command={shell} dir={}",
                         working_dir.display()
@@ -283,15 +312,14 @@ impl AsyncResultRouter for AppShell {
             WorkerResultPayload::LspServerStarted {
                 server_name,
                 root_path,
-                capabilities_summary,
+                completion_trigger_chars,
             } => {
                 let started = ActiveLspServer {
                     server_name: server_name.clone(),
                     root_path: root_path.clone(),
                 };
                 self.active_lsp_server = Some(started.clone());
-                self.lsp_completion_trigger_chars =
-                    parse_lsp_completion_trigger_chars(&capabilities_summary);
+                self.lsp_completion_trigger_chars = completion_trigger_chars.clone();
                 if self.pending_lsp_server.as_ref() == Some(&started) {
                     self.pending_lsp_server = None;
                 }
@@ -300,10 +328,15 @@ impl AsyncResultRouter for AppShell {
                     server_name,
                     root_path.display()
                 );
-                self.submit_lsp_did_open_for_active_file();
+                if self.pending_lsp_document_sync.is_some() {
+                    let _ = self.force_flush_lsp_did_change_for_active_file();
+                } else {
+                    self.submit_lsp_did_open_for_active_file();
+                }
             }
             WorkerResultPayload::LspServerStopped { .. } => {
                 self.active_lsp_server = None;
+                self.pending_lsp_document_sync = None;
                 self.lsp_completion_trigger_chars.clear();
             }
             WorkerResultPayload::LspDiagnostics {
@@ -422,6 +455,7 @@ impl AsyncResultRouter for AppShell {
                             extension,
                             &self.theme,
                         ),
+                        &preview_text,
                         &self.theme,
                     );
                     let changed =
@@ -442,6 +476,21 @@ impl AsyncResultRouter for AppShell {
                 }
             }
             WorkerResultPayload::LspReferencesResult { locations, .. } => {
+                if revision_id < self.references_request_revision {
+                    if self
+                        .app_state
+                        .fail_pending_references_buffer(request_id, stale_references_status())
+                    {
+                        self.editor_needs_layout = true;
+                        self.editor_caret_needs_layout = false;
+                    }
+                    eprintln!(
+                        "[AppShell] stale references result ignored request_id={} revision={} latest_revision={}",
+                        request_id, revision_id, self.references_request_revision
+                    );
+                    self.request_redraw();
+                    return;
+                }
                 let workspace_root = self.app_state.workspace_root_path().map(PathBuf::from);
                 let items: Vec<crate::app::app_state::ReferencesBufferItem> = locations
                     .iter()
@@ -469,6 +518,40 @@ impl AsyncResultRouter for AppShell {
                     self.submit_references_preview_load();
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
+                }
+                self.request_redraw();
+            }
+            WorkerResultPayload::LspFormattingResult { uri, edits } => {
+                let Some(path) = lsp_uri_to_path(&uri) else {
+                    eprintln!("[AppShell] LSP formatting: cannot parse URI {uri}");
+                    return;
+                };
+                let Some(active_path) = self.app_state.active_file().map(PathBuf::from) else {
+                    return;
+                };
+                if active_path != path {
+                    return;
+                }
+
+                let mut formatted = self.app_state.text_string();
+                if !edits.is_empty() {
+                    match apply_lsp_text_edits(&formatted, &edits) {
+                        Ok(next) => formatted = next,
+                        Err(err) => {
+                            eprintln!("[AppShell] LSP formatting apply failed: {err}");
+                            return;
+                        }
+                    }
+                }
+
+                let changed = self
+                    .app_state
+                    .replace_active_document_text_preserve_cursor(&formatted);
+                if changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = true;
+                    self.submit_parse_for_active_buffer(true);
+                    self.force_flush_lsp_did_change_for_active_file();
                     self.request_redraw();
                 }
             }
@@ -539,11 +622,75 @@ impl AsyncResultRouter for AppShell {
                     self.request_redraw();
                 }
             }
+            WorkerResultPayload::WorkspaceGitStatus {
+                workspace_root,
+                statuses,
+            } => {
+                if self.app_state.workspace_root_path() != Some(workspace_root.as_path()) {
+                    return;
+                }
+                let mapped = statuses
+                    .into_iter()
+                    .map(|(path, status)| {
+                        let status = match status {
+                            crate::async_runtime::message::GitFileStatus::Modified => {
+                                crate::workspace::model::WorkspaceGitStatus::Modified
+                            }
+                            crate::async_runtime::message::GitFileStatus::Added => {
+                                crate::workspace::model::WorkspaceGitStatus::Added
+                            }
+                        };
+                        (path, status)
+                    })
+                    .collect();
+                if self.app_state.workspace_set_git_statuses(mapped) {
+                    self.mark_explorer_dirty();
+                    self.request_redraw();
+                }
+            }
+            WorkerResultPayload::BufferGitBaseline {
+                file_path,
+                baseline,
+            } => {
+                let baseline_changed = self.app_state.set_buffer_git_baseline(&file_path, baseline);
+                let status_changed = if self.app_state.active_file() == Some(file_path.as_path()) {
+                    self.app_state.recalculate_active_buffer_git_diff()
+                } else {
+                    false
+                };
+                if baseline_changed || status_changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    self.request_redraw();
+                }
+            }
+            WorkerResultPayload::AiInlineCompletionResult { suggestion } => {
+                if self.app_state.set_inline_suggestion(Some(suggestion)) {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    self.request_redraw();
+                }
+            }
             _ => {}
         }
     }
 
-    fn on_stale_result(&mut self, _stale: WorkerResult) {}
+    fn on_stale_result(&mut self, stale: WorkerResult) {
+        if let WorkerResultPayload::LspReferencesResult { .. } = stale.payload {
+            if self
+                .app_state
+                .fail_pending_references_buffer(stale.request_id, stale_references_status())
+            {
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+            }
+            eprintln!(
+                "[AppShell] bridge discarded stale references result request_id={} revision={} latest_revision={}",
+                stale.request_id, stale.revision_id, self.references_request_revision
+            );
+            self.request_redraw();
+        }
+    }
 }
 
 /// Convert `file:///path/to/file` URI thành PathBuf.
@@ -551,6 +698,59 @@ fn lsp_uri_to_path(uri: &str) -> Option<std::path::PathBuf> {
     let url = url::Url::parse(uri).ok()?;
     let path = url.to_file_path().ok()?;
     path.canonicalize().ok().or(Some(path))
+}
+
+fn apply_lsp_text_edits(
+    source: &str,
+    edits: &[crate::async_runtime::message::LspTextEdit],
+) -> Result<String, String> {
+    fn utf16_code_unit_to_byte_idx(text: &str, utf16_units: u32) -> Option<usize> {
+        let target = utf16_units as usize;
+        let mut seen = 0usize;
+        for (byte_idx, ch) in text.char_indices() {
+            if seen == target {
+                return Some(byte_idx);
+            }
+            seen += ch.len_utf16();
+            if seen > target {
+                return None;
+            }
+        }
+        (seen == target).then_some(text.len())
+    }
+
+    fn lsp_position_to_byte_idx(text: &str, line: u32, character: u32) -> Option<usize> {
+        let mut lines = text.split_inclusive('\n');
+        let mut byte_offset = 0usize;
+        for _ in 0..line {
+            byte_offset += lines.next()?.len();
+        }
+        let line_text = lines.next().unwrap_or("");
+        let line_without_newline = line_text.strip_suffix('\n').unwrap_or(line_text);
+        let byte_in_line = utf16_code_unit_to_byte_idx(line_without_newline, character)
+            .or_else(|| utf16_code_unit_to_byte_idx(line_text, character))?;
+        Some(byte_offset + byte_in_line)
+    }
+
+    let mut resolved = Vec::with_capacity(edits.len());
+    for edit in edits {
+        let start =
+            lsp_position_to_byte_idx(source, edit.range.start.line, edit.range.start.character)
+                .ok_or_else(|| "invalid LSP formatting start position".to_string())?;
+        let end = lsp_position_to_byte_idx(source, edit.range.end.line, edit.range.end.character)
+            .ok_or_else(|| "invalid LSP formatting end position".to_string())?;
+        if start > end || end > source.len() {
+            return Err("invalid LSP formatting edit range".to_string());
+        }
+        resolved.push((start, end, edit.new_text.as_str()));
+    }
+
+    resolved.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+    let mut result = source.to_string();
+    for (start, end, replacement) in resolved {
+        result.replace_range(start..end, replacement);
+    }
+    Ok(result)
 }
 
 /// Đọc ~(context*2+1) dòng code quanh `center_line` từ file để preview (gD).
@@ -590,6 +790,10 @@ fn friendly_references_status(message: &str) -> String {
     }
 }
 
+fn stale_references_status() -> String {
+    "References request superseded by newer request".to_string()
+}
+
 fn active_fuzzy_preview_target(app_state: &AppState) -> Option<(PathBuf, Option<usize>)> {
     match app_state.command_palette_selected_action()? {
         crate::app::command_palette::CommandPaletteAction::OpenFile(path) => Some((path, None)),
@@ -608,4 +812,205 @@ fn active_references_preview_target(app_state: &AppState) -> Option<(PathBuf, Op
 fn active_diagnostics_preview_target(app_state: &AppState) -> Option<(PathBuf, Option<usize>)> {
     let item = app_state.selected_diagnostic_item()?;
     Some((item.file_path.clone(), Some(item.line + 1)))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use crate::{
+        app::{app_state::ReferencesBufferItem, async_bridge::AsyncResultRouter},
+        async_runtime::message::{
+            FilePreviewLine, LspLocation, RequestTopic, WorkerEvent, WorkerEventKind,
+            WorkerFailure, WorkerFailureKind, WorkerResult, WorkerResultPayload,
+        },
+        lsp::client::path_to_lsp_uri,
+    };
+
+    use super::AppShell;
+
+    fn unique_temp_path(suffix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock drift")
+            .as_nanos();
+        std::env::temp_dir().join(format!("netherize_async_results_{suffix}_{nanos}"))
+    }
+
+    #[test]
+    fn references_result_clears_loading_and_populates_items() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = unique_temp_path("references_result.rs");
+        shell.app_state.open_pending_references_buffer(
+            "References",
+            Some(file_path.clone()),
+            0,
+            41,
+        );
+        shell.references_request_revision = 1;
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 41,
+                revision_id: 1,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspReferencesResult {
+                    locations: vec![LspLocation {
+                        uri: path_to_lsp_uri(&file_path),
+                        line: 7,
+                        character: 3,
+                    }],
+                },
+            },
+        );
+
+        let references = shell
+            .app_state
+            .active_references_buffer()
+            .expect("references buffer");
+        assert!(!references.loading);
+        assert_eq!(references.pending_request_id, None);
+        assert_eq!(references.items.len(), 1);
+        assert_eq!(references.items[0].line, 7);
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn stale_references_result_stops_loading_and_keeps_items_empty() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = unique_temp_path("stale_references_result.rs");
+        shell.app_state.open_pending_references_buffer(
+            "References",
+            Some(file_path.clone()),
+            0,
+            52,
+        );
+        shell.references_request_revision = 2;
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 52,
+                revision_id: 1,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspReferencesResult {
+                    locations: vec![LspLocation {
+                        uri: path_to_lsp_uri(&file_path),
+                        line: 4,
+                        character: 1,
+                    }],
+                },
+            },
+        );
+
+        let references = shell
+            .app_state
+            .active_references_buffer()
+            .expect("references buffer");
+        assert!(!references.loading);
+        assert_eq!(references.pending_request_id, None);
+        assert!(references.items.is_empty());
+        assert_eq!(
+            references.status_message.as_deref(),
+            Some("References request superseded by newer request")
+        );
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn failed_references_event_clears_loading_buffer() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        shell
+            .app_state
+            .open_pending_references_buffer("References", None, 0, 77);
+        shell.references_request_revision = 3;
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+
+        AsyncResultRouter::on_worker_event(
+            &mut shell,
+            WorkerEvent {
+                request_id: 77,
+                revision_id: 3,
+                topic: RequestTopic::LspRequest,
+                kind: WorkerEventKind::Failed {
+                    error: WorkerFailure {
+                        kind: WorkerFailureKind::Execution,
+                        message: "references: timed out waiting for response".to_string(),
+                    },
+                },
+            },
+        );
+
+        let references = shell
+            .app_state
+            .active_references_buffer()
+            .expect("references buffer");
+        assert!(!references.loading);
+        assert_eq!(
+            references.status_message.as_deref(),
+            Some("References request timed out")
+        );
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn references_preview_result_marks_editor_layout_dirty() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = unique_temp_path("references_preview.rs");
+        shell
+            .app_state
+            .open_references_buffer(
+                "References (1)",
+                None,
+                0,
+                vec![ReferencesBufferItem {
+                    path: file_path.clone(),
+                    relative_path: "references_preview.rs".to_string(),
+                    line: 4,
+                    column: 0,
+                    summary: "Ln 5, Col 1".to_string(),
+                }],
+            )
+            .expect("open references buffer");
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = true;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 1,
+                revision_id: 0,
+                topic: RequestTopic::FilePreview,
+                payload: WorkerResultPayload::FilePreviewLoaded {
+                    file_path,
+                    target_line: Some(5),
+                    lines: vec![FilePreviewLine {
+                        line_number: 5,
+                        text: "demo()".to_string(),
+                        is_target: true,
+                    }],
+                },
+            },
+        );
+
+        let references = shell
+            .app_state
+            .active_references_buffer()
+            .expect("references buffer");
+        assert_eq!(references.preview_lines.len(), 1);
+        assert!(shell.editor_needs_layout);
+        assert!(!shell.editor_caret_needs_layout);
+    }
 }

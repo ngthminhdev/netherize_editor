@@ -5,10 +5,12 @@ use std::{
 
 use super::{
     model::{
-        EditorThemeTokens, FileIconThemeTokens, IconThemeTokens, SyntaxThemeTokens, ThemeColor,
-        ThemeConfig, UiThemeTokens,
+        EditorThemeTokens, FileIconThemeTokens, GitThemeTokens, IconThemeTokens, SyntaxThemeTokens,
+        ThemeColor, ThemeConfig, UiThemeTokens,
     },
-    raw::{RawEditor, RawFileIconTheme, RawFileIcons, RawIcons, RawSyntax, RawThemeFile, RawUi},
+    raw::{
+        RawEditor, RawFileIconTheme, RawFileIcons, RawGit, RawIcons, RawSyntax, RawThemeFile, RawUi,
+    },
 };
 use crate::config::paths::{legacy_app_state_root, user_config_root};
 
@@ -117,6 +119,7 @@ impl ThemeConfig {
             theme,
             editor: raw_editor,
             ui: raw_ui,
+            git: raw_git,
             syntax: raw_syntax,
             icons: raw_icons,
             file_icons: raw_file_icons,
@@ -124,6 +127,7 @@ impl ThemeConfig {
 
         let editor = parse_editor(&raw_editor)?;
         let ui = parse_ui(&raw_ui, &raw_editor)?;
+        let git = parse_git(&raw_git, &ui)?;
         let syntax = parse_syntax(&raw_syntax)?;
         let icons = parse_icons(&raw_icons, &ui)?;
 
@@ -132,6 +136,7 @@ impl ThemeConfig {
             description: theme.description,
             editor,
             ui,
+            git,
             syntax,
             icons,
             exact_icons: parse_exact_file_icons(&raw_file_icons),
@@ -193,6 +198,35 @@ fn parse_exact_file_icons(raw: &RawFileIcons) -> HashMap<String, String> {
 }
 
 fn parse_editor(raw: &RawEditor) -> Result<EditorThemeTokens, String> {
+    let rainbow_brackets = if let Some(colors) = raw.rainbow_brackets.as_ref() {
+        let parsed = colors
+            .iter()
+            .enumerate()
+            .map(|(idx, value)| parse_color("editor", &format!("rainbow_brackets[{idx}]"), value))
+            .collect::<Result<Vec<_>, _>>()?;
+        if parsed.is_empty() {
+            vec![
+                ThemeColor::from_rgba_u8(47, 211, 246, 255),
+                ThemeColor::from_rgba_u8(231, 122, 233, 255),
+                ThemeColor::from_rgba_u8(245, 182, 58, 255),
+                ThemeColor::from_rgba_u8(155, 229, 100, 255),
+                ThemeColor::from_rgba_u8(255, 123, 114, 255),
+                ThemeColor::from_rgba_u8(183, 138, 255, 255),
+            ]
+        } else {
+            parsed
+        }
+    } else {
+        vec![
+            ThemeColor::from_rgba_u8(47, 211, 246, 255),
+            ThemeColor::from_rgba_u8(231, 122, 233, 255),
+            ThemeColor::from_rgba_u8(245, 182, 58, 255),
+            ThemeColor::from_rgba_u8(155, 229, 100, 255),
+            ThemeColor::from_rgba_u8(255, 123, 114, 255),
+            ThemeColor::from_rgba_u8(183, 138, 255, 255),
+        ]
+    };
+
     Ok(EditorThemeTokens {
         bg: parse_color("editor", "bg", &raw.bg)?,
         fg: parse_color("editor", "fg", &raw.fg)?,
@@ -204,6 +238,12 @@ fn parse_editor(raw: &RawEditor) -> Result<EditorThemeTokens, String> {
             "gutter_active",
             raw.gutter_active.as_deref().unwrap_or(raw.fg.as_str()),
         )?,
+        indent_guide: parse_color(
+            "editor",
+            "indent_guide",
+            raw.indent_guide.as_deref().unwrap_or("#8f98aa38"),
+        )?,
+        rainbow_brackets,
         font_size: parse_positive_size("editor", "font_size", raw.font_size.unwrap_or(17.0))?,
         line_height: parse_positive_size("editor", "line_height", raw.line_height.unwrap_or(26.0))?,
         font_family: raw
@@ -242,6 +282,13 @@ fn parse_ui(raw: &RawUi, raw_editor: &RawEditor) -> Result<UiThemeTokens, String
             "ui",
             "selection_bg",
             raw.selection_bg.as_deref().unwrap_or("#094771"),
+        )?,
+        dirty_indicator: parse_color(
+            "ui",
+            "dirty_indicator",
+            raw.dirty_indicator
+                .as_deref()
+                .unwrap_or(raw.accent.as_deref().unwrap_or("#9BE564")),
         )?,
         fg: parse_color(
             "ui",
@@ -333,10 +380,26 @@ fn parse_syntax(raw: &RawSyntax) -> Result<SyntaxThemeTokens, String> {
         comment: parse_color("syntax", "comment", &raw.comment)?,
         r#type: parse_color("syntax", "type", &raw.r#type)?,
         number: parse_color("syntax", "number", &raw.number)?,
+        boolean: parse_color(
+            "syntax",
+            "boolean",
+            raw.boolean
+                .as_deref()
+                .or(raw.constant.as_deref())
+                .unwrap_or(raw.number.as_str()),
+        )?,
         identifier: parse_color(
             "syntax",
             "identifier",
             raw.identifier.as_deref().unwrap_or("#d0d7e4"),
+        )?,
+        variable: parse_color(
+            "syntax",
+            "variable",
+            raw.variable
+                .as_deref()
+                .or(raw.identifier.as_deref())
+                .unwrap_or("#d0d7e4"),
         )?,
         parameter: parse_color(
             "syntax",
@@ -382,6 +445,14 @@ fn parse_syntax(raw: &RawSyntax) -> Result<SyntaxThemeTokens, String> {
             "punctuation",
             raw.punctuation.as_deref().unwrap_or("#8f98aa"),
         )?,
+        escape: parse_color(
+            "syntax",
+            "escape",
+            raw.escape
+                .as_deref()
+                .or(raw.constant.as_deref())
+                .unwrap_or(raw.number.as_str()),
+        )?,
         r#macro: parse_color(
             "syntax",
             "macro",
@@ -391,6 +462,65 @@ fn parse_syntax(raw: &RawSyntax) -> Result<SyntaxThemeTokens, String> {
             "syntax",
             "lifetime",
             raw.lifetime.as_deref().unwrap_or(raw.number.as_str()),
+        )?,
+        constructor: parse_color(
+            "syntax",
+            "constructor",
+            raw.constructor.as_deref().unwrap_or(raw.r#type.as_str()),
+        )?,
+        attribute: parse_color(
+            "syntax",
+            "attribute",
+            raw.attribute.as_deref().unwrap_or(raw.keyword.as_str()),
+        )?,
+        namespace: parse_color(
+            "syntax",
+            "namespace",
+            raw.namespace.as_deref().unwrap_or(raw.r#type.as_str()),
+        )?,
+        tag: parse_color(
+            "syntax",
+            "tag",
+            raw.tag.as_deref().unwrap_or(raw.r#type.as_str()),
+        )?,
+    })
+}
+
+fn parse_git(raw: &RawGit, ui: &UiThemeTokens) -> Result<GitThemeTokens, String> {
+    Ok(GitThemeTokens {
+        modified_sidebar: parse_color(
+            "git",
+            "modified_sidebar",
+            raw.modified_sidebar.as_deref().unwrap_or("#E2C08D"),
+        )?,
+        added_sidebar: parse_color(
+            "git",
+            "added_sidebar",
+            raw.added_sidebar.as_deref().unwrap_or("#7FD68C"),
+        )?,
+        modified_gutter: parse_color(
+            "git",
+            "modified_gutter",
+            raw.modified_gutter
+                .as_deref()
+                .or(raw.modified_sidebar.as_deref())
+                .unwrap_or_else(|| {
+                    let _ = ui.warning;
+                    "#E2C08D"
+                }),
+        )?,
+        added_gutter: parse_color(
+            "git",
+            "added_gutter",
+            raw.added_gutter
+                .as_deref()
+                .or(raw.added_sidebar.as_deref())
+                .unwrap_or("#50D890"),
+        )?,
+        deleted_gutter: parse_color(
+            "git",
+            "deleted_gutter",
+            raw.deleted_gutter.as_deref().unwrap_or("#F14C4C"),
         )?,
     })
 }

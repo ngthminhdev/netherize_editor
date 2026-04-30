@@ -1,7 +1,7 @@
 use crate::{
     app::{app_state::ClipboardRecordKind, command_palette::CommandPaletteMode},
     core::{
-        commands::{Command, Operator},
+        commands::{Command, OperationTarget, Operator},
         mode::{EditorMode, ModeEvent},
     },
 };
@@ -71,6 +71,21 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             let changed = ctx.app_state.smart_insert_newline();
             DispatchReport::success(
                 "Dispatch: applied to active buffer (insert newline)",
+                changed,
+            )
+        }
+        Command::InsertTab => {
+            let changed = ctx.app_state.insert_tab();
+            DispatchReport::success("Dispatch: applied to active buffer (insert tab)", changed)
+        }
+        Command::AiAcceptInline => {
+            let changed = ctx.app_state.accept_inline_suggestion();
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: applied to active buffer (accept inline suggestion)"
+                } else {
+                    "Dispatch: accept inline suggestion ignored (no suggestion)"
+                },
                 changed,
             )
         }
@@ -222,20 +237,20 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 changed,
             )
         }
-        Command::DeleteCurrentLine => {
-            let clipboard_text = ctx.app_state.delete_current_line_text();
-            ctx.write_text_to_clipboard_and_remember(clipboard_text, ClipboardRecordKind::Linewise);
-            let changed = ctx.app_state.delete_current_line();
-            ctx.commit_text_transaction(changed);
-            DispatchReport::success(
-                if changed {
-                    "Dispatch: applied to active buffer (delete current line)".to_string()
-                } else {
-                    "Dispatch: delete current line ignored".to_string()
-                },
-                changed,
-            )
-        }
+        Command::DeleteCurrentLine => dispatch(
+            ctx,
+            Command::Operate {
+                op: Operator::Delete,
+                target: OperationTarget::CurrentLine,
+            },
+        ),
+        Command::DeleteToLineEnd => dispatch(
+            ctx,
+            Command::Operate {
+                op: Operator::Delete,
+                target: OperationTarget::Motion(crate::core::commands::Motion::LineEnd),
+            },
+        ),
         Command::ToggleLineComment => {
             let changed = ctx.app_state.toggle_line_comment();
             ctx.commit_text_transaction(changed);
@@ -248,34 +263,20 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 changed,
             )
         }
-        Command::DeleteWordForward => {
-            let clipboard_text = ctx.app_state.delete_word_forward_text();
-            ctx.write_text_to_clipboard_and_remember(clipboard_text, ClipboardRecordKind::Charwise);
-            let changed = ctx.app_state.delete_word_forward();
-            ctx.commit_text_transaction(changed);
-            DispatchReport::success(
-                if changed {
-                    "Dispatch: applied to active buffer (delete word forward)".to_string()
-                } else {
-                    "Dispatch: delete word forward ignored".to_string()
-                },
-                changed,
-            )
-        }
-        Command::DeleteWordBackward => {
-            let clipboard_text = ctx.app_state.delete_word_backward_text();
-            ctx.write_text_to_clipboard_and_remember(clipboard_text, ClipboardRecordKind::Charwise);
-            let changed = ctx.app_state.delete_word_backward();
-            ctx.commit_text_transaction(changed);
-            DispatchReport::success(
-                if changed {
-                    "Dispatch: applied to active buffer (delete word backward)".to_string()
-                } else {
-                    "Dispatch: delete word backward ignored".to_string()
-                },
-                changed,
-            )
-        }
+        Command::DeleteWordForward => dispatch(
+            ctx,
+            Command::Operate {
+                op: Operator::Delete,
+                target: OperationTarget::Motion(crate::core::commands::Motion::WordForward),
+            },
+        ),
+        Command::DeleteWordBackward => dispatch(
+            ctx,
+            Command::Operate {
+                op: Operator::Delete,
+                target: OperationTarget::Motion(crate::core::commands::Motion::WordBackward),
+            },
+        ),
         Command::YankSelection => {
             let Some(selection_text) = ctx.app_state.visual_selection_text() else {
                 return DispatchReport::success_with_flags(
@@ -302,42 +303,20 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
 
             DispatchReport::success("Dispatch: yanked visual selection", changed)
         }
-        Command::YankCurrentLine => {
-            let Some(line_text) = ctx.app_state.yank_current_line_text() else {
-                return DispatchReport::success_with_flags(
-                    "Dispatch: yank current line ignored",
-                    false,
-                    false,
-                );
-            };
-
-            ctx.remember_clipboard_text(&line_text, ClipboardRecordKind::Linewise);
-            if !ctx.write_text_to_clipboard(Some(line_text)) {
-                return DispatchReport::failure(
-                    "Dispatch: yank current line failed (clipboard unavailable)",
-                );
-            }
-
-            DispatchReport::success_with_flags("Dispatch: yanked current line", false, false)
-        }
-        Command::YankToWordEnd => {
-            let Some(word_text) = ctx.app_state.yank_to_word_end_text() else {
-                return DispatchReport::success_with_flags(
-                    "Dispatch: yank to word end ignored",
-                    false,
-                    false,
-                );
-            };
-
-            ctx.remember_clipboard_text(&word_text, ClipboardRecordKind::Charwise);
-            if !ctx.write_text_to_clipboard(Some(word_text)) {
-                return DispatchReport::failure(
-                    "Dispatch: yank to word end failed (clipboard unavailable)",
-                );
-            }
-
-            DispatchReport::success_with_flags("Dispatch: yanked to word end", false, false)
-        }
+        Command::YankCurrentLine => dispatch(
+            ctx,
+            Command::Operate {
+                op: Operator::Yank,
+                target: OperationTarget::CurrentLine,
+            },
+        ),
+        Command::YankToWordEnd => dispatch(
+            ctx,
+            Command::Operate {
+                op: Operator::Yank,
+                target: OperationTarget::Motion(crate::core::commands::Motion::WordEnd),
+            },
+        ),
         Command::Undo => {
             let changed = ctx.app_state.undo();
             DispatchReport::success(
@@ -562,50 +541,39 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 changed,
             )
         }
-        Command::ChangeWordForward => match ctx.enter_insert_mode_if_needed() {
-            Ok(mode_changed) => {
-                let clipboard_text = ctx.app_state.delete_word_forward_text();
-                ctx.write_text_to_clipboard_and_remember(
-                    clipboard_text,
-                    ClipboardRecordKind::Charwise,
-                );
-                let text_changed = ctx.app_state.change_word_forward();
-                let changed = text_changed || mode_changed;
-                DispatchReport::success(
-                    if changed {
-                        "Dispatch: changed word forward and entered insert".to_string()
-                    } else {
-                        "Dispatch: change word forward ignored".to_string()
-                    },
-                    changed,
-                )
-            }
-            Err(err) => {
-                DispatchReport::failure(format!("Dispatch: change word forward rejected ({err})"))
-            }
-        },
-        Command::ChangeWordBackward => match ctx.enter_insert_mode_if_needed() {
-            Ok(mode_changed) => {
-                let clipboard_text = ctx.app_state.delete_word_backward_text();
-                ctx.write_text_to_clipboard_and_remember(
-                    clipboard_text,
-                    ClipboardRecordKind::Charwise,
-                );
-                let text_changed = ctx.app_state.change_word_backward();
-                let changed = text_changed || mode_changed;
-                DispatchReport::success(
-                    if changed {
-                        "Dispatch: changed word backward and entered insert".to_string()
-                    } else {
-                        "Dispatch: change word backward ignored".to_string()
-                    },
-                    changed,
-                )
-            }
-            Err(err) => {
-                DispatchReport::failure(format!("Dispatch: change word backward rejected ({err})"))
-            }
-        },
+        Command::ChangeWordForward => dispatch(
+            ctx,
+            Command::Operate {
+                op: Operator::Change,
+                target: OperationTarget::Motion(crate::core::commands::Motion::WordForward),
+            },
+        ),
+        Command::ChangeWordBackward => dispatch(
+            ctx,
+            Command::Operate {
+                op: Operator::Change,
+                target: OperationTarget::Motion(crate::core::commands::Motion::WordBackward),
+            },
+        ),
+        Command::ChangeToLineEnd => dispatch(
+            ctx,
+            Command::Operate {
+                op: Operator::Change,
+                target: OperationTarget::Motion(crate::core::commands::Motion::LineEnd),
+            },
+        ),
+        Command::JoinLines => {
+            let changed = ctx.app_state.join_line_below();
+            ctx.commit_text_transaction(changed);
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: joined line below".to_string()
+                } else {
+                    "Dispatch: join lines ignored".to_string()
+                },
+                changed,
+            )
+        }
         Command::ReplaceChar(ch) => {
             let changed = ctx.app_state.replace_char_at_cursor(ch);
             ctx.commit_text_transaction(changed);
@@ -618,97 +586,75 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 changed,
             )
         }
-        Command::TextObjectAction { op, modifier, kind } => {
-            let mut changed = false;
-
-            match op {
-                Operator::Visual => {
-                    changed = ctx.app_state.select_text_object(modifier, kind);
-                    DispatchReport::success(
+        Command::TextObjectAction { op, modifier, kind } => dispatch(
+            ctx,
+            Command::Operate {
+                op,
+                target: OperationTarget::TextObject { modifier, kind },
+            },
+        ),
+        Command::Operate { op, target } => {
+            if op == Operator::Visual {
+                if let OperationTarget::TextObject { modifier, kind } = target {
+                    let changed = ctx.app_state.select_text_object(modifier, kind);
+                    return DispatchReport::success(
                         if changed {
                             format!("Dispatch: selected text object {:?} {:?}", modifier, kind)
                         } else {
                             "Dispatch: select text object ignored (bounds not found)".to_string()
                         },
                         changed,
-                    )
-                }
-                Operator::Delete => {
-                    let clipboard_text = ctx.app_state.text_object_text(modifier, kind);
-                    ctx.write_text_to_clipboard_and_remember(
-                        clipboard_text,
-                        ClipboardRecordKind::Charwise,
                     );
-                    if ctx.app_state.current_mode() == EditorMode::Visual {
-                        let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal);
-                    }
-                    changed = ctx.app_state.delete_text_object(modifier, kind);
-                    if changed {
-                        if ctx.app_state.current_mode() != EditorMode::Normal {
-                            let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal);
-                        }
-                        ctx.commit_text_transaction(true);
-                    }
-                    DispatchReport::success(
-                        if changed {
-                            format!("Dispatch: deleted text object {:?} {:?}", modifier, kind)
-                        } else {
-                            "Dispatch: delete text object ignored (bounds not found)".to_string()
-                        },
-                        changed,
-                    )
                 }
-                Operator::Change => {
-                    let clipboard_text = ctx.app_state.text_object_text(modifier, kind);
-                    ctx.write_text_to_clipboard_and_remember(
-                        clipboard_text,
-                        ClipboardRecordKind::Charwise,
-                    );
-                    if ctx.app_state.current_mode() == EditorMode::Visual {
-                        let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal);
-                    }
-                    changed = ctx.app_state.delete_text_object(modifier, kind);
-                    if !changed {
-                        return DispatchReport::success_with_flags(
-                            "Dispatch: change text object ignored (bounds not found)",
-                            false,
-                            false,
-                        );
-                    }
-                    let mode_changed = ctx.enter_insert_mode_if_needed().unwrap_or(false);
-                    DispatchReport::success(
-                        format!(
-                            "Dispatch: changed text object {:?} {:?} and entered insert",
-                            modifier, kind
-                        ),
-                        changed || mode_changed,
-                    )
-                }
-                Operator::Yank => {
-                    let yank_text = ctx.app_state.text_object_text(modifier, kind);
-                    if let Some(text) = yank_text.as_deref() {
-                        ctx.remember_clipboard_text(text, ClipboardRecordKind::Charwise);
-                    }
-                    let yanked = ctx.write_text_to_clipboard(yank_text);
-                    if ctx.app_state.current_mode() == EditorMode::Visual
-                        && let Ok(result) = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal)
-                    {
-                        changed |= result.changed;
-                    }
-                    changed |= ctx.app_state.clear_visual_selection();
-
-                    DispatchReport {
-                        message: if yanked {
-                            format!("Dispatch: yanked text object {:?} {:?}", modifier, kind)
-                        } else {
-                            "Dispatch: yank text object failed (clipboard unavailable or bounds not found)".to_string()
-                        },
-                        request_redraw: changed,
-                        success: yanked,
-                        state_changed: changed,
-                    }
-                }
+                return DispatchReport::success_with_flags(
+                    "Dispatch: visual operator ignored for non-text-object target",
+                    false,
+                    false,
+                );
             }
+
+            let Some((clipboard_text, kind)) = ctx.app_state.operation_text(target, op) else {
+                return DispatchReport::success_with_flags(
+                    "Dispatch: operate ignored (range not found)",
+                    false,
+                    false,
+                );
+            };
+            ctx.write_text_to_clipboard_and_remember(Some(clipboard_text), kind);
+
+            if op == Operator::Yank {
+                let mut changed = false;
+                if ctx.app_state.current_mode() == EditorMode::Visual
+                    && let Ok(result) = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal)
+                {
+                    changed |= result.changed;
+                }
+                changed |= ctx.app_state.clear_visual_selection();
+                return DispatchReport::success("Dispatch: yanked operation target", changed);
+            }
+
+            let changed = ctx.app_state.apply_operation(target, op);
+            if !changed {
+                return DispatchReport::success_with_flags(
+                    "Dispatch: operation ignored (apply failed)",
+                    false,
+                    false,
+                );
+            }
+
+            if op == Operator::Change {
+                let mode_changed = ctx.enter_insert_mode_if_needed().unwrap_or(false);
+                return DispatchReport::success(
+                    "Dispatch: changed operation target and entered insert",
+                    changed || mode_changed,
+                );
+            }
+
+            if ctx.app_state.current_mode() != EditorMode::Normal {
+                let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal);
+            }
+            ctx.commit_text_transaction(true);
+            DispatchReport::success("Dispatch: deleted operation target", true)
         }
         _ => unreachable!("editing::dispatch received non-editing command"),
     }

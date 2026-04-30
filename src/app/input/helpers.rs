@@ -2,7 +2,7 @@ use winit::keyboard::{KeyCode, NamedKey};
 
 use crate::{
     app::input_map::{InputFocusContext, KeybindingContext},
-    core::commands::{TextObjectKind, TextObjectModifier},
+    core::commands::{FindMotionKind, Motion, TextObjectKind, TextObjectModifier},
     core::mode::EditorMode,
 };
 
@@ -73,6 +73,7 @@ pub(super) fn numeric_count_digit_from_input(
             PendingState::ReplaceChar
                 | PendingState::Leader
                 | PendingState::Sequence
+                | PendingState::OperatorFindChar { .. }
                 | PendingState::OperatorWithObject { .. }
                 | PendingState::VisualTextObjectModifier { .. }
                 | PendingState::LeapChar
@@ -150,6 +151,7 @@ pub(super) fn text_object_kind_from_input(input: &NormalizedInput) -> Option<Tex
 
     if let Some(text) = input.text.as_deref() {
         match text {
+            "w" => return Some(TextObjectKind::Word),
             "b" => return Some(TextObjectKind::Bracket('(', ')')),
             "B" => return Some(TextObjectKind::Bracket('{', '}')),
             "\"" => return Some(TextObjectKind::Quote('"')),
@@ -214,6 +216,58 @@ pub(super) fn text_object_kind_from_input(input: &NormalizedInput) -> Option<Tex
     }
 
     None
+}
+
+pub(super) fn motion_from_input(input: &NormalizedInput) -> Option<Motion> {
+    if input.has_command_modifier() || input.modifiers.alt_key() {
+        return None;
+    }
+
+    match input.text.as_deref() {
+        Some("w") => Some(Motion::WordForward),
+        Some("b") => Some(Motion::WordBackward),
+        Some("e") => Some(Motion::WordEnd),
+        Some("0") => Some(Motion::LineStart),
+        Some("^") => Some(Motion::FirstNonWhitespace),
+        Some("$") => Some(Motion::LineEnd),
+        Some("G") => Some(Motion::LastLine),
+        _ => match input.physical_key {
+            Some(KeyCode::Digit0) => Some(Motion::LineStart),
+            Some(KeyCode::Digit6) if input.modifiers.shift_key() => {
+                Some(Motion::FirstNonWhitespace)
+            }
+            Some(KeyCode::Digit4) if input.modifiers.shift_key() => Some(Motion::LineEnd),
+            Some(KeyCode::KeyW) => Some(Motion::WordForward),
+            Some(KeyCode::KeyB) if !input.modifiers.shift_key() => Some(Motion::WordBackward),
+            Some(KeyCode::KeyE) => Some(Motion::WordEnd),
+            Some(KeyCode::KeyG) if input.modifiers.shift_key() => Some(Motion::LastLine),
+            _ => None,
+        },
+    }
+}
+
+pub(super) fn find_motion_prefix_from_input(input: &NormalizedInput) -> Option<FindMotionKind> {
+    if input.has_command_modifier() || input.modifiers.alt_key() {
+        return None;
+    }
+
+    match input.text.as_deref() {
+        Some("f") => Some(FindMotionKind::ForwardTo),
+        Some("t") => Some(FindMotionKind::ForwardTill),
+        Some("F") => Some(FindMotionKind::BackwardTo),
+        Some("T") => Some(FindMotionKind::BackwardTill),
+        _ => match input.physical_key {
+            Some(KeyCode::KeyF) if !input.modifiers.shift_key() => Some(FindMotionKind::ForwardTo),
+            Some(KeyCode::KeyT) if !input.modifiers.shift_key() => {
+                Some(FindMotionKind::ForwardTill)
+            }
+            Some(KeyCode::KeyF) if input.modifiers.shift_key() => Some(FindMotionKind::BackwardTo),
+            Some(KeyCode::KeyT) if input.modifiers.shift_key() => {
+                Some(FindMotionKind::BackwardTill)
+            }
+            _ => None,
+        },
+    }
 }
 
 pub(super) fn replace_char_from_input(input: &NormalizedInput) -> Option<char> {
@@ -285,13 +339,70 @@ pub(super) fn terminal_input_payload(input: &NormalizedInput) -> Option<String> 
         if text.is_empty() || text.chars().any(char::is_control) {
             return None;
         }
+        let payload = if input.modifiers.shift_key()
+            && text.chars().count() == 1
+            && text
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_lowercase())
+        {
+            text.to_ascii_uppercase()
+        } else {
+            text.to_string()
+        };
         if input.modifiers.alt_key() && !input.modifiers.control_key() {
-            return Some(format!("\u{1b}{text}"));
+            return Some(format!("\u{1b}{payload}"));
         }
-        return Some(text.to_string());
+        return Some(payload);
+    }
+
+    if !input.modifiers.control_key()
+        && let Some(payload) =
+            shifted_letter_payload(input.physical_key, input.modifiers.shift_key())
+    {
+        if input.modifiers.alt_key() {
+            return Some(format!("\u{1b}{payload}"));
+        }
+        return Some(payload.to_string());
     }
 
     None
+}
+
+fn shifted_letter_payload(physical_key: Option<KeyCode>, shifted: bool) -> Option<&'static str> {
+    if !shifted {
+        return None;
+    }
+
+    match physical_key? {
+        KeyCode::KeyA => Some("A"),
+        KeyCode::KeyB => Some("B"),
+        KeyCode::KeyC => Some("C"),
+        KeyCode::KeyD => Some("D"),
+        KeyCode::KeyE => Some("E"),
+        KeyCode::KeyF => Some("F"),
+        KeyCode::KeyG => Some("G"),
+        KeyCode::KeyH => Some("H"),
+        KeyCode::KeyI => Some("I"),
+        KeyCode::KeyJ => Some("J"),
+        KeyCode::KeyK => Some("K"),
+        KeyCode::KeyL => Some("L"),
+        KeyCode::KeyM => Some("M"),
+        KeyCode::KeyN => Some("N"),
+        KeyCode::KeyO => Some("O"),
+        KeyCode::KeyP => Some("P"),
+        KeyCode::KeyQ => Some("Q"),
+        KeyCode::KeyR => Some("R"),
+        KeyCode::KeyS => Some("S"),
+        KeyCode::KeyT => Some("T"),
+        KeyCode::KeyU => Some("U"),
+        KeyCode::KeyV => Some("V"),
+        KeyCode::KeyW => Some("W"),
+        KeyCode::KeyX => Some("X"),
+        KeyCode::KeyY => Some("Y"),
+        KeyCode::KeyZ => Some("Z"),
+        _ => None,
+    }
 }
 
 fn control_sequence_for_physical(physical_key: Option<KeyCode>) -> Option<&'static str> {

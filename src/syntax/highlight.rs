@@ -20,15 +20,22 @@ pub enum HighlightCategory {
     Type,
     Function,
     Number,
+    Boolean,
     Identifier,
+    Variable,
     Parameter,
     Field,
     Property,
     Constant,
     Operator,
     Punctuation,
+    Escape,
     Macro,
     Lifetime,
+    Constructor,
+    Attribute,
+    Namespace,
+    Tag,
 }
 
 impl HighlightCategory {
@@ -40,15 +47,22 @@ impl HighlightCategory {
             Self::Type => "type",
             Self::Function => "function",
             Self::Number => "number",
+            Self::Boolean => "boolean",
             Self::Identifier => "identifier",
+            Self::Variable => "variable",
             Self::Parameter => "parameter",
             Self::Field => "field",
             Self::Property => "property",
             Self::Constant => "constant",
             Self::Operator => "operator",
             Self::Punctuation => "punctuation",
+            Self::Escape => "escape",
             Self::Macro => "macro",
             Self::Lifetime => "lifetime",
+            Self::Constructor => "constructor",
+            Self::Attribute => "attribute",
+            Self::Namespace => "namespace",
+            Self::Tag => "tag",
         }
     }
 
@@ -64,17 +78,24 @@ impl HighlightCategory {
         match self {
             // Narrow but expressive captures should win over the generic fallback.
             Self::Comment => 120,
+            Self::Escape => 115,
             Self::Macro => 110,
             Self::String => 100,
             Self::Lifetime => 95,
+            Self::Attribute => 93,
             Self::Keyword => 90,
+            Self::Boolean => 88,
             Self::Function => 85,
+            Self::Constructor => 84,
             Self::Constant => 83,
             Self::Parameter => 80,
             Self::Field => 78,
             Self::Property => 76,
+            Self::Namespace => 74,
+            Self::Tag => 73,
             Self::Type => 72,
             Self::Number => 68,
+            Self::Variable => 42,
             Self::Identifier => 40,
             Self::Operator => 20,
             Self::Punctuation => 10,
@@ -121,15 +142,22 @@ pub struct HighlightPalette {
     pub ty: [u8; 4],
     pub function: [u8; 4],
     pub number: [u8; 4],
+    pub boolean: [u8; 4],
     pub identifier: [u8; 4],
+    pub variable: [u8; 4],
     pub parameter: [u8; 4],
     pub field: [u8; 4],
     pub property: [u8; 4],
     pub constant: [u8; 4],
     pub operator: [u8; 4],
     pub punctuation: [u8; 4],
+    pub escape: [u8; 4],
     pub macro_name: [u8; 4],
     pub lifetime: [u8; 4],
+    pub constructor: [u8; 4],
+    pub attribute: [u8; 4],
+    pub namespace: [u8; 4],
+    pub tag: [u8; 4],
 }
 
 impl Default for HighlightPalette {
@@ -141,15 +169,22 @@ impl Default for HighlightPalette {
             ty: [183, 138, 255, 255],
             function: [105, 195, 255, 255],
             number: [227, 85, 53, 255],
+            boolean: [255, 149, 92, 255],
             identifier: [208, 215, 228, 255],
+            variable: [208, 215, 228, 255],
             parameter: [34, 236, 219, 255],
             field: [105, 195, 255, 255],
             property: [208, 215, 228, 255],
             constant: [255, 149, 92, 255],
             operator: [175, 187, 210, 255],
             punctuation: [129, 150, 181, 255],
+            escape: [255, 149, 92, 255],
             macro_name: [105, 195, 255, 255],
             lifetime: [255, 149, 92, 255],
+            constructor: [183, 138, 255, 255],
+            attribute: [234, 205, 97, 255],
+            namespace: [183, 138, 255, 255],
+            tag: [183, 138, 255, 255],
         }
     }
 }
@@ -163,15 +198,22 @@ impl HighlightPalette {
             HighlightCategory::Type => self.ty,
             HighlightCategory::Function => self.function,
             HighlightCategory::Number => self.number,
+            HighlightCategory::Boolean => self.boolean,
             HighlightCategory::Identifier => self.identifier,
+            HighlightCategory::Variable => self.variable,
             HighlightCategory::Parameter => self.parameter,
             HighlightCategory::Field => self.field,
             HighlightCategory::Property => self.property,
             HighlightCategory::Constant => self.constant,
             HighlightCategory::Operator => self.operator,
             HighlightCategory::Punctuation => self.punctuation,
+            HighlightCategory::Escape => self.escape,
             HighlightCategory::Macro => self.macro_name,
             HighlightCategory::Lifetime => self.lifetime,
+            HighlightCategory::Constructor => self.constructor,
+            HighlightCategory::Attribute => self.attribute,
+            HighlightCategory::Namespace => self.namespace,
+            HighlightCategory::Tag => self.tag,
         }
     }
 }
@@ -468,25 +510,51 @@ fn capture_category(capture_name: &str) -> Option<HighlightCategory> {
         "syntax.type" => Some(HighlightCategory::Type),
         "syntax.function" => Some(HighlightCategory::Function),
         "syntax.number" => Some(HighlightCategory::Number),
+        "syntax.boolean" => Some(HighlightCategory::Boolean),
         "syntax.identifier" => Some(HighlightCategory::Identifier),
+        "syntax.variable" => Some(HighlightCategory::Variable),
         "syntax.parameter" => Some(HighlightCategory::Parameter),
         "syntax.field" => Some(HighlightCategory::Field),
         "syntax.property" => Some(HighlightCategory::Property),
         "syntax.constant" => Some(HighlightCategory::Constant),
         "syntax.operator" => Some(HighlightCategory::Operator),
         "syntax.punctuation" => Some(HighlightCategory::Punctuation),
+        "syntax.escape" => Some(HighlightCategory::Escape),
         "syntax.macro" => Some(HighlightCategory::Macro),
         "syntax.lifetime" => Some(HighlightCategory::Lifetime),
+        "syntax.constructor" => Some(HighlightCategory::Constructor),
+        "syntax.attribute" => Some(HighlightCategory::Attribute),
+        "syntax.namespace" => Some(HighlightCategory::Namespace),
+        "syntax.tag" => Some(HighlightCategory::Tag),
         "macro" | "function.macro" | "constructor.macro" => Some(HighlightCategory::Macro),
         "lifetime" => Some(HighlightCategory::Lifetime),
+        "attribute" | "attribute.builtin" | "attribute.attribute" => {
+            Some(HighlightCategory::Attribute)
+        }
         "field" => Some(HighlightCategory::Field),
         "property" => Some(HighlightCategory::Property),
+        "constructor" => Some(HighlightCategory::Constructor),
+        "type.builtin" | "builtin.type" => Some(HighlightCategory::Type),
+        "constant.builtin.boolean" | "boolean" => Some(HighlightCategory::Boolean),
+        "constant.builtin" => Some(HighlightCategory::Constant),
+        "function.builtin" | "function.method" | "method.call" => Some(HighlightCategory::Function),
+        "module" | "namespace" => Some(HighlightCategory::Namespace),
+        "tag" | "tag.builtin" => Some(HighlightCategory::Tag),
+        "label" => Some(HighlightCategory::Property),
         "identifier" => Some(HighlightCategory::Identifier),
+        "variable" | "variable.builtin" => Some(HighlightCategory::Variable),
         "operator" => Some(HighlightCategory::Operator),
+        "escape" | "string.escape" | "character.escape" => Some(HighlightCategory::Escape),
         _ if capture_name.starts_with("comment") => Some(HighlightCategory::Comment),
         _ if capture_name.starts_with("keyword") => Some(HighlightCategory::Keyword),
         _ if capture_name.starts_with("string") => Some(HighlightCategory::String),
+        _ if capture_name.starts_with("escape") || capture_name.ends_with(".escape") => {
+            Some(HighlightCategory::Escape)
+        }
+        _ if capture_name.starts_with("embedded") => Some(HighlightCategory::String),
         _ if capture_name.starts_with("type") => Some(HighlightCategory::Type),
+        _ if capture_name.starts_with("constructor") => Some(HighlightCategory::Constructor),
+        _ if capture_name.starts_with("attribute") => Some(HighlightCategory::Attribute),
         _ if capture_name.starts_with("function") || capture_name.starts_with("method") => {
             Some(HighlightCategory::Function)
         }
@@ -503,16 +571,23 @@ fn capture_category(capture_name: &str) -> Option<HighlightCategory> {
         }
         _ if capture_name.starts_with("field") => Some(HighlightCategory::Field),
         _ if capture_name.starts_with("property") => Some(HighlightCategory::Property),
-        _ if capture_name.starts_with("constant")
-            || capture_name == "boolean"
-            || capture_name == "enum_member" =>
+        _ if capture_name.starts_with("label") => Some(HighlightCategory::Property),
+        _ if capture_name.starts_with("module") || capture_name.starts_with("namespace") => {
+            Some(HighlightCategory::Namespace)
+        }
+        _ if capture_name.starts_with("tag") => Some(HighlightCategory::Tag),
+        _ if capture_name.starts_with("constant.builtin.boolean")
+            || capture_name.starts_with("boolean") =>
         {
+            Some(HighlightCategory::Boolean)
+        }
+        _ if capture_name.starts_with("constant") || capture_name == "enum_member" => {
             Some(HighlightCategory::Constant)
         }
         _ if capture_name.starts_with("operator") => Some(HighlightCategory::Operator),
         _ if capture_name.starts_with("punctuation") => Some(HighlightCategory::Punctuation),
         _ if capture_name.starts_with("lifetime") => Some(HighlightCategory::Lifetime),
-        _ if capture_name.starts_with("variable") => Some(HighlightCategory::Identifier),
+        _ if capture_name.starts_with("variable") => Some(HighlightCategory::Variable),
         _ => None,
     }
 }
@@ -665,6 +740,28 @@ fn transform_span_by_edit(span: HighlightSpan, edit: HighlightEdit) -> Option<Hi
         range: new_start..new_end,
         category: span.category,
     })
+}
+
+pub fn expand_merge_window(
+    existing: &[HighlightSpan],
+    replacement: &[HighlightSpan],
+    mut window: Range<usize>,
+) -> Range<usize> {
+    for span in existing {
+        if span.range.end > window.start && span.range.start < window.end {
+            window.start = window.start.min(span.range.start);
+            window.end = window.end.max(span.range.end);
+        }
+    }
+
+    for span in replacement {
+        if span.range.end > window.start && span.range.start < window.end {
+            window.start = window.start.min(span.range.start);
+            window.end = window.end.max(span.range.end);
+        }
+    }
+
+    window
 }
 
 fn coalesce_spans(mut spans: Vec<HighlightSpan>) -> Vec<HighlightSpan> {
@@ -981,6 +1078,23 @@ func greet(name string) string {
     }
 
     #[test]
+    fn expand_merge_window_absorbs_intersecting_existing_and_replacement_spans() {
+        let existing = vec![HighlightSpan {
+            range: 0..10,
+            category: HighlightCategory::Comment,
+        }];
+        let replacement = vec![HighlightSpan {
+            range: 4..6,
+            category: HighlightCategory::Keyword,
+        }];
+
+        assert_eq!(
+            super::expand_merge_window(&existing, &replacement, 5..6),
+            0..10
+        );
+    }
+
+    #[test]
     fn semantic_overrides_replace_tree_sitter_in_same_range() {
         let base = vec![
             HighlightSpan {
@@ -1023,5 +1137,25 @@ func greet(name string) string {
         assert!(should_highlight_inline("fn main() {}\n"));
         let large = "x".repeat(super::INLINE_TREE_SITTER_BYTE_THRESHOLD + 1);
         assert!(!should_highlight_inline(&large));
+    }
+
+    #[test]
+    fn capture_category_maps_high_value_builtin_and_structure_tokens() {
+        assert_eq!(
+            super::capture_category("function.builtin"),
+            Some(HighlightCategory::Function)
+        );
+        assert_eq!(
+            super::capture_category("constant.builtin.boolean"),
+            Some(HighlightCategory::Boolean)
+        );
+        assert_eq!(
+            super::capture_category("module"),
+            Some(HighlightCategory::Namespace)
+        );
+        assert_eq!(
+            super::capture_category("label"),
+            Some(HighlightCategory::Property)
+        );
     }
 }

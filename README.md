@@ -49,7 +49,16 @@ netherize_editor/
 │   ├── editor_core.rs             # Legacy EditorBuffer (ropey-backed), kept for reference
 │   │
 │   ├── app/                       # Application shell
-│   │   ├── app_state.rs           # AppState — authoritative editor state (text, cursor, mode, buffers)
+│   │   ├── app_state/             # AppState module tree — authoritative editor state split by domain
+│   │   │   ├── mod.rs             # Root AppState types, constructors, shared state models
+│   │   │   ├── settings.rs        # Settings tab models and editing state
+│   │   │   ├── workspace.rs       # Workspace/explorer attachment + query/mutation helpers
+│   │   │   ├── palette.rs         # Command palette, file picker, diagnostics/reference picker state
+│   │   │   ├── editor.rs          # Core editor mutation/cursor/navigation logic
+│   │   │   ├── buffers.rs         # Buffer lifecycle, open/save, references/help/settings buffers
+│   │   │   ├── state.rs           # Derived/query helpers, completion/search/undo-redo state access
+│   │   │   ├── overlays.rs        # Overlay + shared internal helper logic
+│   │   │   └── tests.rs           # AppState regression tests
 │   │   ├── event_loop/            # winit ApplicationHandler impl + command dispatch
 │   │   │   ├── mod.rs             # run() entrypoint
 │   │   │   ├── application.rs     # winit::ApplicationHandler impl

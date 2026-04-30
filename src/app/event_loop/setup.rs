@@ -45,15 +45,42 @@ impl AppShell {
         if !restored_workspace && let Err(err) = app_state.attach_workspace(cwd) {
             eprintln!("[AppShell] cwd workspace attach skipped: {err}");
         }
-        // Welcome visibility depends on open tabs, not workspace attachment, so
-        // we can still restore/attach a workspace here and keep the centered
-        // empty-state UI when no buffer is open.
+
+        for cli_path in std::env::args_os().skip(1).map(PathBuf::from) {
+            if cli_path.is_file()
+                && let Err(err) = app_state.open_file(cli_path.clone())
+            {
+                eprintln!(
+                    "[AppShell] CLI file open skipped ({}): {err}",
+                    cli_path.display()
+                );
+            }
+        }
+        // Welcome visibility is controlled by AppState's one-shot initial launch
+        // flag, not by workspace attachment or later buffer-list emptiness.
 
         let workspace_git_branch = app_state.workspace_root_path().and_then(detect_git_branch);
 
-        let base_theme = ThemeConfig::load_preferred(persistent_state.configured_theme_profile());
-        let theme = base_theme.clone();
+        let mut base_theme =
+            ThemeConfig::load_preferred(persistent_state.configured_theme_profile());
+        let ai_config = AiConfig::load();
         let ui_config = UiConfig::load_active();
+        // Sync explicitly user-set editor metrics from ui.toml → base_theme so that
+        // apply_scaled_runtime_config() renders with the persisted values, not the
+        // theme-file defaults.  Fields absent from ui.toml leave base_theme unchanged.
+        let (user_font_size, user_line_height, user_font_family) =
+            UiConfig::load_user_editor_overrides();
+        if let Some(fs) = user_font_size {
+            base_theme.editor.font_size = fs;
+        }
+        if let Some(lh) = user_line_height {
+            base_theme.editor.line_height = lh;
+        }
+        if let Some(family) = user_font_family {
+            base_theme.editor.font_family = Some(family);
+        }
+        let theme = base_theme.clone();
+        app_state.set_indent_config(ui_config.indent);
         let layout_engine = WorkbenchLayoutEngine::new(
             crate::workbench::layout_engine::WorkbenchLayoutConfig::from_ui_theme(&theme.ui),
         );
@@ -83,6 +110,7 @@ impl AppShell {
             pty_session_id: None,
             terminal_buffer_grids: HashMap::new(),
             pending_lazygit_buffer_index: None,
+            pending_lazydocker_buffer_index: None,
             highlight_spans: Vec::new(),
             semantic_highlight_spans: Vec::new(),
             syntax_engine: None,
@@ -101,6 +129,7 @@ impl AppShell {
             base_theme,
             theme,
             ui_config,
+            ai_config,
             runtime_scale: 0.0,
             layout_engine,
             panel_state,
@@ -121,10 +150,17 @@ impl AppShell {
             accumulated_frame_count: 0,
             current_fps_metrics: "--.-ms | -- FPS".to_string(),
             last_parse_submit_at: None,
+            last_git_diff_recalc_at: None,
             last_syntax_edit_hint: None,
             active_highlight_request_revision: 0,
+            references_request_revision: 0,
             fzf_search_revision: 0,
+            local_history_revision: 0,
             pending_parse_after_debounce: false,
+            pending_git_diff_after_debounce: false,
+            ai_inline_revision: 0,
+            pending_ai_inline_request: None,
+            pending_lsp_document_sync: None,
             last_editor_bounds: None,
             last_show_welcome: None,
             last_sidebar_bounds: None,
@@ -135,6 +171,8 @@ impl AppShell {
             suppress_next_palette_ime_commit: false,
             leap_state: None,
             git_overlay_revision: 0,
+            last_scroll_animation_tick: now,
+            last_git_branch_refresh_at: now,
         })
     }
 
@@ -199,6 +237,108 @@ impl AppShell {
         }
     }
 
+    pub(super) fn refresh_workspace_git_branch(&mut self) -> bool {
+        let next_branch = self
+            .app_state
+            .workspace_root_path()
+            .and_then(detect_git_branch);
+        if self.workspace_git_branch == next_branch {
+            return false;
+        }
+        self.workspace_git_branch = next_branch;
+        true
+    }
+
+    pub(super) fn maybe_refresh_workspace_git_branch(&mut self, force: bool) -> bool {
+        let now = Instant::now();
+        if !force
+            && now.saturating_duration_since(self.last_git_branch_refresh_at)
+                < GIT_BRANCH_REFRESH_INTERVAL
+        {
+            return false;
+        }
+        self.last_git_branch_refresh_at = now;
+        self.refresh_workspace_git_branch()
+    }
+
+    pub(super) fn submit_workspace_git_status_refresh(&mut self) {
+        let Some(workspace_root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
+            return;
+        };
+        self.git_overlay_revision = self.git_overlay_revision.saturating_add(1);
+        self.submit(RequestSpec {
+            revision_id: self.git_overlay_revision,
+            topic: RequestTopic::Git,
+            payload: WorkerRequestPayload::RefreshWorkspaceGitStatus { workspace_root },
+        });
+    }
+
+    pub(super) fn submit_active_buffer_git_baseline_refresh(&mut self) {
+        let Some(workspace_root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
+            return;
+        };
+        let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
+            return;
+        };
+        self.pending_git_diff_after_debounce = false;
+        self.last_git_diff_recalc_at = None;
+        self.git_overlay_revision = self.git_overlay_revision.saturating_add(1);
+        self.submit(RequestSpec {
+            revision_id: self.git_overlay_revision,
+            topic: RequestTopic::Git,
+            payload: WorkerRequestPayload::FetchGitBaseline {
+                workspace_root,
+                file_path,
+            },
+        });
+    }
+
+    pub(super) fn refresh_active_buffer_git_diff_state(&mut self) {
+        if self.app_state.recalculate_active_buffer_git_diff() {
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+            self.request_redraw();
+        }
+        self.last_git_diff_recalc_at = Some(Instant::now());
+        self.pending_git_diff_after_debounce = false;
+    }
+
+    pub(super) fn schedule_active_buffer_git_diff_recalculation(&mut self, force: bool) {
+        if !force
+            && let Some(last) = self.last_git_diff_recalc_at
+            && last.elapsed() < GIT_DIFF_DEBOUNCE_INTERVAL
+        {
+            self.pending_git_diff_after_debounce = true;
+            return;
+        }
+
+        self.refresh_active_buffer_git_diff_state();
+    }
+
+    pub(super) fn flush_pending_git_diff_after_debounce(&mut self) {
+        if !self.pending_git_diff_after_debounce {
+            return;
+        }
+
+        if let Some(last) = self.last_git_diff_recalc_at
+            && last.elapsed() < GIT_DIFF_DEBOUNCE_INTERVAL
+        {
+            return;
+        }
+
+        self.refresh_active_buffer_git_diff_state();
+    }
+
+    pub(super) fn next_git_diff_recalc_deadline(&self) -> Option<Instant> {
+        self.pending_git_diff_after_debounce
+            .then(|| self.last_git_diff_recalc_at.unwrap_or_else(Instant::now))
+            .map(|last| last + GIT_DIFF_DEBOUNCE_INTERVAL)
+    }
+
+    pub(super) fn next_git_branch_refresh_deadline(&self) -> Instant {
+        self.last_git_branch_refresh_at + GIT_BRANCH_REFRESH_INTERVAL
+    }
+
     pub(super) fn update_runtime_scaling_for_window(&mut self, scale_factor: f64) {
         let dpi_scale = (scale_factor as f32).max(0.25);
         let logical_width = self.window_size.width as f32 / dpi_scale;
@@ -211,9 +351,28 @@ impl AppShell {
             if base_width > 0.0 && base_height > 0.0 {
                 content_scale = (logical_width / base_width).min(logical_height / base_height);
             }
-            content_scale = content_scale.clamp(
-                self.ui_config.window.min_content_scale,
-                self.ui_config.window.max_content_scale,
+            let min_scale = self.ui_config.window.min_content_scale;
+            let max_scale = self.ui_config.window.max_content_scale;
+            let lower = match (min_scale.is_nan(), max_scale.is_nan()) {
+                (true, true) => 1.0,
+                (true, false) => max_scale,
+                (false, true) => min_scale,
+                (false, false) => min_scale.min(max_scale),
+            };
+            let upper = match (min_scale.is_nan(), max_scale.is_nan()) {
+                (true, true) => 1.0,
+                (true, false) => max_scale,
+                (false, true) => min_scale,
+                (false, false) => min_scale.max(max_scale),
+            };
+            content_scale = if content_scale.is_nan() {
+                lower
+            } else {
+                content_scale.clamp(lower, upper)
+            };
+            debug_assert!(
+                content_scale.is_finite(),
+                "content_scale must be finite after normalization: min_scale={min_scale}, max_scale={max_scale}, logical_width={logical_width}, logical_height={logical_height}"
             );
         }
 
@@ -236,7 +395,10 @@ impl AppShell {
         }
         self.layout_engine.config =
             crate::workbench::layout_engine::WorkbenchLayoutConfig::from_ui_theme(&scaled_theme.ui);
-        self.layout_engine.config.region_gap = scaled_ui.layout.region_gap;
+        self.layout_engine.config.outer_gap = scaled_ui.layout.outer_gap;
+        self.layout_engine.config.panel_gap = scaled_ui.layout.panel_gap;
+        self.layout_engine.config.inner_padding = scaled_ui.layout.inner_padding;
+        self.layout_engine.config.round_ui = scaled_ui.layout.round_ui;
         self.layout_engine.config.center_min_width = scaled_ui.layout.center_min_width;
         self.layout_engine.config.center_min_height = scaled_ui.layout.center_min_height;
         self.layout_engine.config.sidebar_min_width = scaled_ui.layout.sidebar_min_width;
@@ -266,7 +428,7 @@ impl AppShell {
 
     pub(super) fn sync_terminal_layout(&mut self, bounds: [f32; 4]) -> bool {
         let scaled_ui = scale_ui_config(&self.ui_config, self.runtime_scale);
-        let panel_padding = scaled_ui.spacing.panel_padding;
+        let panel_padding = scaled_ui.layout.inner_padding;
         let line_height = self.theme.ui.panel_line_height.max(1.0);
         let cell_width = (self.theme.ui.panel_font_size * 0.6).max(1.0);
 
@@ -305,7 +467,7 @@ impl AppShell {
         };
 
         let scaled_ui = scale_ui_config(&self.ui_config, self.runtime_scale);
-        let panel_padding = scaled_ui.spacing.panel_padding;
+        let panel_padding = scaled_ui.layout.inner_padding;
         let line_height = self.theme.ui.panel_line_height.max(1.0);
         let cell_width = (self.theme.ui.panel_font_size * 0.6).max(1.0);
 
@@ -333,41 +495,54 @@ impl AppShell {
 
     pub(super) fn build_context(&self) -> KeybindingContext {
         let mode = self.app_state.current_mode();
-        let focus = match self.focus_manager.current() {
-            FocusTarget::LeftSidebar => InputFocusContext::Explorer,
-            FocusTarget::RightSidebar => InputFocusContext::Inspector,
-            FocusTarget::BottomPanel => {
-                if matches!(mode, EditorMode::TerminalFocus | EditorMode::TerminalNormal) {
-                    InputFocusContext::Terminal
-                } else {
-                    InputFocusContext::BottomPanel
+        let welcome_visible = self.app_state.is_initial_launch_welcome()
+            && self.app_state.buffers().is_empty()
+            && (!self.app_state.is_command_palette_visible()
+                || self.app_state.command_palette_mode()
+                    == Some(CommandPaletteMode::RecentProjects));
+        let focus = if welcome_visible
+            && !matches!(self.focus_manager.current(), FocusTarget::LeftSidebar)
+        {
+            InputFocusContext::Welcome
+        } else {
+            match self.focus_manager.current() {
+                FocusTarget::LeftSidebar => InputFocusContext::Explorer,
+                FocusTarget::RightSidebar => InputFocusContext::Inspector,
+                FocusTarget::BottomPanel => {
+                    if matches!(mode, EditorMode::TerminalFocus | EditorMode::TerminalNormal) {
+                        InputFocusContext::Terminal
+                    } else {
+                        InputFocusContext::BottomPanel
+                    }
                 }
-            }
-            FocusTarget::CenterEditor if self.app_state.active_buffer_is_terminal() => {
-                if mode == EditorMode::TerminalNormal {
-                    InputFocusContext::Terminal
-                } else {
-                    InputFocusContext::BufferTerminal
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_terminal() => {
+                    if mode == EditorMode::TerminalNormal {
+                        InputFocusContext::Terminal
+                    } else {
+                        InputFocusContext::BufferTerminal
+                    }
                 }
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_fuzzy_picker() => {
+                    InputFocusContext::FuzzyPicker
+                }
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_settings() => {
+                    InputFocusContext::SettingsTab
+                }
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_diagnostics() => {
+                    InputFocusContext::Diagnostics
+                }
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_references() => {
+                    InputFocusContext::References
+                }
+                _ => InputFocusContext::Editor,
             }
-            FocusTarget::CenterEditor if self.app_state.active_buffer_is_fuzzy_picker() => {
-                InputFocusContext::FuzzyPicker
-            }
-            FocusTarget::CenterEditor if self.app_state.active_buffer_is_settings() => {
-                InputFocusContext::SettingsTab
-            }
-            FocusTarget::CenterEditor if self.app_state.active_buffer_is_diagnostics() => {
-                InputFocusContext::Diagnostics
-            }
-            FocusTarget::CenterEditor if self.app_state.active_buffer_is_references() => {
-                InputFocusContext::References
-            }
-            _ => InputFocusContext::Editor,
         };
         KeybindingContext {
             mode,
             focus,
             command_palette_visible: self.app_state.is_command_palette_visible(),
+            command_palette_mode: self.app_state.command_palette_mode(),
+            welcome_visible,
             completion_visible: self.app_state.has_completion(),
         }
     }
@@ -486,15 +661,15 @@ impl AppShell {
     }
 
     pub(super) fn submit_parse_for_active_buffer(&mut self, force: bool) {
-        if self.refresh_inline_syntax_highlighting() {
-            return;
-        }
-
         if !force
             && let Some(last) = self.last_parse_submit_at
             && last.elapsed() < PARSE_DEBOUNCE_INTERVAL
         {
             self.pending_parse_after_debounce = true;
+            return;
+        }
+
+        if self.refresh_inline_syntax_highlighting() {
             return;
         }
 
@@ -522,7 +697,7 @@ impl AppShell {
                     text_snapshot: self.app_state.text_string(),
                     language_id,
                     buffer_revision: self.app_state.revision(),
-                    viewport_line_start: self.app_state.scroll_line,
+                    viewport_line_start: self.app_state.scroll_line(),
                     viewport_line_count,
                     edit_hint,
                 },
@@ -641,6 +816,83 @@ impl AppShell {
         self.submit_parse_for_active_buffer(true);
     }
 
+    pub(super) fn queue_ai_inline_completion(&mut self) {
+        if self.app_state.current_mode() != EditorMode::Insert {
+            self.pending_ai_inline_request = None;
+            return;
+        }
+        if self.app_state.active_buffer_is_terminal() || self.app_state.active_file().is_none() {
+            self.pending_ai_inline_request = None;
+            return;
+        }
+        if self.ai_config.inline_completion().is_none() {
+            self.pending_ai_inline_request = None;
+            return;
+        }
+        self.ai_inline_revision = self.ai_inline_revision.saturating_add(1);
+        self.pending_ai_inline_request = Some(PendingAiInlineRequest {
+            revision: self.ai_inline_revision,
+            queued_at: Instant::now(),
+        });
+    }
+
+    pub(super) fn flush_pending_ai_inline_completion(&mut self) {
+        let Some(pending) = self.pending_ai_inline_request.as_ref() else {
+            return;
+        };
+        let Some(cfg) = self.ai_config.inline_completion().cloned() else {
+            self.pending_ai_inline_request = None;
+            return;
+        };
+        if pending.queued_at.elapsed() < Duration::from_millis(cfg.debounce_ms()) {
+            return;
+        }
+        let revision = pending.revision;
+        self.pending_ai_inline_request = None;
+        let api_url = cfg.provider.api_url.clone();
+        let api_key = cfg.provider.api_key.clone();
+        let model = cfg.provider.model.clone();
+        let endpoint_kind = cfg.provider.endpoint_kind.clone();
+        let max_tokens = cfg.max_tokens();
+
+        let text = self.app_state.text_string();
+        let cursor = self.app_state.cursor_char_idx();
+        let prefix_take = cfg.prefix_chars();
+        let suffix_take = cfg.suffix_chars();
+        let prefix: String = text.chars().take(cursor).collect();
+        let suffix: String = text.chars().skip(cursor).take(suffix_take).collect();
+        let prefix_chars: Vec<char> = prefix.chars().collect();
+        let prefix = prefix_chars
+            .iter()
+            .skip(prefix_chars.len().saturating_sub(prefix_take))
+            .collect::<String>();
+        if prefix.trim().is_empty() && suffix.trim().is_empty() {
+            return;
+        }
+        let language_id = self.app_state.active_file().map(language_id_for_path);
+        self.submit(RequestSpec {
+            revision_id: revision,
+            topic: RequestTopic::AiInlineCompletion,
+            payload: WorkerRequestPayload::AiInlineCompletionRequest {
+                api_url,
+                api_key,
+                model,
+                endpoint_kind,
+                prefix,
+                suffix,
+                language_id,
+                file_path: self.app_state.active_file().map(PathBuf::from),
+                max_tokens,
+            },
+        });
+    }
+
+    pub(super) fn next_ai_inline_flush_deadline(&self) -> Option<Instant> {
+        let pending = self.pending_ai_inline_request.as_ref()?;
+        let cfg = self.ai_config.inline_completion()?;
+        Some(pending.queued_at + Duration::from_millis(cfg.debounce_ms()))
+    }
+
     pub(super) fn submit_active_palette_fzf_search(&mut self) {
         let Some(mode) = self.app_state.command_palette_mode() else {
             return;
@@ -703,6 +955,37 @@ impl AppShell {
                 file_path: path,
                 max_lines: 100,
                 target_line,
+            },
+        });
+    }
+
+    pub(super) fn submit_active_file_history_load(&mut self) {
+        let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
+            return;
+        };
+        self.local_history_revision = self.local_history_revision.saturating_add(1);
+        self.submit(RequestSpec {
+            revision_id: self.local_history_revision,
+            topic: RequestTopic::LocalHistory,
+            payload: WorkerRequestPayload::LoadLocalHistory { file_path },
+        });
+    }
+
+    pub(super) fn submit_active_file_history_save(&mut self) {
+        let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
+            return;
+        };
+        let Some(history) = self.app_state.active_file_history_envelope() else {
+            return;
+        };
+        self.local_history_revision = self.local_history_revision.saturating_add(1);
+        self.submit(RequestSpec {
+            revision_id: self.local_history_revision,
+            topic: RequestTopic::LocalHistory,
+            payload: WorkerRequestPayload::SaveLocalHistory {
+                file_path,
+                history,
+                max_bytes: 1024 * 1024,
             },
         });
     }
@@ -812,6 +1095,7 @@ impl AppShell {
     }
 
     pub(super) fn submit_lsp_did_open_for_active_file(&mut self) {
+        self.pending_lsp_document_sync = None;
         let Some(path) = self.app_state.active_file() else {
             return;
         };
@@ -837,6 +1121,7 @@ impl AppShell {
     }
 
     pub(super) fn submit_lsp_did_change_for_active_file(&mut self) {
+        self.pending_lsp_document_sync = None;
         let Some(path) = self.app_state.active_file() else {
             return;
         };
@@ -861,6 +1146,7 @@ impl AppShell {
     }
 
     pub(super) fn force_flush_lsp_did_change_for_active_file(&mut self) -> bool {
+        self.pending_lsp_document_sync = None;
         let Some(path) = self.app_state.active_file() else {
             return false;
         };
@@ -883,6 +1169,49 @@ impl AppShell {
             },
         });
         true
+    }
+
+    pub(super) fn queue_lsp_did_change_for_active_file(&mut self) {
+        let Some(path) = self.app_state.active_file().map(PathBuf::from) else {
+            self.pending_lsp_document_sync = None;
+            return;
+        };
+        if self.desired_lsp_server_for_active_file().is_none() {
+            self.pending_lsp_document_sync = None;
+            return;
+        }
+
+        self.pending_lsp_document_sync = Some(PendingLspDocumentSync {
+            path,
+            revision: self.app_state.revision(),
+            queued_at: Instant::now(),
+        });
+    }
+
+    pub(super) fn flush_pending_lsp_did_change_after_debounce(&mut self) {
+        let Some(pending) = self.pending_lsp_document_sync.as_ref() else {
+            return;
+        };
+
+        if pending.queued_at.elapsed() < LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL {
+            return;
+        }
+
+        let active_path = self.app_state.active_file().map(PathBuf::from);
+        if active_path.as_ref() != Some(&pending.path)
+            || self.app_state.revision() != pending.revision
+        {
+            self.pending_lsp_document_sync = None;
+            return;
+        }
+
+        let _ = self.force_flush_lsp_did_change_for_active_file();
+    }
+
+    pub(super) fn next_lsp_did_change_flush_deadline(&self) -> Option<Instant> {
+        self.pending_lsp_document_sync
+            .as_ref()
+            .map(|pending| pending.queued_at + LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL)
     }
 
     /// Submit async task kiểm tra xem LSP binary cho `path` có được cài chưa.
@@ -980,6 +1309,17 @@ mod tests {
         assert_eq!(context.mode, EditorMode::Insert);
         assert_eq!(context.focus, InputFocusContext::FuzzyPicker);
         assert!(!context.command_palette_visible);
+    }
+
+    #[test]
+    fn build_context_uses_welcome_focus_even_when_sidebar_is_focused() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let _ = shell.focus_manager.set(FocusTarget::RightSidebar);
+
+        let context = shell.build_context();
+
+        assert_eq!(context.focus, InputFocusContext::Welcome);
+        assert!(context.welcome_visible);
     }
 
     #[test]

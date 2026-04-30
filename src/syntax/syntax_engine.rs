@@ -76,6 +76,7 @@ pub struct SyntaxEngine {
     parser: Parser,
     language_id: LanguageId,
     current_tree: Option<SyntaxTreeState>,
+    current_source: Option<String>,
 }
 
 impl SyntaxEngine {
@@ -98,6 +99,7 @@ impl SyntaxEngine {
             parser,
             language_id,
             current_tree: None,
+            current_source: None,
         })
     }
 
@@ -118,6 +120,7 @@ impl SyntaxEngine {
             .ok_or_else(|| "tree-sitter parser returned None tree".to_string())?;
 
         self.current_tree = Some(SyntaxTreeState::new(tree, self.language_id, revision));
+        self.current_source = Some(source.to_string());
         self.current_tree
             .as_ref()
             .ok_or_else(|| "internal parser state missing after parse".to_string())
@@ -129,9 +132,6 @@ impl SyntaxEngine {
     /// positions, then passes the edited tree to `parser.parse()` so tree-sitter
     /// only re-parses the affected region.
     ///
-    /// Row/column in the `InputEdit` is approximated from the *new* text; this is
-    /// acceptable because our highlight system uses byte ranges exclusively.
-    ///
     /// Falls back to `parse_source` when no previous tree exists.
     pub fn parse_incremental(
         &mut self,
@@ -141,7 +141,20 @@ impl SyntaxEngine {
         new_end_byte: usize,
         revision: u64,
     ) -> Result<&SyntaxTreeState, String> {
-        if self.current_tree.is_none() {
+        if self.current_tree.is_none() || self.current_source.is_none() {
+            return self.parse_source(source, revision);
+        }
+
+        let old_source = match self.current_source.as_ref() {
+            Some(source) => source,
+            None => return self.parse_source(source, revision),
+        };
+
+        let start_byte = start_byte.min(old_source.len()).min(source.len());
+        let old_end_byte = old_end_byte.min(old_source.len());
+        let new_end_byte = new_end_byte.min(source.len());
+
+        if start_byte > old_end_byte || start_byte > new_end_byte {
             return self.parse_source(source, revision);
         }
 
@@ -149,8 +162,8 @@ impl SyntaxEngine {
             start_byte,
             old_end_byte,
             new_end_byte,
-            start_position: byte_to_point(source, start_byte),
-            old_end_position: byte_to_point(source, old_end_byte),
+            start_position: byte_to_point(old_source, start_byte),
+            old_end_position: byte_to_point(old_source, old_end_byte),
             new_end_position: byte_to_point(source, new_end_byte),
         };
 
@@ -168,6 +181,7 @@ impl SyntaxEngine {
         };
 
         self.current_tree = Some(SyntaxTreeState::new(new_tree, self.language_id, revision));
+        self.current_source = Some(source.to_string());
         self.current_tree
             .as_ref()
             .ok_or_else(|| "internal state missing after incremental parse".to_string())
@@ -202,6 +216,7 @@ fn byte_to_point(text: &str, byte_offset: usize) -> tree_sitter::Point {
 #[cfg(test)]
 mod tests {
     use super::{LanguageId, SyntaxEngine};
+    use crate::syntax::highlight::generate_highlight_spans;
 
     #[test]
     fn rust_parser_bootstrap_returns_source_file_root() {
@@ -258,6 +273,81 @@ mod tests {
             .expect("parse go");
 
         assert_eq!(state.language_id().as_str(), "go");
+        assert_eq!(state.root_node().kind(), "source_file");
+    }
+
+    #[test]
+    fn incremental_parse_clamps_out_of_range_edit_bytes_instead_of_panicking() {
+        let mut engine = SyntaxEngine::new(LanguageId::Go).expect("init go parser");
+        let _ = engine
+            .parse_source("package main\n\nfunc main() {}\n", 1)
+            .expect("parse go");
+
+        let state = engine
+            .parse_incremental("package main\n\nfunc main() {}", 200, 220, 218, 2)
+            .expect("incremental parse should fall back safely");
+
+        assert_eq!(state.revision(), 2);
+        assert_eq!(state.root_node().kind(), "source_file");
+    }
+
+    #[test]
+    fn incremental_parse_handles_multiline_insert_with_correct_old_positions() {
+        let mut engine = SyntaxEngine::new_rust().expect("init rust parser");
+        let original = "fn main() {\n    let value = 1;\n}\n";
+        let inserted = "    let other = 2;\n";
+        let start_byte = original
+            .find("    let value")
+            .expect("find insertion point");
+        let updated = format!(
+            "{}{}{}",
+            &original[..start_byte],
+            inserted,
+            &original[start_byte..]
+        );
+
+        let _ = engine.parse_source(original, 1).expect("parse original");
+        let state = engine
+            .parse_incremental(
+                &updated,
+                start_byte,
+                start_byte,
+                start_byte + inserted.len(),
+                2,
+            )
+            .expect("incremental parse");
+
+        let spans = generate_highlight_spans(state, &updated);
+        assert!(
+            spans
+                .iter()
+                .any(|span| &updated[span.range.clone()] == "let")
+        );
+        assert_eq!(state.root_node().kind(), "source_file");
+    }
+
+    #[test]
+    fn incremental_parse_handles_multiline_delete_with_correct_old_positions() {
+        let mut engine = SyntaxEngine::new_rust().expect("init rust parser");
+        let original = "fn main() {\n    let first = 1;\n    let second = 2;\n}\n";
+        let delete_start = original.find("    let first").expect("find delete start");
+        let delete_end = original
+            .find("    let second")
+            .expect("find next line start");
+        let updated = format!("{}{}", &original[..delete_start], &original[delete_end..]);
+
+        let _ = engine.parse_source(original, 1).expect("parse original");
+        let state = engine
+            .parse_incremental(&updated, delete_start, delete_end, delete_start, 2)
+            .expect("incremental parse after delete");
+
+        let spans = generate_highlight_spans(state, &updated);
+        assert!(
+            spans
+                .iter()
+                .any(|span| &updated[span.range.clone()] == "second")
+        );
+        assert!(!updated.contains("first"));
         assert_eq!(state.root_node().kind(), "source_file");
     }
 }

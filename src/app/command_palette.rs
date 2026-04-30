@@ -39,6 +39,8 @@ pub enum CommandPaletteMode {
     ThemeSelector,
     /// LSP References — danh sách tĩnh kết quả `gr` từ LSP server.
     LspReferences,
+    /// Local file history picker with live editor preview.
+    FileHistory,
 }
 
 impl CommandPaletteMode {
@@ -58,6 +60,7 @@ impl CommandPaletteMode {
             Self::RecentProjects => "project> ",
             Self::ThemeSelector => "Select Theme> ",
             Self::LspReferences => "refs> ",
+            Self::FileHistory => "history> ",
         }
     }
 
@@ -77,6 +80,7 @@ impl CommandPaletteMode {
             Self::RecentProjects => "no recent projects",
             Self::ThemeSelector => "type to filter themes...",
             Self::LspReferences => "no references found",
+            Self::FileHistory => "no local history entries",
         }
     }
 
@@ -96,6 +100,7 @@ impl CommandPaletteMode {
             Self::RecentProjects => "RECENT",
             Self::ThemeSelector => "THEMES",
             Self::LspReferences => "REFS",
+            Self::FileHistory => "HISTORY",
         }
     }
 
@@ -108,6 +113,7 @@ impl CommandPaletteMode {
                 | Self::RecentProjects
                 | Self::ThemeSelector
                 | Self::LspReferences
+                | Self::FileHistory
         )
     }
 }
@@ -124,6 +130,16 @@ pub enum CommandPaletteAction {
     ExecuteVimCommand(String),
     SelectTheme(String),
     JumpToSymbol(String),
+    SelectFileHistoryEntry(usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CommandPaletteItemTone {
+    #[default]
+    Default,
+    Added,
+    Removed,
+    Modified,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,6 +147,7 @@ pub struct CommandPaletteItem {
     pub label: String,
     pub secondary_label: Option<String>,
     pub action: CommandPaletteAction,
+    pub tone: CommandPaletteItemTone,
 }
 
 impl CommandPaletteItem {
@@ -139,6 +156,7 @@ impl CommandPaletteItem {
             label: relative_path,
             secondary_label: None,
             action: CommandPaletteAction::OpenFile(absolute_path),
+            tone: CommandPaletteItemTone::Default,
         }
     }
 
@@ -152,6 +170,7 @@ impl CommandPaletteItem {
             label: name,
             secondary_label: None,
             action: CommandPaletteAction::OpenFile(path.to_path_buf()),
+            tone: CommandPaletteItemTone::Default,
         }
     }
 
@@ -166,6 +185,7 @@ impl CommandPaletteItem {
             label,
             secondary_label,
             action: CommandPaletteAction::OpenSearchMatch { path, line, column },
+            tone: CommandPaletteItemTone::Default,
         }
     }
 
@@ -174,6 +194,7 @@ impl CommandPaletteItem {
             label: label.to_string(),
             secondary_label: None,
             action: CommandPaletteAction::ExecuteCommand(id.to_string()),
+            tone: CommandPaletteItemTone::Default,
         }
     }
 
@@ -182,6 +203,7 @@ impl CommandPaletteItem {
             label: name.to_string(),
             secondary_label: Some(path.display().to_string()),
             action: CommandPaletteAction::SelectTheme(name.to_string()),
+            tone: CommandPaletteItemTone::Default,
         }
     }
 
@@ -190,6 +212,21 @@ impl CommandPaletteItem {
             label: name.to_string(),
             secondary_label: None,
             action: CommandPaletteAction::JumpToSymbol(name.to_string()),
+            tone: CommandPaletteItemTone::Default,
+        }
+    }
+
+    pub fn file_history_entry(
+        label: String,
+        secondary_label: Option<String>,
+        index: usize,
+        tone: CommandPaletteItemTone,
+    ) -> Self {
+        Self {
+            label,
+            secondary_label,
+            action: CommandPaletteAction::SelectFileHistoryEntry(index),
+            tone,
         }
     }
 
@@ -203,6 +240,7 @@ impl CommandPaletteItem {
             },
             secondary_label: None,
             action: CommandPaletteAction::ExecuteVimCommand(trimmed.to_string()),
+            tone: CommandPaletteItemTone::Default,
         }
     }
 }
@@ -315,6 +353,28 @@ impl CommandPalette {
         self.results.len()
     }
 
+    pub fn set_hidden_items(
+        &mut self,
+        mode: CommandPaletteMode,
+        items: Vec<CommandPaletteItem>,
+    ) -> bool {
+        let selected_index = self.selected_index;
+        let changed = self.mode != mode || self.results.len() != items.len();
+        self.mode = mode;
+        self.query.clear();
+        self.is_visible = false;
+        self.cursor_byte = 0;
+        self.selection_range = None;
+        self.static_items = items.clone();
+        self.results = items;
+        self.selected_index = if self.results.is_empty() {
+            0
+        } else {
+            selected_index.min(self.results.len() - 1)
+        };
+        changed
+    }
+
     pub fn close(&mut self) -> bool {
         let was_open = self.is_visible;
         self.is_visible = false;
@@ -408,7 +468,10 @@ impl CommandPalette {
 
     pub fn refresh_results(&mut self, _workspace: Option<&WorkspaceModel>) {
         // LspReferences: static list, never overwrite with fzf results.
-        if matches!(self.mode, CommandPaletteMode::LspReferences) {
+        if matches!(
+            self.mode,
+            CommandPaletteMode::LspReferences | CommandPaletteMode::FileHistory
+        ) {
             self.results = self.static_items.clone();
             if self.results.is_empty() {
                 self.selected_index = 0;
@@ -471,6 +534,7 @@ impl CommandPalette {
             CommandPaletteMode::RecentProjects => unreachable!("handled above"),
             CommandPaletteMode::ThemeSelector => unreachable!("handled above"),
             CommandPaletteMode::LspReferences => unreachable!("handled above"),
+            CommandPaletteMode::FileHistory => unreachable!("handled above"),
         };
 
         if self.results.is_empty() {
@@ -565,75 +629,90 @@ impl CommandPalette {
         };
 
         // ── Layout: tách Command Palette vs File Picker/LiveGrep ─────────────
-        let (panel_width, panel_x, panel_y, panel_height, visible_result_rows) =
-            if self.mode == CommandPaletteMode::LiveGrep {
-                let max_w = (width - 48.0).max(320.0);
-                let pw = if max_w >= 720.0 {
-                    (width * 0.82).clamp(720.0, max_w)
-                } else {
-                    max_w
-                };
-                let px = x + ((width - pw) * 0.5).max(0.0);
-                let min_height =
-                    live_grep_reserved_height(panel_padding, line_height) + row_height * 4.0;
-                let max_h = (height - 32.0).max(row_height + panel_padding * 2.0);
-                let ph = if max_h >= min_height {
-                    (height * 0.52).clamp(min_height, max_h)
-                } else {
-                    max_h
-                };
-                let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
-                let body_height =
-                    (ph - live_grep_reserved_height(panel_padding, line_height)).max(row_height);
-                let visible_result_rows = (body_height / row_height).floor() as usize;
-                (pw, px, py, ph, visible_result_rows.max(1))
-            } else if self.mode.is_complex_picker() {
-                // File Picker / LiveGrep — min 30% screen, TRUE CENTER giống command palette
-                // Rộng hơn command palette một chút để hiển thị đường dẫn file
-                let min_w = (width * 0.35).max(400.0);
-                let pw = min_w.max(660.0_f32.min(width - 48.0));
-                let px = x + ((width - pw) * 0.5).max(0.0);
-                let body_rows = complex_picker_body_rows(
-                    self.mode,
-                    height,
-                    panel_padding,
-                    line_height,
-                    row_height,
-                    max_items,
-                );
-                let ph = (complex_picker_reserved_height(self.mode, panel_padding, line_height)
-                    + row_height * body_rows as f32)
-                    .min((height - 32.0).max(row_height + panel_padding * 2.0));
-                // TRUE CENTER: 50/50
-                let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
-                (pw, px, py, ph, body_rows)
+        let (panel_width, panel_x, panel_y, panel_height, visible_result_rows) = if self.mode
+            == CommandPaletteMode::LiveGrep
+        {
+            let max_w = (width - 48.0).max(320.0);
+            let pw = if max_w >= 720.0 {
+                (width * 0.82).clamp(720.0, max_w)
             } else {
-                // Command Palette — min 30% screen width, TRUE CENTER vũa dọc vũa ngang
-                let min_w = (width * 0.30).max(300.0);
-                let pw = min_w.max(520.0_f32.min(width - 48.0));
-                let px = x + ((width - pw) * 0.5).max(0.0);
-                // Dòng input + separator + items (nếu VimCommand: chỉ dòng input)
-                let content_rows = (requested_visible_rows
-                    + if requested_visible_rows > 0 { 1 } else { 0 })
-                .max(1) as f32;
-                let ph = (line_height * content_rows
+                max_w
+            };
+            let px = x + ((width - pw) * 0.5).max(0.0);
+            let min_height =
+                live_grep_reserved_height(panel_padding, line_height) + row_height * 4.0;
+            let max_h = (height - 32.0).max(row_height + panel_padding * 2.0);
+            let ph = if max_h >= min_height {
+                (height * 0.52).clamp(min_height, max_h)
+            } else {
+                max_h
+            };
+            let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
+            let body_height =
+                (ph - live_grep_reserved_height(panel_padding, line_height)).max(row_height);
+            let visible_result_rows = (body_height / row_height).floor() as usize;
+            (pw, px, py, ph, visible_result_rows.max(1))
+        } else if self.mode.is_complex_picker() {
+            // File Picker / LiveGrep — min 30% screen, TRUE CENTER giống command palette
+            // Rộng hơn command palette một chút để hiển thị đường dẫn file
+            let min_w = (width * 0.35).max(400.0);
+            let pw = min_w.max(660.0_f32.min(width - 48.0));
+            let px = x + ((width - pw) * 0.5).max(0.0);
+            let body_rows = complex_picker_body_rows(
+                self.mode,
+                height,
+                panel_padding,
+                line_height,
+                row_height,
+                max_items,
+            );
+            let ph = (complex_picker_reserved_height(self.mode, panel_padding, line_height)
+                + row_height * body_rows as f32)
+                .min((height - 32.0).max(row_height + panel_padding * 2.0));
+            // TRUE CENTER: 50/50
+            let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
+            (pw, px, py, ph, body_rows)
+        } else {
+            // Command Palette — min 30% screen width, TRUE CENTER vũa dọc vũa ngang
+            let is_confirmation = matches!(
+                self.mode,
+                CommandPaletteMode::ExplorerDeleteConfirm | CommandPaletteMode::BufferCloseConfirm
+            );
+            let min_w = if is_confirmation {
+                (width * 0.34).max(380.0)
+            } else {
+                (width * 0.30).max(300.0)
+            };
+            let ideal_w: f32 = if is_confirmation { 640.0 } else { 520.0 };
+            let pw = min_w.max(ideal_w.min(width - 48.0));
+            let px = x + ((width - pw) * 0.5).max(0.0);
+            // Dòng input + separator + items (nếu VimCommand: chỉ dòng input)
+            let content_rows = (requested_visible_rows
+                + if requested_visible_rows > 0 { 1 } else { 0 })
+            .max(1) as f32;
+            let ph = if is_confirmation {
+                (line_height * 6.1 + panel_padding * 2.0 + 36.0)
+                    .min((height - 64.0).max(line_height + panel_padding * 2.0))
+            } else {
+                (line_height * content_rows
                     + panel_padding * 2.0
                     + if requested_visible_rows > 0 {
                         12.0
                     } else {
                         4.0
                     })
-                .min((height - 64.0).max(line_height + panel_padding * 2.0));
-                // TRUE CENTER: phân bố 50/50 trần-sàn
-                let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
-                let visible_result_rows = if show_results {
-                    (((ph - panel_padding * 2.0 - line_height - 8.0) / row_height).floor() as usize)
-                        .max(1)
-                } else {
-                    0
-                };
-                (pw, px, py, ph, visible_result_rows)
+                .min((height - 64.0).max(line_height + panel_padding * 2.0))
             };
+            // TRUE CENTER: phân bố 50/50 trần-sàn
+            let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
+            let visible_result_rows = if show_results {
+                (((ph - panel_padding * 2.0 - line_height - 8.0) / row_height).floor() as usize)
+                    .max(1)
+            } else {
+                0
+            };
+            (pw, px, py, ph, visible_result_rows)
+        };
 
         let panel_bounds = [panel_x, panel_y, panel_width, panel_height];
 
@@ -709,6 +788,8 @@ impl CommandPalette {
 
         let mut scrim = theme.ui.overlay_bg.as_f32();
         scrim[3] = scrim[3].max(0.72);
+        let mut panel_bg = theme.ui.panel_bg.as_f32();
+        panel_bg[3] = panel_bg[3].max(0.98);
 
         Some(CommandPaletteRenderModel {
             mode: self.mode,
@@ -731,7 +812,7 @@ impl CommandPalette {
             total_results: self.results.len(),
             show_results,
             border_color: theme.ui.border_color.as_f32(),
-            panel_bg: theme.ui.overlay_bg.as_f32(),
+            panel_bg,
             selection_bg: theme.ui.selection_bg.as_f32(),
             text_color: theme.ui.fg.as_f32(),
             hint_color: theme.syntax.comment.as_f32(),
@@ -769,6 +850,7 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
         ("app.search_in_files", "Search In Files"),
         ("app.open_workspace_symbols", "Open Workspace Symbols"),
         ("app.open_vim_command", "Open Vim Command"),
+        ("app.open_help", "Open Cheat Sheet"),
         ("app.toggle_terminal", "Toggle Terminal"),
         ("app.toggle_left_dock", "Toggle Left Dock"),
         ("app.focus_editor", "Focus Editor"),
@@ -814,17 +896,19 @@ fn workspace_symbol_items(query: &str, max_results: usize) -> Vec<CommandPalette
 
 fn vim_command_items(query: &str) -> Vec<CommandPaletteItem> {
     let trimmed = query.trim();
-    if trimmed.is_empty() {
+    let command_text = trimmed.strip_prefix(':').unwrap_or(trimmed).trim();
+    if command_text.is_empty() {
         // Không gợi ý gì cả — giống nvim thật: chờ người dùng gõ
         return Vec::new();
     }
 
     // Nếu query là số thuần tuý → jump to line
-    if let Ok(n) = trimmed.parse::<usize>() {
+    if let Ok(n) = command_text.parse::<usize>() {
         return vec![CommandPaletteItem {
             label: format!("Go to line {n}"),
             secondary_label: None,
             action: CommandPaletteAction::ExecuteVimCommand(trimmed.to_string()),
+            tone: CommandPaletteItemTone::Default,
         }];
     }
 
@@ -971,5 +1055,31 @@ mod tests {
             empty_model.scroll_offset_rows,
             populated_model.scroll_offset_rows
         );
+    }
+
+    #[test]
+    fn render_uses_opaque_panel_background_separate_from_scrim() {
+        let palette = CommandPalette {
+            mode: CommandPaletteMode::ThemeSelector,
+            is_visible: true,
+            results: vec![make_item("default-dark")],
+            ..CommandPalette::default()
+        };
+
+        let theme = ThemeConfig::builtin_dark();
+        let model = palette
+            .render(&theme, [0.0, 0.0, 1200.0, 800.0])
+            .expect("render model");
+
+        let expected_panel = theme.ui.panel_bg.as_f32();
+        let expected_scrim = theme.ui.overlay_bg.as_f32();
+        assert_eq!(model.panel_bg[0], expected_panel[0]);
+        assert_eq!(model.panel_bg[1], expected_panel[1]);
+        assert_eq!(model.panel_bg[2], expected_panel[2]);
+        assert!(model.panel_bg[3] >= 0.98);
+        assert_eq!(model.scrim_color[0], expected_scrim[0]);
+        assert_eq!(model.scrim_color[1], expected_scrim[1]);
+        assert_eq!(model.scrim_color[2], expected_scrim[2]);
+        assert!(model.scrim_color[3] >= 0.72);
     }
 }

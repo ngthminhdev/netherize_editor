@@ -2,6 +2,7 @@ use std::{
     fs,
     time::{SystemTime, UNIX_EPOCH},
 };
+use sysinfo::{Pid, ProcessesToUpdate, System};
 
 use crate::{
     app::{
@@ -15,7 +16,10 @@ use crate::{
             dispatch_command, dispatch_command_count, dispatch_command_with_clipboard,
             dispatch_command_with_clipboard_and_terminal, dispatch_command_with_terminal,
         },
-        commands::Command,
+        commands::{
+            Command, FindMotionKind, Motion, OperationTarget, Operator, TextObjectKind,
+            TextObjectModifier,
+        },
         mode::{EditorMode, ModeEvent},
     },
     terminal::grid::TerminalGrid,
@@ -249,14 +253,14 @@ fn append_change_and_replace_dispatch_work() {
     assert!(change.success);
     assert!(change.state_changed);
     assert_eq!(app_state.current_mode(), EditorMode::Insert);
-    assert_eq!(app_state.text_string(), "bar");
+    assert_eq!(app_state.text_string(), "   bar");
 
     let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
     let replace = dispatch_command(&mut app_state, Command::ReplaceChar('X'));
     assert!(replace.success);
     assert!(replace.state_changed);
     assert_eq!(app_state.current_mode(), EditorMode::Normal);
-    assert_eq!(app_state.text_string(), "Xar");
+    assert_eq!(app_state.text_string(), "X  bar");
 }
 
 #[test]
@@ -537,6 +541,180 @@ fn yank_to_word_end_copies_suffix_of_current_word_to_clipboard() {
 }
 
 #[test]
+fn operate_change_word_forward_uses_cw_semantics_like_ce() {
+    let mut app_state = AppState::from_text(unique_temp_path("operate_cw"), "hello world");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    let report = dispatch_command(
+        &mut app_state,
+        Command::Operate {
+            op: Operator::Change,
+            target: OperationTarget::Motion(Motion::WordForward),
+        },
+    );
+
+    assert!(report.success);
+    assert_eq!(app_state.text_string(), " world");
+    assert_eq!(app_state.current_mode(), EditorMode::Insert);
+}
+
+#[test]
+fn operate_delete_line_end_matches_dollar_motion() {
+    let mut app_state = AppState::from_text(unique_temp_path("operate_dollar"), "abc def\nzzz");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let _ = dispatch_command(&mut app_state, Command::MoveRight);
+    let _ = dispatch_command(&mut app_state, Command::MoveRight);
+
+    let report = dispatch_command(
+        &mut app_state,
+        Command::Operate {
+            op: Operator::Delete,
+            target: OperationTarget::Motion(Motion::LineEnd),
+        },
+    );
+
+    assert!(report.success);
+    assert_eq!(app_state.text_string(), "ab\nzzz");
+}
+
+#[test]
+fn operate_delete_inner_word_removes_current_word() {
+    let mut app_state = AppState::from_text(unique_temp_path("operate_diw"), "one two three");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let _ = dispatch_command(&mut app_state, Command::MoveWordForward);
+
+    let report = dispatch_command(
+        &mut app_state,
+        Command::Operate {
+            op: Operator::Delete,
+            target: OperationTarget::TextObject {
+                modifier: TextObjectModifier::Inner,
+                kind: TextObjectKind::Word,
+            },
+        },
+    );
+
+    assert!(report.success);
+    assert_eq!(app_state.text_string(), "one  three");
+}
+
+#[test]
+fn operate_delete_find_forward_includes_target_char() {
+    let mut app_state = AppState::from_text(unique_temp_path("operate_df"), "abc def ghi");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    let report = dispatch_command(
+        &mut app_state,
+        Command::Operate {
+            op: Operator::Delete,
+            target: OperationTarget::Motion(Motion::FindChar(FindMotionKind::ForwardTo, 'd')),
+        },
+    );
+
+    assert!(report.success);
+    assert_eq!(app_state.text_string(), "ef ghi");
+}
+
+#[test]
+fn change_to_line_end_alias_enters_insert_and_removes_suffix() {
+    let mut app_state = AppState::from_text(unique_temp_path("change_to_eol"), "alpha beta");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let _ = dispatch_command(&mut app_state, Command::MoveRight);
+    let _ = dispatch_command(&mut app_state, Command::MoveRight);
+
+    let report = dispatch_command(&mut app_state, Command::ChangeToLineEnd);
+
+    assert!(report.success);
+    assert_eq!(app_state.text_string(), "al");
+    assert_eq!(app_state.current_mode(), EditorMode::Insert);
+}
+
+#[test]
+fn delete_to_line_end_alias_removes_suffix_and_stays_normal() {
+    let mut app_state = AppState::from_text(unique_temp_path("delete_to_eol"), "alpha beta");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let _ = dispatch_command(&mut app_state, Command::MoveRight);
+    let _ = dispatch_command(&mut app_state, Command::MoveRight);
+
+    let report = dispatch_command(&mut app_state, Command::DeleteToLineEnd);
+
+    assert!(report.success);
+    assert_eq!(app_state.text_string(), "al");
+    assert_eq!(app_state.current_mode(), EditorMode::Normal);
+}
+
+#[test]
+fn substitute_line_keeps_indent_cursor_target() {
+    let mut app_state =
+        AppState::from_text(unique_temp_path("substitute_indent"), "    alpha\nnext");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let report = dispatch_command(&mut app_state, Command::SubstituteLine);
+
+    assert!(report.success);
+    assert_eq!(app_state.current_mode(), EditorMode::Insert);
+    assert_eq!(app_state.cursor_line_col(), (0, 4));
+    assert_eq!(app_state.text_string(), "    \nnext");
+}
+
+#[test]
+fn join_lines_alias_merges_next_line_like_shift_j() {
+    let mut app_state = AppState::from_text(unique_temp_path("join_lines"), "alpha\n  beta\n");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    let report = dispatch_command(&mut app_state, Command::JoinLines);
+
+    assert!(report.success);
+    assert_eq!(app_state.text_string(), "alpha beta\n");
+    assert_eq!(app_state.current_mode(), EditorMode::Normal);
+}
+
+#[test]
+fn paragraph_motions_jump_between_blank_line_separated_blocks() {
+    let mut app_state = AppState::from_text(
+        unique_temp_path("paragraph_motion"),
+        "one\ntwo\n\nthree\nfour\n\nfive\n",
+    );
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    let down = dispatch_command(&mut app_state, Command::MoveParagraphDown);
+    assert!(down.success);
+    assert_eq!(app_state.cursor_line_col().0, 2);
+
+    let down_again = dispatch_command(&mut app_state, Command::MoveParagraphDown);
+    assert!(down_again.success);
+    assert_eq!(app_state.cursor_line_col().0, 5);
+
+    let up = dispatch_command(&mut app_state, Command::MoveParagraphUp);
+    assert!(up.success);
+    assert_eq!(app_state.cursor_line_col().0, 2);
+}
+
+#[test]
+fn visual_paragraph_motions_expand_selection_to_blank_separators() {
+    let mut app_state = AppState::from_text(
+        unique_temp_path("visual_paragraph_motion"),
+        "one\ntwo\n\nthree\nfour\n\nfive\n",
+    );
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterVisual));
+
+    let down = dispatch_command(&mut app_state, Command::MoveParagraphDown);
+    assert!(down.success);
+    let selection = app_state
+        .visual_selection_range()
+        .expect("selection after visual paragraph down");
+    assert_eq!(selection.start_line, 0);
+    assert_eq!(selection.end_line, 2);
+
+    let down_again = dispatch_command(&mut app_state, Command::MoveParagraphDown);
+    assert!(down_again.success);
+    let selection = app_state
+        .visual_selection_range()
+        .expect("selection after second visual paragraph down");
+    assert_eq!(selection.start_line, 0);
+    assert_eq!(selection.end_line, 5);
+}
+
+#[test]
 fn paste_after_participates_in_undo_transaction() {
     let mut app_state = AppState::from_text(unique_temp_path("paste_after"), "abc");
     let mut clipboard = MockClipboard {
@@ -758,6 +936,39 @@ fn buffer_dispatch_commands_cycle_and_close_current() {
     );
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn repeated_operator_undo_cycles_do_not_show_runaway_memory_growth() {
+    let mut system = System::new_all();
+    let pid = Pid::from_u32(std::process::id());
+    system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+    let before = system.process(pid).map(|p| p.memory()).unwrap_or(0);
+
+    let mut app_state = AppState::from_text(
+        unique_temp_path("memory_operator_regression"),
+        &"alpha beta gamma delta epsilon zeta eta theta\n".repeat(512),
+    );
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    for _ in 0..2_000 {
+        let _ = dispatch_command(
+            &mut app_state,
+            Command::Operate {
+                op: Operator::Delete,
+                target: OperationTarget::Motion(Motion::WordForward),
+            },
+        );
+        let _ = dispatch_command(&mut app_state, Command::Undo);
+    }
+
+    system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+    let after = system.process(pid).map(|p| p.memory()).unwrap_or(before);
+
+    assert!(
+        after <= before.saturating_add(64 * 1024 * 1024),
+        "memory grew too much: before={before} after={after}"
+    );
 }
 
 #[test]
@@ -1123,6 +1334,97 @@ fn redo_stack_is_cleared_after_new_committed_edit() {
     assert!(redo.success);
     assert!(!redo.state_changed);
     assert_eq!(app_state.text_string(), "z");
+}
+
+#[test]
+fn undo_restores_exact_snapshots_after_30_edit_and_save_steps() {
+    let file_path = unique_temp_path("undo_30_save_steps");
+    let mut app_state = AppState::new(file_path.clone());
+
+    let enter_insert = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterInsert),
+    );
+    assert!(enter_insert.success);
+
+    let mut expected_states = vec![app_state.text_string()];
+
+    for step in 0..30usize {
+        let report = if step % 2 == 0 {
+            let text = format!("step_{step:02}");
+            dispatch_command(&mut app_state, Command::InsertText(text))
+        } else {
+            dispatch_command(&mut app_state, Command::Newline)
+        };
+        assert!(report.success, "edit step {step} should succeed");
+        assert!(report.state_changed, "edit step {step} should change state");
+
+        let save = dispatch_command(&mut app_state, Command::SaveFile);
+        assert!(save.success, "save step {step} should succeed");
+
+        expected_states.push(app_state.text_string());
+    }
+
+    let exit_insert = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
+    );
+    assert!(exit_insert.success);
+
+    assert_eq!(expected_states.len(), 31, "initial + 30 edit snapshots");
+
+    for undo_idx in (1..expected_states.len()).rev() {
+        let undo = dispatch_command(&mut app_state, Command::Undo);
+        assert!(undo.success, "undo at snapshot {undo_idx} should succeed");
+        assert!(
+            undo.state_changed,
+            "undo at snapshot {undo_idx} should change state"
+        );
+        assert_eq!(
+            app_state.text_string(),
+            expected_states[undo_idx - 1],
+            "undo should restore exact snapshot for step {}",
+            undo_idx - 1
+        );
+    }
+
+    let extra_undo = dispatch_command(&mut app_state, Command::Undo);
+    assert!(extra_undo.success);
+    assert!(
+        !extra_undo.state_changed,
+        "undo past beginning should no-op"
+    );
+    assert_eq!(app_state.text_string(), expected_states[0]);
+
+    let _ = fs::remove_file(file_path);
+}
+
+#[test]
+fn save_does_not_write_previewed_history_state_back_to_disk() {
+    let file_path = unique_temp_path("save_not_preview_state");
+    let mut app_state = AppState::new(file_path.clone());
+
+    let _ = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterInsert),
+    );
+    let _ = dispatch_command(&mut app_state, Command::InsertText("old".to_string()));
+    let _ = dispatch_command(&mut app_state, Command::SaveFile);
+    let _ = dispatch_command(&mut app_state, Command::InsertText(" new".to_string()));
+    let _ = dispatch_command(&mut app_state, Command::SaveFile);
+
+    assert!(app_state.begin_file_history_preview_session());
+    assert!(app_state.preview_file_history_index(0));
+    assert_eq!(app_state.text_string(), "old");
+
+    let save = dispatch_command(&mut app_state, Command::SaveFile);
+    assert!(save.success);
+
+    let disk_text = fs::read_to_string(&file_path).expect("read saved file");
+    assert_eq!(disk_text, "old new");
+    assert_eq!(app_state.text_string(), "old new");
+
+    let _ = fs::remove_file(file_path);
 }
 
 #[test]

@@ -1,0 +1,210 @@
+[theme]
+name = "nord_frost"
+description = "Cool nord-inspired theme with icy blue tones for Netherize Editor"
+
+[editor]
+bg = "#2E3440"
+fg = "#D8DEE9"
+cursor = "#88C0D0"
+selection = "#434C5E"
+gutter = "#2E3440"
+gutter_active = "#88C0D0"
+font_size = 15.0
+line_height = 26.0
+font_family = "Google Sans Code"
+nerd_font_family = "Hack Nerd Font"
+
+[ui]
+bg = "#242933"
+sidebar_bg = "#1E222A"
+panel_bg = "#1E222A"
+terminal_bg = "#191D24"
+overlay_bg = "#242933D9"
+status_bar_bg = "#1B1F27"
+border_color = "#3B4252"
+selection_bg = "#4C566A"
+
+fg = "#D8DEE9"
+fg_dim = "#81A1C1"
+fg_ghost = "#616E88"
+
+accent = "#88C0D0"
+cyan = "#8FBCBB"
+magenta = "#B48EAD"
+amber = "#EBCB8B"
+success = "#A3BE8C"
+warning = "#D08770"
+info = "#88C0D0"
+error = "#BF616A"
+
+mode_normal = "#88C0D0"
+mode_insert = "#A3BE8C"
+mode_visual = "#B48EAD"
+
+sidebar_font_size = 15.0
+sidebar_line_height = 22.0
+panel_font_size = 14.0
+panel_line_height = 22.0
+
+sidebar_width = 280.0
+right_sidebar_width = 320.0
+bottom_panel_height = 220.0
+top_bar_height = 36.0
+
+[git]
+modified_sidebar = "#EBCB8B"
+added_sidebar = "#A3BE8C"
+modified_gutter = "#EBCB8B"
+added_gutter = "#A3BE8C"
+deleted_gutter = "#BF616A"
+status_bar_height = 32.0
+
+[icons]
+explorer_file_marker = "·"
+explorer_folder_collapsed_marker = "▶"
+explorer_folder_expanded_marker = "▼"
+file_picker_dot = "●"
+
+[icons.folder_closed]
+glyph = "\uF07B"
+color = "#EBCB8B"
+
+[icons.folder_open]
+glyph = "\uF07C"
+color = "#EBCB8B"
+
+[icons.default_file]
+glyph = "\uF15B"
+color = "#616E88"
+
+[icons.rust]
+glyph = "\uE7A8"
+color = "#D08770"
+
+[icons.javascript]
+glyph = "\uE781"
+color = "#EBCB8B"
+
+[icons.typescript]
+glyph = "\uE628"
+color = "#88C0D0"
+
+[icons.tsx]
+glyph = "\uE7BA"
+color = "#88C0D0"
+
+[icons.jsx]
+glyph = "\uE7BA"
+color = "#EBCB8B"
+
+[icons.python]
+glyph = "\uE73C"
+color = "#88C0D0"
+
+[icons.go]
+glyph = "\uE724"
+color = "#8FBCBB"
+
+[icons.config]
+glyph = "\uE615"
+color = "#616E88"
+
+[icons.json]
+glyph = "\uE60B"
+color = "#EBCB8B"
+
+[icons.markdown]
+glyph = "\uF48A"
+color = "#88C0D0"
+
+[icons.html]
+glyph = "\uE736"
+color = "#BF616A"
+
+[icons.css]
+glyph = "\uE749"
+color = "#88C0D0"
+
+[icons.sass]
+glyph = "\uE603"
+color = "#B48EAD"
+
+[icons.shell]
+glyph = "\uF489"
+color = "#A3BE8C"
+
+[icons.git]
+glyph = "\uF1D3"
+color = "#D08770"
+
+[icons.lock]
+glyph = "\uF13E"
+color = "#616E88"
+
+[icons.image]
+glyph = "\uF1C5"
+color = "#A3BE8C"
+
+[file_icons]
+default_file = "📄"
+default_folder = "📁"
+
+[file_icons.extensions]
+rs = ""
+ts = ""
+tsx = ""
+js = ""
+jsx = ""
+go = ""
+json = ""
+jsonc = ""
+yaml = ""
+yml = ""
+toml = ""
+sql = ""
+md = ""
+mdx = ""
+dockerfile = ""
+sh = ""
+bash = ""
+zsh = ""
+fish = ""
+lock = ""
+
+[file_icons.exact]
+Dockerfile = ""
+"docker-compose.yml" = ""
+"docker-compose.yaml" = ""
+".gitignore" = ""
+".gitattributes" = ""
+".gitmodules" = ""
+"package.json" = ""
+"package-lock.json" = ""
+"tsconfig.json" = ""
+"Cargo.toml" = ""
+Makefile = ""
+"README.md" = ""
+
+[syntax]
+keyword = "#81A1C1"
+string = "#A3BE8C"
+function = "#88C0D0"
+comment = "#616E88"
+type = "#8FBCBB"
+number = "#B48EAD"
+identifier = "#D8DEE9"
+parameter = "#EBCB8B"
+field = "#8FBCBB"
+property = "#8FBCBB"
+constant = "#B48EAD"
+operator = "#81A1C1"
+punctuation = "#D8DEE9"
+macro = "#8FBCBB"
+lifetime = "#EBCB8B"
+boolean = "#D08770"
+escape = "#D08770"
+variable = "#E5E9F0"
+constructor = "#88C0D0"
+attribute = "#EBCB8B"
+namespace = "#81A1C1"
+tag = "#81A1C1"

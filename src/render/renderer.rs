@@ -1,17 +1,18 @@
 //! Core renderer types and module layout.
 //!
 //! Heavy per-region rendering logic lives in child modules:
-//! - [`editor_render`]  — editor content, caret, gutter, visual selection
-//! - [`ui_render`]      — sidebar, terminal, welcome logo, topbar, statusbar
-//! - [`palette_render`] — command palette, file picker, leap label overlay
+//! - [`editor`]         — editor content, caret, gutter, visual selection
+//! - [`ui`]             — sidebar, terminal, welcome logo, topbar, statusbar
+//! - [`palette`]        — command palette, file picker, leap label overlay
 //! - [`lifecycle`]      — GPU init, theme/config application, resize, render loop
 //! - [`helpers`]        — pure free functions shared by all render modules
 
-mod editor_render;
+mod components;
+mod editor;
 mod helpers;
 mod lifecycle;
-mod palette_render;
-mod ui_render;
+mod palette;
+mod ui;
 
 use std::path::PathBuf;
 
@@ -22,6 +23,7 @@ use crate::{
     render::{
         caret::CaretPipeline,
         glyph_instance::GlyphInstance,
+        image_pipeline::ImagePipeline,
         region_pipeline::{RegionDrawInstance, RegionPipeline},
         surface::SurfaceState,
         text_pipeline::{InstanceDrawRange, TextPipeline},
@@ -47,6 +49,8 @@ pub struct SidebarRow {
     /// RGBA color for `nerd_icon` — per-filetype.
     pub icon_color: [f32; 4],
     pub label: String,
+    pub git_marker: Option<char>,
+    pub git_color: Option<[f32; 4]>,
     pub is_selected: bool,
 }
 
@@ -71,17 +75,20 @@ pub enum RenderError {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TopbarTabKind {
     Text { path: PathBuf },
+    Image { path: PathBuf },
     Terminal,
     References,
     Diagnostics,
     FuzzyPicker,
     Settings,
+    Help,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TopbarTab {
     pub label: String,
     pub kind: TopbarTabKind,
+    pub is_dirty: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -103,6 +110,7 @@ pub(super) struct StatusbarLayoutKey {
     pub(super) pending_keys: String,
     pub(super) git_branch: String,
     pub(super) filetype: String,
+    pub(super) search_match_position: Option<(usize, usize)>,
     pub(super) line: usize,
     pub(super) col: usize,
     pub(super) diagnostics_errors: usize,
@@ -134,12 +142,17 @@ pub struct Renderer {
     pub(super) editor_overlay_glyph_instances: Vec<GlyphInstance>,
     pub(super) editor_overlay_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) editor_overlay_scissor: Option<[u32; 4]>,
+    pub(super) image_pipeline: ImagePipeline,
+    pub(super) image_scissor: Option<[u32; 4]>,
+    pub(super) welcome_image_pipeline: ImagePipeline,
+    pub(super) welcome_image_scissor: Option<[u32; 4]>,
 
     // ── Gutter (line numbers) ─────────────────────────────────────────────────
     pub(super) gutter_text_system: TextSystem,
     pub(super) gutter_text_pipeline: TextPipeline,
     pub(super) gutter_glyph_instances: Vec<GlyphInstance>,
     pub relative_numbers: bool,
+    pub(super) last_editor_chrome_instances: Vec<RegionDrawInstance>,
 
     // ── Explorer sidebar ──────────────────────────────────────────────────────
     pub(super) sidebar_text_system: TextSystem,
@@ -168,6 +181,7 @@ pub struct Renderer {
     pub(super) welcome_logo_text_pipeline: TextPipeline,
     pub(super) welcome_logo_view_renderer: TerminalViewRenderer,
     pub(super) welcome_logo_glyph_instances: Vec<GlyphInstance>,
+    pub(super) welcome_logo_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) welcome_logo_scissor: Option<[u32; 4]>,
 
     // ── TopBar ────────────────────────────────────────────────────────────────
@@ -210,12 +224,21 @@ pub struct Renderer {
     pub(super) editor_padding_x: f32,
     pub(super) editor_padding_y: f32,
     pub(super) panel_padding: f32,
+    pub(super) panel_corner_radius: f32,
+    pub(super) round_ui: bool,
     pub(super) sidebar_base_padding: f32,
     pub(super) sidebar_indent_per_depth: f32,
     pub(super) topbar_padding_x: f32,
+    pub(super) topbar_dirty_gap: f32,
     pub(super) statusbar_padding_x: f32,
     pub(super) statusbar_font_size: f32,
     pub(super) statusbar_line_height: f32,
+    pub(super) welcome_version: String,
+    pub(super) welcome_card_max_width: f32,
+    pub(super) welcome_card_padding_x: f32,
+    pub(super) welcome_card_padding_y: f32,
+    pub(super) welcome_section_gap: f32,
+    pub(super) welcome_border_radius_px: f32,
     pub(super) cursor_shape: CursorShape,
     pub(super) cursor_beam_width: f32,
     pub(super) cursor_block_width: f32,
@@ -240,4 +263,10 @@ pub struct Renderer {
     pub(super) toast_glyph_instances: Vec<GlyphInstance>,
     pub(super) toast_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) toast_scissor: Option<[u32; 4]>,
+}
+
+impl Renderer {
+    pub fn editor_chrome_instances(&self) -> &[RegionDrawInstance] {
+        &self.last_editor_chrome_instances
+    }
 }

@@ -138,6 +138,7 @@ pub struct ThemeConfig {
     pub description: Option<String>,
     pub editor: EditorThemeTokens,
     pub ui: UiThemeTokens,
+    pub git: GitThemeTokens,
     pub syntax: SyntaxThemeTokens,
     pub icons: IconThemeTokens,
     pub exact_icons: HashMap<String, String>,
@@ -154,6 +155,8 @@ pub struct EditorThemeTokens {
     pub selection: ThemeColor,
     pub gutter: ThemeColor,
     pub gutter_active: ThemeColor,
+    pub indent_guide: ThemeColor,
+    pub rainbow_brackets: Vec<ThemeColor>,
     pub font_size: f32,
     pub line_height: f32,
     pub font_family: Option<String>,
@@ -170,6 +173,7 @@ pub struct UiThemeTokens {
     pub status_bar_bg: ThemeColor,
     pub border_color: ThemeColor,
     pub selection_bg: ThemeColor,
+    pub dirty_indicator: ThemeColor,
     pub fg: ThemeColor,
     pub fg_dim: ThemeColor,
     pub fg_ghost: ThemeColor,
@@ -201,6 +205,15 @@ pub struct UiThemeTokens {
 }
 
 #[derive(Debug, Clone)]
+pub struct GitThemeTokens {
+    pub modified_sidebar: ThemeColor,
+    pub added_sidebar: ThemeColor,
+    pub modified_gutter: ThemeColor,
+    pub added_gutter: ThemeColor,
+    pub deleted_gutter: ThemeColor,
+}
+
+#[derive(Debug, Clone)]
 pub struct SyntaxThemeTokens {
     pub keyword: ThemeColor,
     pub string: ThemeColor,
@@ -208,15 +221,22 @@ pub struct SyntaxThemeTokens {
     pub comment: ThemeColor,
     pub r#type: ThemeColor,
     pub number: ThemeColor,
+    pub boolean: ThemeColor,
     pub identifier: ThemeColor,
+    pub variable: ThemeColor,
     pub parameter: ThemeColor,
     pub field: ThemeColor,
     pub property: ThemeColor,
     pub constant: ThemeColor,
     pub operator: ThemeColor,
     pub punctuation: ThemeColor,
+    pub escape: ThemeColor,
     pub r#macro: ThemeColor,
     pub lifetime: ThemeColor,
+    pub constructor: ThemeColor,
+    pub attribute: ThemeColor,
+    pub namespace: ThemeColor,
+    pub tag: ThemeColor,
 }
 
 #[derive(Debug, Clone)]

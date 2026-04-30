@@ -90,6 +90,18 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             ),
             Err(report) => report,
         },
+        Command::OpenHelp => {
+            let _ = ctx.app_state.close_command_palette();
+            if ctx.app_state.current_mode() == EditorMode::PaletteFocus {
+                let _ = ctx.app_state.apply_mode_event(ModeEvent::ExitFocus);
+            }
+            let index = ctx.app_state.open_help_buffer();
+            DispatchReport::success_with_flags(
+                format!("Dispatch: help buffer opened at index {index}"),
+                true,
+                true,
+            )
+        }
         Command::FilePickerAppendQuery(text) => match ctx.app_state.file_picker_append_query(&text)
         {
             Ok(changed) => DispatchReport::success(
@@ -150,6 +162,24 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 ),
                 Err(report) => report,
             }
+        }
+        Command::OpenFileHistory => {
+            let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterInsert);
+            let _ = ctx.app_state.begin_file_history_preview_session();
+            let buffer_index = ctx
+                .app_state
+                .open_fuzzy_picker_buffer(CommandPaletteMode::FileHistory);
+            let items = ctx.app_state.file_history_picker_items();
+            let _ = ctx.app_state.set_command_palette_results(
+                CommandPaletteMode::FileHistory,
+                "",
+                items,
+            );
+            DispatchReport::success_with_flags(
+                format!("Dispatch: file history buffer opened at index {buffer_index}"),
+                true,
+                true,
+            )
         }
         _ => unreachable!("palette::dispatch received non-palette command"),
     }
@@ -339,22 +369,25 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
         }
         CommandPaletteAction::ExecuteVimCommand(vim) => {
             let trimmed = vim.trim();
-            let report = if trimmed == "w" {
+            let command_text = trimmed.strip_prefix(':').unwrap_or(trimmed).trim();
+            let report = if command_text == "w" {
                 dispatch_command(ctx.app_state, Command::SaveFile)
-            } else if trimmed == "q" {
+            } else if command_text == "q" {
                 dispatch_command(ctx.app_state, Command::CloseFilePicker)
-            } else if trimmed == "wq" {
+            } else if command_text == "wq" {
                 let _ = dispatch_command(ctx.app_state, Command::SaveFile);
                 dispatch_command(ctx.app_state, Command::CloseFilePicker)
-            } else if trimmed == "enew" {
+            } else if command_text == "enew" {
                 dispatch_command(ctx.app_state, Command::BufferNew)
-            } else if trimmed == "bn" {
+            } else if command_text == "bn" {
                 dispatch_command(ctx.app_state, Command::BufferNext)
-            } else if trimmed == "bp" {
+            } else if command_text == "bp" {
                 dispatch_command(ctx.app_state, Command::BufferPrev)
-            } else if trimmed == "bd" {
+            } else if command_text == "bd" {
                 dispatch_command(ctx.app_state, Command::BufferCloseCurrent)
-            } else if let Ok(line_number) = trimmed.parse::<usize>() {
+            } else if command_text == "h" || command_text == "help" {
+                dispatch_command(ctx.app_state, Command::OpenHelp)
+            } else if let Ok(line_number) = command_text.parse::<usize>() {
                 let target_line = line_number
                     .saturating_sub(1)
                     .min(ctx.app_state.total_lines());
@@ -393,6 +426,16 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
                 false,
             )
         }
+        CommandPaletteAction::SelectFileHistoryEntry(index) => {
+            let changed = ctx.app_state.preview_file_history_index(index);
+            let closed = ctx.close_palette_and_exit_focus();
+            let accepted = ctx.app_state.accept_file_history_preview();
+            DispatchReport::success_with_flags(
+                format!("Dispatch: file history confirmed -> entry #{index}"),
+                true,
+                changed || closed || accepted,
+            )
+        }
     }
 }
 
@@ -401,9 +444,16 @@ fn close_picker(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
         ctx.app_state.command_palette_mode(),
         Some(CommandPaletteMode::InFileSearch)
     );
+    let cancels_file_history = matches!(
+        ctx.app_state.command_palette_mode(),
+        Some(CommandPaletteMode::FileHistory)
+    );
     let mut changed = ctx.close_palette_and_exit_focus();
     if clears_search {
         changed |= ctx.app_state.clear_search_highlights();
+    }
+    if cancels_file_history {
+        changed |= ctx.app_state.cancel_file_history_preview();
     }
 
     DispatchReport::success(

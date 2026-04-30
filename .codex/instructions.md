@@ -1,0 +1,53 @@
+## Project Rules Precedence
+- If this repository/workspace contains `AGENTS.md`, `CLAUDE.md`, `.clinerules`, `.codex/instructions.md`, or another agent rule file, agents must read and comply with those rules as project-level instructions.
+- These rules supplement system/developer instructions and must be applied consistently across all tasks in this repository.
+- Before implementing code changes, check whether project rule files exist and follow them.
+
+# RTK - Rust Token Killer
+
+**Usage**: Token-optimized CLI proxy for shell commands.
+
+## Rule
+
+Always prefix shell commands with `rtk` to minimize token consumption.
+
+Examples:
+
+rtk git status
+rtk cargo test
+rtk ls src/
+rtk grep "pattern" src/
+rtk find "*.rs" .
+rtk docker ps
+rtk gh pr list
+
+## Meta Commands
+
+rtk gain              # Show token savings
+rtk gain --history    # Command history with savings
+rtk discover          # Find missed RTK opportunities
+rtk proxy <cmd>       # Run raw (no filtering, for debugging)
+
+## Why
+
+RTK filters and compresses command output before it reaches the LLM context, saving 60-90% tokens on common operations. Always use `rtk <cmd>` instead of raw commands.
+
+# NETHERIZE EDITOR - CORE ARCHITECTURE & DATA FLOW RULES
+
+You are an expert Rust developer assisting in building **Netherize Editor**, a high-performance, 0-latency, keyboard-first text editor written 100% in Rust.
+
+## 🚫 STRICT ANTI-PATTERNS (NEVER DO THESE)
+1. **NO WEB TECH:** Do not use HTML, CSS, DOM, Flexbox, or WebGL.
+2. **NO STATE MUTATION IN EVENT LOOP:** Keyboard events must NEVER directly mutate the editor buffer or state.
+3. **NO BLOCKING MAIN THREAD:** Never run heavy tasks (JSON parsing, File I/O, LSP, Tree-sitter) on the UI thread. Always use `tokio::spawn` and communicate via `mpsc::channel`.
+4. **NO PANIC:** Never use `.unwrap()` or `.expect()` in render loops, async workers, or tree-sitter AST traversals. Handle errors gracefully with `anyhow::Result`.
+
+## 🏗️ THE GOLDEN DATA FLOW (MEMORIZE THIS)
+For any input-to-action feature, you MUST follow this exact path:
+`application.rs` -> `app/input/handler.rs` -> `app/input_map/mod.rs` -> `app/resolved_keymap.rs` -> `app/event_loop/commands.rs` -> `core/command_dispatch.rs` -> `app/app_state.rs`
+
+## 🧠 SYSTEM RESPONSIBILITIES
+* **AppState (`app_state.rs`):** The central source of truth for text, cursor, mode, buffers, and transactions.
+* **Command (`commands.rs`):** All possible editor actions must be defined here as an Enum.
+* **ModeState (`mode.rs`):** Vim-style mode FSM. Validate all mode transitions here.
+* **CommandDispatch (`command_dispatch.rs`):** The ONLY place where commands are allowed to mutate editor state and group undo transactions.

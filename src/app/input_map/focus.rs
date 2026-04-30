@@ -1,13 +1,63 @@
 use winit::keyboard::KeyCode;
 
+use super::helpers::palette_query_from_text;
 use super::*;
 
 impl InputMap {
     pub(super) fn resolve_settings_focus(
         &self,
         input: &NormalizedInput,
+        context: KeybindingContext,
     ) -> Option<KeybindingMatch> {
         use KeyCode::*;
+
+        let is_insert = context.mode == EditorMode::Insert;
+
+        if is_insert {
+            if input.has_command_modifier() && input.physical_key == Some(KeyV) {
+                return Some(KeybindingMatch {
+                    command: Command::EditorPaste,
+                    reason: "settings edit: mod+v -> EditorPaste",
+                });
+            }
+
+            if input.named_key == Some(NamedKey::Escape) {
+                return Some(KeybindingMatch {
+                    command: Command::CloseFilePicker,
+                    reason: "settings edit: Esc -> cancel edit",
+                });
+            }
+
+            if input.named_key == Some(NamedKey::Enter) {
+                return Some(KeybindingMatch {
+                    command: Command::SettingsActivate,
+                    reason: "settings edit: Enter -> commit edit",
+                });
+            }
+
+            if input.named_key == Some(NamedKey::Backspace) {
+                return Some(KeybindingMatch {
+                    command: Command::FilePickerBackspaceQuery,
+                    reason: "settings edit: Backspace -> delete editing char",
+                });
+            }
+
+            if input.named_key == Some(NamedKey::Space) {
+                return Some(KeybindingMatch {
+                    command: Command::FilePickerAppendQuery(" ".to_string()),
+                    reason: "settings edit: Space -> append editing char",
+                });
+            }
+
+            if let Some(command) = palette_query_from_text(&input.text) {
+                return Some(KeybindingMatch {
+                    command,
+                    reason: "settings edit: text input -> append editing char",
+                });
+            }
+
+            return None;
+        }
 
         if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowDown))
             || (!input.has_command_modifier() && input.physical_key == Some(KeyJ))
@@ -180,7 +230,41 @@ impl InputMap {
     pub(super) fn resolve_explorer_focus(
         &self,
         input: &NormalizedInput,
+        welcome_visible: bool,
     ) -> Option<KeybindingMatch> {
+        if welcome_visible {
+            if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowDown))
+                || (!input.has_command_modifier() && input.physical_key == Some(KeyCode::KeyJ))
+                || (input.modifiers.control_key()
+                    && !input.modifiers.super_key()
+                    && input.physical_key == Some(KeyCode::KeyN))
+            {
+                return Some(KeybindingMatch {
+                    command: Command::OverlaySelectNext,
+                    reason: "welcome explorer focus: down/j/Ctrl+n -> SelectNext",
+                });
+            }
+
+            if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowUp))
+                || (!input.has_command_modifier() && input.physical_key == Some(KeyCode::KeyK))
+                || (input.modifiers.control_key()
+                    && !input.modifiers.super_key()
+                    && input.physical_key == Some(KeyCode::KeyP))
+            {
+                return Some(KeybindingMatch {
+                    command: Command::OverlaySelectPrev,
+                    reason: "welcome explorer focus: up/k/Ctrl+p -> SelectPrev",
+                });
+            }
+
+            if input.named_key == Some(NamedKey::Enter) {
+                return Some(KeybindingMatch {
+                    command: Command::FilePickerConfirmSelection,
+                    reason: "welcome explorer focus: Enter -> ConfirmSelection",
+                });
+            }
+        }
+
         if let Some(command) = resolved_keymap::resolve_command_mode_only(
             &self.keymap,
             input,
@@ -334,8 +418,57 @@ impl InputMap {
         &self,
         input: &NormalizedInput,
         palette_visible: bool,
+        palette_mode: Option<CommandPaletteMode>,
+        welcome_visible: bool,
     ) -> Option<KeybindingMatch> {
         if !palette_visible {
+            if welcome_visible {
+                if input.modifiers.control_key() && !input.modifiers.super_key() {
+                    use KeyCode::*;
+                    match input.physical_key {
+                        Some(KeyN) => {
+                            return Some(KeybindingMatch {
+                                command: Command::OverlaySelectNext,
+                                reason: "palette focus without visible overlay: welcome Ctrl+n -> SelectNext",
+                            });
+                        }
+                        Some(KeyP) => {
+                            return Some(KeybindingMatch {
+                                command: Command::OverlaySelectPrev,
+                                reason: "palette focus without visible overlay: welcome Ctrl+p -> SelectPrev",
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+
+                if !input.has_command_modifier() {
+                    use KeyCode::*;
+                    match input.physical_key {
+                        Some(KeyJ) => {
+                            return Some(KeybindingMatch {
+                                command: Command::OverlaySelectNext,
+                                reason: "palette focus without visible overlay: welcome j -> SelectNext",
+                            });
+                        }
+                        Some(KeyK) => {
+                            return Some(KeybindingMatch {
+                                command: Command::OverlaySelectPrev,
+                                reason: "palette focus without visible overlay: welcome k -> SelectPrev",
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+
+                if input.named_key == Some(NamedKey::Enter) {
+                    return Some(KeybindingMatch {
+                        command: Command::FilePickerConfirmSelection,
+                        reason: "palette focus without visible overlay: welcome Enter -> ConfirmSelection",
+                    });
+                }
+            }
+
             if input.named_key == Some(NamedKey::Escape) {
                 return Some(KeybindingMatch {
                     command: Command::SwitchMode(ModeEvent::ExitFocus),
@@ -355,6 +488,47 @@ impl InputMap {
                 command,
                 reason: "palette focus: palette-mode keymap binding",
             });
+        }
+
+        if input.modifiers.control_key() && !input.modifiers.super_key() {
+            use KeyCode::*;
+            match input.physical_key {
+                Some(KeyN) => {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectNext,
+                        reason: "palette focus: Ctrl+n -> SelectNext",
+                    });
+                }
+                Some(KeyP) => {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectPrev,
+                        reason: "palette focus: Ctrl+p -> SelectPrev",
+                    });
+                }
+                _ => {}
+            }
+        }
+
+        if welcome_visible
+            && palette_mode == Some(CommandPaletteMode::RecentProjects)
+            && !input.has_command_modifier()
+        {
+            use KeyCode::*;
+            match input.physical_key {
+                Some(KeyJ) => {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectNext,
+                        reason: "welcome recent projects palette: j -> SelectNext",
+                    });
+                }
+                Some(KeyK) => {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectPrev,
+                        reason: "welcome recent projects palette: k -> SelectPrev",
+                    });
+                }
+                _ => {}
+            }
         }
 
         if let Some(named) = input.named_key {

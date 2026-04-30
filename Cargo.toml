@@ -6,6 +6,7 @@ default-run = "netherize_editor"
 
 [dependencies]
 ignore = "0.4"
+image = { version = "0.25.5", default-features = false, features = ["png", "jpeg", "gif", "bmp", "ico", "webp"] }
 arboard = "3.4.1"
 bytemuck = { version = "1.24.0", features = ["derive"] }
 cosmic-text = "0.18.2"
@@ -21,6 +22,9 @@ toml = "0.8"
 swash = "0.2.7"
 sysinfo = "0.37.2"
 tokio = { version = "1.52.1", features = ["io-util", "rt-multi-thread", "sync", "time", "process"] }
+sha2 = "0.10.9"
+similar = "2.2"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 tree-sitter = "0.25.8"
 tree-sitter-bash = "0.25.1"
 tree-sitter-dockerfile = "0.2.0"
@@ -42,8 +46,19 @@ criterion = { version = "0.5.1", default-features = true }
 name = "editor_bench"
 harness = false
 
-[profile.release]
+# For profiling / flamegraph (cargo build --profile profiling)
+[profile.profiling]
+inherits = "release"
 debug = true
+
+# Optimized IDE build (cargo build --release)
+[profile.release]
+opt-level = 3
+lto = "thin"          # faster than "fat", still good gains on wgpu/tree-sitter
+codegen-units = 1     # single unit → best inlining across crates
+strip = "debuginfo"   # remove debug symbols → smaller binary, fast startup
+debug = false
+panic = "abort"       # removes unwinding machinery (~10% size reduction)
 
 [profile.bench]
 debug = true

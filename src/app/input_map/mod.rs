@@ -1,9 +1,10 @@
 use std::path::{Path, PathBuf};
 
-use winit::keyboard::NamedKey;
+use winit::keyboard::{KeyCode, NamedKey};
 
 use crate::{
     app::{
+        command_palette::CommandPaletteMode,
         input::NormalizedInput,
         resolved_keymap::{self, KeySpec, ResolvedKeymap, SequenceLookup, build, editor_mode_str},
     },
@@ -21,11 +22,13 @@ mod helpers;
 #[cfg(test)]
 mod tests;
 
-use helpers::{insert_command_from_text, palette_query_from_text};
+use helpers::insert_command_from_text;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputFocusContext {
     Editor,
+    /// Welcome home screen owns input independently of editor/sidebar focus.
+    Welcome,
     References,
     Diagnostics,
     Explorer,
@@ -44,6 +47,7 @@ impl InputFocusContext {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Editor => "editor",
+            Self::Welcome => "welcome",
             Self::References => "references",
             Self::Diagnostics => "diagnostics",
             Self::Explorer => "explorer",
@@ -60,6 +64,7 @@ impl InputFocusContext {
         matches!(
             self,
             Self::Editor
+                | Self::Welcome
                 | Self::References
                 | Self::Diagnostics
                 | Self::Explorer
@@ -75,6 +80,8 @@ pub struct KeybindingContext {
     pub mode: EditorMode,
     pub focus: InputFocusContext,
     pub command_palette_visible: bool,
+    pub command_palette_mode: Option<CommandPaletteMode>,
+    pub welcome_visible: bool,
     pub completion_visible: bool,
 }
 
@@ -88,6 +95,8 @@ impl KeybindingContext {
             mode,
             focus,
             command_palette_visible: false,
+            command_palette_mode: None,
+            welcome_visible: false,
             completion_visible: false,
         }
     }
@@ -107,6 +116,8 @@ impl KeybindingContext {
             mode,
             focus,
             command_palette_visible: false,
+            command_palette_mode: None,
+            welcome_visible: false,
             completion_visible: false,
         }
     }
@@ -162,7 +173,12 @@ impl InputMap {
         context: KeybindingContext,
     ) -> Option<KeybindingMatch> {
         if context.command_palette_visible || context.mode == EditorMode::PaletteFocus {
-            return self.resolve_palette_focus(input, context.command_palette_visible);
+            return self.resolve_palette_focus(
+                input,
+                context.command_palette_visible,
+                context.command_palette_mode,
+                context.welcome_visible,
+            );
         }
 
         // BufferTerminal (lazygit, v.v.): bypass keymap hoàn toàn,
@@ -181,19 +197,59 @@ impl InputMap {
             return self.resolve_fuzzy_picker_focus(input, context);
         }
         if context.focus == InputFocusContext::SettingsTab {
-            return self.resolve_settings_focus(input);
+            return self.resolve_settings_focus(input, context);
         }
         if context.focus == InputFocusContext::Terminal {
             return self.resolve_terminal_focus(input, context.mode);
         }
         if context.focus == InputFocusContext::Explorer {
-            return self.resolve_explorer_focus(input);
+            return self.resolve_explorer_focus(input, context.welcome_visible);
         }
         if context.focus == InputFocusContext::Inspector {
             return self.resolve_inspector_focus(input);
         }
         if context.focus == InputFocusContext::BottomPanel {
             return self.resolve_bottom_panel_focus(input);
+        }
+
+        if context.welcome_visible {
+            match input.physical_key {
+                Some(KeyCode::KeyJ) if !input.has_command_modifier() => {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectNext,
+                        reason: "welcome recent projects: j -> SelectNext",
+                    });
+                }
+                Some(KeyCode::KeyK) if !input.has_command_modifier() => {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectPrev,
+                        reason: "welcome recent projects: k -> SelectPrev",
+                    });
+                }
+                Some(KeyCode::KeyN)
+                    if input.modifiers.control_key() && !input.modifiers.super_key() =>
+                {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectNext,
+                        reason: "welcome recent projects: Ctrl+n -> SelectNext",
+                    });
+                }
+                Some(KeyCode::KeyP)
+                    if input.modifiers.control_key() && !input.modifiers.super_key() =>
+                {
+                    return Some(KeybindingMatch {
+                        command: Command::OverlaySelectPrev,
+                        reason: "welcome recent projects: Ctrl+p -> SelectPrev",
+                    });
+                }
+                _ => {}
+            }
+            if !input.has_command_modifier() && input.named_key == Some(NamedKey::Enter) {
+                return Some(KeybindingMatch {
+                    command: Command::FilePickerConfirmSelection,
+                    reason: "welcome recent projects: Enter -> ConfirmSelection",
+                });
+            }
         }
 
         let mode_str = editor_mode_str(context.mode);
@@ -289,6 +345,14 @@ impl InputMap {
         if !context.focus.allows_leader() {
             return false;
         }
+        if context.welcome_visible
+            && matches!(
+                context.focus,
+                InputFocusContext::Editor | InputFocusContext::Welcome
+            )
+        {
+            return true;
+        }
         if context.focus == InputFocusContext::Editor {
             return matches!(context.mode, EditorMode::Normal | EditorMode::Visual);
         }
@@ -297,6 +361,8 @@ impl InputMap {
 
     fn sequence_mode_str(&self, context: KeybindingContext) -> &'static str {
         match context.focus {
+            InputFocusContext::Editor if context.welcome_visible => "normal",
+            InputFocusContext::Welcome => "normal",
             InputFocusContext::Editor => editor_mode_str(context.mode),
             InputFocusContext::References => editor_mode_str(context.mode),
             InputFocusContext::Diagnostics => editor_mode_str(context.mode),

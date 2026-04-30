@@ -15,6 +15,8 @@ pub const MOVE_TO_LINE_END: &str = "editor.move_to_line_end";
 pub const MOVE_TO_FIRST_NON_WHITESPACE: &str = "editor.move_to_first_non_whitespace";
 pub const MOVE_TO_FIRST_LINE: &str = "editor.move_to_first_line";
 pub const MOVE_TO_LAST_LINE: &str = "editor.move_to_last_line";
+pub const MOVE_PARAGRAPH_UP: &str = "editor.move_paragraph_up";
+pub const MOVE_PARAGRAPH_DOWN: &str = "editor.move_paragraph_down";
 pub const SCROLL_HALF_PAGE_UP: &str = "editor.scroll_half_page_up";
 pub const SCROLL_HALF_PAGE_DOWN: &str = "editor.scroll_half_page_down";
 pub const CENTER_CURSOR_LINE: &str = "editor.center_cursor_line";
@@ -25,6 +27,7 @@ pub const SEARCH_WORD_UNDER_CURSOR: &str = "editor.search_word_under_cursor";
 pub const CLEAR_SEARCH_HIGHLIGHTS: &str = "editor.clear_search_highlights";
 pub const BACKSPACE: &str = "editor.backspace";
 pub const NEWLINE: &str = "editor.newline";
+pub const INSERT_TAB: &str = "editor.insert_tab";
 pub const INSERT_LINE_BELOW: &str = "editor.insert_line_below";
 pub const INSERT_LINE_ABOVE: &str = "editor.insert_line_above";
 pub const INSERT_AT_LINE_START: &str = "editor.insert_at_line_start";
@@ -34,6 +37,7 @@ pub const SUBSTITUTE_LINE: &str = "editor.substitute_line";
 pub const DELETE_CHAR: &str = "editor.delete_char";
 pub const DELETE_SELECTION: &str = "editor.delete_selection";
 pub const DELETE_CURRENT_LINE: &str = "editor.delete_current_line";
+pub const DELETE_TO_LINE_END: &str = "editor.delete_to_line_end";
 pub const TOGGLE_LINE_COMMENT: &str = "editor.toggle_line_comment";
 pub const TOGGLE_SELECTION_COMMENT: &str = "editor.toggle_selection_comment";
 pub const DELETE_WORD_FORWARD: &str = "editor.delete_word_forward";
@@ -42,6 +46,8 @@ pub const YANK_SELECTION: &str = "editor.yank_selection";
 pub const CHANGE_SELECTION: &str = "editor.change_selection";
 pub const CHANGE_WORD_FORWARD: &str = "editor.change_word_forward";
 pub const CHANGE_WORD_BACKWARD: &str = "editor.change_word_backward";
+pub const CHANGE_TO_LINE_END: &str = "editor.change_to_line_end";
+pub const JOIN_LINES: &str = "editor.join_lines";
 pub const PASTE_AFTER: &str = "editor.paste_after";
 pub const PASTE_BEFORE: &str = "editor.paste_before";
 pub const EDITOR_PASTE: &str = "editor.paste";
@@ -77,8 +83,11 @@ pub const OPEN_VIM_COMMAND: &str = "app.open_vim_command";
 pub const OPEN_WORKSPACE_SYMBOLS: &str = "app.open_workspace_symbols";
 pub const SEARCH_IN_FILES: &str = "app.search_in_files";
 pub const OPEN_THEME_SELECTOR: &str = "app.open_theme_selector";
+pub const OPEN_FILE_HISTORY: &str = "app.open_file_history";
 pub const OPEN_SETTINGS: &str = "app.open_settings";
+pub const OPEN_HELP: &str = "app.open_help";
 pub const GIT_OPEN_LAZYGIT: &str = "git.open_lazygit";
+pub const DOCKER_OPEN_LAZYDOCKER: &str = "docker.open_lazydocker";
 pub const GIT_BLAME_LINE: &str = "git.blame_line";
 pub const TERMINAL_ENTER_NORMAL_MODE: &str = "terminal.enter_normal_mode";
 pub const TERMINAL_PASTE: &str = "terminal.paste";
@@ -88,11 +97,13 @@ pub const LSP_HOVER: &str = "lsp.hover";
 pub const LSP_GO_TO_DEFINITION: &str = "lsp.go_to_definition";
 pub const LSP_PREVIEW_DEFINITION: &str = "lsp.preview_definition";
 pub const LSP_REFERENCES: &str = "lsp.references";
+pub const LSP_FORMAT_DOCUMENT: &str = "lsp.format_document";
 pub const LSP_TRIGGER_COMPLETION: &str = "lsp.trigger_completion";
 pub const COMPLETION_NEXT: &str = "completion.next";
 pub const COMPLETION_PREV: &str = "completion.prev";
 pub const COMPLETION_ACCEPT: &str = "completion.accept";
 pub const COMPLETION_CLOSE: &str = "completion.close";
+pub const AI_ACCEPT_INLINE: &str = "ai.accept_inline";
 pub const DIAGNOSTICS_OPEN_PICKER: &str = "diagnostics.open_picker";
 
 // ── Jump list navigation ─────────────────────────────────────────────────────
@@ -185,6 +196,7 @@ pub const ALL_IDS: &[&str] = &[
     CLEAR_SEARCH_HIGHLIGHTS,
     BACKSPACE,
     NEWLINE,
+    INSERT_TAB,
     INSERT_LINE_BELOW,
     INSERT_LINE_ABOVE,
     INSERT_AT_LINE_START,
@@ -226,8 +238,10 @@ pub const ALL_IDS: &[&str] = &[
     OPEN_WORKSPACE_SYMBOLS,
     SEARCH_IN_FILES,
     OPEN_THEME_SELECTOR,
+    OPEN_FILE_HISTORY,
     OPEN_SETTINGS,
     GIT_OPEN_LAZYGIT,
+    DOCKER_OPEN_LAZYDOCKER,
     GIT_BLAME_LINE,
     TERMINAL_ENTER_NORMAL_MODE,
     TERMINAL_PASTE,
@@ -235,11 +249,13 @@ pub const ALL_IDS: &[&str] = &[
     LSP_GO_TO_DEFINITION,
     LSP_PREVIEW_DEFINITION,
     LSP_REFERENCES,
+    LSP_FORMAT_DOCUMENT,
     LSP_TRIGGER_COMPLETION,
     COMPLETION_NEXT,
     COMPLETION_PREV,
     COMPLETION_ACCEPT,
     COMPLETION_CLOSE,
+    AI_ACCEPT_INLINE,
     DIAGNOSTICS_OPEN_PICKER,
     JUMP_BACK,
     JUMP_FORWARD,
@@ -314,6 +330,8 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         MOVE_TO_FIRST_NON_WHITESPACE => Some(Command::MoveToFirstNonWhitespace),
         MOVE_TO_FIRST_LINE => Some(Command::MoveToFirstLine),
         MOVE_TO_LAST_LINE => Some(Command::MoveToLastLine),
+        MOVE_PARAGRAPH_UP => Some(Command::MoveParagraphUp),
+        MOVE_PARAGRAPH_DOWN => Some(Command::MoveParagraphDown),
         SCROLL_HALF_PAGE_UP => Some(Command::ScrollHalfPageUp),
         SCROLL_HALF_PAGE_DOWN => Some(Command::ScrollHalfPageDown),
         CENTER_CURSOR_LINE => Some(Command::CenterCursorLine),
@@ -324,6 +342,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         CLEAR_SEARCH_HIGHLIGHTS => Some(Command::ClearSearchHighlights),
         BACKSPACE => Some(Command::Backspace),
         NEWLINE => Some(Command::Newline),
+        INSERT_TAB => Some(Command::InsertTab),
         INSERT_LINE_BELOW => Some(Command::InsertLineBelow),
         INSERT_LINE_ABOVE => Some(Command::InsertLineAbove),
         INSERT_AT_LINE_START => Some(Command::InsertAtLineStart),
@@ -333,6 +352,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         DELETE_CHAR => Some(Command::DeleteChar),
         DELETE_SELECTION => Some(Command::DeleteSelection),
         DELETE_CURRENT_LINE => Some(Command::DeleteCurrentLine),
+        DELETE_TO_LINE_END => Some(Command::DeleteToLineEnd),
         TOGGLE_LINE_COMMENT => Some(Command::ToggleLineComment),
         TOGGLE_SELECTION_COMMENT => Some(Command::ToggleSelectionComment),
         DELETE_WORD_FORWARD => Some(Command::DeleteWordForward),
@@ -341,6 +361,8 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         CHANGE_SELECTION => Some(Command::ChangeSelection),
         CHANGE_WORD_FORWARD => Some(Command::ChangeWordForward),
         CHANGE_WORD_BACKWARD => Some(Command::ChangeWordBackward),
+        CHANGE_TO_LINE_END => Some(Command::ChangeToLineEnd),
+        JOIN_LINES => Some(Command::JoinLines),
         PASTE_AFTER => Some(Command::PasteAfter),
         PASTE_BEFORE => Some(Command::PasteBefore),
         EDITOR_PASTE | PASTE_SYSTEM_CLIPBOARD => Some(Command::EditorPaste),
@@ -370,18 +392,23 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         OPEN_WORKSPACE_SYMBOLS => Some(Command::OpenWorkspaceSymbols),
         SEARCH_IN_FILES => Some(Command::SearchInFiles),
         OPEN_THEME_SELECTOR => Some(Command::OpenThemeSelector),
+        OPEN_FILE_HISTORY => Some(Command::OpenFileHistory),
         OPEN_SETTINGS => Some(Command::OpenSettings),
+        OPEN_HELP => Some(Command::OpenHelp),
         GIT_OPEN_LAZYGIT => Some(Command::GitOpenLazygit),
+        DOCKER_OPEN_LAZYDOCKER => Some(Command::GitOpenLazydocker),
         GIT_BLAME_LINE => Some(Command::GitBlameLine),
         LSP_HOVER => Some(Command::LspHover),
         LSP_GO_TO_DEFINITION => Some(Command::LspGoToDefinition),
         LSP_PREVIEW_DEFINITION => Some(Command::LspPreviewDefinition),
         LSP_REFERENCES => Some(Command::LspReferences),
+        LSP_FORMAT_DOCUMENT => Some(Command::LspFormatDocument),
         LSP_TRIGGER_COMPLETION => Some(Command::TriggerCompletion),
         COMPLETION_NEXT => Some(Command::CompletionNext),
         COMPLETION_PREV => Some(Command::CompletionPrev),
         COMPLETION_ACCEPT => Some(Command::CompletionAccept),
         COMPLETION_CLOSE => Some(Command::CompletionClose),
+        AI_ACCEPT_INLINE => Some(Command::AiAcceptInline),
         DIAGNOSTICS_OPEN_PICKER => Some(Command::DiagnosticsOpenPicker),
         JUMP_BACK => Some(Command::JumpBack),
         JUMP_FORWARD => Some(Command::JumpForward),

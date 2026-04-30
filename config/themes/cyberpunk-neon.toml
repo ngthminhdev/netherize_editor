@@ -1,0 +1,210 @@
+[theme]
+name = "cyberpunk_neon"
+description = "High contrast neon cyberpunk theme for Netherize Editor"
+
+[editor]
+bg = "#0D0D0D"
+fg = "#EAEAEA"
+cursor = "#00FFF7"
+selection = "#1F1F1F"
+gutter = "#0D0D0D"
+gutter_active = "#FF00FF"
+font_size = 15.0
+line_height = 26.0
+font_family = "Google Sans Code"
+nerd_font_family = "Hack Nerd Font"
+
+[ui]
+bg = "#080808"
+sidebar_bg = "#050505"
+panel_bg = "#050505"
+terminal_bg = "#000000"
+overlay_bg = "#080808D9"
+status_bar_bg = "#000000"
+border_color = "#222222"
+selection_bg = "#2A2A2A"
+
+fg = "#EAEAEA"
+fg_dim = "#888888"
+fg_ghost = "#555555"
+
+accent = "#00FFF7"
+cyan = "#00FFF7"
+magenta = "#FF00FF"
+amber = "#FFD700"
+success = "#00FF9F"
+warning = "#FF9F00"
+info = "#00FFF7"
+error = "#FF0055"
+
+mode_normal = "#00FFF7"
+mode_insert = "#00FF9F"
+mode_visual = "#FF00FF"
+
+sidebar_font_size = 15.0
+sidebar_line_height = 22.0
+panel_font_size = 14.0
+panel_line_height = 22.0
+
+sidebar_width = 280.0
+right_sidebar_width = 320.0
+bottom_panel_height = 220.0
+top_bar_height = 36.0
+
+[git]
+modified_sidebar = "#FFD700"
+added_sidebar = "#00FF9F"
+modified_gutter = "#FFD700"
+added_gutter = "#00FF9F"
+deleted_gutter = "#FF0055"
+status_bar_height = 32.0
+
+[icons]
+explorer_file_marker = "·"
+explorer_folder_collapsed_marker = "▶"
+explorer_folder_expanded_marker = "▼"
+file_picker_dot = "●"
+
+[icons.folder_closed]
+glyph = "\uF07B"
+color = "#FFD700"
+
+[icons.folder_open]
+glyph = "\uF07C"
+color = "#FFD700"
+
+[icons.default_file]
+glyph = "\uF15B"
+color = "#555555"
+
+[icons.rust]
+glyph = "\uE7A8"
+color = "#FF9F00"
+
+[icons.javascript]
+glyph = "\uE781"
+color = "#FFD700"
+
+[icons.typescript]
+glyph = "\uE628"
+color = "#00FFF7"
+
+[icons.tsx]
+glyph = "\uE7BA"
+color = "#00FFF7"
+
+[icons.jsx]
+glyph = "\uE7BA"
+color = "#FFD700"
+
+[icons.python]
+glyph = "\uE73C"
+color = "#00FFF7"
+
+[icons.go]
+glyph = "\uE724"
+color = "#00FFF7"
+
+[icons.config]
+glyph = "\uE615"
+color = "#555555"
+
+[icons.json]
+glyph = "\uE60B"
+color = "#FFD700"
+
+[icons.markdown]
+glyph = "\uF48A"
+color = "#00FFF7"
+
+[icons.html]
+glyph = "\uE736"
+color = "#FF0055"
+
+[icons.css]
+glyph = "\uE749"
+color = "#00FFF7"
+
+[icons.sass]
+glyph = "\uE603"
+color = "#FF00FF"
+
+[icons.shell]
+glyph = "\uF489"
+color = "#00FF9F"
+
+[icons.git]
+glyph = "\uF1D3"
+color = "#FF9F00"
+
+[icons.lock]
+glyph = "\uF13E"
+color = "#555555"
+
+[icons.image]
+glyph = "\uF1C5"
+color = "#00FF9F"
+
+[file_icons]
+default_file = "📄"
+default_folder = "📁"
+
+[file_icons.extensions]
+rs = ""
+ts = ""
+tsx = ""
+js = ""
+jsx = ""
+go = ""
+json = ""
+jsonc = ""
+yaml = ""
+yml = ""
+toml = ""
+sql = ""
+md = ""
+mdx = ""
+dockerfile = ""
+sh = ""
+bash = ""
+zsh = ""
+fish = ""
+lock = ""
+
+[file_icons.exact]
+Dockerfile = ""
+"docker-compose.yml" = ""
+"docker-compose.yaml" = ""
+".gitignore" = ""
+".gitattributes" = ""
+".gitmodules" = ""
+"package.json" = ""
+"package-lock.json" = ""
+"tsconfig.json" = ""
+"Cargo.toml" = ""
+Makefile = ""
+"README.md" = ""
+
+[syntax]
+keyword = "#FF00FF"
+string = "#FFD700"
+function = "#00FFF7"
+comment = "#555555"
+type = "#00FFF7"
+number = "#FF9F00"
+identifier = "#EAEAEA"
+parameter = "#FFD700"
+field = "#00FFF7"
+property = "#00FFF7"
+constant = "#FF00FF"
+operator = "#FF00FF"
+punctuation = "#EAEAEA"
+macro = "#00FFF7"
+lifetime = "#FF9F00"
+boolean = "#00FF9F"
+escape = "#FF9F00"
+variable = "#EAEAEA"
+constructor = "#FF00FF"
+attribute = "#FFD700"
+namespace = "#00FFF7"
+tag = "#FF0055"

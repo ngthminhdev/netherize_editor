@@ -2,15 +2,18 @@
 title = "Netherize Editor"
 width = 1920
 height = 1080
-startup_mode = "maximized"
+startup_mode = "windowed"
 auto_scale = true
 min_content_scale = 1.0
-max_content_scale = 1.0
+max_content_scale = 2.0
 
 [layout]
-region_gap = 2.0
-top_bar_height = 38.0
-status_bar_height = 36.0
+outer_gap = 18.0
+panel_gap = 14.0
+inner_padding = 12.0
+round_ui = true
+top_bar_height = 34.0
+status_bar_height = 22.0
 center_min_width = 320.0
 center_min_height = 180.0
 sidebar_min_width = 180.0
@@ -35,11 +38,27 @@ underline_height = 2.0
 editor_padding = 14.0
 panel_padding = 10.0
 explorer_padding = 10.0
+topbar_dirty_gap = 6.0
 
 [status_bar]
 padding_x = 14.0
-font_size = 15.0
-line_height = 24.0
+font_size = 11.0
+line_height = 14.0
 
 [editor]
 relative_numbers = true
+smooth_scroll_enabled = true
+smooth_scroll_lerp_rate = 18.0
+smooth_scroll_snap_epsilon = 0.01
+
+[indent]
+tab_width = 4
+insert_spaces = true
+
+[welcome]
+version = "v1.0.0-alpha"
+card_max_width = 560.0
+card_padding_x = 42.0
+card_padding_y = 34.0
+section_gap = 16.0
+border_radius_px = 18.0

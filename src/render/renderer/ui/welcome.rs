@@ -1,0 +1,542 @@
+use std::{path::PathBuf, sync::OnceLock};
+
+use cosmic_text::Metrics;
+
+use crate::{
+    render::{
+        glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
+    },
+    terminal::grid::TerminalGrid,
+    text::text_system::StyledTextSpan,
+};
+
+use super::super::{
+    components::{HighlightChipStyle, layout_help_keycaps, push_centered_highlight_chip},
+    helpers::{
+        estimate_monospace_width, layout_panel_text, layout_panel_text_bold, rect_to_scissor,
+    },
+};
+
+struct BundledLogo {
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+}
+
+fn bundled_logo() -> Option<&'static BundledLogo> {
+    static LOGO: OnceLock<Option<BundledLogo>> = OnceLock::new();
+    LOGO.get_or_init(|| {
+        let bytes = include_bytes!("../../../../assets/app_logo.png");
+        let decoded = image::load_from_memory(bytes).ok()?;
+        let rgba = decoded.to_rgba8();
+        Some(BundledLogo {
+            width: rgba.width(),
+            height: rgba.height(),
+            rgba: rgba.into_raw(),
+        })
+    })
+    .as_ref()
+}
+
+impl Renderer {
+    pub fn update_welcome_screen_content(
+        &mut self,
+        _text: &str,
+        _spans: &[StyledTextSpan],
+        bounds: [f32; 4],
+        recent_projects: &[PathBuf],
+        selected_recent_index: usize,
+    ) {
+        if bounds[2] < 1.0 || bounds[3] < 1.0 {
+            self.clear_welcome_logo();
+            return;
+        }
+
+        self.welcome_logo_scissor = rect_to_scissor(bounds);
+        let mut glyphs = Vec::new();
+        let mut chrome = Vec::new();
+        let bg = self.theme.editor.bg.as_f32();
+        let panel = self.theme.ui.panel_bg.as_f32();
+        let border = self.theme.ui.border_color.as_f32();
+        let fg = self.theme.ui.fg.as_f32();
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let fg_ghost = self.theme.ui.fg_ghost.as_f32();
+        let accent = self.theme.ui.accent.as_f32();
+        let welcome_scale = (self.welcome_card_max_width / 560.0).clamp(0.5, 3.0);
+        let sx = |value: f32| value * welcome_scale;
+        let text_w = |text: &str, size: f32| estimate_monospace_width(text, size);
+        let centered_x = |center: f32, text: &str, size: f32| center - text_w(text, size) * 0.5;
+
+        chrome.push(RegionDrawInstance::new(bounds, bg));
+
+        let left_w = bounds[2] * 0.55;
+        let divider_x = bounds[0] + left_w;
+        let body_top = bounds[1];
+        let body_h = bounds[3];
+
+        let mut divider = border;
+        divider[3] = 0.65;
+        chrome.push(RegionDrawInstance::new(
+            [
+                divider_x,
+                body_top + sx(40.0),
+                sx(1.0).max(1.0),
+                (body_h - sx(80.0)).max(1.0),
+            ],
+            divider,
+        ));
+
+        let line = |this: &mut Renderer,
+                    glyphs: &mut Vec<GlyphInstance>,
+                    s: &str,
+                    x: f32,
+                    y: f32,
+                    size: f32,
+                    lh: f32,
+                    color: [f32; 4],
+                    bold: bool| {
+            this.welcome_logo_text_system
+                .set_metrics(Metrics::new(size, lh));
+            this.welcome_logo_text_system.set_size(None, Some(lh));
+            if bold {
+                glyphs.extend(layout_panel_text_bold(
+                    s,
+                    &mut this.welcome_logo_text_system,
+                    &mut this.atlas,
+                    &this.queue,
+                    x,
+                    y,
+                    color,
+                ));
+            } else {
+                glyphs.extend(layout_panel_text(
+                    s,
+                    &mut this.welcome_logo_text_system,
+                    &mut this.atlas,
+                    &this.queue,
+                    x,
+                    y,
+                    color,
+                ));
+            }
+        };
+
+        let cx = bounds[0] + left_w * 0.5;
+        let hero_top = body_top + body_h * 0.5 - sx(205.0);
+        let logo_max_w = (left_w - sx(88.0)).max(sx(180.0));
+        let logo_max_h = sx(280.0);
+        let logo_y = hero_top + sx(6.0);
+        let mut logo_height = sx(120.0);
+
+        if let Some(logo) = bundled_logo() {
+            let scale = (logo_max_w / logo.width as f32)
+                .min(logo_max_h / logo.height.max(1) as f32)
+                .min(1.0);
+            let draw_w = (logo.width as f32 * scale).max(1.0);
+            let draw_h = (logo.height as f32 * scale).max(1.0);
+            let rect = [cx - draw_w * 0.5, logo_y, draw_w, draw_h];
+            self.welcome_image_scissor = self.welcome_logo_scissor;
+            self.welcome_image_pipeline.upload_rgba(
+                &self.device,
+                &self.queue,
+                &logo.rgba,
+                logo.width,
+                logo.height,
+                rect,
+                [
+                    self.surface_state.config.width,
+                    self.surface_state.config.height,
+                ],
+            );
+            logo_height = draw_h;
+        }
+
+        let title = "Netherize";
+        let title_size = sx(32.0);
+        line(
+            self,
+            &mut glyphs,
+            title,
+            centered_x(cx, title, title_size),
+            logo_y + logo_height + sx(12.0),
+            title_size,
+            sx(38.0),
+            fg,
+            true,
+        );
+        let tagline = "GPU · Zero Latency · Keyboard Driven";
+        let tagline_size = sx(11.0);
+        line(
+            self,
+            &mut glyphs,
+            tagline,
+            centered_x(cx, tagline, tagline_size),
+            logo_y + logo_height + sx(50.0),
+            tagline_size,
+            sx(16.0),
+            accent,
+            true,
+        );
+        let meta_y = logo_y + logo_height + sx(106.0);
+        let meta_size = sx(11.0);
+        let meta_line_height = sx(16.0);
+        let meta_chip_height = sx(30.0);
+        let meta_chip_gap = sx(10.0);
+        let meta_chip_padding_x = sx(14.0);
+        let version_label = self.welcome_version.clone();
+        let meta_chips = [
+            (version_label, fg, true),
+            ("Rust 1.92".to_string(), fg_ghost, false),
+            ("wgpu 0.29".to_string(), fg_ghost, false),
+            ("by ngthminhdev".to_string(), fg, true),
+        ];
+        let meta_total_w: f32 = meta_chips
+            .iter()
+            .map(|(label, _, _)| text_w(label.as_str(), meta_size) + meta_chip_padding_x * 2.0)
+            .sum::<f32>()
+            + meta_chip_gap * (meta_chips.len().saturating_sub(1) as f32);
+        let mut meta_center_x = cx - meta_total_w * 0.5;
+        let mut meta_border = border;
+        meta_border[3] = 0.92;
+        let mut meta_fill = panel;
+        meta_fill[3] = 0.98;
+
+        for (label, color, bold) in &meta_chips {
+            let label = label.as_str();
+            let chip_w = text_w(label, meta_size) + meta_chip_padding_x * 2.0;
+            push_centered_highlight_chip(
+                &mut chrome,
+                meta_center_x + chip_w * 0.5,
+                meta_y - (meta_chip_height - meta_line_height) * 0.5,
+                chip_w,
+                meta_chip_height,
+                HighlightChipStyle {
+                    bg: meta_fill,
+                    border: meta_border,
+                    radius: sx(6.0),
+                    border_thickness: sx(1.0),
+                },
+            );
+            line(
+                self,
+                &mut glyphs,
+                label,
+                meta_center_x + (chip_w - text_w(label, meta_size)) * 0.5,
+                meta_y,
+                meta_size,
+                meta_line_height,
+                *color,
+                *bold,
+            );
+            meta_center_x += chip_w + meta_chip_gap;
+        }
+
+        let ay = meta_y + sx(58.0);
+        let rust_line = "100% Rust · entire editor rendered on the GPU";
+        let rust_line_size = sx(10.5);
+        line(
+            self,
+            &mut glyphs,
+            rust_line,
+            centered_x(cx, rust_line, rust_line_size),
+            ay + sx(76.0),
+            rust_line_size,
+            sx(17.0),
+            fg_ghost,
+            false,
+        );
+        let no_electron_line = "no Electron · no compromise";
+        let no_electron_size = sx(10.5);
+        line(
+            self,
+            &mut glyphs,
+            no_electron_line,
+            centered_x(cx, no_electron_line, no_electron_size),
+            ay + sx(94.0),
+            no_electron_size,
+            sx(17.0),
+            fg_ghost,
+            false,
+        );
+
+        let rx = divider_x + sx(28.0);
+        let rw = bounds[0] + bounds[2] - rx - sx(32.0);
+        let mut y = body_top + sx(36.0);
+        line(
+            self,
+            &mut glyphs,
+            "RECENT PROJECTS",
+            rx + sx(14.0),
+            y,
+            sx(15.0),
+            sx(14.0),
+            fg_ghost,
+            true,
+        );
+        y += sx(25.0);
+        if recent_projects.is_empty() {
+            line(
+                self,
+                &mut glyphs,
+                "No recent projects yet",
+                rx + sx(14.0),
+                y + sx(8.0),
+                sx(12.0),
+                sx(16.0),
+                fg_dim,
+                false,
+            );
+            line(
+                self,
+                &mut glyphs,
+                "Open a folder with ⌘ O to pin it here.",
+                rx + sx(14.0),
+                y + sx(28.0),
+                sx(10.0),
+                sx(14.0),
+                fg_ghost,
+                false,
+            );
+            y += sx(74.0);
+        }
+        for (index, project) in recent_projects.iter().take(5).enumerate() {
+            let name = project
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("unknown");
+            let path = project.display().to_string();
+            let lang = project
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.to_ascii_uppercase())
+                .unwrap_or_else(|| "DIR".to_string());
+            let active = index == selected_recent_index;
+            if active {
+                let mut a = accent;
+                a[3] = 0.20;
+                chrome.push(
+                    RegionDrawInstance::new([rx, y - 1.0, rw, sx(42.0)], a).with_radius(sx(7.0)),
+                );
+                chrome.push(
+                    RegionDrawInstance::new([rx, y + sx(5.0), sx(3.0), sx(30.0)], accent)
+                        .with_radius(2.0),
+                );
+            }
+            chrome.push(
+                RegionDrawInstance::new([rx + sx(14.0), y + sx(9.0), sx(34.0), sx(16.0)], panel)
+                    .with_radius(sx(3.0)),
+            );
+            line(
+                self,
+                &mut glyphs,
+                &lang,
+                rx + sx(19.0),
+                y + sx(10.0),
+                sx(9.0),
+                sx(12.0),
+                if lang == "TS" {
+                    self.theme.ui.info.as_f32()
+                } else {
+                    accent
+                },
+                true,
+            );
+            line(
+                self,
+                &mut glyphs,
+                name,
+                rx + sx(60.0),
+                y + sx(3.0),
+                sx(13.0),
+                sx(16.0),
+                if active { fg } else { fg_dim },
+                active,
+            );
+            line(
+                self,
+                &mut glyphs,
+                &path,
+                rx + sx(60.0),
+                y + sx(20.0),
+                sx(10.0),
+                sx(13.0),
+                fg_ghost,
+                false,
+            );
+            line(
+                self,
+                &mut glyphs,
+                if index == 0 { "latest" } else { "recent" },
+                rx + rw - sx(70.0),
+                y + sx(12.0),
+                sx(10.0),
+                sx(13.0),
+                fg_ghost,
+                false,
+            );
+            y += sx(44.0);
+        }
+        // line(
+        //     self,
+        //     &mut glyphs,
+        //     "show all  →",
+        //     rx + sx(14.0),
+        //     y + sx(2.0),
+        //     10.0,
+        //     14.0,
+        //     accent,
+        //     false,
+        // );
+        y += sx(54.0);
+        line(
+            self,
+            &mut glyphs,
+            "KEYBOARD SHORTCUTS",
+            rx,
+            y,
+            sx(15.0),
+            sx(14.0),
+            fg_ghost,
+            true,
+        );
+        y += sx(24.0);
+        let shortcuts = [
+            (&["⌘", "O"][..], "Open file or project"),
+            (&[":", "help"][..], "Open cheats sheet"),
+            (&["j", "k", "enter"][..], "Select recent project"),
+            (&["<space>", "f", "f"][..], "File picker (fuzzy find)"),
+            (&["<space>", "f", "w"][..], "Find word / grep (fzf)"),
+        ];
+        let shortcut_key_font_size = sx(14.0);
+        let shortcut_row_height = sx(52.0);
+        let shortcut_label_x = rx + sx(210.0);
+        for (keys, label) in shortcuts {
+            let row_y = y;
+            self.welcome_logo_text_system
+                .set_metrics(Metrics::new(shortcut_key_font_size, sx(18.0)));
+            glyphs.extend(layout_help_keycaps(
+                keys,
+                &mut self.welcome_logo_text_system,
+                &mut self.atlas,
+                &self.queue,
+                &mut chrome,
+                rx,
+                row_y,
+                shortcut_key_font_size,
+                shortcut_row_height,
+                fg,
+                fg_dim,
+                accent,
+                self.theme.ui.info.as_f32(),
+                self.theme.ui.warning.as_f32(),
+                self.theme.ui.error.as_f32(),
+                panel,
+            ));
+            line(
+                self,
+                &mut glyphs,
+                label,
+                shortcut_label_x,
+                row_y + sx(17.0),
+                sx(13.0),
+                sx(18.0),
+                fg_dim,
+                false,
+            );
+            let mut sub = border;
+            sub[3] = 0.45;
+            chrome.push(RegionDrawInstance::new(
+                [rx, row_y + shortcut_row_height, rw, sx(1.0).max(1.0)],
+                sub,
+            ));
+            y += shortcut_row_height + sx(8.0);
+        }
+        line(
+            self,
+            &mut glyphs,
+            "press ? for all bindings   ·   :help for docs",
+            rx,
+            y + sx(8.0),
+            sx(14.0),
+            sx(14.0),
+            fg_ghost,
+            false,
+        );
+
+        self.welcome_logo_chrome_instances = chrome;
+        self.welcome_logo_glyph_instances = glyphs;
+        self.welcome_logo_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.welcome_logo_glyph_instances,
+        );
+    }
+
+    /// Render ANSI art into the welcome-logo layer (separate from the real PTY panel).
+    pub fn update_welcome_logo_content(&mut self, grid: &TerminalGrid, bounds: [f32; 4]) {
+        if bounds[2] < 1.0 || bounds[3] < 1.0 {
+            self.welcome_logo_scissor = None;
+            self.welcome_logo_glyph_instances.clear();
+            self.welcome_logo_chrome_instances.clear();
+            self.welcome_logo_text_pipeline
+                .upload_instances(&self.device, &self.queue, &[]);
+            return;
+        }
+
+        self.welcome_logo_scissor = rect_to_scissor(bounds);
+        self.welcome_logo_chrome_instances.clear();
+
+        let width = bounds[2].max(1.0);
+        let height = bounds[3].max(1.0);
+        let cols = grid.cols.max(1) as f32;
+        let rows = grid.rows.max(1) as f32;
+
+        let font_size = (height / rows).min(width / (cols * 0.6)).max(1.0);
+        let cell_width = (font_size * 0.6).max(1.0);
+        let cell_height = font_size.max(1.0);
+        let rendered_w = (cell_width * cols).min(width);
+        let rendered_h = (cell_height * rows).min(height);
+        let origin_x = bounds[0] + ((width - rendered_w) * 0.5).max(0.0);
+        let origin_y = bounds[1] + ((height - rendered_h) * 0.5).max(0.0);
+
+        use cosmic_text::Metrics;
+        self.welcome_logo_text_system
+            .set_metrics(Metrics::new(font_size, cell_height));
+
+        self.welcome_logo_view_renderer.origin_x = origin_x;
+        self.welcome_logo_view_renderer.origin_y = origin_y;
+        self.welcome_logo_view_renderer.cell_width = cell_width;
+        self.welcome_logo_view_renderer.cell_height = cell_height;
+        self.welcome_logo_view_renderer.font_size = font_size;
+
+        let default_fg = self.theme.editor.fg.as_f32();
+        let default_bg = self.theme.editor.bg.as_f32();
+
+        self.welcome_logo_glyph_instances = self.welcome_logo_view_renderer.build_instances(
+            grid,
+            &mut self.atlas,
+            &self.queue,
+            &mut self.welcome_logo_text_system,
+            default_fg,
+            default_bg,
+            rendered_w,
+        );
+        self.welcome_logo_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.welcome_logo_glyph_instances,
+        );
+    }
+
+    pub fn clear_welcome_logo(&mut self) {
+        self.welcome_logo_scissor = None;
+        self.welcome_logo_glyph_instances.clear();
+        self.welcome_logo_chrome_instances.clear();
+        self.welcome_logo_text_pipeline
+            .upload_instances(&self.device, &self.queue, &[]);
+        self.welcome_image_pipeline.clear();
+        self.welcome_image_scissor = None;
+    }
+
+    // ── TopBar ─────────────────────────────────────────────────────────────────
+}
