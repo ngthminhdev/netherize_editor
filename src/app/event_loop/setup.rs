@@ -509,7 +509,13 @@ impl AppShell {
         } else {
             match self.focus_manager.current() {
                 FocusTarget::LeftSidebar => InputFocusContext::Explorer,
-                FocusTarget::RightSidebar => InputFocusContext::Inspector,
+                FocusTarget::RightSidebar => {
+                    if self.panel_state.right.active_tab_id() == Some(PanelTabId::AiChat) {
+                        InputFocusContext::AiChat
+                    } else {
+                        InputFocusContext::Inspector
+                    }
+                }
                 FocusTarget::BottomPanel => {
                     if matches!(mode, EditorMode::TerminalFocus | EditorMode::TerminalNormal) {
                         InputFocusContext::Terminal

@@ -280,6 +280,12 @@ pub enum Command {
     AiChatSend,
     /// Close the AI chat panel.
     AiChatClose,
+    /// Append a character to the AI chat input buffer.
+    AiChatInputChar(char),
+    /// Delete the last character from the AI chat input buffer.
+    AiChatBackspace,
+    /// Append a text string to the AI chat input buffer (IME commit).
+    AiChatInputText(String),
     /// References view: chọn item kế tiếp.
     ReferencesSelectNext,
     /// References view: chọn item trước đó.

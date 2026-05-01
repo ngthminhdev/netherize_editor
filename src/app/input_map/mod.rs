@@ -33,6 +33,8 @@ pub enum InputFocusContext {
     Diagnostics,
     Explorer,
     Inspector,
+    /// Right sidebar AI Chat tab — input goes to chat input_box.
+    AiChat,
     BottomPanel,
     /// Bottom panel terminal (ESC = unfocus).
     Terminal,
@@ -52,6 +54,7 @@ impl InputFocusContext {
             Self::Diagnostics => "diagnostics",
             Self::Explorer => "explorer",
             Self::Inspector => "inspector",
+            Self::AiChat => "ai_chat",
             Self::BottomPanel => "bottom_panel",
             Self::Terminal => "terminal",
             Self::BufferTerminal => "buffer_terminal",
@@ -187,6 +190,11 @@ impl InputMap {
             return None;
         }
 
+        // AI Chat: bypass keymap — all input handled by handler.rs.
+        if context.focus == InputFocusContext::AiChat {
+            return None;
+        }
+
         if context.focus == InputFocusContext::References {
             return self.resolve_references_focus(input);
         }
@@ -308,6 +316,7 @@ impl InputMap {
         }
         if context.focus == InputFocusContext::Terminal
             || context.focus == InputFocusContext::BufferTerminal
+            || context.focus == InputFocusContext::AiChat
         {
             return None;
         }
@@ -368,6 +377,7 @@ impl InputMap {
             InputFocusContext::Diagnostics => editor_mode_str(context.mode),
             InputFocusContext::Explorer => "explorer",
             InputFocusContext::Inspector => "inspector",
+            InputFocusContext::AiChat => "ai_chat",
             InputFocusContext::Terminal => editor_mode_str(context.mode),
             InputFocusContext::BufferTerminal => "terminal",
             InputFocusContext::BottomPanel => "bottom_panel",

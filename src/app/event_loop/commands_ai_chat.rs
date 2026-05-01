@@ -57,6 +57,22 @@ impl AppShell {
                 }
                 Some(changed)
             }
+            Command::AiChatInputChar(ch) => {
+                self.panel_state.ai_chat.input_buffer.push(*ch);
+                Some(true)
+            }
+            Command::AiChatBackspace => {
+                let chat = &mut self.panel_state.ai_chat;
+                if chat.input_buffer.pop().is_some() {
+                    Some(true)
+                } else {
+                    Some(false)
+                }
+            }
+            Command::AiChatInputText(text) => {
+                self.panel_state.ai_chat.input_buffer.push_str(text);
+                Some(true)
+            }
             _ => None,
         }
     }

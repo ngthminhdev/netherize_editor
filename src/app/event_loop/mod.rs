@@ -55,7 +55,7 @@ use crate::{
         focus_manager::{FocusManager, FocusTarget},
         layout_engine::WorkbenchLayoutEngine,
         overlay_manager::OverlayManager,
-        panel_state::WorkbenchPanelState,
+        panel_state::{PanelTabId, WorkbenchPanelState},
         region_model::RegionId,
     },
     workspace::model::{WorkspaceGitStatus, WorkspaceNodeType},

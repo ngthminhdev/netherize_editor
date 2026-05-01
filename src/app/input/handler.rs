@@ -261,6 +261,12 @@ impl InputHandler {
         let input_debug = normalized.debug_label();
         self.reset_prefix_if_timed_out(now);
 
+        // AI Chat input mode: intercept all keys when right sidebar AI Chat is focused.
+        // Bypasses vim mode processing entirely — input goes to chat input_box.
+        if context.focus == InputFocusContext::AiChat {
+            return self.route_ai_chat_input(normalized, input_debug, context);
+        }
+
         if let Some(pending) = self.pending_input.clone() {
             if is_modifier_only_key(&normalized) {
                 self.pending_input = Some(PendingInput {
@@ -1196,6 +1202,20 @@ impl InputHandler {
             });
         }
 
+        // AI Chat: route IME commit to chat input buffer.
+        if context.focus == InputFocusContext::AiChat {
+            return Some(TranslatedInput {
+                input_debug: format!("IME Commit({text:?})"),
+                route_debug: format!(
+                    "mode={} focus={} -> IME commit -> AiChatInputText",
+                    context.mode.as_str(),
+                    context.focus.as_str()
+                ),
+                command: Command::AiChatInputText(text.to_string()),
+                repeat_count: 1,
+            });
+        }
+
         if context.focus != InputFocusContext::Editor {
             return None;
         }
@@ -1253,5 +1273,101 @@ impl InputHandler {
             state: PendingState::LeapLabel,
             started_at: Instant::now(),
         });
+    }
+
+    /// Route input when right sidebar AI Chat tab is focused.
+    /// All keys are intercepted — Esc closes, Enter sends, printable chars
+    /// append to input buffer, Backspace deletes last char. Everything else
+    /// is swallowed so keys don't leak into the editor buffer.
+    fn route_ai_chat_input(
+        &mut self,
+        normalized: NormalizedInput,
+        input_debug: String,
+        context: KeybindingContext,
+    ) -> Option<InputRouteOutcome> {
+        // Esc → close AI chat, return focus to editor
+        if normalized.named_key == Some(NamedKey::Escape) {
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> ai chat: close (Esc)",
+                    context.mode.as_str(),
+                    context.focus.as_str(),
+                ),
+                Command::AiChatClose,
+                1,
+                false,
+            )));
+        }
+
+        // Enter → send message
+        if normalized.named_key == Some(NamedKey::Enter)
+            && !normalized.has_command_modifier()
+        {
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> ai chat: send (Enter)",
+                    context.mode.as_str(),
+                    context.focus.as_str(),
+                ),
+                Command::AiChatSend,
+                1,
+                false,
+            )));
+        }
+
+        // Backspace → delete last char
+        if normalized.named_key == Some(NamedKey::Backspace)
+            && !normalized.has_command_modifier()
+        {
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> ai chat: backspace",
+                    context.mode.as_str(),
+                    context.focus.as_str(),
+                ),
+                Command::AiChatBackspace,
+                1,
+                false,
+            )));
+        }
+
+        // Printable character → append to input buffer
+        if let Some(ch) = printable_char_from_input(&normalized) {
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> ai chat: input char {:?}",
+                    context.mode.as_str(),
+                    context.focus.as_str(),
+                    ch,
+                ),
+                Command::AiChatInputChar(ch),
+                1,
+                false,
+            )));
+        }
+
+        // Space → append space to input buffer
+        if normalized.named_key == Some(NamedKey::Space)
+            && !normalized.has_command_modifier()
+        {
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> ai chat: input char ' '",
+                    context.mode.as_str(),
+                    context.focus.as_str(),
+                ),
+                Command::AiChatInputChar(' '),
+                1,
+                false,
+            )));
+        }
+
+        // Ignore all other keys while in AI chat (modifier-only, arrows, etc.)
+        None
     }
 }

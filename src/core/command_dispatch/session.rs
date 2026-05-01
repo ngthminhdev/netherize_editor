@@ -122,7 +122,10 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::JumpForward
         | Command::AiChatToggle
         | Command::AiChatSend
-        | Command::AiChatClose => DispatchReport::success_with_flags(
+        | Command::AiChatClose
+        | Command::AiChatInputChar(_)
+        | Command::AiChatBackspace
+        | Command::AiChatInputText(_) => DispatchReport::success_with_flags(
             "Dispatch: workbench navigation (handled by event loop)",
             true,
             false,
