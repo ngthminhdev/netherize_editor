@@ -1,3 +1,5 @@
+#[path = "commands_ai_chat.rs"]
+mod commands_ai_chat;
 #[path = "commands_completion.rs"]
 mod commands_completion;
 #[path = "commands_editor.rs"]
@@ -260,6 +262,13 @@ impl AppShell {
         }
 
         if let Some(changed) = self.handle_terminal_and_focus_command(&command) {
+            return self.finalize_post_command_hooks(
+                &command_for_post_hooks,
+                should_persist_history_after,
+                changed,
+            );
+        }
+        if let Some(changed) = self.handle_ai_chat_command(&command) {
             return self.finalize_post_command_hooks(
                 &command_for_post_hooks,
                 should_persist_history_after,

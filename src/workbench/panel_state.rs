@@ -72,6 +72,18 @@ impl PanelState {
         };
         true
     }
+
+    /// Switch to the tab matching `tab_id`. Returns `true` if the active tab
+    /// changed (or the tab was found but was already active — returns `false`).
+    pub fn switch_to_tab(&mut self, tab_id: PanelTabId) -> bool {
+        if let Some(idx) = self.tabs.iter().position(|t| *t == tab_id) {
+            if self.active_tab != idx {
+                self.active_tab = idx;
+                return true;
+            }
+        }
+        false
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
