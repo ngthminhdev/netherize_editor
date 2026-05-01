@@ -118,6 +118,7 @@ impl Renderer {
         let palette_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let lsp_guide_text_system = make_text_system(panel_metrics, font_family.as_deref());
         let diagnostic_hover_text_system = make_text_system(editor_metrics, font_family.as_deref());
+        let ai_chat_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let toast_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let leap_label_text_system = make_text_system(leap_metrics, font_family.as_deref());
 
@@ -150,6 +151,8 @@ impl Renderer {
         let toast_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let leap_label_text_pipeline =
+            make_text_pipeline(&device, &atlas, surface_format, width, height);
+        let ai_chat_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
 
         Ok(Self {
@@ -264,6 +267,12 @@ impl Renderer {
             toast_glyph_instances: Vec::new(),
             toast_chrome_instances: Vec::new(),
             toast_scissor: None,
+            ai_chat_text_system,
+            ai_chat_text_pipeline,
+            ai_chat_glyph_instances: Vec::new(),
+            ai_chat_history_scissor: None,
+            ai_chat_input_scissor: None,
+            ai_chat_input_batch: None,
         })
     }
 
@@ -298,6 +307,7 @@ impl Renderer {
             theme.editor.line_height,
         ));
         self.toast_text_system.set_metrics(ui_metrics);
+        self.ai_chat_text_system.set_metrics(ui_metrics);
 
         let family = theme.editor.font_family.as_deref();
         let nerd_family = theme
@@ -322,6 +332,7 @@ impl Renderer {
         self.diagnostic_hover_text_system.set_font_family(family);
         self.toast_text_system.set_font_family(family);
         self.leap_label_text_system.set_font_family(family);
+        self.ai_chat_text_system.set_font_family(family);
 
         self.clear_color = theme_color_to_wgpu(theme.ui.bg);
         self.theme = theme;
@@ -342,6 +353,7 @@ impl Renderer {
         self.clear_editor_overlays();
         self.clear_diagnostic_hover_popup();
         self.clear_leap_labels();
+        self.clear_ai_chat();
         self.last_topbar_layout_key = None;
         self.last_statusbar_layout_key = None;
         self.last_palette_model = None;
@@ -404,6 +416,7 @@ impl Renderer {
             &mut self.diagnostic_hover_text_pipeline,
             &mut self.toast_text_pipeline,
             &mut self.leap_label_text_pipeline,
+            &mut self.ai_chat_text_pipeline,
         ] {
             pipeline.update_screen_size(&self.queue, width, height);
         }

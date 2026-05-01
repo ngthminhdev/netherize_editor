@@ -157,6 +157,45 @@ impl Renderer {
                 },
             );
 
+            // 4b. AI Chat text — history (scissor clipped to history bounds).
+            draw_text_region(
+                &mut pass,
+                self.ai_chat_history_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    // Draw only the history glyphs (before input batch).
+                    let total = self.ai_chat_glyph_instances.len() as u32;
+                    let hist_count = match &self.ai_chat_input_batch {
+                        Some(batch) => batch.range.start,
+                        None => total,
+                    };
+                    if hist_count > 0 {
+                        self.ai_chat_text_pipeline.draw_range(
+                            render_pass,
+                            crate::render::text_pipeline::InstanceDrawRange {
+                                start: 0,
+                                count: hist_count,
+                            },
+                        );
+                    }
+                },
+            );
+
+            // 4c. AI Chat text — input box (scissor clipped to input bounds).
+            if let Some(batch) = &self.ai_chat_input_batch {
+                draw_text_region(
+                    &mut pass,
+                    Some(batch.scissor),
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.ai_chat_text_pipeline
+                            .draw_range(render_pass, batch.range);
+                    },
+                );
+            }
+
             // 5. Leap label overlay: dim + per-char bg + label chars.
             if !self.leap_label_glyph_instances.is_empty() {
                 if !self.leap_label_bg_instances.is_empty() {

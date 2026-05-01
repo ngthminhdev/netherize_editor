@@ -3,7 +3,17 @@
 //! Generates region quads for the three-layer panel background used when the
 //! RightSidebar is visible: outline border, inner fill, and input-box accent.
 
-use crate::render::region_pipeline::RegionDrawInstance;
+use crate::{
+    render::{
+        glyph_instance::GlyphInstance,
+        region_pipeline::RegionDrawInstance,
+        renderer::{
+            Renderer, TextScissorBatch,
+            helpers::{estimate_monospace_width, layout_panel_text, layout_panel_text_italic, rect_to_scissor},
+        },
+    },
+    workbench::panel_state::{AiChatMessage, AiRole},
+};
 
 /// Build the three-layer background quads for a visible RightSidebar.
 ///
@@ -164,5 +174,138 @@ mod tests {
         assert_eq!(quads[0].border_radius, 12.0);
         assert_eq!(quads[1].border_radius, 10.0);
         assert_eq!(quads[2].border_radius, 10.0);
+    }
+}
+
+// ── AI Chat text rendering ──────────────────────────────────────────────────
+
+impl Renderer {
+    /// Render chat history + input text for the AI Chat panel.
+    /// Returns cursor quads to be drawn via the region pipeline.
+    pub fn update_ai_chat_content(
+        &mut self,
+        history_bounds: [f32; 4],
+        input_bounds: [f32; 4],
+        messages: &[AiChatMessage],
+        input_buffer: &str,
+        show_cursor: bool,
+        inner_padding: f32,
+    ) -> Vec<RegionDrawInstance> {
+        if history_bounds[2] < 1.0 || history_bounds[3] < 1.0
+            || input_bounds[2] < 1.0 || input_bounds[3] < 1.0
+        {
+            self.clear_ai_chat();
+            return Vec::new();
+        }
+
+        let font_size = self.theme.ui.sidebar_font_size;
+        let line_h = self.theme.ui.sidebar_line_height.max(font_size + 4.0);
+        let accent = self.theme.ui.accent.as_f32();
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+
+        // Scissor rects — padded inward so text doesn't touch edges.
+        let hclip = [
+            history_bounds[0] + inner_padding,
+            history_bounds[1] + inner_padding,
+            (history_bounds[2] - inner_padding * 2.0).max(1.0),
+            (history_bounds[3] - inner_padding * 2.0).max(1.0),
+        ];
+        self.ai_chat_history_scissor = rect_to_scissor(hclip);
+
+        let iclip = [
+            input_bounds[0] + inner_padding,
+            input_bounds[1] + inner_padding,
+            (input_bounds[2] - inner_padding * 2.0).max(1.0),
+            (input_bounds[3] - inner_padding * 2.0).max(1.0),
+        ];
+        self.ai_chat_input_scissor = rect_to_scissor(iclip);
+
+        self.ai_chat_text_system
+            .set_size(Some(hclip[2].max(1.0)), Some(line_h));
+
+        // ── History glyphs with auto-scroll ───────────────────────────────
+        struct ChatLine { text: String, color: [f32; 4], italic: bool }
+        let mut lines: Vec<ChatLine> = Vec::new();
+        for msg in messages {
+            let (pfx, col, ital) = match msg.role {
+                AiRole::User      => ("You: ", accent, false),
+                AiRole::Assistant  => ("AI: ", fg_dim, false),
+                AiRole::System     => ("System: ", fg_dim, true),
+            };
+            for (i, seg) in msg.text.split('\n').enumerate() {
+                let t = if i == 0 { format!("{pfx}{seg}") }
+                        else       { format!("     {seg}") };
+                lines.push(ChatLine { text: t, color: col, italic: ital });
+            }
+        }
+
+        let total_h = lines.len() as f32 * line_h;
+        let vis_h   = hclip[3];
+        let scroll  = if total_h > vis_h { total_h - vis_h } else { 0.0 };
+
+        let mut all: Vec<GlyphInstance> = Vec::new();
+        let mut cy = hclip[1];
+        for line in &lines {
+            let y = cy - scroll;
+            if y + line_h > hclip[1] && y < hclip[1] + vis_h {
+                let gs = if line.italic {
+                    layout_panel_text_italic(&line.text, &mut self.ai_chat_text_system,
+                        &mut self.atlas, &self.queue, hclip[0], y, line.color)
+                } else {
+                    layout_panel_text(&line.text, &mut self.ai_chat_text_system,
+                        &mut self.atlas, &self.queue, hclip[0], y, line.color)
+                };
+                all.extend(gs);
+            }
+            cy += line_h;
+        }
+
+        // ── Input box glyphs ──────────────────────────────────────────────
+        let hist_count = all.len() as u32;
+        let iy = iclip[1] + ((iclip[3] - line_h).max(0.0) * 0.5)
+                    .min(inner_padding * 0.5);
+        if !input_buffer.is_empty() {
+            all.extend(layout_panel_text(input_buffer,
+                &mut self.ai_chat_text_system, &mut self.atlas,
+                &self.queue, iclip[0], iy, accent));
+        }
+        let in_count = all.len() as u32 - hist_count;
+        self.ai_chat_input_batch = if in_count > 0 {
+            Some(TextScissorBatch {
+                scissor: self.ai_chat_input_scissor.unwrap_or([0,0,1,1]),
+                range: crate::render::text_pipeline::InstanceDrawRange {
+                    start: hist_count, count: in_count,
+                },
+            })
+        } else { None };
+
+        // ── Upload ────────────────────────────────────────────────────────
+        self.ai_chat_glyph_instances = all;
+        self.ai_chat_text_pipeline.upload_instances(
+            &self.device, &self.queue, &self.ai_chat_glyph_instances);
+
+        // ── Cursor quad (drawn via region pipeline) ───────────────────────
+        let mut chrome = Vec::new();
+        if show_cursor {
+            let cx = iclip[0]
+                + estimate_monospace_width(input_buffer, font_size);
+            let mut cursor_color = accent;
+            cursor_color[3] = 0.9;
+            chrome.push(RegionDrawInstance::new(
+                [cx, iy + 2.0, 8.0, (line_h - 4.0).max(1.0)],
+                cursor_color,
+            ));
+        }
+        chrome
+    }
+
+    /// Clear AI chat text — called when right sidebar is hidden.
+    pub fn clear_ai_chat(&mut self) {
+        self.ai_chat_history_scissor = None;
+        self.ai_chat_input_scissor = None;
+        self.ai_chat_input_batch = None;
+        self.ai_chat_glyph_instances.clear();
+        self.ai_chat_text_pipeline
+            .upload_instances(&self.device, &self.queue, &[]);
     }
 }

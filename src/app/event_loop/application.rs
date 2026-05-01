@@ -804,6 +804,36 @@ impl AppShell {
             }
         }
 
+        // ── AI Chat text (right sidebar) ──────────────────────────────────
+        let ai_chat_active = self.panel_state.right.visible
+            && self.panel_state.right.active_tab_id() == Some(PanelTabId::AiChat);
+        if ai_chat_active {
+            let history_bounds = flat_regions
+                .iter()
+                .find(|r| r.id == RegionId::AiChatHistory && r.visible)
+                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
+            let input_bounds = flat_regions
+                .iter()
+                .find(|r| r.id == RegionId::AiChatInput && r.visible)
+                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
+
+            if let (Some(hb), Some(ib)) = (history_bounds, input_bounds) {
+                if let Some(renderer) = self.renderer.as_mut() {
+                    let chat = &self.panel_state.ai_chat;
+                    let show_cursor = self.focus_manager.current()
+                        == FocusTarget::RightSidebar;
+                    let inner_padding = self.layout_engine.config.inner_padding;
+                    let cursor_quads = renderer.update_ai_chat_content(
+                        hb, ib, &chat.messages, &chat.input_buffer,
+                        show_cursor, inner_padding,
+                    );
+                    region_instances.extend(cursor_quads);
+                }
+            }
+        } else if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_ai_chat();
+        }
+
         if let Some(renderer) = self.renderer.as_ref() {
             region_instances.extend(renderer.editor_chrome_instances().iter().copied());
         }
