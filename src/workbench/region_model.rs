@@ -9,6 +9,8 @@ pub enum RegionId {
     BottomPanel,
     StatusBar,
     OverlayLayer,
+    AiChatHistory,
+    AiChatInput,
 }
 
 impl RegionId {
@@ -22,6 +24,8 @@ impl RegionId {
             Self::BottomPanel => "BottomPanel",
             Self::StatusBar => "StatusBar",
             Self::OverlayLayer => "OverlayLayer",
+            Self::AiChatHistory => "AiChatHistory",
+            Self::AiChatInput => "AiChatInput",
         }
     }
 }
