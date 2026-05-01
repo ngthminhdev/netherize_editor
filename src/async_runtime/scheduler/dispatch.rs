@@ -17,6 +17,7 @@ use crate::{
 use super::{
     LspSessionRegistry, PtySessionRegistry, SyntaxEngineCache,
     ai::execute_ai_inline_request,
+    ai_jobs::run_ai_chat_stream,
     async_trace,
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
     file_watch::run_file_watch_request,
@@ -176,6 +177,35 @@ pub(super) async fn dispatch_loop(
                         );
                     }
                 }
+            });
+            continue;
+        }
+
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::AiChatRequest { .. }
+        ) {
+            let (prompt, buffer_context, cursor_position, history) = match request.payload {
+                WorkerRequestPayload::AiChatRequest {
+                    prompt,
+                    buffer_context,
+                    cursor_position,
+                    history,
+                } => (prompt, buffer_context, cursor_position, history),
+                _ => unreachable!(),
+            };
+            let worker_tx = result_tx.clone();
+            let ai_event_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                run_ai_chat_stream(
+                    worker_tx,
+                    ai_event_proxy,
+                    prompt,
+                    buffer_context,
+                    cursor_position,
+                    history,
+                )
+                .await;
             });
             continue;
         }

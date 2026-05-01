@@ -30,12 +30,44 @@ impl AppShell {
             }
             Command::AiChatSend => {
                 let chat = &mut self.panel_state.ai_chat;
-                if !chat.input_buffer.trim().is_empty() {
+                if !chat.input_buffer.trim().is_empty() && !chat.is_generating {
+                    let prompt = chat.input_buffer.clone();
                     chat.messages.push(AiChatMessage {
                         role: AiRole::User,
-                        text: chat.input_buffer.clone(),
+                        text: prompt.clone(),
                     });
                     chat.input_buffer.clear();
+                    chat.is_generating = true;
+
+                    // Gather buffer context and cursor position
+                    let buffer_context = self.app_state.text_string();
+                    let cursor_position = self.app_state.cursor_line_col();
+
+                    // Build history from existing messages
+                    let history: Vec<(String, String)> = chat
+                        .messages
+                        .iter()
+                        .map(|msg| {
+                            let role = match msg.role {
+                                AiRole::User => "user",
+                                AiRole::Assistant => "assistant",
+                                AiRole::System => "system",
+                            };
+                            (role.to_string(), msg.text.clone())
+                        })
+                        .collect();
+
+                    self.submit(RequestSpec {
+                        revision_id: 0,
+                        topic: RequestTopic::AiChat,
+                        payload: WorkerRequestPayload::AiChatRequest {
+                            prompt,
+                            buffer_context,
+                            cursor_position,
+                            history,
+                        },
+                    });
+
                     Some(true)
                 } else {
                     Some(false)

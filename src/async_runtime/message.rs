@@ -27,6 +27,7 @@ pub enum RequestTopic {
     FilePreview,
     AiInlineCompletion,
     LocalHistory,
+    AiChat,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -270,6 +271,12 @@ pub enum WorkerRequestPayload {
         language_id: Option<String>,
         file_path: Option<PathBuf>,
         max_tokens: u32,
+    },
+    AiChatRequest {
+        prompt: String,
+        buffer_context: String,
+        cursor_position: (usize, usize),
+        history: Vec<(String, String)>,
     },
     StopLspServer,
     ShutdownAllLspServers,
@@ -543,6 +550,9 @@ pub enum WorkerEventKind {
 pub enum WorkerMessage {
     Event(WorkerEvent),
     Result(WorkerResult),
+    AiMessageChunk { text: String },
+    AiStreamComplete,
+    AiStreamError { error: String },
 }
 
 /// RequestSpec giúp caller tạo request mà không cần tự cấp request_id.

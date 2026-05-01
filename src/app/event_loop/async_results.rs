@@ -741,6 +741,37 @@ impl AsyncResultRouter for AppShell {
             self.request_redraw();
         }
     }
+
+    fn on_ai_message_chunk(&mut self, text: String) {
+        let chat = &mut self.panel_state.ai_chat;
+        if let Some(last) = chat.messages.last_mut()
+            && last.role == crate::workbench::panel_state::AiRole::Assistant
+        {
+            last.text.push_str(&text);
+        } else {
+            chat.messages.push(crate::workbench::panel_state::AiChatMessage {
+                role: crate::workbench::panel_state::AiRole::Assistant,
+                text,
+            });
+        }
+        self.request_redraw();
+    }
+
+    fn on_ai_stream_complete(&mut self) {
+        self.panel_state.ai_chat.is_generating = false;
+        self.request_redraw();
+    }
+
+    fn on_ai_stream_error(&mut self, error: String) {
+        self.panel_state.ai_chat.is_generating = false;
+        self.panel_state.ai_chat.messages.push(
+            crate::workbench::panel_state::AiChatMessage {
+                role: crate::workbench::panel_state::AiRole::System,
+                text: format!("Error: {}", error),
+            },
+        );
+        self.request_redraw();
+    }
 }
 
 /// Convert `file:///path/to/file` URI thành PathBuf.

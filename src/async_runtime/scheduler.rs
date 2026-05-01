@@ -13,6 +13,7 @@ use crate::syntax::syntax_engine::SyntaxEngine;
 use crate::terminal::pty::PtyProcess;
 
 mod ai;
+mod ai_jobs;
 mod dispatch;
 mod emit;
 mod file_watch;

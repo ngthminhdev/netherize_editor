@@ -293,6 +293,9 @@ pub(super) async fn execute_virtual_job(
         WorkerRequestPayload::AiInlineCompletionRequest { .. } => {
             Err("AI inline completion request should be handled by dedicated AI runner".to_string())
         }
+        WorkerRequestPayload::AiChatRequest { .. } => {
+            Err("AI chat request should be handled by dedicated AI chat runner".to_string())
+        }
         WorkerRequestPayload::LoadLocalHistory { .. }
         | WorkerRequestPayload::SaveLocalHistory { .. } => {
             Err("local history request should be handled by dedicated history runner".to_string())

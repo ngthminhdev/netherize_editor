@@ -36,6 +36,9 @@ pub trait AsyncResultRouter {
     fn on_worker_event(&mut self, event: WorkerEvent);
     fn on_worker_result(&mut self, result: WorkerResult);
     fn on_stale_result(&mut self, stale: WorkerResult);
+    fn on_ai_message_chunk(&mut self, text: String);
+    fn on_ai_stream_complete(&mut self);
+    fn on_ai_stream_error(&mut self, error: String);
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -120,6 +123,18 @@ impl AppAsyncBridge {
                                 router.on_worker_result(result);
                             }
                         }
+                        WorkerMessage::AiMessageChunk { text } => {
+                            async_trace!("[Bridge] AI message chunk: {} chars", text.len());
+                            router.on_ai_message_chunk(text);
+                        }
+                        WorkerMessage::AiStreamComplete => {
+                            async_trace!("[Bridge] AI stream complete");
+                            router.on_ai_stream_complete();
+                        }
+                        WorkerMessage::AiStreamError { error } => {
+                            async_trace!("[Bridge] AI stream error: {}", error);
+                            router.on_ai_stream_error(error);
+                        }
                     }
                 }
                 Err(TryRecvError::Empty) => break,
@@ -172,6 +187,10 @@ mod tests {
         fn on_stale_result(&mut self, stale: WorkerResult) {
             self.stale.push(stale.revision_id);
         }
+
+        fn on_ai_message_chunk(&mut self, _text: String) {}
+        fn on_ai_stream_complete(&mut self) {}
+        fn on_ai_stream_error(&mut self, _error: String) {}
     }
 
     #[test]
