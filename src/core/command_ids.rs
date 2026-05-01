@@ -105,6 +105,11 @@ pub const COMPLETION_PREV: &str = "completion.prev";
 pub const COMPLETION_ACCEPT: &str = "completion.accept";
 pub const COMPLETION_CLOSE: &str = "completion.close";
 pub const AI_ACCEPT_INLINE: &str = "ai.accept_inline";
+
+// ── AI Chat ──────────────────────────────────────────────────────────────
+pub const AI_CHAT_TOGGLE: &str = "ai.chat_toggle";
+pub const AI_CHAT_SEND: &str = "ai.chat_send";
+pub const AI_CHAT_CLOSE: &str = "ai.chat_close";
 pub const DIAGNOSTICS_OPEN_PICKER: &str = "diagnostics.open_picker";
 
 // ── Jump list navigation ─────────────────────────────────────────────────────
@@ -258,6 +263,9 @@ pub const ALL_IDS: &[&str] = &[
     COMPLETION_ACCEPT,
     COMPLETION_CLOSE,
     AI_ACCEPT_INLINE,
+    AI_CHAT_TOGGLE,
+    AI_CHAT_SEND,
+    AI_CHAT_CLOSE,
     DIAGNOSTICS_OPEN_PICKER,
     JUMP_BACK,
     JUMP_FORWARD,
@@ -412,6 +420,9 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         COMPLETION_ACCEPT => Some(Command::CompletionAccept),
         COMPLETION_CLOSE => Some(Command::CompletionClose),
         AI_ACCEPT_INLINE => Some(Command::AiAcceptInline),
+        AI_CHAT_TOGGLE => Some(Command::AiChatToggle),
+        AI_CHAT_SEND => Some(Command::AiChatSend),
+        AI_CHAT_CLOSE => Some(Command::AiChatClose),
         DIAGNOSTICS_OPEN_PICKER => Some(Command::DiagnosticsOpenPicker),
         JUMP_BACK => Some(Command::JumpBack),
         JUMP_FORWARD => Some(Command::JumpForward),

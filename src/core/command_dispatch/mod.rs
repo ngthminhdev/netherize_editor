@@ -317,6 +317,9 @@ fn dispatch_command_with_clipboard_once(
         | Command::DiagnosticsSelectPrev
         | Command::DiagnosticsOpenSelection
         | Command::JumpBack
-        | Command::JumpForward => session::dispatch(&mut ctx, command),
+        | Command::JumpForward
+        | Command::AiChatToggle
+        | Command::AiChatSend
+        | Command::AiChatClose => session::dispatch(&mut ctx, command),
     }
 }

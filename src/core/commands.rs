@@ -272,6 +272,14 @@ pub enum Command {
     CompletionClose,
     /// Accept AI inline ghost-text suggestion into the real buffer.
     AiAcceptInline,
+
+    // ── AI Chat ───────────────────────────────────────────────────────────────
+    /// Toggle the AI chat panel open/closed.
+    AiChatToggle,
+    /// Send the current input text to the AI chat agent.
+    AiChatSend,
+    /// Close the AI chat panel.
+    AiChatClose,
     /// References view: chọn item kế tiếp.
     ReferencesSelectNext,
     /// References view: chọn item trước đó.

@@ -739,6 +739,11 @@ command = "editor.save_file"
 
 [[bindings]]
 mode = "normal"
+key = "<leader>a a"
+command = "ai.chat_toggle"
+
+[[bindings]]
+mode = "normal"
 key = "<leader>d s"
 command = "diagnostics.open_picker"
 
