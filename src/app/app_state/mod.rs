@@ -396,6 +396,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "app.open_file_picker" => "Open file picker",
         "app.search_in_files" => "Search in files",
         "app.open_workspace_symbols" => "Workspace symbols",
+        "app.open_document_symbols" => "Find symbol in file",
         "buffer.next" => "Next buffer",
         "buffer.prev" => "Prev buffer",
         "buffer.close_current" => "Close current buffer",

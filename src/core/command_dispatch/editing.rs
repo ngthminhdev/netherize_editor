@@ -10,14 +10,14 @@ use super::common::{DispatchCtx, DispatchReport, normalize_palette_clipboard_tex
 
 fn matching_open_char(ch: char) -> Option<char> {
     match ch {
-        '(' | '[' | '{' | '"' | '\'' => Some(ch),
+        '(' | '[' | '{' | '"' | '\'' | '`' => Some(ch),
         _ => None,
     }
 }
 
 fn matching_close_char(ch: char) -> Option<char> {
     match ch {
-        ')' | ']' | '}' | '"' | '\'' => Some(ch),
+        ')' | ']' | '}' | '"' | '\'' | '`' => Some(ch),
         _ => None,
     }
 }

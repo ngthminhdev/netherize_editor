@@ -126,6 +126,7 @@ pub enum Command {
     OpenFilePicker,
     OpenVimCommand,
     OpenWorkspaceSymbols,
+    OpenDocumentSymbols,
     OpenFileFinder,
     OpenInFileSearch,
     SearchInFiles,

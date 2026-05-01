@@ -399,6 +399,7 @@ fn highlight_query(language_id: LanguageId) -> Option<&'static Query> {
         LanguageId::TypeScript => Some(typescript_highlight_query()),
         LanguageId::Tsx => Some(tsx_highlight_query()),
         LanguageId::Go => Some(go_highlight_query()),
+        LanguageId::Sql => Some(sql_highlight_query()),
         LanguageId::Yaml => Some(yaml_highlight_query()),
         LanguageId::Dockerfile => None,
         LanguageId::Json => Some(json_highlight_query()),
@@ -469,6 +470,17 @@ fn go_highlight_query() -> &'static Query {
     })
 }
 
+fn sql_highlight_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(
+            LanguageId::Sql,
+            include_str!("queries/sql/highlights.scm"),
+            "sql",
+        )
+    })
+}
+
 fn yaml_highlight_query() -> &'static Query {
     static QUERY: OnceLock<Query> = OnceLock::new();
     QUERY.get_or_init(|| {
@@ -534,6 +546,8 @@ fn capture_category(capture_name: &str) -> Option<HighlightCategory> {
         "field" => Some(HighlightCategory::Field),
         "property" => Some(HighlightCategory::Property),
         "constructor" => Some(HighlightCategory::Constructor),
+        "number" => Some(HighlightCategory::Number),
+        "constant" => Some(HighlightCategory::Constant),
         "type.builtin" | "builtin.type" => Some(HighlightCategory::Type),
         "constant.builtin.boolean" | "boolean" => Some(HighlightCategory::Boolean),
         "constant.builtin" => Some(HighlightCategory::Constant),
@@ -990,6 +1004,52 @@ func greet(name string) string {
             spans
                 .iter()
                 .any(|s| s.category == HighlightCategory::Function)
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::String)
+        );
+    }
+
+    #[test]
+    fn sql_highlight_maps_keywords_functions_and_schema_tokens() {
+        let source = r#"
+CREATE TABLE users (
+    id bigint,
+    email text
+);
+
+SELECT COUNT(id), MAX(id), users.email
+FROM users
+WHERE id = 42 AND email = 'hi@example.com';
+"#;
+
+        let mut engine = SyntaxEngine::new(LanguageId::Sql).expect("init sql parser");
+        let tree = engine.parse_source(source, 14).expect("parse sql");
+        let spans = generate_highlight_spans(tree, source);
+
+        assert!(!spans.is_empty(), "expected sql highlight spans");
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Keyword)
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Function)
+        );
+        assert!(spans.iter().any(|s| s.category == HighlightCategory::Type));
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Property)
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Number)
         );
         assert!(
             spans

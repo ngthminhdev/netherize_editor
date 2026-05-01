@@ -115,6 +115,29 @@ impl AppState {
             .open_with_items(CommandPaletteMode::FileHistory, items))
     }
 
+    pub fn open_document_symbols_palette_loading(&mut self) -> Result<usize, String> {
+        let count = self
+            .command_palette
+            .open_with_items(CommandPaletteMode::DocumentSymbols, Vec::new());
+        let _ = self.command_palette.set_loading(true);
+        Ok(count)
+    }
+
+    pub fn set_document_symbol_picker_results(
+        &mut self,
+        symbols: Vec<crate::async_runtime::message::LspDocumentSymbol>,
+    ) -> bool {
+        let items = symbols
+            .iter()
+            .map(crate::app::command_palette::CommandPaletteItem::document_symbol)
+            .collect();
+        self.command_palette.replace_static_results(items)
+    }
+
+    pub fn finish_document_symbol_picker_loading(&mut self) -> bool {
+        self.command_palette.set_loading(false)
+    }
+
     pub fn close_command_palette(&mut self) -> bool {
         let _ = self.cancel_file_history_preview();
         let changed = self.command_palette.close();

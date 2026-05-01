@@ -5,7 +5,7 @@ use std::{
     sync::OnceLock,
 };
 
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
+use criterion::{BatchSize, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use netherize_editor::{
     app::app_state::AppState,
     syntax::{

@@ -704,6 +704,11 @@ command = "app.open_file_picker"
 
 [[bindings]]
 mode = "normal"
+key = "<leader>f p"
+command = "app.open_document_symbols"
+
+[[bindings]]
+mode = "normal"
 key = "<leader>f w"
 command = "app.search_in_files"
 

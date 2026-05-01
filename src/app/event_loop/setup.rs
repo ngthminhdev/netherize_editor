@@ -155,6 +155,7 @@ impl AppShell {
             last_syntax_edit_hint: None,
             active_highlight_request_revision: 0,
             references_request_revision: 0,
+            document_symbols_request_revision: 0,
             fzf_search_revision: 0,
             local_history_revision: 0,
             pending_parse_after_debounce: false,

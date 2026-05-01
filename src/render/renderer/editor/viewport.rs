@@ -301,8 +301,7 @@ impl Renderer {
                 ) else {
                     continue;
                 };
-                let Ok(entry) = self.atlas.get_or_reserve(glyph.cache_key, &rasterized)
-                else {
+                let Ok(entry) = self.atlas.get_or_reserve(glyph.cache_key, &rasterized) else {
                     continue;
                 };
                 entry

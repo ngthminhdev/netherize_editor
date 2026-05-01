@@ -151,8 +151,7 @@ pub(super) fn editor_viewport_geometry(
     let viewport_text_width =
         (center_bounds[2] - left_inset - renderer.editor_padding_x - gutter_width).max(1.0);
     let viewport_text_top = center_bounds[1] + renderer.editor_padding_y;
-    let viewport_text_height =
-        (center_bounds[3] - 2.0 * renderer.editor_padding_y).max(0.0);
+    let viewport_text_height = (center_bounds[3] - 2.0 * renderer.editor_padding_y).max(0.0);
 
     EditorViewportGeometry {
         line_height,

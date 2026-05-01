@@ -988,6 +988,7 @@ pub(super) fn matching_close_char(open: char) -> Option<char> {
         '{' => Some('}'),
         '"' => Some('"'),
         '\'' => Some('\''),
+        '`' => Some('`'),
         _ => None,
     }
 }
@@ -1000,6 +1001,7 @@ pub(super) fn matches_matching_bracket_pair(left: Option<char>, right: Option<ch
             | (Some('{'), Some('}'))
             | (Some('"'), Some('"'))
             | (Some('\''), Some('\''))
+            | (Some('`'), Some('`'))
     )
 }
 

@@ -60,16 +60,12 @@ fn resolve_nvm_bin(home: &str) -> Option<String> {
         return None;
     }
 
-    let alias_raw =
-        std::fs::read_to_string(format!("{nvm_dir}/alias/default")).ok()?;
+    let alias_raw = std::fs::read_to_string(format!("{nvm_dir}/alias/default")).ok()?;
     let alias = alias_raw.trim();
 
     // "lts/iron" → read ~/.nvm/alias/lts/iron for the concrete version
     let version_spec = if let Some(lts_name) = alias.strip_prefix("lts/") {
-        let lts_raw = std::fs::read_to_string(
-            format!("{nvm_dir}/alias/lts/{lts_name}"),
-        )
-        .ok()?;
+        let lts_raw = std::fs::read_to_string(format!("{nvm_dir}/alias/lts/{lts_name}")).ok()?;
         lts_raw.trim().to_string()
     } else {
         alias.to_string()
@@ -241,7 +237,10 @@ pub fn patched_env_path() -> String {
     // Primary: one-shot login-shell extraction (nvm, gvm, cargo, etc. all active).
     if let Some(live_path) = extract_path_from_login_shell() {
         // Inject Netherize-managed LSP binaries at front — not present in the user shell.
-        return if live_path.split(':').any(|seg| seg == netherize_bin.as_str()) {
+        return if live_path
+            .split(':')
+            .any(|seg| seg == netherize_bin.as_str())
+        {
             live_path
         } else {
             format!("{netherize_bin}:{live_path}")
@@ -269,8 +268,7 @@ fn static_patched_env_path() -> String {
     candidates.push(format!("{home}/.cargo/bin"));
 
     // gvm — newest pkgset/gos bin first (gopls@latest lives in pkgset).
-    let gvm_root = std::env::var("GVM_ROOT")
-        .unwrap_or_else(|_| format!("{home}/.gvm"));
+    let gvm_root = std::env::var("GVM_ROOT").unwrap_or_else(|_| format!("{home}/.gvm"));
     candidates.extend(resolve_gvm_paths(&gvm_root));
     // gvm bare bin directory (shell wrappers: go, gofmt, gvm itself).
     candidates.push(format!("{home}/.gvm/bin"));
@@ -1129,6 +1127,10 @@ mod tests {
             Some("gopls")
         );
         assert_eq!(
+            detect_lsp_server_for_path(Path::new("/tmp/schema.sql")).as_deref(),
+            Some("sqls")
+        );
+        assert_eq!(
             detect_lsp_server_for_path(Path::new("/tmp/Dockerfile")).as_deref(),
             Some("docker-langserver")
         );
@@ -1238,10 +1240,18 @@ mod tests {
 
         let paths = resolve_gvm_paths(&gvm_root.to_string_lossy());
 
-        assert!(paths.iter().any(|p| p.contains("go1.24.11/bin")), "{paths:?}");
-        assert!(paths.iter().any(|p| p.contains("go1.25.4/bin")), "{paths:?}");
         assert!(
-            paths.iter().any(|p| p.contains("go1.25.4") && p.ends_with("global/bin")),
+            paths.iter().any(|p| p.contains("go1.24.11/bin")),
+            "{paths:?}"
+        );
+        assert!(
+            paths.iter().any(|p| p.contains("go1.25.4/bin")),
+            "{paths:?}"
+        );
+        assert!(
+            paths
+                .iter()
+                .any(|p| p.contains("go1.25.4") && p.ends_with("global/bin")),
             "{paths:?}"
         );
 

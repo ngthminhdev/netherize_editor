@@ -431,12 +431,15 @@ impl Renderer {
     ) {
         let gutter_inset_left = self.editor_padding_x + 6.0;
         let total_lines = app_state.total_lines().max(1);
-        let scroll_line = app_state.current_scroll_y.floor().max(0.0) as usize;
-        let scroll_y = scroll_line as f32 * line_height;
+        let scroll_y = app_state.current_scroll_y.max(0.0) * line_height;
         let (cursor_line, _) = app_state.cursor_line_col();
         let gutter_bg_color = self.theme.editor.gutter.as_f32();
-        let gutter_text_color = self.theme.ui.fg_dim.as_f32();
         let gutter_active_color = self.theme.editor.gutter_active.as_f32();
+        let mut gutter_text_color = gutter_active_color;
+        gutter_text_color[0] = gutter_text_color[0] * 0.72 + gutter_bg_color[0] * 0.28;
+        gutter_text_color[1] = gutter_text_color[1] * 0.72 + gutter_bg_color[1] * 0.28;
+        gutter_text_color[2] = gutter_text_color[2] * 0.72 + gutter_bg_color[2] * 0.28;
+        gutter_text_color[3] = gutter_text_color[3].min(0.72);
         let gutter_x = center_bounds[0] + gutter_inset_left;
 
         let gutter_font_size = (font_size + 3.0).min(line_height - 2.0).max(8.0);

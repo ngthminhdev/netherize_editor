@@ -146,6 +146,7 @@ pub struct AppShell {
     last_syntax_edit_hint: Option<SyntaxEditHint>,
     active_highlight_request_revision: u64,
     references_request_revision: u64,
+    document_symbols_request_revision: u64,
     fzf_search_revision: u64,
     local_history_revision: u64,
     pending_parse_after_debounce: bool,

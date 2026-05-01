@@ -17,6 +17,8 @@ pub enum CommandPaletteMode {
     VimCommand,
     /// Workspace Symbols (@ prefix)
     WorkspaceSymbols,
+    /// Document Symbols in the active file (`@` / leader f p).
+    DocumentSymbols,
     /// Live Grep (Space f w) — Box 800px giống File Picker, prompt `grep> `
     LiveGrep,
     /// In-file search (`/`) — compact prompt, live highlights in the active buffer.
@@ -50,6 +52,7 @@ impl CommandPaletteMode {
             Self::CommandPalette => "> ",
             Self::VimCommand => ":",
             Self::WorkspaceSymbols => "@ ",
+            Self::DocumentSymbols => "@ ",
             Self::LiveGrep => "grep> ",
             Self::InFileSearch => "/",
             Self::ExplorerCreateFile => "file> ",
@@ -70,6 +73,7 @@ impl CommandPaletteMode {
             Self::CommandPalette => "type a command...",
             Self::VimCommand => "type a vim command...",
             Self::WorkspaceSymbols => "type to search symbols...",
+            Self::DocumentSymbols => "type to search symbols in file...",
             Self::LiveGrep => "type to grep workspace...",
             Self::InFileSearch => "type to search in current file...",
             Self::ExplorerCreateFile => "enter a new file path...",
@@ -90,6 +94,7 @@ impl CommandPaletteMode {
             Self::CommandPalette => "COMMANDS",
             Self::VimCommand => "VIM",
             Self::WorkspaceSymbols => "SYMBOLS",
+            Self::DocumentSymbols => "SYMBOLS",
             Self::LiveGrep => "GREP",
             Self::InFileSearch => "SEARCH",
             Self::ExplorerCreateFile => "NEW FILE",
@@ -114,6 +119,7 @@ impl CommandPaletteMode {
                 | Self::ThemeSelector
                 | Self::LspReferences
                 | Self::FileHistory
+                | Self::DocumentSymbols
         )
     }
 }
@@ -130,6 +136,11 @@ pub enum CommandPaletteAction {
     ExecuteVimCommand(String),
     SelectTheme(String),
     JumpToSymbol(String),
+    JumpToDocumentSymbol {
+        name: String,
+        line: u32,
+        column: u32,
+    },
     SelectFileHistoryEntry(usize),
 }
 
@@ -140,6 +151,9 @@ pub enum CommandPaletteItemTone {
     Added,
     Removed,
     Modified,
+    Function,
+    Type,
+    Variable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,6 +230,22 @@ impl CommandPaletteItem {
         }
     }
 
+    pub fn document_symbol(symbol: &crate::async_runtime::message::LspDocumentSymbol) -> Self {
+        let icon = symbol_icon(&symbol.kind);
+        let line = symbol.range.start.line + 1;
+        let column = symbol.range.start.character + 1;
+        Self {
+            label: format!("[{icon}] {}  {}  Ln {}", symbol.name, symbol.kind, line),
+            secondary_label: Some(format!("{}  Ln {}, Col {}", symbol.kind, line, column)),
+            action: CommandPaletteAction::JumpToDocumentSymbol {
+                name: symbol.name.clone(),
+                line: symbol.range.start.line,
+                column: symbol.range.start.character,
+            },
+            tone: symbol_tone(&symbol.kind),
+        }
+    }
+
     pub fn file_history_entry(
         label: String,
         secondary_label: Option<String>,
@@ -269,6 +299,7 @@ pub struct CommandPaletteRenderModel {
     pub title: String,
     /// Tổng số kết quả trước khi limit — dùng cho counter "8/847"
     pub total_results: usize,
+    pub is_loading: bool,
     /// Nếu false, renderer không render danh sách kết quả (VimCommand mode — 1 dòng input thôi)
     pub show_results: bool,
     pub border_color: [f32; 4],
@@ -289,6 +320,7 @@ pub struct CommandPaletteRenderModel {
     pub warning_color: [f32; 4],
     /// Màu info (xanh dương) — dùng cho ext badges của .ts, .go ...
     pub info_color: [f32; 4],
+    pub item_tones: Vec<CommandPaletteItemTone>,
 }
 
 #[derive(Debug, Clone)]
@@ -298,6 +330,7 @@ pub struct CommandPalette {
     pub results: Vec<CommandPaletteItem>,
     pub selected_index: usize,
     pub is_visible: bool,
+    pub is_loading: bool,
     pub cursor_byte: usize,
     pub selection_range: Option<(usize, usize)>,
     max_results: usize,
@@ -314,6 +347,7 @@ impl Default for CommandPalette {
             results: Vec::new(),
             selected_index: 0,
             is_visible: false,
+            is_loading: false,
             cursor_byte: 0,
             selection_range: None,
             max_results: DEFAULT_MAX_RESULTS,
@@ -328,6 +362,7 @@ impl CommandPalette {
         self.query.clear();
         self.selected_index = 0;
         self.is_visible = true;
+        self.is_loading = false;
         self.cursor_byte = 0;
         self.selection_range = None;
         self.static_items.clear();
@@ -346,6 +381,7 @@ impl CommandPalette {
         self.query.clear();
         self.selected_index = 0;
         self.is_visible = true;
+        self.is_loading = false;
         self.cursor_byte = 0;
         self.selection_range = None;
         self.static_items = items.clone();
@@ -363,6 +399,7 @@ impl CommandPalette {
         self.mode = mode;
         self.query.clear();
         self.is_visible = false;
+        self.is_loading = false;
         self.cursor_byte = 0;
         self.selection_range = None;
         self.static_items = items.clone();
@@ -378,6 +415,7 @@ impl CommandPalette {
     pub fn close(&mut self) -> bool {
         let was_open = self.is_visible;
         self.is_visible = false;
+        self.is_loading = false;
         self.query.clear();
         self.selected_index = 0;
         self.results.clear();
@@ -385,6 +423,14 @@ impl CommandPalette {
         self.cursor_byte = 0;
         self.selection_range = None;
         was_open
+    }
+
+    pub fn set_loading(&mut self, is_loading: bool) -> bool {
+        if self.is_loading == is_loading {
+            return false;
+        }
+        self.is_loading = is_loading;
+        true
     }
 
     pub fn append_query(&mut self, text: &str, workspace: Option<&WorkspaceModel>) -> bool {
@@ -484,7 +530,9 @@ impl CommandPalette {
         // RecentProjects: filter static_items by query (name OR full path).
         if matches!(
             self.mode,
-            CommandPaletteMode::RecentProjects | CommandPaletteMode::ThemeSelector
+            CommandPaletteMode::RecentProjects
+                | CommandPaletteMode::ThemeSelector
+                | CommandPaletteMode::DocumentSymbols
         ) {
             self.results = if self.query.is_empty() {
                 self.static_items.clone()
@@ -523,6 +571,7 @@ impl CommandPalette {
             CommandPaletteMode::WorkspaceSymbols => {
                 workspace_symbol_items(&self.query, self.max_results)
             }
+            CommandPaletteMode::DocumentSymbols => unreachable!("handled above"),
             CommandPaletteMode::LiveGrep => Vec::new(),
             CommandPaletteMode::InFileSearch => Vec::new(),
             CommandPaletteMode::ExplorerCreateFile
@@ -590,6 +639,14 @@ impl CommandPalette {
         }
 
         results_before != self.results || selected_before != self.selected_action()
+    }
+
+    pub fn replace_static_results(&mut self, results: Vec<CommandPaletteItem>) -> bool {
+        let previous_static = self.static_items.clone();
+        self.static_items = results;
+        let was_loading = self.set_loading(false);
+        self.refresh_results(None);
+        previous_static != self.static_items || was_loading
     }
 
     pub fn render(
@@ -758,7 +815,10 @@ impl CommandPalette {
                     _ => String::new(),
                 })
                 .collect()
-        } else if matches!(self.mode, CommandPaletteMode::LiveGrep) {
+        } else if matches!(
+            self.mode,
+            CommandPaletteMode::LiveGrep | CommandPaletteMode::DocumentSymbols
+        ) {
             self.results
                 .iter()
                 .map(|entry| entry.secondary_label.clone().unwrap_or_default())
@@ -797,7 +857,11 @@ impl CommandPalette {
             panel_bounds,
             prompt_prefix: self.mode.prompt_prefix().to_string(),
             prompt_query: if self.query.is_empty() {
-                self.mode.empty_hint().to_string()
+                if self.is_loading {
+                    "loading symbols...".to_string()
+                } else {
+                    self.mode.empty_hint().to_string()
+                }
             } else {
                 self.query.clone()
             },
@@ -810,6 +874,7 @@ impl CommandPalette {
             panel_padding,
             title: self.mode.title().to_string(),
             total_results: self.results.len(),
+            is_loading: self.is_loading,
             show_results,
             border_color: theme.ui.border_color.as_f32(),
             panel_bg,
@@ -822,7 +887,30 @@ impl CommandPalette {
             success_color: theme.ui.success.as_f32(),
             warning_color: theme.ui.warning.as_f32(),
             info_color: theme.ui.info.as_f32(),
+            item_tones: self.results.iter().map(|entry| entry.tone).collect(),
         })
+    }
+}
+
+fn symbol_icon(kind: &str) -> &'static str {
+    match kind {
+        "Function" | "Method" | "Constructor" => "ƒ",
+        "Class" => "C",
+        "Struct" => "S",
+        "Interface" => "I",
+        "Enum" | "EnumMember" => "E",
+        "Variable" | "Constant" | "Field" | "Property" => "v",
+        "Module" | "Namespace" | "Package" => "M",
+        _ => "*",
+    }
+}
+
+fn symbol_tone(kind: &str) -> CommandPaletteItemTone {
+    match kind {
+        "Function" | "Method" | "Constructor" => CommandPaletteItemTone::Function,
+        "Class" | "Struct" | "Interface" | "Enum" | "TypeParameter" => CommandPaletteItemTone::Type,
+        "Variable" | "Constant" | "Field" | "Property" => CommandPaletteItemTone::Variable,
+        _ => CommandPaletteItemTone::Default,
     }
 }
 
@@ -849,6 +937,7 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
         ("app.open_file_finder", "Open File Finder"),
         ("app.search_in_files", "Search In Files"),
         ("app.open_workspace_symbols", "Open Workspace Symbols"),
+        ("app.open_document_symbols", "Find Symbol in File"),
         ("app.open_vim_command", "Open Vim Command"),
         ("app.open_help", "Open Cheat Sheet"),
         ("app.toggle_terminal", "Toggle Terminal"),
@@ -1081,5 +1170,89 @@ mod tests {
         assert_eq!(model.scrim_color[1], expected_scrim[1]);
         assert_eq!(model.scrim_color[2], expected_scrim[2]);
         assert!(model.scrim_color[3] >= 0.72);
+    }
+
+    #[test]
+    fn document_symbols_render_loading_state_then_filter_static_results() {
+        let mut palette = CommandPalette::default();
+        palette.open_with_items(CommandPaletteMode::DocumentSymbols, Vec::new());
+        palette.set_loading(true);
+
+        let loading_model = palette
+            .render(&ThemeConfig::builtin_dark(), [0.0, 0.0, 1200.0, 800.0])
+            .expect("loading render model");
+        assert!(loading_model.is_loading);
+        assert_eq!(loading_model.prompt_query, "loading symbols...");
+
+        let symbols = vec![
+            crate::async_runtime::message::LspDocumentSymbol {
+                name: "render_file".to_string(),
+                kind: "Function".to_string(),
+                range: crate::async_runtime::message::LspRange {
+                    start: crate::async_runtime::message::LspPosition {
+                        line: 9,
+                        character: 4,
+                    },
+                    end: crate::async_runtime::message::LspPosition {
+                        line: 12,
+                        character: 1,
+                    },
+                },
+            },
+            crate::async_runtime::message::LspDocumentSymbol {
+                name: "AppState".to_string(),
+                kind: "Struct".to_string(),
+                range: crate::async_runtime::message::LspRange {
+                    start: crate::async_runtime::message::LspPosition {
+                        line: 20,
+                        character: 0,
+                    },
+                    end: crate::async_runtime::message::LspPosition {
+                        line: 40,
+                        character: 1,
+                    },
+                },
+            },
+        ];
+        let items = symbols
+            .iter()
+            .map(CommandPaletteItem::document_symbol)
+            .collect();
+        assert!(palette.replace_static_results(items));
+        assert!(!palette.is_loading);
+
+        palette.set_query("state", None);
+        assert_eq!(palette.results.len(), 1);
+        assert_eq!(palette.results[0].label, "[S] AppState  Struct  Ln 21");
+    }
+
+    #[test]
+    fn document_symbol_item_carries_jump_position_and_tone() {
+        let symbol = crate::async_runtime::message::LspDocumentSymbol {
+            name: "build_picker".to_string(),
+            kind: "Function".to_string(),
+            range: crate::async_runtime::message::LspRange {
+                start: crate::async_runtime::message::LspPosition {
+                    line: 42,
+                    character: 8,
+                },
+                end: crate::async_runtime::message::LspPosition {
+                    line: 43,
+                    character: 1,
+                },
+            },
+        };
+
+        let item = CommandPaletteItem::document_symbol(&symbol);
+        assert_eq!(item.label, "[ƒ] build_picker  Function  Ln 43");
+        assert_eq!(item.tone, CommandPaletteItemTone::Function);
+        assert_eq!(
+            item.action,
+            CommandPaletteAction::JumpToDocumentSymbol {
+                name: "build_picker".to_string(),
+                line: 42,
+                column: 8,
+            }
+        );
     }
 }

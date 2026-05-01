@@ -5,6 +5,7 @@ use crate::syntax::syntax_engine::LanguageId;
 const RUST_ROOT_MARKERS: &[&str] = &["Cargo.toml", ".git"];
 const JS_TS_ROOT_MARKERS: &[&str] = &["package.json", "tsconfig.json", ".git"];
 const GO_ROOT_MARKERS: &[&str] = &["go.mod", ".git"];
+const SQL_ROOT_MARKERS: &[&str] = &[".sqls.json", "docker-compose.yml", ".git"];
 const NO_ROOT_MARKERS: &[&str] = &[];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +93,18 @@ static LANGUAGE_REGISTRY: &[LanguageProfile] = &[
         install_command: "go install golang.org/x/tools/gopls@latest",
         root_markers: GO_ROOT_MARKERS,
         extensions: &["go"],
+        filenames: &[],
+    },
+    LanguageProfile {
+        key: "sql",
+        language_label: "SQL",
+        language_id: "sql",
+        syntax_language_id: Some(LanguageId::Sql),
+        lsp_binary: "sqls",
+        launch_args: &[],
+        install_command: "go install github.com/sqls-server/sqls@latest",
+        root_markers: SQL_ROOT_MARKERS,
+        extensions: &["sql"],
         filenames: &[],
     },
     LanguageProfile {
@@ -218,7 +231,7 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use super::{find_project_root, language_profile_for_path};
+    use super::{SQL_ROOT_MARKERS, find_project_root, language_profile_for_path};
 
     fn unique_temp_dir(label: &str) -> PathBuf {
         let stamp = SystemTime::now()
@@ -237,6 +250,15 @@ mod tests {
     }
 
     #[test]
+    fn language_profile_detects_sql_by_extension() {
+        let profile = language_profile_for_path(PathBuf::from("/tmp/schema.sql").as_path())
+            .expect("sql profile");
+        assert_eq!(profile.key, "sql");
+        assert_eq!(profile.language_id, "sql");
+        assert_eq!(profile.lsp_binary, "sqls");
+    }
+
+    #[test]
     fn find_project_root_prefers_nearest_marker_ancestor() {
         let root = unique_temp_dir("nearest_root");
         let project = root.join("workspace");
@@ -247,6 +269,21 @@ mod tests {
 
         let file_path = nested.join("main.tsx");
         let detected = find_project_root(&file_path, &["package.json", ".git"]);
+
+        assert_eq!(detected, project);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn find_project_root_supports_sql_workspace_markers() {
+        let root = unique_temp_dir("sql_root");
+        let project = root.join("workspace");
+        let nested = project.join("db/migrations");
+        fs::create_dir_all(&nested).expect("create nested dirs");
+        fs::write(project.join(".sqls.json"), "{}").expect("write .sqls.json");
+
+        let file_path = nested.join("001_init.sql");
+        let detected = find_project_root(&file_path, SQL_ROOT_MARKERS);
 
         assert_eq!(detected, project);
         let _ = fs::remove_dir_all(root);

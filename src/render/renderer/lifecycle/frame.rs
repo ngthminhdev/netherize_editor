@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use crate::render::region_pipeline::RegionDrawInstance;
 
-use super::super::{helpers::draw_text_region, RenderError, Renderer};
+use super::super::{RenderError, Renderer, helpers::draw_text_region};
 
 const FRAME_TIME_WARN_THRESHOLD: Duration = Duration::from_millis(8);
 

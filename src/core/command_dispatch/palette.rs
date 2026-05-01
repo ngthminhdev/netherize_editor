@@ -68,6 +68,14 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             ),
             Err(report) => report,
         },
+        Command::OpenDocumentSymbols => match open_document_symbols(ctx) {
+            Ok((result_count, mode_changed)) => DispatchReport::success_with_flags(
+                format!("Dispatch: document symbols opened ({result_count} items)"),
+                true,
+                mode_changed,
+            ),
+            Err(report) => report,
+        },
         Command::SearchInFiles => {
             let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterInsert);
             let buffer_index = ctx
@@ -272,6 +280,46 @@ fn open_theme_selector(ctx: &mut DispatchCtx<'_, '_, '_>) -> Result<(usize, bool
     Ok((result_count, mode_changed))
 }
 
+fn open_document_symbols(
+    ctx: &mut DispatchCtx<'_, '_, '_>,
+) -> Result<(usize, bool), DispatchReport> {
+    let current_mode = ctx.app_state.current_mode();
+    if current_mode != EditorMode::PaletteFocus
+        && !ctx.app_state.can_apply_mode_event(ModeEvent::OpenPalette)
+    {
+        return Err(DispatchReport::failure(format!(
+            "Dispatch: open document symbols rejected (mode={} does not allow OpenPalette)",
+            current_mode.as_str()
+        )));
+    }
+
+    let result_count = match ctx.app_state.open_document_symbols_palette_loading() {
+        Ok(result_count) => result_count,
+        Err(err) => {
+            return Err(DispatchReport::failure(format!(
+                "Dispatch: open document symbols failed -> {err}"
+            )));
+        }
+    };
+
+    let mode_changed = if current_mode == EditorMode::PaletteFocus {
+        false
+    } else {
+        match ctx.app_state.apply_mode_event(ModeEvent::OpenPalette) {
+            Ok(result) => result.changed,
+            Err(err) => {
+                let _ = ctx.app_state.close_command_palette();
+                return Err(DispatchReport::failure(format!(
+                    "Dispatch: open document symbols rejected -> {:?}",
+                    err
+                )));
+            }
+        }
+    };
+
+    Ok((result_count, mode_changed))
+}
+
 fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
     if matches!(
         ctx.app_state.command_palette_mode(),
@@ -424,6 +472,23 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
                 format!("Dispatch: workspace symbol selected -> {}", symbol),
                 true,
                 false,
+            )
+        }
+        CommandPaletteAction::JumpToDocumentSymbol { name, line, column } => {
+            ctx.app_state.push_jump();
+            let jumped = ctx
+                .app_state
+                .jump_to_line_and_column(line as usize, column as usize);
+            let closed = ctx.close_palette_and_exit_focus();
+            DispatchReport::success_with_flags(
+                format!(
+                    "Dispatch: document symbol selected -> {} @ {}:{}",
+                    name,
+                    line + 1,
+                    column + 1
+                ),
+                true,
+                jumped || closed,
             )
         }
         CommandPaletteAction::SelectFileHistoryEntry(index) => {

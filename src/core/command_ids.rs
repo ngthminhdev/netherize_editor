@@ -81,6 +81,7 @@ pub const OPEN_FILE_FINDER: &str = "app.open_file_finder";
 pub const OPEN_COMMAND_PALETTE: &str = "app.open_command_palette";
 pub const OPEN_VIM_COMMAND: &str = "app.open_vim_command";
 pub const OPEN_WORKSPACE_SYMBOLS: &str = "app.open_workspace_symbols";
+pub const OPEN_DOCUMENT_SYMBOLS: &str = "app.open_document_symbols";
 pub const SEARCH_IN_FILES: &str = "app.search_in_files";
 pub const OPEN_THEME_SELECTOR: &str = "app.open_theme_selector";
 pub const OPEN_FILE_HISTORY: &str = "app.open_file_history";
@@ -236,6 +237,7 @@ pub const ALL_IDS: &[&str] = &[
     OPEN_COMMAND_PALETTE,
     OPEN_VIM_COMMAND,
     OPEN_WORKSPACE_SYMBOLS,
+    OPEN_DOCUMENT_SYMBOLS,
     SEARCH_IN_FILES,
     OPEN_THEME_SELECTOR,
     OPEN_FILE_HISTORY,
@@ -390,6 +392,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         OPEN_COMMAND_PALETTE => Some(Command::OpenCommandPalette),
         OPEN_VIM_COMMAND => Some(Command::OpenVimCommand),
         OPEN_WORKSPACE_SYMBOLS => Some(Command::OpenWorkspaceSymbols),
+        OPEN_DOCUMENT_SYMBOLS => Some(Command::OpenDocumentSymbols),
         SEARCH_IN_FILES => Some(Command::SearchInFiles),
         OPEN_THEME_SELECTOR => Some(Command::OpenThemeSelector),
         OPEN_FILE_HISTORY => Some(Command::OpenFileHistory),

@@ -20,6 +20,14 @@ impl AsyncResultRouter for AppShell {
             if topic == RequestTopic::LspClient {
                 self.pending_lsp_server = None;
             }
+            if topic == RequestTopic::LspRequest
+                && revision_id >= self.document_symbols_request_revision
+                && self.app_state.command_palette_mode()
+                    == Some(CommandPaletteMode::DocumentSymbols)
+                && self.app_state.finish_document_symbol_picker_loading()
+            {
+                self.request_redraw();
+            }
             let references_status = if revision_id < self.references_request_revision {
                 stale_references_status()
             } else {
@@ -523,6 +531,41 @@ impl AsyncResultRouter for AppShell {
                     .finish_pending_references_buffer(request_id, title, items)
                 {
                     self.submit_references_preview_load();
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                }
+                self.request_redraw();
+            }
+            WorkerResultPayload::LspDocumentSymbolsResult { uri, symbols } => {
+                if revision_id < self.document_symbols_request_revision {
+                    eprintln!(
+                        "[AppShell] stale document symbols result ignored request_id={} revision={} latest_revision={}",
+                        request_id, revision_id, self.document_symbols_request_revision
+                    );
+                    return;
+                }
+                let Some(path) = lsp_uri_to_path(&uri) else {
+                    eprintln!("[AppShell] document symbols: cannot parse URI {uri}");
+                    let _ = self.app_state.finish_document_symbol_picker_loading();
+                    self.request_redraw();
+                    return;
+                };
+                let Some(active_path) = self.app_state.active_file().map(PathBuf::from) else {
+                    let _ = self.app_state.finish_document_symbol_picker_loading();
+                    self.request_redraw();
+                    return;
+                };
+                if active_path != path {
+                    let _ = self.app_state.finish_document_symbol_picker_loading();
+                    self.request_redraw();
+                    return;
+                }
+                if self.app_state.command_palette_mode()
+                    != Some(CommandPaletteMode::DocumentSymbols)
+                {
+                    return;
+                }
+                if self.app_state.set_document_symbol_picker_results(symbols) {
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                 }

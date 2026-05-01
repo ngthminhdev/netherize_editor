@@ -62,7 +62,16 @@ netherize_editor/
 │   │   ├── event_loop/            # winit ApplicationHandler impl + command dispatch
 │   │   │   ├── mod.rs             # run() entrypoint
 │   │   │   ├── application.rs     # winit::ApplicationHandler impl
-│   │   │   ├── commands.rs        # Command → AppState mutation handlers
+│   │   │   ├── commands.rs        # Command orchestration facade + shared helpers
+│   │   │   ├── commands_editor.rs # Editor edit/navigation/leap command helpers
+│   │   │   ├── commands_completion.rs # Completion popup and insert flows
+│   │   │   ├── commands_terminal.rs # Terminal/panel/focus commands
+│   │   │   ├── commands_explorer.rs # Explorer/sidebar/workspace commands
+│   │   │   ├── commands_palette.rs # Palette/open-file/open-buffer commands
+│   │   │   ├── commands_settings.rs # Settings-buffer commands
+│   │   │   ├── commands_settings_helpers.rs # Settings value/editing helpers
+│   │   │   ├── commands_prompts.rs # Confirmation/prompt/theme/recent-project flows
+│   │   │   ├── commands_lsp.rs    # LSP/diagnostics/inline-AI commands
 │   │   │   ├── async_results.rs   # Polling async channel results into the main loop
 │   │   │   ├── helpers.rs         # Shared render/layout helpers
 │   │   │   ├── setup.rs           # GPU + window init
@@ -155,8 +164,23 @@ netherize_editor/
 │   │   └── mod.rs
 │   │
 │   ├── async_runtime/             # Tokio async bridge
-│   │   ├── scheduler.rs           # Task queue + wakeup
-│   │   ├── message.rs             # AsyncMessage enum (results sent back to main loop)
+│   │   ├── scheduler.rs           # Thin facade: shared registries/constants + AsyncScheduler surface
+│   │   ├── scheduler/
+│   │   │   ├── runtime.rs         # AsyncScheduler runtime bootstrap + submit path
+│   │   │   ├── dispatch.rs        # Request routing to PTY/LSP/FZF/history/syntax workers
+│   │   │   ├── emit.rs            # WorkerMessage send helpers + join/panic failure mapping
+│   │   │   ├── pty.rs             # PTY worker runner + output reader
+│   │   │   ├── lsp.rs             # LSP request runner + session lifecycle
+│   │   │   ├── lsp_io.rs          # LSP stdout/stderr reader tasks
+│   │   │   ├── lsp_parse.rs       # Hover/completion/definition/document-symbol parsing
+│   │   │   ├── syntax_jobs.rs     # Tree-sitter parse/highlight + mock/git/file-preview jobs
+│   │   │   ├── fzf.rs             # Find-file/live-grep worker
+│   │   │   ├── file_watch.rs      # notify watcher batching + normalization
+│   │   │   ├── local_history.rs   # Persisted undo-history load/save worker
+│   │   │   ├── git.rs             # blame/status/baseline helpers
+│   │   │   ├── ai.rs              # Inline AI completion worker
+│   │   │   └── tests.rs           # Scheduler subsystem regression tests
+│   │   ├── message.rs             # Worker request/result/event types sent across the bridge
 │   │   └── mod.rs
 │   │
 │   └── config/                    # Config loading
@@ -269,6 +293,51 @@ Renderer.update_editor_content()  (render/renderer.rs)
 Renderer.render()  →  wgpu submit  →  screen
 ```
 
+### Async Runtime Flow
+
+```
+AppShell::submit_worker_request()
+      │
+      ▼
+AsyncScheduler::submit()
+  - stamp request_id + revision_id
+  - send WorkerRequest into tokio mpsc
+      │
+      ▼
+dispatch_loop()
+  - classify request family
+  - route into PTY / LSP / FZF / local history / syntax job worker
+      │
+      ▼
+Worker task
+  - do I/O / parse / tree-sitter / subprocess work off the UI thread
+  - emit WorkerMessage::Result / Event
+      │
+      ▼
+EventLoopProxy<AppEvent>
+  - wakes winit when worker output matters for redraw
+      │
+      ▼
+app/event_loop/async_results.rs
+  - drain bridge
+  - reject stale buffer/revision results
+  - apply spans, diagnostics, git state, picker results
+      │
+      ▼
+window.request_redraw()
+```
+
+### Async Runtime Ownership
+
+| Area | Module |
+|------|--------|
+| Runtime bootstrap + request IDs | `src/async_runtime/scheduler/runtime.rs` |
+| Request routing / wake-up plumbing | `src/async_runtime/scheduler/dispatch.rs`, `emit.rs` |
+| Tree-sitter parse/highlight and lightweight virtual jobs | `src/async_runtime/scheduler/syntax_jobs.rs` |
+| PTY lifecycle and terminal output streaming | `src/async_runtime/scheduler/pty.rs` |
+| LSP lifecycle, transport readers, response parsing | `src/async_runtime/scheduler/lsp.rs`, `lsp_io.rs`, `lsp_parse.rs` |
+| File watcher / local history / FZF / git helpers | `src/async_runtime/scheduler/file_watch.rs`, `local_history.rs`, `fzf.rs`, `git.rs` |
+
 ### Keyboard / Vim Path In One Line
 
 For almost every "why didn't this key do what I expected?" bug, read the path below in order:
@@ -296,7 +365,9 @@ Use this table when you want to jump straight to the likely file instead of read
 | A command should repeat `count` times or should/should not support counts | `src/core/commands.rs`, `src/core/command_dispatch.rs` | Count policy and the actual execution loop are centralized here |
 | Undo transaction boundaries for repeated delete/paste/edit commands | `src/core/command_dispatch.rs`, `src/app/app_state.rs` | Dispatch decides when to commit; AppState stores the transaction stack |
 | Mode transitions such as Normal/Insert/Visual/TerminalFocus | `src/core/mode.rs`, `src/app/app_state.rs` | `ModeState` validates transitions; `AppState` applies them |
-| F12 terminal behavior, focus handoff, explorer/panel focus routing | `src/app/event_loop/commands.rs` | Workbench commands are handled here, not in core dispatch |
+| F12 terminal behavior, focus handoff, explorer/panel focus routing | `src/app/event_loop/commands.rs`, `src/app/event_loop/commands_terminal.rs`, `src/app/event_loop/commands_explorer.rs` | The facade routes by UI domain; terminal and explorer behavior now live in focused modules |
+| Completion popup behavior, acceptance, and auto-trigger after typing | `src/app/event_loop/commands_completion.rs`, `src/app/event_loop/commands_lsp.rs`, `src/app/event_loop/async_results.rs` | Request submit lives with command helpers; result application still lands in async results |
+| Delete/close confirmations, theme selection, recent-project palette, explorer create/rename prompts | `src/app/event_loop/commands_prompts.rs`, `src/app/event_loop/commands_palette.rs` | Prompt lifecycle and confirm flows were split out of the main command facade |
 | Terminal raw input, ANSI behavior, PTY I/O | `src/app/input/helpers.rs`, `src/app/input/handler.rs`, `src/terminal/pty.rs`, `src/terminal/grid.rs` | Terminal key payload building lives in input helpers, then flows into PTY/grid behavior |
 | Sidebar / bottom panel overlap, docking geometry, resize handles | `src/workbench/layout_engine.rs`, `src/workbench/panel_state.rs` | Region bounds and panel sizes come from the workbench layout engine |
 | Cursor/caret rendering, terminal cursor visibility, status bar UI | `src/render/caret.rs`, `src/render/renderer/ui_render.rs`, `src/app/event_loop/application.rs` | Render prep happens in UI/caret code, driven by event-loop state |
@@ -578,12 +649,14 @@ Read in this order to build a mental model quickly:
 3. **`src/app/input/handler.rs`** — key routing state machine, numeric counts, operator flow
 4. **`src/app/input/model.rs`** + **`src/app/input/pending.rs`** — normalized input types and pending-state definitions
 5. **`src/app/input_map/mod.rs`** + **`src/app/resolved_keymap.rs`** — how keys become commands
-6. **`src/app/event_loop/commands.rs`** — workbench behavior, panel focus, terminal open/focus logic
-7. **`src/core/command_dispatch.rs`** — how commands mutate editor state and how undo grouping works
-8. **`src/app/app_state.rs`** — the central source of truth for text, cursor, mode, buffers, and transactions
-9. **`src/workbench/layout_engine.rs`** — UI region geometry when a bug is visual/layout-related
-10. **`src/render/renderer.rs`** + **`src/render/renderer/ui_render.rs`** — frame assembly and UI rendering
-11. **`src/text/text_system.rs`** + **`src/text/atlas.rs`** — text shaping/raster path when glyph/render bugs appear
+6. **`src/app/event_loop/commands.rs`** — the event-loop command facade; read this first to see how commands are delegated
+7. **`src/app/event_loop/commands_editor.rs`** + **`src/app/event_loop/commands_terminal.rs`** + **`src/app/event_loop/commands_explorer.rs`** — the main workbench command domains
+8. **`src/app/event_loop/commands_palette.rs`** + **`src/app/event_loop/commands_prompts.rs`** + **`src/app/event_loop/commands_completion.rs`** — overlay, prompt, and completion flows
+9. **`src/core/command_dispatch.rs`** — how commands mutate editor state and how undo grouping works
+10. **`src/app/app_state.rs`** — the central source of truth for text, cursor, mode, buffers, and transactions
+11. **`src/workbench/layout_engine.rs`** — UI region geometry when a bug is visual/layout-related
+12. **`src/render/renderer.rs`** + **`src/render/renderer/ui_render.rs`** — frame assembly and UI rendering
+13. **`src/text/text_system.rs`** + **`src/text/atlas.rs`** — text shaping/raster path when glyph/render bugs appear
 
 ---
 

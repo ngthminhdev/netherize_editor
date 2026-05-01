@@ -226,6 +226,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::OpenVimCommand
         | Command::OpenInFileSearch
         | Command::OpenWorkspaceSymbols
+        | Command::OpenDocumentSymbols
         | Command::SearchInFiles
         | Command::OpenThemeSelector
         | Command::OpenFileHistory

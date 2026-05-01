@@ -178,13 +178,20 @@ impl Renderer {
             ));
 
             // filename — always starts at fixed name_x column
+            let tone = model
+                .item_tones
+                .get(absolute_idx)
+                .copied()
+                .unwrap_or_default();
+            let mut row_model = model.clone();
+            row_model.label_color = file_picker_tone_color(tone, model);
             Self::render_highlighted_label(
                 label,
                 ranges,
                 name_x,
                 icon_y,
                 font_size,
-                model,
+                &row_model,
                 &mut self.palette_text_system,
                 &mut self.atlas,
                 &self.queue,
@@ -226,4 +233,16 @@ impl Renderer {
     }
 
     // ── Name/path picker (Recent Projects + Theme Selector) ───────────────────
+}
+
+fn file_picker_tone_color(
+    tone: crate::app::command_palette::CommandPaletteItemTone,
+    model: &CommandPaletteRenderModel,
+) -> [f32; 4] {
+    match tone {
+        crate::app::command_palette::CommandPaletteItemTone::Function => model.info_color,
+        crate::app::command_palette::CommandPaletteItemTone::Type => model.warning_color,
+        crate::app::command_palette::CommandPaletteItemTone::Variable => model.success_color,
+        _ => model.label_color,
+    }
 }
