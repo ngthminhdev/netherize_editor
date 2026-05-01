@@ -442,6 +442,18 @@ impl AppShell {
                 self.theme.ui.cyan.as_f32()
             };
         focused_outline[3] = focused_outline[3].max(0.95);
+
+        // RightSidebar (AI Chat) background parameters — three-layer
+        // outline + fill + input-box accent.
+        let panel_border_width = self.layout_engine.config.panel_border_width;
+        let rs_border_color = self.theme.ui.border_color.as_f32();
+        let rs_panel_bg = self.theme.ui.panel_bg.as_f32();
+        let rs_input_bg = self.theme.editor.bg.as_f32();
+        let ai_chat_input_bounds = flat_regions
+            .iter()
+            .find(|r| r.id == RegionId::AiChatInput && r.visible)
+            .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
+
         let mut region_instances: Vec<RegionDrawInstance> = flat_regions
             .iter()
             .copied()
@@ -453,23 +465,40 @@ impl AppShell {
                     && !(show_welcome && !workspace_attached && region.id == RegionId::LeftSidebar)
             })
             .flat_map(|region| {
-                let outline_color = if Some(region.id) == focus_region {
-                    focused_outline
+                if region.id == RegionId::RightSidebar {
+                    right_sidebar_background_quads(
+                        [
+                            region.bounds.x,
+                            region.bounds.y,
+                            region.bounds.width,
+                            region.bounds.height,
+                        ],
+                        ai_chat_input_bounds,
+                        panel_border_width,
+                        rs_border_color,
+                        rs_panel_bg,
+                        rs_input_bg,
+                        panel_radius,
+                    )
                 } else {
-                    default_outline
-                };
-                focus_ring_instances(
-                    [
-                        region.bounds.x,
-                        region.bounds.y,
-                        region.bounds.width,
-                        region.bounds.height,
-                    ],
-                    outline_color,
-                    3.0,
-                    panel_radius,
-                    region_color(region.id, &self.theme),
-                )
+                    let outline_color = if Some(region.id) == focus_region {
+                        focused_outline
+                    } else {
+                        default_outline
+                    };
+                    focus_ring_instances(
+                        [
+                            region.bounds.x,
+                            region.bounds.y,
+                            region.bounds.width,
+                            region.bounds.height,
+                        ],
+                        outline_color,
+                        3.0,
+                        panel_radius,
+                        region_color(region.id, &self.theme),
+                    )
+                }
             })
             .collect();
 
