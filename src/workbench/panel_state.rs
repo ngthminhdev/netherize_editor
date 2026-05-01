@@ -7,6 +7,7 @@ pub enum PanelTabId {
     Terminal,
     DebugConsole,
     Problems,
+    AiChat,
 }
 
 impl PanelTabId {
@@ -19,6 +20,7 @@ impl PanelTabId {
             Self::Terminal => "Terminal",
             Self::DebugConsole => "Debug Console",
             Self::Problems => "Problems",
+            Self::AiChat => "AI Chat",
         }
     }
 }
@@ -72,12 +74,43 @@ impl PanelState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AiRole {
+    User,
+    Assistant,
+    System,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AiChatMessage {
+    pub role: AiRole,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AiChatState {
+    pub messages: Vec<AiChatMessage>,
+    pub input_buffer: String,
+    pub is_generating: bool,
+}
+
+impl Default for AiChatState {
+    fn default() -> Self {
+        Self {
+            messages: Vec::new(),
+            input_buffer: String::new(),
+            is_generating: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorkbenchPanelState {
     pub left: PanelState,
     pub right: PanelState,
     pub bottom: PanelState,
     pub overlay_visible: bool,
+    pub ai_chat: AiChatState,
 }
 
 impl Default for WorkbenchPanelState {
@@ -87,7 +120,11 @@ impl Default for WorkbenchPanelState {
             right: PanelState::new(
                 false,
                 260.0,
-                vec![PanelTabId::Inspector, PanelTabId::Outline],
+                vec![
+                    PanelTabId::Inspector,
+                    PanelTabId::Outline,
+                    PanelTabId::AiChat,
+                ],
             ),
             bottom: PanelState::new(
                 false,
@@ -99,6 +136,7 @@ impl Default for WorkbenchPanelState {
                 ],
             ),
             overlay_visible: false,
+            ai_chat: AiChatState::default(),
         }
     }
 }
@@ -162,7 +200,7 @@ impl WorkbenchPanelState {
 
 #[cfg(test)]
 mod tests {
-    use super::{PanelState, PanelTabId, WorkbenchPanelState};
+    use super::{AiChatState, AiChatMessage, AiRole, PanelState, PanelTabId, WorkbenchPanelState};
 
     #[test]
     fn panel_tabs_cycle_both_directions() {
