@@ -123,6 +123,8 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::AiChatToggle
         | Command::AiChatSend
         | Command::AiChatClose
+        | Command::AiChatUnfocus
+        | Command::AiChatFocus
         | Command::AiChatInputChar(_)
         | Command::AiChatBackspace
         | Command::AiChatInputText(_) => DispatchReport::success_with_flags(

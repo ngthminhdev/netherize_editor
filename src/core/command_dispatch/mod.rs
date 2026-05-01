@@ -321,6 +321,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::AiChatToggle
         | Command::AiChatSend
         | Command::AiChatClose
+        | Command::AiChatUnfocus
+        | Command::AiChatFocus
         | Command::AiChatInputChar(_)
         | Command::AiChatBackspace
         | Command::AiChatInputText(_) => session::dispatch(&mut ctx, command),

@@ -280,6 +280,10 @@ pub enum Command {
     AiChatSend,
     /// Close the AI chat panel.
     AiChatClose,
+    /// Unfocus AI chat input — return focus to editor without closing the dock.
+    AiChatUnfocus,
+    /// Focus into the AI chat panel — open dock if closed, switch to AI Chat tab, focus input.
+    AiChatFocus,
     /// Append a character to the AI chat input buffer.
     AiChatInputChar(char),
     /// Delete the last character from the AI chat input buffer.

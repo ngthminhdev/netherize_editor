@@ -1285,16 +1285,16 @@ impl InputHandler {
         input_debug: String,
         context: KeybindingContext,
     ) -> Option<InputRouteOutcome> {
-        // Esc → close AI chat, return focus to editor
+        // Esc → unfocus AI chat, return focus to editor (keep dock visible)
         if normalized.named_key == Some(NamedKey::Escape) {
             return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                 input_debug,
                 format!(
-                    "mode={} focus={} -> ai chat: close (Esc)",
+                    "mode={} focus={} -> ai chat: unfocus (Esc)",
                     context.mode.as_str(),
                     context.focus.as_str(),
                 ),
-                Command::AiChatClose,
+                Command::AiChatUnfocus,
                 1,
                 false,
             )));

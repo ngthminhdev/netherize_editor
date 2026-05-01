@@ -110,6 +110,8 @@ pub const AI_ACCEPT_INLINE: &str = "ai.accept_inline";
 pub const AI_CHAT_TOGGLE: &str = "ai.chat_toggle";
 pub const AI_CHAT_SEND: &str = "ai.chat_send";
 pub const AI_CHAT_CLOSE: &str = "ai.chat_close";
+pub const AI_CHAT_UNFOCUS: &str = "ai.chat_unfocus";
+pub const AI_CHAT_FOCUS: &str = "ai.chat_focus";
 pub const DIAGNOSTICS_OPEN_PICKER: &str = "diagnostics.open_picker";
 
 // ── Jump list navigation ─────────────────────────────────────────────────────
@@ -266,6 +268,8 @@ pub const ALL_IDS: &[&str] = &[
     AI_CHAT_TOGGLE,
     AI_CHAT_SEND,
     AI_CHAT_CLOSE,
+    AI_CHAT_UNFOCUS,
+    AI_CHAT_FOCUS,
     DIAGNOSTICS_OPEN_PICKER,
     JUMP_BACK,
     JUMP_FORWARD,

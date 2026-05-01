@@ -57,6 +57,29 @@ impl AppShell {
                 }
                 Some(changed)
             }
+            Command::AiChatUnfocus => {
+                if self.focus_manager.current() == FocusTarget::RightSidebar {
+                    let focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
+                    if focus_changed {
+                        self.input_handler.clear_pending_prefix();
+                    }
+                    Some(focus_changed)
+                } else {
+                    Some(false)
+                }
+            }
+            Command::AiChatFocus => {
+                if !self.panel_state.right.visible {
+                    self.panel_state.right.visible = true;
+                    self.sidebar_needs_layout = true;
+                }
+                self.panel_state.right.switch_to_tab(PanelTabId::AiChat);
+                let focus_changed = self.focus_manager.set(FocusTarget::RightSidebar);
+                if focus_changed {
+                    self.input_handler.clear_pending_prefix();
+                }
+                Some(true)
+            }
             Command::AiChatInputChar(ch) => {
                 self.panel_state.ai_chat.input_buffer.push(*ch);
                 Some(true)
