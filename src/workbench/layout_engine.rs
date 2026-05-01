@@ -190,18 +190,20 @@ impl WorkbenchLayoutEngine {
             center_w > 0.0 && center_h > 0.0,
         );
         let right_sidebar = if panels.right.visible && right_w > 0.0 && body_h > 0.0 {
-            // Apply floating panel gap (viền lơ lửng)
+            // Apply floating panel gap (viền lơ lửng) — only x margins and
+            // bottom gap; keep y aligned with left sidebar and center.
             let mut rs_rect = RegionBounds::new(right_x, center_y, right_w, body_h);
             let pg = self.config.panel_gap;
             rs_rect.x += pg;
-            rs_rect.y += pg;
+            // DO NOT shift y — keep aligned with left sidebar and center
             rs_rect.width = (rs_rect.width - pg * 2.0).max(0.0);
-            rs_rect.height = (rs_rect.height - pg * 2.0).max(0.0);
+            rs_rect.height = (rs_rect.height - pg).max(0.0); // only bottom gap
 
-            // Split into AI Chat sub-regions
+            // Split into AI Chat sub-regions — clamp to prevent overflow
             let pad = self.config.inner_padding;
-            let chat_input_h = self.config.chat_input_height;
-            let history_h = (rs_rect.height - chat_input_h - pad).max(0.0);
+            let available = (rs_rect.height - pad * 2.0).max(0.0);
+            let chat_input_h = self.config.chat_input_height.min(available * 0.5);
+            let history_h = (available - chat_input_h - pad).max(0.0);
 
             let history_rect = RegionBounds::new(
                 rs_rect.x + pad,
@@ -213,7 +215,7 @@ impl WorkbenchLayoutEngine {
                 rs_rect.x + pad,
                 rs_rect.y + pad + history_h + pad,
                 (rs_rect.width - pad * 2.0).max(0.0),
-                chat_input_h.max(0.0),
+                chat_input_h,
             );
 
             let history_node = RegionNode::new(RegionId::AiChatHistory, history_rect, true);
