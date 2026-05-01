@@ -190,16 +190,9 @@ impl WorkbenchLayoutEngine {
             center_w > 0.0 && center_h > 0.0,
         );
         let right_sidebar = if panels.right.visible && right_w > 0.0 && body_h > 0.0 {
-            // Apply floating panel gap (viền lơ lửng) — only x margins and
-            // bottom gap; keep y aligned with left sidebar and center.
-            let mut rs_rect = RegionBounds::new(right_x, center_y, right_w, body_h);
-            let pg = self.config.panel_gap;
-            rs_rect.x += pg;
-            // DO NOT shift y — keep aligned with left sidebar and center
-            rs_rect.width = (rs_rect.width - pg * 2.0).max(0.0);
-            rs_rect.height = (rs_rect.height - pg).max(0.0); // only bottom gap
+            let rs_rect = RegionBounds::new(right_x, center_y, right_w, body_h);
 
-            // Split into AI Chat sub-regions — clamp to prevent overflow
+            // Split into AI Chat sub-regions using inner_padding only
             let pad = self.config.inner_padding;
             let available = (rs_rect.height - pad * 2.0).max(0.0);
             let chat_input_h = self.config.chat_input_height.min(available * 0.5);
@@ -509,12 +502,14 @@ mod tests {
             .find(RegionId::RightSidebar)
             .expect("right sidebar region");
 
+        // Right sidebar should use full allocated bounds (no floating panel_gap inset),
+        // matching how left sidebar works.
         let viewport_w = 1280.0;
         let right_edge = right.x + right.width;
-        let expected_edge = viewport_w - engine.config.outer_gap - engine.config.panel_gap;
+        let expected_edge = viewport_w - engine.config.outer_gap;
         assert!(
             (right_edge - expected_edge).abs() <= 0.001,
-            "right sidebar should be flush with inset viewport: right_edge={right_edge}, expected_edge={expected_edge}"
+            "right sidebar should be flush with viewport edge: right_edge={right_edge}, expected_edge={expected_edge}"
         );
     }
 
@@ -544,7 +539,7 @@ mod tests {
             - engine.config.outer_gap * 2.0
             - left.width
             - right.width
-            - engine.config.panel_gap * 4.0;
+            - engine.config.panel_gap * 2.0;
         assert!(
             (center.width - expected).abs() <= 0.001,
             "center.width mismatch: center={} expected={expected}",
@@ -753,7 +748,7 @@ mod tests {
     }
 
     #[test]
-    fn right_sidebar_has_floating_gap_when_visible() {
+    fn right_sidebar_uses_full_allocated_bounds() {
         let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
         let mut state = WorkbenchPanelState::default();
         state.right.visible = true;
@@ -764,9 +759,10 @@ mod tests {
             .model
             .find(RegionId::RightSidebar)
             .expect("right sidebar");
-        let _pg = engine.config.panel_gap;
-        // Verify gap applied
-        // (right is now inset from its allocated slot)
+
+        // Right sidebar now uses full allocated bounds (no floating panel_gap),
+        // matching left sidebar behavior. The visual border/styling is handled
+        // by the renderer, not the layout engine.
         assert!(right.width <= 320.0);
         assert!(right.height <= 800.0);
     }
