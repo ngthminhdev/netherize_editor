@@ -196,6 +196,8 @@ impl UiConfig {
                 center_min_height: 180.0,
                 sidebar_min_width: 180.0,
                 bottom_min_height: 120.0,
+                panel_border_width: 1.0,
+                chat_input_height: 120.0,
             },
             docks: DockUiConfig {
                 left: DockSectionConfig {
@@ -351,6 +353,20 @@ impl UiConfig {
                     raw.layout
                         .bottom_min_height
                         .unwrap_or(fallback.layout.bottom_min_height),
+                )?,
+                panel_border_width: parse_non_negative_f32(
+                    "layout",
+                    "panel_border_width",
+                    raw.layout
+                        .panel_border_width
+                        .unwrap_or(fallback.layout.panel_border_width),
+                )?,
+                chat_input_height: parse_non_negative_f32(
+                    "layout",
+                    "chat_input_height",
+                    raw.layout
+                        .chat_input_height
+                        .unwrap_or(fallback.layout.chat_input_height),
                 )?,
             },
             docks: DockUiConfig {
@@ -742,6 +758,8 @@ struct RawLayout {
     center_min_height: Option<f32>,
     sidebar_min_width: Option<f32>,
     bottom_min_height: Option<f32>,
+    panel_border_width: Option<f32>,
+    chat_input_height: Option<f32>,
 }
 
 #[derive(Debug, Default, Deserialize)]

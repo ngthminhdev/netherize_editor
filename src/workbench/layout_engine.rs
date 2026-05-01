@@ -58,6 +58,8 @@ pub struct WorkbenchLayoutConfig {
     pub center_min_height: f32,
     pub sidebar_min_width: f32,
     pub bottom_min_height: f32,
+    pub panel_border_width: f32,
+    pub chat_input_height: f32,
 }
 
 impl Default for WorkbenchLayoutConfig {
@@ -73,6 +75,8 @@ impl Default for WorkbenchLayoutConfig {
             center_min_height: 140.0,
             sidebar_min_width: 140.0,
             bottom_min_height: 100.0,
+            panel_border_width: 1.0,
+            chat_input_height: 120.0,
         }
     }
 }
@@ -95,6 +99,8 @@ impl WorkbenchLayoutConfig {
             // below a usability floor.
             sidebar_min_width: defaults.sidebar_min_width,
             bottom_min_height: defaults.bottom_min_height,
+            panel_border_width: defaults.panel_border_width,
+            chat_input_height: defaults.chat_input_height,
         }
     }
 }
