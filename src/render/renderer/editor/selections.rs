@@ -12,7 +12,10 @@ use crate::{
     render::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
-    text::layout_sync::{compute_caret_layout, compute_cursor_overlay, rebuild_layout_projection},
+    text::layout_sync::{
+        compute_caret_layout, compute_cursor_overlay, rebuild_layout_projection,
+        visual_y_for_logical_scroll,
+    },
 };
 use cosmic_text::Metrics;
 
@@ -431,7 +434,6 @@ impl Renderer {
     ) {
         let gutter_inset_left = self.editor_padding_x + 6.0;
         let total_lines = app_state.total_lines().max(1);
-        let scroll_y = app_state.current_scroll_y.max(0.0) * line_height;
         let (cursor_line, _) = app_state.cursor_line_col();
         let gutter_bg_color = self.theme.editor.gutter.as_f32();
         let gutter_active_color = self.theme.editor.gutter_active.as_f32();
@@ -448,7 +450,11 @@ impl Renderer {
         self.gutter_text_system
             .set_size(Some(gutter_width), Some(line_height));
 
-        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
+        // Use visual Y scroll derived from LayoutRun positions so that soft-wrapped
+        // logical lines (e.g. a JWT token) do not shift all subsequent gutter numbers.
+        let visual_scroll_y =
+            visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y.max(0.0));
+        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - visual_scroll_y;
         let viewport_top = center_bounds[1];
         let viewport_bottom = center_bounds[1] + center_bounds[3];
 
@@ -472,26 +478,44 @@ impl Renderer {
             c
         };
 
-        // Only draw the first run of each logical line (skip soft-wrap continuations).
-        let mut last_drawn_line: Option<usize> = None;
+        // `last_seen_line` tracks the logical line of the PREVIOUS LayoutRun regardless
+        // of viewport visibility, so continuation visual rows (soft-wrap) are never
+        // mistakenly given a line number even when the first visual row of that logical
+        // line was above the visible area.
+        let mut last_seen_line: Option<usize> = None;
         for run in self.text_system.buffer().layout_runs() {
             let abs_line = run.line_i;
             if abs_line >= total_lines {
                 break;
             }
-            if last_drawn_line == Some(abs_line) {
+
+            let is_continuation = last_seen_line == Some(abs_line);
+            last_seen_line = Some(abs_line);
+
+            let line_top_y = origin_y + run.line_top;
+
+            if is_continuation {
+                // Continuation visual row: extend the cursor-line active highlight so
+                // the entire wrapped block is highlighted, but draw no line number.
+                if abs_line == cursor_line
+                    && line_top_y + run.line_height >= viewport_top
+                    && line_top_y <= viewport_bottom
+                {
+                    quads.push(RegionDrawInstance::new(
+                        [gutter_x, line_top_y, gutter_width, run.line_height.max(1.0)],
+                        active_line_color,
+                    ));
+                }
                 continue;
             }
 
-            let line_top_y = origin_y + run.line_top;
-            if line_top_y + line_height < viewport_top {
+            // First visual row of this logical line.
+            if line_top_y + run.line_height < viewport_top {
                 continue;
             }
             if line_top_y > viewport_bottom {
                 break;
             }
-
-            last_drawn_line = Some(abs_line);
 
             if abs_line == cursor_line {
                 quads.push(RegionDrawInstance::new(

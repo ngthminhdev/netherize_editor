@@ -1,6 +1,6 @@
 use cosmic_text::{
     Attrs, Buffer, CacheKey, Color, Family, FontSystem, Metrics, Shaping, SwashCache, SwashImage,
-    fontdb,
+    Wrap, fontdb,
 };
 
 use crate::config::theme_config::srgb_rgba_to_linear_f32;
@@ -81,6 +81,10 @@ impl TextSystem {
         let swash_cache = SwashCache::new();
         let mut buffer = Buffer::new(&mut font_system, metrics);
         buffer.set_size(&mut font_system, width, height);
+        // Break at word boundaries when possible; fall back to glyph boundary so that
+        // long tokens without spaces (JWT, base64) wrap at the viewport edge instead of
+        // overflowing the buffer or pushing subsequent lines to wrong Y positions.
+        buffer.set_wrap(&mut font_system, Wrap::WordOrGlyph);
 
         Self {
             font_system,

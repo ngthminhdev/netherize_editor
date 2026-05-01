@@ -7,12 +7,15 @@ use crate::{
         SettingItem, SettingsState,
     },
     async_runtime::message::LspDiagnostic,
-    config::theme_config::ThemeConfig,
+    config::theme_config::{linear_rgba_to_srgb_u8, ThemeConfig},
     core::mode::EditorMode,
     render::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
-    text::layout_sync::{compute_caret_layout, compute_cursor_overlay, rebuild_layout_projection},
+    text::layout_sync::{
+        compute_caret_layout, compute_cursor_overlay, rebuild_layout_projection,
+        visual_y_for_logical_scroll,
+    },
 };
 use cosmic_text::Metrics;
 
@@ -126,6 +129,22 @@ impl Renderer {
         // Allow cosmic-text to shape full height; scissor clips the visible region.
         self.text_system.set_size(Some(width), None);
 
+        // Pre-shape the current text so that visual_y_for_logical_scroll can walk the
+        // real LayoutRun positions.  Without this, origin_y would be computed with
+        // current_scroll_y * line_height which is wrong whenever any logical line above
+        // the scroll position has been soft-wrapped into multiple visual rows (e.g. a
+        // JWT token).  rebuild_layout_projection reshapes the same text again — this is
+        // intentional: the second call collects glyphs with the now-correct origin.
+        let text_fg = self.theme.editor.fg.as_f32();
+        let default_color_rgba = linear_rgba_to_srgb_u8(text_fg);
+        self.text_system
+            .set_text_with_spans(text, default_color_rgba, spans);
+
+        let visual_scroll_y =
+            visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y.max(0.0));
+        let corrected_origin_y =
+            center_bounds[1] + self.editor_padding_y + geometry.line_height - visual_scroll_y;
+
         // Cull glyphs ngoài viewport (overscan 1 dòng mỗi đầu) — file 10k dòng
         // chỉ build instance cho ~100 dòng visible thay vì toàn buffer.
         let clip_top = geometry.viewport_text_top - geometry.line_height;
@@ -139,9 +158,9 @@ impl Renderer {
             &mut self.text_system,
             &mut self.atlas,
             &self.queue,
-            [geometry.origin_x, geometry.origin_y],
+            [geometry.origin_x, corrected_origin_y],
             viewport_clip,
-            self.theme.editor.fg.as_f32(),
+            text_fg,
             self.theme.editor.bg.as_f32(),
             spans,
         );
@@ -207,10 +226,17 @@ impl Renderer {
 
         let geometry = editor_viewport_geometry(self, app_state, center_bounds);
 
+        // The text_system buffer is already shaped from the last update_editor_content call.
+        // Use it to compute the correct visual scroll Y (accounts for wrapped long lines).
+        let visual_scroll_y =
+            visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y.max(0.0));
+        let corrected_origin_y =
+            center_bounds[1] + self.editor_padding_y + geometry.line_height - visual_scroll_y;
+
         let caret_layout = compute_caret_layout(
             &self.text_system,
             app_state,
-            [geometry.origin_x, geometry.origin_y],
+            [geometry.origin_x, corrected_origin_y],
         );
         let caret = caret_rect_for_mode(
             caret_layout,
@@ -230,7 +256,7 @@ impl Renderer {
                 app_state,
                 &mut self.atlas,
                 &self.queue,
-                [geometry.origin_x, geometry.origin_y],
+                [geometry.origin_x, corrected_origin_y],
                 self.theme.editor.bg.as_f32(),
             )
             .unwrap_or(None)
