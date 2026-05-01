@@ -23,6 +23,7 @@ use crate::{
 ///   with `panel_bg`.
 /// * **Step 3 — Input box**: `input_bounds` filled with `input_bg` (a
 ///   slightly different shade such as `editor.bg`).
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn right_sidebar_background_quads(
     bounds: [f32; 4],
     input_bounds: Option<[f32; 4]>,

@@ -427,6 +427,8 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         AI_CHAT_TOGGLE => Some(Command::AiChatToggle),
         AI_CHAT_SEND => Some(Command::AiChatSend),
         AI_CHAT_CLOSE => Some(Command::AiChatClose),
+        AI_CHAT_UNFOCUS => Some(Command::AiChatUnfocus),
+        AI_CHAT_FOCUS => Some(Command::AiChatFocus),
         DIAGNOSTICS_OPEN_PICKER => Some(Command::DiagnosticsOpenPicker),
         JUMP_BACK => Some(Command::JumpBack),
         JUMP_FORWARD => Some(Command::JumpForward),

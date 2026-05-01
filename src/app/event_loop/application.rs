@@ -443,10 +443,7 @@ impl AppShell {
             };
         focused_outline[3] = focused_outline[3].max(0.95);
 
-        // RightSidebar (AI Chat) background parameters — three-layer
-        // outline + fill + input-box accent.
-        let panel_border_width = self.layout_engine.config.panel_border_width;
-        let rs_border_color = self.theme.ui.border_color.as_f32();
+        // RightSidebar (AI Chat) background: flat fill + input-box accent.
         let rs_panel_bg = self.theme.ui.panel_bg.as_f32();
         let rs_input_bg = self.theme.editor.bg.as_f32();
         let ai_chat_input_bounds = flat_regions
@@ -462,24 +459,38 @@ impl AppShell {
                     && region.id != RegionId::Root
                     && region.id != RegionId::OverlayLayer
                     && region.id != RegionId::StatusBar
+                    && region.id != RegionId::AiChatHistory
+                    && region.id != RegionId::AiChatInput
                     && !(show_welcome && !workspace_attached && region.id == RegionId::LeftSidebar)
             })
             .flat_map(|region| {
                 if region.id == RegionId::RightSidebar {
-                    right_sidebar_background_quads(
+                    let outline_color = if Some(region.id) == focus_region {
+                        focused_outline
+                    } else {
+                        default_outline
+                    };
+                    let mut quads = focus_ring_instances(
                         [
                             region.bounds.x,
                             region.bounds.y,
                             region.bounds.width,
                             region.bounds.height,
                         ],
-                        ai_chat_input_bounds,
-                        panel_border_width,
-                        rs_border_color,
-                        rs_panel_bg,
-                        rs_input_bg,
+                        outline_color,
+                        3.0,
                         panel_radius,
-                    )
+                        rs_panel_bg,
+                    );
+                    if let Some([ix, iy, iw, ih]) = ai_chat_input_bounds {
+                        if iw > 0.0 && ih > 0.0 {
+                            quads.push(
+                                RegionDrawInstance::new([ix, iy, iw, ih], rs_input_bg)
+                                    .with_radius((panel_radius - 3.0).max(0.0)),
+                            );
+                        }
+                    }
+                    quads
                 } else {
                     let outline_color = if Some(region.id) == focus_region {
                         focused_outline

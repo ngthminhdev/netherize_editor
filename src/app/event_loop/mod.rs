@@ -46,7 +46,6 @@ use crate::{
         region_pipeline::RegionDrawInstance,
         renderer::{
             RenderError, Renderer, SidebarFilterState, SidebarRow, TopbarTab, TopbarTabKind,
-            ui_render::right_sidebar_background_quads,
         },
     },
     syntax::{highlight::HighlightSpan, syntax_engine::SyntaxEngine},
