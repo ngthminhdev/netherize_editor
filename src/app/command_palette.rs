@@ -43,6 +43,8 @@ pub enum CommandPaletteMode {
     LspReferences,
     /// Local file history picker with live editor preview.
     FileHistory,
+    /// AI Chat install confirmation overlay — asks user whether to auto-install opencode.
+    AiChatInstallConfirm,
 }
 
 impl CommandPaletteMode {
@@ -64,6 +66,7 @@ impl CommandPaletteMode {
             Self::ThemeSelector => "Select Theme> ",
             Self::LspReferences => "refs> ",
             Self::FileHistory => "history> ",
+            Self::AiChatInstallConfirm => "install> ",
         }
     }
 
@@ -85,6 +88,7 @@ impl CommandPaletteMode {
             Self::ThemeSelector => "type to filter themes...",
             Self::LspReferences => "no references found",
             Self::FileHistory => "no local history entries",
+            Self::AiChatInstallConfirm => "Install opencode CLI? (y/n)",
         }
     }
 
@@ -106,6 +110,7 @@ impl CommandPaletteMode {
             Self::ThemeSelector => "THEMES",
             Self::LspReferences => "REFS",
             Self::FileHistory => "HISTORY",
+            Self::AiChatInstallConfirm => "INSTALL",
         }
     }
 
@@ -579,7 +584,8 @@ impl CommandPalette {
             | CommandPaletteMode::ExplorerDeleteConfirm
             | CommandPaletteMode::ExplorerRenameFull
             | CommandPaletteMode::ExplorerRenameBase
-            | CommandPaletteMode::BufferCloseConfirm => Vec::new(),
+            | CommandPaletteMode::BufferCloseConfirm
+            | CommandPaletteMode::AiChatInstallConfirm => Vec::new(),
             CommandPaletteMode::RecentProjects => unreachable!("handled above"),
             CommandPaletteMode::ThemeSelector => unreachable!("handled above"),
             CommandPaletteMode::LspReferences => unreachable!("handled above"),
@@ -678,6 +684,7 @@ impl CommandPalette {
                 | CommandPaletteMode::ExplorerRenameFull
                 | CommandPaletteMode::ExplorerRenameBase
                 | CommandPaletteMode::BufferCloseConfirm
+                | CommandPaletteMode::AiChatInstallConfirm
         );
         let requested_visible_rows = if show_results {
             self.results.len().min(max_items)
@@ -686,90 +693,91 @@ impl CommandPalette {
         };
 
         // ── Layout: tách Command Palette vs File Picker/LiveGrep ─────────────
-        let (panel_width, panel_x, panel_y, panel_height, visible_result_rows) = if self.mode
-            == CommandPaletteMode::LiveGrep
-        {
-            let max_w = (width - 48.0).max(320.0);
-            let pw = if max_w >= 720.0 {
-                (width * 0.82).clamp(720.0, max_w)
+        let (panel_width, panel_x, panel_y, panel_height, visible_result_rows) =
+            if self.mode == CommandPaletteMode::LiveGrep {
+                let max_w = (width - 48.0).max(320.0);
+                let pw = if max_w >= 720.0 {
+                    (width * 0.82).clamp(720.0, max_w)
+                } else {
+                    max_w
+                };
+                let px = x + ((width - pw) * 0.5).max(0.0);
+                let min_height =
+                    live_grep_reserved_height(panel_padding, line_height) + row_height * 4.0;
+                let max_h = (height - 32.0).max(row_height + panel_padding * 2.0);
+                let ph = if max_h >= min_height {
+                    (height * 0.52).clamp(min_height, max_h)
+                } else {
+                    max_h
+                };
+                let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
+                let body_height =
+                    (ph - live_grep_reserved_height(panel_padding, line_height)).max(row_height);
+                let visible_result_rows = (body_height / row_height).floor() as usize;
+                (pw, px, py, ph, visible_result_rows.max(1))
+            } else if self.mode.is_complex_picker() {
+                // File Picker / LiveGrep — min 30% screen, TRUE CENTER giống command palette
+                // Rộng hơn command palette một chút để hiển thị đường dẫn file
+                let min_w = (width * 0.35).max(400.0);
+                let pw = min_w.max(660.0_f32.min(width - 48.0));
+                let px = x + ((width - pw) * 0.5).max(0.0);
+                let body_rows = complex_picker_body_rows(
+                    self.mode,
+                    height,
+                    panel_padding,
+                    line_height,
+                    row_height,
+                    max_items,
+                );
+                let ph = (complex_picker_reserved_height(self.mode, panel_padding, line_height)
+                    + row_height * body_rows as f32)
+                    .min((height - 32.0).max(row_height + panel_padding * 2.0));
+                // TRUE CENTER: 50/50
+                let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
+                (pw, px, py, ph, body_rows)
             } else {
-                max_w
-            };
-            let px = x + ((width - pw) * 0.5).max(0.0);
-            let min_height =
-                live_grep_reserved_height(panel_padding, line_height) + row_height * 4.0;
-            let max_h = (height - 32.0).max(row_height + panel_padding * 2.0);
-            let ph = if max_h >= min_height {
-                (height * 0.52).clamp(min_height, max_h)
-            } else {
-                max_h
-            };
-            let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
-            let body_height =
-                (ph - live_grep_reserved_height(panel_padding, line_height)).max(row_height);
-            let visible_result_rows = (body_height / row_height).floor() as usize;
-            (pw, px, py, ph, visible_result_rows.max(1))
-        } else if self.mode.is_complex_picker() {
-            // File Picker / LiveGrep — min 30% screen, TRUE CENTER giống command palette
-            // Rộng hơn command palette một chút để hiển thị đường dẫn file
-            let min_w = (width * 0.35).max(400.0);
-            let pw = min_w.max(660.0_f32.min(width - 48.0));
-            let px = x + ((width - pw) * 0.5).max(0.0);
-            let body_rows = complex_picker_body_rows(
-                self.mode,
-                height,
-                panel_padding,
-                line_height,
-                row_height,
-                max_items,
-            );
-            let ph = (complex_picker_reserved_height(self.mode, panel_padding, line_height)
-                + row_height * body_rows as f32)
-                .min((height - 32.0).max(row_height + panel_padding * 2.0));
-            // TRUE CENTER: 50/50
-            let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
-            (pw, px, py, ph, body_rows)
-        } else {
-            // Command Palette — min 30% screen width, TRUE CENTER vũa dọc vũa ngang
-            let is_confirmation = matches!(
-                self.mode,
-                CommandPaletteMode::ExplorerDeleteConfirm | CommandPaletteMode::BufferCloseConfirm
-            );
-            let min_w = if is_confirmation {
-                (width * 0.34).max(380.0)
-            } else {
-                (width * 0.30).max(300.0)
-            };
-            let ideal_w: f32 = if is_confirmation { 640.0 } else { 520.0 };
-            let pw = min_w.max(ideal_w.min(width - 48.0));
-            let px = x + ((width - pw) * 0.5).max(0.0);
-            // Dòng input + separator + items (nếu VimCommand: chỉ dòng input)
-            let content_rows = (requested_visible_rows
-                + if requested_visible_rows > 0 { 1 } else { 0 })
-            .max(1) as f32;
-            let ph = if is_confirmation {
-                (line_height * 6.1 + panel_padding * 2.0 + 36.0)
+                // Command Palette — min 30% screen width, TRUE CENTER vũa dọc vũa ngang
+                let is_confirmation = matches!(
+                    self.mode,
+                    CommandPaletteMode::ExplorerDeleteConfirm
+                        | CommandPaletteMode::BufferCloseConfirm
+                        | CommandPaletteMode::AiChatInstallConfirm
+                );
+                let min_w = if is_confirmation {
+                    (width * 0.34).max(380.0)
+                } else {
+                    (width * 0.30).max(300.0)
+                };
+                let ideal_w: f32 = if is_confirmation { 640.0 } else { 520.0 };
+                let pw = min_w.max(ideal_w.min(width - 48.0));
+                let px = x + ((width - pw) * 0.5).max(0.0);
+                // Dòng input + separator + items (nếu VimCommand: chỉ dòng input)
+                let content_rows = (requested_visible_rows
+                    + if requested_visible_rows > 0 { 1 } else { 0 })
+                .max(1) as f32;
+                let ph = if is_confirmation {
+                    (line_height * 6.1 + panel_padding * 2.0 + 36.0)
+                        .min((height - 64.0).max(line_height + panel_padding * 2.0))
+                } else {
+                    (line_height * content_rows
+                        + panel_padding * 2.0
+                        + if requested_visible_rows > 0 {
+                            12.0
+                        } else {
+                            4.0
+                        })
                     .min((height - 64.0).max(line_height + panel_padding * 2.0))
-            } else {
-                (line_height * content_rows
-                    + panel_padding * 2.0
-                    + if requested_visible_rows > 0 {
-                        12.0
-                    } else {
-                        4.0
-                    })
-                .min((height - 64.0).max(line_height + panel_padding * 2.0))
+                };
+                // TRUE CENTER: phân bố 50/50 trần-sàn
+                let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
+                let visible_result_rows = if show_results {
+                    (((ph - panel_padding * 2.0 - line_height - 8.0) / row_height).floor() as usize)
+                        .max(1)
+                } else {
+                    0
+                };
+                (pw, px, py, ph, visible_result_rows)
             };
-            // TRUE CENTER: phân bố 50/50 trần-sàn
-            let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
-            let visible_result_rows = if show_results {
-                (((ph - panel_padding * 2.0 - line_height - 8.0) / row_height).floor() as usize)
-                    .max(1)
-            } else {
-                0
-            };
-            (pw, px, py, ph, visible_result_rows)
-        };
 
         let panel_bounds = [panel_x, panel_y, panel_width, panel_height];
 

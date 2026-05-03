@@ -160,6 +160,16 @@ impl Renderer {
             // 4b. AI Chat text — history (scissor clipped to history bounds).
             draw_text_region(
                 &mut pass,
+                self.ai_chat_image_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.ai_chat_header_image_pipeline.draw(render_pass);
+                    self.ai_chat_hero_image_pipeline.draw(render_pass);
+                },
+            );
+            draw_text_region(
+                &mut pass,
                 self.ai_chat_history_scissor,
                 viewport_width,
                 viewport_height,

@@ -28,6 +28,7 @@ pub enum RequestTopic {
     AiInlineCompletion,
     LocalHistory,
     AiChat,
+    AiInstall,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -277,7 +278,17 @@ pub enum WorkerRequestPayload {
         buffer_context: String,
         cursor_position: (usize, usize),
         history: Vec<(String, String)>,
+        active_buffer_path: Option<PathBuf>,
+        workspace_root: Option<PathBuf>,
+        /// User-attached files to include in the AI prompt context.
+        file_refs: Vec<PathBuf>,
+        /// Optional model override (e.g. "anthropic/claude-opus-4-5").
+        model: Option<String>,
+        /// Optional primary agent override (e.g. "build" or "plan").
+        agent: Option<String>,
     },
+    /// Install the opencode CLI on the host machine.
+    AiInstallRequest,
     StopLspServer,
     ShutdownAllLspServers,
 }
@@ -550,9 +561,15 @@ pub enum WorkerEventKind {
 pub enum WorkerMessage {
     Event(WorkerEvent),
     Result(WorkerResult),
-    AiMessageChunk { text: String },
+    AiMessageChunk {
+        text: String,
+    },
     AiStreamComplete,
-    AiStreamError { error: String },
+    AiStreamError {
+        error: String,
+    },
+    /// The opencode CLI was installed successfully; the editor should restart.
+    AiInstallSuccess,
 }
 
 /// RequestSpec giúp caller tạo request mà không cần tự cấp request_id.

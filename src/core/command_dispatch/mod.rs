@@ -323,8 +323,11 @@ fn dispatch_command_with_clipboard_once(
         | Command::AiChatClose
         | Command::AiChatUnfocus
         | Command::AiChatFocus
+        | Command::AiChatAddSelectionContext
         | Command::AiChatInputChar(_)
         | Command::AiChatBackspace
-        | Command::AiChatInputText(_) => session::dispatch(&mut ctx, command),
+        | Command::AiChatAcceptSuggestion
+        | Command::AiChatInputText(_)
+        | Command::AiChatPromptInstall => session::dispatch(&mut ctx, command),
     }
 }

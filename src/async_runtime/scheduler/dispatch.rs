@@ -17,7 +17,7 @@ use crate::{
 use super::{
     LspSessionRegistry, PtySessionRegistry, SyntaxEngineCache,
     ai::execute_ai_inline_request,
-    ai_jobs::run_ai_chat_stream,
+    ai_jobs::{run_ai_chat_stream, run_opencode_install},
     async_trace,
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
     file_watch::run_file_watch_request,
@@ -181,17 +181,37 @@ pub(super) async fn dispatch_loop(
             continue;
         }
 
-        if matches!(
-            request.payload,
-            WorkerRequestPayload::AiChatRequest { .. }
-        ) {
-            let (prompt, buffer_context, cursor_position, history) = match request.payload {
+        if matches!(request.payload, WorkerRequestPayload::AiChatRequest { .. }) {
+            let (
+                prompt,
+                cursor_position,
+                history,
+                active_buffer_path,
+                workspace_root,
+                file_refs,
+                model,
+                agent,
+            ) = match request.payload {
                 WorkerRequestPayload::AiChatRequest {
                     prompt,
-                    buffer_context,
+                    buffer_context: _,
                     cursor_position,
                     history,
-                } => (prompt, buffer_context, cursor_position, history),
+                    active_buffer_path,
+                    workspace_root,
+                    file_refs,
+                    model,
+                    agent,
+                } => (
+                    prompt,
+                    cursor_position,
+                    history,
+                    active_buffer_path,
+                    workspace_root,
+                    file_refs,
+                    model,
+                    agent,
+                ),
                 _ => unreachable!(),
             };
             let worker_tx = result_tx.clone();
@@ -201,11 +221,24 @@ pub(super) async fn dispatch_loop(
                     worker_tx,
                     ai_event_proxy,
                     prompt,
-                    buffer_context,
+                    active_buffer_path,
+                    workspace_root,
                     cursor_position,
                     history,
+                    file_refs,
+                    model,
+                    agent,
                 )
                 .await;
+            });
+            continue;
+        }
+
+        if matches!(request.payload, WorkerRequestPayload::AiInstallRequest) {
+            let worker_tx = result_tx.clone();
+            let ai_event_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                run_opencode_install(worker_tx, ai_event_proxy).await;
             });
             continue;
         }

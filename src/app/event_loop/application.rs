@@ -829,14 +829,23 @@ impl AppShell {
                 .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
 
             if let (Some(hb), Some(ib)) = (history_bounds, input_bounds) {
+                let chat = &self.panel_state.ai_chat;
+                let file_suggestions = self.ai_chat_file_reference_suggestions(&chat.input_buffer);
                 if let Some(renderer) = self.renderer.as_mut() {
-                    let chat = &self.panel_state.ai_chat;
-                    let show_cursor = self.focus_manager.current()
-                        == FocusTarget::RightSidebar;
+                    let show_cursor = self.focus_manager.current() == FocusTarget::RightSidebar;
                     let inner_padding = self.layout_engine.config.inner_padding;
                     let cursor_quads = renderer.update_ai_chat_content(
-                        hb, ib, &chat.messages, &chat.input_buffer,
-                        show_cursor, inner_padding,
+                        hb,
+                        ib,
+                        &chat.messages,
+                        &chat.input_buffer,
+                        &file_suggestions,
+                        show_cursor,
+                        inner_padding,
+                        chat.is_opencode_missing,
+                        chat.model.as_deref(),
+                        chat.agent.label(),
+                        chat.is_generating,
                     );
                     region_instances.extend(cursor_quads);
                 }

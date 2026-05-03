@@ -749,10 +749,11 @@ impl AsyncResultRouter for AppShell {
         {
             last.text.push_str(&text);
         } else {
-            chat.messages.push(crate::workbench::panel_state::AiChatMessage {
-                role: crate::workbench::panel_state::AiRole::Assistant,
-                text,
-            });
+            chat.messages
+                .push(crate::workbench::panel_state::AiChatMessage {
+                    role: crate::workbench::panel_state::AiRole::Assistant,
+                    text,
+                });
         }
         self.request_redraw();
     }
@@ -764,12 +765,48 @@ impl AsyncResultRouter for AppShell {
 
     fn on_ai_stream_error(&mut self, error: String) {
         self.panel_state.ai_chat.is_generating = false;
-        self.panel_state.ai_chat.messages.push(
-            crate::workbench::panel_state::AiChatMessage {
+        self.panel_state
+            .ai_chat
+            .messages
+            .push(crate::workbench::panel_state::AiChatMessage {
                 role: crate::workbench::panel_state::AiRole::System,
                 text: format!("Error: {}", error),
-            },
+            });
+        self.request_redraw();
+    }
+
+    fn on_ai_install_success(&mut self) {
+        self.panel_state.ai_chat.is_generating = false;
+        self.panel_state.ai_chat.is_opencode_missing = false;
+
+        // Detect shell to give the exact source command.
+        let shell = std::env::var("SHELL").unwrap_or_default();
+        let source_cmd = if shell.contains("zsh") {
+            "source ~/.zshrc"
+        } else if shell.contains("bash") {
+            "source ~/.bash_profile"
+        } else if shell.contains("fish") {
+            "source ~/.config/fish/config.fish"
+        } else {
+            "source ~/.profile"
+        };
+
+        let next_steps = format!(
+            "opencode installed!\n\
+             \n\
+             PATH chưa được cập nhật trong session này.\n\
+             Làm theo 2 bước:\n\
+             1. Mở terminal, chạy:  {source_cmd}\n\
+             2. Khởi động lại editor."
         );
+
+        self.panel_state
+            .ai_chat
+            .messages
+            .push(crate::workbench::panel_state::AiChatMessage {
+                role: crate::workbench::panel_state::AiRole::System,
+                text: next_steps,
+            });
         self.request_redraw();
     }
 }

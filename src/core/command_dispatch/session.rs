@@ -125,9 +125,12 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::AiChatClose
         | Command::AiChatUnfocus
         | Command::AiChatFocus
+        | Command::AiChatAddSelectionContext
         | Command::AiChatInputChar(_)
         | Command::AiChatBackspace
-        | Command::AiChatInputText(_) => DispatchReport::success_with_flags(
+        | Command::AiChatAcceptSuggestion
+        | Command::AiChatInputText(_)
+        | Command::AiChatPromptInstall => DispatchReport::success_with_flags(
             "Dispatch: workbench navigation (handled by event loop)",
             true,
             false,

@@ -39,6 +39,7 @@ pub trait AsyncResultRouter {
     fn on_ai_message_chunk(&mut self, text: String);
     fn on_ai_stream_complete(&mut self);
     fn on_ai_stream_error(&mut self, error: String);
+    fn on_ai_install_success(&mut self);
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -135,6 +136,10 @@ impl AppAsyncBridge {
                             async_trace!("[Bridge] AI stream error: {}", error);
                             router.on_ai_stream_error(error);
                         }
+                        WorkerMessage::AiInstallSuccess => {
+                            async_trace!("[Bridge] AI install success — restarting editor");
+                            router.on_ai_install_success();
+                        }
                     }
                 }
                 Err(TryRecvError::Empty) => break,
@@ -191,6 +196,7 @@ mod tests {
         fn on_ai_message_chunk(&mut self, _text: String) {}
         fn on_ai_stream_complete(&mut self) {}
         fn on_ai_stream_error(&mut self, _error: String) {}
+        fn on_ai_install_success(&mut self) {}
     }
 
     #[test]

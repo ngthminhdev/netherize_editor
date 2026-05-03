@@ -87,6 +87,10 @@ impl Renderer {
             crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
         let welcome_image_pipeline =
             crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
+        let ai_chat_header_image_pipeline =
+            crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
+        let ai_chat_hero_image_pipeline =
+            crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
 
         let theme = ThemeConfig::builtin_dark();
         let clear_color = theme_color_to_wgpu(theme.ui.bg);
@@ -269,8 +273,11 @@ impl Renderer {
             toast_scissor: None,
             ai_chat_text_system,
             ai_chat_text_pipeline,
+            ai_chat_header_image_pipeline,
+            ai_chat_hero_image_pipeline,
             ai_chat_glyph_instances: Vec::new(),
             ai_chat_history_scissor: None,
+            ai_chat_image_scissor: None,
             ai_chat_input_scissor: None,
             ai_chat_input_batch: None,
         })

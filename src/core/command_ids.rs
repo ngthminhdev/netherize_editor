@@ -112,6 +112,7 @@ pub const AI_CHAT_SEND: &str = "ai.chat_send";
 pub const AI_CHAT_CLOSE: &str = "ai.chat_close";
 pub const AI_CHAT_UNFOCUS: &str = "ai.chat_unfocus";
 pub const AI_CHAT_FOCUS: &str = "ai.chat_focus";
+pub const AI_CHAT_ADD_SELECTION_CONTEXT: &str = "ai.chat_add_selection_context";
 pub const DIAGNOSTICS_OPEN_PICKER: &str = "diagnostics.open_picker";
 
 // ── Jump list navigation ─────────────────────────────────────────────────────
@@ -270,6 +271,7 @@ pub const ALL_IDS: &[&str] = &[
     AI_CHAT_CLOSE,
     AI_CHAT_UNFOCUS,
     AI_CHAT_FOCUS,
+    AI_CHAT_ADD_SELECTION_CONTEXT,
     DIAGNOSTICS_OPEN_PICKER,
     JUMP_BACK,
     JUMP_FORWARD,
@@ -429,6 +431,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         AI_CHAT_CLOSE => Some(Command::AiChatClose),
         AI_CHAT_UNFOCUS => Some(Command::AiChatUnfocus),
         AI_CHAT_FOCUS => Some(Command::AiChatFocus),
+        AI_CHAT_ADD_SELECTION_CONTEXT => Some(Command::AiChatAddSelectionContext),
         DIAGNOSTICS_OPEN_PICKER => Some(Command::DiagnosticsOpenPicker),
         JUMP_BACK => Some(Command::JumpBack),
         JUMP_FORWARD => Some(Command::JumpForward),

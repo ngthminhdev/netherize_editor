@@ -748,6 +748,11 @@ key = "<leader>a f"
 command = "ai.chat_focus"
 
 [[bindings]]
+mode = "visual"
+key = "<leader>a c"
+command = "ai.chat_add_selection_context"
+
+[[bindings]]
 mode = "normal"
 key = "<leader>d s"
 command = "diagnostics.open_picker"

@@ -100,10 +100,51 @@ pub struct AiChatMessage {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AiChatCodeContext {
+    pub title: String,
+    pub language_id: Option<String>,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AiAgentMode {
+    Build,
+    Plan,
+}
+
+impl AiAgentMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Build => "build",
+            Self::Plan => "plan",
+        }
+    }
+
+    pub fn opencode_agent(self) -> &'static str {
+        self.label()
+    }
+
+    pub fn from_input(input: &str) -> Option<Self> {
+        match input.trim().to_ascii_lowercase().as_str() {
+            "build" | "default" => Some(Self::Build),
+            "plan" => Some(Self::Plan),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AiChatState {
     pub messages: Vec<AiChatMessage>,
     pub input_buffer: String,
+    pub attached_code_contexts: Vec<AiChatCodeContext>,
     pub is_generating: bool,
+    /// `true` when the `opencode` CLI binary was not found on PATH at toggle time.
+    pub is_opencode_missing: bool,
+    /// Active model override passed via `/model <name>`.
+    pub model: Option<String>,
+    /// Active opencode primary agent. `plan` is the restricted planning mode.
+    pub agent: AiAgentMode,
 }
 
 impl Default for AiChatState {
@@ -111,7 +152,11 @@ impl Default for AiChatState {
         Self {
             messages: Vec::new(),
             input_buffer: String::new(),
+            attached_code_contexts: Vec::new(),
             is_generating: false,
+            is_opencode_missing: false,
+            model: None,
+            agent: AiAgentMode::Build,
         }
     }
 }
@@ -212,7 +257,7 @@ impl WorkbenchPanelState {
 
 #[cfg(test)]
 mod tests {
-    use super::{AiChatState, AiChatMessage, AiRole, PanelState, PanelTabId, WorkbenchPanelState};
+    use super::{PanelState, PanelTabId, WorkbenchPanelState};
 
     #[test]
     fn panel_tabs_cycle_both_directions() {

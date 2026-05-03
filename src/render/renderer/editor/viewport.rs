@@ -7,7 +7,7 @@ use crate::{
         SettingItem, SettingsState,
     },
     async_runtime::message::LspDiagnostic,
-    config::theme_config::{linear_rgba_to_srgb_u8, ThemeConfig},
+    config::theme_config::{ThemeConfig, linear_rgba_to_srgb_u8},
     core::mode::EditorMode,
     render::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,

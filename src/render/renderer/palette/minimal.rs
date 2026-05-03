@@ -66,6 +66,12 @@ impl Renderer {
                     rest.trim_end_matches(" before closing").trim(),
                     "Confirm whether to save your edits before closing the buffer.",
                 )
+            } else if body_text.contains("OpenCode CLI not found") {
+                (
+                    "INSTALL CLI",
+                    "opencode",
+                    "The opencode CLI will be installed via the official installer script.",
+                )
             } else {
                 (model.title.as_str(), body_text, "Confirm this action.")
             };
@@ -267,6 +273,7 @@ impl Renderer {
             model.mode,
             crate::app::command_palette::CommandPaletteMode::ExplorerDeleteConfirm
                 | crate::app::command_palette::CommandPaletteMode::BufferCloseConfirm
+                | crate::app::command_palette::CommandPaletteMode::AiChatInstallConfirm
         ) {
             self.render_confirmation_palette(model);
             return;

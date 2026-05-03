@@ -20,6 +20,9 @@ impl AppShell {
                     .unwrap_or_else(|| "current buffer".to_string());
                 Some(format!("Save changes to {label} before closing? (y/n)"))
             }
+            PendingConfirmationAction::AiChatInstall => {
+                Some("OpenCode CLI not found — install automatically? (y/n)".to_string())
+            }
         }
     }
 
@@ -374,6 +377,29 @@ impl AppShell {
         changed || self.transient_toast.is_some()
     }
 
+    pub(in crate::app::event_loop) fn begin_ai_chat_install_confirmation(&mut self) -> bool {
+        self.pending_confirmation = Some(PendingConfirmation {
+            action: PendingConfirmationAction::AiChatInstall,
+            return_focus: FocusTarget::RightSidebar,
+        });
+        let prompt = "OpenCode CLI not found — install automatically? (y/n)".to_string();
+        if !self.open_prompt_overlay(
+            crate::app::command_palette::CommandPaletteMode::AiChatInstallConfirm,
+        ) {
+            self.pending_confirmation = None;
+            return false;
+        }
+        if let Err(err) = self.app_state.set_command_palette_query(&prompt) {
+            eprintln!("[AppShell] ai install prompt failed: {err}");
+            self.pending_confirmation = None;
+            let _ = self.app_state.close_command_palette();
+            let _ = self.app_state.apply_mode_event(ModeEvent::ExitFocus);
+            let _ = self.focus_manager.set(FocusTarget::RightSidebar);
+            return false;
+        }
+        true
+    }
+
     pub(in crate::app::event_loop) fn respond_to_pending_confirmation(
         &mut self,
         confirmed: bool,
@@ -427,6 +453,25 @@ impl AppShell {
                     }
                 }
                 changed | self.close_current_buffer_now()
+            }
+            PendingConfirmationAction::AiChatInstall => {
+                if !confirmed {
+                    return changed;
+                }
+                // Push a progress message into the chat history then kick off the worker.
+                self.panel_state.ai_chat.messages.push(
+                    crate::workbench::panel_state::AiChatMessage {
+                        role: crate::workbench::panel_state::AiRole::System,
+                        text: "Installing opencode CLI…".to_string(),
+                    },
+                );
+                self.panel_state.ai_chat.is_generating = true;
+                self.submit(RequestSpec {
+                    revision_id: 0,
+                    topic: RequestTopic::AiInstall,
+                    payload: WorkerRequestPayload::AiInstallRequest,
+                });
+                changed | true
             }
         }
     }

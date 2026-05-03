@@ -202,6 +202,8 @@ enum PendingConfirmationAction {
     CloseDirtyBuffer {
         path: Option<PathBuf>,
     },
+    /// User confirmed or cancelled the opencode auto-install prompt.
+    AiChatInstall,
 }
 
 #[derive(Debug, Clone)]

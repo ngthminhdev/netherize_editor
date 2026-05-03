@@ -1301,9 +1301,7 @@ impl InputHandler {
         }
 
         // Enter → send message
-        if normalized.named_key == Some(NamedKey::Enter)
-            && !normalized.has_command_modifier()
-        {
+        if normalized.named_key == Some(NamedKey::Enter) && !normalized.has_command_modifier() {
             return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                 input_debug,
                 format!(
@@ -1317,10 +1315,23 @@ impl InputHandler {
             )));
         }
 
+        // Tab → complete the highlighted slash command suggestion.
+        if normalized.named_key == Some(NamedKey::Tab) && !normalized.has_command_modifier() {
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> ai chat: accept suggestion (Tab)",
+                    context.mode.as_str(),
+                    context.focus.as_str(),
+                ),
+                Command::AiChatAcceptSuggestion,
+                1,
+                false,
+            )));
+        }
+
         // Backspace → delete last char
-        if normalized.named_key == Some(NamedKey::Backspace)
-            && !normalized.has_command_modifier()
-        {
+        if normalized.named_key == Some(NamedKey::Backspace) && !normalized.has_command_modifier() {
             return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                 input_debug,
                 format!(
@@ -1334,26 +1345,34 @@ impl InputHandler {
             )));
         }
 
-        // Printable character → append to input buffer
-        if let Some(ch) = printable_char_from_input(&normalized) {
+        // Text input → append to input buffer. Use the full text payload instead
+        // of a single char so IME/dead-key commits like "đ", "ổi", "ể" survive.
+        if let Some(text) = normalized.text.as_deref()
+            && !text.is_empty()
+            && !normalized.has_command_modifier()
+            && text.chars().all(|ch| !ch.is_control())
+        {
+            let command = if text.chars().count() == 1 {
+                Command::AiChatInputChar(text.chars().next().unwrap_or_default())
+            } else {
+                Command::AiChatInputText(text.to_string())
+            };
             return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                 input_debug,
                 format!(
-                    "mode={} focus={} -> ai chat: input char {:?}",
+                    "mode={} focus={} -> ai chat: input text {:?}",
                     context.mode.as_str(),
                     context.focus.as_str(),
-                    ch,
+                    text,
                 ),
-                Command::AiChatInputChar(ch),
+                command,
                 1,
                 false,
             )));
         }
 
         // Space → append space to input buffer
-        if normalized.named_key == Some(NamedKey::Space)
-            && !normalized.has_command_modifier()
-        {
+        if normalized.named_key == Some(NamedKey::Space) && !normalized.has_command_modifier() {
             return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                 input_debug,
                 format!(
