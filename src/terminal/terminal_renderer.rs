@@ -159,10 +159,11 @@ impl TerminalViewRenderer {
                 continue;
             }
 
-            let fg_rgba = cell
-                .style
-                .fg
-                .to_rgba_f32_with_defaults(default_fg, default_bg, true);
+            let fg_rgba = cell.style_fg.unwrap_or_else(|| {
+                cell.style
+                    .fg
+                    .to_rgba_f32_with_defaults(default_fg, default_bg, true)
+            });
 
             // Cấu hình text system để shape 1 ký tự.
             text_system.set_size(Some(self.cell_width), Some(self.cell_height));
