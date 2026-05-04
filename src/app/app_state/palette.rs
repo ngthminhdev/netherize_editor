@@ -906,6 +906,7 @@ impl AppState {
         bottom_height: i32,
         ui_rounding_enabled: bool,
         border_radius_px: f32,
+        enable_outline: bool,
     ) -> usize {
         if let Some(existing_idx) = self
             .buffers
@@ -932,6 +933,7 @@ impl AppState {
             bottom_height,
             ui_rounding_enabled,
             border_radius_px,
+            enable_outline,
         );
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {

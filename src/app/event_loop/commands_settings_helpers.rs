@@ -170,6 +170,20 @@ impl AppShell {
                 true
             }
             crate::app::app_state::SettingItem::InlineSuggestion { .. } => false,
+            crate::app::app_state::SettingItem::EnableOutline { enabled } => {
+                let next = !enabled;
+                self.ui_config.enable_outline = next;
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::EnableOutline { enabled }) =
+                        state.selected_item_mut()
+                {
+                    *enabled = next;
+                }
+                let _ = self.ui_config.save_user_override();
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+                true
+            }
             crate::app::app_state::SettingItem::FontFamily { .. }
             | crate::app::app_state::SettingItem::FontSize { .. }
             | crate::app::app_state::SettingItem::LineHeight { .. }

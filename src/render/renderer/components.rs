@@ -3,7 +3,9 @@ use crate::{
     text::{atlas::GlyphAtlas, text_system::TextSystem},
 };
 
-use super::helpers::{estimate_monospace_width, layout_panel_text, layout_panel_text_bold};
+use super::helpers::{
+    estimate_monospace_width, layout_clamp, layout_panel_text, layout_panel_text_bold,
+};
 
 #[derive(Clone, Copy)]
 pub(super) enum ShortcutHintSegment<'a> {
@@ -267,7 +269,7 @@ pub(super) fn layout_help_keycaps(
     let mut glyphs = Vec::new();
     let mut cursor_x = origin_x;
     let key_gap = (font_size * 0.44).max(8.0);
-    let key_height = (font_size + 36.0).clamp(52.0, row_height - 8.0);
+    let key_height = layout_clamp(font_size + 36.0, 52.0, row_height - 8.0);
     let key_radius = (key_height * 0.24).clamp(8.0, 16.0);
     let border_thickness = (key_height * 0.075).clamp(1.0, 2.0);
     let key_padding_x = (font_size * 1.44).clamp(20.0, 36.0);

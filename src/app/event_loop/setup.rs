@@ -790,52 +790,6 @@ impl AppShell {
         }
     }
 
-    pub(super) fn submit_async_parse_for_active_buffer(&mut self, force: bool) {
-        if !force
-            && let Some(last) = self.last_parse_submit_at
-            && last.elapsed() < PARSE_DEBOUNCE_INTERVAL
-        {
-            self.pending_parse_after_debounce = true;
-            return;
-        }
-
-        let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
-            self.pending_parse_after_debounce = false;
-            return;
-        };
-
-        let Some(language_id) = crate::syntax::parser::language_id_for_path(&file_path) else {
-            self.clear_highlight_layers();
-            self.syntax_engine = None;
-            self.syntax_engine_file = None;
-            self.pending_parse_after_debounce = false;
-            self.editor_needs_layout = true;
-            self.editor_caret_needs_layout = false;
-            return;
-        };
-
-        let viewport_line_count = self.editor_viewport_lines().max(1);
-        self.active_highlight_request_revision =
-            self.active_highlight_request_revision.saturating_add(1);
-        self.pending_parse_after_debounce = false;
-        let edit_hint = self.last_syntax_edit_hint.take();
-        self.submit(RequestSpec {
-            revision_id: self.active_highlight_request_revision,
-            topic: RequestTopic::ActiveBufferLayout,
-            payload: WorkerRequestPayload::ParseAndHighlight {
-                buffer_id: file_path.clone(),
-                file_path: Some(file_path),
-                text_snapshot: self.app_state.text_string(),
-                language_id,
-                buffer_revision: self.app_state.revision(),
-                viewport_line_start: self.app_state.scroll_line(),
-                viewport_line_count,
-                edit_hint,
-            },
-        });
-        self.last_parse_submit_at = Some(std::time::Instant::now());
-    }
-
     pub(super) fn invalidate_highlights_and_parse_active_buffer(&mut self) {
         self.clear_highlight_layers();
         self.syntax_engine = None;

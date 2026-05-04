@@ -12,7 +12,7 @@ use crate::{
         renderer::{
             Renderer, TextScissorBatch,
             helpers::{
-                estimate_monospace_width, layout_panel_rich_text, layout_panel_text,
+                estimate_monospace_width, layout_clamp, layout_panel_rich_text, layout_panel_text,
                 layout_panel_text_bold, layout_panel_text_italic, rect_to_scissor,
             },
         },
@@ -953,7 +953,7 @@ impl Renderer {
             let is_first_visible = line_trim == 0;
 
             let total_visible_h = visible_lines.len() as f32 * line_h;
-            let iy = iclip[1] + ((iclip[3] - total_visible_h) * 0.5).clamp(4.0, inner_padding);
+            let iy = iclip[1] + layout_clamp((iclip[3] - total_visible_h) * 0.5, 4.0, inner_padding);
 
             let mut input_line_y = iy;
             for (idx, line) in visible_lines.iter().enumerate() {

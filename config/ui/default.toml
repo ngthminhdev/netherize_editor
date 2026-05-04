@@ -5,7 +5,7 @@ height = 1080
 startup_mode = "windowed"
 auto_scale = true
 min_content_scale = 1.0
-max_content_scale = 2.0
+max_content_scale = 1.0
 
 [layout]
 outer_gap = 18.0
@@ -26,8 +26,8 @@ left_visible = false
 left_size_px = 280.0
 right_visible = false
 right_size_px = 300.0
-bottom_visible = false
 bottom_size_px = 500.0
+bottom_visible = false
 overlay_visible = false
 
 [cursor]

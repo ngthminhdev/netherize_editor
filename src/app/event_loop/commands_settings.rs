@@ -27,6 +27,7 @@ impl AppShell {
                     self.ui_config.docks.bottom.size_px.round() as i32,
                     self.ui_config.border_radius_px > 0.0,
                     self.ui_config.border_radius_px,
+                    self.ui_config.enable_outline,
                 );
                 let _ = self.sync_focus_mode_for_active_buffer();
                 self.editor_needs_layout = true;

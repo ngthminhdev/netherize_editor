@@ -480,46 +480,57 @@ impl AppShell {
                     && !(show_welcome && !workspace_attached && region.id == RegionId::LeftSidebar)
             })
             .flat_map(|region| {
+                let bounds = [
+                    region.bounds.x,
+                    region.bounds.y,
+                    region.bounds.width,
+                    region.bounds.height,
+                ];
+                let is_focused = Some(region.id) == focus_region;
+                // When enable_outline is off, the focused panel's ring is suppressed —
+                // only unfocused panels (no active focus ring) retain their accent border.
+                let suppress_ring = !self.ui_config.enable_outline && is_focused;
+
                 if region.id == RegionId::RightSidebar {
-                    let outline_color = if Some(region.id) == focus_region {
-                        focused_outline
-                    } else {
-                        default_outline
-                    };
-                    let mut quads = focus_ring_instances(
-                        [
-                            region.bounds.x,
-                            region.bounds.y,
-                            region.bounds.width,
-                            region.bounds.height,
-                        ],
-                        outline_color,
-                        3.0,
-                        panel_radius,
-                        rs_panel_bg,
-                    );
-                    if let Some([ix, iy, iw, ih]) = ai_chat_input_bounds {
-                        if iw > 0.0 && ih > 0.0 {
-                            quads.push(
-                                RegionDrawInstance::new([ix, iy, iw, ih], rs_input_bg)
-                                    .with_radius((panel_radius - 3.0).max(0.0)),
-                            );
+                    if suppress_ring {
+                        let mut quads = vec![
+                            RegionDrawInstance::new(bounds, rs_panel_bg)
+                                .with_radius(panel_radius),
+                        ];
+                        if let Some([ix, iy, iw, ih]) = ai_chat_input_bounds {
+                            if iw > 0.0 && ih > 0.0 {
+                                quads.push(
+                                    RegionDrawInstance::new([ix, iy, iw, ih], rs_input_bg)
+                                        .with_radius(panel_radius),
+                                );
+                            }
                         }
-                    }
-                    quads
-                } else {
-                    let outline_color = if Some(region.id) == focus_region {
-                        focused_outline
+                        quads
                     } else {
-                        default_outline
-                    };
+                        let outline_color =
+                            if is_focused { focused_outline } else { default_outline };
+                        let mut quads =
+                            focus_ring_instances(bounds, outline_color, 3.0, panel_radius, rs_panel_bg);
+                        if let Some([ix, iy, iw, ih]) = ai_chat_input_bounds {
+                            if iw > 0.0 && ih > 0.0 {
+                                quads.push(
+                                    RegionDrawInstance::new([ix, iy, iw, ih], rs_input_bg)
+                                        .with_radius((panel_radius - 3.0).max(0.0)),
+                                );
+                            }
+                        }
+                        quads
+                    }
+                } else if suppress_ring {
+                    vec![
+                        RegionDrawInstance::new(bounds, region_color(region.id, &self.theme))
+                            .with_radius(panel_radius),
+                    ]
+                } else {
+                    let outline_color =
+                        if is_focused { focused_outline } else { default_outline };
                     focus_ring_instances(
-                        [
-                            region.bounds.x,
-                            region.bounds.y,
-                            region.bounds.width,
-                            region.bounds.height,
-                        ],
+                        bounds,
                         outline_color,
                         3.0,
                         panel_radius,
