@@ -401,17 +401,10 @@ impl Renderer {
                 } else {
                     let mut warning_color = color;
                     warning_color[3] = warning_color[3].clamp(0.9, 1.0);
-                    let top_h = 2.0;
-                    let bottom_h = 1.0;
-                    let gap = 1.0;
-                    let bottom_y = line_top + (line_height_px - bottom_h).max(0.0);
-                    let top_y = (bottom_y - gap - top_h).max(line_top);
+                    let underline_h = 3.0;
+                    let underline_y = line_top + (line_height_px - underline_h).max(0.0);
                     quads.push(RegionDrawInstance::new(
-                        [left, top_y, width, top_h],
-                        warning_color,
-                    ));
-                    quads.push(RegionDrawInstance::new(
-                        [left, bottom_y, width, bottom_h],
+                        [left, underline_y, width, underline_h],
                         warning_color,
                     ));
                 }

@@ -58,9 +58,9 @@ impl Renderer {
                     self.theme.ui.warning.as_f32()
                 };
                 line_color[3] = if severity == DIAGNOSTIC_SEVERITY_ERROR {
-                    0.22
+                    0.25
                 } else {
-                    0.18
+                    0.20
                 };
 
                 let start_line = diagnostic.range.start.line as usize;
