@@ -62,6 +62,8 @@ impl AppShell {
 
         self.sync_lsp_server_for_workspace();
 
+        self.update_window_title();
+
         self.editor_needs_layout = true;
         self.editor_caret_needs_layout = false;
         true

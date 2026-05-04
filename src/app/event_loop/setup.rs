@@ -245,6 +245,29 @@ impl AppShell {
         }
     }
 
+    /// Update the window title bar to show the project name.
+    ///
+    /// - No workspace attached: title stays as the configured base title
+    ///   (e.g. "Netherize Editor").
+    /// - Workspace attached: title becomes "<project-name> - <base title>"
+    ///   (e.g. "my-project - Netherize Editor").
+    pub(super) fn update_window_title(&self) {
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        let base_title = &self.ui_config.window.title;
+
+        if let Some(root) = self.app_state.workspace_root_path() {
+            let project_name = root
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("Netherize Editor");
+            window.set_title(&format!("{project_name} - {base_title}"));
+        } else {
+            window.set_title(base_title);
+        }
+    }
+
     pub(super) fn refresh_workspace_git_branch(&mut self) -> bool {
         let next_branch = self
             .app_state

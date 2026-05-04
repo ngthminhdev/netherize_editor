@@ -70,6 +70,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
         self.update_runtime_scaling_for_window(scale_factor);
 
         self.startup_subsystems();
+        self.update_window_title();
         self.request_redraw();
     }
 

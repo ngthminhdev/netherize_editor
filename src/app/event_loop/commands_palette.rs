@@ -120,6 +120,7 @@ impl AppShell {
                             .app_state
                             .workspace_root_path()
                             .and_then(detect_git_branch);
+                        self.update_window_title();
                         Some(true)
                     }
                     Err(err) => {
