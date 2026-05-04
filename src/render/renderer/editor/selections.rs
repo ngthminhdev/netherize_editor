@@ -444,7 +444,7 @@ impl Renderer {
         gutter_text_color[3] = gutter_text_color[3].min(0.72);
         let gutter_x = center_bounds[0] + gutter_inset_left;
 
-        let gutter_font_size = (font_size + 3.0).min(line_height - 2.0).max(8.0);
+        let gutter_font_size = (font_size - 1.0).min(line_height - 2.0).max(8.0);
         self.gutter_text_system
             .set_metrics(Metrics::new(gutter_font_size, line_height));
         self.gutter_text_system

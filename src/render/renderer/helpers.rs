@@ -198,7 +198,7 @@ pub(super) fn gutter_width_for_editor(
     line_height: f32,
 ) -> f32 {
     let gutter_char_w = (font_size + 3.0).min(line_height - 2.0).max(8.0) * 0.6;
-    gutter_digits as f32 * gutter_char_w + 18.0
+    gutter_digits as f32 * gutter_char_w + 24.0
 }
 
 pub(super) fn clamp_popup_width(
