@@ -415,8 +415,14 @@ impl AppState {
     }
 
     pub fn search_word_under_cursor(&mut self) -> bool {
-        let Some(query) = self.word_under_cursor() else {
-            return false;
+        // In visual mode, search for the selected text instead of the word under cursor
+        let query = if let Some(selected_text) = self.visual_selection_text() {
+            selected_text
+        } else {
+            let Some(word) = self.word_under_cursor() else {
+                return false;
+            };
+            word
         };
 
         let changed = self.set_search_query_internal(&query, true);

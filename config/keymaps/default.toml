@@ -439,7 +439,7 @@ command = "editor.paste"
 [[bindings]]
 mode = "visual"
 key = "*"
-command = "editor.wrap_selection_with_star"
+command = "editor.search_word_under_cursor"
 
 # ───────────────── TERMINAL ─────────────────
 [[bindings]]
