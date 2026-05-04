@@ -433,6 +433,16 @@ command = "editor.yank_selection"
 
 [[bindings]]
 mode = "visual"
+key = "p"
+command = "editor.visual_paste"
+
+[[bindings]]
+mode = "visual"
+key = "P"
+command = "editor.visual_paste"
+
+[[bindings]]
+mode = "visual"
 key = "mod+v"
 command = "editor.paste"
 

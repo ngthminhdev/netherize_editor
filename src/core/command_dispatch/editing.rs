@@ -562,6 +562,54 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 changed,
             )
         }
+        Command::VisualPaste => {
+            let clipboard_text = match ctx.read_text_from_clipboard() {
+                Ok(text) => text,
+                Err(err) => {
+                    return DispatchReport::failure(format!(
+                        "Dispatch: visual paste failed -> {err}"
+                    ));
+                }
+            };
+
+            if clipboard_text.is_empty() {
+                return DispatchReport::success_with_flags(
+                    "Dispatch: visual paste ignored (empty clipboard)",
+                    false,
+                    false,
+                );
+            }
+
+            // Save the selected text to clipboard (nvim register-swap behavior:
+            // the replaced text becomes the new register content).
+            let selected_text = ctx.app_state.visual_selection_text();
+            ctx.write_text_to_clipboard_and_remember(
+                selected_text,
+                ClipboardRecordKind::Charwise,
+            );
+
+            // Replace selection with clipboard content and exit visual mode.
+            let text_changed = ctx.app_state.replace_selection_with_text(&clipboard_text);
+            let mut changed = text_changed;
+            let mut mode_changed = false;
+            if text_changed
+                && ctx.app_state.current_mode() == EditorMode::Visual
+                && let Ok(result) = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal)
+            {
+                mode_changed = result.changed;
+            }
+            changed |= mode_changed;
+            ctx.commit_text_transaction(changed);
+
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: visual paste"
+                } else {
+                    "Dispatch: visual paste ignored"
+                },
+                changed,
+            )
+        }
         Command::ChangeWordForward => dispatch(
             ctx,
             Command::Operate {

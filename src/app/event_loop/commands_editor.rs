@@ -235,6 +235,7 @@ impl AppShell {
                 | Command::PasteBefore
                 | Command::EditorPaste
                 | Command::PasteSystemClipboard
+                | Command::VisualPaste
                 | Command::Undo
                 | Command::Redo
                 | Command::ReplaceChar(_)

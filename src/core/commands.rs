@@ -92,6 +92,8 @@ pub enum Command {
     EditorPaste,
     /// Legacy alias for older keymaps; routed with `EditorPaste`.
     PasteSystemClipboard,
+    /// Visual mode paste: replace selection with clipboard content (nvim `p` in Visual).
+    VisualPaste,
     Undo,
     Redo,
     ReplaceChar(char),

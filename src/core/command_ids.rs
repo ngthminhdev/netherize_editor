@@ -53,6 +53,7 @@ pub const PASTE_AFTER: &str = "editor.paste_after";
 pub const PASTE_BEFORE: &str = "editor.paste_before";
 pub const EDITOR_PASTE: &str = "editor.paste";
 pub const PASTE_SYSTEM_CLIPBOARD: &str = "editor.paste_system_clipboard";
+pub const VISUAL_PASTE: &str = "editor.visual_paste";
 pub const UNDO: &str = "editor.undo";
 pub const REDO: &str = "editor.redo";
 pub const SAVE_FILE: &str = "editor.save_file";
@@ -247,6 +248,7 @@ pub const ALL_IDS: &[&str] = &[
     PASTE_BEFORE,
     EDITOR_PASTE,
     PASTE_SYSTEM_CLIPBOARD,
+    VISUAL_PASTE,
     UNDO,
     REDO,
     SAVE_FILE,
@@ -417,6 +419,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         PASTE_AFTER => Some(Command::PasteAfter),
         PASTE_BEFORE => Some(Command::PasteBefore),
         EDITOR_PASTE | PASTE_SYSTEM_CLIPBOARD => Some(Command::EditorPaste),
+        VISUAL_PASTE => Some(Command::VisualPaste),
         UNDO => Some(Command::Undo),
         REDO => Some(Command::Redo),
         SAVE_FILE => Some(Command::SaveFile),

@@ -192,6 +192,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::PasteBefore
         | Command::EditorPaste
         | Command::PasteSystemClipboard
+        | Command::VisualPaste
         | Command::Undo
         | Command::Redo
         | Command::ReplaceChar(_)
