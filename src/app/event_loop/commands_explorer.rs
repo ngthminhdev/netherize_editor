@@ -25,7 +25,19 @@ impl AppShell {
             eprintln!("[AppShell] attach_workspace failed: {err}");
             return false;
         }
-        let _ = self.app_state.dismiss_initial_launch_welcome();
+
+        // Show welcome page for the new project (like a fresh open).
+        let _ = self.app_state.set_initial_launch_welcome(true);
+
+        // Hide right sidebar and bottom panel so the new workspace starts clean.
+        if self.panel_state.right.visible {
+            self.panel_state.right.visible = false;
+            self.sidebar_needs_layout = true;
+        }
+        if self.panel_state.bottom.visible {
+            self.panel_state.bottom.visible = false;
+            self.sidebar_needs_layout = true;
+        }
 
         self.persistent_state.push_recent(root_path.clone());
         self.persistent_state.save();
