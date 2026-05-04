@@ -129,7 +129,7 @@ static LANGUAGE_REGISTRY: &[LanguageProfile] = &[
         install_command: "npm install -g dockerfile-language-server-nodejs",
         root_markers: NO_ROOT_MARKERS,
         extensions: &[],
-        filenames: &["Dockerfile"],
+        filenames: &["Dockerfile", "Dockerfile*"],
     },
     LanguageProfile {
         key: "json",
@@ -189,7 +189,13 @@ pub fn language_profile_for_path(path: &Path) -> Option<&'static LanguageProfile
             profile
                 .filenames
                 .iter()
-                .any(|candidate| candidate.eq_ignore_ascii_case(file_name))
+                .any(|candidate| {
+                    if let Some(prefix) = candidate.strip_suffix('*') {
+                        file_name.starts_with(prefix)
+                    } else {
+                        candidate.eq_ignore_ascii_case(file_name)
+                    }
+                })
         })
     {
         return Some(profile);
@@ -259,6 +265,15 @@ mod tests {
             .expect("dockerfile profile");
         assert_eq!(profile.key, "dockerfile");
         assert_eq!(profile.language_id, "dockerfile");
+    }
+
+    #[test]
+    fn language_profile_detects_dockerfile_variants() {
+        for name in ["Dockerfile-base", "Dockerfile.base", "Dockerfile-all", "Dockerfile.dev"] {
+            let path = PathBuf::from(format!("/tmp/{}", name));
+            let profile = language_profile_for_path(&path).expect(&format!("{} should match", name));
+            assert_eq!(profile.key, "dockerfile");
+        }
     }
 
     #[test]
