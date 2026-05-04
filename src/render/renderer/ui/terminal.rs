@@ -7,7 +7,6 @@ use crate::{
 use super::super::helpers::{layout_panel_text, rect_to_scissor};
 
 const EMPTY_TERMINAL_HINT: &str = "(terminal ready — press F12 to focus)";
-const TERMINAL_HEADER_PADDING_HEIGHT: f32 = 8.0;
 const TERMINAL_SAFE_INSET_X: f32 = 2.0;
 
 fn inset_bounds(bounds: [f32; 4], inset_x: f32, inset_y: f32) -> [f32; 4] {
@@ -81,8 +80,7 @@ impl Renderer {
                 .with_radius(self.panel_corner_radius);
 
         let origin_x = bounds[0] + panel_padding + TERMINAL_SAFE_INSET_X;
-        let header_h = TERMINAL_HEADER_PADDING_HEIGHT;
-        let origin_y = bounds[1] + panel_padding + header_h;
+        let origin_y = bounds[1] + panel_padding;
         let width = (bounds[2] - panel_padding * 2.0 - TERMINAL_SAFE_INSET_X * 2.0).max(1.0);
 
         self.buffer_terminal_scissor = rect_to_scissor(inset_bounds(bounds, 1.0, 1.0));
@@ -90,13 +88,6 @@ impl Renderer {
         let default_fg = self.theme.editor.fg.as_f32();
         let default_bg = terminal_bg_color;
 
-        self.buffer_terminal_cursor_instances.push(
-            RegionDrawInstance::new(
-                [bounds[0], bounds[1], bounds[2], header_h + panel_padding],
-                self.theme.ui.panel_bg.as_f32(),
-            )
-            .with_radius(self.panel_corner_radius),
-        );
         self.buffer_terminal_header_batch = None;
 
         if grid.used_rows() == 0 {
@@ -132,13 +123,6 @@ impl Renderer {
                 );
         }
         self.buffer_terminal_cursor_instances.clear();
-        self.buffer_terminal_cursor_instances.push(
-            RegionDrawInstance::new(
-                [bounds[0], bounds[1], bounds[2], header_h + panel_padding],
-                self.theme.ui.panel_bg.as_f32(),
-            )
-            .with_radius(self.panel_corner_radius),
-        );
         let clip_right = origin_x + width;
         Self::append_terminal_overlay_quads(
             &self.theme,
@@ -185,24 +169,15 @@ impl Renderer {
             cursor_instances.clear();
             return;
         }
-        let header_h = TERMINAL_HEADER_PADDING_HEIGHT;
         let origin_x = bounds[0] + panel_padding + TERMINAL_SAFE_INSET_X;
-        let origin_y = bounds[1] + panel_padding + header_h;
+        let origin_y = bounds[1] + panel_padding;
         let width = (bounds[2] - panel_padding * 2.0 - TERMINAL_SAFE_INSET_X * 2.0).max(1.0);
-        let height = (bounds[3] - panel_padding * 2.0 - header_h).max(1.0);
+        let height = (bounds[3] - panel_padding * 2.0).max(1.0);
 
         *scissor = rect_to_scissor(inset_bounds(bounds, 1.0, 1.0));
 
         let default_fg = theme.editor.fg.as_f32();
         let default_bg = theme.ui.terminal_bg.as_f32();
-
-        cursor_instances.push(
-            RegionDrawInstance::new(
-                [bounds[0], bounds[1], bounds[2], header_h + panel_padding],
-                theme.ui.panel_bg.as_f32(),
-            )
-            .with_radius((header_h + panel_padding).min(bounds[3] * 0.5)),
-        );
 
         if grid.used_rows() == 0 {
             text_system.set_size(Some(width), Some(height));
@@ -235,13 +210,6 @@ impl Renderer {
             );
         }
         cursor_instances.clear();
-        cursor_instances.push(
-            RegionDrawInstance::new(
-                [bounds[0], bounds[1], bounds[2], header_h + panel_padding],
-                theme.ui.panel_bg.as_f32(),
-            )
-            .with_radius((header_h + panel_padding).min(bounds[3] * 0.5)),
-        );
         let clip_right = origin_x + width;
         Self::append_terminal_overlay_quads(
             theme,
