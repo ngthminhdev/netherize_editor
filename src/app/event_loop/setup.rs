@@ -390,7 +390,7 @@ impl AppShell {
             content_scale = content_scale.min(1.0);
         }
 
-        let runtime_scale = content_scale.max(0.5);
+        let runtime_scale = (dpi_scale * content_scale).max(0.5);
 
         eprintln!(
             "[scale] physical={}x{} scale_factor={:.2} dpi={:.2} logical={}x{} content={:.2} runtime={:.2}",
