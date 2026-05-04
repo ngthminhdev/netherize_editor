@@ -174,6 +174,13 @@ pub struct AppShell {
     last_scroll_animation_tick: Instant,
     last_git_branch_refresh_at: Instant,
     last_thinking_animation_tick: Instant,
+    // ── Tối ưu 3: Caret Blink ────────────────────────────────────────────────
+    /// Trạng thái hiển thị hiện tại của caret (true = visible).
+    caret_blink_visible: bool,
+    /// Thời điểm cuối cùng blink trạng thái đảo.
+    last_caret_blink_tick: Instant,
+    /// Cần update caret visibility trong frame tiếp theo (không trigger layout).
+    caret_blink_dirty: bool,
     /// Saved right sidebar width before markdown preview overrode it to 50%.
     /// Restored when the preview is closed so that AI chat and other tabs
     /// keep their configured width.
@@ -181,6 +188,7 @@ pub struct AppShell {
 }
 
 const DEBUG_UI_ENABLED: bool = false;
+const CARET_BLINK_INTERVAL: Duration = Duration::from_millis(530);
 const PARSE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(80);
 const GIT_DIFF_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(80);
 const LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(500);

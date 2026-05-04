@@ -27,6 +27,19 @@ use super::super::helpers::{
 use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
 use crate::text::text_system::StyledTextSpan;
 
+/// Quick fingerprint để phát hiện thay đổi trong syntax / diagnostic spans.
+/// Không cần hoàn hảo — chỉ cần bắt được phần lớn thay đổi thực tế.
+fn spans_fingerprint(spans: &[StyledTextSpan]) -> u64 {
+    let mut h: u64 = spans.len() as u64 ^ 0xcbf29ce484222325;
+    for (i, s) in spans.iter().take(32).enumerate() {
+        h ^= (s.start as u64)
+            .wrapping_mul(0x9e3779b97f4a7c15)
+            .wrapping_add(i as u64);
+        h = h.rotate_left(17).wrapping_add(s.end as u64);
+    }
+    h
+}
+
 impl Renderer {
     pub fn clear_editor_content(&mut self) {
         self.glyph_instances.clear();
@@ -44,6 +57,10 @@ impl Renderer {
         self.editor_scissor = None;
         self.image_pipeline.clear();
         self.image_scissor = None;
+        // Invalidate text cache so the next update_editor_content always reshapes.
+        self.last_shaped_revision = u64::MAX;
+        self.last_shaped_spans_fingerprint = u64::MAX;
+        self.last_shaped_viewport_width = 0.0;
     }
 
     pub fn update_image_content(&mut self, image: &ImageBuffer, center_bounds: [f32; 4]) {
@@ -137,8 +154,26 @@ impl Renderer {
         // intentional: the second call collects glyphs with the now-correct origin.
         let text_fg = self.theme.editor.fg.as_f32();
         let default_color_rgba = linear_rgba_to_srgb_u8(text_fg);
-        self.text_system
-            .set_text_with_spans(text, default_color_rgba, spans);
+
+        // ── Tối ưu 2: Text Caching ─────────────────────────────────────────────
+        // Trong các frame chỉ cuộn (smooth scroll), text revision không đổi →
+        // TextSystem buffer đã được shaped từ frame trước → bỏ qua set_text_with_spans.
+        // Reshape khi: (a) text thay đổi, (b) syntax/LSP spans thay đổi, hoặc
+        // (c) viewport width thay đổi (word-wrap boundary shift).
+        let current_revision = app_state.revision();
+        let spans_fp = spans_fingerprint(spans);
+        let needs_reshape = self.last_shaped_revision != current_revision
+            || self.last_shaped_spans_fingerprint != spans_fp
+            || (self.last_shaped_viewport_width - width).abs() > 0.5;
+        if needs_reshape {
+            self.text_system
+                .set_text_with_spans(text, default_color_rgba, spans);
+            self.last_shaped_revision = current_revision;
+            self.last_shaped_spans_fingerprint = spans_fp;
+            self.last_shaped_viewport_width = width;
+        } else {
+            self.text_system.set_size(Some(width), None);
+        }
 
         let visual_scroll_y =
             visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y.max(0.0));

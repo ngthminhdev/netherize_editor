@@ -228,6 +228,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.tick_thinking_animation() {
             self.request_redraw();
         }
+        if self.tick_caret_blink() {
+            self.request_redraw();
+        }
         if self.pump_bridge() {
             self.request_redraw();
         }
@@ -336,6 +339,20 @@ impl AppShell {
         } else {
             false
         }
+    }
+
+    /// Tối ưu 3: Caret Blink — tick timer nhấp nháy, chỉ set caret_blink_dirty.
+    /// KHÔNG set editor_needs_layout hay editor_caret_needs_layout.
+    /// Nhờ đó toàn bộ text pipeline không bị trigger reshape chỉ vì con trỏ nháy.
+    fn tick_caret_blink(&mut self) -> bool {
+        let now = Instant::now();
+        if now.duration_since(self.last_caret_blink_tick) < CARET_BLINK_INTERVAL {
+            return false;
+        }
+        self.last_caret_blink_tick = now;
+        self.caret_blink_visible = !self.caret_blink_visible;
+        self.caret_blink_dirty = true;
+        true
     }
 
     fn handle_explorer_filter_ime_commit(&mut self, text: &str) -> bool {
@@ -654,6 +671,9 @@ impl AppShell {
                 self.editor_needs_layout = false;
                 self.editor_caret_needs_layout = false;
                 self.buffer_terminal_needs_layout = false;
+                // Cursor đã được render đúng vị trí → reset blink về visible.
+                self.caret_blink_visible = true;
+                self.caret_blink_dirty = false;
                 refresh_highlights_for_viewport =
                     bounds_changed && !show_welcome && active_terminal_session.is_none();
             } else if self.editor_caret_needs_layout {
@@ -712,6 +732,9 @@ impl AppShell {
                     renderer.update_editor_overlays(&self.app_state, center_bounds);
                 }
                 self.editor_caret_needs_layout = false;
+                // Cursor đã được re-projected → reset blink về visible.
+                self.caret_blink_visible = true;
+                self.caret_blink_dirty = false;
             } else if let Some(session_id) = active_terminal_session {
                 let grid_changed = self.sync_terminal_buffer_layout(session_id, center_bounds);
                 if (self.buffer_terminal_needs_layout || bounds_changed || grid_changed)
@@ -1110,6 +1133,18 @@ impl AppShell {
             renderer.update_toast_popup(&toast.message, w, h);
         } else if let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_toast_popup();
+        }
+
+        // ── Tối ưu 3: Caret Blink ────────────────────────────────────────────
+        // Nếu chỉ blink dirty (không có layout rebuild nào), flip caret visibility
+        // mà không trigger bất kỳ text pipeline hay glyph rebuild nào.
+        // Khi editor_needs_layout hoặc editor_caret_needs_layout đã chạy ở trên,
+        // caret đã được upload đúng vị trí → reset blink về visible.
+        if self.caret_blink_dirty {
+            if let Some(renderer) = self.renderer.as_mut() {
+                renderer.update_caret_visibility(self.caret_blink_visible);
+            }
+            self.caret_blink_dirty = false;
         }
 
         if let Some(renderer) = self.renderer.as_mut() {

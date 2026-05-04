@@ -280,6 +280,9 @@ impl Renderer {
             ai_chat_image_scissor: None,
             ai_chat_input_scissor: None,
             ai_chat_input_batch: None,
+            last_shaped_revision: u64::MAX,
+            last_shaped_spans_fingerprint: u64::MAX,
+            last_shaped_viewport_width: 0.0,
         })
     }
 

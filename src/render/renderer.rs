@@ -276,10 +276,25 @@ pub struct Renderer {
     pub(super) ai_chat_input_scissor: Option<[u32; 4]>,
     /// Instance range for input-box glyphs inside `ai_chat_glyph_instances`.
     pub(super) ai_chat_input_batch: Option<TextScissorBatch>,
+
+    // ── Tối ưu 2: Text Caching ────────────────────────────────────────────
+    /// Revision của text content lần cuối được shaped bởi cosmic-text.
+    /// Khi `app_state.revision()` khớp, bỏ qua `set_text_with_spans`.
+    pub(super) last_shaped_revision: u64,
+    /// Fingerprint nhanh của spans để phát hiện thay đổi highlight/diagnostics.
+    pub(super) last_shaped_spans_fingerprint: u64,
+    /// Viewport width lần cuối reshape — phát hiện khi word-wrap boundary thay đổi.
+    pub(super) last_shaped_viewport_width: f32,
 }
 
 impl Renderer {
     pub fn editor_chrome_instances(&self) -> &[RegionDrawInstance] {
         &self.last_editor_chrome_instances
+    }
+
+    /// Tối ưu 3: Caret Blink — chỉ flip visibility của caret pipeline mà không
+    /// trigger bất kỳ text layout hay glyph rebuild nào.
+    pub fn update_caret_visibility(&mut self, visible: bool) {
+        self.caret_pipeline.set_caret_visible(&self.queue, visible);
     }
 }

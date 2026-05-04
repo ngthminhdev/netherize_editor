@@ -236,17 +236,39 @@ impl RegionPipeline {
         queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&raw));
     }
 
-    pub fn draw<'pass>(&self, render_pass: &mut wgpu::RenderPass<'pass>) {
+    pub fn draw<'pass>(&'pass self, render_pass: &mut wgpu::RenderPass<'pass>) {
         if self.instance_count == 0 {
             return;
         }
-
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
         render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
         render_pass.set_index_buffer(self.quad_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..self.index_count, 0, 0..self.instance_count);
+    }
+
+    /// Draw a sub-range of the already-uploaded instance buffer.
+    ///
+    /// Callers MUST batch ALL region instances (base panels + every overlay layer)
+    /// into a single `upload_instances` call BEFORE the render pass begins, then use
+    /// this method to draw each layer at its own scissor rect without re-uploading.
+    /// This eliminates mid-pass `upload_instances` calls that forced CPU→GPU syncs.
+    pub fn draw_range<'pass>(
+        &'pass self,
+        render_pass: &mut wgpu::RenderPass<'pass>,
+        start: u32,
+        count: u32,
+    ) {
+        if count == 0 {
+            return;
+        }
+        render_pass.set_pipeline(&self.render_pipeline);
+        render_pass.set_bind_group(0, &self.bind_group, &[]);
+        render_pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
+        render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+        render_pass.set_index_buffer(self.quad_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        render_pass.draw_indexed(0..self.index_count, 0, start..start + count);
     }
 
     fn ensure_instance_capacity(&mut self, device: &wgpu::Device, required: usize) {

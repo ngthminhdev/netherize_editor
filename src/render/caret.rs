@@ -123,6 +123,8 @@ pub struct CaretPipeline {
     index_count: u32,
     instance_buffer: wgpu::Buffer,
     instance_count: u32,
+    /// Rect của caret lần cuối được tính (dùng cho blink on/off mà không cần recompute).
+    cached_rect: Option<CaretScreenRect>,
 }
 
 impl CaretPipeline {
@@ -222,6 +224,7 @@ impl CaretPipeline {
             index_count: CARET_INDICES.len() as u32,
             instance_buffer,
             instance_count: 0,
+            cached_rect: None,
         }
     }
 
@@ -233,13 +236,30 @@ impl CaretPipeline {
     pub fn upload_caret(&mut self, queue: &wgpu::Queue, rect: Option<CaretScreenRect>) {
         match rect {
             Some(rect) => {
+                self.cached_rect = Some(rect);
                 let instance = CaretInstance::from_rect(rect);
                 queue.write_buffer(&self.instance_buffer, 0, bytemuck::bytes_of(&instance));
                 self.instance_count = 1;
             }
             None => {
+                self.cached_rect = None;
                 self.instance_count = 0;
             }
+        }
+    }
+
+    /// Tối ưu 3: Caret Blink — chỉ flip instance_count, không upload lại dữ liệu.
+    /// Gọi khi blink timer thay đổi trạng thái mà cursor KHÔNG di chuyển.
+    /// Nếu visible=true nhưng cached_rect=None, caret vẫn ẩn (cursor chưa từng render).
+    pub fn set_caret_visible(&mut self, queue: &wgpu::Queue, visible: bool) {
+        if visible {
+            if let Some(rect) = self.cached_rect {
+                let instance = CaretInstance::from_rect(rect);
+                queue.write_buffer(&self.instance_buffer, 0, bytemuck::bytes_of(&instance));
+                self.instance_count = 1;
+            }
+        } else {
+            self.instance_count = 0;
         }
     }
 

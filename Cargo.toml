@@ -51,6 +51,10 @@ criterion = { version = "0.5.1", default-features = true }
 name = "editor_bench"
 harness = false
 
+[[bench]]
+name = "e2e_perf_runner"
+harness = false
+
 # For profiling / flamegraph (cargo build --profile profiling)
 [profile.profiling]
 inherits = "release"
