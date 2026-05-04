@@ -29,24 +29,21 @@ impl AppShell {
         // Show welcome page for the new project (like a fresh open).
         let _ = self.app_state.set_initial_launch_welcome(true);
 
-        // Hide right sidebar and bottom panel so the new workspace starts clean.
-        if self.panel_state.right.visible {
-            self.panel_state.right.visible = false;
-            self.sidebar_needs_layout = true;
-        }
-        if self.panel_state.bottom.visible {
-            self.panel_state.bottom.visible = false;
-            self.sidebar_needs_layout = true;
-        }
+        // Hide ALL panels so the new workspace starts clean (like a fresh open).
+        self.panel_state.left.visible = false;
+        self.panel_state.right.visible = false;
+        self.panel_state.bottom.visible = false;
+        self.sidebar_needs_layout = true;
+
+        // Force explorer snapshot refresh (clear stale cached entries from previous workspace).
+        self.explorer_snapshot = ExplorerSnapshot::default();
+        self.explorer_snapshot_dirty = true;
+        self.explorer_cursor = 0;
 
         self.persistent_state.push_recent(root_path.clone());
         self.persistent_state.save();
 
         self.mark_explorer_dirty();
-        if !self.panel_state.left.visible {
-            self.panel_state.left.visible = true;
-            self.sidebar_needs_layout = true;
-        }
         self.workspace_git_branch = self
             .app_state
             .workspace_root_path()
