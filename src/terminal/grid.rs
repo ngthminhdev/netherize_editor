@@ -109,6 +109,24 @@ impl Default for HighlightColors {
     }
 }
 
+impl HighlightColors {
+    /// Build highlight colors from the active theme config.
+    ///
+    /// Maps each semantic token to the corresponding theme field so that
+    /// regex-based terminal highlighting stays consistent with the user's
+    /// chosen color scheme.
+    pub fn from_theme(theme: &crate::config::theme_config::ThemeConfig) -> Self {
+        Self {
+            warn: theme.ui.warning.as_f32(),
+            error: theme.ui.error.as_f32(),
+            fg_dim: theme.ui.fg_dim.as_f32(),
+            syntax_string: theme.syntax.string.as_f32(),
+            syntax_number: theme.syntax.number.as_f32(),
+            syntax_keyword: theme.syntax.keyword.as_f32(),
+        }
+    }
+}
+
 // ─── TerminalGrid ─────────────────────────────────────────────────────────────
 
 /// Terminal display grid với kích thước cố định `cols × rows`.

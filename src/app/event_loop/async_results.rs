@@ -206,8 +206,11 @@ impl AsyncResultRouter for AppShell {
                         "[AppShell] terminal buffer ready: session={session_id} command={shell} dir={}",
                         working_dir.display()
                     );
-                    self.terminal_buffer_grids
-                        .insert(session_id, TerminalGrid::new(120, 40));
+                    {
+                        let mut g = TerminalGrid::new(120, 40);
+                        g.highlight_colors = HighlightColors::from_theme(&self.theme);
+                        self.terminal_buffer_grids.insert(session_id, g);
+                    }
                     let _ = self.app_state.bind_terminal_buffer_session(
                         buffer_index,
                         session_id,
@@ -242,6 +245,7 @@ impl AsyncResultRouter for AppShell {
                 let mut should_redraw = false;
                 if self.pty_session_id == Some(session_id) {
                     let scrolled_rows = self.terminal_grid.feed_bytes(&chunk);
+                    self.terminal_grid.apply_regex_highlights();
                     if preserve_viewport {
                         self.terminal_grid.view_scroll_up(scrolled_rows);
                     } else {
@@ -252,6 +256,7 @@ impl AsyncResultRouter for AppShell {
                 }
                 if self.right_pty_session_id == Some(session_id) {
                     let scrolled_rows = self.right_terminal_grid.feed_bytes(&chunk);
+                    self.right_terminal_grid.apply_regex_highlights();
                     if preserve_viewport {
                         self.right_terminal_grid.view_scroll_up(scrolled_rows);
                     } else {
@@ -262,6 +267,7 @@ impl AsyncResultRouter for AppShell {
                 }
                 if let Some(grid) = self.terminal_buffer_grids.get_mut(&session_id) {
                     let scrolled_rows = grid.feed_bytes(&chunk);
+                    grid.apply_regex_highlights();
                     if preserve_viewport {
                         grid.view_scroll_up(scrolled_rows);
                     } else {

@@ -49,7 +49,7 @@ use crate::{
         },
     },
     syntax::{highlight::HighlightSpan, syntax_engine::SyntaxEngine},
-    terminal::grid::TerminalGrid,
+    terminal::grid::{HighlightColors, TerminalGrid},
     text::text_system::StyledTextSpan,
     workbench::{
         focus_manager::{FocusManager, FocusTarget},

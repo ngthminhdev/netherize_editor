@@ -109,7 +109,11 @@ impl AppShell {
             bridge: Some(bridge),
             pty_session_id: None,
             right_pty_session_id: None,
-            right_terminal_grid: TerminalGrid::new(120, 40),
+            right_terminal_grid: {
+                let mut g = TerminalGrid::new(120, 40);
+                g.highlight_colors = HighlightColors::from_theme(&theme);
+                g
+            },
             right_terminal_needs_layout: true,
             last_right_terminal_bounds: None,
             pending_right_pty_spawn: false,
@@ -120,7 +124,11 @@ impl AppShell {
             semantic_highlight_spans: Vec::new(),
             syntax_engine: None,
             syntax_engine_file: None,
-            terminal_grid: TerminalGrid::new(120, 40),
+            terminal_grid: {
+                let mut g = TerminalGrid::new(120, 40);
+                g.highlight_colors = HighlightColors::from_theme(&theme);
+                g
+            },
             explorer_cursor: 0,
             explorer_snapshot: ExplorerSnapshot::default(),
             explorer_snapshot_dirty: true,
