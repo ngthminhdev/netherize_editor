@@ -384,6 +384,12 @@ impl AppShell {
             );
         }
 
+        // Cap content_scale at 1.0 for non-DPI-scaled screens to prevent
+        // FullHD (1920×1080) from over-scaling the base 1280×800 resolution.
+        if dpi_scale <= 1.25 {
+            content_scale = content_scale.min(1.0);
+        }
+
         let runtime_scale = (dpi_scale * content_scale).max(0.5);
         if (runtime_scale - self.runtime_scale).abs() < 0.001 {
             return;
