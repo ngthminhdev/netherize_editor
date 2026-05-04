@@ -486,6 +486,9 @@ impl AppShell {
                         self.panel_state.right.visible = true;
                         self.sidebar_needs_layout = true;
                     }
+                    // Auto-set width to 50% of window
+                    let half_width = (self.window_size.width as f32 * 0.5).max(200.0);
+                    self.panel_state.right.size_px = half_width;
                     self.panel_state.right.switch_to_tab(PanelTabId::MarkdownPreview);
                     self.focus_manager.set(FocusTarget::RightSidebar);
                     self.input_handler.clear_pending_prefix();
