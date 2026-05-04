@@ -28,10 +28,11 @@ similar = "2.2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 tree-sitter = "0.25.8"
 tree-sitter-bash = "0.25.1"
-tree-sitter-dockerfile = "0.2.0"
+tree-sitter-containerfile = "0.8.0"
 tree-sitter-go = "0.25.0"
 tree-sitter-javascript = "0.25.0"
 tree-sitter-json = "0.24.8"
+tree-sitter-md = { version = "0.5.3", default-features = false }
 tree-sitter-rust = "0.23.3"
 tree-sitter-sequel = "0.3.11"
 tree-sitter-typescript = "0.23.0"

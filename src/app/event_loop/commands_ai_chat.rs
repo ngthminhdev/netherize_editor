@@ -100,6 +100,7 @@ fn ai_agent_help(current: AiAgentMode) -> String {
 
 /// Check if `opencode` is resolvable — checks $PATH then the default install
 /// location (~/.opencode/bin/opencode) without spawning a process.
+#[allow(dead_code)]
 fn opencode_available() -> bool {
     if let Some(path_var) = std::env::var_os("PATH") {
         for dir in std::env::split_paths(&path_var) {
@@ -337,6 +338,11 @@ impl AppShell {
                 )
             });
         let language_id = active_path.as_ref().map(|path| language_id_for_path(path));
+        let lang_tag = language_id
+            .as_ref()
+            .map(|id| id.as_str())
+            .unwrap_or("")
+            .to_string();
         let context = AiChatCodeContext {
             title: title.clone(),
             language_id,
@@ -351,7 +357,8 @@ impl AppShell {
         chat.messages.push(AiChatMessage {
             role: AiRole::System,
             text: format!(
-                "Added selected code context: {title}. Type your question and press Enter."
+                "Attached: {title}\n```{lang_tag}\n{}\n```",
+                chat.attached_code_contexts.last().unwrap().text,
             ),
         });
 
@@ -394,15 +401,6 @@ impl AppShell {
 
                 if focus_changed {
                     self.input_handler.clear_pending_prefix();
-                }
-
-                // Check PATH by stat-ing the binary — no process spawn, instant.
-                if is_now_visible {
-                    let opencode_found = opencode_available();
-                    self.panel_state.ai_chat.is_opencode_missing = !opencode_found;
-                    if !opencode_found {
-                        self.handle_ai_chat_command(&Command::AiChatPromptInstall);
-                    }
                 }
 
                 self.sidebar_needs_layout = true;

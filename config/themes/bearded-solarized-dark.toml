@@ -72,7 +72,7 @@ panel_line_height = 22.0
 
 # Theme-driven workbench chrome sizes.
 sidebar_width = 280.0
-right_sidebar_width = 320.0
+right_sidebar_width = 540.0
 bottom_panel_height = 220.0
 top_bar_height = 36.0
 
@@ -177,6 +177,46 @@ color = "#367b90"
 [icons.image]
 glyph = "\uF1C5"
 color = "#a5b82e"
+
+[file_icons]
+default_file = "📄"
+default_folder = "📁"
+
+[file_icons.extensions]
+rs = ""
+ts = ""
+tsx = ""
+js = ""
+jsx = ""
+go = ""
+json = ""
+jsonc = ""
+yaml = ""
+yml = ""
+toml = ""
+sql = ""
+md = ""
+mdx = ""
+dockerfile = ""
+sh = ""
+bash = ""
+zsh = ""
+fish = ""
+lock = ""
+
+[file_icons.exact]
+Dockerfile = ""
+"docker-compose.yml" = ""
+"docker-compose.yaml" = ""
+".gitignore" = ""
+".gitattributes" = ""
+".gitmodules" = ""
+"package.json" = ""
+"package-lock.json" = ""
+"tsconfig.json" = ""
+"Cargo.toml" = ""
+Makefile = ""
+"README.md" = ""
 
 # Syntax colors consumed by the tree-sitter highlight categories currently rendered.
 [syntax]

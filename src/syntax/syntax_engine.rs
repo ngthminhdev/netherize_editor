@@ -18,6 +18,7 @@ pub enum LanguageId {
     Dockerfile,
     Json,
     Bash,
+    Markdown,
 }
 
 impl LanguageId {
@@ -34,6 +35,7 @@ impl LanguageId {
             Self::Dockerfile => "dockerfile",
             Self::Json => "json",
             Self::Bash => "bash",
+            Self::Markdown => "markdown",
         }
     }
 }

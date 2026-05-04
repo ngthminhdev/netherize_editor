@@ -184,7 +184,10 @@ impl AppShell {
     ) -> bool {
         let should_notify_did_open = matches!(
             &command,
-            Command::BufferNext | Command::BufferPrev | Command::BufferCloseCurrent
+            Command::BufferNext
+                | Command::BufferPrev
+                | Command::BufferCloseCurrent
+                | Command::BufferGoto(_)
         );
         let mut parsed_after_buffer_switch = false;
 
@@ -222,6 +225,7 @@ impl AppShell {
                 | Command::DeleteCurrentLine
                 | Command::ToggleLineComment
                 | Command::ToggleSelectionComment
+                | Command::WrapSelectionWithStar
                 | Command::DeleteWordForward
                 | Command::DeleteWordBackward
                 | Command::ChangeSelection

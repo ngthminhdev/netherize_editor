@@ -8,6 +8,7 @@ pub enum PanelTabId {
     DebugConsole,
     Problems,
     AiChat,
+    MarkdownPreview,
 }
 
 impl PanelTabId {
@@ -21,6 +22,7 @@ impl PanelTabId {
             Self::DebugConsole => "Debug Console",
             Self::Problems => "Problems",
             Self::AiChat => "AI Chat",
+            Self::MarkdownPreview => "Preview",
         }
     }
 }
@@ -176,11 +178,12 @@ impl Default for WorkbenchPanelState {
             left: PanelState::new(true, 240.0, vec![PanelTabId::Explorer, PanelTabId::Search]),
             right: PanelState::new(
                 false,
-                260.0,
+                500.0,
                 vec![
+                    PanelTabId::AiChat,
+                    PanelTabId::MarkdownPreview,
                     PanelTabId::Inspector,
                     PanelTabId::Outline,
-                    PanelTabId::AiChat,
                 ],
             ),
             bottom: PanelState::new(

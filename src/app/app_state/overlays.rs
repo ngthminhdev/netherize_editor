@@ -741,6 +741,7 @@ impl AppState {
         let old_visual_line_mode = self.visual_line_mode;
 
         self.text = Rope::from(content);
+        self.revision += 1;
 
         let max_char_idx = self.text.len_chars();
         self.cursor_char_idx = old_cursor.min(max_char_idx);

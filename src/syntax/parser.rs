@@ -25,6 +25,7 @@ pub fn language_id_for_extension(extension: &str) -> Option<LanguageId> {
         "json" => Some(LanguageId::Json),
         "bash" | "sh" | "zsh" | "shell" => Some(LanguageId::Bash),
         "dockerfile" => Some(LanguageId::Dockerfile),
+        "md" | "markdown" | "mdx" => Some(LanguageId::Markdown),
         _ => None,
     }
 }
@@ -40,6 +41,7 @@ pub fn tree_sitter_language(language_id: LanguageId) -> Option<Language> {
         LanguageId::Yaml => Some(tree_sitter_yaml::LANGUAGE.into()),
         LanguageId::Json => Some(tree_sitter_json::LANGUAGE.into()),
         LanguageId::Bash => Some(tree_sitter_bash::LANGUAGE.into()),
-        LanguageId::Dockerfile => None,
+        LanguageId::Dockerfile => Some(tree_sitter_containerfile::LANGUAGE.into()),
+        LanguageId::Markdown => Some(tree_sitter_md::LANGUAGE.into()),
     }
 }

@@ -224,6 +224,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.tick_smooth_scroll_animation() {
             self.request_redraw();
         }
+        if self.tick_thinking_animation() {
+            self.request_redraw();
+        }
         if self.pump_bridge() {
             self.request_redraw();
         }
@@ -319,6 +322,19 @@ impl AppShell {
         }
         self.editor_needs_layout = true;
         (target - self.app_state.current_scroll_y).abs() > epsilon
+    }
+
+    fn tick_thinking_animation(&mut self) -> bool {
+        if !self.panel_state.ai_chat.is_generating {
+            return false;
+        }
+        let now = Instant::now();
+        if now.duration_since(self.last_thinking_animation_tick) >= THINKING_ANIMATION_INTERVAL {
+            self.last_thinking_animation_tick = now;
+            true
+        } else {
+            false
+        }
     }
 
     fn handle_explorer_filter_ime_commit(&mut self, text: &str) -> bool {
@@ -852,6 +868,60 @@ impl AppShell {
             }
         } else if let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_ai_chat();
+        }
+
+        // ── Right-sidebar terminal ────────────────────────────────────────
+        let right_terminal_active = self.panel_state.right.visible
+            && self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal);
+        if right_terminal_active {
+            let right_bounds = flat_regions
+                .iter()
+                .find(|r| r.id == RegionId::RightSidebar && r.visible)
+                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
+            if let Some(rb) = right_bounds {
+                let bounds_changed = self.last_right_terminal_bounds != Some(rb);
+                let grid_changed = self.sync_right_terminal_layout(rb);
+                if (self.right_terminal_needs_layout || bounds_changed || grid_changed)
+                    && let Some(renderer) = self.renderer.as_mut()
+                {
+                    renderer.update_terminal_content(
+                        &self.right_terminal_grid,
+                        rb,
+                        self.app_state.current_mode(),
+                    );
+                    self.last_right_terminal_bounds = Some(rb);
+                    self.right_terminal_needs_layout = false;
+                }
+            }
+        } else if self.last_right_terminal_bounds.is_some() {
+            self.last_right_terminal_bounds = None;
+        }
+
+        // ── Markdown Preview (right sidebar) ──────────────────────────────
+        let md_preview_active = self.panel_state.right.visible
+            && self.panel_state.right.active_tab_id() == Some(PanelTabId::MarkdownPreview);
+        if md_preview_active && self.app_state.markdown_preview.visible {
+            let preview_bounds = flat_regions
+                .iter()
+                .find(|r| r.id == RegionId::AiChatHistory && r.visible)
+                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
+
+            if let Some(bounds) = preview_bounds {
+                let preview = &self.app_state.markdown_preview;
+                let inner_padding = self.layout_engine.config.inner_padding;
+                if let Some(renderer) = self.renderer.as_mut() {
+                    renderer.update_markdown_preview_content(
+                        bounds,
+                        &preview.rendered_lines,
+                        preview.scroll_y,
+                        inner_padding,
+                    );
+                }
+            }
+        } else if md_preview_active {
+            if let Some(renderer) = self.renderer.as_mut() {
+                renderer.clear_ai_chat();
+            }
         }
 
         if let Some(renderer) = self.renderer.as_ref() {

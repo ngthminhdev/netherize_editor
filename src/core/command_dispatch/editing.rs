@@ -390,6 +390,27 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
 
             DispatchReport::success("Dispatch: toggled selection comment", changed)
         }
+        Command::WrapSelectionWithStar => {
+            let text_changed = ctx.app_state.wrap_selection_with_star();
+            if !text_changed {
+                return DispatchReport::success_with_flags(
+                    "Dispatch: wrap selection with star ignored",
+                    false,
+                    false,
+                );
+            }
+
+            let mut changed = true;
+            if ctx.app_state.current_mode() == EditorMode::Visual
+                && let Ok(result) = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal)
+            {
+                changed |= result.changed;
+            }
+            changed |= ctx.app_state.clear_visual_selection();
+            ctx.commit_text_transaction(changed);
+
+            DispatchReport::success("Dispatch: wrapped selection with star", changed)
+        }
         Command::PasteAfter => {
             let clipboard_text = match ctx.read_text_from_clipboard() {
                 Ok(text) => text,

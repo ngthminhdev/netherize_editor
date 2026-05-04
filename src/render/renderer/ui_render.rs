@@ -216,7 +216,7 @@ fn word_wrap(text: &str, max_chars: usize) -> Vec<String> {
     for word in text.split_whitespace() {
         if current.is_empty() {
             current.push_str(word);
-        } else if current.len() + 1 + word.len() <= max_chars {
+        } else if current.chars().count() + 1 + word.chars().count() <= max_chars {
             current.push(' ');
             current.push_str(word);
         } else {
@@ -394,6 +394,171 @@ mod tests {
 }
 
 // ── AI Chat text rendering ──────────────────────────────────────────────────
+
+/// Parse AI message text into styled lines, detecting fenced code blocks
+/// and inline code spans with appropriate coloring.
+/// Backticks are stripped from display — code blocks show with syntax highlighting,
+/// inline code shows with distinct color.
+fn build_styled_message_lines(
+    text: &str,
+    max_chars: usize,
+    default_color: [u8; 4],
+    code_bg_color: [u8; 4],
+    inline_code_color: [u8; 4],
+    _dim_color: [u8; 4],
+    theme: &crate::config::theme_config::ThemeConfig,
+) -> (Vec<String>, Vec<Vec<StyledTextSpan>>) {
+    let mut lines = Vec::new();
+    let mut line_styles = Vec::new();
+    let mut in_code_block = false;
+    let mut code_lang = String::new();
+
+    for raw_line in text.split('\n') {
+        let trimmed = raw_line.trim();
+
+        // Detect fenced code block boundaries — skip the ``` lines entirely
+        if trimmed.starts_with("```") {
+            if !in_code_block {
+                in_code_block = true;
+                code_lang = trimmed.trim_start_matches('`').trim().to_string();
+            } else {
+                in_code_block = false;
+                code_lang.clear();
+            }
+            continue;
+        }
+
+        // Wrap the line
+        for wrapped in word_wrap(raw_line, max_chars) {
+            let line_str = wrapped.clone();
+
+            if in_code_block {
+                // Code block line: syntax highlight or fallback to code_bg_color
+                let mut spans = Vec::new();
+                if !code_lang.is_empty() {
+                    let ext = match code_lang.as_str() {
+                        "rust" | "rs" => "rs",
+                        "javascript" | "js" => "js",
+                        "typescript" | "ts" => "ts",
+                        "tsx" => "tsx",
+                        "jsx" => "jsx",
+                        "go" => "go",
+                        "py" | "python" => "py",
+                        "json" => "json",
+                        "yaml" | "yml" => "yaml",
+                        "bash" | "sh" | "zsh" => "sh",
+                        "sql" => "sql",
+                        "toml" => "toml",
+                        "css" => "css",
+                        "html" | "htm" => "html",
+                        "md" | "markdown" => "md",
+                        _ => "",
+                    };
+                    if !ext.is_empty() {
+                        let highlight_spans =
+                            crate::syntax::highlight::highlight_snippet(&line_str, ext, theme);
+                        for hs in &highlight_spans {
+                            let color = highlight_category_color(hs.category);
+                            spans.push(StyledTextSpan::new(hs.range.start, hs.range.end, color));
+                        }
+                    }
+                }
+                if spans.is_empty() {
+                    spans.push(StyledTextSpan::new(0, line_str.len(), code_bg_color));
+                }
+                lines.push(line_str);
+                line_styles.push(spans);
+            } else {
+                // Regular line: detect inline code, bold (**...**), italic (*...*)
+                let mut spans = Vec::new();
+                let mut clean = String::new();
+                let chars: Vec<char> = line_str.chars().collect();
+                let mut i = 0;
+                while i < chars.len() {
+                    // Inline code: `...`
+                    if chars[i] == '`' {
+                        let start = i + 1;
+                        let mut end = start;
+                        while end < chars.len() && chars[end] != '`' {
+                            end += 1;
+                        }
+                        if end < chars.len() && end > start {
+                            let code_start = clean.len();
+                            for ch in &chars[start..end] {
+                                clean.push(*ch);
+                            }
+                            let code_end = clean.len();
+                            spans.push(StyledTextSpan::new(code_start, code_end, inline_code_color));
+                            i = end + 1;
+                            continue;
+                        }
+                    }
+                    // Bold: **...**
+                    if chars[i] == '*' && i + 1 < chars.len() && chars[i + 1] == '*' {
+                        let start = i + 2;
+                        let mut end = start;
+                        while end + 1 < chars.len() && !(chars[end] == '*' && chars[end + 1] == '*') {
+                            end += 1;
+                        }
+                        if end + 1 < chars.len() && end > start {
+                            let bold_start = clean.len();
+                            for ch in &chars[start..end] {
+                                clean.push(*ch);
+                            }
+                            let bold_end = clean.len();
+                            spans.push(StyledTextSpan::with_style(bold_start, bold_end, default_color, true, false));
+                            i = end + 2;
+                            continue;
+                        }
+                    }
+                    // Italic: *...*  (single asterisk, not followed by another *)
+                    if chars[i] == '*' && (i + 1 >= chars.len() || chars[i + 1] != '*') {
+                        let start = i + 1;
+                        let mut end = start;
+                        while end < chars.len() && chars[end] != '*' {
+                            end += 1;
+                        }
+                        if end < chars.len() && end > start {
+                            let italic_start = clean.len();
+                            for ch in &chars[start..end] {
+                                clean.push(*ch);
+                            }
+                            let italic_end = clean.len();
+                            spans.push(StyledTextSpan::with_style(italic_start, italic_end, default_color, false, true));
+                            i = end + 1;
+                            continue;
+                        }
+                    }
+                    clean.push(chars[i]);
+                    i += 1;
+                }
+                lines.push(clean);
+                line_styles.push(spans);
+            }
+        }
+    }
+
+    (lines, line_styles)
+}
+
+fn highlight_category_color(category: crate::syntax::highlight::HighlightCategory) -> [u8; 4] {
+    use crate::syntax::highlight::HighlightCategory;
+    match category {
+        HighlightCategory::Keyword => [0xCC, 0x78, 0x32, 0xFF],     // orange
+        HighlightCategory::String => [0x6A, 0x87, 0x59, 0xFF],     // green
+        HighlightCategory::Comment => [0x80, 0x80, 0x80, 0xFF],    // gray
+        HighlightCategory::Function => [0xFF, 0xC6, 0x6D, 0xFF],   // yellow
+        HighlightCategory::Type => [0x68, 0x97, 0xBB, 0xFF],       // blue
+        HighlightCategory::Constant => [0x98, 0x76, 0xAA, 0xFF],   // purple
+        HighlightCategory::Number => [0x68, 0x97, 0xBB, 0xFF],     // blue
+        HighlightCategory::Operator => [0xA9, 0xB7, 0xC6, 0xFF],   // light gray
+        HighlightCategory::Punctuation => [0xA9, 0xB7, 0xC6, 0xFF],
+        HighlightCategory::Attribute => [0xBB, 0xB5, 0x29, 0xFF],  // olive
+        HighlightCategory::Tag => [0xE8, 0xBF, 0xD3, 0xFF],        // light green
+        HighlightCategory::Escape => [0xCC, 0x78, 0x32, 0xFF],     // orange
+        _ => [0xA9, 0xB7, 0xC6, 0xFF],                              // default light gray
+    }
+}
 
 impl Renderer {
     /// Render chat history + input text for the AI Chat panel.
@@ -756,7 +921,6 @@ impl Renderer {
                 }
             }
             // Still render the input box prompt/cursor.
-            let iy = iclip[1] + ((iclip[3] - line_h).max(0.0) * 0.5).min(inner_padding * 0.5);
             let input_text = if input_buffer.is_empty() {
                 "> ask netherize... (/help, @file)".to_string()
             } else {
@@ -773,20 +937,31 @@ impl Renderer {
             }];
             let mut input_glyphs = Vec::new();
 
-            // Word-wrap input text to fit within input box width
             let input_content_w = iclip[2];
-            let input_max_chars = ((input_content_w / (font_size * 0.55)) as usize).max(12);
+            let input_max_chars = ((input_content_w / (font_size * 0.6)) as usize).max(12);
             let wrapped_lines = if input_buffer.is_empty() {
                 vec![input_text.clone()]
             } else {
                 word_wrap(&input_text, input_max_chars)
             };
 
+            // Clip to lines that fit in the input box height; show the last N
+            // lines so newly typed content stays visible.
+            let max_input_lines = ((iclip[3] - 4.0) / line_h).floor().max(1.0) as usize;
+            let line_trim = wrapped_lines.len().saturating_sub(max_input_lines);
+            let visible_lines = &wrapped_lines[line_trim..];
+            let is_first_visible = line_trim == 0;
+
+            let total_visible_h = visible_lines.len() as f32 * line_h;
+            let iy = iclip[1] + ((iclip[3] - total_visible_h) * 0.5).clamp(4.0, inner_padding);
+
             let mut input_line_y = iy;
-            for line in &wrapped_lines {
+            for (idx, line) in visible_lines.iter().enumerate() {
+                let spans: &[StyledTextSpan] =
+                    if idx == 0 && is_first_visible { &input_spans } else { &[] };
                 let inp = layout_panel_rich_text(
                     line,
-                    &input_spans,
+                    spans,
                     input_default,
                     &mut self.ai_chat_text_system,
                     &mut self.atlas,
@@ -813,11 +988,18 @@ impl Renderer {
                 &self.ai_chat_glyph_instances,
             );
             if show_cursor {
-                // Position cursor at the end of the last wrapped line
-                let last_line = wrapped_lines.last().unwrap_or(&input_text);
+                let last_line = visible_lines.last().unwrap_or(&input_text);
+                // word_wrap strips trailing whitespace via split_whitespace; add
+                // it back to the cursor X so pressing Space moves the cursor.
+                let trailing_ws = input_buffer
+                    .chars()
+                    .rev()
+                    .take_while(|c| c.is_whitespace())
+                    .count();
                 let cx = iclip[0]
-                    + estimate_monospace_width(last_line, font_size);
-                let cursor_y = iy + (wrapped_lines.len() as f32 - 1.0).max(0.0) * line_h;
+                    + estimate_monospace_width(last_line, font_size)
+                    + trailing_ws as f32 * font_size * 0.6;
+                let cursor_y = iy + (visible_lines.len() as f32 - 1.0).max(0.0) * line_h;
                 let mut cursor_color = accent;
                 cursor_color[3] = 0.9;
                 chrome.push(RegionDrawInstance::new(
@@ -850,6 +1032,7 @@ impl Renderer {
         struct ChatBubble {
             label: &'static str,
             lines: Vec<String>,
+            line_styles: Vec<Vec<StyledTextSpan>>,
             side: BubbleSide,
             fill: [f32; 4],
             label_color: [f32; 4],
@@ -858,53 +1041,95 @@ impl Renderer {
         }
 
         let bubble_content_w = (hclip[2] * 0.66).max(font_size * 12.0);
-        let max_chars = ((bubble_content_w / (font_size * 0.55)) as usize).max(12);
+        let max_chars = ((bubble_content_w / (font_size * 0.6)) as usize).max(12);
         let user_fill = blend_rgb(editor_bg, accent, 0.24, 0.72);
         let netherize_fill = blend_rgb(editor_bg, panel_bg, 0.42, 0.70);
         let system_fill = blend_rgb(editor_bg, panel_bg, 0.56, 0.64);
 
+        let fg_u8 = linear_rgba_to_srgb_u8(fg);
+        let fg_dim_u8 = linear_rgba_to_srgb_u8(fg_dim);
+        let accent_u8 = linear_rgba_to_srgb_u8(accent);
+        let code_sep_u8 = [0x50, 0x50, 0x50, 0xFF]; // dim gray for code separators
+        let inline_code_u8 = [0xDA, 0x70, 0xD6, 0xFF]; // orchid for inline code
+
         let mut bubbles: Vec<ChatBubble> = Vec::new();
         for msg in messages {
             let clean = strip_ansi(&msg.text);
-            let mut body_lines = Vec::new();
-            for para in clean
+            let filtered: String = clean
                 .split('\n')
                 .filter(|line| !is_opencode_status_line(line))
-            {
-                for wrapped in word_wrap(para, max_chars) {
-                    if !wrapped.trim().is_empty() {
-                        body_lines.push(wrapped);
-                    }
-                }
-            }
-            if body_lines.is_empty() {
+                .collect::<Vec<_>>()
+                .join("\n");
+            if filtered.trim().is_empty() {
                 continue;
             }
 
             let bubble = match msg.role {
-                AiRole::User => ChatBubble {
-                    label: "you",
-                    lines: body_lines,
-                    side: BubbleSide::Right,
-                    fill: user_fill,
-                    label_color: accent,
-                    body_color: fg,
-                    italic: false,
-                },
-                AiRole::Assistant => ChatBubble {
-                    label: "netherize",
-                    lines: body_lines,
-                    side: BubbleSide::Left,
-                    fill: netherize_fill,
-                    label_color: accent,
-                    body_color: fg,
-                    italic: false,
-                },
-                AiRole::System => {
-                    let is_err = clean.to_ascii_lowercase().contains("error");
+                AiRole::User => {
+                    let mut body_lines = Vec::new();
+                    for para in filtered.split('\n') {
+                        for wrapped in word_wrap(para, max_chars) {
+                            if !wrapped.trim().is_empty() {
+                                body_lines.push(wrapped);
+                            }
+                        }
+                    }
+                    if body_lines.is_empty() {
+                        continue;
+                    }
+                    ChatBubble {
+                        label: "you",
+                        lines: body_lines,
+                        line_styles: Vec::new(),
+                        side: BubbleSide::Right,
+                        fill: user_fill,
+                        label_color: accent,
+                        body_color: fg,
+                        italic: false,
+                    }
+                }
+                AiRole::Assistant => {
+                    let (body_lines, line_styles) = build_styled_message_lines(
+                        &filtered,
+                        max_chars,
+                        fg_u8,
+                        code_sep_u8,
+                        inline_code_u8,
+                        fg_dim_u8,
+                        &self.theme,
+                    );
+                    if body_lines.is_empty() {
+                        continue;
+                    }
                     ChatBubble {
                         label: "netherize",
                         lines: body_lines,
+                        line_styles,
+                        side: BubbleSide::Left,
+                        fill: netherize_fill,
+                        label_color: accent,
+                        body_color: fg,
+                        italic: false,
+                    }
+                }
+                AiRole::System => {
+                    let is_err = clean.to_ascii_lowercase().contains("error");
+                    let (body_lines, line_styles) = build_styled_message_lines(
+                        &filtered,
+                        max_chars,
+                        fg_u8,
+                        code_sep_u8,
+                        inline_code_u8,
+                        fg_dim_u8,
+                        &self.theme,
+                    );
+                    if body_lines.is_empty() {
+                        continue;
+                    }
+                    ChatBubble {
+                        label: "netherize",
+                        lines: body_lines,
+                        line_styles,
                         side: BubbleSide::Left,
                         fill: system_fill,
                         label_color: if is_err { warning } else { fg_dim },
@@ -914,6 +1139,32 @@ impl Renderer {
                 }
             };
             bubbles.push(bubble);
+        }
+
+        // ── Thinking indicator bubble ─────────────────────────────────────
+        if is_generating {
+            let phase = (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+                / 400)
+                % 4;
+            let dots = match phase {
+                0 => ".",
+                1 => "..",
+                2 => "...",
+                _ => "",
+            };
+            bubbles.push(ChatBubble {
+                label: "netherize",
+                lines: vec![format!("thinking{dots}")],
+                line_styles: Vec::new(),
+                side: BubbleSide::Left,
+                fill: netherize_fill,
+                label_color: accent,
+                body_color: fg_dim,
+                italic: true,
+            });
         }
 
         let bubble_pad_x = 10.0;
@@ -935,7 +1186,7 @@ impl Renderer {
             0.0
         };
 
-        let mut cy = body_y;
+        let mut cy = body_y + line_h * 0.5;
         for bubble in &bubbles {
             let content_w = bubble
                 .lines
@@ -963,39 +1214,58 @@ impl Renderer {
                 );
                 let text_x = bubble_x + bubble_pad_x;
                 let label_y = y + bubble_pad_y;
-                all.extend(layout_panel_text(
-                    bubble.label,
-                    &mut self.ai_chat_text_system,
-                    &mut self.atlas,
-                    &self.queue,
-                    text_x,
-                    label_y,
-                    bubble.label_color,
-                ));
+                // Only emit glyphs for lines within the visible body area so
+                // scrolled-off bubbles don't bleed into the header region.
+                if label_y >= body_y && label_y < body_y + vis_h {
+                    all.extend(layout_panel_text(
+                        bubble.label,
+                        &mut self.ai_chat_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        text_x,
+                        label_y,
+                        bubble.label_color,
+                    ));
+                }
                 let mut text_y = label_y + line_h + 2.0;
-                for line in &bubble.lines {
-                    let gs = if bubble.italic {
-                        layout_panel_text_italic(
-                            line,
-                            &mut self.ai_chat_text_system,
-                            &mut self.atlas,
-                            &self.queue,
-                            text_x,
-                            text_y,
-                            bubble.body_color,
-                        )
-                    } else {
-                        layout_panel_text(
-                            line,
-                            &mut self.ai_chat_text_system,
-                            &mut self.atlas,
-                            &self.queue,
-                            text_x,
-                            text_y,
-                            bubble.body_color,
-                        )
-                    };
-                    all.extend(gs);
+                for (line_idx, line) in bubble.lines.iter().enumerate() {
+                    if text_y >= body_y && text_y < body_y + vis_h + line_h {
+                        let has_styles = bubble.line_styles.len() > line_idx
+                            && !bubble.line_styles[line_idx].is_empty();
+                        let gs = if has_styles {
+                            layout_panel_rich_text(
+                                line,
+                                &bubble.line_styles[line_idx],
+                                bubble.body_color,
+                                &mut self.ai_chat_text_system,
+                                &mut self.atlas,
+                                &self.queue,
+                                text_x,
+                                text_y,
+                            )
+                        } else if bubble.italic {
+                            layout_panel_text_italic(
+                                line,
+                                &mut self.ai_chat_text_system,
+                                &mut self.atlas,
+                                &self.queue,
+                                text_x,
+                                text_y,
+                                bubble.body_color,
+                            )
+                        } else {
+                            layout_panel_text(
+                                line,
+                                &mut self.ai_chat_text_system,
+                                &mut self.atlas,
+                                &self.queue,
+                                text_x,
+                                text_y,
+                                bubble.body_color,
+                            )
+                        };
+                        all.extend(gs);
+                    }
                     text_y += line_h;
                 }
             }
@@ -1038,7 +1308,6 @@ impl Renderer {
             }
         }
         let hist_count = all.len() as u32;
-        let iy = iclip[1] + ((iclip[3] - line_h).max(0.0) * 0.5).min(inner_padding * 0.5);
         let input_text = if input_buffer.is_empty() {
             "> ask netherize... (/help, @file)".to_string()
         } else {
@@ -1052,16 +1321,42 @@ impl Renderer {
             bold: false,
             italic: false,
         }];
-        all.extend(layout_panel_rich_text(
-            &input_text,
-            &input_spans,
-            input_default,
-            &mut self.ai_chat_text_system,
-            &mut self.atlas,
-            &self.queue,
-            iclip[0],
-            iy,
-        ));
+
+        let input_content_w = iclip[2];
+        let input_max_chars = ((input_content_w / (font_size * 0.6)) as usize).max(12);
+        let wrapped_lines = if input_buffer.is_empty() {
+            vec![input_text.clone()]
+        } else {
+            word_wrap(&input_text, input_max_chars)
+        };
+
+        // Show only the last N lines that fit in the input box height so
+        // long messages don't overflow the box.
+        let max_input_lines = ((iclip[3] - 4.0) / line_h).floor().max(1.0) as usize;
+        let line_trim = wrapped_lines.len().saturating_sub(max_input_lines);
+        let visible_lines = &wrapped_lines[line_trim..];
+        let is_first_visible = line_trim == 0;
+
+        let total_visible_h = visible_lines.len() as f32 * line_h;
+        let iy = iclip[1] + ((iclip[3] - total_visible_h) * 0.5).clamp(4.0, inner_padding);
+
+        let mut input_line_y = iy;
+        for (idx, line) in visible_lines.iter().enumerate() {
+            let spans: &[StyledTextSpan] =
+                if idx == 0 && is_first_visible { &input_spans } else { &[] };
+            all.extend(layout_panel_rich_text(
+                line,
+                spans,
+                input_default,
+                &mut self.ai_chat_text_system,
+                &mut self.atlas,
+                &self.queue,
+                iclip[0],
+                input_line_y,
+            ));
+            input_line_y += line_h;
+        }
+
         let in_count = all.len() as u32 - hist_count;
         self.ai_chat_input_batch = Some(TextScissorBatch {
             scissor: self.ai_chat_input_scissor.unwrap_or([0, 0, 1, 1]),
@@ -1081,13 +1376,20 @@ impl Renderer {
 
         // ── Cursor quad (drawn via region pipeline) ───────────────────────
         if show_cursor {
+            let last_line = visible_lines.last().unwrap_or(&input_text);
+            let trailing_ws = input_buffer
+                .chars()
+                .rev()
+                .take_while(|c| c.is_whitespace())
+                .count();
             let cx = iclip[0]
-                + estimate_monospace_width("> ", font_size)
-                + estimate_monospace_width(input_buffer, font_size);
+                + estimate_monospace_width(last_line, font_size)
+                + trailing_ws as f32 * font_size * 0.6;
+            let cursor_y = iy + (visible_lines.len() as f32 - 1.0).max(0.0) * line_h;
             let mut cursor_color = accent;
             cursor_color[3] = 0.9;
             chrome.push(RegionDrawInstance::new(
-                [cx, iy + 2.0, 8.0, (line_h - 4.0).max(1.0)],
+                [cx, cursor_y + 2.0, 8.0, (line_h - 4.0).max(1.0)],
                 cursor_color,
             ));
         }
@@ -1105,5 +1407,99 @@ impl Renderer {
         self.ai_chat_hero_image_pipeline.clear();
         self.ai_chat_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
+    }
+
+    /// Render markdown preview content into the right sidebar area.
+    /// Reuses the AI chat text pipeline since they're mutually exclusive tabs.
+    pub fn update_markdown_preview_content(
+        &mut self,
+        bounds: [f32; 4],
+        lines: &[crate::app::app_state::MarkdownPreviewLine],
+        scroll_y: f32,
+        inner_padding: f32,
+    ) {
+        use crate::app::app_state::MarkdownBlockType;
+
+        if bounds[2] < 1.0 || bounds[3] < 1.0 {
+            self.clear_ai_chat();
+            return;
+        }
+
+        self.ai_chat_header_image_pipeline.clear();
+        self.ai_chat_hero_image_pipeline.clear();
+        self.ai_chat_image_scissor = None;
+        self.ai_chat_input_scissor = None;
+        self.ai_chat_input_batch = None;
+
+        let clip = [
+            bounds[0] + inner_padding,
+            bounds[1] + inner_padding,
+            (bounds[2] - inner_padding * 2.0).max(1.0),
+            (bounds[3] - inner_padding * 2.0).max(1.0),
+        ];
+        self.ai_chat_history_scissor = rect_to_scissor(clip);
+
+        let font_size = self.theme.ui.sidebar_font_size;
+        let line_h = self.theme.ui.sidebar_line_height.max(font_size + 4.0);
+        let fg = self.theme.ui.fg.as_f32();
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+
+        self.ai_chat_text_system
+            .set_size(Some(clip[2].max(1.0)), Some(line_h));
+
+        let mut all_glyphs: Vec<GlyphInstance> = Vec::new();
+        let start_y = clip[1] - (scroll_y * line_h);
+        let visible_bottom = clip[1] + clip[3];
+
+        for (i, preview_line) in lines.iter().enumerate() {
+            let y = start_y + i as f32 * line_h;
+            if y + line_h < clip[1] {
+                continue;
+            }
+            if y > visible_bottom {
+                break;
+            }
+
+            if preview_line.text.is_empty() {
+                continue;
+            }
+
+            let default_color = match preview_line.block_type {
+                MarkdownBlockType::Heading(_) => fg,
+                MarkdownBlockType::CodeBlock => fg_dim,
+                MarkdownBlockType::BlockQuote => fg_dim,
+                _ => fg,
+            };
+
+            if preview_line.spans.is_empty() {
+                all_glyphs.extend(layout_panel_text(
+                    &preview_line.text,
+                    &mut self.ai_chat_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    clip[0],
+                    y,
+                    default_color,
+                ));
+            } else {
+                all_glyphs.extend(layout_panel_rich_text(
+                    &preview_line.text,
+                    &preview_line.spans,
+                    default_color,
+                    &mut self.ai_chat_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    clip[0],
+                    y,
+                ));
+            }
+        }
+
+        self.ai_chat_glyph_instances = all_glyphs;
+        self.ai_chat_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.ai_chat_glyph_instances,
+        );
     }
 }

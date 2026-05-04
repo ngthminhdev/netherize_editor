@@ -40,6 +40,7 @@ pub const DELETE_CURRENT_LINE: &str = "editor.delete_current_line";
 pub const DELETE_TO_LINE_END: &str = "editor.delete_to_line_end";
 pub const TOGGLE_LINE_COMMENT: &str = "editor.toggle_line_comment";
 pub const TOGGLE_SELECTION_COMMENT: &str = "editor.toggle_selection_comment";
+pub const WRAP_SELECTION_WITH_STAR: &str = "editor.wrap_selection_with_star";
 pub const DELETE_WORD_FORWARD: &str = "editor.delete_word_forward";
 pub const DELETE_WORD_BACKWARD: &str = "editor.delete_word_backward";
 pub const YANK_SELECTION: &str = "editor.yank_selection";
@@ -93,6 +94,17 @@ pub const GIT_BLAME_LINE: &str = "git.blame_line";
 pub const TERMINAL_ENTER_NORMAL_MODE: &str = "terminal.enter_normal_mode";
 pub const TERMINAL_PASTE: &str = "terminal.paste";
 
+// ── Buffer goto ─────────────────────────────────────────────────────────────
+pub const BUFFER_GOTO_1: &str = "buffer.goto_1";
+pub const BUFFER_GOTO_2: &str = "buffer.goto_2";
+pub const BUFFER_GOTO_3: &str = "buffer.goto_3";
+pub const BUFFER_GOTO_4: &str = "buffer.goto_4";
+pub const BUFFER_GOTO_5: &str = "buffer.goto_5";
+pub const BUFFER_GOTO_6: &str = "buffer.goto_6";
+pub const BUFFER_GOTO_7: &str = "buffer.goto_7";
+pub const BUFFER_GOTO_8: &str = "buffer.goto_8";
+pub const BUFFER_GOTO_9: &str = "buffer.goto_9";
+
 // ── LSP Interactive (Module 10) ──────────────────────────────────────────────────
 pub const LSP_HOVER: &str = "lsp.hover";
 pub const LSP_GO_TO_DEFINITION: &str = "lsp.go_to_definition";
@@ -118,6 +130,13 @@ pub const DIAGNOSTICS_OPEN_PICKER: &str = "diagnostics.open_picker";
 // ── Jump list navigation ─────────────────────────────────────────────────────
 pub const JUMP_BACK: &str = "editor.jump_back";
 pub const JUMP_FORWARD: &str = "editor.jump_forward";
+
+// ── Markdown Preview ─────────────────────────────────────────────────────────
+pub const TOGGLE_MARKDOWN_PREVIEW: &str = "app.toggle_markdown_preview";
+pub const MARKDOWN_PREVIEW_SCROLL_UP: &str = "app.markdown_preview_scroll_up";
+pub const MARKDOWN_PREVIEW_SCROLL_DOWN: &str = "app.markdown_preview_scroll_down";
+pub const MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP: &str = "app.markdown_preview_scroll_half_page_up";
+pub const MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN: &str = "app.markdown_preview_scroll_half_page_down";
 
 // ── Workbench focus navigation ────────────────────────────────────────────────
 pub const FOCUS_EDITOR: &str = "app.focus_editor";
@@ -217,6 +236,7 @@ pub const ALL_IDS: &[&str] = &[
     DELETE_CURRENT_LINE,
     TOGGLE_LINE_COMMENT,
     TOGGLE_SELECTION_COMMENT,
+    WRAP_SELECTION_WITH_STAR,
     DELETE_WORD_FORWARD,
     DELETE_WORD_BACKWARD,
     YANK_SELECTION,
@@ -255,6 +275,15 @@ pub const ALL_IDS: &[&str] = &[
     GIT_BLAME_LINE,
     TERMINAL_ENTER_NORMAL_MODE,
     TERMINAL_PASTE,
+    BUFFER_GOTO_1,
+    BUFFER_GOTO_2,
+    BUFFER_GOTO_3,
+    BUFFER_GOTO_4,
+    BUFFER_GOTO_5,
+    BUFFER_GOTO_6,
+    BUFFER_GOTO_7,
+    BUFFER_GOTO_8,
+    BUFFER_GOTO_9,
     LSP_HOVER,
     LSP_GO_TO_DEFINITION,
     LSP_PREVIEW_DEFINITION,
@@ -326,6 +355,11 @@ pub const ALL_IDS: &[&str] = &[
     FILE_PICKER_SELECT_PREV,
     FILE_PICKER_BACKSPACE,
     LEAP_START,
+    TOGGLE_MARKDOWN_PREVIEW,
+    MARKDOWN_PREVIEW_SCROLL_UP,
+    MARKDOWN_PREVIEW_SCROLL_DOWN,
+    MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP,
+    MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN,
 ];
 
 pub fn is_valid(id: &str) -> bool {
@@ -371,6 +405,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         DELETE_TO_LINE_END => Some(Command::DeleteToLineEnd),
         TOGGLE_LINE_COMMENT => Some(Command::ToggleLineComment),
         TOGGLE_SELECTION_COMMENT => Some(Command::ToggleSelectionComment),
+        WRAP_SELECTION_WITH_STAR => Some(Command::WrapSelectionWithStar),
         DELETE_WORD_FORWARD => Some(Command::DeleteWordForward),
         DELETE_WORD_BACKWARD => Some(Command::DeleteWordBackward),
         YANK_SELECTION => Some(Command::YankSelection),
@@ -398,6 +433,15 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         EXIT_FOCUS => Some(Command::SwitchMode(ModeEvent::ExitFocus)),
         TERMINAL_ENTER_NORMAL_MODE => Some(Command::SwitchMode(ModeEvent::EnterTerminalNormal)),
         TERMINAL_PASTE => Some(Command::TerminalPaste),
+        BUFFER_GOTO_1 => Some(Command::BufferGoto(0)),
+        BUFFER_GOTO_2 => Some(Command::BufferGoto(1)),
+        BUFFER_GOTO_3 => Some(Command::BufferGoto(2)),
+        BUFFER_GOTO_4 => Some(Command::BufferGoto(3)),
+        BUFFER_GOTO_5 => Some(Command::BufferGoto(4)),
+        BUFFER_GOTO_6 => Some(Command::BufferGoto(5)),
+        BUFFER_GOTO_7 => Some(Command::BufferGoto(6)),
+        BUFFER_GOTO_8 => Some(Command::BufferGoto(7)),
+        BUFFER_GOTO_9 => Some(Command::BufferGoto(8)),
         TOGGLE_TERMINAL => Some(Command::ToggleTerminal),
         TOGGLE_BOTTOM_DOCK => Some(Command::ToggleBottomDock),
         TOGGLE_LEFT_DOCK => Some(Command::ToggleLeftDock),
@@ -485,6 +529,11 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         FILE_PICKER_CLOSE => Some(Command::CloseFilePicker),
         FILE_PICKER_BACKSPACE => Some(Command::FilePickerBackspaceQuery),
         LEAP_START => Some(Command::LeapStart),
+        TOGGLE_MARKDOWN_PREVIEW => Some(Command::ToggleMarkdownPreview),
+        MARKDOWN_PREVIEW_SCROLL_UP => Some(Command::MarkdownPreviewScrollUp),
+        MARKDOWN_PREVIEW_SCROLL_DOWN => Some(Command::MarkdownPreviewScrollDown),
+        MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP => Some(Command::MarkdownPreviewScrollHalfPageUp),
+        MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN => Some(Command::MarkdownPreviewScrollHalfPageDown),
         _ => None,
     }
 }

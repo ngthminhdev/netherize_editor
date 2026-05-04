@@ -401,9 +401,10 @@ fn highlight_query(language_id: LanguageId) -> Option<&'static Query> {
         LanguageId::Go => Some(go_highlight_query()),
         LanguageId::Sql => Some(sql_highlight_query()),
         LanguageId::Yaml => Some(yaml_highlight_query()),
-        LanguageId::Dockerfile => None,
+        LanguageId::Dockerfile => Some(dockerfile_highlight_query()),
         LanguageId::Json => Some(json_highlight_query()),
         LanguageId::Bash => Some(bash_highlight_query()),
+        LanguageId::Markdown => Some(markdown_highlight_query()),
     }
 }
 
@@ -444,22 +445,25 @@ fn jsx_highlight_query() -> &'static Query {
 fn typescript_highlight_query() -> &'static Query {
     static QUERY: OnceLock<Query> = OnceLock::new();
     QUERY.get_or_init(|| {
-        build_highlight_query(
-            LanguageId::TypeScript,
+        let source = format!(
+            "{}\n{}",
+            tree_sitter_javascript::HIGHLIGHT_QUERY,
             tree_sitter_typescript::HIGHLIGHTS_QUERY,
-            "typescript",
-        )
+        );
+        build_highlight_query(LanguageId::TypeScript, &source, "typescript")
     })
 }
 
 fn tsx_highlight_query() -> &'static Query {
     static QUERY: OnceLock<Query> = OnceLock::new();
     QUERY.get_or_init(|| {
-        build_highlight_query(
-            LanguageId::Tsx,
+        let source = format!(
+            "{}\n{}\n{}",
+            tree_sitter_javascript::HIGHLIGHT_QUERY,
+            tree_sitter_javascript::JSX_HIGHLIGHT_QUERY,
             tree_sitter_typescript::HIGHLIGHTS_QUERY,
-            "tsx",
-        )
+        );
+        build_highlight_query(LanguageId::Tsx, &source, "tsx")
     })
 }
 
@@ -502,6 +506,28 @@ fn bash_highlight_query() -> &'static Query {
     })
 }
 
+fn markdown_highlight_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(
+            LanguageId::Markdown,
+            include_str!("queries/markdown/highlights.scm"),
+            "markdown",
+        )
+    })
+}
+
+fn dockerfile_highlight_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(
+            LanguageId::Dockerfile,
+            include_str!("queries/dockerfile/highlights.scm"),
+            "dockerfile",
+        )
+    })
+}
+
 fn build_highlight_query(language_id: LanguageId, source: &str, label: &str) -> Query {
     let language = tree_sitter_language(language_id).unwrap_or_else(|| {
         panic!(
@@ -530,7 +556,7 @@ fn capture_category(capture_name: &str) -> Option<HighlightCategory> {
         "syntax.property" => Some(HighlightCategory::Property),
         "syntax.constant" => Some(HighlightCategory::Constant),
         "syntax.operator" => Some(HighlightCategory::Operator),
-        "syntax.punctuation" => Some(HighlightCategory::Punctuation),
+        "syntax.punctuation" | "punctuation.bracket" | "punctuation.delimiter" | "punctuation.special" => Some(HighlightCategory::Punctuation),
         "syntax.escape" => Some(HighlightCategory::Escape),
         "syntax.macro" => Some(HighlightCategory::Macro),
         "syntax.lifetime" => Some(HighlightCategory::Lifetime),

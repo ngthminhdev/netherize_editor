@@ -110,6 +110,10 @@ impl AsyncResultRouter for AppShell {
                         {
                             self.submit_active_palette_fzf_search();
                         }
+                        if report.active_file_reloaded {
+                            self.invalidate_highlights_and_parse_active_buffer();
+                            self.force_flush_lsp_did_change_for_active_file();
+                        }
                     }
                     Err(err) => {
                         eprintln!("[AppShell] fs-event apply failed: {err}");
@@ -176,7 +180,24 @@ impl AsyncResultRouter for AppShell {
                 if self.maybe_refresh_workspace_git_branch(true) {
                     self.request_redraw();
                 }
-                if let Some(buffer_index) = self
+                if self.pending_right_pty_spawn {
+                    eprintln!(
+                        "[AppShell] right PTY ready: session={session_id} shell={shell} dir={}",
+                        working_dir.display()
+                    );
+                    self.pending_right_pty_spawn = false;
+                    self.right_pty_session_id = Some(session_id);
+                    self.right_terminal_needs_layout = true;
+                    self.submit(RequestSpec {
+                        revision_id: 0,
+                        topic: RequestTopic::TerminalPty,
+                        payload: WorkerRequestPayload::ResizePtySession {
+                            session_id,
+                            cols: self.right_terminal_grid.cols.min(u16::MAX as usize) as u16,
+                            rows: self.right_terminal_grid.rows.min(u16::MAX as usize) as u16,
+                        },
+                    });
+                } else if let Some(buffer_index) = self
                     .pending_lazygit_buffer_index
                     .take()
                     .or_else(|| self.pending_lazydocker_buffer_index.take())
@@ -229,6 +250,16 @@ impl AsyncResultRouter for AppShell {
                     self.terminal_needs_layout = true;
                     should_redraw = true;
                 }
+                if self.right_pty_session_id == Some(session_id) {
+                    let scrolled_rows = self.right_terminal_grid.feed_bytes(&chunk);
+                    if preserve_viewport {
+                        self.right_terminal_grid.view_scroll_up(scrolled_rows);
+                    } else {
+                        self.right_terminal_grid.view_scroll_to_bottom();
+                    }
+                    self.right_terminal_needs_layout = true;
+                    should_redraw = true;
+                }
                 if let Some(grid) = self.terminal_buffer_grids.get_mut(&session_id) {
                     let scrolled_rows = grid.feed_bytes(&chunk);
                     if preserve_viewport {
@@ -274,6 +305,10 @@ impl AsyncResultRouter for AppShell {
                 if self.pty_session_id == Some(session_id) {
                     eprintln!("[AppShell] PTY {session_id} closed: {reason}");
                     self.pty_session_id = None;
+                }
+                if self.right_pty_session_id == Some(session_id) {
+                    eprintln!("[AppShell] right PTY {session_id} closed: {reason}");
+                    self.right_pty_session_id = None;
                 }
                 if self.terminal_buffer_grids.contains_key(&session_id) {
                     eprintln!("[AppShell] terminal buffer PTY {session_id} closed: {reason}");
@@ -384,7 +419,10 @@ impl AsyncResultRouter for AppShell {
                 is_installed,
                 ..
             } => {
-                if !is_installed && !self.dismissed_lsp_binaries.contains(&binary) {
+                if !is_installed
+                    && !install_cmd.is_empty()
+                    && !self.dismissed_lsp_binaries.contains(&binary)
+                {
                     // Hiển thị popup hướng dẫn cài LSP.
                     self.active_lsp_guide = Some(LspInstallGuide {
                         binary,
@@ -392,7 +430,7 @@ impl AsyncResultRouter for AppShell {
                     });
                     self.request_redraw();
                 }
-                // Nếu đã cài hoặc user đã dismiss: không cần làm gì.
+                // Nếu đã cài hoặc user đã dismiss hoặc không có install_cmd: không cần làm gì.
             }
             WorkerResultPayload::LspHoverResult { content, .. } => {
                 use crate::app::app_state::{EditorOverlay, FloatingBoxStyle};

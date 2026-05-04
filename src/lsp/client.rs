@@ -930,7 +930,9 @@ pub fn detect_lsp_server_for_workspace(root_path: &Path) -> Option<String> {
 }
 
 pub fn detect_lsp_server_for_path(path: &Path) -> Option<String> {
-    language_profile_for_path(path).map(|profile| profile.lsp_binary.to_string())
+    language_profile_for_path(path)
+        .map(|profile| profile.lsp_binary.to_string())
+        .filter(|binary| !binary.is_empty())
 }
 
 fn parse_diagnostic(value: &Value) -> Option<LspDiagnostic> {

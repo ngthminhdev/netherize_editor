@@ -78,7 +78,7 @@ panel_line_height = 22.0
 
 # Theme-driven workbench chrome sizes.
 sidebar_width = 280.0
-right_sidebar_width = 320.0
+right_sidebar_width = 540.0
 bottom_panel_height = 220.0
 top_bar_height = 36.0
 

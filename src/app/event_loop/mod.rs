@@ -92,6 +92,11 @@ pub struct AppShell {
     scheduler: AsyncScheduler,
     bridge: Option<AppAsyncBridge>,
     pty_session_id: Option<u64>,
+    right_pty_session_id: Option<u64>,
+    right_terminal_grid: TerminalGrid,
+    right_terminal_needs_layout: bool,
+    last_right_terminal_bounds: Option<[f32; 4]>,
+    pending_right_pty_spawn: bool,
     terminal_buffer_grids: HashMap<u64, TerminalGrid>,
     pending_lazygit_buffer_index: Option<usize>,
     pending_lazydocker_buffer_index: Option<usize>,
@@ -168,6 +173,7 @@ pub struct AppShell {
     git_overlay_revision: u64,
     last_scroll_animation_tick: Instant,
     last_git_branch_refresh_at: Instant,
+    last_thinking_animation_tick: Instant,
 }
 
 const DEBUG_UI_ENABLED: bool = false;
@@ -176,6 +182,7 @@ const GIT_DIFF_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(80);
 const LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(500);
 const FPS_METRICS_UPDATE_INTERVAL: Duration = Duration::from_millis(500);
 const GIT_BRANCH_REFRESH_INTERVAL: Duration = Duration::from_millis(750);
+const THINKING_ANIMATION_INTERVAL: Duration = Duration::from_millis(400);
 
 #[derive(Debug, Clone)]
 struct ExplorerEntry {
@@ -338,6 +345,11 @@ impl AppShell {
         }
         if self.focus_manager.current() == FocusTarget::BottomPanel {
             return self.pty_session_id;
+        }
+        if self.focus_manager.current() == FocusTarget::RightSidebar
+            && self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal)
+        {
+            return self.right_pty_session_id;
         }
         None
     }

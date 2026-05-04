@@ -177,6 +177,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::DeleteToLineEnd
         | Command::ToggleLineComment
         | Command::ToggleSelectionComment
+        | Command::WrapSelectionWithStar
         | Command::DeleteWordForward
         | Command::DeleteWordBackward
         | Command::YankSelection
@@ -297,6 +298,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::BufferNext
         | Command::BufferPrev
         | Command::BufferCloseCurrent
+        | Command::BufferGoto(_)
         | Command::SwitchMode(_)
         | Command::EnterVisualLine
         | Command::LspHover
@@ -328,6 +330,11 @@ fn dispatch_command_with_clipboard_once(
         | Command::AiChatBackspace
         | Command::AiChatAcceptSuggestion
         | Command::AiChatInputText(_)
-        | Command::AiChatPromptInstall => session::dispatch(&mut ctx, command),
+        | Command::AiChatPromptInstall
+        | Command::ToggleMarkdownPreview
+        | Command::MarkdownPreviewScrollUp
+        | Command::MarkdownPreviewScrollDown
+        | Command::MarkdownPreviewScrollHalfPageUp
+        | Command::MarkdownPreviewScrollHalfPageDown => session::dispatch(&mut ctx, command),
     }
 }

@@ -55,6 +55,10 @@ impl AppShell {
             let quoted = shell_quote_path(&root_path);
             self.forward_to_terminal_session(session_id, &format!("\x15cd {quoted}\r"));
         }
+        if let Some(session_id) = self.right_pty_session_id {
+            let quoted = shell_quote_path(&root_path);
+            self.forward_to_terminal_session(session_id, &format!("\x15cd {quoted}\r"));
+        }
 
         self.sync_lsp_server_for_workspace();
 

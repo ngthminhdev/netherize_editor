@@ -108,6 +108,10 @@ impl AppShell {
                 }
                 _ => {}
             }
+
+            if self.app_state.markdown_preview.visible {
+                self.update_markdown_preview_content();
+            }
         }
 
         changed
@@ -326,6 +330,13 @@ impl AppShell {
                 changed,
             );
         }
+        if let Some(changed) = self.handle_markdown_preview_command(&command) {
+            return self.finalize_post_command_hooks(
+                &command_for_post_hooks,
+                should_persist_history_after,
+                changed,
+            );
+        }
 
         let changed = self.handle_generic_editor_command(command, repeat_count);
 
@@ -463,6 +474,88 @@ impl AppShell {
         }
 
         report.request_redraw || report.state_changed
+    }
+
+    fn handle_markdown_preview_command(&mut self, command: &Command) -> Option<bool> {
+        match command {
+            Command::ToggleMarkdownPreview => {
+                let preview = &mut self.app_state.markdown_preview;
+                preview.visible = !preview.visible;
+                if preview.visible {
+                    if !self.panel_state.right.visible {
+                        self.panel_state.right.visible = true;
+                        self.sidebar_needs_layout = true;
+                    }
+                    self.panel_state.right.switch_to_tab(PanelTabId::MarkdownPreview);
+                    self.focus_manager.set(FocusTarget::RightSidebar);
+                    self.input_handler.clear_pending_prefix();
+                    self.update_markdown_preview_content();
+                } else {
+                    if self.panel_state.right.active_tab_id()
+                        == Some(PanelTabId::MarkdownPreview)
+                    {
+                        self.panel_state.right.visible = false;
+                        self.sidebar_needs_layout = true;
+                    }
+                    if self.focus_manager.current() == FocusTarget::RightSidebar {
+                        self.focus_manager.set(FocusTarget::CenterEditor);
+                    }
+                }
+                Some(true)
+            }
+            Command::MarkdownPreviewScrollUp => {
+                let preview = &mut self.app_state.markdown_preview;
+                if !preview.visible {
+                    return Some(false);
+                }
+                preview.scroll_y = (preview.scroll_y - 3.0).max(0.0);
+                Some(true)
+            }
+            Command::MarkdownPreviewScrollDown => {
+                let preview = &mut self.app_state.markdown_preview;
+                if !preview.visible {
+                    return Some(false);
+                }
+                let max_scroll = preview.rendered_lines.len().saturating_sub(1) as f32;
+                preview.scroll_y = (preview.scroll_y + 3.0).min(max_scroll);
+                Some(true)
+            }
+            Command::MarkdownPreviewScrollHalfPageUp => {
+                let preview = &mut self.app_state.markdown_preview;
+                if !preview.visible {
+                    return Some(false);
+                }
+                preview.scroll_y = (preview.scroll_y - 15.0).max(0.0);
+                Some(true)
+            }
+            Command::MarkdownPreviewScrollHalfPageDown => {
+                let preview = &mut self.app_state.markdown_preview;
+                if !preview.visible {
+                    return Some(false);
+                }
+                let max_scroll = preview.rendered_lines.len().saturating_sub(1) as f32;
+                preview.scroll_y = (preview.scroll_y + 15.0).min(max_scroll);
+                Some(true)
+            }
+            _ => None,
+        }
+    }
+
+    fn update_markdown_preview_content(&mut self) {
+        let source = self.app_state.text_string();
+        let revision = self.app_state.revision();
+        let preview = &mut self.app_state.markdown_preview;
+
+        if preview.source_text == source && preview.source_revision == revision {
+            return;
+        }
+
+        preview.source_text = source.clone();
+        preview.source_revision = revision;
+        preview.rendered_lines = crate::app::event_loop::helpers::parse_markdown_preview_blocks(
+            &source,
+            &self.theme,
+        );
     }
 }
 

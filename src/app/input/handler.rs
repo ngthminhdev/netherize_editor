@@ -212,10 +212,17 @@ impl InputHandler {
 
         let input_debug = normalized.debug_label();
 
+        // AI Chat: key-repeat uses the same routing as a normal press so that
+        // holding Backspace or any character key works as expected.
+        if context.focus == InputFocusContext::AiChat {
+            return self.route_ai_chat_input(normalized, input_debug, context);
+        }
+
         if matches!(
             context.focus,
             InputFocusContext::BufferTerminal | InputFocusContext::Terminal
-        ) && let Some(payload) = terminal_input_payload(&normalized)
+        ) && context.mode != EditorMode::TerminalNormal
+            && let Some(payload) = terminal_input_payload(&normalized)
         {
             self.clear_pending_counts();
             return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(

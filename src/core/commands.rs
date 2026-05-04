@@ -76,6 +76,7 @@ pub enum Command {
     DeleteToLineEnd,
     ToggleLineComment,
     ToggleSelectionComment,
+    WrapSelectionWithStar,
     DeleteWordForward,
     DeleteWordBackward,
     YankSelection,
@@ -221,6 +222,7 @@ pub enum Command {
     BufferNext,
     BufferPrev,
     BufferCloseCurrent,
+    BufferGoto(usize),
 
     // ── Mode transitions ────────────────────────────────────────────────────────
     /// Request a mode change; actual transition decided by dispatcher / app state.
@@ -314,6 +316,18 @@ pub enum Command {
     JumpBack,
     /// ctrl+i: Nhảy tiến về vị trí sau trong jump list.
     JumpForward,
+
+    // ── Markdown Preview ──────────────────────────────────────────────────────
+    /// Toggle markdown preview panel in the right sidebar.
+    ToggleMarkdownPreview,
+    /// Scroll markdown preview up.
+    MarkdownPreviewScrollUp,
+    /// Scroll markdown preview down.
+    MarkdownPreviewScrollDown,
+    /// Scroll markdown preview up half page.
+    MarkdownPreviewScrollHalfPageUp,
+    /// Scroll markdown preview down half page.
+    MarkdownPreviewScrollHalfPageDown,
 }
 
 impl Command {
@@ -415,6 +429,10 @@ impl Command {
                 | Self::ExplorerExpandOrChild
                 | Self::TerminalScrollUp
                 | Self::TerminalScrollDown
+                | Self::MarkdownPreviewScrollUp
+                | Self::MarkdownPreviewScrollDown
+                | Self::MarkdownPreviewScrollHalfPageUp
+                | Self::MarkdownPreviewScrollHalfPageDown
         )
     }
 }
