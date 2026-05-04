@@ -529,30 +529,37 @@ impl Renderer {
                 .and_then(|statuses| statuses.get(&abs_line))
             {
                 let marker_height = run.line_height.max(1.0);
-                let (rect, color) = match status {
-                    crate::app::app_state::GitLineStatus::Added => (
-                        [gutter_x + 2.0, line_top_y, 3.0, marker_height],
-                        self.theme.git.added_gutter.as_f32(),
-                    ),
-                    crate::app::app_state::GitLineStatus::Modified => (
-                        [gutter_x + 2.0, line_top_y, 3.0, marker_height],
-                        self.theme.git.modified_gutter.as_f32(),
-                    ),
-                    crate::app::app_state::GitLineStatus::DeletedAbove => (
-                        [gutter_x + 1.0, line_top_y, 4.0, 2.0],
-                        self.theme.git.deleted_gutter.as_f32(),
-                    ),
-                    crate::app::app_state::GitLineStatus::DeletedBelow => (
-                        [
-                            gutter_x + 1.0,
-                            line_top_y + (marker_height - 2.0).max(0.0),
-                            4.0,
-                            2.0,
-                        ],
-                        self.theme.git.deleted_gutter.as_f32(),
-                    ),
-                };
-                quads.push(RegionDrawInstance::new(rect, color));
+                // Clip to viewport bounds
+                let clipped_top = line_top_y.max(viewport_top);
+                let clipped_bottom = (line_top_y + marker_height).min(viewport_bottom);
+                let clipped_height = (clipped_bottom - clipped_top).max(0.0);
+
+                if clipped_height > 0.0 {
+                    let (rect, color) = match status {
+                        crate::app::app_state::GitLineStatus::Added => (
+                            [gutter_x + 2.0, clipped_top, 3.0, clipped_height],
+                            self.theme.git.added_gutter.as_f32(),
+                        ),
+                        crate::app::app_state::GitLineStatus::Modified => (
+                            [gutter_x + 2.0, clipped_top, 3.0, clipped_height],
+                            self.theme.git.modified_gutter.as_f32(),
+                        ),
+                        crate::app::app_state::GitLineStatus::DeletedAbove => (
+                            [gutter_x + 1.0, clipped_top, 4.0, 2.0_f32.min(clipped_height)],
+                            self.theme.git.deleted_gutter.as_f32(),
+                        ),
+                        crate::app::app_state::GitLineStatus::DeletedBelow => (
+                            [
+                                gutter_x + 1.0,
+                                (clipped_top + (clipped_height - 2.0).max(0.0)).max(clipped_top),
+                                4.0,
+                                2.0_f32.min(clipped_height),
+                            ],
+                            self.theme.git.deleted_gutter.as_f32(),
+                        ),
+                    };
+                    quads.push(RegionDrawInstance::new(rect, color));
+                }
             }
 
             let num_str = if self.relative_numbers {
