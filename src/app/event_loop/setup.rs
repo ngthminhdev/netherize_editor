@@ -391,6 +391,19 @@ impl AppShell {
         }
 
         let runtime_scale = (dpi_scale * content_scale).max(0.5);
+
+        eprintln!(
+            "[scale] physical={}x{} scale_factor={:.2} dpi={:.2} logical={}x{} content={:.2} runtime={:.2}",
+            self.window_size.width,
+            self.window_size.height,
+            scale_factor,
+            dpi_scale,
+            logical_width as u32,
+            logical_height as u32,
+            content_scale,
+            self.runtime_scale
+        );
+
         if (runtime_scale - self.runtime_scale).abs() < 0.001 {
             return;
         }
@@ -440,6 +453,13 @@ impl AppShell {
         self.last_right_terminal_bounds = None;
         self.last_buffer_terminal_bounds = None;
         self.sidebar_selection_quads.clear();
+
+        eprintln!(
+            "[scale] applied: welcome_card_max_w={:.1} editor_font_size={:.1} panel_gap={:.1}",
+            scaled_ui.welcome.card_max_width,
+            scaled_ui.editor.font_size,
+            scaled_ui.layout.panel_gap
+        );
     }
 
     pub(super) fn sync_right_terminal_layout(&mut self, bounds: [f32; 4]) -> bool {
