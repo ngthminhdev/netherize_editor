@@ -486,6 +486,12 @@ impl AppShell {
                         self.panel_state.right.visible = true;
                         self.sidebar_needs_layout = true;
                     }
+                    // Save original width before override so it can be
+                    // restored when the preview is closed.  This prevents the
+                    // 50 % width from leaking into other right-panel tabs
+                    // such as AI chat.
+                    self.pre_markdown_preview_right_width =
+                        Some(self.panel_state.right.size_px);
                     // Auto-set width to 50% of window
                     let half_width = (self.window_size.width as f32 * 0.5).max(200.0);
                     self.panel_state.right.size_px = half_width;
@@ -494,6 +500,12 @@ impl AppShell {
                     self.input_handler.clear_pending_prefix();
                     self.update_markdown_preview_content();
                 } else {
+                    // Restore the original width that was saved when the
+                    // preview was opened, so other tabs keep their
+                    // configured width.
+                    if let Some(original_width) = self.pre_markdown_preview_right_width.take() {
+                        self.panel_state.right.size_px = original_width;
+                    }
                     if self.panel_state.right.active_tab_id()
                         == Some(PanelTabId::MarkdownPreview)
                     {

@@ -181,6 +181,7 @@ impl AppShell {
             last_scroll_animation_tick: now,
             last_git_branch_refresh_at: now,
             last_thinking_animation_tick: now,
+            pre_markdown_preview_right_width: None,
         })
     }
 

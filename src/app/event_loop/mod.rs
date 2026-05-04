@@ -174,6 +174,10 @@ pub struct AppShell {
     last_scroll_animation_tick: Instant,
     last_git_branch_refresh_at: Instant,
     last_thinking_animation_tick: Instant,
+    /// Saved right sidebar width before markdown preview overrode it to 50%.
+    /// Restored when the preview is closed so that AI chat and other tabs
+    /// keep their configured width.
+    pre_markdown_preview_right_width: Option<f32>,
 }
 
 const DEBUG_UI_ENABLED: bool = false;
