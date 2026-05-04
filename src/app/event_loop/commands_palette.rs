@@ -112,22 +112,7 @@ impl AppShell {
                 else {
                     return Some(false);
                 };
-                match self.app_state.attach_workspace(root.clone()) {
-                    Ok(()) => {
-                        self.persistent_state.push_recent(root);
-                        self.persistent_state.save();
-                        self.workspace_git_branch = self
-                            .app_state
-                            .workspace_root_path()
-                            .and_then(detect_git_branch);
-                        self.update_window_title();
-                        Some(true)
-                    }
-                    Err(err) => {
-                        eprintln!("[AppShell] recent project open failed: {err}");
-                        Some(false)
-                    }
-                }
+                Some(self.switch_workspace_to(root))
             }
             Command::OverlaySelectNext
             | Command::OverlaySelectPrev
