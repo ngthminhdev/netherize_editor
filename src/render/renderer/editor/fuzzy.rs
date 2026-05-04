@@ -174,6 +174,9 @@ impl Renderer {
                 CommandPaletteItemTone::Added => added_fg,
                 CommandPaletteItemTone::Removed => removed_fg,
                 CommandPaletteItemTone::Modified => modified_fg,
+                CommandPaletteItemTone::Function => self.theme.ui.info.as_f32(),
+                CommandPaletteItemTone::Type => self.theme.ui.warning.as_f32(),
+                CommandPaletteItemTone::Variable => self.theme.ui.success.as_f32(),
                 CommandPaletteItemTone::Default => {
                     if is_selected {
                         fg

@@ -4,7 +4,8 @@ use std::path::Path;
 use super::*;
 
 use crate::{
-    app::app_state::FloatingBoxBlock, async_runtime::message::FilePreviewLine,
+    app::app_state::{FloatingBoxBlock, MarkdownBlockType, MarkdownPreviewLine},
+    async_runtime::message::FilePreviewLine,
     syntax::highlight::highlight_snippet,
 };
 
@@ -291,6 +292,545 @@ pub(super) fn parse_hover_markdown_blocks(
     }
 
     blocks
+}
+
+pub(super) fn parse_markdown_preview_blocks(
+    source: &str,
+    theme: &ThemeConfig,
+) -> Vec<MarkdownPreviewLine> {
+    use crate::syntax::syntax_engine::{LanguageId, SyntaxEngine};
+
+    if source.is_empty() {
+        return Vec::new();
+    }
+
+    let mut engine = match SyntaxEngine::new(LanguageId::Markdown) {
+        Ok(engine) => engine,
+        Err(_) => return fallback_markdown_preview(source, theme),
+    };
+
+    let tree_state = match engine.parse_source(source, 0) {
+        Ok(state) => state,
+        Err(_) => return fallback_markdown_preview(source, theme),
+    };
+
+    let mut lines = Vec::new();
+    let root = tree_state.root_node();
+    render_markdown_node(root, source, theme, &mut lines);
+    lines
+}
+
+fn fallback_markdown_preview(source: &str, _theme: &ThemeConfig) -> Vec<MarkdownPreviewLine> {
+    source
+        .lines()
+        .map(|line| MarkdownPreviewLine {
+            text: line.to_string(),
+            spans: Vec::new(),
+            block_type: MarkdownBlockType::Paragraph,
+        })
+        .collect()
+}
+
+fn render_markdown_node(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+    theme: &ThemeConfig,
+    out: &mut Vec<MarkdownPreviewLine>,
+) {
+    let kind = node.kind();
+
+    match kind {
+        "document" => {
+            render_children(node, source, theme, out);
+        }
+        "atx_heading" => {
+            let level = heading_level_from_atx(node, source);
+            let content_text = heading_content_text(node, source);
+            let color = heading_color(level, theme);
+            let styled = if level <= 2 {
+                StyledTextSpan::with_style(
+                    0,
+                    content_text.len(),
+                    color,
+                    true,
+                    false,
+                )
+            } else {
+                StyledTextSpan::new(0, content_text.len(), color)
+            };
+            out.push(MarkdownPreviewLine {
+                text: content_text,
+                spans: vec![styled],
+                block_type: MarkdownBlockType::Heading(level),
+            });
+        }
+        "setext_heading" => {
+            let level = setext_heading_level(node, source);
+            let content_text = setext_heading_content(node, source);
+            let color = heading_color(level, theme);
+            let styled = if level <= 2 {
+                StyledTextSpan::with_style(
+                    0,
+                    content_text.len(),
+                    color,
+                    true,
+                    false,
+                )
+            } else {
+                StyledTextSpan::new(0, content_text.len(), color)
+            };
+            out.push(MarkdownPreviewLine {
+                text: content_text,
+                spans: vec![styled],
+                block_type: MarkdownBlockType::Heading(level),
+            });
+        }
+        "paragraph" => {
+            let text = node_text(node, source);
+            let spans = render_inline_spans(node, source, theme);
+            out.push(MarkdownPreviewLine {
+                text,
+                spans,
+                block_type: MarkdownBlockType::Paragraph,
+            });
+        }
+        "fenced_code_block" | "indented_code_block" => {
+            let code_text = code_block_content(node, source);
+            let lang = code_block_language(node, source);
+            let raw_spans = highlight_snippet(&code_text, &lang, theme);
+            let styled = syntax_spans_to_styled(&raw_spans, &code_text, theme);
+            for line_str in code_text.lines() {
+                out.push(MarkdownPreviewLine {
+                    text: line_str.to_string(),
+                    spans: styled
+                        .iter()
+                        .filter(|s| s.start < line_str.len())
+                        .cloned()
+                        .collect(),
+                    block_type: MarkdownBlockType::CodeBlock,
+                });
+            }
+            if code_text.ends_with('\n') || code_text.is_empty() {
+                out.push(MarkdownPreviewLine {
+                    text: String::new(),
+                    spans: Vec::new(),
+                    block_type: MarkdownBlockType::CodeBlock,
+                });
+            }
+        }
+        "block_quote" => {
+            let text = node_text(node, source);
+            for line_str in text.lines() {
+                let prefixed = format!("  │ {}", line_str);
+                let span = StyledTextSpan::new(
+                    0,
+                    prefixed.len(),
+                    theme.syntax.constant.as_u8(),
+                );
+                out.push(MarkdownPreviewLine {
+                    text: prefixed,
+                    spans: vec![span],
+                    block_type: MarkdownBlockType::BlockQuote,
+                });
+            }
+        }
+        "list" | "tight_list" | "loose_list" => {
+            render_children(node, source, theme, out);
+        }
+        "list_item" | "task_list_item" => {
+            let marker = list_marker_text(node, source);
+            let marker_len = marker.len();
+            let content = list_item_content(node, source);
+            let full_text = format!("{marker}{content}");
+            let mut spans = Vec::new();
+            spans.push(StyledTextSpan::new(
+                0,
+                marker_len,
+                theme.syntax.operator.as_u8(),
+            ));
+            if content.len() > 0 {
+                spans.push(StyledTextSpan::new(
+                    marker_len,
+                    full_text.len(),
+                    theme.syntax.identifier.as_u8(),
+                ));
+            }
+            out.push(MarkdownPreviewLine {
+                text: full_text,
+                spans,
+                block_type: MarkdownBlockType::ListItem,
+            });
+        }
+        "thematic_break" => {
+            out.push(MarkdownPreviewLine {
+                text: "─".repeat(40),
+                spans: vec![StyledTextSpan::new(
+                    0,
+                    40,
+                    theme.syntax.punctuation.as_u8(),
+                )],
+                block_type: MarkdownBlockType::HorizontalRule,
+            });
+        }
+        "table" => {
+            render_table(node, source, theme, out);
+        }
+        "html_block" => {
+            let text = node_text(node, source);
+            for line_str in text.lines() {
+                out.push(MarkdownPreviewLine {
+                    text: line_str.to_string(),
+                    spans: vec![StyledTextSpan::new(
+                        0,
+                        line_str.len(),
+                        theme.syntax.tag.as_u8(),
+                    )],
+                    block_type: MarkdownBlockType::Paragraph,
+                });
+            }
+        }
+        _ => {
+            render_children(node, source, theme, out);
+        }
+    }
+}
+
+fn render_children(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+    theme: &ThemeConfig,
+    out: &mut Vec<MarkdownPreviewLine>,
+) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        render_markdown_node(child, source, theme, out);
+    }
+}
+
+fn render_inline_spans(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+    theme: &ThemeConfig,
+) -> Vec<StyledTextSpan> {
+    let mut spans = Vec::new();
+    collect_inline_spans(node, source, theme, &mut spans);
+    // Fallback: if tree-sitter inline grammar didn't produce spans,
+    // manually parse backticks for inline code highlighting.
+    if spans.is_empty() {
+        let text = node_text(node, source);
+        let byte_offset = node.start_byte();
+        let chars: Vec<char> = text.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i] == '`' {
+                let content_start = i + 1;
+                let mut content_end = content_start;
+                while content_end < chars.len() && chars[content_end] != '`' {
+                    content_end += 1;
+                }
+                if content_end < chars.len() && content_end > content_start {
+                    let byte_start = byte_offset
+                        + text[..]
+                            .char_indices()
+                            .nth(content_start)
+                            .map(|(idx, _)| idx)
+                            .unwrap_or(text.len());
+                    let byte_end = byte_offset
+                        + text[..]
+                            .char_indices()
+                            .nth(content_end)
+                            .map(|(idx, _)| idx)
+                            .unwrap_or(text.len());
+                    spans.push(StyledTextSpan::new(
+                        byte_start,
+                        byte_end,
+                        theme.syntax.string.as_u8(),
+                    ));
+                    i = content_end + 1;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+    }
+    spans
+}
+
+fn collect_inline_spans(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+    theme: &ThemeConfig,
+    spans: &mut Vec<StyledTextSpan>,
+) {
+    let kind = node.kind();
+    let start = node.start_byte();
+    let end = node.end_byte();
+
+    match kind {
+        "emphasis" => {
+            spans.push(StyledTextSpan::with_style(
+                start,
+                end,
+                theme.syntax.comment.as_u8(),
+                false,
+                true,
+            ));
+        }
+        "strong_emphasis" => {
+            spans.push(StyledTextSpan::with_style(
+                start,
+                end,
+                theme.syntax.keyword.as_u8(),
+                true,
+                false,
+            ));
+        }
+        "code_span" => {
+            spans.push(StyledTextSpan::new(
+                start,
+                end,
+                theme.syntax.string.as_u8(),
+            ));
+        }
+        "link" | "link_text" => {
+            spans.push(StyledTextSpan::with_style(
+                start,
+                end,
+                theme.syntax.function.as_u8(),
+                false,
+                true,
+            ));
+        }
+        "link_destination" | "uri_autolink" | "email_autolink" | "www_autolink" => {
+            spans.push(StyledTextSpan::new(
+                start,
+                end,
+                theme.syntax.string.as_u8(),
+            ));
+        }
+        "image" => {
+            spans.push(StyledTextSpan::new(
+                start,
+                end,
+                theme.syntax.constant.as_u8(),
+            ));
+        }
+        "strikethrough" => {
+            spans.push(StyledTextSpan::new(
+                start,
+                end,
+                theme.syntax.punctuation.as_u8(),
+            ));
+        }
+        "backslash_escape" | "character_reference" => {
+            spans.push(StyledTextSpan::new(
+                start,
+                end,
+                theme.syntax.escape.as_u8(),
+            ));
+        }
+        "html_open_tag" | "html_close_tag" | "html_self_closing_tag" => {
+            spans.push(StyledTextSpan::new(
+                start,
+                end,
+                theme.syntax.tag.as_u8(),
+            ));
+        }
+        "html_comment" => {
+            spans.push(StyledTextSpan::with_style(
+                start,
+                end,
+                theme.syntax.comment.as_u8(),
+                false,
+                true,
+            ));
+        }
+        _ => {
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                collect_inline_spans(child, source, theme, spans);
+            }
+        }
+    }
+}
+
+fn heading_level_from_atx(node: tree_sitter::Node<'_>, _source: &str) -> u8 {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "atx_h1_marker" => return 1,
+            "atx_h2_marker" => return 2,
+            "atx_h3_marker" => return 3,
+            "atx_h4_marker" => return 4,
+            "atx_h5_marker" => return 5,
+            "atx_h6_marker" => return 6,
+            _ => {}
+        }
+    }
+    1
+}
+
+fn heading_content_text(node: tree_sitter::Node<'_>, source: &str) -> String {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "inline" {
+            return child
+                .utf8_text(source.as_bytes())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+        }
+    }
+    node_text(node, source)
+}
+
+fn setext_heading_level(node: tree_sitter::Node<'_>, _source: &str) -> u8 {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "setext_h1_underline" => return 1,
+            "setext_h2_underline" => return 2,
+            _ => {}
+        }
+    }
+    1
+}
+
+fn setext_heading_content(node: tree_sitter::Node<'_>, source: &str) -> String {
+    let mut lines = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() != "setext_h1_underline" && child.kind() != "setext_h2_underline" {
+            let text = child
+                .utf8_text(source.as_bytes())
+                .unwrap_or("")
+                .to_string();
+            if !text.is_empty() {
+                lines.push(text);
+            }
+        }
+    }
+    lines.join(" ").trim().to_string()
+}
+
+fn heading_color(level: u8, theme: &ThemeConfig) -> [u8; 4] {
+    match level {
+        1 => theme.syntax.keyword.as_u8(),
+        2 => theme.syntax.function.as_u8(),
+        3 => theme.syntax.r#type.as_u8(),
+        _ => theme.syntax.constant.as_u8(),
+    }
+}
+
+fn node_text(node: tree_sitter::Node<'_>, source: &str) -> String {
+    node.utf8_text(source.as_bytes())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn code_block_content(node: tree_sitter::Node<'_>, source: &str) -> String {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "code_fence_content" {
+            return node_text(child, source);
+        }
+        if child.kind() == "text" {
+            return node_text(child, source);
+        }
+    }
+    node_text(node, source)
+}
+
+fn code_block_language(node: tree_sitter::Node<'_>, source: &str) -> String {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "info_string" || child.kind() == "language" {
+            return node_text(child, source).trim().to_string();
+        }
+    }
+    String::new()
+}
+
+fn list_marker_text(node: tree_sitter::Node<'_>, source: &str) -> String {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "list_marker_plus" | "list_marker_minus" | "list_marker_star"
+            | "list_marker_dot" | "list_marker_parenthesis"
+            | "task_list_marker_checked" | "task_list_marker_unchecked"
+            | "list_marker" | "task_list_item_marker" => {
+                return format!("{} ", node_text(child, source).trim());
+            }
+            _ => {}
+        }
+    }
+    "• ".to_string()
+}
+
+fn list_item_content(node: tree_sitter::Node<'_>, source: &str) -> String {
+    let mut parts = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "list_marker_plus" | "list_marker_minus" | "list_marker_star"
+            | "list_marker_dot" | "list_marker_parenthesis"
+            | "task_list_marker_checked" | "task_list_marker_unchecked"
+            | "list_marker" | "task_list_item_marker"
+            | "paragraph_continuation" => {}
+            _ => {
+                let text = node_text(child, source);
+                if !text.is_empty() {
+                    parts.push(text.trim().to_string());
+                }
+            }
+        }
+    }
+    parts.join(" ")
+}
+
+fn render_table(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+    theme: &ThemeConfig,
+    out: &mut Vec<MarkdownPreviewLine>,
+) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "table_header_row" => {
+                let text = node_text(child, source);
+                let spans = vec![StyledTextSpan::with_style(
+                    0,
+                    text.len(),
+                    theme.syntax.keyword.as_u8(),
+                    true,
+                    false,
+                )];
+                out.push(MarkdownPreviewLine {
+                    text,
+                    spans,
+                    block_type: MarkdownBlockType::TableHeader,
+                });
+            }
+            "table_delimiter_row" => {
+                let text = node_text(child, source);
+                out.push(MarkdownPreviewLine {
+                    text,
+                    spans: vec![],
+                    block_type: MarkdownBlockType::Empty,
+                });
+            }
+            "table_data_row" => {
+                let text = node_text(child, source);
+                out.push(MarkdownPreviewLine {
+                    text,
+                    spans: vec![],
+                    block_type: MarkdownBlockType::TableRow,
+                });
+            }
+            _ => {}
+        }
+    }
 }
 
 pub(super) fn scale_theme(base: &ThemeConfig, scale: f32) -> ThemeConfig {

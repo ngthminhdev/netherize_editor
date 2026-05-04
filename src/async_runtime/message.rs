@@ -27,6 +27,8 @@ pub enum RequestTopic {
     FilePreview,
     AiInlineCompletion,
     LocalHistory,
+    AiChat,
+    AiInstall,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -237,6 +239,11 @@ pub enum WorkerRequestPayload {
         line: u32,
         character: u32,
     },
+    /// textDocument/documentSymbol request for the active file.
+    LspDocumentSymbolsRequest {
+        language_id: String,
+        uri: String,
+    },
     /// textDocument/formatting request.
     LspFormattingRequest {
         language_id: String,
@@ -266,6 +273,22 @@ pub enum WorkerRequestPayload {
         file_path: Option<PathBuf>,
         max_tokens: u32,
     },
+    AiChatRequest {
+        prompt: String,
+        buffer_context: String,
+        cursor_position: (usize, usize),
+        history: Vec<(String, String)>,
+        active_buffer_path: Option<PathBuf>,
+        workspace_root: Option<PathBuf>,
+        /// User-attached files to include in the AI prompt context.
+        file_refs: Vec<PathBuf>,
+        /// Optional model override (e.g. "anthropic/claude-opus-4-5").
+        model: Option<String>,
+        /// Optional primary agent override (e.g. "build" or "plan").
+        agent: Option<String>,
+    },
+    /// Install the opencode CLI on the host machine.
+    AiInstallRequest,
     StopLspServer,
     ShutdownAllLspServers,
 }
@@ -307,6 +330,13 @@ pub struct LspCompletionItem {
     pub insert_text: Option<String>,
     pub text_edit_text: Option<String>,
     pub kind: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LspDocumentSymbol {
+    pub name: String,
+    pub kind: String,
+    pub range: LspRange,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -441,6 +471,11 @@ pub enum WorkerResultPayload {
     LspReferencesResult {
         locations: Vec<LspLocation>,
     },
+    /// textDocument/documentSymbol response.
+    LspDocumentSymbolsResult {
+        uri: String,
+        symbols: Vec<LspDocumentSymbol>,
+    },
     /// textDocument/formatting response.
     LspFormattingResult {
         uri: String,
@@ -526,6 +561,15 @@ pub enum WorkerEventKind {
 pub enum WorkerMessage {
     Event(WorkerEvent),
     Result(WorkerResult),
+    AiMessageChunk {
+        text: String,
+    },
+    AiStreamComplete,
+    AiStreamError {
+        error: String,
+    },
+    /// The opencode CLI was installed successfully; the editor should restart.
+    AiInstallSuccess,
 }
 
 /// RequestSpec giúp caller tạo request mà không cần tự cấp request_id.

@@ -13,10 +13,12 @@ pub enum LanguageId {
     TypeScript,
     Tsx,
     Go,
+    Sql,
     Yaml,
     Dockerfile,
     Json,
     Bash,
+    Markdown,
 }
 
 impl LanguageId {
@@ -28,10 +30,12 @@ impl LanguageId {
             Self::TypeScript => "typescript",
             Self::Tsx => "tsx",
             Self::Go => "go",
+            Self::Sql => "sql",
             Self::Yaml => "yaml",
             Self::Dockerfile => "dockerfile",
             Self::Json => "json",
             Self::Bash => "bash",
+            Self::Markdown => "markdown",
         }
     }
 }
@@ -274,6 +278,17 @@ mod tests {
 
         assert_eq!(state.language_id().as_str(), "go");
         assert_eq!(state.root_node().kind(), "source_file");
+    }
+
+    #[test]
+    fn sql_parser_bootstrap_returns_source_file_root() {
+        let mut engine = SyntaxEngine::new(LanguageId::Sql).expect("init sql parser");
+        let state = engine
+            .parse_source("SELECT COUNT(*) FROM users WHERE id = 1;", 1)
+            .expect("parse sql");
+
+        assert_eq!(state.language_id().as_str(), "sql");
+        assert_eq!(state.root_node().kind(), "program");
     }
 
     #[test]

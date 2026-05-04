@@ -436,6 +436,11 @@ mode = "visual"
 key = "mod+v"
 command = "editor.paste"
 
+[[bindings]]
+mode = "visual"
+key = "*"
+command = "editor.wrap_selection_with_star"
+
 # ───────────────── TERMINAL ─────────────────
 [[bindings]]
 mode = "terminal"
@@ -704,6 +709,11 @@ command = "app.open_file_picker"
 
 [[bindings]]
 mode = "normal"
+key = "<leader>f p"
+command = "app.open_document_symbols"
+
+[[bindings]]
+mode = "normal"
 key = "<leader>f w"
 command = "app.search_in_files"
 
@@ -734,6 +744,21 @@ command = "editor.save_file"
 
 [[bindings]]
 mode = "normal"
+key = "<leader>a a"
+command = "ai.chat_toggle"
+
+[[bindings]]
+mode = "normal"
+key = "<leader>a f"
+command = "ai.chat_focus"
+
+[[bindings]]
+mode = "visual"
+key = "<leader>a c"
+command = "ai.chat_add_selection_context"
+
+[[bindings]]
+mode = "normal"
 key = "<leader>d s"
 command = "diagnostics.open_picker"
 
@@ -741,6 +766,56 @@ command = "diagnostics.open_picker"
 mode = "normal"
 key = "<leader>x"
 command = "buffer.close_current"
+
+[[bindings]]
+mode = "normal"
+key = "mod+1"
+command = "buffer.goto_1"
+
+[[bindings]]
+mode = "normal"
+key = "mod+2"
+command = "buffer.goto_2"
+
+[[bindings]]
+mode = "normal"
+key = "mod+3"
+command = "buffer.goto_3"
+
+[[bindings]]
+mode = "normal"
+key = "mod+4"
+command = "buffer.goto_4"
+
+[[bindings]]
+mode = "normal"
+key = "mod+5"
+command = "buffer.goto_5"
+
+[[bindings]]
+mode = "normal"
+key = "mod+6"
+command = "buffer.goto_6"
+
+[[bindings]]
+mode = "normal"
+key = "mod+7"
+command = "buffer.goto_7"
+
+[[bindings]]
+mode = "normal"
+key = "mod+8"
+command = "buffer.goto_8"
+
+[[bindings]]
+mode = "normal"
+key = "mod+9"
+command = "buffer.goto_9"
+
+[[bindings]]
+mode = "normal"
+key = "<leader>m p"
+command = "app.toggle_markdown_preview"
 
 # ───────────────── PALETTE ─────────────────
 [[bindings]]

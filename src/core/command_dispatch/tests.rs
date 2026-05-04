@@ -119,6 +119,22 @@ fn insert_quote_auto_pairs_and_step_over_works() {
 }
 
 #[test]
+fn insert_backtick_auto_pairs_and_step_over_works() {
+    let mut app_state = AppState::new(unique_temp_path("backtick_pair"));
+
+    let open = dispatch_command(&mut app_state, Command::InsertChar('`'));
+    assert!(open.success);
+    assert_eq!(app_state.text_string(), "``");
+    assert_eq!(app_state.cursor_line_col(), (0, 1));
+
+    let step = dispatch_command(&mut app_state, Command::InsertChar('`'));
+    assert!(step.success);
+    assert!(step.state_changed);
+    assert_eq!(app_state.text_string(), "``");
+    assert_eq!(app_state.cursor_line_col(), (0, 2));
+}
+
+#[test]
 fn insert_closing_paren_steps_over_existing_closer() {
     let mut app_state = AppState::new(unique_temp_path("step_over"));
     let _ = dispatch_command(&mut app_state, Command::InsertChar('('));
@@ -216,6 +232,20 @@ fn backspace_between_empty_quotes_deletes_both_chars() {
     let open = dispatch_command(&mut app_state, Command::InsertChar('"'));
     assert!(open.success);
     assert_eq!(app_state.text_string(), "\"\"");
+
+    let backspace = dispatch_command(&mut app_state, Command::Backspace);
+    assert!(backspace.success);
+    assert!(backspace.state_changed);
+    assert_eq!(app_state.text_string(), "");
+}
+
+#[test]
+fn backspace_between_empty_backticks_deletes_both_chars() {
+    let mut app_state = AppState::new(unique_temp_path("smart_backspace_dispatch_backticks"));
+
+    let open = dispatch_command(&mut app_state, Command::InsertChar('`'));
+    assert!(open.success);
+    assert_eq!(app_state.text_string(), "``");
 
     let backspace = dispatch_command(&mut app_state, Command::Backspace);
     assert!(backspace.success);

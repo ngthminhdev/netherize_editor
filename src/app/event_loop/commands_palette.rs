@@ -1,0 +1,412 @@
+use super::*;
+
+impl AppShell {
+    pub(super) fn handle_palette_and_open_command(
+        &mut self,
+        command: &Command,
+        repeat_count: usize,
+        command_for_post_hooks: &Command,
+    ) -> Option<bool> {
+        match command {
+            Command::OpenFilePicker
+            | Command::OpenFileFinder
+            | Command::OpenCommandPalette
+            | Command::OpenVimCommand
+            | Command::OpenWorkspaceSymbols
+            | Command::OpenDocumentSymbols
+            | Command::OpenInFileSearch
+            | Command::SearchInFiles
+            | Command::OpenFileHistory
+            | Command::OpenThemeSelector
+            | Command::OpenHelp => {
+                let opens_center_buffer = matches!(
+                    command,
+                    Command::OpenFileFinder
+                        | Command::SearchInFiles
+                        | Command::OpenFileHistory
+                        | Command::OpenHelp
+                );
+                let report = dispatch_command(&mut self.app_state, command.clone());
+                if report.success {
+                    if opens_center_buffer {
+                        self.editor_needs_layout = true;
+                        self.editor_caret_needs_layout = false;
+                    }
+                    let focus_changed = if opens_center_buffer {
+                        self.clear_palette_ime_commit_suppression();
+                        self.focus_manager.set(FocusTarget::CenterEditor)
+                    } else {
+                        self.arm_palette_ime_commit_suppression();
+                        self.focus_manager.set(FocusTarget::OverlayLayer)
+                    };
+                    if focus_changed {
+                        self.input_handler.clear_pending_prefix();
+                    }
+                    if matches!(command_for_post_hooks, Command::OpenFileHistory)
+                        && !self.app_state.command_palette_result_labels().is_empty()
+                    {
+                        let _ = self.app_state.preview_file_history_index(0);
+                        if let Some((lines, preview_text)) =
+                            self.app_state.build_file_history_diff_preview()
+                        {
+                            let extension = self
+                                .app_state
+                                .active_fuzzy_picker_buffer()
+                                .and_then(|state| state.source_file_path.as_ref())
+                                .and_then(|path| path.extension())
+                                .and_then(|ext| ext.to_str())
+                                .unwrap_or_default();
+                            let preview_spans = syntax_spans_to_styled(
+                                &crate::syntax::highlight::highlight_snippet(
+                                    &preview_text,
+                                    extension,
+                                    &self.theme,
+                                ),
+                                &preview_text,
+                                &self.theme,
+                            );
+                            let _ = self.app_state.set_fuzzy_picker_preview(
+                                lines,
+                                preview_text,
+                                preview_spans,
+                            );
+                        }
+                    }
+                    if matches!(command_for_post_hooks, Command::OpenDocumentSymbols) {
+                        self.submit_lsp_document_symbols();
+                    }
+                }
+                Some(report.request_redraw)
+            }
+            Command::OverlaySelectNext
+            | Command::OverlaySelectPrev
+            | Command::FilePickerSelectNext
+            | Command::FilePickerSelectPrev
+                if self.app_state.buffers().is_empty()
+                    && (!self.app_state.is_command_palette_visible()
+                        || self.app_state.command_palette_mode()
+                            == Some(CommandPaletteMode::RecentProjects)) =>
+            {
+                if !self.app_state.is_command_palette_visible() {
+                    self.app_state
+                        .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
+                }
+                let report = dispatch_command(&mut self.app_state, command.clone());
+                Some(report.request_redraw || report.state_changed)
+            }
+            Command::FilePickerConfirmSelection
+                if self.app_state.buffers().is_empty()
+                    && (!self.app_state.is_command_palette_visible()
+                        || self.app_state.command_palette_mode()
+                            == Some(CommandPaletteMode::RecentProjects)) =>
+            {
+                self.app_state
+                    .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
+                let selected = self.app_state.command_palette_selected_index().min(
+                    self.persistent_state
+                        .recent_projects
+                        .len()
+                        .saturating_sub(1),
+                );
+                let Some(root) = self.persistent_state.recent_projects.get(selected).cloned()
+                else {
+                    return Some(false);
+                };
+                match self.app_state.attach_workspace(root.clone()) {
+                    Ok(()) => {
+                        self.persistent_state.push_recent(root);
+                        self.persistent_state.save();
+                        self.workspace_git_branch = self
+                            .app_state
+                            .workspace_root_path()
+                            .and_then(detect_git_branch);
+                        Some(true)
+                    }
+                    Err(err) => {
+                        eprintln!("[AppShell] recent project open failed: {err}");
+                        Some(false)
+                    }
+                }
+            }
+            Command::OverlaySelectNext
+            | Command::OverlaySelectPrev
+            | Command::FilePickerSelectNext
+            | Command::FilePickerSelectPrev
+                if self.app_state.active_buffer_is_fuzzy_picker() =>
+            {
+                let _ = self.app_state.clear_completion();
+                let report = {
+                    let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
+                    dispatch_command_with_clipboard_count(
+                        app_state,
+                        command.clone(),
+                        repeat_count,
+                        Some(clipboard),
+                    )
+                };
+                if !report.success {
+                    return Some(report.request_redraw);
+                }
+                if report.state_changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                }
+                if self.app_state.command_palette_mode() == Some(CommandPaletteMode::FileHistory) {
+                    if let Some(
+                        crate::app::command_palette::CommandPaletteAction::SelectFileHistoryEntry(
+                            index,
+                        ),
+                    ) = self.app_state.command_palette_selected_action()
+                    {
+                        let _ = self.app_state.preview_file_history_index(index);
+                        if let Some((lines, preview_text)) =
+                            self.app_state.build_file_history_diff_preview()
+                        {
+                            let extension = self
+                                .app_state
+                                .active_fuzzy_picker_buffer()
+                                .and_then(|state| state.source_file_path.as_ref())
+                                .and_then(|path| path.extension())
+                                .and_then(|ext| ext.to_str())
+                                .unwrap_or_default();
+                            let preview_spans = syntax_spans_to_styled(
+                                &crate::syntax::highlight::highlight_snippet(
+                                    &preview_text,
+                                    extension,
+                                    &self.theme,
+                                ),
+                                &preview_text,
+                                &self.theme,
+                            );
+                            let _ = self.app_state.set_fuzzy_picker_preview(
+                                lines,
+                                preview_text,
+                                preview_spans,
+                            );
+                        }
+                    }
+                } else {
+                    self.submit_active_palette_fzf_search();
+                    self.submit_fuzzy_picker_preview_load();
+                }
+                Some(report.request_redraw || report.state_changed)
+            }
+            Command::FilePickerAppendQuery(_)
+            | Command::FilePickerBackspaceQuery
+            | Command::EditorPaste
+            | Command::PasteSystemClipboard
+                if self.app_state.active_buffer_is_fuzzy_picker() =>
+            {
+                let report = {
+                    let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
+                    dispatch_palette_overlay_command(app_state, clipboard, command.clone())
+                };
+                if !report.success {
+                    return Some(report.request_redraw);
+                }
+                if report.state_changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                }
+                self.submit_active_palette_fzf_search();
+                self.submit_fuzzy_picker_preview_load();
+                self.request_redraw();
+                Some(true)
+            }
+            Command::FilePickerAppendQuery(_)
+            | Command::FilePickerBackspaceQuery
+            | Command::EditorPaste
+            | Command::PasteSystemClipboard
+                if self.app_state.current_mode() == EditorMode::PaletteFocus
+                    && self.app_state.is_command_palette_visible() =>
+            {
+                let is_typing_edit = matches!(
+                    command,
+                    Command::InsertChar(_)
+                        | Command::InsertText(_)
+                        | Command::Backspace
+                        | Command::Newline
+                );
+                if is_typing_edit {
+                    let _ = self.app_state.clear_completion();
+                }
+                let report = {
+                    let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
+                    dispatch_palette_overlay_command(app_state, clipboard, command.clone())
+                };
+                if !report.success {
+                    return Some(report.request_redraw);
+                }
+
+                match self.app_state.command_palette_mode() {
+                    Some(
+                        CommandPaletteMode::ExplorerCreateFile
+                        | CommandPaletteMode::ExplorerCreateFolder
+                        | CommandPaletteMode::ExplorerRenameFull
+                        | CommandPaletteMode::ExplorerRenameBase,
+                    ) => {}
+                    Some(CommandPaletteMode::FilePicker | CommandPaletteMode::LiveGrep) => {
+                        self.submit_active_palette_fzf_search();
+                    }
+                    Some(CommandPaletteMode::InFileSearch) => {
+                        let _ = self.sync_in_file_search_with_palette_query();
+                    }
+                    _ => {}
+                }
+
+                Some(report.request_redraw || report.state_changed)
+            }
+            Command::BufferCloseCurrent => {
+                if self.app_state.is_dirty() && self.app_state.active_file().is_some() {
+                    Some(self.begin_dirty_buffer_close_confirmation())
+                } else {
+                    Some(self.close_current_buffer_now())
+                }
+            }
+            Command::CloseFilePicker => {
+                let returns_to_explorer = matches!(
+                    self.app_state.command_palette_mode(),
+                    Some(
+                        CommandPaletteMode::ExplorerCreateFile
+                            | CommandPaletteMode::ExplorerCreateFolder
+                            | CommandPaletteMode::ExplorerRenameFull
+                            | CommandPaletteMode::ExplorerRenameBase
+                            | CommandPaletteMode::ExplorerDeleteConfirm
+                    )
+                );
+                let report = dispatch_command(&mut self.app_state, command.clone());
+                self.clear_palette_ime_commit_suppression();
+                let focus_changed = if returns_to_explorer {
+                    let _ = self.app_state.apply_mode_event(ModeEvent::ExitFocus);
+                    self.focus_manager.set(FocusTarget::LeftSidebar)
+                } else {
+                    self.focus_manager.set(FocusTarget::CenterEditor)
+                };
+                if focus_changed {
+                    self.input_handler.clear_pending_prefix();
+                }
+                Some(report.request_redraw)
+            }
+            Command::FilePickerConfirmSelection | Command::OpenFile(_) => {
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
+                        Some(
+                            CommandPaletteMode::ExplorerCreateFile
+                                | CommandPaletteMode::ExplorerCreateFolder
+                                | CommandPaletteMode::ExplorerRenameFull
+                                | CommandPaletteMode::ExplorerRenameBase
+                        )
+                    )
+                {
+                    return Some(self.confirm_explorer_prompt());
+                }
+
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::RecentProjects)
+                    )
+                {
+                    return Some(self.confirm_recent_project_selection());
+                }
+
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::ThemeSelector)
+                    )
+                {
+                    return Some(self.confirm_theme_selection());
+                }
+
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::InFileSearch)
+                    )
+                {
+                    let report = dispatch_command(&mut self.app_state, command.clone());
+                    if report.state_changed {
+                        let prev_scroll = self.app_state.target_scroll_y;
+                        let viewport_lines = self.editor_viewport_lines();
+                        self.app_state.auto_scroll_to_cursor(viewport_lines);
+                        if (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON {
+                            self.editor_needs_layout = true;
+                            self.editor_caret_needs_layout = false;
+                        } else {
+                            self.editor_caret_needs_layout = true;
+                        }
+                    }
+                    if self.focus_manager.set(FocusTarget::CenterEditor) {
+                        self.input_handler.clear_pending_prefix();
+                    }
+                    let _ = self.release_focus_mode_to_editor();
+                    return Some(report.request_redraw || report.success);
+                }
+
+                let file_before = self.app_state.active_file().map(PathBuf::from);
+                let palette_mode_before = if matches!(command, Command::FilePickerConfirmSelection)
+                {
+                    self.app_state.command_palette_mode()
+                } else {
+                    None
+                };
+
+                let is_open_file = matches!(command, Command::OpenFile(_));
+                let report = {
+                    let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
+                    dispatch_command_with_clipboard(app_state, command.clone(), Some(clipboard))
+                };
+                self.reconcile_highlight_spans_with_pending_edits();
+
+                let file_after = self.app_state.active_file().map(PathBuf::from);
+                let file_changed = report.success && file_after != file_before;
+                let mut parsed_after_file_change = false;
+
+                if file_changed {
+                    self.invalidate_highlights_and_parse_active_buffer();
+                    parsed_after_file_change = true;
+
+                    if let Some(path) = file_after.as_ref() {
+                        self.explorer_reveal_file(path);
+                    }
+
+                    self.submit_lsp_did_open_for_active_file();
+                    let _ = self.sync_focus_mode_for_active_buffer();
+
+                    if let Some(path) = file_after.as_ref() {
+                        self.submit_lsp_check_for_path(path.clone());
+                    }
+                }
+
+                if report.success {
+                    let viewport_lines = self.editor_viewport_lines();
+                    if palette_mode_before == Some(CommandPaletteMode::DocumentSymbols) {
+                        self.app_state.center_cursor_line(viewport_lines);
+                    } else {
+                        self.app_state.auto_scroll_to_cursor(viewport_lines);
+                    }
+                }
+
+                if report.state_changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                }
+                if (report.state_changed || file_changed) && !parsed_after_file_change {
+                    self.submit_parse_for_active_buffer(true);
+                }
+
+                if !is_open_file {
+                    if self.focus_manager.set(FocusTarget::CenterEditor) {
+                        self.input_handler.clear_pending_prefix();
+                    }
+                    let _ = self.release_focus_mode_to_editor();
+                }
+
+                Some(report.request_redraw || report.success)
+            }
+            _ => None,
+        }
+    }
+}

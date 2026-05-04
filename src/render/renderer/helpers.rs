@@ -236,6 +236,15 @@ pub(super) fn clamp_x_in_bounds(x: f32, min_x: f32, max_x: f32) -> f32 {
     x.clamp(min_x, max_x)
 }
 
+/// `f32::clamp` panics when `min > max` (e.g. container too small for a
+/// minimum widget size). This variant guarantees `max >= min` by taking
+/// `max(min, max)` first, so layout code never panics on tiny viewports.
+#[inline]
+pub(super) fn layout_clamp(value: f32, min: f32, max: f32) -> f32 {
+    let safe_max = max.max(min);
+    value.clamp(min, safe_max)
+}
+
 // ── Caret geometry ────────────────────────────────────────────────────────────
 
 /// Build the caret rect for the current mode.

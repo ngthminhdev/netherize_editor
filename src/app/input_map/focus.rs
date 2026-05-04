@@ -362,6 +362,73 @@ impl InputMap {
         )
     }
 
+    pub(super) fn resolve_markdown_preview_focus(
+        &self,
+        input: &NormalizedInput,
+    ) -> Option<KeybindingMatch> {
+        use KeyCode::*;
+
+        if input.named_key == Some(NamedKey::Escape)
+            || (input.has_command_modifier() && input.physical_key == Some(KeyW))
+        {
+            return Some(KeybindingMatch {
+                command: Command::FocusEditor,
+                reason: "preview: Esc/Ctrl+W -> FocusEditor",
+            });
+        }
+
+        if !input.has_command_modifier()
+            && (input.named_key == Some(NamedKey::ArrowDown) || input.physical_key == Some(KeyJ))
+        {
+            return Some(KeybindingMatch {
+                command: Command::MarkdownPreviewScrollDown,
+                reason: "preview: j/down -> scroll down",
+            });
+        }
+        if !input.has_command_modifier()
+            && (input.named_key == Some(NamedKey::ArrowUp) || input.physical_key == Some(KeyK))
+        {
+            return Some(KeybindingMatch {
+                command: Command::MarkdownPreviewScrollUp,
+                reason: "preview: k/up -> scroll up",
+            });
+        }
+
+        if input.modifiers.control_key() && !input.modifiers.super_key() && input.physical_key == Some(KeyD)
+        {
+            return Some(KeybindingMatch {
+                command: Command::MarkdownPreviewScrollHalfPageDown,
+                reason: "preview: Ctrl+d -> scroll down half page",
+            });
+        }
+        if input.modifiers.control_key() && !input.modifiers.super_key() && input.physical_key == Some(KeyU)
+        {
+            return Some(KeybindingMatch {
+                command: Command::MarkdownPreviewScrollHalfPageUp,
+                reason: "preview: Ctrl+u -> scroll up half page",
+            });
+        }
+
+        if input.named_key == Some(NamedKey::Tab) {
+            let command = if input.modifiers.shift_key() {
+                Command::PrevPanelTab
+            } else {
+                Command::NextPanelTab
+            };
+            return Some(KeybindingMatch {
+                command,
+                reason: "preview: Tab -> NextPanelTab",
+            });
+        }
+
+        resolved_keymap::resolve_global_command(&self.keymap, input, &self.open_file_path).map(
+            |command| KeybindingMatch {
+                command,
+                reason: "preview: global binding",
+            },
+        )
+    }
+
     pub(super) fn resolve_bottom_panel_focus(
         &self,
         input: &NormalizedInput,

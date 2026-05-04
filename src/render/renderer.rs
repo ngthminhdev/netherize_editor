@@ -13,6 +13,7 @@ mod helpers;
 mod lifecycle;
 mod palette;
 mod ui;
+pub(crate) mod ui_render;
 
 use std::path::PathBuf;
 
@@ -263,6 +264,18 @@ pub struct Renderer {
     pub(super) toast_glyph_instances: Vec<GlyphInstance>,
     pub(super) toast_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) toast_scissor: Option<[u32; 4]>,
+
+    // ── AI Chat (RightSidebar) ─────────────────────────────────────────────
+    pub(super) ai_chat_text_system: TextSystem,
+    pub(super) ai_chat_text_pipeline: TextPipeline,
+    pub(super) ai_chat_header_image_pipeline: ImagePipeline,
+    pub(super) ai_chat_hero_image_pipeline: ImagePipeline,
+    pub(super) ai_chat_glyph_instances: Vec<GlyphInstance>,
+    pub(super) ai_chat_history_scissor: Option<[u32; 4]>,
+    pub(super) ai_chat_image_scissor: Option<[u32; 4]>,
+    pub(super) ai_chat_input_scissor: Option<[u32; 4]>,
+    /// Instance range for input-box glyphs inside `ai_chat_glyph_instances`.
+    pub(super) ai_chat_input_batch: Option<TextScissorBatch>,
 }
 
 impl Renderer {

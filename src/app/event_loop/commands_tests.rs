@@ -1,0 +1,1044 @@
+use super::*;
+use crate::app::clipboard::ClipboardProvider;
+
+#[derive(Default)]
+struct MockClipboard {
+    text: String,
+}
+
+impl ClipboardProvider for MockClipboard {
+    fn get_text(&mut self) -> Result<String, String> {
+        Ok(self.text.clone())
+    }
+
+    fn set_text(&mut self, text: &str) -> Result<(), String> {
+        self.text = text.to_string();
+        Ok(())
+    }
+}
+
+#[test]
+fn palette_paste_uses_clipboard_provider() {
+    let mut app_state = AppState::from_text(PathBuf::from("palette-paste.txt"), "alpha beta");
+    let mut clipboard = MockClipboard {
+        text: "foo\nbar".to_string(),
+    };
+
+    let open = dispatch_command(&mut app_state, Command::OpenInFileSearch);
+    assert!(open.success);
+    assert_eq!(app_state.current_mode(), EditorMode::PaletteFocus);
+    assert!(app_state.is_command_palette_visible());
+
+    let report =
+        dispatch_palette_overlay_command(&mut app_state, &mut clipboard, Command::EditorPaste);
+
+    assert!(report.success);
+    assert!(report.state_changed);
+    assert_eq!(app_state.command_palette_query_text(), "foo bar");
+}
+
+#[test]
+fn terminal_paste_normalizes_newlines_to_carriage_returns() {
+    assert_eq!(
+        normalize_terminal_paste_text("echo one\necho two\r\npwd\r"),
+        "echo one\recho two\rpwd\r"
+    );
+}
+
+#[test]
+fn move_to_first_line_uses_viewport_layout_path() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = (0..80)
+        .map(|idx| format!("line {idx}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    shell.app_state = AppState::from_text(PathBuf::from("gg-layout.txt"), &text);
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+    assert!(shell.app_state.move_to_last_line());
+    shell.app_state.set_target_scroll_line(24);
+    shell.editor_needs_layout = false;
+    shell.editor_caret_needs_layout = true;
+
+    let changed = shell.handle_command(Command::MoveToFirstLine);
+
+    assert!(changed);
+    assert_eq!(shell.app_state.cursor_line_col(), (0, 0));
+    assert_eq!(shell.app_state.scroll_line(), 0);
+    assert!(shell.editor_needs_layout);
+    assert!(!shell.editor_caret_needs_layout);
+}
+
+#[test]
+fn move_to_last_line_uses_viewport_layout_path() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = (0..120)
+        .map(|idx| format!("line {idx}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    shell.app_state = AppState::from_text(PathBuf::from("g-layout.txt"), &text);
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+    shell.app_state.move_to_first_line();
+    shell.app_state.set_target_scroll_line(0);
+    shell.editor_needs_layout = false;
+    shell.editor_caret_needs_layout = true;
+
+    let changed = shell.handle_command(Command::MoveToLastLine);
+
+    assert!(changed);
+    let (cursor_line, _) = shell.app_state.cursor_line_col();
+    assert_eq!(cursor_line, shell.app_state.total_lines().saturating_sub(1));
+    assert!(shell.app_state.scroll_line() > 0);
+    assert!(shell.editor_needs_layout);
+    assert!(!shell.editor_caret_needs_layout);
+}
+
+#[test]
+fn center_cursor_line_uses_viewport_layout_path() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = (0..80)
+        .map(|idx| format!("line {idx}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    shell.app_state = AppState::from_text(PathBuf::from("zz-layout.txt"), &text);
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+    for _ in 0..30 {
+        shell.app_state.move_down();
+    }
+    shell.app_state.set_target_scroll_line(0);
+    shell.editor_needs_layout = false;
+    shell.editor_caret_needs_layout = true;
+    let viewport_lines = shell.editor_viewport_lines();
+
+    let changed = shell.handle_command(Command::CenterCursorLine);
+
+    assert!(changed);
+    let (cursor_line, _) = shell.app_state.cursor_line_col();
+    assert_eq!(
+        shell.app_state.scroll_line(),
+        cursor_line.saturating_sub(viewport_lines / 2)
+    );
+    assert!(shell.editor_needs_layout);
+    assert!(!shell.editor_caret_needs_layout);
+}
+
+#[test]
+fn scroll_half_page_down_uses_viewport_layout_path() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = (0..100)
+        .map(|idx| format!("line {idx}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    shell.app_state = AppState::from_text(PathBuf::from("ctrl-d-layout.txt"), &text);
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+    shell.app_state.set_target_scroll_line(0);
+    shell.editor_needs_layout = false;
+    shell.editor_caret_needs_layout = true;
+    let half = (shell.editor_viewport_lines() / 2).max(1);
+
+    let changed = shell.handle_command(Command::ScrollHalfPageDown);
+
+    assert!(changed);
+    let (cursor_line, _) = shell.app_state.cursor_line_col();
+    assert_eq!(cursor_line, half);
+    assert_eq!(shell.app_state.scroll_line(), half);
+    assert!(shell.editor_needs_layout);
+    assert!(!shell.editor_caret_needs_layout);
+}
+
+#[test]
+fn explorer_rename_base_selection_keeps_extension() {
+    assert_eq!(AppShell::explorer_rename_base_selection("main.rs"), (0, 4));
+    assert_eq!(
+        AppShell::explorer_rename_base_selection("archive.tar.gz"),
+        (0, 11)
+    );
+    assert_eq!(AppShell::explorer_rename_base_selection("README"), (0, 6));
+    assert_eq!(
+        AppShell::explorer_rename_base_selection(".gitignore"),
+        (0, 10)
+    );
+}
+
+#[test]
+fn toggle_terminal_command_closes_bottom_panel_after_second_press() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    assert!(!shell.panel_state.bottom.visible);
+
+    assert!(shell.handle_command(Command::ToggleTerminal));
+    assert!(shell.panel_state.bottom.visible);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::BottomPanel);
+
+    assert!(shell.handle_command(Command::ToggleTerminal));
+    assert!(!shell.panel_state.bottom.visible);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+}
+
+#[test]
+fn toggle_bottom_dock_keeps_editor_focus_when_opening() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert!(!shell.panel_state.bottom.visible);
+
+    assert!(shell.handle_command(Command::ToggleBottomDock));
+    assert!(shell.panel_state.bottom.visible);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+
+    assert!(shell.handle_command(Command::ToggleBottomDock));
+    assert!(!shell.panel_state.bottom.visible);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+}
+
+#[test]
+fn explorer_filter_commands_update_workspace_state() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!(
+        "netherize_explorer_filter_cmd_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(root.join("src")).expect("create dirs");
+    std::fs::write(root.join("src/main.rs"), "fn main() {}\n").expect("write file");
+
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    shell.focus_manager.set(FocusTarget::LeftSidebar);
+
+    assert!(shell.handle_command(Command::ExplorerStartFilter));
+    assert!(shell.app_state.workspace_is_inputting_filter());
+    assert!(shell.app_state.workspace_append_filter_text("main"));
+    assert!(shell.handle_command(Command::ExplorerClearFilter));
+    assert!(!shell.app_state.workspace_is_inputting_filter());
+    assert!(!shell.app_state.workspace_has_active_filter());
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn leap_uses_editor_targets_even_when_explorer_is_focused() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.app_state = AppState::from_text(PathBuf::from("editor-leap.txt"), "beta\nomega");
+    shell.focus_manager.set(FocusTarget::LeftSidebar);
+    shell.last_editor_bounds = Some([0.0, 0.0, 640.0, 240.0]);
+
+    assert!(shell.handle_command(Command::LeapActivate('b')));
+
+    let leap_state = shell.leap_state.as_ref().expect("editor leap state");
+    assert_eq!(leap_state.typed_prefix, "");
+    assert_eq!(leap_state.targets.len(), 1);
+    assert_eq!(leap_state.targets[0].label, "a");
+    assert_eq!(leap_state.targets[0].char_idx, 0);
+}
+
+#[test]
+fn leap_generates_multi_char_labels_after_twenty_six_matches() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = (0..27).map(|_| "a").collect::<Vec<_>>().join(" ");
+    shell.app_state = AppState::from_text(PathBuf::from("editor-leap.txt"), &text);
+    shell.last_editor_bounds = Some([0.0, 0.0, 960.0, 240.0]);
+
+    assert!(shell.handle_command(Command::LeapActivate('a')));
+
+    let leap_state = shell.leap_state.as_ref().expect("editor leap state");
+    assert_eq!(leap_state.targets.len(), 27);
+    assert_eq!(leap_state.targets[0].label, "a");
+    assert_eq!(leap_state.targets[12].label, "m");
+    assert_eq!(leap_state.targets[13].label, "na");
+    assert_eq!(leap_state.targets[25].label, "nm");
+    assert_eq!(leap_state.targets[26].label, "nn");
+}
+
+#[test]
+fn leap_fast_jump_label_resolves_immediately() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = (0..40).map(|_| "a").collect::<Vec<_>>().join(" ");
+    shell.app_state = AppState::from_text(PathBuf::from("editor-leap.txt"), &text);
+    shell.last_editor_bounds = Some([0.0, 0.0, 960.0, 240.0]);
+
+    assert!(shell.handle_command(Command::LeapActivate('a')));
+    assert!(shell.handle_command(Command::LeapJump('b')));
+
+    assert!(shell.leap_state.is_none());
+    assert_eq!(shell.app_state.cursor_line_col(), (0, 2));
+}
+
+#[test]
+fn leap_prefix_label_filters_and_waits_for_second_key() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = (0..40).map(|_| "a").collect::<Vec<_>>().join(" ");
+    shell.app_state = AppState::from_text(PathBuf::from("editor-leap.txt"), &text);
+    shell.last_editor_bounds = Some([0.0, 0.0, 960.0, 240.0]);
+
+    assert!(shell.handle_command(Command::LeapActivate('a')));
+    assert!(shell.handle_command(Command::LeapJump('n')));
+
+    let leap_state = shell.leap_state.as_ref().expect("filtered leap state");
+    assert_eq!(leap_state.typed_prefix, "n");
+    assert_eq!(leap_state.targets.len(), 26);
+    assert!(
+        leap_state
+            .targets
+            .iter()
+            .all(|target| target.label.starts_with("n"))
+    );
+
+    assert!(shell.handle_command(Command::LeapJump('b')));
+    assert!(shell.leap_state.is_none());
+    assert_eq!(shell.app_state.cursor_line_col(), (0, 28));
+}
+
+#[test]
+fn delete_confirmation_removes_selected_file_after_y() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root =
+        std::env::temp_dir().join(format!("netherize_delete_confirm_{}", std::process::id()));
+    std::fs::create_dir_all(&root).expect("create root");
+    let file_path = root.join("delete-me.txt");
+    std::fs::write(&file_path, "bye\n").expect("write file");
+
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    let _ = shell.app_state.workspace_select_path(&file_path);
+    shell.mark_explorer_dirty();
+    shell.ensure_explorer_snapshot();
+
+    assert!(shell.handle_command(Command::ExplorerDeleteNode));
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(crate::app::command_palette::CommandPaletteMode::ExplorerDeleteConfirm)
+    );
+    assert_eq!(
+        shell.pending_confirmation_prompt().as_deref(),
+        Some("Delete delete-me.txt? (y/n)")
+    );
+    assert_eq!(
+        shell.app_state.command_palette_query_text(),
+        "Delete delete-me.txt? (y/n)"
+    );
+    assert!(shell.respond_to_pending_confirmation(true));
+    assert!(!file_path.exists());
+    assert!(shell.pending_confirmation.is_none());
+    assert!(!shell.app_state.is_command_palette_visible());
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn delete_confirmation_cancels_on_escape() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.pending_confirmation = Some(PendingConfirmation {
+        action: PendingConfirmationAction::Delete {
+            path: PathBuf::from("demo.txt"),
+            file_type: WorkspaceNodeType::File,
+        },
+        return_focus: FocusTarget::LeftSidebar,
+    });
+
+    assert!(shell.respond_to_pending_confirmation(false));
+    assert!(shell.pending_confirmation.is_none());
+    assert!(!shell.app_state.is_command_palette_visible());
+}
+
+#[test]
+fn dirty_buffer_close_opens_save_confirmation_prompt() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_name = format!("netherize_dirty_close_prompt_{}.txt", std::process::id());
+    let file_path = std::env::temp_dir().join(&file_name);
+    let expected_prompt = format!("Save changes to {file_name} before closing? (y/n)");
+    std::fs::write(&file_path, "hello\n").expect("write file");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.app_state.insert_char('!');
+
+    assert!(shell.handle_command(Command::BufferCloseCurrent));
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(crate::app::command_palette::CommandPaletteMode::BufferCloseConfirm)
+    );
+    assert_eq!(
+        shell.pending_confirmation_prompt().as_deref(),
+        Some(expected_prompt.as_str())
+    );
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn dirty_buffer_close_confirmation_yes_saves_then_closes() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_path = std::env::temp_dir().join(format!(
+        "netherize_dirty_close_yes_{}.txt",
+        std::process::id()
+    ));
+    std::fs::write(&file_path, "hello\n").expect("write file");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.app_state.insert_char('!');
+
+    assert!(shell.handle_command(Command::BufferCloseCurrent));
+    assert!(shell.respond_to_pending_confirmation(true));
+    assert_eq!(
+        std::fs::read_to_string(&file_path).expect("read file"),
+        "!hello\n"
+    );
+    assert!(shell.app_state.active_file().is_none());
+    assert!(!shell.app_state.is_command_palette_visible());
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn dirty_buffer_close_confirmation_no_discards_changes_and_closes() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_path = std::env::temp_dir().join(format!(
+        "netherize_dirty_close_no_{}.txt",
+        std::process::id()
+    ));
+    std::fs::write(&file_path, "hello\n").expect("write file");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.app_state.insert_char('!');
+
+    assert!(shell.handle_command(Command::BufferCloseCurrent));
+    assert!(shell.respond_to_pending_confirmation(false));
+    assert_eq!(
+        std::fs::read_to_string(&file_path).expect("read file"),
+        "hello\n"
+    );
+    assert!(shell.app_state.active_file().is_none());
+    assert!(!shell.app_state.is_command_palette_visible());
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn opening_palette_arms_one_shot_ime_suppression() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+    assert!(shell.handle_command(Command::OpenCommandPalette));
+    assert!(shell.app_state.is_command_palette_visible());
+    assert!(shell.suppress_next_palette_ime_commit);
+    assert!(shell.should_swallow_palette_ime_commit());
+    assert!(!shell.suppress_next_palette_ime_commit);
+}
+
+#[test]
+fn first_real_keypress_after_palette_open_clears_ime_suppression() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+    assert!(shell.handle_command(Command::OpenCommandPalette));
+    assert!(shell.suppress_next_palette_ime_commit);
+
+    shell.note_post_open_keyboard_press();
+
+    assert!(!shell.suppress_next_palette_ime_commit);
+    assert!(!shell.should_swallow_palette_ime_commit());
+}
+
+#[test]
+fn visual_selection_adds_code_context_to_ai_chat() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.app_state = AppState::from_text(
+        PathBuf::from("src/main.rs"),
+        "let secret = 1;\nlet visible = true;\n",
+    );
+    let _ = dispatch_command(
+        &mut shell.app_state,
+        Command::SwitchMode(ModeEvent::EnterVisual),
+    );
+    shell.app_state.move_to_line_end();
+
+    let changed = shell.handle_command(Command::AiChatAddSelectionContext);
+
+    assert!(changed);
+    assert!(shell.panel_state.right.visible);
+    assert_eq!(
+        shell.panel_state.right.active_tab_id(),
+        Some(PanelTabId::AiChat)
+    );
+    assert_eq!(shell.focus_manager.current(), FocusTarget::RightSidebar);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+    assert_eq!(shell.panel_state.ai_chat.attached_code_contexts.len(), 1);
+    assert!(
+        shell.panel_state.ai_chat.attached_code_contexts[0]
+            .text
+            .contains("let secret = 1")
+    );
+    assert!(
+        shell
+            .panel_state
+            .ai_chat
+            .input_buffer
+            .starts_with("Hỏi về đoạn code đã chọn")
+    );
+}
+
+#[test]
+fn ai_chat_at_file_suggestions_use_workspace_files() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!(
+        "netherize_ai_chat_at_suggestions_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(root.join("src")).expect("create dirs");
+    std::fs::write(root.join("src/main.rs"), "fn main() {}\n").expect("write file");
+
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+
+    let suggestions = shell.ai_chat_file_reference_suggestions("read @mai");
+
+    assert!(suggestions.iter().any(|(path, _)| path == "src/main.rs"));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn open_file_finder_keeps_center_focus_for_fuzzy_buffer() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+    assert!(shell.handle_command(Command::OpenFileFinder));
+
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert!(shell.app_state.active_buffer_is_fuzzy_picker());
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Insert);
+    assert!(!shell.app_state.is_command_palette_visible());
+}
+
+#[test]
+fn search_in_files_keeps_center_focus_for_fuzzy_buffer() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+    assert!(shell.handle_command(Command::SearchInFiles));
+
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert!(shell.app_state.active_buffer_is_fuzzy_picker());
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Insert);
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(CommandPaletteMode::LiveGrep)
+    );
+    assert!(!shell.app_state.is_command_palette_visible());
+}
+
+#[test]
+fn welcome_recent_projects_can_navigate_without_opening_palette() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!(
+        "netherize_welcome_recent_nav_{}",
+        std::process::id()
+    ));
+    let project_a = root.join("project_a");
+    let project_b = root.join("project_b");
+    std::fs::create_dir_all(&project_a).expect("create project a");
+    std::fs::create_dir_all(&project_b).expect("create project b");
+    shell.persistent_state.recent_projects = vec![project_a.clone(), project_b.clone()];
+
+    assert!(shell.app_state.buffers().is_empty());
+    assert!(!shell.app_state.is_command_palette_visible());
+
+    assert!(shell.handle_command(Command::OverlaySelectNext));
+
+    assert!(!shell.app_state.is_command_palette_visible());
+    assert_eq!(shell.app_state.command_palette_selected_index(), 1);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn colon_help_vim_command_opens_help_buffer() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+    assert!(shell.handle_command(Command::OpenVimCommand));
+    assert!(shell.handle_command(Command::FilePickerAppendQuery(":help".to_string())));
+    assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+
+    let help = shell
+        .app_state
+        .active_help_buffer()
+        .expect(":help should open the cheat sheet help buffer");
+    assert_eq!(help.title, "[Cheat Sheet]");
+    assert!(
+        help.lines
+            .iter()
+            .any(|line| line == "Netherize Cheat Sheet")
+    );
+    assert!(
+        help.lines
+            .iter()
+            .any(|line| { line.contains("mod+p") && line.contains("Open command palette") })
+    );
+    assert_eq!(
+        shell.app_state.buffers().last().unwrap().label(),
+        "[Cheat Sheet]"
+    );
+    assert!(!shell.app_state.is_command_palette_visible());
+}
+
+#[test]
+fn file_picker_confirm_scrolls_explorer_to_opened_file() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!("netherize_picker_scroll_{}", std::process::id()));
+    std::fs::create_dir_all(&root).expect("create workspace");
+    for idx in 0..40 {
+        std::fs::write(root.join(format!("file_{idx:02}.rs")), "fn main() {}\n")
+            .expect("write file");
+    }
+    let target = root.join("file_35.rs");
+    let canonical_target = target.canonicalize().expect("canonical target");
+
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    shell.last_sidebar_bounds = Some([0.0, 0.0, 240.0, 90.0]);
+    shell.sidebar_needs_layout = false;
+
+    assert!(shell.handle_command(Command::OpenFileFinder));
+    assert!(shell.handle_command(Command::FilePickerAppendQuery("file_35".to_string())));
+    assert!(shell.app_state.set_command_palette_results(
+        CommandPaletteMode::FilePicker,
+        "file_35",
+        vec![crate::app::command_palette::CommandPaletteItem::file_match(
+            "file_35.rs".to_string(),
+            target.clone(),
+        )],
+    ));
+    assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+
+    assert_eq!(
+        shell.app_state.workspace_selected_path(),
+        Some(canonical_target.as_path())
+    );
+    assert!(
+        shell
+            .app_state
+            .workspace_scroll_offset_rows(shell.theme.ui.sidebar_line_height)
+            > 0
+    );
+    assert!(shell.sidebar_needs_layout);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn open_theme_selector_opens_overlay_with_theme_profiles() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+    assert!(shell.handle_command(Command::OpenThemeSelector));
+
+    assert_eq!(shell.focus_manager.current(), FocusTarget::OverlayLayer);
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(CommandPaletteMode::ThemeSelector)
+    );
+    assert!(
+        shell
+            .app_state
+            .command_palette_result_labels()
+            .contains(&"default-dark".to_string())
+    );
+}
+
+#[test]
+fn confirming_theme_selector_reloads_theme_and_closes_overlay() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.editor_needs_layout = false;
+    shell.sidebar_needs_layout = false;
+    shell.terminal_needs_layout = false;
+
+    assert!(shell.handle_command(Command::OpenThemeSelector));
+    shell
+        .app_state
+        .set_command_palette_query("default-dark")
+        .expect("set theme query");
+    let expected_theme_name = ThemeConfig::load("default-dark")
+        .expect("default-dark theme should load")
+        .name;
+    assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+
+    assert!(!shell.app_state.is_command_palette_visible());
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert_eq!(shell.base_theme.name, expected_theme_name);
+    assert_eq!(shell.theme.name, expected_theme_name);
+    assert_eq!(
+        shell.persistent_state.configured_theme_profile(),
+        Some("default-dark")
+    );
+    assert!(shell.editor_needs_layout);
+    assert!(shell.sidebar_needs_layout);
+    assert!(shell.terminal_needs_layout);
+}
+
+#[test]
+fn lsp_references_open_loading_buffer_immediately() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!(
+        "netherize_references_loading_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(root.join("src")).expect("create workspace");
+    let file_path = root.join("src/main.rs");
+    std::fs::write(&file_path, "fn demo() {\n    demo();\n}\n").expect("write file");
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "rust-analyzer".to_string(),
+        root_path: root.clone(),
+    });
+
+    assert!(shell.handle_command(Command::LspReferences));
+
+    let references = shell
+        .app_state
+        .active_references_buffer()
+        .expect("references buffer should open immediately");
+    assert!(references.loading);
+    assert!(references.items.is_empty());
+    assert_eq!(
+        references.status_message.as_deref(),
+        Some("Loading references...")
+    );
+    assert!(references.pending_request_id.is_some());
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert!(shell.editor_needs_layout);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn opening_fuzzy_buffer_marks_editor_layout_dirty() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.editor_needs_layout = false;
+    shell.editor_caret_needs_layout = true;
+
+    assert!(shell.handle_command(Command::SearchInFiles));
+
+    assert!(shell.editor_needs_layout);
+    assert!(!shell.editor_caret_needs_layout);
+}
+
+#[test]
+fn fuzzy_picker_query_updates_mark_editor_layout_dirty() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    assert!(shell.handle_command(Command::SearchInFiles));
+    shell.editor_needs_layout = false;
+    shell.editor_caret_needs_layout = true;
+
+    assert!(shell.handle_command(Command::FilePickerAppendQuery("foo".to_string())));
+
+    assert!(shell.editor_needs_layout);
+    assert!(!shell.editor_caret_needs_layout);
+}
+
+#[test]
+fn fuzzy_picker_selection_clears_stale_preview_lines() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell
+        .app_state
+        .open_fuzzy_picker_buffer(CommandPaletteMode::FilePicker);
+    assert!(shell.app_state.set_command_palette_results(
+        CommandPaletteMode::FilePicker,
+        "",
+        vec![
+            crate::app::command_palette::CommandPaletteItem::file_match(
+                "a.rs".to_string(),
+                PathBuf::from("a.rs"),
+            ),
+            crate::app::command_palette::CommandPaletteItem::file_match(
+                "b.rs".to_string(),
+                PathBuf::from("b.rs"),
+            ),
+        ],
+    ));
+    assert!(shell.app_state.set_fuzzy_picker_preview(
+        vec![crate::async_runtime::message::FilePreviewLine {
+            line_number: 1,
+            text: "hello".to_string(),
+            is_target: false,
+        }],
+        String::new(),
+        Vec::new(),
+    ));
+
+    assert!(shell.handle_command(Command::OverlaySelectNext));
+
+    assert!(
+        shell
+            .app_state
+            .active_fuzzy_picker_buffer()
+            .expect("fuzzy buffer")
+            .preview_lines
+            .is_empty()
+    );
+}
+
+#[test]
+fn open_file_history_opens_center_fuzzy_buffer_tab() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_path = std::env::temp_dir().join("netherize_file_history_buffer_test.txt");
+    std::fs::write(&file_path, "hello\n").expect("write file");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+
+    let _ = dispatch_command(
+        &mut shell.app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterInsert),
+    );
+    let _ = dispatch_command(
+        &mut shell.app_state,
+        Command::InsertText("world".to_string()),
+    );
+    let _ = dispatch_command(&mut shell.app_state, Command::SaveFile);
+
+    assert!(shell.handle_command(Command::OpenFileHistory));
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    let fuzzy = shell
+        .app_state
+        .active_fuzzy_picker_buffer()
+        .expect("file history should open as fuzzy buffer");
+    assert_eq!(fuzzy.mode, CommandPaletteMode::FileHistory);
+    assert!(
+        !fuzzy.results.is_empty(),
+        "history list should not be empty"
+    );
+    assert!(
+        !fuzzy.preview_lines.is_empty(),
+        "history diff preview should be populated"
+    );
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn fuzzy_picker_open_search_match_confirm_closes_results_buffer() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!(
+        "netherize_fuzzy_confirm_close_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("create workspace");
+    let target = root.join("match.rs");
+    std::fs::write(&target, "alpha\nbeta\ngamma\n").expect("write target");
+    let canonical_target = target.canonicalize().expect("canonical target");
+
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    shell
+        .app_state
+        .open_fuzzy_picker_buffer(CommandPaletteMode::LiveGrep);
+    assert!(shell.handle_command(Command::FilePickerAppendQuery("beta".to_string())));
+    assert!(shell.app_state.set_command_palette_results(
+        CommandPaletteMode::LiveGrep,
+        "beta",
+        vec![
+            crate::app::command_palette::CommandPaletteItem::search_match(
+                "match.rs:2".to_string(),
+                Some("beta".to_string()),
+                target.clone(),
+                2,
+                1,
+            )
+        ],
+    ));
+
+    assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+
+    assert!(!shell.app_state.active_buffer_is_fuzzy_picker());
+    assert_eq!(
+        shell.app_state.active_file(),
+        Some(canonical_target.as_path())
+    );
+    assert_eq!(shell.app_state.cursor_line_col(), (1, 0));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn references_selection_clears_stale_preview_lines() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell
+        .app_state
+        .open_references_buffer(
+            "References (2)",
+            Some(PathBuf::from("origin.rs")),
+            4,
+            vec![
+                crate::app::app_state::ReferencesBufferItem {
+                    path: PathBuf::from("a.rs"),
+                    relative_path: "a.rs".to_string(),
+                    line: 10,
+                    column: 2,
+                    summary: "Ln 11, Col 3".to_string(),
+                },
+                crate::app::app_state::ReferencesBufferItem {
+                    path: PathBuf::from("b.rs"),
+                    relative_path: "b.rs".to_string(),
+                    line: 20,
+                    column: 5,
+                    summary: "Ln 21, Col 6".to_string(),
+                },
+            ],
+        )
+        .expect("open references buffer");
+    assert!(shell.app_state.set_active_references_preview(
+        vec![crate::async_runtime::message::FilePreviewLine {
+            line_number: 11,
+            text: "hello".to_string(),
+            is_target: true,
+        }],
+        String::new(),
+        Vec::new(),
+    ));
+
+    assert!(shell.handle_command(Command::ReferencesSelectNext));
+
+    assert!(
+        shell
+            .app_state
+            .active_references_buffer()
+            .expect("references buffer")
+            .preview_lines
+            .is_empty()
+    );
+}
+
+#[test]
+fn references_open_selection_closes_results_buffer() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!(
+        "netherize_refs_confirm_close_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("create workspace");
+    let origin = root.join("origin.rs");
+    let target = root.join("target.rs");
+    std::fs::write(&origin, "origin\n").expect("write origin");
+    std::fs::write(&target, "one\ntwo\nthree\n").expect("write target");
+    let canonical_target = target.canonicalize().expect("canonical target");
+
+    shell
+        .app_state
+        .open_references_buffer(
+            "References (1)",
+            Some(origin.clone()),
+            0,
+            vec![crate::app::app_state::ReferencesBufferItem {
+                path: target.clone(),
+                relative_path: "target.rs".to_string(),
+                line: 1,
+                column: 0,
+                summary: "Ln 2, Col 1".to_string(),
+            }],
+        )
+        .expect("open references buffer");
+
+    assert!(shell.handle_command(Command::ReferencesOpenSelection));
+
+    assert!(!shell.app_state.active_buffer_is_references());
+    assert_eq!(
+        shell.app_state.active_file(),
+        Some(canonical_target.as_path())
+    );
+    assert_eq!(shell.app_state.cursor_line_col(), (1, 0));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn startup_keeps_a_workspace_attached_for_global_search() {
+    let shell = AppShell::new_for_tests().expect("create app shell");
+
+    assert!(shell.app_state.workspace_root_path().is_some());
+}
+
+#[test]
+fn completion_accept_replaces_typed_prefix_instead_of_inserting_after_it() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.app_state =
+        AppState::from_text(PathBuf::from("completion_accept.ts"), "MessageManager.ge");
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![crate::async_runtime::message::LspCompletionItem {
+            label: "getInstance".to_string(),
+            detail: Some("() -> MessageManager".to_string()),
+            insert_text: Some("getInstance()".to_string()),
+            text_edit_text: None,
+            kind: Some(2),
+        }],
+        0,
+        "MessageManager.ge".chars().count(),
+        "MessageManager.".chars().count(),
+        "ge".to_string(),
+    );
+    assert!(
+        shell
+            .app_state
+            .jump_to_line_and_column(0, "MessageManager.ge".chars().count())
+    );
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(
+        shell.app_state.text_string(),
+        "MessageManager.getInstance()"
+    );
+    assert!(shell.app_state.completion().is_none());
+}
+
+#[test]
+fn completion_accept_deduplicates_trigger_char_in_insert_text() {
+    // Scenario: user typed "message." and LSP returns insertText = ".getInstance()"
+    // (trigger char included). Without dedup the result would be "message..getInstance()".
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.app_state = AppState::from_text(PathBuf::from("dedup_trigger.ts"), "message.");
+    shell.lsp_completion_trigger_chars = vec!['.'];
+    let cursor_col = "message.".chars().count();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![crate::async_runtime::message::LspCompletionItem {
+            label: "getInstance".to_string(),
+            detail: None,
+            insert_text: Some(".getInstance()".to_string()),
+            text_edit_text: None,
+            kind: Some(2),
+        }],
+        0,
+        cursor_col,
+        cursor_col,
+        String::new(),
+    );
+    assert!(shell.app_state.jump_to_line_and_column(0, cursor_col));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(shell.app_state.text_string(), "message.getInstance()");
+    assert!(shell.app_state.completion().is_none());
+}
+
+#[test]
+fn welcome_hides_while_command_palette_is_visible() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+    assert!(shell.should_show_welcome());
+    assert!(shell.handle_command(Command::OpenCommandPalette));
+    assert!(!shell.should_show_welcome());
+}

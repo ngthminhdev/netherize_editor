@@ -177,6 +177,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::DeleteToLineEnd
         | Command::ToggleLineComment
         | Command::ToggleSelectionComment
+        | Command::WrapSelectionWithStar
         | Command::DeleteWordForward
         | Command::DeleteWordBackward
         | Command::YankSelection
@@ -226,6 +227,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::OpenVimCommand
         | Command::OpenInFileSearch
         | Command::OpenWorkspaceSymbols
+        | Command::OpenDocumentSymbols
         | Command::SearchInFiles
         | Command::OpenThemeSelector
         | Command::OpenFileHistory
@@ -296,6 +298,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::BufferNext
         | Command::BufferPrev
         | Command::BufferCloseCurrent
+        | Command::BufferGoto(_)
         | Command::SwitchMode(_)
         | Command::EnterVisualLine
         | Command::LspHover
@@ -316,6 +319,22 @@ fn dispatch_command_with_clipboard_once(
         | Command::DiagnosticsSelectPrev
         | Command::DiagnosticsOpenSelection
         | Command::JumpBack
-        | Command::JumpForward => session::dispatch(&mut ctx, command),
+        | Command::JumpForward
+        | Command::AiChatToggle
+        | Command::AiChatSend
+        | Command::AiChatClose
+        | Command::AiChatUnfocus
+        | Command::AiChatFocus
+        | Command::AiChatAddSelectionContext
+        | Command::AiChatInputChar(_)
+        | Command::AiChatBackspace
+        | Command::AiChatAcceptSuggestion
+        | Command::AiChatInputText(_)
+        | Command::AiChatPromptInstall
+        | Command::ToggleMarkdownPreview
+        | Command::MarkdownPreviewScrollUp
+        | Command::MarkdownPreviewScrollDown
+        | Command::MarkdownPreviewScrollHalfPageUp
+        | Command::MarkdownPreviewScrollHalfPageDown => session::dispatch(&mut ctx, command),
     }
 }

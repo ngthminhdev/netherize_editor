@@ -137,6 +137,7 @@ pub struct UiConfig {
     pub welcome: WelcomeUiConfig,
     pub indent: IndentConfig,
     pub border_radius_px: f32,
+    pub enable_outline: bool,
 }
 
 impl UiConfig {
@@ -183,7 +184,7 @@ impl UiConfig {
                 startup_mode: WindowStartupMode::Maximized,
                 auto_scale: true,
                 min_content_scale: 1.0,
-                max_content_scale: 2.0,
+                max_content_scale: 1.0,
             },
             layout: WorkbenchLayoutConfig {
                 outer_gap: 10.0,
@@ -196,6 +197,8 @@ impl UiConfig {
                 center_min_height: 180.0,
                 sidebar_min_width: 180.0,
                 bottom_min_height: 120.0,
+                panel_border_width: 1.0,
+                chat_input_height: 120.0,
             },
             docks: DockUiConfig {
                 left: DockSectionConfig {
@@ -248,6 +251,7 @@ impl UiConfig {
             },
             indent: IndentConfig::default(),
             border_radius_px: 10.0,
+            enable_outline: true,
         }
     }
 
@@ -351,6 +355,20 @@ impl UiConfig {
                     raw.layout
                         .bottom_min_height
                         .unwrap_or(fallback.layout.bottom_min_height),
+                )?,
+                panel_border_width: parse_non_negative_f32(
+                    "layout",
+                    "panel_border_width",
+                    raw.layout
+                        .panel_border_width
+                        .unwrap_or(fallback.layout.panel_border_width),
+                )?,
+                chat_input_height: parse_non_negative_f32(
+                    "layout",
+                    "chat_input_height",
+                    raw.layout
+                        .chat_input_height
+                        .unwrap_or(fallback.layout.chat_input_height),
                 )?,
             },
             docks: DockUiConfig {
@@ -570,6 +588,7 @@ impl UiConfig {
                     0.0
                 })
                 .max(0.0),
+            enable_outline: raw.enable_outline.unwrap_or(fallback.enable_outline),
         };
         config.validate()?;
         Ok(config)
@@ -599,6 +618,7 @@ impl UiConfig {
             self.docks = override_config.docks;
             self.indent = override_config.indent;
             self.border_radius_px = override_config.border_radius_px;
+            self.enable_outline = override_config.enable_outline;
         }
         self
     }
@@ -717,6 +737,7 @@ struct RawUiFile {
     #[serde(default)]
     indent: RawIndent,
     border_radius_px: Option<f32>,
+    enable_outline: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -742,6 +763,8 @@ struct RawLayout {
     center_min_height: Option<f32>,
     sidebar_min_width: Option<f32>,
     bottom_min_height: Option<f32>,
+    panel_border_width: Option<f32>,
+    chat_input_height: Option<f32>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -811,6 +834,7 @@ struct UserUiConfigFile {
     editor: UserUiEditor,
     indent: UserUiIndent,
     border_radius_px: f32,
+    enable_outline: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -861,6 +885,7 @@ impl From<&UiConfig> for UserUiConfigFile {
                 insert_spaces: value.indent.insert_spaces,
             },
             border_radius_px: value.border_radius_px,
+            enable_outline: value.enable_outline,
         }
     }
 }

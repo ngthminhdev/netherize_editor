@@ -224,6 +224,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.tick_smooth_scroll_animation() {
             self.request_redraw();
         }
+        if self.tick_thinking_animation() {
+            self.request_redraw();
+        }
         if self.pump_bridge() {
             self.request_redraw();
         }
@@ -319,6 +322,19 @@ impl AppShell {
         }
         self.editor_needs_layout = true;
         (target - self.app_state.current_scroll_y).abs() > epsilon
+    }
+
+    fn tick_thinking_animation(&mut self) -> bool {
+        if !self.panel_state.ai_chat.is_generating {
+            return false;
+        }
+        let now = Instant::now();
+        if now.duration_since(self.last_thinking_animation_tick) >= THINKING_ANIMATION_INTERVAL {
+            self.last_thinking_animation_tick = now;
+            true
+        } else {
+            false
+        }
     }
 
     fn handle_explorer_filter_ime_commit(&mut self, text: &str) -> bool {
@@ -442,6 +458,15 @@ impl AppShell {
                 self.theme.ui.cyan.as_f32()
             };
         focused_outline[3] = focused_outline[3].max(0.95);
+
+        // RightSidebar (AI Chat) background: flat fill + input-box accent.
+        let rs_panel_bg = self.theme.ui.panel_bg.as_f32();
+        let rs_input_bg = self.theme.editor.bg.as_f32();
+        let ai_chat_input_bounds = flat_regions
+            .iter()
+            .find(|r| r.id == RegionId::AiChatInput && r.visible)
+            .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
+
         let mut region_instances: Vec<RegionDrawInstance> = flat_regions
             .iter()
             .copied()
@@ -450,26 +475,68 @@ impl AppShell {
                     && region.id != RegionId::Root
                     && region.id != RegionId::OverlayLayer
                     && region.id != RegionId::StatusBar
+                    && region.id != RegionId::AiChatHistory
+                    && region.id != RegionId::AiChatInput
                     && !(show_welcome && !workspace_attached && region.id == RegionId::LeftSidebar)
             })
             .flat_map(|region| {
-                let outline_color = if Some(region.id) == focus_region {
-                    focused_outline
+                let bounds = [
+                    region.bounds.x,
+                    region.bounds.y,
+                    region.bounds.width,
+                    region.bounds.height,
+                ];
+                let is_focused = Some(region.id) == focus_region;
+                // When enable_outline is off, hide borders on unfocused panels only —
+                // the focused panel keeps its ring so the user always knows where focus is.
+                let suppress_ring = !self.ui_config.enable_outline && !is_focused;
+
+                if region.id == RegionId::RightSidebar {
+                    if suppress_ring {
+                        let mut quads = vec![
+                            RegionDrawInstance::new(bounds, rs_panel_bg)
+                                .with_radius(panel_radius),
+                        ];
+                        if let Some([ix, iy, iw, ih]) = ai_chat_input_bounds {
+                            if iw > 0.0 && ih > 0.0 {
+                                quads.push(
+                                    RegionDrawInstance::new([ix, iy, iw, ih], rs_input_bg)
+                                        .with_radius(panel_radius),
+                                );
+                            }
+                        }
+                        quads
+                    } else {
+                        let outline_color =
+                            if is_focused { focused_outline } else { default_outline };
+                        let mut quads =
+                            focus_ring_instances(bounds, outline_color, 3.0, panel_radius, rs_panel_bg);
+                        if let Some([ix, iy, iw, ih]) = ai_chat_input_bounds {
+                            if iw > 0.0 && ih > 0.0 {
+                                quads.push(
+                                    RegionDrawInstance::new([ix, iy, iw, ih], rs_input_bg)
+                                        .with_radius((panel_radius - 3.0).max(0.0)),
+                                );
+                            }
+                        }
+                        quads
+                    }
+                } else if suppress_ring {
+                    vec![
+                        RegionDrawInstance::new(bounds, region_color(region.id, &self.theme))
+                            .with_radius(panel_radius),
+                    ]
                 } else {
-                    default_outline
-                };
-                focus_ring_instances(
-                    [
-                        region.bounds.x,
-                        region.bounds.y,
-                        region.bounds.width,
-                        region.bounds.height,
-                    ],
-                    outline_color,
-                    3.0,
-                    panel_radius,
-                    region_color(region.id, &self.theme),
-                )
+                    let outline_color =
+                        if is_focused { focused_outline } else { default_outline };
+                    focus_ring_instances(
+                        bounds,
+                        outline_color,
+                        3.0,
+                        panel_radius,
+                        region_color(region.id, &self.theme),
+                    )
+                }
             })
             .collect();
 
@@ -772,6 +839,99 @@ impl AppShell {
                 self.last_sidebar_bounds = None;
                 self.last_sidebar_focused = None;
                 self.sidebar_selection_quads.clear();
+            }
+        }
+
+        // ── AI Chat text (right sidebar) ──────────────────────────────────
+        let ai_chat_active = self.panel_state.right.visible
+            && self.panel_state.right.active_tab_id() == Some(PanelTabId::AiChat);
+        if ai_chat_active {
+            let history_bounds = flat_regions
+                .iter()
+                .find(|r| r.id == RegionId::AiChatHistory && r.visible)
+                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
+            let input_bounds = flat_regions
+                .iter()
+                .find(|r| r.id == RegionId::AiChatInput && r.visible)
+                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
+
+            if let (Some(hb), Some(ib)) = (history_bounds, input_bounds) {
+                let chat = &self.panel_state.ai_chat;
+                let file_suggestions = self.ai_chat_file_reference_suggestions(&chat.input_buffer);
+                if let Some(renderer) = self.renderer.as_mut() {
+                    let show_cursor = self.focus_manager.current() == FocusTarget::RightSidebar;
+                    let inner_padding = self.layout_engine.config.inner_padding;
+                    let cursor_quads = renderer.update_ai_chat_content(
+                        hb,
+                        ib,
+                        &chat.messages,
+                        &chat.input_buffer,
+                        &file_suggestions,
+                        show_cursor,
+                        inner_padding,
+                        chat.is_opencode_missing,
+                        chat.model.as_deref(),
+                        chat.agent.label(),
+                        chat.is_generating,
+                    );
+                    region_instances.extend(cursor_quads);
+                }
+            }
+        } else if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_ai_chat();
+        }
+
+        // ── Right-sidebar terminal ────────────────────────────────────────
+        let right_terminal_active = self.panel_state.right.visible
+            && self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal);
+        if right_terminal_active {
+            let right_bounds = flat_regions
+                .iter()
+                .find(|r| r.id == RegionId::RightSidebar && r.visible)
+                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
+            if let Some(rb) = right_bounds {
+                let bounds_changed = self.last_right_terminal_bounds != Some(rb);
+                let grid_changed = self.sync_right_terminal_layout(rb);
+                if (self.right_terminal_needs_layout || bounds_changed || grid_changed)
+                    && let Some(renderer) = self.renderer.as_mut()
+                {
+                    renderer.update_terminal_content(
+                        &self.right_terminal_grid,
+                        rb,
+                        self.app_state.current_mode(),
+                    );
+                    self.last_right_terminal_bounds = Some(rb);
+                    self.right_terminal_needs_layout = false;
+                }
+            }
+        } else if self.last_right_terminal_bounds.is_some() {
+            self.last_right_terminal_bounds = None;
+        }
+
+        // ── Markdown Preview (right sidebar) ──────────────────────────────
+        let md_preview_active = self.panel_state.right.visible
+            && self.panel_state.right.active_tab_id() == Some(PanelTabId::MarkdownPreview);
+        if md_preview_active && self.app_state.markdown_preview.visible {
+            let preview_bounds = flat_regions
+                .iter()
+                .find(|r| r.id == RegionId::AiChatHistory && r.visible)
+                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
+
+            if let Some(bounds) = preview_bounds {
+                let preview = &self.app_state.markdown_preview;
+                let inner_padding = self.layout_engine.config.inner_padding;
+                if let Some(renderer) = self.renderer.as_mut() {
+                    renderer.update_markdown_preview_content(
+                        bounds,
+                        &preview.rendered_lines,
+                        preview.scroll_y,
+                        inner_padding,
+                    );
+                }
+            }
+        } else if md_preview_active {
+            if let Some(renderer) = self.renderer.as_mut() {
+                renderer.clear_ai_chat();
             }
         }
 

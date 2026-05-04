@@ -76,6 +76,7 @@ pub enum Command {
     DeleteToLineEnd,
     ToggleLineComment,
     ToggleSelectionComment,
+    WrapSelectionWithStar,
     DeleteWordForward,
     DeleteWordBackward,
     YankSelection,
@@ -126,6 +127,7 @@ pub enum Command {
     OpenFilePicker,
     OpenVimCommand,
     OpenWorkspaceSymbols,
+    OpenDocumentSymbols,
     OpenFileFinder,
     OpenInFileSearch,
     SearchInFiles,
@@ -220,6 +222,7 @@ pub enum Command {
     BufferNext,
     BufferPrev,
     BufferCloseCurrent,
+    BufferGoto(usize),
 
     // ── Mode transitions ────────────────────────────────────────────────────────
     /// Request a mode change; actual transition decided by dispatcher / app state.
@@ -271,6 +274,30 @@ pub enum Command {
     CompletionClose,
     /// Accept AI inline ghost-text suggestion into the real buffer.
     AiAcceptInline,
+
+    // ── AI Chat ───────────────────────────────────────────────────────────────
+    /// Toggle the AI chat panel open/closed.
+    AiChatToggle,
+    /// Send the current input text to the AI chat agent.
+    AiChatSend,
+    /// Close the AI chat panel.
+    AiChatClose,
+    /// Unfocus AI chat input — return focus to editor without closing the dock.
+    AiChatUnfocus,
+    /// Focus into the AI chat panel — open dock if closed, switch to AI Chat tab, focus input.
+    AiChatFocus,
+    /// Add the current Visual selection as context for the next AI chat prompt.
+    AiChatAddSelectionContext,
+    /// Append a character to the AI chat input buffer.
+    AiChatInputChar(char),
+    /// Delete the last character from the AI chat input buffer.
+    AiChatBackspace,
+    /// Complete the current slash command from the AI chat suggestion list.
+    AiChatAcceptSuggestion,
+    /// Append a text string to the AI chat input buffer (IME commit).
+    AiChatInputText(String),
+    /// Show the "opencode not found — install?" confirmation overlay.
+    AiChatPromptInstall,
     /// References view: chọn item kế tiếp.
     ReferencesSelectNext,
     /// References view: chọn item trước đó.
@@ -289,6 +316,18 @@ pub enum Command {
     JumpBack,
     /// ctrl+i: Nhảy tiến về vị trí sau trong jump list.
     JumpForward,
+
+    // ── Markdown Preview ──────────────────────────────────────────────────────
+    /// Toggle markdown preview panel in the right sidebar.
+    ToggleMarkdownPreview,
+    /// Scroll markdown preview up.
+    MarkdownPreviewScrollUp,
+    /// Scroll markdown preview down.
+    MarkdownPreviewScrollDown,
+    /// Scroll markdown preview up half page.
+    MarkdownPreviewScrollHalfPageUp,
+    /// Scroll markdown preview down half page.
+    MarkdownPreviewScrollHalfPageDown,
 }
 
 impl Command {
@@ -390,6 +429,10 @@ impl Command {
                 | Self::ExplorerExpandOrChild
                 | Self::TerminalScrollUp
                 | Self::TerminalScrollDown
+                | Self::MarkdownPreviewScrollUp
+                | Self::MarkdownPreviewScrollDown
+                | Self::MarkdownPreviewScrollHalfPageUp
+                | Self::MarkdownPreviewScrollHalfPageDown
         )
     }
 }

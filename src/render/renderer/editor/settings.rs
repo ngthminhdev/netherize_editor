@@ -34,7 +34,9 @@ impl SettingsSection {
 impl SettingItem {
     fn section(&self) -> SettingsSection {
         match self {
-            Self::ThemeSelector { .. } | Self::UiRounding { .. } => SettingsSection::Appearance,
+            Self::ThemeSelector { .. }
+            | Self::UiRounding { .. }
+            | Self::EnableOutline { .. } => SettingsSection::Appearance,
             Self::FontFamily { .. } | Self::FontSize { .. } | Self::LineHeight { .. } => {
                 SettingsSection::Typography
             }
@@ -81,6 +83,9 @@ impl SettingItem {
             Self::UiRounding { .. } => {
                 "Rounds shell and panel corners to match the softer visual style."
             }
+            Self::EnableOutline { .. } => {
+                "Show borders on all panels. Off = only unfocused panels keep their accent border."
+            }
         }
     }
 
@@ -96,7 +101,9 @@ impl SettingItem {
             }
             Self::FontSize { current } | Self::LineHeight { current } => format!("{current:.1}"),
             Self::IndentTabWidth { current } => current.to_string(),
-            Self::IndentInsertSpaces { enabled } | Self::InlineSuggestion { enabled } => {
+            Self::IndentInsertSpaces { enabled }
+            | Self::InlineSuggestion { enabled }
+            | Self::EnableOutline { enabled } => {
                 if *enabled { "true" } else { "false" }.to_string()
             }
             Self::SidebarWidth { current }
@@ -129,6 +136,9 @@ impl SettingItem {
             }
             Self::InlineSuggestion { enabled } => {
                 if *enabled { "Enabled" } else { "Disabled" }.to_string()
+            }
+            Self::EnableOutline { enabled } => {
+                if *enabled { "On" } else { "Off" }.to_string()
             }
             Self::SidebarWidth { current }
             | Self::RightSidebarWidth { current }
@@ -223,6 +233,9 @@ fn settings_preview_lines(settings: &SettingsState) -> Vec<String> {
             }
             SettingItem::UiRounding { .. } => {
                 lines.push(format!("border_radius = {}", item.preview_value()))
+            }
+            SettingItem::EnableOutline { .. } => {
+                lines.push(format!("enable_outline = {}", item.preview_value()))
             }
             _ => {}
         }
@@ -410,55 +423,113 @@ impl Renderer {
         let desc_x_offset = 410.0;
         let section_gap = 14.0;
         let row_h = line_height * 2.0 + 18.0;
-        let mut current_y = content_top + 8.0;
-        let mut last_section: Option<SettingsSection> = None;
 
-        for (idx, item) in settings.items.iter().enumerate() {
-            let section = item.section();
-            if last_section != Some(section) {
-                if last_section.is_some() {
-                    current_y += section_gap;
+        // ── Virtual layout pre-pass ───────────────────────────────────────────
+        // Compute each item's virtual Y (relative to content_top + 8.0 at scroll=0)
+        // so we can derive a scroll offset that keeps the selected item visible.
+        struct ItemLayout {
+            sec_header: Option<SettingsSection>,
+            sec_y: f32,
+            item_y: f32,
+        }
+        let mut layouts: Vec<ItemLayout> = Vec::with_capacity(settings.items.len());
+        let total_virt_h;
+        {
+            let mut vy = 0.0f32;
+            let mut last_sec: Option<SettingsSection> = None;
+            for item in &settings.items {
+                let sec = item.section();
+                let (sec_header, sec_y) = if last_sec != Some(sec) {
+                    if last_sec.is_some() {
+                        vy += section_gap;
+                    }
+                    let y = vy;
+                    vy += line_height + 4.0;
+                    last_sec = Some(sec);
+                    (Some(sec), y)
+                } else {
+                    (None, 0.0)
+                };
+                layouts.push(ItemLayout { sec_header, sec_y, item_y: vy });
+                vy += row_h + 4.0;
+            }
+            total_virt_h = vy;
+        }
+
+        // Compute scroll_y: enough to keep selected item fully visible at the bottom.
+        let vis_h = (rows_bottom - content_top - 8.0).max(1.0);
+        let sel_virt_y = layouts
+            .get(settings.selected_index)
+            .map(|l| l.item_y)
+            .unwrap_or(0.0);
+        let scroll_y = (sel_virt_y + row_h - vis_h + 8.0).max(0.0);
+        let base_y = content_top + 8.0 - scroll_y;
+
+        // Scrollbar (shown only when content overflows)
+        if total_virt_h > vis_h {
+            let track_x = left_x + left_w - 7.0;
+            let track_top = content_top + 4.0;
+            let track_h = (rows_bottom - footer_h - track_top - 4.0).max(8.0);
+            let thumb_h = (vis_h / total_virt_h * track_h).max(18.0).min(track_h);
+            let thumb_y = track_top + (scroll_y / total_virt_h * track_h).min(track_h - thumb_h);
+            chrome.push(
+                RegionDrawInstance::new([track_x, track_top, 3.0, track_h], with_alpha(fg_ghost, 0.12))
+                    .with_radius(1.5),
+            );
+            chrome.push(
+                RegionDrawInstance::new([track_x, thumb_y, 3.0, thumb_h], with_alpha(fg_ghost, 0.45))
+                    .with_radius(1.5),
+            );
+        }
+
+        // ── Main render loop with scroll ─────────────────────────────────────
+        for (idx, (item, layout)) in settings.items.iter().zip(layouts.iter()).enumerate() {
+            let item_abs_y = base_y + layout.item_y;
+
+            // Render section header if this item starts a new section and header is visible.
+            if let Some(sec) = layout.sec_header {
+                let sec_abs_y = base_y + layout.sec_y;
+                if sec_abs_y + line_height > content_top && sec_abs_y < rows_bottom - 8.0 {
+                    self.editor_overlay_text_system
+                        .set_size(Some(key_col_w), Some(line_height));
+                    glyphs.extend(layout_panel_text(
+                        &clamp_monospace_text(sec.label(), key_col_w, font_size),
+                        &mut self.editor_overlay_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        left_x + 14.0,
+                        sec_abs_y,
+                        fg_ghost,
+                    ));
+                    chrome.push(RegionDrawInstance::new(
+                        [
+                            left_x + 14.0 + key_col_w,
+                            sec_abs_y + 7.0,
+                            (left_w - (key_col_w + 36.0)).max(1.0),
+                            1.0,
+                        ],
+                        divider,
+                    ));
                 }
-                self.editor_overlay_text_system
-                    .set_size(Some(key_col_w), Some(line_height));
-                glyphs.extend(layout_panel_text(
-                    &clamp_monospace_text(section.label(), key_col_w, font_size),
-                    &mut self.editor_overlay_text_system,
-                    &mut self.atlas,
-                    &self.queue,
-                    left_x + 14.0,
-                    current_y,
-                    fg_ghost,
-                ));
-                chrome.push(RegionDrawInstance::new(
-                    [
-                        left_x + 14.0 + key_col_w,
-                        current_y + 7.0,
-                        (left_w - (key_col_w + 30.0)).max(1.0),
-                        1.0,
-                    ],
-                    divider,
-                ));
-                current_y += line_height + 4.0;
-                last_section = Some(section);
             }
 
-            if current_y + row_h > rows_bottom - 8.0 {
-                break;
+            // Skip items that are entirely outside the viewport.
+            if item_abs_y + row_h <= content_top || item_abs_y >= rows_bottom - 8.0 {
+                continue;
             }
 
             let is_selected = idx == settings.selected_index;
             if is_selected {
                 chrome.push(
                     RegionDrawInstance::new(
-                        [left_x + 6.0, current_y, (left_w - 12.0).max(1.0), row_h],
+                        [left_x + 6.0, item_abs_y, (left_w - 18.0).max(1.0), row_h],
                         selection_bg,
                     )
                     .with_radius(8.0),
                 );
                 chrome.push(
                     RegionDrawInstance::new(
-                        [left_x + 6.0, current_y + 4.0, 3.0, row_h - 8.0],
+                        [left_x + 6.0, item_abs_y + 4.0, 3.0, row_h - 8.0],
                         accent,
                     )
                     .with_radius(2.0),
@@ -466,9 +537,9 @@ impl Renderer {
             }
 
             let key_x = left_x + 18.0;
-            let key_y = current_y + 6.0;
+            let key_y = item_abs_y + 6.0;
             let desc_x = left_x + desc_x_offset;
-            let desc_y = current_y + line_height + 8.0;
+            let desc_y = item_abs_y + line_height + 8.0;
             let value_x = left_x + left_w - value_col_w - 18.0;
             let desc_w = (value_x - desc_x - 18.0).max(220.0);
 
@@ -498,12 +569,13 @@ impl Renderer {
 
             match item {
                 SettingItem::UiRounding { enabled, .. }
+                | SettingItem::EnableOutline { enabled }
                 | SettingItem::IndentInsertSpaces { enabled }
                 | SettingItem::InlineSuggestion { enabled } => {
                     let toggle_w = 40.0;
                     let toggle_h = 20.0;
-                    let toggle_x = left_x + left_w - toggle_w - 18.0;
-                    let toggle_y = current_y + (row_h - toggle_h) * 0.5;
+                    let toggle_x = left_x + left_w - toggle_w - 22.0;
+                    let toggle_y = item_abs_y + (row_h - toggle_h) * 0.5;
                     chrome.push(
                         RegionDrawInstance::new(
                             [toggle_x, toggle_y, toggle_w, toggle_h],
@@ -533,11 +605,7 @@ impl Renderer {
                     );
                     let badge_label = match item {
                         SettingItem::IndentInsertSpaces { enabled } => {
-                            if *enabled {
-                                "SPC"
-                            } else {
-                                "TAB"
-                            }
+                            if *enabled { "SPC" } else { "TAB" }
                         }
                         SettingItem::InlineSuggestion { .. } => "OFF",
                         _ => "",
@@ -561,7 +629,7 @@ impl Renderer {
                 _ => {
                     chrome.push(
                         RegionDrawInstance::new(
-                            [value_x, current_y + 6.0, value_col_w, line_height + 12.0],
+                            [value_x, item_abs_y + 6.0, value_col_w, line_height + 12.0],
                             if is_selected {
                                 accent_soft
                             } else {
@@ -571,7 +639,7 @@ impl Renderer {
                         .with_radius(5.0),
                     );
                     chrome.push(RegionDrawInstance::new(
-                        [value_x, current_y + 6.0, value_col_w, 1.0],
+                        [value_x, item_abs_y + 6.0, value_col_w, 1.0],
                         if is_selected { accent_border } else { divider },
                     ));
                     self.editor_overlay_text_system
@@ -586,7 +654,7 @@ impl Renderer {
                         &mut self.atlas,
                         &self.queue,
                         value_x + 12.0,
-                        current_y + 12.0,
+                        item_abs_y + 12.0,
                         if is_selected { accent } else { fg_dim },
                     ));
                 }
@@ -595,14 +663,12 @@ impl Renderer {
             chrome.push(RegionDrawInstance::new(
                 [
                     left_x + 14.0,
-                    current_y + row_h - 2.0,
+                    item_abs_y + row_h - 2.0,
                     (left_w - 28.0).max(1.0),
                     1.0,
                 ],
                 divider,
             ));
-
-            current_y += row_h + 4.0;
         }
 
         let preview_lines = settings_preview_lines(settings);

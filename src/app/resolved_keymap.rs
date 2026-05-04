@@ -807,6 +807,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         seq(&[ph(KeyCode::KeyZ), ph(KeyCode::KeyZ)]),
         CENTER_CURSOR_LINE,
     );
+    km.insert_sequence(
+        Some("visual"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyA), ph(KeyCode::KeyC)]),
+        AI_CHAT_ADD_SELECTION_CONTEXT,
+    );
 
     // Leader bindings (Space = leader) are represented as explicit sequences.
     // Note: <leader>p removed — command palette is opened via mod+p only.

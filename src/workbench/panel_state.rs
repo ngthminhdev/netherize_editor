@@ -7,6 +7,8 @@ pub enum PanelTabId {
     Terminal,
     DebugConsole,
     Problems,
+    AiChat,
+    MarkdownPreview,
 }
 
 impl PanelTabId {
@@ -19,6 +21,8 @@ impl PanelTabId {
             Self::Terminal => "Terminal",
             Self::DebugConsole => "Debug Console",
             Self::Problems => "Problems",
+            Self::AiChat => "AI Chat",
+            Self::MarkdownPreview => "Preview",
         }
     }
 }
@@ -70,6 +74,93 @@ impl PanelState {
         };
         true
     }
+
+    /// Switch to the tab matching `tab_id`. Returns `true` if the active tab
+    /// changed (or the tab was found but was already active — returns `false`).
+    pub fn switch_to_tab(&mut self, tab_id: PanelTabId) -> bool {
+        if let Some(idx) = self.tabs.iter().position(|t| *t == tab_id) {
+            if self.active_tab != idx {
+                self.active_tab = idx;
+                return true;
+            }
+        }
+        false
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AiRole {
+    User,
+    Assistant,
+    System,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AiChatMessage {
+    pub role: AiRole,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AiChatCodeContext {
+    pub title: String,
+    pub language_id: Option<String>,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AiAgentMode {
+    Build,
+    Plan,
+}
+
+impl AiAgentMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Build => "build",
+            Self::Plan => "plan",
+        }
+    }
+
+    pub fn opencode_agent(self) -> &'static str {
+        self.label()
+    }
+
+    pub fn from_input(input: &str) -> Option<Self> {
+        match input.trim().to_ascii_lowercase().as_str() {
+            "build" | "default" => Some(Self::Build),
+            "plan" => Some(Self::Plan),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AiChatState {
+    pub messages: Vec<AiChatMessage>,
+    pub input_buffer: String,
+    pub attached_code_contexts: Vec<AiChatCodeContext>,
+    pub is_generating: bool,
+    /// `true` when the `opencode` CLI binary was not found on PATH at toggle time.
+    pub is_opencode_missing: bool,
+    /// Active model override passed via `/model <name>`.
+    pub model: Option<String>,
+    /// Active opencode primary agent. `plan` is the restricted planning mode.
+    pub agent: AiAgentMode,
+}
+
+impl Default for AiChatState {
+    fn default() -> Self {
+        Self {
+            messages: Vec::new(),
+            input_buffer: String::new(),
+            attached_code_contexts: Vec::new(),
+            is_generating: false,
+            is_opencode_missing: false,
+            model: None,
+            agent: AiAgentMode::Build,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -78,6 +169,7 @@ pub struct WorkbenchPanelState {
     pub right: PanelState,
     pub bottom: PanelState,
     pub overlay_visible: bool,
+    pub ai_chat: AiChatState,
 }
 
 impl Default for WorkbenchPanelState {
@@ -86,8 +178,13 @@ impl Default for WorkbenchPanelState {
             left: PanelState::new(true, 240.0, vec![PanelTabId::Explorer, PanelTabId::Search]),
             right: PanelState::new(
                 false,
-                260.0,
-                vec![PanelTabId::Inspector, PanelTabId::Outline],
+                500.0,
+                vec![
+                    PanelTabId::AiChat,
+                    PanelTabId::MarkdownPreview,
+                    PanelTabId::Inspector,
+                    PanelTabId::Outline,
+                ],
             ),
             bottom: PanelState::new(
                 false,
@@ -99,6 +196,7 @@ impl Default for WorkbenchPanelState {
                 ],
             ),
             overlay_visible: false,
+            ai_chat: AiChatState::default(),
         }
     }
 }

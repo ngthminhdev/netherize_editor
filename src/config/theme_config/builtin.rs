@@ -79,7 +79,7 @@ fn builtin_ui_tokens() -> UiThemeTokens {
         panel_font_size: 14.0,
         panel_line_height: 22.0,
         sidebar_width: 280.0,
-        right_sidebar_width: 320.0,
+        right_sidebar_width: 500.0,
         bottom_panel_height: 220.0,
         top_bar_height: 34.0,
         status_bar_height: 22.0,

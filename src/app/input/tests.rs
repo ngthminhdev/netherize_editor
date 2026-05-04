@@ -1431,3 +1431,41 @@ fn ime_commit_is_redirected_to_file_picker_when_palette_is_open() {
         Command::FilePickerAppendQuery("src".to_string())
     );
 }
+
+#[test]
+fn ime_commit_is_redirected_to_ai_chat_text() {
+    let handler = InputHandler::new();
+    let context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::AiChat);
+    let translated = handler
+        .translate_ime_commit("đổi ể", context)
+        .expect("ai chat ime commit should translate");
+
+    assert_eq!(
+        translated.command,
+        Command::AiChatInputText("đổi ể".to_string())
+    );
+}
+
+#[test]
+fn ai_chat_text_input_keeps_full_unicode_payload() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::AiChat);
+    let now = std::time::Instant::now();
+    let input = NormalizedInput {
+        physical_key: Some(KeyCode::KeyD),
+        named_key: None,
+        text: Some("đổi".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+
+    match handler.route_normalized_input(input, &map, context, now) {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::AiChatInputText("đổi".to_string())
+            );
+        }
+        other => panic!("expected ai chat unicode dispatch, got {:?}", other),
+    }
+}

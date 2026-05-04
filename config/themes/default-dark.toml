@@ -22,8 +22,8 @@ indent_guide = "#8196b540"
 # Nested bracket colors used for rainbow-style pair rendering.
 rainbow_brackets = ["#22ECDB", "#F38CEC", "#EACD61", "#3CEC85", "#FF955C", "#B78AFF"]
 # Editor text metrics for cosmic-text layout.
-font_size = 15.0
-line_height = 26.0
+font_size = 14.0
+line_height = 22.0
 # Primary font for editor text, overlays, top bar, and status bar.
 font_family = "Google Sans Code"
 # Nerd Font used for explorer/file icons and terminal glyph fallback.
@@ -71,14 +71,14 @@ mode_insert = "#3CEC85"
 mode_visual = "#F38CEC"
 
 # Sidebar and panel text metrics.
-sidebar_font_size = 15.0
+sidebar_font_size = 14.0
 sidebar_line_height = 22.0
 panel_font_size = 14.0
 panel_line_height = 22.0
 
 # Theme-driven workbench chrome sizes.
 sidebar_width = 280.0
-right_sidebar_width = 320.0
+right_sidebar_width = 540.0
 bottom_panel_height = 220.0
 top_bar_height = 36.0
 

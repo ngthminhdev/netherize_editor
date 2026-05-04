@@ -68,6 +68,17 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 DispatchReport::failure(format!("Dispatch: close current buffer failed -> {err}"))
             }
         },
+        Command::BufferGoto(index) => {
+            let changed = ctx.app_state.goto_buffer_index(index);
+            DispatchReport::success(
+                if changed {
+                    format!("Dispatch: switched to buffer {index}")
+                } else {
+                    format!("Dispatch: buffer {index} not found")
+                },
+                changed,
+            )
+        }
         Command::ToggleTerminal => toggle_terminal(ctx),
         Command::ToggleBottomDock
         | Command::ToggleLeftDock
@@ -119,7 +130,21 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::DiagnosticsSelectPrev
         | Command::DiagnosticsOpenSelection
         | Command::JumpBack
-        | Command::JumpForward => DispatchReport::success_with_flags(
+        | Command::JumpForward
+        | Command::AiChatToggle
+        | Command::AiChatSend
+        | Command::AiChatClose
+        | Command::AiChatUnfocus
+        | Command::AiChatFocus
+        | Command::AiChatAddSelectionContext
+        | Command::AiChatInputChar(_)
+        | Command::AiChatBackspace
+        | Command::AiChatAcceptSuggestion
+        | Command::AiChatInputText(_)
+        | Command::AiChatPromptInstall
+        | Command::ToggleMarkdownPreview
+        | Command::MarkdownPreviewScrollUp
+        | Command::MarkdownPreviewScrollDown => DispatchReport::success_with_flags(
             "Dispatch: workbench navigation (handled by event loop)",
             true,
             false,

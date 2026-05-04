@@ -58,6 +58,8 @@ pub struct WorkbenchLayoutConfig {
     pub center_min_height: f32,
     pub sidebar_min_width: f32,
     pub bottom_min_height: f32,
+    pub panel_border_width: f32,
+    pub chat_input_height: f32,
 }
 
 impl Default for WorkbenchLayoutConfig {
@@ -73,6 +75,8 @@ impl Default for WorkbenchLayoutConfig {
             center_min_height: 140.0,
             sidebar_min_width: 140.0,
             bottom_min_height: 100.0,
+            panel_border_width: 1.0,
+            chat_input_height: 120.0,
         }
     }
 }
@@ -95,6 +99,8 @@ impl WorkbenchLayoutConfig {
             // below a usability floor.
             sidebar_min_width: defaults.sidebar_min_width,
             bottom_min_height: defaults.bottom_min_height,
+            panel_border_width: defaults.panel_border_width,
+            chat_input_height: defaults.chat_input_height,
         }
     }
 }
@@ -183,11 +189,40 @@ impl WorkbenchLayoutEngine {
             RegionBounds::new(center_x, center_y, center_w, center_h),
             center_w > 0.0 && center_h > 0.0,
         );
-        let right_sidebar = RegionNode::new(
-            RegionId::RightSidebar,
-            RegionBounds::new(right_x, center_y, right_w, body_h),
-            panels.right.visible && right_w > 0.0 && body_h > 0.0,
-        );
+        let right_sidebar = if panels.right.visible && right_w > 0.0 && body_h > 0.0 {
+            let rs_rect = RegionBounds::new(right_x, center_y, right_w, body_h);
+
+            // Split into AI Chat sub-regions using inner_padding only
+            let pad = self.config.inner_padding;
+            let available = (rs_rect.height - pad * 2.0).max(0.0);
+            let chat_input_h = self.config.chat_input_height.min(available * 0.5);
+            let history_h = (available - chat_input_h - pad).max(0.0);
+
+            let history_rect = RegionBounds::new(
+                rs_rect.x + pad,
+                rs_rect.y + pad,
+                (rs_rect.width - pad * 2.0).max(0.0),
+                history_h,
+            );
+            let input_rect = RegionBounds::new(
+                rs_rect.x + pad,
+                rs_rect.y + pad + history_h + pad,
+                (rs_rect.width - pad * 2.0).max(0.0),
+                chat_input_h,
+            );
+
+            let history_node = RegionNode::new(RegionId::AiChatHistory, history_rect, true);
+            let input_node = RegionNode::new(RegionId::AiChatInput, input_rect, true);
+
+            RegionNode::new(RegionId::RightSidebar, rs_rect, true)
+                .with_children(vec![history_node, input_node])
+        } else {
+            RegionNode::new(
+                RegionId::RightSidebar,
+                RegionBounds::new(right_x, center_y, right_w, body_h),
+                false,
+            )
+        };
         let bottom_panel = RegionNode::new(
             RegionId::BottomPanel,
             RegionBounds::new(center_x, bottom_y, center_w, bottom_h),
@@ -467,12 +502,14 @@ mod tests {
             .find(RegionId::RightSidebar)
             .expect("right sidebar region");
 
+        // Right sidebar should use full allocated bounds (no floating panel_gap inset),
+        // matching how left sidebar works.
         let viewport_w = 1280.0;
         let right_edge = right.x + right.width;
         let expected_edge = viewport_w - engine.config.outer_gap;
         assert!(
             (right_edge - expected_edge).abs() <= 0.001,
-            "right sidebar should be flush with inset viewport: right_edge={right_edge}, expected_edge={expected_edge}"
+            "right sidebar should be flush with viewport edge: right_edge={right_edge}, expected_edge={expected_edge}"
         );
     }
 
@@ -708,5 +745,42 @@ mod tests {
             center.width,
             engine.config.center_min_width
         );
+    }
+
+    #[test]
+    fn right_sidebar_uses_full_allocated_bounds() {
+        let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
+        let mut state = WorkbenchPanelState::default();
+        state.right.visible = true;
+        state.right.size_px = 320.0;
+
+        let layout = engine.compute(PhysicalSize::new(1280, 800), &state);
+        let right = layout
+            .model
+            .find(RegionId::RightSidebar)
+            .expect("right sidebar");
+
+        // Right sidebar now uses full allocated bounds (no floating panel_gap),
+        // matching left sidebar behavior. The visual border/styling is handled
+        // by the renderer, not the layout engine.
+        assert!(right.width <= 320.0);
+        assert!(right.height <= 800.0);
+    }
+
+    #[test]
+    fn right_sidebar_contains_chat_sub_regions() {
+        let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
+        let mut state = WorkbenchPanelState::default();
+        state.right.visible = true;
+        state.right.size_px = 320.0;
+
+        let layout = engine.compute(PhysicalSize::new(1280, 800), &state);
+        assert!(layout.model.find(RegionId::AiChatHistory).is_some());
+        assert!(layout.model.find(RegionId::AiChatInput).is_some());
+
+        let history = layout.model.find(RegionId::AiChatHistory).unwrap();
+        let input = layout.model.find(RegionId::AiChatInput).unwrap();
+        // Input should be below history
+        assert!(input.y >= history.y + history.height - 0.001);
     }
 }

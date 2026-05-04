@@ -11,6 +11,7 @@ pub enum SettingItem {
     RightSidebarWidth { current: i32 },
     BottomPanelHeight { current: i32 },
     UiRounding { enabled: bool, radius_px: f32 },
+    EnableOutline { enabled: bool },
 }
 
 impl SettingItem {
@@ -27,6 +28,7 @@ impl SettingItem {
             Self::RightSidebarWidth { .. } => "Right Dock Width",
             Self::BottomPanelHeight { .. } => "Bottom Dock Height",
             Self::UiRounding { .. } => "UI Rounding",
+            Self::EnableOutline { .. } => "Panel Outlines",
         }
     }
 }
@@ -68,13 +70,23 @@ impl SettingsState {
         bottom_height: i32,
         ui_rounding_enabled: bool,
         border_radius_px: f32,
+        enable_outline: bool,
     ) -> Self {
         Self {
             selected_index: 0,
             items: vec![
+                // APPEARANCE
                 SettingItem::ThemeSelector {
                     current: theme_profile.into(),
                 },
+                SettingItem::UiRounding {
+                    enabled: ui_rounding_enabled,
+                    radius_px: border_radius_px.max(0.0),
+                },
+                SettingItem::EnableOutline {
+                    enabled: enable_outline,
+                },
+                // TYPOGRAPHY
                 SettingItem::FontFamily {
                     current: font_family.into(),
                 },
@@ -84,13 +96,16 @@ impl SettingsState {
                 SettingItem::LineHeight {
                     current: line_height.max(1.0),
                 },
+                // EDITOR
                 SettingItem::IndentTabWidth {
                     current: tab_width.max(1),
                 },
                 SettingItem::IndentInsertSpaces {
                     enabled: insert_spaces,
                 },
+                // AI
                 SettingItem::InlineSuggestion { enabled: false },
+                // LAYOUT
                 SettingItem::SidebarWidth {
                     current: left_width.max(0),
                 },
@@ -99,10 +114,6 @@ impl SettingsState {
                 },
                 SettingItem::BottomPanelHeight {
                     current: bottom_height.max(0),
-                },
-                SettingItem::UiRounding {
-                    enabled: ui_rounding_enabled,
-                    radius_px: border_radius_px.max(0.0),
                 },
             ],
             editing: None,
@@ -163,6 +174,7 @@ impl SettingsState {
             }
             SettingItem::ThemeSelector { .. }
             | SettingItem::UiRounding { .. }
+            | SettingItem::EnableOutline { .. }
             | SettingItem::IndentInsertSpaces { .. }
             | SettingItem::InlineSuggestion { .. } => return false,
         };

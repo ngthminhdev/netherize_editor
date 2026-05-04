@@ -108,6 +108,11 @@ impl AppShell {
             scheduler,
             bridge: Some(bridge),
             pty_session_id: None,
+            right_pty_session_id: None,
+            right_terminal_grid: TerminalGrid::new(120, 40),
+            right_terminal_needs_layout: true,
+            last_right_terminal_bounds: None,
+            pending_right_pty_spawn: false,
             terminal_buffer_grids: HashMap::new(),
             pending_lazygit_buffer_index: None,
             pending_lazydocker_buffer_index: None,
@@ -155,6 +160,7 @@ impl AppShell {
             last_syntax_edit_hint: None,
             active_highlight_request_revision: 0,
             references_request_revision: 0,
+            document_symbols_request_revision: 0,
             fzf_search_revision: 0,
             local_history_revision: 0,
             pending_parse_after_debounce: false,
@@ -174,6 +180,7 @@ impl AppShell {
             git_overlay_revision: 0,
             last_scroll_animation_tick: now,
             last_git_branch_refresh_at: now,
+            last_thinking_animation_tick: now,
         })
     }
 
@@ -417,14 +424,47 @@ impl AppShell {
         self.editor_caret_needs_layout = false;
         self.sidebar_needs_layout = true;
         self.terminal_needs_layout = true;
+        self.right_terminal_needs_layout = true;
         self.buffer_terminal_needs_layout = true;
         self.last_editor_bounds = None;
         self.last_show_welcome = None;
         self.last_sidebar_bounds = None;
         self.last_sidebar_focused = None;
         self.last_terminal_bounds = None;
+        self.last_right_terminal_bounds = None;
         self.last_buffer_terminal_bounds = None;
         self.sidebar_selection_quads.clear();
+    }
+
+    pub(super) fn sync_right_terminal_layout(&mut self, bounds: [f32; 4]) -> bool {
+        let scaled_ui = scale_ui_config(&self.ui_config, self.runtime_scale);
+        let panel_padding = scaled_ui.layout.inner_padding;
+        let line_height = self.theme.ui.panel_line_height.max(1.0);
+        let cell_width = (self.theme.ui.panel_font_size * 0.6).max(1.0);
+
+        let content_width = (bounds[2] - panel_padding * 2.0).max(1.0);
+        let content_height = (bounds[3] - panel_padding * 2.0 - line_height).max(1.0);
+        let cols = (content_width / cell_width).floor().max(1.0) as usize;
+        let rows = (content_height / line_height).floor().max(1.0) as usize;
+
+        let grid_changed = self.right_terminal_grid.resize(cols, rows);
+        if grid_changed {
+            self.right_terminal_needs_layout = true;
+        }
+
+        if grid_changed && let Some(session_id) = self.right_pty_session_id {
+            self.submit(RequestSpec {
+                revision_id: 0,
+                topic: RequestTopic::TerminalPty,
+                payload: WorkerRequestPayload::ResizePtySession {
+                    session_id,
+                    cols: cols.min(u16::MAX as usize) as u16,
+                    rows: rows.min(u16::MAX as usize) as u16,
+                },
+            });
+        }
+
+        grid_changed
     }
 
     pub(super) fn sync_terminal_layout(&mut self, bounds: [f32; 4]) -> bool {
@@ -508,7 +548,21 @@ impl AppShell {
         } else {
             match self.focus_manager.current() {
                 FocusTarget::LeftSidebar => InputFocusContext::Explorer,
-                FocusTarget::RightSidebar => InputFocusContext::Inspector,
+                FocusTarget::RightSidebar => {
+                    match self.panel_state.right.active_tab_id() {
+                        Some(PanelTabId::AiChat) => InputFocusContext::AiChat,
+                        Some(PanelTabId::MarkdownPreview) => InputFocusContext::MarkdownPreview,
+                        Some(PanelTabId::Terminal)
+                            if matches!(
+                                mode,
+                                EditorMode::TerminalFocus | EditorMode::TerminalNormal
+                            ) =>
+                        {
+                            InputFocusContext::Terminal
+                        }
+                        _ => InputFocusContext::Inspector,
+                    }
+                }
                 FocusTarget::BottomPanel => {
                     if matches!(mode, EditorMode::TerminalFocus | EditorMode::TerminalNormal) {
                         InputFocusContext::Terminal
@@ -710,52 +764,6 @@ impl AppShell {
         }
     }
 
-    pub(super) fn submit_async_parse_for_active_buffer(&mut self, force: bool) {
-        if !force
-            && let Some(last) = self.last_parse_submit_at
-            && last.elapsed() < PARSE_DEBOUNCE_INTERVAL
-        {
-            self.pending_parse_after_debounce = true;
-            return;
-        }
-
-        let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
-            self.pending_parse_after_debounce = false;
-            return;
-        };
-
-        let Some(language_id) = crate::syntax::parser::language_id_for_path(&file_path) else {
-            self.clear_highlight_layers();
-            self.syntax_engine = None;
-            self.syntax_engine_file = None;
-            self.pending_parse_after_debounce = false;
-            self.editor_needs_layout = true;
-            self.editor_caret_needs_layout = false;
-            return;
-        };
-
-        let viewport_line_count = self.editor_viewport_lines().max(1);
-        self.active_highlight_request_revision =
-            self.active_highlight_request_revision.saturating_add(1);
-        self.pending_parse_after_debounce = false;
-        let edit_hint = self.last_syntax_edit_hint.take();
-        self.submit(RequestSpec {
-            revision_id: self.active_highlight_request_revision,
-            topic: RequestTopic::ActiveBufferLayout,
-            payload: WorkerRequestPayload::ParseAndHighlight {
-                buffer_id: file_path.clone(),
-                file_path: Some(file_path),
-                text_snapshot: self.app_state.text_string(),
-                language_id,
-                buffer_revision: self.app_state.revision(),
-                viewport_line_start: self.app_state.scroll_line(),
-                viewport_line_count,
-                edit_hint,
-            },
-        });
-        self.last_parse_submit_at = Some(std::time::Instant::now());
-    }
-
     pub(super) fn invalidate_highlights_and_parse_active_buffer(&mut self) {
         self.clear_highlight_layers();
         self.syntax_engine = None;
@@ -764,7 +772,7 @@ impl AppShell {
         self.pending_parse_after_debounce = false;
         self.editor_needs_layout = true;
         self.editor_caret_needs_layout = false;
-        self.submit_async_parse_for_active_buffer(true);
+        self.submit_parse_for_active_buffer(true);
         self.request_redraw();
     }
 

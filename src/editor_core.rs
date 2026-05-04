@@ -557,6 +557,7 @@ pub fn filetype_label_for_path(path: &Path) -> &'static str {
         Some("tsx") => "TypeScript React",
         Some("py") => "Python",
         Some("go") => "Go",
+        Some("sql") => "SQL",
         Some("json") => "JSON",
         Some("toml") => "TOML",
         Some("md") => "Markdown",

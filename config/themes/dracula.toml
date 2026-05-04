@@ -18,8 +18,8 @@ gutter = "#282a36"
 # Active line-number color in the gutter.
 gutter_active = "#f8f8f2"
 # Editor text metrics for cosmic-text layout.
-font_size = 15.0
-line_height = 26.0
+font_size = 14.0
+line_height = 22.0
 # Primary font for editor text, overlays, top bar, and status bar.
 font_family = "Google Sans Code"
 # Nerd Font used for explorer/file icons and terminal glyph fallback.
@@ -65,14 +65,14 @@ mode_insert = "#50fa7b"
 mode_visual = "#bd93f9"
 
 # Sidebar and panel text metrics.
-sidebar_font_size = 15.0
+sidebar_font_size = 14.0
 sidebar_line_height = 22.0
 panel_font_size = 14.0
 panel_line_height = 22.0
 
 # Theme-driven workbench chrome sizes.
 sidebar_width = 280.0
-right_sidebar_width = 320.0
+right_sidebar_width = 540.0
 bottom_panel_height = 220.0
 top_bar_height = 36.0
 
@@ -177,6 +177,46 @@ color = "#6272a4"
 [icons.image]
 glyph = "\uF1C5"
 color = "#50fa7b"
+
+[file_icons]
+default_file = "📄"
+default_folder = "📁"
+
+[file_icons.extensions]
+rs = ""
+ts = ""
+tsx = ""
+js = ""
+jsx = ""
+go = ""
+json = ""
+jsonc = ""
+yaml = ""
+yml = ""
+toml = ""
+sql = ""
+md = ""
+mdx = ""
+dockerfile = ""
+sh = ""
+bash = ""
+zsh = ""
+fish = ""
+lock = ""
+
+[file_icons.exact]
+Dockerfile = ""
+"docker-compose.yml" = ""
+"docker-compose.yaml" = ""
+".gitignore" = ""
+".gitattributes" = ""
+".gitmodules" = ""
+"package.json" = ""
+"package-lock.json" = ""
+"tsconfig.json" = ""
+"Cargo.toml" = ""
+Makefile = ""
+"README.md" = ""
 
 # Syntax colors consumed by the tree-sitter highlight categories currently rendered.
 [syntax]

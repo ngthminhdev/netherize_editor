@@ -193,6 +193,47 @@ pub struct HelpState {
     pub lines: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct MarkdownPreviewState {
+    pub visible: bool,
+    pub scroll_y: f32,
+    pub source_text: String,
+    pub rendered_lines: Vec<MarkdownPreviewLine>,
+    pub source_revision: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MarkdownPreviewLine {
+    pub text: String,
+    pub spans: Vec<StyledTextSpan>,
+    pub block_type: MarkdownBlockType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarkdownBlockType {
+    Heading(u8),
+    Paragraph,
+    CodeBlock,
+    BlockQuote,
+    ListItem,
+    HorizontalRule,
+    TableHeader,
+    TableRow,
+    Empty,
+}
+
+impl Default for MarkdownPreviewState {
+    fn default() -> Self {
+        Self {
+            visible: false,
+            scroll_y: 0.0,
+            source_text: String::new(),
+            rendered_lines: Vec::new(),
+            source_revision: 0,
+        }
+    }
+}
+
 impl HelpState {
     pub fn new() -> Self {
         Self::from_bindings(
@@ -396,8 +437,18 @@ fn command_label_for_help(command_id: &str) -> String {
         "app.open_file_picker" => "Open file picker",
         "app.search_in_files" => "Search in files",
         "app.open_workspace_symbols" => "Workspace symbols",
+        "app.open_document_symbols" => "Find symbol in file",
         "buffer.next" => "Next buffer",
         "buffer.prev" => "Prev buffer",
+        "buffer.goto_1" => "Go to buffer 1",
+        "buffer.goto_2" => "Go to buffer 2",
+        "buffer.goto_3" => "Go to buffer 3",
+        "buffer.goto_4" => "Go to buffer 4",
+        "buffer.goto_5" => "Go to buffer 5",
+        "buffer.goto_6" => "Go to buffer 6",
+        "buffer.goto_7" => "Go to buffer 7",
+        "buffer.goto_8" => "Go to buffer 8",
+        "buffer.goto_9" => "Go to buffer 9",
         "buffer.close_current" => "Close current buffer",
         "app.next_panel_tab" => "Next panel tab",
         "app.prev_panel_tab" => "Prev panel tab",
@@ -753,6 +804,7 @@ pub struct AppState {
     pending_explorer_rename_path: Option<PathBuf>,
     indent_config: IndentConfig,
     is_initial_launch_welcome: bool,
+    pub markdown_preview: MarkdownPreviewState,
 }
 
 impl AppState {
@@ -800,6 +852,7 @@ impl AppState {
             pending_explorer_rename_path: None,
             indent_config: IndentConfig::default(),
             is_initial_launch_welcome: true,
+            markdown_preview: MarkdownPreviewState::default(),
         }
     }
 
@@ -845,6 +898,7 @@ impl AppState {
             pending_explorer_rename_path: None,
             indent_config: IndentConfig::default(),
             is_initial_launch_welcome: false,
+            markdown_preview: MarkdownPreviewState::default(),
         }
     }
 

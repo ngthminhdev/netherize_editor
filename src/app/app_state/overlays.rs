@@ -741,6 +741,7 @@ impl AppState {
         let old_visual_line_mode = self.visual_line_mode;
 
         self.text = Rope::from(content);
+        self.revision += 1;
 
         let max_char_idx = self.text.len_chars();
         self.cursor_char_idx = old_cursor.min(max_char_idx);
@@ -988,6 +989,7 @@ pub(super) fn matching_close_char(open: char) -> Option<char> {
         '{' => Some('}'),
         '"' => Some('"'),
         '\'' => Some('\''),
+        '`' => Some('`'),
         _ => None,
     }
 }
@@ -1000,6 +1002,7 @@ pub(super) fn matches_matching_bracket_pair(left: Option<char>, right: Option<ch
             | (Some('{'), Some('}'))
             | (Some('"'), Some('"'))
             | (Some('\''), Some('\''))
+            | (Some('`'), Some('`'))
     )
 }
 

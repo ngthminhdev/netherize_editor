@@ -173,6 +173,35 @@ fn color_f32_to_u8(color: [f32; 4]) -> [u8; 4] {
     linear_rgba_to_srgb_u8(color)
 }
 
+/// Map a logical-line scroll position to the physical Y offset inside the shaped buffer.
+///
+/// When logical line `i` has been soft-wrapped into k visual rows, all subsequent logical
+/// lines start at a visual Y that is (k-1)*line_height higher than the naive
+/// `i * line_height` estimate.  Walking `layout_runs()` gives the true `line_top` of
+/// that line's first visual row.
+///
+/// `logical_scroll` is the same `app_state.current_scroll_y` value (may be fractional
+/// for smooth scrolling).  Returns 0.0 if the buffer has not been shaped yet.
+pub fn visual_y_for_logical_scroll(text_system: &TextSystem, logical_scroll: f32) -> f32 {
+    if logical_scroll <= 0.0 {
+        return 0.0;
+    }
+    let target_line = logical_scroll.floor() as usize;
+    let frac = logical_scroll.fract();
+    for run in text_system.buffer().layout_runs() {
+        if run.line_i == target_line {
+            return run.line_top + frac * run.line_height;
+        }
+    }
+    // Scroll is past the last shaped line — clamp to the buffer bottom.
+    text_system
+        .buffer()
+        .layout_runs()
+        .last()
+        .map(|r| r.line_top + r.line_height)
+        .unwrap_or(0.0)
+}
+
 /// Tính caret từ buffer cursor + layout metrics hiện tại.
 /// Không lưu caret state rời rạc để tránh lệch pha với buffer.
 pub fn compute_caret_layout(

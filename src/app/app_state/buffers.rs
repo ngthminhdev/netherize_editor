@@ -106,6 +106,19 @@ impl AppState {
         self.cycle_buffer(false)
     }
 
+    pub fn goto_buffer_index(&mut self, index: usize) -> bool {
+        if index >= self.buffers.len() {
+            return false;
+        }
+        if self.active_buffer_index == Some(index) {
+            return false;
+        }
+        match self.activate_buffer_index(index) {
+            Ok(()) => true,
+            Err(_) => false,
+        }
+    }
+
     pub fn close_current_buffer(&mut self) -> Result<bool, String> {
         let Some(current_idx) = self.active_buffer_index else {
             return Ok(false);
@@ -492,6 +505,30 @@ impl AppState {
             return false;
         };
         self.toggle_comments_on_lines(selection.start_line, selection.end_line)
+    }
+
+    pub fn wrap_selection_with_star(&mut self) -> bool {
+        let Some(selection) = self.visual_selection_range() else {
+            return false;
+        };
+        let Some(selected_text) = self.visual_selection_text() else {
+            return false;
+        };
+
+        let start = selection.start_char;
+        let len = selection.end_char - selection.start_char;
+
+        self.apply_delete(start, len);
+        let wrapped = format!("*{}*", selected_text);
+        self.apply_insert(start, wrapped);
+
+        self.cursor_char_idx = start + 1 + selected_text.len();
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.selection_anchor_char_idx = None;
+        self.dirty = true;
+        self.bump_revision();
+        true
     }
 
     pub fn commit_transaction(&mut self) -> bool {
