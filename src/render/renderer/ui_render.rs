@@ -570,6 +570,7 @@ impl Renderer {
         messages: &[AiChatMessage],
         input_buffer: &str,
         file_suggestions: &[(String, String)],
+        selected_suggestion_index: usize,
         show_cursor: bool,
         inner_padding: f32,
         is_opencode_missing: bool,
@@ -1275,6 +1276,7 @@ impl Renderer {
         // ── Input box glyphs ──────────────────────────────────────────────
         let suggestions = ai_chat_input_suggestions(input_buffer, file_suggestions);
         if !suggestions.is_empty() {
+            let sel = selected_suggestion_index.min(suggestions.len().saturating_sub(1));
             let suggestion_rect =
                 slash_suggestion_rect(input_bounds, hclip, line_h, suggestions.len());
             chrome.push(
@@ -1285,7 +1287,22 @@ impl Renderer {
                 .with_radius(8.0),
             );
             let mut suggestion_y = suggestion_rect[1] + 4.0;
-            for (label, detail) in &suggestions {
+            for (i, (label, detail)) in suggestions.iter().enumerate() {
+                // Highlight the selected suggestion row.
+                if i == sel {
+                    chrome.push(
+                        RegionDrawInstance::new(
+                            [
+                                suggestion_rect[0] + 2.0,
+                                suggestion_y,
+                                suggestion_rect[2] - 4.0,
+                                line_h,
+                            ],
+                            blend_rgb(accent, editor_bg, 0.22, 0.55),
+                        )
+                        .with_radius(4.0),
+                    );
+                }
                 let row_text = format!("{label:<24} {detail}");
                 let spans = [StyledTextSpan {
                     start: 0,

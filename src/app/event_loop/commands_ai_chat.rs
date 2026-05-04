@@ -14,7 +14,8 @@ const AI_SLASH_COMMANDS: &[&str] = &[
     "/clear", "/new", "/plan", "/build", "/model", "/models", "/mode", "/help",
 ];
 
-fn ai_slash_command_completion(input: &str) -> Option<String> {
+/// Like [`ai_slash_command_completion`] but selects the Nth matching command.
+fn ai_slash_command_completion_at(input: &str, index: usize) -> Option<String> {
     let rest = input.trim_start().strip_prefix('/')?;
     let query = rest
         .split_whitespace()
@@ -24,13 +25,30 @@ fn ai_slash_command_completion(input: &str) -> Option<String> {
     let command = AI_SLASH_COMMANDS
         .iter()
         .copied()
-        .find(|command| command.trim_start_matches('/').starts_with(&query))?;
+        .filter(|command| command.trim_start_matches('/').starts_with(&query))
+        .nth(index)?;
     let suffix = if matches!(command, "/model" | "/mode") {
         " "
     } else {
         ""
     };
     Some(format!("{command}{suffix}"))
+}
+
+/// Count how many slash commands match the current input (for suggestion navigation).
+fn slash_command_suggestion_count(input: &str) -> usize {
+    let Some(rest) = input.trim_start().strip_prefix('/') else {
+        return 0;
+    };
+    let query = rest
+        .split_whitespace()
+        .next()
+        .unwrap_or(rest)
+        .to_ascii_lowercase();
+    AI_SLASH_COMMANDS
+        .iter()
+        .filter(|command| command.trim_start_matches('/').starts_with(&query))
+        .count()
 }
 
 fn clean_ai_file_ref_token(token: &str) -> Option<String> {
@@ -235,12 +253,13 @@ impl AppShell {
         matches
     }
 
-    fn ai_chat_file_ref_completion(&self, input_buffer: &str) -> Option<String> {
+    /// Select the Nth file-reference suggestion and return the completed input text.
+    fn ai_chat_file_ref_completion_at(&self, input_buffer: &str, index: usize) -> Option<String> {
         let (start, _) = current_ai_at_token(input_buffer)?;
         let (path, _) = self
             .ai_chat_file_reference_suggestions(input_buffer)
             .into_iter()
-            .next()?;
+            .nth(index)?;
         Some(format!("{}@{} ", &input_buffer[..start], path))
     }
 
@@ -580,21 +599,27 @@ impl AppShell {
             }
             Command::AiChatInputChar(ch) => {
                 self.panel_state.ai_chat.input_buffer.push(*ch);
+                self.panel_state.ai_chat.selected_suggestion_index = 0;
                 Some(true)
             }
             Command::AiChatBackspace => {
                 let chat = &mut self.panel_state.ai_chat;
                 if chat.input_buffer.pop().is_some() {
+                    chat.selected_suggestion_index = 0;
                     Some(true)
                 } else {
                     Some(false)
                 }
             }
             Command::AiChatAcceptSuggestion => {
+                let idx = self.panel_state.ai_chat.selected_suggestion_index;
                 let completed = self
-                    .ai_chat_file_ref_completion(&self.panel_state.ai_chat.input_buffer)
+                    .ai_chat_file_ref_completion_at(&self.panel_state.ai_chat.input_buffer, idx)
                     .or_else(|| {
-                        ai_slash_command_completion(&self.panel_state.ai_chat.input_buffer)
+                        ai_slash_command_completion_at(
+                            &self.panel_state.ai_chat.input_buffer,
+                            idx,
+                        )
                     });
                 let Some(completed) = completed else {
                     return Some(false);
@@ -604,11 +629,48 @@ impl AppShell {
                     Some(false)
                 } else {
                     chat.input_buffer = completed;
+                    chat.selected_suggestion_index = 0;
                     Some(true)
                 }
             }
+            Command::AiChatSuggestionNext => {
+                let count = self
+                    .ai_chat_file_reference_suggestions(&self.panel_state.ai_chat.input_buffer)
+                    .len();
+                // Fallback to slash-command count when there are no @-file suggestions.
+                let count = if count > 0 {
+                    count
+                } else {
+                    slash_command_suggestion_count(&self.panel_state.ai_chat.input_buffer)
+                };
+                let chat = &mut self.panel_state.ai_chat;
+                if count > 0 {
+                    chat.selected_suggestion_index =
+                        (chat.selected_suggestion_index + 1) % count;
+                }
+                Some(true)
+            }
+            Command::AiChatSuggestionPrev => {
+                let count = self
+                    .ai_chat_file_reference_suggestions(&self.panel_state.ai_chat.input_buffer)
+                    .len();
+                let count = if count > 0 {
+                    count
+                } else {
+                    slash_command_suggestion_count(&self.panel_state.ai_chat.input_buffer)
+                };
+                let chat = &mut self.panel_state.ai_chat;
+                if count > 0 {
+                    chat.selected_suggestion_index = chat
+                        .selected_suggestion_index
+                        .checked_sub(1)
+                        .unwrap_or(count - 1);
+                }
+                Some(true)
+            }
             Command::AiChatInputText(text) => {
                 self.panel_state.ai_chat.input_buffer.push_str(text);
+                self.panel_state.ai_chat.selected_suggestion_index = 0;
                 Some(true)
             }
             _ => None,

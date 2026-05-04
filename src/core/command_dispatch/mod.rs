@@ -330,6 +330,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::AiChatInputChar(_)
         | Command::AiChatBackspace
         | Command::AiChatAcceptSuggestion
+        | Command::AiChatSuggestionNext
+        | Command::AiChatSuggestionPrev
         | Command::AiChatInputText(_)
         | Command::AiChatPromptInstall
         | Command::ToggleMarkdownPreview

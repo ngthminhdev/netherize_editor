@@ -868,6 +868,7 @@ impl AppShell {
                         &chat.messages,
                         &chat.input_buffer,
                         &file_suggestions,
+                        chat.selected_suggestion_index,
                         show_cursor,
                         inner_padding,
                         chat.is_opencode_missing,

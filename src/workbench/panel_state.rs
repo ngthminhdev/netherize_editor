@@ -147,6 +147,8 @@ pub struct AiChatState {
     pub model: Option<String>,
     /// Active opencode primary agent. `plan` is the restricted planning mode.
     pub agent: AiAgentMode,
+    /// Index of the currently highlighted suggestion in the suggestion popup.
+    pub selected_suggestion_index: usize,
 }
 
 impl Default for AiChatState {
@@ -159,6 +161,7 @@ impl Default for AiChatState {
             is_opencode_missing: false,
             model: None,
             agent: AiAgentMode::Build,
+            selected_suggestion_index: 0,
         }
     }
 }

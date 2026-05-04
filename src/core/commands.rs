@@ -296,6 +296,10 @@ pub enum Command {
     AiChatBackspace,
     /// Complete the current slash command from the AI chat suggestion list.
     AiChatAcceptSuggestion,
+    /// Cycle to the next suggestion in the AI chat suggestion popup.
+    AiChatSuggestionNext,
+    /// Cycle to the previous suggestion in the AI chat suggestion popup.
+    AiChatSuggestionPrev,
     /// Append a text string to the AI chat input buffer (IME commit).
     AiChatInputText(String),
     /// Show the "opencode not found — install?" confirmation overlay.
