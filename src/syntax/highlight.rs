@@ -498,14 +498,22 @@ fn sql_highlight_query() -> &'static Query {
 fn yaml_highlight_query() -> &'static Query {
     static QUERY: OnceLock<Query> = OnceLock::new();
     QUERY.get_or_init(|| {
-        build_highlight_query(LanguageId::Yaml, tree_sitter_yaml::HIGHLIGHTS_QUERY, "yaml")
+        build_highlight_query(
+            LanguageId::Yaml,
+            include_str!("queries/yaml/highlights.scm"),
+            "yaml",
+        )
     })
 }
 
 fn json_highlight_query() -> &'static Query {
     static QUERY: OnceLock<Query> = OnceLock::new();
     QUERY.get_or_init(|| {
-        build_highlight_query(LanguageId::Json, tree_sitter_json::HIGHLIGHTS_QUERY, "json")
+        build_highlight_query(
+            LanguageId::Json,
+            include_str!("queries/json/highlights.scm"),
+            "json",
+        )
     })
 }
 
@@ -1478,6 +1486,182 @@ RUN apt-get update && apt-get install -y curl
                 .iter()
                 .any(|s| s.category == HighlightCategory::Function),
             "expected bash-injected function highlights in RUN command"
+        );
+    }
+
+    #[test]
+    fn yaml_highlight_covers_keys_values_and_structural_elements() {
+        let source = "\
+---
+name: my-app
+version: 1.0
+debug: true
+count: 42
+description: \"hello world\"
+tags:
+  - web
+  - api
+data: null
+# this is a comment
+anchor: &default_host localhost
+host: *default_host
+config: !custom-tag {key: value}
+block: |
+  multiline text
+...
+";
+
+        let mut engine = SyntaxEngine::new(LanguageId::Yaml).expect("init yaml");
+        let tree = engine.parse_source(source, 1).expect("parse yaml");
+        let spans = generate_highlight_spans(tree, source);
+
+        assert!(!spans.is_empty(), "expected yaml highlight spans");
+
+        // Document markers (---, ...)
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Keyword),
+            "expected keyword highlights for document markers"
+        );
+
+        // Keys (name, version, debug, etc.)
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Property),
+            "expected property highlights for keys"
+        );
+
+        // String values
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::String),
+            "expected string highlights for values"
+        );
+
+        // Numbers
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Number),
+            "expected number highlights"
+        );
+
+        // Booleans
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Boolean),
+            "expected boolean highlights"
+        );
+
+        // Null
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Constant),
+            "expected constant highlights for null and anchors"
+        );
+
+        // Comments
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Comment),
+            "expected comment highlights"
+        );
+
+        // Tags (!custom-tag)
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Type),
+            "expected type highlights for tags"
+        );
+
+        // Punctuation (:, -, etc.)
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Punctuation),
+            "expected punctuation highlights"
+        );
+    }
+
+    #[test]
+    fn json_highlight_covers_keys_values_and_structural_elements() {
+        let source = "\
+{
+  \"name\": \"my-app\",
+  \"version\": 42,
+  \"debug\": true,
+  \"nothing\": null,
+  \"escaped\": \"line1\\nline2\"
+}
+";
+
+        let mut engine = SyntaxEngine::new(LanguageId::Json).expect("init json");
+        let tree = engine.parse_source(source, 1).expect("parse json");
+        let spans = generate_highlight_spans(tree, source);
+
+        assert!(!spans.is_empty(), "expected json highlight spans");
+
+        // Keys
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Property),
+            "expected property highlights for keys"
+        );
+
+        // String values
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::String),
+            "expected string highlights for values"
+        );
+
+        // Numbers
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Number),
+            "expected number highlights"
+        );
+
+        // Booleans
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Boolean),
+            "expected boolean highlights"
+        );
+
+        // Null
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Constant),
+            "expected constant highlights for null"
+        );
+
+        // Escape sequences
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Escape),
+            "expected escape sequence highlights"
+        );
+
+        // Punctuation
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Punctuation),
+            "expected punctuation highlights"
         );
     }
 }
