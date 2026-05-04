@@ -487,9 +487,9 @@ impl AppShell {
                     region.bounds.height,
                 ];
                 let is_focused = Some(region.id) == focus_region;
-                // When enable_outline is off, the focused panel's ring is suppressed —
-                // only unfocused panels (no active focus ring) retain their accent border.
-                let suppress_ring = !self.ui_config.enable_outline && is_focused;
+                // When enable_outline is off, hide borders on unfocused panels only —
+                // the focused panel keeps its ring so the user always knows where focus is.
+                let suppress_ring = !self.ui_config.enable_outline && !is_focused;
 
                 if region.id == RegionId::RightSidebar {
                     if suppress_ring {
