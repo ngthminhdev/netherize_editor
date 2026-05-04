@@ -384,26 +384,7 @@ impl AppShell {
             );
         }
 
-        // Cap content_scale at 1.0 for non-DPI-scaled screens to prevent
-        // FullHD (1920×1080) from over-scaling the base 1280×800 resolution.
-        if dpi_scale <= 1.25 {
-            content_scale = content_scale.min(1.0);
-        }
-
         let runtime_scale = (dpi_scale * content_scale).max(0.5);
-
-        eprintln!(
-            "[scale] physical={}x{} scale_factor={:.2} dpi={:.2} logical={}x{} content={:.2} runtime={:.2}",
-            self.window_size.width,
-            self.window_size.height,
-            scale_factor,
-            dpi_scale,
-            logical_width as u32,
-            logical_height as u32,
-            content_scale,
-            self.runtime_scale
-        );
-
         if (runtime_scale - self.runtime_scale).abs() < 0.001 {
             return;
         }
@@ -453,13 +434,6 @@ impl AppShell {
         self.last_right_terminal_bounds = None;
         self.last_buffer_terminal_bounds = None;
         self.sidebar_selection_quads.clear();
-
-        eprintln!(
-            "[scale] applied: welcome_card_max_w={:.1} editor_font_size={:.1} panel_gap={:.1}",
-            scaled_ui.welcome.card_max_width,
-            scaled_ui.editor.font_size,
-            scaled_ui.layout.panel_gap
-        );
     }
 
     pub(super) fn sync_right_terminal_layout(&mut self, bounds: [f32; 4]) -> bool {
@@ -788,6 +762,52 @@ impl AppShell {
         } else {
             self.pending_parse_after_debounce = false;
         }
+    }
+
+    pub(super) fn submit_async_parse_for_active_buffer(&mut self, force: bool) {
+        if !force
+            && let Some(last) = self.last_parse_submit_at
+            && last.elapsed() < PARSE_DEBOUNCE_INTERVAL
+        {
+            self.pending_parse_after_debounce = true;
+            return;
+        }
+
+        let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
+            self.pending_parse_after_debounce = false;
+            return;
+        };
+
+        let Some(language_id) = crate::syntax::parser::language_id_for_path(&file_path) else {
+            self.clear_highlight_layers();
+            self.syntax_engine = None;
+            self.syntax_engine_file = None;
+            self.pending_parse_after_debounce = false;
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+            return;
+        };
+
+        let viewport_line_count = self.editor_viewport_lines().max(1);
+        self.active_highlight_request_revision =
+            self.active_highlight_request_revision.saturating_add(1);
+        self.pending_parse_after_debounce = false;
+        let edit_hint = self.last_syntax_edit_hint.take();
+        self.submit(RequestSpec {
+            revision_id: self.active_highlight_request_revision,
+            topic: RequestTopic::ActiveBufferLayout,
+            payload: WorkerRequestPayload::ParseAndHighlight {
+                buffer_id: file_path.clone(),
+                file_path: Some(file_path),
+                text_snapshot: self.app_state.text_string(),
+                language_id,
+                buffer_revision: self.app_state.revision(),
+                viewport_line_start: self.app_state.scroll_line(),
+                viewport_line_count,
+                edit_hint,
+            },
+        });
+        self.last_parse_submit_at = Some(std::time::Instant::now());
     }
 
     pub(super) fn invalidate_highlights_and_parse_active_buffer(&mut self) {

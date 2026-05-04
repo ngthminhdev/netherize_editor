@@ -62,7 +62,7 @@ impl Renderer {
         let fg_dim = self.theme.ui.fg_dim.as_f32();
         let fg_ghost = self.theme.ui.fg_ghost.as_f32();
         let accent = self.theme.ui.accent.as_f32();
-        let welcome_scale = 1.0;
+        let welcome_scale = (self.welcome_card_max_width / 560.0).clamp(0.5, 3.0);
         let sx = |value: f32| value * welcome_scale;
         let text_w = |text: &str, size: f32| estimate_monospace_width(text, size);
         let centered_x = |center: f32, text: &str, size: f32| center - text_w(text, size) * 0.5;
