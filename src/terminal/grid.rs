@@ -76,6 +76,17 @@ pub struct TerminalPoint {
     pub col: usize,
 }
 
+/// A single search match within the terminal grid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TerminalSearchMatch {
+    /// Absolute row index (0 = top of scrollback).
+    pub row: usize,
+    /// Starting column of the match.
+    pub col: usize,
+    /// Character length of the match.
+    pub len: usize,
+}
+
 /// Colors used for regex-based terminal output highlighting.
 ///
 /// Each field is an RGBA color in sRGB space (matching `AnsiColor::to_rgba_f32` output).
@@ -164,6 +175,11 @@ pub struct TerminalGrid {
 
     /// Colors used by `apply_regex_highlights`.
     pub highlight_colors: HighlightColors,
+
+    /// All current search matches (absolute row coordinates).
+    pub search_matches: Vec<TerminalSearchMatch>,
+    /// Index into `search_matches` for the currently active match.
+    pub search_cursor: usize,
 }
 
 impl TerminalGrid {
@@ -184,6 +200,8 @@ impl TerminalGrid {
             current_style: CellStyle::default(),
             parser: AnsiParser::new(),
             highlight_colors: HighlightColors::default(),
+            search_matches: Vec::new(),
+            search_cursor: 0,
         }
     }
 
@@ -1099,6 +1117,118 @@ impl TerminalGrid {
             WordMotion::End => word_end_at_or_after_chars(&text, cursor)?,
         };
         Some(self.point_for_flat_index(next))
+    }
+
+    // ─── Terminal search ────────────────────────────────────────────────────
+
+    /// Extract plain text from all rows (scrollback + visible grid).
+    ///
+    /// Returns one `String` per absolute row, with each cell's character
+    /// concatenated.  Trailing whitespace is preserved.
+    pub fn get_scrollback_text(&self) -> Vec<String> {
+        let total = self.total_rows();
+        let mut lines = Vec::with_capacity(total);
+        for row in 0..total {
+            if let Some(cells) = self.row_cells_absolute(row) {
+                lines.push(cells.iter().map(|c| c.ch).collect());
+            }
+        }
+        lines
+    }
+
+    /// Search all terminal text for `query` and populate `search_matches`.
+    ///
+    /// When `whole_word` is `true`, matches are only kept when the character
+    /// before and after the match is a word boundary (start/end of line,
+    /// whitespace, or punctuation).
+    pub fn search_in_terminal(&mut self, query: &str, whole_word: bool) {
+        self.search_matches.clear();
+        self.search_cursor = 0;
+
+        if query.is_empty() {
+            return;
+        }
+
+        let lines = self.get_scrollback_text();
+        let q_len = query.chars().count();
+
+        for (row, line) in lines.iter().enumerate() {
+            let mut search_start = 0;
+            while let Some(byte_pos) = line[search_start..].find(query) {
+                // `str::find` returns a byte offset; convert to char index.
+                let col = line[..search_start + byte_pos].chars().count();
+
+                if whole_word {
+                    let before_ok = if col == 0 {
+                        true
+                    } else {
+                        line.chars()
+                            .nth(col.wrapping_sub(1))
+                            .map_or(true, |ch| !ch.is_alphanumeric() && ch != '_')
+                    };
+                    let after_col = col + q_len;
+                    let after_ok = line
+                        .chars()
+                        .nth(after_col)
+                        .map_or(true, |ch| !ch.is_alphanumeric() && ch != '_');
+
+                    if !before_ok || !after_ok {
+                        search_start += byte_pos + 1;
+                        continue;
+                    }
+                }
+
+                self.search_matches.push(TerminalSearchMatch {
+                    row,
+                    col,
+                    len: q_len,
+                });
+                search_start += byte_pos + 1;
+            }
+        }
+    }
+
+    /// Advance to the next search match, wrapping around if necessary.
+    ///
+    /// Returns the `TerminalPoint` of the new current match, or `None` when
+    /// there are no matches at all.  The viewport is automatically scrolled so
+    /// that the match is visible.
+    pub fn search_next(&mut self) -> Option<TerminalPoint> {
+        if self.search_matches.is_empty() {
+            return None;
+        }
+        self.search_cursor = (self.search_cursor + 1) % self.search_matches.len();
+        let m = self.search_matches[self.search_cursor];
+        let point = TerminalPoint {
+            row: m.row,
+            col: m.col,
+        };
+        self.virtual_cursor = self.clamp_point(point);
+        self.ensure_virtual_cursor_visible();
+        Some(self.virtual_cursor)
+    }
+
+    /// Move to the previous search match, wrapping around if necessary.
+    ///
+    /// Returns the `TerminalPoint` of the new current match, or `None` when
+    /// there are no matches.  The viewport is automatically scrolled.
+    pub fn search_prev(&mut self) -> Option<TerminalPoint> {
+        if self.search_matches.is_empty() {
+            return None;
+        }
+        self.search_cursor = if self.search_cursor == 0 {
+            self.search_matches.len() - 1
+        } else {
+            self.search_cursor - 1
+        };
+        let m = self.search_matches[self.search_cursor];
+        let point = TerminalPoint {
+            row: m.row,
+            col: m.col,
+        };
+        self.virtual_cursor = self.clamp_point(point);
+        self.ensure_virtual_cursor_visible();
+        Some(self.virtual_cursor)
     }
 }
 
