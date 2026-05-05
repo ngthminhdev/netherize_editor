@@ -288,6 +288,18 @@ impl AppShell {
         }
 
         match command {
+            Command::ClearSearchHighlights => {
+                if let Some(grid) = self.focused_terminal_grid_mut() {
+                    let had_matches = !grid.search_matches.is_empty();
+                    grid.search_matches.clear();
+                    grid.search_cursor = 0;
+                    if had_matches {
+                        self.mark_focused_terminal_layout_dirty();
+                        return Some(true);
+                    }
+                }
+                Some(false)
+            }
             Command::SearchNext => {
                 if let Some(grid) = self.focused_terminal_grid_mut() {
                     if grid.search_next().is_some() {

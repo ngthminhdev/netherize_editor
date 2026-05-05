@@ -184,7 +184,7 @@ impl AppShell {
         )
     }
 
-    fn mark_focused_terminal_layout_dirty(&mut self) {
+    pub(super) fn mark_focused_terminal_layout_dirty(&mut self) {
         if self.app_state.active_buffer_is_terminal()
             && self.focus_manager.current() == FocusTarget::CenterEditor
         {
@@ -228,6 +228,14 @@ impl AppShell {
         );
         if !supported {
             return None;
+        }
+
+        // Clear terminal search highlights when leaving terminal_normal via Esc
+        if matches!(command, Command::SwitchMode(ModeEvent::FocusTerminal)) {
+            if let Some(grid) = self.focused_terminal_grid_mut() {
+                grid.search_matches.clear();
+                grid.search_cursor = 0;
+            }
         }
 
         let report = self.dispatch_command_with_focused_terminal(command.clone(), repeat_count);

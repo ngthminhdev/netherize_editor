@@ -561,7 +561,7 @@ command = "terminal.paste"
 [[bindings]]
 mode = "terminal_normal"
 key = "/"
-command = "editor.search_next"
+command = "editor.open_in_file_search"
 
 [[bindings]]
 mode = "terminal_normal"
