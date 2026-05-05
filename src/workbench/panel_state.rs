@@ -166,6 +166,8 @@ impl Default for AiChatState {
     }
 }
 
+use super::focus_manager::FocusTarget;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorkbenchPanelState {
     pub left: PanelState,
@@ -173,6 +175,8 @@ pub struct WorkbenchPanelState {
     pub bottom: PanelState,
     pub overlay_visible: bool,
     pub ai_chat: AiChatState,
+    /// When `Some`, the specified region/editor is maximized (Zen Mode).
+    pub maximized_region: Option<FocusTarget>,
 }
 
 impl Default for WorkbenchPanelState {
@@ -200,6 +204,7 @@ impl Default for WorkbenchPanelState {
             ),
             overlay_visible: false,
             ai_chat: AiChatState::default(),
+            maximized_region: None,
         }
     }
 }
