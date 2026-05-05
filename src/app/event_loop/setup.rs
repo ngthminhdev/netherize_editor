@@ -1143,15 +1143,18 @@ impl AppShell {
 
         let query = self.app_state.command_palette_query_text().to_string();
 
-        // When the active buffer is a terminal, search the terminal grid
-        // scrollback instead of the editor buffer.
-        if self.app_state.active_buffer_is_terminal() {
-            if let Some(grid) = self.focused_terminal_grid_mut() {
-                grid.search_in_terminal(&query, false);
-                let _ = grid.search_next();
-                self.mark_focused_terminal_layout_dirty();
-                return true;
-            }
+        // When terminal search palette is active, search the terminal grid
+        // directly. We check `terminal_search_palette_active` FIRST because
+        // the bottom panel terminal isn't the active buffer, so
+        // `active_buffer_is_terminal()` would return false.
+        if self.terminal_search_palette_active {
+            // Access self.terminal_grid directly — not through
+            // focused_terminal_grid_mut(), because focus is on OverlayLayer.
+            let grid = &mut self.terminal_grid;
+            grid.search_in_terminal(&query, false);
+            let _ = grid.search_next();
+            self.mark_focused_terminal_layout_dirty();
+            return true;
         }
 
         self.app_state.set_in_file_search_query(&query)
