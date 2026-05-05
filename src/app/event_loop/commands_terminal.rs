@@ -253,6 +253,18 @@ impl AppShell {
                     Some(false)
                 }
             }
+            Command::TerminalSearchOpen => {
+                let report = dispatch_command(&mut self.app_state, Command::OpenInFileSearch);
+                if report.success {
+                    self.terminal_search_palette_active = true;
+                    self.arm_palette_ime_commit_suppression();
+                    let focus_changed = self.focus_manager.set(FocusTarget::OverlayLayer);
+                    if focus_changed {
+                        self.input_handler.clear_pending_prefix();
+                    }
+                }
+                Some(report.request_redraw)
+            }
             Command::MoveFocusCycle => {
                 let changed = self.focus_manager.cycle_next(&self.panel_state);
                 if changed {

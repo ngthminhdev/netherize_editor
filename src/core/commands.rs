@@ -160,6 +160,8 @@ pub enum Command {
     ToggleTerminal,
     ToggleBottomDock,
     ToggleLeftDock,
+    /// Open search within terminal scrollback (T-COPY mode).
+    TerminalSearchOpen,
     /// Raw terminal bytes/string payload routed through command path.
     TerminalWriteInput(String),
     /// Paste system clipboard into the focused PTY session.

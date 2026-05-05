@@ -137,6 +137,10 @@ pub struct AppShell {
     sidebar_needs_layout: bool,
     terminal_needs_layout: bool,
     buffer_terminal_needs_layout: bool,
+    /// Track whether the InFileSearch palette was opened from terminal context
+    /// (via `TerminalSearchOpen`), so focus returns to the terminal when the
+    /// palette closes instead of the center editor.
+    terminal_search_palette_active: bool,
     last_frame_time: Instant,
     last_fps_metrics_update_at: Instant,
     accumulated_frame_time: Duration,

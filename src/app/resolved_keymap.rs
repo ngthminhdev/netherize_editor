@@ -727,7 +727,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyV), ENTER_VISUAL);
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyY), YANK_SELECTION);
     km.insert(Some("terminal_normal"), mp(KeyCode::KeyV), TERMINAL_PASTE);
-    km.insert(Some("terminal_normal"), ch('/'), OPEN_IN_FILE_SEARCH);
+    km.insert(Some("terminal_normal"), ch('/'), TERMINAL_SEARCH_OPEN);
     km.insert(Some("terminal_normal"), ch('n'), SEARCH_NEXT);
     km.insert(Some("terminal_normal"), ch('N'), SEARCH_PREV);
     km.insert(Some("terminal_normal"), ch('*'), SEARCH_WORD_UNDER_CURSOR);

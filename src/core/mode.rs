@@ -53,7 +53,7 @@ pub struct ModeTransitionRule {
     pub to: EditorMode,
 }
 
-const TRANSITION_RULES: [ModeTransitionRule; 24] = [
+const TRANSITION_RULES: [ModeTransitionRule; 25] = [
     // Core editing transitions
     ModeTransitionRule {
         from: EditorMode::Normal,
@@ -175,6 +175,11 @@ const TRANSITION_RULES: [ModeTransitionRule; 24] = [
     },
     ModeTransitionRule {
         from: EditorMode::MultiInsert,
+        event: ModeEvent::OpenPalette,
+        to: EditorMode::PaletteFocus,
+    },
+    ModeTransitionRule {
+        from: EditorMode::TerminalNormal,
         event: ModeEvent::OpenPalette,
         to: EditorMode::PaletteFocus,
     },

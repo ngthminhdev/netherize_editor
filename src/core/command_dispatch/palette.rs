@@ -56,6 +56,16 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 Err(report) => report,
             }
         }
+        Command::TerminalSearchOpen => {
+            match open_palette_mode(ctx, CommandPaletteMode::InFileSearch, "terminal search") {
+                Ok((result_count, mode_changed)) => DispatchReport::success_with_flags(
+                    format!("Dispatch: terminal search opened ({result_count} items)"),
+                    true,
+                    mode_changed,
+                ),
+                Err(report) => report,
+            }
+        }
         Command::OpenWorkspaceSymbols => match open_palette_mode(
             ctx,
             CommandPaletteMode::WorkspaceSymbols,

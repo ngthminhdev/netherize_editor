@@ -257,7 +257,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::FilePickerSelectPrev
         | Command::FilePickerConfirmSelection
         | Command::CloseFilePicker
-        | Command::OpenCommandPalette => palette::dispatch(&mut ctx, command),
+        | Command::OpenCommandPalette
+        | Command::TerminalSearchOpen => palette::dispatch(&mut ctx, command),
         Command::SaveFile
         | Command::OpenFile(_)
         | Command::OpenFolder

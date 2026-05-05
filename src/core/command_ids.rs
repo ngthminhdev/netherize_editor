@@ -94,6 +94,7 @@ pub const DOCKER_OPEN_LAZYDOCKER: &str = "docker.open_lazydocker";
 pub const GIT_BLAME_LINE: &str = "git.blame_line";
 pub const TERMINAL_ENTER_NORMAL_MODE: &str = "terminal.enter_normal_mode";
 pub const TERMINAL_PASTE: &str = "terminal.paste";
+pub const TERMINAL_SEARCH_OPEN: &str = "terminal.search_open";
 
 // ── Buffer goto ─────────────────────────────────────────────────────────────
 pub const BUFFER_GOTO_1: &str = "buffer.goto_1";
@@ -286,6 +287,7 @@ pub const ALL_IDS: &[&str] = &[
     GIT_BLAME_LINE,
     TERMINAL_ENTER_NORMAL_MODE,
     TERMINAL_PASTE,
+    TERMINAL_SEARCH_OPEN,
     BUFFER_GOTO_1,
     BUFFER_GOTO_2,
     BUFFER_GOTO_3,
@@ -452,6 +454,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         EXIT_FOCUS => Some(Command::SwitchMode(ModeEvent::ExitFocus)),
         TERMINAL_ENTER_NORMAL_MODE => Some(Command::SwitchMode(ModeEvent::EnterTerminalNormal)),
         TERMINAL_PASTE => Some(Command::TerminalPaste),
+        TERMINAL_SEARCH_OPEN => Some(Command::TerminalSearchOpen),
         BUFFER_GOTO_1 => Some(Command::BufferGoto(0)),
         BUFFER_GOTO_2 => Some(Command::BufferGoto(1)),
         BUFFER_GOTO_3 => Some(Command::BufferGoto(2)),

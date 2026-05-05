@@ -158,6 +158,7 @@ impl AppShell {
             sidebar_needs_layout: true,
             terminal_needs_layout: true,
             buffer_terminal_needs_layout: true,
+            terminal_search_palette_active: false,
             last_frame_time: now,
             last_fps_metrics_update_at: now,
             accumulated_frame_time: Duration::ZERO,

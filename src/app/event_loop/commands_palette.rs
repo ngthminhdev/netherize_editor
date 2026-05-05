@@ -260,11 +260,31 @@ impl AppShell {
                             | CommandPaletteMode::ExplorerDeleteConfirm
                     )
                 );
+                let was_terminal_search = self.terminal_search_palette_active;
+                self.terminal_search_palette_active = false;
                 let report = dispatch_command(&mut self.app_state, command.clone());
                 self.clear_palette_ime_commit_suppression();
                 let focus_changed = if returns_to_explorer {
                     let _ = self.app_state.apply_mode_event(ModeEvent::ExitFocus);
                     self.focus_manager.set(FocusTarget::LeftSidebar)
+                } else if was_terminal_search {
+                    // Return focus to the terminal panel after closing search.
+                    // `release_focus_mode_to_editor` already applied ExitFocus,
+                    // transitioning PaletteFocus → TerminalNormal (via return_mode).
+                    // We now re-enter TerminalNormal explicitly for safety and
+                    // point focus at the bottom panel.
+                    let _ = self.release_focus_mode_to_editor();
+                    let _ = self.app_state.apply_mode_event(ModeEvent::FocusTerminal);
+                    let _ = self
+                        .app_state
+                        .apply_mode_event(ModeEvent::EnterTerminalNormal);
+                    // Clear terminal search highlights (user cancelled).
+                    if let Some(grid) = self.focused_terminal_grid_mut() {
+                        grid.search_matches.clear();
+                        grid.search_cursor = 0;
+                    }
+                    self.mark_focused_terminal_layout_dirty();
+                    self.focus_manager.set(FocusTarget::BottomPanel)
                 } else {
                     self.focus_manager.set(FocusTarget::CenterEditor)
                 };
@@ -312,12 +332,38 @@ impl AppShell {
                         Some(CommandPaletteMode::InFileSearch)
                     )
                 {
+                    let was_terminal_search = self.terminal_search_palette_active;
+                    self.terminal_search_palette_active = false;
+
                     let report = dispatch_command(&mut self.app_state, command.clone());
+                    if was_terminal_search {
+                        // Terminal search: close palette and return focus to the
+                        // terminal panel.  The grid search was already performed by
+                        // `sync_in_file_search_with_palette_query` while the user
+                        // typed; we only need to close the overlay and restore the
+                        // terminal mode.
+                        let _ = self.release_focus_mode_to_editor();
+                        // Re-enter terminal normal so n/N continue to work.
+                        let _ = self.app_state.apply_mode_event(ModeEvent::FocusTerminal);
+                        let _ = self
+                            .app_state
+                            .apply_mode_event(ModeEvent::EnterTerminalNormal);
+                        let focus_changed =
+                            self.focus_manager.set(FocusTarget::BottomPanel);
+                        if focus_changed {
+                            self.input_handler.clear_pending_prefix();
+                        }
+                        self.clear_palette_ime_commit_suppression();
+                        self.mark_focused_terminal_layout_dirty();
+                        return Some(true);
+                    }
+
                     if report.state_changed {
                         let prev_scroll = self.app_state.target_scroll_y;
                         let viewport_lines = self.editor_viewport_lines();
                         self.app_state.auto_scroll_to_cursor(viewport_lines);
-                        if (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON {
+                        if (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON
+                        {
                             self.editor_needs_layout = true;
                             self.editor_caret_needs_layout = false;
                         } else {
