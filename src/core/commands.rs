@@ -192,6 +192,8 @@ pub enum Command {
     MoveFocusCycle,
     /// Return focus to the editor from any other surface (universal escape).
     FocusBack,
+    /// Toggle maximize focus for current region (Zen Mode).
+    ToggleMaximizeFocus,
 
     // ── Explorer surface commands ───────────────────────────────────────────────
     ExplorerMoveUp,

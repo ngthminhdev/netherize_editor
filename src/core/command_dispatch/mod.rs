@@ -280,6 +280,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::FocusDown
         | Command::MoveFocusCycle
         | Command::FocusBack
+        | Command::ToggleMaximizeFocus
         | Command::ExplorerMoveUp
         | Command::ExplorerMoveDown
         | Command::ExplorerCollapseOrParent

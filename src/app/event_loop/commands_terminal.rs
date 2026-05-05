@@ -265,6 +265,21 @@ impl AppShell {
                 }
                 Some(report.request_redraw)
             }
+            Command::ToggleMaximizeFocus => {
+                let current_focus = self.focus_manager.current();
+                match self.panel_state.maximized_region {
+                    None => {
+                        // Maximize current region
+                        self.panel_state.maximized_region = Some(current_focus);
+                    }
+                    Some(_) => {
+                        // Restore normal layout
+                        self.panel_state.maximized_region = None;
+                    }
+                }
+                self.sidebar_needs_layout = true;
+                Some(true)
+            }
             Command::MoveFocusCycle => {
                 let changed = self.focus_manager.cycle_next(&self.panel_state);
                 if changed {

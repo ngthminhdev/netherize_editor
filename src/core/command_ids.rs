@@ -160,6 +160,7 @@ pub const FOCUS_UP: &str = "app.focus_up";
 pub const FOCUS_DOWN: &str = "app.focus_down";
 pub const MOVE_FOCUS_CYCLE: &str = "app.move_focus_cycle";
 pub const FOCUS_BACK: &str = "app.focus_back";
+pub const TOGGLE_MAXIMIZE_FOCUS: &str = "app.toggle_maximize_focus";
 
 // ── Panel tabs ────────────────────────────────────────────────────────────────
 pub const NEXT_PANEL_TAB: &str = "app.next_panel_tab";
@@ -380,6 +381,7 @@ pub const ALL_IDS: &[&str] = &[
     MARKDOWN_PREVIEW_SCROLL_DOWN,
     MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP,
     MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN,
+    TOGGLE_MAXIMIZE_FOCUS,
 ];
 
 pub fn is_valid(id: &str) -> bool {
@@ -563,6 +565,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         MARKDOWN_PREVIEW_SCROLL_DOWN => Some(Command::MarkdownPreviewScrollDown),
         MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP => Some(Command::MarkdownPreviewScrollHalfPageUp),
         MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN => Some(Command::MarkdownPreviewScrollHalfPageDown),
+        TOGGLE_MAXIMIZE_FOCUS => Some(Command::ToggleMaximizeFocus),
         _ => None,
     }
 }
