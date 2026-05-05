@@ -265,6 +265,14 @@ impl AppShell {
             return changed;
         }
 
+        if let Some(changed) = self.handle_terminal_search_command(&command) {
+            return self.finalize_post_command_hooks(
+                &command_for_post_hooks,
+                should_persist_history_after,
+                changed,
+            );
+        }
+
         if let Some(changed) = self.handle_terminal_and_focus_command(&command) {
             return self.finalize_post_command_hooks(
                 &command_for_post_hooks,

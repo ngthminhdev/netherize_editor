@@ -275,4 +275,88 @@ impl AppShell {
             _ => None,
         }
     }
+
+    /// Handle search commands when in Terminal Normal Mode.
+    ///
+    /// Intercepts `SearchNext`, `SearchPrev`, and `SearchWordUnderCursor` so
+    /// they operate on the terminal grid's scrollback text instead of the
+    /// editor buffer.  Returns `None` when the current mode is not
+    /// `TerminalNormal`, allowing the normal editor dispatch to proceed.
+    pub(super) fn handle_terminal_search_command(&mut self, command: &Command) -> Option<bool> {
+        if self.app_state.current_mode() != EditorMode::TerminalNormal {
+            return None;
+        }
+
+        match command {
+            Command::SearchNext => {
+                if let Some(grid) = self.focused_terminal_grid_mut() {
+                    if grid.search_next().is_some() {
+                        self.mark_focused_terminal_layout_dirty();
+                        return Some(true);
+                    }
+                }
+                Some(false)
+            }
+            Command::SearchPrev => {
+                if let Some(grid) = self.focused_terminal_grid_mut() {
+                    if grid.search_prev().is_some() {
+                        self.mark_focused_terminal_layout_dirty();
+                        return Some(true);
+                    }
+                }
+                Some(false)
+            }
+            Command::SearchWordUnderCursor => {
+                if let Some(grid) = self.focused_terminal_grid_mut() {
+                    let word = word_at_virtual_cursor(grid);
+                    if let Some(word) = word {
+                        grid.search_in_terminal(&word, true);
+                        let found = grid.search_next().is_some();
+                        self.mark_focused_terminal_layout_dirty();
+                        return Some(found);
+                    }
+                }
+                Some(false)
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Extract the word under the virtual cursor from a terminal grid.
+///
+/// Uses the grid's scrollback text and `virtual_cursor` position to find a
+/// contiguous span of alphanumeric / underscore characters.  Returns `None`
+/// when the cursor is not on a word character or the grid is empty.
+fn word_at_virtual_cursor(grid: &crate::terminal::grid::TerminalGrid) -> Option<String> {
+    let lines = grid.get_scrollback_text();
+    let cursor = grid.virtual_cursor;
+    if cursor.row >= lines.len() {
+        return None;
+    }
+    let line = &lines[cursor.row];
+    if line.is_empty() {
+        return None;
+    }
+
+    let chars: Vec<char> = line.chars().collect();
+    let col = cursor.col.min(chars.len().saturating_sub(1));
+    if col >= chars.len() {
+        return None;
+    }
+    if !chars[col].is_alphanumeric() && chars[col] != '_' {
+        return None;
+    }
+
+    let mut start = col;
+    while start > 0 && (chars[start - 1].is_alphanumeric() || chars[start - 1] == '_') {
+        start -= 1;
+    }
+
+    let mut end = col + 1;
+    while end < chars.len() && (chars[end].is_alphanumeric() || chars[end] == '_') {
+        end += 1;
+    }
+
+    Some(chars[start..end].iter().collect())
 }
