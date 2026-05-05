@@ -1,0 +1,213 @@
+[theme]
+name = "vscode_dark"
+description = "VS Code Dark+ — the classic default dark theme from Visual Studio Code"
+
+[editor]
+bg = "#1E1E1E"
+fg = "#D4D4D4"
+cursor = "#AEAFAD"
+selection = "#264F78"
+gutter = "#1E1E1E"
+gutter_active = "#D4D4D4"
+indent_guide = "#40404040"
+rainbow_brackets = ["#FFD700", "#DA70D6", "#179FFF", "#FFD700", "#DA70D6", "#179FFF"]
+font_size = 14.0
+line_height = 22.0
+font_family = "Google Sans Code"
+nerd_font_family = "Hack Nerd Font"
+
+[ui]
+bg = "#181818"
+sidebar_bg = "#181818"
+panel_bg = "#1E1E1E"
+terminal_bg = "#1E1E1E"
+overlay_bg = "#252526D9"
+status_bar_bg = "#007ACC"
+border_color = "#3C3C3C"
+selection_bg = "#094771"
+dirty_indicator = "#E8AB53"
+
+fg = "#D4D4D4"
+fg_dim = "#808080"
+fg_ghost = "#5A5A5A"
+
+accent = "#007ACC"
+cyan = "#4EC9B0"
+magenta = "#C586C0"
+amber = "#D7BA7D"
+success = "#6A9955"
+warning = "#CCA700"
+info = "#73D0FF"
+error = "#F44747"
+
+mode_normal = "#4FC1FF"
+mode_insert = "#6A9955"
+mode_visual = "#C586C0"
+
+sidebar_font_size = 14.0
+sidebar_line_height = 22.0
+panel_font_size = 14.0
+panel_line_height = 22.0
+
+sidebar_width = 280.0
+right_sidebar_width = 540.0
+bottom_panel_height = 220.0
+top_bar_height = 36.0
+
+[git]
+modified_sidebar = "#E8AB53"
+added_sidebar = "#6A9955"
+modified_gutter = "#E8AB53"
+added_gutter = "#6A9955"
+deleted_gutter = "#F44747"
+status_bar_height = 32.0
+
+[icons]
+explorer_file_marker = "·"
+explorer_folder_collapsed_marker = "▶"
+explorer_folder_expanded_marker = "▼"
+file_picker_dot = "●"
+
+[icons.folder_closed]
+glyph = "\uF07B"
+color = "#C586C0"
+
+[icons.folder_open]
+glyph = "\uF07C"
+color = "#C586C0"
+
+[icons.default_file]
+glyph = "\uF15B"
+color = "#5A5A5A"
+
+[icons.rust]
+glyph = "\uE7A8"
+color = "#D7BA7D"
+
+[icons.javascript]
+glyph = "\uE781"
+color = "#D7BA7D"
+
+[icons.typescript]
+glyph = "\uE628"
+color = "#519ABA"
+
+[icons.tsx]
+glyph = "\uE7BA"
+color = "#519ABA"
+
+[icons.jsx]
+glyph = "\uE7BA"
+color = "#D7BA7D"
+
+[icons.python]
+glyph = "\uE73C"
+color = "#519ABA"
+
+[icons.go]
+glyph = "\uE724"
+color = "#4EC9B0"
+
+[icons.config]
+glyph = "\uE615"
+color = "#5A5A5A"
+
+[icons.json]
+glyph = "\uE60B"
+color = "#D7BA7D"
+
+[icons.markdown]
+glyph = "\uF48A"
+color = "#519ABA"
+
+[icons.html]
+glyph = "\uE736"
+color = "#F44747"
+
+[icons.css]
+glyph = "\uE749"
+color = "#519ABA"
+
+[icons.sass]
+glyph = "\uE603"
+color = "#C586C0"
+
+[icons.shell]
+glyph = "\uF489"
+color = "#6A9955"
+
+[icons.git]
+glyph = "\uF1D3"
+color = "#D7BA7D"
+
+[icons.lock]
+glyph = "\uF13E"
+color = "#5A5A5A"
+
+[icons.image]
+glyph = "\uF1C5"
+color = "#6A9955"
+
+[file_icons]
+default_file = "\uF15B"
+default_folder = "\uF07B"
+
+[file_icons.extensions]
+rs = "\uE7A8"
+ts = "\uE628"
+tsx = "\uE7BA"
+js = "\uE781"
+jsx = "\uE7BA"
+go = "\uE724"
+json = "\uE60B"
+jsonc = "\uE60B"
+yaml = "\uE615"
+yml = "\uE615"
+toml = "\uE615"
+sql = "\uE706"
+md = "\uF48A"
+mdx = "\uF48A"
+dockerfile = "\uF023"
+sh = "\uF489"
+bash = "\uF489"
+zsh = "\uF489"
+fish = "\uF489"
+lock = "\uF13E"
+
+[file_icons.exact]
+Dockerfile = "\uF023"
+"docker-compose.yml" = "\uF023"
+"docker-compose.yaml" = "\uF023"
+".gitignore" = "\uE709"
+".gitattributes" = "\uE709"
+".gitmodules" = "\uE709"
+"package.json" = "\uE718"
+"package-lock.json" = "\uE718"
+"tsconfig.json" = "\uE628"
+"Cargo.toml" = "\uE7A8"
+Makefile = "\uF489"
+"README.md" = "\uF48A"
+
+[syntax]
+keyword = "#569CD6"
+operator = "#D4D4D4"
+punctuation = "#D4D4D4"
+string = "#CE9178"
+number = "#B5CEA8"
+boolean = "#569CD6"
+escape = "#D7BA7D"
+identifier = "#D4D4D4"
+variable = "#9CDCFE"
+function = "#DCDCAA"
+macro = "#569CD6"
+parameter = "#9CDCFE"
+type = "#4EC9B0"
+constructor = "#4EC9B0"
+field = "#9CDCFE"
+property = "#9CDCFE"
+constant = "#4FC1FF"
+comment = "#6A9955"
+attribute = "#DCDCAA"
+namespace = "#4EC9B0"
+lifetime = "#569CD6"
+tag = "#569CD6"

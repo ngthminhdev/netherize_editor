@@ -1,0 +1,213 @@
+[theme]
+name = "catppuccin_mocha"
+description = "Catppuccin Mocha — soothing pastel dark theme"
+
+[editor]
+bg = "#1E1E2E"
+fg = "#CDD6F4"
+cursor = "#F5E0DC"
+selection = "#45475A"
+gutter = "#1E1E2E"
+gutter_active = "#CDD6F4"
+indent_guide = "#6C708640"
+rainbow_brackets = ["#F38BA8", "#F5C2E7", "#F9E2AF", "#A6E3A1", "#89B4FA", "#CBA6F7"]
+font_size = 14.0
+line_height = 22.0
+font_family = "Google Sans Code"
+nerd_font_family = "Hack Nerd Font"
+
+[ui]
+bg = "#181825"
+sidebar_bg = "#181825"
+panel_bg = "#181825"
+terminal_bg = "#11111B"
+overlay_bg = "#181825D9"
+status_bar_bg = "#11111B"
+border_color = "#313244"
+selection_bg = "#313244"
+dirty_indicator = "#F9E2AF"
+
+fg = "#CDD6F4"
+fg_dim = "#A6ADC8"
+fg_ghost = "#6C7086"
+
+accent = "#89B4FA"
+cyan = "#94E2D5"
+magenta = "#CBA6F7"
+amber = "#F9E2AF"
+success = "#A6E3A1"
+warning = "#FAB387"
+info = "#89B4FA"
+error = "#F38BA8"
+
+mode_normal = "#89DCEB"
+mode_insert = "#A6E3A1"
+mode_visual = "#CBA6F7"
+
+sidebar_font_size = 14.0
+sidebar_line_height = 22.0
+panel_font_size = 14.0
+panel_line_height = 22.0
+
+sidebar_width = 280.0
+right_sidebar_width = 540.0
+bottom_panel_height = 220.0
+top_bar_height = 36.0
+
+[git]
+modified_sidebar = "#F9E2AF"
+added_sidebar = "#A6E3A1"
+modified_gutter = "#F9E2AF"
+added_gutter = "#A6E3A1"
+deleted_gutter = "#F38BA8"
+status_bar_height = 32.0
+
+[icons]
+explorer_file_marker = "·"
+explorer_folder_collapsed_marker = "▶"
+explorer_folder_expanded_marker = "▼"
+file_picker_dot = "●"
+
+[icons.folder_closed]
+glyph = "\uF07B"
+color = "#F9E2AF"
+
+[icons.folder_open]
+glyph = "\uF07C"
+color = "#F9E2AF"
+
+[icons.default_file]
+glyph = "\uF15B"
+color = "#6C7086"
+
+[icons.rust]
+glyph = "\uE7A8"
+color = "#FAB387"
+
+[icons.javascript]
+glyph = "\uE781"
+color = "#F9E2AF"
+
+[icons.typescript]
+glyph = "\uE628"
+color = "#89B4FA"
+
+[icons.tsx]
+glyph = "\uE7BA"
+color = "#89B4FA"
+
+[icons.jsx]
+glyph = "\uE7BA"
+color = "#F9E2AF"
+
+[icons.python]
+glyph = "\uE73C"
+color = "#89B4FA"
+
+[icons.go]
+glyph = "\uE724"
+color = "#94E2D5"
+
+[icons.config]
+glyph = "\uE615"
+color = "#6C7086"
+
+[icons.json]
+glyph = "\uE60B"
+color = "#F9E2AF"
+
+[icons.markdown]
+glyph = "\uF48A"
+color = "#89B4FA"
+
+[icons.html]
+glyph = "\uE736"
+color = "#F38BA8"
+
+[icons.css]
+glyph = "\uE749"
+color = "#89B4FA"
+
+[icons.sass]
+glyph = "\uE603"
+color = "#F5C2E7"
+
+[icons.shell]
+glyph = "\uF489"
+color = "#A6E3A1"
+
+[icons.git]
+glyph = "\uF1D3"
+color = "#FAB387"
+
+[icons.lock]
+glyph = "\uF13E"
+color = "#6C7086"
+
+[icons.image]
+glyph = "\uF1C5"
+color = "#A6E3A1"
+
+[file_icons]
+default_file = "\uF15B"
+default_folder = "\uF07B"
+
+[file_icons.extensions]
+rs = "\uE7A8"
+ts = "\uE628"
+tsx = "\uE7BA"
+js = "\uE781"
+jsx = "\uE7BA"
+go = "\uE724"
+json = "\uE60B"
+jsonc = "\uE60B"
+yaml = "\uE615"
+yml = "\uE615"
+toml = "\uE615"
+sql = "\uE706"
+md = "\uF48A"
+mdx = "\uF48A"
+dockerfile = "\uF023"
+sh = "\uF489"
+bash = "\uF489"
+zsh = "\uF489"
+fish = "\uF489"
+lock = "\uF13E"
+
+[file_icons.exact]
+Dockerfile = "\uF023"
+"docker-compose.yml" = "\uF023"
+"docker-compose.yaml" = "\uF023"
+".gitignore" = "\uE709"
+".gitattributes" = "\uE709"
+".gitmodules" = "\uE709"
+"package.json" = "\uE718"
+"package-lock.json" = "\uE718"
+"tsconfig.json" = "\uE628"
+"Cargo.toml" = "\uE7A8"
+Makefile = "\uF489"
+"README.md" = "\uF48A"
+
+[syntax]
+keyword = "#CBA6F7"
+operator = "#89DCEB"
+punctuation = "#BAC2DE"
+string = "#A6E3A1"
+number = "#FAB387"
+boolean = "#FAB387"
+escape = "#F38BA8"
+identifier = "#CDD6F4"
+variable = "#CDD6F4"
+function = "#89B4FA"
+macro = "#F5C2E7"
+parameter = "#EBA0AC"
+type = "#F9E2AF"
+constructor = "#F9E2AF"
+field = "#89DCEB"
+property = "#B4BEFE"
+constant = "#FAB387"
+comment = "#6C7086"
+attribute = "#F9E2AF"
+namespace = "#CBA6F7"
+lifetime = "#FAB387"
+tag = "#F38BA8"

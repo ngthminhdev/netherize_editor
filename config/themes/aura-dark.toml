@@ -1,0 +1,213 @@
+[theme]
+name = "aura_dark"
+description = "Aura Dark — dark theme with soft pastel purple tones"
+
+[editor]
+bg = "#15141B"
+fg = "#EDECEE"
+cursor = "#A277FF"
+selection = "#2D2B38"
+gutter = "#15141B"
+gutter_active = "#EDECEE"
+indent_guide = "#6D6A7E40"
+rainbow_brackets = ["#FFCA85", "#61FFCA", "#A277FF", "#F694FF", "#FFCA85", "#61FFCA"]
+font_size = 14.0
+line_height = 22.0
+font_family = "Google Sans Code"
+nerd_font_family = "Hack Nerd Font"
+
+[ui]
+bg = "#121118"
+sidebar_bg = "#121118"
+panel_bg = "#121118"
+terminal_bg = "#0F0E14"
+overlay_bg = "#121118D9"
+status_bar_bg = "#0D0C12"
+border_color = "#2D2B38"
+selection_bg = "#3D3A4A"
+dirty_indicator = "#FFCA85"
+
+fg = "#EDECEE"
+fg_dim = "#A39DB8"
+fg_ghost = "#6D6A7E"
+
+accent = "#A277FF"
+cyan = "#61FFCA"
+magenta = "#F694FF"
+amber = "#FFCA85"
+success = "#61FFCA"
+warning = "#FFCA85"
+info = "#73D0FF"
+error = "#FF6767"
+
+mode_normal = "#61FFCA"
+mode_insert = "#A277FF"
+mode_visual = "#F694FF"
+
+sidebar_font_size = 14.0
+sidebar_line_height = 22.0
+panel_font_size = 14.0
+panel_line_height = 22.0
+
+sidebar_width = 280.0
+right_sidebar_width = 540.0
+bottom_panel_height = 220.0
+top_bar_height = 36.0
+
+[git]
+modified_sidebar = "#FFCA85"
+added_sidebar = "#61FFCA"
+modified_gutter = "#FFCA85"
+added_gutter = "#61FFCA"
+deleted_gutter = "#FF6767"
+status_bar_height = 32.0
+
+[icons]
+explorer_file_marker = "·"
+explorer_folder_collapsed_marker = "▶"
+explorer_folder_expanded_marker = "▼"
+file_picker_dot = "●"
+
+[icons.folder_closed]
+glyph = "\uF07B"
+color = "#FFCA85"
+
+[icons.folder_open]
+glyph = "\uF07C"
+color = "#FFCA85"
+
+[icons.default_file]
+glyph = "\uF15B"
+color = "#6D6A7E"
+
+[icons.rust]
+glyph = "\uE7A8"
+color = "#FFCA85"
+
+[icons.javascript]
+glyph = "\uE781"
+color = "#FFCA85"
+
+[icons.typescript]
+glyph = "\uE628"
+color = "#73D0FF"
+
+[icons.tsx]
+glyph = "\uE7BA"
+color = "#73D0FF"
+
+[icons.jsx]
+glyph = "\uE7BA"
+color = "#FFCA85"
+
+[icons.python]
+glyph = "\uE73C"
+color = "#73D0FF"
+
+[icons.go]
+glyph = "\uE724"
+color = "#61FFCA"
+
+[icons.config]
+glyph = "\uE615"
+color = "#6D6A7E"
+
+[icons.json]
+glyph = "\uE60B"
+color = "#FFCA85"
+
+[icons.markdown]
+glyph = "\uF48A"
+color = "#73D0FF"
+
+[icons.html]
+glyph = "\uE736"
+color = "#FF6767"
+
+[icons.css]
+glyph = "\uE749"
+color = "#73D0FF"
+
+[icons.sass]
+glyph = "\uE603"
+color = "#F694FF"
+
+[icons.shell]
+glyph = "\uF489"
+color = "#61FFCA"
+
+[icons.git]
+glyph = "\uF1D3"
+color = "#FFCA85"
+
+[icons.lock]
+glyph = "\uF13E"
+color = "#6D6A7E"
+
+[icons.image]
+glyph = "\uF1C5"
+color = "#61FFCA"
+
+[file_icons]
+default_file = "\uF15B"
+default_folder = "\uF07B"
+
+[file_icons.extensions]
+rs = "\uE7A8"
+ts = "\uE628"
+tsx = "\uE7BA"
+js = "\uE781"
+jsx = "\uE7BA"
+go = "\uE724"
+json = "\uE60B"
+jsonc = "\uE60B"
+yaml = "\uE615"
+yml = "\uE615"
+toml = "\uE615"
+sql = "\uE706"
+md = "\uF48A"
+mdx = "\uF48A"
+dockerfile = "\uF023"
+sh = "\uF489"
+bash = "\uF489"
+zsh = "\uF489"
+fish = "\uF489"
+lock = "\uF13E"
+
+[file_icons.exact]
+Dockerfile = "\uF023"
+"docker-compose.yml" = "\uF023"
+"docker-compose.yaml" = "\uF023"
+".gitignore" = "\uE709"
+".gitattributes" = "\uE709"
+".gitmodules" = "\uE709"
+"package.json" = "\uE718"
+"package-lock.json" = "\uE718"
+"tsconfig.json" = "\uE628"
+"Cargo.toml" = "\uE7A8"
+Makefile = "\uF489"
+"README.md" = "\uF48A"
+
+[syntax]
+keyword = "#A277FF"
+operator = "#EDECEE"
+punctuation = "#A39DB8"
+string = "#61FFCA"
+number = "#FFCA85"
+boolean = "#FFCA85"
+escape = "#FF6767"
+identifier = "#EDECEE"
+variable = "#EDECEE"
+function = "#FFCA85"
+macro = "#F694FF"
+parameter = "#F694FF"
+type = "#61FFCA"
+constructor = "#61FFCA"
+field = "#73D0FF"
+property = "#EDECEE"
+constant = "#FFCA85"
+comment = "#6D6A7E"
+attribute = "#FFCA85"
+namespace = "#A277FF"
+lifetime = "#FFCA85"
+tag = "#F694FF"
