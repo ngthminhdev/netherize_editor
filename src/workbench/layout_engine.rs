@@ -3,6 +3,7 @@ use winit::dpi::PhysicalSize;
 use crate::{
     config::theme_config::UiThemeTokens,
     workbench::{
+        focus_manager::FocusTarget,
         panel_state::WorkbenchPanelState,
         region_model::{RegionBounds, RegionId, RegionModel, RegionNode},
     },
@@ -132,6 +133,12 @@ impl WorkbenchLayoutEngine {
         let width = size.width as f32;
         let height = size.height as f32;
         let root_bounds = RegionBounds::new(0.0, 0.0, width, height);
+
+        // Zen Mode: maximize one region
+        if let Some(maximized) = panels.maximized_region {
+            return self.compute_maximized(size, panels, maximized);
+        }
+
         let outer_gap = self.config.outer_gap.max(0.0);
         let viewport_bounds = RegionBounds::new(
             outer_gap.min(width * 0.5),
@@ -282,6 +289,105 @@ impl WorkbenchLayoutEngine {
         }
 
         WorkbenchLayout { model, handles }
+    }
+
+    fn compute_maximized(
+        &self,
+        size: PhysicalSize<u32>,
+        _panels: &WorkbenchPanelState,
+        target: FocusTarget,
+    ) -> WorkbenchLayout {
+        let width = size.width as f32;
+        let height = size.height as f32;
+        let outer_gap = self.config.outer_gap.max(0.0);
+
+        // Keep TopBar and StatusBar, give everything else to target
+        let top_h = self
+            .config
+            .top_bar_height
+            .min((height - outer_gap).max(0.0));
+        let remain_after_top = (height - outer_gap - top_h).max(0.0);
+        let status_h = self.config.status_bar_height.min(remain_after_top);
+        let status_top_gap = self
+            .status_bar_top_gap(status_h)
+            .min(remain_after_top - status_h);
+
+        let available_y = outer_gap + top_h;
+        let available_h =
+            (height - outer_gap - top_h - status_h - status_top_gap - outer_gap).max(0.0);
+        let available_x = outer_gap;
+        let available_w = (width - outer_gap * 2.0).max(0.0);
+
+        let target_bounds = RegionBounds::new(available_x, available_y, available_w, available_h);
+        let zero = RegionBounds::new(0.0, 0.0, 0.0, 0.0);
+
+        let top_bar = RegionNode::new(
+            RegionId::TopBar,
+            RegionBounds::new(outer_gap, 0.0, (width - outer_gap * 2.0).max(0.0), top_h),
+            true,
+        );
+
+        let left = RegionNode::new(
+            RegionId::LeftSidebar,
+            if target == FocusTarget::LeftSidebar {
+                target_bounds
+            } else {
+                zero
+            },
+            target == FocusTarget::LeftSidebar,
+        );
+        let center = RegionNode::new(
+            RegionId::Center,
+            if target == FocusTarget::CenterEditor {
+                target_bounds
+            } else {
+                zero
+            },
+            target == FocusTarget::CenterEditor,
+        );
+        let right = RegionNode::new(
+            RegionId::RightSidebar,
+            if target == FocusTarget::RightSidebar {
+                target_bounds
+            } else {
+                zero
+            },
+            target == FocusTarget::RightSidebar,
+        );
+        let bottom = RegionNode::new(
+            RegionId::BottomPanel,
+            if target == FocusTarget::BottomPanel {
+                target_bounds
+            } else {
+                zero
+            },
+            target == FocusTarget::BottomPanel,
+        );
+
+        let status_inset_x = self.config.panel_gap.max(0.0);
+        let status_bar = RegionNode::new(
+            RegionId::StatusBar,
+            RegionBounds::new(
+                outer_gap + status_inset_x,
+                (height - status_h).max(0.0),
+                ((width - outer_gap * 2.0) - status_inset_x * 2.0).max(0.0),
+                status_h,
+            ),
+            true,
+        );
+
+        let root_bounds = RegionBounds::new(0.0, 0.0, width, height);
+        WorkbenchLayout {
+            model: RegionModel::new(root_bounds).with_children(vec![
+                top_bar,
+                left,
+                center,
+                right,
+                bottom,
+                status_bar,
+            ]),
+            handles: vec![],
+        }
     }
 
     pub fn apply_handle_drag(
@@ -782,5 +888,96 @@ mod tests {
         let input = layout.model.find(RegionId::AiChatInput).unwrap();
         // Input should be below history
         assert!(input.y >= history.y + history.height - 0.001);
+    }
+
+    #[test]
+    fn maximize_center_gives_full_space_to_center() {
+        use crate::workbench::focus_manager::FocusTarget;
+
+        let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
+        let mut state = WorkbenchPanelState::default();
+        state.maximized_region = Some(FocusTarget::CenterEditor);
+
+        let layout = engine.compute(PhysicalSize::new(1280, 800), &state);
+        let flat = layout.model.flatten();
+        let find = |id: RegionId| flat.iter().find(|r| r.id == id);
+
+        // TopBar and StatusBar remain visible
+        let top = find(RegionId::TopBar).expect("top bar");
+        assert!(top.bounds.height > 0.0);
+        assert!(top.visible);
+        let status = find(RegionId::StatusBar).expect("status bar");
+        assert!(status.bounds.height > 0.0);
+        assert!(status.visible);
+
+        // Center is visible with full space
+        let center = find(RegionId::Center).expect("center");
+        assert!(center.visible);
+        assert!(center.bounds.width > 0.0);
+        assert!(center.bounds.height > 0.0);
+
+        // Other regions are hidden with zero bounds
+        let left = find(RegionId::LeftSidebar).expect("left");
+        assert!(!left.visible);
+        assert!(left.bounds.width == 0.0);
+        assert!(left.bounds.height == 0.0);
+
+        let right = find(RegionId::RightSidebar).expect("right");
+        assert!(!right.visible);
+        assert!(right.bounds.width == 0.0);
+
+        let bottom = find(RegionId::BottomPanel).expect("bottom");
+        assert!(!bottom.visible);
+        assert!(bottom.bounds.width == 0.0);
+
+        // No split handles
+        assert!(layout.handles.is_empty());
+    }
+
+    #[test]
+    fn maximize_left_sidebar_gives_full_space() {
+        use crate::workbench::focus_manager::FocusTarget;
+
+        let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
+        let mut state = WorkbenchPanelState::default();
+        state.maximized_region = Some(FocusTarget::LeftSidebar);
+
+        let layout = engine.compute(PhysicalSize::new(1280, 800), &state);
+        let flat = layout.model.flatten();
+        let find = |id: RegionId| flat.iter().find(|r| r.id == id);
+
+        let left = find(RegionId::LeftSidebar).expect("left");
+        assert!(left.visible);
+        assert!(left.bounds.width > 0.0);
+        assert!(left.bounds.height > 0.0);
+
+        let center = find(RegionId::Center).expect("center");
+        assert!(!center.visible);
+        assert!(center.bounds.width == 0.0);
+
+        assert!(layout.handles.is_empty());
+    }
+
+    #[test]
+    fn maximize_bottom_panel_gives_full_space() {
+        use crate::workbench::focus_manager::FocusTarget;
+
+        let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
+        let mut state = WorkbenchPanelState::default();
+        state.maximized_region = Some(FocusTarget::BottomPanel);
+
+        let layout = engine.compute(PhysicalSize::new(1280, 800), &state);
+        let flat = layout.model.flatten();
+        let find = |id: RegionId| flat.iter().find(|r| r.id == id);
+
+        let bottom = find(RegionId::BottomPanel).expect("bottom");
+        assert!(bottom.visible);
+        assert!(bottom.bounds.width > 0.0);
+        assert!(bottom.bounds.height > 0.0);
+
+        let center = find(RegionId::Center).expect("center");
+        assert!(!center.visible);
+
+        assert!(layout.handles.is_empty());
     }
 }
