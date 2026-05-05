@@ -578,6 +578,11 @@ mode = "terminal_normal"
 key = "N"
 command = "editor.search_prev"
 
+[[bindings]]
+mode = "terminal_normal"
+key = "<leader>t f"
+command = "app.toggle_maximize_focus"
+
 # ───────────────── EXPLORER ─────────────────
 [[bindings]]
 mode = "explorer"
@@ -756,6 +761,11 @@ command = "app.open_file_history"
 mode = "normal"
 key = "<leader>t h"
 command = "app.open_theme_selector"
+
+[[bindings]]
+mode = "normal"
+key = "<leader>t f"
+command = "app.toggle_maximize_focus"
 
 [[bindings]]
 mode = "normal"
