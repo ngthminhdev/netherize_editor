@@ -27,6 +27,13 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         return report;
     }
 
+    // In MultiInsert mode, typing and backspace fan out to all virtual cursors.
+    if ctx.app_state.current_mode() == EditorMode::MultiInsert {
+        if let Some(report) = dispatch_multi_insert(ctx, &command) {
+            return report;
+        }
+    }
+
     match command {
         Command::InsertChar(ch) => {
             let changed = if matching_close_char(ch).is_some() {
@@ -725,6 +732,87 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             ctx.commit_text_transaction(true);
             DispatchReport::success("Dispatch: deleted operation target", true)
         }
+        // ── Multiple Cursors ──────────────────────────────────────────────────
+        Command::MultiCursorAddNext => {
+            // In MultiInsert mode, InsertChar/Backspace are intercepted above;
+            // any non-text command here should be ignored.
+            let changed = ctx.app_state.multi_cursor_add_next();
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: multi-cursor match added"
+                } else {
+                    "Dispatch: multi-cursor add_next — no match found"
+                },
+                changed,
+            )
+        }
+        Command::MultiCursorSkip => {
+            let changed = ctx.app_state.multi_cursor_skip();
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: multi-cursor match skipped"
+                } else {
+                    "Dispatch: multi-cursor skip — nothing to skip"
+                },
+                changed,
+            )
+        }
+        Command::MultiCursorInsertBefore => {
+            let changed = ctx.app_state.multi_cursor_insert_before();
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: multi-cursor entered MultiInsert (before)"
+                } else {
+                    "Dispatch: multi-cursor insert_before ignored"
+                },
+                changed,
+            )
+        }
+        Command::MultiCursorAppendAfter => {
+            let changed = ctx.app_state.multi_cursor_append_after();
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: multi-cursor entered MultiInsert (after)"
+                } else {
+                    "Dispatch: multi-cursor append_after ignored"
+                },
+                changed,
+            )
+        }
+        Command::MultiCursorChange => {
+            let changed = ctx.app_state.multi_cursor_change();
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: multi-cursor change — selections deleted, MultiInsert"
+                } else {
+                    "Dispatch: multi-cursor change ignored"
+                },
+                changed,
+            )
+        }
+        Command::MultiCursorDelete => {
+            let changed = ctx.app_state.multi_cursor_delete();
+            ctx.commit_text_transaction(changed);
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: multi-cursor delete — selections deleted"
+                } else {
+                    "Dispatch: multi-cursor delete ignored"
+                },
+                changed,
+            )
+        }
+        Command::MultiCursorSelectAll => {
+            let changed = ctx.app_state.multi_cursor_select_all_visual();
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: multi-cursor select-all from visual selection"
+                } else {
+                    "Dispatch: multi-cursor select-all ignored (no visual selection)"
+                },
+                changed,
+            )
+        }
         _ => unreachable!("editing::dispatch received non-editing command"),
     }
 }
@@ -768,6 +856,35 @@ fn dispatch_terminal_normal(
 
             Some(DispatchReport::success(
                 "Dispatch: yanked terminal selection",
+                changed,
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// Fan out typed characters and backspace to all virtual cursors in MultiInsert mode.
+/// Returns `Some(report)` if the command was consumed, `None` to fall through.
+fn dispatch_multi_insert(
+    ctx: &mut DispatchCtx<'_, '_, '_>,
+    command: &Command,
+) -> Option<DispatchReport> {
+    match command {
+        Command::InsertChar(ch) => {
+            ctx.app_state.multi_insert_char(*ch);
+            Some(DispatchReport::success(
+                format!("Dispatch: multi-insert char {ch:?}"),
+                true,
+            ))
+        }
+        Command::Backspace => {
+            let changed = ctx.app_state.multi_backspace();
+            Some(DispatchReport::success(
+                if changed {
+                    "Dispatch: multi-insert backspace"
+                } else {
+                    "Dispatch: multi-insert backspace (at start)"
+                },
                 changed,
             ))
         }

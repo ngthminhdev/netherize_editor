@@ -38,6 +38,7 @@ use overlays::build_completion_display_items;
 
 mod buffers;
 mod editor;
+mod multi_cursor;
 mod overlays;
 mod palette;
 mod settings;
@@ -107,6 +108,17 @@ pub struct ImageBuffer {
     pub height: u32,
     pub rgba: Option<Vec<u8>>,
     pub error: Option<String>,
+}
+
+/// A virtual cursor placed on an additional match during MultiCursor mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VirtualCursor {
+    /// Current position of this cursor in the buffer (char index).
+    pub char_idx: usize,
+    /// Start of the selected word range (inclusive char index).
+    pub selection_start: Option<usize>,
+    /// End of the selected word range (exclusive char index).
+    pub selection_end: Option<usize>,
 }
 
 pub fn is_supported_image_path(path: &Path) -> bool {
@@ -268,7 +280,7 @@ fn build_help_sections(bindings: &[crate::config::keymap_config::KeyBinding]) ->
         (Some("visual"), "VISUAL", "mode = visual"),
     ];
 
-    specs
+    let mut sections: Vec<HelpSection> = specs
         .into_iter()
         .filter_map(|(mode, title, mode_hint)| {
             let entries = bindings
@@ -290,7 +302,225 @@ fn build_help_sections(bindings: &[crate::config::keymap_config::KeyBinding]) ->
                 entries,
             })
         })
-        .collect()
+        .collect();
+
+    // ── Getting Started section (beginner guide) ────────────────────────────
+    // Insert at the front so it appears first in the card grid.
+    let getting_started = HelpSection {
+        title: "GETTING STARTED".to_string(),
+        mode_hint: "for new users".to_string(),
+        entries: vec![
+            HelpEntry {
+                keys: vec!["Normal".into()],
+                label: "Default mode — navigate & run commands".into(),
+            },
+            HelpEntry {
+                keys: vec!["Insert".into()],
+                label: "Type text — press i to enter, Esc to exit".into(),
+            },
+            HelpEntry {
+                keys: vec!["Visual".into()],
+                label: "Select text — press v (line: V), Esc to exit".into(),
+            },
+            HelpEntry {
+                keys: vec!["leader".into()],
+                label: "= Space — prefix for custom shortcuts".into(),
+            },
+            HelpEntry {
+                keys: vec!["mod".into()],
+                label: "= ⌘ macOS / Ctrl Linux — app shortcuts".into(),
+            },
+            HelpEntry {
+                keys: vec!["count".into()],
+                label: "Number prefix — repeat N times (5j = ↓5)".into(),
+            },
+            HelpEntry {
+                keys: vec![":".into()],
+                label: "Open vim command line (:w, :q, :help)".into(),
+            },
+            HelpEntry {
+                keys: vec!["Esc".into()],
+                label: "Cancel / return to Normal mode".into(),
+            },
+        ],
+    };
+    sections.insert(0, getting_started);
+
+    // ── Vim Commands section ─────────────────────────────────────────────────
+    let vim_commands = HelpSection {
+        title: "VIM COMMANDS".to_string(),
+        mode_hint: "type : in normal mode".to_string(),
+        entries: vec![
+            HelpEntry {
+                keys: vec![":w".into()],
+                label: "Save file".into(),
+            },
+            HelpEntry {
+                keys: vec![":q".into()],
+                label: "Close buffer".into(),
+            },
+            HelpEntry {
+                keys: vec![":wq".into()],
+                label: "Save & close".into(),
+            },
+            HelpEntry {
+                keys: vec![":help".into()],
+                label: "Open cheat sheet".into(),
+            },
+            HelpEntry {
+                keys: vec![":enew".into()],
+                label: "New scratch buffer".into(),
+            },
+            HelpEntry {
+                keys: vec![":bn".into()],
+                label: "Next buffer".into(),
+            },
+            HelpEntry {
+                keys: vec![":bp".into()],
+                label: "Previous buffer".into(),
+            },
+            HelpEntry {
+                keys: vec![":bd".into()],
+                label: "Close buffer".into(),
+            },
+            HelpEntry {
+                keys: vec![":42".into()],
+                label: "Jump to line 42".into(),
+            },
+        ],
+    };
+    sections.insert(1, vim_commands);
+
+    // ── Terminal section ─────────────────────────────────────────────────────
+    let terminal_section = HelpSection {
+        title: "TERMINAL".to_string(),
+        mode_hint: "F12 / mod+\\ to toggle".to_string(),
+        entries: vec![
+            HelpEntry {
+                keys: vec!["F12".into()],
+                label: "Toggle terminal".into(),
+            },
+            HelpEntry {
+                keys: vec!["Ctrl+q".into()],
+                label: "Terminal → normal mode".into(),
+            },
+            HelpEntry {
+                keys: vec!["Esc".into()],
+                label: "Terminal → editor focus".into(),
+            },
+            HelpEntry {
+                keys: vec!["mod+v".into()],
+                label: "Paste into terminal".into(),
+            },
+        ],
+    };
+    sections.push(terminal_section);
+
+    // ── Explorer section ─────────────────────────────────────────────────────
+    let explorer_section = HelpSection {
+        title: "EXPLORER".to_string(),
+        mode_hint: "leader+e to focus".to_string(),
+        entries: vec![
+            HelpEntry {
+                keys: vec!["j".into(), "k".into()],
+                label: "Navigate up/down".into(),
+            },
+            HelpEntry {
+                keys: vec!["o".into()],
+                label: "Open file / toggle dir".into(),
+            },
+            HelpEntry {
+                keys: vec!["a".into()],
+                label: "Create file".into(),
+            },
+            HelpEntry {
+                keys: vec!["A".into()],
+                label: "Create folder".into(),
+            },
+            HelpEntry {
+                keys: vec!["d".into()],
+                label: "Delete node".into(),
+            },
+            HelpEntry {
+                keys: vec!["r".into()],
+                label: "Rename".into(),
+            },
+            HelpEntry {
+                keys: vec!["H".into()],
+                label: "Toggle hidden files".into(),
+            },
+            HelpEntry {
+                keys: vec!["e".into(), "E".into()],
+                label: "Expand / expand all".into(),
+            },
+        ],
+    };
+    sections.push(explorer_section);
+
+    // ── Append built-in leader sequences not already in TOML ────────────────
+    let normal_extra = vec![
+        (vec!["spc".into(), "e".into()], "Focus explorer"),
+        (vec!["spc".into(), "i".into()], "Focus inspector"),
+        (vec!["spc".into(), "f".into(), "f".into()], "Open file picker"),
+        (vec!["spc".into(), "f".into(), "w".into()], "Search in files"),
+        (vec!["spc".into(), "f".into(), "m".into()], "Format document"),
+        (vec!["spc".into(), "t".into(), "h".into()], "Theme selector"),
+        (vec!["spc".into(), "x".into()], "Close buffer"),
+        (vec!["spc".into(), "s".into()], "Leap jump"),
+        (vec!["spc".into(), "g".into(), "f".into()], "Open lazygit"),
+        (vec!["spc".into(), "g".into(), "l".into()], "Git blame line"),
+        (vec!["spc".into(), "d".into(), "f".into()], "Open lazydocker"),
+        (vec!["g".into(), "g".into()], "First line"),
+        (vec!["g".into(), "c".into(), "c".into()], "Toggle comment"),
+        (vec!["z".into(), "z".into()], "Center cursor"),
+    ];
+    if let Some(section) = sections.iter_mut().find(|s| s.title == "NORMAL") {
+        for (keys, label) in normal_extra {
+            if !section.entries.iter().any(|e| e.keys == keys) {
+                section.entries.push(HelpEntry {
+                    keys,
+                    label: label.to_string(),
+                });
+            }
+        }
+    }
+
+    let visual_extra = vec![
+        (vec!["spc".into(), "a".into(), "c".into()], "Add to AI context"),
+        (vec!["g".into(), "c".into()], "Toggle comment"),
+        (vec!["g".into(), "g".into()], "First line"),
+        (vec!["z".into(), "z".into()], "Center cursor"),
+    ];
+    if let Some(section) = sections.iter_mut().find(|s| s.title == "VISUAL") {
+        for (keys, label) in visual_extra {
+            if !section.entries.iter().any(|e| e.keys == keys) {
+                section.entries.push(HelpEntry {
+                    keys,
+                    label: label.to_string(),
+                });
+            }
+        }
+    }
+
+    let global_extra = vec![
+        (vec!["spc".into(), "e".into()], "Focus explorer"),
+        (vec!["spc".into(), "i".into()], "Focus inspector"),
+        (vec!["spc".into(), "f".into(), "f".into()], "Open file picker"),
+        (vec!["spc".into(), "f".into(), "w".into()], "Search in files"),
+        (vec!["spc".into(), "f".into(), "m".into()], "Format document"),
+    ];
+    if let Some(section) = sections.iter_mut().find(|s| s.title == "GLOBAL") {
+        for (keys, label) in global_extra {
+            if !section.entries.iter().any(|e| e.keys == keys) {
+                section.entries.push(HelpEntry {
+                    keys,
+                    label: label.to_string(),
+                });
+            }
+        }
+    }
+
+    sections
 }
 
 fn build_help_lines(
@@ -302,92 +532,214 @@ fn build_help_lines(
         "Netherize Cheat Sheet".to_string(),
         format!("profile: {profile_name} · source: {source_label}"),
         "".to_string(),
-        "Command palette".to_string(),
     ];
 
-    append_help_binding(
-        &mut lines,
-        bindings,
-        "app.open_file_picker",
-        "Open file picker",
-    );
-    append_help_binding(
-        &mut lines,
-        bindings,
-        "app.open_command_palette",
-        "Open command palette",
-    );
-    lines.push("  :help / :h            Open this cheat sheet buffer".to_string());
+    // ── Getting Started ─────────────────────────────────────────────────────
+    lines.push("Getting Started".to_string());
+    lines.push("".to_string());
+    lines.push("  Netherize is a Vim-inspired editor. You operate in different MODES:".to_string());
+    lines.push("".to_string());
+    lines.push("  NORMAL mode   — Default. Navigate & issue commands (like Vim).".to_string());
+    lines.push("  INSERT mode   — Type text. Enter with i, exit with Escape.".to_string());
+    lines.push("  VISUAL mode   — Select text. Enter with v, line-select with V.".to_string());
+    lines.push("  PALETTE mode  — Command palette / file picker overlay.".to_string());
+    lines.push("".to_string());
+    lines.push("  Key concepts:".to_string());
+    lines.push("    leader = Space     Prefix key for custom shortcuts (press Space then key).".to_string());
+    lines.push("    mod    = Cmd (macOS) / Ctrl (Linux)   Modifier key for app shortcuts.".to_string());
+    lines.push("    count  = number    Repeat a command N times (e.g. 5j = move down 5 lines).".to_string());
     lines.push("".to_string());
 
-    lines.push("Buffers".to_string());
-    lines.push("  :bn / :bp             Next / previous buffer".to_string());
-    lines.push("  :bd                   Close current buffer".to_string());
-    lines.push("  :enew                 New scratch buffer".to_string());
+    // ── Command Palette & Vim Commands ──────────────────────────────────────
+    lines.push("Command Palette & Vim Commands".to_string());
+    append_help_binding(&mut lines, bindings, "app.open_file_picker", "Open file picker");
+    append_help_binding(&mut lines, bindings, "app.open_command_palette", "Open command palette");
+    append_help_binding(&mut lines, bindings, "app.open_vim_command", "Vim command line");
+    lines.push("".to_string());
+    lines.push("  Vim commands (type : in normal mode):".to_string());
+    lines.push("    :w                     Save current file".to_string());
+    lines.push("    :q                     Close current buffer".to_string());
+    lines.push("    :wq                    Save and close".to_string());
+    lines.push("    :help / :h             Open this cheat sheet".to_string());
+    lines.push("    :enew                  New scratch buffer".to_string());
+    lines.push("    :bn / :bp              Next / previous buffer".to_string());
+    lines.push("    :bd                    Close current buffer".to_string());
+    lines.push("    :<number>              Jump to line number".to_string());
     lines.push("".to_string());
 
-    lines.push("Navigation".to_string());
+    // ── Modes ───────────────────────────────────────────────────────────────
+    lines.push("Mode Switching".to_string());
+    append_help_binding(&mut lines, bindings, "mode.enter_insert", "Enter insert mode");
+    append_help_binding(&mut lines, bindings, "mode.enter_normal", "Return to normal mode");
+    append_help_binding(&mut lines, bindings, "mode.enter_visual", "Enter visual mode");
+    append_help_binding(&mut lines, bindings, "mode.enter_visual_line", "Visual line mode");
+    lines.push("".to_string());
+
+    // ── Navigation ──────────────────────────────────────────────────────────
+    lines.push("Navigation (Normal / Visual)".to_string());
     append_help_binding(&mut lines, bindings, "editor.move_left", "Move left");
     append_help_binding(&mut lines, bindings, "editor.move_down", "Move down");
     append_help_binding(&mut lines, bindings, "editor.move_up", "Move up");
     append_help_binding(&mut lines, bindings, "editor.move_right", "Move right");
-    append_help_binding(
-        &mut lines,
-        bindings,
-        "editor.open_in_file_search",
-        "Search in current file",
-    );
+    append_help_binding(&mut lines, bindings, "editor.move_word_forward", "Word forward");
+    append_help_binding(&mut lines, bindings, "editor.move_word_backward", "Word backward");
+    append_help_binding(&mut lines, bindings, "editor.move_word_end", "Word end");
+    append_help_binding(&mut lines, bindings, "editor.move_to_line_start", "Line start");
+    append_help_binding(&mut lines, bindings, "editor.move_to_line_end", "Line end");
+    append_help_binding(&mut lines, bindings, "editor.move_to_first_non_whitespace", "First non-blank");
+    append_help_binding(&mut lines, bindings, "editor.move_to_first_line", "First line");
+    append_help_binding(&mut lines, bindings, "editor.move_to_last_line", "Last line");
+    append_help_binding(&mut lines, bindings, "editor.move_paragraph_up", "Paragraph up");
+    append_help_binding(&mut lines, bindings, "editor.move_paragraph_down", "Paragraph down");
+    append_help_binding(&mut lines, bindings, "editor.scroll_half_page_up", "½ page up");
+    append_help_binding(&mut lines, bindings, "editor.scroll_half_page_down", "½ page down");
+    append_help_binding(&mut lines, bindings, "editor.center_cursor_line", "Center cursor");
     lines.push("".to_string());
 
-    lines.push("Editing".to_string());
-    append_help_binding(
-        &mut lines,
-        bindings,
-        "mode.enter_insert",
-        "Enter insert mode",
-    );
-    append_help_binding(
-        &mut lines,
-        bindings,
-        "mode.enter_normal",
-        "Return to normal mode",
-    );
-    lines.push("  :w                    Save current file".to_string());
+    // ── Editing ─────────────────────────────────────────────────────────────
+    lines.push("Editing (Normal mode)".to_string());
+    append_help_binding(&mut lines, bindings, "editor.append_after_cursor", "Append after cursor");
+    append_help_binding(&mut lines, bindings, "editor.append_at_line_end", "Append at line end");
+    append_help_binding(&mut lines, bindings, "editor.insert_at_line_start", "Insert at line start");
+    append_help_binding(&mut lines, bindings, "editor.insert_line_below", "New line below");
+    append_help_binding(&mut lines, bindings, "editor.insert_line_above", "New line above");
+    append_help_binding(&mut lines, bindings, "editor.substitute_line", "Substitute line");
+    append_help_binding(&mut lines, bindings, "editor.delete_char", "Delete char");
+    append_help_binding(&mut lines, bindings, "editor.delete_current_line", "Delete line");
+    append_help_binding(&mut lines, bindings, "editor.delete_to_line_end", "Delete to line end");
+    append_help_binding(&mut lines, bindings, "editor.delete_word_forward", "Delete word →");
+    append_help_binding(&mut lines, bindings, "editor.delete_word_backward", "Delete word ←");
+    append_help_binding(&mut lines, bindings, "editor.change_word_forward", "Change word →");
+    append_help_binding(&mut lines, bindings, "editor.change_word_backward", "Change word ←");
+    append_help_binding(&mut lines, bindings, "editor.change_to_line_end", "Change to line end");
+    append_help_binding(&mut lines, bindings, "editor.join_lines", "Join lines");
+    append_help_binding(&mut lines, bindings, "editor.toggle_line_comment", "Toggle comment");
+    append_help_binding(&mut lines, bindings, "editor.paste_after", "Paste after");
+    append_help_binding(&mut lines, bindings, "editor.paste_before", "Paste before");
+    append_help_binding(&mut lines, bindings, "editor.undo", "Undo");
+    append_help_binding(&mut lines, bindings, "editor.redo", "Redo");
     lines.push("".to_string());
 
-    lines.push("Tools".to_string());
+    // ── Visual mode ─────────────────────────────────────────────────────────
+    lines.push("Visual Mode".to_string());
+    append_help_binding(&mut lines, bindings, "editor.delete_selection", "Delete selection");
+    append_help_binding(&mut lines, bindings, "editor.change_selection", "Change selection");
+    append_help_binding(&mut lines, bindings, "editor.yank_selection", "Yank (copy) selection");
+    append_help_binding(&mut lines, bindings, "editor.toggle_selection_comment", "Toggle comment");
+    append_help_binding(&mut lines, bindings, "editor.wrap_selection_with_star", "Wrap with *");
+    lines.push("".to_string());
+
+    // ── Search ──────────────────────────────────────────────────────────────
+    lines.push("Search".to_string());
+    append_help_binding(&mut lines, bindings, "editor.open_in_file_search", "Search in file");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.search_word_under_cursor",
+        "Search word under cursor",
+    );
+    append_help_binding(&mut lines, bindings, "editor.search_next", "Next match");
+    append_help_binding(&mut lines, bindings, "editor.search_prev", "Previous match");
+    append_help_binding(&mut lines, bindings, "editor.clear_search_highlights", "Clear highlights");
+    append_help_binding(&mut lines, bindings, "app.search_in_files", "Search in files (project)");
+    lines.push("".to_string());
+
+    // ── Buffers ─────────────────────────────────────────────────────────────
+    lines.push("Buffers & Tabs".to_string());
+    append_help_binding(&mut lines, bindings, "buffer.next", "Next buffer");
+    append_help_binding(&mut lines, bindings, "buffer.prev", "Previous buffer");
+    append_help_binding(&mut lines, bindings, "buffer.close_current", "Close buffer");
+    lines.push("  tip: mod+1 .. mod+9   Jump to buffer 1-9 directly".to_string());
+    lines.push("".to_string());
+
+    // ── LSP ─────────────────────────────────────────────────────────────────
+    lines.push("LSP / Code Intelligence".to_string());
+    append_help_binding(&mut lines, bindings, "lsp.hover", "Hover documentation");
+    append_help_binding(&mut lines, bindings, "lsp.go_to_definition", "Go to definition");
+    append_help_binding(&mut lines, bindings, "lsp.preview_definition", "Preview definition");
+    append_help_binding(&mut lines, bindings, "lsp.references", "Find references");
+    append_help_binding(&mut lines, bindings, "lsp.format_document", "Format document");
+    append_help_binding(&mut lines, bindings, "lsp.trigger_completion", "Trigger completion");
+    lines.push("".to_string());
+
+    // ── Explorer ────────────────────────────────────────────────────────────
+    lines.push("File Explorer".to_string());
+    append_help_binding(&mut lines, bindings, "app.focus_explorer", "Focus explorer");
+    append_help_binding(&mut lines, bindings, "explorer.toggle_or_open", "Open file / toggle dir");
+    append_help_binding(&mut lines, bindings, "explorer.create_file", "Create file");
+    append_help_binding(&mut lines, bindings, "explorer.create_folder", "Create folder");
+    append_help_binding(&mut lines, bindings, "explorer.delete_node", "Delete");
+    append_help_binding(&mut lines, bindings, "explorer.rename_full", "Rename");
+    append_help_binding(&mut lines, bindings, "explorer.toggle_hidden", "Toggle hidden files");
+    lines.push("".to_string());
+
+    // ── Terminal ────────────────────────────────────────────────────────────
+    lines.push("Terminal".to_string());
+    append_help_binding(&mut lines, bindings, "app.toggle_terminal", "Toggle terminal");
+    append_help_binding(&mut lines, bindings, "app.focus_terminal", "Focus terminal");
+    lines.push("  tip: Ctrl+Q in terminal → terminal normal mode (navigate with hjkl)".to_string());
+    lines.push("".to_string());
+
+    // ── AI ──────────────────────────────────────────────────────────────────
+    lines.push("AI Assistant".to_string());
+    append_help_binding(&mut lines, bindings, "ai.chat_toggle", "Toggle AI chat");
+    append_help_binding(&mut lines, bindings, "ai.chat_focus", "Focus AI chat");
+    append_help_binding(&mut lines, bindings, "ai.accept_inline", "Accept inline suggestion");
+    lines.push("".to_string());
+
+    // ── Tools ───────────────────────────────────────────────────────────────
+    lines.push("Tools & Misc".to_string());
     append_help_binding(&mut lines, bindings, "app.open_settings", "Open settings");
-    append_help_binding(
-        &mut lines,
-        bindings,
-        "app.search_in_files",
-        "Search in files",
-    );
-    append_help_binding(
-        &mut lines,
-        bindings,
-        "diagnostics.open_picker",
-        "Open diagnostics picker",
-    );
+    append_help_binding(&mut lines, bindings, "app.open_theme_selector", "Theme selector");
+    append_help_binding(&mut lines, bindings, "app.open_file_history", "File history");
+    append_help_binding(&mut lines, bindings, "diagnostics.open_picker", "Diagnostics picker");
+    append_help_binding(&mut lines, bindings, "git.open_lazygit", "Open lazygit");
+    append_help_binding(&mut lines, bindings, "git.blame_line", "Git blame line");
+    append_help_binding(&mut lines, bindings, "app.toggle_markdown_preview", "Markdown preview");
+    append_help_binding(&mut lines, bindings, "editor.leap_start", "Leap jump");
 
     lines
 }
 
 fn command_label_for_help(command_id: &str) -> String {
     let label = match command_id {
+        // ── File & app ────────────────────────────────────────────────────
         "editor.save_file" => "Save file",
         "editor.open_folder" => "Open folder / project",
+        "editor.open_file" => "Open file",
         "app.open_command_palette" => "Command palette",
         "app.open_settings" => "Open settings",
+        "app.open_help" => "Open cheat sheet",
+        "app.open_vim_command" => "Vim command line",
+        "app.open_file_picker" => "Open file picker",
+        "app.open_file_finder" => "File finder (center)",
+        "app.open_file_history" => "File history",
+        "app.open_theme_selector" => "Theme selector",
+        "app.search_in_files" => "Search in files",
+        "app.open_workspace_symbols" => "Workspace symbols",
+        "app.open_document_symbols" => "Find symbol in file",
+        "app.toggle_markdown_preview" => "Toggle markdown preview",
+        // ── Focus & docks ─────────────────────────────────────────────────
         "app.focus_explorer" => "Focus explorer",
-        "app.toggle_left_dock" => "Toggle left dock",
-        "app.focus_back" => "Focus back to editor",
-        "app.toggle_bottom_dock" => "Toggle bottom dock",
         "app.focus_terminal" => "Focus terminal",
+        "app.focus_editor" => "Focus editor",
+        "app.focus_inspector" => "Focus inspector",
+        "app.focus_back" => "Focus back to editor",
+        "app.focus_left" => "Focus left",
+        "app.focus_right" => "Focus right",
+        "app.focus_up" => "Focus up",
+        "app.focus_down" => "Focus down",
+        "app.move_focus_cycle" => "Cycle focus",
+        "app.toggle_left_dock" => "Toggle left dock",
+        "app.toggle_bottom_dock" => "Toggle bottom dock",
+        "app.next_panel_tab" => "Next panel tab",
+        "app.prev_panel_tab" => "Prev panel tab",
+        // ── Mode transitions ──────────────────────────────────────────────
         "mode.enter_normal" => "→ Normal mode",
         "mode.enter_insert" => "Insert mode",
         "mode.enter_visual" => "→ Visual mode",
         "mode.enter_visual_line" => "→ Visual line",
+        // ── Movement ──────────────────────────────────────────────────────
         "editor.move_left" => "Move left",
         "editor.move_down" => "Move down",
         "editor.move_up" => "Move up",
@@ -400,25 +752,43 @@ fn command_label_for_help(command_id: &str) -> String {
         "editor.move_to_first_non_whitespace" => "First non-whitespace",
         "editor.move_to_first_line" => "First line",
         "editor.move_to_last_line" => "Last line",
+        "editor.move_paragraph_up" => "Paragraph up",
+        "editor.move_paragraph_down" => "Paragraph down",
         "editor.scroll_half_page_up" => "½ page up",
         "editor.scroll_half_page_down" => "½ page down",
         "editor.center_cursor_line" => "Center cursor line",
+        // ── Search ────────────────────────────────────────────────────────
         "editor.search_next" => "Next match",
         "editor.search_prev" => "Prev match",
         "editor.search_word_under_cursor" => "Search word under cursor",
         "editor.clear_search_highlights" => "Clear highlights",
         "editor.open_in_file_search" => "Search in file",
+        // ── Editing ───────────────────────────────────────────────────────
+        "editor.insert_char" => "Insert character",
         "editor.delete_char" => "Delete char",
         "editor.delete_current_line" => "Delete line",
+        "editor.delete_to_line_end" => "Delete to line end",
         "editor.delete_word_forward" => "Delete word →",
         "editor.delete_word_backward" => "Delete word ←",
+        "editor.delete_selection" => "Delete selection",
         "editor.change_word_forward" => "Change word →",
         "editor.change_word_backward" => "Change word ←",
+        "editor.change_to_line_end" => "Change to line end",
+        "editor.change_selection" => "Change selection",
+        "editor.substitute_line" => "Substitute line",
+        "editor.yank_selection" => "Yank selection",
+        "editor.yank_current_line" => "Yank line",
         "editor.toggle_line_comment" => "Toggle line comment",
         "editor.toggle_selection_comment" => "Toggle comment",
+        "editor.wrap_selection_with_star" => "Wrap with *",
+        "editor.join_lines" => "Join lines",
         "editor.paste" => "Paste",
+        "editor.paste_after" => "Paste after",
+        "editor.paste_before" => "Paste before",
+        "editor.visual_paste" => "Visual paste",
         "editor.undo" => "Undo",
         "editor.redo" => "Redo",
+        "editor.replace_char" => "Replace char",
         "editor.insert_tab" => "Insert tab",
         "editor.newline" => "New line",
         "editor.backspace" => "Backspace",
@@ -427,19 +797,16 @@ fn command_label_for_help(command_id: &str) -> String {
         "editor.insert_at_line_start" => "Insert at line start",
         "editor.insert_line_below" => "New line below",
         "editor.insert_line_above" => "New line above",
-        "editor.delete_selection" => "Delete selection",
-        "editor.yank_selection" => "Yank selection",
-        "editor.change_selection" => "Change selection",
+        // ── Completion ────────────────────────────────────────────────────
         "completion.next" => "Select next",
         "completion.prev" => "Select previous",
         "completion.accept" => "Accept completion",
         "completion.close" => "Close completion",
-        "app.open_file_picker" => "Open file picker",
-        "app.search_in_files" => "Search in files",
-        "app.open_workspace_symbols" => "Workspace symbols",
-        "app.open_document_symbols" => "Find symbol in file",
+        // ── Buffer ────────────────────────────────────────────────────────
+        "buffer.new" => "New scratch buffer",
         "buffer.next" => "Next buffer",
         "buffer.prev" => "Prev buffer",
+        "buffer.close_current" => "Close current buffer",
         "buffer.goto_1" => "Go to buffer 1",
         "buffer.goto_2" => "Go to buffer 2",
         "buffer.goto_3" => "Go to buffer 3",
@@ -449,13 +816,50 @@ fn command_label_for_help(command_id: &str) -> String {
         "buffer.goto_7" => "Go to buffer 7",
         "buffer.goto_8" => "Go to buffer 8",
         "buffer.goto_9" => "Go to buffer 9",
-        "buffer.close_current" => "Close current buffer",
-        "app.next_panel_tab" => "Next panel tab",
-        "app.prev_panel_tab" => "Prev panel tab",
+        // ── LSP ───────────────────────────────────────────────────────────
         "lsp.hover" => "Hover docs",
         "lsp.go_to_definition" => "Go to definition",
+        "lsp.preview_definition" => "Preview definition",
         "lsp.references" => "References",
         "lsp.format_document" => "Format document",
+        "lsp.trigger_completion" => "Trigger completion",
+        // ── Explorer ──────────────────────────────────────────────────────
+        "explorer.move_up" => "Move up",
+        "explorer.move_down" => "Move down",
+        "explorer.collapse_or_parent" => "Collapse / parent",
+        "explorer.expand_node" => "Expand node",
+        "explorer.expand_or_child" => "Expand / child",
+        "explorer.toggle_or_open" => "Toggle / open",
+        "explorer.delete_node" => "Delete node",
+        "explorer.create_file" => "Create file",
+        "explorer.create_folder" => "Create folder",
+        "explorer.rename_full" => "Rename (full)",
+        "explorer.rename_base" => "Rename (base)",
+        "explorer.toggle_hidden" => "Toggle hidden",
+        "explorer.toggle_ignored" => "Toggle ignored",
+        "explorer.move_to_top" => "Move to top",
+        "explorer.move_to_bottom" => "Move to bottom",
+        // ── Terminal ──────────────────────────────────────────────────────
+        "app.toggle_terminal" => "Toggle terminal",
+        "terminal.paste" => "Terminal paste",
+        // ── Git ───────────────────────────────────────────────────────────
+        "git.open_lazygit" => "Open lazygit",
+        "git.open_lazydocker" => "Open lazydocker",
+        "git.blame_line" => "Git blame line",
+        // ── Diagnostics ───────────────────────────────────────────────────
+        "diagnostics.open_picker" => "Diagnostics picker",
+        // ── AI ────────────────────────────────────────────────────────────
+        "ai.accept_inline" => "Accept AI suggestion",
+        "ai.chat_toggle" => "Toggle AI chat",
+        "ai.chat_send" => "Send AI message",
+        "ai.chat_focus" => "Focus AI chat",
+        "ai.chat_close" => "Close AI chat",
+        "ai.chat_add_selection_context" => "Add selection to AI",
+        // ── Leap ──────────────────────────────────────────────────────────
+        "editor.leap_start" => "Leap jump",
+        // ── Jump list ─────────────────────────────────────────────────────
+        "editor.jump_back" => "Jump back",
+        "editor.jump_forward" => "Jump forward",
         _ => command_id,
     };
     label.to_string()
@@ -805,6 +1209,13 @@ pub struct AppState {
     indent_config: IndentConfig,
     is_initial_launch_welcome: bool,
     pub markdown_preview: MarkdownPreviewState,
+    // ── MultiCursor state ──────────────────────────────────────────────────────
+    virtual_cursors: Vec<VirtualCursor>,
+    mc_search_word: Option<String>,
+    mc_search_start: usize,
+    /// When false (Visual-seeded search), use plain substring matching instead
+    /// of whole-word matching for subsequent Ctrl+n calls.
+    mc_whole_word: bool,
 }
 
 impl AppState {
@@ -853,6 +1264,10 @@ impl AppState {
             indent_config: IndentConfig::default(),
             is_initial_launch_welcome: true,
             markdown_preview: MarkdownPreviewState::default(),
+            virtual_cursors: Vec::new(),
+            mc_search_word: None,
+            mc_search_start: 0,
+            mc_whole_word: true,
         }
     }
 
@@ -899,6 +1314,10 @@ impl AppState {
             indent_config: IndentConfig::default(),
             is_initial_launch_welcome: false,
             markdown_preview: MarkdownPreviewState::default(),
+            virtual_cursors: Vec::new(),
+            mc_search_word: None,
+            mc_search_start: 0,
+            mc_whole_word: true,
         }
     }
 

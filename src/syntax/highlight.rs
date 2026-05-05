@@ -3,6 +3,7 @@ use std::{ops::Range, sync::OnceLock};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, Query, QueryCursor};
 
+use regex::Regex;
 use crate::config::theme_config::ThemeConfig;
 use crate::syntax::{
     parser::{language_id_for_extension, tree_sitter_language},
@@ -286,6 +287,10 @@ pub fn overlay_highlight_layers(
 }
 
 pub fn generate_highlight_spans(tree_state: &SyntaxTreeState, source: &str) -> Vec<HighlightSpan> {
+    if tree_state.language_id() == LanguageId::Dotenv {
+        return generate_dotenv_highlight_spans(source);
+    }
+
     let base = generate_query_highlight_spans(
         tree_state.language_id(),
         tree_state.root_node(),
@@ -302,6 +307,60 @@ pub fn generate_highlight_spans(tree_state: &SyntaxTreeState, source: &str) -> V
     } else {
         overlay_highlight_layers(&base, &injected)
     }
+}
+
+pub fn generate_dotenv_highlight_spans(source: &str) -> Vec<HighlightSpan> {
+    let comment_re = Regex::new(r"^\s*#").unwrap();
+    let export_re = Regex::new(r"^\s*(export)\s+([A-Za-z_][A-Za-z0-9_]*)").unwrap();
+    let kv_re = Regex::new(r"^\s*([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)(.*)").unwrap();
+
+    let mut spans = Vec::new();
+    let mut byte_pos = 0usize;
+
+    for line in source.lines() {
+        let line_len = line.len();
+        let line_start = byte_pos;
+
+        if comment_re.is_match(line) {
+            spans.push(HighlightSpan {
+                range: line_start..line_start + line_len,
+                category: HighlightCategory::Comment,
+            });
+        } else if let Some(caps) = export_re.captures(line) {
+            let export_match = caps.get(1).unwrap();
+            spans.push(HighlightSpan {
+                range: line_start + export_match.start()..line_start + export_match.end(),
+                category: HighlightCategory::Keyword,
+            });
+            let key_match = caps.get(2).unwrap();
+            spans.push(HighlightSpan {
+                range: line_start + key_match.start()..line_start + key_match.end(),
+                category: HighlightCategory::Variable,
+            });
+        } else if let Some(caps) = kv_re.captures(line) {
+            let key_match = caps.get(1).unwrap();
+            spans.push(HighlightSpan {
+                range: line_start + key_match.start()..line_start + key_match.end(),
+                category: HighlightCategory::Keyword,
+            });
+            let op_match = caps.get(2).unwrap();
+            spans.push(HighlightSpan {
+                range: line_start + op_match.start()..line_start + op_match.end(),
+                category: HighlightCategory::Operator,
+            });
+            let val_match = caps.get(3).unwrap();
+            if val_match.end() > val_match.start() {
+                spans.push(HighlightSpan {
+                    range: line_start + val_match.start()..line_start + val_match.end(),
+                    category: HighlightCategory::String,
+                });
+            }
+        }
+
+        byte_pos += line_len + 1; // +1 for newline
+    }
+
+    spans
 }
 
 pub fn generate_highlight_spans_in_byte_window(
@@ -415,6 +474,7 @@ fn highlight_query(language_id: LanguageId) -> Option<&'static Query> {
         LanguageId::Json => Some(json_highlight_query()),
         LanguageId::Bash => Some(bash_highlight_query()),
         LanguageId::Markdown => Some(markdown_highlight_query()),
+        LanguageId::Dotenv => None,
     }
 }
 

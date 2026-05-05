@@ -330,6 +330,16 @@ impl AppState {
         self.cursor_byte_idx().saturating_sub(line_start_byte)
     }
 
+    /// (line_idx, byte_in_line) for an arbitrary char position — used by the
+    /// renderer to compute virtual-cursor caret positions.
+    pub fn char_idx_to_line_and_byte_in_line(&self, char_idx: usize) -> (usize, usize) {
+        let char_idx = char_idx.min(self.text.len_chars());
+        let line_idx = self.text.char_to_line(char_idx);
+        let line_start_byte = self.text.line_to_byte(line_idx);
+        let byte_idx = self.text.char_to_byte(char_idx);
+        (line_idx, byte_idx.saturating_sub(line_start_byte))
+    }
+
     pub fn completion_prefix_info_at(
         &self,
         line_idx: usize,

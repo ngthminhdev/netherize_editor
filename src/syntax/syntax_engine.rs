@@ -19,6 +19,7 @@ pub enum LanguageId {
     Json,
     Bash,
     Markdown,
+    Dotenv,
 }
 
 impl LanguageId {
@@ -36,6 +37,7 @@ impl LanguageId {
             Self::Json => "json",
             Self::Bash => "bash",
             Self::Markdown => "markdown",
+            Self::Dotenv => "dotenv",
         }
     }
 }

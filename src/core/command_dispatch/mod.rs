@@ -197,7 +197,14 @@ fn dispatch_command_with_clipboard_once(
         | Command::Redo
         | Command::ReplaceChar(_)
         | Command::TextObjectAction { .. }
-        | Command::Operate { .. } => editing::dispatch(&mut ctx, command),
+        | Command::Operate { .. }
+        | Command::MultiCursorAddNext
+        | Command::MultiCursorSkip
+        | Command::MultiCursorInsertBefore
+        | Command::MultiCursorAppendAfter
+        | Command::MultiCursorChange
+        | Command::MultiCursorDelete
+        | Command::MultiCursorSelectAll => editing::dispatch(&mut ctx, command),
         Command::MoveLeft
         | Command::MoveRight
         | Command::MoveUp

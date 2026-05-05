@@ -277,7 +277,7 @@ impl InputMap {
             });
         }
 
-        if context.mode == EditorMode::Insert {
+        if matches!(context.mode, EditorMode::Insert | EditorMode::MultiInsert) {
             if input.named_key == Some(NamedKey::Space) && !input.has_command_modifier() {
                 return Some(KeybindingMatch {
                     command: Command::InsertChar(' '),

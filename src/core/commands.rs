@@ -334,6 +334,24 @@ pub enum Command {
     MarkdownPreviewScrollHalfPageUp,
     /// Scroll markdown preview down half page.
     MarkdownPreviewScrollHalfPageDown,
+
+    // ── Multiple Cursors (Module: MultiCursor) ────────────────────────────────
+    /// Select word under cursor; on subsequent calls find the next identical
+    /// word and place a virtual cursor on it.  Enters MultiCursor mode.
+    MultiCursorAddNext,
+    /// Skip the most recently added match and jump to the one after it.
+    MultiCursorSkip,
+    /// Move every cursor to the *start* of its selection then enter MultiInsert.
+    MultiCursorInsertBefore,
+    /// Move every cursor to the *end* of its selection then enter MultiInsert.
+    MultiCursorAppendAfter,
+    /// Delete every selection and enter MultiInsert (Vim `c` on multi-selection).
+    MultiCursorChange,
+    /// Delete every selection and stay in MultiCursor mode (Vim `d`).
+    MultiCursorDelete,
+    /// From Visual mode: select ALL occurrences of the visual selection and
+    /// enter MultiCursor mode with a cursor on each match simultaneously.
+    MultiCursorSelectAll,
 }
 
 impl Command {

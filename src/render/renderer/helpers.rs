@@ -236,13 +236,24 @@ pub(super) fn clamp_x_in_bounds(x: f32, min_x: f32, max_x: f32) -> f32 {
     x.clamp(min_x, max_x)
 }
 
-/// `f32::clamp` panics when `min > max` (e.g. container too small for a
-/// minimum widget size). This variant guarantees `max >= min` by taking
-/// `max(min, max)` first, so layout code never panics on tiny viewports.
+/// Safe replacement for `f32::clamp` that never panics.
+/// Guards against both `min > max` and NaN inputs, falling back to `min`
+/// when values are unordered.
 #[inline]
 pub(super) fn layout_clamp(value: f32, min: f32, max: f32) -> f32 {
-    let safe_max = max.max(min);
-    value.clamp(min, safe_max)
+    if value.is_nan() || min.is_nan() || max.is_nan() {
+        return 0.0;
+    }
+    if min > max {
+        return min;
+    }
+    if value < min {
+        min
+    } else if value > max {
+        max
+    } else {
+        value
+    }
 }
 
 // ── Caret geometry ────────────────────────────────────────────────────────────
@@ -349,6 +360,8 @@ pub(super) fn mode_display_label(mode: EditorMode) -> &'static str {
         EditorMode::PaletteFocus => "PALETTE",
         EditorMode::TerminalFocus => "TERMINAL",
         EditorMode::TerminalNormal => "T-COPY",
+        EditorMode::MultiCursor => "MC-SELECT",
+        EditorMode::MultiInsert => "MC-INSERT",
     }
 }
 
@@ -360,6 +373,7 @@ pub(super) fn mode_pill_color(mode: EditorMode, theme: &ThemeConfig) -> [f32; 4]
         EditorMode::PaletteFocus => theme.ui.amber.as_f32(),
         EditorMode::TerminalFocus => theme.ui.success.as_f32(),
         EditorMode::TerminalNormal => theme.ui.accent.as_f32(),
+        EditorMode::MultiCursor | EditorMode::MultiInsert => theme.ui.mode_visual.as_f32(),
     }
 }
 

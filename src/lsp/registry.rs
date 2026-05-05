@@ -167,6 +167,18 @@ static LANGUAGE_REGISTRY: &[LanguageProfile] = &[
         extensions: &["md", "markdown", "mdx"],
         filenames: &[],
     },
+    LanguageProfile {
+        key: "dotenv",
+        language_label: "Dotenv",
+        language_id: "dotenv",
+        syntax_language_id: Some(LanguageId::Dotenv),
+        lsp_binary: "",
+        launch_args: &[],
+        install_command: "",
+        root_markers: NO_ROOT_MARKERS,
+        extensions: &["env"],
+        filenames: &[".env", ".env*", "env.*"],
+    },
 ];
 
 pub fn all_language_profiles() -> &'static [LanguageProfile] {

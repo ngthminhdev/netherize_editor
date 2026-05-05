@@ -297,6 +297,8 @@ pub fn editor_mode_str(mode: EditorMode) -> &'static str {
         EditorMode::PaletteFocus => "palette",
         EditorMode::TerminalFocus => "terminal",
         EditorMode::TerminalNormal => "terminal_normal",
+        EditorMode::MultiCursor => "multicursor",
+        EditorMode::MultiInsert => "multiinsert",
     }
 }
 
@@ -620,6 +622,10 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("normal"), mp(KeyCode::KeyH), BUFFER_PREV);
     km.insert(Some("normal"), mp(KeyCode::KeyL), BUFFER_NEXT);
     km.insert(Some("normal"), mp(KeyCode::KeyR), REDO);
+    km.insert(Some("normal"), ch('n'), SEARCH_NEXT);
+    km.insert(Some("normal"), ch('N'), SEARCH_PREV);
+    km.insert(Some("normal"), ch('*'), SEARCH_WORD_UNDER_CURSOR);
+    km.insert(Some("normal"), ch('/'), OPEN_IN_FILE_SEARCH);
     km.insert(Some("normal"), KeySpec::Char(':'), OPEN_VIM_COMMAND);
 
     // ── Visual mode ───────────────────────────────────────────────────────────
@@ -641,6 +647,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("visual"), ch('G'), MOVE_TO_LAST_LINE);
     km.insert(Some("visual"), ch('{'), MOVE_PARAGRAPH_UP);
     km.insert(Some("visual"), ch('}'), MOVE_PARAGRAPH_DOWN);
+    km.insert(Some("visual"), ch('*'), SEARCH_WORD_UNDER_CURSOR);
     km.insert(Some("visual"), ph(KeyCode::KeyD), DELETE_SELECTION);
     km.insert(Some("visual"), ph(KeyCode::KeyC), CHANGE_SELECTION);
     km.insert(Some("visual"), ph(KeyCode::KeyX), DELETE_SELECTION);

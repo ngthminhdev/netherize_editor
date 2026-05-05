@@ -345,14 +345,7 @@ impl AppShell {
     /// KHÔNG set editor_needs_layout hay editor_caret_needs_layout.
     /// Nhờ đó toàn bộ text pipeline không bị trigger reshape chỉ vì con trỏ nháy.
     fn tick_caret_blink(&mut self) -> bool {
-        let now = Instant::now();
-        if now.duration_since(self.last_caret_blink_tick) < CARET_BLINK_INTERVAL {
-            return false;
-        }
-        self.last_caret_blink_tick = now;
-        self.caret_blink_visible = !self.caret_blink_visible;
-        self.caret_blink_dirty = true;
-        true
+        false
     }
 
     fn handle_explorer_filter_ime_commit(&mut self, text: &str) -> bool {
@@ -771,6 +764,14 @@ impl AppShell {
                 if self.app_state.current_mode() == EditorMode::Visual {
                     region_instances
                         .extend(renderer.visual_selection_quads(&self.app_state, center_bounds));
+                }
+                if matches!(
+                    self.app_state.current_mode(),
+                    EditorMode::MultiCursor | EditorMode::MultiInsert
+                ) {
+                    region_instances.extend(
+                        renderer.multi_cursor_selection_quads(&self.app_state, center_bounds),
+                    );
                 }
             }
 

@@ -190,7 +190,6 @@ impl AppShell {
             last_git_branch_refresh_at: now,
             last_thinking_animation_tick: now,
             caret_blink_visible: true,
-            last_caret_blink_tick: now,
             caret_blink_dirty: false,
             pre_markdown_preview_right_width: None,
         })

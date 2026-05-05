@@ -113,6 +113,10 @@ impl ScreenUniform {
     }
 }
 
+/// Maximum number of simultaneous carets (primary + virtual) supported without
+/// re-allocating the instance buffer.
+const MAX_CARET_INSTANCES: usize = 64;
+
 /// Pipeline tối thiểu để vẽ caret hình chữ nhật trên màn hình.
 pub struct CaretPipeline {
     render_pipeline: wgpu::RenderPipeline,
@@ -210,7 +214,7 @@ impl CaretPipeline {
 
         let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Netherize Caret Instance Buffer"),
-            size: std::mem::size_of::<CaretInstance>() as u64,
+            size: (std::mem::size_of::<CaretInstance>() * MAX_CARET_INSTANCES) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -233,19 +237,32 @@ impl CaretPipeline {
         queue.write_buffer(&self.screen_uniform_buffer, 0, bytemuck::bytes_of(&uniform));
     }
 
+    /// Upload a single primary caret.  Backward-compatible wrapper.
     pub fn upload_caret(&mut self, queue: &wgpu::Queue, rect: Option<CaretScreenRect>) {
         match rect {
-            Some(rect) => {
-                self.cached_rect = Some(rect);
-                let instance = CaretInstance::from_rect(rect);
-                queue.write_buffer(&self.instance_buffer, 0, bytemuck::bytes_of(&instance));
-                self.instance_count = 1;
-            }
-            None => {
-                self.cached_rect = None;
-                self.instance_count = 0;
-            }
+            Some(r) => self.upload_carets(queue, &[r]),
+            None => self.upload_carets(queue, &[]),
         }
+    }
+
+    /// Upload the primary caret and all virtual-cursor carets in a single
+    /// batched draw call — no extra draw passes.
+    ///
+    /// `rects[0]` is conventionally the primary cursor; the remaining entries
+    /// are virtual (multi-cursor) carets.  Clamped to `MAX_CARET_INSTANCES`.
+    pub fn upload_carets(&mut self, queue: &wgpu::Queue, rects: &[CaretScreenRect]) {
+        if rects.is_empty() {
+            self.cached_rect = None;
+            self.instance_count = 0;
+            return;
+        }
+
+        let clamped = &rects[..rects.len().min(MAX_CARET_INSTANCES)];
+        self.cached_rect = Some(clamped[0]);
+
+        let instances: Vec<CaretInstance> = clamped.iter().map(|r| CaretInstance::from_rect(*r)).collect();
+        queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
+        self.instance_count = instances.len() as u32;
     }
 
     /// Tối ưu 3: Caret Blink — chỉ flip instance_count, không upload lại dữ liệu.
@@ -256,7 +273,7 @@ impl CaretPipeline {
             if let Some(rect) = self.cached_rect {
                 let instance = CaretInstance::from_rect(rect);
                 queue.write_buffer(&self.instance_buffer, 0, bytemuck::bytes_of(&instance));
-                self.instance_count = 1;
+                self.instance_count = self.instance_count.max(1);
             }
         } else {
             self.instance_count = 0;

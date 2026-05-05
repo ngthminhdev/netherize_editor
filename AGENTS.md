@@ -51,3 +51,67 @@ For any input-to-action feature, you MUST follow this exact path:
 * **Command (`commands.rs`):** All possible editor actions must be defined here as an Enum.
 * **ModeState (`mode.rs`):** Vim-style mode FSM. Validate all mode transitions here.
 * **CommandDispatch (`command_dispatch.rs`):** The ONLY place where commands are allowed to mutate editor state and group undo transactions.
+
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
+
+This project is indexed by GitNexus as **netherize_editor** (5647 symbols, 14916 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+
+> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+
+## Always Do
+
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
+- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
+- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+
+## Never Do
+
+- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
+- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
+- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+
+## Resources
+
+| Resource | Use for |
+|----------|---------|
+| `gitnexus://repo/netherize_editor/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/netherize_editor/clusters` | All functional areas |
+| `gitnexus://repo/netherize_editor/processes` | All execution flows |
+| `gitnexus://repo/netherize_editor/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+| Work in the App_state area (382 symbols) | `.claude/skills/generated/app-state/SKILL.md` |
+| Work in the Event_loop area (202 symbols) | `.claude/skills/generated/event-loop/SKILL.md` |
+| Work in the Renderer area (181 symbols) | `.claude/skills/generated/renderer/SKILL.md` |
+| Work in the Terminal area (138 symbols) | `.claude/skills/generated/terminal/SKILL.md` |
+| Work in the App area (135 symbols) | `.claude/skills/generated/app/SKILL.md` |
+| Work in the Workbench area (109 symbols) | `.claude/skills/generated/workbench/SKILL.md` |
+| Work in the Input area (101 symbols) | `.claude/skills/generated/input/SKILL.md` |
+| Work in the Command_dispatch area (93 symbols) | `.claude/skills/generated/command-dispatch/SKILL.md` |
+| Work in the Lsp area (91 symbols) | `.claude/skills/generated/lsp/SKILL.md` |
+| Work in the Syntax area (80 symbols) | `.claude/skills/generated/syntax/SKILL.md` |
+| Work in the Workspace area (66 symbols) | `.claude/skills/generated/workspace/SKILL.md` |
+| Work in the Scheduler area (60 symbols) | `.claude/skills/generated/scheduler/SKILL.md` |
+| Work in the Theme_config area (54 symbols) | `.claude/skills/generated/theme-config/SKILL.md` |
+| Work in the Input_map area (49 symbols) | `.claude/skills/generated/input-map/SKILL.md` |
+| Work in the Config area (41 symbols) | `.claude/skills/generated/config/SKILL.md` |
+| Work in the Text area (39 symbols) | `.claude/skills/generated/text/SKILL.md` |
+| Work in the Benches area (30 symbols) | `.claude/skills/generated/benches/SKILL.md` |
+| Work in the Render area (25 symbols) | `.claude/skills/generated/render/SKILL.md` |
+| Work in the Cluster_3 area (11 symbols) | `.claude/skills/generated/cluster-3/SKILL.md` |
+| Work in the Cluster_1 area (8 symbols) | `.claude/skills/generated/cluster-1/SKILL.md` |
+
+<!-- gitnexus:end -->

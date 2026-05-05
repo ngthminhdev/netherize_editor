@@ -13,7 +13,8 @@ use crate::{
 use super::super::{
     components::{HighlightChipStyle, layout_help_keycaps, push_centered_highlight_chip},
     helpers::{
-        estimate_monospace_width, layout_panel_text, layout_panel_text_bold, rect_to_scissor,
+        estimate_monospace_width, layout_clamp, layout_panel_text, layout_panel_text_bold,
+        rect_to_scissor,
     },
 };
 
@@ -62,7 +63,7 @@ impl Renderer {
         let fg_dim = self.theme.ui.fg_dim.as_f32();
         let fg_ghost = self.theme.ui.fg_ghost.as_f32();
         let accent = self.theme.ui.accent.as_f32();
-        let welcome_scale = (self.welcome_card_max_width / 560.0).clamp(0.5, 3.0);
+        let welcome_scale = layout_clamp(self.welcome_card_max_width / 560.0, 0.5, 3.0);
         let sx = |value: f32| value * welcome_scale;
         let text_w = |text: &str, size: f32| estimate_monospace_width(text, size);
         let centered_x = |center: f32, text: &str, size: f32| center - text_w(text, size) * 0.5;

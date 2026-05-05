@@ -132,6 +132,15 @@ pub const DIAGNOSTICS_OPEN_PICKER: &str = "diagnostics.open_picker";
 pub const JUMP_BACK: &str = "editor.jump_back";
 pub const JUMP_FORWARD: &str = "editor.jump_forward";
 
+// ── Multiple Cursors ─────────────────────────────────────────────────────────
+pub const MULTI_CURSOR_ADD_NEXT: &str = "multicursor.add_next";
+pub const MULTI_CURSOR_SKIP: &str = "multicursor.skip";
+pub const MULTI_CURSOR_INSERT_BEFORE: &str = "multicursor.insert_before";
+pub const MULTI_CURSOR_APPEND_AFTER: &str = "multicursor.append_after";
+pub const MULTI_CURSOR_CHANGE: &str = "multicursor.change";
+pub const MULTI_CURSOR_DELETE: &str = "multicursor.delete";
+pub const MULTI_CURSOR_SELECT_ALL: &str = "multicursor.select_all";
+
 // ── Markdown Preview ─────────────────────────────────────────────────────────
 pub const TOGGLE_MARKDOWN_PREVIEW: &str = "app.toggle_markdown_preview";
 pub const MARKDOWN_PREVIEW_SCROLL_UP: &str = "app.markdown_preview_scroll_up";
@@ -357,6 +366,13 @@ pub const ALL_IDS: &[&str] = &[
     FILE_PICKER_SELECT_PREV,
     FILE_PICKER_BACKSPACE,
     LEAP_START,
+    MULTI_CURSOR_ADD_NEXT,
+    MULTI_CURSOR_SKIP,
+    MULTI_CURSOR_INSERT_BEFORE,
+    MULTI_CURSOR_APPEND_AFTER,
+    MULTI_CURSOR_CHANGE,
+    MULTI_CURSOR_DELETE,
+    MULTI_CURSOR_SELECT_ALL,
     TOGGLE_MARKDOWN_PREVIEW,
     MARKDOWN_PREVIEW_SCROLL_UP,
     MARKDOWN_PREVIEW_SCROLL_DOWN,
@@ -532,6 +548,13 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         FILE_PICKER_CLOSE => Some(Command::CloseFilePicker),
         FILE_PICKER_BACKSPACE => Some(Command::FilePickerBackspaceQuery),
         LEAP_START => Some(Command::LeapStart),
+        MULTI_CURSOR_ADD_NEXT => Some(Command::MultiCursorAddNext),
+        MULTI_CURSOR_SKIP => Some(Command::MultiCursorSkip),
+        MULTI_CURSOR_INSERT_BEFORE => Some(Command::MultiCursorInsertBefore),
+        MULTI_CURSOR_APPEND_AFTER => Some(Command::MultiCursorAppendAfter),
+        MULTI_CURSOR_CHANGE => Some(Command::MultiCursorChange),
+        MULTI_CURSOR_DELETE => Some(Command::MultiCursorDelete),
+        MULTI_CURSOR_SELECT_ALL => Some(Command::MultiCursorSelectAll),
         TOGGLE_MARKDOWN_PREVIEW => Some(Command::ToggleMarkdownPreview),
         MARKDOWN_PREVIEW_SCROLL_UP => Some(Command::MarkdownPreviewScrollUp),
         MARKDOWN_PREVIEW_SCROLL_DOWN => Some(Command::MarkdownPreviewScrollDown),
