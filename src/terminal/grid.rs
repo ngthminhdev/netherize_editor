@@ -698,6 +698,37 @@ impl TerminalGrid {
         spans
     }
 
+    /// Returns visible search match spans as `(display_row, start_col, end_col_exclusive)`.
+    ///
+    /// Only includes matches that are currently in the viewport, converting
+    /// absolute row coordinates to display row coordinates.
+    pub fn visible_search_match_spans(&self) -> Vec<(usize, usize, usize)> {
+        if self.search_matches.is_empty() {
+            return Vec::new();
+        }
+
+        let viewport_top = self.viewport_start_absolute_row();
+        let viewport_bottom = viewport_top + self.rows.saturating_sub(1);
+
+        let mut spans = Vec::new();
+        for m in &self.search_matches {
+            if m.row < viewport_top || m.row > viewport_bottom {
+                continue;
+            }
+            let Some(display_row) = self.absolute_row_to_display_row(m.row) else {
+                continue;
+            };
+            let start_col = m.col;
+            let end_col = m.col + m.len;
+            if start_col >= self.cols {
+                continue;
+            }
+            let end_col = end_col.min(self.cols);
+            spans.push((display_row, start_col, end_col));
+        }
+        spans
+    }
+
     pub fn yank_selection_text(&self) -> Option<String> {
         let (start, end) = self.normalized_selection_bounds()?;
         let mut lines = Vec::new();

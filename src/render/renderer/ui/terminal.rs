@@ -237,6 +237,28 @@ impl Renderer {
         clip_right: f32,
         terminal_mode: EditorMode,
     ) {
+        // Search match highlights — rendered in all terminal modes.
+        // Uses the same color as editor search highlights (theme.ui.warning with alpha).
+        if !grid.search_matches.is_empty() {
+            let mut search_color = theme.ui.warning.as_f32();
+            search_color[3] = search_color[3].clamp(0.26, 0.38);
+            for (display_row, start_col, end_col_exclusive) in grid.visible_search_match_spans() {
+                if start_col >= end_col_exclusive {
+                    continue;
+                }
+                let [x, y, _, h] = view_renderer.cell_rect(display_row, start_col);
+                if x >= clip_right {
+                    continue;
+                }
+                let width = (end_col_exclusive.saturating_sub(start_col) as f32)
+                    * view_renderer.cell_width;
+                cursor_instances.push(RegionDrawInstance::new(
+                    [x, y, width.min((clip_right - x).max(0.0)), h.max(1.0)],
+                    search_color,
+                ));
+            }
+        }
+
         match terminal_mode {
             EditorMode::TerminalNormal => {
                 let selection_color = theme.ui.selection_bg.as_f32();
