@@ -558,6 +558,26 @@ mode = "terminal_normal"
 key = "mod+v"
 command = "terminal.paste"
 
+[[bindings]]
+mode = "terminal_normal"
+key = "/"
+command = "editor.search_next"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "*"
+command = "editor.search_word_under_cursor"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "n"
+command = "editor.search_next"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "N"
+command = "editor.search_prev"
+
 # ───────────────── EXPLORER ─────────────────
 [[bindings]]
 mode = "explorer"
