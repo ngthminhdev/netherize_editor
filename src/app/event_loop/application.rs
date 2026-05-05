@@ -720,7 +720,12 @@ impl AppShell {
                     if let Some(renderer) = self.renderer.as_mut() {
                         renderer.update_image_content(image, center_bounds);
                     }
-                } else if !show_welcome && let Some(renderer) = self.renderer.as_mut() {
+                } else if !show_welcome
+                    && (self.panel_state.maximized_region.is_none()
+                        || self.panel_state.maximized_region
+                            == Some(FocusTarget::CenterEditor))
+                    && let Some(renderer) = self.renderer.as_mut()
+                {
                     renderer.update_editor_caret(&self.app_state, center_bounds);
                     renderer.update_editor_overlays(&self.app_state, center_bounds);
                 }
@@ -1086,7 +1091,10 @@ impl AppShell {
             // Ẩn bottom panel terminal khi center đang hiển thị terminal buffer
             // (lazygit, v.v.) để tránh render terminal hai nơi đồng thời.
             let center_has_terminal = self.app_state.active_terminal_session_id().is_some();
-            if bottom.visible && !show_welcome && !center_has_terminal {
+            // In Zen Mode, only render terminal when BottomPanel is the target.
+            let zen_allows_terminal = self.panel_state.maximized_region.is_none()
+                || self.panel_state.maximized_region == Some(FocusTarget::BottomPanel);
+            if bottom.visible && !show_welcome && !center_has_terminal && zen_allows_terminal {
                 let bottom_bounds = [
                     bottom.bounds.x,
                     bottom.bounds.y,
