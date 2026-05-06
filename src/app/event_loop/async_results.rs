@@ -8,7 +8,7 @@ impl AsyncResultRouter for AppShell {
             RequestTopic::LocalHistory => self.local_history_revision,
             RequestTopic::Git => self.git_overlay_revision,
             RequestTopic::AiInlineCompletion => self.ai_inline_revision,
-            RequestTopic::SystemDepCheck => 0,
+            RequestTopic::SystemDepCheck | RequestTopic::SystemDepInstall => 0,
             _ => 0,
         }
     }
@@ -650,6 +650,46 @@ impl AsyncResultRouter for AppShell {
                     self.request_redraw();
                 }
             }
+            WorkerResultPayload::LspCodeActionResult { actions } => {
+                if actions.is_empty() {
+                    eprintln!("[CodeAction] response: 0 actions");
+                    self.show_transient_toast("Code Action: no actions available".to_string());
+                    return;
+                }
+                // Luôn mở picker để user chọn, dù chỉ có 1 action.
+                use crate::app::command_palette::{
+                    CommandPaletteAction, CommandPaletteItem, CommandPaletteItemTone,
+                };
+                let items: Vec<CommandPaletteItem> = actions
+                    .iter()
+                    .enumerate()
+                    .map(|(i, a)| CommandPaletteItem {
+                        label: a.title.clone(),
+                        secondary_label: if a.edits.is_empty() {
+                            Some("needs resolve".to_string())
+                        } else {
+                            None
+                        },
+                        action: CommandPaletteAction::ApplyCodeAction(i),
+                        tone: CommandPaletteItemTone::Default,
+                    })
+                    .collect();
+
+                self.pending_code_actions = actions;
+                self.app_state.open_code_action_picker(items);
+                if let Ok(result) = self
+                    .app_state
+                    .apply_mode_event(crate::core::mode::ModeEvent::OpenPalette)
+                {
+                    if result.changed {
+                        self.editor_needs_layout = true;
+                    }
+                }
+                self.focus_manager
+                    .set(crate::workbench::focus_manager::FocusTarget::OverlayLayer);
+                self.input_handler.clear_pending_prefix();
+                self.request_redraw();
+            }
             WorkerResultPayload::LspCompletionResult {
                 items,
                 cursor_line,
@@ -776,10 +816,17 @@ impl AsyncResultRouter for AppShell {
                     format!("sudo apt-get install -y {}", missing.join(" "))
                 };
                 let missing_names: Vec<String> = missing.iter().map(|s| s.to_string()).collect();
+                let tool_statuses = missing_names
+                    .iter()
+                    .map(|t| {
+                        (t.clone(), crate::async_runtime::message::InstallStatus::Pending)
+                    })
+                    .collect();
                 self.active_system_dep_guide = Some(SystemDepGuide {
                     state: SystemDepState::Detected,
                     missing_tools: Some(missing_names),
                     install_command: Some(install_cmd),
+                    tool_statuses,
                 });
                 self.request_redraw();
             }
@@ -871,6 +918,29 @@ impl AsyncResultRouter for AppShell {
             });
         self.request_redraw();
     }
+
+    fn on_system_dep_tool_progress(
+        &mut self,
+        tool: String,
+        status: crate::async_runtime::message::InstallStatus,
+    ) {
+        let Some(guide) = self.active_system_dep_guide.as_mut() else {
+            return;
+        };
+        if let Some(entry) = guide.tool_statuses.iter_mut().find(|(t, _)| *t == tool) {
+            entry.1 = status;
+        }
+        self.editor_needs_layout = true;
+        self.request_redraw();
+    }
+
+    fn on_system_dep_install_done(&mut self) {
+        if let Some(guide) = self.active_system_dep_guide.as_mut() {
+            guide.state = SystemDepState::Complete;
+        }
+        self.editor_needs_layout = true;
+        self.request_redraw();
+    }
 }
 
 /// Convert `file:///path/to/file` URI thành PathBuf.
@@ -880,7 +950,7 @@ fn lsp_uri_to_path(uri: &str) -> Option<std::path::PathBuf> {
     path.canonicalize().ok().or(Some(path))
 }
 
-fn apply_lsp_text_edits(
+pub(super) fn apply_lsp_text_edits(
     source: &str,
     edits: &[crate::async_runtime::message::LspTextEdit],
 ) -> Result<String, String> {

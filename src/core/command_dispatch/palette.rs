@@ -511,6 +511,16 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
                 changed || closed || accepted,
             )
         }
+        // ApplyCodeAction được xử lý ở AppShell level (cần access vào pending_code_actions).
+        // Palette dispatch chỉ đóng palette; AppShell sẽ intercept trước dispatch.
+        CommandPaletteAction::ApplyCodeAction(_) => {
+            let closed = ctx.close_palette_and_exit_focus();
+            DispatchReport::success_with_flags(
+                "Dispatch: code action confirmed (handled by AppShell)".to_string(),
+                true,
+                closed,
+            )
+        }
     }
 }
 

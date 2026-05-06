@@ -10,6 +10,15 @@ pub enum GitFileStatus {
     Added,
 }
 
+/// Trạng thái cài đặt của từng tool hệ thống.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallStatus {
+    Pending,
+    Installing,
+    Success,
+    Failed,
+}
+
 /// Topic giúp app biết result thuộc subsystem nào để so revision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RequestTopic {
@@ -30,6 +39,8 @@ pub enum RequestTopic {
     AiChat,
     AiInstall,
     SystemDepCheck,
+    /// Per-tool streaming installation.
+    SystemDepInstall,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -263,6 +274,13 @@ pub enum WorkerRequestPayload {
         prefix_start_col: usize,
         prefix: String,
     },
+    /// textDocument/codeAction request.
+    LspCodeActionRequest {
+        uri: String,
+        line: u32,
+        character: u32,
+        diagnostics: Vec<LspDiagnostic>,
+    },
     AiInlineCompletionRequest {
         api_url: String,
         api_key: Option<String>,
@@ -292,6 +310,10 @@ pub enum WorkerRequestPayload {
     AiInstallRequest,
     /// Check for missing system CLI tools (fzf, lazygit, lazydocker, rg, etc.).
     CheckSystemDeps,
+    /// Install system CLI tools one-by-one, streaming per-tool progress messages.
+    InstallSystemDeps {
+        tools: Vec<String>,
+    },
     StopLspServer,
     ShutdownAllLspServers,
 }
@@ -346,6 +368,14 @@ pub struct LspDocumentSymbol {
 pub struct LspTextEdit {
     pub range: LspRange,
     pub new_text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LspCodeAction {
+    pub title: String,
+    pub edits: Vec<LspTextEdit>,
+    /// Raw action JSON for codeAction/resolve when edits are empty but command is present.
+    pub raw_action: Option<String>,
 }
 
 /// Result worker trả về main thread.
@@ -492,6 +522,10 @@ pub enum WorkerResultPayload {
         prefix_start_col: usize,
         prefix: String,
     },
+    /// textDocument/codeAction response.
+    LspCodeActionResult {
+        actions: Vec<LspCodeAction>,
+    },
     FzfResults {
         query: String,
         mode: FzfSearchMode,
@@ -577,6 +611,13 @@ pub enum WorkerMessage {
     },
     /// The opencode CLI was installed successfully; the editor should restart.
     AiInstallSuccess,
+    /// Per-tool progress update during system dependency installation.
+    SystemDepToolProgress {
+        tool: String,
+        status: InstallStatus,
+    },
+    /// All system dep tools have been processed — installation loop is done.
+    SystemDepInstallDone,
 }
 
 /// RequestSpec giúp caller tạo request mà không cần tự cấp request_id.

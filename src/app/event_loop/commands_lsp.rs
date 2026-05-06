@@ -12,6 +12,7 @@ impl AppShell {
             Command::LspReferences => Some(self.submit_lsp_references()),
             Command::LspFormatDocument => Some(self.submit_lsp_format_document()),
             Command::TriggerCompletion => Some(self.submit_lsp_completion()),
+            Command::CodeAction => Some(self.submit_lsp_code_action()),
             Command::CompletionNext => Some(self.select_next_completion_item()),
             Command::CompletionPrev => Some(self.select_prev_completion_item()),
             Command::CompletionAccept => Some(self.accept_completion_item()),
@@ -297,6 +298,40 @@ impl AppShell {
         changed
     }
 
+    pub(super) fn submit_lsp_code_action(&mut self) -> bool {
+        self.force_flush_lsp_did_change_for_active_file();
+        let Some((_language_id, uri, line, character)) = self.lsp_cursor_context() else {
+            eprintln!("[CodeAction] skipped: no cursor context (terminal buffer or no active file)");
+            self.show_transient_toast("Code Action: no active file".to_string());
+            return false;
+        };
+        let diagnostics: Vec<crate::async_runtime::message::LspDiagnostic> = self
+            .app_state
+            .active_file()
+            .and_then(|path| self.app_state.diagnostics_for_path(path))
+            .map(|items| items.to_vec())
+            .unwrap_or_default();
+        eprintln!(
+            "[CodeAction] submitting request uri={} line={} character={} diagnostics={}",
+            uri, line, character, diagnostics.len()
+        );
+        self.show_transient_toast(format!(
+            "Code Action: requesting... ({} diagnostics at cursor)",
+            diagnostics.len()
+        ));
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspCodeActionRequest {
+                uri,
+                line,
+                character,
+                diagnostics,
+            },
+        });
+        false
+    }
+
     pub(super) fn select_next_reference_item(&mut self) -> bool {
         let changed = self.app_state.references_select_next();
         if changed {
@@ -487,6 +522,72 @@ impl AppShell {
         self.submit_lsp_check_for_path(path);
         self.submit_lsp_did_open_for_active_file();
         self.editor_needs_layout = true;
+        true
+    }
+
+    /// Apply edits từ một LspCodeAction đã được resolve.
+    pub(crate) fn do_apply_code_action_edits(
+        &mut self,
+        edits: &[crate::async_runtime::message::LspTextEdit],
+        title: &str,
+    ) {
+        let text = self.app_state.text_string();
+        match super::async_results::apply_lsp_text_edits(&text, edits) {
+            Ok(next) => {
+                if self
+                    .app_state
+                    .replace_active_document_text_preserve_cursor(&next)
+                {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = true;
+                    self.submit_parse_for_active_buffer(true);
+                    self.force_flush_lsp_did_change_for_active_file();
+                    self.show_transient_toast(format!("Applied: {title}"));
+                    self.request_redraw();
+                } else {
+                    self.show_transient_toast("Code Action: no changes".to_string());
+                }
+            }
+            Err(err) => {
+                eprintln!("[CodeAction] apply failed: {err}");
+                self.show_transient_toast(format!("Code Action failed: {err}"));
+            }
+        }
+    }
+
+    /// Handle Enter khi user chọn một action trong CodeAction picker.
+    pub(super) fn confirm_code_action_selection(&mut self) -> bool {
+        let selected_idx = match self.app_state.command_palette_selected_action() {
+            Some(crate::app::command_palette::CommandPaletteAction::ApplyCodeAction(idx)) => idx,
+            _ => return false,
+        };
+
+        // Đóng palette trước.
+        let _ = self.app_state.close_command_palette();
+        if let Ok(result) = self.app_state.apply_mode_event(crate::core::mode::ModeEvent::ExitFocus) {
+            if result.changed {
+                self.editor_needs_layout = true;
+            }
+        }
+        self.focus_manager.set(FocusTarget::CenterEditor);
+        self.input_handler.clear_pending_prefix();
+
+        let Some(action) = self.pending_code_actions.get(selected_idx).cloned() else {
+            self.show_transient_toast("Code Action: selection out of range".to_string());
+            return true;
+        };
+
+        if action.edits.is_empty() {
+            self.show_transient_toast(format!(
+                "Code Action '{}' has no edits (needs resolve support)",
+                action.title
+            ));
+            return true;
+        }
+
+        let edits = action.edits.clone();
+        let title = action.title.clone();
+        self.do_apply_code_action_edits(&edits, &title);
         true
     }
 }

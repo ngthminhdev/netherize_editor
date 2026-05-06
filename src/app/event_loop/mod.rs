@@ -185,6 +185,8 @@ pub struct AppShell {
     caret_blink_visible: bool,
     caret_blink_dirty: bool,
     pre_markdown_preview_right_width: Option<f32>,
+    /// Code actions từ lần request gần nhất, dùng để apply khi user chọn trong picker.
+    pending_code_actions: Vec<crate::async_runtime::message::LspCodeAction>,
 }
 
 const DEBUG_UI_ENABLED: bool = false;
@@ -254,6 +256,8 @@ pub struct SystemDepGuide {
     pub missing_tools: Option<Vec<String>>,
     /// Full install command suitable for the detected package manager.
     pub install_command: Option<String>,
+    /// Per-tool install progress tracked during the Installing phase.
+    pub tool_statuses: Vec<(String, crate::async_runtime::message::InstallStatus)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

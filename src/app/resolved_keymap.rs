@@ -853,6 +853,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert_sequence(
         Some("normal"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyC), ph(KeyCode::KeyA)]),
+        LSP_CODE_ACTION,
+    );
+    km.insert_sequence(
+        Some("normal"),
         seq(&[KeySpec::Leader, ph(KeyCode::KeyT), ph(KeyCode::KeyH)]),
         OPEN_THEME_SELECTOR,
     );

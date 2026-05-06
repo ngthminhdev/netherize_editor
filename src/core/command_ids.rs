@@ -114,6 +114,7 @@ pub const LSP_PREVIEW_DEFINITION: &str = "lsp.preview_definition";
 pub const LSP_REFERENCES: &str = "lsp.references";
 pub const LSP_FORMAT_DOCUMENT: &str = "lsp.format_document";
 pub const LSP_TRIGGER_COMPLETION: &str = "lsp.trigger_completion";
+pub const LSP_CODE_ACTION: &str = "lsp.code_action";
 pub const COMPLETION_NEXT: &str = "completion.next";
 pub const COMPLETION_PREV: &str = "completion.prev";
 pub const COMPLETION_ACCEPT: &str = "completion.accept";
@@ -304,6 +305,7 @@ pub const ALL_IDS: &[&str] = &[
     LSP_REFERENCES,
     LSP_FORMAT_DOCUMENT,
     LSP_TRIGGER_COMPLETION,
+    LSP_CODE_ACTION,
     COMPLETION_NEXT,
     COMPLETION_PREV,
     COMPLETION_ACCEPT,
@@ -489,6 +491,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         LSP_REFERENCES => Some(Command::LspReferences),
         LSP_FORMAT_DOCUMENT => Some(Command::LspFormatDocument),
         LSP_TRIGGER_COMPLETION => Some(Command::TriggerCompletion),
+        LSP_CODE_ACTION => Some(Command::CodeAction),
         COMPLETION_NEXT => Some(Command::CompletionNext),
         COMPLETION_PREV => Some(Command::CompletionPrev),
         COMPLETION_ACCEPT => Some(Command::CompletionAccept),

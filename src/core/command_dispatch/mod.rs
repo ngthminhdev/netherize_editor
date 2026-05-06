@@ -317,6 +317,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::LspReferences
         | Command::LspFormatDocument
         | Command::TriggerCompletion
+        | Command::CodeAction
         | Command::CompletionNext
         | Command::CompletionPrev
         | Command::CompletionAccept

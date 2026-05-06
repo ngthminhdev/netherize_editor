@@ -195,6 +195,7 @@ impl AppShell {
             caret_blink_visible: true,
             caret_blink_dirty: false,
             pre_markdown_preview_right_width: None,
+            pending_code_actions: Vec::new(),
         })
     }
 

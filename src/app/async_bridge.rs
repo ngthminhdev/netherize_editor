@@ -4,7 +4,8 @@ use std::sync::{
 };
 
 use crate::async_runtime::message::{
-    RequestTopic, WorkerEvent, WorkerEventKind, WorkerMessage, WorkerResult, WorkerResultPayload,
+    InstallStatus, RequestTopic, WorkerEvent, WorkerEventKind, WorkerMessage, WorkerResult,
+    WorkerResultPayload,
 };
 
 fn async_trace_enabled() -> bool {
@@ -40,6 +41,8 @@ pub trait AsyncResultRouter {
     fn on_ai_stream_complete(&mut self);
     fn on_ai_stream_error(&mut self, error: String);
     fn on_ai_install_success(&mut self);
+    fn on_system_dep_tool_progress(&mut self, tool: String, status: InstallStatus);
+    fn on_system_dep_install_done(&mut self);
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -140,6 +143,14 @@ impl AppAsyncBridge {
                             async_trace!("[Bridge] AI install success — restarting editor");
                             router.on_ai_install_success();
                         }
+                        WorkerMessage::SystemDepToolProgress { tool, status } => {
+                            async_trace!("[Bridge] system dep progress: {} {:?}", tool, status);
+                            router.on_system_dep_tool_progress(tool, status);
+                        }
+                        WorkerMessage::SystemDepInstallDone => {
+                            async_trace!("[Bridge] system dep install done");
+                            router.on_system_dep_install_done();
+                        }
                     }
                 }
                 Err(TryRecvError::Empty) => break,
@@ -160,7 +171,7 @@ mod tests {
     use std::{collections::HashMap, sync::mpsc};
 
     use crate::async_runtime::message::{
-        RequestTopic, WorkerEvent, WorkerEventKind, WorkerMessage, WorkerResult,
+        InstallStatus, RequestTopic, WorkerEvent, WorkerEventKind, WorkerMessage, WorkerResult,
         WorkerResultPayload,
     };
 
@@ -197,6 +208,8 @@ mod tests {
         fn on_ai_stream_complete(&mut self) {}
         fn on_ai_stream_error(&mut self, _error: String) {}
         fn on_ai_install_success(&mut self) {}
+        fn on_system_dep_tool_progress(&mut self, _tool: String, _status: InstallStatus) {}
+        fn on_system_dep_install_done(&mut self) {}
     }
 
     #[test]

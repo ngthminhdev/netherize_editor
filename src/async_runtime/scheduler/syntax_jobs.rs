@@ -4,6 +4,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+use winit::event_loop::EventLoopProxy;
+
+use crate::app::event_loop::AppEvent;
+
 use crate::{
     async_runtime::message::{WorkerRequest, WorkerRequestPayload, WorkerResultPayload},
     syntax::{
@@ -211,12 +215,14 @@ pub(super) async fn execute_virtual_job(
             }
         }
         WorkerRequestPayload::CheckSystemDeps => {
+            let resolved_path = resolve_system_path();
             let tools = ["fzf", "lazygit", "lazydocker", "rg", "fd", "bat", "delta"];
             let missing: Vec<String> = tools
                 .iter()
                 .filter(|tool| {
                     !std::process::Command::new("which")
                         .arg(tool)
+                        .env("PATH", &resolved_path)
                         .stdout(std::process::Stdio::null())
                         .stderr(std::process::Stdio::null())
                         .status()
@@ -226,6 +232,9 @@ pub(super) async fn execute_virtual_job(
                 .map(|s| s.to_string())
                 .collect();
             Ok(WorkerResultPayload::SystemDepCheckResult { missing })
+        }
+        WorkerRequestPayload::InstallSystemDeps { .. } => {
+            Err("InstallSystemDeps should be handled by dedicated install runner".to_string())
         }
         WorkerRequestPayload::GitBlameLine {
             workspace_root,
@@ -300,6 +309,7 @@ pub(super) async fn execute_virtual_job(
         | WorkerRequestPayload::LspDocumentSymbolsRequest { .. }
         | WorkerRequestPayload::LspFormattingRequest { .. }
         | WorkerRequestPayload::LspCompletionRequest { .. }
+        | WorkerRequestPayload::LspCodeActionRequest { .. }
         | WorkerRequestPayload::StopLspServer
         | WorkerRequestPayload::ShutdownAllLspServers => {
             Err("LSP request should be handled by dedicated LSP runner".to_string())
@@ -401,4 +411,93 @@ fn cpu_burn_checksum(busy_millis: u64) -> u64 {
     }
 
     checksum
+}
+
+/// Xây dựng $PATH đầy đủ cho GUI bundle — bổ sung các thư mục mà app GUI thường thiếu.
+pub(super) fn resolve_system_path() -> String {
+    let current = std::env::var("PATH").unwrap_or_default();
+    let home = std::env::var("HOME").unwrap_or_default();
+
+    let extras: &[&str] = &[
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+    ];
+
+    let home_extras = [
+        format!("{home}/.cargo/bin"),
+        format!("{home}/.local/bin"),
+    ];
+
+    let mut dirs: Vec<&str> = current.split(':').filter(|s| !s.is_empty()).collect();
+    for extra in extras {
+        if !dirs.contains(extra) {
+            dirs.push(extra);
+        }
+    }
+    for extra in &home_extras {
+        if !dirs.iter().any(|d| *d == extra.as_str()) {
+            dirs.push(extra.as_str());
+        }
+    }
+    dirs.join(":")
+}
+
+/// Cài đặt từng tool một, gửi progress message về main thread sau mỗi bước.
+pub(super) async fn run_system_dep_install(
+    tools: Vec<String>,
+    tx: std::sync::mpsc::Sender<crate::async_runtime::message::WorkerMessage>,
+    event_proxy: EventLoopProxy<AppEvent>,
+) {
+    use crate::async_runtime::message::{InstallStatus, WorkerMessage};
+    use super::emit::emit_message_and_wake;
+
+    let resolved_path = resolve_system_path();
+
+    for tool in &tools {
+        emit_message_and_wake(
+            &tx,
+            &event_proxy,
+            WorkerMessage::SystemDepToolProgress {
+                tool: tool.clone(),
+                status: InstallStatus::Installing,
+            },
+        );
+
+        let install_cmd = if cfg!(target_os = "macos") {
+            format!("brew install {tool}")
+        } else {
+            format!("sudo apt-get install -y {tool}")
+        };
+
+        let success = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&install_cmd)
+            .env("PATH", &resolved_path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map(|s| s.success())
+            .unwrap_or(false);
+
+        emit_message_and_wake(
+            &tx,
+            &event_proxy,
+            WorkerMessage::SystemDepToolProgress {
+                tool: tool.clone(),
+                status: if success {
+                    InstallStatus::Success
+                } else {
+                    InstallStatus::Failed
+                },
+            },
+        );
+    }
+
+    emit_message_and_wake(&tx, &event_proxy, WorkerMessage::SystemDepInstallDone);
 }

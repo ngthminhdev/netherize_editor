@@ -58,6 +58,15 @@ impl AppState {
         Some(entry)
     }
 
+    /// Mở Command Palette ở CodeAction mode với danh sách actions do LSP trả về.
+    pub fn open_code_action_picker(
+        &mut self,
+        items: Vec<crate::app::command_palette::CommandPaletteItem>,
+    ) {
+        self.command_palette
+            .open_with_items(CommandPaletteMode::CodeAction, items);
+    }
+
     /// Mở Command Palette ở LspReferences mode với danh sách references tĩnh từ LSP.
     pub fn open_lsp_references_palette(
         &mut self,

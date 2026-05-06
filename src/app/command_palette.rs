@@ -45,6 +45,8 @@ pub enum CommandPaletteMode {
     FileHistory,
     /// AI Chat install confirmation overlay — asks user whether to auto-install opencode.
     AiChatInstallConfirm,
+    /// LSP Code Action picker — danh sách các action user có thể chọn để apply.
+    CodeAction,
 }
 
 impl CommandPaletteMode {
@@ -67,6 +69,7 @@ impl CommandPaletteMode {
             Self::LspReferences => "refs> ",
             Self::FileHistory => "history> ",
             Self::AiChatInstallConfirm => "install> ",
+            Self::CodeAction => "action> ",
         }
     }
 
@@ -89,6 +92,7 @@ impl CommandPaletteMode {
             Self::LspReferences => "no references found",
             Self::FileHistory => "no local history entries",
             Self::AiChatInstallConfirm => "Install opencode CLI? (y/n)",
+            Self::CodeAction => "no code actions available",
         }
     }
 
@@ -111,6 +115,7 @@ impl CommandPaletteMode {
             Self::LspReferences => "REFS",
             Self::FileHistory => "HISTORY",
             Self::AiChatInstallConfirm => "INSTALL",
+            Self::CodeAction => "ACTIONS",
         }
     }
 
@@ -147,6 +152,8 @@ pub enum CommandPaletteAction {
         column: u32,
     },
     SelectFileHistoryEntry(usize),
+    /// Áp dụng code action tại index đã chọn trong pending_code_actions của AppShell.
+    ApplyCodeAction(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -518,10 +525,12 @@ impl CommandPalette {
     }
 
     pub fn refresh_results(&mut self, _workspace: Option<&WorkspaceModel>) {
-        // LspReferences: static list, never overwrite with fzf results.
+        // LspReferences / CodeAction: static list, never overwrite with fzf results.
         if matches!(
             self.mode,
-            CommandPaletteMode::LspReferences | CommandPaletteMode::FileHistory
+            CommandPaletteMode::LspReferences
+                | CommandPaletteMode::FileHistory
+                | CommandPaletteMode::CodeAction
         ) {
             self.results = self.static_items.clone();
             if self.results.is_empty() {
@@ -590,6 +599,7 @@ impl CommandPalette {
             CommandPaletteMode::ThemeSelector => unreachable!("handled above"),
             CommandPaletteMode::LspReferences => unreachable!("handled above"),
             CommandPaletteMode::FileHistory => unreachable!("handled above"),
+            CommandPaletteMode::CodeAction => unreachable!("handled above"),
         };
 
         if self.results.is_empty() {
@@ -716,10 +726,15 @@ impl CommandPalette {
                 let visible_result_rows = (body_height / row_height).floor() as usize;
                 (pw, px, py, ph, visible_result_rows.max(1))
             } else if self.mode.is_complex_picker() {
-                // File Picker / LiveGrep — min 30% screen, TRUE CENTER giống command palette
-                // Rộng hơn command palette một chút để hiển thị đường dẫn file
+                // File Picker / LiveGrep / Recent Projects — min 35% screen, TRUE CENTER
+                // Recent Projects ưu tiên rộng hơn để hiển thị full path.
+                let available_w = (width - 48.0).max(320.0);
                 let min_w = (width * 0.35).max(400.0);
-                let pw = min_w.max(660.0_f32.min(width - 48.0));
+                let pw = if self.mode == CommandPaletteMode::RecentProjects {
+                    (width * 0.70).clamp(min_w, available_w)
+                } else {
+                    min_w.max(660.0_f32.min(available_w))
+                };
                 let px = x + ((width - pw) * 0.5).max(0.0);
                 let body_rows = complex_picker_body_rows(
                     self.mode,

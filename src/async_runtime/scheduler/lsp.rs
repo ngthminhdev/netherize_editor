@@ -22,8 +22,9 @@ use super::{
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
     lsp_io::{spawn_lsp_stderr_logger, spawn_lsp_stdout_reader},
     lsp_parse::{
-        handle_lsp_completion, handle_lsp_definition, handle_lsp_document_symbols,
-        handle_lsp_formatting, handle_lsp_hover, handle_lsp_references,
+        handle_lsp_code_action, handle_lsp_completion, handle_lsp_definition,
+        handle_lsp_document_symbols, handle_lsp_formatting, handle_lsp_hover,
+        handle_lsp_references,
     },
 };
 
@@ -445,6 +446,26 @@ fn execute_lsp_request(
                 *prefix_start_col,
                 prefix,
             )
+        }
+        WorkerRequestPayload::LspCodeActionRequest {
+            uri,
+            line,
+            character,
+            diagnostics,
+        } => {
+            let Some(handle) = lsp_sessions.get_handle_by_uri(uri)? else {
+                return Err("codeAction rejected: LSP server not running".to_string());
+            };
+            if !handle.capabilities.code_action {
+                return Err(format!(
+                    "codeAction rejected: {} does not advertise codeActionProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_code_action(&handle.process, uri, *line, *character, diagnostics)
         }
         _ => Err("execute_lsp_request received non-lsp payload".to_string()),
     }

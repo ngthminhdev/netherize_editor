@@ -270,6 +270,8 @@ pub enum Command {
     LspFormatDocument,
     /// ctrl+space trong insert mode: gửi textDocument/completion.
     TriggerCompletion,
+    /// <leader>ca: Gửi textDocument/codeAction, hiển thị quickfix/refactor menu.
+    CodeAction,
     /// Completion popup: chọn item kế tiếp.
     CompletionNext,
     /// Completion popup: chọn item trước đó.

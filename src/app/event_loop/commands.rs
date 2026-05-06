@@ -449,7 +449,7 @@ impl AppShell {
     }
 
     pub(super) fn accept_system_dep_guide(&mut self) -> bool {
-        let (install_cmd, missing_list, _state) = {
+        let tools_to_install = {
             let Some(guide) = self.active_system_dep_guide.as_mut() else {
                 return false;
             };
@@ -467,36 +467,24 @@ impl AppShell {
                     return false;
                 }
                 SystemDepState::Detected => {
-                    let cmd = guide.install_command.clone().unwrap_or_default();
-                    let list = guide.missing_tools.clone().unwrap_or_default().join(", ");
+                    let tools = guide.missing_tools.clone().unwrap_or_default();
                     guide.state = SystemDepState::Installing;
-                    (cmd, list, SystemDepState::Installing)
+                    // Reset per-tool statuses to Pending before install starts.
+                    for entry in &mut guide.tool_statuses {
+                        entry.1 = crate::async_runtime::message::InstallStatus::Pending;
+                    }
+                    tools
                 }
             }
         };
 
-        let shell = std::env::var("SHELL").unwrap_or_default();
-        let source_cmd = if shell.contains("zsh") {
-            "source ~/.zshrc"
-        } else if shell.contains("bash") {
-            "source ~/.bash_profile"
-        } else if shell.contains("fish") {
-            "source ~/.config/fish/config.fish"
-        } else {
-            "source ~/.profile"
-        };
-
         self.submit(RequestSpec {
             revision_id: 0,
-            topic: RequestTopic::TerminalPty,
-            payload: WorkerRequestPayload::SpawnDetachedShellCommand {
-                command: install_cmd,
-                working_dir: std::env::current_dir().ok(),
+            topic: RequestTopic::SystemDepInstall,
+            payload: WorkerRequestPayload::InstallSystemDeps {
+                tools: tools_to_install,
             },
         });
-        self.show_transient_toast(format!(
-            "Installing {missing_list} in background. Run '{source_cmd}' in terminal and restart editor when done."
-        ));
         true
     }
 

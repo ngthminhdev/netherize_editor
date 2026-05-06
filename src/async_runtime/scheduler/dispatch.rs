@@ -25,7 +25,7 @@ use super::{
     local_history::run_local_history_request,
     lsp::run_lsp_request,
     pty::run_pty_request,
-    syntax_jobs::execute_virtual_job,
+    syntax_jobs::{execute_virtual_job, run_system_dep_install},
 };
 
 pub(super) async fn dispatch_loop(
@@ -84,6 +84,7 @@ pub(super) async fn dispatch_loop(
                 | WorkerRequestPayload::LspDocumentSymbolsRequest { .. }
                 | WorkerRequestPayload::LspFormattingRequest { .. }
                 | WorkerRequestPayload::LspCompletionRequest { .. }
+                | WorkerRequestPayload::LspCodeActionRequest { .. }
                 | WorkerRequestPayload::StopLspServer
                 | WorkerRequestPayload::ShutdownAllLspServers
         ) {
@@ -239,6 +240,19 @@ pub(super) async fn dispatch_loop(
             let ai_event_proxy = event_proxy.clone();
             tokio::spawn(async move {
                 run_opencode_install(worker_tx, ai_event_proxy).await;
+            });
+            continue;
+        }
+
+        if matches!(request.payload, WorkerRequestPayload::InstallSystemDeps { .. }) {
+            let tools = match request.payload {
+                WorkerRequestPayload::InstallSystemDeps { tools } => tools,
+                _ => unreachable!(),
+            };
+            let worker_tx = result_tx.clone();
+            let install_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                run_system_dep_install(tools, worker_tx, install_proxy).await;
             });
             continue;
         }

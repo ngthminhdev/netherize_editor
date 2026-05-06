@@ -4,15 +4,16 @@ use serde_json::Value;
 
 use crate::{
     async_runtime::message::{
-        LspCompletionItem, LspDocumentSymbol, LspLocation, LspPosition, LspRange, LspTextEdit,
-        WorkerResultPayload,
+        LspCodeAction, LspCompletionItem, LspDiagnostic, LspDocumentSymbol, LspLocation,
+        LspPosition, LspRange, LspTextEdit, WorkerResultPayload,
     },
     lsp::client::LspClientProcess,
 };
 
 use super::{
-    LSP_COMPLETION_TIMEOUT_SECS, LSP_DEFINITION_TIMEOUT_SECS, LSP_DOCUMENT_SYMBOLS_TIMEOUT_SECS,
-    LSP_FORMATTING_TIMEOUT_SECS, LSP_HOVER_TIMEOUT_SECS, LSP_REFERENCES_TIMEOUT_SECS,
+    LSP_CODE_ACTION_TIMEOUT_SECS, LSP_COMPLETION_TIMEOUT_SECS, LSP_DEFINITION_TIMEOUT_SECS,
+    LSP_DOCUMENT_SYMBOLS_TIMEOUT_SECS, LSP_FORMATTING_TIMEOUT_SECS, LSP_HOVER_TIMEOUT_SECS,
+    LSP_REFERENCES_TIMEOUT_SECS,
 };
 
 pub(super) fn lsp_request_response(
@@ -471,4 +472,191 @@ pub(super) fn handle_lsp_completion(
         prefix_start_col,
         prefix: prefix.to_string(),
     })
+}
+
+pub(super) fn handle_lsp_code_action(
+    session: &Arc<LspClientProcess>,
+    uri: &str,
+    line: u32,
+    character: u32,
+    diagnostics: &[LspDiagnostic],
+) -> Result<WorkerResultPayload, String> {
+    let diag_items: Vec<serde_json::Value> = diagnostics
+        .iter()
+        .map(|d| {
+            serde_json::json!({
+                "range": {
+                    "start": { "line": d.range.start.line, "character": d.range.start.character },
+                    "end": { "line": d.range.end.line, "character": d.range.end.character }
+                },
+                "severity": d.severity,
+                "code": d.code,
+                "source": d.source,
+                "message": d.message
+            })
+        })
+        .collect();
+
+    let params = serde_json::json!({
+        "textDocument": { "uri": uri },
+        "range": {
+            "start": { "line": line, "character": character },
+            "end": { "line": line, "character": character }
+        },
+        "context": {
+            "diagnostics": diag_items
+        }
+    });
+
+    let response = lsp_request_response(
+        session,
+        "textDocument/codeAction",
+        params,
+        LSP_CODE_ACTION_TIMEOUT_SECS,
+    )?;
+    let result = response
+        .get("result")
+        .ok_or_else(|| "codeAction: no result".to_string())?;
+    if result.is_null() {
+        return Err("codeAction: no actions available".to_string());
+    }
+
+    let mut actions = parse_code_actions(result);
+    if actions.is_empty() {
+        return Err("codeAction: no actions available".to_string());
+    }
+
+    // Try to resolve actions that have commands but no edits via codeAction/resolve.
+    for action in actions.iter_mut() {
+        if !action.edits.is_empty() || action.raw_action.is_none() {
+            continue;
+        }
+        let Some(raw) = &action.raw_action else {
+            continue;
+        };
+        let Ok(raw_value) = serde_json::from_str::<serde_json::Value>(raw) else {
+            continue;
+        };
+        eprintln!("[CodeAction] resolving action: \"{}\"", action.title);
+        // codeAction/resolve takes the original CodeAction as params.
+        match lsp_request_response(
+            session,
+            "codeAction/resolve",
+            raw_value,
+            LSP_CODE_ACTION_TIMEOUT_SECS,
+        ) {
+            Ok(resolve_resp) => {
+                if let Some(resolved) = resolve_resp.get("result") {
+                    action.edits = parse_edits_from_action(resolved);
+                    eprintln!(
+                        "[CodeAction] resolve result: {} edit(s)",
+                        action.edits.len()
+                    );
+                } else {
+                    eprintln!("[CodeAction] resolve: no result field");
+                }
+            }
+            Err(err) => {
+                eprintln!("[CodeAction] resolve failed: {err}");
+            }
+        }
+    }
+
+    Ok(WorkerResultPayload::LspCodeActionResult { actions })
+}
+
+/// Parse một raw TextEdit JSON object thành LspTextEdit.
+fn parse_single_text_edit(edit: &Value) -> Option<LspTextEdit> {
+    let start_line = edit.pointer("/range/start/line")?.as_u64()? as u32;
+    let start_char = edit.pointer("/range/start/character")?.as_u64()? as u32;
+    let end_line = edit.pointer("/range/end/line")?.as_u64()? as u32;
+    let end_char = edit.pointer("/range/end/character")?.as_u64()? as u32;
+    let new_text = edit.get("newText")?.as_str()?.to_string();
+    Some(LspTextEdit {
+        range: LspRange {
+            start: LspPosition {
+                line: start_line,
+                character: start_char,
+            },
+            end: LspPosition {
+                line: end_line,
+                character: end_char,
+            },
+        },
+        new_text,
+    })
+}
+
+/// Parse edits từ WorkspaceEdit — hỗ trợ cả format cũ `changes` và format mới `documentChanges`.
+/// TypeScript LSP (tsserver) dùng `documentChanges`; các LSP khác dùng `changes`.
+fn parse_workspace_edit_into_edits(workspace_edit: &Value) -> Vec<LspTextEdit> {
+    let mut edits = Vec::new();
+
+    // Format mới: documentChanges: TextDocumentEdit[]
+    // Mỗi entry có dạng { textDocument: {...}, edits: TextEdit[] }
+    if let Some(doc_changes) = workspace_edit.get("documentChanges").and_then(|v| v.as_array()) {
+        for doc_edit in doc_changes {
+            if let Some(text_edits) = doc_edit.get("edits").and_then(|v| v.as_array()) {
+                for edit in text_edits {
+                    if let Some(lsp_edit) = parse_single_text_edit(edit) {
+                        edits.push(lsp_edit);
+                    }
+                }
+            }
+        }
+    }
+
+    // Format cũ: changes: { uri: TextEdit[] }
+    if edits.is_empty() {
+        if let Some(changes) = workspace_edit.get("changes").and_then(|c| c.as_object()) {
+            for (_uri, text_edits) in changes {
+                if let Some(edit_array) = text_edits.as_array() {
+                    for edit in edit_array {
+                        if let Some(lsp_edit) = parse_single_text_edit(edit) {
+                            edits.push(lsp_edit);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    edits
+}
+
+fn parse_edits_from_action(action: &Value) -> Vec<LspTextEdit> {
+    action
+        .get("edit")
+        .map(parse_workspace_edit_into_edits)
+        .unwrap_or_default()
+}
+
+fn parse_code_actions(result: &Value) -> Vec<LspCodeAction> {
+    let Some(items) = result.as_array() else {
+        return Vec::new();
+    };
+
+    items
+        .iter()
+        .filter_map(|item| {
+            let title = item.get("title")?.as_str()?.to_string();
+
+            // Extract workspace edit — hỗ trợ cả `changes` và `documentChanges`.
+            let edits = item
+                .get("edit")
+                .map(parse_workspace_edit_into_edits)
+                .unwrap_or_default();
+
+            let has_edits = !edits.is_empty();
+            Some(LspCodeAction {
+                title,
+                edits,
+                raw_action: if has_edits {
+                    None
+                } else {
+                    Some(serde_json::to_string(item).unwrap_or_default())
+                },
+            })
+        })
+        .collect()
 }

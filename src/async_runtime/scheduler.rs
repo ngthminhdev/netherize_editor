@@ -42,6 +42,7 @@ pub(super) const LSP_REFERENCES_TIMEOUT_SECS: u64 = 15;
 pub(super) const LSP_COMPLETION_TIMEOUT_SECS: u64 = 10;
 pub(super) const LSP_FORMATTING_TIMEOUT_SECS: u64 = 15;
 pub(super) const LSP_DOCUMENT_SYMBOLS_TIMEOUT_SECS: u64 = 10;
+pub(super) const LSP_CODE_ACTION_TIMEOUT_SECS: u64 = 10;
 
 pub(super) type SyntaxEngineCache = Mutex<HashMap<PathBuf, SyntaxEngine>>;
 
