@@ -659,25 +659,34 @@ impl AppShell {
                     } else if let Some(image) = self.app_state.active_image_buffer() {
                         renderer.update_image_content(image, center_bounds);
                     } else {
-                        renderer.clear_welcome_logo();
-                        renderer.clear_buffer_terminal();
-                        let effective_highlights =
-                            crate::syntax::highlight::overlay_highlight_layers(
-                                &self.highlight_spans,
-                                &self.semantic_highlight_spans,
+                        // Skip editor content rendering in Zen Mode when target is not CenterEditor
+                        let zen_mode_active = self.panel_state.maximized_region.is_some()
+                            && self.panel_state.maximized_region != Some(FocusTarget::CenterEditor);
+
+                        if zen_mode_active {
+                            renderer.clear_editor_content();
+                            renderer.clear_editor_overlays();
+                        } else {
+                            renderer.clear_welcome_logo();
+                            renderer.clear_buffer_terminal();
+                            let effective_highlights =
+                                crate::syntax::highlight::overlay_highlight_layers(
+                                    &self.highlight_spans,
+                                    &self.semantic_highlight_spans,
+                                );
+                            let text = self.app_state.text_string();
+                            let mut styled_spans =
+                                syntax_spans_to_styled(&effective_highlights, &text, &self.theme);
+                            styled_spans
+                                .extend(diagnostic_spans_to_styled(&self.app_state, &self.theme));
+                            renderer.update_editor_content(
+                                &text,
+                                &self.app_state,
+                                center_bounds,
+                                &styled_spans,
                             );
-                        let text = self.app_state.text_string();
-                        let mut styled_spans =
-                            syntax_spans_to_styled(&effective_highlights, &text, &self.theme);
-                        styled_spans
-                            .extend(diagnostic_spans_to_styled(&self.app_state, &self.theme));
-                        renderer.update_editor_content(
-                            &text,
-                            &self.app_state,
-                            center_bounds,
-                            &styled_spans,
-                        );
-                        renderer.update_editor_overlays(&self.app_state, center_bounds);
+                            renderer.update_editor_overlays(&self.app_state, center_bounds);
+                        }
                     }
                 }
                 self.last_editor_bounds = Some(center_bounds);
