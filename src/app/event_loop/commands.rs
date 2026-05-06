@@ -440,6 +440,66 @@ impl AppShell {
         }
     }
 
+    pub(super) fn dismiss_system_dep_guide(&mut self) {
+        self.active_system_dep_guide = None;
+        self.dismissed_system_deps = true;
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_system_dep_popup();
+        }
+    }
+
+    pub(super) fn accept_system_dep_guide(&mut self) -> bool {
+        let (install_cmd, missing_list, _state) = {
+            let Some(guide) = self.active_system_dep_guide.as_mut() else {
+                return false;
+            };
+            use crate::app::event_loop::SystemDepState;
+            match guide.state {
+                SystemDepState::Complete => {
+                    self.active_system_dep_guide = None;
+                    self.dismissed_system_deps = true;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.clear_system_dep_popup();
+                    }
+                    return true;
+                }
+                SystemDepState::Installing => {
+                    return false;
+                }
+                SystemDepState::Detected => {
+                    let cmd = guide.install_command.clone().unwrap_or_default();
+                    let list = guide.missing_tools.clone().unwrap_or_default().join(", ");
+                    guide.state = SystemDepState::Installing;
+                    (cmd, list, SystemDepState::Installing)
+                }
+            }
+        };
+
+        let shell = std::env::var("SHELL").unwrap_or_default();
+        let source_cmd = if shell.contains("zsh") {
+            "source ~/.zshrc"
+        } else if shell.contains("bash") {
+            "source ~/.bash_profile"
+        } else if shell.contains("fish") {
+            "source ~/.config/fish/config.fish"
+        } else {
+            "source ~/.profile"
+        };
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::TerminalPty,
+            payload: WorkerRequestPayload::SpawnDetachedShellCommand {
+                command: install_cmd,
+                working_dir: std::env::current_dir().ok(),
+            },
+        });
+        self.show_transient_toast(format!(
+            "Installing {missing_list} in background. Run '{source_cmd}' in terminal and restart editor when done."
+        ));
+        true
+    }
+
     pub(super) fn show_transient_toast(&mut self, message: impl Into<String>) {
         self.transient_toast = Some(TransientToast {
             message: message.into(),

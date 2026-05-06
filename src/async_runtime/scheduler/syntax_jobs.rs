@@ -210,6 +210,23 @@ pub(super) async fn execute_virtual_job(
                 None => Err(format!("no LSP registry entry for .{ext_hint}")),
             }
         }
+        WorkerRequestPayload::CheckSystemDeps => {
+            let tools = ["fzf", "lazygit", "lazydocker", "rg", "fd", "bat", "delta"];
+            let missing: Vec<String> = tools
+                .iter()
+                .filter(|tool| {
+                    !std::process::Command::new("which")
+                        .arg(tool)
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .status()
+                        .map(|s| s.success())
+                        .unwrap_or(false)
+                })
+                .map(|s| s.to_string())
+                .collect();
+            Ok(WorkerResultPayload::SystemDepCheckResult { missing })
+        }
         WorkerRequestPayload::GitBlameLine {
             workspace_root,
             file_path,

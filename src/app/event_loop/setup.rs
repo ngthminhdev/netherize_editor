@@ -139,6 +139,8 @@ impl AppShell {
             lsp_completion_trigger_chars: Vec::new(),
             active_lsp_guide: None,
             dismissed_lsp_binaries: HashSet::new(),
+            active_system_dep_guide: None,
+            dismissed_system_deps: false,
             transient_toast: None,
             base_theme,
             theme,
@@ -222,6 +224,13 @@ impl AppShell {
         });
 
         self.sync_lsp_server_for_workspace();
+
+        // ── System Dependency Check ──────────────────────────────────────
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::SystemDepCheck,
+            payload: WorkerRequestPayload::CheckSystemDeps,
+        });
 
         eprintln!(
             "[AppShell] subsystems started - profile={}",

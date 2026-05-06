@@ -49,7 +49,10 @@ impl Renderer {
         let lsp_guide_start = palette_start + palette_count;
         let lsp_guide_count = self.lsp_guide_chrome_instances.len() as u32;
 
-        let toast_start = lsp_guide_start + lsp_guide_count;
+        let system_dep_start = lsp_guide_start + lsp_guide_count;
+        let system_dep_count = self.system_dep_chrome_instances.len() as u32;
+
+        let toast_start = system_dep_start + system_dep_count;
         let toast_count = self.toast_chrome_instances.len() as u32;
 
         let diag_hover_start = toast_start + toast_count;
@@ -66,6 +69,7 @@ impl Renderer {
         all_instances.extend_from_slice(&self.buffer_terminal_cursor_instances);
         all_instances.extend_from_slice(&self.palette_chrome_instances);
         all_instances.extend_from_slice(&self.lsp_guide_chrome_instances);
+        all_instances.extend_from_slice(&self.system_dep_chrome_instances);
         all_instances.extend_from_slice(&self.toast_chrome_instances);
         all_instances.extend_from_slice(&self.diagnostic_hover_chrome_instances);
 
@@ -452,6 +456,28 @@ impl Renderer {
                 viewport_height,
                 |render_pass| {
                     self.lsp_guide_text_pipeline.draw(render_pass);
+                },
+            );
+
+            if system_dep_count > 0 {
+                draw_text_region(
+                    &mut pass,
+                    self.system_dep_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline
+                            .draw_range(render_pass, system_dep_start, system_dep_count);
+                    },
+                );
+            }
+            draw_text_region(
+                &mut pass,
+                self.system_dep_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.system_dep_text_pipeline.draw(render_pass);
                 },
             );
 

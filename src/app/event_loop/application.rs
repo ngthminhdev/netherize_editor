@@ -183,6 +183,27 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     // Swallow tất cả input khi popup active.
                     return;
                 }
+
+                // System Dependency Check popup — intercept input khi popup active.
+                if self.active_system_dep_guide.is_some() && key_event.state == ElementState::Pressed {
+                    let named = match &key_event.logical_key {
+                        Key::Named(n) => Some(*n),
+                        _ => None,
+                    };
+                    match named {
+                        Some(NamedKey::Escape) => {
+                            self.dismiss_system_dep_guide();
+                            self.request_redraw();
+                        }
+                        Some(NamedKey::Enter) => {
+                            if self.accept_system_dep_guide() {
+                                self.request_redraw();
+                            }
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
                 if let Some(changed) = self.handle_explorer_filter_key_event(&key_event) {
                     if changed {
                         self.request_redraw();
@@ -1132,6 +1153,17 @@ impl AppShell {
             renderer.update_lsp_guide_popup(&guide.binary, &guide.install_cmd, w, h);
         } else if let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_lsp_guide_popup();
+        }
+
+        // ── System Dependency Check Popup ────────────────────────────────────
+        if let Some(ref guide) = self.active_system_dep_guide
+            && let Some(renderer) = self.renderer.as_mut()
+        {
+            let w = self.window_size.width as f32;
+            let h = self.window_size.height as f32;
+            renderer.update_system_dep_popup(guide, w, h);
+        } else if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_system_dep_popup();
         }
 
         if let Some(toast) = self.transient_toast.clone()

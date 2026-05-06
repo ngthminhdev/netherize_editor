@@ -215,6 +215,13 @@ pub struct Renderer {
     pub(super) lsp_guide_text_system: TextSystem,
     pub(super) lsp_guide_text_pipeline: TextPipeline,
     pub(super) lsp_guide_scissor: Option<[u32; 4]>,
+    pub(super) lsp_guide_chrome_instances: Vec<RegionDrawInstance>,
+    pub(super) lsp_guide_glyph_instances: Vec<GlyphInstance>,
+    pub(super) system_dep_text_system: TextSystem,
+    pub(super) system_dep_text_pipeline: TextPipeline,
+    pub(super) system_dep_scissor: Option<[u32; 4]>,
+    pub(super) system_dep_chrome_instances: Vec<RegionDrawInstance>,
+    pub(super) system_dep_glyph_instances: Vec<GlyphInstance>,
     pub(super) diagnostic_hover_text_system: TextSystem,
     pub(super) diagnostic_hover_text_pipeline: TextPipeline,
     pub(super) diagnostic_hover_glyph_instances: Vec<GlyphInstance>,
@@ -251,12 +258,6 @@ pub struct Renderer {
     pub(super) leap_label_glyph_instances: Vec<GlyphInstance>,
     pub(super) leap_label_bg_instances: Vec<RegionDrawInstance>,
     pub(super) leap_label_scissor: Option<[u32; 4]>,
-
-    // ── LSP Install Guide popup ───────────────────────────────────────────────
-    /// Chrome quads cho floating background + border.
-    pub(super) lsp_guide_chrome_instances: Vec<RegionDrawInstance>,
-    /// Glyph instances cho text bên trong popup.
-    pub(super) lsp_guide_glyph_instances: Vec<GlyphInstance>,
 
     // ── Transient toast popup ────────────────────────────────────────────────
     pub(super) toast_text_system: TextSystem,

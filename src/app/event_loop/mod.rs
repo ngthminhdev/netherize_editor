@@ -117,6 +117,10 @@ pub struct AppShell {
     active_lsp_guide: Option<LspInstallGuide>,
     /// Các binary LSP mà user đã dismiss guide — không show lại trong session này.
     dismissed_lsp_binaries: HashSet<String>,
+    /// Popup for missing system CLI tools — `Some` when tools are missing.
+    active_system_dep_guide: Option<SystemDepGuide>,
+    /// `true` after user dismissed the system dep popup this session.
+    dismissed_system_deps: bool,
     /// Toast window-relative ngắn hạn cho các action nền.
     transient_toast: Option<TransientToast>,
     base_theme: ThemeConfig,
@@ -239,6 +243,27 @@ struct LspInstallGuide {
     binary: String,
     /// Lệnh cài đặt sẽ được bơm thẳng vào terminal khi user bấm Enter.
     install_cmd: String,
+}
+
+/// State for the system dependency checker popup.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SystemDepGuide {
+    /// Current phase of the popup.
+    pub state: SystemDepState,
+    /// Human-readable tool names that are missing, e.g. ["fzf", "lazygit"].
+    pub missing_tools: Option<Vec<String>>,
+    /// Full install command suitable for the detected package manager.
+    pub install_command: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemDepState {
+    /// Tool(s) detected missing — user can install or skip.
+    Detected,
+    /// Installation worker is running.
+    Installing,
+    /// Installation finished — user needs to source rc and restart.
+    Complete,
 }
 
 #[derive(Debug, Clone)]

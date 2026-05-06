@@ -29,6 +29,7 @@ pub enum RequestTopic {
     LocalHistory,
     AiChat,
     AiInstall,
+    SystemDepCheck,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -289,6 +290,8 @@ pub enum WorkerRequestPayload {
     },
     /// Install the opencode CLI on the host machine.
     AiInstallRequest,
+    /// Check for missing system CLI tools (fzf, lazygit, lazydocker, rg, etc.).
+    CheckSystemDeps,
     StopLspServer,
     ShutdownAllLspServers,
 }
@@ -523,6 +526,10 @@ pub enum WorkerResultPayload {
     },
     AiInlineCompletionResult {
         suggestion: String,
+    },
+    /// Result of system dependency check: list of tools not found by `which`.
+    SystemDepCheckResult {
+        missing: Vec<String>,
     },
 }
 

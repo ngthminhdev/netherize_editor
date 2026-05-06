@@ -580,7 +580,7 @@ command = "editor.search_prev"
 
 [[bindings]]
 mode = "terminal_normal"
-key = "<leader>t f"
+key = "<leader>z m"
 command = "app.toggle_maximize_focus"
 
 # ───────────────── EXPLORER ─────────────────
@@ -764,7 +764,7 @@ command = "app.open_theme_selector"
 
 [[bindings]]
 mode = "normal"
-key = "<leader>t f"
+key = "<leader>z m"
 command = "app.toggle_maximize_focus"
 
 [[bindings]]

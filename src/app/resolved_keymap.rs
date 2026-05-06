@@ -276,7 +276,7 @@ fn char_key_to_code(s: &str) -> Option<KeyCode> {
         "," | "comma" => Some(KeyCode::Comma),
         "semicolon" => Some(KeyCode::Semicolon),
         "backslash" => Some(KeyCode::Backslash),
-        "backtick" | "grave" => Some(KeyCode::Backquote),
+        "`" | "backtick" | "grave" => Some(KeyCode::Backquote),
         "space" => Some(KeyCode::Space),
         _ => None,
     }

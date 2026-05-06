@@ -8,6 +8,7 @@ impl AsyncResultRouter for AppShell {
             RequestTopic::LocalHistory => self.local_history_revision,
             RequestTopic::Git => self.git_overlay_revision,
             RequestTopic::AiInlineCompletion => self.ai_inline_revision,
+            RequestTopic::SystemDepCheck => 0,
             _ => 0,
         }
     }
@@ -764,6 +765,23 @@ impl AsyncResultRouter for AppShell {
                     self.editor_caret_needs_layout = false;
                     self.request_redraw();
                 }
+            }
+            WorkerResultPayload::SystemDepCheckResult { missing } => {
+                if missing.is_empty() || self.dismissed_system_deps {
+                    return;
+                }
+                let install_cmd = if cfg!(target_os = "macos") {
+                    format!("brew install {}", missing.join(" "))
+                } else {
+                    format!("sudo apt-get install -y {}", missing.join(" "))
+                };
+                let missing_names: Vec<String> = missing.iter().map(|s| s.to_string()).collect();
+                self.active_system_dep_guide = Some(SystemDepGuide {
+                    state: SystemDepState::Detected,
+                    missing_tools: Some(missing_names),
+                    install_command: Some(install_cmd),
+                });
+                self.request_redraw();
             }
             _ => {}
         }

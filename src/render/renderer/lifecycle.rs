@@ -121,6 +121,7 @@ impl Renderer {
         let statusbar_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let palette_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let lsp_guide_text_system = make_text_system(panel_metrics, font_family.as_deref());
+        let system_dep_text_system = make_text_system(panel_metrics, font_family.as_deref());
         let diagnostic_hover_text_system = make_text_system(editor_metrics, font_family.as_deref());
         let ai_chat_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let toast_text_system = make_text_system(ui_metrics, font_family.as_deref());
@@ -149,6 +150,8 @@ impl Renderer {
         let palette_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let lsp_guide_text_pipeline =
+            make_text_pipeline(&device, &atlas, surface_format, width, height);
+        let system_dep_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let diagnostic_hover_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
@@ -266,6 +269,11 @@ impl Renderer {
             leap_label_scissor: None,
             lsp_guide_chrome_instances: Vec::new(),
             lsp_guide_glyph_instances: Vec::new(),
+            system_dep_text_system,
+            system_dep_text_pipeline,
+            system_dep_chrome_instances: Vec::new(),
+            system_dep_glyph_instances: Vec::new(),
+            system_dep_scissor: None,
             toast_text_system,
             toast_text_pipeline,
             toast_glyph_instances: Vec::new(),
@@ -312,6 +320,10 @@ impl Renderer {
             theme.ui.panel_font_size,
             theme.ui.panel_line_height,
         ));
+        self.system_dep_text_system.set_metrics(Metrics::new(
+            theme.ui.panel_font_size,
+            theme.ui.panel_line_height,
+        ));
         self.diagnostic_hover_text_system.set_metrics(Metrics::new(
             theme.editor.font_size,
             theme.editor.line_height,
@@ -339,6 +351,7 @@ impl Renderer {
         self.statusbar_text_system.set_font_family(family);
         self.palette_text_system.set_font_family(family);
         self.lsp_guide_text_system.set_font_family(family);
+        self.system_dep_text_system.set_font_family(family);
         self.diagnostic_hover_text_system.set_font_family(family);
         self.toast_text_system.set_font_family(family);
         self.leap_label_text_system.set_font_family(family);
@@ -423,6 +436,7 @@ impl Renderer {
             &mut self.statusbar_text_pipeline,
             &mut self.palette_text_pipeline,
             &mut self.lsp_guide_text_pipeline,
+            &mut self.system_dep_text_pipeline,
             &mut self.diagnostic_hover_text_pipeline,
             &mut self.toast_text_pipeline,
             &mut self.leap_label_text_pipeline,

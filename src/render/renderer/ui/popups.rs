@@ -186,6 +186,244 @@ impl Renderer {
             .upload_instances(&self.device, &self.queue, &[]);
     }
 
+    pub fn update_system_dep_popup(
+        &mut self,
+        guide: &crate::app::event_loop::SystemDepGuide,
+        window_w: f32,
+        window_h: f32,
+    ) {
+        use crate::app::event_loop::SystemDepState;
+
+        let modal_w = (window_w * 0.30).max(640.0).min(900.0);
+        const MARGIN_X: f32 = 24.0;
+        const BORDER: f32 = 1.5;
+        const INNER_PAD_X: f32 = 22.0;
+        const INNER_PAD_Y: f32 = 18.0;
+        const BLOCK_GAP: f32 = 8.0;
+
+        let popup_available_w = (window_w - MARGIN_X * 2.0).max(1.0);
+        let popup_w = clamp_popup_width(modal_w, 160.0, popup_available_w);
+        let content_w = (popup_w - INNER_PAD_X * 2.0).max(1.0);
+
+        let bg_color = self.theme.ui.panel_bg.as_f32();
+        let fg = self.theme.ui.fg.as_f32();
+        let accent = self.theme.ui.accent.as_f32();
+        let fg_ghost = self.theme.ui.fg_ghost.as_f32();
+        let warn = self.theme.ui.warning.as_f32();
+        let scrim = [0.0, 0.0, 0.0, 0.36];
+
+        let title_font = (self.theme.ui.panel_font_size + 2.0).max(12.0);
+        let title_line_h = (self.theme.ui.panel_line_height + 4.0).max(1.0);
+        let body_font = self.theme.ui.panel_font_size.max(11.0);
+        let body_line_h = self.theme.ui.panel_line_height.max(1.0);
+
+        let (title_text, title_color) = match guide.state {
+            SystemDepState::Detected => {
+                ("[ Missing System Tools ]", warn)
+            }
+            SystemDepState::Installing => {
+                ("[ Installing Dependencies... ]", accent)
+            }
+            SystemDepState::Complete => {
+                ("[ Installation Complete ]", accent)
+            }
+        };
+
+        let title_h = measure_wrapped_block_height(
+            &mut self.system_dep_text_system,
+            title_text,
+            content_w,
+            title_font,
+            title_line_h,
+            title_color,
+            PopupTextStyle::Bold,
+        );
+
+        let mut glyphs: Vec<GlyphInstance> = Vec::new();
+        let mut total_h = INNER_PAD_Y * 2.0 + title_h;
+
+        // Layout blocks
+        struct DepBlock {
+            text: String,
+            color: [f32; 4],
+            style: PopupTextStyle,
+            font_size: f32,
+            line_height: f32,
+        }
+        let mut blocks: Vec<DepBlock> = Vec::new();
+
+        match guide.state {
+            SystemDepState::Detected => {
+                if let Some(ref missing) = guide.missing_tools {
+                    let list = missing.join(", ");
+                    let desc = format!("The following tools are required for full functionality:\n{}", list);
+                    blocks.push(DepBlock {
+                        text: desc,
+                        color: fg,
+                        style: PopupTextStyle::Normal,
+                        font_size: body_font,
+                        line_height: body_line_h,
+                    });
+                    let status = format!("Status: {} tool(s) missing", missing.len());
+                    blocks.push(DepBlock {
+                        text: status,
+                        color: warn,
+                        style: PopupTextStyle::Italic,
+                        font_size: body_font,
+                        line_height: body_line_h,
+                    });
+                }
+                blocks.push(DepBlock {
+                    text: "Press [Enter] to install tools  |  [Esc] to skip".to_string(),
+                    color: fg_ghost,
+                    style: PopupTextStyle::Normal,
+                    font_size: body_font,
+                    line_height: body_line_h,
+                });
+            }
+            SystemDepState::Installing => {
+                blocks.push(DepBlock {
+                    text: "Installing system dependencies. This may take a few moments...".to_string(),
+                    color: fg,
+                    style: PopupTextStyle::Normal,
+                    font_size: body_font,
+                    line_height: body_line_h,
+                });
+                blocks.push(DepBlock {
+                    text: "Please wait, do not close the editor.".to_string(),
+                    color: fg_ghost,
+                    style: PopupTextStyle::Italic,
+                    font_size: body_font,
+                    line_height: body_line_h,
+                });
+            }
+            SystemDepState::Complete => {
+                blocks.push(DepBlock {
+                    text: "All tools have been installed successfully.".to_string(),
+                    color: accent,
+                    style: PopupTextStyle::Normal,
+                    font_size: body_font,
+                    line_height: body_line_h,
+                });
+                blocks.push(DepBlock {
+                    text: "Run 'source ~/.zshrc' in your terminal, then restart Netherize Editor to apply changes.".to_string(),
+                    color: fg,
+                    style: PopupTextStyle::Normal,
+                    font_size: body_font,
+                    line_height: body_line_h,
+                });
+                blocks.push(DepBlock {
+                    text: "Press [Enter] to close".to_string(),
+                    color: fg_ghost,
+                    style: PopupTextStyle::Normal,
+                    font_size: body_font,
+                    line_height: body_line_h,
+                });
+            }
+        }
+
+        // Measure all blocks to compute popup height
+        for block in &blocks {
+            let h = measure_wrapped_block_height(
+                &mut self.system_dep_text_system,
+                &block.text,
+                content_w,
+                block.font_size,
+                block.line_height,
+                block.color,
+                block.style,
+            );
+            total_h += h + BLOCK_GAP;
+        }
+
+        let popup_h = total_h;
+        let x = ((window_w - popup_w) * 0.5).max(0.0);
+        let y = ((window_h - popup_h) * 0.5).max(0.0);
+        let text_x = x + INNER_PAD_X;
+        let mut text_y = y + INNER_PAD_Y;
+
+        // Layout title
+        glyphs.extend(layout_wrapped_block(
+            title_text,
+            &mut self.system_dep_text_system,
+            &mut self.atlas,
+            &self.queue,
+            text_x,
+            text_y,
+            title_color,
+            content_w,
+            title_font,
+            title_line_h,
+            PopupTextStyle::Bold,
+        ));
+        text_y += title_h + BLOCK_GAP;
+
+        // Layout body blocks
+        for block in &blocks {
+            glyphs.extend(layout_wrapped_block(
+                &block.text,
+                &mut self.system_dep_text_system,
+                &mut self.atlas,
+                &self.queue,
+                text_x,
+                text_y,
+                block.color,
+                content_w,
+                block.font_size,
+                block.line_height,
+                block.style,
+            ));
+            let h = measure_wrapped_block_height(
+                &mut self.system_dep_text_system,
+                &block.text,
+                content_w,
+                block.font_size,
+                block.line_height,
+                block.color,
+                block.style,
+            );
+            text_y += h + BLOCK_GAP;
+        }
+
+        // Determine border color
+        let border_color = match guide.state {
+            SystemDepState::Detected => warn,
+            SystemDepState::Installing => accent,
+            SystemDepState::Complete => accent,
+        };
+
+        self.system_dep_scissor = rect_to_scissor([0.0, 0.0, window_w, window_h]);
+        self.system_dep_glyph_instances = glyphs;
+        self.system_dep_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.system_dep_glyph_instances,
+        );
+
+        self.system_dep_chrome_instances = vec![
+            RegionDrawInstance::new([0.0, 0.0, window_w, window_h], scrim),
+            RegionDrawInstance::new(
+                [
+                    x - BORDER,
+                    y - BORDER,
+                    popup_w + BORDER * 2.0,
+                    popup_h + BORDER * 2.0,
+                ],
+                border_color,
+            ),
+            RegionDrawInstance::new([x, y, popup_w, popup_h], bg_color),
+        ];
+    }
+
+    /// Clear system dependency popup state.
+    pub fn clear_system_dep_popup(&mut self) {
+        self.system_dep_scissor = None;
+        self.system_dep_chrome_instances.clear();
+        self.system_dep_glyph_instances.clear();
+        self.system_dep_text_pipeline
+            .upload_instances(&self.device, &self.queue, &[]);
+    }
+
     pub fn update_toast_popup(&mut self, message: &str, window_w: f32, window_h: f32) {
         const TOAST_W: f32 = 360.0;
         const MARGIN_X: f32 = 18.0;
