@@ -269,6 +269,13 @@ impl AppShell {
             return self.handle_terminal_paste();
         }
 
+        // Bất kỳ action nào trong lúc welcome đang hiện → dismiss về tabnone.
+        if self.should_show_welcome() {
+            if self.app_state.dismiss_initial_launch_welcome() {
+                self.request_redraw();
+            }
+        }
+
         if let Some(changed) = self.handle_terminal_normal_command(&command, repeat_count) {
             return changed;
         }
@@ -582,6 +589,38 @@ impl AppShell {
                 }
                 Some(true)
             }
+            Command::FocusMarkdownPreview => {
+                let mut changed = self.release_focus_mode_to_editor();
+                let preview = &mut self.app_state.markdown_preview;
+                if !preview.visible {
+                    preview.visible = true;
+                    changed = true;
+                }
+                if !self.panel_state.right.visible {
+                    self.panel_state.right.visible = true;
+                    self.sidebar_needs_layout = true;
+                    changed = true;
+                }
+                if self.pre_markdown_preview_right_width.is_none() {
+                    self.pre_markdown_preview_right_width = Some(self.panel_state.right.size_px);
+                }
+                let half_width = (self.window_size.width as f32 * 0.5).max(200.0);
+                if (self.panel_state.right.size_px - half_width).abs() > f32::EPSILON {
+                    self.panel_state.right.size_px = half_width;
+                    changed = true;
+                }
+                changed |= self
+                    .panel_state
+                    .right
+                    .switch_to_tab(PanelTabId::MarkdownPreview);
+                let focus_changed = self.focus_manager.set(FocusTarget::RightSidebar);
+                changed |= focus_changed;
+                if focus_changed {
+                    self.input_handler.clear_pending_prefix();
+                }
+                self.update_markdown_preview_content();
+                Some(changed)
+            }
             Command::MarkdownPreviewScrollUp => {
                 let preview = &mut self.app_state.markdown_preview;
                 if !preview.visible {
@@ -614,6 +653,23 @@ impl AppShell {
                 }
                 let max_scroll = preview.rendered_lines.len().saturating_sub(1) as f32;
                 preview.scroll_y = (preview.scroll_y + 15.0).min(max_scroll);
+                Some(true)
+            }
+            Command::MarkdownPreviewScrollTop => {
+                let preview = &mut self.app_state.markdown_preview;
+                if !preview.visible {
+                    return Some(false);
+                }
+                preview.scroll_y = 0.0;
+                Some(true)
+            }
+            Command::MarkdownPreviewScrollBottom => {
+                let preview = &mut self.app_state.markdown_preview;
+                if !preview.visible {
+                    return Some(false);
+                }
+                let max_scroll = preview.rendered_lines.len().saturating_sub(1) as f32;
+                preview.scroll_y = max_scroll;
                 Some(true)
             }
             _ => None,

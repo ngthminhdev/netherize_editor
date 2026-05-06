@@ -705,10 +705,10 @@ impl Renderer {
             RegionDrawInstance::new(input_bounds, with_alpha(editor_bg, 0.90)).with_radius(10.0),
         );
 
-        let header_logo_size = (line_h + 7.0).clamp(20.0, 34.0);
+        let header_logo_size = header_h.max(1.0);
         let header_logo_rect = [
-            hclip[0] + 8.0,
-            hclip[1] + (header_h - header_logo_size) * 0.5,
+            hclip[0],
+            hclip[1],
             header_logo_size,
             header_logo_size,
         ];

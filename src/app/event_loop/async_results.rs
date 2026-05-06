@@ -652,8 +652,6 @@ impl AsyncResultRouter for AppShell {
             }
             WorkerResultPayload::LspCodeActionResult { actions } => {
                 if actions.is_empty() {
-                    eprintln!("[CodeAction] response: 0 actions");
-                    self.show_transient_toast("Code Action: no actions available".to_string());
                     return;
                 }
                 // Luôn mở picker để user chọn, dù chỉ có 1 action.

@@ -696,6 +696,7 @@ fn build_help_lines(
     append_help_binding(&mut lines, bindings, "git.open_lazygit", "Open lazygit");
     append_help_binding(&mut lines, bindings, "git.blame_line", "Git blame line");
     append_help_binding(&mut lines, bindings, "app.toggle_markdown_preview", "Markdown preview");
+    append_help_binding(&mut lines, bindings, "app.focus_markdown_preview", "Focus markdown preview");
     append_help_binding(&mut lines, bindings, "editor.leap_start", "Leap jump");
 
     lines
@@ -719,6 +720,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "app.open_workspace_symbols" => "Workspace symbols",
         "app.open_document_symbols" => "Find symbol in file",
         "app.toggle_markdown_preview" => "Toggle markdown preview",
+        "app.focus_markdown_preview" => "Focus markdown preview",
         // ── Focus & docks ─────────────────────────────────────────────────
         "app.focus_explorer" => "Focus explorer",
         "app.focus_terminal" => "Focus terminal",

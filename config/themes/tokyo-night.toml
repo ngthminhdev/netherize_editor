@@ -16,11 +16,11 @@ nerd_font_family = "Hack Nerd Font"
 
 [ui]
 bg = "#16161E"
-sidebar_bg = "#13131A"
-panel_bg = "#13131A"
+sidebar_bg = "#1A1B26"
+panel_bg = "#1A1B26"
 terminal_bg = "#0F0F14"
 overlay_bg = "#16161ED9"
-status_bar_bg = "#0D0D12"
+status_bar_bg = "#1A1B26"
 border_color = "#2A2A3A"
 selection_bg = "#33467C"
 

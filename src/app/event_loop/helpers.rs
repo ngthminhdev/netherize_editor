@@ -512,48 +512,203 @@ fn render_inline_spans(
     source: &str,
     theme: &ThemeConfig,
 ) -> Vec<StyledTextSpan> {
+    let node_start = node.start_byte();
     let mut spans = Vec::new();
     collect_inline_spans(node, source, theme, &mut spans);
-    // Fallback: if tree-sitter inline grammar didn't produce spans,
-    // manually parse backticks for inline code highlighting.
-    if spans.is_empty() {
-        let text = node_text(node, source);
-        let byte_offset = node.start_byte();
-        let chars: Vec<char> = text.chars().collect();
-        let mut i = 0;
-        while i < chars.len() {
-            if chars[i] == '`' {
-                let content_start = i + 1;
-                let mut content_end = content_start;
-                while content_end < chars.len() && chars[content_end] != '`' {
-                    content_end += 1;
+    let text = node_text(node, source);
+    let fallback_count = spans.len();
+    append_markdown_inline_fallback_spans(&text, 0, theme, &mut spans);
+    // Only normalize tree-sitter spans (collected before fallback).
+    // Fallback spans are already in local (0-based) coordinates.
+    let (ts_spans, fb_spans) = spans.split_at(fallback_count);
+    let mut normalized = normalize_spans(ts_spans.to_vec(), node_start);
+    normalized.extend_from_slice(fb_spans);
+    normalized
+}
+
+fn normalize_spans(spans: Vec<StyledTextSpan>, offset: usize) -> Vec<StyledTextSpan> {
+    spans
+        .into_iter()
+        .map(|s| StyledTextSpan::with_style(
+            s.start.saturating_sub(offset),
+            s.end.saturating_sub(offset),
+            s.color_rgba,
+            s.bold,
+            s.italic,
+        ))
+        .filter(|s| s.start < s.end)
+        .collect()
+}
+
+fn append_markdown_inline_fallback_spans(
+    text: &str,
+    byte_offset: usize,
+    theme: &ThemeConfig,
+    spans: &mut Vec<StyledTextSpan>,
+) {
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    let punctuation_color = theme.syntax.punctuation.as_u8();
+    let operator_color = theme.syntax.operator.as_u8();
+    let string_color = theme.syntax.string.as_u8();
+    let keyword_color = theme.syntax.keyword.as_u8();
+    let comment_color = theme.syntax.comment.as_u8();
+    let attribute_color = theme.syntax.attribute.as_u8();
+
+    let mut i = 0;
+    while i < chars.len() {
+        let (char_byte, ch) = chars[i];
+
+        if ch == '`' {
+            let mut close = i + 1;
+            while close < chars.len() && chars[close].1 != '`' {
+                close += 1;
+            }
+            if close < chars.len() {
+                let open_start = byte_offset + char_byte;
+                let open_end = open_start + ch.len_utf8();
+                spans.push(StyledTextSpan::new(open_start, open_end, punctuation_color));
+                let content_start = open_end;
+                let content_end = byte_offset + chars[close].0;
+                if content_end > content_start {
+                    spans.push(StyledTextSpan::new(content_start, content_end, string_color));
                 }
-                if content_end < chars.len() && content_end > content_start {
-                    let byte_start = byte_offset
-                        + text[..]
-                            .char_indices()
-                            .nth(content_start)
-                            .map(|(idx, _)| idx)
-                            .unwrap_or(text.len());
-                    let byte_end = byte_offset
-                        + text[..]
-                            .char_indices()
-                            .nth(content_end)
-                            .map(|(idx, _)| idx)
-                            .unwrap_or(text.len());
-                    spans.push(StyledTextSpan::new(
-                        byte_start,
-                        byte_end,
-                        theme.syntax.string.as_u8(),
+                let close_start = byte_offset + chars[close].0;
+                let close_end = close_start + chars[close].1.len_utf8();
+                spans.push(StyledTextSpan::new(close_start, close_end, punctuation_color));
+                i = close + 1;
+                continue;
+            }
+        }
+
+        if i + 2 < chars.len()
+            && chars[i].1 == '['
+            && (chars[i + 1].1 == ' ' || chars[i + 1].1 == 'x' || chars[i + 1].1 == 'X')
+            && chars[i + 2].1 == ']'
+        {
+            let start = byte_offset + chars[i].0;
+            let end = byte_offset + chars[i + 2].0 + chars[i + 2].1.len_utf8();
+            spans.push(StyledTextSpan::new(start, end, operator_color));
+            i += 3;
+            continue;
+        }
+
+        if i + 1 < chars.len() && chars[i].1 == '*' && chars[i + 1].1 == '*' {
+            let start = byte_offset + chars[i].0;
+            let end = byte_offset + chars[i + 1].0 + chars[i + 1].1.len_utf8();
+            spans.push(StyledTextSpan::new(start, end, punctuation_color));
+            let mut close = i + 2;
+            while close + 1 < chars.len() {
+                if chars[close].1 == '*' && chars[close + 1].1 == '*' {
+                    let content_start = end;
+                    let content_end = byte_offset + chars[close].0;
+                    if content_end > content_start {
+                        spans.push(StyledTextSpan::with_style(
+                            content_start,
+                            content_end,
+                            keyword_color,
+                            true,
+                            false,
+                        ));
+                    }
+                    let close_start = byte_offset + chars[close].0;
+                    let close_end = byte_offset + chars[close + 1].0 + chars[close + 1].1.len_utf8();
+                    spans.push(StyledTextSpan::new(close_start, close_end, punctuation_color));
+                    i = close + 2;
+                    break;
+                }
+                close += 1;
+            }
+            if i >= chars.len() {
+                break;
+            }
+            continue;
+        }
+
+        if ch == '*' {
+            let start = byte_offset + char_byte;
+            let end = start + ch.len_utf8();
+            let mut close = i + 1;
+            while close < chars.len() && chars[close].1 != '*' {
+                close += 1;
+            }
+            if close < chars.len() {
+                spans.push(StyledTextSpan::new(start, end, punctuation_color));
+                let content_start = end;
+                let content_end = byte_offset + chars[close].0;
+                if content_end > content_start {
+                    spans.push(StyledTextSpan::with_style(
+                        content_start,
+                        content_end,
+                        comment_color,
+                        false,
+                        true,
                     ));
-                    i = content_end + 1;
-                    continue;
+                }
+                let close_start = byte_offset + chars[close].0;
+                let close_end = close_start + chars[close].1.len_utf8();
+                spans.push(StyledTextSpan::new(close_start, close_end, punctuation_color));
+                i = close + 1;
+                continue;
+            }
+        }
+
+        if ch == '[' {
+            let mut close = i + 1;
+            while close < chars.len() && chars[close].1 != ']' {
+                close += 1;
+            }
+            if close < chars.len() {
+                let open_start = byte_offset + char_byte;
+                let open_end = open_start + ch.len_utf8();
+                spans.push(StyledTextSpan::new(open_start, open_end, punctuation_color));
+                let label_start = open_end;
+                let label_end = byte_offset + chars[close].0;
+                if label_end > label_start {
+                    spans.push(StyledTextSpan::with_style(
+                        label_start,
+                        label_end,
+                        attribute_color,
+                        false,
+                        true,
+                    ));
+                }
+                let close_start = byte_offset + chars[close].0;
+                let close_end = close_start + chars[close].1.len_utf8();
+                spans.push(StyledTextSpan::new(close_start, close_end, punctuation_color));
+                if close + 1 < chars.len() && chars[close + 1].1 == '(' {
+                    let paren_open_start = byte_offset + chars[close + 1].0;
+                    let paren_open_end = paren_open_start + chars[close + 1].1.len_utf8();
+                    spans.push(StyledTextSpan::new(
+                        paren_open_start,
+                        paren_open_end,
+                        punctuation_color,
+                    ));
+                    let mut url_close = close + 2;
+                    while url_close < chars.len() && chars[url_close].1 != ')' {
+                        url_close += 1;
+                    }
+                    if url_close < chars.len() {
+                        let url_start = paren_open_end;
+                        let url_end = byte_offset + chars[url_close].0;
+                        if url_end > url_start {
+                            spans.push(StyledTextSpan::new(url_start, url_end, string_color));
+                        }
+                        let paren_close_start = byte_offset + chars[url_close].0;
+                        let paren_close_end = paren_close_start + chars[url_close].1.len_utf8();
+                        spans.push(StyledTextSpan::new(
+                            paren_close_start,
+                            paren_close_end,
+                            punctuation_color,
+                        ));
+                        i = url_close + 1;
+                        continue;
+                    }
                 }
             }
-            i += 1;
         }
+
+        i += 1;
     }
-    spans
 }
 
 fn collect_inline_spans(
@@ -1179,10 +1334,11 @@ fn find_git_dir(start: &Path) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::syntax_spans_to_styled;
+    use super::{normalize_spans, syntax_spans_to_styled};
     use crate::{
         config::theme_config::ThemeConfig,
         syntax::highlight::{HighlightCategory, HighlightSpan},
+        text::text_system::StyledTextSpan,
     };
 
     #[test]
@@ -1216,6 +1372,41 @@ mod tests {
         assert_eq!(styled[2].color_rgba, theme.syntax.parameter.as_u8());
         assert!(!styled[2].bold);
         assert!(!styled[2].italic);
+    }
+
+    #[test]
+    fn normalize_spans_shifts_global_coordinates_to_local() {
+        let spans = vec![
+            StyledTextSpan::with_style(10, 12, [255, 0, 0, 255], true, false),
+            StyledTextSpan::new(15, 17, [0, 255, 0, 255]),
+            StyledTextSpan::with_style(10, 11, [0, 0, 255, 255], false, true),
+        ];
+        let normalized = normalize_spans(spans, 10);
+        assert_eq!(normalized.len(), 3);
+        assert_eq!(normalized[0].start, 0);
+        assert_eq!(normalized[0].end, 2);
+        assert!(normalized[0].bold);
+        assert_eq!(normalized[1].start, 5);
+        assert_eq!(normalized[1].end, 7);
+        assert_eq!(normalized[2].start, 0);
+        assert_eq!(normalized[2].end, 1);
+        assert!(normalized[2].italic);
+    }
+
+    #[test]
+    fn normalize_spans_filters_zero_length() {
+        let spans = vec![StyledTextSpan::new(5, 5, [255, 0, 0, 255])];
+        let normalized = normalize_spans(spans, 0);
+        assert!(normalized.is_empty());
+    }
+
+    #[test]
+    fn normalize_spans_clamps_negative_start_to_zero() {
+        let spans = vec![StyledTextSpan::new(5, 15, [255, 0, 0, 255])];
+        let normalized = normalize_spans(spans, 10);
+        assert_eq!(normalized.len(), 1);
+        assert_eq!(normalized[0].start, 0);
+        assert_eq!(normalized[0].end, 5);
     }
 }
 

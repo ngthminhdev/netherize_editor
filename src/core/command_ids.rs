@@ -145,10 +145,13 @@ pub const MULTI_CURSOR_SELECT_ALL: &str = "multicursor.select_all";
 
 // ── Markdown Preview ─────────────────────────────────────────────────────────
 pub const TOGGLE_MARKDOWN_PREVIEW: &str = "app.toggle_markdown_preview";
+pub const FOCUS_MARKDOWN_PREVIEW: &str = "app.focus_markdown_preview";
 pub const MARKDOWN_PREVIEW_SCROLL_UP: &str = "app.markdown_preview_scroll_up";
 pub const MARKDOWN_PREVIEW_SCROLL_DOWN: &str = "app.markdown_preview_scroll_down";
 pub const MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP: &str = "app.markdown_preview_scroll_half_page_up";
 pub const MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN: &str = "app.markdown_preview_scroll_half_page_down";
+pub const MARKDOWN_PREVIEW_SCROLL_TOP: &str = "app.markdown_preview_scroll_top";
+pub const MARKDOWN_PREVIEW_SCROLL_BOTTOM: &str = "app.markdown_preview_scroll_bottom";
 
 // ── Workbench focus navigation ────────────────────────────────────────────────
 pub const FOCUS_EDITOR: &str = "app.focus_editor";
@@ -379,6 +382,7 @@ pub const ALL_IDS: &[&str] = &[
     MULTI_CURSOR_DELETE,
     MULTI_CURSOR_SELECT_ALL,
     TOGGLE_MARKDOWN_PREVIEW,
+    FOCUS_MARKDOWN_PREVIEW,
     MARKDOWN_PREVIEW_SCROLL_UP,
     MARKDOWN_PREVIEW_SCROLL_DOWN,
     MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP,
@@ -564,10 +568,13 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         MULTI_CURSOR_DELETE => Some(Command::MultiCursorDelete),
         MULTI_CURSOR_SELECT_ALL => Some(Command::MultiCursorSelectAll),
         TOGGLE_MARKDOWN_PREVIEW => Some(Command::ToggleMarkdownPreview),
+        FOCUS_MARKDOWN_PREVIEW => Some(Command::FocusMarkdownPreview),
         MARKDOWN_PREVIEW_SCROLL_UP => Some(Command::MarkdownPreviewScrollUp),
         MARKDOWN_PREVIEW_SCROLL_DOWN => Some(Command::MarkdownPreviewScrollDown),
         MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP => Some(Command::MarkdownPreviewScrollHalfPageUp),
         MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN => Some(Command::MarkdownPreviewScrollHalfPageDown),
+        MARKDOWN_PREVIEW_SCROLL_TOP => Some(Command::MarkdownPreviewScrollTop),
+        MARKDOWN_PREVIEW_SCROLL_BOTTOM => Some(Command::MarkdownPreviewScrollBottom),
         TOGGLE_MAXIMIZE_FOCUS => Some(Command::ToggleMaximizeFocus),
         _ => None,
     }

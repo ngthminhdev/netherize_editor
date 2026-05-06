@@ -30,6 +30,7 @@ use crate::text::text_system::StyledTextSpan;
 const DIAGNOSTIC_SEVERITY_ERROR: u32 = 1;
 const DIAGNOSTIC_SEVERITY_WARNING: u32 = 2;
 const EDITOR_FRAME_INSET: f32 = 4.0;
+const GUTTER_BG_RIGHT_TRIM: f32 = 10.0;
 
 fn leading_indent_columns(app_state: &AppState, line_idx: usize, tab_width: usize) -> usize {
     let text = app_state.line_string(line_idx);
@@ -506,6 +507,7 @@ impl Renderer {
         gutter_text_color[2] = gutter_text_color[2] * 0.72 + gutter_bg_color[2] * 0.28;
         gutter_text_color[3] = gutter_text_color[3].min(0.72);
         let gutter_x = center_bounds[0] + gutter_inset_left;
+        let gutter_bg_width = (gutter_width - GUTTER_BG_RIGHT_TRIM).max(0.0);
 
         let gutter_font_size = (font_size - 1.0).min(line_height - 2.0).max(8.0);
         self.gutter_text_system
@@ -529,7 +531,7 @@ impl Renderer {
             [
                 gutter_x,
                 center_bounds[1] + EDITOR_FRAME_INSET,
-                gutter_width,
+                gutter_bg_width,
                 (center_bounds[3] - EDITOR_FRAME_INSET * 2.0).max(0.0),
             ],
             gutter_bg_color,

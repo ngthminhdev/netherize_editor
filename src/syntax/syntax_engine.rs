@@ -20,6 +20,7 @@ pub enum LanguageId {
     Bash,
     Markdown,
     Dotenv,
+    Java,
 }
 
 impl LanguageId {
@@ -38,6 +39,7 @@ impl LanguageId {
             Self::Bash => "bash",
             Self::Markdown => "markdown",
             Self::Dotenv => "dotenv",
+            Self::Java => "java",
         }
     }
 }
@@ -366,5 +368,18 @@ mod tests {
         );
         assert!(!updated.contains("first"));
         assert_eq!(state.root_node().kind(), "source_file");
+    }
+
+    #[test]
+    fn java_parser_bootstrap_returns_program_root() {
+        let mut engine = SyntaxEngine::new(LanguageId::Java).expect("init java parser");
+        let state = engine
+            .parse_source(
+                "public class Main { public static void main(String[] args) {} }",
+                1,
+            )
+            .expect("parse java");
+        assert_eq!(state.language_id().as_str(), "java");
+        assert_eq!(state.root_node().kind(), "program");
     }
 }

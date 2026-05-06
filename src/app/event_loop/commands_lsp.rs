@@ -301,7 +301,6 @@ impl AppShell {
     pub(super) fn submit_lsp_code_action(&mut self) -> bool {
         self.force_flush_lsp_did_change_for_active_file();
         let Some((_language_id, uri, line, character)) = self.lsp_cursor_context() else {
-            eprintln!("[CodeAction] skipped: no cursor context (terminal buffer or no active file)");
             self.show_transient_toast("Code Action: no active file".to_string());
             return false;
         };
@@ -309,16 +308,20 @@ impl AppShell {
             .app_state
             .active_file()
             .and_then(|path| self.app_state.diagnostics_for_path(path))
-            .map(|items| items.to_vec())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter(|d| {
+                        let s = &d.range.start;
+                        let e = &d.range.end;
+                        // cursor must be within [start, end)
+                        (s.line < line || (s.line == line && s.character <= character))
+                            && (e.line > line || (e.line == line && e.character >= character))
+                    })
+                    .cloned()
+                    .collect()
+            })
             .unwrap_or_default();
-        eprintln!(
-            "[CodeAction] submitting request uri={} line={} character={} diagnostics={}",
-            uri, line, character, diagnostics.len()
-        );
-        self.show_transient_toast(format!(
-            "Code Action: requesting... ({} diagnostics at cursor)",
-            diagnostics.len()
-        ));
         self.submit(RequestSpec {
             revision_id: 0,
             topic: RequestTopic::LspRequest,
@@ -549,7 +552,6 @@ impl AppShell {
                 }
             }
             Err(err) => {
-                eprintln!("[CodeAction] apply failed: {err}");
                 self.show_transient_toast(format!("Code Action failed: {err}"));
             }
         }

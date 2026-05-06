@@ -285,6 +285,10 @@ fn static_patched_env_path() -> String {
     // npm global with custom prefix.
     candidates.push(format!("{home}/.npm-global/bin"));
 
+    // jenv — Java version manager (shims for java, javac, jdtls, etc.).
+    candidates.push(format!("{home}/.jenv/shims"));
+    candidates.push(format!("{home}/.jenv/bin"));
+
     // Homebrew (system fallback — lower priority than user-managed tools).
     candidates.push("/opt/homebrew/bin".to_string());
     candidates.push("/opt/homebrew/sbin".to_string());

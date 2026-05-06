@@ -145,8 +145,13 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::AiChatInputText(_)
         | Command::AiChatPromptInstall
         | Command::ToggleMarkdownPreview
+        | Command::FocusMarkdownPreview
         | Command::MarkdownPreviewScrollUp
-        | Command::MarkdownPreviewScrollDown => DispatchReport::success_with_flags(
+        | Command::MarkdownPreviewScrollDown
+        | Command::MarkdownPreviewScrollTop
+        | Command::MarkdownPreviewScrollBottom
+        | Command::MarkdownPreviewScrollHalfPageUp
+        | Command::MarkdownPreviewScrollHalfPageDown => DispatchReport::success_with_flags(
             "Dispatch: workbench navigation (handled by event loop)",
             true,
             false,

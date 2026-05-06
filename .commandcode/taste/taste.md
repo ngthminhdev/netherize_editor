@@ -11,3 +11,6 @@
 # code-style
 - Khi loại bỏ functionality, xóa luôn dead code (unused fields, constants) và comment không cần thiết. Confidence: 0.70
 
+# cli
+- Luôn prefix shell commands với `rtk` để tiết kiệm token consumption. Confidence: 0.85
+

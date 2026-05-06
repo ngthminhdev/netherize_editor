@@ -677,6 +677,38 @@ fn default_profile_leader_f_m_routes_to_lsp_format_document() {
 }
 
 #[test]
+fn default_profile_leader_m_f_routes_to_focus_markdown_preview() {
+    let map = make_default_profile_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+
+    let first = map.resolve_sequence_start(&input_from_named(NamedKey::Space), context);
+    let SequenceMatch::Pending(first_pending) = first.expect("leader should start pending") else {
+        panic!("expected pending leader sequence");
+    };
+
+    let second = map.resolve_sequence_next(
+        &first_pending,
+        &input_from_physical(KeyCode::KeyM, "m"),
+        context,
+    );
+    let SequenceMatch::Pending(second_pending) = second.expect("leader m should stay pending")
+    else {
+        panic!("expected pending leader m sequence");
+    };
+
+    let third = map.resolve_sequence_next(
+        &second_pending,
+        &input_from_physical(KeyCode::KeyF, "f"),
+        context,
+    );
+    let SequenceMatch::Dispatch(matched) = third.expect("leader m f should dispatch") else {
+        panic!("expected dispatch for leader m f");
+    };
+
+    assert_eq!(matched.command, Command::FocusMarkdownPreview);
+}
+
+#[test]
 fn ctrl_s_maps_to_save_file() {
     let map = make_map();
     let input = NormalizedInput {

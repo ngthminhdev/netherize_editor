@@ -91,6 +91,8 @@ impl Renderer {
             crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
         let ai_chat_hero_image_pipeline =
             crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
+        let topbar_logo_image_pipeline =
+            crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
 
         let theme = ThemeConfig::builtin_dark();
         let clear_color = theme_color_to_wgpu(theme.ui.bg);
@@ -220,6 +222,8 @@ impl Renderer {
             topbar_scissor: None,
             topbar_text_batches: Vec::new(),
             last_topbar_layout_key: None,
+            topbar_logo_image_pipeline,
+            topbar_logo_scissor: None,
             statusbar_text_system,
             statusbar_text_pipeline,
             statusbar_glyph_instances: Vec::new(),
@@ -363,6 +367,8 @@ impl Renderer {
         self.topbar_glyph_instances.clear();
         self.topbar_chrome_instances.clear();
         self.topbar_text_batches.clear();
+        self.topbar_logo_image_pipeline.clear();
+        self.topbar_logo_scissor = None;
         self.topbar_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
         self.statusbar_scissor = None;

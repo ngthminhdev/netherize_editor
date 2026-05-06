@@ -632,6 +632,23 @@ fn file_picker_confirm_scrolls_explorer_to_opened_file() {
 }
 
 #[test]
+fn focus_markdown_preview_opens_preview_tab_and_focuses_sidebar() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.right.visible = false;
+    shell.app_state.markdown_preview.visible = false;
+
+    assert!(shell.handle_command(Command::FocusMarkdownPreview));
+
+    assert!(shell.panel_state.right.visible);
+    assert!(shell.app_state.markdown_preview.visible);
+    assert_eq!(
+        shell.panel_state.right.active_tab_id(),
+        Some(PanelTabId::MarkdownPreview)
+    );
+    assert_eq!(shell.focus_manager.current(), FocusTarget::RightSidebar);
+}
+
+#[test]
 fn open_theme_selector_opens_overlay_with_theme_profiles() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
 

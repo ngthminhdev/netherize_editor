@@ -521,7 +521,8 @@ impl AppShell {
                 let is_focused = Some(region.id) == focus_region;
                 // When enable_outline is off, hide borders on unfocused panels only —
                 // the focused panel keeps its ring so the user always knows where focus is.
-                let suppress_ring = !self.ui_config.enable_outline && !is_focused;
+                let suppress_ring = (!self.ui_config.enable_outline && !is_focused)
+                    || region.id == RegionId::TopBar;
 
                 if region.id == RegionId::RightSidebar {
                     if suppress_ring {
@@ -976,7 +977,17 @@ impl AppShell {
             let preview_bounds = flat_regions
                 .iter()
                 .find(|r| r.id == RegionId::AiChatHistory && r.visible)
-                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
+                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height])
+                .or_else(|| {
+                    // Fallback: when maximized, AiChatHistory isn't in flat_regions —
+                    // use the RightSidebar region from the maximized layout instead.
+                    self.panel_state.maximized_region.and_then(|_| {
+                        flat_regions
+                            .iter()
+                            .find(|r| r.id == RegionId::RightSidebar && r.visible)
+                            .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height])
+                    })
+                });
 
             if let Some(bounds) = preview_bounds {
                 let preview = &self.app_state.markdown_preview;

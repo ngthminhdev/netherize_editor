@@ -120,9 +120,7 @@ impl WorkbenchLayoutEngine {
         if status_h <= 0.0 {
             return 0.0;
         }
-        (self.config.panel_gap.max(0.0) * 0.35)
-            .clamp(3.0, 6.0)
-            .min(status_h * 0.5)
+        self.config.panel_gap.max(0.0).min(status_h * 0.5)
     }
 
     pub fn compute(
@@ -140,6 +138,7 @@ impl WorkbenchLayoutEngine {
         }
 
         let outer_gap = self.config.outer_gap.max(0.0);
+        let gap = self.config.panel_gap.max(0.0);
         let viewport_bounds = RegionBounds::new(
             outer_gap.min(width * 0.5),
             outer_gap.min(height * 0.5),
@@ -150,14 +149,14 @@ impl WorkbenchLayoutEngine {
         let top_h = self
             .config
             .top_bar_height
-            .min((height - outer_gap).max(0.0));
-        let remain_after_top = (height - outer_gap - top_h).max(0.0);
+            .min((height - gap).max(0.0));
+        let remain_after_top = (height - gap - top_h).max(0.0);
         let status_h = self.config.status_bar_height.min(remain_after_top);
         let status_top_gap = self
             .status_bar_top_gap(status_h)
             .min(remain_after_top - status_h);
-        let body_y = viewport_bounds.y + top_h;
-        let body_h = (height - outer_gap - top_h - status_h - status_top_gap).max(0.0);
+        let body_y = top_h + gap;
+        let body_h = (height - gap - top_h - status_h - status_top_gap).max(0.0);
 
         let (center_h, bottom_h, vertical_gap) =
             self.compute_vertical_split(body_h, panels.bottom.visible, panels.bottom.size_px);
@@ -183,7 +182,7 @@ impl WorkbenchLayoutEngine {
 
         let top_bar = RegionNode::new(
             RegionId::TopBar,
-            RegionBounds::new(viewport_bounds.x, 0.0, viewport_bounds.width, top_h),
+            RegionBounds::new(0.0, 0.0, width, top_h),
             true,
         );
         let left_sidebar = RegionNode::new(
@@ -300,21 +299,21 @@ impl WorkbenchLayoutEngine {
         let width = size.width as f32;
         let height = size.height as f32;
         let outer_gap = self.config.outer_gap.max(0.0);
+        let gap = self.config.panel_gap.max(0.0);
 
         // Keep TopBar and StatusBar, give everything else to target
         let top_h = self
             .config
             .top_bar_height
-            .min((height - outer_gap).max(0.0));
-        let remain_after_top = (height - outer_gap - top_h).max(0.0);
+            .min((height - gap).max(0.0));
+        let remain_after_top = (height - gap - top_h).max(0.0);
         let status_h = self.config.status_bar_height.min(remain_after_top);
         let status_top_gap = self
             .status_bar_top_gap(status_h)
             .min(remain_after_top - status_h);
 
-        let available_y = outer_gap + top_h;
-        let available_h =
-            (height - outer_gap - top_h - status_h - status_top_gap - outer_gap).max(0.0);
+        let available_y = top_h + gap;
+        let available_h = (height - gap - top_h - status_h - status_top_gap).max(0.0);
         let available_x = outer_gap;
         let available_w = (width - outer_gap * 2.0).max(0.0);
 
@@ -323,7 +322,7 @@ impl WorkbenchLayoutEngine {
 
         let top_bar = RegionNode::new(
             RegionId::TopBar,
-            RegionBounds::new(outer_gap, 0.0, (width - outer_gap * 2.0).max(0.0), top_h),
+            RegionBounds::new(0.0, 0.0, width, top_h),
             true,
         );
 
@@ -402,8 +401,9 @@ impl WorkbenchLayoutEngine {
         let height = size.height as f32;
         let outer_gap = self.config.outer_gap.max(0.0);
         let usable_width = (width - outer_gap * 2.0).max(0.0);
+        let gap = self.config.panel_gap.max(0.0);
         let body_h = (height
-            - outer_gap
+            - gap
             - self.config.top_bar_height
             - self.config.status_bar_height
             - self.status_bar_top_gap(self.config.status_bar_height))
@@ -705,7 +705,7 @@ mod tests {
             - top.height
             - status.height
             - engine.status_bar_top_gap(status.height)
-            - engine.config.outer_gap;
+            - engine.config.panel_gap;
 
         assert!(
             (left.height - expected_body_height).abs() <= 0.001,

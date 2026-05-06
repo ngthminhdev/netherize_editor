@@ -409,6 +409,17 @@ impl Renderer {
                 );
             }
 
+            // 8b. TopBar logo.
+            draw_text_region(
+                &mut pass,
+                self.topbar_logo_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.topbar_logo_image_pipeline.draw(render_pass);
+                },
+            );
+
             // 9. StatusBar.
             draw_text_region(
                 &mut pass,

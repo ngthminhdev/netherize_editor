@@ -332,6 +332,8 @@ pub enum Command {
     // ── Markdown Preview ──────────────────────────────────────────────────────
     /// Toggle markdown preview panel in the right sidebar.
     ToggleMarkdownPreview,
+    /// Focus markdown preview in the right sidebar, opening it if needed.
+    FocusMarkdownPreview,
     /// Scroll markdown preview up.
     MarkdownPreviewScrollUp,
     /// Scroll markdown preview down.
@@ -340,6 +342,10 @@ pub enum Command {
     MarkdownPreviewScrollHalfPageUp,
     /// Scroll markdown preview down half page.
     MarkdownPreviewScrollHalfPageDown,
+    /// Scroll markdown preview to top (gg).
+    MarkdownPreviewScrollTop,
+    /// Scroll markdown preview to bottom (G).
+    MarkdownPreviewScrollBottom,
 
     // ── Multiple Cursors (Module: MultiCursor) ────────────────────────────────
     /// Select word under cursor; on subsequent calls find the next identical
@@ -463,6 +469,8 @@ impl Command {
                 | Self::MarkdownPreviewScrollDown
                 | Self::MarkdownPreviewScrollHalfPageUp
                 | Self::MarkdownPreviewScrollHalfPageDown
+                | Self::MarkdownPreviewScrollTop
+                | Self::MarkdownPreviewScrollBottom
         )
     }
 }

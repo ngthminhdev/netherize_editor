@@ -345,9 +345,12 @@ fn dispatch_command_with_clipboard_once(
         | Command::AiChatInputText(_)
         | Command::AiChatPromptInstall
         | Command::ToggleMarkdownPreview
+        | Command::FocusMarkdownPreview
         | Command::MarkdownPreviewScrollUp
         | Command::MarkdownPreviewScrollDown
         | Command::MarkdownPreviewScrollHalfPageUp
-        | Command::MarkdownPreviewScrollHalfPageDown => session::dispatch(&mut ctx, command),
+        | Command::MarkdownPreviewScrollHalfPageDown
+        | Command::MarkdownPreviewScrollTop
+        | Command::MarkdownPreviewScrollBottom => session::dispatch(&mut ctx, command),
     }
 }

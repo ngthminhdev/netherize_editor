@@ -462,46 +462,47 @@ fn generate_query_highlight_spans(
 
 fn highlight_query(language_id: LanguageId) -> Option<&'static Query> {
     match language_id {
-        LanguageId::Rust => Some(rust_highlight_query()),
-        LanguageId::JavaScript => Some(javascript_highlight_query()),
-        LanguageId::Jsx => Some(jsx_highlight_query()),
-        LanguageId::TypeScript => Some(typescript_highlight_query()),
-        LanguageId::Tsx => Some(tsx_highlight_query()),
-        LanguageId::Go => Some(go_highlight_query()),
-        LanguageId::Sql => Some(sql_highlight_query()),
-        LanguageId::Yaml => Some(yaml_highlight_query()),
-        LanguageId::Dockerfile => Some(dockerfile_highlight_query()),
-        LanguageId::Json => Some(json_highlight_query()),
-        LanguageId::Bash => Some(bash_highlight_query()),
-        LanguageId::Markdown => Some(markdown_highlight_query()),
+        LanguageId::Rust => rust_highlight_query(),
+        LanguageId::JavaScript => javascript_highlight_query(),
+        LanguageId::Jsx => jsx_highlight_query(),
+        LanguageId::TypeScript => typescript_highlight_query(),
+        LanguageId::Tsx => tsx_highlight_query(),
+        LanguageId::Go => go_highlight_query(),
+        LanguageId::Sql => sql_highlight_query(),
+        LanguageId::Yaml => yaml_highlight_query(),
+        LanguageId::Dockerfile => dockerfile_highlight_query(),
+        LanguageId::Json => json_highlight_query(),
+        LanguageId::Bash => bash_highlight_query(),
+        LanguageId::Markdown => markdown_highlight_query(),
         LanguageId::Dotenv => None,
+        LanguageId::Java => java_highlight_query(),
     }
 }
 
-fn rust_highlight_query() -> &'static Query {
-    static QUERY: OnceLock<Query> = OnceLock::new();
+fn rust_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
     QUERY.get_or_init(|| {
         build_highlight_query(
             LanguageId::Rust,
             include_str!("queries/rust/highlights.scm"),
             "rust",
         )
-    })
+    }).as_ref()
 }
 
-fn javascript_highlight_query() -> &'static Query {
-    static QUERY: OnceLock<Query> = OnceLock::new();
+fn javascript_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
     QUERY.get_or_init(|| {
         build_highlight_query(
             LanguageId::JavaScript,
             tree_sitter_javascript::HIGHLIGHT_QUERY,
             "javascript",
         )
-    })
+    }).as_ref()
 }
 
-fn jsx_highlight_query() -> &'static Query {
-    static QUERY: OnceLock<Query> = OnceLock::new();
+fn jsx_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
     QUERY.get_or_init(|| {
         let source = format!(
             "{}\n{}",
@@ -509,11 +510,11 @@ fn jsx_highlight_query() -> &'static Query {
             tree_sitter_javascript::JSX_HIGHLIGHT_QUERY
         );
         build_highlight_query(LanguageId::Jsx, &source, "jsx")
-    })
+    }).as_ref()
 }
 
-fn typescript_highlight_query() -> &'static Query {
-    static QUERY: OnceLock<Query> = OnceLock::new();
+fn typescript_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
     QUERY.get_or_init(|| {
         let source = format!(
             "{}\n{}",
@@ -521,11 +522,11 @@ fn typescript_highlight_query() -> &'static Query {
             tree_sitter_typescript::HIGHLIGHTS_QUERY,
         );
         build_highlight_query(LanguageId::TypeScript, &source, "typescript")
-    })
+    }).as_ref()
 }
 
-fn tsx_highlight_query() -> &'static Query {
-    static QUERY: OnceLock<Query> = OnceLock::new();
+fn tsx_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
     QUERY.get_or_init(|| {
         let source = format!(
             "{}\n{}\n{}",
@@ -534,116 +535,135 @@ fn tsx_highlight_query() -> &'static Query {
             tree_sitter_typescript::HIGHLIGHTS_QUERY,
         );
         build_highlight_query(LanguageId::Tsx, &source, "tsx")
-    })
+    }).as_ref()
 }
 
-fn go_highlight_query() -> &'static Query {
-    static QUERY: OnceLock<Query> = OnceLock::new();
+fn go_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
     QUERY.get_or_init(|| {
         build_highlight_query(LanguageId::Go, tree_sitter_go::HIGHLIGHTS_QUERY, "go")
-    })
+    }).as_ref()
 }
 
-fn sql_highlight_query() -> &'static Query {
-    static QUERY: OnceLock<Query> = OnceLock::new();
+fn sql_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
     QUERY.get_or_init(|| {
         build_highlight_query(
             LanguageId::Sql,
             include_str!("queries/sql/highlights.scm"),
             "sql",
         )
-    })
+    }).as_ref()
 }
 
-fn yaml_highlight_query() -> &'static Query {
-    static QUERY: OnceLock<Query> = OnceLock::new();
+fn yaml_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
     QUERY.get_or_init(|| {
         build_highlight_query(
             LanguageId::Yaml,
             include_str!("queries/yaml/highlights.scm"),
             "yaml",
         )
-    })
+    }).as_ref()
 }
 
-fn json_highlight_query() -> &'static Query {
-    static QUERY: OnceLock<Query> = OnceLock::new();
+fn json_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
     QUERY.get_or_init(|| {
         build_highlight_query(
             LanguageId::Json,
             include_str!("queries/json/highlights.scm"),
             "json",
         )
-    })
+    }).as_ref()
 }
 
-fn bash_highlight_query() -> &'static Query {
-    static QUERY: OnceLock<Query> = OnceLock::new();
+fn bash_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
     QUERY.get_or_init(|| {
         build_highlight_query(LanguageId::Bash, tree_sitter_bash::HIGHLIGHT_QUERY, "bash")
-    })
+    }).as_ref()
 }
 
-fn markdown_highlight_query() -> &'static Query {
-    static QUERY: OnceLock<Query> = OnceLock::new();
+fn markdown_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
     QUERY.get_or_init(|| {
         build_highlight_query(
             LanguageId::Markdown,
             include_str!("queries/markdown/highlights.scm"),
             "markdown",
         )
-    })
+    }).as_ref()
 }
 
-fn dockerfile_highlight_query() -> &'static Query {
-    static QUERY: OnceLock<Query> = OnceLock::new();
+fn dockerfile_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
     QUERY.get_or_init(|| {
         build_highlight_query(
             LanguageId::Dockerfile,
             include_str!("queries/dockerfile/highlights.scm"),
             "dockerfile",
         )
-    })
+    }).as_ref()
 }
 
-fn build_highlight_query(language_id: LanguageId, source: &str, label: &str) -> Query {
-    let language = tree_sitter_language(language_id).unwrap_or_else(|| {
-        panic!(
-            "tree-sitter language '{}' missing while building {label} highlight query",
-            language_id.as_str()
+fn java_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(
+            LanguageId::Java,
+            include_str!("queries/java/highlights.scm"),
+            "java",
         )
-    });
-    Query::new(&language, source)
-        .unwrap_or_else(|err| panic!("invalid {label} highlight query: {err}"))
+    }).as_ref()
+}
+
+fn build_highlight_query(language_id: LanguageId, source: &str, label: &str) -> Option<Query> {
+    let language = tree_sitter_language(language_id)?;
+    match Query::new(&language, source) {
+        Ok(q) => Some(q),
+        Err(err) => {
+            eprintln!(
+                "[highlight] invalid {label} highlight query: {err}\n\
+                 Source (first 500 chars):\n{}\n---",
+                &source[..source.len().min(500)]
+            );
+            None
+        }
+    }
 }
 
 fn injection_query(language_id: LanguageId) -> Option<&'static Query> {
     match language_id {
-        LanguageId::Dockerfile => Some(dockerfile_injection_query()),
+        LanguageId::Dockerfile => dockerfile_injection_query(),
         _ => None,
     }
 }
 
-fn dockerfile_injection_query() -> &'static Query {
-    static QUERY: OnceLock<Query> = OnceLock::new();
+fn dockerfile_injection_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
     QUERY.get_or_init(|| {
         build_injection_query(
             LanguageId::Dockerfile,
             include_str!("queries/dockerfile/injections.scm"),
             "dockerfile-injection",
         )
-    })
+    }).as_ref()
 }
 
-fn build_injection_query(language_id: LanguageId, source: &str, label: &str) -> Query {
-    let language = tree_sitter_language(language_id).unwrap_or_else(|| {
-        panic!(
-            "tree-sitter language '{}' missing while building {label} injection query",
-            language_id.as_str()
-        )
-    });
-    Query::new(&language, source)
-        .unwrap_or_else(|err| panic!("invalid {label} injection query: {err}"))
+fn build_injection_query(language_id: LanguageId, source: &str, label: &str) -> Option<Query> {
+    let language = tree_sitter_language(language_id)?;
+    match Query::new(&language, source) {
+        Ok(q) => Some(q),
+        Err(err) => {
+            eprintln!(
+                "[highlight] invalid {label} injection query: {err}\n\
+                 Source (first 500 chars):\n{}\n---",
+                &source[..source.len().min(500)]
+            );
+            None
+        }
+    }
 }
 
 /// Generate highlight spans from language injection queries.
@@ -1723,5 +1743,16 @@ block: |
                 .any(|s| s.category == HighlightCategory::Punctuation),
             "expected punctuation highlights"
         );
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn test_all_highlight_queries_valid() {
+    use crate::syntax::syntax_engine::LanguageId;
+    for lang in [LanguageId::Java, LanguageId::Markdown, LanguageId::Rust,
+                 LanguageId::TypeScript, LanguageId::Go, LanguageId::Json] {
+        let q = highlight_query(lang);
+        assert!(q.is_some(), "{} highlight query failed to load", lang.as_str());
     }
 }

@@ -30,15 +30,15 @@ nerd_font_family = "Hack Nerd Font"
 # Window clear color behind every region and palette pill foreground base.
 bg = "#10252c"
 # Left/right sidebar region background.
-sidebar_bg = "#10252c"
+sidebar_bg = "#132c34"
 # Generic chrome background for top bar, cards, and inspector surfaces.
-panel_bg = "#10252c"
+panel_bg = "#132c34"
 # Bottom terminal panel and terminal-buffer background.
 terminal_bg = "#132c34"
 # Scrim + modal panel background for command palette and Leap overlay.
 overlay_bg = "#10252cD9"
 # Status bar region background.
-status_bar_bg = "#10252c"
+status_bar_bg = "#132c34"
 # Borders, separators, and subtle region dividers.
 border_color = "#0b191e"
 # Active row / selected tab / focused list item background.

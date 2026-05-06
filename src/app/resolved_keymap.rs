@@ -799,6 +799,22 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         EXPLORER_MOVE_TO_TOP,
     );
     km.insert_sequence(
+        Some("preview"),
+        seq(&[ph(KeyCode::KeyG), ph(KeyCode::KeyG)]),
+        MARKDOWN_PREVIEW_SCROLL_TOP,
+    );
+    km.insert(
+        Some("preview"),
+        ch('G'),
+        MARKDOWN_PREVIEW_SCROLL_BOTTOM,
+    );
+    // ── Leader sequences for preview mode ──────────────────────────────────
+    km.insert_sequence(
+        Some("preview"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyZ), ph(KeyCode::KeyM)]),
+        TOGGLE_MAXIMIZE_FOCUS,
+    );
+    km.insert_sequence(
         Some("normal"),
         seq(&[ph(KeyCode::KeyZ), ph(KeyCode::KeyZ)]),
         CENTER_CURSOR_LINE,
@@ -860,6 +876,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         Some("normal"),
         seq(&[KeySpec::Leader, ph(KeyCode::KeyT), ph(KeyCode::KeyH)]),
         OPEN_THEME_SELECTOR,
+    );
+    km.insert_sequence(
+        Some("normal"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyM), ph(KeyCode::KeyF)]),
+        FOCUS_MARKDOWN_PREVIEW,
     );
     km.insert_sequence(
         Some("normal"),

@@ -193,6 +193,8 @@ pub struct Renderer {
     pub(super) topbar_scissor: Option<[u32; 4]>,
     pub(super) topbar_text_batches: Vec<TextScissorBatch>,
     pub(super) last_topbar_layout_key: Option<TopbarLayoutKey>,
+    pub(super) topbar_logo_image_pipeline: ImagePipeline,
+    pub(super) topbar_logo_scissor: Option<[u32; 4]>,
 
     // ── StatusBar ─────────────────────────────────────────────────────────────
     pub(super) statusbar_text_system: TextSystem,

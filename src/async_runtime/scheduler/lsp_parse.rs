@@ -537,8 +537,6 @@ pub(super) fn handle_lsp_code_action(
         let Ok(raw_value) = serde_json::from_str::<serde_json::Value>(raw) else {
             continue;
         };
-        eprintln!("[CodeAction] resolving action: \"{}\"", action.title);
-        // codeAction/resolve takes the original CodeAction as params.
         match lsp_request_response(
             session,
             "codeAction/resolve",
@@ -548,17 +546,9 @@ pub(super) fn handle_lsp_code_action(
             Ok(resolve_resp) => {
                 if let Some(resolved) = resolve_resp.get("result") {
                     action.edits = parse_edits_from_action(resolved);
-                    eprintln!(
-                        "[CodeAction] resolve result: {} edit(s)",
-                        action.edits.len()
-                    );
-                } else {
-                    eprintln!("[CodeAction] resolve: no result field");
                 }
             }
-            Err(err) => {
-                eprintln!("[CodeAction] resolve failed: {err}");
-            }
+            Err(_) => {}
         }
     }
 
