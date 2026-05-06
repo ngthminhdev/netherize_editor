@@ -70,6 +70,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
         self.update_runtime_scaling_for_window(scale_factor);
 
         self.startup_subsystems();
+        self.update_window_title();
         self.request_redraw();
     }
 
@@ -182,6 +183,27 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     // Swallow tất cả input khi popup active.
                     return;
                 }
+
+                // System Dependency Check popup — intercept input khi popup active.
+                if self.active_system_dep_guide.is_some() && key_event.state == ElementState::Pressed {
+                    let named = match &key_event.logical_key {
+                        Key::Named(n) => Some(*n),
+                        _ => None,
+                    };
+                    match named {
+                        Some(NamedKey::Escape) => {
+                            self.dismiss_system_dep_guide();
+                            self.request_redraw();
+                        }
+                        Some(NamedKey::Enter) => {
+                            if self.accept_system_dep_guide() {
+                                self.request_redraw();
+                            }
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
                 if let Some(changed) = self.handle_explorer_filter_key_event(&key_event) {
                     if changed {
                         self.request_redraw();
@@ -225,6 +247,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
             self.request_redraw();
         }
         if self.tick_thinking_animation() {
+            self.request_redraw();
+        }
+        if self.tick_caret_blink() {
             self.request_redraw();
         }
         if self.pump_bridge() {
@@ -335,6 +360,13 @@ impl AppShell {
         } else {
             false
         }
+    }
+
+    /// Tối ưu 3: Caret Blink — tick timer nhấp nháy, chỉ set caret_blink_dirty.
+    /// KHÔNG set editor_needs_layout hay editor_caret_needs_layout.
+    /// Nhờ đó toàn bộ text pipeline không bị trigger reshape chỉ vì con trỏ nháy.
+    fn tick_caret_blink(&mut self) -> bool {
+        false
     }
 
     fn handle_explorer_filter_ime_commit(&mut self, text: &str) -> bool {
@@ -653,6 +685,9 @@ impl AppShell {
                 self.editor_needs_layout = false;
                 self.editor_caret_needs_layout = false;
                 self.buffer_terminal_needs_layout = false;
+                // Cursor đã được render đúng vị trí → reset blink về visible.
+                self.caret_blink_visible = true;
+                self.caret_blink_dirty = false;
                 refresh_highlights_for_viewport =
                     bounds_changed && !show_welcome && active_terminal_session.is_none();
             } else if self.editor_caret_needs_layout {
@@ -706,11 +741,19 @@ impl AppShell {
                     if let Some(renderer) = self.renderer.as_mut() {
                         renderer.update_image_content(image, center_bounds);
                     }
-                } else if !show_welcome && let Some(renderer) = self.renderer.as_mut() {
+                } else if !show_welcome
+                    && (self.panel_state.maximized_region.is_none()
+                        || self.panel_state.maximized_region
+                            == Some(FocusTarget::CenterEditor))
+                    && let Some(renderer) = self.renderer.as_mut()
+                {
                     renderer.update_editor_caret(&self.app_state, center_bounds);
                     renderer.update_editor_overlays(&self.app_state, center_bounds);
                 }
                 self.editor_caret_needs_layout = false;
+                // Cursor đã được re-projected → reset blink về visible.
+                self.caret_blink_visible = true;
+                self.caret_blink_dirty = false;
             } else if let Some(session_id) = active_terminal_session {
                 let grid_changed = self.sync_terminal_buffer_layout(session_id, center_bounds);
                 if (self.buffer_terminal_needs_layout || bounds_changed || grid_changed)
@@ -747,6 +790,14 @@ impl AppShell {
                 if self.app_state.current_mode() == EditorMode::Visual {
                     region_instances
                         .extend(renderer.visual_selection_quads(&self.app_state, center_bounds));
+                }
+                if matches!(
+                    self.app_state.current_mode(),
+                    EditorMode::MultiCursor | EditorMode::MultiInsert
+                ) {
+                    region_instances.extend(
+                        renderer.multi_cursor_selection_quads(&self.app_state, center_bounds),
+                    );
                 }
             }
 
@@ -867,6 +918,7 @@ impl AppShell {
                         &chat.messages,
                         &chat.input_buffer,
                         &file_suggestions,
+                        chat.selected_suggestion_index,
                         show_cursor,
                         inner_padding,
                         chat.is_opencode_missing,
@@ -1060,7 +1112,10 @@ impl AppShell {
             // Ẩn bottom panel terminal khi center đang hiển thị terminal buffer
             // (lazygit, v.v.) để tránh render terminal hai nơi đồng thời.
             let center_has_terminal = self.app_state.active_terminal_session_id().is_some();
-            if bottom.visible && !show_welcome && !center_has_terminal {
+            // In Zen Mode, only render terminal when BottomPanel is the target.
+            let zen_allows_terminal = self.panel_state.maximized_region.is_none()
+                || self.panel_state.maximized_region == Some(FocusTarget::BottomPanel);
+            if bottom.visible && !show_welcome && !center_has_terminal && zen_allows_terminal {
                 let bottom_bounds = [
                     bottom.bounds.x,
                     bottom.bounds.y,
@@ -1100,6 +1155,17 @@ impl AppShell {
             renderer.clear_lsp_guide_popup();
         }
 
+        // ── System Dependency Check Popup ────────────────────────────────────
+        if let Some(ref guide) = self.active_system_dep_guide
+            && let Some(renderer) = self.renderer.as_mut()
+        {
+            let w = self.window_size.width as f32;
+            let h = self.window_size.height as f32;
+            renderer.update_system_dep_popup(guide, w, h);
+        } else if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_system_dep_popup();
+        }
+
         if let Some(toast) = self.transient_toast.clone()
             && let Some(renderer) = self.renderer.as_mut()
         {
@@ -1108,6 +1174,18 @@ impl AppShell {
             renderer.update_toast_popup(&toast.message, w, h);
         } else if let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_toast_popup();
+        }
+
+        // ── Tối ưu 3: Caret Blink ────────────────────────────────────────────
+        // Nếu chỉ blink dirty (không có layout rebuild nào), flip caret visibility
+        // mà không trigger bất kỳ text pipeline hay glyph rebuild nào.
+        // Khi editor_needs_layout hoặc editor_caret_needs_layout đã chạy ở trên,
+        // caret đã được upload đúng vị trí → reset blink về visible.
+        if self.caret_blink_dirty {
+            if let Some(renderer) = self.renderer.as_mut() {
+                renderer.update_caret_visibility(self.caret_blink_visible);
+            }
+            self.caret_blink_dirty = false;
         }
 
         if let Some(renderer) = self.renderer.as_mut() {

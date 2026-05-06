@@ -3,6 +3,7 @@ use std::{ops::Range, sync::OnceLock};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, Query, QueryCursor};
 
+use regex::Regex;
 use crate::config::theme_config::ThemeConfig;
 use crate::syntax::{
     parser::{language_id_for_extension, tree_sitter_language},
@@ -286,12 +287,80 @@ pub fn overlay_highlight_layers(
 }
 
 pub fn generate_highlight_spans(tree_state: &SyntaxTreeState, source: &str) -> Vec<HighlightSpan> {
-    generate_query_highlight_spans(
+    if tree_state.language_id() == LanguageId::Dotenv {
+        return generate_dotenv_highlight_spans(source);
+    }
+
+    let base = generate_query_highlight_spans(
         tree_state.language_id(),
         tree_state.root_node(),
         source,
         None,
-    )
+    );
+    let injected = generate_injection_highlights(
+        tree_state.language_id(),
+        tree_state.root_node(),
+        source,
+    );
+    if injected.is_empty() {
+        base
+    } else {
+        overlay_highlight_layers(&base, &injected)
+    }
+}
+
+pub fn generate_dotenv_highlight_spans(source: &str) -> Vec<HighlightSpan> {
+    let comment_re = Regex::new(r"^\s*#").unwrap();
+    let export_re = Regex::new(r"^\s*(export)\s+([A-Za-z_][A-Za-z0-9_]*)").unwrap();
+    let kv_re = Regex::new(r"^\s*([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)(.*)").unwrap();
+
+    let mut spans = Vec::new();
+    let mut byte_pos = 0usize;
+
+    for line in source.lines() {
+        let line_len = line.len();
+        let line_start = byte_pos;
+
+        if comment_re.is_match(line) {
+            spans.push(HighlightSpan {
+                range: line_start..line_start + line_len,
+                category: HighlightCategory::Comment,
+            });
+        } else if let Some(caps) = export_re.captures(line) {
+            let export_match = caps.get(1).unwrap();
+            spans.push(HighlightSpan {
+                range: line_start + export_match.start()..line_start + export_match.end(),
+                category: HighlightCategory::Keyword,
+            });
+            let key_match = caps.get(2).unwrap();
+            spans.push(HighlightSpan {
+                range: line_start + key_match.start()..line_start + key_match.end(),
+                category: HighlightCategory::Variable,
+            });
+        } else if let Some(caps) = kv_re.captures(line) {
+            let key_match = caps.get(1).unwrap();
+            spans.push(HighlightSpan {
+                range: line_start + key_match.start()..line_start + key_match.end(),
+                category: HighlightCategory::Keyword,
+            });
+            let op_match = caps.get(2).unwrap();
+            spans.push(HighlightSpan {
+                range: line_start + op_match.start()..line_start + op_match.end(),
+                category: HighlightCategory::Operator,
+            });
+            let val_match = caps.get(3).unwrap();
+            if val_match.end() > val_match.start() {
+                spans.push(HighlightSpan {
+                    range: line_start + val_match.start()..line_start + val_match.end(),
+                    category: HighlightCategory::String,
+                });
+            }
+        }
+
+        byte_pos += line_len + 1; // +1 for newline
+    }
+
+    spans
 }
 
 pub fn generate_highlight_spans_in_byte_window(
@@ -405,6 +474,7 @@ fn highlight_query(language_id: LanguageId) -> Option<&'static Query> {
         LanguageId::Json => Some(json_highlight_query()),
         LanguageId::Bash => Some(bash_highlight_query()),
         LanguageId::Markdown => Some(markdown_highlight_query()),
+        LanguageId::Dotenv => None,
     }
 }
 
@@ -488,14 +558,22 @@ fn sql_highlight_query() -> &'static Query {
 fn yaml_highlight_query() -> &'static Query {
     static QUERY: OnceLock<Query> = OnceLock::new();
     QUERY.get_or_init(|| {
-        build_highlight_query(LanguageId::Yaml, tree_sitter_yaml::HIGHLIGHTS_QUERY, "yaml")
+        build_highlight_query(
+            LanguageId::Yaml,
+            include_str!("queries/yaml/highlights.scm"),
+            "yaml",
+        )
     })
 }
 
 fn json_highlight_query() -> &'static Query {
     static QUERY: OnceLock<Query> = OnceLock::new();
     QUERY.get_or_init(|| {
-        build_highlight_query(LanguageId::Json, tree_sitter_json::HIGHLIGHTS_QUERY, "json")
+        build_highlight_query(
+            LanguageId::Json,
+            include_str!("queries/json/highlights.scm"),
+            "json",
+        )
     })
 }
 
@@ -537,6 +615,170 @@ fn build_highlight_query(language_id: LanguageId, source: &str, label: &str) -> 
     });
     Query::new(&language, source)
         .unwrap_or_else(|err| panic!("invalid {label} highlight query: {err}"))
+}
+
+fn injection_query(language_id: LanguageId) -> Option<&'static Query> {
+    match language_id {
+        LanguageId::Dockerfile => Some(dockerfile_injection_query()),
+        _ => None,
+    }
+}
+
+fn dockerfile_injection_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_injection_query(
+            LanguageId::Dockerfile,
+            include_str!("queries/dockerfile/injections.scm"),
+            "dockerfile-injection",
+        )
+    })
+}
+
+fn build_injection_query(language_id: LanguageId, source: &str, label: &str) -> Query {
+    let language = tree_sitter_language(language_id).unwrap_or_else(|| {
+        panic!(
+            "tree-sitter language '{}' missing while building {label} injection query",
+            language_id.as_str()
+        )
+    });
+    Query::new(&language, source)
+        .unwrap_or_else(|err| panic!("invalid {label} injection query: {err}"))
+}
+
+/// Generate highlight spans from language injection queries.
+///
+/// Finds `@injection.content` nodes via the injection query, re-parses each
+/// with the injected language, and returns highlight spans in document coordinates.
+fn generate_injection_highlights(
+    language_id: LanguageId,
+    root: Node<'_>,
+    source: &str,
+) -> Vec<HighlightSpan> {
+    let Some(injection_q) = injection_query(language_id) else {
+        return Vec::new();
+    };
+
+    let injected_lang = injection_language_for_query(injection_q);
+    let Some(hl_query) = highlight_query(injected_lang) else {
+        return Vec::new();
+    };
+
+    let mut spans = Vec::new();
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(injection_q, root, source.as_bytes());
+
+    loop {
+        matches.advance();
+        let Some(m) = matches.get() else {
+            break;
+        };
+
+        for capture in m.captures {
+            let name = injection_q.capture_names()[capture.index as usize];
+            if name != "injection.content" {
+                continue;
+            }
+
+            let node = capture.node;
+            if node.is_error() || node.is_missing() {
+                continue;
+            }
+
+            let node_start = node.start_byte();
+            let node_end = node.end_byte();
+            if node_end <= node_start || node_end > source.len() {
+                continue;
+            }
+
+            let content = &source[node_start..node_end];
+            if content.is_empty() {
+                continue;
+            }
+
+            let Ok(mut eng) = SyntaxEngine::new(injected_lang) else {
+                continue;
+            };
+            let Ok(tree) = eng.parse_source(content, 0) else {
+                continue;
+            };
+
+            let inner = generate_query_highlight_spans_for_node(
+                hl_query,
+                tree.root_node(),
+                content,
+            );
+
+            for mut span in inner {
+                span.range = (span.range.start + node_start)..(span.range.end + node_start);
+                spans.push(span);
+            }
+        }
+    }
+
+    spans
+}
+
+/// Extract the `injection.language` from a query's first pattern property settings.
+fn injection_language_for_query(query: &Query) -> LanguageId {
+    // Walk pattern indices until we find a non-empty property_settings slice.
+    for i in 0..query.pattern_count() {
+        for prop in query.property_settings(i) {
+            if prop.key.as_ref() == "injection.language" {
+                if let Some(ref val) = prop.value {
+                    return match val.as_ref() {
+                        "bash" => LanguageId::Bash,
+                        "json" => LanguageId::Json,
+                        "yaml" => LanguageId::Yaml,
+                        _ => LanguageId::Bash,
+                    };
+                }
+            }
+        }
+    }
+    LanguageId::Bash
+}
+
+/// Run a highlight query against a pre-parsed subtree without byte-window clamping.
+fn generate_query_highlight_spans_for_node(
+    query: &Query,
+    root: Node<'_>,
+    source: &str,
+) -> Vec<HighlightSpan> {
+    let mut cursor = QueryCursor::new();
+    let mut raw_spans = Vec::new();
+    let mut query_matches = cursor.matches(query, root, source.as_bytes());
+
+    loop {
+        query_matches.advance();
+        let Some(query_match) = query_matches.get() else {
+            break;
+        };
+        for capture in query_match.captures {
+            let node = capture.node;
+            if node.is_error() || node.is_missing() {
+                continue;
+            }
+
+            let start = node.start_byte();
+            let end = node.end_byte();
+            if end <= start || end > source.len() {
+                continue;
+            }
+
+            let capture_name = query.capture_names()[capture.index as usize];
+            let Some(category) = capture_category(capture_name) else {
+                continue;
+            };
+
+            raw_spans.push(HighlightSpan {
+                range: start..end,
+                category,
+            });
+        }
+    }
+
+    normalize_spans(source, raw_spans, None)
 }
 
 fn capture_category(capture_name: &str) -> Option<HighlightCategory> {
@@ -1242,6 +1484,244 @@ WHERE id = 42 AND email = 'hi@example.com';
         assert_eq!(
             super::capture_category("label"),
             Some(HighlightCategory::Property)
+        );
+    }
+
+    #[test]
+    fn dockerfile_highlight_covers_keywords_properties_numbers_and_injection() {
+        let source = "\
+FROM ubuntu:22.04 AS builder
+ARG DEBIAN_FRONTEND=noninteractive
+ENV APP_HOME=/app
+EXPOSE 8080
+COPY --chown=1000:1000 ./src /app
+RUN apt-get update && apt-get install -y curl
+";
+
+        let mut engine = SyntaxEngine::new(LanguageId::Dockerfile).expect("init dockerfile");
+        let tree = engine.parse_source(source, 1).expect("parse dockerfile");
+        let spans = generate_highlight_spans(tree, source);
+
+        assert!(!spans.is_empty(), "expected dockerfile highlight spans");
+
+        // Keywords (FROM, ARG, ENV, EXPOSE, COPY, RUN)
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Keyword)
+        );
+
+        // Property names (DEBIAN_FRONTEND, APP_HOME)
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Property)
+        );
+
+        // Numbers (expose port 8080)
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Number)
+        );
+
+        // Strings (paths, image tags)
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::String)
+        );
+
+        // Operators (--flag dashes, :, @)
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Operator)
+        );
+
+        // Bash injection: the RUN command's shell content should
+        // produce function highlights (apt-get, install, update, curl).
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Function),
+            "expected bash-injected function highlights in RUN command"
+        );
+    }
+
+    #[test]
+    fn yaml_highlight_covers_keys_values_and_structural_elements() {
+        let source = "\
+---
+name: my-app
+version: 1.0
+debug: true
+count: 42
+description: \"hello world\"
+tags:
+  - web
+  - api
+data: null
+# this is a comment
+anchor: &default_host localhost
+host: *default_host
+config: !custom-tag {key: value}
+block: |
+  multiline text
+...
+";
+
+        let mut engine = SyntaxEngine::new(LanguageId::Yaml).expect("init yaml");
+        let tree = engine.parse_source(source, 1).expect("parse yaml");
+        let spans = generate_highlight_spans(tree, source);
+
+        assert!(!spans.is_empty(), "expected yaml highlight spans");
+
+        // Document markers (---, ...)
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Keyword),
+            "expected keyword highlights for document markers"
+        );
+
+        // Keys (name, version, debug, etc.)
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Property),
+            "expected property highlights for keys"
+        );
+
+        // String values
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::String),
+            "expected string highlights for values"
+        );
+
+        // Numbers
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Number),
+            "expected number highlights"
+        );
+
+        // Booleans
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Boolean),
+            "expected boolean highlights"
+        );
+
+        // Null
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Constant),
+            "expected constant highlights for null and anchors"
+        );
+
+        // Comments
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Comment),
+            "expected comment highlights"
+        );
+
+        // Tags (!custom-tag)
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Type),
+            "expected type highlights for tags"
+        );
+
+        // Punctuation (:, -, etc.)
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Punctuation),
+            "expected punctuation highlights"
+        );
+    }
+
+    #[test]
+    fn json_highlight_covers_keys_values_and_structural_elements() {
+        let source = "\
+{
+  \"name\": \"my-app\",
+  \"version\": 42,
+  \"debug\": true,
+  \"nothing\": null,
+  \"escaped\": \"line1\\nline2\"
+}
+";
+
+        let mut engine = SyntaxEngine::new(LanguageId::Json).expect("init json");
+        let tree = engine.parse_source(source, 1).expect("parse json");
+        let spans = generate_highlight_spans(tree, source);
+
+        assert!(!spans.is_empty(), "expected json highlight spans");
+
+        // Keys
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Property),
+            "expected property highlights for keys"
+        );
+
+        // String values
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::String),
+            "expected string highlights for values"
+        );
+
+        // Numbers
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Number),
+            "expected number highlights"
+        );
+
+        // Booleans
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Boolean),
+            "expected boolean highlights"
+        );
+
+        // Null
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Constant),
+            "expected constant highlights for null"
+        );
+
+        // Escape sequences
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Escape),
+            "expected escape sequence highlights"
+        );
+
+        // Punctuation
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Punctuation),
+            "expected punctuation highlights"
         );
     }
 }

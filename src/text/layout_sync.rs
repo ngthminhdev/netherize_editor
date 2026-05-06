@@ -281,6 +281,78 @@ pub fn compute_caret_layout(
     fallback
 }
 
+/// Variant of `compute_caret_layout` for an arbitrary buffer position given as
+/// (line_idx, byte_in_line).  Used by the renderer to place virtual-cursor carets.
+pub fn compute_caret_layout_at(
+    text_system: &TextSystem,
+    target_line: usize,
+    cursor_byte_in_line: usize,
+    viewport_origin: [f32; 2],
+) -> CaretLayout {
+    let metrics_line_height = text_system.buffer().metrics().line_height.max(1.0);
+    let default_glyph_width = (metrics_line_height * 0.5).max(1.0);
+
+    let mut fallback = CaretLayout {
+        x: viewport_origin[0],
+        top: viewport_origin[1],
+        height: metrics_line_height,
+        glyph_width: default_glyph_width,
+    };
+
+    for run in text_system.buffer().layout_runs() {
+        fallback = CaretLayout {
+            x: viewport_origin[0] + run.line_w,
+            top: viewport_origin[1] + run.line_top,
+            height: run.line_height.max(1.0),
+            glyph_width: default_glyph_width,
+        };
+
+        if run.line_i != target_line {
+            continue;
+        }
+
+        if run.glyphs.is_empty() {
+            return CaretLayout {
+                x: viewport_origin[0],
+                top: viewport_origin[1] + run.line_top,
+                height: run.line_height.max(1.0),
+                glyph_width: default_glyph_width,
+            };
+        }
+
+        let mut caret_x = viewport_origin[0] + run.line_w;
+        let mut caret_glyph_width = default_glyph_width;
+        for glyph in run.glyphs {
+            let left = viewport_origin[0] + glyph.x;
+            let right = left + glyph.w;
+
+            if cursor_byte_in_line <= glyph.start {
+                caret_x = left;
+                caret_glyph_width = glyph.w.max(1.0);
+                break;
+            }
+            if cursor_byte_in_line < glyph.end {
+                caret_x = right;
+                caret_glyph_width = glyph.w.max(1.0);
+                break;
+            }
+            if cursor_byte_in_line == glyph.end {
+                caret_x = right;
+                caret_glyph_width = glyph.w.max(1.0);
+            }
+        }
+
+        return CaretLayout {
+            x: caret_x,
+            top: viewport_origin[1] + run.line_top,
+            height: run.line_height.max(1.0),
+            glyph_width: caret_glyph_width,
+        };
+    }
+
+    fallback
+}
+
 #[cfg(test)]
 mod tests {
     use cosmic_text::Metrics;

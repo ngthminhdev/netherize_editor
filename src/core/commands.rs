@@ -92,6 +92,8 @@ pub enum Command {
     EditorPaste,
     /// Legacy alias for older keymaps; routed with `EditorPaste`.
     PasteSystemClipboard,
+    /// Visual mode paste: replace selection with clipboard content (nvim `p` in Visual).
+    VisualPaste,
     Undo,
     Redo,
     ReplaceChar(char),
@@ -158,6 +160,8 @@ pub enum Command {
     ToggleTerminal,
     ToggleBottomDock,
     ToggleLeftDock,
+    /// Open search within terminal scrollback (T-COPY mode).
+    TerminalSearchOpen,
     /// Raw terminal bytes/string payload routed through command path.
     TerminalWriteInput(String),
     /// Paste system clipboard into the focused PTY session.
@@ -188,6 +192,8 @@ pub enum Command {
     MoveFocusCycle,
     /// Return focus to the editor from any other surface (universal escape).
     FocusBack,
+    /// Toggle maximize focus for current region (Zen Mode).
+    ToggleMaximizeFocus,
 
     // ── Explorer surface commands ───────────────────────────────────────────────
     ExplorerMoveUp,
@@ -294,6 +300,10 @@ pub enum Command {
     AiChatBackspace,
     /// Complete the current slash command from the AI chat suggestion list.
     AiChatAcceptSuggestion,
+    /// Cycle to the next suggestion in the AI chat suggestion popup.
+    AiChatSuggestionNext,
+    /// Cycle to the previous suggestion in the AI chat suggestion popup.
+    AiChatSuggestionPrev,
     /// Append a text string to the AI chat input buffer (IME commit).
     AiChatInputText(String),
     /// Show the "opencode not found — install?" confirmation overlay.
@@ -328,6 +338,24 @@ pub enum Command {
     MarkdownPreviewScrollHalfPageUp,
     /// Scroll markdown preview down half page.
     MarkdownPreviewScrollHalfPageDown,
+
+    // ── Multiple Cursors (Module: MultiCursor) ────────────────────────────────
+    /// Select word under cursor; on subsequent calls find the next identical
+    /// word and place a virtual cursor on it.  Enters MultiCursor mode.
+    MultiCursorAddNext,
+    /// Skip the most recently added match and jump to the one after it.
+    MultiCursorSkip,
+    /// Move every cursor to the *start* of its selection then enter MultiInsert.
+    MultiCursorInsertBefore,
+    /// Move every cursor to the *end* of its selection then enter MultiInsert.
+    MultiCursorAppendAfter,
+    /// Delete every selection and enter MultiInsert (Vim `c` on multi-selection).
+    MultiCursorChange,
+    /// Delete every selection and stay in MultiCursor mode (Vim `d`).
+    MultiCursorDelete,
+    /// From Visual mode: select ALL occurrences of the visual selection and
+    /// enter MultiCursor mode with a cursor on each match simultaneously.
+    MultiCursorSelectAll,
 }
 
 impl Command {

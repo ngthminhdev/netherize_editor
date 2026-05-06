@@ -53,6 +53,7 @@ pub const PASTE_AFTER: &str = "editor.paste_after";
 pub const PASTE_BEFORE: &str = "editor.paste_before";
 pub const EDITOR_PASTE: &str = "editor.paste";
 pub const PASTE_SYSTEM_CLIPBOARD: &str = "editor.paste_system_clipboard";
+pub const VISUAL_PASTE: &str = "editor.visual_paste";
 pub const UNDO: &str = "editor.undo";
 pub const REDO: &str = "editor.redo";
 pub const SAVE_FILE: &str = "editor.save_file";
@@ -93,6 +94,7 @@ pub const DOCKER_OPEN_LAZYDOCKER: &str = "docker.open_lazydocker";
 pub const GIT_BLAME_LINE: &str = "git.blame_line";
 pub const TERMINAL_ENTER_NORMAL_MODE: &str = "terminal.enter_normal_mode";
 pub const TERMINAL_PASTE: &str = "terminal.paste";
+pub const TERMINAL_SEARCH_OPEN: &str = "terminal.search_open";
 
 // ── Buffer goto ─────────────────────────────────────────────────────────────
 pub const BUFFER_GOTO_1: &str = "buffer.goto_1";
@@ -131,6 +133,15 @@ pub const DIAGNOSTICS_OPEN_PICKER: &str = "diagnostics.open_picker";
 pub const JUMP_BACK: &str = "editor.jump_back";
 pub const JUMP_FORWARD: &str = "editor.jump_forward";
 
+// ── Multiple Cursors ─────────────────────────────────────────────────────────
+pub const MULTI_CURSOR_ADD_NEXT: &str = "multicursor.add_next";
+pub const MULTI_CURSOR_SKIP: &str = "multicursor.skip";
+pub const MULTI_CURSOR_INSERT_BEFORE: &str = "multicursor.insert_before";
+pub const MULTI_CURSOR_APPEND_AFTER: &str = "multicursor.append_after";
+pub const MULTI_CURSOR_CHANGE: &str = "multicursor.change";
+pub const MULTI_CURSOR_DELETE: &str = "multicursor.delete";
+pub const MULTI_CURSOR_SELECT_ALL: &str = "multicursor.select_all";
+
 // ── Markdown Preview ─────────────────────────────────────────────────────────
 pub const TOGGLE_MARKDOWN_PREVIEW: &str = "app.toggle_markdown_preview";
 pub const MARKDOWN_PREVIEW_SCROLL_UP: &str = "app.markdown_preview_scroll_up";
@@ -149,6 +160,7 @@ pub const FOCUS_UP: &str = "app.focus_up";
 pub const FOCUS_DOWN: &str = "app.focus_down";
 pub const MOVE_FOCUS_CYCLE: &str = "app.move_focus_cycle";
 pub const FOCUS_BACK: &str = "app.focus_back";
+pub const TOGGLE_MAXIMIZE_FOCUS: &str = "app.toggle_maximize_focus";
 
 // ── Panel tabs ────────────────────────────────────────────────────────────────
 pub const NEXT_PANEL_TAB: &str = "app.next_panel_tab";
@@ -247,6 +259,7 @@ pub const ALL_IDS: &[&str] = &[
     PASTE_BEFORE,
     EDITOR_PASTE,
     PASTE_SYSTEM_CLIPBOARD,
+    VISUAL_PASTE,
     UNDO,
     REDO,
     SAVE_FILE,
@@ -275,6 +288,7 @@ pub const ALL_IDS: &[&str] = &[
     GIT_BLAME_LINE,
     TERMINAL_ENTER_NORMAL_MODE,
     TERMINAL_PASTE,
+    TERMINAL_SEARCH_OPEN,
     BUFFER_GOTO_1,
     BUFFER_GOTO_2,
     BUFFER_GOTO_3,
@@ -355,11 +369,19 @@ pub const ALL_IDS: &[&str] = &[
     FILE_PICKER_SELECT_PREV,
     FILE_PICKER_BACKSPACE,
     LEAP_START,
+    MULTI_CURSOR_ADD_NEXT,
+    MULTI_CURSOR_SKIP,
+    MULTI_CURSOR_INSERT_BEFORE,
+    MULTI_CURSOR_APPEND_AFTER,
+    MULTI_CURSOR_CHANGE,
+    MULTI_CURSOR_DELETE,
+    MULTI_CURSOR_SELECT_ALL,
     TOGGLE_MARKDOWN_PREVIEW,
     MARKDOWN_PREVIEW_SCROLL_UP,
     MARKDOWN_PREVIEW_SCROLL_DOWN,
     MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP,
     MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN,
+    TOGGLE_MAXIMIZE_FOCUS,
 ];
 
 pub fn is_valid(id: &str) -> bool {
@@ -417,6 +439,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         PASTE_AFTER => Some(Command::PasteAfter),
         PASTE_BEFORE => Some(Command::PasteBefore),
         EDITOR_PASTE | PASTE_SYSTEM_CLIPBOARD => Some(Command::EditorPaste),
+        VISUAL_PASTE => Some(Command::VisualPaste),
         UNDO => Some(Command::Undo),
         REDO => Some(Command::Redo),
         SAVE_FILE => Some(Command::SaveFile),
@@ -433,6 +456,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         EXIT_FOCUS => Some(Command::SwitchMode(ModeEvent::ExitFocus)),
         TERMINAL_ENTER_NORMAL_MODE => Some(Command::SwitchMode(ModeEvent::EnterTerminalNormal)),
         TERMINAL_PASTE => Some(Command::TerminalPaste),
+        TERMINAL_SEARCH_OPEN => Some(Command::TerminalSearchOpen),
         BUFFER_GOTO_1 => Some(Command::BufferGoto(0)),
         BUFFER_GOTO_2 => Some(Command::BufferGoto(1)),
         BUFFER_GOTO_3 => Some(Command::BufferGoto(2)),
@@ -529,11 +553,19 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         FILE_PICKER_CLOSE => Some(Command::CloseFilePicker),
         FILE_PICKER_BACKSPACE => Some(Command::FilePickerBackspaceQuery),
         LEAP_START => Some(Command::LeapStart),
+        MULTI_CURSOR_ADD_NEXT => Some(Command::MultiCursorAddNext),
+        MULTI_CURSOR_SKIP => Some(Command::MultiCursorSkip),
+        MULTI_CURSOR_INSERT_BEFORE => Some(Command::MultiCursorInsertBefore),
+        MULTI_CURSOR_APPEND_AFTER => Some(Command::MultiCursorAppendAfter),
+        MULTI_CURSOR_CHANGE => Some(Command::MultiCursorChange),
+        MULTI_CURSOR_DELETE => Some(Command::MultiCursorDelete),
+        MULTI_CURSOR_SELECT_ALL => Some(Command::MultiCursorSelectAll),
         TOGGLE_MARKDOWN_PREVIEW => Some(Command::ToggleMarkdownPreview),
         MARKDOWN_PREVIEW_SCROLL_UP => Some(Command::MarkdownPreviewScrollUp),
         MARKDOWN_PREVIEW_SCROLL_DOWN => Some(Command::MarkdownPreviewScrollDown),
         MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP => Some(Command::MarkdownPreviewScrollHalfPageUp),
         MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN => Some(Command::MarkdownPreviewScrollHalfPageDown),
+        TOGGLE_MAXIMIZE_FOCUS => Some(Command::ToggleMaximizeFocus),
         _ => None,
     }
 }

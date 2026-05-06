@@ -74,6 +74,18 @@ impl AppState {
             let _ = self.commit_transaction();
             self.inline_suggestion = None;
         }
+        if result.from == EditorMode::MultiInsert && result.to != EditorMode::MultiInsert {
+            let _ = self.commit_transaction();
+        }
+        if matches!(
+            result.to,
+            EditorMode::Normal | EditorMode::Insert | EditorMode::Visual
+        ) && matches!(
+            result.from,
+            EditorMode::MultiCursor | EditorMode::MultiInsert
+        ) {
+            self.clear_virtual_cursors();
+        }
         Ok(result)
     }
 

@@ -7,6 +7,10 @@ pub enum EditorMode {
     PaletteFocus,
     TerminalFocus,
     TerminalNormal,
+    /// Multiple cursors selected (match phase: adding cursors to each occurrence).
+    MultiCursor,
+    /// Simultaneous insert across all virtual cursors (action phase).
+    MultiInsert,
 }
 
 impl EditorMode {
@@ -18,6 +22,8 @@ impl EditorMode {
             Self::PaletteFocus => "palette_focus",
             Self::TerminalFocus => "terminal_focus",
             Self::TerminalNormal => "terminal_normal",
+            Self::MultiCursor => "multicursor",
+            Self::MultiInsert => "multiinsert",
         }
     }
 }
@@ -34,6 +40,10 @@ pub enum ModeEvent {
     FocusTerminal,
     ExitFocus,
     Escape,
+    /// Enter MultiCursor mode (triggered by MultiCursorAddNext command).
+    EnterMultiCursor,
+    /// Enter MultiInsert mode (I / A / c action on multi-cursor selection).
+    EnterMultiInsert,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,7 +53,7 @@ pub struct ModeTransitionRule {
     pub to: EditorMode,
 }
 
-const TRANSITION_RULES: [ModeTransitionRule; 15] = [
+const TRANSITION_RULES: [ModeTransitionRule; 25] = [
     // Core editing transitions
     ModeTransitionRule {
         from: EditorMode::Normal,
@@ -121,6 +131,57 @@ const TRANSITION_RULES: [ModeTransitionRule; 15] = [
         from: EditorMode::TerminalNormal,
         event: ModeEvent::FocusTerminal,
         to: EditorMode::TerminalFocus,
+    },
+    // ── MultiCursor transitions ────────────────────────────────────────────────
+    ModeTransitionRule {
+        from: EditorMode::Normal,
+        event: ModeEvent::EnterMultiCursor,
+        to: EditorMode::MultiCursor,
+    },
+    ModeTransitionRule {
+        from: EditorMode::Visual,
+        event: ModeEvent::EnterMultiCursor,
+        to: EditorMode::MultiCursor,
+    },
+    ModeTransitionRule {
+        from: EditorMode::MultiCursor,
+        event: ModeEvent::EnterMultiInsert,
+        to: EditorMode::MultiInsert,
+    },
+    ModeTransitionRule {
+        from: EditorMode::MultiCursor,
+        event: ModeEvent::Escape,
+        to: EditorMode::Normal,
+    },
+    ModeTransitionRule {
+        from: EditorMode::MultiCursor,
+        event: ModeEvent::EnterNormal,
+        to: EditorMode::Normal,
+    },
+    ModeTransitionRule {
+        from: EditorMode::MultiInsert,
+        event: ModeEvent::Escape,
+        to: EditorMode::Normal,
+    },
+    ModeTransitionRule {
+        from: EditorMode::MultiInsert,
+        event: ModeEvent::EnterNormal,
+        to: EditorMode::Normal,
+    },
+    ModeTransitionRule {
+        from: EditorMode::MultiCursor,
+        event: ModeEvent::OpenPalette,
+        to: EditorMode::PaletteFocus,
+    },
+    ModeTransitionRule {
+        from: EditorMode::MultiInsert,
+        event: ModeEvent::OpenPalette,
+        to: EditorMode::PaletteFocus,
+    },
+    ModeTransitionRule {
+        from: EditorMode::TerminalNormal,
+        event: ModeEvent::OpenPalette,
+        to: EditorMode::PaletteFocus,
     },
 ];
 

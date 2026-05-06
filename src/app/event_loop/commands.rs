@@ -184,7 +184,7 @@ impl AppShell {
         )
     }
 
-    fn mark_focused_terminal_layout_dirty(&mut self) {
+    pub(super) fn mark_focused_terminal_layout_dirty(&mut self) {
         if self.app_state.active_buffer_is_terminal()
             && self.focus_manager.current() == FocusTarget::CenterEditor
         {
@@ -230,6 +230,14 @@ impl AppShell {
             return None;
         }
 
+        // Clear terminal search highlights when leaving terminal_normal via Esc
+        if matches!(command, Command::SwitchMode(ModeEvent::FocusTerminal)) {
+            if let Some(grid) = self.focused_terminal_grid_mut() {
+                grid.search_matches.clear();
+                grid.search_cursor = 0;
+            }
+        }
+
         let report = self.dispatch_command_with_focused_terminal(command.clone(), repeat_count);
         if report.state_changed {
             self.mark_focused_terminal_layout_dirty();
@@ -263,6 +271,14 @@ impl AppShell {
 
         if let Some(changed) = self.handle_terminal_normal_command(&command, repeat_count) {
             return changed;
+        }
+
+        if let Some(changed) = self.handle_terminal_search_command(&command) {
+            return self.finalize_post_command_hooks(
+                &command_for_post_hooks,
+                should_persist_history_after,
+                changed,
+            );
         }
 
         if let Some(changed) = self.handle_terminal_and_focus_command(&command) {
@@ -424,6 +440,66 @@ impl AppShell {
         }
     }
 
+    pub(super) fn dismiss_system_dep_guide(&mut self) {
+        self.active_system_dep_guide = None;
+        self.dismissed_system_deps = true;
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_system_dep_popup();
+        }
+    }
+
+    pub(super) fn accept_system_dep_guide(&mut self) -> bool {
+        let (install_cmd, missing_list, _state) = {
+            let Some(guide) = self.active_system_dep_guide.as_mut() else {
+                return false;
+            };
+            use crate::app::event_loop::SystemDepState;
+            match guide.state {
+                SystemDepState::Complete => {
+                    self.active_system_dep_guide = None;
+                    self.dismissed_system_deps = true;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.clear_system_dep_popup();
+                    }
+                    return true;
+                }
+                SystemDepState::Installing => {
+                    return false;
+                }
+                SystemDepState::Detected => {
+                    let cmd = guide.install_command.clone().unwrap_or_default();
+                    let list = guide.missing_tools.clone().unwrap_or_default().join(", ");
+                    guide.state = SystemDepState::Installing;
+                    (cmd, list, SystemDepState::Installing)
+                }
+            }
+        };
+
+        let shell = std::env::var("SHELL").unwrap_or_default();
+        let source_cmd = if shell.contains("zsh") {
+            "source ~/.zshrc"
+        } else if shell.contains("bash") {
+            "source ~/.bash_profile"
+        } else if shell.contains("fish") {
+            "source ~/.config/fish/config.fish"
+        } else {
+            "source ~/.profile"
+        };
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::TerminalPty,
+            payload: WorkerRequestPayload::SpawnDetachedShellCommand {
+                command: install_cmd,
+                working_dir: std::env::current_dir().ok(),
+            },
+        });
+        self.show_transient_toast(format!(
+            "Installing {missing_list} in background. Run '{source_cmd}' in terminal and restart editor when done."
+        ));
+        true
+    }
+
     pub(super) fn show_transient_toast(&mut self, message: impl Into<String>) {
         self.transient_toast = Some(TransientToast {
             message: message.into(),
@@ -486,11 +562,26 @@ impl AppShell {
                         self.panel_state.right.visible = true;
                         self.sidebar_needs_layout = true;
                     }
+                    // Save original width before override so it can be
+                    // restored when the preview is closed.  This prevents the
+                    // 50 % width from leaking into other right-panel tabs
+                    // such as AI chat.
+                    self.pre_markdown_preview_right_width =
+                        Some(self.panel_state.right.size_px);
+                    // Auto-set width to 50% of window
+                    let half_width = (self.window_size.width as f32 * 0.5).max(200.0);
+                    self.panel_state.right.size_px = half_width;
                     self.panel_state.right.switch_to_tab(PanelTabId::MarkdownPreview);
                     self.focus_manager.set(FocusTarget::RightSidebar);
                     self.input_handler.clear_pending_prefix();
                     self.update_markdown_preview_content();
                 } else {
+                    // Restore the original width that was saved when the
+                    // preview was opened, so other tabs keep their
+                    // configured width.
+                    if let Some(original_width) = self.pre_markdown_preview_right_width.take() {
+                        self.panel_state.right.size_px = original_width;
+                    }
                     if self.panel_state.right.active_tab_id()
                         == Some(PanelTabId::MarkdownPreview)
                     {

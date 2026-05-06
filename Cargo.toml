@@ -41,12 +41,18 @@ streaming-iterator = "0.1.9"
 url = "2.5.4"
 wgpu = "29.0.1"
 winit = "0.30.13"
+regex = "1.10"
+once_cell = "1"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", default-features = true }
 
 [[bench]]
 name = "editor_bench"
+harness = false
+
+[[bench]]
+name = "e2e_perf_runner"
 harness = false
 
 # For profiling / flamegraph (cargo build --profile profiling)

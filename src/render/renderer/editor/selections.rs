@@ -170,15 +170,15 @@ impl Renderer {
         let text_area_x = center_bounds[0] + gutter_inset_left + gutter_width;
         let text_area_w =
             (center_bounds[2] - gutter_inset_left - self.editor_padding_x - gutter_width).max(1.0);
-        let scroll_y = app_state.current_scroll_y * line_height;
-        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
-
         let viewport_top = center_bounds[1] + self.editor_padding_y;
         let viewport_bottom =
             viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
 
         let mut color = self.theme.editor.selection.as_f32();
         color[3] = (color[3] * 0.45).clamp(0.18, 0.42);
+
+        let scroll_y_px = visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y);
+        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y_px;
 
         let mut quads = Vec::new();
         for run in self.text_system.buffer().layout_runs() {
@@ -212,6 +212,76 @@ impl Renderer {
                 [left, line_top, width, line_height_px],
                 color,
             ));
+        }
+
+        quads
+    }
+
+    /// Returns per-match highlight quads for all multi-cursor selections (primary + virtual).
+    pub fn multi_cursor_selection_quads(
+        &self,
+        app_state: &AppState,
+        center_bounds: [f32; 4],
+    ) -> Vec<RegionDrawInstance> {
+        let selections = app_state.multi_cursor_selection_ranges();
+        if selections.is_empty() {
+            return Vec::new();
+        }
+
+        let line_height = self.theme.editor.line_height;
+        let font_size = self.theme.editor.font_size;
+        let total_lines = app_state.total_lines().max(1);
+        let gutter_digits = total_lines.to_string().len().max(3);
+        let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
+        let gutter_inset_left = self.editor_padding_x + 6.0 + EDITOR_FRAME_INSET;
+        let text_area_x = center_bounds[0] + gutter_inset_left + gutter_width;
+        let text_area_w =
+            (center_bounds[2] - gutter_inset_left - self.editor_padding_x - gutter_width).max(1.0);
+        // Use visual_y_for_logical_scroll to match the actual rendered text Y (handles soft-wrapped lines).
+        let scroll_y_px = visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y);
+        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y_px;
+        let viewport_top = center_bounds[1] + self.editor_padding_y;
+        let viewport_bottom =
+            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
+
+        // Use accent color for clear MC match visibility.
+        let base = self.theme.editor.selection.as_f32();
+        let color = [base[0], base[1], base[2], 0.55f32.max(base[3])];
+
+        let mut quads = Vec::new();
+        for selection in &selections {
+            for run in self.text_system.buffer().layout_runs() {
+                if run.line_i < selection.start_line || run.line_i > selection.end_line {
+                    continue;
+                }
+                let line_top = origin_y + run.line_top;
+                let line_height_px = run.line_height.max(1.0);
+                let line_bottom = line_top + line_height_px;
+                if line_bottom <= viewport_top || line_top >= viewport_bottom {
+                    continue;
+                }
+
+                let line_start_x = text_area_x;
+                let line_end_x = (text_area_x + run.line_w).max(line_start_x + 1.0);
+                let start_x = if run.line_i == selection.start_line {
+                    run_x_for_byte(text_area_x, &run, selection.start_byte_in_line)
+                } else {
+                    line_start_x
+                };
+                let end_x = if run.line_i == selection.end_line {
+                    run_x_for_byte(text_area_x, &run, selection.end_byte_in_line)
+                } else {
+                    line_end_x
+                };
+
+                let left = start_x.min(end_x).max(text_area_x);
+                let right = start_x.max(end_x).min(text_area_x + text_area_w);
+                let width = (right - left).max(1.0);
+                quads.push(RegionDrawInstance::new(
+                    [left, line_top, width, line_height_px],
+                    color,
+                ));
+            }
         }
 
         quads
@@ -401,17 +471,10 @@ impl Renderer {
                 } else {
                     let mut warning_color = color;
                     warning_color[3] = warning_color[3].clamp(0.9, 1.0);
-                    let top_h = 2.0;
-                    let bottom_h = 1.0;
-                    let gap = 1.0;
-                    let bottom_y = line_top + (line_height_px - bottom_h).max(0.0);
-                    let top_y = (bottom_y - gap - top_h).max(line_top);
+                    let underline_h = 3.0;
+                    let underline_y = line_top + (line_height_px - underline_h).max(0.0);
                     quads.push(RegionDrawInstance::new(
-                        [left, top_y, width, top_h],
-                        warning_color,
-                    ));
-                    quads.push(RegionDrawInstance::new(
-                        [left, bottom_y, width, bottom_h],
+                        [left, underline_y, width, underline_h],
                         warning_color,
                     ));
                 }
@@ -444,7 +507,7 @@ impl Renderer {
         gutter_text_color[3] = gutter_text_color[3].min(0.72);
         let gutter_x = center_bounds[0] + gutter_inset_left;
 
-        let gutter_font_size = (font_size + 3.0).min(line_height - 2.0).max(8.0);
+        let gutter_font_size = (font_size - 1.0).min(line_height - 2.0).max(8.0);
         self.gutter_text_system
             .set_metrics(Metrics::new(gutter_font_size, line_height));
         self.gutter_text_system
@@ -529,30 +592,37 @@ impl Renderer {
                 .and_then(|statuses| statuses.get(&abs_line))
             {
                 let marker_height = run.line_height.max(1.0);
-                let (rect, color) = match status {
-                    crate::app::app_state::GitLineStatus::Added => (
-                        [gutter_x + 2.0, line_top_y, 3.0, marker_height],
-                        self.theme.git.added_gutter.as_f32(),
-                    ),
-                    crate::app::app_state::GitLineStatus::Modified => (
-                        [gutter_x + 2.0, line_top_y, 3.0, marker_height],
-                        self.theme.git.modified_gutter.as_f32(),
-                    ),
-                    crate::app::app_state::GitLineStatus::DeletedAbove => (
-                        [gutter_x + 1.0, line_top_y, 4.0, 2.0],
-                        self.theme.git.deleted_gutter.as_f32(),
-                    ),
-                    crate::app::app_state::GitLineStatus::DeletedBelow => (
-                        [
-                            gutter_x + 1.0,
-                            line_top_y + (marker_height - 2.0).max(0.0),
-                            4.0,
-                            2.0,
-                        ],
-                        self.theme.git.deleted_gutter.as_f32(),
-                    ),
-                };
-                quads.push(RegionDrawInstance::new(rect, color));
+                // Clip to viewport bounds
+                let clipped_top = line_top_y.max(viewport_top);
+                let clipped_bottom = (line_top_y + marker_height).min(viewport_bottom);
+                let clipped_height = (clipped_bottom - clipped_top).max(0.0);
+
+                if clipped_height > 0.0 {
+                    let (rect, color) = match status {
+                        crate::app::app_state::GitLineStatus::Added => (
+                            [gutter_x + 2.0, clipped_top, 3.0, clipped_height],
+                            self.theme.git.added_gutter.as_f32(),
+                        ),
+                        crate::app::app_state::GitLineStatus::Modified => (
+                            [gutter_x + 2.0, clipped_top, 3.0, clipped_height],
+                            self.theme.git.modified_gutter.as_f32(),
+                        ),
+                        crate::app::app_state::GitLineStatus::DeletedAbove => (
+                            [gutter_x + 1.0, clipped_top, 4.0, 2.0_f32.min(clipped_height)],
+                            self.theme.git.deleted_gutter.as_f32(),
+                        ),
+                        crate::app::app_state::GitLineStatus::DeletedBelow => (
+                            [
+                                gutter_x + 1.0,
+                                (clipped_top + (clipped_height - 2.0).max(0.0)).max(clipped_top),
+                                4.0,
+                                2.0_f32.min(clipped_height),
+                            ],
+                            self.theme.git.deleted_gutter.as_f32(),
+                        ),
+                    };
+                    quads.push(RegionDrawInstance::new(rect, color));
+                }
             }
 
             let num_str = if self.relative_numbers {

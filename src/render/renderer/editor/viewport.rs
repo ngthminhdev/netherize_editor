@@ -13,8 +13,8 @@ use crate::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
     text::layout_sync::{
-        compute_caret_layout, compute_cursor_overlay, rebuild_layout_projection,
-        visual_y_for_logical_scroll,
+        compute_caret_layout, compute_caret_layout_at, compute_cursor_overlay,
+        rebuild_layout_projection, visual_y_for_logical_scroll,
     },
 };
 use cosmic_text::Metrics;
@@ -26,6 +26,19 @@ use super::super::helpers::{
 };
 use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
 use crate::text::text_system::StyledTextSpan;
+
+/// Quick fingerprint để phát hiện thay đổi trong syntax / diagnostic spans.
+/// Không cần hoàn hảo — chỉ cần bắt được phần lớn thay đổi thực tế.
+fn spans_fingerprint(spans: &[StyledTextSpan]) -> u64 {
+    let mut h: u64 = spans.len() as u64 ^ 0xcbf29ce484222325;
+    for (i, s) in spans.iter().take(32).enumerate() {
+        h ^= (s.start as u64)
+            .wrapping_mul(0x9e3779b97f4a7c15)
+            .wrapping_add(i as u64);
+        h = h.rotate_left(17).wrapping_add(s.end as u64);
+    }
+    h
+}
 
 impl Renderer {
     pub fn clear_editor_content(&mut self) {
@@ -44,6 +57,10 @@ impl Renderer {
         self.editor_scissor = None;
         self.image_pipeline.clear();
         self.image_scissor = None;
+        // Invalidate text cache so the next update_editor_content always reshapes.
+        self.last_shaped_revision = u64::MAX;
+        self.last_shaped_spans_fingerprint = u64::MAX;
+        self.last_shaped_viewport_width = 0.0;
     }
 
     pub fn update_image_content(&mut self, image: &ImageBuffer, center_bounds: [f32; 4]) {
@@ -137,8 +154,26 @@ impl Renderer {
         // intentional: the second call collects glyphs with the now-correct origin.
         let text_fg = self.theme.editor.fg.as_f32();
         let default_color_rgba = linear_rgba_to_srgb_u8(text_fg);
-        self.text_system
-            .set_text_with_spans(text, default_color_rgba, spans);
+
+        // ── Tối ưu 2: Text Caching ─────────────────────────────────────────────
+        // Trong các frame chỉ cuộn (smooth scroll), text revision không đổi →
+        // TextSystem buffer đã được shaped từ frame trước → bỏ qua set_text_with_spans.
+        // Reshape khi: (a) text thay đổi, (b) syntax/LSP spans thay đổi, hoặc
+        // (c) viewport width thay đổi (word-wrap boundary shift).
+        let current_revision = app_state.revision();
+        let spans_fp = spans_fingerprint(spans);
+        let needs_reshape = self.last_shaped_revision != current_revision
+            || self.last_shaped_spans_fingerprint != spans_fp
+            || (self.last_shaped_viewport_width - width).abs() > 0.5;
+        if needs_reshape {
+            self.text_system
+                .set_text_with_spans(text, default_color_rgba, spans);
+            self.last_shaped_revision = current_revision;
+            self.last_shaped_spans_fingerprint = spans_fp;
+            self.last_shaped_viewport_width = width;
+        } else {
+            self.text_system.set_size(Some(width), None);
+        }
 
         let visual_scroll_y =
             visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y.max(0.0));
@@ -168,7 +203,7 @@ impl Renderer {
         match result {
             Ok(projection) => {
                 self.glyph_instances = projection.glyph_instances;
-                let caret = caret_rect_for_mode(
+                let primary_caret = caret_rect_for_mode(
                     projection.caret_layout,
                     app_state.current_mode(),
                     self.theme.editor.cursor.as_f32(),
@@ -178,7 +213,19 @@ impl Renderer {
                     self.cursor_block_width,
                     self.cursor_underline_height,
                 );
-                self.caret_pipeline.upload_caret(&self.queue, Some(caret));
+                let caret_rects = build_caret_rects(
+                    app_state,
+                    &self.text_system,
+                    primary_caret,
+                    self.theme.editor.cursor.as_f32(),
+                    self.theme.editor.font_size,
+                    self.cursor_shape,
+                    self.cursor_beam_width,
+                    self.cursor_block_width,
+                    self.cursor_underline_height,
+                    [geometry.origin_x, corrected_origin_y],
+                );
+                self.caret_pipeline.upload_carets(&self.queue, &caret_rects);
                 let overlay_instances: Vec<GlyphInstance> = projection
                     .cursor_overlay
                     .filter(|_| {
@@ -238,7 +285,7 @@ impl Renderer {
             app_state,
             [geometry.origin_x, corrected_origin_y],
         );
-        let caret = caret_rect_for_mode(
+        let primary_caret = caret_rect_for_mode(
             caret_layout,
             app_state.current_mode(),
             self.theme.editor.cursor.as_f32(),
@@ -248,7 +295,19 @@ impl Renderer {
             self.cursor_block_width,
             self.cursor_underline_height,
         );
-        self.caret_pipeline.upload_caret(&self.queue, Some(caret));
+        let caret_rects = build_caret_rects(
+            app_state,
+            &self.text_system,
+            primary_caret,
+            self.theme.editor.cursor.as_f32(),
+            self.theme.editor.font_size,
+            self.cursor_shape,
+            self.cursor_beam_width,
+            self.cursor_block_width,
+            self.cursor_underline_height,
+            [geometry.origin_x, corrected_origin_y],
+        );
+        self.caret_pipeline.upload_carets(&self.queue, &caret_rects);
 
         let overlay = if should_draw_block_cursor(app_state.current_mode(), self.cursor_shape) {
             compute_cursor_overlay(
@@ -349,4 +408,71 @@ impl Renderer {
         self.atlas.flush_pending(&self.queue);
         instances
     }
+}
+
+// ── Multi-cursor caret batching ───────────────────────────────────────────────
+
+use crate::{
+    config::ui_config::CursorShape,
+    render::caret::CaretScreenRect,
+    text::text_system::TextSystem,
+};
+
+/// Build the full list of caret rects: primary at index 0, then one per virtual
+/// cursor.  All carets are uploaded in a single `upload_carets` call.
+#[allow(clippy::too_many_arguments)]
+fn build_caret_rects(
+    app_state: &AppState,
+    text_system: &TextSystem,
+    primary_caret: CaretScreenRect,
+    cursor_color: [f32; 4],
+    font_size: f32,
+    cursor_shape: CursorShape,
+    beam_width: f32,
+    block_width: f32,
+    underline_height: f32,
+    viewport_origin: [f32; 2],
+) -> Vec<CaretScreenRect> {
+    let mut rects = vec![primary_caret];
+
+    // Only add virtual cursors when in MultiCursor / MultiInsert mode.
+    let mode = app_state.current_mode();
+    if !matches!(
+        mode,
+        crate::core::mode::EditorMode::MultiCursor | crate::core::mode::EditorMode::MultiInsert
+    ) {
+        return rects;
+    }
+
+    // Use a slightly dimmed color for virtual cursors so the primary stands out.
+    let virtual_color = [
+        cursor_color[0],
+        cursor_color[1],
+        cursor_color[2],
+        cursor_color[3] * 0.7,
+    ];
+
+    for vc in app_state.virtual_cursors() {
+        let (line_idx, byte_in_line) =
+            app_state.char_idx_to_line_and_byte_in_line(vc.char_idx);
+        let layout = compute_caret_layout_at(
+            text_system,
+            line_idx,
+            byte_in_line,
+            viewport_origin,
+        );
+        let rect = caret_rect_for_mode(
+            layout,
+            mode,
+            virtual_color,
+            font_size,
+            cursor_shape,
+            beam_width,
+            block_width,
+            underline_height,
+        );
+        rects.push(rect);
+    }
+
+    rects
 }

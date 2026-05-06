@@ -1,4 +1,7 @@
-use crate::core::commands::Command;
+use crate::core::{
+    commands::Command,
+    mode::{EditorMode, ModeEvent},
+};
 
 use super::common::{DispatchCtx, DispatchReport};
 
@@ -181,6 +184,15 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         }
         Command::SearchWordUnderCursor => {
             let changed = ctx.app_state.search_word_under_cursor();
+            // nvim behavior: * in visual mode searches selected text, exits to Normal
+            if matches!(ctx.app_state.current_mode(), EditorMode::Visual) {
+                if let Ok(result) = ctx.app_state.apply_mode_event(ModeEvent::Escape) {
+                    return DispatchReport::success(
+                        "Dispatch: search word under cursor",
+                        changed || result.changed,
+                    );
+                }
+            }
             DispatchReport::success(
                 if changed {
                     "Dispatch: search word under cursor".to_string()

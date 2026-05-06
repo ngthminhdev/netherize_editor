@@ -291,6 +291,41 @@ impl AppState {
         self.char_range_text(start, end)
     }
 
+    /// Replace the current visual selection with the given text.
+    /// Deletes the selected range, inserts `text` at the selection start,
+    /// and positions the cursor at the last character of the inserted text.
+    /// Returns `false` if there is no selection or the buffer is empty.
+    pub fn replace_selection_with_text(&mut self, text: &str) -> bool {
+        let Some(selection) = self.visual_selection_range() else {
+            return false;
+        };
+
+        let start = selection.start_char;
+        let len = selection.end_char - selection.start_char;
+
+        // Delete the selected range
+        self.apply_delete(start, len);
+        self.selection_anchor_char_idx = None;
+
+        // Insert the replacement text at the start position
+        if !text.is_empty() {
+            self.apply_insert(start, text.to_string());
+        }
+
+        // Position cursor: last char of inserted text (or at start if empty)
+        let inserted_chars = text.chars().count();
+        self.cursor_char_idx = if inserted_chars > 0 {
+            (start + inserted_chars - 1).min(self.text.len_chars())
+        } else {
+            start.min(self.text.len_chars())
+        };
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
     pub fn delete_visual_selection(&mut self) -> bool {
         let Some(selection) = self.visual_selection_range() else {
             return false;

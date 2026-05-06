@@ -19,6 +19,7 @@
   "HEALTHCHECK"
   "SHELL"
   "MAINTAINER"
+  "CROSS_BUILD"
   (heredoc_marker)
   (heredoc_end)
 ] @syntax.keyword
@@ -47,6 +48,9 @@
   (heredoc_block)
 ] @syntax.string
 
+; Escape sequences
+(escape_sequence) @syntax.escape
+
 ; Variable expansion
 (expansion
   [
@@ -59,3 +63,23 @@
 ; Uppercase variables as constants
 ((variable) @syntax.constant
  (#match? @syntax.constant "^[A-Z][A-Z_0-9]*$"))
+
+; Property names (arg names, env names, label keys, param names)
+(arg_pair name: (unquoted_string) @syntax.property)
+(env_pair name: (unquoted_string) @syntax.property)
+(label_pair key: (_) @syntax.property)
+(param name: (_) @syntax.property)
+(mount_param name: (_) @syntax.property)
+(mount_param_param) @syntax.property
+
+; Expose ports as numbers
+(expose_port) @syntax.number
+
+; Paths
+(path) @syntax.string
+
+; JSON array brackets
+["[" "]"] @syntax.punctuation
+
+; Flag dashes
+"--" @syntax.operator

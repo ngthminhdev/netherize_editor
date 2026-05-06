@@ -433,13 +433,23 @@ command = "editor.yank_selection"
 
 [[bindings]]
 mode = "visual"
+key = "p"
+command = "editor.visual_paste"
+
+[[bindings]]
+mode = "visual"
+key = "P"
+command = "editor.visual_paste"
+
+[[bindings]]
+mode = "visual"
 key = "mod+v"
 command = "editor.paste"
 
 [[bindings]]
 mode = "visual"
 key = "*"
-command = "editor.wrap_selection_with_star"
+command = "editor.search_word_under_cursor"
 
 # ───────────────── TERMINAL ─────────────────
 [[bindings]]
@@ -547,6 +557,31 @@ command = "editor.yank_selection"
 mode = "terminal_normal"
 key = "mod+v"
 command = "terminal.paste"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "/"
+command = "terminal.search_open"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "*"
+command = "editor.search_word_under_cursor"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "n"
+command = "editor.search_next"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "N"
+command = "editor.search_prev"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "<leader>z m"
+command = "app.toggle_maximize_focus"
 
 # ───────────────── EXPLORER ─────────────────
 [[bindings]]
@@ -729,6 +764,11 @@ command = "app.open_theme_selector"
 
 [[bindings]]
 mode = "normal"
+key = "<leader>z m"
+command = "app.toggle_maximize_focus"
+
+[[bindings]]
+mode = "normal"
 key = "<leader>g f"
 command = "git.open_lazygit"
 
@@ -842,3 +882,69 @@ command = "overlay.select_next"
 mode = "palette"
 key = "mod+v"
 command = "editor.paste"
+
+
+# ───────────────── MULTIPLE CURSORS ─────────────────
+
+# Normal / Visual → start multi-cursor match phase
+[[bindings]]
+mode = "normal"
+key = "Ctrl+n"
+command = "multicursor.add_next"
+
+[[bindings]]
+mode = "visual"
+key = "Ctrl+n"
+command = "multicursor.add_next"
+
+# MultiCursor mode bindings (match phase)
+[[bindings]]
+mode = "multicursor"
+key = "Ctrl+n"
+command = "multicursor.add_next"
+
+[[bindings]]
+mode = "multicursor"
+key = "q"
+command = "multicursor.skip"
+
+[[bindings]]
+mode = "multicursor"
+key = "I"
+command = "multicursor.insert_before"
+
+[[bindings]]
+mode = "multicursor"
+key = "A"
+command = "multicursor.append_after"
+
+[[bindings]]
+mode = "multicursor"
+key = "c"
+command = "multicursor.change"
+
+[[bindings]]
+mode = "multicursor"
+key = "d"
+command = "multicursor.delete"
+
+[[bindings]]
+mode = "multicursor"
+key = "Escape"
+command = "mode.enter_normal"
+
+# MultiInsert mode: Escape commits and returns to Normal
+[[bindings]]
+mode = "multiinsert"
+key = "Escape"
+command = "mode.enter_normal"
+
+[[bindings]]
+mode = "multiinsert"
+key = "Backspace"
+command = "editor.backspace"
+
+[[bindings]]
+mode = "multiinsert"
+key = "Enter"
+command = "editor.insert_newline"

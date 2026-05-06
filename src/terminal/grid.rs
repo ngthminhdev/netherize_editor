@@ -37,11 +37,14 @@ impl Default for CellStyle {
 }
 
 /// Một cell trong terminal grid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TerminalCell {
     /// Ký tự hiển thị. `' '` = cell trống.
     pub ch: char,
     pub style: CellStyle,
+    /// Per-cell foreground color override (linear RGBA).
+    /// When `Some`, takes precedence over the ANSI-based `style.fg`.
+    pub style_fg: Option<[f32; 4]>,
 }
 
 impl Default for TerminalCell {
@@ -49,6 +52,7 @@ impl Default for TerminalCell {
         Self {
             ch: ' ',
             style: CellStyle::default(),
+            style_fg: None,
         }
     }
 }
@@ -70,6 +74,68 @@ impl TerminalCell {
 pub struct TerminalPoint {
     pub row: usize,
     pub col: usize,
+}
+
+/// A single search match within the terminal grid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TerminalSearchMatch {
+    /// Absolute row index (0 = top of scrollback).
+    pub row: usize,
+    /// Starting column of the match.
+    pub col: usize,
+    /// Character length of the match.
+    pub len: usize,
+}
+
+/// Colors used for regex-based terminal output highlighting.
+///
+/// Each field is an RGBA color in sRGB space (matching `AnsiColor::to_rgba_f32` output).
+/// The default values are derived from the built-in dark theme.
+#[derive(Debug, Clone, Copy)]
+pub struct HighlightColors {
+    /// diagnostic.warn — yellow/orange tint for `W/` log lines.
+    pub warn: [f32; 4],
+    /// diagnostic.error — red tint for `E/` log lines.
+    pub error: [f32; 4],
+    /// Dimmed foreground for `D/` (debug) log lines.
+    pub fg_dim: [f32; 4],
+    /// syntax.string — green for quoted string literals.
+    pub syntax_string: [f32; 4],
+    /// syntax.number — red/orange for numeric literals and time formats.
+    pub syntax_number: [f32; 4],
+    /// syntax.keyword — yellow for boolean and null literals.
+    pub syntax_keyword: [f32; 4],
+}
+
+impl Default for HighlightColors {
+    fn default() -> Self {
+        Self {
+            warn: [0.949, 0.722, 0.294, 1.0],
+            error: [1.0, 0.482, 0.447, 1.0],
+            fg_dim: [0.427, 0.455, 0.514, 1.0],
+            syntax_string: [0.404, 0.839, 0.486, 1.0],
+            syntax_number: [1.0, 0.482, 0.447, 1.0],
+            syntax_keyword: [0.918, 0.804, 0.380, 1.0],
+        }
+    }
+}
+
+impl HighlightColors {
+    /// Build highlight colors from the active theme config.
+    ///
+    /// Maps each semantic token to the corresponding theme field so that
+    /// regex-based terminal highlighting stays consistent with the user's
+    /// chosen color scheme.
+    pub fn from_theme(theme: &crate::config::theme_config::ThemeConfig) -> Self {
+        Self {
+            warn: theme.ui.warning.as_f32(),
+            error: theme.ui.error.as_f32(),
+            fg_dim: theme.ui.fg_dim.as_f32(),
+            syntax_string: theme.syntax.string.as_f32(),
+            syntax_number: theme.syntax.number.as_f32(),
+            syntax_keyword: theme.syntax.keyword.as_f32(),
+        }
+    }
 }
 
 // ─── TerminalGrid ─────────────────────────────────────────────────────────────
@@ -106,6 +172,14 @@ pub struct TerminalGrid {
 
     /// Parser ANSI nội bộ — giữ state giữa các chunk.
     parser: AnsiParser,
+
+    /// Colors used by `apply_regex_highlights`.
+    pub highlight_colors: HighlightColors,
+
+    /// All current search matches (absolute row coordinates).
+    pub search_matches: Vec<TerminalSearchMatch>,
+    /// Index into `search_matches` for the currently active match.
+    pub search_cursor: usize,
 }
 
 impl TerminalGrid {
@@ -125,6 +199,9 @@ impl TerminalGrid {
             selection_anchor: None,
             current_style: CellStyle::default(),
             parser: AnsiParser::new(),
+            highlight_colors: HighlightColors::default(),
+            search_matches: Vec::new(),
+            search_cursor: 0,
         }
     }
 
@@ -312,6 +389,7 @@ impl TerminalGrid {
         self.cells[idx] = TerminalCell {
             ch,
             style: self.current_style,
+            style_fg: None,
         };
         self.cursor_col += 1;
         scrolled
@@ -620,6 +698,37 @@ impl TerminalGrid {
         spans
     }
 
+    /// Returns visible search match spans as `(display_row, start_col, end_col_exclusive)`.
+    ///
+    /// Only includes matches that are currently in the viewport, converting
+    /// absolute row coordinates to display row coordinates.
+    pub fn visible_search_match_spans(&self) -> Vec<(usize, usize, usize)> {
+        if self.search_matches.is_empty() {
+            return Vec::new();
+        }
+
+        let viewport_top = self.viewport_start_absolute_row();
+        let viewport_bottom = viewport_top + self.rows.saturating_sub(1);
+
+        let mut spans = Vec::new();
+        for m in &self.search_matches {
+            if m.row < viewport_top || m.row > viewport_bottom {
+                continue;
+            }
+            let Some(display_row) = self.absolute_row_to_display_row(m.row) else {
+                continue;
+            };
+            let start_col = m.col;
+            let end_col = m.col + m.len;
+            if start_col >= self.cols {
+                continue;
+            }
+            let end_col = end_col.min(self.cols);
+            spans.push((display_row, start_col, end_col));
+        }
+        spans
+    }
+
     pub fn yank_selection_text(&self) -> Option<String> {
         let (start, end) = self.normalized_selection_bounds()?;
         let mut lines = Vec::new();
@@ -743,6 +852,132 @@ impl TerminalGrid {
         self.selection_anchor = None;
         self.current_style = CellStyle::default();
         self.parser = AnsiParser::new();
+    }
+
+    /// Apply regex-based syntax highlighting to visible rows.
+    ///
+    /// **Step 1 — Base line color:** checks if a row matches a log-level prefix
+    /// and tints the entire line accordingly (`W/` → warn, `E/` → error,
+    /// `D/` → dimmed).
+    ///
+    /// **Step 2 — Data-type overrides:** scans each row for string, number,
+    /// boolean/null and time patterns, overriding individual cell colors.
+    pub fn apply_regex_highlights(&mut self) {
+        use crate::terminal::highlighter::{
+            RE_BOOL, RE_LOG_DEBUG, RE_LOG_ERROR, RE_LOG_WARN, RE_NULL, RE_NUMBER, RE_STRING,
+            RE_TIME,
+        };
+
+        let colors = self.highlight_colors;
+        let cols = self.cols;
+        let rows = self.rows;
+        let sb_len = self.scrollback.len();
+        let offset = self.scroll_offset;
+
+        for display_row in 0..rows {
+            // Map display_row to the actual cell storage (scrollback or live grid).
+            let source_from_bottom = (rows - 1 - display_row) + offset;
+
+            // Step 1: Build row text for regex matching.
+            let row_text: String = if source_from_bottom < rows {
+                let live_row = rows - 1 - source_from_bottom;
+                let start = live_row * cols;
+                self.cells[start..start + cols].iter().map(|c| c.ch).collect()
+            } else {
+                let sb_idx = sb_len.saturating_sub(source_from_bottom - rows + 1);
+                if sb_idx < sb_len {
+                    self.scrollback[sb_idx].iter().map(|c| c.ch).collect()
+                } else {
+                    continue;
+                }
+            };
+
+            // Step 1: Determine base line color from log-level prefix.
+            let line_color: Option<[f32; 4]> = if RE_LOG_ERROR.is_match(&row_text) {
+                Some(colors.error)
+            } else if RE_LOG_WARN.is_match(&row_text) {
+                Some(colors.warn)
+            } else if RE_LOG_DEBUG.is_match(&row_text) {
+                Some(colors.fg_dim)
+            } else {
+                None
+            };
+
+            // Apply base line color to every cell in this row.
+            if let Some(color) = line_color {
+                self.set_visible_row_style_fg(display_row, offset, cols, rows, sb_len, |_| {
+                    Some(color)
+                });
+            }
+
+            // Step 2: Data-type overrides (these win over the line color).
+            // Collect match ranges from all data-type regexes first, then apply.
+            let mut overrides: Vec<(usize, usize, [f32; 4])> = Vec::new();
+
+            for mat in RE_STRING.find_iter(&row_text) {
+                let (s, e) = byte_to_char_range(&row_text, mat.start(), mat.end());
+                overrides.push((s, e, colors.syntax_string));
+            }
+            for mat in RE_NUMBER.find_iter(&row_text) {
+                let (s, e) = byte_to_char_range(&row_text, mat.start(), mat.end());
+                overrides.push((s, e, colors.syntax_number));
+            }
+            for mat in RE_BOOL.find_iter(&row_text) {
+                let (s, e) = byte_to_char_range(&row_text, mat.start(), mat.end());
+                overrides.push((s, e, colors.syntax_keyword));
+            }
+            for mat in RE_NULL.find_iter(&row_text) {
+                let (s, e) = byte_to_char_range(&row_text, mat.start(), mat.end());
+                overrides.push((s, e, colors.syntax_keyword));
+            }
+            for mat in RE_TIME.find_iter(&row_text) {
+                let (s, e) = byte_to_char_range(&row_text, mat.start(), mat.end());
+                overrides.push((s, e, colors.syntax_number));
+            }
+
+            if !overrides.is_empty() {
+                self.set_visible_row_style_fg(display_row, offset, cols, rows, sb_len, |col| {
+                    overrides
+                        .iter()
+                        .find(|(s, e, _)| col >= *s && col < *e)
+                        .map(|(_, _, c)| *c)
+                });
+            }
+        }
+    }
+
+    /// Set `style_fg` on cells in a visible display row.
+    ///
+    /// `color_fn` is called for each column; returning `Some(color)` sets the
+    /// override, `None` leaves the cell unchanged.
+    fn set_visible_row_style_fg(
+        &mut self,
+        display_row: usize,
+        offset: usize,
+        cols: usize,
+        rows: usize,
+        sb_len: usize,
+        color_fn: impl Fn(usize) -> Option<[f32; 4]>,
+    ) {
+        let source_from_bottom = (rows - 1 - display_row) + offset;
+        if source_from_bottom < rows {
+            let live_row = rows - 1 - source_from_bottom;
+            let start = live_row * cols;
+            for col in 0..cols {
+                if let Some(color) = color_fn(col) {
+                    self.cells[start + col].style_fg = Some(color);
+                }
+            }
+        } else {
+            let sb_idx = sb_len.saturating_sub(source_from_bottom - rows + 1);
+            if sb_idx < sb_len {
+                for col in 0..cols {
+                    if let Some(color) = color_fn(col) {
+                        self.scrollback[sb_idx][col].style_fg = Some(color);
+                    }
+                }
+            }
+        }
     }
 
     fn normalized_selection_bounds(&self) -> Option<(TerminalPoint, TerminalPoint)> {
@@ -914,6 +1149,118 @@ impl TerminalGrid {
         };
         Some(self.point_for_flat_index(next))
     }
+
+    // ─── Terminal search ────────────────────────────────────────────────────
+
+    /// Extract plain text from all rows (scrollback + visible grid).
+    ///
+    /// Returns one `String` per absolute row, with each cell's character
+    /// concatenated.  Trailing whitespace is preserved.
+    pub fn get_scrollback_text(&self) -> Vec<String> {
+        let total = self.total_rows();
+        let mut lines = Vec::with_capacity(total);
+        for row in 0..total {
+            if let Some(cells) = self.row_cells_absolute(row) {
+                lines.push(cells.iter().map(|c| c.ch).collect());
+            }
+        }
+        lines
+    }
+
+    /// Search all terminal text for `query` and populate `search_matches`.
+    ///
+    /// When `whole_word` is `true`, matches are only kept when the character
+    /// before and after the match is a word boundary (start/end of line,
+    /// whitespace, or punctuation).
+    pub fn search_in_terminal(&mut self, query: &str, whole_word: bool) {
+        self.search_matches.clear();
+        self.search_cursor = 0;
+
+        if query.is_empty() {
+            return;
+        }
+
+        let lines = self.get_scrollback_text();
+        let q_len = query.chars().count();
+
+        for (row, line) in lines.iter().enumerate() {
+            let mut search_start = 0;
+            while let Some(byte_pos) = line[search_start..].find(query) {
+                // `str::find` returns a byte offset; convert to char index.
+                let col = line[..search_start + byte_pos].chars().count();
+
+                if whole_word {
+                    let before_ok = if col == 0 {
+                        true
+                    } else {
+                        line.chars()
+                            .nth(col.wrapping_sub(1))
+                            .map_or(true, |ch| !ch.is_alphanumeric() && ch != '_')
+                    };
+                    let after_col = col + q_len;
+                    let after_ok = line
+                        .chars()
+                        .nth(after_col)
+                        .map_or(true, |ch| !ch.is_alphanumeric() && ch != '_');
+
+                    if !before_ok || !after_ok {
+                        search_start += byte_pos + 1;
+                        continue;
+                    }
+                }
+
+                self.search_matches.push(TerminalSearchMatch {
+                    row,
+                    col,
+                    len: q_len,
+                });
+                search_start += byte_pos + 1;
+            }
+        }
+    }
+
+    /// Advance to the next search match, wrapping around if necessary.
+    ///
+    /// Returns the `TerminalPoint` of the new current match, or `None` when
+    /// there are no matches at all.  The viewport is automatically scrolled so
+    /// that the match is visible.
+    pub fn search_next(&mut self) -> Option<TerminalPoint> {
+        if self.search_matches.is_empty() {
+            return None;
+        }
+        self.search_cursor = (self.search_cursor + 1) % self.search_matches.len();
+        let m = self.search_matches[self.search_cursor];
+        let point = TerminalPoint {
+            row: m.row,
+            col: m.col,
+        };
+        self.virtual_cursor = self.clamp_point(point);
+        self.ensure_virtual_cursor_visible();
+        Some(self.virtual_cursor)
+    }
+
+    /// Move to the previous search match, wrapping around if necessary.
+    ///
+    /// Returns the `TerminalPoint` of the new current match, or `None` when
+    /// there are no matches.  The viewport is automatically scrolled.
+    pub fn search_prev(&mut self) -> Option<TerminalPoint> {
+        if self.search_matches.is_empty() {
+            return None;
+        }
+        self.search_cursor = if self.search_cursor == 0 {
+            self.search_matches.len() - 1
+        } else {
+            self.search_cursor - 1
+        };
+        let m = self.search_matches[self.search_cursor];
+        let point = TerminalPoint {
+            row: m.row,
+            col: m.col,
+        };
+        self.virtual_cursor = self.clamp_point(point);
+        self.ensure_virtual_cursor_visible();
+        Some(self.virtual_cursor)
+    }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -925,7 +1272,15 @@ static BLANK_CELL: TerminalCell = TerminalCell {
         bg: AnsiColor::Default,
         bold: false,
     },
+    style_fg: None,
 };
+
+/// Convert a byte-offset range from a regex match into a char-index range.
+fn byte_to_char_range(text: &str, byte_start: usize, byte_end: usize) -> (usize, usize) {
+    let char_start = text[..byte_start].chars().count();
+    let char_end = char_start + text[byte_start..byte_end].chars().count();
+    (char_start, char_end)
+}
 
 /// i32 addition với clamp về [min, max].
 fn clamp_add(base: usize, delta: i32, min: usize, max: usize) -> usize {
@@ -1224,5 +1579,84 @@ mod tests {
             .expect("cursor should stay in viewport");
         assert_eq!(display_row, 0);
         assert!(grid.scroll_offset > 0);
+    }
+
+    #[test]
+    fn apply_regex_highlights_warn_line_gets_warn_color() {
+        let mut grid = TerminalGrid::new(40, 5);
+        grid.feed_chunk("W/Network timeout occurred\nnormal line");
+        grid.apply_regex_highlights();
+
+        // First row (W/ line) should have warn style_fg on every cell.
+        let warn = grid.highlight_colors.warn;
+        for col in 0..grid.cols {
+            let cell = grid.cell_at(0, col);
+            if cell.ch != ' ' {
+                assert_eq!(cell.style_fg, Some(warn), "col {col}");
+            }
+        }
+        // Second row should have no style_fg.
+        let cell = grid.cell_at(1, 0);
+        assert_eq!(cell.style_fg, None);
+    }
+
+    #[test]
+    fn apply_regex_highlights_error_line_gets_error_color() {
+        let mut grid = TerminalGrid::new(40, 5);
+        grid.feed_chunk("E/Fatal crash in module\nother text");
+        grid.apply_regex_highlights();
+
+        let error = grid.highlight_colors.error;
+        let cell = grid.cell_at(0, 0);
+        assert_eq!(cell.style_fg, Some(error));
+    }
+
+    #[test]
+    fn apply_regex_highlights_debug_line_gets_fg_dim() {
+        let mut grid = TerminalGrid::new(40, 5);
+        grid.feed_chunk("D/verbose debug output\nother text");
+        grid.apply_regex_highlights();
+
+        let fg_dim = grid.highlight_colors.fg_dim;
+        let cell = grid.cell_at(0, 0);
+        assert_eq!(cell.style_fg, Some(fg_dim));
+    }
+
+    #[test]
+    fn apply_regex_highlights_string_overrides_line_color() {
+        let mut grid = TerminalGrid::new(60, 5);
+        grid.feed_chunk("W/Loaded \"config.json\" successfully");
+        grid.apply_regex_highlights();
+
+        let warn = grid.highlight_colors.warn;
+        let syn_str = grid.highlight_colors.syntax_string;
+
+        // "W/Loaded "config.json" successfully"
+        //  0123456789...
+        // 'W' at col 0 is part of W/ prefix — still warn color.
+        assert_eq!(grid.cell_at(0, 0).style_fg, Some(warn));
+        // '"' at col 9 starts the string — should be syntax_string.
+        assert_eq!(grid.cell_at(0, 9).style_fg, Some(syn_str));
+        // Space at col 8 is not in any data-type pattern — keeps warn.
+        assert_eq!(grid.cell_at(0, 8).style_fg, Some(warn));
+    }
+
+    #[test]
+    fn apply_regex_highlights_number_and_bool_get_keyword_colors() {
+        let mut grid = TerminalGrid::new(60, 5);
+        grid.feed_chunk("count=42 enabled=true nothing=null");
+        grid.apply_regex_highlights();
+
+        let syn_num = grid.highlight_colors.syntax_number;
+        let syn_kw = grid.highlight_colors.syntax_keyword;
+
+        // "count=42 enabled=true nothing=null"
+        //  01234567890123456789012345678901234
+        // '4' at col 6 is part of the number 42.
+        assert_eq!(grid.cell_at(0, 6).style_fg, Some(syn_num));
+        // 't' at col 17 starts "true".
+        assert_eq!(grid.cell_at(0, 17).style_fg, Some(syn_kw));
+        // 'n' at col 30 starts "null".
+        assert_eq!(grid.cell_at(0, 30).style_fg, Some(syn_kw));
     }
 }

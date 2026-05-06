@@ -21,8 +21,61 @@ impl Renderer {
             wgpu::CurrentSurfaceTexture::Validation => return Err(RenderError::Validation),
         };
 
+        // ── Tối ưu 1: Instance Batching ─────────────────────────────────────────
+        // Gom TẤT CẢ region quads (base panels + mọi overlay layer) vào 1 Vec
+        // duy nhất, upload 1 lần, rồi dùng draw_range() bên trong render pass.
+        // Loại bỏ hoàn toàn các upload_instances() lặp lại giữa chừng render pass
+        // (trước đây có ~10 lần/frame) làm nghẽn CPU→GPU pipeline.
+        let base_count = region_instances.len() as u32;
+
+        let ed_overlay_start = base_count;
+        let ed_overlay_count = self.editor_overlay_chrome_instances.len() as u32;
+
+        let welcome_start = ed_overlay_start + ed_overlay_count;
+        let welcome_count = self.welcome_logo_chrome_instances.len() as u32;
+
+        let leap_bg_start = welcome_start + welcome_count;
+        let leap_bg_count = self.leap_label_bg_instances.len() as u32;
+
+        let term_cursor_start = leap_bg_start + leap_bg_count;
+        let term_cursor_count = self.terminal_cursor_instances.len() as u32;
+
+        let buf_term_cursor_start = term_cursor_start + term_cursor_count;
+        let buf_term_cursor_count = self.buffer_terminal_cursor_instances.len() as u32;
+
+        let palette_start = buf_term_cursor_start + buf_term_cursor_count;
+        let palette_count = self.palette_chrome_instances.len() as u32;
+
+        let lsp_guide_start = palette_start + palette_count;
+        let lsp_guide_count = self.lsp_guide_chrome_instances.len() as u32;
+
+        let system_dep_start = lsp_guide_start + lsp_guide_count;
+        let system_dep_count = self.system_dep_chrome_instances.len() as u32;
+
+        let toast_start = system_dep_start + system_dep_count;
+        let toast_count = self.toast_chrome_instances.len() as u32;
+
+        let diag_hover_start = toast_start + toast_count;
+        let diag_hover_count = self.diagnostic_hover_chrome_instances.len() as u32;
+
+        // Build the flat merged Vec (immutable borrows all end here before upload).
+        let total = (diag_hover_start + diag_hover_count) as usize;
+        let mut all_instances: Vec<RegionDrawInstance> = Vec::with_capacity(total.max(64));
+        all_instances.extend_from_slice(region_instances);
+        all_instances.extend_from_slice(&self.editor_overlay_chrome_instances);
+        all_instances.extend_from_slice(&self.welcome_logo_chrome_instances);
+        all_instances.extend_from_slice(&self.leap_label_bg_instances);
+        all_instances.extend_from_slice(&self.terminal_cursor_instances);
+        all_instances.extend_from_slice(&self.buffer_terminal_cursor_instances);
+        all_instances.extend_from_slice(&self.palette_chrome_instances);
+        all_instances.extend_from_slice(&self.lsp_guide_chrome_instances);
+        all_instances.extend_from_slice(&self.system_dep_chrome_instances);
+        all_instances.extend_from_slice(&self.toast_chrome_instances);
+        all_instances.extend_from_slice(&self.diagnostic_hover_chrome_instances);
+
+        // Single upload — all borrows above are released.
         self.region_pipeline
-            .upload_instances(&self.device, &self.queue, region_instances);
+            .upload_instances(&self.device, &self.queue, &all_instances);
 
         let view = frame
             .texture
@@ -54,8 +107,9 @@ impl Renderer {
             let viewport_width = self.surface_state.config.width;
             let viewport_height = self.surface_state.config.height;
 
-            // 1. Panel backgrounds (no scissor).
-            self.region_pipeline.draw(&mut pass);
+            // 1. Panel backgrounds (no scissor) — single draw_range for all 34 regions.
+            self.region_pipeline
+                .draw_range(&mut pass, 0, base_count);
 
             // 2. Editor text + caret + cursor overlay + gutter.
             draw_text_region(
@@ -71,19 +125,15 @@ impl Renderer {
                 },
             );
 
-            if !self.editor_overlay_chrome_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.editor_overlay_chrome_instances,
-                );
+            if ed_overlay_count > 0 {
                 draw_text_region(
                     &mut pass,
                     self.editor_overlay_scissor,
                     viewport_width,
                     viewport_height,
                     |render_pass| {
-                        self.region_pipeline.draw(render_pass);
+                        self.region_pipeline
+                            .draw_range(render_pass, ed_overlay_start, ed_overlay_count);
                     },
                 );
             }
@@ -110,19 +160,15 @@ impl Renderer {
             );
 
             // 3. Welcome screen card/chrome + text.
-            if !self.welcome_logo_chrome_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.welcome_logo_chrome_instances,
-                );
+            if welcome_count > 0 {
                 draw_text_region(
                     &mut pass,
                     self.welcome_logo_scissor,
                     viewport_width,
                     viewport_height,
                     |render_pass| {
-                        self.region_pipeline.draw(render_pass);
+                        self.region_pipeline
+                            .draw_range(render_pass, welcome_start, welcome_count);
                     },
                 );
             }
@@ -208,19 +254,15 @@ impl Renderer {
 
             // 5. Leap label overlay: dim + per-char bg + label chars.
             if !self.leap_label_glyph_instances.is_empty() {
-                if !self.leap_label_bg_instances.is_empty() {
-                    self.region_pipeline.upload_instances(
-                        &self.device,
-                        &self.queue,
-                        &self.leap_label_bg_instances,
-                    );
+                if leap_bg_count > 0 {
                     draw_text_region(
                         &mut pass,
                         self.leap_label_scissor,
                         viewport_width,
                         viewport_height,
                         |render_pass| {
-                            self.region_pipeline.draw(render_pass);
+                            self.region_pipeline
+                                .draw_range(render_pass, leap_bg_start, leap_bg_count);
                         },
                     );
                 }
@@ -245,19 +287,15 @@ impl Renderer {
                     self.terminal_text_pipeline.draw(render_pass);
                 },
             );
-            if !self.terminal_cursor_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.terminal_cursor_instances,
-                );
+            if term_cursor_count > 0 {
                 draw_text_region(
                     &mut pass,
                     self.terminal_scissor,
                     viewport_width,
                     viewport_height,
                     |render_pass| {
-                        self.region_pipeline.draw(render_pass);
+                        self.region_pipeline
+                            .draw_range(render_pass, term_cursor_start, term_cursor_count);
                     },
                 );
             }
@@ -307,19 +345,18 @@ impl Renderer {
                     },
                 );
             }
-            if !self.buffer_terminal_cursor_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.buffer_terminal_cursor_instances,
-                );
+            if buf_term_cursor_count > 0 {
                 draw_text_region(
                     &mut pass,
                     self.buffer_terminal_scissor,
                     viewport_width,
                     viewport_height,
                     |render_pass| {
-                        self.region_pipeline.draw(render_pass);
+                        self.region_pipeline.draw_range(
+                            render_pass,
+                            buf_term_cursor_start,
+                            buf_term_cursor_count,
+                        );
                     },
                 );
             }
@@ -327,19 +364,15 @@ impl Renderer {
             // 7. Welcome empty-state chrome/text. This layer is populated when the
             // app has no open buffers; keep it below the top/status bars and
             // below palette overlays, but above the center background.
-            if !self.welcome_logo_chrome_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.welcome_logo_chrome_instances,
-                );
+            if welcome_count > 0 {
                 draw_text_region(
                     &mut pass,
                     self.welcome_logo_scissor,
                     viewport_width,
                     viewport_height,
                     |render_pass| {
-                        self.region_pipeline.draw(render_pass);
+                        self.region_pipeline
+                            .draw_range(render_pass, welcome_start, welcome_count);
                     },
                 );
             }
@@ -387,14 +420,10 @@ impl Renderer {
                 },
             );
 
-            // 10. Command palette chrome (scrim + box) above editor text.
-            if !self.palette_chrome_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.palette_chrome_instances,
-                );
-                self.region_pipeline.draw(&mut pass);
+            // 10. Command palette chrome (scrim + box) above editor text — no scissor.
+            if palette_count > 0 {
+                self.region_pipeline
+                    .draw_range(&mut pass, palette_start, palette_count);
             }
 
             // 11. Command palette / file picker text (topmost layer).
@@ -408,19 +437,15 @@ impl Renderer {
                 },
             );
 
-            if !self.lsp_guide_chrome_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.lsp_guide_chrome_instances,
-                );
+            if lsp_guide_count > 0 {
                 draw_text_region(
                     &mut pass,
                     self.lsp_guide_scissor,
                     viewport_width,
                     viewport_height,
                     |render_pass| {
-                        self.region_pipeline.draw(render_pass);
+                        self.region_pipeline
+                            .draw_range(render_pass, lsp_guide_start, lsp_guide_count);
                     },
                 );
             }
@@ -434,19 +459,37 @@ impl Renderer {
                 },
             );
 
-            if !self.toast_chrome_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.toast_chrome_instances,
+            if system_dep_count > 0 {
+                draw_text_region(
+                    &mut pass,
+                    self.system_dep_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline
+                            .draw_range(render_pass, system_dep_start, system_dep_count);
+                    },
                 );
+            }
+            draw_text_region(
+                &mut pass,
+                self.system_dep_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.system_dep_text_pipeline.draw(render_pass);
+                },
+            );
+
+            if toast_count > 0 {
                 draw_text_region(
                     &mut pass,
                     self.toast_scissor,
                     viewport_width,
                     viewport_height,
                     |render_pass| {
-                        self.region_pipeline.draw(render_pass);
+                        self.region_pipeline
+                            .draw_range(render_pass, toast_start, toast_count);
                     },
                 );
             }
@@ -461,12 +504,7 @@ impl Renderer {
             );
 
             // 12. Diagnostic hover popup (topmost overlay).
-            if !self.diagnostic_hover_chrome_instances.is_empty() {
-                self.region_pipeline.upload_instances(
-                    &self.device,
-                    &self.queue,
-                    &self.diagnostic_hover_chrome_instances,
-                );
+            if diag_hover_count > 0 {
                 draw_text_region(
                     &mut pass,
                     self.diagnostic_hover_scissor,
@@ -474,7 +512,8 @@ impl Renderer {
                     viewport_height,
                     |render_pass| {
                         render_pass.set_scissor_rect(0, 0, viewport_width, viewport_height);
-                        self.region_pipeline.draw(render_pass);
+                        self.region_pipeline
+                            .draw_range(render_pass, diag_hover_start, diag_hover_count);
                     },
                 );
             }

@@ -192,11 +192,19 @@ fn dispatch_command_with_clipboard_once(
         | Command::PasteBefore
         | Command::EditorPaste
         | Command::PasteSystemClipboard
+        | Command::VisualPaste
         | Command::Undo
         | Command::Redo
         | Command::ReplaceChar(_)
         | Command::TextObjectAction { .. }
-        | Command::Operate { .. } => editing::dispatch(&mut ctx, command),
+        | Command::Operate { .. }
+        | Command::MultiCursorAddNext
+        | Command::MultiCursorSkip
+        | Command::MultiCursorInsertBefore
+        | Command::MultiCursorAppendAfter
+        | Command::MultiCursorChange
+        | Command::MultiCursorDelete
+        | Command::MultiCursorSelectAll => editing::dispatch(&mut ctx, command),
         Command::MoveLeft
         | Command::MoveRight
         | Command::MoveUp
@@ -249,7 +257,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::FilePickerSelectPrev
         | Command::FilePickerConfirmSelection
         | Command::CloseFilePicker
-        | Command::OpenCommandPalette => palette::dispatch(&mut ctx, command),
+        | Command::OpenCommandPalette
+        | Command::TerminalSearchOpen => palette::dispatch(&mut ctx, command),
         Command::SaveFile
         | Command::OpenFile(_)
         | Command::OpenFolder
@@ -271,6 +280,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::FocusDown
         | Command::MoveFocusCycle
         | Command::FocusBack
+        | Command::ToggleMaximizeFocus
         | Command::ExplorerMoveUp
         | Command::ExplorerMoveDown
         | Command::ExplorerCollapseOrParent
@@ -329,6 +339,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::AiChatInputChar(_)
         | Command::AiChatBackspace
         | Command::AiChatAcceptSuggestion
+        | Command::AiChatSuggestionNext
+        | Command::AiChatSuggestionPrev
         | Command::AiChatInputText(_)
         | Command::AiChatPromptInstall
         | Command::ToggleMarkdownPreview

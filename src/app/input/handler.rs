@@ -1292,6 +1292,39 @@ impl InputHandler {
         input_debug: String,
         context: KeybindingContext,
     ) -> Option<InputRouteOutcome> {
+        // Ctrl+N / Ctrl+P → cycle suggestion popup
+        if normalized.has_command_modifier() {
+            match normalized.physical_key {
+                Some(KeyCode::KeyN) => {
+                    return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                        input_debug,
+                        format!(
+                            "mode={} focus={} -> ai chat: suggestion next",
+                            context.mode.as_str(),
+                            context.focus.as_str(),
+                        ),
+                        Command::AiChatSuggestionNext,
+                        1,
+                        false,
+                    )));
+                }
+                Some(KeyCode::KeyP) => {
+                    return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                        input_debug,
+                        format!(
+                            "mode={} focus={} -> ai chat: suggestion prev",
+                            context.mode.as_str(),
+                            context.focus.as_str(),
+                        ),
+                        Command::AiChatSuggestionPrev,
+                        1,
+                        false,
+                    )));
+                }
+                _ => {}
+            }
+        }
+
         // Esc → unfocus AI chat, return focus to editor (keep dock visible)
         if normalized.named_key == Some(NamedKey::Escape) {
             return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(

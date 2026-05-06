@@ -215,6 +215,13 @@ pub struct Renderer {
     pub(super) lsp_guide_text_system: TextSystem,
     pub(super) lsp_guide_text_pipeline: TextPipeline,
     pub(super) lsp_guide_scissor: Option<[u32; 4]>,
+    pub(super) lsp_guide_chrome_instances: Vec<RegionDrawInstance>,
+    pub(super) lsp_guide_glyph_instances: Vec<GlyphInstance>,
+    pub(super) system_dep_text_system: TextSystem,
+    pub(super) system_dep_text_pipeline: TextPipeline,
+    pub(super) system_dep_scissor: Option<[u32; 4]>,
+    pub(super) system_dep_chrome_instances: Vec<RegionDrawInstance>,
+    pub(super) system_dep_glyph_instances: Vec<GlyphInstance>,
     pub(super) diagnostic_hover_text_system: TextSystem,
     pub(super) diagnostic_hover_text_pipeline: TextPipeline,
     pub(super) diagnostic_hover_glyph_instances: Vec<GlyphInstance>,
@@ -252,12 +259,6 @@ pub struct Renderer {
     pub(super) leap_label_bg_instances: Vec<RegionDrawInstance>,
     pub(super) leap_label_scissor: Option<[u32; 4]>,
 
-    // ── LSP Install Guide popup ───────────────────────────────────────────────
-    /// Chrome quads cho floating background + border.
-    pub(super) lsp_guide_chrome_instances: Vec<RegionDrawInstance>,
-    /// Glyph instances cho text bên trong popup.
-    pub(super) lsp_guide_glyph_instances: Vec<GlyphInstance>,
-
     // ── Transient toast popup ────────────────────────────────────────────────
     pub(super) toast_text_system: TextSystem,
     pub(super) toast_text_pipeline: TextPipeline,
@@ -276,10 +277,25 @@ pub struct Renderer {
     pub(super) ai_chat_input_scissor: Option<[u32; 4]>,
     /// Instance range for input-box glyphs inside `ai_chat_glyph_instances`.
     pub(super) ai_chat_input_batch: Option<TextScissorBatch>,
+
+    // ── Tối ưu 2: Text Caching ────────────────────────────────────────────
+    /// Revision của text content lần cuối được shaped bởi cosmic-text.
+    /// Khi `app_state.revision()` khớp, bỏ qua `set_text_with_spans`.
+    pub(super) last_shaped_revision: u64,
+    /// Fingerprint nhanh của spans để phát hiện thay đổi highlight/diagnostics.
+    pub(super) last_shaped_spans_fingerprint: u64,
+    /// Viewport width lần cuối reshape — phát hiện khi word-wrap boundary thay đổi.
+    pub(super) last_shaped_viewport_width: f32,
 }
 
 impl Renderer {
     pub fn editor_chrome_instances(&self) -> &[RegionDrawInstance] {
         &self.last_editor_chrome_instances
+    }
+
+    /// Tối ưu 3: Caret Blink — chỉ flip visibility của caret pipeline mà không
+    /// trigger bất kỳ text layout hay glyph rebuild nào.
+    pub fn update_caret_visibility(&mut self, visible: bool) {
+        self.caret_pipeline.set_caret_visible(&self.queue, visible);
     }
 }

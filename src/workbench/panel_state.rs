@@ -147,6 +147,8 @@ pub struct AiChatState {
     pub model: Option<String>,
     /// Active opencode primary agent. `plan` is the restricted planning mode.
     pub agent: AiAgentMode,
+    /// Index of the currently highlighted suggestion in the suggestion popup.
+    pub selected_suggestion_index: usize,
 }
 
 impl Default for AiChatState {
@@ -159,9 +161,12 @@ impl Default for AiChatState {
             is_opencode_missing: false,
             model: None,
             agent: AiAgentMode::Build,
+            selected_suggestion_index: 0,
         }
     }
 }
+
+use super::focus_manager::FocusTarget;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorkbenchPanelState {
@@ -170,6 +175,8 @@ pub struct WorkbenchPanelState {
     pub bottom: PanelState,
     pub overlay_visible: bool,
     pub ai_chat: AiChatState,
+    /// When `Some`, the specified region/editor is maximized (Zen Mode).
+    pub maximized_region: Option<FocusTarget>,
 }
 
 impl Default for WorkbenchPanelState {
@@ -197,6 +204,7 @@ impl Default for WorkbenchPanelState {
             ),
             overlay_visible: false,
             ai_chat: AiChatState::default(),
+            maximized_region: None,
         }
     }
 }

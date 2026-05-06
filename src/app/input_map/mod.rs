@@ -75,6 +75,8 @@ impl InputFocusContext {
                 | Self::Diagnostics
                 | Self::Explorer
                 | Self::Inspector
+                | Self::Terminal
+                | Self::AiChat
                 | Self::MarkdownPreview
                 | Self::FuzzyPicker
                 | Self::SettingsTab
@@ -277,7 +279,7 @@ impl InputMap {
             });
         }
 
-        if context.mode == EditorMode::Insert {
+        if matches!(context.mode, EditorMode::Insert | EditorMode::MultiInsert) {
             if input.named_key == Some(NamedKey::Space) && !input.has_command_modifier() {
                 return Some(KeybindingMatch {
                     command: Command::InsertChar(' '),
@@ -321,10 +323,17 @@ impl InputMap {
         if context.command_palette_visible || context.mode == EditorMode::PaletteFocus {
             return None;
         }
+        // Block keybinding resolution for terminal focus (keys go to PTY)
+        // but ALLOW leader sequences in TerminalNormal mode (copy mode)
+        if context.focus == InputFocusContext::BufferTerminal {
+            return None;
+        }
         if context.focus == InputFocusContext::Terminal
-            || context.focus == InputFocusContext::BufferTerminal
-            || context.focus == InputFocusContext::AiChat
+            && context.mode != EditorMode::TerminalNormal
         {
+            return None;
+        }
+        if context.focus == InputFocusContext::AiChat {
             return None;
         }
 

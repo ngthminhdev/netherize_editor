@@ -109,7 +109,11 @@ impl AppShell {
             bridge: Some(bridge),
             pty_session_id: None,
             right_pty_session_id: None,
-            right_terminal_grid: TerminalGrid::new(120, 40),
+            right_terminal_grid: {
+                let mut g = TerminalGrid::new(120, 40);
+                g.highlight_colors = HighlightColors::from_theme(&theme);
+                g
+            },
             right_terminal_needs_layout: true,
             last_right_terminal_bounds: None,
             pending_right_pty_spawn: false,
@@ -120,7 +124,11 @@ impl AppShell {
             semantic_highlight_spans: Vec::new(),
             syntax_engine: None,
             syntax_engine_file: None,
-            terminal_grid: TerminalGrid::new(120, 40),
+            terminal_grid: {
+                let mut g = TerminalGrid::new(120, 40);
+                g.highlight_colors = HighlightColors::from_theme(&theme);
+                g
+            },
             explorer_cursor: 0,
             explorer_snapshot: ExplorerSnapshot::default(),
             explorer_snapshot_dirty: true,
@@ -131,6 +139,8 @@ impl AppShell {
             lsp_completion_trigger_chars: Vec::new(),
             active_lsp_guide: None,
             dismissed_lsp_binaries: HashSet::new(),
+            active_system_dep_guide: None,
+            dismissed_system_deps: false,
             transient_toast: None,
             base_theme,
             theme,
@@ -150,6 +160,7 @@ impl AppShell {
             sidebar_needs_layout: true,
             terminal_needs_layout: true,
             buffer_terminal_needs_layout: true,
+            terminal_search_palette_active: false,
             last_frame_time: now,
             last_fps_metrics_update_at: now,
             accumulated_frame_time: Duration::ZERO,
@@ -181,6 +192,9 @@ impl AppShell {
             last_scroll_animation_tick: now,
             last_git_branch_refresh_at: now,
             last_thinking_animation_tick: now,
+            caret_blink_visible: true,
+            caret_blink_dirty: false,
+            pre_markdown_preview_right_width: None,
         })
     }
 
@@ -210,6 +224,13 @@ impl AppShell {
         });
 
         self.sync_lsp_server_for_workspace();
+
+        // ── System Dependency Check ──────────────────────────────────────
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::SystemDepCheck,
+            payload: WorkerRequestPayload::CheckSystemDeps,
+        });
 
         eprintln!(
             "[AppShell] subsystems started - profile={}",
@@ -242,6 +263,29 @@ impl AppShell {
     pub(super) fn request_redraw(&self) {
         if let Some(window) = &self.window {
             window.request_redraw();
+        }
+    }
+
+    /// Update the window title bar to show the project name.
+    ///
+    /// - No workspace attached: title stays as the configured base title
+    ///   (e.g. "Netherize Editor").
+    /// - Workspace attached: title becomes "<project-name> - <base title>"
+    ///   (e.g. "my-project - Netherize Editor").
+    pub(super) fn update_window_title(&self) {
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        let base_title = &self.ui_config.window.title;
+
+        if let Some(root) = self.app_state.workspace_root_path() {
+            let project_name = root
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("Netherize Editor");
+            window.set_title(&format!("{project_name} - {base_title}"));
+        } else {
+            window.set_title(base_title);
         }
     }
 
@@ -1107,6 +1151,21 @@ impl AppShell {
         }
 
         let query = self.app_state.command_palette_query_text().to_string();
+
+        // When terminal search palette is active, search the terminal grid
+        // directly. We check `terminal_search_palette_active` FIRST because
+        // the bottom panel terminal isn't the active buffer, so
+        // `active_buffer_is_terminal()` would return false.
+        if self.terminal_search_palette_active {
+            // Access self.terminal_grid directly — not through
+            // focused_terminal_grid_mut(), because focus is on OverlayLayer.
+            let grid = &mut self.terminal_grid;
+            grid.search_in_terminal(&query, false);
+            let _ = grid.search_next();
+            self.mark_focused_terminal_layout_dirty();
+            return true;
+        }
+
         self.app_state.set_in_file_search_query(&query)
     }
 
