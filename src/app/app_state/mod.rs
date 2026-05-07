@@ -922,6 +922,12 @@ pub struct CompletionState {
     pub trigger_pos: CompletionTriggerPosition,
     pub anchor_line: usize,
     pub anchor_col: usize,
+    pub prefix_col: usize,
+    /// Hover documentation fetched on-demand for the selected item.
+    pub hover_doc: Option<String>,
+    /// `true` once we've received a final answer (success, failure, or "skip — already inline")
+    /// so the UI can stop showing the "Loading…" hint.
+    pub hover_doc_resolved: bool,
 }
 
 impl CompletionState {
@@ -945,6 +951,9 @@ impl CompletionState {
             },
             anchor_line,
             anchor_col,
+            prefix_col: prefix_start_col,
+            hover_doc: None,
+            hover_doc_resolved: false,
         }
     }
 }

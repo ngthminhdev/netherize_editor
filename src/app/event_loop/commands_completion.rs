@@ -38,6 +38,8 @@ impl AppShell {
     pub(super) fn select_next_completion_item(&mut self) -> bool {
         let changed = self.app_state.completion_select_next();
         if changed {
+            self.app_state.set_completion_hover_doc(None);
+            self.submit_completion_resolve();
             self.editor_caret_needs_layout = true;
             self.request_redraw();
         }
@@ -47,10 +49,67 @@ impl AppShell {
     pub(super) fn select_prev_completion_item(&mut self) -> bool {
         let changed = self.app_state.completion_select_prev();
         if changed {
+            self.app_state.set_completion_hover_doc(None);
+            self.submit_completion_resolve();
             self.editor_caret_needs_layout = true;
             self.request_redraw();
         }
         changed
+    }
+
+    /// Send `completionItem/resolve` for the currently selected item so its
+    /// `documentation` and `detail` fields get filled in. When no fetch is needed
+    /// (or possible), marks the doc-state as resolved so the UI swaps "Loading…"
+    /// for either inline docs or "No docs available".
+    pub(in crate::app::event_loop) fn submit_completion_resolve(&mut self) {
+        self.completion_resolve_request_id = None;
+        let Some(completion) = self.app_state.completion() else {
+            return;
+        };
+        let Some(entry) = completion.filtered_items.get(completion.selected_index) else {
+            return;
+        };
+        // Inline doc already present: no resolve needed; mark as resolved so the
+        // panel doesn't spin on "Loading…" if the user happens to land on an item
+        // with no inline docs next.
+        if entry
+            .item
+            .documentation
+            .as_ref()
+            .is_some_and(|doc| !doc.trim().is_empty())
+        {
+            self.app_state.mark_completion_hover_doc_resolved();
+            return;
+        }
+        let Some(item_json) = entry.item.raw_json.clone() else {
+            // Synthesized item (tests) — nothing to resolve.
+            self.app_state.mark_completion_hover_doc_resolved();
+            return;
+        };
+        let Some((language_id, uri, _line, _character)) = self.lsp_cursor_context() else {
+            self.app_state.mark_completion_hover_doc_resolved();
+            return;
+        };
+        let item_label = entry.item.label.clone();
+        let request = self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspCompletionResolveRequest {
+                language_id,
+                uri,
+                item_json,
+                item_label,
+            },
+        });
+        match request {
+            Some(req) => {
+                self.completion_resolve_request_id = Some(req.request_id);
+            }
+            None => {
+                // Scheduler refused to enqueue — treat as resolved with no docs.
+                self.app_state.mark_completion_hover_doc_resolved();
+            }
+        }
     }
 
     pub(super) fn close_completion_popup(&mut self) -> bool {

@@ -21,6 +21,15 @@ impl AsyncResultRouter for AppShell {
             if topic == RequestTopic::LspClient {
                 self.pending_lsp_server = None;
             }
+            // If the failure belongs to our in-flight completionItem/resolve, flip
+            // the docs panel from "Loading…" to its resolved state so the UI doesn't
+            // hang there forever when the server lacks resolveProvider or times out.
+            if self.completion_resolve_request_id == Some(request_id) {
+                self.completion_resolve_request_id = None;
+                self.app_state.mark_completion_hover_doc_resolved();
+                self.editor_caret_needs_layout = true;
+                self.request_redraw();
+            }
             if topic == RequestTopic::LspRequest
                 && revision_id >= self.document_symbols_request_revision
                 && self.app_state.command_palette_mode()
@@ -439,11 +448,20 @@ impl AsyncResultRouter for AppShell {
                 }
                 // Nếu đã cài hoặc user đã dismiss hoặc không có install_cmd: không cần làm gì.
             }
-            WorkerResultPayload::LspHoverResult { content, .. } => {
-                use crate::app::app_state::{EditorOverlay, FloatingBoxStyle};
+            WorkerResultPayload::LspHoverResult { content, for_completion, .. } => {
                 if content.is_empty() {
                     return;
                 }
+                if for_completion {
+                    // Route into completion doc panel if completion is still open
+                    if self.app_state.has_completion() {
+                        self.app_state.set_completion_hover_doc(Some(content.clone()));
+                        self.editor_caret_needs_layout = true;
+                        self.request_redraw();
+                    }
+                    return;
+                }
+                use crate::app::app_state::{EditorOverlay, FloatingBoxStyle};
                 let (anchor_line, anchor_col) = self.app_state.cursor_line_col();
                 let blocks = parse_hover_markdown_blocks(&content, &self.theme);
                 if blocks.is_empty() {
@@ -710,9 +728,39 @@ impl AsyncResultRouter for AppShell {
                 }
                 let changed = self.app_state.set_completion(completion);
                 if changed {
+                    self.submit_completion_resolve();
                     self.editor_caret_needs_layout = true;
                     self.request_redraw();
                 }
+            }
+            WorkerResultPayload::LspCompletionResolveResult {
+                item_label,
+                detail: _,
+                documentation,
+            } => {
+                // Drop the in-flight tracker only if this result matches it.
+                if self.completion_resolve_request_id == Some(request_id) {
+                    self.completion_resolve_request_id = None;
+                }
+                // Only apply when completion is still open and the selected item
+                // matches the label we requested (label is a stable enough key here).
+                let Some(completion) = self.app_state.completion() else {
+                    return;
+                };
+                let Some(entry) = completion.filtered_items.get(completion.selected_index) else {
+                    return;
+                };
+                if entry.item.label != item_label {
+                    return;
+                }
+                let cleaned = documentation.filter(|d| !d.trim().is_empty());
+                if cleaned.is_some() {
+                    self.app_state.set_completion_hover_doc(cleaned);
+                } else {
+                    self.app_state.mark_completion_hover_doc_resolved();
+                }
+                self.editor_caret_needs_layout = true;
+                self.request_redraw();
             }
             WorkerResultPayload::FilePreviewLoaded {
                 file_path,

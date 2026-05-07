@@ -11,9 +11,9 @@ use crate::{
 };
 
 use super::{
-    LSP_CODE_ACTION_TIMEOUT_SECS, LSP_COMPLETION_TIMEOUT_SECS, LSP_DEFINITION_TIMEOUT_SECS,
-    LSP_DOCUMENT_SYMBOLS_TIMEOUT_SECS, LSP_FORMATTING_TIMEOUT_SECS, LSP_HOVER_TIMEOUT_SECS,
-    LSP_REFERENCES_TIMEOUT_SECS,
+    LSP_CODE_ACTION_TIMEOUT_SECS, LSP_COMPLETION_RESOLVE_TIMEOUT_SECS, LSP_COMPLETION_TIMEOUT_SECS,
+    LSP_DEFINITION_TIMEOUT_SECS, LSP_DOCUMENT_SYMBOLS_TIMEOUT_SECS, LSP_FORMATTING_TIMEOUT_SECS,
+    LSP_HOVER_TIMEOUT_SECS, LSP_REFERENCES_TIMEOUT_SECS,
 };
 
 pub(super) fn lsp_request_response(
@@ -99,12 +99,24 @@ fn parse_completion_items(result: &Value) -> Vec<LspCompletionItem> {
                         .get("kind")
                         .and_then(Value::as_u64)
                         .map(|kind| kind as u32);
+                    let documentation = item
+                        .get("documentation")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string)
+                        .or_else(|| {
+                            item.pointer("/documentation/value")
+                                .and_then(Value::as_str)
+                                .map(str::to_string)
+                        });
+                    let raw_json = serde_json::to_string(item).ok();
                     Some(LspCompletionItem {
                         label,
                         detail,
                         insert_text,
                         text_edit_text,
                         kind,
+                        documentation,
+                        raw_json,
                     })
                 })
                 .collect()
@@ -198,6 +210,7 @@ pub(super) fn handle_lsp_hover(
     character: u32,
     cursor_line: usize,
     cursor_col: usize,
+    for_completion: bool,
 ) -> Result<WorkerResultPayload, String> {
     let params = serde_json::json!({
         "textDocument": { "uri": uri },
@@ -223,6 +236,53 @@ pub(super) fn handle_lsp_hover(
         content,
         cursor_line,
         cursor_col,
+        for_completion,
+    })
+}
+
+pub(super) fn handle_lsp_completion_resolve(
+    session: &Arc<LspClientProcess>,
+    item_label: &str,
+    item_json: &str,
+) -> Result<WorkerResultPayload, String> {
+    let params: Value = serde_json::from_str(item_json)
+        .map_err(|err| format!("completion resolve: invalid item JSON: {err}"))?;
+    let response = lsp_request_response(
+        session,
+        "completionItem/resolve",
+        params,
+        LSP_COMPLETION_RESOLVE_TIMEOUT_SECS,
+    )?;
+    let result = response
+        .get("result")
+        .ok_or_else(|| "completion resolve: no result".to_string())?;
+    if result.is_null() {
+        return Err("completion resolve: null result".to_string());
+    }
+    let detail = result
+        .get("detail")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| {
+            result
+                .pointer("/labelDetails/detail")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        });
+    let documentation = result
+        .get("documentation")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .or_else(|| {
+            result
+                .pointer("/documentation/value")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        });
+    Ok(WorkerResultPayload::LspCompletionResolveResult {
+        item_label: item_label.to_string(),
+        detail,
+        documentation,
     })
 }
 

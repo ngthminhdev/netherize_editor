@@ -236,6 +236,8 @@ pub enum WorkerRequestPayload {
         uri: String,
         line: u32,
         character: u32,
+        /// When true, result goes into CompletionState.hover_doc instead of overlay.
+        for_completion: bool,
     },
     /// textDocument/definition request — jump hoặc peek.
     LspDefinitionRequest {
@@ -280,6 +282,16 @@ pub enum WorkerRequestPayload {
         line: u32,
         character: u32,
         diagnostics: Vec<LspDiagnostic>,
+    },
+    /// completionItem/resolve request — fetches additional `documentation`/`detail`
+    /// for a previously returned completion item.
+    LspCompletionResolveRequest {
+        language_id: String,
+        uri: String,
+        /// Original JSON of the completion item (round-tripped to the server).
+        item_json: String,
+        /// Label used to verify the response still matches the requested item.
+        item_label: String,
     },
     AiInlineCompletionRequest {
         api_url: String,
@@ -355,6 +367,10 @@ pub struct LspCompletionItem {
     pub insert_text: Option<String>,
     pub text_edit_text: Option<String>,
     pub kind: Option<u32>,
+    pub documentation: Option<String>,
+    /// Original JSON of the item — needed to round-trip through `completionItem/resolve`.
+    /// `None` for items synthesized in tests.
+    pub raw_json: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -493,6 +509,8 @@ pub enum WorkerResultPayload {
         /// Vị trí cursor tại thời điểm gửi request (dùng để định vị popup).
         cursor_line: usize,
         cursor_col: usize,
+        /// Mirrors the request flag — routes result to completion doc panel.
+        for_completion: bool,
     },
     /// textDocument/definition response.
     LspDefinitionResult {
@@ -525,6 +543,13 @@ pub enum WorkerResultPayload {
     /// textDocument/codeAction response.
     LspCodeActionResult {
         actions: Vec<LspCodeAction>,
+    },
+    /// completionItem/resolve response — augmented detail/documentation for the item
+    /// that the client requested resolution for.
+    LspCompletionResolveResult {
+        item_label: String,
+        detail: Option<String>,
+        documentation: Option<String>,
     },
     FzfResults {
         query: String,

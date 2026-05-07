@@ -22,9 +22,9 @@ use super::{
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
     lsp_io::{spawn_lsp_stderr_logger, spawn_lsp_stdout_reader},
     lsp_parse::{
-        handle_lsp_code_action, handle_lsp_completion, handle_lsp_definition,
-        handle_lsp_document_symbols, handle_lsp_formatting, handle_lsp_hover,
-        handle_lsp_references,
+        handle_lsp_code_action, handle_lsp_completion, handle_lsp_completion_resolve,
+        handle_lsp_definition, handle_lsp_document_symbols, handle_lsp_formatting,
+        handle_lsp_hover, handle_lsp_references,
     },
 };
 
@@ -304,6 +304,7 @@ fn execute_lsp_request(
             uri,
             line,
             character,
+            for_completion,
         } => {
             let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
                 language_profile_for_language_id(language_id)
@@ -322,7 +323,7 @@ fn execute_lsp_request(
             handle
                 .process
                 .update_request_meta(request.request_id, request.revision_id);
-            handle_lsp_hover(&handle.process, uri, *line, *character, 0, 0)
+            handle_lsp_hover(&handle.process, uri, *line, *character, 0, 0, *for_completion)
         }
         WorkerRequestPayload::LspDefinitionRequest {
             uri,
@@ -446,6 +447,31 @@ fn execute_lsp_request(
                 *prefix_start_col,
                 prefix,
             )
+        }
+        WorkerRequestPayload::LspCompletionResolveRequest {
+            language_id,
+            uri,
+            item_json,
+            item_label,
+        } => {
+            let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
+                language_profile_for_language_id(language_id)
+                    .map(|profile| profile.lsp_binary)
+                    .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
+            });
+            let Some(handle) = handle else {
+                return Err("completion resolve rejected: LSP server not running".to_string());
+            };
+            if !handle.capabilities.completion_resolve {
+                return Err(format!(
+                    "completion resolve rejected: {} does not advertise resolveProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_completion_resolve(&handle.process, item_label, item_json)
         }
         WorkerRequestPayload::LspCodeActionRequest {
             uri,

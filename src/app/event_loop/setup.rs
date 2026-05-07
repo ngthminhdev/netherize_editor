@@ -171,6 +171,7 @@ impl AppShell {
             last_syntax_edit_hint: None,
             active_highlight_request_revision: 0,
             references_request_revision: 0,
+            completion_resolve_request_id: None,
             document_symbols_request_revision: 0,
             fzf_search_revision: 0,
             local_history_revision: 0,

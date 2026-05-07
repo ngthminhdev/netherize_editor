@@ -196,6 +196,7 @@ impl AppShell {
                 uri,
                 line,
                 character,
+                for_completion: false,
             },
         });
         changed

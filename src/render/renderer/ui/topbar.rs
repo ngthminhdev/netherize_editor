@@ -198,7 +198,7 @@ impl Renderer {
                     0.0
                 };
                 let content_width = label_width + dirty_extra_width;
-                let tab_min_w = bounds[2] * 0.1;
+                let tab_min_w = bounds[2] * 0.10;
                 let tab_max_w = bounds[2] * 0.15;
                 let tab_width = (TOPBAR_TAB_PADDING_X * 2.0 + content_width)
                     .clamp(tab_min_w, tab_max_w)

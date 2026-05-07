@@ -160,6 +160,10 @@ pub struct AppShell {
     active_highlight_request_revision: u64,
     references_request_revision: u64,
     document_symbols_request_revision: u64,
+    /// In-flight `completionItem/resolve` request id; used to correlate failure events
+    /// back to the pending docs panel so we can flip "Loading…" to "No docs" when the
+    /// server rejects or times out.
+    completion_resolve_request_id: Option<u64>,
     fzf_search_revision: u64,
     local_history_revision: u64,
     pending_parse_after_debounce: bool,

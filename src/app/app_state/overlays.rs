@@ -9,6 +9,28 @@ impl AppState {
         true
     }
 
+    pub fn set_completion_hover_doc(&mut self, doc: Option<String>) {
+        if let Some(state) = self.completion.as_mut() {
+            state.hover_doc = doc;
+            // Calling with `None` means "back to loading" (e.g. on selection change).
+            // Calling with `Some(_)` means we have a definitive answer.
+            state.hover_doc_resolved = state.hover_doc.is_some();
+            self.revision += 1;
+        }
+    }
+
+    /// Mark the resolve as finished without populating any docs (e.g. server returned
+    /// no documentation, or the request failed, or no resolve was needed). Lets the
+    /// UI swap "Loading…" for "No docs available".
+    pub fn mark_completion_hover_doc_resolved(&mut self) {
+        if let Some(state) = self.completion.as_mut() {
+            if !state.hover_doc_resolved {
+                state.hover_doc_resolved = true;
+                self.revision += 1;
+            }
+        }
+    }
+
     pub fn clear_current_overlays(&mut self) -> bool {
         if self.current_overlays.is_empty() {
             return false;

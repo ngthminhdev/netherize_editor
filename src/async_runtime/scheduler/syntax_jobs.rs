@@ -309,6 +309,7 @@ pub(super) async fn execute_virtual_job(
         | WorkerRequestPayload::LspDocumentSymbolsRequest { .. }
         | WorkerRequestPayload::LspFormattingRequest { .. }
         | WorkerRequestPayload::LspCompletionRequest { .. }
+        | WorkerRequestPayload::LspCompletionResolveRequest { .. }
         | WorkerRequestPayload::LspCodeActionRequest { .. }
         | WorkerRequestPayload::StopLspServer
         | WorkerRequestPayload::ShutdownAllLspServers => {

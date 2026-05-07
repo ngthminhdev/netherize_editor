@@ -10,6 +10,8 @@ pub struct ServerCapabilities {
     pub completion: bool,
     /// Ký tự trigger autocomplete (vd: `.`, `::`, `(` cho Rust).
     pub completion_trigger_chars: Vec<char>,
+    /// Server có hỗ trợ `completionItem/resolve` để bổ sung docs/detail không.
+    pub completion_resolve: bool,
     pub definition: bool,
     pub references: bool,
     pub document_symbols: bool,
@@ -43,10 +45,16 @@ impl ServerCapabilities {
             })
             .collect();
 
+        let completion_resolve = caps
+            .pointer("/completionProvider/resolveProvider")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
         Self {
             hover: supported("hoverProvider"),
             completion: supported("completionProvider"),
             completion_trigger_chars,
+            completion_resolve,
             definition: supported("definitionProvider"),
             references: supported("referencesProvider"),
             document_symbols: supported("documentSymbolProvider"),
