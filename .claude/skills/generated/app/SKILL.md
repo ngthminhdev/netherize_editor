@@ -1,11 +1,11 @@
 ---
 name: app
-description: "Skill for the App area of netherize_editor. 135 symbols across 20 files."
+description: "Skill for the App area of netherize_editor. 136 symbols across 21 files."
 ---
 
 # App
 
-135 symbols | 20 files | Cohesion: 77%
+136 symbols | 21 files | Cohesion: 77%
 
 ## When to Use
 
@@ -23,7 +23,7 @@ description: "Skill for the App area of netherize_editor. 135 symbols across 20 
 | `src/app/input_map/focus.rs` | resolve_settings_focus, resolve_diagnostics_focus, resolve_references_focus, resolve_explorer_focus, resolve_inspector_focus (+4) |
 | `src/app/input/helpers.rs` | numeric_count_digit_from_input, should_start_replace_pending, should_start_yank_pending, inner_or_around_from_input, text_object_kind_from_input (+2) |
 | `src/app/match_ranges.rs` | compute_label_match_ranges, score_label_match, build_lowercase_byte_map, map_lower_range_to_original, push_match_range (+2) |
-| `src/app/async_bridge.rs` | new, bridge_discards_stale_result_when_old_revision_arrives_last, bridge_accepts_same_revision_result, bridge_tracks_multiple_worker_failure_events, pump (+2) |
+| `src/app/async_bridge.rs` | new, bridge_counts_failed_event_in_summary, lsp_diagnostics_bypass_stale_revision_filter, bridge_tracks_multiple_worker_failure_events, pump (+2) |
 | `src/app/persistence.rs` | most_recent_existing, configured_theme_profile, state_path, load_from_path, load (+1) |
 | `src/app/clipboard.rs` | new, ensure_initialized, clipboard_mut, get_text, set_text |
 | `src/app/event_loop/setup.rs` | new, new_with_scheduler, pump_bridge |
@@ -32,25 +32,25 @@ description: "Skill for the App area of netherize_editor. 135 symbols across 20 
 
 Start here when exploring this area:
 
-- **`parse`** (Function) — `src/core/command_ids.rs:370`
+- **`parse`** (Function) — `src/core/command_ids.rs:396`
 - **`matches`** (Function) — `src/app/resolved_keymap.rs:33`
 - **`is_leader_input`** (Function) — `src/app/resolved_keymap.rs:284`
-- **`lookup`** (Function) — `src/app/resolved_keymap.rs:371`
-- **`lookup_mode_only`** (Function) — `src/app/resolved_keymap.rs:393`
+- **`lookup`** (Function) — `src/app/resolved_keymap.rs:373`
+- **`lookup_mode_only`** (Function) — `src/app/resolved_keymap.rs:395`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `parse` | Function | `src/core/command_ids.rs` | 370 |
+| `parse` | Function | `src/core/command_ids.rs` | 396 |
 | `matches` | Function | `src/app/resolved_keymap.rs` | 33 |
 | `is_leader_input` | Function | `src/app/resolved_keymap.rs` | 284 |
-| `lookup` | Function | `src/app/resolved_keymap.rs` | 371 |
-| `lookup_mode_only` | Function | `src/app/resolved_keymap.rs` | 393 |
-| `lookup_global` | Function | `src/app/resolved_keymap.rs` | 408 |
-| `resolve_command` | Function | `src/app/resolved_keymap.rs` | 897 |
-| `resolve_command_mode_only` | Function | `src/app/resolved_keymap.rs` | 907 |
-| `resolve_global_command` | Function | `src/app/resolved_keymap.rs` | 917 |
+| `lookup` | Function | `src/app/resolved_keymap.rs` | 373 |
+| `lookup_mode_only` | Function | `src/app/resolved_keymap.rs` | 395 |
+| `lookup_global` | Function | `src/app/resolved_keymap.rs` | 410 |
+| `resolve_command` | Function | `src/app/resolved_keymap.rs` | 934 |
+| `resolve_command_mode_only` | Function | `src/app/resolved_keymap.rs` | 944 |
+| `resolve_global_command` | Function | `src/app/resolved_keymap.rs` | 954 |
 | `palette_query_from_text` | Function | `src/app/input_map/helpers.rs` | 13 |
 | `resolve_settings_focus` | Function | `src/app/input_map/focus.rs` | 6 |
 | `resolve_diagnostics_focus` | Function | `src/app/input_map/focus.rs` | 121 |
@@ -83,13 +83,13 @@ Start here when exploring this area:
 | Area | Connections |
 |------|-------------|
 | Theme_config | 5 calls |
-| App_state | 5 calls |
-| Renderer | 4 calls |
+| Ui | 3 calls |
 | Config | 3 calls |
 | Workbench | 3 calls |
+| App_state | 3 calls |
 | Workspace | 2 calls |
-| Event_loop | 1 calls |
-| Command_dispatch | 1 calls |
+| Command_dispatch | 2 calls |
+| Benches | 1 calls |
 
 ## How to Explore
 

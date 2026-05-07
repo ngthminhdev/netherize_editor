@@ -31,20 +31,20 @@ description: "Skill for the Input area of netherize_editor. 101 symbols across 9
 
 Start here when exploring this area:
 
-- **`supports_press_and_hold_repeat`** (Function) — `src/core/commands.rs:393`
-- **`for_mode`** (Function) — `src/app/input_map/mod.rs:95`
-- **`with_focus`** (Function) — `src/app/input_map/mod.rs:120`
-- **`with_keymap`** (Function) — `src/app/input_map/mod.rs:165`
+- **`supports_press_and_hold_repeat`** (Function) — `src/core/commands.rs:423`
+- **`for_mode`** (Function) — `src/app/input_map/mod.rs:97`
+- **`with_focus`** (Function) — `src/app/input_map/mod.rs:122`
+- **`with_keymap`** (Function) — `src/app/input_map/mod.rs:167`
 - **`classify_pending_state`** (Function) — `src/app/input/pending.rs:97`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `supports_press_and_hold_repeat` | Function | `src/core/commands.rs` | 393 |
-| `for_mode` | Function | `src/app/input_map/mod.rs` | 95 |
-| `with_focus` | Function | `src/app/input_map/mod.rs` | 120 |
-| `with_keymap` | Function | `src/app/input_map/mod.rs` | 165 |
+| `supports_press_and_hold_repeat` | Function | `src/core/commands.rs` | 423 |
+| `for_mode` | Function | `src/app/input_map/mod.rs` | 97 |
+| `with_focus` | Function | `src/app/input_map/mod.rs` | 122 |
+| `with_keymap` | Function | `src/app/input_map/mod.rs` | 167 |
 | `classify_pending_state` | Function | `src/app/input/pending.rs` | 97 |
 | `uses_operator_count` | Function | `src/app/input/pending.rs` | 117 |
 | `from_key_event` | Function | `src/app/input/model.rs` | 18 |

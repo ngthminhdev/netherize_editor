@@ -1,11 +1,11 @@
 ---
 name: lsp
-description: "Skill for the Lsp area of netherize_editor. 91 symbols across 10 files."
+description: "Skill for the Lsp area of netherize_editor. 95 symbols across 11 files."
 ---
 
 # Lsp
 
-91 symbols | 10 files | Cohesion: 75%
+95 symbols | 11 files | Cohesion: 74%
 
 ## When to Use
 
@@ -18,9 +18,9 @@ description: "Skill for the Lsp area of netherize_editor. 91 symbols across 10 f
 | File | Symbols |
 |------|---------|
 | `src/lsp/client.rs` | is_document_open, mark_document_open, mark_document_closed, build_did_open_notification, build_did_change_notification (+57) |
-| `src/lsp/registry.rs` | language_profile_for_language_id, language_profile_for_path, language_profile_detects_dockerfile_by_filename, language_profile_detects_dockerfile_variants, language_profile_detects_sql_by_extension (+7) |
+| `src/lsp/registry.rs` | language_profile_for_language_id, language_profile_for_path, language_profile_detects_dockerfile_by_filename, language_profile_detects_dockerfile_variants, language_profile_detects_sql_by_extension (+10) |
 | `src/async_runtime/scheduler.rs` | get_by_binary, get_handle, get_handle_by_uri, take_any, drain_all (+1) |
-| `src/async_runtime/scheduler/lsp_parse.rs` | parse_locations, handle_lsp_definition, handle_lsp_references, lsp_request_response |
+| `src/async_runtime/scheduler/lsp_parse.rs` | lsp_request_response, parse_locations, handle_lsp_definition, handle_lsp_references |
 | `src/async_runtime/scheduler/lsp_io.rs` | spawn_lsp_stderr_logger, spawn_lsp_stdout_reader |
 | `src/async_runtime/scheduler/lsp.rs` | execute_lsp_request |
 | `src/syntax/parser.rs` | language_id_for_path |
@@ -32,36 +32,36 @@ description: "Skill for the Lsp area of netherize_editor. 91 symbols across 10 f
 
 Start here when exploring this area:
 
-- **`language_profile_for_language_id`** (Function) — `src/lsp/registry.rs:208`
-- **`is_document_open`** (Function) — `src/lsp/client.rs:459`
-- **`mark_document_open`** (Function) — `src/lsp/client.rs:466`
-- **`mark_document_closed`** (Function) — `src/lsp/client.rs:472`
-- **`build_did_open_notification`** (Function) — `src/lsp/client.rs:853`
+- **`language_profile_for_language_id`** (Function) — `src/lsp/registry.rs:233`
+- **`is_document_open`** (Function) — `src/lsp/client.rs:463`
+- **`mark_document_open`** (Function) — `src/lsp/client.rs:470`
+- **`mark_document_closed`** (Function) — `src/lsp/client.rs:476`
+- **`build_did_open_notification`** (Function) — `src/lsp/client.rs:857`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `language_profile_for_language_id` | Function | `src/lsp/registry.rs` | 208 |
-| `is_document_open` | Function | `src/lsp/client.rs` | 459 |
-| `mark_document_open` | Function | `src/lsp/client.rs` | 466 |
-| `mark_document_closed` | Function | `src/lsp/client.rs` | 472 |
-| `build_did_open_notification` | Function | `src/lsp/client.rs` | 853 |
-| `build_did_change_notification` | Function | `src/lsp/client.rs` | 869 |
-| `build_did_close_notification` | Function | `src/lsp/client.rs` | 881 |
-| `get_by_binary` | Function | `src/async_runtime/scheduler.rs` | 103 |
-| `get_handle` | Function | `src/async_runtime/scheduler.rs` | 117 |
-| `get_handle_by_uri` | Function | `src/async_runtime/scheduler.rs` | 128 |
-| `take_any` | Function | `src/async_runtime/scheduler.rs` | 139 |
-| `drain_all` | Function | `src/async_runtime/scheduler.rs` | 167 |
-| `handle_lsp_definition` | Function | `src/async_runtime/scheduler/lsp_parse.rs` | 227 |
-| `handle_lsp_references` | Function | `src/async_runtime/scheduler/lsp_parse.rs` | 292 |
+| `language_profile_for_language_id` | Function | `src/lsp/registry.rs` | 233 |
+| `is_document_open` | Function | `src/lsp/client.rs` | 463 |
+| `mark_document_open` | Function | `src/lsp/client.rs` | 470 |
+| `mark_document_closed` | Function | `src/lsp/client.rs` | 476 |
+| `build_did_open_notification` | Function | `src/lsp/client.rs` | 857 |
+| `build_did_change_notification` | Function | `src/lsp/client.rs` | 873 |
+| `build_did_close_notification` | Function | `src/lsp/client.rs` | 885 |
+| `get_by_binary` | Function | `src/async_runtime/scheduler.rs` | 105 |
+| `get_handle` | Function | `src/async_runtime/scheduler.rs` | 119 |
+| `get_handle_by_uri` | Function | `src/async_runtime/scheduler.rs` | 130 |
+| `take_any` | Function | `src/async_runtime/scheduler.rs` | 141 |
+| `drain_all` | Function | `src/async_runtime/scheduler.rs` | 169 |
 | `spawn_lsp_stderr_logger` | Function | `src/async_runtime/scheduler/lsp_io.rs` | 133 |
-| `send_notification` | Function | `src/lsp/client.rs` | 378 |
-| `send_request` | Function | `src/lsp/client.rs` | 398 |
-| `send_request_with_id` | Function | `src/lsp/client.rs` | 427 |
-| `write_json_rpc_message_async` | Function | `src/lsp/client.rs` | 742 |
-| `read_json_rpc_message_async` | Function | `src/lsp/client.rs` | 677 |
+| `send_notification` | Function | `src/lsp/client.rs` | 382 |
+| `send_request` | Function | `src/lsp/client.rs` | 402 |
+| `send_request_with_id` | Function | `src/lsp/client.rs` | 431 |
+| `shutdown_and_exit` | Function | `src/lsp/client.rs` | 535 |
+| `graceful_shutdown` | Function | `src/lsp/client.rs` | 539 |
+| `write_json_rpc_message_async` | Function | `src/lsp/client.rs` | 746 |
+| `language_id_for_path` | Function | `src/syntax/parser.rs` | 6 |
 
 ## Execution Flows
 
@@ -82,8 +82,8 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Workbench | 12 calls |
-| Scheduler | 5 calls |
+| Workbench | 11 calls |
+| Scheduler | 8 calls |
 | Event_loop | 2 calls |
 | App_state | 1 calls |
 

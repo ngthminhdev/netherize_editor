@@ -1,67 +1,64 @@
 ---
 name: syntax
-description: "Skill for the Syntax area of netherize_editor. 80 symbols across 11 files."
+description: "Skill for the Syntax area of netherize_editor. 76 symbols across 7 files."
 ---
 
 # Syntax
 
-80 symbols | 11 files | Cohesion: 74%
+76 symbols | 7 files | Cohesion: 72%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how root_node, new, new_rust work
+- Understanding how as_str, root_node, new work
 - Modifying syntax-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
-| `src/syntax/highlight.rs` | generate_highlight_spans, generate_injection_highlights, injection_language_for_query, rust_highlight_generates_core_categories, rust_highlight_generates_extended_categories (+38) |
-| `src/syntax/syntax_engine.rs` | root_node, new, new_rust, parse_source, parse_incremental (+11) |
-| `src/async_runtime/scheduler/syntax_jobs.rs` | execute_virtual_job, byte_range_for_line_window, highlight_byte_window, should_highlight_full_buffer, cpu_burn_checksum |
-| `src/async_runtime/scheduler/git.rs` | run_git_blame_line, parse_git_blame_summary, run_workspace_git_status, parse_git_file_status, run_fetch_git_baseline |
-| `src/async_runtime/scheduler/tests.rs` | file_preview_lines_center_around_target_line, file_preview_lines_without_target_use_file_start, parse_git_blame_summary_extracts_author_and_relative_time |
-| `src/app/event_loop/helpers.rs` | parse_markdown_preview_blocks, fallback_markdown_preview |
+| `src/syntax/highlight.rs` | generate_highlight_spans, generate_dotenv_highlight_spans, should_highlight_inline, highlight_snippet, generate_injection_highlights (+43) |
+| `src/syntax/syntax_engine.rs` | as_str, root_node, new, new_rust, parse_source (+14) |
+| `src/app/event_loop/helpers.rs` | build_preview_render_data, parse_markdown_preview_blocks, fallback_markdown_preview |
+| `src/syntax/parser.rs` | language_id_for_extension, tree_sitter_language |
 | `src/app/event_loop/commands.rs` | reconcile_highlight_spans_with_pending_edits, close_current_buffer_now |
 | `benches/editor_bench.rs` | bench_incremental_parse |
-| `src/async_runtime/scheduler/fzf.rs` | build_file_preview_lines |
 | `src/app/event_loop/setup.rs` | refresh_inline_syntax_highlighting |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`root_node`** (Function) — `src/syntax/syntax_engine.rs:63`
-- **`new`** (Function) — `src/syntax/syntax_engine.rs:86`
-- **`new_rust`** (Function) — `src/syntax/syntax_engine.rs:109`
-- **`parse_source`** (Function) — `src/syntax/syntax_engine.rs:115`
-- **`parse_incremental`** (Function) — `src/syntax/syntax_engine.rs:139`
+- **`as_str`** (Function) — `src/syntax/syntax_engine.rs:26`
+- **`root_node`** (Function) — `src/syntax/syntax_engine.rs:67`
+- **`new`** (Function) — `src/syntax/syntax_engine.rs:90`
+- **`new_rust`** (Function) — `src/syntax/syntax_engine.rs:113`
+- **`parse_source`** (Function) — `src/syntax/syntax_engine.rs:119`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `root_node` | Function | `src/syntax/syntax_engine.rs` | 63 |
-| `new` | Function | `src/syntax/syntax_engine.rs` | 86 |
-| `new_rust` | Function | `src/syntax/syntax_engine.rs` | 109 |
-| `parse_source` | Function | `src/syntax/syntax_engine.rs` | 115 |
-| `parse_incremental` | Function | `src/syntax/syntax_engine.rs` | 139 |
-| `current_tree` | Function | `src/syntax/syntax_engine.rs` | 193 |
-| `generate_highlight_spans` | Function | `src/syntax/highlight.rs` | 287 |
-| `execute_virtual_job` | Function | `src/async_runtime/scheduler/syntax_jobs.rs` | 19 |
-| `run_git_blame_line` | Function | `src/async_runtime/scheduler/git.rs` | 2 |
-| `parse_git_blame_summary` | Function | `src/async_runtime/scheduler/git.rs` | 33 |
-| `run_workspace_git_status` | Function | `src/async_runtime/scheduler/git.rs` | 87 |
-| `run_fetch_git_baseline` | Function | `src/async_runtime/scheduler/git.rs` | 135 |
-| `build_file_preview_lines` | Function | `src/async_runtime/scheduler/fzf.rs` | 223 |
+| `as_str` | Function | `src/syntax/syntax_engine.rs` | 26 |
+| `root_node` | Function | `src/syntax/syntax_engine.rs` | 67 |
+| `new` | Function | `src/syntax/syntax_engine.rs` | 90 |
+| `new_rust` | Function | `src/syntax/syntax_engine.rs` | 113 |
+| `parse_source` | Function | `src/syntax/syntax_engine.rs` | 119 |
+| `parse_incremental` | Function | `src/syntax/syntax_engine.rs` | 143 |
+| `current_tree` | Function | `src/syntax/syntax_engine.rs` | 197 |
+| `language_id_for_extension` | Function | `src/syntax/parser.rs` | 10 |
+| `generate_highlight_spans` | Function | `src/syntax/highlight.rs` | 288 |
+| `generate_dotenv_highlight_spans` | Function | `src/syntax/highlight.rs` | 311 |
+| `should_highlight_inline` | Function | `src/syntax/highlight.rs` | 381 |
+| `highlight_snippet` | Function | `src/syntax/highlight.rs` | 390 |
+| `build_preview_render_data` | Function | `src/app/event_loop/helpers.rs` | 213 |
 | `parse_markdown_preview_blocks` | Function | `src/app/event_loop/helpers.rs` | 296 |
-| `language_id` | Function | `src/syntax/syntax_engine.rs` | 67 |
-| `generate_highlight_spans_in_byte_window` | Function | `src/syntax/highlight.rs` | 306 |
-| `merge_highlight_spans` | Function | `src/syntax/highlight.rs` | 236 |
-| `overlay_highlight_layers` | Function | `src/syntax/highlight.rs` | 271 |
-| `tree_sitter_language` | Function | `src/syntax/parser.rs` | 32 |
-| `apply_highlight_edits` | Function | `src/syntax/highlight.rs` | 220 |
+| `language_id` | Function | `src/syntax/syntax_engine.rs` | 71 |
+| `generate_highlight_spans_in_byte_window` | Function | `src/syntax/highlight.rs` | 365 |
+| `merge_highlight_spans` | Function | `src/syntax/highlight.rs` | 237 |
+| `overlay_highlight_layers` | Function | `src/syntax/highlight.rs` | 272 |
+| `tree_sitter_language` | Function | `src/syntax/parser.rs` | 34 |
+| `apply_highlight_edits` | Function | `src/syntax/highlight.rs` | 221 |
 
 ## Execution Flows
 
@@ -69,6 +66,7 @@ Start here when exploring this area:
 |------|------|-------|
 | `Handle_command_with_count → Tree_sitter_language` | cross_community | 6 |
 | `Handle_command_with_count → Root_node` | cross_community | 5 |
+| `Handle_palette_and_open_command → As_str` | cross_community | 4 |
 | `Handle_palette_and_open_command → Tree_sitter_language` | cross_community | 4 |
 | `Handle_palette_and_open_command → Parse` | cross_community | 4 |
 | `Handle_palette_and_open_command → New` | cross_community | 4 |
@@ -84,11 +82,10 @@ Start here when exploring this area:
 | Workbench | 4 calls |
 | App | 3 calls |
 | Benches | 1 calls |
-| Lsp | 1 calls |
 | Command_dispatch | 1 calls |
 
 ## How to Explore
 
-1. `gitnexus_context({name: "root_node"})` — see callers and callees
+1. `gitnexus_context({name: "as_str"})` — see callers and callees
 2. `gitnexus_query({query: "syntax"})` — find related execution flows
 3. Read key files listed above for implementation details

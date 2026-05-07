@@ -32,7 +32,7 @@ Start here when exploring this area:
 
 - **`builtin`** (Function) — `src/config/ui_config.rs:177`
 - **`validate`** (Function) — `src/config/ui_config.rs:661`
-- **`is_valid`** (Function) — `src/core/command_ids.rs:366`
+- **`is_valid`** (Function) — `src/core/command_ids.rs:392`
 - **`load`** (Function) — `src/config/keymap_loader.rs:35`
 - **`debounce_ms`** (Function) — `src/config/ai_config.rs:49`
 
@@ -42,14 +42,14 @@ Start here when exploring this area:
 |--------|------|------|------|
 | `builtin` | Function | `src/config/ui_config.rs` | 177 |
 | `validate` | Function | `src/config/ui_config.rs` | 661 |
-| `is_valid` | Function | `src/core/command_ids.rs` | 366 |
+| `is_valid` | Function | `src/core/command_ids.rs` | 392 |
 | `load` | Function | `src/config/keymap_loader.rs` | 35 |
 | `debounce_ms` | Function | `src/config/ai_config.rs` | 49 |
 | `prefix_chars` | Function | `src/config/ai_config.rs` | 53 |
 | `suffix_chars` | Function | `src/config/ai_config.rs` | 57 |
 | `max_tokens` | Function | `src/config/ai_config.rs` | 61 |
-| `flush_pending_ai_inline_completion` | Function | `src/app/event_loop/setup.rs` | 941 |
-| `next_ai_inline_flush_deadline` | Function | `src/app/event_loop/setup.rs` | 992 |
+| `flush_pending_ai_inline_completion` | Function | `src/app/event_loop/setup.rs` | 952 |
+| `next_ai_inline_flush_deadline` | Function | `src/app/event_loop/setup.rs` | 1003 |
 | `active_profile` | Function | `src/config/ui_config.rs` | 143 |
 | `load_active` | Function | `src/config/ui_config.rs` | 147 |
 | `load` | Function | `src/config/ui_config.rs` | 162 |
@@ -80,7 +80,7 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Cluster_2 | 2 calls |
+| Scheduler | 2 calls |
 | App | 1 calls |
 | Event_loop | 1 calls |
 

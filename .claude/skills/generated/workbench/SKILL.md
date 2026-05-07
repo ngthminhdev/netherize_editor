@@ -1,28 +1,28 @@
 ---
 name: workbench
-description: "Skill for the Workbench area of netherize_editor. 109 symbols across 19 files."
+description: "Skill for the Workbench area of netherize_editor. 110 symbols across 17 files."
 ---
 
 # Workbench
 
-109 symbols | 19 files | Cohesion: 86%
+110 symbols | 17 files | Cohesion: 87%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how find, from_ui_theme, new work
+- Understanding how flatten, find, from_ui_theme work
 - Modifying workbench-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
-| `src/workbench/layout_engine.rs` | default, from_ui_theme, new, status_bar_top_gap, compute (+17) |
+| `src/workbench/layout_engine.rs` | default, from_ui_theme, new, status_bar_top_gap, compute (+21) |
 | `src/workbench/panel_state.rs` | active_tab_id, active_tab_label, new, switch_to_prev_tab, default (+12) |
 | `src/workbench/inspector_panel.rs` | title, visible_rows, move_selection_next, toggle_selected_expand, selected_row_label (+10) |
 | `src/workbench/text_coordinate_map.rs` | from_text, map_line_column_to_rect, map_source_location_rect, gutter_marker_rect, maps_line_column_to_stable_pixel_rect (+7) |
 | `src/workbench/focus_manager.rs` | default, set, ensure_valid, cycle_next, cycle_prev (+6) |
-| `src/workbench/region_model.rs` | find, find_node, new, flatten, flatten_node (+2) |
+| `src/workbench/region_model.rs` | flatten, flatten_node, find, find_node, new (+2) |
 | `src/workbench/overlay_manager.rs` | default, build_overlays, clamp_to_bounds, builds_both_window_and_editor_relative_overlays |
 | `src/workbench/debug_state.rs` | default, toggle_breakpoint_on_execution_line, toggle_breakpoint_at_line, toggle_breakpoint_adds_and_removes_on_same_line |
 | `src/app/event_loop/mod.rs` | active_terminal_grid_mut, focused_terminal_grid_mut, focused_terminal_session_id |
@@ -32,24 +32,25 @@ description: "Skill for the Workbench area of netherize_editor. 109 symbols acro
 
 Start here when exploring this area:
 
+- **`flatten`** (Function) — `src/workbench/region_model.rs:103`
 - **`find`** (Function) — `src/workbench/region_model.rs:120`
-- **`from_ui_theme`** (Function) — `src/workbench/layout_engine.rs:86`
-- **`new`** (Function) — `src/workbench/layout_engine.rs:113`
-- **`compute`** (Function) — `src/workbench/layout_engine.rs:126`
-- **`apply_handle_drag`** (Function) — `src/workbench/layout_engine.rs:286`
+- **`from_ui_theme`** (Function) — `src/workbench/layout_engine.rs:87`
+- **`new`** (Function) — `src/workbench/layout_engine.rs:114`
+- **`compute`** (Function) — `src/workbench/layout_engine.rs:125`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
+| `flatten` | Function | `src/workbench/region_model.rs` | 103 |
 | `find` | Function | `src/workbench/region_model.rs` | 120 |
-| `from_ui_theme` | Function | `src/workbench/layout_engine.rs` | 86 |
-| `new` | Function | `src/workbench/layout_engine.rs` | 113 |
-| `compute` | Function | `src/workbench/layout_engine.rs` | 126 |
-| `apply_handle_drag` | Function | `src/workbench/layout_engine.rs` | 286 |
-| `new` | Function | `src/render/surface.rs` | 13 |
-| `language_profile_for_extension` | Function | `src/lsp/registry.rs` | 175 |
+| `from_ui_theme` | Function | `src/workbench/layout_engine.rs` | 87 |
+| `new` | Function | `src/workbench/layout_engine.rs` | 114 |
+| `compute` | Function | `src/workbench/layout_engine.rs` | 125 |
+| `apply_handle_drag` | Function | `src/workbench/layout_engine.rs` | 391 |
+| `language_profile_for_extension` | Function | `src/lsp/registry.rs` | 200 |
 | `lsp_entry_for_extension` | Function | `src/lsp/client.rs` | 42 |
+| `new` | Function | `src/render/surface.rs` | 13 |
 | `set` | Function | `src/workbench/focus_manager.rs` | 48 |
 | `ensure_valid` | Function | `src/workbench/focus_manager.rs` | 56 |
 | `cycle_next` | Function | `src/workbench/focus_manager.rs` | 68 |
@@ -61,7 +62,6 @@ Start here when exploring this area:
 | `gutter_marker_rect` | Function | `src/workbench/text_coordinate_map.rs` | 101 |
 | `new` | Function | `src/workbench/region_model.rs` | 42 |
 | `build_overlays` | Function | `src/workbench/overlay_manager.rs` | 83 |
-| `title` | Function | `src/workbench/inspector_panel.rs` | 14 |
 
 ## Execution Flows
 
@@ -82,13 +82,11 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| App_state | 3 calls |
-| Scheduler | 1 calls |
-| Lsp | 1 calls |
-| Command_dispatch | 1 calls |
+| App_state | 2 calls |
+| Command_dispatch | 2 calls |
 
 ## How to Explore
 
-1. `gitnexus_context({name: "find"})` — see callers and callees
+1. `gitnexus_context({name: "flatten"})` — see callers and callees
 2. `gitnexus_query({query: "workbench"})` — find related execution flows
 3. Read key files listed above for implementation details

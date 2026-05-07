@@ -1,11 +1,11 @@
 ---
 name: input-map
-description: "Skill for the Input_map area of netherize_editor. 49 symbols across 7 files."
+description: "Skill for the Input_map area of netherize_editor. 50 symbols across 7 files."
 ---
 
 # Input_map
 
-49 symbols | 7 files | Cohesion: 63%
+50 symbols | 7 files | Cohesion: 64%
 
 ## When to Use
 
@@ -17,7 +17,7 @@ description: "Skill for the Input_map area of netherize_editor. 49 symbols acros
 
 | File | Symbols |
 |------|---------|
-| `src/app/input_map/tests.rs` | make_default_profile_map, input_from_named, input_from_physical, default_profile_leader_f_m_routes_to_lsp_format_document, welcome_explorer_focus_routes_jk_to_recent_project_selection (+25) |
+| `src/app/input_map/tests.rs` | make_default_profile_map, input_from_named, input_from_physical, default_profile_leader_f_m_routes_to_lsp_format_document, default_profile_leader_m_f_routes_to_focus_markdown_preview (+26) |
 | `src/app/input_map/mod.rs` | resolve_sequence_start, resolve_sequence_next, allows_leader, resolve_sequence_from_steps, context_allows_leader_sequence (+5) |
 | `src/app/resolved_keymap.rs` | editor_mode_str, lookup_sequence, sequence_step_candidates, builtin_defaults_include_expected_static_chords |
 | `src/app/input/tests.rs` | ime_commit_is_redirected_to_file_picker_when_palette_is_open, ime_commit_is_redirected_to_ai_chat_text |
@@ -29,36 +29,36 @@ description: "Skill for the Input_map area of netherize_editor. 49 symbols acros
 
 Start here when exploring this area:
 
-- **`resolve_sequence_start`** (Function) — `src/app/input_map/mod.rs:297`
-- **`resolve_sequence_next`** (Function) — `src/app/input_map/mod.rs:305`
+- **`resolve_sequence_start`** (Function) — `src/app/input_map/mod.rs:299`
+- **`resolve_sequence_next`** (Function) — `src/app/input_map/mod.rs:307`
 - **`editor_mode_str`** (Function) — `src/app/resolved_keymap.rs:291`
-- **`lookup_sequence`** (Function) — `src/app/resolved_keymap.rs:421`
-- **`sequence_step_candidates`** (Function) — `src/app/resolved_keymap.rs:513`
+- **`lookup_sequence`** (Function) — `src/app/resolved_keymap.rs:423`
+- **`sequence_step_candidates`** (Function) — `src/app/resolved_keymap.rs:515`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `resolve_sequence_start` | Function | `src/app/input_map/mod.rs` | 297 |
-| `resolve_sequence_next` | Function | `src/app/input_map/mod.rs` | 305 |
+| `resolve_sequence_start` | Function | `src/app/input_map/mod.rs` | 299 |
+| `resolve_sequence_next` | Function | `src/app/input_map/mod.rs` | 307 |
 | `editor_mode_str` | Function | `src/app/resolved_keymap.rs` | 291 |
-| `lookup_sequence` | Function | `src/app/resolved_keymap.rs` | 421 |
-| `sequence_step_candidates` | Function | `src/app/resolved_keymap.rs` | 513 |
+| `lookup_sequence` | Function | `src/app/resolved_keymap.rs` | 423 |
+| `sequence_step_candidates` | Function | `src/app/resolved_keymap.rs` | 515 |
 | `allows_leader` | Function | `src/app/input_map/mod.rs` | 68 |
 | `resolve_terminal_focus` | Function | `src/app/input_map/focus.rs` | 756 |
-| `resolve` | Function | `src/app/input_map/mod.rs` | 176 |
-| `translate` | Function | `src/app/input_map/mod.rs` | 396 |
+| `resolve` | Function | `src/app/input_map/mod.rs` | 178 |
+| `translate` | Function | `src/app/input_map/mod.rs` | 405 |
 | `insert_command_from_text` | Function | `src/app/input_map/helpers.rs` | 2 |
-| `for_mode_with_palette` | Function | `src/app/input_map/mod.rs` | 110 |
-| `for_mode_with_picker` | Function | `src/app/input_map/mod.rs` | 116 |
+| `for_mode_with_palette` | Function | `src/app/input_map/mod.rs` | 112 |
+| `for_mode_with_picker` | Function | `src/app/input_map/mod.rs` | 118 |
 | `translate_ime_commit` | Function | `src/app/input/handler.rs` | 1189 |
 | `make_default_profile_map` | Function | `src/app/input_map/tests.rs` | 22 |
 | `input_from_named` | Function | `src/app/input_map/tests.rs` | 27 |
 | `input_from_physical` | Function | `src/app/input_map/tests.rs` | 36 |
 | `default_profile_leader_f_m_routes_to_lsp_format_document` | Function | `src/app/input_map/tests.rs` | 647 |
-| `welcome_explorer_focus_routes_jk_to_recent_project_selection` | Function | `src/app/input_map/tests.rs` | 736 |
-| `explorer_focus_jk_still_use_explorer_commands_outside_welcome` | Function | `src/app/input_map/tests.rs` | 757 |
-| `palette_focus_empty_welcome_routes_selection_without_visible_overlay` | Function | `src/app/input_map/tests.rs` | 810 |
+| `default_profile_leader_m_f_routes_to_focus_markdown_preview` | Function | `src/app/input_map/tests.rs` | 679 |
+| `welcome_explorer_focus_routes_jk_to_recent_project_selection` | Function | `src/app/input_map/tests.rs` | 768 |
+| `explorer_focus_jk_still_use_explorer_commands_outside_welcome` | Function | `src/app/input_map/tests.rs` | 789 |
 
 ## Execution Flows
 
@@ -79,7 +79,7 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Input | 21 calls |
+| Input | 22 calls |
 | App | 10 calls |
 | Config | 1 calls |
 
