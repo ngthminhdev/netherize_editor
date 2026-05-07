@@ -705,31 +705,8 @@ impl Renderer {
             RegionDrawInstance::new(input_bounds, with_alpha(editor_bg, 0.90)).with_radius(10.0),
         );
 
-        let header_logo_size = header_h.max(1.0);
-        let header_logo_rect = [
-            hclip[0],
-            hclip[1],
-            header_logo_size,
-            header_logo_size,
-        ];
-        let mut header_text_x = hclip[0] + 12.0;
-        if let Some(logo) = bundled_ai_chat_logo() {
-            self.ai_chat_header_image_pipeline.upload_rgba(
-                &self.device,
-                &self.queue,
-                &logo.rgba,
-                logo.width,
-                logo.height,
-                header_logo_rect,
-                [
-                    self.surface_state.config.width,
-                    self.surface_state.config.height,
-                ],
-            );
-            header_text_x = header_logo_rect[0] + header_logo_rect[2] + 12.0;
-        } else {
-            self.ai_chat_header_image_pipeline.clear();
-        }
+        self.ai_chat_header_image_pipeline.clear();
+        let header_text_x = hclip[0] + 12.0;
 
         let header_text =
             format!("netherize  •  {active_agent}  •  {model_label}  •  {status_label}");

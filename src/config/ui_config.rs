@@ -187,8 +187,8 @@ impl UiConfig {
                 max_content_scale: 1.0,
             },
             layout: WorkbenchLayoutConfig {
-                outer_gap: 10.0,
-                panel_gap: 8.0,
+                outer_gap: 14.0,
+                panel_gap: 14.0,
                 inner_padding: 12.0,
                 round_ui: true,
                 top_bar_height: 34.0,

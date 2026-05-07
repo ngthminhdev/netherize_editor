@@ -1075,15 +1075,25 @@ impl AppShell {
             let (
                 filetype,
                 git_branch,
+                is_dirty,
+                active_file_name,
                 status_line,
                 status_col,
                 diagnostics_errors,
                 diagnostics_warnings,
             ) = if show_welcome {
-                ("Welcome", "", 0, 0, 0, 0)
+                ("Welcome", "", false, String::new(), 0, 0, 0, 0)
             } else {
-                let filetype = self.app_state.active_filetype_label();
+                let filetype   = self.app_state.active_filetype_label();
                 let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");
+                let is_dirty   = self.app_state.is_dirty();
+                let active_file_name = self
+                    .app_state
+                    .active_file()
+                    .and_then(|p| p.file_name())
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
                 let (diagnostics_errors, diagnostics_warnings) = self
                     .app_state
                     .active_file()
@@ -1101,6 +1111,8 @@ impl AppShell {
                 (
                     filetype,
                     git_branch,
+                    is_dirty,
+                    active_file_name,
                     line,
                     col,
                     diagnostics_errors,
@@ -1116,6 +1128,8 @@ impl AppShell {
                     mode,
                     &pending_keys,
                     git_branch,
+                    is_dirty,
+                    &active_file_name,
                     filetype,
                     self.app_state.active_search_match_position(),
                     status_line,

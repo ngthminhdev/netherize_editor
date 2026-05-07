@@ -576,8 +576,7 @@ impl InputMap {
             }
         }
 
-        if welcome_visible
-            && palette_mode == Some(CommandPaletteMode::RecentProjects)
+        if palette_mode == Some(CommandPaletteMode::RecentProjects)
             && !input.has_command_modifier()
         {
             use KeyCode::*;
@@ -585,13 +584,13 @@ impl InputMap {
                 Some(KeyJ) => {
                     return Some(KeybindingMatch {
                         command: Command::OverlaySelectNext,
-                        reason: "welcome recent projects palette: j -> SelectNext",
+                        reason: "recent projects palette: j -> SelectNext",
                     });
                 }
                 Some(KeyK) => {
                     return Some(KeybindingMatch {
                         command: Command::OverlaySelectPrev,
-                        reason: "welcome recent projects palette: k -> SelectPrev",
+                        reason: "recent projects palette: k -> SelectPrev",
                     });
                 }
                 _ => {}

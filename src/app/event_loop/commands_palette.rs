@@ -100,19 +100,12 @@ impl AppShell {
                         || self.app_state.command_palette_mode()
                             == Some(CommandPaletteMode::RecentProjects)) =>
             {
-                self.app_state
-                    .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
-                let selected = self.app_state.command_palette_selected_index().min(
-                    self.persistent_state
-                        .recent_projects
-                        .len()
-                        .saturating_sub(1),
-                );
-                let Some(root) = self.persistent_state.recent_projects.get(selected).cloned()
-                else {
-                    return Some(false);
-                };
-                Some(self.switch_workspace_to(root))
+                if !self.app_state.is_command_palette_visible() {
+                    // Palette not yet open — populate it first so selected_action works.
+                    self.app_state
+                        .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
+                }
+                Some(self.confirm_recent_project_selection())
             }
             Command::OverlaySelectNext
             | Command::OverlaySelectPrev
