@@ -77,7 +77,7 @@ impl Default for WorkbenchLayoutConfig {
             sidebar_min_width: 140.0,
             bottom_min_height: 100.0,
             panel_border_width: 1.0,
-            chat_input_height: 120.0,
+            chat_input_height: 132.0,
         }
     }
 }

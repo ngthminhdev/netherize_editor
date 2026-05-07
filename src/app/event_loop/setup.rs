@@ -1250,6 +1250,9 @@ impl AppShell {
             return None;
         };
         let profile = crate::lsp::registry::language_profile_for_path(path)?;
+        if profile.lsp_binary.is_empty() {
+            return None;
+        }
         let server_name = profile.lsp_binary.to_string();
         let root_path = crate::lsp::registry::find_project_root(path, profile.root_markers);
 
@@ -1389,7 +1392,10 @@ impl AppShell {
     /// Nếu extension không có trong registry, request bị skip (worker sẽ fail
     /// silently — không hiển thị lỗi ra UI).
     pub(super) fn submit_lsp_check_for_path(&self, path: PathBuf) {
-        if crate::lsp::registry::language_profile_for_path(&path).is_none() {
+        let Some(profile) = crate::lsp::registry::language_profile_for_path(&path) else {
+            return;
+        };
+        if profile.lsp_binary.is_empty() {
             return;
         }
 

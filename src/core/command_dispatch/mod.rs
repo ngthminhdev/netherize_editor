@@ -339,6 +339,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::AiChatAddSelectionContext
         | Command::AiChatInputChar(_)
         | Command::AiChatBackspace
+        | Command::AiChatClearInput
         | Command::AiChatAcceptSuggestion
         | Command::AiChatSuggestionNext
         | Command::AiChatSuggestionPrev
@@ -359,6 +360,10 @@ fn dispatch_command_with_clipboard_once(
         | Command::HelpScrollUp
         | Command::HelpScrollHalfPageDown
         | Command::HelpScrollHalfPageUp => session::dispatch(&mut ctx, command),
+        Command::ReloadWorkspace => DispatchReport::success(
+            "Dispatch: reload workspace routed to event loop".to_string(),
+            false,
+        ),
         Command::LspSelectPythonEnv => {
             let changed = ctx.app_state.open_python_env_selector();
             DispatchReport::success_with_flags(

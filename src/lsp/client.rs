@@ -175,12 +175,34 @@ fn resolve_gvm_paths(gvm_root: &str) -> Vec<String> {
 ///
 /// Returns `None` when every candidate shell fails or emits empty output
 /// (sandboxed build, CI runner, missing shell binary).
+fn login_shell_path_cache() -> &'static Mutex<Option<Option<String>>> {
+    static CACHED: std::sync::OnceLock<Mutex<Option<Option<String>>>> = std::sync::OnceLock::new();
+    CACHED.get_or_init(|| Mutex::new(None))
+}
+
 fn extract_path_from_login_shell() -> Option<String> {
-    static CACHED: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
-    CACHED
-        .get_or_init(|| {
-            let shell_var = std::env::var("SHELL").unwrap_or_default();
-            let candidates: Vec<String> = {
+    let cached = login_shell_path_cache();
+    let mut guard = cached.lock().ok()?;
+    if let Some(value) = guard.clone() {
+        return value;
+    }
+
+    let value = probe_path_from_login_shell();
+    *guard = Some(value.clone());
+    value
+}
+
+pub fn refresh_patched_env_path() -> String {
+    let cached = login_shell_path_cache();
+    if let Ok(mut guard) = cached.lock() {
+        *guard = Some(probe_path_from_login_shell());
+    }
+    patched_env_path()
+}
+
+fn probe_path_from_login_shell() -> Option<String> {
+    let shell_var = std::env::var("SHELL").unwrap_or_default();
+    let candidates: Vec<String> = {
                 let mut v: Vec<String> = vec![];
                 if !shell_var.is_empty() {
                     v.push(shell_var);
@@ -191,9 +213,9 @@ fn extract_path_from_login_shell() -> Option<String> {
                 // Deduplicate while preserving preference order.
                 let mut seen = HashSet::new();
                 v.into_iter().filter(|s| seen.insert(s.clone())).collect()
-            };
+    };
 
-            for shell in &candidates {
+    for shell in &candidates {
                 let Ok(output) = std::process::Command::new(shell)
                     .args(["-ilc", "printenv PATH"])
                     .stdout(Stdio::piped())
@@ -213,10 +235,8 @@ fn extract_path_from_login_shell() -> Option<String> {
                 if !trimmed.is_empty() && trimmed.contains('/') {
                     return Some(trimmed);
                 }
-            }
-            None
-        })
-        .clone()
+    }
+    None
 }
 
 /// Returns an augmented `PATH` by first attempting a live login-shell probe
@@ -323,6 +343,9 @@ pub fn check_lsp_installed(binary: &str) -> bool {
 
 pub fn lsp_entry_and_status_for_path(path: &Path) -> Option<(LspEntry, bool)> {
     let profile = language_profile_for_path(path)?;
+    if profile.lsp_binary.is_empty() {
+        return None;
+    }
     let entry = LspEntry {
         binary: profile.lsp_binary,
         language_label: profile.language_label,

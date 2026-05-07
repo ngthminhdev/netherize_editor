@@ -139,6 +139,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::AiChatAddSelectionContext
         | Command::AiChatInputChar(_)
         | Command::AiChatBackspace
+        | Command::AiChatClearInput
         | Command::AiChatAcceptSuggestion
         | Command::AiChatSuggestionNext
         | Command::AiChatSuggestionPrev

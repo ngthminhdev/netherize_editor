@@ -116,6 +116,7 @@ pub const LSP_FORMAT_DOCUMENT: &str = "lsp.format_document";
 pub const LSP_TRIGGER_COMPLETION: &str = "lsp.trigger_completion";
 pub const LSP_CODE_ACTION: &str = "lsp.code_action";
 pub const LSP_SELECT_PYTHON_ENV: &str = "lsp.select_python_env";
+pub const RELOAD_WORKSPACE: &str = "workspace.reload";
 pub const COMPLETION_NEXT: &str = "completion.next";
 pub const COMPLETION_PREV: &str = "completion.prev";
 pub const COMPLETION_ACCEPT: &str = "completion.accept";
@@ -316,6 +317,8 @@ pub const ALL_IDS: &[&str] = &[
     LSP_FORMAT_DOCUMENT,
     LSP_TRIGGER_COMPLETION,
     LSP_CODE_ACTION,
+    LSP_SELECT_PYTHON_ENV,
+    RELOAD_WORKSPACE,
     COMPLETION_NEXT,
     COMPLETION_PREV,
     COMPLETION_ACCEPT,
@@ -507,6 +510,8 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         LSP_FORMAT_DOCUMENT => Some(Command::LspFormatDocument),
         LSP_TRIGGER_COMPLETION => Some(Command::TriggerCompletion),
         LSP_CODE_ACTION => Some(Command::CodeAction),
+        LSP_SELECT_PYTHON_ENV => Some(Command::LspSelectPythonEnv),
+        RELOAD_WORKSPACE => Some(Command::ReloadWorkspace),
         COMPLETION_NEXT => Some(Command::CompletionNext),
         COMPLETION_PREV => Some(Command::CompletionPrev),
         COMPLETION_ACCEPT => Some(Command::CompletionAccept),

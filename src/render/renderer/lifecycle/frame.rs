@@ -43,7 +43,10 @@ impl Renderer {
         let buf_term_cursor_start = term_cursor_start + term_cursor_count;
         let buf_term_cursor_count = self.buffer_terminal_cursor_instances.len() as u32;
 
-        let palette_start = buf_term_cursor_start + buf_term_cursor_count;
+        let ai_chat_history_chrome_start = buf_term_cursor_start + buf_term_cursor_count;
+        let ai_chat_history_chrome_count = self.ai_chat_history_chrome_instances.len() as u32;
+
+        let palette_start = ai_chat_history_chrome_start + ai_chat_history_chrome_count;
         let palette_count = self.palette_chrome_instances.len() as u32;
 
         let lsp_guide_start = palette_start + palette_count;
@@ -67,6 +70,7 @@ impl Renderer {
         all_instances.extend_from_slice(&self.leap_label_bg_instances);
         all_instances.extend_from_slice(&self.terminal_cursor_instances);
         all_instances.extend_from_slice(&self.buffer_terminal_cursor_instances);
+        all_instances.extend_from_slice(&self.ai_chat_history_chrome_instances);
         all_instances.extend_from_slice(&self.palette_chrome_instances);
         all_instances.extend_from_slice(&self.lsp_guide_chrome_instances);
         all_instances.extend_from_slice(&self.system_dep_chrome_instances);
@@ -214,6 +218,21 @@ impl Renderer {
                     self.ai_chat_hero_image_pipeline.draw(render_pass);
                 },
             );
+            if ai_chat_history_chrome_count > 0 {
+                draw_text_region(
+                    &mut pass,
+                    self.ai_chat_history_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline.draw_range(
+                            render_pass,
+                            ai_chat_history_chrome_start,
+                            ai_chat_history_chrome_count,
+                        );
+                    },
+                );
+            }
             draw_text_region(
                 &mut pass,
                 self.ai_chat_history_scissor,

@@ -612,6 +612,16 @@ impl AppShell {
                     Some(false)
                 }
             }
+            Command::AiChatClearInput => {
+                let chat = &mut self.panel_state.ai_chat;
+                if chat.input_buffer.is_empty() {
+                    Some(false)
+                } else {
+                    chat.input_buffer.clear();
+                    chat.selected_suggestion_index = 0;
+                    Some(true)
+                }
+            }
             Command::AiChatAcceptSuggestion => {
                 let idx = self.panel_state.ai_chat.selected_suggestion_index;
                 let completed = self

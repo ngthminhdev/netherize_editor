@@ -47,7 +47,7 @@ pub enum CommandPaletteMode {
     AiChatInstallConfirm,
     /// LSP Code Action picker — danh sách các action user có thể chọn để apply.
     CodeAction,
-    /// Python environment selector — triggered by `:lsp python`.
+    /// Python environment selector — opened from the command palette.
     PythonEnvSelector,
 }
 
@@ -973,6 +973,8 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
         ("app.search_in_files", "Search In Files"),
         ("app.open_workspace_symbols", "Open Workspace Symbols"),
         ("app.open_document_symbols", "Find Symbol in File"),
+        ("lsp.select_python_env", "Change Python Venv"),
+        ("workspace.reload", "Reload Workspace"),
         ("app.open_vim_command", "Open Vim Command"),
         ("app.open_help", "Open Cheat Sheet"),
         ("app.toggle_terminal", "Toggle Terminal"),

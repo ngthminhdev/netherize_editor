@@ -37,6 +37,10 @@ pub enum HighlightCategory {
     Attribute,
     Namespace,
     Tag,
+    MarkupStrong,
+    MarkupItalic,
+    MarkupInlineCode,
+    MarkupLink,
 }
 
 impl HighlightCategory {
@@ -64,20 +68,28 @@ impl HighlightCategory {
             Self::Attribute => "attribute",
             Self::Namespace => "namespace",
             Self::Tag => "tag",
+            Self::MarkupStrong => "markup.strong",
+            Self::MarkupItalic => "markup.italic",
+            Self::MarkupInlineCode => "markup.raw.inline",
+            Self::MarkupLink => "markup.link.text",
         }
     }
 
     pub fn is_bold(self) -> bool {
-        matches!(self, Self::Macro)
+        matches!(self, Self::Macro | Self::MarkupStrong)
     }
 
     pub fn is_italic(self) -> bool {
-        matches!(self, Self::Comment)
+        matches!(self, Self::Comment | Self::MarkupItalic | Self::MarkupLink)
     }
 
     fn priority(self) -> u8 {
         match self {
             // Narrow but expressive captures should win over the generic fallback.
+            Self::MarkupStrong => 130,
+            Self::MarkupItalic => 128,
+            Self::MarkupInlineCode => 126,
+            Self::MarkupLink => 124,
             Self::Comment => 120,
             Self::Escape => 115,
             Self::Macro => 110,
@@ -215,6 +227,10 @@ impl HighlightPalette {
             HighlightCategory::Attribute => self.attribute,
             HighlightCategory::Namespace => self.namespace,
             HighlightCategory::Tag => self.tag,
+            HighlightCategory::MarkupStrong => self.keyword,
+            HighlightCategory::MarkupItalic => self.comment,
+            HighlightCategory::MarkupInlineCode => self.string,
+            HighlightCategory::MarkupLink => self.function,
         }
     }
 }
@@ -289,6 +305,17 @@ pub fn overlay_highlight_layers(
 pub fn generate_highlight_spans(tree_state: &SyntaxTreeState, source: &str) -> Vec<HighlightSpan> {
     if tree_state.language_id() == LanguageId::Dotenv {
         return generate_dotenv_highlight_spans(source);
+    }
+
+    if tree_state.language_id() == LanguageId::Markdown {
+        let base = generate_query_highlight_spans(
+            tree_state.language_id(),
+            tree_state.root_node(),
+            source,
+            None,
+        );
+        let inline = generate_markdown_inline_highlights(tree_state.root_node(), source, None);
+        return overlay_highlight_layers(&base, &inline);
     }
 
     let base = generate_query_highlight_spans(
@@ -371,12 +398,21 @@ pub fn generate_highlight_spans_in_byte_window(
     let Some((start, end)) = sanitize_byte_range(source, window) else {
         return Vec::new();
     };
-    generate_query_highlight_spans(
+    let base = generate_query_highlight_spans(
         tree_state.language_id(),
         tree_state.root_node(),
         source,
         Some(start..end),
-    )
+    );
+    if tree_state.language_id() == LanguageId::Markdown {
+        let inline = generate_markdown_inline_highlights(
+            tree_state.root_node(),
+            source,
+            Some(start..end),
+        );
+        return overlay_highlight_layers(&base, &inline);
+    }
+    base
 }
 
 pub fn should_highlight_inline(text: &str) -> bool {
@@ -597,6 +633,85 @@ fn markdown_highlight_query() -> Option<&'static Query> {
             "markdown",
         )
     }).as_ref()
+}
+
+fn markdown_inline_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        let language = crate::syntax::parser::tree_sitter_markdown_inline_language();
+        match Query::new(
+            &language,
+            include_str!("queries/markdown/inline_highlights.scm"),
+        ) {
+            Ok(q) => Some(q),
+            Err(err) => {
+                eprintln!("[highlight] invalid markdown-inline highlight query: {err}");
+                None
+            }
+        }
+    }).as_ref()
+}
+
+pub fn highlight_markdown_inline(text: &str) -> Vec<HighlightSpan> {
+    if text.is_empty() || !should_highlight_inline(text) {
+        return Vec::new();
+    }
+    let Some(query) = markdown_inline_highlight_query() else {
+        return Vec::new();
+    };
+    let mut parser = tree_sitter::Parser::new();
+    let language = crate::syntax::parser::tree_sitter_markdown_inline_language();
+    if parser.set_language(&language).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(text, None) else {
+        return Vec::new();
+    };
+    generate_query_highlight_spans_for_node(query, tree.root_node(), text)
+}
+
+fn generate_markdown_inline_highlights(
+    root: Node<'_>,
+    source: &str,
+    byte_window: Option<Range<usize>>,
+) -> Vec<HighlightSpan> {
+    let mut spans = Vec::new();
+    collect_markdown_inline_highlights(root, source, &byte_window, &mut spans);
+    normalize_spans(source, spans, byte_window)
+}
+
+fn collect_markdown_inline_highlights(
+    node: Node<'_>,
+    source: &str,
+    byte_window: &Option<Range<usize>>,
+    out: &mut Vec<HighlightSpan>,
+) {
+    if node.is_error() || node.is_missing() {
+        return;
+    }
+
+    if node.kind() == "inline" {
+        let start = node.start_byte();
+        let end = node.end_byte();
+        if end > start && end <= source.len() {
+            let overlaps = byte_window
+                .as_ref()
+                .is_none_or(|window| end > window.start && start < window.end);
+            if overlaps {
+                let text = &source[start..end];
+                for mut span in highlight_markdown_inline(text) {
+                    span.range = (span.range.start + start)..(span.range.end + start);
+                    out.push(span);
+                }
+            }
+        }
+        return;
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_markdown_inline_highlights(child, source, byte_window, out);
+    }
 }
 
 fn dockerfile_highlight_query() -> Option<&'static Query> {
@@ -832,6 +947,10 @@ fn generate_query_highlight_spans_for_node(
 fn capture_category(capture_name: &str) -> Option<HighlightCategory> {
     match capture_name {
         "string.special.key" => Some(HighlightCategory::Property),
+        "markup.strong" => Some(HighlightCategory::MarkupStrong),
+        "markup.italic" => Some(HighlightCategory::MarkupItalic),
+        "markup.raw.inline" => Some(HighlightCategory::MarkupInlineCode),
+        "markup.link.text" => Some(HighlightCategory::MarkupLink),
         "syntax.keyword" => Some(HighlightCategory::Keyword),
         "syntax.string" => Some(HighlightCategory::String),
         "syntax.comment" => Some(HighlightCategory::Comment),

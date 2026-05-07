@@ -288,6 +288,7 @@ impl Renderer {
             ai_chat_header_image_pipeline,
             ai_chat_hero_image_pipeline,
             ai_chat_glyph_instances: Vec::new(),
+            ai_chat_history_chrome_instances: Vec::new(),
             ai_chat_history_scissor: None,
             ai_chat_image_scissor: None,
             ai_chat_input_scissor: None,

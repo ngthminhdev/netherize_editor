@@ -4,6 +4,7 @@
 //! RightSidebar is visible: outline border, inner fill, and input-box accent.
 
 use std::sync::OnceLock;
+use std::ops::Range;
 
 use crate::{
     render::{
@@ -206,33 +207,81 @@ fn slash_suggestion_rect(
 }
 
 /// Word-wrap a string into lines of at most `max_chars` characters,
-/// breaking at whitespace where possible.
+/// breaking at whitespace where possible and at glyph boundaries for long tokens.
 fn word_wrap(text: &str, max_chars: usize) -> Vec<String> {
-    if max_chars == 0 {
-        return vec![text.to_string()];
+    word_wrap_with_ranges(text, max_chars)
+        .into_iter()
+        .map(|(line, _)| line)
+        .collect()
+}
+
+fn word_wrap_with_ranges(text: &str, max_chars: usize) -> Vec<(String, Range<usize>)> {
+    if max_chars == 0 || text.is_empty() {
+        return vec![(text.to_string(), 0..text.len())];
     }
+
     let mut lines = Vec::new();
-    let mut current = String::new();
-    for word in text.split_whitespace() {
-        if current.is_empty() {
-            current.push_str(word);
-        } else if current.chars().count() + 1 + word.chars().count() <= max_chars {
-            current.push(' ');
-            current.push_str(word);
-        } else {
-            if !current.is_empty() {
-                lines.push(std::mem::take(&mut current));
-            }
-            current.push_str(word);
+    let mut line_start = 0usize;
+    let mut line_chars = 0usize;
+    let mut last_break: Option<usize> = None;
+
+    for (idx, ch) in text.char_indices() {
+        if ch.is_whitespace() {
+            last_break = Some(idx + ch.len_utf8());
         }
+        line_chars += 1;
+        if line_chars <= max_chars {
+            continue;
+        }
+
+        let hard_end = idx;
+        let break_end = last_break
+            .filter(|break_idx| *break_idx > line_start && *break_idx <= hard_end)
+            .unwrap_or(hard_end);
+        let trimmed_end = text[line_start..break_end]
+            .trim_end()
+            .len()
+            .saturating_add(line_start);
+        if trimmed_end > line_start {
+            lines.push((text[line_start..trimmed_end].to_string(), line_start..trimmed_end));
+        }
+
+        line_start = break_end;
+        while line_start < text.len() {
+            let Some(next) = text[line_start..].chars().next() else {
+                break;
+            };
+            if !next.is_whitespace() {
+                break;
+            }
+            line_start += next.len_utf8();
+        }
+        line_chars = text[line_start..idx + ch.len_utf8()].chars().count();
+        last_break = None;
     }
-    if !current.is_empty() {
-        lines.push(current);
+
+    if line_start < text.len() {
+        lines.push((text[line_start..].to_string(), line_start..text.len()));
     }
     if lines.is_empty() {
-        lines.push(String::new());
+        lines.push((String::new(), 0..0));
     }
     lines
+}
+
+fn clip_styled_span_to_range(span: StyledTextSpan, range: &Range<usize>) -> Option<StyledTextSpan> {
+    let start = span.start.max(range.start);
+    let end = span.end.min(range.end);
+    if start >= end {
+        return None;
+    }
+    Some(StyledTextSpan::with_style(
+        start.saturating_sub(range.start),
+        end.saturating_sub(range.start),
+        span.color_rgba,
+        span.bold,
+        span.italic,
+    ))
 }
 
 /// Build the three-layer background quads for a visible RightSidebar.
@@ -403,13 +452,14 @@ fn build_styled_message_lines(
     text: &str,
     max_chars: usize,
     default_color: [u8; 4],
-    code_bg_color: [u8; 4],
+    code_text_color: [u8; 4],
     inline_code_color: [u8; 4],
     _dim_color: [u8; 4],
     theme: &crate::config::theme_config::ThemeConfig,
-) -> (Vec<String>, Vec<Vec<StyledTextSpan>>) {
+) -> (Vec<String>, Vec<Vec<StyledTextSpan>>, Vec<bool>) {
     let mut lines = Vec::new();
     let mut line_styles = Vec::new();
+    let mut code_rows = Vec::new();
     let mut in_code_block = false;
     let mut code_lang = String::new();
 
@@ -464,10 +514,11 @@ fn build_styled_message_lines(
                     }
                 }
                 if spans.is_empty() {
-                    spans.push(StyledTextSpan::new(0, line_str.len(), code_bg_color));
+                    spans.push(StyledTextSpan::new(0, line_str.len(), code_text_color));
                 }
                 lines.push(line_str);
                 line_styles.push(spans);
+                code_rows.push(true);
             } else {
                 // Regular line: detect inline code, bold (**...**), italic (*...*)
                 let mut spans = Vec::new();
@@ -534,11 +585,12 @@ fn build_styled_message_lines(
                 }
                 lines.push(clean);
                 line_styles.push(spans);
+                code_rows.push(false);
             }
         }
     }
 
-    (lines, line_styles)
+    (lines, line_styles, code_rows)
 }
 
 fn highlight_category_color(category: crate::syntax::highlight::HighlightCategory) -> [u8; 4] {
@@ -924,9 +976,8 @@ impl Renderer {
                 word_wrap(&input_text, input_max_chars)
             };
 
-            // Clip to lines that fit in the input box height; show the last N
-            // lines so newly typed content stays visible.
-            let max_input_lines = ((iclip[3] - 4.0) / line_h).floor().max(1.0) as usize;
+            // Clip to at most three wrapped lines; show the last lines so newly typed content stays visible.
+                        let max_input_lines = ((iclip[3] - 4.0) / line_h).floor().clamp(1.0, 3.0) as usize;
             let line_trim = wrapped_lines.len().saturating_sub(max_input_lines);
             let visible_lines = &wrapped_lines[line_trim..];
             let is_first_visible = line_trim == 0;
@@ -1012,6 +1063,7 @@ impl Renderer {
             label: &'static str,
             lines: Vec<String>,
             line_styles: Vec<Vec<StyledTextSpan>>,
+            code_rows: Vec<bool>,
             side: BubbleSide,
             fill: [f32; 4],
             border: Option<[f32; 4]>,
@@ -1031,8 +1083,10 @@ impl Renderer {
         let fg_u8 = linear_rgba_to_srgb_u8(fg);
         let fg_dim_u8 = linear_rgba_to_srgb_u8(fg_dim);
         let accent_u8 = linear_rgba_to_srgb_u8(accent);
-        let code_sep_u8 = [0x50, 0x50, 0x50, 0xFF]; // dim gray for code separators
+        let code_text_u8 = linear_rgba_to_srgb_u8(fg_dim);
         let inline_code_u8 = [0xDA, 0x70, 0xD6, 0xFF]; // orchid for inline code
+        let code_bg = blend_rgb(panel_bg, self.theme.ui.selection_bg.as_f32(), 0.35, 0.92);
+        let code_border = self.theme.ui.border_color.as_f32();
 
         let mut bubbles: Vec<ChatBubble> = Vec::new();
         for msg in messages {
@@ -1059,10 +1113,12 @@ impl Renderer {
                     if body_lines.is_empty() {
                         continue;
                     }
+                    let code_rows = vec![false; body_lines.len()];
                     ChatBubble {
                         label: "you",
                         lines: body_lines,
                         line_styles: Vec::new(),
+                        code_rows,
                         side: BubbleSide::Right,
                         fill: user_fill,
                         border: None,
@@ -1072,11 +1128,11 @@ impl Renderer {
                     }
                 }
                 AiRole::Assistant => {
-                    let (body_lines, line_styles) = build_styled_message_lines(
+                    let (body_lines, line_styles, code_rows) = build_styled_message_lines(
                         &filtered,
                         max_chars,
                         fg_u8,
-                        code_sep_u8,
+                        code_text_u8,
                         inline_code_u8,
                         fg_dim_u8,
                         &self.theme,
@@ -1088,6 +1144,7 @@ impl Renderer {
                         label: "netherize",
                         lines: body_lines,
                         line_styles,
+                        code_rows,
                         side: BubbleSide::Left,
                         fill: netherize_fill,
                         border: Some(assistant_border),
@@ -1098,11 +1155,11 @@ impl Renderer {
                 }
                 AiRole::System => {
                     let is_err = clean.to_ascii_lowercase().contains("error");
-                    let (body_lines, line_styles) = build_styled_message_lines(
+                    let (body_lines, line_styles, code_rows) = build_styled_message_lines(
                         &filtered,
                         max_chars,
                         fg_u8,
-                        code_sep_u8,
+                        code_text_u8,
                         inline_code_u8,
                         fg_dim_u8,
                         &self.theme,
@@ -1114,6 +1171,7 @@ impl Renderer {
                         label: "netherize",
                         lines: body_lines,
                         line_styles,
+                        code_rows,
                         side: BubbleSide::Left,
                         fill: system_fill,
                         border: Some(system_border),
@@ -1144,6 +1202,7 @@ impl Renderer {
                 label: "netherize",
                 lines: vec![format!("thinking{dots}")],
                 line_styles: Vec::new(),
+                code_rows: vec![false],
                 side: BubbleSide::Left,
                 fill: netherize_fill,
                 border: Some(assistant_border),
@@ -1235,6 +1294,31 @@ impl Renderer {
                 let mut text_y = label_y + line_h + 2.0;
                 for (line_idx, line) in bubble.lines.iter().enumerate() {
                     if text_y >= body_y && text_y < body_y + vis_h + line_h {
+                        let is_code_row = bubble.code_rows.get(line_idx).copied().unwrap_or(false);
+                        let line_text_x = if is_code_row { text_x + 8.0 } else { text_x };
+                        if is_code_row {
+                            let row_rect = [
+                                bubble_x + bubble_pad_x * 0.5,
+                                text_y + 1.0,
+                                (bubble_w - bubble_pad_x).max(1.0),
+                                (line_h + 2.0).max(1.0),
+                            ];
+                            chrome.push(
+                                RegionDrawInstance::new(row_rect, code_border).with_radius(5.0),
+                            );
+                            chrome.push(
+                                RegionDrawInstance::new(
+                                    [
+                                        row_rect[0] + 1.0,
+                                        row_rect[1] + 1.0,
+                                        (row_rect[2] - 2.0).max(1.0),
+                                        (row_rect[3] - 2.0).max(1.0),
+                                    ],
+                                    code_bg,
+                                )
+                                .with_radius(4.0),
+                            );
+                        }
                         let has_styles = bubble.line_styles.len() > line_idx
                             && !bubble.line_styles[line_idx].is_empty();
                         let gs = if has_styles {
@@ -1245,7 +1329,7 @@ impl Renderer {
                                 &mut self.ai_chat_text_system,
                                 &mut self.atlas,
                                 &self.queue,
-                                text_x,
+                                line_text_x,
                                 text_y,
                             )
                         } else if bubble.italic {
@@ -1254,7 +1338,7 @@ impl Renderer {
                                 &mut self.ai_chat_text_system,
                                 &mut self.atlas,
                                 &self.queue,
-                                text_x,
+                                line_text_x,
                                 text_y,
                                 bubble.body_color,
                             )
@@ -1264,7 +1348,7 @@ impl Renderer {
                                 &mut self.ai_chat_text_system,
                                 &mut self.atlas,
                                 &self.queue,
-                                text_x,
+                                line_text_x,
                                 text_y,
                                 bubble.body_color,
                             )
@@ -1351,9 +1435,9 @@ impl Renderer {
             word_wrap(&input_text, input_max_chars)
         };
 
-        // Show only the last N lines that fit in the input box height so
-        // long messages don't overflow the box.
-        let max_input_lines = ((iclip[3] - 4.0) / line_h).floor().max(1.0) as usize;
+        // Show only the last three wrapped lines that fit in the input box height so
+                // long messages don't overflow the box.
+                let max_input_lines = ((iclip[3] - 4.0) / line_h).floor().clamp(1.0, 3.0) as usize;
         let line_trim = wrapped_lines.len().saturating_sub(max_input_lines);
         let visible_lines = &wrapped_lines[line_trim..];
         let is_first_visible = line_trim == 0;
@@ -1423,6 +1507,7 @@ impl Renderer {
         self.ai_chat_image_scissor = None;
         self.ai_chat_input_scissor = None;
         self.ai_chat_input_batch = None;
+        self.ai_chat_history_chrome_instances.clear();
         self.ai_chat_glyph_instances.clear();
         self.ai_chat_header_image_pipeline.clear();
         self.ai_chat_hero_image_pipeline.clear();
@@ -1451,6 +1536,7 @@ impl Renderer {
         self.ai_chat_image_scissor = None;
         self.ai_chat_input_scissor = None;
         self.ai_chat_input_batch = None;
+        self.ai_chat_history_chrome_instances.clear();
 
         let clip = [
             bounds[0] + inner_padding,
@@ -1466,56 +1552,111 @@ impl Renderer {
         let fg_dim = self.theme.ui.fg_dim.as_f32();
 
         self.ai_chat_text_system
-            .set_size(Some(clip[2].max(1.0)), Some(line_h));
+            .set_size(None, Some(line_h));
 
         let mut all_glyphs: Vec<GlyphInstance> = Vec::new();
+        let mut chrome_instances: Vec<RegionDrawInstance> = Vec::new();
         let start_y = clip[1] - (scroll_y * line_h);
         let visible_bottom = clip[1] + clip[3];
+        let code_bg = blend_rgb(self.theme.ui.panel_bg.as_f32(), self.theme.ui.selection_bg.as_f32(), 0.35, 0.92);
+        let code_border = self.theme.ui.border_color.as_f32();
+        let code_inset_x = 6.0;
+        let code_pad_x = 8.0;
+        let estimated_char_w = (font_size * 0.58).max(1.0);
+        let prose_max_chars = (clip[2] / estimated_char_w).floor().max(8.0) as usize;
+        let code_text_x = clip[0] + code_inset_x + code_pad_x;
+        let code_max_chars = ((clip[2] - code_inset_x - code_pad_x * 2.0).max(1.0) / estimated_char_w)
+            .floor()
+            .max(8.0) as usize;
+        let mut visual_row = 0usize;
 
-        for (i, preview_line) in lines.iter().enumerate() {
-            let y = start_y + i as f32 * line_h;
-            if y + line_h < clip[1] {
-                continue;
-            }
-            if y > visible_bottom {
-                break;
+        for preview_line in lines {
+            let is_code_block = matches!(preview_line.block_type, MarkdownBlockType::CodeBlock);
+            let wrapped_lines = if is_code_block {
+                word_wrap_with_ranges(&preview_line.text, code_max_chars)
+            } else {
+                word_wrap_with_ranges(&preview_line.text, prose_max_chars)
+            };
+
+            for (wrapped_text, byte_range) in wrapped_lines {
+                let y = start_y + visual_row as f32 * line_h;
+                visual_row = visual_row.saturating_add(1);
+                if y + line_h < clip[1] {
+                    continue;
+                }
+                if y > visible_bottom {
+                    break;
+                }
+
+                if is_code_block {
+                let rect = [
+                    clip[0],
+                    y + 1.0,
+                    clip[2],
+                    (line_h + 2.0).max(1.0),
+                ];
+                chrome_instances.push(
+                    RegionDrawInstance::new(rect, code_border)
+                        .with_radius(self.panel_corner_radius.min(6.0)),
+                );
+                chrome_instances.push(
+                    RegionDrawInstance::new(
+                        [
+                            rect[0] + 1.0,
+                            rect[1] + 1.0,
+                            (rect[2] - 2.0).max(1.0),
+                            (rect[3] - 2.0).max(1.0),
+                        ],
+                        code_bg,
+                    )
+                    .with_radius((self.panel_corner_radius.min(6.0) - 1.0).max(0.0)),
+                );
             }
 
-            if preview_line.text.is_empty() {
-                continue;
-            }
+                if wrapped_text.is_empty() {
+                    continue;
+                }
 
-            let default_color = match preview_line.block_type {
+                let text_x = if is_code_block { code_text_x } else { clip[0] };
+                let wrapped_spans: Vec<StyledTextSpan> = preview_line
+                    .spans
+                    .iter()
+                    .filter_map(|span| clip_styled_span_to_range(*span, &byte_range))
+                    .collect();
+
+                let default_color = match preview_line.block_type {
                 MarkdownBlockType::Heading(_) => fg,
                 MarkdownBlockType::CodeBlock => fg_dim,
                 MarkdownBlockType::BlockQuote => fg_dim,
                 _ => fg,
             };
 
-            if preview_line.spans.is_empty() {
-                all_glyphs.extend(layout_panel_text(
-                    &preview_line.text,
+                if wrapped_spans.is_empty() {
+                    all_glyphs.extend(layout_panel_text(
+                    &wrapped_text,
                     &mut self.ai_chat_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    clip[0],
+                    text_x,
                     y,
                     default_color,
                 ));
-            } else {
-                all_glyphs.extend(layout_panel_rich_text(
-                    &preview_line.text,
-                    &preview_line.spans,
+                } else {
+                    all_glyphs.extend(layout_panel_rich_text(
+                    &wrapped_text,
+                    &wrapped_spans,
                     default_color,
                     &mut self.ai_chat_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    clip[0],
+                    text_x,
                     y,
                 ));
+                }
             }
         }
 
+        self.ai_chat_history_chrome_instances = chrome_instances;
         self.ai_chat_glyph_instances = all_glyphs;
         self.ai_chat_text_pipeline.upload_instances(
             &self.device,

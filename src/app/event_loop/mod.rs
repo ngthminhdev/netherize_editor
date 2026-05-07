@@ -206,7 +206,7 @@ pub struct AppShell {
     pre_markdown_preview_right_width: Option<f32>,
     /// Code actions từ lần request gần nhất, dùng để apply khi user chọn trong picker.
     pending_code_actions: Vec<crate::async_runtime::message::LspCodeAction>,
-    /// Python interpreter path selected by the user (via `:lsp python`).
+    /// Python interpreter path selected by the user from the command palette.
     selected_python_env: Option<std::path::PathBuf>,
     /// Cached runtime version strings for the statusbar right zone.
     runtime_versions: RuntimeVersionInfo,

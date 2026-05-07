@@ -1292,9 +1292,22 @@ impl InputHandler {
         input_debug: String,
         context: KeybindingContext,
     ) -> Option<InputRouteOutcome> {
-        // Ctrl+N / Ctrl+P → cycle suggestion popup; Ctrl+U/D → scroll history
+        // Ctrl+N / Ctrl+P → cycle suggestion popup; Ctrl+U/D → scroll history; Ctrl+C → clear input
         if normalized.has_command_modifier() {
             match normalized.physical_key {
+                Some(KeyCode::KeyC) => {
+                    return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                        input_debug,
+                        format!(
+                            "mode={} focus={} -> ai chat: clear input",
+                            context.mode.as_str(),
+                            context.focus.as_str(),
+                        ),
+                        Command::AiChatClearInput,
+                        1,
+                        false,
+                    )));
+                }
                 Some(KeyCode::KeyN) => {
                     return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                         input_debug,

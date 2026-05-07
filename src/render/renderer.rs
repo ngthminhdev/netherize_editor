@@ -283,6 +283,7 @@ pub struct Renderer {
     pub(super) ai_chat_header_image_pipeline: ImagePipeline,
     pub(super) ai_chat_hero_image_pipeline: ImagePipeline,
     pub(super) ai_chat_glyph_instances: Vec<GlyphInstance>,
+    pub(super) ai_chat_history_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) ai_chat_history_scissor: Option<[u32; 4]>,
     pub(super) ai_chat_image_scissor: Option<[u32; 4]>,
     pub(super) ai_chat_input_scissor: Option<[u32; 4]>,

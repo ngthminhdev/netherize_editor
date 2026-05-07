@@ -146,6 +146,18 @@ pub(super) fn syntax_spans_to_styled(
                     theme.syntax.namespace.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::Tag => theme.syntax.tag.as_u8(),
+                crate::syntax::highlight::HighlightCategory::MarkupStrong => {
+                    theme.syntax.keyword.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::MarkupItalic => {
+                    theme.syntax.comment.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::MarkupInlineCode => {
+                    theme.syntax.string.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::MarkupLink => {
+                    theme.syntax.function.as_u8()
+                }
             };
             StyledTextSpan::with_style(
                 span.range.start,
@@ -327,6 +339,7 @@ fn fallback_markdown_preview(source: &str, _theme: &ThemeConfig) -> Vec<Markdown
             text: line.to_string(),
             spans: Vec::new(),
             block_type: MarkdownBlockType::Paragraph,
+            code_language: None,
         })
         .collect()
 }
@@ -362,6 +375,7 @@ fn render_markdown_node(
                 text: content_text,
                 spans: vec![styled],
                 block_type: MarkdownBlockType::Heading(level),
+                code_language: None,
             });
         }
         "setext_heading" => {
@@ -383,54 +397,76 @@ fn render_markdown_node(
                 text: content_text,
                 spans: vec![styled],
                 block_type: MarkdownBlockType::Heading(level),
+                code_language: None,
             });
         }
         "paragraph" => {
-            let text = node_text(node, source);
-            let spans = render_inline_spans(node, source, theme);
+            let raw_text = node_text(node, source);
+            let (text, spans) = render_markdown_inline_text(&raw_text, theme);
             out.push(MarkdownPreviewLine {
                 text,
                 spans,
                 block_type: MarkdownBlockType::Paragraph,
+                code_language: None,
             });
         }
         "fenced_code_block" | "indented_code_block" => {
             let code_text = code_block_content(node, source);
             let lang = code_block_language(node, source);
+            let preview_lang = if lang.trim().is_empty() {
+                "txt".to_string()
+            } else {
+                lang.clone()
+            };
             let raw_spans = highlight_snippet(&code_text, &lang, theme);
             let styled = syntax_spans_to_styled(&raw_spans, &code_text, theme);
+            let mut line_start = 0usize;
             for line_str in code_text.lines() {
+                let line_end = line_start + line_str.len();
+                let spans = styled
+                    .iter()
+                    .filter_map(|span| clip_styled_span_to_line(*span, line_start, line_end))
+                    .collect();
                 out.push(MarkdownPreviewLine {
                     text: line_str.to_string(),
-                    spans: styled
-                        .iter()
-                        .filter(|s| s.start < line_str.len())
-                        .cloned()
-                        .collect(),
+                    spans,
                     block_type: MarkdownBlockType::CodeBlock,
+                    code_language: Some(preview_lang.clone()),
                 });
+                line_start = line_end.saturating_add(1);
             }
             if code_text.ends_with('\n') || code_text.is_empty() {
                 out.push(MarkdownPreviewLine {
                     text: String::new(),
                     spans: Vec::new(),
                     block_type: MarkdownBlockType::CodeBlock,
+                    code_language: Some(preview_lang.clone()),
                 });
             }
         }
         "block_quote" => {
             let text = node_text(node, source);
             for line_str in text.lines() {
-                let prefixed = format!("  │ {}", line_str);
-                let span = StyledTextSpan::new(
+                let content = line_str.trim_start_matches('>').trim_start();
+                let prefixed = format!("  │ {}", content);
+                let prefix_len = prefixed.len().saturating_sub(content.len());
+                let mut spans = vec![StyledTextSpan::new(
                     0,
-                    prefixed.len(),
+                    prefix_len,
                     theme.syntax.constant.as_u8(),
+                )];
+                let (rendered_content, inline_spans) = render_markdown_inline_text(content, theme);
+                let prefixed = format!("  │ {}", rendered_content);
+                spans.extend(
+                    inline_spans
+                        .into_iter()
+                        .map(|span| offset_styled_span(span, prefix_len)),
                 );
                 out.push(MarkdownPreviewLine {
                     text: prefixed,
-                    spans: vec![span],
+                    spans,
                     block_type: MarkdownBlockType::BlockQuote,
+                    code_language: None,
                 });
             }
         }
@@ -441,24 +477,33 @@ fn render_markdown_node(
             let marker = list_marker_text(node, source);
             let marker_len = marker.len();
             let content = list_item_content(node, source);
-            let full_text = format!("{marker}{content}");
+            let (rendered_content, inline_spans) = render_markdown_inline_text(&content, theme);
+            let full_text = format!("{marker}{rendered_content}");
             let mut spans = Vec::new();
             spans.push(StyledTextSpan::new(
                 0,
                 marker_len,
                 theme.syntax.operator.as_u8(),
             ));
-            if content.len() > 0 {
-                spans.push(StyledTextSpan::new(
-                    marker_len,
-                    full_text.len(),
-                    theme.syntax.identifier.as_u8(),
-                ));
+            if rendered_content.len() > 0 {
+                spans.extend(
+                    inline_spans
+                        .into_iter()
+                        .map(|span| offset_styled_span(span, marker_len)),
+                );
+                if spans.len() == 1 {
+                    spans.push(StyledTextSpan::new(
+                        marker_len,
+                        full_text.len(),
+                        theme.syntax.identifier.as_u8(),
+                    ));
+                }
             }
             out.push(MarkdownPreviewLine {
                 text: full_text,
                 spans,
                 block_type: MarkdownBlockType::ListItem,
+                code_language: None,
             });
         }
         "thematic_break" => {
@@ -470,6 +515,7 @@ fn render_markdown_node(
                     theme.syntax.punctuation.as_u8(),
                 )],
                 block_type: MarkdownBlockType::HorizontalRule,
+                code_language: None,
             });
         }
         "table" => {
@@ -486,6 +532,7 @@ fn render_markdown_node(
                         theme.syntax.tag.as_u8(),
                     )],
                     block_type: MarkdownBlockType::Paragraph,
+                    code_language: None,
                 });
             }
         }
@@ -507,307 +554,111 @@ fn render_children(
     }
 }
 
-fn render_inline_spans(
-    node: tree_sitter::Node<'_>,
-    source: &str,
-    theme: &ThemeConfig,
-) -> Vec<StyledTextSpan> {
-    let node_start = node.start_byte();
+fn clip_styled_span_to_line(
+    span: StyledTextSpan,
+    line_start: usize,
+    line_end: usize,
+) -> Option<StyledTextSpan> {
+    let start = span.start.max(line_start);
+    let end = span.end.min(line_end);
+    if start >= end {
+        return None;
+    }
+    Some(StyledTextSpan::with_style(
+        start.saturating_sub(line_start),
+        end.saturating_sub(line_start),
+        span.color_rgba,
+        span.bold,
+        span.italic,
+    ))
+}
+
+fn offset_styled_span(span: StyledTextSpan, offset: usize) -> StyledTextSpan {
+    StyledTextSpan::with_style(
+        span.start.saturating_add(offset),
+        span.end.saturating_add(offset),
+        span.color_rgba,
+        span.bold,
+        span.italic,
+    )
+}
+
+fn render_markdown_inline_text(text: &str, theme: &ThemeConfig) -> (String, Vec<StyledTextSpan>) {
+    let mut rendered = String::new();
     let mut spans = Vec::new();
-    collect_inline_spans(node, source, theme, &mut spans);
-    let text = node_text(node, source);
-    let fallback_count = spans.len();
-    append_markdown_inline_fallback_spans(&text, 0, theme, &mut spans);
-    // Only normalize tree-sitter spans (collected before fallback).
-    // Fallback spans are already in local (0-based) coordinates.
-    let (ts_spans, fb_spans) = spans.split_at(fallback_count);
-    let mut normalized = normalize_spans(ts_spans.to_vec(), node_start);
-    normalized.extend_from_slice(fb_spans);
-    normalized
-}
+    let mut i = 0usize;
 
-fn normalize_spans(spans: Vec<StyledTextSpan>, offset: usize) -> Vec<StyledTextSpan> {
-    spans
-        .into_iter()
-        .map(|s| StyledTextSpan::with_style(
-            s.start.saturating_sub(offset),
-            s.end.saturating_sub(offset),
-            s.color_rgba,
-            s.bold,
-            s.italic,
-        ))
-        .filter(|s| s.start < s.end)
-        .collect()
-}
-
-fn append_markdown_inline_fallback_spans(
-    text: &str,
-    byte_offset: usize,
-    theme: &ThemeConfig,
-    spans: &mut Vec<StyledTextSpan>,
-) {
-    let chars: Vec<(usize, char)> = text.char_indices().collect();
-    let punctuation_color = theme.syntax.punctuation.as_u8();
-    let operator_color = theme.syntax.operator.as_u8();
-    let string_color = theme.syntax.string.as_u8();
-    let keyword_color = theme.syntax.keyword.as_u8();
-    let comment_color = theme.syntax.comment.as_u8();
-    let attribute_color = theme.syntax.attribute.as_u8();
-
-    let mut i = 0;
-    while i < chars.len() {
-        let (char_byte, ch) = chars[i];
-
-        if ch == '`' {
-            let mut close = i + 1;
-            while close < chars.len() && chars[close].1 != '`' {
-                close += 1;
-            }
-            if close < chars.len() {
-                let open_start = byte_offset + char_byte;
-                let open_end = open_start + ch.len_utf8();
-                spans.push(StyledTextSpan::new(open_start, open_end, punctuation_color));
-                let content_start = open_end;
-                let content_end = byte_offset + chars[close].0;
-                if content_end > content_start {
-                    spans.push(StyledTextSpan::new(content_start, content_end, string_color));
-                }
-                let close_start = byte_offset + chars[close].0;
-                let close_end = close_start + chars[close].1.len_utf8();
-                spans.push(StyledTextSpan::new(close_start, close_end, punctuation_color));
-                i = close + 1;
-                continue;
-            }
-        }
-
-        if i + 2 < chars.len()
-            && chars[i].1 == '['
-            && (chars[i + 1].1 == ' ' || chars[i + 1].1 == 'x' || chars[i + 1].1 == 'X')
-            && chars[i + 2].1 == ']'
+    while i < text.len() {
+        let rest = &text[i..];
+        if let Some(after_open) = rest.strip_prefix("**")
+            && let Some(close_rel) = after_open.find("**")
         {
-            let start = byte_offset + chars[i].0;
-            let end = byte_offset + chars[i + 2].0 + chars[i + 2].1.len_utf8();
-            spans.push(StyledTextSpan::new(start, end, operator_color));
-            i += 3;
+            let content = &after_open[..close_rel];
+            let start = rendered.len();
+            rendered.push_str(content);
+            let end = rendered.len();
+            if end > start {
+                spans.push(StyledTextSpan::with_style(
+                    start,
+                    end,
+                    theme.syntax.keyword.as_u8(),
+                    true,
+                    false,
+                ));
+            }
+            i += 2 + close_rel + 2;
+            continue;
+        }
+        if let Some(after_open) = rest.strip_prefix('`')
+            && let Some(close_rel) = after_open.find('`')
+        {
+            let content = &after_open[..close_rel];
+            let start = rendered.len();
+            rendered.push_str(content);
+            let end = rendered.len();
+            if end > start {
+                spans.push(StyledTextSpan::new(start, end, theme.syntax.string.as_u8()));
+            }
+            i += 1 + close_rel + 1;
+            continue;
+        }
+        if let Some(after_open) = rest.strip_prefix('*')
+            && let Some(close_rel) = after_open.find('*')
+        {
+            let content = &after_open[..close_rel];
+            let start = rendered.len();
+            rendered.push_str(content);
+            let end = rendered.len();
+            if end > start {
+                spans.push(StyledTextSpan::with_style(
+                    start,
+                    end,
+                    theme.syntax.comment.as_u8(),
+                    false,
+                    true,
+                ));
+            }
+            i += 1 + close_rel + 1;
             continue;
         }
 
-        if i + 1 < chars.len() && chars[i].1 == '*' && chars[i + 1].1 == '*' {
-            let start = byte_offset + chars[i].0;
-            let end = byte_offset + chars[i + 1].0 + chars[i + 1].1.len_utf8();
-            spans.push(StyledTextSpan::new(start, end, punctuation_color));
-            let mut close = i + 2;
-            while close + 1 < chars.len() {
-                if chars[close].1 == '*' && chars[close + 1].1 == '*' {
-                    let content_start = end;
-                    let content_end = byte_offset + chars[close].0;
-                    if content_end > content_start {
-                        spans.push(StyledTextSpan::with_style(
-                            content_start,
-                            content_end,
-                            keyword_color,
-                            true,
-                            false,
-                        ));
-                    }
-                    let close_start = byte_offset + chars[close].0;
-                    let close_end = byte_offset + chars[close + 1].0 + chars[close + 1].1.len_utf8();
-                    spans.push(StyledTextSpan::new(close_start, close_end, punctuation_color));
-                    i = close + 2;
-                    break;
-                }
-                close += 1;
-            }
-            if i >= chars.len() {
-                break;
-            }
-            continue;
-        }
-
-        if ch == '*' {
-            let start = byte_offset + char_byte;
-            let end = start + ch.len_utf8();
-            let mut close = i + 1;
-            while close < chars.len() && chars[close].1 != '*' {
-                close += 1;
-            }
-            if close < chars.len() {
-                spans.push(StyledTextSpan::new(start, end, punctuation_color));
-                let content_start = end;
-                let content_end = byte_offset + chars[close].0;
-                if content_end > content_start {
-                    spans.push(StyledTextSpan::with_style(
-                        content_start,
-                        content_end,
-                        comment_color,
-                        false,
-                        true,
-                    ));
-                }
-                let close_start = byte_offset + chars[close].0;
-                let close_end = close_start + chars[close].1.len_utf8();
-                spans.push(StyledTextSpan::new(close_start, close_end, punctuation_color));
-                i = close + 1;
-                continue;
-            }
-        }
-
-        if ch == '[' {
-            let mut close = i + 1;
-            while close < chars.len() && chars[close].1 != ']' {
-                close += 1;
-            }
-            if close < chars.len() {
-                let open_start = byte_offset + char_byte;
-                let open_end = open_start + ch.len_utf8();
-                spans.push(StyledTextSpan::new(open_start, open_end, punctuation_color));
-                let label_start = open_end;
-                let label_end = byte_offset + chars[close].0;
-                if label_end > label_start {
-                    spans.push(StyledTextSpan::with_style(
-                        label_start,
-                        label_end,
-                        attribute_color,
-                        false,
-                        true,
-                    ));
-                }
-                let close_start = byte_offset + chars[close].0;
-                let close_end = close_start + chars[close].1.len_utf8();
-                spans.push(StyledTextSpan::new(close_start, close_end, punctuation_color));
-                if close + 1 < chars.len() && chars[close + 1].1 == '(' {
-                    let paren_open_start = byte_offset + chars[close + 1].0;
-                    let paren_open_end = paren_open_start + chars[close + 1].1.len_utf8();
-                    spans.push(StyledTextSpan::new(
-                        paren_open_start,
-                        paren_open_end,
-                        punctuation_color,
-                    ));
-                    let mut url_close = close + 2;
-                    while url_close < chars.len() && chars[url_close].1 != ')' {
-                        url_close += 1;
-                    }
-                    if url_close < chars.len() {
-                        let url_start = paren_open_end;
-                        let url_end = byte_offset + chars[url_close].0;
-                        if url_end > url_start {
-                            spans.push(StyledTextSpan::new(url_start, url_end, string_color));
-                        }
-                        let paren_close_start = byte_offset + chars[url_close].0;
-                        let paren_close_end = paren_close_start + chars[url_close].1.len_utf8();
-                        spans.push(StyledTextSpan::new(
-                            paren_close_start,
-                            paren_close_end,
-                            punctuation_color,
-                        ));
-                        i = url_close + 1;
-                        continue;
-                    }
-                }
-            }
-        }
-
-        i += 1;
-    }
-}
-
-fn collect_inline_spans(
-    node: tree_sitter::Node<'_>,
-    source: &str,
-    theme: &ThemeConfig,
-    spans: &mut Vec<StyledTextSpan>,
-) {
-    let kind = node.kind();
-    let start = node.start_byte();
-    let end = node.end_byte();
-
-    match kind {
-        "emphasis" => {
-            spans.push(StyledTextSpan::with_style(
-                start,
-                end,
-                theme.syntax.comment.as_u8(),
-                false,
-                true,
-            ));
-        }
-        "strong_emphasis" => {
-            spans.push(StyledTextSpan::with_style(
-                start,
-                end,
-                theme.syntax.keyword.as_u8(),
-                true,
-                false,
-            ));
-        }
-        "code_span" => {
-            spans.push(StyledTextSpan::new(
-                start,
-                end,
-                theme.syntax.string.as_u8(),
-            ));
-        }
-        "link" | "link_text" => {
-            spans.push(StyledTextSpan::with_style(
-                start,
-                end,
-                theme.syntax.function.as_u8(),
-                false,
-                true,
-            ));
-        }
-        "link_destination" | "uri_autolink" | "email_autolink" | "www_autolink" => {
-            spans.push(StyledTextSpan::new(
-                start,
-                end,
-                theme.syntax.string.as_u8(),
-            ));
-        }
-        "image" => {
-            spans.push(StyledTextSpan::new(
-                start,
-                end,
-                theme.syntax.constant.as_u8(),
-            ));
-        }
-        "strikethrough" => {
-            spans.push(StyledTextSpan::new(
-                start,
-                end,
-                theme.syntax.punctuation.as_u8(),
-            ));
-        }
-        "backslash_escape" | "character_reference" => {
-            spans.push(StyledTextSpan::new(
-                start,
-                end,
-                theme.syntax.escape.as_u8(),
-            ));
-        }
-        "html_open_tag" | "html_close_tag" | "html_self_closing_tag" => {
-            spans.push(StyledTextSpan::new(
-                start,
-                end,
-                theme.syntax.tag.as_u8(),
-            ));
-        }
-        "html_comment" => {
-            spans.push(StyledTextSpan::with_style(
-                start,
-                end,
-                theme.syntax.comment.as_u8(),
-                false,
-                true,
-            ));
-        }
-        _ => {
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                collect_inline_spans(child, source, theme, spans);
-            }
+        if let Some(ch) = rest.chars().next() {
+            rendered.push(ch);
+            i += ch.len_utf8();
+        } else {
+            break;
         }
     }
+
+    (rendered, spans)
 }
+
+
+
+
+
+
+
 
 fn heading_level_from_atx(node: tree_sitter::Node<'_>, _source: &str) -> u8 {
     let mut cursor = node.walk();
@@ -965,6 +816,7 @@ fn render_table(
                     text,
                     spans,
                     block_type: MarkdownBlockType::TableHeader,
+                    code_language: None,
                 });
             }
             "table_delimiter_row" => {
@@ -973,6 +825,7 @@ fn render_table(
                     text,
                     spans: vec![],
                     block_type: MarkdownBlockType::Empty,
+                    code_language: None,
                 });
             }
             "table_data_row" => {
@@ -981,6 +834,7 @@ fn render_table(
                     text,
                     spans: vec![],
                     block_type: MarkdownBlockType::TableRow,
+                    code_language: None,
                 });
             }
             _ => {}

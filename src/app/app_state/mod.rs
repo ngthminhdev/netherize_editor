@@ -256,6 +256,7 @@ pub struct MarkdownPreviewLine {
     pub text: String,
     pub spans: Vec<StyledTextSpan>,
     pub block_type: MarkdownBlockType,
+    pub code_language: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

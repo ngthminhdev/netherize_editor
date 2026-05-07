@@ -35,6 +35,10 @@ pub fn language_id_for_extension(extension: &str) -> Option<LanguageId> {
     }
 }
 
+pub fn tree_sitter_markdown_inline_language() -> Language {
+    tree_sitter_md::INLINE_LANGUAGE.into()
+}
+
 pub fn tree_sitter_language(language_id: LanguageId) -> Option<Language> {
     match language_id {
         LanguageId::Rust => Some(tree_sitter_rust::LANGUAGE.into()),

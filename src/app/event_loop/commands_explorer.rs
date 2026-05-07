@@ -18,6 +18,53 @@ impl AppShell {
         self.semantic_highlight_spans.clear();
     }
 
+    pub(super) fn reload_workspace(&mut self) -> bool {
+        let Some(root_path) = self.app_state.workspace_root_path().map(PathBuf::from) else {
+            self.show_transient_toast("Reload Workspace: no workspace open".to_string());
+            return false;
+        };
+
+        let _ = crate::lsp::client::refresh_patched_env_path();
+
+        if let Err(err) = self.app_state.attach_workspace(root_path.clone()) {
+            self.show_transient_toast(format!("Reload Workspace failed: {err}"));
+            return false;
+        }
+
+        self.explorer_snapshot = ExplorerSnapshot::default();
+        self.explorer_snapshot_dirty = true;
+        self.mark_explorer_dirty();
+        self.workspace_git_branch = self
+            .app_state
+            .workspace_root_path()
+            .and_then(detect_git_branch);
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::WorkspaceWatch,
+            payload: WorkerRequestPayload::StartFileWatch {
+                root_path: root_path.clone(),
+            },
+        });
+        self.submit_workspace_git_status_refresh();
+        self.submit_active_buffer_git_baseline_refresh();
+        self.sync_lsp_server_for_workspace();
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::SystemTask,
+            payload: WorkerRequestPayload::DetectRuntimeVersions {
+                python_binary: self.selected_python_env.clone(),
+                workspace_root: root_path,
+            },
+        });
+
+        self.show_transient_toast("Workspace reloaded".to_string());
+        self.update_window_title();
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = true;
+        true
+    }
+
     pub(in crate::app::event_loop) fn switch_workspace_to(&mut self, root_path: PathBuf) -> bool {
         self.prepare_for_workspace_switch();
 
@@ -145,6 +192,7 @@ impl AppShell {
         command: &Command,
     ) -> Option<bool> {
         match command {
+            Command::ReloadWorkspace => Some(self.reload_workspace()),
             Command::OpenFolder => Some(self.open_folder_with_dialog()),
             Command::OpenRecentProjects => Some(self.open_recent_projects_palette()),
             Command::ToggleLeftDock => {

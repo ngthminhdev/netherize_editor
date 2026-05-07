@@ -273,6 +273,7 @@ pub enum Command {
     /// <leader>ca: Gửi textDocument/codeAction, hiển thị quickfix/refactor menu.
     CodeAction,
     LspSelectPythonEnv,
+    ReloadWorkspace,
     /// Completion popup: chọn item kế tiếp.
     CompletionNext,
     /// Completion popup: chọn item trước đó.
@@ -301,6 +302,8 @@ pub enum Command {
     AiChatInputChar(char),
     /// Delete the last character from the AI chat input buffer.
     AiChatBackspace,
+    /// Clear all text currently typed in the AI chat input buffer.
+    AiChatClearInput,
     /// Complete the current slash command from the AI chat suggestion list.
     AiChatAcceptSuggestion,
     /// Cycle to the next suggestion in the AI chat suggestion popup.
