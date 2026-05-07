@@ -240,6 +240,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
         self.flush_pending_git_diff_after_debounce();
         self.flush_pending_ai_inline_completion();
         self.flush_pending_lsp_did_change_after_debounce();
+        if self.flush_lsp_retry_if_due() {
+            self.request_redraw();
+        }
         if self.maybe_refresh_workspace_git_branch(false) {
             self.request_redraw();
         }
@@ -283,6 +286,12 @@ impl ApplicationHandler<AppEvent> for AppShell {
             next_deadline = Some(match next_deadline {
                 Some(existing) => existing.min(git_diff_deadline),
                 None => git_diff_deadline,
+            });
+        }
+        if let Some(lsp_retry_deadline) = self.next_lsp_retry_deadline() {
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(lsp_retry_deadline),
+                None => lsp_retry_deadline,
             });
         }
 

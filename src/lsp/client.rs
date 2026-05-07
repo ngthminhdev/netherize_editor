@@ -710,9 +710,13 @@ pub async fn spawn_lsp_server(
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
 
-    let mut child = command
-        .spawn()
-        .map_err(|err| format!("spawn LSP server {:?} failed: {err}", server_name))?;
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Err(format!("LSPMISSING:{}", server_name));
+        }
+        Err(err) => return Err(format!("spawn LSP server {:?} failed: {err}", server_name)),
+    };
 
     let stdin = child
         .stdin

@@ -41,8 +41,17 @@ impl Renderer {
 
         let title = "[ LSP Missing ]";
         let subtitle = format!("File type requires Language Server: {binary}");
-        let command = format!("Command: {install_cmd}");
-        let hint = "Press [Enter] to auto-install in Terminal  |  [Esc] to cancel";
+        let (command, hint) = if install_cmd.is_empty() {
+            (
+                format!("Install {binary} manually using your package manager."),
+                "[Esc] to dismiss",
+            )
+        } else {
+            (
+                format!("Command: {install_cmd}"),
+                "Press [Enter] to auto-install in Terminal  |  [Esc] to cancel",
+            )
+        };
 
         let title_font = (self.theme.ui.panel_font_size + 2.0).max(12.0);
         let title_line_h = (self.theme.ui.panel_line_height + 4.0).max(1.0);

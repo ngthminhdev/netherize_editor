@@ -204,6 +204,7 @@ impl AppShell {
             pending_code_actions: Vec::new(),
             selected_python_env: None,
             runtime_versions: RuntimeVersionInfo::default(),
+            lsp_retry_at: None,
         })
     }
 
@@ -404,6 +405,21 @@ impl AppShell {
         self.pending_git_diff_after_debounce
             .then(|| self.last_git_diff_recalc_at.unwrap_or_else(Instant::now))
             .map(|last| last + GIT_DIFF_DEBOUNCE_INTERVAL)
+    }
+
+    pub(super) fn next_lsp_retry_deadline(&self) -> Option<Instant> {
+        self.lsp_retry_at
+    }
+
+    pub(super) fn flush_lsp_retry_if_due(&mut self) -> bool {
+        let Some(retry_at) = self.lsp_retry_at else {
+            return false;
+        };
+        if Instant::now() < retry_at {
+            return false;
+        }
+        self.lsp_retry_at = None;
+        self.sync_lsp_server_for_workspace()
     }
 
     pub(super) fn next_git_branch_refresh_deadline(&self) -> Instant {

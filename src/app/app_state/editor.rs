@@ -48,6 +48,78 @@ impl AppState {
         true
     }
 
+    /// Sau khi `>` được insert, kiểm tra xem vừa đóng một opening tag chưa.
+    /// Nếu có → insert closing tag và giữ cursor giữa 2 tag.
+    /// Chỉ kích hoạt cho HTML / JSX / TSX.
+    pub fn insert_html_auto_close_tag(&mut self) -> bool {
+        let ext = self
+            .active_file()
+            .and_then(|p| p.extension())
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .unwrap_or_default();
+        if !matches!(ext.as_str(), "html" | "htm" | "jsx" | "tsx") {
+            return false;
+        }
+
+        if self.cursor_char_idx == 0 {
+            return false;
+        }
+
+        // Scan at most 512 chars back để tìm `<`
+        let scan_end = self.cursor_char_idx; // đã qua `>`
+        let scan_start = scan_end.saturating_sub(512);
+        let chars: Vec<char> = self.text.slice(scan_start..scan_end).chars().collect();
+
+        let lt_pos = match chars.iter().rposition(|&c| c == '<') {
+            Some(p) => p,
+            None => return false,
+        };
+
+        let after_lt = &chars[lt_pos + 1..];
+        if after_lt.is_empty() {
+            return false;
+        }
+
+        // Bỏ qua closing tag, comment, doctype, processing instruction
+        match after_lt[0] {
+            '/' | '!' | '?' => return false,
+            c if !c.is_alphabetic() && c != '_' => return false,
+            _ => {}
+        }
+
+        // Tên tag: chữ/số, `-`, `_`, `.`, `:`
+        let tag_name: String = after_lt
+            .iter()
+            .take_while(|&&c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | ':'))
+            .collect();
+
+        if tag_name.is_empty() {
+            return false;
+        }
+
+        // Self-closing `<br />` — char trước `>` là `/`
+        if chars.len() >= 2 && chars[chars.len() - 2] == '/' {
+            return false;
+        }
+
+        // Void elements (HTML / HTM / JSX / TSX đều bỏ qua)
+        const VOID: &[&str] = &[
+            "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
+            "source", "track", "wbr",
+        ];
+        if VOID.contains(&tag_name.to_ascii_lowercase().as_str()) {
+            return false;
+        }
+
+        // Insert closing tag; cursor không di chuyển → ở giữa 2 tag
+        let close_tag = format!("</{tag_name}>");
+        self.apply_insert(self.cursor_char_idx, close_tag);
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
     pub fn insert_auto_pair(&mut self, open: char) -> bool {
         let Some(close) = matching_close_char(open) else {
             return false;

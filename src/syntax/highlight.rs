@@ -477,6 +477,8 @@ fn highlight_query(language_id: LanguageId) -> Option<&'static Query> {
         LanguageId::Dotenv => None,
         LanguageId::Java => java_highlight_query(),
         LanguageId::Python => python_highlight_query(),
+        LanguageId::Html => html_highlight_query(),
+        LanguageId::Css => css_highlight_query(),
     }
 }
 
@@ -627,6 +629,20 @@ fn python_highlight_query() -> Option<&'static Query> {
             include_str!("queries/python/highlights.scm"),
             "python",
         )
+    }).as_ref()
+}
+
+fn html_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(LanguageId::Html, tree_sitter_html::HIGHLIGHTS_QUERY, "html")
+    }).as_ref()
+}
+
+fn css_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(LanguageId::Css, tree_sitter_css::HIGHLIGHTS_QUERY, "css")
     }).as_ref()
 }
 

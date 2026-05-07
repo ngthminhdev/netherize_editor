@@ -210,10 +210,12 @@ pub struct AppShell {
     selected_python_env: Option<std::path::PathBuf>,
     /// Cached runtime version strings for the statusbar right zone.
     runtime_versions: RuntimeVersionInfo,
+    /// Scheduled instant to auto-retry LSP server start after user accepted an install guide.
+    lsp_retry_at: Option<Instant>,
 }
 
 const DEBUG_UI_ENABLED: bool = false;
-const PARSE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(80);
+const PARSE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(20);
 const GIT_DIFF_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(80);
 const LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(500);
 const FPS_METRICS_UPDATE_INTERVAL: Duration = Duration::from_millis(500);

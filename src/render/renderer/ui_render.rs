@@ -916,10 +916,7 @@ impl Renderer {
             }];
             let mut input_glyphs = Vec::new();
 
-            let input_inner_pad_x = 10.0;
-            let input_inner_pad_y = 6.0;
-            let input_content_x = iclip[0] + input_inner_pad_x;
-            let input_content_w = (iclip[2] - input_inner_pad_x * 2.0).max(1.0);
+            let input_content_w = iclip[2];
             let input_max_chars = ((input_content_w / (font_size * 0.6)) as usize).max(12);
             let wrapped_lines = if input_buffer.is_empty() {
                 vec![input_text.clone()]

@@ -13,7 +13,7 @@ use crate::{
             build_did_change_notification, build_did_close_notification,
             build_did_open_notification, spawn_lsp_server,
         },
-        registry::language_profile_for_language_id,
+        registry::{language_profile_for_binary, language_profile_for_language_id},
     },
 };
 
@@ -85,26 +85,45 @@ pub(super) async fn run_lsp_request(
             );
         }
         Ok(Err(message)) => {
-            emit_message_and_wake(
-                &worker_tx,
-                &event_proxy,
-                WorkerMessage::Event(WorkerEvent {
-                    request_id: request.request_id,
-                    revision_id: request.revision_id,
-                    topic: request.topic,
-                    kind: WorkerEventKind::Failed {
-                        error: WorkerFailure {
-                            kind: WorkerFailureKind::Execution,
-                            message,
-                        },
+            if let Some(tool_name) = message.strip_prefix("LSPMISSING:") {
+                let language_id = language_profile_for_binary(tool_name)
+                    .map(|p| p.language_id.to_string())
+                    .unwrap_or_default();
+                emit_message_and_wake(
+                    &worker_tx,
+                    &event_proxy,
+                    WorkerMessage::LspMissingDependency {
+                        language_id,
+                        tool_name: tool_name.to_string(),
                     },
-                }),
-            );
-            async_trace!(
-                "[Worker] failed lsp request_id={} revision={}",
-                request.request_id,
-                request.revision_id
-            );
+                );
+                async_trace!(
+                    "[Worker] lsp binary missing request_id={} revision={}",
+                    request.request_id,
+                    request.revision_id
+                );
+            } else {
+                emit_message_and_wake(
+                    &worker_tx,
+                    &event_proxy,
+                    WorkerMessage::Event(WorkerEvent {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        kind: WorkerEventKind::Failed {
+                            error: WorkerFailure {
+                                kind: WorkerFailureKind::Execution,
+                                message,
+                            },
+                        },
+                    }),
+                );
+                async_trace!(
+                    "[Worker] failed lsp request_id={} revision={}",
+                    request.request_id,
+                    request.revision_id
+                );
+            }
         }
         Err(join_error) => {
             emit_message_and_wake(

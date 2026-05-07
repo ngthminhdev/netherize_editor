@@ -71,19 +71,23 @@ impl AppShell {
         }
 
         let mut changed = true;
-        if let Some(session_id) = self.pty_session_id {
-            changed |= self.handle_command(Command::FocusTerminal);
-            self.forward_to_terminal_session(session_id, &format!("{install_cmd}\r"));
-        } else {
-            self.submit(RequestSpec {
-                revision_id: 0,
-                topic: RequestTopic::TerminalPty,
-                payload: WorkerRequestPayload::SpawnDetachedShellCommand {
-                    command: install_cmd,
-                    working_dir: self.lsp_install_working_dir(),
-                },
-            });
-            self.show_transient_toast(format!("Installing {binary} in background..."));
+        if !install_cmd.is_empty() {
+            if let Some(session_id) = self.pty_session_id {
+                changed |= self.handle_command(Command::FocusTerminal);
+                self.forward_to_terminal_session(session_id, &format!("{install_cmd}\r"));
+            } else {
+                self.submit(RequestSpec {
+                    revision_id: 0,
+                    topic: RequestTopic::TerminalPty,
+                    payload: WorkerRequestPayload::SpawnDetachedShellCommand {
+                        command: install_cmd,
+                        working_dir: self.lsp_install_working_dir(),
+                    },
+                });
+                self.show_transient_toast(format!("Installing {binary} in background..."));
+            }
+            self.pending_lsp_server = None;
+            self.lsp_retry_at = Some(Instant::now() + Duration::from_secs(15));
         }
 
         changed

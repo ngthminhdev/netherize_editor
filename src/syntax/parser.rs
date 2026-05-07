@@ -29,6 +29,8 @@ pub fn language_id_for_extension(extension: &str) -> Option<LanguageId> {
         "env" => Some(LanguageId::Dotenv),
         "java" => Some(LanguageId::Java),
         "py" | "python" => Some(LanguageId::Python),
+        "html" | "htm" => Some(LanguageId::Html),
+        "css" => Some(LanguageId::Css),
         _ => None,
     }
 }
@@ -49,5 +51,7 @@ pub fn tree_sitter_language(language_id: LanguageId) -> Option<Language> {
         LanguageId::Dotenv => Some(tree_sitter_bash::LANGUAGE.into()),
         LanguageId::Java => Some(tree_sitter_java::LANGUAGE.into()),
         LanguageId::Python => Some(tree_sitter_python::LANGUAGE.into()),
+        LanguageId::Html => Some(tree_sitter_html::LANGUAGE.into()),
+        LanguageId::Css => Some(tree_sitter_css::LANGUAGE.into()),
     }
 }

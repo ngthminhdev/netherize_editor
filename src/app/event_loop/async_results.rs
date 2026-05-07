@@ -497,10 +497,7 @@ impl AsyncResultRouter for AppShell {
                 is_installed,
                 ..
             } => {
-                if !is_installed
-                    && !install_cmd.is_empty()
-                    && !self.dismissed_lsp_binaries.contains(&binary)
-                {
+                if !is_installed && !self.dismissed_lsp_binaries.contains(&binary) {
                     // Hiển thị popup hướng dẫn cài LSP.
                     self.active_lsp_guide = Some(LspInstallGuide {
                         binary,
@@ -508,7 +505,7 @@ impl AsyncResultRouter for AppShell {
                     });
                     self.request_redraw();
                 }
-                // Nếu đã cài hoặc user đã dismiss hoặc không có install_cmd: không cần làm gì.
+                // Nếu đã cài hoặc user đã dismiss: không cần làm gì.
             }
             WorkerResultPayload::LspHoverResult { content, for_completion, .. } => {
                 // Clear the in-flight tracker regardless of outcome.
@@ -1137,6 +1134,21 @@ impl AsyncResultRouter for AppShell {
             guide.state = SystemDepState::Complete;
         }
         self.editor_needs_layout = true;
+        self.request_redraw();
+    }
+
+    fn on_lsp_missing_dependency(&mut self, _language_id: String, tool_name: String) {
+        if self.dismissed_lsp_binaries.contains(&tool_name) {
+            return;
+        }
+        let install_cmd = crate::lsp::registry::language_profile_for_binary(&tool_name)
+            .map(|p| p.install_command.to_string())
+            .unwrap_or_default();
+        self.pending_lsp_server = None;
+        self.active_lsp_guide = Some(LspInstallGuide {
+            binary: tool_name,
+            install_cmd,
+        });
         self.request_redraw();
     }
 }

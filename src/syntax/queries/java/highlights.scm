@@ -49,6 +49,17 @@
 (enum_declaration      name: (identifier) @syntax.type)
 (record_declaration    name: (identifier) @syntax.type)
 
+; Package / import paths
+(package_declaration
+  (scoped_identifier
+    scope: (identifier) @syntax.namespace
+    name: (identifier) @syntax.namespace))
+
+(import_declaration
+  (scoped_identifier
+    scope: (identifier) @syntax.namespace
+    name: (identifier) @syntax.namespace))
+
 ; Uppercase identifiers used as type/namespace (e.g. System.out)
 ((field_access    object: (identifier) @syntax.type) (#match? @syntax.type "^[A-Z]"))
 ((scoped_identifier scope: (identifier) @syntax.type) (#match? @syntax.type "^[A-Z]"))
@@ -68,6 +79,7 @@
 (method_invocation       name: (identifier) @syntax.function)
 (object_creation_expression type: (type_identifier) @syntax.constructor)
 (super) @syntax.function
+(this) @syntax.variable
 
 ; --- Annotations ---
 (annotation        name: (identifier) @syntax.attribute)
@@ -100,8 +112,24 @@
   declarator: (variable_declarator
     name: (identifier) @syntax.field))
 
-; Field access — only the field part (obj.field → field)
-(field_access field: (identifier) @syntax.field)
+; Field access — distinguish class-qualified access from object properties
+((field_access
+  object: (identifier) @syntax.type
+  field: (identifier) @syntax.field)
+ (#match? @syntax.type "^[A-Z]"))
+
+(field_access field: (identifier) @syntax.property)
+
+; Scoped identifiers outside imports/packages often represent namespace/type chains
+((scoped_identifier
+  scope: (identifier) @syntax.namespace
+  name: (identifier) @syntax.type)
+ (#match? @syntax.type "^[A-Z]"))
+
+((scoped_identifier
+  scope: (identifier) @syntax.namespace
+  name: (identifier) @syntax.namespace)
+ (#not-match? @syntax.namespace "^[A-Z]"))
 
 ; --- Operators ---
 [

@@ -30,7 +30,9 @@
 ] @syntax.keyword
 
 ; --- Decorators ---
-(decorator) @syntax.attribute
+(decorator) @syntax.function
+(decorator
+  (identifier) @syntax.function)
 
 ; --- Function definitions ---
 (function_definition
@@ -58,17 +60,45 @@
   function: (identifier) @syntax.type
   (#match? @syntax.type "^(bool|int|float|str|bytes|list|dict|set|tuple|frozenset|type|object)$"))
 
+; --- Namespaces / imports / member chains ---
+(import_statement
+  name: (dotted_name
+    (identifier) @syntax.namespace))
+
+(import_from_statement
+  module_name: (dotted_name
+    (identifier) @syntax.namespace))
+
+(import_from_statement
+  name: (dotted_name
+    (identifier) @syntax.namespace))
+
+(aliased_import
+  name: (dotted_name
+    (identifier) @syntax.namespace))
+
+; --- Function calls ---
+(call
+  function: (attribute
+    attribute: (identifier) @syntax.function))
+(call
+  function: (identifier) @syntax.function)
+
+; --- Builtin functions ---
+((call
+  function: (identifier) @syntax.function)
+ (#match? @syntax.function "^(print|len|range|enumerate|zip|map|filter|sorted|reversed|min|max|sum|any|all|isinstance|issubclass|hasattr|getattr|setattr|delattr|type|super|vars|dir|id|hash|repr|chr|ord|bin|oct|hex|input|open|abs|round|pow|divmod|callable|compile|eval|exec|format|globals|locals|iter|next|property|staticmethod|classmethod)$"))
+
 ; --- Attributes ---
 (attribute
   attribute: (identifier) @syntax.property)
 
+; --- Constructors / constants by naming convention ---
+((identifier) @syntax.constructor
+  (#match? @syntax.constructor "^[A-Z]"))
+
 ; --- Variables / Identifiers ---
 (identifier) @syntax.identifier
-
-; --- Builtin functions ---
-(call
-  function: (identifier) @syntax.function
-  (#match? @syntax.function "^(print|len|range|enumerate|zip|map|filter|sorted|reversed|min|max|sum|any|all|isinstance|issubclass|hasattr|getattr|setattr|delattr|type|super|vars|dir|id|hash|repr|chr|ord|bin|oct|hex|input|open|abs|round|pow|divmod|callable|compile|eval|exec|format|globals|locals|iter|next|property|staticmethod|classmethod)$"))
 
 ; --- UPPER_CASE constants ---
 ((identifier) @syntax.constant

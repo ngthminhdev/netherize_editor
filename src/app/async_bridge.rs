@@ -43,6 +43,7 @@ pub trait AsyncResultRouter {
     fn on_ai_install_success(&mut self);
     fn on_system_dep_tool_progress(&mut self, tool: String, status: InstallStatus);
     fn on_system_dep_install_done(&mut self);
+    fn on_lsp_missing_dependency(&mut self, language_id: String, tool_name: String);
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -153,6 +154,17 @@ impl AppAsyncBridge {
                             async_trace!("[Bridge] system dep install done");
                             router.on_system_dep_install_done();
                         }
+                        WorkerMessage::LspMissingDependency {
+                            language_id,
+                            tool_name,
+                        } => {
+                            async_trace!(
+                                "[Bridge] lsp missing dependency: {} ({})",
+                                tool_name,
+                                language_id
+                            );
+                            router.on_lsp_missing_dependency(language_id, tool_name);
+                        }
                     }
                 }
                 Err(TryRecvError::Empty) => break,
@@ -212,6 +224,7 @@ mod tests {
         fn on_ai_install_success(&mut self) {}
         fn on_system_dep_tool_progress(&mut self, _tool: String, _status: InstallStatus) {}
         fn on_system_dep_install_done(&mut self) {}
+        fn on_lsp_missing_dependency(&mut self, _language_id: String, _tool_name: String) {}
     }
 
     #[test]

@@ -22,6 +22,8 @@ pub enum LanguageId {
     Dotenv,
     Java,
     Python,
+    Html,
+    Css,
 }
 
 impl LanguageId {
@@ -42,6 +44,8 @@ impl LanguageId {
             Self::Dotenv => "dotenv",
             Self::Java => "java",
             Self::Python => "python",
+            Self::Html => "html",
+            Self::Css => "css",
         }
     }
 }
@@ -370,6 +374,28 @@ mod tests {
         );
         assert!(!updated.contains("first"));
         assert_eq!(state.root_node().kind(), "source_file");
+    }
+
+    #[test]
+    fn html_parser_bootstrap_returns_fragment_root() {
+        let mut engine = SyntaxEngine::new(LanguageId::Html).expect("init html parser");
+        let state = engine
+            .parse_source("<html><body><p>Hello</p></body></html>", 1)
+            .expect("parse html");
+
+        assert_eq!(state.language_id().as_str(), "html");
+        assert_eq!(state.root_node().kind(), "document");
+    }
+
+    #[test]
+    fn css_parser_bootstrap_returns_stylesheet_root() {
+        let mut engine = SyntaxEngine::new(LanguageId::Css).expect("init css parser");
+        let state = engine
+            .parse_source("body { color: red; font-size: 16px; }", 1)
+            .expect("parse css");
+
+        assert_eq!(state.language_id().as_str(), "css");
+        assert_eq!(state.root_node().kind(), "stylesheet");
     }
 
     #[test]

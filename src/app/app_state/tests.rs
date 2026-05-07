@@ -1269,4 +1269,85 @@ mod tests {
         assert_eq!(state.history.undo_stack.len(), 2);
         assert!(state.history.redo_stack.is_empty());
     }
+
+    // ── HTML auto-close tag ────────────────────────────────────────────────────
+
+    fn html_state_with(content: &str) -> AppState {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("netherize_autoclose_{nanos}.html"));
+        std::fs::write(&path, content).expect("write temp html");
+        let mut state = AppState::from_text(path.clone(), "");
+        state.open_file(path).expect("open html");
+        // Move cursor to end of loaded text
+        state.cursor_char_idx = state.text.len_chars();
+        state
+    }
+
+    #[test]
+    fn html_auto_close_inserts_closing_tag_after_gt() {
+        let mut state = html_state_with("<div");
+        // Cursor is at end (after 'v'). Insert '>' then auto-close.
+        state.insert_char('>');
+        let closed = state.insert_html_auto_close_tag();
+        assert!(closed, "should have inserted closing tag");
+        assert_eq!(state.text_string(), "<div></div>");
+        // Cursor should be between the two tags (position 5)
+        assert_eq!(state.cursor_char_idx, 5);
+    }
+
+    #[test]
+    fn html_auto_close_with_attributes() {
+        let mut state = html_state_with(r#"<div class="foo""#);
+        state.insert_char('>');
+        let closed = state.insert_html_auto_close_tag();
+        assert!(closed);
+        assert!(state.text_string().ends_with("></div>"));
+    }
+
+    #[test]
+    fn html_auto_close_skips_void_elements() {
+        for void_tag in &["img", "br", "hr", "input", "meta", "link"] {
+            let content = format!("<{void_tag}");
+            let mut state = html_state_with(&content);
+            state.insert_char('>');
+            let closed = state.insert_html_auto_close_tag();
+            assert!(!closed, "{void_tag} should not be auto-closed");
+        }
+    }
+
+    #[test]
+    fn html_auto_close_skips_self_closing_tag() {
+        let mut state = html_state_with("<br /");
+        state.insert_char('>');
+        let closed = state.insert_html_auto_close_tag();
+        assert!(!closed, "self-closing tag should be skipped");
+    }
+
+    #[test]
+    fn html_auto_close_skips_closing_tag() {
+        let mut state = html_state_with("<div></");
+        // Simulate typing "</div>" — the `>` inside a closing tag should be ignored
+        // Manually position cursor after the closing slash context
+        state.insert_char('d');
+        state.insert_char('i');
+        state.insert_char('v');
+        state.insert_char('>');
+        let closed = state.insert_html_auto_close_tag();
+        assert!(!closed, "closing tag sequence should not trigger auto-close");
+    }
+
+    #[test]
+    fn html_auto_close_does_not_apply_to_non_html_files() {
+        // from_text has no active_file → extension is empty → returns false
+        let mut state = AppState::from_text(PathBuf::from("test.rs"), "");
+        for ch in "<div>".chars() {
+            state.insert_char(ch);
+        }
+        state.cursor_char_idx = state.text.len_chars();
+        let closed = state.insert_html_auto_close_tag();
+        assert!(!closed, "Rust file should not trigger HTML auto-close");
+    }
 }

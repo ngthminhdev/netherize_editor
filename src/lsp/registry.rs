@@ -116,7 +116,7 @@ static LANGUAGE_REGISTRY: &[LanguageProfile] = &[
         syntax_language_id: Some(LanguageId::Java),
         lsp_binary: "jdtls",
         launch_args: &["-data", ".jdtls_data"],
-        install_command: "",
+        install_command: "brew install jdtls",
         root_markers: JAVA_ROOT_MARKERS,
         extensions: &["java"],
         filenames: &[],

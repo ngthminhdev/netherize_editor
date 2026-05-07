@@ -437,10 +437,11 @@ impl InputMap {
 
         if input.named_key == Some(NamedKey::Escape)
             || (input.has_command_modifier() && input.physical_key == Some(KeyW))
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyQ))
         {
             return Some(KeybindingMatch {
-                command: Command::FocusEditor,
-                reason: "help: Esc/Ctrl+W -> FocusEditor",
+                command: Command::BufferCloseCurrent,
+                reason: "help: Esc/q/Ctrl+W -> close help buffer",
             });
         }
 

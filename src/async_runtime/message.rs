@@ -684,6 +684,11 @@ pub enum WorkerMessage {
     },
     /// All system dep tools have been processed — installation loop is done.
     SystemDepInstallDone,
+    /// LSP binary was not found on PATH when attempting to spawn the server.
+    LspMissingDependency {
+        language_id: String,
+        tool_name: String,
+    },
 }
 
 /// RequestSpec giúp caller tạo request mà không cần tự cấp request_id.
