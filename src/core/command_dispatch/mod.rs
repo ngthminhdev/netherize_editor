@@ -352,5 +352,6 @@ fn dispatch_command_with_clipboard_once(
         | Command::MarkdownPreviewScrollHalfPageDown
         | Command::MarkdownPreviewScrollTop
         | Command::MarkdownPreviewScrollBottom => session::dispatch(&mut ctx, command),
+        Command::LspSelectPythonEnv => palette::dispatch(&mut ctx, command),
     }
 }

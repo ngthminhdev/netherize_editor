@@ -339,6 +339,10 @@ pub struct LspClientProcess {
     latest_request_id: AtomicU64,
     pending_responses: Mutex<HashMap<u64, std_mpsc::SyncSender<Value>>>,
     open_documents: Mutex<HashSet<String>>,
+    /// Per-category latest in-flight RPC id (e.g. "definition", "hover"). When
+    /// the client dispatches a new cancellable request, the previous id stored
+    /// here is the one we send `$/cancelRequest` for so the server stops work.
+    cancellable_inflight: Mutex<HashMap<&'static str, u64>>,
 }
 
 impl LspClientProcess {
@@ -351,7 +355,56 @@ impl LspClientProcess {
             latest_request_id: AtomicU64::new(0),
             pending_responses: Mutex::new(HashMap::new()),
             open_documents: Mutex::new(HashSet::new()),
+            cancellable_inflight: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Atomically records `new_id` as the latest in-flight request for `key`
+    /// and returns the previous id (if any). Callers send `$/cancelRequest`
+    /// for the returned id so the server can free its worker slot.
+    pub fn swap_inflight(&self, key: &'static str, new_id: u64) -> Option<u64> {
+        let mut guard = self.cancellable_inflight.lock().ok()?;
+        guard.insert(key, new_id)
+    }
+
+    /// Drop the inflight entry for `key` only when it still matches `id`.
+    /// We never want to clobber a *newer* entry recorded by another task.
+    pub fn clear_inflight_if_matches(&self, key: &'static str, id: u64) {
+        if let Ok(mut guard) = self.cancellable_inflight.lock() {
+            if guard.get(key) == Some(&id) {
+                guard.remove(key);
+            }
+        }
+    }
+
+    /// Fire-and-forget `$/cancelRequest` notification for the given JSON-RPC
+    /// id. The server should reply to that id with an error response, which
+    /// flows back through `deliver_response` and unblocks the original waiter.
+    pub fn send_cancel_request(&self, id: u64) {
+        if let Err(err) = self
+            .send_notification("$/cancelRequest", json!({ "id": id }))
+        {
+            eprintln!("[LSP] send $/cancelRequest({id}) failed: {err}");
+        }
+    }
+
+    /// Reply to a server→client request with `result` (use `Value::Null` for a
+    /// no-op acknowledgement, e.g. `window/workDoneProgress/create`).
+    pub fn send_response(&self, id: u64, result: Value) -> Result<(), String> {
+        block_on_runtime(self.send_response_async(id, result))
+    }
+
+    pub async fn send_response_async(&self, id: u64, result: Value) -> Result<(), String> {
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": result,
+        });
+        let mut writer = self.writer.lock().await;
+        let writer = writer
+            .as_mut()
+            .ok_or_else(|| format!("lsp writer unavailable while responding to id {id}"))?;
+        write_json_rpc_message_async(writer, &payload).await
     }
 
     pub fn update_request_meta(&self, request_id: u64, revision_id: u64) {
@@ -565,6 +618,80 @@ pub struct ParsedLogMessage {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProgressKind {
+    Begin,
+    Report,
+    End,
+}
+
+/// Decoded `$/progress` notification (`WorkDoneProgress*` payloads).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedProgress {
+    pub token: String,
+    pub kind: ProgressKind,
+    pub title: Option<String>,
+    pub message: Option<String>,
+    pub percentage: Option<u32>,
+}
+
+/// Decoded server→client request that the client must answer (e.g.
+/// `window/workDoneProgress/create`). Carries the `id` so the caller can
+/// reply with a result envelope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedServerRequest {
+    pub id: u64,
+    pub method: String,
+}
+
+pub fn parse_progress_notification(message: &Value) -> Option<ParsedProgress> {
+    if message.get("method")?.as_str()? != "$/progress" {
+        return None;
+    }
+    let params = message.get("params")?;
+    let token = match params.get("token")? {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        _ => return None,
+    };
+    let value = params.get("value")?;
+    let kind_str = value.get("kind")?.as_str()?;
+    let kind = match kind_str {
+        "begin" => ProgressKind::Begin,
+        "report" => ProgressKind::Report,
+        "end" => ProgressKind::End,
+        _ => return None,
+    };
+    let title = value
+        .get("title")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let message = value
+        .get("message")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let percentage = value
+        .get("percentage")
+        .and_then(Value::as_u64)
+        .and_then(|v| u32::try_from(v).ok());
+    Some(ParsedProgress {
+        token,
+        kind,
+        title,
+        message,
+        percentage,
+    })
+}
+
+/// Detect a server→client request that the client must respond to. The
+/// scheduler currently auto-replies with `null` for the small set of
+/// requests we know are safe to acknowledge.
+pub fn parse_server_request(message: &Value) -> Option<ParsedServerRequest> {
+    let id = message.get("id").and_then(Value::as_u64)?;
+    let method = message.get("method")?.as_str()?.to_string();
+    Some(ParsedServerRequest { id, method })
+}
+
 pub async fn spawn_lsp_server(
     requested_command: Option<&str>,
     root_path: &Path,
@@ -622,6 +749,9 @@ pub async fn spawn_lsp_server(
                         "publishDiagnostics": {
                             "relatedInformation": true
                         }
+                    },
+                    "window": {
+                        "workDoneProgress": true
                     }
                 },
                 "trace": "off",

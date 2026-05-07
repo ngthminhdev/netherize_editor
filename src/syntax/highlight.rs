@@ -476,6 +476,7 @@ fn highlight_query(language_id: LanguageId) -> Option<&'static Query> {
         LanguageId::Markdown => markdown_highlight_query(),
         LanguageId::Dotenv => None,
         LanguageId::Java => java_highlight_query(),
+        LanguageId::Python => python_highlight_query(),
     }
 }
 
@@ -614,6 +615,17 @@ fn java_highlight_query() -> Option<&'static Query> {
             LanguageId::Java,
             include_str!("queries/java/highlights.scm"),
             "java",
+        )
+    }).as_ref()
+}
+
+fn python_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(
+            LanguageId::Python,
+            include_str!("queries/python/highlights.scm"),
+            "python",
         )
     }).as_ref()
 }

@@ -21,13 +21,41 @@ impl AsyncResultRouter for AppShell {
             if topic == RequestTopic::LspClient {
                 self.pending_lsp_server = None;
             }
-            // If the failure belongs to our in-flight completionItem/resolve, flip
-            // the docs panel from "Loading…" to its resolved state so the UI doesn't
-            // hang there forever when the server lacks resolveProvider or times out.
+            // completionItem/resolve failed (e.g. server doesn't advertise resolveProvider).
+            // Fall back to a silent hover request to populate the completion doc panel.
             if self.completion_resolve_request_id == Some(request_id) {
                 self.completion_resolve_request_id = None;
+                self.submit_hover_for_completion_doc();
+                self.editor_caret_needs_layout = true;
+                self.request_redraw();
+            }
+            // Fallback hover also failed — give up and mark as resolved so the panel
+            // shows "No documentation available" instead of spinning forever.
+            if self.completion_doc_fallback_request_id == Some(request_id) {
+                self.completion_doc_fallback_request_id = None;
                 self.app_state.mark_completion_hover_doc_resolved();
                 self.editor_caret_needs_layout = true;
+                self.request_redraw();
+            }
+            // Hover request failed — dismiss the loading overlay we showed eagerly.
+            if self.hover_loading_request_id == Some(request_id) {
+                self.hover_loading_request_id = None;
+                let changed = self.app_state.clear_current_overlays();
+                if changed {
+                    self.editor_caret_needs_layout = true;
+                    self.request_redraw();
+                }
+            }
+            // Definition request failed (timeout, server error, or our own
+            // $/cancelRequest racing in). If this was the request we're still
+            // waiting on, free the slot so the next `gd` isn't filtered out
+            // as "superseded".
+            if self.latest_definition_request_id == Some(request_id) {
+                self.latest_definition_request_id = None;
+            }
+            // Completion request failed — clear the spinner.
+            if self.app_state.is_completion_loading() {
+                self.app_state.set_completion_loading(false);
                 self.request_redraw();
             }
             if topic == RequestTopic::LspRequest
@@ -400,7 +428,14 @@ impl AsyncResultRouter for AppShell {
                 }
             }
             WorkerResultPayload::LspServerStopped { .. } => {
-                self.active_lsp_server = None;
+                if let Some(server) = self.active_lsp_server.take() {
+                    if self
+                        .app_state
+                        .clear_lsp_progress_for_server(&server.server_name)
+                    {
+                        self.request_redraw();
+                    }
+                }
                 self.pending_lsp_document_sync = None;
                 self.lsp_completion_trigger_chars.clear();
             }
@@ -429,6 +464,33 @@ impl AsyncResultRouter for AppShell {
             WorkerResultPayload::LspLogMessage { level, message } => {
                 eprintln!("[LSP/{level}] {message}");
             }
+            WorkerResultPayload::LspProgress {
+                server_name,
+                token,
+                kind,
+                title,
+                message,
+                percentage,
+            } => {
+                use crate::app::app_state::LspProgressKind;
+                use crate::async_runtime::message::LspProgressKindWire;
+                let app_kind = match kind {
+                    LspProgressKindWire::Begin => LspProgressKind::Begin,
+                    LspProgressKindWire::Report => LspProgressKind::Report,
+                    LspProgressKindWire::End => LspProgressKind::End,
+                };
+                let changed = self.app_state.update_lsp_progress(
+                    &server_name,
+                    &token,
+                    app_kind,
+                    title,
+                    message,
+                    percentage,
+                );
+                if changed {
+                    self.request_redraw();
+                }
+            }
             WorkerResultPayload::LspCheckResult {
                 binary,
                 install_cmd,
@@ -449,11 +511,30 @@ impl AsyncResultRouter for AppShell {
                 // Nếu đã cài hoặc user đã dismiss hoặc không có install_cmd: không cần làm gì.
             }
             WorkerResultPayload::LspHoverResult { content, for_completion, .. } => {
+                // Clear the in-flight tracker regardless of outcome.
+                if self.hover_loading_request_id == Some(request_id) {
+                    self.hover_loading_request_id = None;
+                }
+                if self.completion_doc_fallback_request_id == Some(request_id) {
+                    self.completion_doc_fallback_request_id = None;
+                }
                 if content.is_empty() {
+                    if for_completion {
+                        // Hover fallback also found nothing — mark resolved so the panel
+                        // shows "No documentation available" instead of spinning.
+                        self.app_state.mark_completion_hover_doc_resolved();
+                        self.editor_caret_needs_layout = true;
+                    } else {
+                        // No docs — dismiss the loading overlay we showed eagerly.
+                        let changed = self.app_state.clear_current_overlays();
+                        if changed {
+                            self.editor_caret_needs_layout = true;
+                            self.request_redraw();
+                        }
+                    }
                     return;
                 }
                 if for_completion {
-                    // Route into completion doc panel if completion is still open
                     if self.app_state.has_completion() {
                         self.app_state.set_completion_hover_doc(Some(content.clone()));
                         self.editor_caret_needs_layout = true;
@@ -465,6 +546,11 @@ impl AsyncResultRouter for AppShell {
                 let (anchor_line, anchor_col) = self.app_state.cursor_line_col();
                 let blocks = parse_hover_markdown_blocks(&content, &self.theme);
                 if blocks.is_empty() {
+                    let changed = self.app_state.clear_current_overlays();
+                    if changed {
+                        self.editor_caret_needs_layout = true;
+                        self.request_redraw();
+                    }
                     return;
                 }
                 let changed =
@@ -484,6 +570,23 @@ impl AsyncResultRouter for AppShell {
                 locations, jump, ..
             } => {
                 use crate::app::app_state::{EditorOverlay, FloatingBoxStyle};
+                // Drop any result whose request was superseded by a newer
+                // `gd`/`gD`. The worker already sent $/cancelRequest, but the
+                // response may have been on the wire before cancellation
+                // reached the server.
+                if self
+                    .latest_definition_request_id
+                    .is_some_and(|latest| latest != request_id)
+                {
+                    eprintln!(
+                        "[AppShell] dropping stale LSP definition response request_id={request_id} latest={:?}",
+                        self.latest_definition_request_id
+                    );
+                    return;
+                }
+                if self.latest_definition_request_id == Some(request_id) {
+                    self.latest_definition_request_id = None;
+                }
                 let Some(loc) = locations.into_iter().next() else {
                     eprintln!("[AppShell] LSP definition: no locations");
                     return;
@@ -713,7 +816,9 @@ impl AsyncResultRouter for AppShell {
                 prefix_start_col,
                 prefix,
             } => {
+                self.app_state.set_completion_loading(false);
                 if items.is_empty() {
+                    self.request_redraw();
                     return;
                 }
                 let completion = crate::app::app_state::CompletionState::from_lsp_items(
@@ -735,15 +840,23 @@ impl AsyncResultRouter for AppShell {
             }
             WorkerResultPayload::LspCompletionResolveResult {
                 item_label,
-                detail: _,
+                detail,
                 documentation,
             } => {
                 // Drop the in-flight tracker only if this result matches it.
                 if self.completion_resolve_request_id == Some(request_id) {
                     self.completion_resolve_request_id = None;
                 }
-                // Only apply when completion is still open and the selected item
-                // matches the label we requested (label is a stable enough key here).
+                // Apply `detail` regardless of selection — other items in the list
+                // can benefit when the user navigates to them later. Some LSPs only
+                // fill `detail` via resolve (e.g. tsserver), so this is needed for
+                // the signature line in the doc panel to appear at all.
+                let cleaned_detail = detail.filter(|d| !d.trim().is_empty());
+                if cleaned_detail.is_some() {
+                    self.app_state.update_completion_item_detail(&item_label, cleaned_detail);
+                }
+                // Only apply documentation when completion is still open and the
+                // selected item matches the label we requested.
                 let Some(completion) = self.app_state.completion() else {
                     return;
                 };
@@ -757,7 +870,10 @@ impl AsyncResultRouter for AppShell {
                 if cleaned.is_some() {
                     self.app_state.set_completion_hover_doc(cleaned);
                 } else {
-                    self.app_state.mark_completion_hover_doc_resolved();
+                    // Resolve returned no body docs — try a hover request as fallback.
+                    // (Hover at the cursor mid-typing often returns empty too, in
+                    // which case the panel will just show the signature alone.)
+                    self.submit_hover_for_completion_doc();
                 }
                 self.editor_caret_needs_layout = true;
                 self.request_redraw();
@@ -874,6 +990,32 @@ impl AsyncResultRouter for AppShell {
                     install_command: Some(install_cmd),
                     tool_statuses,
                 });
+                self.request_redraw();
+            }
+            WorkerResultPayload::PythonEnvironmentsDiscovered(envs) => {
+                use crate::app::command_palette::{
+                    CommandPaletteAction, CommandPaletteItem, CommandPaletteItemTone,
+                };
+                let items: Vec<CommandPaletteItem> = envs
+                    .iter()
+                    .map(|env| CommandPaletteItem {
+                        label: format!(
+                            "[{}] {}",
+                            match &env.kind {
+                                crate::async_runtime::python_env::PythonEnvKind::Venv(_) => "venv",
+                                crate::async_runtime::python_env::PythonEnvKind::Pyenv(_) => "pyenv",
+                                crate::async_runtime::python_env::PythonEnvKind::Global => "global",
+                            },
+                            env.display_name
+                        ),
+                        secondary_label: Some(env.executable.display().to_string()),
+                        action: CommandPaletteAction::SelectPythonEnv(env.executable.clone()),
+                        tone: CommandPaletteItemTone::Default,
+                    })
+                    .collect();
+                self.app_state
+                    .command_palette
+                    .replace_static_results(items);
                 self.request_redraw();
             }
             _ => {}

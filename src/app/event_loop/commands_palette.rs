@@ -338,6 +338,15 @@ impl AppShell {
                 if matches!(command, Command::FilePickerConfirmSelection)
                     && matches!(
                         self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::PythonEnvSelector)
+                    )
+                {
+                    return Some(self.confirm_python_env_selection());
+                }
+
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
                         Some(CommandPaletteMode::InFileSearch)
                     )
                 {

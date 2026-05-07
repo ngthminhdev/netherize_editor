@@ -328,7 +328,8 @@ pub(super) async fn execute_virtual_job(
             Err("AI install request should be handled by dedicated AI runner".to_string())
         }
         WorkerRequestPayload::LoadLocalHistory { .. }
-        | WorkerRequestPayload::SaveLocalHistory { .. } => {
+        | WorkerRequestPayload::SaveLocalHistory { .. }
+        | WorkerRequestPayload::ScanPythonEnvironments { .. } => {
             Err("local history request should be handled by dedicated history runner".to_string())
         }
     }

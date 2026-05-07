@@ -172,6 +172,9 @@ impl AppShell {
             active_highlight_request_revision: 0,
             references_request_revision: 0,
             completion_resolve_request_id: None,
+            completion_doc_fallback_request_id: None,
+            hover_loading_request_id: None,
+            latest_definition_request_id: None,
             document_symbols_request_revision: 0,
             fzf_search_revision: 0,
             local_history_revision: 0,
@@ -193,6 +196,8 @@ impl AppShell {
             last_scroll_animation_tick: now,
             last_git_branch_refresh_at: now,
             last_thinking_animation_tick: now,
+            last_lsp_loading_animation_tick: now,
+            lsp_loading_frame: 0,
             caret_blink_visible: true,
             caret_blink_dirty: false,
             pre_markdown_preview_right_width: None,
@@ -1288,11 +1293,16 @@ impl AppShell {
         }
 
         let version = self.app_state.revision().min(i32::MAX as u64) as i32;
+        // Use LspDidOpen instead of LspDidChange: the worker already handles both
+        // "register + open" and "already open → change" in a single payload, so
+        // the first call after server start doesn't silently drop the sync because
+        // the document hasn't been registered yet.
         self.submit(RequestSpec {
             revision_id: self.app_state.revision(),
             topic: RequestTopic::LspClient,
-            payload: WorkerRequestPayload::LspDidChange {
+            payload: WorkerRequestPayload::LspDidOpen {
                 uri: path_to_lsp_uri(path),
+                language_id: language_id_for_path(path),
                 version,
                 text: self.app_state.text_string(),
             },

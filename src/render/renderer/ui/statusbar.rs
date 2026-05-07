@@ -28,6 +28,9 @@ impl Renderer {
         col: usize,
         diagnostics_errors: usize,
         diagnostics_warnings: usize,
+        lsp_loading: bool,
+        lsp_loading_frame: u8,
+        lsp_progress: Option<&str>,
         bounds: [f32; 4],
     ) -> Vec<RegionDrawInstance> {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
@@ -50,6 +53,9 @@ impl Renderer {
             col,
             diagnostics_errors,
             diagnostics_warnings,
+            lsp_loading,
+            lsp_loading_frame,
+            lsp_progress: lsp_progress.map(str::to_string),
             bounds,
         };
         if self.last_statusbar_layout_key.as_ref() == Some(&layout_key) {
@@ -317,18 +323,31 @@ impl Renderer {
             ));
         }
 
-        // ── ⑦ LSP status dot ─────────────────────────────────────────────────────
-        let lsp_color = if diagnostics_errors > 0 {
-            error_fg
-        } else {
-            success_fg
-        };
+        // ── ⑦ LSP status indicator ───────────────────────────────────────────────
         let lsp_x = rx + item_gap;
         let lsp_y = bounds[1] + (bounds[3] - lsp_dot_size) * 0.5;
-        chrome.push(
-            RegionDrawInstance::new([lsp_x, lsp_y, lsp_dot_size, lsp_dot_size], lsp_color)
-                .with_radius(lsp_dot_size * 0.5),
-        );
+        if lsp_loading {
+            // Braille spinner — 10 frames, 100 ms each = full rotation ~1 s.
+            const SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+            let frame = SPINNER[(lsp_loading_frame as usize) % SPINNER.len()];
+            let amber: [f32; 4] = [0.95, 0.65, 0.15, 0.90];
+            let spinner_str: String = frame.into();
+            glyphs.extend(layout_panel_text(
+                &spinner_str,
+                &mut self.statusbar_text_system,
+                &mut self.atlas,
+                &self.queue,
+                lsp_x,
+                origin_y,
+                amber,
+            ));
+        } else {
+            let lsp_color = if diagnostics_errors > 0 { error_fg } else { success_fg };
+            chrome.push(
+                RegionDrawInstance::new([lsp_x, lsp_y, lsp_dot_size, lsp_dot_size], lsp_color)
+                    .with_radius(lsp_dot_size * 0.5),
+            );
+        }
 
         self.statusbar_glyph_instances = glyphs;
         self.statusbar_text_pipeline.upload_instances(

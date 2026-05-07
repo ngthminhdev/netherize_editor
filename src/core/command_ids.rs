@@ -115,6 +115,7 @@ pub const LSP_REFERENCES: &str = "lsp.references";
 pub const LSP_FORMAT_DOCUMENT: &str = "lsp.format_document";
 pub const LSP_TRIGGER_COMPLETION: &str = "lsp.trigger_completion";
 pub const LSP_CODE_ACTION: &str = "lsp.code_action";
+pub const LSP_SELECT_PYTHON_ENV: &str = "lsp.select_python_env";
 pub const COMPLETION_NEXT: &str = "completion.next";
 pub const COMPLETION_PREV: &str = "completion.prev";
 pub const COMPLETION_ACCEPT: &str = "completion.accept";

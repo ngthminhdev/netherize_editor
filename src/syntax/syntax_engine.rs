@@ -21,6 +21,7 @@ pub enum LanguageId {
     Markdown,
     Dotenv,
     Java,
+    Python,
 }
 
 impl LanguageId {
@@ -40,6 +41,7 @@ impl LanguageId {
             Self::Markdown => "markdown",
             Self::Dotenv => "dotenv",
             Self::Java => "java",
+            Self::Python => "python",
         }
     }
 }

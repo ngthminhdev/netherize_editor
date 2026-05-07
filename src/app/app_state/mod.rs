@@ -58,6 +58,42 @@ pub struct ExternalChangeReport {
     pub notices: Vec<String>,
 }
 
+/// `WorkDoneProgress` lifecycle kind sent by the LSP server inside a
+/// `$/progress` notification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LspProgressKind {
+    Begin,
+    Report,
+    End,
+}
+
+/// Snapshot of the most recent `$/progress` notification reported by an LSP
+/// server (e.g. rust-analyzer's `PrimeCaches`/`Indexing`). When `Some`, the
+/// status bar shows a "[⏳ LSP: …]" hint so the user knows the server is busy.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LspProgressEntry {
+    pub server: String,
+    pub token: String,
+    pub title: Option<String>,
+    pub message: Option<String>,
+    pub percentage: Option<u32>,
+}
+
+impl LspProgressEntry {
+    pub fn status_label(&self) -> String {
+        let head = match (self.title.as_deref(), self.message.as_deref()) {
+            (Some(t), Some(m)) if !m.is_empty() && t != m => format!("{t}: {m}"),
+            (Some(t), _) => t.to_string(),
+            (None, Some(m)) => m.to_string(),
+            (None, None) => "working".to_string(),
+        };
+        match self.percentage {
+            Some(pct) => format!("{head} {pct}%"),
+            None => head,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VisualSelectionRange {
     pub start_char: usize,
@@ -1195,7 +1231,7 @@ pub struct AppState {
     pub current_scroll_y: f32,
     pub scroll_column: usize,
     workspace_model: Option<WorkspaceModel>,
-    command_palette: CommandPalette,
+    pub(crate) command_palette: CommandPalette,
     file_picker_results_cache: Vec<FilePickerEntry>,
     last_search_query: String,
     search_highlights: Vec<(usize, usize)>,
@@ -1212,10 +1248,16 @@ pub struct AppState {
     pending_highlight_edits: Vec<HighlightEdit>,
     current_overlays: Vec<EditorOverlay>,
     completion: Option<CompletionState>,
+    completion_loading: bool,
     inline_suggestion: Option<String>,
     jump_back_stack: Vec<(PathBuf, usize)>,
     jump_forward_stack: Vec<(PathBuf, usize)>,
     diagnostics: HashMap<PathBuf, Vec<LspDiagnostic>>,
+    /// Latest `$/progress` snapshot, keyed by `(server, token)` so concurrent
+    /// progress streams don't clobber each other. The status bar reads the
+    /// most recently updated entry.
+    lsp_progress: HashMap<(String, String), LspProgressEntry>,
+    lsp_progress_active_key: Option<(String, String)>,
     pending_explorer_rename_path: Option<PathBuf>,
     indent_config: IndentConfig,
     is_initial_launch_welcome: bool,
@@ -1267,10 +1309,13 @@ impl AppState {
             pending_highlight_edits: Vec::new(),
             current_overlays: Vec::new(),
             completion: None,
+            completion_loading: false,
             inline_suggestion: None,
             jump_back_stack: Vec::new(),
             jump_forward_stack: Vec::new(),
             diagnostics: HashMap::new(),
+            lsp_progress: HashMap::new(),
+            lsp_progress_active_key: None,
             pending_explorer_rename_path: None,
             indent_config: IndentConfig::default(),
             is_initial_launch_welcome: true,
@@ -1317,10 +1362,13 @@ impl AppState {
             pending_highlight_edits: Vec::new(),
             current_overlays: Vec::new(),
             completion: None,
+            completion_loading: false,
             inline_suggestion: None,
             jump_back_stack: Vec::new(),
             jump_forward_stack: Vec::new(),
             diagnostics: HashMap::new(),
+            lsp_progress: HashMap::new(),
+            lsp_progress_active_key: None,
             pending_explorer_rename_path: None,
             indent_config: IndentConfig::default(),
             is_initial_launch_welcome: false,

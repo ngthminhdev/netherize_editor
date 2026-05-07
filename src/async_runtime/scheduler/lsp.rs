@@ -162,6 +162,7 @@ fn execute_lsp_request(
                 session,
                 spawned.reader,
                 request.topic,
+                spawned.server_name.clone(),
                 lsp_sessions.clone(),
                 worker_tx.clone(),
             )?;

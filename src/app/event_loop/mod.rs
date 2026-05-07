@@ -18,7 +18,7 @@ use crate::{
         app_state::{AppState, BufferContent, EditorOverlay, OverlayColorToken},
         async_bridge::{AppAsyncBridge, AsyncResultRouter},
         clipboard::SystemClipboard,
-        command_palette::CommandPaletteMode,
+        command_palette::{CommandPaletteAction, CommandPaletteMode},
         input::{InputHandler, InputRouteOutcome, LeapState},
         input_map::{InputFocusContext, InputMap, KeybindingContext},
         persistence::AppPersistentState,
@@ -164,6 +164,19 @@ pub struct AppShell {
     /// back to the pending docs panel so we can flip "Loading…" to "No docs" when the
     /// server rejects or times out.
     completion_resolve_request_id: Option<u64>,
+    /// In-flight fallback hover request id (when resolve returns no docs we send a
+    /// silent `textDocument/hover`). Tracked separately from the primary hover overlay
+    /// so its failure can mark the doc panel as resolved without looping back into
+    /// another fallback.
+    completion_doc_fallback_request_id: Option<u64>,
+    /// Request id of the last in-flight hover — used to clear the loading overlay
+    /// when the request fails or returns empty (so the overlay doesn't get stuck).
+    hover_loading_request_id: Option<u64>,
+    /// Request id of the last in-flight `gd`/`gD` definition request. When a
+    /// new request is dispatched, the previous one's result must be dropped on
+    /// arrival to avoid a flicker (or a wrong jump) if the server replies out
+    /// of order.
+    latest_definition_request_id: Option<u64>,
     fzf_search_revision: u64,
     local_history_revision: u64,
     pending_parse_after_debounce: bool,
@@ -186,6 +199,8 @@ pub struct AppShell {
     last_scroll_animation_tick: Instant,
     last_git_branch_refresh_at: Instant,
     last_thinking_animation_tick: Instant,
+    last_lsp_loading_animation_tick: Instant,
+    lsp_loading_frame: u8,
     caret_blink_visible: bool,
     caret_blink_dirty: bool,
     pre_markdown_preview_right_width: Option<f32>,
@@ -200,6 +215,7 @@ const LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(500);
 const FPS_METRICS_UPDATE_INTERVAL: Duration = Duration::from_millis(500);
 const GIT_BRANCH_REFRESH_INTERVAL: Duration = Duration::from_millis(750);
 const THINKING_ANIMATION_INTERVAL: Duration = Duration::from_millis(400);
+const LSP_LOADING_ANIMATION_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone)]
 struct ExplorerEntry {

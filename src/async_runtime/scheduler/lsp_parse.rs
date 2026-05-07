@@ -37,6 +37,47 @@ pub(super) fn lsp_request_response(
     }
 }
 
+/// Same as `lsp_request_response`, but tagged with a cancellation `key`
+/// (e.g. `"definition"`, `"hover"`). When the user fires the same kind of
+/// request again before this one finishes, the worker dispatching the new
+/// request will atomically replace the inflight slot for `key` and send
+/// `$/cancelRequest` for the previous id, so the LSP server frees its slot
+/// instead of letting the old request linger and starve the queue.
+pub(super) fn lsp_cancellable_request_response(
+    session: &Arc<LspClientProcess>,
+    key: &'static str,
+    method: &str,
+    params: serde_json::Value,
+    timeout_secs: u64,
+) -> Result<serde_json::Value, String> {
+    let request_id = session.allocate_request_id();
+    if let Some(previous_id) = session.swap_inflight(key, request_id) {
+        // Best-effort: tell the server to abandon the previous request. If the
+        // server doesn't understand $/cancelRequest the worst case is the same
+        // as today (old request finishes and main-thread reconciliation drops
+        // it as stale).
+        session.send_cancel_request(previous_id);
+    }
+    let rx = session.register_pending_request(request_id);
+    if let Err(err) = session.send_request_with_id(request_id, method, params) {
+        session.clear_pending_request(request_id);
+        session.clear_inflight_if_matches(key, request_id);
+        return Err(err);
+    }
+    let deadline = std::time::Duration::from_secs(timeout_secs);
+    let outcome = match rx.recv_timeout(deadline) {
+        Ok(value) => Ok(value),
+        Err(_) => {
+            session.clear_pending_request(request_id);
+            Err(format!(
+                "lsp {method} request timed out after {timeout_secs}s"
+            ))
+        }
+    };
+    session.clear_inflight_if_matches(key, request_id);
+    outcome
+}
+
 fn parse_hover_content(result: &Value) -> String {
     let contents = match result.get("contents") {
         Some(contents) => contents,
@@ -101,13 +142,7 @@ fn parse_completion_items(result: &Value) -> Vec<LspCompletionItem> {
                         .map(|kind| kind as u32);
                     let documentation = item
                         .get("documentation")
-                        .and_then(|v| v.as_str())
-                        .map(str::to_string)
-                        .or_else(|| {
-                            item.pointer("/documentation/value")
-                                .and_then(Value::as_str)
-                                .map(str::to_string)
-                        });
+                        .and_then(parse_documentation_field);
                     let raw_json = serde_json::to_string(item).ok();
                     Some(LspCompletionItem {
                         label,
@@ -216,8 +251,9 @@ pub(super) fn handle_lsp_hover(
         "textDocument": { "uri": uri },
         "position": { "line": line, "character": character }
     });
-    let response = lsp_request_response(
+    let response = lsp_cancellable_request_response(
         session,
+        "hover",
         "textDocument/hover",
         params,
         LSP_HOVER_TIMEOUT_SECS,
@@ -238,6 +274,41 @@ pub(super) fn handle_lsp_hover(
         cursor_col,
         for_completion,
     })
+}
+
+/// Parse the `documentation` field of a CompletionItem (used both inline and in
+/// `completionItem/resolve` responses). Handles every shape the LSP spec allows:
+///   - plain string (legacy)
+///   - `MarkupContent { kind, value }` (current)
+///   - `MarkedString[]` array (deprecated, but tsserver/gopls still emit it)
+fn parse_documentation_field(value: &Value) -> Option<String> {
+    if let Some(s) = value.as_str() {
+        let trimmed = s.trim();
+        return (!trimmed.is_empty()).then(|| trimmed.to_string());
+    }
+    if let Some(s) = value.pointer("/value").and_then(Value::as_str) {
+        let trimmed = s.trim();
+        return (!trimmed.is_empty()).then(|| trimmed.to_string());
+    }
+    if let Some(arr) = value.as_array() {
+        let parts: Vec<String> = arr
+            .iter()
+            .filter_map(|item| {
+                item.as_str()
+                    .map(str::to_string)
+                    .or_else(|| {
+                        item.pointer("/value")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                    })
+            })
+            .filter(|s| !s.trim().is_empty())
+            .collect();
+        if !parts.is_empty() {
+            return Some(parts.join("\n\n"));
+        }
+    }
+    None
 }
 
 pub(super) fn handle_lsp_completion_resolve(
@@ -262,23 +333,32 @@ pub(super) fn handle_lsp_completion_resolve(
     let detail = result
         .get("detail")
         .and_then(Value::as_str)
-        .map(str::to_string)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
         .or_else(|| {
             result
                 .pointer("/labelDetails/detail")
                 .and_then(Value::as_str)
-                .map(str::to_string)
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
         });
     let documentation = result
         .get("documentation")
-        .and_then(|v| v.as_str())
-        .map(str::to_string)
-        .or_else(|| {
-            result
-                .pointer("/documentation/value")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        });
+        .and_then(parse_documentation_field);
+
+    // Diagnostic: if the resolve came back but neither detail nor documentation
+    // could be extracted, log the raw response so we can spot unsupported shapes.
+    if detail.is_none() && documentation.is_none() {
+        if let Ok(serialized) = serde_json::to_string(result) {
+            let snippet: String = serialized.chars().take(500).collect();
+            eprintln!(
+                "[LSP] completionItem/resolve for '{}' returned no detail/documentation. \
+                 Raw result (first 500 chars): {}",
+                item_label, snippet
+            );
+        }
+    }
+
     Ok(WorkerResultPayload::LspCompletionResolveResult {
         item_label: item_label.to_string(),
         detail,
@@ -297,8 +377,9 @@ pub(super) fn handle_lsp_definition(
         "textDocument": { "uri": uri },
         "position": { "line": line, "character": character }
     });
-    let response = lsp_request_response(
+    let response = lsp_cancellable_request_response(
         session,
+        "definition",
         "textDocument/definition",
         params,
         LSP_DEFINITION_TIMEOUT_SECS,

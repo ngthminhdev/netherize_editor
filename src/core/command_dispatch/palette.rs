@@ -445,6 +445,8 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
                 dispatch_command(ctx.app_state, Command::BufferCloseCurrent)
             } else if command_text == "h" || command_text == "help" {
                 dispatch_command(ctx.app_state, Command::OpenHelp)
+            } else if command_text == "lsp python" {
+                dispatch_command(ctx.app_state, Command::LspSelectPythonEnv)
             } else if let Ok(line_number) = command_text.parse::<usize>() {
                 let target_line = line_number
                     .saturating_sub(1)
@@ -519,6 +521,13 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
                 "Dispatch: code action confirmed (handled by AppShell)".to_string(),
                 true,
                 closed,
+            )
+        }
+        CommandPaletteAction::SelectPythonEnv(_path) => {
+            DispatchReport::success_with_flags(
+                "Dispatch: python env selected (handled by AppShell)".to_string(),
+                true,
+                false,
             )
         }
     }

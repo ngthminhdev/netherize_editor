@@ -8,6 +8,13 @@ impl AppShell {
     }
 
     pub(super) fn submit_lsp_completion(&mut self) -> bool {
+        if self.active_lsp_server.is_none() {
+            if self.pending_lsp_server.is_some() {
+                self.show_transient_toast("LSP is starting up, please wait…".to_string());
+            }
+            return false;
+        }
+        self.app_state.set_completion_loading(true);
         self.force_flush_lsp_did_change_for_active_file();
         let Some((language_id, uri, line, character)) = self.lsp_cursor_context() else {
             return false;
@@ -63,6 +70,7 @@ impl AppShell {
     /// for either inline docs or "No docs available".
     pub(in crate::app::event_loop) fn submit_completion_resolve(&mut self) {
         self.completion_resolve_request_id = None;
+        self.completion_doc_fallback_request_id = None;
         let Some(completion) = self.app_state.completion() else {
             return;
         };
@@ -141,11 +149,16 @@ impl AppShell {
             return self.close_completion_popup();
         }
 
-        if let Some(char_left) = self.app_state.char_before_cursor() {
-            if self.lsp_completion_trigger_chars.contains(&char_left) {
-                if insert_text.starts_with(char_left) {
-                    insert_text = insert_text.chars().skip(1).collect();
-                }
+        // Strip a leading trigger char from insert_text when the buffer already
+        // contains that char just before the typed prefix. This handles both:
+        //   - user typed just `.`  (prefix=""), char_before_cursor = '.'
+        //   - user typed `.trim`  (prefix="trim"), trigger char is '.' before prefix start
+        // Without this, LSP items that include the leading '.' in insert_text would
+        // produce `obj..trim()` instead of `obj.trim()`.
+        let trigger_col = completion.trigger_pos.col.saturating_sub(1);
+        if let Some(ch) = self.app_state.char_at_line_col(completion.trigger_pos.line, trigger_col) {
+            if self.lsp_completion_trigger_chars.contains(&ch) && insert_text.starts_with(ch) {
+                insert_text = insert_text.chars().skip(1).collect();
             }
         }
 

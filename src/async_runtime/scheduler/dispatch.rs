@@ -10,7 +10,7 @@ use crate::{
     app::event_loop::AppEvent,
     async_runtime::message::{
         WorkerEvent, WorkerEventKind, WorkerFailure, WorkerFailureKind, WorkerMessage,
-        WorkerRequest, WorkerRequestPayload, WorkerResult,
+        WorkerRequest, WorkerRequestPayload, WorkerResult, WorkerResultPayload,
     },
 };
 
@@ -253,6 +253,31 @@ pub(super) async fn dispatch_loop(
             let install_proxy = event_proxy.clone();
             tokio::spawn(async move {
                 run_system_dep_install(tools, worker_tx, install_proxy).await;
+            });
+            continue;
+        }
+
+        if matches!(request.payload, WorkerRequestPayload::ScanPythonEnvironments { .. }) {
+            let workspace_root = match request.payload {
+                WorkerRequestPayload::ScanPythonEnvironments { workspace_root } => workspace_root,
+                _ => unreachable!(),
+            };
+            let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                let environments =
+                    crate::async_runtime::python_env::scan_python_environments(&workspace_root)
+                        .await;
+                emit_message_and_wake(
+                    &worker_tx,
+                    &event_proxy,
+                    WorkerMessage::Result(WorkerResult {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        payload: WorkerResultPayload::PythonEnvironmentsDiscovered(environments),
+                    }),
+                );
             });
             continue;
         }

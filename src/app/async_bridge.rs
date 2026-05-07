@@ -105,6 +105,8 @@ impl AppAsyncBridge {
                             let bypass_revision_check = matches!(
                                 result.payload,
                                 WorkerResultPayload::LspDiagnostics { .. }
+                                    | WorkerResultPayload::LspProgress { .. }
+                                    | WorkerResultPayload::LspLogMessage { .. }
                             );
                             if !bypass_revision_check && result.revision_id < latest_revision {
                                 async_trace!(

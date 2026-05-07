@@ -47,5 +47,6 @@ pub fn tree_sitter_language(language_id: LanguageId) -> Option<Language> {
         LanguageId::Markdown => Some(tree_sitter_md::LANGUAGE.into()),
         LanguageId::Dotenv => Some(tree_sitter_bash::LANGUAGE.into()),
         LanguageId::Java => Some(tree_sitter_java::LANGUAGE.into()),
+        LanguageId::Python => Some(tree_sitter_python::LANGUAGE.into()),
     }
 }

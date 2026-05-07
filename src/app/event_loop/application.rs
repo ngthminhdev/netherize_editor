@@ -249,6 +249,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.tick_thinking_animation() {
             self.request_redraw();
         }
+        if self.tick_lsp_loading_animation() {
+            self.request_redraw();
+        }
         if self.tick_caret_blink() {
             self.request_redraw();
         }
@@ -347,6 +350,20 @@ impl AppShell {
         }
         self.editor_needs_layout = true;
         (target - self.app_state.current_scroll_y).abs() > epsilon
+    }
+
+    fn tick_lsp_loading_animation(&mut self) -> bool {
+        if self.pending_lsp_server.is_none() {
+            return false;
+        }
+        let now = Instant::now();
+        if now.duration_since(self.last_lsp_loading_animation_tick) >= LSP_LOADING_ANIMATION_INTERVAL {
+            self.last_lsp_loading_animation_tick = now;
+            self.lsp_loading_frame = self.lsp_loading_frame.wrapping_add(1);
+            true
+        } else {
+            false
+        }
     }
 
     fn tick_thinking_animation(&mut self) -> bool {
@@ -1091,6 +1108,10 @@ impl AppShell {
                 )
             };
             if let Some(renderer) = self.renderer.as_mut() {
+                let lsp_progress_label = self
+                    .app_state
+                    .lsp_progress()
+                    .map(|entry| entry.status_label());
                 let pill_quads = renderer.update_statusbar_content(
                     mode,
                     &pending_keys,
@@ -1101,6 +1122,9 @@ impl AppShell {
                     status_col,
                     diagnostics_errors,
                     diagnostics_warnings,
+                    self.pending_lsp_server.is_some(),
+                    self.lsp_loading_frame,
+                    lsp_progress_label.as_deref(),
                     status_bounds,
                 );
                 region_instances.extend(pill_quads);

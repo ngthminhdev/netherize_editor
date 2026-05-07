@@ -19,6 +19,16 @@ pub enum InstallStatus {
     Failed,
 }
 
+/// Wire-format mirror of `WorkDoneProgress` lifecycle. Decoupled from
+/// `app::app_state::LspProgressKind` so the message layer doesn't depend on
+/// the app crate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LspProgressKindWire {
+    Begin,
+    Report,
+    End,
+}
+
 /// Topic giúp app biết result thuộc subsystem nào để so revision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RequestTopic {
@@ -41,6 +51,8 @@ pub enum RequestTopic {
     SystemDepCheck,
     /// Per-tool streaming installation.
     SystemDepInstall,
+    /// General-purpose system tasks (Python env scan, etc).
+    SystemTask,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -328,6 +340,9 @@ pub enum WorkerRequestPayload {
     },
     StopLspServer,
     ShutdownAllLspServers,
+    ScanPythonEnvironments {
+        workspace_root: PathBuf,
+    },
 }
 
 /// Loại location từ LSP — dùng cho definition và references.
@@ -490,6 +505,18 @@ pub enum WorkerResultPayload {
         level: String,
         message: String,
     },
+    /// Decoded `$/progress` notification (`WorkDoneProgress`). The main
+    /// thread renders this on the status bar so the user knows the LSP server
+    /// is busy (e.g. rust-analyzer indexing) and avoids spamming requests
+    /// that would just queue up.
+    LspProgress {
+        server_name: String,
+        token: String,
+        kind: LspProgressKindWire,
+        title: Option<String>,
+        message: Option<String>,
+        percentage: Option<u32>,
+    },
     LspCheckResult {
         /// File path gốc được check.
         path: PathBuf,
@@ -590,6 +617,8 @@ pub enum WorkerResultPayload {
     SystemDepCheckResult {
         missing: Vec<String>,
     },
+    /// Kết quả scan Python environments.
+    PythonEnvironmentsDiscovered(Vec<crate::async_runtime::python_env::PythonEnv>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

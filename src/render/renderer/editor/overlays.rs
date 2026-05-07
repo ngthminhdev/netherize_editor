@@ -328,6 +328,47 @@ impl Renderer {
             }
         }
 
+        if app_state.is_completion_loading() && app_state.completion().is_none() {
+            let char_w = (geometry.font_size * 0.6).max(1.0);
+            let (cursor_line, cursor_col) = app_state.cursor_line_col();
+            let spinner_x = geometry.origin_x + cursor_col as f32 * char_w;
+            let spinner_y = geometry.origin_y
+                + cursor_line as f32 * geometry.line_height
+                + geometry.line_height
+                + 2.0;
+            let line_h = geometry.line_height;
+            const PAD_X: f32 = 14.0;
+            const PAD_Y: f32 = 4.0;
+            const TEXT: &str = "⟳  Loading…";
+            let spinner_w = TEXT.chars().count() as f32 * char_w + PAD_X * 2.0;
+            let spinner_h = line_h + PAD_Y * 2.0;
+            let bg = self.theme.ui.panel_bg.as_f32();
+            let border = self.theme.ui.border_color.as_f32();
+            let fg_dim = self.theme.ui.fg_dim.as_f32();
+            // Border rect (full size), then inset bg
+            chrome_quads.push(RegionDrawInstance::new(
+                [spinner_x, spinner_y, spinner_w, spinner_h],
+                border,
+            ));
+            chrome_quads.push(RegionDrawInstance::new(
+                [spinner_x + 1.0, spinner_y + 1.0, spinner_w - 2.0, spinner_h - 2.0],
+                bg,
+            ));
+            self.editor_overlay_text_system
+                .set_metrics(Metrics::new(geometry.font_size, line_h));
+            self.editor_overlay_text_system
+                .set_size(Some(spinner_w), Some(spinner_h));
+            glyphs.extend(layout_panel_text_italic(
+                TEXT,
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                spinner_x + PAD_X,
+                spinner_y + PAD_Y,
+                fg_dim,
+            ));
+        }
+
         if let Some(completion) = app_state.completion() {
             const PAD_X: f32 = 30.0;
             const PAD_Y: f32 = 20.0;
@@ -354,9 +395,14 @@ impl Renderer {
             // Determine if doc panel should show
             let selected_item = (completion.selected_index < completion.filtered_items.len())
                 .then(|| &completion.filtered_items[completion.selected_index]);
+            // Show the doc panel when there is any displayable content OR when the
+            // item came from LSP (has raw_json) so resolve can fill it in.
+            // This ensures the panel appears consistently for TypeScript too, not just
+            // for languages that return inline detail/documentation upfront.
             let has_doc = selected_item.is_some_and(|item| {
                 item.item.detail.as_ref().is_some_and(|d| !d.trim().is_empty())
                     || item.item.documentation.as_ref().is_some_and(|d| !d.trim().is_empty())
+                    || item.item.raw_json.is_some()
             }) || completion.hover_doc.as_ref().is_some_and(|d| !d.trim().is_empty());
 
             let visible_rows = completion.filtered_items.len().min(MAX_VISIBLE_ROWS).max(1);
@@ -646,9 +692,11 @@ impl Renderer {
                     let doc_line_h = doc_body_font_size * 1.5;
 
                     // --- SIGNATURE ---
+                    let mut signature_rendered = false;
                     if let Some(detail) = item.item.detail.as_ref() {
                         let detail_trimmed = detail.trim().to_string();
                         if !detail_trimmed.is_empty() {
+                            signature_rendered = true;
                             let max_sig_chars = (doc_content_w / (doc_signature_font_size * 0.6)) as usize;
                             let mut sig_lines = wrap_text_lines(&detail_trimmed, max_sig_chars.max(12));
                             sig_lines.truncate(4);
@@ -751,27 +799,33 @@ impl Renderer {
                         }
                     } else {
                         // Either still loading, or resolve finished with no docs available.
-                        let hint = if completion.hover_doc_resolved {
-                            "No documentation available"
+                        // When the signature is already rendered above, suppress the
+                        // "No documentation available" hint — the signature alone is
+                        // enough information; the hint just adds noise. We still show
+                        // "Loading…" so the user knows a fetch is in flight.
+                        let hint_opt = if completion.hover_doc_resolved {
+                            (!signature_rendered).then_some("No documentation available")
                         } else {
-                            "Loading…"
+                            Some("Loading…")
                         };
-                        let hint_font = doc_body_font_size;
-                        let hint_line_h = hint_font * 1.5;
-                        let hint_y = doc_y + (popup_y + popup_h - doc_y - hint_line_h - FOOTER_H) * 0.5;
-                        self.editor_overlay_text_system
-                            .set_metrics(Metrics::new(hint_font, hint_line_h));
-                        self.editor_overlay_text_system
-                            .set_size(Some(doc_content_w), Some(hint_line_h));
-                        glyphs.extend(layout_panel_text_italic(
-                            hint,
-                            &mut self.editor_overlay_text_system,
-                            &mut self.atlas,
-                            &self.queue,
-                            doc_x + DOC_PAD,
-                            hint_y.max(doc_y),
-                            fg_ghost,
-                        ));
+                        if let Some(hint) = hint_opt {
+                            let hint_font = doc_body_font_size;
+                            let hint_line_h = hint_font * 1.5;
+                            let hint_y = doc_y + (popup_y + popup_h - doc_y - hint_line_h - FOOTER_H) * 0.5;
+                            self.editor_overlay_text_system
+                                .set_metrics(Metrics::new(hint_font, hint_line_h));
+                            self.editor_overlay_text_system
+                                .set_size(Some(doc_content_w), Some(hint_line_h));
+                            glyphs.extend(layout_panel_text_italic(
+                                hint,
+                                &mut self.editor_overlay_text_system,
+                                &mut self.atlas,
+                                &self.queue,
+                                doc_x + DOC_PAD,
+                                hint_y.max(doc_y),
+                                fg_ghost,
+                            ));
+                        }
                     }
 
                     // --- RETURN TYPE TAG ---
@@ -831,50 +885,25 @@ impl Renderer {
                 [popup_x, footer_y, popup_w, 1.0],
                 border,
             ));
-            let hint_font_size = (geometry.font_size * 0.9).max(12.0);
+            let hint_font_size = (geometry.font_size * 0.85).max(11.0);
             let hint_line_h = hint_font_size * 1.4;
-            let pill_pad_x = hint_font_size * 0.55;
-            let pill_pad_y = hint_font_size * 0.30;
-            let pill_h = hint_line_h + pill_pad_y * 2.0;
-            let chip_gap = hint_font_size * 0.45;
-            let hints = [("↑↓", "nav"), ("↩", "accept"), ("esc", "close")];
-            // Pre-compute pill widths so we can lay out from the right edge with
-            // consistent gaps and right-padding (PAD_X) — same as on the left.
-            let pill_widths: Vec<f32> = hints
-                .iter()
-                .map(|(key, _)| {
-                    let key_w = estimate_monospace_width(key, hint_font_size)
-                        .max(hint_font_size);
-                    key_w + pill_pad_x * 2.0
-                })
-                .collect();
-            let total_hint_w: f32 = pill_widths.iter().sum::<f32>()
-                + chip_gap * (hints.len() as f32 - 1.0).max(0.0);
-            let hint_start_x = popup_x + popup_w - total_hint_w - PAD_X;
-            let pill_y = footer_y + (FOOTER_H - pill_h) * 0.5;
-            // Center the glyph baseline inside the pill.
-            let text_y = pill_y + (pill_h - hint_line_h) * 0.5;
+            let hint_text = "↑↓  ↩ accept  esc close";
+            let hint_w = estimate_monospace_width(hint_text, hint_font_size);
+            let hint_x = (popup_x + popup_w - hint_w - PAD_X).max(popup_x + PAD_X);
+            let hint_y = footer_y + (FOOTER_H - hint_line_h) * 0.5;
             self.editor_overlay_text_system
                 .set_metrics(Metrics::new(hint_font_size, hint_line_h));
-            let mut hint_cursor_x = hint_start_x;
-            for ((key, _label), &pill_w) in hints.iter().zip(pill_widths.iter()) {
-                chrome_quads.push(RegionDrawInstance::new(
-                    [hint_cursor_x, pill_y, pill_w, pill_h],
-                    border,
-                ));
-                self.editor_overlay_text_system
-                    .set_size(Some(pill_w), Some(hint_line_h));
-                glyphs.extend(layout_panel_text(
-                    key,
-                    &mut self.editor_overlay_text_system,
-                    &mut self.atlas,
-                    &self.queue,
-                    hint_cursor_x + pill_pad_x,
-                    text_y,
-                    fg_ghost,
-                ));
-                hint_cursor_x += pill_w + chip_gap;
-            }
+            self.editor_overlay_text_system
+                .set_size(Some(hint_w + 4.0), Some(hint_line_h));
+            glyphs.extend(layout_panel_text(
+                hint_text,
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                hint_x,
+                hint_y,
+                fg_ghost,
+            ));
             self.editor_overlay_text_system
                 .set_metrics(Metrics::new(geometry.font_size, geometry.line_height));
         }

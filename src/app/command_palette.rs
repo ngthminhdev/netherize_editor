@@ -47,6 +47,8 @@ pub enum CommandPaletteMode {
     AiChatInstallConfirm,
     /// LSP Code Action picker — danh sách các action user có thể chọn để apply.
     CodeAction,
+    /// Python environment selector — triggered by `:lsp python`.
+    PythonEnvSelector,
 }
 
 impl CommandPaletteMode {
@@ -70,6 +72,7 @@ impl CommandPaletteMode {
             Self::FileHistory => "history> ",
             Self::AiChatInstallConfirm => "install> ",
             Self::CodeAction => "action> ",
+            Self::PythonEnvSelector => "python> ",
         }
     }
 
@@ -93,6 +96,7 @@ impl CommandPaletteMode {
             Self::FileHistory => "no local history entries",
             Self::AiChatInstallConfirm => "Install opencode CLI? (y/n)",
             Self::CodeAction => "no code actions available",
+            Self::PythonEnvSelector => "scanning Python environments...",
         }
     }
 
@@ -116,6 +120,7 @@ impl CommandPaletteMode {
             Self::FileHistory => "HISTORY",
             Self::AiChatInstallConfirm => "INSTALL",
             Self::CodeAction => "ACTIONS",
+            Self::PythonEnvSelector => "PYTHON ENV",
         }
     }
 
@@ -154,6 +159,8 @@ pub enum CommandPaletteAction {
     SelectFileHistoryEntry(usize),
     /// Áp dụng code action tại index đã chọn trong pending_code_actions của AppShell.
     ApplyCodeAction(usize),
+    /// Chọn Python environment path để restart LSP.
+    SelectPythonEnv(PathBuf),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -600,6 +607,7 @@ impl CommandPalette {
             CommandPaletteMode::LspReferences => unreachable!("handled above"),
             CommandPaletteMode::FileHistory => unreachable!("handled above"),
             CommandPaletteMode::CodeAction => unreachable!("handled above"),
+            CommandPaletteMode::PythonEnvSelector => unreachable!("handled above"),
         };
 
         if self.results.is_empty() {

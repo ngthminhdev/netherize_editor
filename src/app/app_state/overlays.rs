@@ -9,6 +9,31 @@ impl AppState {
         true
     }
 
+    /// Update an item's `detail` (signature) by label. Used to apply data filled in
+    /// by `completionItem/resolve` (some LSPs only populate detail via resolve).
+    /// Updates both the raw item and the matching display item so the renderer sees it.
+    pub fn update_completion_item_detail(&mut self, label: &str, detail: Option<String>) {
+        let Some(state) = self.completion.as_mut() else {
+            return;
+        };
+        let mut changed = false;
+        for raw in state.raw_items.iter_mut() {
+            if raw.label == label && raw.detail != detail {
+                raw.detail = detail.clone();
+                changed = true;
+            }
+        }
+        for entry in state.filtered_items.iter_mut() {
+            if entry.item.label == label && entry.item.detail != detail {
+                entry.item.detail = detail.clone();
+                changed = true;
+            }
+        }
+        if changed {
+            self.revision += 1;
+        }
+    }
+
     pub fn set_completion_hover_doc(&mut self, doc: Option<String>) {
         if let Some(state) = self.completion.as_mut() {
             state.hover_doc = doc;
@@ -29,6 +54,14 @@ impl AppState {
                 self.revision += 1;
             }
         }
+    }
+
+    pub fn set_completion_loading(&mut self, loading: bool) {
+        self.completion_loading = loading;
+    }
+
+    pub fn is_completion_loading(&self) -> bool {
+        self.completion_loading
     }
 
     pub fn clear_current_overlays(&mut self) -> bool {
@@ -545,6 +578,24 @@ impl AppState {
 
     pub fn char_before_cursor(&self) -> Option<char> {
         (self.cursor_char_idx > 0).then(|| self.text.char(self.cursor_char_idx - 1))
+    }
+
+    /// Returns the char at (line, col) in the rope, or None if out of bounds.
+    pub fn char_at_line_col(&self, line: usize, col: usize) -> Option<char> {
+        if line >= self.text.len_lines() {
+            return None;
+        }
+        let line_start = self.text.line_to_char(line);
+        let line_len = self.text.line(line).len_chars();
+        let newline_adj = if line_len > 0 && self.text.char(line_start + line_len - 1) == '\n' {
+            1
+        } else {
+            0
+        };
+        if col >= line_len.saturating_sub(newline_adj) {
+            return None;
+        }
+        Some(self.text.char(line_start + col))
     }
 
     pub(super) fn line_indent_string(&self, line_idx: usize) -> String {

@@ -116,6 +116,9 @@ pub(super) struct StatusbarLayoutKey {
     pub(super) col: usize,
     pub(super) diagnostics_errors: usize,
     pub(super) diagnostics_warnings: usize,
+    pub(super) lsp_loading: bool,
+    pub(super) lsp_loading_frame: u8,
+    pub(super) lsp_progress: Option<String>,
     pub(super) bounds: [f32; 4],
 }
 

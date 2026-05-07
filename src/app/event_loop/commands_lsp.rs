@@ -13,6 +13,7 @@ impl AppShell {
             Command::LspFormatDocument => Some(self.submit_lsp_format_document()),
             Command::TriggerCompletion => Some(self.submit_lsp_completion()),
             Command::CodeAction => Some(self.submit_lsp_code_action()),
+            Command::LspSelectPythonEnv => Some(self.handle_lsp_select_python_env()),
             Command::CompletionNext => Some(self.select_next_completion_item()),
             Command::CompletionPrev => Some(self.select_prev_completion_item()),
             Command::CompletionAccept => Some(self.accept_completion_item()),
@@ -183,12 +184,30 @@ impl AppShell {
     }
 
     pub(super) fn submit_lsp_hover(&mut self) -> bool {
+        if self.active_lsp_server.is_none() {
+            if self.pending_lsp_server.is_some() {
+                self.show_transient_toast("LSP is starting up, please wait…".to_string());
+            }
+            return false;
+        }
         self.force_flush_lsp_did_change_for_active_file();
         let Some((language_id, uri, line, character)) = self.lsp_cursor_context() else {
             return false;
         };
-        let changed = self.app_state.clear_current_overlays();
-        self.submit(RequestSpec {
+        let (anchor_line, anchor_col) = self.app_state.cursor_line_col();
+        // Show a loading overlay immediately so the user sees feedback right away.
+        let loading_block = crate::app::app_state::FloatingBoxBlock::Prose(
+            "⟳  Loading documentation…".to_string(),
+        );
+        self.app_state.set_current_overlays(vec![
+            crate::app::app_state::EditorOverlay::FloatingBox {
+                anchor_line,
+                anchor_col,
+                blocks: vec![loading_block],
+                style: crate::app::app_state::FloatingBoxStyle::DocHover,
+            },
+        ]);
+        let request = self.submit(RequestSpec {
             revision_id: 0,
             topic: RequestTopic::LspRequest,
             payload: WorkerRequestPayload::LspHoverRequest {
@@ -199,7 +218,42 @@ impl AppShell {
                 for_completion: false,
             },
         });
-        changed
+        self.hover_loading_request_id = request.map(|r| r.request_id);
+        true
+    }
+
+    /// Silent hover at cursor — result goes into the completion doc panel, not an overlay.
+    /// Used as fallback when `completionItem/resolve` returns no documentation.
+    pub(in crate::app::event_loop) fn submit_hover_for_completion_doc(&mut self) {
+        self.completion_doc_fallback_request_id = None;
+        if self.active_lsp_server.is_none() {
+            self.app_state.mark_completion_hover_doc_resolved();
+            return;
+        }
+        self.force_flush_lsp_did_change_for_active_file();
+        let Some((language_id, uri, line, character)) = self.lsp_cursor_context() else {
+            self.app_state.mark_completion_hover_doc_resolved();
+            return;
+        };
+        let request = self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspHoverRequest {
+                language_id,
+                uri,
+                line,
+                character,
+                for_completion: true,
+            },
+        });
+        match request {
+            Some(req) => {
+                self.completion_doc_fallback_request_id = Some(req.request_id);
+            }
+            None => {
+                self.app_state.mark_completion_hover_doc_resolved();
+            }
+        }
     }
 
     pub(super) fn submit_lsp_definition(&mut self, jump: bool) -> bool {
@@ -208,7 +262,12 @@ impl AppShell {
             return false;
         };
         let changed = self.app_state.clear_current_overlays();
-        self.submit(RequestSpec {
+        // Track the latest in-flight definition id so a stale response
+        // arriving after the user fired a new `gd`/`gD` is dropped on the
+        // main thread (the worker also sends `$/cancelRequest` to the LSP
+        // server for the previous id; this guard handles the race window
+        // where the old response is already on the wire).
+        let request = self.submit(RequestSpec {
             revision_id: 0,
             topic: RequestTopic::LspRequest,
             payload: WorkerRequestPayload::LspDefinitionRequest {
@@ -218,6 +277,7 @@ impl AppShell {
                 jump,
             },
         });
+        self.latest_definition_request_id = request.map(|r| r.request_id);
         changed
     }
 
@@ -591,6 +651,49 @@ impl AppShell {
         let edits = action.edits.clone();
         let title = action.title.clone();
         self.do_apply_code_action_edits(&edits, &title);
+        true
+    }
+
+    pub(super) fn handle_lsp_select_python_env(&mut self) -> bool {
+        let Some(workspace_root) = self
+            .app_state
+            .workspace_root_path()
+            .map(|p| p.to_path_buf())
+        else {
+            self.show_transient_toast("Python Env: no workspace open".to_string());
+            return false;
+        };
+
+        self.app_state.open_python_env_selector();
+        self.request_redraw();
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::SystemTask,
+            payload: WorkerRequestPayload::ScanPythonEnvironments { workspace_root },
+        });
+        true
+    }
+
+    pub(super) fn confirm_python_env_selection(&mut self) -> bool {
+        let selected_path = match self.app_state.command_palette_selected_action() {
+            Some(CommandPaletteAction::SelectPythonEnv(path)) => path,
+            _ => return false,
+        };
+
+        let _ = self.app_state.close_command_palette();
+        if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
+            if result.changed {
+                self.editor_needs_layout = true;
+            }
+        }
+        self.focus_manager.set(FocusTarget::CenterEditor);
+        self.input_handler.clear_pending_prefix();
+
+        self.show_transient_toast(format!(
+            "Python env selected: {}",
+            selected_path.display()
+        ));
         true
     }
 }
