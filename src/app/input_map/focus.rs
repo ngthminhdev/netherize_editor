@@ -429,6 +429,61 @@ impl InputMap {
         )
     }
 
+    pub(super) fn resolve_help_focus(
+        &self,
+        input: &NormalizedInput,
+    ) -> Option<KeybindingMatch> {
+        use KeyCode::*;
+
+        if input.named_key == Some(NamedKey::Escape)
+            || (input.has_command_modifier() && input.physical_key == Some(KeyW))
+        {
+            return Some(KeybindingMatch {
+                command: Command::FocusEditor,
+                reason: "help: Esc/Ctrl+W -> FocusEditor",
+            });
+        }
+
+        if !input.has_command_modifier()
+            && (input.named_key == Some(NamedKey::ArrowDown) || input.physical_key == Some(KeyJ))
+        {
+            return Some(KeybindingMatch {
+                command: Command::HelpScrollDown,
+                reason: "help: j/down -> scroll down",
+            });
+        }
+        if !input.has_command_modifier()
+            && (input.named_key == Some(NamedKey::ArrowUp) || input.physical_key == Some(KeyK))
+        {
+            return Some(KeybindingMatch {
+                command: Command::HelpScrollUp,
+                reason: "help: k/up -> scroll up",
+            });
+        }
+
+        if input.modifiers.control_key() && !input.modifiers.super_key() && input.physical_key == Some(KeyD)
+        {
+            return Some(KeybindingMatch {
+                command: Command::HelpScrollHalfPageDown,
+                reason: "help: Ctrl+d -> scroll down half page",
+            });
+        }
+        if input.modifiers.control_key() && !input.modifiers.super_key() && input.physical_key == Some(KeyU)
+        {
+            return Some(KeybindingMatch {
+                command: Command::HelpScrollHalfPageUp,
+                reason: "help: Ctrl+u -> scroll up half page",
+            });
+        }
+
+        resolved_keymap::resolve_global_command(&self.keymap, input, &self.open_file_path).map(
+            |command| KeybindingMatch {
+                command,
+                reason: "help: global binding",
+            },
+        )
+    }
+
     pub(super) fn resolve_bottom_panel_focus(
         &self,
         input: &NormalizedInput,

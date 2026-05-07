@@ -577,14 +577,15 @@ impl Renderer {
         active_model: Option<&str>,
         active_agent: &str,
         is_generating: bool,
-    ) -> Vec<RegionDrawInstance> {
+        scroll_y: f32,
+    ) -> (Vec<RegionDrawInstance>, f32) {
         if history_bounds[2] < 1.0
             || history_bounds[3] < 1.0
             || input_bounds[2] < 1.0
             || input_bounds[3] < 1.0
         {
             self.clear_ai_chat();
-            return Vec::new();
+            return (Vec::new(), 0.0);
         }
 
         // ── Missing-binary banner ─────────────────────────────────────────
@@ -635,7 +636,7 @@ impl Renderer {
                 &self.ai_chat_glyph_instances,
             );
             self.ai_chat_input_batch = None;
-            return Vec::new();
+            return (Vec::new(), 0.0);
         }
 
         let font_size = self.theme.ui.sidebar_font_size;
@@ -915,7 +916,10 @@ impl Renderer {
             }];
             let mut input_glyphs = Vec::new();
 
-            let input_content_w = iclip[2];
+            let input_inner_pad_x = 10.0;
+            let input_inner_pad_y = 6.0;
+            let input_content_x = iclip[0] + input_inner_pad_x;
+            let input_content_w = (iclip[2] - input_inner_pad_x * 2.0).max(1.0);
             let input_max_chars = ((input_content_w / (font_size * 0.6)) as usize).max(12);
             let wrapped_lines = if input_buffer.is_empty() {
                 vec![input_text.clone()]
@@ -985,7 +989,7 @@ impl Renderer {
                     cursor_color,
                 ));
             }
-            return chrome;
+            return (chrome, 0.0);
         }
 
         let mut all: Vec<GlyphInstance> = Vec::new();
@@ -1013,16 +1017,19 @@ impl Renderer {
             line_styles: Vec<Vec<StyledTextSpan>>,
             side: BubbleSide,
             fill: [f32; 4],
+            border: Option<[f32; 4]>,
             label_color: [f32; 4],
             body_color: [f32; 4],
             italic: bool,
         }
 
-        let bubble_content_w = (hclip[2] * 0.66).max(font_size * 12.0);
+        let bubble_content_w = (hclip[2] * 0.85).max(font_size * 12.0);
         let max_chars = ((bubble_content_w / (font_size * 0.6)) as usize).max(12);
         let user_fill = blend_rgb(editor_bg, accent, 0.24, 0.72);
-        let netherize_fill = blend_rgb(editor_bg, panel_bg, 0.42, 0.70);
-        let system_fill = blend_rgb(editor_bg, panel_bg, 0.56, 0.64);
+        let netherize_fill = blend_rgb(panel_bg, accent, 0.06, 0.90);
+        let system_fill = blend_rgb(panel_bg, warning, 0.04, 0.90);
+        let assistant_border = with_alpha(accent, 0.18);
+        let system_border = with_alpha(warning, 0.14);
 
         let fg_u8 = linear_rgba_to_srgb_u8(fg);
         let fg_dim_u8 = linear_rgba_to_srgb_u8(fg_dim);
@@ -1061,6 +1068,7 @@ impl Renderer {
                         line_styles: Vec::new(),
                         side: BubbleSide::Right,
                         fill: user_fill,
+                        border: None,
                         label_color: accent,
                         body_color: fg,
                         italic: false,
@@ -1085,6 +1093,7 @@ impl Renderer {
                         line_styles,
                         side: BubbleSide::Left,
                         fill: netherize_fill,
+                        border: Some(assistant_border),
                         label_color: accent,
                         body_color: fg,
                         italic: false,
@@ -1110,6 +1119,7 @@ impl Renderer {
                         line_styles,
                         side: BubbleSide::Left,
                         fill: system_fill,
+                        border: Some(system_border),
                         label_color: if is_err { warning } else { fg_dim },
                         body_color: if is_err { warning } else { fg_dim },
                         italic: false,
@@ -1139,6 +1149,7 @@ impl Renderer {
                 line_styles: Vec::new(),
                 side: BubbleSide::Left,
                 fill: netherize_fill,
+                border: Some(assistant_border),
                 label_color: accent,
                 body_color: fg_dim,
                 italic: true,
@@ -1148,7 +1159,7 @@ impl Renderer {
         let bubble_pad_x = 10.0;
         let bubble_pad_y = 7.0;
         let bubble_gap = 12.0;
-        let max_bubble_w = (hclip[2] * 0.74).max(1.0);
+        let max_bubble_w = (hclip[2] * 0.85).max(1.0);
         let min_bubble_w = (font_size * 7.0).min(max_bubble_w);
         let total_h = bubbles.iter().fold(0.0, |acc, bubble| {
             acc + bubble_pad_y * 2.0
@@ -1158,11 +1169,8 @@ impl Renderer {
                 + bubble_gap
         });
         let vis_h = body_h;
-        let scroll = if total_h > vis_h {
-            total_h - vis_h
-        } else {
-            0.0
-        };
+        let max_scroll = (total_h - vis_h).max(0.0);
+        let scroll = scroll_y.min(max_scroll);
 
         let mut cy = body_y + line_h * 0.5;
         for bubble in &bubbles {
@@ -1183,13 +1191,35 @@ impl Renderer {
             if y + bubble_h > body_y && y < body_y + vis_h {
                 let clipped_y = y.max(body_y);
                 let clipped_h = (y + bubble_h).min(body_y + vis_h) - clipped_y;
-                chrome.push(
-                    RegionDrawInstance::new(
-                        [bubble_x, clipped_y, bubble_w, clipped_h],
-                        bubble.fill,
-                    )
-                    .with_radius(7.0),
-                );
+                if let Some(border) = bubble.border {
+                    chrome.push(
+                        RegionDrawInstance::new(
+                            [bubble_x, clipped_y, bubble_w, clipped_h],
+                            border,
+                        )
+                        .with_radius(7.0),
+                    );
+                    chrome.push(
+                        RegionDrawInstance::new(
+                            [
+                                bubble_x + 2.0,
+                                clipped_y + 2.0,
+                                (bubble_w - 4.0).max(1.0),
+                                (clipped_h - 4.0).max(1.0),
+                            ],
+                            bubble.fill,
+                        )
+                        .with_radius(5.0),
+                    );
+                } else {
+                    chrome.push(
+                        RegionDrawInstance::new(
+                            [bubble_x, clipped_y, bubble_w, clipped_h],
+                            bubble.fill,
+                        )
+                        .with_radius(7.0),
+                    );
+                }
                 let text_x = bubble_x + bubble_pad_x;
                 let label_y = y + bubble_pad_y;
                 // Only emit glyphs for lines within the visible body area so
@@ -1387,7 +1417,7 @@ impl Renderer {
                 cursor_color,
             ));
         }
-        chrome
+        (chrome, max_scroll)
     }
 
     /// Clear AI chat text — called when right sidebar is hidden.

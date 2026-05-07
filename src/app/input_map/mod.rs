@@ -37,6 +37,8 @@ pub enum InputFocusContext {
     AiChat,
     /// Right sidebar Markdown Preview tab — scroll with j/k/Ctrl-u/Ctrl-d.
     MarkdownPreview,
+    /// Right sidebar Help / Cheat Sheet — scroll with j/k/Ctrl-u/Ctrl-d.
+    Help,
     BottomPanel,
     /// Bottom panel terminal (ESC = unfocus).
     Terminal,
@@ -58,6 +60,7 @@ impl InputFocusContext {
             Self::Inspector => "inspector",
             Self::AiChat => "ai_chat",
             Self::MarkdownPreview => "markdown_preview",
+            Self::Help => "help",
             Self::BottomPanel => "bottom_panel",
             Self::Terminal => "terminal",
             Self::BufferTerminal => "buffer_terminal",
@@ -78,6 +81,7 @@ impl InputFocusContext {
                 | Self::Terminal
                 | Self::AiChat
                 | Self::MarkdownPreview
+                | Self::Help
                 | Self::FuzzyPicker
                 | Self::SettingsTab
         )
@@ -224,6 +228,9 @@ impl InputMap {
         }
         if context.focus == InputFocusContext::MarkdownPreview {
             return self.resolve_markdown_preview_focus(input);
+        }
+        if context.focus == InputFocusContext::Help {
+            return self.resolve_help_focus(input);
         }
         if context.focus == InputFocusContext::BottomPanel {
             return self.resolve_bottom_panel_focus(input);
@@ -395,6 +402,7 @@ impl InputMap {
             InputFocusContext::Inspector => "inspector",
             InputFocusContext::AiChat => "ai_chat",
             InputFocusContext::MarkdownPreview => "preview",
+            InputFocusContext::Help => "help",
             InputFocusContext::Terminal => editor_mode_str(context.mode),
             InputFocusContext::BufferTerminal => "terminal",
             InputFocusContext::BottomPanel => "bottom_panel",

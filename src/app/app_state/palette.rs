@@ -664,6 +664,11 @@ impl AppState {
             .is_some_and(|buffer| matches!(buffer.content, BufferContent::SettingsTab(_)))
     }
 
+    pub fn active_buffer_is_help(&self) -> bool {
+        self.active_buffer()
+            .is_some_and(|buffer| matches!(buffer.content, BufferContent::Help(_)))
+    }
+
     pub fn active_settings_buffer(&self) -> Option<&SettingsState> {
         match self.active_buffer().map(|buffer| &buffer.content) {
             Some(BufferContent::SettingsTab(state)) => Some(state),
@@ -810,6 +815,27 @@ impl AppState {
         self.external_conflict = None;
         self.bump_revision();
         index
+    }
+
+    pub fn help_scroll_down(&mut self, amount: f32) {
+        if let Some(buf) = self.active_help_buffer_mut() {
+            buf.scroll_y += amount;
+        }
+    }
+
+    pub fn help_scroll_up(&mut self, amount: f32) {
+        if let Some(buf) = self.active_help_buffer_mut() {
+            buf.scroll_y = (buf.scroll_y - amount).max(0.0);
+        }
+    }
+
+    fn active_help_buffer_mut(&mut self) -> Option<&mut HelpState> {
+        self.active_buffer_index
+            .and_then(|idx| self.buffers.get_mut(idx))
+            .and_then(|buffer| match &mut buffer.content {
+                BufferContent::Help(state) => Some(state),
+                _ => None,
+            })
     }
 
     pub fn open_help_buffer(&mut self) -> usize {

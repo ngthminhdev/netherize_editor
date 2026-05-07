@@ -1292,7 +1292,7 @@ impl InputHandler {
         input_debug: String,
         context: KeybindingContext,
     ) -> Option<InputRouteOutcome> {
-        // Ctrl+N / Ctrl+P → cycle suggestion popup
+        // Ctrl+N / Ctrl+P → cycle suggestion popup; Ctrl+U/D → scroll history
         if normalized.has_command_modifier() {
             match normalized.physical_key {
                 Some(KeyCode::KeyN) => {
@@ -1317,6 +1317,32 @@ impl InputHandler {
                             context.focus.as_str(),
                         ),
                         Command::AiChatSuggestionPrev,
+                        1,
+                        false,
+                    )));
+                }
+                Some(KeyCode::KeyU) => {
+                    return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                        input_debug,
+                        format!(
+                            "mode={} focus={} -> ai chat: scroll up half page",
+                            context.mode.as_str(),
+                            context.focus.as_str(),
+                        ),
+                        Command::AiChatScrollHalfPageUp,
+                        1,
+                        false,
+                    )));
+                }
+                Some(KeyCode::KeyD) => {
+                    return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                        input_debug,
+                        format!(
+                            "mode={} focus={} -> ai chat: scroll down half page",
+                            context.mode.as_str(),
+                            context.focus.as_str(),
+                        ),
+                        Command::AiChatScrollHalfPageDown,
                         1,
                         false,
                     )));
@@ -1380,6 +1406,21 @@ impl InputHandler {
                     context.focus.as_str(),
                 ),
                 Command::AiChatBackspace,
+                1,
+                false,
+            )));
+        }
+
+        // Cmd/Ctrl+V → paste system clipboard into AI chat input.
+        if normalized.physical_key == Some(KeyCode::KeyV) && normalized.has_command_modifier() {
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> ai chat: paste clipboard",
+                    context.mode.as_str(),
+                    context.focus.as_str(),
+                ),
+                Command::AiChatPasteClipboard,
                 1,
                 false,
             )));

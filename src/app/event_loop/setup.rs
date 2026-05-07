@@ -202,6 +202,8 @@ impl AppShell {
             caret_blink_dirty: false,
             pre_markdown_preview_right_width: None,
             pending_code_actions: Vec::new(),
+            selected_python_env: None,
+            runtime_versions: RuntimeVersionInfo::default(),
         })
     }
 
@@ -237,6 +239,16 @@ impl AppShell {
             revision_id: 0,
             topic: RequestTopic::SystemDepCheck,
             payload: WorkerRequestPayload::CheckSystemDeps,
+        });
+
+        // ── Runtime Version Detection ────────────────────────────────────
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::SystemTask,
+            payload: WorkerRequestPayload::DetectRuntimeVersions {
+                python_binary: None,
+                workspace_root: workspace_root.clone(),
+            },
         });
 
         eprintln!(
@@ -639,6 +651,9 @@ impl AppShell {
                 }
                 FocusTarget::CenterEditor if self.app_state.active_buffer_is_references() => {
                     InputFocusContext::References
+                }
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_help() => {
+                    InputFocusContext::Help
                 }
                 _ => InputFocusContext::Editor,
             }

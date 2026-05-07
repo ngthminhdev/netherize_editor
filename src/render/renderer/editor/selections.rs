@@ -51,7 +51,7 @@ impl Renderer {
         app_state: &AppState,
         center_bounds: [f32; 4],
     ) -> Vec<RegionDrawInstance> {
-        let gutter_inset_left = self.editor_padding_x + 6.0 + EDITOR_FRAME_INSET;
+        let gutter_inset_left = self.editor_padding_x;
         let line_height = self.theme.editor.line_height;
         let font_size = self.theme.editor.font_size;
         let total_lines = app_state.total_lines().max(1);
@@ -113,7 +113,7 @@ impl Renderer {
         app_state: &AppState,
         center_bounds: [f32; 4],
     ) -> Option<RegionDrawInstance> {
-        let gutter_inset_left = self.editor_padding_x + 6.0 + EDITOR_FRAME_INSET;
+        let gutter_inset_left = self.editor_padding_x;
         let line_height = self.theme.editor.line_height;
         let font_size = self.theme.editor.font_size;
         let total_lines = app_state.total_lines().max(1);

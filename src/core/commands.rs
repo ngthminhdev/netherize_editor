@@ -309,8 +309,14 @@ pub enum Command {
     AiChatSuggestionPrev,
     /// Append a text string to the AI chat input buffer (IME commit).
     AiChatInputText(String),
+    /// Paste system clipboard text into the AI chat input buffer.
+    AiChatPasteClipboard,
     /// Show the "opencode not found — install?" confirmation overlay.
     AiChatPromptInstall,
+    /// Scroll AI chat message history up by half a page (see older messages).
+    AiChatScrollHalfPageUp,
+    /// Scroll AI chat message history down by half a page (see newer messages).
+    AiChatScrollHalfPageDown,
     /// References view: chọn item kế tiếp.
     ReferencesSelectNext,
     /// References view: chọn item trước đó.
@@ -347,6 +353,16 @@ pub enum Command {
     MarkdownPreviewScrollTop,
     /// Scroll markdown preview to bottom (G).
     MarkdownPreviewScrollBottom,
+
+    // ── Help / Cheat Sheet ────────────────────────────────────────────────────
+    /// Scroll help / cheat sheet down.
+    HelpScrollDown,
+    /// Scroll help / cheat sheet up.
+    HelpScrollUp,
+    /// Scroll help / cheat sheet down half page.
+    HelpScrollHalfPageDown,
+    /// Scroll help / cheat sheet up half page.
+    HelpScrollHalfPageUp,
 
     // ── Multiple Cursors (Module: MultiCursor) ────────────────────────────────
     /// Select word under cursor; on subsequent calls find the next identical
@@ -472,6 +488,10 @@ impl Command {
                 | Self::MarkdownPreviewScrollHalfPageDown
                 | Self::MarkdownPreviewScrollTop
                 | Self::MarkdownPreviewScrollBottom
+                | Self::HelpScrollDown
+                | Self::HelpScrollUp
+                | Self::HelpScrollHalfPageDown
+                | Self::HelpScrollHalfPageUp
         )
     }
 }

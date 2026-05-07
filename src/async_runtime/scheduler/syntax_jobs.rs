@@ -329,8 +329,9 @@ pub(super) async fn execute_virtual_job(
         }
         WorkerRequestPayload::LoadLocalHistory { .. }
         | WorkerRequestPayload::SaveLocalHistory { .. }
-        | WorkerRequestPayload::ScanPythonEnvironments { .. } => {
-            Err("local history request should be handled by dedicated history runner".to_string())
+        | WorkerRequestPayload::ScanPythonEnvironments { .. }
+        | WorkerRequestPayload::DetectRuntimeVersions { .. } => {
+            Err("request should be handled by dedicated runner".to_string())
         }
     }
 }

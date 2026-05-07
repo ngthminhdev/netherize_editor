@@ -28,6 +28,36 @@ use super::{
     syntax_jobs::{execute_virtual_job, run_system_dep_install},
 };
 
+async fn detect_python_version(python_binary: Option<&std::path::Path>) -> Option<String> {
+    let cmd = python_binary
+        .and_then(|p| p.to_str())
+        .unwrap_or("python3");
+    detect_command_version(
+        cmd,
+        &[
+            "-c",
+            "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')",
+        ],
+    )
+    .await
+}
+
+async fn detect_command_version(cmd: &str, args: &[&str]) -> Option<String> {
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::process::Command::new(cmd).args(args).output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    if output.status.success() {
+        let v = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if v.is_empty() { None } else { Some(v) }
+    } else {
+        None
+    }
+}
+
 pub(super) async fn dispatch_loop(
     mut request_rx: mpsc::UnboundedReceiver<WorkerRequest>,
     result_tx: std_mpsc::Sender<WorkerMessage>,
@@ -276,6 +306,44 @@ pub(super) async fn dispatch_loop(
                         revision_id: request.revision_id,
                         topic: request.topic,
                         payload: WorkerResultPayload::PythonEnvironmentsDiscovered(environments),
+                    }),
+                );
+            });
+            continue;
+        }
+
+        if matches!(request.payload, WorkerRequestPayload::DetectRuntimeVersions { .. }) {
+            let (python_binary, _workspace_root) = match request.payload {
+                WorkerRequestPayload::DetectRuntimeVersions { python_binary, workspace_root } => {
+                    (python_binary, workspace_root)
+                }
+                _ => unreachable!(),
+            };
+            let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                let python_version = detect_python_version(python_binary.as_deref()).await;
+                let node_version = detect_command_version("node", &["--version"]).await
+                    .map(|v| v.trim_start_matches('v').to_string());
+                let go_version = detect_command_version("go", &["version"]).await
+                    .and_then(|v| {
+                        // "go version go1.22.0 darwin/arm64" → "1.22.0"
+                        v.split_whitespace()
+                            .find(|s| s.starts_with("go") && s.len() > 2)
+                            .map(|s| s.trim_start_matches("go").to_string())
+                    });
+                emit_message_and_wake(
+                    &worker_tx,
+                    &event_proxy,
+                    WorkerMessage::Result(WorkerResult {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        payload: WorkerResultPayload::RuntimeVersionsDetected {
+                            python_version,
+                            node_version,
+                            go_version,
+                        },
                     }),
                 );
             });

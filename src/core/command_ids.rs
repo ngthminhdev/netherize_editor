@@ -154,6 +154,12 @@ pub const MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN: &str = "app.markdown_preview_s
 pub const MARKDOWN_PREVIEW_SCROLL_TOP: &str = "app.markdown_preview_scroll_top";
 pub const MARKDOWN_PREVIEW_SCROLL_BOTTOM: &str = "app.markdown_preview_scroll_bottom";
 
+// ── Help / Cheat Sheet ───────────────────────────────────────────────────────
+pub const HELP_SCROLL_DOWN: &str = "app.help_scroll_down";
+pub const HELP_SCROLL_UP: &str = "app.help_scroll_up";
+pub const HELP_SCROLL_HALF_PAGE_DOWN: &str = "app.help_scroll_half_page_down";
+pub const HELP_SCROLL_HALF_PAGE_UP: &str = "app.help_scroll_half_page_up";
+
 // ── Workbench focus navigation ────────────────────────────────────────────────
 pub const FOCUS_EDITOR: &str = "app.focus_editor";
 pub const FOCUS_EXPLORER: &str = "app.focus_explorer";
@@ -388,6 +394,10 @@ pub const ALL_IDS: &[&str] = &[
     MARKDOWN_PREVIEW_SCROLL_DOWN,
     MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP,
     MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN,
+    HELP_SCROLL_DOWN,
+    HELP_SCROLL_UP,
+    HELP_SCROLL_HALF_PAGE_DOWN,
+    HELP_SCROLL_HALF_PAGE_UP,
     TOGGLE_MAXIMIZE_FOCUS,
 ];
 
@@ -576,6 +586,10 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN => Some(Command::MarkdownPreviewScrollHalfPageDown),
         MARKDOWN_PREVIEW_SCROLL_TOP => Some(Command::MarkdownPreviewScrollTop),
         MARKDOWN_PREVIEW_SCROLL_BOTTOM => Some(Command::MarkdownPreviewScrollBottom),
+        HELP_SCROLL_DOWN => Some(Command::HelpScrollDown),
+        HELP_SCROLL_UP => Some(Command::HelpScrollUp),
+        HELP_SCROLL_HALF_PAGE_DOWN => Some(Command::HelpScrollHalfPageDown),
+        HELP_SCROLL_HALF_PAGE_UP => Some(Command::HelpScrollHalfPageUp),
         TOGGLE_MAXIMIZE_FOCUS => Some(Command::ToggleMaximizeFocus),
         _ => None,
     }

@@ -206,6 +206,10 @@ pub struct AppShell {
     pre_markdown_preview_right_width: Option<f32>,
     /// Code actions từ lần request gần nhất, dùng để apply khi user chọn trong picker.
     pending_code_actions: Vec<crate::async_runtime::message::LspCodeAction>,
+    /// Python interpreter path selected by the user (via `:lsp python`).
+    selected_python_env: Option<std::path::PathBuf>,
+    /// Cached runtime version strings for the statusbar right zone.
+    runtime_versions: RuntimeVersionInfo,
 }
 
 const DEBUG_UI_ENABLED: bool = false;
@@ -256,6 +260,16 @@ struct PendingConfirmation {
 struct ActiveLspServer {
     server_name: String,
     root_path: PathBuf,
+}
+
+/// Cached runtime version strings shown in the statusbar right zone.
+#[derive(Debug, Clone, Default)]
+pub(super) struct RuntimeVersionInfo {
+    pub(super) python_version: Option<String>,
+    pub(super) node_version: Option<String>,
+    pub(super) go_version: Option<String>,
+    /// Display name of the selected Python venv (e.g. "venv", ".venv/py3.11").
+    pub(super) venv_name: Option<String>,
 }
 
 /// State cho popup hướng dẫn cài đặt Language Server.

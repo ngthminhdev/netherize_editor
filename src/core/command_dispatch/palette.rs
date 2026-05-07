@@ -446,7 +446,15 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
             } else if command_text == "h" || command_text == "help" {
                 dispatch_command(ctx.app_state, Command::OpenHelp)
             } else if command_text == "lsp python" {
-                dispatch_command(ctx.app_state, Command::LspSelectPythonEnv)
+                // Open PythonEnvSelector and return early — skip the
+                // close_command_palette + ExitFocus below, which would
+                // immediately destroy the palette we just opened.
+                ctx.app_state.open_python_env_selector();
+                return DispatchReport::success_with_flags(
+                    "Dispatch: python env selector opened".to_string(),
+                    true,
+                    true,
+                );
             } else if let Ok(line_number) = command_text.parse::<usize>() {
                 let target_line = line_number
                     .saturating_sub(1)

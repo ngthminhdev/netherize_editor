@@ -26,8 +26,10 @@ impl AppShell {
             return false;
         }
 
-        // Show welcome page for the new project (like a fresh open).
-        let _ = self.app_state.set_initial_launch_welcome(true);
+        // Do NOT re-enter welcome mode here: the explorer Enter key maps to
+        // FilePickerConfirmSelection when welcome_visible=true, which silently
+        // fails when no recent-projects palette is open (shows "[no file]").
+        let _ = self.app_state.set_initial_launch_welcome(false);
 
         // Hide ALL panels so the new workspace starts clean (like a fresh open).
         self.panel_state.left.visible = false;

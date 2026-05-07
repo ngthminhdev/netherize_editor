@@ -532,12 +532,13 @@ impl CommandPalette {
     }
 
     pub fn refresh_results(&mut self, _workspace: Option<&WorkspaceModel>) {
-        // LspReferences / CodeAction: static list, never overwrite with fzf results.
+        // LspReferences / CodeAction / PythonEnvSelector: static list populated by async results.
         if matches!(
             self.mode,
             CommandPaletteMode::LspReferences
                 | CommandPaletteMode::FileHistory
                 | CommandPaletteMode::CodeAction
+                | CommandPaletteMode::PythonEnvSelector
         ) {
             self.results = self.static_items.clone();
             if self.results.is_empty() {
@@ -607,7 +608,7 @@ impl CommandPalette {
             CommandPaletteMode::LspReferences => unreachable!("handled above"),
             CommandPaletteMode::FileHistory => unreachable!("handled above"),
             CommandPaletteMode::CodeAction => unreachable!("handled above"),
-            CommandPaletteMode::PythonEnvSelector => unreachable!("handled above"),
+            CommandPaletteMode::PythonEnvSelector => Vec::new(),
         };
 
         if self.results.is_empty() {
@@ -738,7 +739,10 @@ impl CommandPalette {
                 // Recent Projects ưu tiên rộng hơn để hiển thị full path.
                 let available_w = (width - 48.0).max(320.0);
                 let min_w = (width * 0.35).max(400.0);
-                let pw = if self.mode == CommandPaletteMode::RecentProjects {
+                let pw = if matches!(
+                    self.mode,
+                    CommandPaletteMode::RecentProjects | CommandPaletteMode::FilePicker
+                ) {
                     (width * 0.70).clamp(min_w, available_w)
                 } else {
                     min_w.max(660.0_f32.min(available_w))

@@ -231,7 +231,7 @@ pub struct HelpEntry {
     pub label: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HelpState {
     pub title: String,
     pub subtitle: String,
@@ -239,6 +239,7 @@ pub struct HelpState {
     pub source_label: String,
     pub sections: Vec<HelpSection>,
     pub lines: Vec<String>,
+    pub scroll_y: f32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -303,6 +304,7 @@ impl HelpState {
             source_label: source_label.to_string(),
             sections: build_help_sections(bindings),
             lines: build_help_lines(profile_name, source_label, bindings),
+            scroll_y: 0.0,
         }
     }
 }
@@ -314,6 +316,11 @@ fn build_help_sections(bindings: &[crate::config::keymap_config::KeyBinding]) ->
         (Some("palette"), "PALETTE", "mode = palette"),
         (Some("normal"), "NORMAL", "mode = normal"),
         (Some("visual"), "VISUAL", "mode = visual"),
+        (Some("terminal"), "TERMINAL", "mode = terminal"),
+        (Some("terminal_normal"), "TERMINAL NORMAL", "mode = terminal_normal"),
+        (Some("explorer"), "EXPLORER", "mode = explorer"),
+        (Some("multicursor"), "MULTICURSOR", "mode = multicursor"),
+        (Some("multiinsert"), "MULTIINSERT", "mode = multiinsert"),
     ];
 
     let mut sections: Vec<HelpSection> = specs
@@ -427,88 +434,11 @@ fn build_help_sections(bindings: &[crate::config::keymap_config::KeyBinding]) ->
     };
     sections.insert(1, vim_commands);
 
-    // ── Terminal section ─────────────────────────────────────────────────────
-    let terminal_section = HelpSection {
-        title: "TERMINAL".to_string(),
-        mode_hint: "F12 / mod+\\ to toggle".to_string(),
-        entries: vec![
-            HelpEntry {
-                keys: vec!["F12".into()],
-                label: "Toggle terminal".into(),
-            },
-            HelpEntry {
-                keys: vec!["Ctrl+q".into()],
-                label: "Terminal → normal mode".into(),
-            },
-            HelpEntry {
-                keys: vec!["Esc".into()],
-                label: "Terminal → editor focus".into(),
-            },
-            HelpEntry {
-                keys: vec!["mod+v".into()],
-                label: "Paste into terminal".into(),
-            },
-        ],
-    };
-    sections.push(terminal_section);
-
-    // ── Explorer section ─────────────────────────────────────────────────────
-    let explorer_section = HelpSection {
-        title: "EXPLORER".to_string(),
-        mode_hint: "leader+e to focus".to_string(),
-        entries: vec![
-            HelpEntry {
-                keys: vec!["j".into(), "k".into()],
-                label: "Navigate up/down".into(),
-            },
-            HelpEntry {
-                keys: vec!["o".into()],
-                label: "Open file / toggle dir".into(),
-            },
-            HelpEntry {
-                keys: vec!["a".into()],
-                label: "Create file".into(),
-            },
-            HelpEntry {
-                keys: vec!["A".into()],
-                label: "Create folder".into(),
-            },
-            HelpEntry {
-                keys: vec!["d".into()],
-                label: "Delete node".into(),
-            },
-            HelpEntry {
-                keys: vec!["r".into()],
-                label: "Rename".into(),
-            },
-            HelpEntry {
-                keys: vec!["H".into()],
-                label: "Toggle hidden files".into(),
-            },
-            HelpEntry {
-                keys: vec!["e".into(), "E".into()],
-                label: "Expand / expand all".into(),
-            },
-        ],
-    };
-    sections.push(explorer_section);
-
     // ── Append built-in leader sequences not already in TOML ────────────────
     let normal_extra = vec![
         (vec!["spc".into(), "e".into()], "Focus explorer"),
         (vec!["spc".into(), "i".into()], "Focus inspector"),
-        (vec!["spc".into(), "f".into(), "f".into()], "Open file picker"),
-        (vec!["spc".into(), "f".into(), "w".into()], "Search in files"),
-        (vec!["spc".into(), "f".into(), "m".into()], "Format document"),
-        (vec!["spc".into(), "t".into(), "h".into()], "Theme selector"),
-        (vec!["spc".into(), "x".into()], "Close buffer"),
         (vec!["spc".into(), "s".into()], "Leap jump"),
-        (vec!["spc".into(), "g".into(), "f".into()], "Open lazygit"),
-        (vec!["spc".into(), "g".into(), "l".into()], "Git blame line"),
-        (vec!["spc".into(), "d".into(), "f".into()], "Open lazydocker"),
-        (vec!["g".into(), "g".into()], "First line"),
-        (vec!["g".into(), "c".into(), "c".into()], "Toggle comment"),
-        (vec!["z".into(), "z".into()], "Center cursor"),
     ];
     if let Some(section) = sections.iter_mut().find(|s| s.title == "NORMAL") {
         for (keys, label) in normal_extra {
@@ -521,12 +451,7 @@ fn build_help_sections(bindings: &[crate::config::keymap_config::KeyBinding]) ->
         }
     }
 
-    let visual_extra = vec![
-        (vec!["spc".into(), "a".into(), "c".into()], "Add to AI context"),
-        (vec!["g".into(), "c".into()], "Toggle comment"),
-        (vec!["g".into(), "g".into()], "First line"),
-        (vec!["z".into(), "z".into()], "Center cursor"),
-    ];
+    let visual_extra: Vec<(Vec<String>, &str)> = vec![];
     if let Some(section) = sections.iter_mut().find(|s| s.title == "VISUAL") {
         for (keys, label) in visual_extra {
             if !section.entries.iter().any(|e| e.keys == keys) {
@@ -541,9 +466,6 @@ fn build_help_sections(bindings: &[crate::config::keymap_config::KeyBinding]) ->
     let global_extra = vec![
         (vec!["spc".into(), "e".into()], "Focus explorer"),
         (vec!["spc".into(), "i".into()], "Focus inspector"),
-        (vec!["spc".into(), "f".into(), "f".into()], "Open file picker"),
-        (vec!["spc".into(), "f".into(), "w".into()], "Search in files"),
-        (vec!["spc".into(), "f".into(), "m".into()], "Format document"),
     ];
     if let Some(section) = sections.iter_mut().find(|s| s.title == "GLOBAL") {
         for (keys, label) in global_extra {
@@ -777,6 +699,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "mode.enter_insert" => "Insert mode",
         "mode.enter_visual" => "→ Visual mode",
         "mode.enter_visual_line" => "→ Visual line",
+        "mode.enter_terminal_focus" => "→ Terminal focus",
         // ── Movement ──────────────────────────────────────────────────────
         "editor.move_left" => "Move left",
         "editor.move_down" => "Move down",
@@ -835,6 +758,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "editor.insert_at_line_start" => "Insert at line start",
         "editor.insert_line_below" => "New line below",
         "editor.insert_line_above" => "New line above",
+        "editor.insert_newline" => "Insert newline",
         // ── Completion ────────────────────────────────────────────────────
         "completion.next" => "Select next",
         "completion.prev" => "Select previous",
@@ -877,9 +801,16 @@ fn command_label_for_help(command_id: &str) -> String {
         "explorer.toggle_ignored" => "Toggle ignored",
         "explorer.move_to_top" => "Move to top",
         "explorer.move_to_bottom" => "Move to bottom",
+        "explorer.collapse_node" => "Collapse node",
+        "explorer.collapse_all_under_node" => "Collapse all",
+        "explorer.expand_all_under_node" => "Expand all",
+        "explorer.start_filter" => "Start filter",
+        "explorer.clear_filter" => "Clear filter",
         // ── Terminal ──────────────────────────────────────────────────────
         "app.toggle_terminal" => "Toggle terminal",
         "terminal.paste" => "Terminal paste",
+        "terminal.enter_normal_mode" => "Enter terminal normal",
+        "terminal.search_open" => "Search in terminal",
         // ── Git ───────────────────────────────────────────────────────────
         "git.open_lazygit" => "Open lazygit",
         "git.open_lazydocker" => "Open lazydocker",
@@ -898,6 +829,19 @@ fn command_label_for_help(command_id: &str) -> String {
         // ── Jump list ─────────────────────────────────────────────────────
         "editor.jump_back" => "Jump back",
         "editor.jump_forward" => "Jump forward",
+        // ── Multi-cursor ──────────────────────────────────────────────────
+        "multicursor.add_next" => "Add next match",
+        "multicursor.skip" => "Skip match",
+        "multicursor.insert_before" => "Insert before cursors",
+        "multicursor.append_after" => "Append after cursors",
+        "multicursor.change" => "Change at cursors",
+        "multicursor.delete" => "Delete at cursors",
+        // ── Overlay / palette ─────────────────────────────────────────────
+        "overlay.select_prev" => "Select previous",
+        "overlay.select_next" => "Select next",
+        // ── Misc ──────────────────────────────────────────────────────────
+        "app.toggle_maximize_focus" => "Toggle maximize focus",
+        "projects.recent" => "Recent projects",
         _ => command_id,
     };
     label.to_string()

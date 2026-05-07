@@ -343,7 +343,10 @@ fn dispatch_command_with_clipboard_once(
         | Command::AiChatSuggestionNext
         | Command::AiChatSuggestionPrev
         | Command::AiChatInputText(_)
+        | Command::AiChatPasteClipboard
         | Command::AiChatPromptInstall
+        | Command::AiChatScrollHalfPageUp
+        | Command::AiChatScrollHalfPageDown
         | Command::ToggleMarkdownPreview
         | Command::FocusMarkdownPreview
         | Command::MarkdownPreviewScrollUp
@@ -352,6 +355,17 @@ fn dispatch_command_with_clipboard_once(
         | Command::MarkdownPreviewScrollHalfPageDown
         | Command::MarkdownPreviewScrollTop
         | Command::MarkdownPreviewScrollBottom => session::dispatch(&mut ctx, command),
-        Command::LspSelectPythonEnv => palette::dispatch(&mut ctx, command),
+        | Command::HelpScrollDown
+        | Command::HelpScrollUp
+        | Command::HelpScrollHalfPageDown
+        | Command::HelpScrollHalfPageUp => session::dispatch(&mut ctx, command),
+        Command::LspSelectPythonEnv => {
+            let changed = ctx.app_state.open_python_env_selector();
+            DispatchReport::success_with_flags(
+                "Dispatch: python env selector opened".to_string(),
+                changed,
+                changed,
+            )
+        }
     }
 }

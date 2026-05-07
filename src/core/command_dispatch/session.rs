@@ -143,7 +143,10 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::AiChatSuggestionNext
         | Command::AiChatSuggestionPrev
         | Command::AiChatInputText(_)
+        | Command::AiChatPasteClipboard
         | Command::AiChatPromptInstall
+        | Command::AiChatScrollHalfPageUp
+        | Command::AiChatScrollHalfPageDown
         | Command::ToggleMarkdownPreview
         | Command::FocusMarkdownPreview
         | Command::MarkdownPreviewScrollUp
@@ -153,6 +156,14 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::MarkdownPreviewScrollHalfPageUp
         | Command::MarkdownPreviewScrollHalfPageDown => DispatchReport::success_with_flags(
             "Dispatch: workbench navigation (handled by event loop)",
+            true,
+            false,
+        ),
+        | Command::HelpScrollDown
+        | Command::HelpScrollUp
+        | Command::HelpScrollHalfPageDown
+        | Command::HelpScrollHalfPageUp => DispatchReport::success_with_flags(
+            "Dispatch: help/cheatsheet scroll (handled by event loop)",
             true,
             false,
         ),

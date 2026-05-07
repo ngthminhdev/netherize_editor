@@ -28,6 +28,7 @@ pub fn language_id_for_extension(extension: &str) -> Option<LanguageId> {
         "md" | "markdown" | "mdx" => Some(LanguageId::Markdown),
         "env" => Some(LanguageId::Dotenv),
         "java" => Some(LanguageId::Java),
+        "py" | "python" => Some(LanguageId::Python),
         _ => None,
     }
 }

@@ -343,6 +343,12 @@ pub enum WorkerRequestPayload {
     ScanPythonEnvironments {
         workspace_root: PathBuf,
     },
+    /// Detect Python / Node / Go runtime versions for statusbar display.
+    /// `python_binary` is the interpreter path from the selected venv (or system).
+    DetectRuntimeVersions {
+        python_binary: Option<PathBuf>,
+        workspace_root: PathBuf,
+    },
 }
 
 /// Loại location từ LSP — dùng cho definition và references.
@@ -619,6 +625,12 @@ pub enum WorkerResultPayload {
     },
     /// Kết quả scan Python environments.
     PythonEnvironmentsDiscovered(Vec<crate::async_runtime::python_env::PythonEnv>),
+    /// Runtime version strings for statusbar display.
+    RuntimeVersionsDetected {
+        python_version: Option<String>,
+        node_version: Option<String>,
+        go_version: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

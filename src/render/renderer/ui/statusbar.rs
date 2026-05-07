@@ -39,6 +39,10 @@ impl Renderer {
         lsp_loading: bool,
         lsp_loading_frame: u8,
         lsp_progress: Option<&str>,
+        venv_name: Option<&str>,
+        python_version: Option<&str>,
+        node_version: Option<&str>,
+        go_version: Option<&str>,
         bounds: [f32; 4],
     ) -> Vec<RegionDrawInstance> {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
@@ -67,6 +71,10 @@ impl Renderer {
             lsp_loading_frame,
             lsp_progress: lsp_progress.map(str::to_string),
             bounds,
+            venv_name: venv_name.map(str::to_string),
+            python_version: python_version.map(str::to_string),
+            node_version: node_version.map(str::to_string),
+            go_version: go_version.map(str::to_string),
         };
         if self.last_statusbar_layout_key.as_ref() == Some(&layout_key) {
             return self.statusbar_chrome_instances.clone();
@@ -259,6 +267,29 @@ impl Renderer {
         let lang_str = filetype.trim();
         if !lang_str.is_empty() {
             right_items.push((lang_str.to_string(), fg_ghost));
+        }
+
+        // ── Runtime version badges — only shown when filetype matches ────────
+        let is_python = filetype == "Python";
+        let is_node   = matches!(filetype, "JavaScript" | "TypeScript" | "JavaScript React" | "TypeScript React");
+        let is_go     = filetype == "Go";
+
+        if is_python {
+            if let Some(env) = venv_name.filter(|s| !s.is_empty()) {
+                right_items.push((format!("🐍 {env}"), success_fg));
+            } else if let Some(ver) = python_version.filter(|s| !s.is_empty()) {
+                right_items.push((format!("py {ver}"), fg_ghost));
+            }
+        }
+        if is_node {
+            if let Some(ver) = node_version.filter(|s| !s.is_empty()) {
+                right_items.push((format!("node {ver}"), fg_ghost));
+            }
+        }
+        if is_go {
+            if let Some(ver) = go_version.filter(|s| !s.is_empty()) {
+                right_items.push((format!("go {ver}"), fg_ghost));
+            }
         }
 
         let right_text_w: f32 = right_items

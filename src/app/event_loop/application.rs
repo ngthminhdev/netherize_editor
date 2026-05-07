@@ -939,7 +939,8 @@ impl AppShell {
                 if let Some(renderer) = self.renderer.as_mut() {
                     let show_cursor = self.focus_manager.current() == FocusTarget::RightSidebar;
                     let inner_padding = self.layout_engine.config.inner_padding;
-                    let cursor_quads = renderer.update_ai_chat_content(
+                    let scroll_y = chat.scroll_y;
+                    let (cursor_quads, max_scroll_y) = renderer.update_ai_chat_content(
                         hb,
                         ib,
                         &chat.messages,
@@ -952,7 +953,9 @@ impl AppShell {
                         chat.model.as_deref(),
                         chat.agent.label(),
                         chat.is_generating,
+                        scroll_y,
                     );
+                    self.panel_state.ai_chat.max_scroll_y = max_scroll_y;
                     region_instances.extend(cursor_quads);
                 }
             }
@@ -1139,6 +1142,10 @@ impl AppShell {
                     self.pending_lsp_server.is_some(),
                     self.lsp_loading_frame,
                     lsp_progress_label.as_deref(),
+                    self.runtime_versions.venv_name.as_deref(),
+                    self.runtime_versions.python_version.as_deref(),
+                    self.runtime_versions.node_version.as_deref(),
+                    self.runtime_versions.go_version.as_deref(),
                     status_bounds,
                 );
                 region_instances.extend(pill_quads);

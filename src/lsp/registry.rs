@@ -6,6 +6,7 @@ const RUST_ROOT_MARKERS: &[&str] = &["Cargo.toml", ".git"];
 const JS_TS_ROOT_MARKERS: &[&str] = &["package.json", "tsconfig.json", ".git"];
 const GO_ROOT_MARKERS: &[&str] = &["go.mod", ".git"];
 const JAVA_ROOT_MARKERS: &[&str] = &["pom.xml", "build.gradle", "build.gradle.kts", ".git"];
+const PYTHON_ROOT_MARKERS: &[&str] = &["pyproject.toml", "setup.py", "setup.cfg", ".git"];
 const SQL_ROOT_MARKERS: &[&str] = &[".sqls.json", "docker-compose.yml", ".git"];
 const NO_ROOT_MARKERS: &[&str] = &[];
 
@@ -94,6 +95,18 @@ static LANGUAGE_REGISTRY: &[LanguageProfile] = &[
         install_command: "go install golang.org/x/tools/gopls@latest",
         root_markers: GO_ROOT_MARKERS,
         extensions: &["go"],
+        filenames: &[],
+    },
+    LanguageProfile {
+        key: "python",
+        language_label: "Python",
+        language_id: "python",
+        syntax_language_id: Some(LanguageId::Python),
+        lsp_binary: "pylsp",
+        launch_args: &[],
+        install_command: "pip install python-lsp-server",
+        root_markers: PYTHON_ROOT_MARKERS,
+        extensions: &["py"],
         filenames: &[],
     },
     LanguageProfile {

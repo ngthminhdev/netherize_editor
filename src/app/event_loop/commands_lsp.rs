@@ -690,6 +690,32 @@ impl AppShell {
         self.focus_manager.set(FocusTarget::CenterEditor);
         self.input_handler.clear_pending_prefix();
 
+        // Derive a short venv display name from the parent directory of the binary.
+        // e.g. /project/venv/bin/python → "venv"  or  /project/.venv/bin/python → ".venv"
+        let venv_name = selected_path
+            .parent()          // bin/
+            .and_then(|p| p.parent()) // venv/
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .map(str::to_string);
+        self.runtime_versions.venv_name = venv_name;
+
+        // Store selected env and re-detect versions against the chosen interpreter.
+        self.selected_python_env = Some(selected_path.clone());
+        let workspace_root = self
+            .app_state
+            .workspace_root_path()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_default();
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::SystemTask,
+            payload: WorkerRequestPayload::DetectRuntimeVersions {
+                python_binary: Some(selected_path.clone()),
+                workspace_root,
+            },
+        });
+
         self.show_transient_toast(format!(
             "Python env selected: {}",
             selected_path.display()

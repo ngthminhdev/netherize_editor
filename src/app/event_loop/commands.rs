@@ -360,6 +360,13 @@ impl AppShell {
                 changed,
             );
         }
+        if let Some(changed) = self.handle_help_command(&command) {
+            return self.finalize_post_command_hooks(
+                &command_for_post_hooks,
+                should_persist_history_after,
+                changed,
+            );
+        }
 
         let changed = self.handle_generic_editor_command(command, repeat_count);
 
@@ -670,6 +677,28 @@ impl AppShell {
                 }
                 let max_scroll = preview.rendered_lines.len().saturating_sub(1) as f32;
                 preview.scroll_y = max_scroll;
+                Some(true)
+            }
+            _ => None,
+        }
+    }
+
+    fn handle_help_command(&mut self, command: &Command) -> Option<bool> {
+        match command {
+            Command::HelpScrollDown => {
+                self.app_state.help_scroll_down(100.0);
+                Some(true)
+            }
+            Command::HelpScrollUp => {
+                self.app_state.help_scroll_up(100.0);
+                Some(true)
+            }
+            Command::HelpScrollHalfPageDown => {
+                self.app_state.help_scroll_down(400.0);
+                Some(true)
+            }
+            Command::HelpScrollHalfPageUp => {
+                self.app_state.help_scroll_up(400.0);
                 Some(true)
             }
             _ => None,

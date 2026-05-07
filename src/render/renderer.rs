@@ -122,6 +122,10 @@ pub(super) struct StatusbarLayoutKey {
     pub(super) lsp_loading_frame: u8,
     pub(super) lsp_progress: Option<String>,
     pub(super) bounds: [f32; 4],
+    pub(super) venv_name: Option<String>,
+    pub(super) python_version: Option<String>,
+    pub(super) node_version: Option<String>,
+    pub(super) go_version: Option<String>,
 }
 
 // ── Renderer struct ────────────────────────────────────────────────────────────

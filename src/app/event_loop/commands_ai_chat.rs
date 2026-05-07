@@ -279,6 +279,7 @@ impl AppShell {
             });
             chat.input_buffer.clear();
             chat.is_generating = true;
+            chat.scroll_y = f32::MAX;
 
             let history: Vec<(String, String)> = chat
                 .messages
@@ -671,6 +672,29 @@ impl AppShell {
             Command::AiChatInputText(text) => {
                 self.panel_state.ai_chat.input_buffer.push_str(text);
                 self.panel_state.ai_chat.selected_suggestion_index = 0;
+                Some(true)
+            }
+            Command::AiChatPasteClipboard => {
+                let Ok(text) = self.clipboard.get_text() else {
+                    return Some(false);
+                };
+                if text.is_empty() {
+                    return Some(false);
+                }
+                self.panel_state.ai_chat.input_buffer.push_str(&text);
+                self.panel_state.ai_chat.selected_suggestion_index = 0;
+                Some(true)
+            }
+            Command::AiChatScrollHalfPageUp => {
+                let chat = &mut self.panel_state.ai_chat;
+                let current = chat.scroll_y.min(chat.max_scroll_y);
+                chat.scroll_y = (current - 200.0).max(0.0);
+                Some(true)
+            }
+            Command::AiChatScrollHalfPageDown => {
+                let chat = &mut self.panel_state.ai_chat;
+                let current = chat.scroll_y.min(chat.max_scroll_y);
+                chat.scroll_y = (current + 200.0).min(chat.max_scroll_y);
                 Some(true)
             }
             _ => None,

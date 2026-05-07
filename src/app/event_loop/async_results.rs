@@ -992,6 +992,16 @@ impl AsyncResultRouter for AppShell {
                 });
                 self.request_redraw();
             }
+            WorkerResultPayload::RuntimeVersionsDetected {
+                python_version,
+                node_version,
+                go_version,
+            } => {
+                self.runtime_versions.python_version = python_version;
+                self.runtime_versions.node_version = node_version;
+                self.runtime_versions.go_version = go_version;
+                self.request_redraw();
+            }
             WorkerResultPayload::PythonEnvironmentsDiscovered(envs) => {
                 use crate::app::command_palette::{
                     CommandPaletteAction, CommandPaletteItem, CommandPaletteItemTone,

@@ -403,6 +403,21 @@ impl AppShell {
                 };
                 self.reconcile_highlight_spans_with_pending_edits();
 
+                // :lsp python vim command opens PythonEnvSelector without closing the overlay.
+                // Keep palette focus and kick off the async environment scan.
+                if self.app_state.command_palette_mode() == Some(CommandPaletteMode::PythonEnvSelector) {
+                    if let Some(workspace_root) = self.app_state.workspace_root_path().map(|p| p.to_path_buf()) {
+                        self.submit(RequestSpec {
+                            revision_id: 0,
+                            topic: RequestTopic::SystemTask,
+                            payload: WorkerRequestPayload::ScanPythonEnvironments { workspace_root },
+                        });
+                    }
+                    self.arm_palette_ime_commit_suppression();
+                    self.focus_manager.set(FocusTarget::OverlayLayer);
+                    return Some(true);
+                }
+
                 let file_after = self.app_state.active_file().map(PathBuf::from);
                 let file_changed = report.success && file_after != file_before;
                 let mut parsed_after_file_change = false;
