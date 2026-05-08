@@ -1,30 +1,31 @@
 ---
 name: theme-config
-description: "Skill for the Theme_config area of netherize_editor. 59 symbols across 8 files."
+description: "Skill for the Theme_config area of netherize_editor. 56 symbols across 9 files."
 ---
 
 # Theme_config
 
-59 symbols | 8 files | Cohesion: 77%
+56 symbols | 9 files | Cohesion: 76%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how from_rgba_u8, builtin_dark, new work
+- Understanding how from_rgba_u8, builtin_dark, layout_panel_text_italic work
 - Modifying theme_config-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
-| `src/config/theme_config/loader.rs` | from_raw, parse_extension_file_icons, parse_exact_file_icons, parse_editor, parse_ui (+19) |
-| `src/config/theme_config/model.rs` | from_rgba_u8, file_icon_lookup_prefers_dir_then_exact_then_extension_then_default, new, as_srgb_f32, as_linear (+16) |
+| `src/config/theme_config/model.rs` | from_rgba_u8, file_icon_lookup_prefers_dir_then_exact_then_extension_then_default, linear_to_srgb, linear_rgba_to_srgb_u8, f32_channel_to_u8 (+16) |
+| `src/config/theme_config/loader.rs` | from_raw, parse_extension_file_icons, parse_exact_file_icons, parse_editor, parse_ui (+14) |
 | `src/config/theme_config/builtin.rs` | builtin_dark, builtin_editor_tokens, builtin_ui_tokens, builtin_syntax_tokens, builtin_git_tokens (+4) |
-| `src/text/text_system.rs` | rgba_f32_from_color |
-| `src/app/event_loop/helpers.rs` | build_sidebar_rows |
+| `src/render/renderer/helpers.rs` | layout_panel_text_italic, color_f32_to_u8 |
 | `src/text/layout_sync.rs` | color_f32_to_u8 |
 | `src/app/app_state/state.rs` | inline_suggestion |
 | `src/render/renderer/editor/viewport.rs` | collect_inline_suggestion_glyphs |
+| `src/text/text_system.rs` | rgba_f32_from_color |
+| `src/app/event_loop/helpers.rs` | build_sidebar_rows |
 
 ## Entry Points
 
@@ -32,9 +33,9 @@ Start here when exploring this area:
 
 - **`from_rgba_u8`** (Function) — `src/config/theme_config/model.rs:35`
 - **`builtin_dark`** (Function) — `src/config/theme_config/builtin.rs:8`
-- **`new`** (Function) — `src/config/theme_config/model.rs:16`
-- **`as_srgb_f32`** (Function) — `src/config/theme_config/model.rs:69`
-- **`as_linear`** (Function) — `src/config/theme_config/model.rs:78`
+- **`layout_panel_text_italic`** (Function) — `src/render/renderer/helpers.rs:76`
+- **`linear_to_srgb`** (Function) — `src/config/theme_config/model.rs:97`
+- **`linear_rgba_to_srgb_u8`** (Function) — `src/config/theme_config/model.rs:115`
 
 ## Key Symbols
 
@@ -42,6 +43,11 @@ Start here when exploring this area:
 |--------|------|------|------|
 | `from_rgba_u8` | Function | `src/config/theme_config/model.rs` | 35 |
 | `builtin_dark` | Function | `src/config/theme_config/builtin.rs` | 8 |
+| `layout_panel_text_italic` | Function | `src/render/renderer/helpers.rs` | 76 |
+| `linear_to_srgb` | Function | `src/config/theme_config/model.rs` | 97 |
+| `linear_rgba_to_srgb_u8` | Function | `src/config/theme_config/model.rs` | 115 |
+| `inline_suggestion` | Function | `src/app/app_state/state.rs` | 781 |
+| `collect_inline_suggestion_glyphs` | Function | `src/render/renderer/editor/viewport.rs` | 345 |
 | `new` | Function | `src/config/theme_config/model.rs` | 16 |
 | `as_srgb_f32` | Function | `src/config/theme_config/model.rs` | 69 |
 | `as_linear` | Function | `src/config/theme_config/model.rs` | 78 |
@@ -55,11 +61,6 @@ Start here when exploring this area:
 | `get_icon_for_file` | Function | `src/config/theme_config/model.rs` | 366 |
 | `build_sidebar_rows` | Function | `src/app/event_loop/helpers.rs` | 1242 |
 | `default_profile` | Function | `src/config/theme_config/loader.rs` | 23 |
-| `resolved_profile` | Function | `src/config/theme_config/loader.rs` | 27 |
-| `active_profile` | Function | `src/config/theme_config/loader.rs` | 41 |
-| `load_active` | Function | `src/config/theme_config/loader.rs` | 70 |
-| `load_preferred` | Function | `src/config/theme_config/loader.rs` | 74 |
-| `load` | Function | `src/config/theme_config/loader.rs` | 89 |
 
 ## Execution Flows
 
@@ -80,12 +81,11 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Config | 2 calls |
-| Cluster_2 | 1 calls |
-| Workbench | 1 calls |
-| Terminal | 1 calls |
+| Text | 3 calls |
+| Config | 1 calls |
+| Scheduler | 1 calls |
+| Ui | 1 calls |
 | App_state | 1 calls |
-| Text | 1 calls |
 
 ## How to Explore
 

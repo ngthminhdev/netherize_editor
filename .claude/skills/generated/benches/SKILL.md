@@ -1,11 +1,11 @@
 ---
 name: benches
-description: "Skill for the Benches area of netherize_editor. 26 symbols across 4 files."
+description: "Skill for the Benches area of netherize_editor. 27 symbols across 4 files."
 ---
 
 # Benches
 
-26 symbols | 4 files | Cohesion: 73%
+27 symbols | 4 files | Cohesion: 73%
 
 ## When to Use
 
@@ -19,7 +19,7 @@ description: "Skill for the Benches area of netherize_editor. 26 symbols across 
 |------|---------|
 | `benches/e2e_perf_runner.rs` | bench_scratch_path, ensure_50mb_log_file, new, record, avg_ms (+9) |
 | `benches/editor_bench.rs` | bench_scratch_path, ensure_50mb_log_file, bench_language_cases, line_col_for_byte, highlight_window (+2) |
-| `src/app/app_state/state.rs` | cursor_byte_idx, cursor_byte_in_line, active_search_match_position, text_len_bytes |
+| `src/app/app_state/state.rs` | cursor_byte_idx, cursor_byte_in_line, active_search_match_position, jump_to_line_and_column, text_len_bytes |
 | `src/app/app_state/editor.rs` | move_to_last_line |
 
 ## Entry Points
@@ -27,20 +27,21 @@ description: "Skill for the Benches area of netherize_editor. 26 symbols across 
 Start here when exploring this area:
 
 - **`move_to_last_line`** (Function) — `src/app/app_state/editor.rs:919`
-- **`cursor_byte_idx`** (Function) — `src/app/app_state/state.rs:320`
-- **`cursor_byte_in_line`** (Function) — `src/app/app_state/state.rs:326`
-- **`active_search_match_position`** (Function) — `src/app/app_state/state.rs:379`
-- **`text_len_bytes`** (Function) — `src/app/app_state/state.rs:505`
+- **`cursor_byte_idx`** (Function) — `src/app/app_state/state.rs:325`
+- **`cursor_byte_in_line`** (Function) — `src/app/app_state/state.rs:331`
+- **`active_search_match_position`** (Function) — `src/app/app_state/state.rs:384`
+- **`jump_to_line_and_column`** (Function) — `src/app/app_state/state.rs:451`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `move_to_last_line` | Function | `src/app/app_state/editor.rs` | 919 |
-| `cursor_byte_idx` | Function | `src/app/app_state/state.rs` | 320 |
-| `cursor_byte_in_line` | Function | `src/app/app_state/state.rs` | 326 |
-| `active_search_match_position` | Function | `src/app/app_state/state.rs` | 379 |
-| `text_len_bytes` | Function | `src/app/app_state/state.rs` | 505 |
+| `cursor_byte_idx` | Function | `src/app/app_state/state.rs` | 325 |
+| `cursor_byte_in_line` | Function | `src/app/app_state/state.rs` | 331 |
+| `active_search_match_position` | Function | `src/app/app_state/state.rs` | 384 |
+| `jump_to_line_and_column` | Function | `src/app/app_state/state.rs` | 451 |
+| `text_len_bytes` | Function | `src/app/app_state/state.rs` | 510 |
 | `bench_scratch_path` | Function | `benches/e2e_perf_runner.rs` | 32 |
 | `ensure_50mb_log_file` | Function | `benches/e2e_perf_runner.rs` | 36 |
 | `new` | Function | `benches/e2e_perf_runner.rs` | 62 |
@@ -55,7 +56,6 @@ Start here when exploring this area:
 | `main` | Function | `benches/e2e_perf_runner.rs` | 311 |
 | `bench_scratch_path` | Function | `benches/editor_bench.rs` | 30 |
 | `ensure_50mb_log_file` | Function | `benches/editor_bench.rs` | 34 |
-| `bench_language_cases` | Function | `benches/editor_bench.rs` | 115 |
 
 ## Execution Flows
 
@@ -76,8 +76,9 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| App_state | 12 calls |
+| App_state | 6 calls |
 | Workbench | 5 calls |
+| Event_loop | 4 calls |
 | Syntax | 3 calls |
 | Command_dispatch | 2 calls |
 

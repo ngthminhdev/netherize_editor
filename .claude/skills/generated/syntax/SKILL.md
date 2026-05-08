@@ -1,11 +1,11 @@
 ---
 name: syntax
-description: "Skill for the Syntax area of netherize_editor. 100 symbols across 12 files."
+description: "Skill for the Syntax area of netherize_editor. 102 symbols across 12 files."
 ---
 
 # Syntax
 
-100 symbols | 12 files | Cohesion: 83%
+102 symbols | 12 files | Cohesion: 84%
 
 ## When to Use
 
@@ -17,7 +17,7 @@ description: "Skill for the Syntax area of netherize_editor. 100 symbols across 
 
 | File | Symbols |
 |------|---------|
-| `src/syntax/highlight.rs` | generate_highlight_spans, generate_dotenv_highlight_spans, should_highlight_inline, highlight_snippet, markdown_inline_highlight_query (+50) |
+| `src/syntax/highlight.rs` | generate_highlight_spans, generate_dotenv_highlight_spans, should_highlight_inline, highlight_snippet, markdown_inline_highlight_query (+52) |
 | `src/syntax/syntax_engine.rs` | as_str, root_node, new, new_rust, parse_source (+15) |
 | `src/async_runtime/scheduler/syntax_jobs.rs` | execute_virtual_job, byte_range_for_line_window, highlight_byte_window, should_highlight_full_buffer, cpu_burn_checksum |
 | `src/async_runtime/scheduler/git.rs` | run_git_blame_line, parse_git_blame_summary, run_workspace_git_status, parse_git_file_status, run_fetch_git_baseline |
@@ -68,10 +68,6 @@ Start here when exploring this area:
 | Flow | Type | Steps |
 |------|------|-------|
 | `Handle_command_with_count → Root_node` | cross_community | 5 |
-| `Handle_palette_and_open_command → As_str` | cross_community | 4 |
-| `Handle_palette_and_open_command → Tree_sitter_language` | cross_community | 4 |
-| `Handle_palette_and_open_command → Parse` | cross_community | 4 |
-| `Handle_palette_and_open_command → New` | cross_community | 4 |
 | `Execute_virtual_job → Parse` | intra_community | 4 |
 | `Execute_virtual_job → New` | cross_community | 4 |
 | `Execute_virtual_job → Sanitize_byte_range` | cross_community | 4 |

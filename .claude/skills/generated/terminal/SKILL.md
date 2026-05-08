@@ -1,11 +1,11 @@
 ---
 name: terminal
-description: "Skill for the Terminal area of netherize_editor. 147 symbols across 13 files."
+description: "Skill for the Terminal area of netherize_editor. 139 symbols across 9 files."
 ---
 
 # Terminal
 
-147 symbols | 13 files | Cohesion: 81%
+139 symbols | 9 files | Cohesion: 82%
 
 ## When to Use
 
@@ -17,7 +17,7 @@ description: "Skill for the Terminal area of netherize_editor. 147 symbols acros
 
 | File | Symbols |
 |------|---------|
-| `src/terminal/grid.rs` | new, feed_chunk, cell_at, debug_dump, apply_regex_highlights (+81) |
+| `src/terminal/grid.rs` | new, feed_chunk, cell_at, apply_regex_highlights, set_visible_row_style_fg (+77) |
 | `src/terminal/ansi_parser.rs` | collect_events, plain_text_emits_print_chars, newline_and_cr, sgr_reset, sgr_empty_is_reset (+31) |
 | `src/terminal/pty.rs` | spawn_shell, spawn_command, new, write_input, resolve_shell_program (+2) |
 | `src/terminal/terminal_renderer.rs` | new, default_monospace, cell_rect, cell_rect_calculation, default_renderer_has_positive_cell_size |
@@ -25,7 +25,6 @@ description: "Skill for the Terminal area of netherize_editor. 147 symbols acros
 | `src/async_runtime/scheduler.rs` | alloc_session_id, async_trace_enabled |
 | `src/core/command_dispatch/navigation.rs` | dispatch_terminal_normal |
 | `src/async_runtime/scheduler/pty.rs` | execute_pty_request |
-| `src/render/renderer/ui/terminal.rs` | append_terminal_overlay_quads |
 | `src/app/event_loop/setup.rs` | sync_in_file_search_with_palette_query |
 
 ## Entry Points
@@ -35,8 +34,8 @@ Start here when exploring this area:
 - **`new`** (Function) — `src/terminal/grid.rs:186`
 - **`feed_chunk`** (Function) — `src/terminal/grid.rs:209`
 - **`cell_at`** (Function) — `src/terminal/grid.rs:756`
-- **`debug_dump`** (Function) — `src/terminal/grid.rs:811`
 - **`apply_regex_highlights`** (Function) — `src/terminal/grid.rs:864`
+- **`total_rows`** (Function) — `src/terminal/grid.rs:501`
 
 ## Key Symbols
 
@@ -45,11 +44,8 @@ Start here when exploring this area:
 | `new` | Function | `src/terminal/grid.rs` | 186 |
 | `feed_chunk` | Function | `src/terminal/grid.rs` | 209 |
 | `cell_at` | Function | `src/terminal/grid.rs` | 756 |
-| `debug_dump` | Function | `src/terminal/grid.rs` | 811 |
 | `apply_regex_highlights` | Function | `src/terminal/grid.rs` | 864 |
 | `total_rows` | Function | `src/terminal/grid.rs` | 501 |
-| `live_cursor_absolute_position` | Function | `src/terminal/grid.rs` | 505 |
-| `enter_normal_mode` | Function | `src/terminal/grid.rs` | 512 |
 | `move_virtual_left` | Function | `src/terminal/grid.rs` | 540 |
 | `move_virtual_right` | Function | `src/terminal/grid.rs` | 550 |
 | `move_virtual_up` | Function | `src/terminal/grid.rs` | 560 |
@@ -62,6 +58,9 @@ Start here when exploring this area:
 | `move_virtual_to_first_non_whitespace` | Function | `src/terminal/grid.rs` | 616 |
 | `move_virtual_to_first_line` | Function | `src/terminal/grid.rs` | 623 |
 | `move_virtual_to_last_line` | Function | `src/terminal/grid.rs` | 630 |
+| `move_virtual_half_page_up` | Function | `src/terminal/grid.rs` | 637 |
+| `move_virtual_half_page_down` | Function | `src/terminal/grid.rs` | 646 |
+| `center_virtual_cursor_line` | Function | `src/terminal/grid.rs` | 656 |
 
 ## Execution Flows
 
@@ -82,12 +81,11 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Command_dispatch | 4 calls |
-| Scheduler | 3 calls |
-| Palette | 2 calls |
+| App_state | 4 calls |
 | Workbench | 2 calls |
-| App_state | 1 calls |
-| Theme_config | 1 calls |
+| Scheduler | 2 calls |
+| Ui | 1 calls |
+| Command_dispatch | 1 calls |
 
 ## How to Explore
 

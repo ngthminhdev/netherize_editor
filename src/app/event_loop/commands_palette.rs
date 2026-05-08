@@ -49,26 +49,15 @@ impl AppShell {
                         if let Some((lines, preview_text)) =
                             self.app_state.build_file_history_diff_preview()
                         {
-                            let extension = self
-                                .app_state
-                                .active_fuzzy_picker_buffer()
-                                .and_then(|state| state.source_file_path.as_ref())
-                                .and_then(|path| path.extension())
-                                .and_then(|ext| ext.to_str())
-                                .unwrap_or_default();
-                            let preview_spans = syntax_spans_to_styled(
-                                &crate::syntax::highlight::highlight_snippet(
-                                    &preview_text,
-                                    extension,
-                                    &self.theme,
-                                ),
-                                &preview_text,
-                                &self.theme,
-                            );
+                            // FileHistory diff preview uses + / - markers — tree-sitter
+                            // syntax highlighting would produce misaligned spans on the
+                            // diff-formatted text. The renderer already applies green/red
+                            // backgrounds based on the line prefix, so plain text is
+                            // visually sufficient.
                             let _ = self.app_state.set_fuzzy_picker_preview(
                                 lines,
                                 preview_text,
-                                preview_spans,
+                                Vec::new(),
                             );
                         }
                     }
@@ -141,26 +130,13 @@ impl AppShell {
                         if let Some((lines, preview_text)) =
                             self.app_state.build_file_history_diff_preview()
                         {
-                            let extension = self
-                                .app_state
-                                .active_fuzzy_picker_buffer()
-                                .and_then(|state| state.source_file_path.as_ref())
-                                .and_then(|path| path.extension())
-                                .and_then(|ext| ext.to_str())
-                                .unwrap_or_default();
-                            let preview_spans = syntax_spans_to_styled(
-                                &crate::syntax::highlight::highlight_snippet(
-                                    &preview_text,
-                                    extension,
-                                    &self.theme,
-                                ),
-                                &preview_text,
-                                &self.theme,
-                            );
+                            // FileHistory diff preview uses + / - markers — tree-sitter
+                            // syntax highlighting would produce misaligned spans. Plain
+                            // text with green/red backgrounds from the renderer is sufficient.
                             let _ = self.app_state.set_fuzzy_picker_preview(
                                 lines,
                                 preview_text,
-                                preview_spans,
+                                Vec::new(),
                             );
                         }
                     }

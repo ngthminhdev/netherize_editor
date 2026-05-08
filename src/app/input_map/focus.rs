@@ -394,6 +394,16 @@ impl InputMap {
             });
         }
 
+        if !input.has_command_modifier()
+            && input.physical_key == Some(KeyG)
+            && input.modifiers.shift_key()
+        {
+            return Some(KeybindingMatch {
+                command: Command::MarkdownPreviewScrollBottom,
+                reason: "preview: G -> scroll bottom",
+            });
+        }
+
         if input.modifiers.control_key() && !input.modifiers.super_key() && input.physical_key == Some(KeyD)
         {
             return Some(KeybindingMatch {

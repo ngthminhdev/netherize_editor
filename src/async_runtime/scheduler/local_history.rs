@@ -15,6 +15,12 @@ use crate::{
 
 use super::{emit::emit_message, emit::emit_message_and_wake};
 
+/// Maximum number of undo-stack entries retained per file.
+const MAX_HISTORY_ENTRIES: usize = 50;
+
+/// Discard history files whose last save is older than this many seconds (30 days).
+const MAX_HISTORY_AGE_SECS: u64 = 30 * 24 * 60 * 60;
+
 fn local_history_path_for_file(file_path: &std::path::Path) -> PathBuf {
     let mut hasher = Sha256::new();
     hasher.update(file_path.to_string_lossy().as_bytes());
@@ -178,6 +184,21 @@ async fn execute_load_local_history(file_path: PathBuf) -> Result<WorkerResultPa
 
     let history = serde_json::from_slice::<PersistedHistoryEnvelope>(&bytes)
         .map_err(|err| format!("parse local history {:?} failed: {err}", history_path))?;
+
+    // Age-based GC: discard history files older than 30 days.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    if history.saved_at > 0 && now.saturating_sub(history.saved_at) > MAX_HISTORY_AGE_SECS {
+        // Delete the expired file on disk so it doesn't linger.
+        let _ = tokio::fs::remove_file(&history_path).await;
+        return Ok(WorkerResultPayload::LocalHistoryLoaded {
+            file_path,
+            history: None,
+        });
+    }
+
     Ok(WorkerResultPayload::LocalHistoryLoaded {
         file_path,
         history: Some(history),
@@ -187,7 +208,7 @@ async fn execute_load_local_history(file_path: PathBuf) -> Result<WorkerResultPa
 async fn execute_save_local_history(
     file_path: PathBuf,
     mut history: PersistedHistoryEnvelope,
-    max_bytes: usize,
+    _max_bytes: usize,
 ) -> Result<WorkerResultPayload, String> {
     let history_path = local_history_path_for_file(&file_path);
     if let Some(parent) = history_path.parent() {
@@ -197,15 +218,22 @@ async fn execute_save_local_history(
     }
 
     let mut trimmed_transactions = 0usize;
-    let bytes = loop {
-        let encoded = serde_json::to_vec(&history)
-            .map_err(|err| format!("serialize local history {:?} failed: {err}", file_path))?;
-        if encoded.len() <= max_bytes || history.history.undo_stack.is_empty() {
-            break encoded;
-        }
+
+    // Count-based GC: keep at most MAX_HISTORY_ENTRIES most recent entries.
+    while history.history.undo_stack.len() > MAX_HISTORY_ENTRIES {
         history.history.undo_stack.remove(0);
         trimmed_transactions += 1;
-    };
+    }
+
+    let bytes = serde_json::to_vec(&history)
+        .map_err(|err| format!("serialize local history {:?} failed: {err}", file_path))?;
+
+    // Update timestamp so age-based GC can measure freshness.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    history.saved_at = now;
 
     tokio::fs::write(&history_path, &bytes)
         .await

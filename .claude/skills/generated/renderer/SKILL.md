@@ -1,11 +1,11 @@
 ---
 name: renderer
-description: "Skill for the Renderer area of netherize_editor. 61 symbols across 13 files."
+description: "Skill for the Renderer area of netherize_editor. 55 symbols across 13 files."
 ---
 
 # Renderer
 
-61 symbols | 13 files | Cohesion: 55%
+55 symbols | 13 files | Cohesion: 56%
 
 ## When to Use
 
@@ -17,14 +17,14 @@ description: "Skill for the Renderer area of netherize_editor. 61 symbols across
 
 | File | Symbols |
 |------|---------|
-| `src/render/renderer/ui_render.rs` | bundled_ai_chat_logo, slash_command_suggestions, current_at_token, ai_chat_input_suggestions, right_sidebar_background_quads (+19) |
+| `src/render/renderer/ui_render.rs` | right_sidebar_background_quads, empty_bounds_returns_no_quads, negative_dimensions_return_no_quads, produces_border_and_fill_without_input, produces_three_quads_with_input_bounds (+16) |
 | `src/render/renderer/components.rs` | push_centered_highlight_chip, centered_text_origin_x, centered_text_origin_y, layout_shortcut_hint, mix (+3) |
-| `src/render/renderer/helpers.rs` | layout_panel_text_bold, estimate_monospace_width, layout_clamp, layout_panel_text_italic, theme_color_to_wgpu (+2) |
+| `src/render/renderer/helpers.rs` | layout_panel_text_bold, estimate_monospace_width, layout_clamp, theme_color_to_wgpu, mode_display_label (+1) |
 | `src/render/renderer/ui/topbar.rs` | bundled_app_logo, inset_scissor_rect, topbar_tab_text_scissor, with_alpha, update_topbar_content |
-| `src/app/app_state/mod.rs` | default, new, new, new |
 | `src/render/renderer/lifecycle.rs` | make_text_pipeline, new, apply_theme |
 | `src/app/app_state/editor.rs` | char_idx_for_line, byte_to_char_in_line |
 | `src/render/renderer/ui/welcome.rs` | bundled_logo, update_welcome_screen_content |
+| `src/render/renderer/editor/help.rs` | cheat_sheet_logo_rgba, update_help_buffer_content |
 | `src/render/renderer/ui/statusbar.rs` | with_alpha, update_statusbar_content |
 | `src/render/region_pipeline.rs` | with_radius |
 
@@ -56,12 +56,12 @@ Start here when exploring this area:
 | `update_welcome_screen_content` | Function | `src/render/renderer/ui/welcome.rs` | 42 |
 | `update_topbar_content` | Function | `src/render/renderer/ui/topbar.rs` | 56 |
 | `update_editor_leap_labels` | Function | `src/render/renderer/palette/leap.rs` | 20 |
-| `new` | Function | `src/app/app_state/mod.rs` | 287 |
-| `new` | Function | `src/app/app_state/mod.rs` | 998 |
-| `new` | Function | `src/app/app_state/mod.rs` | 1227 |
+| `update_help_buffer_content` | Function | `src/render/renderer/editor/help.rs` | 47 |
 | `right_sidebar_background_quads` | Function | `src/render/renderer/ui_render.rs` | 344 |
 | `update_ai_chat_content` | Function | `src/render/renderer/ui_render.rs` | 742 |
-| `layout_panel_text_italic` | Function | `src/render/renderer/helpers.rs` | 76 |
+| `new` | Function | `src/render/renderer/lifecycle.rs` | 42 |
+| `apply_theme` | Function | `src/render/renderer/lifecycle.rs` | 303 |
+| `theme_color_to_wgpu` | Function | `src/render/renderer/helpers.rs` | 379 |
 
 ## Execution Flows
 
@@ -69,27 +69,27 @@ Start here when exploring this area:
 |------|------|-------|
 | `Update_markdown_preview_content → Normalize_modifier_alias` | cross_community | 8 |
 | `Update_markdown_preview_content → New` | cross_community | 8 |
-| `Bench_edit_loop_latency → HelpEntry` | cross_community | 7 |
-| `Bench_edit_loop_latency → Command_label_for_help` | cross_community | 7 |
-| `Bench_edit_loop_latency → HelpSection` | cross_community | 7 |
-| `Bench_edit_loop_latency → Find_profile_path` | cross_community | 7 |
 | `Update_markdown_preview_content → Named_key_display` | cross_community | 7 |
 | `Update_markdown_preview_content → Physical_key_display` | cross_community | 7 |
-| `Bench_edit_loop_latency → Active_profile` | cross_community | 6 |
 | `Update_markdown_preview_content → From_str` | cross_community | 6 |
+| `Update_markdown_preview_content → Is_valid` | cross_community | 6 |
+| `Layout_shortcut_hint → From_rgba_u8` | cross_community | 6 |
+| `Update_ai_chat_content → HelpEntry` | cross_community | 5 |
+| `Update_ai_chat_content → Command_label_for_help` | cross_community | 5 |
+| `Update_ai_chat_content → HelpSection` | cross_community | 5 |
 
 ## Connected Areas
 
 | Area | Connections |
 |------|-------------|
-| Palette | 20 calls |
-| Text | 8 calls |
+| Ui | 12 calls |
+| App_state | 10 calls |
+| Palette | 8 calls |
+| Text | 6 calls |
+| Theme_config | 5 calls |
+| Editor | 4 calls |
 | Command_dispatch | 3 calls |
-| Theme_config | 3 calls |
-| Ui | 3 calls |
-| App_state | 3 calls |
-| Workbench | 2 calls |
-| Terminal | 2 calls |
+| Scheduler | 1 calls |
 
 ## How to Explore
 

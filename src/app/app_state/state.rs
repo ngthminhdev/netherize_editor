@@ -4,10 +4,15 @@ use super::*;
 impl AppState {
     pub fn active_file_history_envelope(&self) -> Option<PersistedHistoryEnvelope> {
         let file_path = self.active_file.clone()?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         Some(PersistedHistoryEnvelope {
             version: 1,
             file_path,
             history: self.history.clone(),
+            saved_at: now,
         })
     }
 

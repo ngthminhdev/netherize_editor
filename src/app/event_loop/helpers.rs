@@ -1352,6 +1352,24 @@ fn find_git_dir(start: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Shift global byte coordinates to local (0-based) by subtracting `offset`.
+/// Filters out spans that collapse to zero length after offsetting.
+#[allow(dead_code)]
+fn normalize_spans(spans: Vec<StyledTextSpan>, offset: usize) -> Vec<StyledTextSpan> {
+    spans
+        .into_iter()
+        .filter_map(|mut span| {
+            span.start = span.start.saturating_sub(offset);
+            span.end = span.end.saturating_sub(offset);
+            if span.start < span.end {
+                Some(span)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{normalize_spans, syntax_spans_to_styled};

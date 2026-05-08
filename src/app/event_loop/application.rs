@@ -119,6 +119,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
             }
             WindowEvent::Focused(focused) => {
                 self.input_handler.on_focus_changed(focused);
+                if !focused {
+                    self.submit_active_file_history_save();
+                }
             }
             WindowEvent::ModifiersChanged(mods) => {
                 self.input_handler.update_modifiers(mods);

@@ -1,11 +1,11 @@
 ---
 name: command-dispatch
-description: "Skill for the Command_dispatch area of netherize_editor. 119 symbols across 16 files."
+description: "Skill for the Command_dispatch area of netherize_editor. 92 symbols across 11 files."
 ---
 
 # Command_dispatch
 
-119 symbols | 16 files | Cohesion: 90%
+92 symbols | 11 files | Cohesion: 96%
 
 ## When to Use
 
@@ -18,15 +18,15 @@ description: "Skill for the Command_dispatch area of netherize_editor. 119 symbo
 | File | Symbols |
 |------|---------|
 | `src/core/command_dispatch/tests.rs` | unique_temp_path, unique_temp_dir, insert_command_changes_state, insert_text_command_supports_combining_sequence, newline_command_inserts_line_break (+62) |
-| `src/core/command_dispatch/mod.rs` | dispatch_command, dispatch_command_count, dispatch_command_with_clipboard, dispatch_command_with_clipboard_count, dispatch_command_with_terminal (+4) |
-| `src/app/app_state/buffers.rs` | new_empty_buffer, buffer_next, buffer_prev, goto_buffer_index, close_current_buffer (+2) |
+| `src/core/command_dispatch/mod.rs` | dispatch_command, dispatch_command_count, dispatch_command_with_clipboard, dispatch_command_with_clipboard_count, dispatch_command_with_terminal (+3) |
 | `src/app/event_loop/commands_tests.rs` | palette_paste_uses_clipboard_provider, leap_generates_multi_char_labels_after_twenty_six_matches, leap_fast_jump_label_resolves_immediately, leap_prefix_label_filters_and_waits_for_second_key, visual_selection_adds_code_context_to_ai_chat (+1) |
-| `src/core/command_dispatch/common.rs` | success, success_with_flags, failure, open_file, terminal_grid_mut (+1) |
-| `src/app/event_loop/commands.rs` | dispatch_palette_overlay_command, handle_terminal_paste, forward_to_pty, forward_to_terminal_session, normalize_terminal_paste_text |
-| `src/app/app_state/palette.rs` | active_fuzzy_picker_buffer, open_python_env_selector, is_terminal_panel_open, set_terminal_panel_open |
-| `src/core/command_dispatch/session.rs` | dispatch, dispatch_terminal_normal, toggle_terminal |
 | `src/core/commands.rs` | supports_numeric_count, groups_repeated_edits_into_single_transaction |
 | `src/app/event_loop/commands_editor.rs` | handle_insert_edit_command, handle_generic_editor_command |
+| `src/app/app_state/mod.rs` | new, from_text |
+| `src/text/layout_sync.rs` | caret_uses_line_relative_byte_offset_for_second_line_start |
+| `src/app/event_loop/commands_palette.rs` | handle_palette_and_open_command |
+| `src/app/event_loop/commands.rs` | dispatch_palette_overlay_command |
+| `src/app/app_state/state.rs` | text_string |
 
 ## Entry Points
 
@@ -55,13 +55,13 @@ Start here when exploring this area:
 | `handle_palette_and_open_command` | Function | `src/app/event_loop/commands_palette.rs` | 3 |
 | `handle_insert_edit_command` | Function | `src/app/event_loop/commands_editor.rs` | 3 |
 | `handle_generic_editor_command` | Function | `src/app/event_loop/commands_editor.rs` | 179 |
-| `text_string` | Function | `src/app/app_state/state.rs` | 509 |
+| `text_string` | Function | `src/app/app_state/state.rs` | 514 |
 | `active_fuzzy_picker_buffer` | Function | `src/app/app_state/palette.rs` | 524 |
 | `new` | Function | `src/app/app_state/mod.rs` | 121 |
 | `from_text` | Function | `src/app/app_state/mod.rs` | 1280 |
-| `exit_normal_mode` | Function | `src/terminal/grid.rs` | 521 |
-| `begin_selection` | Function | `src/terminal/grid.rs` | 527 |
-| `dispatch` | Function | `src/core/command_dispatch/session.rs` | 7 |
+| `caret_uses_line_relative_byte_offset_for_second_line_start` | Function | `src/text/layout_sync.rs` | 364 |
+| `unique_temp_path` | Function | `src/core/command_dispatch/tests.rs` | 43 |
+| `unique_temp_dir` | Function | `src/core/command_dispatch/tests.rs` | 51 |
 
 ## Execution Flows
 
@@ -82,12 +82,10 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| App_state | 19 calls |
-| Terminal | 5 calls |
-| Event_loop | 3 calls |
-| Renderer | 3 calls |
+| App_state | 12 calls |
+| Terminal | 2 calls |
+| Event_loop | 2 calls |
 | Text | 1 calls |
-| Syntax | 1 calls |
 
 ## How to Explore
 

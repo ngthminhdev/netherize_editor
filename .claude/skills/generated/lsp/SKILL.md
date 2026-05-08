@@ -1,11 +1,11 @@
 ---
 name: lsp
-description: "Skill for the Lsp area of netherize_editor. 102 symbols across 12 files."
+description: "Skill for the Lsp area of netherize_editor. 106 symbols across 12 files."
 ---
 
 # Lsp
 
-102 symbols | 12 files | Cohesion: 70%
+106 symbols | 12 files | Cohesion: 74%
 
 ## When to Use
 
@@ -17,11 +17,11 @@ description: "Skill for the Lsp area of netherize_editor. 102 symbols across 12 
 
 | File | Symbols |
 |------|---------|
-| `src/lsp/client.rs` | is_document_open, mark_document_open, mark_document_closed, build_did_open_notification, build_did_change_notification (+66) |
+| `src/lsp/client.rs` | is_document_open, mark_document_open, mark_document_closed, build_did_open_notification, build_did_change_notification (+67) |
 | `src/lsp/registry.rs` | language_profile_for_language_id, language_profile_for_path, language_profile_detects_dockerfile_by_filename, language_profile_detects_dockerfile_variants, language_profile_detects_sql_by_extension (+9) |
 | `src/async_runtime/scheduler.rs` | get_by_binary, get_handle, get_handle_by_uri, take_any, drain_all (+1) |
+| `src/async_runtime/scheduler/lsp_parse.rs` | parse_locations, handle_lsp_definition, handle_lsp_references, lsp_request_response, lsp_cancellable_request_response |
 | `src/async_runtime/scheduler/lsp_io.rs` | spawn_lsp_stderr_logger, spawn_lsp_stdout_reader |
-| `src/async_runtime/scheduler/lsp_parse.rs` | lsp_cancellable_request_response, handle_lsp_completion_resolve |
 | `src/async_runtime/scheduler/lsp.rs` | execute_lsp_request |
 | `src/syntax/parser.rs` | language_id_for_path |
 | `src/app/event_loop/setup.rs` | submit_lsp_check_for_path |
@@ -54,14 +54,14 @@ Start here when exploring this area:
 | `get_handle_by_uri` | Function | `src/async_runtime/scheduler.rs` | 130 |
 | `take_any` | Function | `src/async_runtime/scheduler.rs` | 141 |
 | `drain_all` | Function | `src/async_runtime/scheduler.rs` | 169 |
+| `handle_lsp_definition` | Function | `src/async_runtime/scheduler/lsp_parse.rs` | 458 |
+| `handle_lsp_references` | Function | `src/async_runtime/scheduler/lsp_parse.rs` | 524 |
 | `spawn_lsp_stderr_logger` | Function | `src/async_runtime/scheduler/lsp_io.rs` | 185 |
-| `latest_revision` | Function | `src/lsp/client.rs` | 437 |
-| `latest_request_id` | Function | `src/lsp/client.rs` | 441 |
-| `deliver_response` | Function | `src/lsp/client.rs` | 523 |
-| `parse_progress_notification` | Function | `src/lsp/client.rs` | 669 |
-| `parse_server_request` | Function | `src/lsp/client.rs` | 711 |
-| `parse_publish_diagnostics` | Function | `src/lsp/client.rs` | 957 |
-| `parse_window_log_message` | Function | `src/lsp/client.rs` | 983 |
+| `swap_inflight` | Function | `src/lsp/client.rs` | 387 |
+| `clear_inflight_if_matches` | Function | `src/lsp/client.rs` | 394 |
+| `send_cancel_request` | Function | `src/lsp/client.rs` | 405 |
+| `send_notification` | Function | `src/lsp/client.rs` | 458 |
+| `allocate_request_id` | Function | `src/lsp/client.rs` | 484 |
 
 ## Execution Flows
 
@@ -82,11 +82,10 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Scheduler | 13 calls |
+| Scheduler | 12 calls |
 | Workbench | 10 calls |
 | Event_loop | 2 calls |
 | Terminal | 1 calls |
-| Cluster_2 | 1 calls |
 | App_state | 1 calls |
 
 ## How to Explore

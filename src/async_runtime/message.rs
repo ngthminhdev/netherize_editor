@@ -62,6 +62,10 @@ pub struct PersistedHistoryEnvelope {
     pub version: u32,
     pub file_path: PathBuf,
     pub history: crate::core::transaction::EditHistory,
+    /// Unix timestamp (seconds) of the last save. Used for age-based GC
+    /// (entries older than `MAX_HISTORY_AGE_SECS` are discarded on load).
+    #[serde(default)]
+    pub saved_at: u64,
 }
 
 /// Which search mode the fzf worker is running.

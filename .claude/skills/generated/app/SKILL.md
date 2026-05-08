@@ -1,11 +1,11 @@
 ---
 name: app
-description: "Skill for the App area of netherize_editor. 106 symbols across 15 files."
+description: "Skill for the App area of netherize_editor. 110 symbols across 16 files."
 ---
 
 # App
 
-106 symbols | 15 files | Cohesion: 75%
+110 symbols | 16 files | Cohesion: 76%
 
 ## When to Use
 
@@ -17,16 +17,16 @@ description: "Skill for the App area of netherize_editor. 106 symbols across 15 
 
 | File | Symbols |
 |------|---------|
-| `src/app/command_palette.rs` | prompt_prefix, empty_hint, title, is_complex_picker, render (+33) |
+| `src/app/command_palette.rs` | command, open, append_query, backspace_query, selected_action (+33) |
 | `src/app/resolved_keymap.rs` | parse_key_sequence, parse_key_spec, new, insert_sequence, apply_overrides (+16) |
 | `src/app/file_picker.rs` | default, open, append_query, backspace_query, select_next (+6) |
+| `src/app/persistence.rs` | most_recent_existing, configured_theme_profile, legacy_state_dir, state_path, legacy_state_path (+3) |
 | `src/app/match_ranges.rs` | compute_label_match_ranges, score_label_match, build_lowercase_byte_map, map_lower_range_to_original, push_match_range (+2) |
 | `src/app/async_bridge.rs` | new, bridge_counts_failed_event_in_summary, lsp_diagnostics_bypass_stale_revision_filter, bridge_tracks_multiple_worker_failure_events, pump (+2) |
-| `src/app/persistence.rs` | most_recent_existing, configured_theme_profile, state_path, load_from_path, load (+1) |
 | `src/app/clipboard.rs` | new, ensure_initialized, clipboard_mut, get_text, set_text |
 | `src/app/event_loop/setup.rs` | new, new_with_scheduler, pump_bridge |
 | `src/app/event_loop/commands_prompts.rs` | confirm_explorer_prompt, resolve_explorer_creation_target |
-| `src/app/event_loop/async_results.rs` | read_file_preview |
+| `src/app/app_state/palette.rs` | update_lsp_progress, set_terminal_panel_open |
 
 ## Entry Points
 
@@ -58,10 +58,10 @@ Start here when exploring this area:
 | `confirm_explorer_prompt` | Function | `src/app/event_loop/commands_prompts.rs` | 129 |
 | `resolve_explorer_creation_target` | Function | `src/app/event_loop/commands_prompts.rs` | 229 |
 | `load_image_buffer` | Function | `src/app/app_state/overlays.rs` | 1370 |
-| `prompt_prefix` | Function | `src/app/command_palette.rs` | 54 |
-| `empty_hint` | Function | `src/app/command_palette.rs` | 78 |
-| `title` | Function | `src/app/command_palette.rs` | 102 |
-| `is_complex_picker` | Function | `src/app/command_palette.rs` | 127 |
+| `command` | Function | `src/app/command_palette.rs` | 224 |
+| `open` | Function | `src/app/command_palette.rs` | 378 |
+| `append_query` | Function | `src/app/command_palette.rs` | 454 |
+| `backspace_query` | Function | `src/app/command_palette.rs` | 486 |
 
 ## Execution Flows
 
@@ -82,14 +82,13 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
+| App_state | 6 calls |
 | Theme_config | 5 calls |
-| App_state | 4 calls |
+| Ui | 3 calls |
 | Config | 3 calls |
 | Workbench | 3 calls |
-| Terminal | 3 calls |
 | Workspace | 2 calls |
-| Command_dispatch | 2 calls |
-| Event_loop | 1 calls |
+| Command_dispatch | 1 calls |
 
 ## How to Explore
 

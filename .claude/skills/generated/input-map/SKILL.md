@@ -54,10 +54,10 @@ Start here when exploring this area:
 | `resolve_explorer_focus` | Function | `src/app/input_map/focus.rs` | 229 |
 | `resolve_inspector_focus` | Function | `src/app/input_map/focus.rs` | 312 |
 | `resolve_markdown_preview_focus` | Function | `src/app/input_map/focus.rs` | 364 |
-| `resolve_help_focus` | Function | `src/app/input_map/focus.rs` | 431 |
-| `resolve_bottom_panel_focus` | Function | `src/app/input_map/focus.rs` | 487 |
-| `resolve_palette_focus` | Function | `src/app/input_map/focus.rs` | 539 |
-| `resolve_fuzzy_picker_focus` | Function | `src/app/input_map/focus.rs` | 697 |
+| `resolve_help_focus` | Function | `src/app/input_map/focus.rs` | 441 |
+| `resolve_bottom_panel_focus` | Function | `src/app/input_map/focus.rs` | 497 |
+| `resolve_palette_focus` | Function | `src/app/input_map/focus.rs` | 549 |
+| `resolve_fuzzy_picker_focus` | Function | `src/app/input_map/focus.rs` | 707 |
 | `has_command_modifier` | Function | `src/app/input/model.rs` | 42 |
 | `numeric_count_digit_from_input` | Function | `src/app/input/helpers.rs` | 55 |
 | `should_start_replace_pending` | Function | `src/app/input/helpers.rs` | 104 |
