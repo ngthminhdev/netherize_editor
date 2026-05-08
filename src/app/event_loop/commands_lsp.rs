@@ -227,45 +227,6 @@ impl AppShell {
         true
     }
 
-    /// Silent hover at cursor — result goes into the completion doc panel, not an overlay.
-    /// Used as fallback when `completionItem/resolve` returns no documentation.
-    pub(in crate::app::event_loop) fn submit_hover_for_completion_doc(&mut self) {
-        self.completion_doc_fallback_request_id = None;
-        if self.active_lsp_server.is_none() {
-            self.app_state.mark_completion_hover_doc_resolved();
-            return;
-        }
-        self.force_flush_lsp_did_change_for_active_file();
-        let Some((language_id, uri, line, character)) = self.lsp_cursor_context() else {
-            self.app_state.mark_completion_hover_doc_resolved();
-            return;
-        };
-        let completion_revision = self
-            .app_state
-            .completion()
-            .map(|state| state.current_revision);
-        let request = self.submit(RequestSpec {
-            revision_id: 0,
-            topic: RequestTopic::LspRequest,
-            payload: WorkerRequestPayload::LspHoverRequest {
-                language_id,
-                uri,
-                line,
-                character,
-                for_completion: true,
-                completion_revision,
-            },
-        });
-        match request {
-            Some(req) => {
-                self.completion_doc_fallback_request_id = Some(req.request_id);
-            }
-            None => {
-                self.app_state.mark_completion_hover_doc_resolved();
-            }
-        }
-    }
-
     pub(super) fn submit_lsp_definition(&mut self, jump: bool) -> bool {
         self.force_flush_lsp_did_change_for_active_file();
         let Some((_language_id, uri, line, character)) = self.lsp_cursor_context() else {

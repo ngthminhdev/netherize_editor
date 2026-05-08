@@ -106,7 +106,6 @@ impl AppShell {
     /// for either inline docs or "No docs available".
     pub(in crate::app::event_loop) fn submit_completion_resolve(&mut self) {
         self.completion_resolve_request_id = None;
-        self.completion_doc_fallback_request_id = None;
         let Some(completion) = self.app_state.completion() else {
             return;
         };

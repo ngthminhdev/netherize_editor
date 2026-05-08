@@ -192,7 +192,6 @@ impl AppShell {
             active_highlight_request_revision: 0,
             references_request_revision: 0,
             completion_resolve_request_id: None,
-            completion_doc_fallback_request_id: None,
             hover_loading_request_id: None,
             latest_definition_request_id: None,
             document_symbols_request_revision: 0,

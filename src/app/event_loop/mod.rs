@@ -165,11 +165,6 @@ pub struct AppShell {
     /// back to the pending docs panel so we can flip "Loading…" to "No docs" when the
     /// server rejects or times out.
     completion_resolve_request_id: Option<u64>,
-    /// In-flight fallback hover request id (when resolve returns no docs we send a
-    /// silent `textDocument/hover`). Tracked separately from the primary hover overlay
-    /// so its failure can mark the doc panel as resolved without looping back into
-    /// another fallback.
-    completion_doc_fallback_request_id: Option<u64>,
     /// Request id of the last in-flight hover — used to clear the loading overlay
     /// when the request fails or returns empty (so the overlay doesn't get stuck).
     hover_loading_request_id: Option<u64>,

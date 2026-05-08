@@ -23,17 +23,9 @@ impl AsyncResultRouter for AppShell {
                 self.pending_lsp_server = None;
             }
             // completionItem/resolve failed (e.g. server doesn't advertise resolveProvider).
-            // Fall back to a silent hover request to populate the completion doc panel.
+            // Mark as resolved so the panel shows "No documentation available".
             if self.completion_resolve_request_id == Some(request_id) {
                 self.completion_resolve_request_id = None;
-                self.submit_hover_for_completion_doc();
-                self.editor_caret_needs_layout = true;
-                self.request_redraw();
-            }
-            // Fallback hover also failed — give up and mark as resolved so the panel
-            // shows "No documentation available" instead of spinning forever.
-            if self.completion_doc_fallback_request_id == Some(request_id) {
-                self.completion_doc_fallback_request_id = None;
                 self.app_state.mark_completion_hover_doc_resolved();
                 self.editor_caret_needs_layout = true;
                 self.request_redraw();
@@ -508,10 +500,7 @@ impl AsyncResultRouter for AppShell {
                 if self.hover_loading_request_id == Some(request_id) {
                     self.hover_loading_request_id = None;
                 }
-                if self.completion_doc_fallback_request_id == Some(request_id) {
-                    self.completion_doc_fallback_request_id = None;
-                }
-                // Result Reconciliation for the fallback-hover path: if the
+                // Result Reconciliation for the completion-hover path: if the
                 // user moved to a different completion item since we asked
                 // for this hover, drop it silently (don't update state).
                 if for_completion {
@@ -891,10 +880,8 @@ impl AsyncResultRouter for AppShell {
                 if cleaned.is_some() {
                     self.app_state.set_completion_hover_doc(cleaned);
                 } else {
-                    // Resolve returned no body docs — try a hover request as fallback.
-                    // (Hover at the cursor mid-typing often returns empty too, in
-                    // which case the panel will just show the signature alone.)
-                    self.submit_hover_for_completion_doc();
+                    // Resolve returned no body docs — mark as resolved.
+                    self.app_state.mark_completion_hover_doc_resolved();
                 }
                 self.editor_caret_needs_layout = true;
                 self.request_redraw();

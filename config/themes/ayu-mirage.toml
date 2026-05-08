@@ -1,0 +1,280 @@
+# Theme metadata shown after the profile is loaded.
+[theme]
+name = "ayu-mirage"
+description = "Ayu Mirage palette adapted for Netherize Editor runtime themes"
+
+# Core editor surface: text buffer, caret, selection, and gutter.
+[editor]
+# Main text canvas background for the center editor region.
+bg = "#1F2430"
+# Default foreground color for plain text in the editor.
+fg = "#CBCCC6"
+# Caret / cursor color in insert, normal, and visual rendering.
+cursor = "#FFCC66"
+# Selection fill used by visual mode and selected ranges.
+selection = "#33415E"
+# Background behind line numbers.
+gutter = "#1F2430"
+# Active line-number color in the gutter.
+gutter_active = "#FFCC66"
+# Subtle vertical indentation guides in the code area.
+indent_guide = "#5C677340"
+# Nested bracket colors used for rainbow-style pair rendering.
+rainbow_brackets = ["#FFCC66", "#D2A6FF", "#95E6CB", "#BAE67E", "#FFAE57", "#73D0FF"]
+# Editor text metrics for cosmic-text layout.
+font_size = 14.0
+line_height = 22.0
+# Primary font for editor text, overlays, top bar, and status bar.
+font_family = "Google Sans Code"
+# Nerd Font used for explorer/file icons and terminal glyph fallback.
+nerd_font_family = "Hack Nerd Font"
+
+# Shared UI chrome colors and workbench sizing tokens.
+[ui]
+# Window clear color behind every region and palette pill foreground base.
+bg = "#171B24"
+# Left/right sidebar region background.
+sidebar_bg = "#1F2430"
+# Generic chrome background for top bar, cards, and inspector surfaces.
+panel_bg = "#242936"
+# Bottom terminal panel and terminal-buffer background.
+terminal_bg = "#1F2430"
+# Scrim + modal panel background for command palette and Leap overlay.
+overlay_bg = "#171B24D9"
+# Status bar region background.
+status_bar_bg = "#1F2430"
+# Borders, separators, and subtle region dividers.
+border_color = "#101521"
+# Active row / selected tab / focused list item background.
+selection_bg = "#33415E"
+# Unsaved topbar tab marker color.
+dirty_indicator = "#FFCC66"
+
+# Shared foreground tokens for labels and chrome text.
+fg = "#CBCCC6"
+fg_dim = "#9DAAB6"
+fg_ghost = "#5C6773"
+
+# Accent and semantic colors used across overlays, status pills, icons, and diagnostics.
+accent = "#FFCC66"
+cyan = "#95E6CB"
+magenta = "#D2A6FF"
+amber = "#FFCC66"
+success = "#BAE67E"
+warning = "#FFAE57"
+info = "#73D0FF"
+error = "#F07178"
+
+# Mode badge colors in the status bar.
+mode_normal = "#95E6CB"
+mode_insert = "#BAE67E"
+mode_visual = "#D2A6FF"
+
+# Sidebar and panel text metrics.
+sidebar_font_size = 14.0
+sidebar_line_height = 22.0
+panel_font_size = 14.0
+panel_line_height = 22.0
+
+# Theme-driven workbench chrome sizes.
+sidebar_width = 280.0
+right_sidebar_width = 540.0
+bottom_panel_height = 220.0
+top_bar_height = 36.0
+
+[git]
+modified_sidebar = "#FFCC66"
+added_sidebar = "#BAE67E"
+modified_gutter = "#FFCC66"
+added_gutter = "#BAE67E"
+deleted_gutter = "#F07178"
+status_bar_height = 32.0
+
+# Disclosure markers and file-picker bullet glyph.
+[icons]
+# Marker for plain files in the explorer tree.
+explorer_file_marker = "·"
+# Marker for collapsed folders.
+explorer_folder_collapsed_marker = "▶"
+# Marker for expanded folders.
+explorer_folder_expanded_marker = "▼"
+# Dot marker rendered in file picker style rows.
+file_picker_dot = "●"
+
+# Folder icons in the explorer tree.
+[icons.folder_closed]
+glyph = "\uF07B"
+color = "#FFCC66"
+
+[icons.folder_open]
+glyph = "\uF07C"
+color = "#FFCC66"
+
+# Generic fallback file icon.
+[icons.default_file]
+glyph = "\uF15B"
+color = "#5C6773"
+
+# Extension-specific file icons used by the explorer and fuzzy lists.
+[icons.rust]
+glyph = "\uE7A8"
+color = "#FFAE57"
+
+[icons.javascript]
+glyph = "\uE781"
+color = "#FFCC66"
+
+[icons.typescript]
+glyph = "\uE628"
+color = "#73D0FF"
+
+[icons.tsx]
+glyph = "\uE7BA"
+color = "#73D0FF"
+
+[icons.jsx]
+glyph = "\uE7BA"
+color = "#FFCC66"
+
+[icons.python]
+glyph = "\uE73C"
+color = "#73D0FF"
+
+[icons.go]
+glyph = "\uE724"
+color = "#95E6CB"
+
+[icons.config]
+glyph = "\uE615"
+color = "#5C6773"
+
+[icons.json]
+glyph = "\uE60B"
+color = "#FFCC66"
+
+[icons.markdown]
+glyph = "\uF48A"
+color = "#73D0FF"
+
+[icons.html]
+glyph = "\uE736"
+color = "#F07178"
+
+[icons.css]
+glyph = "\uE749"
+color = "#73D0FF"
+
+[icons.sass]
+glyph = "\uE603"
+color = "#D2A6FF"
+
+[icons.shell]
+glyph = "\uF489"
+color = "#BAE67E"
+
+[icons.git]
+glyph = "\uF1D3"
+color = "#FFAE57"
+
+[icons.lock]
+glyph = "\uF13E"
+color = "#5C6773"
+
+[icons.image]
+glyph = "\uF1C5"
+color = "#BAE67E"
+
+[file_icons]
+default_file = "📄"
+default_folder = "📁"
+
+[file_icons.extensions]
+rs = ""
+ts = ""
+tsx = ""
+js = ""
+jsx = ""
+go = ""
+json = ""
+jsonc = ""
+yaml = ""
+yml = ""
+toml = ""
+sql = ""
+md = ""
+mdx = ""
+dockerfile = ""
+sh = ""
+bash = ""
+zsh = ""
+fish = ""
+lock = ""
+
+[file_icons.exact]
+Dockerfile = ""
+"docker-compose.yml" = ""
+"docker-compose.yaml" = ""
+".gitignore" = ""
+".gitattributes" = ""
+".gitmodules" = ""
+"package.json" = ""
+"package-lock.json" = ""
+"tsconfig.json" = ""
+"Cargo.toml" = ""
+Makefile = ""
+"README.md" = ""
+
+[syntax]
+# ── Lõi ngôn ngữ (Core) ──
+# Keywords like `fn`, `let`, `match`.
+keyword = "#FFCC66"
+# Operators such as `=`, `+`, `&&`, `->`.
+operator = "#9DAAB6"
+# Punctuation such as commas, braces, and separators.
+punctuation = "#5C6773"
+
+# ── Giá trị (Literals) ──
+# String literals.
+string = "#BAE67E"
+# Numeric literals.
+number = "#FFAE57"
+# Boolean literals (true/false).
+boolean = "#FFAE57"       # [MỚI] Dùng màu Cam Peach đồng bộ với constant
+# Escape sequences inside strings (e.g., \n, \t).
+escape = "#F07178"        # [MỚI] Dùng màu Đỏ Cam (tương phản cực tốt trên nền string xanh lá #3CEC85)
+
+# ── Định danh (Identifiers) ──
+# Plain variable names that do not fall into a richer semantic bucket.
+identifier = "#CBCCC6"
+# Local variables.
+variable = "#CBCCC6"      # [MỚI] Cùng tone với identifier, giữ code base không bị "loè loẹt"
+# Function names and callable symbols.
+function = "#73D0FF"
+# Macro invocation highlight.
+macro = "#73D0FF"
+# Function and closure parameters.
+parameter = "#95E6CB"
+
+# ── Hướng đối tượng & Cấu trúc (OOP & Structs) ──
+# Type names.
+type = "#D2A6FF"
+# Constructor functions (e.g., String::new).
+constructor = "#D2A6FF"   # [MỚI] Đồng màu với Type để phân biệt rõ hàm khởi tạo với hàm thông thường
+# Struct field declarations and member access like `self.name`.
+field = "#73D0FF"
+# Struct literal property labels like `Demo { name: value }`.
+property = "#CBCCC6"
+# Named constants such as `MAX_SIZE`.
+constant = "#FFAE57"
+
+# ── Đặc tả ngôn ngữ (Language-specific) ──
+# Comments and muted inline docs.
+comment = "#5C6773"
+# Decorators and attributes like `#[derive(Debug)]` or `@Controller`.
+attribute = "#FFCC66"     # [MỚI] Dùng màu Vàng Gold giống keyword để làm nổi bật các annotation
+# Module namespaces (e.g., `std::` in Rust).
+namespace = "#D2A6FF"     # [MỚI] Dùng màu Tím giống type để tách biệt các crate/module khỏi biến thông thường
+# Rust lifetime highlight.
+lifetime = "#FFAE57"
+# HTML/XML/JSX Tags.
+tag = "#73D0FF"           # [MỚI] Dùng màu Xanh Blue giống function cho các thẻ tag

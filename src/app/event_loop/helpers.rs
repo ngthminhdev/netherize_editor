@@ -395,7 +395,7 @@ fn should_preserve_markdown_blank_line(lines: &[&str], blank_idx: usize) -> bool
         .map(|line| line.trim_start());
 
     match (prev, next) {
-        (Some(prev), Some(next)) => markdown_line_indent_level(prev) == markdown_line_indent_level(next),
+        (Some(prev), Some(next)) => markdown_line_indent_level(prev) != markdown_line_indent_level(next),
         _ => false,
     }
 }
