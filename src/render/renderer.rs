@@ -90,6 +90,7 @@ pub struct TopbarTab {
     pub label: String,
     pub kind: TopbarTabKind,
     pub is_dirty: bool,
+    pub git_color: Option<[f32; 4]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -7,6 +7,8 @@ impl AsyncResultRouter for AppShell {
             RequestTopic::FzfSearch => self.fzf_search_revision,
             RequestTopic::LocalHistory => self.local_history_revision,
             RequestTopic::Git => self.git_overlay_revision,
+            RequestTopic::GitStatus => self.git_status_revision,
+            RequestTopic::GitBaseline => self.git_baseline_revision,
             RequestTopic::AiInlineCompletion => self.ai_inline_revision,
             RequestTopic::SystemDepCheck | RequestTopic::SystemDepInstall => 0,
             _ => 0,

@@ -900,37 +900,69 @@ fn render_table(
     }
 
     let col_count = rows.iter().map(Vec::len).max().unwrap_or(0);
+    let rendered_rows: Vec<Vec<(String, Vec<StyledTextSpan>)>> = rows
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(|cell| render_markdown_inline_text(cell, theme))
+                .collect()
+        })
+        .collect();
     let mut widths = vec![0usize; col_count];
-    for row in &rows {
-        for (idx, cell) in row.iter().enumerate() {
+    for row in &rendered_rows {
+        for (idx, (cell, _)) in row.iter().enumerate() {
             widths[idx] = widths[idx].max(cell.chars().count());
         }
     }
 
-    for (row_idx, row) in rows.iter().enumerate() {
+    push_table_rule(out, &widths, '┌', '┬', '┐', theme);
+
+    for (row_idx, row) in rendered_rows.iter().enumerate() {
         let mut text = String::new();
+        let mut spans = Vec::new();
         text.push('│');
+        spans.push(StyledTextSpan::new(0, text.len(), theme.syntax.punctuation.as_u8()));
+
         for idx in 0..col_count {
-            let cell = row.get(idx).map(String::as_str).unwrap_or("");
             text.push(' ');
+            let cell_start = text.len();
+            let (cell, cell_spans) = row
+                .get(idx)
+                .map(|(cell, spans)| (cell.as_str(), spans.as_slice()))
+                .unwrap_or(("", &[]));
             text.push_str(cell);
+            for span in cell_spans {
+                spans.push(offset_styled_span(*span, cell_start));
+            }
+            if cell_spans.is_empty() && !cell.is_empty() {
+                spans.push(StyledTextSpan::new(
+                    cell_start,
+                    text.len(),
+                    theme.syntax.identifier.as_u8(),
+                ));
+            }
             let pad = widths[idx].saturating_sub(cell.chars().count());
             text.extend(std::iter::repeat(' ').take(pad));
             text.push(' ');
+            let border_start = text.len();
             text.push('│');
+            spans.push(StyledTextSpan::new(
+                border_start,
+                text.len(),
+                theme.syntax.punctuation.as_u8(),
+            ));
         }
+
         let is_header = header_idx == Some(row_idx);
-        let spans = if is_header {
-            vec![StyledTextSpan::with_style(
+        if is_header {
+            spans.push(StyledTextSpan::with_style(
                 0,
                 text.len(),
                 theme.syntax.keyword.as_u8(),
                 true,
                 false,
-            )]
-        } else {
-            vec![StyledTextSpan::new(0, text.len(), theme.syntax.identifier.as_u8())]
-        };
+            ));
+        }
         out.push(MarkdownPreviewLine {
             text,
             spans,
@@ -941,7 +973,39 @@ fn render_table(
             },
             code_language: None,
         });
+
+        if is_header {
+            push_table_rule(out, &widths, '├', '┼', '┤', theme);
+        }
     }
+
+    push_table_rule(out, &widths, '└', '┴', '┘', theme);
+}
+
+fn push_table_rule(
+    out: &mut Vec<MarkdownPreviewLine>,
+    widths: &[usize],
+    left: char,
+    join: char,
+    right: char,
+    theme: &ThemeConfig,
+) {
+    if widths.is_empty() {
+        return;
+    }
+
+    let mut text = String::new();
+    text.push(left);
+    for (idx, width) in widths.iter().enumerate() {
+        text.extend(std::iter::repeat('─').take(width.saturating_add(2)));
+        text.push(if idx + 1 == widths.len() { right } else { join });
+    }
+    out.push(MarkdownPreviewLine {
+        spans: vec![StyledTextSpan::new(0, text.len(), theme.syntax.punctuation.as_u8())],
+        text,
+        block_type: MarkdownBlockType::TableRow,
+        code_language: None,
+    });
 }
 
 pub(super) fn scale_theme(base: &ThemeConfig, scale: f32) -> ThemeConfig {

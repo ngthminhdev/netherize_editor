@@ -521,10 +521,16 @@ impl AppShell {
         // RightSidebar (AI Chat) background: flat fill + input-box accent.
         let rs_panel_bg = self.theme.ui.panel_bg.as_f32();
         let rs_input_bg = self.theme.editor.bg.as_f32();
-        let ai_chat_input_bounds = flat_regions
-            .iter()
-            .find(|r| r.id == RegionId::AiChatInput && r.visible)
-            .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
+        let right_panel_tab = self.panel_state.right.active_tab_id();
+        let right_panel_uses_ai_chat_input = right_panel_tab == Some(PanelTabId::AiChat);
+        let ai_chat_input_bounds = if right_panel_uses_ai_chat_input {
+            flat_regions
+                .iter()
+                .find(|r| r.id == RegionId::AiChatInput && r.visible)
+                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height])
+        } else {
+            None
+        };
 
         let mut region_instances: Vec<RegionDrawInstance> = flat_regions
             .iter()
@@ -1006,18 +1012,8 @@ impl AppShell {
         if md_preview_active && self.app_state.markdown_preview.visible {
             let preview_bounds = flat_regions
                 .iter()
-                .find(|r| r.id == RegionId::AiChatHistory && r.visible)
-                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height])
-                .or_else(|| {
-                    // Fallback: when maximized, AiChatHistory isn't in flat_regions —
-                    // use the RightSidebar region from the maximized layout instead.
-                    self.panel_state.maximized_region.and_then(|_| {
-                        flat_regions
-                            .iter()
-                            .find(|r| r.id == RegionId::RightSidebar && r.visible)
-                            .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height])
-                    })
-                });
+                .find(|r| r.id == RegionId::RightSidebar && r.visible)
+                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
 
             if let Some(bounds) = preview_bounds {
                 let preview = &self.app_state.markdown_preview;
@@ -1048,26 +1044,48 @@ impl AppShell {
                 .buffers()
                 .iter()
                 .enumerate()
-                .map(|(idx, buffer)| TopbarTab {
-                    label: buffer.label(),
-                    kind: match &buffer.content {
-                        BufferContent::Text(text) => TopbarTabKind::Text {
-                            path: text.path.clone(),
+                .map(|(idx, buffer)| {
+                    let (file_path, git_color) = match &buffer.content {
+                        BufferContent::Text(text) => {
+                            let status = self.app_state.workspace_git_status(&text.path);
+                            let color = match status {
+                                Some(WorkspaceGitStatus::Modified) => {
+                                    Some(self.theme.git.modified_sidebar.as_f32())
+                                }
+                                Some(WorkspaceGitStatus::Added) => {
+                                    Some(self.theme.git.added_sidebar.as_f32())
+                                }
+                                Some(WorkspaceGitStatus::Dirty) => {
+                                    Some(self.theme.git.modified_sidebar.as_f32())
+                                }
+                                None => None,
+                            };
+                            (text.path.clone(), color)
+                        }
+                        _ => (PathBuf::new(), None),
+                    };
+                    TopbarTab {
+                        label: buffer.label(),
+                        kind: match &buffer.content {
+                            BufferContent::Text(_text) => TopbarTabKind::Text {
+                                path: file_path,
+                            },
+                            BufferContent::Image(image) => TopbarTabKind::Image {
+                                path: image.path.clone(),
+                            },
+                            BufferContent::Terminal(_) => TopbarTabKind::Terminal,
+                            BufferContent::References(_) => TopbarTabKind::References,
+                            BufferContent::Diagnostics(_) => TopbarTabKind::Diagnostics,
+                            BufferContent::FuzzyPicker(_) => TopbarTabKind::FuzzyPicker,
+                            BufferContent::SettingsTab(_) => TopbarTabKind::Settings,
+                            BufferContent::Help(_) => TopbarTabKind::Help,
                         },
-                        BufferContent::Image(image) => TopbarTabKind::Image {
-                            path: image.path.clone(),
-                        },
-                        BufferContent::Terminal(_) => TopbarTabKind::Terminal,
-                        BufferContent::References(_) => TopbarTabKind::References,
-                        BufferContent::Diagnostics(_) => TopbarTabKind::Diagnostics,
-                        BufferContent::FuzzyPicker(_) => TopbarTabKind::FuzzyPicker,
-                        BufferContent::SettingsTab(_) => TopbarTabKind::Settings,
-                        BufferContent::Help(_) => TopbarTabKind::Help,
-                    },
-                    is_dirty: buffer.is_dirty(
-                        self.app_state.active_buffer_index() == Some(idx),
-                        self.app_state.is_dirty(),
-                    ),
+                        is_dirty: buffer.is_dirty(
+                            self.app_state.active_buffer_index() == Some(idx),
+                            self.app_state.is_dirty(),
+                        ),
+                        git_color,
+                    }
                 })
                 .collect::<Vec<_>>();
             if let Some(renderer) = self.renderer.as_mut() {

@@ -515,6 +515,7 @@ impl AppShell {
                     return Some(false);
                 }
                 self.clear_highlight_layers();
+                self.submit_active_buffer_git_baseline_refresh();
                 self.submit_parse_for_active_buffer(true);
                 self.submit_lsp_did_open_for_active_file();
                 let mut changed = report.request_redraw || report.state_changed;

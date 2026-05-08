@@ -38,6 +38,8 @@ pub enum RequestTopic {
     WorkspaceWatch,
     TerminalPty,
     Git,
+    GitStatus,
+    GitBaseline,
     LspClient,
     LspCheck,
     /// Các LSP interactive requests: hover, definition, references.

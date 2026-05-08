@@ -206,6 +206,8 @@ pub struct AppShell {
     /// `typed_prefix` giữ các phím user đã gõ, `targets` giữ labels + char_idx.
     leap_state: Option<LeapState>,
     git_overlay_revision: u64,
+    git_status_revision: u64,
+    git_baseline_revision: u64,
     last_scroll_animation_tick: Instant,
     last_git_branch_refresh_at: Instant,
     last_thinking_animation_tick: Instant,

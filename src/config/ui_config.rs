@@ -198,7 +198,7 @@ impl UiConfig {
                 sidebar_min_width: 180.0,
                 bottom_min_height: 120.0,
                 panel_border_width: 1.0,
-                chat_input_height: 120.0,
+                chat_input_height: 150.0,
             },
             docks: DockUiConfig {
                 left: DockSectionConfig {

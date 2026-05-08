@@ -244,6 +244,11 @@ impl Renderer {
                 let text_x = tab_x + ((tab_width - content_width) / 2.0).max(TOPBAR_TAB_PADDING_X);
                 let batch_start = glyphs.len() as u32;
                 self.topbar_text_system.set_font_family(font_family);
+
+                let label_color = tab
+                    .git_color
+                    .unwrap_or(if is_active { active_fg } else { inactive_fg });
+
                 if is_active {
                     glyphs.extend(layout_panel_text_bold(
                         &tab.label,
@@ -252,7 +257,7 @@ impl Renderer {
                         &self.queue,
                         text_x,
                         origin_y,
-                        active_fg,
+                        label_color,
                     ));
                 } else {
                     glyphs.extend(layout_panel_text(
@@ -262,7 +267,7 @@ impl Renderer {
                         &self.queue,
                         text_x,
                         origin_y,
-                        inactive_fg,
+                        label_color,
                     ));
                 }
                 if tab.is_dirty {

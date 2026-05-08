@@ -978,6 +978,7 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
         ("app.open_vim_command", "Open Vim Command"),
         ("app.open_help", "Open Cheat Sheet"),
         ("app.toggle_terminal", "Toggle Terminal"),
+        ("app.toggle_maximize_focus", "Toggle Zen Mode"),
         ("app.toggle_left_dock", "Toggle Left Dock"),
         ("app.focus_editor", "Focus Editor"),
         ("app.focus_explorer", "Focus Explorer"),

@@ -227,11 +227,15 @@ fn slash_suggestion_rect(
     suggestion_count: usize,
 ) -> [f32; 4] {
     let desired_h = suggestion_count as f32 * line_h + 12.0;
-    let available_above_input = (input_bounds[1] - history_clip[1] - 8.0).max(line_h);
+    // Ensure popup stays within history scissor — the last items
+    // must sit above the scissor bottom edge (input area gap).
+    let scissor_bottom = history_clip[1] + history_clip[3];
+    let bottom_gap = (input_bounds[1] - scissor_bottom).max(8.0);
+    let available_above_input = (scissor_bottom - history_clip[1] - 8.0).max(line_h);
     let h = desired_h.min(available_above_input);
     [
         input_bounds[0] + 2.0,
-        (input_bounds[1] - h - 10.0).max(history_clip[1]),
+        (input_bounds[1] - h - bottom_gap).max(history_clip[1]),
         (input_bounds[2] - 4.0).max(1.0),
         h,
     ]
@@ -253,28 +257,47 @@ fn word_wrap_with_ranges(text: &str, max_chars: usize) -> Vec<(String, Range<usi
 
     let mut lines = Vec::new();
     let mut line_start = 0usize;
-    let mut line_chars = 0usize;
-    let mut last_break: Option<usize> = None;
 
-    for (idx, ch) in text.char_indices() {
-        if ch.is_whitespace() {
-            last_break = Some(idx + ch.len_utf8());
-        }
-        line_chars += 1;
-        if line_chars <= max_chars {
-            continue;
+    while line_start < text.len() {
+        debug_assert!(text.is_char_boundary(line_start));
+
+        let remaining = &text[line_start..];
+        let mut char_count = 0usize;
+        let mut hard_end = text.len();
+        let mut last_break: Option<usize> = None;
+
+        for (offset, ch) in remaining.char_indices() {
+            let idx = line_start + offset;
+            if ch.is_whitespace() {
+                last_break = Some(idx + ch.len_utf8());
+            }
+
+            char_count += 1;
+            if char_count > max_chars {
+                hard_end = idx;
+                break;
+            }
         }
 
-        let hard_end = idx;
+        if char_count <= max_chars {
+            lines.push((remaining.to_string(), line_start..text.len()));
+            break;
+        }
+
         let break_end = last_break
-            .filter(|break_idx| *break_idx > line_start && *break_idx <= hard_end)
+            .filter(|break_idx| {
+                *break_idx > line_start && *break_idx <= hard_end && text.is_char_boundary(*break_idx)
+            })
             .unwrap_or(hard_end);
         let trimmed_end = text[line_start..break_end]
             .trim_end()
             .len()
             .saturating_add(line_start);
-        if trimmed_end > line_start {
+
+        if trimmed_end > line_start && text.is_char_boundary(trimmed_end) {
             lines.push((text[line_start..trimmed_end].to_string(), line_start..trimmed_end));
+        } else if break_end > line_start && text.is_char_boundary(break_end) {
+            lines.push((text[line_start..break_end].to_string(), line_start..break_end));
         }
 
         line_start = break_end;
@@ -287,13 +310,8 @@ fn word_wrap_with_ranges(text: &str, max_chars: usize) -> Vec<(String, Range<usi
             }
             line_start += next.len_utf8();
         }
-        line_chars = text[line_start..idx + ch.len_utf8()].chars().count();
-        last_break = None;
     }
 
-    if line_start < text.len() {
-        lines.push((text[line_start..].to_string(), line_start..text.len()));
-    }
     if lines.is_empty() {
         lines.push((String::new(), 0..0));
     }
@@ -1099,8 +1117,8 @@ impl Renderer {
                 word_wrap(&input_text, input_max_chars)
             };
 
-            // Clip to at most three wrapped lines; show the last lines so newly typed content stays visible.
-                        let max_input_lines = ((iclip[3] - 4.0) / line_h).floor().clamp(1.0, 3.0) as usize;
+            // Show as many wrapped lines as fit in the input box height.
+                        let max_input_lines = ((iclip[3] - 4.0) / line_h).floor().max(1.0).min(5.0) as usize;
             let line_trim = wrapped_lines.len().saturating_sub(max_input_lines);
             let visible_lines = &wrapped_lines[line_trim..];
             let is_first_visible = line_trim == 0;
@@ -1572,9 +1590,9 @@ impl Renderer {
             word_wrap(&input_text, input_max_chars)
         };
 
-        // Show only the last three wrapped lines that fit in the input box height so
-                // long messages don't overflow the box.
-                let max_input_lines = ((iclip[3] - 4.0) / line_h).floor().clamp(1.0, 3.0) as usize;
+        // Show wrapped lines that fit in the input box height.
+                // Trim older lines so newly typed content stays visible.
+                let max_input_lines = ((iclip[3] - 4.0) / line_h).floor().max(1.0).min(5.0) as usize;
         let line_trim = wrapped_lines.len().saturating_sub(max_input_lines);
         let visible_lines = &wrapped_lines[line_trim..];
         let is_first_visible = line_trim == 0;

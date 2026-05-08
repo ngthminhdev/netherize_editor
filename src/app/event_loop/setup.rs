@@ -21,6 +21,20 @@ impl AppShell {
         let now = Instant::now();
         let bridge = AppAsyncBridge::new(rx);
 
+        // ── Parse CLI args ────────────────────────────────────────────────
+        let cli_args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
+
+        // First directory arg becomes workspace root (like `zed .` / `code .`).
+        let cli_workspace_dir = cli_args.iter().find_map(|p| {
+            p.canonicalize().ok().filter(|cp| cp.is_dir())
+        });
+
+        let cli_files: Vec<PathBuf> = cli_args
+            .iter()
+            .filter(|p| p.is_file())
+            .cloned()
+            .collect();
+
         // Load persisted state and restore most recent project if it still exists.
         let mut persistent_state = AppPersistentState::load();
 
@@ -28,17 +42,25 @@ impl AppShell {
         let _ = app_state.apply_mode_event(ModeEvent::EnterNormal);
 
         let mut restored_workspace = false;
-        if let Some(recent_dir) = persistent_state.most_recent_existing() {
-            match app_state.attach_workspace(recent_dir.clone()) {
-                Ok(()) => {
-                    restored_workspace = true;
-                }
-                Err(err) => {
-                    eprintln!("[AppShell] workspace attach skipped: {err}");
-                    // Remove the stale entry so it doesn't keep failing
-                    persistent_state
-                        .recent_projects
-                        .retain(|p| p != &recent_dir);
+        // Priority: CLI directory > recent project > cwd
+        if let Some(ref ws_dir) = cli_workspace_dir {
+            match app_state.attach_workspace(ws_dir.clone()) {
+                Ok(()) => restored_workspace = true,
+                Err(err) => eprintln!("[AppShell] CLI workspace attach skipped ({}): {err}", ws_dir.display()),
+            }
+        }
+        if !restored_workspace {
+            if let Some(recent_dir) = persistent_state.most_recent_existing() {
+                match app_state.attach_workspace(recent_dir.clone()) {
+                    Ok(()) => {
+                        restored_workspace = true;
+                    }
+                    Err(err) => {
+                        eprintln!("[AppShell] workspace attach skipped: {err}");
+                        persistent_state
+                            .recent_projects
+                            .retain(|p| p != &recent_dir);
+                    }
                 }
             }
         }
@@ -46,10 +68,8 @@ impl AppShell {
             eprintln!("[AppShell] cwd workspace attach skipped: {err}");
         }
 
-        for cli_path in std::env::args_os().skip(1).map(PathBuf::from) {
-            if cli_path.is_file()
-                && let Err(err) = app_state.open_file(cli_path.clone())
-            {
+        for cli_path in &cli_files {
+            if let Err(err) = app_state.open_file(cli_path.clone()) {
                 eprintln!(
                     "[AppShell] CLI file open skipped ({}): {err}",
                     cli_path.display()
@@ -196,6 +216,8 @@ impl AppShell {
             suppress_next_palette_ime_commit: false,
             leap_state: None,
             git_overlay_revision: 0,
+            git_status_revision: 0,
+            git_baseline_revision: 0,
             last_scroll_animation_tick: now,
             last_git_branch_refresh_at: now,
             last_thinking_animation_tick: now,
@@ -254,6 +276,10 @@ impl AppShell {
                 workspace_root: workspace_root.clone(),
             },
         });
+
+        // ── Git Status & Baseline ────────────────────────────────────────
+        self.submit_workspace_git_status_refresh();
+        self.submit_active_buffer_git_baseline_refresh();
 
         eprintln!(
             "[AppShell] subsystems started - profile={}",
@@ -340,10 +366,10 @@ impl AppShell {
         let Some(workspace_root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
             return;
         };
-        self.git_overlay_revision = self.git_overlay_revision.saturating_add(1);
+        self.git_status_revision = self.git_status_revision.saturating_add(1);
         self.submit(RequestSpec {
-            revision_id: self.git_overlay_revision,
-            topic: RequestTopic::Git,
+            revision_id: self.git_status_revision,
+            topic: RequestTopic::GitStatus,
             payload: WorkerRequestPayload::RefreshWorkspaceGitStatus { workspace_root },
         });
     }
@@ -357,10 +383,10 @@ impl AppShell {
         };
         self.pending_git_diff_after_debounce = false;
         self.last_git_diff_recalc_at = None;
-        self.git_overlay_revision = self.git_overlay_revision.saturating_add(1);
+        self.git_baseline_revision = self.git_baseline_revision.saturating_add(1);
         self.submit(RequestSpec {
-            revision_id: self.git_overlay_revision,
-            topic: RequestTopic::Git,
+            revision_id: self.git_baseline_revision,
+            topic: RequestTopic::GitBaseline,
             payload: WorkerRequestPayload::FetchGitBaseline {
                 workspace_root,
                 file_path,
@@ -493,6 +519,8 @@ impl AppShell {
         self.layout_engine.config.center_min_height = scaled_ui.layout.center_min_height;
         self.layout_engine.config.sidebar_min_width = scaled_ui.layout.sidebar_min_width;
         self.layout_engine.config.bottom_min_height = scaled_ui.layout.bottom_min_height;
+        self.layout_engine.config.chat_input_height = scaled_ui.layout.chat_input_height;
+        self.layout_engine.config.panel_border_width = scaled_ui.layout.panel_border_width;
 
         self.panel_state.left.size_px = scaled_ui.docks.left.size_px;
         self.panel_state.right.size_px = scaled_ui.docks.right.size_px;
