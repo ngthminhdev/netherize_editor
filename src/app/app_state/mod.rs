@@ -909,6 +909,11 @@ pub struct CompletionState {
     /// `true` once we've received a final answer (success, failure, or "skip — already inline")
     /// so the UI can stop showing the "Loading…" hint.
     pub hover_doc_resolved: bool,
+    /// Monotonic counter bumped on every selection change. Each in-flight
+    /// `completionItem/resolve` (or fallback hover) carries the revision it
+    /// was issued for; results whose revision != `current_revision` on arrival
+    /// are silently dropped so a slow/late doc never lands on a newer item.
+    pub current_revision: u64,
 }
 
 impl CompletionState {
@@ -935,6 +940,7 @@ impl CompletionState {
             prefix_col: prefix_start_col,
             hover_doc: None,
             hover_doc_resolved: false,
+            current_revision: 0,
         }
     }
 }

@@ -220,6 +220,7 @@ impl AppShell {
                 line,
                 character,
                 for_completion: false,
+                completion_revision: None,
             },
         });
         self.hover_loading_request_id = request.map(|r| r.request_id);
@@ -239,6 +240,10 @@ impl AppShell {
             self.app_state.mark_completion_hover_doc_resolved();
             return;
         };
+        let completion_revision = self
+            .app_state
+            .completion()
+            .map(|state| state.current_revision);
         let request = self.submit(RequestSpec {
             revision_id: 0,
             topic: RequestTopic::LspRequest,
@@ -248,6 +253,7 @@ impl AppShell {
                 line,
                 character,
                 for_completion: true,
+                completion_revision,
             },
         });
         match request {

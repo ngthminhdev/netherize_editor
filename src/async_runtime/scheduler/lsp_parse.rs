@@ -246,6 +246,7 @@ pub(super) fn handle_lsp_hover(
     cursor_line: usize,
     cursor_col: usize,
     for_completion: bool,
+    completion_revision: Option<u64>,
 ) -> Result<WorkerResultPayload, String> {
     let params = serde_json::json!({
         "textDocument": { "uri": uri },
@@ -268,12 +269,93 @@ pub(super) fn handle_lsp_hover(
     if content.is_empty() {
         return Err("hover: empty documentation".to_string());
     }
+    // Only the overlay path renders syntax-highlighted markdown blocks.
+    // The completion-fallback path (`for_completion=true`) keeps the flat
+    // string and lets the popup renderer strip markdown inline.
+    let parsed_blocks = if for_completion {
+        None
+    } else {
+        Some(parse_hover_doc_blocks(&content))
+    };
     Ok(WorkerResultPayload::LspHoverResult {
         content,
         cursor_line,
         cursor_col,
         for_completion,
+        completion_revision,
+        parsed_blocks,
     })
+}
+
+/// Worker-side markdown block splitter. Produces `HoverDocBlock`s with
+/// Tree-sitter highlight spans already attached to code blocks so the main
+/// thread doesn't run `highlight_snippet` on its hot path. Theme colour
+/// resolution still happens on main (cheap hash lookups in
+/// `syntax_spans_to_styled`).
+fn parse_hover_doc_blocks(content: &str) -> Vec<crate::async_runtime::message::HoverDocBlock> {
+    use crate::async_runtime::message::HoverDocBlock;
+    use crate::config::theme_config::ThemeConfig;
+    use crate::syntax::highlight::highlight_snippet;
+
+    let mut blocks = Vec::new();
+    let mut prose_lines: Vec<String> = Vec::new();
+    let mut code_lines: Vec<String> = Vec::new();
+    let mut code_language = String::new();
+    let mut in_code_block = false;
+    // `highlight_snippet` ignores its theme parameter (`_theme`); we pass a
+    // builtin theme purely to satisfy the signature without dragging the
+    // live theme across thread boundaries. Colour resolution stays on the
+    // main thread via `syntax_spans_to_styled`.
+    let theme = ThemeConfig::builtin_dark();
+
+    let flush_prose = |blocks: &mut Vec<HoverDocBlock>, prose_lines: &mut Vec<String>| {
+        let text = prose_lines.join("\n").trim().to_string();
+        prose_lines.clear();
+        if !text.is_empty() {
+            blocks.push(HoverDocBlock::Prose(text));
+        }
+    };
+
+    let flush_code = |blocks: &mut Vec<HoverDocBlock>,
+                      code_lines: &mut Vec<String>,
+                      code_language: &str| {
+        let text = code_lines.join("\n");
+        code_lines.clear();
+        if text.trim().is_empty() {
+            return;
+        }
+        let spans = highlight_snippet(&text, code_language, &theme);
+        blocks.push(HoverDocBlock::Code { text, spans });
+    };
+
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        if let Some(fence) = trimmed.strip_prefix("```") {
+            if in_code_block {
+                flush_code(&mut blocks, &mut code_lines, &code_language);
+                code_language.clear();
+                in_code_block = false;
+            } else {
+                flush_prose(&mut blocks, &mut prose_lines);
+                code_language = fence.trim().to_string();
+                in_code_block = true;
+            }
+            continue;
+        }
+        if in_code_block {
+            code_lines.push(line.to_string());
+        } else {
+            prose_lines.push(line.to_string());
+        }
+    }
+
+    if in_code_block {
+        flush_code(&mut blocks, &mut code_lines, &code_language);
+    } else {
+        flush_prose(&mut blocks, &mut prose_lines);
+    }
+
+    blocks
 }
 
 /// Parse the `documentation` field of a CompletionItem (used both inline and in
@@ -315,11 +397,18 @@ pub(super) fn handle_lsp_completion_resolve(
     session: &Arc<LspClientProcess>,
     item_label: &str,
     item_json: &str,
+    completion_revision: u64,
 ) -> Result<WorkerResultPayload, String> {
     let params: Value = serde_json::from_str(item_json)
         .map_err(|err| format!("completion resolve: invalid item JSON: {err}"))?;
-    let response = lsp_request_response(
+    // Use the cancellable variant so that when the user navigates the
+    // completion popup quickly, each new dispatch sends `$/cancelRequest`
+    // for the previous in-flight resolve. Without this, slow LSP servers
+    // (e.g. pyright on cold cache) would queue every selection step and
+    // block newer items behind stale work.
+    let response = lsp_cancellable_request_response(
         session,
+        "completionResolve",
         "completionItem/resolve",
         params,
         LSP_COMPLETION_RESOLVE_TIMEOUT_SECS,
@@ -363,6 +452,7 @@ pub(super) fn handle_lsp_completion_resolve(
         item_label: item_label.to_string(),
         detail,
         documentation,
+        completion_revision,
     })
 }
 

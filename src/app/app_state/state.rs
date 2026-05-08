@@ -858,6 +858,7 @@ impl AppState {
             return false;
         }
         state.selected_index = next;
+        state.current_revision = state.current_revision.wrapping_add(1);
         self.bump_revision();
         true
     }
@@ -875,6 +876,7 @@ impl AppState {
             return false;
         }
         state.selected_index = next;
+        state.current_revision = state.current_revision.wrapping_add(1);
         self.bump_revision();
         true
     }

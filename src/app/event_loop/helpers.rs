@@ -245,6 +245,28 @@ pub(super) fn build_preview_render_data(
     (text, spans)
 }
 
+/// Convert worker-pre-parsed hover blocks into the renderer's `FloatingBoxBlock`
+/// shape. The worker has already done the expensive Tree-sitter parsing; here
+/// we only resolve theme colours (cheap hash lookups in `syntax_spans_to_styled`).
+pub(super) fn convert_worker_hover_blocks(
+    raw: Vec<crate::async_runtime::message::HoverDocBlock>,
+    theme: &ThemeConfig,
+) -> Vec<FloatingBoxBlock> {
+    use crate::async_runtime::message::HoverDocBlock;
+    raw.into_iter()
+        .map(|block| match block {
+            HoverDocBlock::Prose(text) => FloatingBoxBlock::Prose(text),
+            HoverDocBlock::Code { text, spans } => {
+                let styled = syntax_spans_to_styled(&spans, &text, theme);
+                FloatingBoxBlock::Code {
+                    text,
+                    spans: styled,
+                }
+            }
+        })
+        .collect()
+}
+
 pub(super) fn parse_hover_markdown_blocks(
     content: &str,
     theme: &ThemeConfig,
@@ -358,44 +380,26 @@ fn render_markdown_node(
         }
         "atx_heading" => {
             let level = heading_level_from_atx(node, source);
-            let content_text = heading_content_text(node, source);
+            let raw_content = heading_content_text(node, source);
             let color = heading_color(level, theme);
-            let styled = if level <= 2 {
-                StyledTextSpan::with_style(
-                    0,
-                    content_text.len(),
-                    color,
-                    true,
-                    false,
-                )
-            } else {
-                StyledTextSpan::new(0, content_text.len(), color)
-            };
+            let (content_text, inline_spans) = render_markdown_inline_text(&raw_content, theme);
+            let spans = heading_spans(&content_text, inline_spans, color, level);
             out.push(MarkdownPreviewLine {
                 text: content_text,
-                spans: vec![styled],
+                spans,
                 block_type: MarkdownBlockType::Heading(level),
                 code_language: None,
             });
         }
         "setext_heading" => {
             let level = setext_heading_level(node, source);
-            let content_text = setext_heading_content(node, source);
+            let raw_content = setext_heading_content(node, source);
             let color = heading_color(level, theme);
-            let styled = if level <= 2 {
-                StyledTextSpan::with_style(
-                    0,
-                    content_text.len(),
-                    color,
-                    true,
-                    false,
-                )
-            } else {
-                StyledTextSpan::new(0, content_text.len(), color)
-            };
+            let (content_text, inline_spans) = render_markdown_inline_text(&raw_content, theme);
+            let spans = heading_spans(&content_text, inline_spans, color, level);
             out.push(MarkdownPreviewLine {
                 text: content_text,
-                spans: vec![styled],
+                spans,
                 block_type: MarkdownBlockType::Heading(level),
                 code_language: None,
             });
@@ -518,7 +522,7 @@ fn render_markdown_node(
                 code_language: None,
             });
         }
-        "table" => {
+        "table" | "pipe_table" => {
             render_table(node, source, theme, out);
         }
         "html_block" => {
@@ -719,6 +723,35 @@ fn setext_heading_content(node: tree_sitter::Node<'_>, source: &str) -> String {
     lines.join(" ").trim().to_string()
 }
 
+fn heading_spans(
+    text: &str,
+    inline_spans: Vec<StyledTextSpan>,
+    color: [u8; 4],
+    level: u8,
+) -> Vec<StyledTextSpan> {
+    if text.is_empty() {
+        return Vec::new();
+    }
+    let heading_bold = level <= 2;
+    let mut spans = vec![StyledTextSpan::with_style(
+        0,
+        text.len(),
+        color,
+        heading_bold,
+        false,
+    )];
+    spans.extend(inline_spans.into_iter().map(|span| {
+        StyledTextSpan::with_style(
+            span.start,
+            span.end,
+            span.color_rgba,
+            heading_bold || span.bold,
+            span.italic,
+        )
+    }));
+    spans
+}
+
 fn heading_color(level: u8, theme: &ThemeConfig) -> [u8; 4] {
     match level {
         1 => theme.syntax.keyword.as_u8(),
@@ -758,15 +791,34 @@ fn code_block_language(node: tree_sitter::Node<'_>, source: &str) -> String {
 }
 
 fn list_marker_text(node: tree_sitter::Node<'_>, source: &str) -> String {
+    let raw = node_text(node, source);
+    let trimmed = raw.trim_start();
+    if trimmed.starts_with("- [x]")
+        || trimmed.starts_with("* [x]")
+        || trimmed.starts_with("+ [x]")
+        || trimmed.starts_with("- [X]")
+        || trimmed.starts_with("* [X]")
+        || trimmed.starts_with("+ [X]")
+    {
+        return "☑ ".to_string();
+    }
+    if trimmed.starts_with("- [ ]")
+        || trimmed.starts_with("* [ ]")
+        || trimmed.starts_with("+ [ ]")
+    {
+        return "☐ ".to_string();
+    }
+
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
             "list_marker_plus" | "list_marker_minus" | "list_marker_star"
-            | "list_marker_dot" | "list_marker_parenthesis"
-            | "task_list_marker_checked" | "task_list_marker_unchecked"
-            | "list_marker" | "task_list_item_marker" => {
+            | "list_marker_dot" | "list_marker_parenthesis" | "list_marker"
+            | "task_list_item_marker" => {
                 return format!("{} ", node_text(child, source).trim());
             }
+            "task_list_marker_checked" => return "☑ ".to_string(),
+            "task_list_marker_unchecked" => return "☐ ".to_string(),
             _ => {}
         }
     }
@@ -774,6 +826,14 @@ fn list_marker_text(node: tree_sitter::Node<'_>, source: &str) -> String {
 }
 
 fn list_item_content(node: tree_sitter::Node<'_>, source: &str) -> String {
+    let raw = node_text(node, source);
+    let trimmed = raw.trim_start();
+    for prefix in ["- [x]", "* [x]", "+ [x]", "- [X]", "* [X]", "+ [X]", "- [ ]", "* [ ]", "+ [ ]"] {
+        if let Some(rest) = trimmed.strip_prefix(prefix) {
+            return rest.trim_start().to_string();
+        }
+    }
+
     let mut parts = Vec::new();
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -800,45 +860,87 @@ fn render_table(
     theme: &ThemeConfig,
     out: &mut Vec<MarkdownPreviewLine>,
 ) {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "table_header_row" => {
-                let text = node_text(child, source);
-                let spans = vec![StyledTextSpan::with_style(
-                    0,
-                    text.len(),
-                    theme.syntax.keyword.as_u8(),
-                    true,
-                    false,
-                )];
-                out.push(MarkdownPreviewLine {
-                    text,
-                    spans,
-                    block_type: MarkdownBlockType::TableHeader,
-                    code_language: None,
-                });
-            }
-            "table_delimiter_row" => {
-                let text = node_text(child, source);
-                out.push(MarkdownPreviewLine {
-                    text,
-                    spans: vec![],
-                    block_type: MarkdownBlockType::Empty,
-                    code_language: None,
-                });
-            }
-            "table_data_row" => {
-                let text = node_text(child, source);
-                out.push(MarkdownPreviewLine {
-                    text,
-                    spans: vec![],
-                    block_type: MarkdownBlockType::TableRow,
-                    code_language: None,
-                });
-            }
-            _ => {}
+    let raw = node_text(node, source);
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut header_idx: Option<usize> = None;
+
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with('|') || !trimmed.ends_with('|') {
+            continue;
         }
+        let cells: Vec<String> = trimmed
+            .trim_matches('|')
+            .split('|')
+            .map(|cell| cell.trim().to_string())
+            .collect();
+        if cells.is_empty() {
+            continue;
+        }
+        let is_delimiter = cells.iter().all(|cell| {
+            let clean = cell.trim();
+            !clean.is_empty()
+                && clean
+                    .chars()
+                    .all(|ch| matches!(ch, '-' | ':' | ' ' | '\t'))
+                && clean.chars().any(|ch| ch == '-')
+        });
+        if is_delimiter {
+            if !rows.is_empty() {
+                header_idx = Some(rows.len().saturating_sub(1));
+            }
+            continue;
+        }
+        rows.push(cells);
+    }
+
+    if rows.is_empty() {
+        render_children(node, source, theme, out);
+        return;
+    }
+
+    let col_count = rows.iter().map(Vec::len).max().unwrap_or(0);
+    let mut widths = vec![0usize; col_count];
+    for row in &rows {
+        for (idx, cell) in row.iter().enumerate() {
+            widths[idx] = widths[idx].max(cell.chars().count());
+        }
+    }
+
+    for (row_idx, row) in rows.iter().enumerate() {
+        let mut text = String::new();
+        text.push('│');
+        for idx in 0..col_count {
+            let cell = row.get(idx).map(String::as_str).unwrap_or("");
+            text.push(' ');
+            text.push_str(cell);
+            let pad = widths[idx].saturating_sub(cell.chars().count());
+            text.extend(std::iter::repeat(' ').take(pad));
+            text.push(' ');
+            text.push('│');
+        }
+        let is_header = header_idx == Some(row_idx);
+        let spans = if is_header {
+            vec![StyledTextSpan::with_style(
+                0,
+                text.len(),
+                theme.syntax.keyword.as_u8(),
+                true,
+                false,
+            )]
+        } else {
+            vec![StyledTextSpan::new(0, text.len(), theme.syntax.identifier.as_u8())]
+        };
+        out.push(MarkdownPreviewLine {
+            text,
+            spans,
+            block_type: if is_header {
+                MarkdownBlockType::TableHeader
+            } else {
+                MarkdownBlockType::TableRow
+            },
+            code_language: None,
+        });
     }
 }
 

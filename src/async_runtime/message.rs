@@ -250,6 +250,10 @@ pub enum WorkerRequestPayload {
         character: u32,
         /// When true, result goes into CompletionState.hover_doc instead of overlay.
         for_completion: bool,
+        /// `Some(revision)` only when `for_completion=true`: snapshot of
+        /// `CompletionState.current_revision` to echo back so a stale
+        /// fallback-hover doesn't overwrite docs for a newer item.
+        completion_revision: Option<u64>,
     },
     /// textDocument/definition request — jump hoặc peek.
     LspDefinitionRequest {
@@ -304,6 +308,11 @@ pub enum WorkerRequestPayload {
         item_json: String,
         /// Label used to verify the response still matches the requested item.
         item_label: String,
+        /// Snapshot of `CompletionState.current_revision` when this request
+        /// was issued. Echoed back in `LspCompletionResolveResult` so the
+        /// main thread can drop the result if the user has since moved on
+        /// to a different item (race-condition guard).
+        completion_revision: u64,
     },
     AiInlineCompletionRequest {
         api_url: String,
@@ -405,6 +414,21 @@ pub struct LspDocumentSymbol {
 pub struct LspTextEdit {
     pub range: LspRange,
     pub new_text: String,
+}
+
+/// Pre-parsed markdown block produced on the worker for hover overlays.
+/// `Code` carries Tree-sitter highlight spans (theme-agnostic) so the main
+/// thread only does the cheap colour-resolution step on layout.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HoverDocBlock {
+    Prose(String),
+    Code {
+        text: String,
+        /// Highlight spans produced by `highlight_snippet` on the worker.
+        /// Empty when the language is unknown or the snippet is too long
+        /// for inline tree-sitter (mirrors the threshold check used elsewhere).
+        spans: Vec<HighlightSpan>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -544,6 +568,13 @@ pub enum WorkerResultPayload {
         cursor_col: usize,
         /// Mirrors the request flag — routes result to completion doc panel.
         for_completion: bool,
+        /// Echoed from request — only meaningful when `for_completion=true`.
+        /// Used by main thread to drop stale fallback-hover results.
+        completion_revision: Option<u64>,
+        /// Pre-parsed markdown blocks for the **non-completion** hover overlay
+        /// (Tree-sitter syntax highlighting computed on the worker so the main
+        /// thread doesn't block on heavy parses). `None` for completion path.
+        parsed_blocks: Option<Vec<HoverDocBlock>>,
     },
     /// textDocument/definition response.
     LspDefinitionResult {
@@ -583,6 +614,9 @@ pub enum WorkerResultPayload {
         item_label: String,
         detail: Option<String>,
         documentation: Option<String>,
+        /// Echoed from the request so the main thread can compare against
+        /// `CompletionState.current_revision` and drop stale results.
+        completion_revision: u64,
     },
     FzfResults {
         query: String,

@@ -507,13 +507,31 @@ impl AsyncResultRouter for AppShell {
                 }
                 // Nếu đã cài hoặc user đã dismiss: không cần làm gì.
             }
-            WorkerResultPayload::LspHoverResult { content, for_completion, .. } => {
+            WorkerResultPayload::LspHoverResult {
+                content,
+                for_completion,
+                completion_revision,
+                parsed_blocks,
+                ..
+            } => {
                 // Clear the in-flight tracker regardless of outcome.
                 if self.hover_loading_request_id == Some(request_id) {
                     self.hover_loading_request_id = None;
                 }
                 if self.completion_doc_fallback_request_id == Some(request_id) {
                     self.completion_doc_fallback_request_id = None;
+                }
+                // Result Reconciliation for the fallback-hover path: if the
+                // user moved to a different completion item since we asked
+                // for this hover, drop it silently (don't update state).
+                if for_completion {
+                    let current_revision = self
+                        .app_state
+                        .completion()
+                        .map(|state| state.current_revision);
+                    if completion_revision != current_revision {
+                        return;
+                    }
                 }
                 if content.is_empty() {
                     if for_completion {
@@ -533,7 +551,8 @@ impl AsyncResultRouter for AppShell {
                 }
                 if for_completion {
                     if self.app_state.has_completion() {
-                        self.app_state.set_completion_hover_doc(Some(content.clone()));
+                        self.app_state
+                            .set_completion_hover_doc(Some(content.clone()));
                         self.editor_caret_needs_layout = true;
                         self.request_redraw();
                     }
@@ -541,7 +560,13 @@ impl AsyncResultRouter for AppShell {
                 }
                 use crate::app::app_state::{EditorOverlay, FloatingBoxStyle};
                 let (anchor_line, anchor_col) = self.app_state.cursor_line_col();
-                let blocks = parse_hover_markdown_blocks(&content, &self.theme);
+                // Prefer worker-parsed blocks (Tree-sitter already done off the
+                // main thread); only fall back to main-thread parsing if the
+                // worker didn't ship them (e.g. legacy/mismatched build).
+                let blocks = match parsed_blocks {
+                    Some(raw) => convert_worker_hover_blocks(raw, &self.theme),
+                    None => parse_hover_markdown_blocks(&content, &self.theme),
+                };
                 if blocks.is_empty() {
                     let changed = self.app_state.clear_current_overlays();
                     if changed {
@@ -839,21 +864,30 @@ impl AsyncResultRouter for AppShell {
                 item_label,
                 detail,
                 documentation,
+                completion_revision,
             } => {
                 // Drop the in-flight tracker only if this result matches it.
                 if self.completion_resolve_request_id == Some(request_id) {
                     self.completion_resolve_request_id = None;
                 }
-                // Apply `detail` regardless of selection — other items in the list
-                // can benefit when the user navigates to them later. Some LSPs only
-                // fill `detail` via resolve (e.g. tsserver), so this is needed for
-                // the signature line in the doc panel to appear at all.
+                // Result Reconciliation: if the user has selected a different
+                // item since this resolve was issued, the echoed revision will
+                // no longer match `current_revision`. Drop the entire result —
+                // including the `detail` cache update — because the items list
+                // may have been replaced by a re-trigger and we don't want to
+                // pollute a freshly built list with stale data keyed by label.
+                let Some(completion) = self.app_state.completion() else {
+                    return;
+                };
+                if completion.current_revision != completion_revision {
+                    return;
+                }
                 let cleaned_detail = detail.filter(|d| !d.trim().is_empty());
                 if cleaned_detail.is_some() {
-                    self.app_state.update_completion_item_detail(&item_label, cleaned_detail);
+                    self.app_state
+                        .update_completion_item_detail(&item_label, cleaned_detail);
                 }
-                // Only apply documentation when completion is still open and the
-                // selected item matches the label we requested.
+                // Re-borrow after the mutable update_completion_item_detail above.
                 let Some(completion) = self.app_state.completion() else {
                     return;
                 };

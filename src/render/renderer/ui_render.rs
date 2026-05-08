@@ -110,15 +110,28 @@ fn is_opencode_status_line(line: &str) -> bool {
 }
 
 const SLASH_COMMAND_SUGGESTIONS: &[(&str, &str)] = &[
-    ("/clear", "clear chat history"),
-    ("/new", "start a fresh chat"),
-    ("/plan", "switch to plan mode"),
-    ("/build", "switch to build mode"),
-    ("/model", "show or set the active model"),
-    ("/models", "show common model ids"),
-    ("/mode", "show or set build/plan"),
-    ("/help", "show command help"),
+    ("/clear",   "clear chat history"),
+    ("/new",     "start a fresh chat"),
+    ("/review",  "review this code for bugs / improvements"),
+    ("/explain", "explain the current file or selection"),
+    ("/fix",     "fix an issue in the current context"),
+    ("/test",    "generate unit tests for the current code"),
+    ("/commit",  "write a git commit message for staged changes"),
+    ("/diff",    "ask AI to summarise the current git diff"),
+    ("/context", "show attached file contexts"),
+    ("/plan",    "switch to plan mode"),
+    ("/build",   "switch to build mode"),
+    ("/mode",    "show or set build/plan"),
+    ("/agent",   "alias for /mode"),
+    ("/model",   "show or set the active model"),
+    ("/models",  "show common model ids"),
+    ("/status",  "show current chat settings"),
+    ("/compact", "summarize chat context"),
+    ("/tokens",  "show context/token usage hint"),
+    ("/help",    "show command help"),
 ];
+
+const SUGGESTION_WINDOW: usize = 8;
 
 fn slash_command_suggestions(input_buffer: &str) -> Vec<(&'static str, &'static str)> {
     let Some(rest) = input_buffer.trim_start().strip_prefix('/') else {
@@ -138,7 +151,6 @@ fn slash_command_suggestions(input_buffer: &str) -> Vec<(&'static str, &'static 
                 .to_ascii_lowercase()
                 .starts_with(&query)
         })
-        .take(5)
         .collect()
 }
 
@@ -156,22 +168,41 @@ fn current_at_token(input_buffer: &str) -> Option<&str> {
     trimmed[start..].strip_prefix('@')
 }
 
+/// Returns `(visible_items, local_selected_index)`.
+/// Applies a sliding window of [`SUGGESTION_WINDOW`] so the selected item
+/// is always visible even when there are more matches than the window size.
 fn ai_chat_input_suggestions(
     input_buffer: &str,
     file_suggestions: &[(String, String)],
-) -> Vec<(String, String)> {
-    if current_at_token(input_buffer).is_some() {
-        return file_suggestions
+    selected_index: usize,
+) -> (Vec<(String, String)>, usize) {
+    let all: Vec<(String, String)> = if current_at_token(input_buffer).is_some() {
+        file_suggestions
             .iter()
-            .take(5)
             .map(|(path, detail)| (format!("@{path}"), detail.clone()))
-            .collect();
+            .collect()
+    } else {
+        slash_command_suggestions(input_buffer)
+            .into_iter()
+            .map(|(cmd, desc)| (cmd.to_string(), desc.to_string()))
+            .collect()
+    };
+
+    let total = all.len();
+    if total == 0 {
+        return (Vec::new(), 0);
     }
 
-    slash_command_suggestions(input_buffer)
-        .into_iter()
-        .map(|(command, detail)| (command.to_string(), detail.to_string()))
-        .collect()
+    let sel = selected_index.min(total - 1);
+    if total <= SUGGESTION_WINDOW {
+        return (all, sel);
+    }
+
+    // Scroll the window so the selected item is always the last visible row
+    // when scrolling down, and the first when near the top.
+    let win_start = sel.saturating_sub(SUGGESTION_WINDOW - 1);
+    let win_end = (win_start + SUGGESTION_WINDOW).min(total);
+    (all[win_start..win_end].to_vec(), sel - win_start)
 }
 
 fn with_alpha(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
@@ -195,13 +226,13 @@ fn slash_suggestion_rect(
     line_h: f32,
     suggestion_count: usize,
 ) -> [f32; 4] {
-    let desired_h = suggestion_count as f32 * line_h + 8.0;
+    let desired_h = suggestion_count as f32 * line_h + 12.0;
     let available_above_input = (input_bounds[1] - history_clip[1] - 8.0).max(line_h);
     let h = desired_h.min(available_above_input);
     [
-        input_bounds[0] + 8.0,
-        (input_bounds[1] - h - 8.0).max(history_clip[1]),
-        (input_bounds[2] - 16.0).max(1.0),
+        input_bounds[0] + 2.0,
+        (input_bounds[1] - h - 10.0).max(history_clip[1]),
+        (input_bounds[2] - 4.0).max(1.0),
         h,
     ]
 }
@@ -478,6 +509,26 @@ fn build_styled_message_lines(
             continue;
         }
 
+        if !in_code_block && trimmed.chars().all(|ch| ch == '-' || ch.is_whitespace()) && trimmed.chars().filter(|ch| *ch == '-').count() >= 3 {
+            lines.push("─".repeat(max_chars.min(48)));
+            line_styles.push(vec![StyledTextSpan::new(
+                0,
+                max_chars.min(48),
+                inline_code_color,
+            )]);
+            code_rows.push(false);
+            continue;
+        }
+
+        let is_table_row = !in_code_block && trimmed.starts_with('|') && trimmed.ends_with('|');
+        let is_table_separator = is_table_row
+            && trimmed
+                .chars()
+                .all(|ch| matches!(ch, '|' | '-' | ':' | ' ' | '\t'));
+        if is_table_separator {
+            continue;
+        }
+
         // Wrap the line
         for wrapped in word_wrap(raw_line, max_chars) {
             let line_str = wrapped.clone();
@@ -520,9 +571,56 @@ fn build_styled_message_lines(
                 line_styles.push(spans);
                 code_rows.push(true);
             } else {
+                let mut line_str = line_str;
+                let mut prefix = String::new();
+                let mut prefix_color = inline_code_color;
+                let mut make_bold = false;
+
+                let trimmed_line = line_str.trim_start();
+                let leading_ws = line_str.len().saturating_sub(trimmed_line.len());
+                if let Some(rest) = trimmed_line.strip_prefix("### ") {
+                    prefix.clear();
+                    line_str = rest.to_string();
+                    make_bold = true;
+                    prefix_color = default_color;
+                } else if let Some(rest) = trimmed_line.strip_prefix("## ") {
+                    prefix.clear();
+                    line_str = rest.to_string();
+                    make_bold = true;
+                    prefix_color = default_color;
+                } else if let Some(rest) = trimmed_line.strip_prefix("# ") {
+                    prefix.clear();
+                    line_str = rest.to_string();
+                    make_bold = true;
+                    prefix_color = default_color;
+                } else if let Some(rest) = trimmed_line.strip_prefix("> ") {
+                    prefix = "│ ".to_string();
+                    line_str = rest.to_string();
+                    prefix_color = inline_code_color;
+                } else if is_table_row {
+                    line_str = trimmed_line
+                        .trim_matches('|')
+                        .split('|')
+                        .map(str::trim)
+                        .collect::<Vec<_>>()
+                        .join("  │  ");
+                    make_bold = raw_line
+                        .lines()
+                        .next()
+                        .is_some_and(|_| false);
+                    prefix_color = inline_code_color;
+                } else if leading_ws > 0 {
+                    line_str = trimmed_line.to_string();
+                }
+
                 // Regular line: detect inline code, bold (**...**), italic (*...*)
                 let mut spans = Vec::new();
                 let mut clean = String::new();
+                if !prefix.is_empty() {
+                    let start = clean.len();
+                    clean.push_str(&prefix);
+                    spans.push(StyledTextSpan::new(start, clean.len(), prefix_color));
+                }
                 let chars: Vec<char> = line_str.chars().collect();
                 let mut i = 0;
                 while i < chars.len() {
@@ -582,6 +680,15 @@ fn build_styled_message_lines(
                     }
                     clean.push(chars[i]);
                     i += 1;
+                }
+                if make_bold && !clean.is_empty() {
+                    spans.push(StyledTextSpan::with_style(
+                        0,
+                        clean.len(),
+                        default_color,
+                        true,
+                        false,
+                    ));
                 }
                 lines.push(clean);
                 line_styles.push(spans);
@@ -917,18 +1024,34 @@ impl Renderer {
                 line_y,
             ));
             self.ai_chat_glyph_instances = all;
-            let suggestions = ai_chat_input_suggestions(input_buffer, file_suggestions);
+            self.ai_chat_suggestion_chrome_instances.clear();
+            self.ai_chat_suggestion_glyph_start = None;
+            let (suggestions, _local_sel) =
+                ai_chat_input_suggestions(input_buffer, file_suggestions, selected_suggestion_index);
             if !suggestions.is_empty() {
                 let suggestion_rect =
                     slash_suggestion_rect(input_bounds, hclip, line_h, suggestions.len());
-                chrome.push(
+                // Use a separate chrome vec so the popup background is drawn
+                // after message text, preventing bubble glyphs from covering it.
+                self.ai_chat_suggestion_chrome_instances.push(
+                    RegionDrawInstance::new(suggestion_rect, self.theme.ui.border_color.as_f32())
+                        .with_radius(9.0),
+                );
+                self.ai_chat_suggestion_chrome_instances.push(
                     RegionDrawInstance::new(
-                        suggestion_rect,
-                        blend_rgb(editor_bg, panel_bg, 0.62, 0.88),
+                        [
+                            suggestion_rect[0] + 1.0,
+                            suggestion_rect[1] + 1.0,
+                            (suggestion_rect[2] - 2.0).max(1.0),
+                            (suggestion_rect[3] - 2.0).max(1.0),
+                        ],
+                        blend_rgb(editor_bg, panel_bg, 0.38, 0.98),
                     )
                     .with_radius(8.0),
                 );
-                let mut suggestion_y = suggestion_rect[1] + 4.0;
+                self.ai_chat_suggestion_glyph_start =
+                    Some(self.ai_chat_glyph_instances.len() as u32);
+                let mut suggestion_y = suggestion_rect[1] + 6.0;
                 for (label, detail) in &suggestions {
                     let row_text = format!("{label:<24} {detail}");
                     let spans = [StyledTextSpan {
@@ -1072,8 +1195,10 @@ impl Renderer {
             italic: bool,
         }
 
-        let bubble_content_w = (hclip[2] * 0.85).max(font_size * 12.0);
-        let max_chars = ((bubble_content_w / (font_size * 0.6)) as usize).max(12);
+        let max_bubble_w = (hclip[2] * 0.85).max(1.0);
+        let bubble_pad_x = 10.0;
+        let bubble_content_w = (max_bubble_w - bubble_pad_x * 2.0).max(font_size * 8.0);
+        let max_chars = ((bubble_content_w / (font_size * 0.6)) as usize).max(8);
         let user_fill = blend_rgb(editor_bg, accent, 0.24, 0.72);
         let netherize_fill = blend_rgb(panel_bg, accent, 0.06, 0.90);
         let system_fill = blend_rgb(panel_bg, warning, 0.04, 0.90);
@@ -1212,10 +1337,8 @@ impl Renderer {
             });
         }
 
-        let bubble_pad_x = 10.0;
         let bubble_pad_y = 7.0;
         let bubble_gap = 12.0;
-        let max_bubble_w = (hclip[2] * 0.85).max(1.0);
         let min_bubble_w = (font_size * 7.0).min(max_bubble_w);
         let total_h = bubbles.iter().fold(0.0, |acc, bubble| {
             acc + bubble_pad_y * 2.0
@@ -1362,23 +1485,37 @@ impl Renderer {
         }
 
         // ── Input box glyphs ──────────────────────────────────────────────
-        let suggestions = ai_chat_input_suggestions(input_buffer, file_suggestions);
+        self.ai_chat_suggestion_chrome_instances.clear();
+        self.ai_chat_suggestion_glyph_start = None;
+        let (suggestions, sel) =
+            ai_chat_input_suggestions(input_buffer, file_suggestions, selected_suggestion_index);
         if !suggestions.is_empty() {
-            let sel = selected_suggestion_index.min(suggestions.len().saturating_sub(1));
             let suggestion_rect =
                 slash_suggestion_rect(input_bounds, hclip, line_h, suggestions.len());
-            chrome.push(
+            // Route popup chrome into its own vec so it is drawn *after* message
+            // bubble text, preventing bubble glyphs from covering the background.
+            self.ai_chat_suggestion_chrome_instances.push(
+                RegionDrawInstance::new(suggestion_rect, self.theme.ui.border_color.as_f32())
+                    .with_radius(9.0),
+            );
+            self.ai_chat_suggestion_chrome_instances.push(
                 RegionDrawInstance::new(
-                    suggestion_rect,
-                    blend_rgb(editor_bg, panel_bg, 0.62, 0.88),
+                    [
+                        suggestion_rect[0] + 1.0,
+                        suggestion_rect[1] + 1.0,
+                        (suggestion_rect[2] - 2.0).max(1.0),
+                        (suggestion_rect[3] - 2.0).max(1.0),
+                    ],
+                    blend_rgb(editor_bg, panel_bg, 0.38, 0.98),
                 )
                 .with_radius(8.0),
             );
-            let mut suggestion_y = suggestion_rect[1] + 4.0;
+            self.ai_chat_suggestion_glyph_start = Some(all.len() as u32);
+            let mut suggestion_y = suggestion_rect[1] + 6.0;
             for (i, (label, detail)) in suggestions.iter().enumerate() {
                 // Highlight the selected suggestion row.
                 if i == sel {
-                    chrome.push(
+                    self.ai_chat_suggestion_chrome_instances.push(
                         RegionDrawInstance::new(
                             [
                                 suggestion_rect[0] + 2.0,
@@ -1508,6 +1645,8 @@ impl Renderer {
         self.ai_chat_input_scissor = None;
         self.ai_chat_input_batch = None;
         self.ai_chat_history_chrome_instances.clear();
+        self.ai_chat_suggestion_chrome_instances.clear();
+        self.ai_chat_suggestion_glyph_start = None;
         self.ai_chat_glyph_instances.clear();
         self.ai_chat_header_image_pipeline.clear();
         self.ai_chat_hero_image_pipeline.clear();

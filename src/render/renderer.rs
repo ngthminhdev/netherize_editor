@@ -284,6 +284,11 @@ pub struct Renderer {
     pub(super) ai_chat_hero_image_pipeline: ImagePipeline,
     pub(super) ai_chat_glyph_instances: Vec<GlyphInstance>,
     pub(super) ai_chat_history_chrome_instances: Vec<RegionDrawInstance>,
+    /// Background rects for the slash-command suggestion popup, rendered as a
+    /// separate pass *after* message bubble text so they appear on top.
+    pub(super) ai_chat_suggestion_chrome_instances: Vec<RegionDrawInstance>,
+    /// Index into `ai_chat_glyph_instances` where suggestion-popup glyphs begin.
+    pub(super) ai_chat_suggestion_glyph_start: Option<u32>,
     pub(super) ai_chat_history_scissor: Option<[u32; 4]>,
     pub(super) ai_chat_image_scissor: Option<[u32; 4]>,
     pub(super) ai_chat_input_scissor: Option<[u32; 4]>,

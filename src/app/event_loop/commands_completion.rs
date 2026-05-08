@@ -46,7 +46,7 @@ impl AppShell {
         let changed = self.app_state.completion_select_next();
         if changed {
             self.app_state.set_completion_hover_doc(None);
-            self.submit_completion_resolve();
+            self.schedule_completion_resolve_debounced();
             self.editor_caret_needs_layout = true;
             self.request_redraw();
         }
@@ -57,11 +57,47 @@ impl AppShell {
         let changed = self.app_state.completion_select_prev();
         if changed {
             self.app_state.set_completion_hover_doc(None);
-            self.submit_completion_resolve();
+            self.schedule_completion_resolve_debounced();
             self.editor_caret_needs_layout = true;
             self.request_redraw();
         }
         changed
+    }
+
+    /// Mark a debounced LSP `completionItem/resolve` for the current selection.
+    /// The actual request fires from `flush_pending_completion_resolve_after_debounce`
+    /// once the user has dwelt on the item for `COMPLETION_RESOLVE_DEBOUNCE_INTERVAL`.
+    /// Cancels any pending dwell timer from a prior selection (only the latest wins).
+    pub(in crate::app::event_loop) fn schedule_completion_resolve_debounced(&mut self) {
+        let Some(state) = self.app_state.completion() else {
+            self.pending_completion_resolve_after_debounce = false;
+            self.last_completion_resolve_select_at = None;
+            return;
+        };
+        self.pending_completion_resolve_revision = state.current_revision;
+        self.pending_completion_resolve_after_debounce = true;
+        self.last_completion_resolve_select_at = Some(std::time::Instant::now());
+    }
+
+    pub(in crate::app::event_loop) fn flush_pending_completion_resolve_after_debounce(
+        &mut self,
+    ) {
+        if !self.pending_completion_resolve_after_debounce {
+            return;
+        }
+        let Some(last) = self.last_completion_resolve_select_at else {
+            self.pending_completion_resolve_after_debounce = false;
+            return;
+        };
+        if last.elapsed() < COMPLETION_RESOLVE_DEBOUNCE_INTERVAL {
+            return;
+        }
+        self.pending_completion_resolve_after_debounce = false;
+        self.last_completion_resolve_select_at = None;
+        if self.app_state.completion().is_none() {
+            return;
+        }
+        self.submit_completion_resolve();
     }
 
     /// Send `completionItem/resolve` for the currently selected item so its
@@ -99,6 +135,7 @@ impl AppShell {
             return;
         };
         let item_label = entry.item.label.clone();
+        let completion_revision = completion.current_revision;
         let request = self.submit(RequestSpec {
             revision_id: 0,
             topic: RequestTopic::LspRequest,
@@ -107,6 +144,7 @@ impl AppShell {
                 uri,
                 item_json,
                 item_label,
+                completion_revision,
             },
         });
         match request {
@@ -121,6 +159,8 @@ impl AppShell {
     }
 
     pub(super) fn close_completion_popup(&mut self) -> bool {
+        self.pending_completion_resolve_after_debounce = false;
+        self.last_completion_resolve_select_at = None;
         let changed = self.app_state.clear_completion();
         if changed {
             self.editor_caret_needs_layout = true;

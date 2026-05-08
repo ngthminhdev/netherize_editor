@@ -325,6 +325,7 @@ fn execute_lsp_request(
             line,
             character,
             for_completion,
+            completion_revision,
         } => {
             let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
                 language_profile_for_language_id(language_id)
@@ -343,7 +344,16 @@ fn execute_lsp_request(
             handle
                 .process
                 .update_request_meta(request.request_id, request.revision_id);
-            handle_lsp_hover(&handle.process, uri, *line, *character, 0, 0, *for_completion)
+            handle_lsp_hover(
+                &handle.process,
+                uri,
+                *line,
+                *character,
+                0,
+                0,
+                *for_completion,
+                *completion_revision,
+            )
         }
         WorkerRequestPayload::LspDefinitionRequest {
             uri,
@@ -473,6 +483,7 @@ fn execute_lsp_request(
             uri,
             item_json,
             item_label,
+            completion_revision,
         } => {
             let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
                 language_profile_for_language_id(language_id)
@@ -491,7 +502,12 @@ fn execute_lsp_request(
             handle
                 .process
                 .update_request_meta(request.request_id, request.revision_id);
-            handle_lsp_completion_resolve(&handle.process, item_label, item_json)
+            handle_lsp_completion_resolve(
+                &handle.process,
+                item_label,
+                item_json,
+                *completion_revision,
+            )
         }
         WorkerRequestPayload::LspCodeActionRequest {
             uri,

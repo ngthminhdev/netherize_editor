@@ -69,9 +69,10 @@ mod setup;
 mod welcome;
 
 use helpers::{
-    build_preview_render_data, build_sidebar_rows, collect_explorer_entries, detect_git_branch,
-    diagnostic_spans_to_styled, language_id_for_path, parse_hover_markdown_blocks, region_color,
-    scale_theme, scale_ui_config, syntax_spans_to_styled,
+    build_preview_render_data, build_sidebar_rows, collect_explorer_entries,
+    convert_worker_hover_blocks, detect_git_branch, diagnostic_spans_to_styled,
+    language_id_for_path, parse_hover_markdown_blocks, region_color, scale_theme, scale_ui_config,
+    syntax_spans_to_styled,
 };
 use welcome::welcome_screen_content;
 
@@ -181,6 +182,15 @@ pub struct AppShell {
     local_history_revision: u64,
     pending_parse_after_debounce: bool,
     pending_git_diff_after_debounce: bool,
+    /// Set when the user changes the selected completion item; the timer is
+    /// drained from `about_to_wait` after `COMPLETION_RESOLVE_DEBOUNCE_INTERVAL`,
+    /// at which point the actual LSP resolve is dispatched.
+    pending_completion_resolve_after_debounce: bool,
+    last_completion_resolve_select_at: Option<Instant>,
+    /// Revision (matching `CompletionState.current_revision`) that the pending
+    /// debounced resolve was queued for; used to skip dispatch if the user
+    /// has already moved on, but mainly to tag the eventual request payload.
+    pending_completion_resolve_revision: u64,
     ai_inline_revision: u64,
     pending_ai_inline_request: Option<PendingAiInlineRequest>,
     pending_lsp_document_sync: Option<PendingLspDocumentSync>,
@@ -217,6 +227,10 @@ pub struct AppShell {
 const DEBUG_UI_ENABLED: bool = false;
 const PARSE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(20);
 const GIT_DIFF_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(80);
+/// User must dwell on a completion item for at least this long before we fire
+/// `completionItem/resolve`. Prevents spamming the LSP server while the user
+/// scrolls quickly through items with arrow keys.
+const COMPLETION_RESOLVE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(100);
 const LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(500);
 const FPS_METRICS_UPDATE_INTERVAL: Duration = Duration::from_millis(500);
 const GIT_BRANCH_REFRESH_INTERVAL: Duration = Duration::from_millis(750);
