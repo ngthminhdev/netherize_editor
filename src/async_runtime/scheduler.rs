@@ -19,7 +19,6 @@ mod emit;
 mod file_watch;
 mod fzf;
 mod git;
-mod local_history;
 mod lsp;
 mod lsp_io;
 mod lsp_parse;

@@ -989,6 +989,7 @@ impl AppState {
     }
 
     pub fn open_fuzzy_picker_buffer(&mut self, mode: CommandPaletteMode) -> usize {
+        self.save_current_text_buffer_history();
         let mut state = FuzzyState::new(mode);
         if mode == CommandPaletteMode::FileHistory {
             state.source_file_path = self.active_file.clone();

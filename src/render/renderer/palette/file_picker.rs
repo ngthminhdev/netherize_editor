@@ -26,8 +26,16 @@ impl Renderer {
 
         let font_size = self.theme.ui.sidebar_font_size;
         let line_h = model.line_height.max(18.0);
-        let row_v_pad = 4.0;
-        let row_h = line_h + row_v_pad * 2.0;
+        let row_v_pad = if model.mode == crate::app::command_palette::CommandPaletteMode::DocumentSymbols {
+            8.0
+        } else {
+            4.0
+        };
+        let row_h = if model.mode == crate::app::command_palette::CommandPaletteMode::DocumentSymbols {
+            (line_h + row_v_pad * 2.0).max(34.0)
+        } else {
+            line_h + row_v_pad * 2.0
+        };
         let text_x = panel_x + model.panel_padding + 8.0;
 
         // Icon column: sized to always fit ● + longest ext ("toml", 4 chars)
@@ -146,38 +154,8 @@ impl Renderer {
             }
 
             let icon_y = row_top + row_v_pad;
-            let file_path = label.split(':').next().unwrap_or(label);
-            let ext = std::path::Path::new(file_path)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
-            let (dot_color, ext_label) = ext_icon_dot(ext, &self.theme);
-            let picker_dot = self.theme.icons.file_picker_dot.as_str();
-
-            // Dot icon
-            glyphs.extend(layout_panel_text(
-                picker_dot,
-                &mut self.palette_text_system,
-                &mut self.atlas,
-                &self.queue,
-                text_x,
-                icon_y,
-                dot_color,
-            ));
-            // ext label (75% alpha of dot color)
-            let mut ext_color = dot_color;
-            ext_color[3] *= 0.75;
-            glyphs.extend(layout_panel_text(
-                ext_label,
-                &mut self.palette_text_system,
-                &mut self.atlas,
-                &self.queue,
-                text_x + dot_char_w + 4.0,
-                icon_y,
-                ext_color,
-            ));
-
-            // filename — always starts at fixed name_x column
+            self.palette_text_system
+                .set_size(Some(inner_width), Some(line_h));
             let tone = model
                 .item_tones
                 .get(absolute_idx)
@@ -185,11 +163,96 @@ impl Renderer {
                 .unwrap_or_default();
             let mut row_model = model.clone();
             row_model.label_color = file_picker_tone_color(tone, model);
+
+            let (label_text, label_ranges, label_x, label_y) = if model.mode
+                == crate::app::command_palette::CommandPaletteMode::DocumentSymbols
+            {
+                let (badge, stripped_label) = split_symbol_badge(label);
+                let badge_color = file_picker_tone_color(tone, model);
+                let badge_size = (row_h * 0.58).clamp(20.0, 28.0);
+                let badge_x = text_x;
+                let badge_y = row_top + (row_h - badge_size) * 0.5;
+                quads.push(
+                    RegionDrawInstance::new(
+                        [badge_x, badge_y, badge_size, badge_size],
+                        [badge_color[0], badge_color[1], badge_color[2], 0.90],
+                    )
+                    .with_radius(badge_size * 0.22),
+                );
+                quads.push(
+                    RegionDrawInstance::new(
+                        [badge_x + 0.5, badge_y + 0.5, badge_size - 1.0, badge_size - 1.0],
+                        [badge_color[0], badge_color[1], badge_color[2], 1.0],
+                    )
+                    .with_radius((badge_size * 0.22 - 0.5).max(0.5)),
+                );
+
+                let icon_size = if badge.chars().count() > 1 {
+                    (badge_size * 0.42).max(8.0)
+                } else {
+                    (badge_size * 0.62).max(10.0)
+                };
+                let icon_w = estimate_monospace_width(&badge, icon_size);
+                self.palette_text_system
+                    .set_metrics(cosmic_text::Metrics::new(icon_size, badge_size));
+                self.palette_text_system
+                    .set_size(Some(badge_size), Some(badge_size));
+                glyphs.extend(layout_panel_text(
+                    &badge,
+                    &mut self.palette_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    badge_x + (badge_size - icon_w) * 0.5,
+                    badge_y,
+                    self.theme.ui.bg.as_f32(),
+                ));
+                self.palette_text_system
+                    .set_metrics(cosmic_text::Metrics::new(font_size, line_h));
+                self.palette_text_system
+                    .set_size(Some((inner_width - badge_size - 12.0).max(1.0)), Some(line_h));
+                (
+                    stripped_label,
+                    shift_ranges_after_badge(label, ranges),
+                    text_x + badge_size + 12.0,
+                    row_top + (row_h - line_h) * 0.5,
+                )
+            } else {
+                let file_path = label.split(':').next().unwrap_or(label);
+                let ext = std::path::Path::new(file_path)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("");
+                let (dot_color, ext_label) = ext_icon_dot(ext, &self.theme);
+                let picker_dot = self.theme.icons.file_picker_dot.as_str();
+
+                glyphs.extend(layout_panel_text(
+                    picker_dot,
+                    &mut self.palette_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    text_x,
+                    icon_y,
+                    dot_color,
+                ));
+                let mut ext_color = dot_color;
+                ext_color[3] *= 0.75;
+                glyphs.extend(layout_panel_text(
+                    ext_label,
+                    &mut self.palette_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    text_x + dot_char_w + 4.0,
+                    icon_y,
+                    ext_color,
+                ));
+                (label.clone(), ranges.clone(), name_x, icon_y)
+            };
+
             Self::render_highlighted_label(
-                label,
-                ranges,
-                name_x,
-                icon_y,
+                &label_text,
+                &label_ranges,
+                label_x,
+                label_y,
                 font_size,
                 &row_model,
                 &mut self.palette_text_system,
@@ -233,6 +296,37 @@ impl Renderer {
     }
 
     // ── Name/path picker (Recent Projects + Theme Selector) ───────────────────
+}
+
+fn split_symbol_badge(label: &str) -> (String, String) {
+    let Some(rest) = label.strip_prefix('[') else {
+        return ("·".to_string(), label.to_string());
+    };
+    let Some(end) = rest.find(']') else {
+        return ("·".to_string(), label.to_string());
+    };
+
+    let badge = rest[..end].to_string();
+    let stripped = rest[end + 1..].trim_start().to_string();
+    (badge, stripped)
+}
+
+fn shift_ranges_after_badge(label: &str, ranges: &[(usize, usize)]) -> Vec<(usize, usize)> {
+    let offset = label
+        .strip_prefix('[')
+        .and_then(|rest| rest.find(']').map(|end| end + 2))
+        .unwrap_or(0);
+
+    ranges
+        .iter()
+        .filter_map(|(start, end)| {
+            if *end <= offset {
+                None
+            } else {
+                Some((start.saturating_sub(offset), end.saturating_sub(offset)))
+            }
+        })
+        .collect()
 }
 
 fn file_picker_tone_color(

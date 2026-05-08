@@ -882,6 +882,7 @@ fn fuzzy_picker_open_search_match_confirm_closes_results_buffer() {
     assert!(shell.handle_command(Command::FilePickerConfirmSelection));
 
     assert!(!shell.app_state.active_buffer_is_fuzzy_picker());
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
     assert_eq!(
         shell.app_state.active_file(),
         Some(canonical_target.as_path())

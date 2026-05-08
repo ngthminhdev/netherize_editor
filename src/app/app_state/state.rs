@@ -2,81 +2,43 @@ use super::overlays::{build_completion_display_items, is_completion_identifier_c
 use super::*;
 
 impl AppState {
-    pub fn active_file_history_envelope(&self) -> Option<PersistedHistoryEnvelope> {
-        let file_path = self.active_file.clone()?;
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        Some(PersistedHistoryEnvelope {
-            version: 1,
-            file_path,
-            history: self.history.clone(),
-            saved_at: now,
-        })
-    }
-
-    pub fn reconcile_loaded_file_history(
-        &mut self,
-        file_path: &Path,
-        envelope: Option<PersistedHistoryEnvelope>,
-    ) -> bool {
-        let Some(active_file) = self.active_file.as_ref() else {
-            return false;
-        };
-        if active_file != file_path {
-            if let Some(envelope) = envelope {
-                self.stored_file_histories.insert(
-                    file_path.to_path_buf(),
-                    StoredFileHistory {
-                        history: envelope.history,
-                    },
-                );
-                return true;
-            }
-            return false;
-        }
-
-        let loaded_history = envelope.map(|item| item.history).unwrap_or_default();
-        self.history = loaded_history.clone();
-        self.current_transaction = None;
-        self.stored_file_histories.insert(
-            file_path.to_path_buf(),
-            StoredFileHistory {
-                history: loaded_history,
-            },
-        );
-        self.bump_revision();
-        true
-    }
-
     pub fn file_history_picker_items(
         &self,
     ) -> Vec<crate::app::command_palette::CommandPaletteItem> {
-        let file_path = if let Some(index) = self.active_buffer_index {
-            self.buffers
-                .get(index)
-                .and_then(|buffer| match &buffer.content {
-                    BufferContent::FuzzyPicker(state)
-                        if state.mode == CommandPaletteMode::FileHistory =>
-                    {
-                        state.source_file_path.as_ref()
+        // When a FileHistory FuzzyPicker is the active buffer, its source_file_path
+        // tells us which EditorBuffer's history to display.
+        let history: &EditHistory = if let Some(active_idx) = self.active_buffer_index {
+            if let Some(slot) = self.buffers.get(active_idx) {
+                if let BufferContent::FuzzyPicker(ref state) = slot.content {
+                    if state.mode == CommandPaletteMode::FileHistory {
+                        if let Some(ref src_path) = state.source_file_path {
+                            // The text buffer's history is stored inside its EditorBuffer.
+                            let found = self.buffers.iter().find_map(|b| match &b.content {
+                                BufferContent::Text(eb) if &eb.path == src_path => {
+                                    Some(&eb.history)
+                                }
+                                _ => None,
+                            });
+                            found.unwrap_or(&self.history)
+                        } else {
+                            &self.history
+                        }
+                    } else {
+                        &self.history
                     }
-                    _ => None,
-                })
+                } else {
+                    &self.history
+                }
+            } else {
+                &self.history
+            }
         } else {
-            None
-        }
-        .or(self.active_file.as_ref());
-
-        let Some(active_file) = file_path else {
-            return Vec::new();
+            &self.history
         };
-        let history = self
-            .stored_file_histories
-            .get(active_file)
-            .map(|stored| &stored.history)
-            .unwrap_or(&self.history);
+
+        if history.undo_stack.is_empty() {
+            return Vec::new();
+        }
         history
             .undo_stack
             .iter()
@@ -190,14 +152,6 @@ impl AppState {
         self.history = session.baseline_history;
         self.history.undo_stack.truncate(keep_len);
         self.history.redo_stack.clear();
-        if let Some(path) = self.active_file.clone() {
-            self.stored_file_histories.insert(
-                path,
-                StoredFileHistory {
-                    history: self.history.clone(),
-                },
-            );
-        }
         self.current_transaction = None;
         self.bump_revision();
         true

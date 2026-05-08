@@ -919,7 +919,27 @@ impl AppState {
 
         match buffer.content {
             BufferContent::Text(buffer) => {
+                // Commit any pending edits, then save the live history back into
+                // the old EditorBuffer so it survives the switch.
+                let _ = self.commit_transaction();
+                if let Some(old_idx) = self.active_buffer_index {
+                    if old_idx != index {
+                        let saved = std::mem::take(&mut self.history);
+                        if let Some(slot) = self.buffers.get_mut(old_idx) {
+                            if let BufferContent::Text(ref mut old_buf) = slot.content {
+                                old_buf.history = saved;
+                            }
+                        }
+                    }
+                }
+                // Load new file content (this calls clear_history internally).
                 self.load_buffer_from_file_resetting_view(&buffer.path)?;
+                // Restore the new buffer's per-buffer history.
+                if let Some(slot) = self.buffers.get(index) {
+                    if let BufferContent::Text(ref new_buf) = slot.content {
+                        self.history = new_buf.history.clone();
+                    }
+                }
                 self.active_file = Some(buffer.path.clone());
                 self.active_buffer_index = Some(index);
                 self.selection_anchor_char_idx = None;
@@ -929,6 +949,7 @@ impl AppState {
                 let _ = self.workspace_expand_to_path(&buffer.path);
             }
             BufferContent::Image(buffer) => {
+                self.save_current_text_buffer_history();
                 self.reset_text_editor_state();
                 let refreshed = load_image_buffer(&buffer.path);
                 if let Some(slot) = self.buffers.get_mut(index) {
@@ -938,6 +959,7 @@ impl AppState {
                 let _ = self.workspace_expand_to_path(&buffer.path);
             }
             BufferContent::Terminal(_) => {
+                self.save_current_text_buffer_history();
                 self.active_file = None;
                 self.active_buffer_index = Some(index);
                 self.selection_anchor_char_idx = None;
@@ -949,6 +971,7 @@ impl AppState {
             | BufferContent::FuzzyPicker(_)
             | BufferContent::SettingsTab(_)
             | BufferContent::Help(_) => {
+                self.save_current_text_buffer_history();
                 self.reset_text_editor_state();
                 self.active_buffer_index = Some(index);
                 let _ = self.clear_current_overlays();
@@ -957,6 +980,20 @@ impl AppState {
 
         self.bump_revision();
         Ok(())
+    }
+
+    /// Save the live `self.history` into the active EditorBuffer if it is a text buffer.
+    /// Must be called before switching away from any text buffer.
+    pub(super) fn save_current_text_buffer_history(&mut self) {
+        let _ = self.commit_transaction();
+        if let Some(old_idx) = self.active_buffer_index {
+            let saved = std::mem::take(&mut self.history);
+            if let Some(slot) = self.buffers.get_mut(old_idx) {
+                if let BufferContent::Text(ref mut buf) = slot.content {
+                    buf.history = saved;
+                }
+            }
+        }
     }
 
     pub(super) fn reset_text_editor_state(&mut self) {

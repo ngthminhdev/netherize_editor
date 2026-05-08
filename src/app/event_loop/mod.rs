@@ -179,7 +179,6 @@ pub struct AppShell {
     /// of order.
     latest_definition_request_id: Option<u64>,
     fzf_search_revision: u64,
-    local_history_revision: u64,
     pending_parse_after_debounce: bool,
     pending_git_diff_after_debounce: bool,
     /// Set when the user changes the selected completion item; the timer is

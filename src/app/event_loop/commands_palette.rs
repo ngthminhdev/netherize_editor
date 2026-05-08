@@ -371,6 +371,9 @@ impl AppShell {
                 } else {
                     None
                 };
+                let confirmed_from_fuzzy_picker =
+                    matches!(command, Command::FilePickerConfirmSelection)
+                        && self.app_state.active_buffer_is_fuzzy_picker();
 
                 let is_open_file = matches!(command, Command::OpenFile(_));
                 let report = {
@@ -436,6 +439,12 @@ impl AppShell {
                         self.input_handler.clear_pending_prefix();
                     }
                     let _ = self.release_focus_mode_to_editor();
+                    if confirmed_from_fuzzy_picker
+                        && !self.app_state.active_buffer_is_fuzzy_picker()
+                        && self.app_state.current_mode() != EditorMode::Normal
+                    {
+                        let _ = self.app_state.apply_mode_event(ModeEvent::EnterNormal);
+                    }
                 }
 
                 Some(report.request_redraw || report.success)

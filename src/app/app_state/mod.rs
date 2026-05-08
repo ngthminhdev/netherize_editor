@@ -18,7 +18,6 @@ use crate::app::{
 };
 use crate::async_runtime::message::{
     FilePreviewLine, FileSystemChangeKind, FileSystemEvent, LspCompletionItem, LspDiagnostic,
-    PersistedHistoryEnvelope,
 };
 use crate::config::keymap_loader::KeymapLoader;
 use crate::config::ui_config::IndentConfig;
@@ -116,6 +115,8 @@ pub struct EditorBuffer {
     pub language_id: Option<String>,
     pub git_baseline: Option<String>,
     pub git_line_statuses: HashMap<usize, GitLineStatus>,
+    /// Per-buffer RAM-only undo/redo stack. Lives until the buffer is closed.
+    pub history: EditHistory,
 }
 
 impl EditorBuffer {
@@ -125,6 +126,7 @@ impl EditorBuffer {
             language_id,
             git_baseline: None,
             git_line_statuses: HashMap::new(),
+            history: EditHistory::new(),
         }
     }
 }
@@ -965,11 +967,6 @@ pub struct FileHistoryEntrySummary {
 }
 
 #[derive(Debug, Clone)]
-struct StoredFileHistory {
-    history: EditHistory,
-}
-
-#[derive(Debug, Clone)]
 struct EditorViewSnapshot {
     text: Rope,
     cursor: CursorState,
@@ -1193,7 +1190,6 @@ pub struct AppState {
     last_saved_at: Option<Instant>,
     clipboard_record: Option<ClipboardRecord>,
     history: EditHistory,
-    stored_file_histories: HashMap<PathBuf, StoredFileHistory>,
     current_transaction: Option<PendingTransaction>,
     file_history_preview: Option<FileHistoryPreviewSession>,
     pending_highlight_edits: Vec<HighlightEdit>,
@@ -1254,7 +1250,6 @@ impl AppState {
             last_saved_at: None,
             clipboard_record: None,
             history: EditHistory::new(),
-            stored_file_histories: HashMap::new(),
             current_transaction: None,
             file_history_preview: None,
             pending_highlight_edits: Vec::new(),
@@ -1307,7 +1302,6 @@ impl AppState {
             last_saved_at: None,
             clipboard_record: None,
             history: EditHistory::new(),
-            stored_file_histories: HashMap::new(),
             current_transaction: None,
             file_history_preview: None,
             pending_highlight_edits: Vec::new(),

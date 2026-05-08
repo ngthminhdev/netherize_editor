@@ -89,22 +89,17 @@ impl AppShell {
     fn finalize_post_command_hooks(
         &mut self,
         command_for_post_hooks: &Command,
-        should_persist_history_after: bool,
+        _should_persist_history_after: bool,
         changed: bool,
     ) -> bool {
         if changed {
             match command_for_post_hooks {
                 Command::OpenFile(_) | Command::BufferNext | Command::BufferPrev => {
                     self.submit_active_buffer_git_baseline_refresh();
-                    self.submit_active_file_history_load();
                 }
                 Command::SaveFile => {
-                    self.submit_active_file_history_save();
                     self.submit_workspace_git_status_refresh();
                     self.submit_active_buffer_git_baseline_refresh();
-                }
-                _ if should_persist_history_after => {
-                    self.submit_active_file_history_save();
                 }
                 _ => {}
             }
@@ -374,15 +369,10 @@ impl AppShell {
             match &command_for_post_hooks {
                 Command::OpenFile(_) | Command::BufferNext | Command::BufferPrev => {
                     self.submit_active_buffer_git_baseline_refresh();
-                    self.submit_active_file_history_load();
                 }
                 Command::SaveFile => {
-                    self.submit_active_file_history_save();
                     self.submit_workspace_git_status_refresh();
                     self.submit_active_buffer_git_baseline_refresh();
-                }
-                _ if should_persist_history_after => {
-                    self.submit_active_file_history_save();
                 }
                 _ => {}
             }

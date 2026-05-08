@@ -327,9 +327,7 @@ pub(super) async fn execute_virtual_job(
         WorkerRequestPayload::AiInstallRequest => {
             Err("AI install request should be handled by dedicated AI runner".to_string())
         }
-        WorkerRequestPayload::LoadLocalHistory { .. }
-        | WorkerRequestPayload::SaveLocalHistory { .. }
-        | WorkerRequestPayload::ScanPythonEnvironments { .. }
+        WorkerRequestPayload::ScanPythonEnvironments { .. }
         | WorkerRequestPayload::DetectRuntimeVersions { .. } => {
             Err("request should be handled by dedicated runner".to_string())
         }

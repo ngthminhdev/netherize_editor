@@ -22,7 +22,6 @@ use super::{
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
     file_watch::run_file_watch_request,
     fzf::run_fzf_request,
-    local_history::run_local_history_request,
     lsp::run_lsp_request,
     pty::run_pty_request,
     syntax_jobs::{execute_virtual_job, run_system_dep_install},
@@ -137,19 +136,6 @@ pub(super) async fn dispatch_loop(
                 run_fzf_request(request, worker_tx, event_proxy).await;
             });
             active_fzf_search = Some(handle);
-            continue;
-        }
-
-        if matches!(
-            request.payload,
-            WorkerRequestPayload::LoadLocalHistory { .. }
-                | WorkerRequestPayload::SaveLocalHistory { .. }
-        ) {
-            let worker_tx = result_tx.clone();
-            let event_proxy = event_proxy.clone();
-            tokio::spawn(async move {
-                run_local_history_request(request, worker_tx, event_proxy).await;
-            });
             continue;
         }
 

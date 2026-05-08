@@ -929,14 +929,20 @@ impl CommandPalette {
 
 fn symbol_icon(kind: &str) -> &'static str {
     match kind {
-        "Function" | "Method" | "Constructor" => "ƒ",
+        "Function" | "Method" => "fn",
+        "Constructor" => "fn",
+        "Field" => "f",
+        "Variable" | "Constant" => "v",
         "Class" => "C",
-        "Struct" => "S",
         "Interface" => "I",
+        "Module" | "Namespace" | "Package" => "m",
+        "Property" => "p",
         "Enum" | "EnumMember" => "E",
-        "Variable" | "Constant" | "Field" | "Property" => "v",
-        "Module" | "Namespace" | "Package" => "M",
-        _ => "*",
+        "Keyword" => "k",
+        "Operator" => "op",
+        "TypeParameter" => "T",
+        "Struct" => "S",
+        _ => "·",
     }
 }
 
@@ -1282,7 +1288,7 @@ mod tests {
         };
 
         let item = CommandPaletteItem::document_symbol(&symbol);
-        assert_eq!(item.label, "[ƒ] build_picker  Function  Ln 43");
+        assert_eq!(item.label, "[fn] build_picker  Function  Ln 43");
         assert_eq!(item.tone, CommandPaletteItemTone::Function);
         assert_eq!(
             item.action,

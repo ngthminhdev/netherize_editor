@@ -197,7 +197,6 @@ impl AppShell {
             latest_definition_request_id: None,
             document_symbols_request_revision: 0,
             fzf_search_revision: 0,
-            local_history_revision: 0,
             pending_parse_after_debounce: false,
             pending_git_diff_after_debounce: false,
             pending_completion_resolve_after_debounce: false,
@@ -1140,36 +1139,6 @@ impl AppShell {
         });
     }
 
-    pub(super) fn submit_active_file_history_load(&mut self) {
-        let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
-            return;
-        };
-        self.local_history_revision = self.local_history_revision.saturating_add(1);
-        self.submit(RequestSpec {
-            revision_id: self.local_history_revision,
-            topic: RequestTopic::LocalHistory,
-            payload: WorkerRequestPayload::LoadLocalHistory { file_path },
-        });
-    }
-
-    pub(super) fn submit_active_file_history_save(&mut self) {
-        let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
-            return;
-        };
-        let Some(history) = self.app_state.active_file_history_envelope() else {
-            return;
-        };
-        self.local_history_revision = self.local_history_revision.saturating_add(1);
-        self.submit(RequestSpec {
-            revision_id: self.local_history_revision,
-            topic: RequestTopic::LocalHistory,
-            payload: WorkerRequestPayload::SaveLocalHistory {
-                file_path,
-                history,
-                max_bytes: 1024 * 1024,
-            },
-        });
-    }
 
     pub(super) fn submit_references_preview_load(&mut self) {
         if !self.app_state.active_buffer_is_references() {
