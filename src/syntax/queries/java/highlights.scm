@@ -79,7 +79,7 @@
 (method_invocation       name: (identifier) @syntax.function)
 (object_creation_expression type: (type_identifier) @syntax.constructor)
 (super) @syntax.function
-(this) @syntax.variable
+(this) @syntax.keyword
 
 ; --- Annotations ---
 (annotation        name: (identifier) @syntax.attribute)

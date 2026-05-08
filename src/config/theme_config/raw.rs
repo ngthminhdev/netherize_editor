@@ -138,6 +138,7 @@ pub(in crate::config::theme_config) struct RawIcons {
     pub(in crate::config::theme_config) git: Option<RawFileIconTheme>,
     pub(in crate::config::theme_config) lock: Option<RawFileIconTheme>,
     pub(in crate::config::theme_config) image: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) proto: Option<RawFileIconTheme>,
 }
 
 #[derive(Debug, Default, Deserialize)]

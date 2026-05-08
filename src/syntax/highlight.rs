@@ -515,6 +515,7 @@ fn highlight_query(language_id: LanguageId) -> Option<&'static Query> {
         LanguageId::Python => python_highlight_query(),
         LanguageId::Html => html_highlight_query(),
         LanguageId::Css => css_highlight_query(),
+        LanguageId::Protobuf => protobuf_highlight_query(),
     }
 }
 
@@ -580,7 +581,11 @@ fn tsx_highlight_query() -> Option<&'static Query> {
 fn go_highlight_query() -> Option<&'static Query> {
     static QUERY: OnceLock<Option<Query>> = OnceLock::new();
     QUERY.get_or_init(|| {
-        build_highlight_query(LanguageId::Go, tree_sitter_go::HIGHLIGHTS_QUERY, "go")
+        build_highlight_query(
+            LanguageId::Go,
+            include_str!("queries/go/highlights.scm"),
+            "go",
+        )
     }).as_ref()
 }
 
@@ -758,6 +763,17 @@ fn css_highlight_query() -> Option<&'static Query> {
     static QUERY: OnceLock<Option<Query>> = OnceLock::new();
     QUERY.get_or_init(|| {
         build_highlight_query(LanguageId::Css, tree_sitter_css::HIGHLIGHTS_QUERY, "css")
+    }).as_ref()
+}
+
+fn protobuf_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(
+            LanguageId::Protobuf,
+            include_str!("queries/proto/highlights.scm"),
+            "protobuf",
+        )
     }).as_ref()
 }
 
@@ -991,7 +1007,8 @@ fn capture_category(capture_name: &str) -> Option<HighlightCategory> {
         "tag" | "tag.builtin" => Some(HighlightCategory::Tag),
         "label" => Some(HighlightCategory::Property),
         "identifier" => Some(HighlightCategory::Identifier),
-        "variable" | "variable.builtin" => Some(HighlightCategory::Variable),
+        "variable" => Some(HighlightCategory::Variable),
+        "variable.builtin" => Some(HighlightCategory::Keyword),
         "operator" => Some(HighlightCategory::Operator),
         "escape" | "string.escape" | "character.escape" => Some(HighlightCategory::Escape),
         _ if capture_name.starts_with("comment") => Some(HighlightCategory::Comment),
@@ -1898,7 +1915,8 @@ block: |
 fn test_all_highlight_queries_valid() {
     use crate::syntax::syntax_engine::LanguageId;
     for lang in [LanguageId::Java, LanguageId::Markdown, LanguageId::Rust,
-                 LanguageId::TypeScript, LanguageId::Go, LanguageId::Json] {
+                 LanguageId::TypeScript, LanguageId::Go, LanguageId::Json,
+                 LanguageId::Protobuf] {
         let q = highlight_query(lang);
         assert!(q.is_some(), "{} highlight query failed to load", lang.as_str());
     }

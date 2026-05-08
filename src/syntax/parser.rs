@@ -31,6 +31,7 @@ pub fn language_id_for_extension(extension: &str) -> Option<LanguageId> {
         "py" | "python" => Some(LanguageId::Python),
         "html" | "htm" => Some(LanguageId::Html),
         "css" => Some(LanguageId::Css),
+        "proto" | "protobuf" => Some(LanguageId::Protobuf),
         _ => None,
     }
 }
@@ -57,5 +58,6 @@ pub fn tree_sitter_language(language_id: LanguageId) -> Option<Language> {
         LanguageId::Python => Some(tree_sitter_python::LANGUAGE.into()),
         LanguageId::Html => Some(tree_sitter_html::LANGUAGE.into()),
         LanguageId::Css => Some(tree_sitter_css::LANGUAGE.into()),
+        LanguageId::Protobuf => Some(tree_sitter_proto::LANGUAGE.into()),
     }
 }

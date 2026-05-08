@@ -24,6 +24,7 @@ pub enum LanguageId {
     Python,
     Html,
     Css,
+    Protobuf,
 }
 
 impl LanguageId {
@@ -46,6 +47,7 @@ impl LanguageId {
             Self::Python => "python",
             Self::Html => "html",
             Self::Css => "css",
+            Self::Protobuf => "protobuf",
         }
     }
 }

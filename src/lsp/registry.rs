@@ -194,6 +194,18 @@ static LANGUAGE_REGISTRY: &[LanguageProfile] = &[
         filenames: &[],
     },
     LanguageProfile {
+        key: "protobuf",
+        language_label: "Protobuf",
+        language_id: "protobuf",
+        syntax_language_id: Some(LanguageId::Protobuf),
+        lsp_binary: "",
+        launch_args: &[],
+        install_command: "",
+        root_markers: NO_ROOT_MARKERS,
+        extensions: &["proto"],
+        filenames: &[],
+    },
+    LanguageProfile {
         key: "dotenv",
         language_label: "Dotenv",
         language_id: "dotenv",

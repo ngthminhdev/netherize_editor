@@ -271,6 +271,7 @@ pub struct IconThemeTokens {
     pub git: FileIconThemeTokens,
     pub lock: FileIconThemeTokens,
     pub image: FileIconThemeTokens,
+    pub proto: FileIconThemeTokens,
 }
 
 impl ThemeConfig {
@@ -322,6 +323,7 @@ impl ThemeConfig {
             "sh" | "bash" | "zsh" | "fish" => &self.icons.shell,
             "gitignore" | "gitmodules" | "gitattributes" => &self.icons.git,
             "lock" => &self.icons.lock,
+            "proto" | "protobuf" => &self.icons.proto,
             "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "ico" => &self.icons.image,
             _ => &self.icons.default_file,
         }

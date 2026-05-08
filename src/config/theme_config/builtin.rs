@@ -149,6 +149,7 @@ fn builtin_icon_tokens(ui: &UiThemeTokens) -> IconThemeTokens {
         git: icon("\u{F1D3}", ui.warning),
         lock: icon("\u{F13E}", ui.fg_ghost),
         image: icon("\u{F1C5}", ui.success),
+        proto: icon("\u{F471}", ui.info),
     }
 }
 

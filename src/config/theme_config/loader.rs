@@ -596,6 +596,7 @@ fn parse_icons(raw: &RawIcons, ui: &UiThemeTokens) -> Result<IconThemeTokens, St
         git: parse_file_icon("icons.git", raw.git.as_ref(), "\u{F1D3}", ui.warning)?,
         lock: parse_file_icon("icons.lock", raw.lock.as_ref(), "\u{F13E}", ui.fg_ghost)?,
         image: parse_file_icon("icons.image", raw.image.as_ref(), "\u{F1C5}", ui.success)?,
+        proto: parse_file_icon("icons.proto", raw.proto.as_ref(), "\u{F471}", ui.info)?,
     })
 }
 
