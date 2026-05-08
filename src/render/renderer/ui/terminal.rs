@@ -1,10 +1,14 @@
 use crate::{
     core::mode::EditorMode,
-    render::{region_pipeline::RegionDrawInstance, renderer::Renderer},
+    render::{
+        region_pipeline::RegionDrawInstance,
+        renderer::{Renderer, TextScissorBatch},
+        text_pipeline::InstanceDrawRange,
+    },
     terminal::grid::TerminalGrid,
 };
 
-use super::super::helpers::{layout_panel_text, rect_to_scissor};
+use super::super::helpers::{clamp_monospace_text, layout_panel_text, rect_to_scissor};
 
 const EMPTY_TERMINAL_HINT: &str = "(terminal ready — press F12 to focus)";
 const TERMINAL_SAFE_INSET_X: f32 = 2.0;
@@ -44,6 +48,14 @@ impl Renderer {
             bounds,
             terminal_mode,
         );
+        self.terminal_body_batch = self.terminal_scissor.map(|scissor| TextScissorBatch {
+            scissor,
+            range: InstanceDrawRange {
+                start: 0,
+                count: self.terminal_glyph_instances.len() as u32,
+            },
+        });
+        self.terminal_tab_bar_batch = None;
     }
 
     /// Render PTY grid của buffer terminal (lazygit, v.v.) vào center editor area.
@@ -334,6 +346,8 @@ impl Renderer {
     /// Clear terminal — called when the panel is hidden.
     pub fn clear_terminal(&mut self) {
         self.terminal_scissor = None;
+        self.terminal_body_batch = None;
+        self.terminal_tab_bar_batch = None;
         self.terminal_glyph_instances.clear();
         self.terminal_cursor_instances.clear();
         self.terminal_text_pipeline
@@ -347,6 +361,190 @@ impl Renderer {
         self.buffer_terminal_cursor_instances.clear();
         self.buffer_terminal_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
+    }
+
+    // ── Terminal tab bar ─────────────────────────────────────────────────────────
+
+    const TAB_BAR_HEIGHT: f32 = 52.0;
+    const TAB_BAR_OUTLINE_INSET: f32 = 2.0;
+    const TAB_BAR_PADDING_X: f32 = 0.0;
+    const TAB_BAR_TAB_MIN_WIDTH: f32 = 180.0;
+    const TAB_BAR_TAB_MAX_WIDTH: f32 = 230.0;
+    const TAB_BAR_DOT_SIZE: f32 = 10.0;
+    const TAB_BAR_DOT_GAP: f32 = 22.0;
+    const TAB_BAR_TOP_BORDER: f32 = 3.0;
+
+    /// Render terminal tab bar at the top of the bottom panel.
+    ///
+    /// Returns chrome quads (backgrounds, dots, borders) to be added to
+    /// `region_instances` and the remaining `[x, y, w, h]` bounds for the
+    /// terminal grid below the tab strip.
+    pub fn terminal_tab_bar_content_bounds(&self, bounds: [f32; 4]) -> [f32; 4] {
+        let inset = Self::TAB_BAR_OUTLINE_INSET.min(bounds[3].max(0.0));
+        let tab_bar_h = Self::TAB_BAR_HEIGHT.min((bounds[3] - inset).max(0.0));
+        if tab_bar_h < 1.0 {
+            return bounds;
+        }
+        [
+            bounds[0],
+            bounds[1] + inset + tab_bar_h,
+            bounds[2],
+            (bounds[3] - inset - tab_bar_h).max(0.0),
+        ]
+    }
+
+    pub fn update_terminal_tab_bar(
+        &mut self,
+        tab_labels: &[&str],
+        tab_running: &[bool],
+        active_tab: usize,
+        bounds: [f32; 4],
+    ) -> (Vec<RegionDrawInstance>, [f32; 4]) {
+        let mut chrome = Vec::new();
+        let outline_inset = Self::TAB_BAR_OUTLINE_INSET.min(bounds[3].max(0.0));
+        let tab_bar_h = Self::TAB_BAR_HEIGHT.min((bounds[3] - outline_inset).max(0.0));
+        self.terminal_tab_bar_batch = None;
+        if tab_bar_h < 1.0 || tab_labels.is_empty() {
+            self.terminal_text_pipeline.upload_instances(
+                &self.device,
+                &self.queue,
+                &self.terminal_glyph_instances,
+            );
+            return (chrome, bounds);
+        }
+
+        let tab_bg = self.theme.ui.terminal_bg.as_f32();
+        let active_bg = {
+            let mut c = tab_bg;
+            for i in 0..3 {
+                c[i] = (c[i] + 0.055).min(1.0);
+            }
+            c
+        };
+        let inactive_bg = {
+            let mut c = tab_bg;
+            for i in 0..3 {
+                c[i] = (c[i] + 0.018).min(1.0);
+            }
+            c[3] = 0.92;
+            c
+        };
+        let accent = self.theme.ui.cyan.as_f32();
+        let running_color = [0.32, 0.92, 0.52, 0.95_f32]; // green
+        let dead_color = [0.45, 0.45, 0.45, 0.55_f32];   // gray
+        let active_fg = self.theme.editor.fg.as_f32();
+        let inactive_fg = self.theme.ui.fg_dim.as_f32();
+        let font_size = (self.theme.ui.panel_font_size + 2.0).max(self.theme.ui.panel_font_size);
+        let tab_bar_y = bounds[1] + outline_inset;
+        let text_y = tab_bar_y + ((tab_bar_h - self.theme.ui.panel_line_height) * 0.5).max(0.0);
+        let label_x_offset = Self::TAB_BAR_DOT_GAP + Self::TAB_BAR_DOT_SIZE + 14.0;
+        let label_right_padding = 28.0_f32;
+        let body_count = self.terminal_glyph_instances.len() as u32;
+        let tab_text_start = body_count;
+
+        let tab_bar_bounds = [bounds[0], tab_bar_y, bounds[2], tab_bar_h];
+        let terminal_bounds = self.terminal_tab_bar_content_bounds(bounds);
+
+        // Tab bar background
+        chrome.push(RegionDrawInstance::new(tab_bar_bounds, tab_bg));
+
+        let tab_count = tab_labels.len();
+        
+        let mut tab_x = bounds[0] + Self::TAB_BAR_PADDING_X;
+        let right_limit = bounds[0] + bounds[2] - Self::TAB_BAR_PADDING_X;
+
+        let tab_width = if tab_count > 0 {
+            let per_tab = (right_limit - tab_x) / tab_count as f32;
+            per_tab.clamp(Self::TAB_BAR_TAB_MIN_WIDTH, Self::TAB_BAR_TAB_MAX_WIDTH)
+        } else {
+            Self::TAB_BAR_TAB_MIN_WIDTH
+        };
+
+        for i in 0..tab_count {
+            let tab_w = tab_width.min(right_limit - tab_x);
+            if tab_w < Self::TAB_BAR_TAB_MIN_WIDTH {
+                break;
+            }
+
+            let is_active = i == active_tab;
+
+            // Tab background
+            chrome.push(RegionDrawInstance::new(
+                [tab_x, tab_bar_y, tab_w, tab_bar_h],
+                if is_active { active_bg } else { inactive_bg },
+            ));
+            if is_active {
+                // Top accent border
+                chrome.push(RegionDrawInstance::new(
+                    [tab_x, tab_bar_y, tab_w, Self::TAB_BAR_TOP_BORDER],
+                    accent,
+                ));
+            }
+
+            // Status dot
+            let running = tab_running.get(i).copied().unwrap_or(false);
+            let dot_color = if running { running_color } else { dead_color };
+            let dot_x = tab_x + Self::TAB_BAR_DOT_GAP;
+            let dot_y = tab_bar_y + (tab_bar_h - Self::TAB_BAR_DOT_SIZE) * 0.5;
+            chrome.push(RegionDrawInstance::new(
+                [dot_x, dot_y, Self::TAB_BAR_DOT_SIZE, Self::TAB_BAR_DOT_SIZE],
+                dot_color,
+            ));
+
+            // Text label
+            let label_x = tab_x + label_x_offset;
+            let label_max_w = (tab_w - label_x_offset - label_right_padding).max(0.0);
+            let label = clamp_monospace_text(tab_labels[i], label_max_w, font_size);
+            if !label.is_empty() {
+                self.terminal_text_system
+                    .set_size(Some(label_max_w), Some(tab_bar_h));
+                self.terminal_glyph_instances.extend(layout_panel_text(
+                    &label,
+                    &mut self.terminal_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    label_x,
+                    text_y,
+                    if is_active { active_fg } else { inactive_fg },
+                ));
+            }
+
+            // Separator between tabs
+            if i + 1 < tab_count {
+                let sep_x = tab_x + tab_w - 0.5;
+                chrome.push(RegionDrawInstance::new(
+                    [sep_x, tab_bar_y + 5.0, 1.0, (tab_bar_h - 10.0).max(0.0)],
+                    [0.2, 0.2, 0.25, 0.3],
+                ));
+            }
+
+            tab_x += tab_w;
+        }
+
+        // Bottom divider between tab strip and terminal body.
+        chrome.push(RegionDrawInstance::new(
+            [bounds[0], tab_bar_y + tab_bar_h - 1.0, bounds[2], 1.0],
+            [0.16, 0.18, 0.24, 0.75],
+        ));
+
+        let tab_text_count = self
+            .terminal_glyph_instances
+            .len()
+            .saturating_sub(tab_text_start as usize) as u32;
+        self.terminal_tab_bar_batch = rect_to_scissor(tab_bar_bounds).map(|scissor| TextScissorBatch {
+            scissor,
+            range: InstanceDrawRange {
+                start: tab_text_start,
+                count: tab_text_count,
+            },
+        });
+        self.terminal_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.terminal_glyph_instances,
+        );
+
+        (chrome, terminal_bounds)
     }
 
     // ── Welcome logo ───────────────────────────────────────────────────────────

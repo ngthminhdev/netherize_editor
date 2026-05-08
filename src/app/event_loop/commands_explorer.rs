@@ -1,7 +1,58 @@
 use super::*;
 
 impl AppShell {
+    fn reset_terminals_for_workspace_switch(&mut self) {
+        let bottom_sessions: Vec<u64> = self
+            .terminal_tabs
+            .iter()
+            .filter_map(|tab| tab.session_id)
+            .collect();
+        let right_session = self.right_pty_session_id;
+        let buffer_sessions: Vec<u64> = self.terminal_buffer_grids.keys().copied().collect();
+
+        for session_id in bottom_sessions
+            .into_iter()
+            .chain(right_session)
+            .chain(buffer_sessions)
+        {
+            self.submit(RequestSpec {
+                revision_id: 0,
+                topic: RequestTopic::TerminalPty,
+                payload: WorkerRequestPayload::ClosePtySession { session_id },
+            });
+        }
+
+        self.ignored_terminal_tab_spawns
+            .extend(self.pending_terminal_tab_spawns.keys().copied());
+        self.pending_terminal_tab_spawns.clear();
+        self.terminal_buffer_grids.clear();
+        self.pending_lazygit_buffer_index = None;
+        self.pending_lazydocker_buffer_index = None;
+        self.right_pty_session_id = None;
+        self.pending_right_pty_spawn = false;
+        self.right_terminal_grid = TerminalGrid::new(120, 40);
+        self.right_terminal_grid.highlight_colors = HighlightColors::from_theme(&self.theme);
+        self.right_terminal_needs_layout = true;
+        self.last_right_terminal_bounds = None;
+
+        let mut grid = TerminalGrid::new(120, 40);
+        grid.highlight_colors = HighlightColors::from_theme(&self.theme);
+        self.terminal_tabs = vec![TerminalTab::new(grid, "bash".to_string())];
+        self.active_terminal_tab = 0;
+        self.terminal_needs_layout = true;
+        self.buffer_terminal_needs_layout = true;
+        self.last_terminal_bounds = None;
+        self.last_buffer_terminal_bounds = None;
+
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_terminal();
+            renderer.clear_buffer_terminal();
+        }
+    }
+
     fn prepare_for_workspace_switch(&mut self) {
+        self.reset_terminals_for_workspace_switch();
+
         self.submit(RequestSpec {
             revision_id: 0,
             topic: RequestTopic::LspClient,
@@ -108,15 +159,6 @@ impl AppShell {
 
         self.submit_workspace_git_status_refresh();
         self.submit_active_buffer_git_baseline_refresh();
-
-        if let Some(session_id) = self.pty_session_id {
-            let quoted = shell_quote_path(&root_path);
-            self.forward_to_terminal_session(session_id, &format!("\x15cd {quoted}\r"));
-        }
-        if let Some(session_id) = self.right_pty_session_id {
-            let quoted = shell_quote_path(&root_path);
-            self.forward_to_terminal_session(session_id, &format!("\x15cd {quoted}\r"));
-        }
 
         self.sync_lsp_server_for_workspace();
 

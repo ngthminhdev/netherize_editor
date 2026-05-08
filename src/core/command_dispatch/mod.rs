@@ -270,6 +270,9 @@ fn dispatch_command_with_clipboard_once(
         | Command::TerminalPaste
         | Command::TerminalScrollUp
         | Command::TerminalScrollDown
+        | Command::TerminalTabNew
+        | Command::TerminalTabClose
+        | Command::SwitchTerminalTab(_)
         | Command::FocusEditor
         | Command::FocusExplorer
         | Command::FocusTerminal

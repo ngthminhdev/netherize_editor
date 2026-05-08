@@ -680,6 +680,17 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert(Some("terminal"), nk(NamedKey::F12), FOCUS_TERMINAL);
     km.insert(Some("terminal"), mp(KeyCode::KeyV), TERMINAL_PASTE);
+    km.insert(Some("terminal"), mp(KeyCode::KeyT), TERMINAL_TAB_NEW);
+    km.insert(Some("terminal"), mp(KeyCode::KeyW), TERMINAL_TAB_CLOSE);
+    km.insert(Some("terminal"), mp(KeyCode::Digit1), TERMINAL_TAB_SWITCH_1);
+    km.insert(Some("terminal"), mp(KeyCode::Digit2), TERMINAL_TAB_SWITCH_2);
+    km.insert(Some("terminal"), mp(KeyCode::Digit3), TERMINAL_TAB_SWITCH_3);
+    km.insert(Some("terminal"), mp(KeyCode::Digit4), TERMINAL_TAB_SWITCH_4);
+    km.insert(Some("terminal"), mp(KeyCode::Digit5), TERMINAL_TAB_SWITCH_5);
+    km.insert(Some("terminal"), mp(KeyCode::Digit6), TERMINAL_TAB_SWITCH_6);
+    km.insert(Some("terminal"), mp(KeyCode::Digit7), TERMINAL_TAB_SWITCH_7);
+    km.insert(Some("terminal"), mp(KeyCode::Digit8), TERMINAL_TAB_SWITCH_8);
+    km.insert(Some("terminal"), mp(KeyCode::Digit9), TERMINAL_TAB_SWITCH_9);
 
     // ── Terminal normal mode bindings (copy mode / virtual cursor) ──────────
     km.insert(
@@ -727,6 +738,53 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyV), ENTER_VISUAL);
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyY), YANK_SELECTION);
     km.insert(Some("terminal_normal"), mp(KeyCode::KeyV), TERMINAL_PASTE);
+    km.insert(Some("terminal_normal"), mp(KeyCode::KeyT), TERMINAL_TAB_NEW);
+    km.insert(Some("terminal_normal"), mp(KeyCode::KeyW), TERMINAL_TAB_CLOSE);
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit1),
+        TERMINAL_TAB_SWITCH_1,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit2),
+        TERMINAL_TAB_SWITCH_2,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit3),
+        TERMINAL_TAB_SWITCH_3,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit4),
+        TERMINAL_TAB_SWITCH_4,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit5),
+        TERMINAL_TAB_SWITCH_5,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit6),
+        TERMINAL_TAB_SWITCH_6,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit7),
+        TERMINAL_TAB_SWITCH_7,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit8),
+        TERMINAL_TAB_SWITCH_8,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit9),
+        TERMINAL_TAB_SWITCH_9,
+    );
     km.insert(Some("terminal_normal"), ch('/'), TERMINAL_SEARCH_OPEN);
     km.insert(Some("terminal_normal"), ch('n'), SEARCH_NEXT);
     km.insert(Some("terminal_normal"), ch('N'), SEARCH_PREV);

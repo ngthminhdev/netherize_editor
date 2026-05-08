@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 
 use crate::{
+    text::layout_sync::visual_y_for_logical_scroll,
     app::{app_state::AppState, command_palette::CommandPaletteRenderModel, input::LeapTarget},
     render::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
@@ -38,7 +39,7 @@ impl Renderer {
         let line_height = self.theme.editor.line_height;
         let font_size = self.theme.editor.font_size;
         let total_lines = app_state.total_lines().max(1);
-        let scroll_y = app_state.current_scroll_y * line_height;
+        let scroll_y = visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y);
         let gutter_digits = total_lines.to_string().len().max(3);
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
         let origin_x = center_bounds[0] + self.editor_padding_x + gutter_width;

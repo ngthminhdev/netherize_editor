@@ -19,6 +19,15 @@ impl AsyncResultRouter for AppShell {
         let revision_id = event.revision_id;
         let topic = event.topic;
         if let crate::async_runtime::message::WorkerEventKind::Failed { error } = event.kind {
+            if topic == RequestTopic::TerminalPty
+                && let Some(tab_idx) = self.pending_terminal_tab_spawns.remove(&request_id)
+            {
+                if let Some(tab) = self.terminal_tabs.get_mut(tab_idx) {
+                    tab.status = TerminalTabStatus::Exited(1);
+                    tab.label = "terminal failed".to_string();
+                    self.terminal_needs_layout = true;
+                }
+            }
             if topic == RequestTopic::LspClient {
                 self.pending_lsp_server = None;
             }
@@ -241,19 +250,47 @@ impl AsyncResultRouter for AppShell {
                         let _ = self.sync_terminal_buffer_layout(session_id, bounds);
                     }
                 } else {
+                    if self.ignored_terminal_tab_spawns.remove(&result.request_id) {
+                        self.submit(RequestSpec {
+                            revision_id: 0,
+                            topic: RequestTopic::TerminalPty,
+                            payload: WorkerRequestPayload::ClosePtySession { session_id },
+                        });
+                        self.request_redraw();
+                        return;
+                    }
                     eprintln!(
                         "[AppShell] PTY ready: session={session_id} shell={shell} dir={}",
                         working_dir.display()
                     );
-                    self.pty_session_id = Some(session_id);
+                    // Create label from shell name (e.g. "/bin/bash" → "bash").
+                    let label = shell.rsplit('/').next().unwrap_or(&shell).to_string();
+                    let idx = self
+                        .pending_terminal_tab_spawns
+                        .remove(&result.request_id)
+                        .unwrap_or(self.active_terminal_tab);
+                    let Some(tab) = self.terminal_tabs.get_mut(idx) else {
+                        self.submit(RequestSpec {
+                            revision_id: 0,
+                            topic: RequestTopic::TerminalPty,
+                            payload: WorkerRequestPayload::ClosePtySession { session_id },
+                        });
+                        self.request_redraw();
+                        return;
+                    };
+                    let cols = tab.grid.cols.min(u16::MAX as usize) as u16;
+                    let rows = tab.grid.rows.min(u16::MAX as usize) as u16;
+                    tab.session_id = Some(session_id);
+                    tab.label = label;
+                    tab.status = TerminalTabStatus::Running;
                     self.terminal_needs_layout = true;
                     self.submit(RequestSpec {
                         revision_id: 0,
                         topic: RequestTopic::TerminalPty,
                         payload: WorkerRequestPayload::ResizePtySession {
                             session_id,
-                            cols: self.terminal_grid.cols.min(u16::MAX as usize) as u16,
-                            rows: self.terminal_grid.rows.min(u16::MAX as usize) as u16,
+                            cols,
+                            rows,
                         },
                     });
                 }
@@ -263,16 +300,20 @@ impl AsyncResultRouter for AppShell {
                 let preserve_viewport = self.app_state.current_mode() == EditorMode::TerminalNormal
                     && self.focused_terminal_session_id() == Some(session_id);
                 let mut should_redraw = false;
-                if self.pty_session_id == Some(session_id) {
-                    let scrolled_rows = self.terminal_grid.feed_bytes(&chunk);
-                    self.terminal_grid.apply_regex_highlights();
-                    if preserve_viewport {
-                        self.terminal_grid.view_scroll_up(scrolled_rows);
-                    } else {
-                        self.terminal_grid.view_scroll_to_bottom();
+                // Route PTY output to the matching bottom-panel tab.
+                for tab in &mut self.terminal_tabs {
+                    if tab.session_id == Some(session_id) {
+                        let scrolled_rows = tab.grid.feed_bytes(&chunk);
+                        tab.grid.apply_regex_highlights();
+                        if preserve_viewport {
+                            tab.grid.view_scroll_up(scrolled_rows);
+                        } else {
+                            tab.grid.view_scroll_to_bottom();
+                        }
+                        self.terminal_needs_layout = true;
+                        should_redraw = true;
+                        break;
                     }
-                    self.terminal_needs_layout = true;
-                    should_redraw = true;
                 }
                 if self.right_pty_session_id == Some(session_id) {
                     let scrolled_rows = self.right_terminal_grid.feed_bytes(&chunk);
@@ -314,7 +355,7 @@ impl AsyncResultRouter for AppShell {
                 cols,
                 rows,
             } => {
-                if self.pty_session_id == Some(session_id) {
+                if self.terminal_tabs.iter().any(|t| t.session_id == Some(session_id)) {
                     eprintln!("[AppShell] PTY {session_id} resized to {cols}x{rows}");
                 }
                 if self
@@ -328,9 +369,12 @@ impl AsyncResultRouter for AppShell {
             WorkerResultPayload::PtySessionClosed {
                 session_id, reason, ..
             } => {
-                if self.pty_session_id == Some(session_id) {
+                if let Some(tab) = self.terminal_tabs.iter_mut().find(|t| t.session_id == Some(session_id)) {
                     eprintln!("[AppShell] PTY {session_id} closed: {reason}");
-                    self.pty_session_id = None;
+                    tab.session_id = None;
+                    tab.status = TerminalTabStatus::Exited(0);
+                    tab.label = format!("{} (dead)", tab.label.trim_end_matches(" (dead)"));
+                    self.terminal_needs_layout = true;
                 }
                 if self.right_pty_session_id == Some(session_id) {
                     eprintln!("[AppShell] right PTY {session_id} closed: {reason}");

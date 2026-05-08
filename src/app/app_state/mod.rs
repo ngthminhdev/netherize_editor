@@ -638,6 +638,8 @@ fn build_help_lines(
     lines.push("Terminal".to_string());
     append_help_binding(&mut lines, bindings, "app.toggle_terminal", "Toggle terminal");
     append_help_binding(&mut lines, bindings, "app.focus_terminal", "Focus terminal");
+    append_help_binding(&mut lines, bindings, "terminal.tab_new", "New terminal tab");
+    append_help_binding(&mut lines, bindings, "terminal.tab_close", "Close terminal tab");
     lines.push("  tip: Ctrl+Q in terminal → terminal normal mode (navigate with hjkl)".to_string());
     lines.push("".to_string());
 
@@ -814,6 +816,17 @@ fn command_label_for_help(command_id: &str) -> String {
         "terminal.paste" => "Terminal paste",
         "terminal.enter_normal_mode" => "Enter terminal normal",
         "terminal.search_open" => "Search in terminal",
+        "terminal.tab_new" => "New terminal tab",
+        "terminal.tab_close" => "Close terminal tab",
+        "terminal.tab_switch_1" => "Terminal tab 1",
+        "terminal.tab_switch_2" => "Terminal tab 2",
+        "terminal.tab_switch_3" => "Terminal tab 3",
+        "terminal.tab_switch_4" => "Terminal tab 4",
+        "terminal.tab_switch_5" => "Terminal tab 5",
+        "terminal.tab_switch_6" => "Terminal tab 6",
+        "terminal.tab_switch_7" => "Terminal tab 7",
+        "terminal.tab_switch_8" => "Terminal tab 8",
+        "terminal.tab_switch_9" => "Terminal tab 9",
         // ── Git ───────────────────────────────────────────────────────────
         "git.open_lazygit" => "Open lazygit",
         "git.open_lazydocker" => "Open lazydocker",

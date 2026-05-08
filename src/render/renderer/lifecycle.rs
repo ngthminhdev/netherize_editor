@@ -202,6 +202,8 @@ impl Renderer {
             terminal_glyph_instances: Vec::new(),
             terminal_cursor_instances: Vec::new(),
             terminal_scissor: None,
+            terminal_body_batch: None,
+            terminal_tab_bar_batch: None,
             buffer_terminal_text_system: make_text_system(panel_metrics, font_family.as_deref()),
             buffer_terminal_text_pipeline,
             buffer_terminal_view_renderer: TerminalViewRenderer::default_monospace(),

@@ -95,6 +95,17 @@ pub const GIT_BLAME_LINE: &str = "git.blame_line";
 pub const TERMINAL_ENTER_NORMAL_MODE: &str = "terminal.enter_normal_mode";
 pub const TERMINAL_PASTE: &str = "terminal.paste";
 pub const TERMINAL_SEARCH_OPEN: &str = "terminal.search_open";
+pub const TERMINAL_TAB_NEW: &str = "terminal.tab_new";
+pub const TERMINAL_TAB_CLOSE: &str = "terminal.tab_close";
+pub const TERMINAL_TAB_SWITCH_1: &str = "terminal.tab_switch_1";
+pub const TERMINAL_TAB_SWITCH_2: &str = "terminal.tab_switch_2";
+pub const TERMINAL_TAB_SWITCH_3: &str = "terminal.tab_switch_3";
+pub const TERMINAL_TAB_SWITCH_4: &str = "terminal.tab_switch_4";
+pub const TERMINAL_TAB_SWITCH_5: &str = "terminal.tab_switch_5";
+pub const TERMINAL_TAB_SWITCH_6: &str = "terminal.tab_switch_6";
+pub const TERMINAL_TAB_SWITCH_7: &str = "terminal.tab_switch_7";
+pub const TERMINAL_TAB_SWITCH_8: &str = "terminal.tab_switch_8";
+pub const TERMINAL_TAB_SWITCH_9: &str = "terminal.tab_switch_9";
 
 // ── Buffer goto ─────────────────────────────────────────────────────────────
 pub const BUFFER_GOTO_1: &str = "buffer.goto_1";
@@ -301,6 +312,17 @@ pub const ALL_IDS: &[&str] = &[
     TERMINAL_ENTER_NORMAL_MODE,
     TERMINAL_PASTE,
     TERMINAL_SEARCH_OPEN,
+    TERMINAL_TAB_NEW,
+    TERMINAL_TAB_CLOSE,
+    TERMINAL_TAB_SWITCH_1,
+    TERMINAL_TAB_SWITCH_2,
+    TERMINAL_TAB_SWITCH_3,
+    TERMINAL_TAB_SWITCH_4,
+    TERMINAL_TAB_SWITCH_5,
+    TERMINAL_TAB_SWITCH_6,
+    TERMINAL_TAB_SWITCH_7,
+    TERMINAL_TAB_SWITCH_8,
+    TERMINAL_TAB_SWITCH_9,
     BUFFER_GOTO_1,
     BUFFER_GOTO_2,
     BUFFER_GOTO_3,
@@ -477,6 +499,17 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         TERMINAL_ENTER_NORMAL_MODE => Some(Command::SwitchMode(ModeEvent::EnterTerminalNormal)),
         TERMINAL_PASTE => Some(Command::TerminalPaste),
         TERMINAL_SEARCH_OPEN => Some(Command::TerminalSearchOpen),
+        TERMINAL_TAB_NEW => Some(Command::TerminalTabNew),
+        TERMINAL_TAB_CLOSE => Some(Command::TerminalTabClose),
+        TERMINAL_TAB_SWITCH_1 => Some(Command::SwitchTerminalTab(0)),
+        TERMINAL_TAB_SWITCH_2 => Some(Command::SwitchTerminalTab(1)),
+        TERMINAL_TAB_SWITCH_3 => Some(Command::SwitchTerminalTab(2)),
+        TERMINAL_TAB_SWITCH_4 => Some(Command::SwitchTerminalTab(3)),
+        TERMINAL_TAB_SWITCH_5 => Some(Command::SwitchTerminalTab(4)),
+        TERMINAL_TAB_SWITCH_6 => Some(Command::SwitchTerminalTab(5)),
+        TERMINAL_TAB_SWITCH_7 => Some(Command::SwitchTerminalTab(6)),
+        TERMINAL_TAB_SWITCH_8 => Some(Command::SwitchTerminalTab(7)),
+        TERMINAL_TAB_SWITCH_9 => Some(Command::SwitchTerminalTab(8)),
         BUFFER_GOTO_1 => Some(Command::BufferGoto(0)),
         BUFFER_GOTO_2 => Some(Command::BufferGoto(1)),
         BUFFER_GOTO_3 => Some(Command::BufferGoto(2)),

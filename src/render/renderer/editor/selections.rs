@@ -58,7 +58,7 @@ impl Renderer {
         let gutter_digits = total_lines.to_string().len().max(3);
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
         let text_area_x = center_bounds[0] + gutter_inset_left + gutter_width;
-        let scroll_y = app_state.current_scroll_y * line_height;
+        let scroll_y = visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y);
         let scroll_x = app_state.scroll_column as f32 * (font_size * 0.6).max(1.0);
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
         let viewport_top = center_bounds[1] + self.editor_padding_y;
@@ -122,7 +122,7 @@ impl Renderer {
         let text_area_x = center_bounds[0] + gutter_inset_left + gutter_width;
         let text_area_w =
             (center_bounds[2] - gutter_inset_left - self.editor_padding_x - gutter_width).max(1.0);
-        let scroll_y = app_state.current_scroll_y * line_height;
+        let scroll_y = visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y);
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
         let caret_layout =
             compute_caret_layout(&self.text_system, app_state, [text_area_x, origin_y]);
@@ -167,7 +167,7 @@ impl Renderer {
         let total_lines = app_state.total_lines().max(1);
         let gutter_digits = total_lines.to_string().len().max(3);
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
-        let gutter_inset_left = self.editor_padding_x + 6.0 + EDITOR_FRAME_INSET;
+        let gutter_inset_left = self.editor_padding_x;
         let text_area_x = center_bounds[0] + gutter_inset_left + gutter_width;
         let text_area_w =
             (center_bounds[2] - gutter_inset_left - self.editor_padding_x - gutter_width).max(1.0);
@@ -234,7 +234,7 @@ impl Renderer {
         let total_lines = app_state.total_lines().max(1);
         let gutter_digits = total_lines.to_string().len().max(3);
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
-        let gutter_inset_left = self.editor_padding_x + 6.0 + EDITOR_FRAME_INSET;
+        let gutter_inset_left = self.editor_padding_x;
         let text_area_x = center_bounds[0] + gutter_inset_left + gutter_width;
         let text_area_w =
             (center_bounds[2] - gutter_inset_left - self.editor_padding_x - gutter_width).max(1.0);
@@ -305,7 +305,7 @@ impl Renderer {
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
         let text_area_x = center_bounds[0] + self.editor_padding_x + gutter_width;
         let text_area_w = (center_bounds[2] - self.editor_padding_x - gutter_width).max(1.0);
-        let scroll_y = app_state.current_scroll_y * line_height;
+        let scroll_y = visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y);
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
 
         let viewport_top = center_bounds[1] + self.editor_padding_y;
@@ -397,7 +397,7 @@ impl Renderer {
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
         let text_area_x = center_bounds[0] + self.editor_padding_x + gutter_width;
         let text_area_w = (center_bounds[2] - self.editor_padding_x - gutter_width).max(1.0);
-        let scroll_y = app_state.current_scroll_y * line_height;
+        let scroll_y = visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y);
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
         let viewport_top = center_bounds[1] + self.editor_padding_y;
         let viewport_bottom =

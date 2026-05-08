@@ -92,7 +92,6 @@ pub struct AppShell {
     input_map: InputMap,
     scheduler: AsyncScheduler,
     bridge: Option<AppAsyncBridge>,
-    pty_session_id: Option<u64>,
     right_pty_session_id: Option<u64>,
     right_terminal_grid: TerminalGrid,
     right_terminal_needs_layout: bool,
@@ -105,7 +104,19 @@ pub struct AppShell {
     semantic_highlight_spans: Vec<HighlightSpan>,
     syntax_engine: Option<SyntaxEngine>,
     syntax_engine_file: Option<PathBuf>,
-    terminal_grid: TerminalGrid,
+    /// Bottom-panel terminal tabs. Always non-empty when the panel is open.
+    terminal_tabs: Vec<TerminalTab>,
+    active_terminal_tab: usize,
+    /// Spawn request id → target bottom-panel tab index.
+    ///
+    /// PTY spawn completes asynchronously, so binding `PtySpawned` to the
+    /// currently active tab is racy if the user creates/switches tabs before
+    /// the worker replies.
+    pending_terminal_tab_spawns: HashMap<u64, usize>,
+    /// Spawn requests that belonged to terminal tabs reset during a workspace
+    /// switch. If the worker reports them later, close the newborn PTY instead
+    /// of binding it into the new workspace's terminal tab ring.
+    ignored_terminal_tab_spawns: HashSet<u64>,
     explorer_cursor: usize,
     explorer_snapshot: ExplorerSnapshot,
     explorer_snapshot_dirty: bool,
@@ -342,6 +353,52 @@ pub enum AppEvent {
     WorkerMessageReady,
 }
 
+/// Trạng thái của một terminal tab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum TerminalTabStatus {
+    /// PTY session đang chạy.
+    Running,
+    /// PTY session đã kết thúc với exit code.
+    Exited(i32),
+}
+
+impl TerminalTabStatus {
+    pub fn is_running(&self) -> bool {
+        matches!(self, Self::Running)
+    }
+
+}
+
+/// Một tab terminal trong bottom panel.
+#[derive(Clone)]
+pub(super) struct TerminalTab {
+    pub grid: TerminalGrid,
+    pub session_id: Option<u64>,
+    pub label: String,
+    pub status: TerminalTabStatus,
+}
+
+impl std::fmt::Debug for TerminalTab {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TerminalTab")
+            .field("session_id", &self.session_id)
+            .field("label", &self.label)
+            .field("status", &self.status)
+            .finish_non_exhaustive()
+    }
+}
+
+impl TerminalTab {
+    fn new(grid: TerminalGrid, label: String) -> Self {
+        Self {
+            grid,
+            session_id: None,
+            label,
+            status: TerminalTabStatus::Running,
+        }
+    }
+}
+
 pub fn run() -> Result<(), winit::error::EventLoopError> {
     let event_loop = EventLoop::<AppEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
@@ -414,7 +471,7 @@ impl AppShell {
             return self.active_terminal_grid_mut();
         }
         if self.focus_manager.current() == FocusTarget::BottomPanel {
-            return Some(&mut self.terminal_grid);
+            return self.active_terminal_tab_mut().map(|tab| &mut tab.grid);
         }
         None
     }
@@ -426,7 +483,7 @@ impl AppShell {
             return self.app_state.active_terminal_session_id();
         }
         if self.focus_manager.current() == FocusTarget::BottomPanel {
-            return self.pty_session_id;
+            return self.active_terminal_tab().and_then(|tab| tab.session_id);
         }
         if self.focus_manager.current() == FocusTarget::RightSidebar
             && self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal)
@@ -434,6 +491,15 @@ impl AppShell {
             return self.right_pty_session_id;
         }
         None
+    }
+
+    fn active_terminal_tab(&self) -> Option<&TerminalTab> {
+        self.terminal_tabs.get(self.active_terminal_tab)
+    }
+
+    fn active_terminal_tab_mut(&mut self) -> Option<&mut TerminalTab> {
+        let idx = self.active_terminal_tab;
+        self.terminal_tabs.get_mut(idx)
     }
 
     fn sync_focus_mode_for_active_buffer(&mut self) -> bool {

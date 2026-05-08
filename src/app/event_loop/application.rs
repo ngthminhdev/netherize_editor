@@ -1215,19 +1215,37 @@ impl AppShell {
                     bottom.bounds.width,
                     bottom.bounds.height,
                 ];
+
+                let terminal_content_bounds = self
+                    .renderer
+                    .as_ref()
+                    .map(|renderer| renderer.terminal_tab_bar_content_bounds(bottom_bounds))
+                    .unwrap_or(bottom_bounds);
+
                 let bounds_changed = self.last_terminal_bounds != Some(bottom_bounds);
-                let grid_changed = self.sync_terminal_layout(bottom_bounds);
+                let grid_changed = self.sync_terminal_layout(terminal_content_bounds);
                 if (self.terminal_needs_layout || bounds_changed || grid_changed)
                     && let Some(renderer) = self.renderer.as_mut()
                 {
                     renderer.update_terminal_content(
-                        &self.terminal_grid,
-                        bottom_bounds,
+                        &self.terminal_tabs[self.active_terminal_tab].grid,
+                        terminal_content_bounds,
                         self.app_state.current_mode(),
                     );
                     self.last_terminal_bounds = Some(bottom_bounds);
                     self.terminal_needs_layout = false;
                 }
+
+                // Render tab bar after terminal content layout so tab labels are
+                // appended after body glyphs in the shared terminal text pipeline.
+                let tab_bar_quads = if let Some(renderer) = self.renderer.as_mut() {
+                    let labels: Vec<&str> = self.terminal_tabs.iter().map(|t| t.label.as_str()).collect();
+                    let running: Vec<bool> = self.terminal_tabs.iter().map(|t| t.status.is_running()).collect();
+                    renderer.update_terminal_tab_bar(&labels, &running, self.active_terminal_tab, bottom_bounds).0
+                } else {
+                    Vec::new()
+                };
+                region_instances.extend(tab_bar_quads);
             } else if self.last_terminal_bounds.is_some() {
                 if let Some(renderer) = self.renderer.as_mut() {
                     renderer.clear_terminal();

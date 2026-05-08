@@ -178,6 +178,8 @@ pub struct Renderer {
     pub(super) terminal_glyph_instances: Vec<GlyphInstance>,
     pub(super) terminal_cursor_instances: Vec<RegionDrawInstance>,
     pub(super) terminal_scissor: Option<[u32; 4]>,
+    pub(super) terminal_body_batch: Option<TextScissorBatch>,
+    pub(super) terminal_tab_bar_batch: Option<TextScissorBatch>,
 
     // ── Full-screen terminal buffer tabs ─────────────────────────────────────
     pub(super) buffer_terminal_text_system: TextSystem,

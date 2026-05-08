@@ -588,6 +588,62 @@ mode = "terminal_normal"
 key = "<leader>z m"
 command = "app.toggle_maximize_focus"
 
+[[bindings]]
+mode = "terminal_normal"
+key = "<leader>t n"
+command = "terminal.tab_new"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "<leader>x"
+command = "terminal.tab_close"
+
+# ── Terminal tab switching (mod+1..9) ──
+[[bindings]]
+mode = "terminal"
+key = "mod+1"
+command = "terminal.tab_switch_1"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+2"
+command = "terminal.tab_switch_2"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+3"
+command = "terminal.tab_switch_3"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+4"
+command = "terminal.tab_switch_4"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+5"
+command = "terminal.tab_switch_5"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+6"
+command = "terminal.tab_switch_6"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+7"
+command = "terminal.tab_switch_7"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+8"
+command = "terminal.tab_switch_8"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+9"
+command = "terminal.tab_switch_9"
+
 # ───────────────── EXPLORER ─────────────────
 [[bindings]]
 mode = "explorer"

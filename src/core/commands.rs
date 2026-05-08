@@ -170,6 +170,12 @@ pub enum Command {
     TerminalScrollUp,
     /// Scroll terminal viewport down (towards live output).
     TerminalScrollDown,
+    /// Create a new terminal tab in the bottom panel.
+    TerminalTabNew,
+    /// Close the current terminal tab in the bottom panel.
+    TerminalTabClose,
+    /// Switch to terminal tab N (0-based index).
+    SwitchTerminalTab(usize),
 
     // ── Workbench focus navigation (Module 12 Phase 2) ─────────────────────────
     /// Move keyboard focus to the center editor region.

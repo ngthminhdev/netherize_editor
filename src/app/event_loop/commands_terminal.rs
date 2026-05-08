@@ -1,6 +1,46 @@
 use super::*;
 
 impl AppShell {
+    fn default_terminal_working_dir(&self) -> Option<PathBuf> {
+        self.app_state
+            .active_file()
+            .and_then(|path| path.parent())
+            .map(PathBuf::from)
+            .or_else(|| self.app_state.workspace_root_path().map(PathBuf::from))
+            .or_else(|| {
+                std::env::current_dir()
+                    .ok()
+                    .filter(|path| path != &PathBuf::from("/"))
+            })
+    }
+
+    fn spawn_shell_for_terminal_tab(&mut self, tab_idx: usize) {
+        let Some(tab) = self.terminal_tabs.get_mut(tab_idx) else {
+            return;
+        };
+        if tab.session_id.is_some() {
+            return;
+        }
+        tab.status = TerminalTabStatus::Running;
+        let working_dir = self.default_terminal_working_dir();
+        if let Some(request) = self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::TerminalPty,
+            payload: WorkerRequestPayload::SpawnPtyShell {
+                shell: None,
+                working_dir,
+            },
+        }) {
+            self.pending_terminal_tab_spawns
+                .insert(request.request_id, tab_idx);
+        }
+    }
+
+    fn ensure_active_terminal_tab_spawned(&mut self) {
+        let idx = self.active_terminal_tab;
+        self.spawn_shell_for_terminal_tab(idx);
+    }
+
     fn map_directional_focus_command(&self, command: &Command) -> Command {
         match command {
             Command::FocusLeft => match self.focus_manager.current() {
@@ -36,27 +76,7 @@ impl AppShell {
 
                 let focus_changed = if is_open {
                     let changed = self.focus_manager.set(FocusTarget::BottomPanel);
-                    if self.pty_session_id.is_none() {
-                        let working_dir = self
-                            .app_state
-                            .active_file()
-                            .and_then(|path| path.parent())
-                            .map(PathBuf::from)
-                            .or_else(|| self.app_state.workspace_root_path().map(PathBuf::from))
-                            .or_else(|| {
-                                std::env::current_dir()
-                                    .ok()
-                                    .filter(|path| path != &PathBuf::from("/"))
-                            });
-                        self.submit(RequestSpec {
-                            revision_id: 0,
-                            topic: RequestTopic::TerminalPty,
-                            payload: WorkerRequestPayload::SpawnPtyShell {
-                                shell: None,
-                                working_dir,
-                            },
-                        });
-                    }
+                    self.ensure_active_terminal_tab_spawned();
                     changed
                 } else if self.focus_manager.current() == FocusTarget::BottomPanel {
                     self.focus_manager.set(FocusTarget::CenterEditor)
@@ -80,26 +100,8 @@ impl AppShell {
                 changed |= self.app_state.set_terminal_panel_open(next_visible);
                 self.terminal_needs_layout = true;
 
-                if next_visible && self.pty_session_id.is_none() {
-                    let working_dir = self
-                        .app_state
-                        .active_file()
-                        .and_then(|path| path.parent())
-                        .map(PathBuf::from)
-                        .or_else(|| self.app_state.workspace_root_path().map(PathBuf::from))
-                        .or_else(|| {
-                            std::env::current_dir()
-                                .ok()
-                                .filter(|path| path != &PathBuf::from("/"))
-                        });
-                    self.submit(RequestSpec {
-                        revision_id: 0,
-                        topic: RequestTopic::TerminalPty,
-                        payload: WorkerRequestPayload::SpawnPtyShell {
-                            shell: None,
-                            working_dir,
-                        },
-                    });
+                if next_visible {
+                    self.ensure_active_terminal_tab_spawned();
                 }
 
                 if !next_visible
@@ -222,27 +224,7 @@ impl AppShell {
                     self.input_handler.clear_pending_prefix();
                 }
 
-                if self.pty_session_id.is_none() {
-                    let working_dir = self
-                        .app_state
-                        .active_file()
-                        .and_then(|path| path.parent())
-                        .map(PathBuf::from)
-                        .or_else(|| self.app_state.workspace_root_path().map(PathBuf::from))
-                        .or_else(|| {
-                            std::env::current_dir()
-                                .ok()
-                                .filter(|path| path != &PathBuf::from("/"))
-                        });
-                    self.submit(RequestSpec {
-                        revision_id: 0,
-                        topic: RequestTopic::TerminalPty,
-                        payload: WorkerRequestPayload::SpawnPtyShell {
-                            shell: None,
-                            working_dir,
-                        },
-                    });
-                }
+                self.ensure_active_terminal_tab_spawned();
 
                 Some(changed)
             }
@@ -327,8 +309,64 @@ impl AppShell {
                 FocusTarget::RightSidebar => self.panel_state.switch_right_prev_tab(),
                 _ => false,
             }),
+            Command::TerminalTabNew => Some(self.handle_terminal_tab_new()),
+            Command::TerminalTabClose => Some(self.handle_terminal_tab_close()),
+            Command::SwitchTerminalTab(idx) => Some(self.handle_switch_terminal_tab(*idx)),
             _ => None,
         }
+    }
+
+    fn handle_terminal_tab_new(&mut self) -> bool {
+        let mut g = TerminalGrid::new(120, 40);
+        g.highlight_colors = HighlightColors::from_theme(&self.theme);
+        let label = format!("bash {}", self.terminal_tabs.len() + 1);
+        self.terminal_tabs.push(TerminalTab::new(g, label));
+        self.active_terminal_tab = self.terminal_tabs.len() - 1;
+        self.terminal_needs_layout = true;
+        self.spawn_shell_for_terminal_tab(self.active_terminal_tab);
+        true
+    }
+
+    fn handle_terminal_tab_close(&mut self) -> bool {
+        if self.terminal_tabs.len() <= 1 {
+            return false;
+        }
+        let idx = self.active_terminal_tab;
+        let session_id = self.terminal_tabs[idx].session_id;
+        self.pending_terminal_tab_spawns
+            .retain(|_, pending_idx| *pending_idx != idx);
+        self.terminal_tabs.remove(idx);
+        for pending_idx in self.pending_terminal_tab_spawns.values_mut() {
+            if *pending_idx > idx {
+                *pending_idx -= 1;
+            }
+        }
+        if self.active_terminal_tab >= self.terminal_tabs.len() {
+            self.active_terminal_tab = self.terminal_tabs.len().saturating_sub(1);
+        }
+        self.terminal_needs_layout = true;
+
+        if let Some(sid) = session_id {
+            self.submit(RequestSpec {
+                revision_id: 0,
+                topic: RequestTopic::TerminalPty,
+                payload: WorkerRequestPayload::ClosePtySession { session_id: sid },
+            });
+        }
+        true
+    }
+
+    fn handle_switch_terminal_tab(&mut self, idx: usize) -> bool {
+        if idx >= self.terminal_tabs.len() {
+            return false;
+        }
+        if self.active_terminal_tab == idx {
+            return false;
+        }
+        self.active_terminal_tab = idx;
+        self.terminal_needs_layout = true;
+        self.ensure_active_terminal_tab_spawned();
+        true
     }
 
     /// Handle search commands when in Terminal Normal Mode.

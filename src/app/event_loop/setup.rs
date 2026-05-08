@@ -127,7 +127,6 @@ impl AppShell {
             input_map: InputMap::new(save_path),
             scheduler,
             bridge: Some(bridge),
-            pty_session_id: None,
             right_pty_session_id: None,
             right_terminal_grid: {
                 let mut g = TerminalGrid::new(120, 40);
@@ -144,11 +143,14 @@ impl AppShell {
             semantic_highlight_spans: Vec::new(),
             syntax_engine: None,
             syntax_engine_file: None,
-            terminal_grid: {
+            terminal_tabs: {
                 let mut g = TerminalGrid::new(120, 40);
                 g.highlight_colors = HighlightColors::from_theme(&theme);
-                g
+                vec![TerminalTab::new(g, "bash".to_string())]
             },
+            active_terminal_tab: 0,
+            pending_terminal_tab_spawns: HashMap::new(),
+            ignored_terminal_tab_spawns: HashSet::new(),
             explorer_cursor: 0,
             explorer_snapshot: ExplorerSnapshot::default(),
             explorer_snapshot_dirty: true,
@@ -586,12 +588,21 @@ impl AppShell {
         let cols = (content_width / cell_width).floor().max(1.0) as usize;
         let rows = (content_height / line_height).floor().max(1.0) as usize;
 
-        let grid_changed = self.terminal_grid.resize(cols, rows);
+        let mut changed_sessions = Vec::new();
+        let mut grid_changed = false;
+        for tab in &mut self.terminal_tabs {
+            if tab.grid.resize(cols, rows) {
+                grid_changed = true;
+                if let Some(session_id) = tab.session_id {
+                    changed_sessions.push(session_id);
+                }
+            }
+        }
         if grid_changed {
             self.terminal_needs_layout = true;
         }
 
-        if grid_changed && let Some(session_id) = self.pty_session_id {
+        for session_id in changed_sessions {
             self.submit(RequestSpec {
                 revision_id: 0,
                 topic: RequestTopic::TerminalPty,
@@ -1194,9 +1205,10 @@ impl AppShell {
         // the bottom panel terminal isn't the active buffer, so
         // `active_buffer_is_terminal()` would return false.
         if self.terminal_search_palette_active {
-            // Access self.terminal_grid directly — not through
+            // Access active tab's grid directly — not through
             // focused_terminal_grid_mut(), because focus is on OverlayLayer.
-            let grid = &mut self.terminal_grid;
+            let Some(tab) = self.active_terminal_tab_mut() else { return false };
+            let grid = &mut tab.grid;
             grid.search_in_terminal(&query, false);
             let _ = grid.search_next();
             self.mark_focused_terminal_layout_dirty();

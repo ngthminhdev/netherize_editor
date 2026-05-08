@@ -72,7 +72,7 @@ impl AppShell {
 
         let mut changed = true;
         if !install_cmd.is_empty() {
-            if let Some(session_id) = self.pty_session_id {
+            if let Some(session_id) = self.focused_terminal_session_id() {
                 changed |= self.handle_command(Command::FocusTerminal);
                 self.forward_to_terminal_session(session_id, &format!("{install_cmd}\r"));
             } else {

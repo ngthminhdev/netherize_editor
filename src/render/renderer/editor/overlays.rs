@@ -388,7 +388,7 @@ impl Renderer {
             let popup_label_line_h = geometry.line_height;
             // Offset so the text block sits centered inside the taller row
             let text_v_center = (popup_row_h - popup_label_line_h) * 0.5;
-            let badge_size = (popup_row_h * 0.75).clamp(24.0, 36.0);
+            let badge_size = (popup_row_h * 0.82).clamp(28.0, 44.0);
             let badge_radius = badge_size * 0.22;
             let badge_col_w = PAD_X + badge_size + BADGE_GAP;
 
@@ -571,9 +571,9 @@ impl Renderer {
                 // Badge icon: scale down for multi-char icons (fn, op) so they fit on one line
                 let icon_char_count = kind_badge.icon.chars().count();
                 let icon_size = if icon_char_count > 1 {
-                    (badge_size * 0.42).max(8.0)
+                    (badge_size * 0.50).max(10.0)
                 } else {
-                    (badge_size * 0.62).max(10.0)
+                    (badge_size * 0.68).max(12.0)
                 };
                 let icon_w = estimate_monospace_width(kind_badge.icon, icon_size);
                 let icon_x = badge_x + (badge_size - icon_w) * 0.5;
@@ -588,7 +588,7 @@ impl Renderer {
                     &self.queue,
                     icon_x,
                     badge_y,
-                    [0.05, 0.05, 0.08, 1.0],
+                    [0.07, 0.07, 0.11, 1.0],
                 );
                 glyphs.extend(icon_glyphs);
                 self.editor_overlay_text_system

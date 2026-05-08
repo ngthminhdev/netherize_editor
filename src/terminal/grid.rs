@@ -146,6 +146,7 @@ impl HighlightColors {
 /// Khi cursor xuống quá dòng cuối, grid **scroll up** (xóa dòng đầu, thêm dòng trống cuối).
 const SCROLLBACK_LIMIT: usize = 500;
 
+#[derive(Clone)]
 pub struct TerminalGrid {
     pub cols: usize,
     pub rows: usize,

@@ -158,7 +158,10 @@ impl AppShell {
         }
 
         if focus_target == FocusTarget::BottomPanel {
-            let terminal = Some(&mut self.terminal_grid);
+            // Access grid via direct indexing to avoid borrowing self
+            // (focused_terminal_grid_mut borrows self, conflicting with app_state/clipboard).
+            let idx = self.active_terminal_tab;
+            let terminal = Some(&mut self.terminal_tabs[idx].grid);
             let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
             return dispatch_command_with_clipboard_count_with_terminal(
                 app_state,
@@ -713,12 +716,7 @@ impl AppShell {
     }
 }
 
-/// Wraps a filesystem path in single quotes suitable for POSIX shell, escaping
-/// any embedded single-quote characters so the path can be safely passed to cd.
-fn shell_quote_path(path: &std::path::Path) -> String {
-    let s = path.to_string_lossy();
-    format!("'{}'", s.replace('\'', "'\\''"))
-}
+
 
 fn normalize_terminal_paste_text(text: &str) -> String {
     let mut normalized = String::with_capacity(text.len());
