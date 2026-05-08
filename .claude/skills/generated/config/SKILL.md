@@ -5,7 +5,7 @@ description: "Skill for the Config area of netherize_editor. 44 symbols across 9
 
 # Config
 
-44 symbols | 9 files | Cohesion: 75%
+44 symbols | 9 files | Cohesion: 76%
 
 ## When to Use
 
@@ -48,14 +48,14 @@ Start here when exploring this area:
 | `list_available_theme_entries` | Function | `src/config/theme_config/loader.rs` | 52 |
 | `builtin` | Function | `src/config/ui_config.rs` | 177 |
 | `validate` | Function | `src/config/ui_config.rs` | 661 |
-| `is_valid` | Function | `src/core/command_ids.rs` | 406 |
 | `load` | Function | `src/config/keymap_loader.rs` | 35 |
+| `is_valid` | Function | `src/core/command_ids.rs` | 406 |
 | `debounce_ms` | Function | `src/config/ai_config.rs` | 49 |
 | `prefix_chars` | Function | `src/config/ai_config.rs` | 53 |
 | `suffix_chars` | Function | `src/config/ai_config.rs` | 57 |
 | `max_tokens` | Function | `src/config/ai_config.rs` | 61 |
-| `flush_pending_ai_inline_completion` | Function | `src/app/event_loop/setup.rs` | 1019 |
-| `next_ai_inline_flush_deadline` | Function | `src/app/event_loop/setup.rs` | 1070 |
+| `flush_pending_ai_inline_completion` | Function | `src/app/event_loop/setup.rs` | 1018 |
+| `next_ai_inline_flush_deadline` | Function | `src/app/event_loop/setup.rs` | 1069 |
 | `active_profile` | Function | `src/config/ui_config.rs` | 143 |
 | `load_active` | Function | `src/config/ui_config.rs` | 147 |
 | `load` | Function | `src/config/ui_config.rs` | 162 |

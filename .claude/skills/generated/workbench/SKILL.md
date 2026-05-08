@@ -1,11 +1,11 @@
 ---
 name: workbench
-description: "Skill for the Workbench area of netherize_editor. 113 symbols across 18 files."
+description: "Skill for the Workbench area of netherize_editor. 114 symbols across 18 files."
 ---
 
 # Workbench
 
-113 symbols | 18 files | Cohesion: 87%
+114 symbols | 18 files | Cohesion: 87%
 
 ## When to Use
 
@@ -26,7 +26,7 @@ description: "Skill for the Workbench area of netherize_editor. 113 symbols acro
 | `src/workbench/overlay_manager.rs` | default, build_overlays, clamp_to_bounds, builds_both_window_and_editor_relative_overlays |
 | `src/workbench/debug_state.rs` | default, toggle_breakpoint_on_execution_line, toggle_breakpoint_at_line, toggle_breakpoint_adds_and_removes_on_same_line |
 | `src/app/event_loop/mod.rs` | active_terminal_grid_mut, focused_terminal_grid_mut, focused_terminal_session_id |
-| `src/app/event_loop/commands_tests.rs` | explorer_filter_commands_update_workspace_state, leap_uses_editor_targets_even_when_explorer_is_focused |
+| `src/render/renderer/palette/file_picker.rs` | split_symbol_badge, shift_ranges_after_badge |
 
 ## Entry Points
 
@@ -82,8 +82,8 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| App_state | 3 calls |
-| Command_dispatch | 1 calls |
+| Command_dispatch | 2 calls |
+| App_state | 2 calls |
 
 ## How to Explore
 

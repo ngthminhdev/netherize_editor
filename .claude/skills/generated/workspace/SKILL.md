@@ -1,11 +1,11 @@
 ---
 name: workspace
-description: "Skill for the Workspace area of netherize_editor. 64 symbols across 4 files."
+description: "Skill for the Workspace area of netherize_editor. 66 symbols across 4 files."
 ---
 
 # Workspace
 
-64 symbols | 4 files | Cohesion: 89%
+66 symbols | 4 files | Cohesion: 90%
 
 ## When to Use
 
@@ -17,9 +17,9 @@ description: "Skill for the Workspace area of netherize_editor. 64 symbols acros
 
 | File | Symbols |
 |------|---------|
-| `src/workspace/model.rs` | should_ignore_dir, expand_path, collapse_path, collapse_path_and_descendants, expand_path_and_descendants (+27) |
+| `src/workspace/model.rs` | should_ignore_dir, select_path, expand_path, collapse_path, collapse_path_and_descendants (+28) |
 | `src/workspace/scanner.rs` | default, new, scan, scan_dir_recursive, build_gitignore_matcher (+11) |
-| `src/app/app_state/workspace.rs` | workspace_expand_path, workspace_collapse_path, workspace_collapse_path_and_descendants, workspace_expand_path_and_descendants, workspace_expand_to_path (+6) |
+| `src/app/app_state/workspace.rs` | workspace_select_path, workspace_expand_path, workspace_collapse_path, workspace_collapse_path_and_descendants, workspace_expand_path_and_descendants (+7) |
 | `src/workspace/fuzzy.rs` | find_file_matches, score_candidate, unique_temp_dir, fuzzy_matches_rank_substring_hits_higher, empty_query_returns_first_files_only |
 
 ## Entry Points
@@ -29,8 +29,8 @@ Start here when exploring this area:
 - **`new`** (Function) — `src/workspace/scanner.rs:30`
 - **`scan`** (Function) — `src/workspace/scanner.rs:37`
 - **`should_ignore_dir`** (Function) — `src/workspace/model.rs:63`
+- **`select_path`** (Function) — `src/workspace/model.rs:280`
 - **`expand_path`** (Function) — `src/workspace/model.rs:292`
-- **`collapse_path`** (Function) — `src/workspace/model.rs:300`
 
 ## Key Symbols
 
@@ -39,12 +39,14 @@ Start here when exploring this area:
 | `new` | Function | `src/workspace/scanner.rs` | 30 |
 | `scan` | Function | `src/workspace/scanner.rs` | 37 |
 | `should_ignore_dir` | Function | `src/workspace/model.rs` | 63 |
+| `select_path` | Function | `src/workspace/model.rs` | 280 |
 | `expand_path` | Function | `src/workspace/model.rs` | 292 |
 | `collapse_path` | Function | `src/workspace/model.rs` | 300 |
 | `collapse_path_and_descendants` | Function | `src/workspace/model.rs` | 308 |
 | `expand_path_and_descendants` | Function | `src/workspace/model.rs` | 328 |
 | `reveal_path` | Function | `src/workspace/model.rs` | 343 |
 | `expand_to_path` | Function | `src/workspace/model.rs` | 378 |
+| `workspace_select_path` | Function | `src/app/app_state/workspace.rs` | 283 |
 | `workspace_expand_path` | Function | `src/app/app_state/workspace.rs` | 289 |
 | `workspace_collapse_path` | Function | `src/app/app_state/workspace.rs` | 295 |
 | `workspace_collapse_path_and_descendants` | Function | `src/app/app_state/workspace.rs` | 301 |
@@ -54,8 +56,6 @@ Start here when exploring this area:
 | `new` | Function | `src/workspace/model.rs` | 48 |
 | `load_with_rules` | Function | `src/workspace/model.rs` | 130 |
 | `find_file_matches` | Function | `src/workspace/fuzzy.rs` | 11 |
-| `load` | Function | `src/workspace/model.rs` | 126 |
-| `rescan` | Function | `src/workspace/model.rs` | 158 |
 
 ## Execution Flows
 

@@ -1,11 +1,11 @@
 ---
 name: text
-description: "Skill for the Text area of netherize_editor. 42 symbols across 10 files."
+description: "Skill for the Text area of netherize_editor. 43 symbols across 11 files."
 ---
 
 # Text
 
-42 symbols | 10 files | Cohesion: 72%
+43 symbols | 11 files | Cohesion: 72%
 
 ## When to Use
 
@@ -73,10 +73,10 @@ Start here when exploring this area:
 | `Update_ai_chat_content → VisibleGlyph` | cross_community | 5 |
 | `Update_ai_chat_content → Rasterize_cache_key` | cross_community | 5 |
 | `Update_ai_chat_content → Extract_alpha_from_image_data` | cross_community | 5 |
-| `Update_settings_buffer_content → VisibleGlyph` | cross_community | 5 |
-| `Update_settings_buffer_content → Rasterize_cache_key` | cross_community | 5 |
-| `Update_settings_buffer_content → Extract_alpha_from_image_data` | cross_community | 5 |
-| `Update_settings_buffer_content → RasterizedGlyph` | cross_community | 5 |
+| `Render_file_picker_complex → VisibleGlyph` | cross_community | 5 |
+| `Render_file_picker_complex → Rasterize_cache_key` | cross_community | 5 |
+| `Render_file_picker_complex → Extract_alpha_from_image_data` | cross_community | 5 |
+| `Render_file_picker_complex → RasterizedGlyph` | cross_community | 5 |
 
 ## Connected Areas
 
@@ -84,8 +84,8 @@ Start here when exploring this area:
 |------|-------------|
 | Theme_config | 3 calls |
 | Workbench | 1 calls |
-| App_state | 1 calls |
-| Ui | 1 calls |
+| Editor | 1 calls |
+| Renderer | 1 calls |
 | Terminal | 1 calls |
 
 ## How to Explore
