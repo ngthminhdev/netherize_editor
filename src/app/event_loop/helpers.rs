@@ -414,6 +414,50 @@ fn render_markdown_node(
                 code_language: None,
             });
         }
+        "link_reference_definition" | "link_reference_definition_block" => {
+            let raw_text = node_text(node, source);
+            let raw_text = raw_text.trim();
+            if let Some((label, url)) = parse_link_reference_definition(raw_text) {
+                let text = format!("{label}: {url}");
+                let label_end = label.len();
+                let separator_end = label_end.saturating_add(2).min(text.len());
+                out.push(MarkdownPreviewLine {
+                    spans: vec![
+                        StyledTextSpan::with_style(
+                            0,
+                            label_end,
+                            theme.syntax.function.as_u8(),
+                            false,
+                            false,
+                        ),
+                        StyledTextSpan::new(
+                            label_end,
+                            separator_end,
+                            theme.syntax.punctuation.as_u8(),
+                        ),
+                        StyledTextSpan::new(
+                            separator_end,
+                            text.len(),
+                            theme.syntax.string.as_u8(),
+                        ),
+                    ],
+                    text,
+                    block_type: MarkdownBlockType::Paragraph,
+                    code_language: None,
+                });
+            } else if !raw_text.is_empty() {
+                out.push(MarkdownPreviewLine {
+                    text: raw_text.to_string(),
+                    spans: vec![StyledTextSpan::new(
+                        0,
+                        raw_text.len(),
+                        theme.syntax.identifier.as_u8(),
+                    )],
+                    block_type: MarkdownBlockType::Paragraph,
+                    code_language: None,
+                });
+            }
+        }
         "fenced_code_block" | "indented_code_block" => {
             let code_text = code_block_content(node, source);
             let lang = code_block_language(node, source);
@@ -594,6 +638,42 @@ fn render_markdown_inline_text(text: &str, theme: &ThemeConfig) -> (String, Vec<
 
     while i < text.len() {
         let rest = &text[i..];
+        if let Some(after_label_open) = rest.strip_prefix('[')
+            && let Some(label_close_rel) = after_label_open.find(']')
+        {
+            let after_label = &after_label_open[label_close_rel + 1..];
+            if let Some(after_url_open) = after_label.strip_prefix('(')
+                && let Some(url_close_rel) = after_url_open.find(')')
+            {
+                let label = &after_label_open[..label_close_rel];
+                let url = &after_url_open[..url_close_rel];
+                let start = rendered.len();
+                rendered.push_str(label);
+                let label_end = rendered.len();
+                if !url.trim().is_empty() {
+                    rendered.push_str(" ↗");
+                }
+                let end = rendered.len();
+                if label_end > start {
+                    spans.push(StyledTextSpan::with_style(
+                        start,
+                        label_end,
+                        theme.syntax.function.as_u8(),
+                        false,
+                        false,
+                    ));
+                }
+                if end > label_end {
+                    spans.push(StyledTextSpan::new(
+                        label_end,
+                        end,
+                        theme.syntax.punctuation.as_u8(),
+                    ));
+                }
+                i += 1 + label_close_rel + 1 + 1 + url_close_rel + 1;
+                continue;
+            }
+        }
         if let Some(after_open) = rest.strip_prefix("**")
             && let Some(close_rel) = after_open.find("**")
         {
@@ -663,6 +743,21 @@ fn render_markdown_inline_text(text: &str, theme: &ThemeConfig) -> (String, Vec<
 
 
 
+
+fn parse_link_reference_definition(text: &str) -> Option<(String, String)> {
+    let after_open = text.strip_prefix('[')?;
+    let close_idx = after_open.find("]: ").or_else(|| after_open.find("]:"))?;
+    let label = after_open[..close_idx].trim();
+    if label.is_empty() {
+        return None;
+    }
+    let after_label = &after_open[close_idx + 1..];
+    let url = after_label.strip_prefix(':')?.trim();
+    if url.is_empty() {
+        return None;
+    }
+    Some((label.to_string(), url.to_string()))
+}
 
 fn heading_level_from_atx(node: tree_sitter::Node<'_>, _source: &str) -> u8 {
     let mut cursor = node.walk();
