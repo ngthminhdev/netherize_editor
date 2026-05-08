@@ -181,13 +181,13 @@ fn table_driven_keybinding_resolution() {
             expected: None,
         },
         Case {
-            name: "terminal focus escape -> FocusEditor",
+            name: "terminal focus escape -> FocusBack",
             context: KeybindingContext::with_focus(
                 EditorMode::TerminalFocus,
                 InputFocusContext::Terminal,
             ),
             input: input_from_named(NamedKey::Escape),
-            expected: Some(Command::FocusEditor),
+            expected: Some(Command::FocusBack),
         },
         Case {
             name: "terminal focus ctrl+q -> EnterTerminalNormal",

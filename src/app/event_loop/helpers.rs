@@ -351,7 +351,57 @@ pub(super) fn parse_markdown_preview_blocks(
     let mut lines = Vec::new();
     let root = tree_state.root_node();
     render_markdown_node(root, source, theme, &mut lines);
+    preserve_markdown_blank_lines(source, &mut lines);
     lines
+}
+
+fn preserve_markdown_blank_lines(source: &str, lines: &mut Vec<MarkdownPreviewLine>) {
+    let source_lines = source.lines().collect::<Vec<_>>();
+    let blank_count = source_lines.iter().filter(|line| line.trim().is_empty()).count();
+    if blank_count == 0 {
+        return;
+    }
+
+    let mut expanded = Vec::with_capacity(lines.len().saturating_add(blank_count));
+    let mut rendered_iter = lines.drain(..);
+    for idx in 0..source_lines.len() {
+        let source_line = source_lines[idx];
+        if source_line.trim().is_empty() {
+            if should_preserve_markdown_blank_line(&source_lines, idx) {
+                expanded.push(MarkdownPreviewLine {
+                    text: String::new(),
+                    spans: Vec::new(),
+                    block_type: MarkdownBlockType::Empty,
+                    code_language: None,
+                });
+            }
+        } else if let Some(line) = rendered_iter.next() {
+            expanded.push(line);
+        }
+    }
+    expanded.extend(rendered_iter);
+    *lines = expanded;
+}
+
+fn should_preserve_markdown_blank_line(lines: &[&str], blank_idx: usize) -> bool {
+    let prev = lines[..blank_idx]
+        .iter()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .map(|line| line.trim_start());
+    let next = lines[blank_idx.saturating_add(1)..]
+        .iter()
+        .find(|line| !line.trim().is_empty())
+        .map(|line| line.trim_start());
+
+    match (prev, next) {
+        (Some(prev), Some(next)) => markdown_line_indent_level(prev) == markdown_line_indent_level(next),
+        _ => false,
+    }
+}
+
+fn markdown_line_indent_level(line: &str) -> usize {
+    line.chars().take_while(|ch| ch.is_whitespace()).count() / 2
 }
 
 fn fallback_markdown_preview(source: &str, _theme: &ThemeConfig) -> Vec<MarkdownPreviewLine> {
@@ -522,7 +572,8 @@ fn render_markdown_node(
             render_children(node, source, theme, out);
         }
         "list_item" | "task_list_item" => {
-            let marker = list_marker_text(node, source);
+            let indent = "  ".repeat(markdown_list_item_depth(node));
+            let marker = format!("{indent}{}", list_marker_text(node, source));
             let marker_len = marker.len();
             let content = list_item_content(node, source);
             let (rendered_content, inline_spans) = render_markdown_inline_text(&content, theme);
@@ -553,6 +604,13 @@ fn render_markdown_node(
                 block_type: MarkdownBlockType::ListItem,
                 code_language: None,
             });
+
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if matches!(child.kind(), "list" | "tight_list" | "loose_list") {
+                    render_markdown_node(child, source, theme, out);
+                }
+            }
         }
         "thematic_break" => {
             out.push(MarkdownPreviewLine {
@@ -885,6 +943,18 @@ fn code_block_language(node: tree_sitter::Node<'_>, source: &str) -> String {
     String::new()
 }
 
+fn markdown_list_item_depth(node: tree_sitter::Node<'_>) -> usize {
+    let mut depth = 0usize;
+    let mut parent = node.parent();
+    while let Some(current) = parent {
+        if matches!(current.kind(), "list_item" | "task_list_item") {
+            depth = depth.saturating_add(1);
+        }
+        parent = current.parent();
+    }
+    depth
+}
+
 fn list_marker_text(node: tree_sitter::Node<'_>, source: &str) -> String {
     let raw = node_text(node, source);
     let trimmed = raw.trim_start();
@@ -922,14 +992,14 @@ fn list_marker_text(node: tree_sitter::Node<'_>, source: &str) -> String {
 
 fn list_item_content(node: tree_sitter::Node<'_>, source: &str) -> String {
     let raw = node_text(node, source);
-    let trimmed = raw.trim_start();
+    let first_line = raw.lines().next().unwrap_or_default();
+    let trimmed = first_line.trim_start();
     for prefix in ["- [x]", "* [x]", "+ [x]", "- [X]", "* [X]", "+ [X]", "- [ ]", "* [ ]", "+ [ ]"] {
         if let Some(rest) = trimmed.strip_prefix(prefix) {
             return rest.trim_start().to_string();
         }
     }
 
-    let mut parts = Vec::new();
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
@@ -937,16 +1007,23 @@ fn list_item_content(node: tree_sitter::Node<'_>, source: &str) -> String {
             | "list_marker_dot" | "list_marker_parenthesis"
             | "task_list_marker_checked" | "task_list_marker_unchecked"
             | "list_marker" | "task_list_item_marker"
-            | "paragraph_continuation" => {}
+            | "paragraph_continuation"
+            | "list" | "tight_list" | "loose_list" => {}
             _ => {
                 let text = node_text(child, source);
                 if !text.is_empty() {
-                    parts.push(text.trim().to_string());
+                    return text.lines().next().unwrap_or_default().trim().to_string();
                 }
             }
         }
     }
-    parts.join(" ")
+
+    let marker = list_marker_text(node, source);
+    trimmed
+        .strip_prefix(marker.trim())
+        .unwrap_or(trimmed)
+        .trim_start()
+        .to_string()
 }
 
 fn render_table(

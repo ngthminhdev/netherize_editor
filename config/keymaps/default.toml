@@ -460,7 +460,7 @@ command = "editor.search_word_under_cursor"
 [[bindings]]
 mode = "terminal"
 key = "Escape"
-command = "app.focus_editor"
+command = "app.focus_back"
 
 [[bindings]]
 mode = "terminal"

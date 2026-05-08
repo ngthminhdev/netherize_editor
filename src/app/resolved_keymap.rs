@@ -672,7 +672,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("palette"), mp(KeyCode::KeyV), EDITOR_PASTE);
 
     // ── Terminal focus mode bindings (mode-only lookup in InputMap) ──────────
-    km.insert(Some("terminal"), nk(NamedKey::Escape), FOCUS_EDITOR);
+    km.insert(Some("terminal"), nk(NamedKey::Escape), FOCUS_BACK);
     km.insert(
         Some("terminal"),
         KeySpec::CtrlPlus(KeyCode::KeyQ),

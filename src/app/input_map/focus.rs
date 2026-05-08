@@ -368,12 +368,16 @@ impl InputMap {
     ) -> Option<KeybindingMatch> {
         use KeyCode::*;
 
-        if input.named_key == Some(NamedKey::Escape)
-            || (input.has_command_modifier() && input.physical_key == Some(KeyW))
-        {
+        if input.named_key == Some(NamedKey::Escape) {
+            return Some(KeybindingMatch {
+                command: Command::FocusBack,
+                reason: "preview: Esc -> FocusBack",
+            });
+        }
+        if input.has_command_modifier() && input.physical_key == Some(KeyW) {
             return Some(KeybindingMatch {
                 command: Command::FocusEditor,
-                reason: "preview: Esc/Ctrl+W -> FocusEditor",
+                reason: "preview: Ctrl+W -> FocusEditor",
             });
         }
 
@@ -501,12 +505,16 @@ impl InputMap {
     ) -> Option<KeybindingMatch> {
         use KeyCode::*;
 
-        if input.named_key == Some(NamedKey::Escape)
-            || (input.has_command_modifier() && input.physical_key == Some(KeyW))
-        {
+        if input.named_key == Some(NamedKey::Escape) {
+            return Some(KeybindingMatch {
+                command: Command::FocusBack,
+                reason: "bottom: Esc -> FocusBack",
+            });
+        }
+        if input.has_command_modifier() && input.physical_key == Some(KeyW) {
             return Some(KeybindingMatch {
                 command: Command::FocusEditor,
-                reason: "bottom: Esc/Ctrl+W -> FocusEditor",
+                reason: "bottom: Ctrl+W -> FocusEditor",
             });
         }
 
@@ -840,8 +848,8 @@ impl InputMap {
 
         if mode == EditorMode::TerminalFocus && input.named_key == Some(NamedKey::Escape) {
             return Some(KeybindingMatch {
-                command: Command::FocusEditor,
-                reason: "terminal focus: Esc -> FocusEditor",
+                command: Command::FocusBack,
+                reason: "terminal focus: Esc -> FocusBack",
             });
         }
         None

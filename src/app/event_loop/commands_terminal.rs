@@ -126,8 +126,36 @@ impl AppShell {
 
                 Some(changed || focus_changed)
             }
-            Command::FocusEditor | Command::FocusBack => {
+            Command::FocusEditor => {
                 let mut changed = self.release_focus_mode_to_editor();
+                let focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
+                changed |= focus_changed;
+                if focus_changed {
+                    self.input_handler.clear_pending_prefix();
+                }
+                Some(changed)
+            }
+            Command::FocusBack => {
+                let mut changed = self.release_focus_mode_to_editor();
+
+                // In Zen Mode, FocusBack is a mode escape only: return the status
+                // to NORMAL while preserving the currently maximized surface
+                // (terminal, markdown preview, etc.) instead of forcing focus back
+                // to the main editor.
+                if self.panel_state.maximized_region.is_some() {
+                    if matches!(
+                        self.app_state.current_mode(),
+                        EditorMode::Insert
+                            | EditorMode::Visual
+                            | EditorMode::MultiCursor
+                            | EditorMode::MultiInsert
+                    ) && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::Escape)
+                    {
+                        changed |= result.changed;
+                    }
+                    return Some(changed);
+                }
+
                 let focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
                 changed |= focus_changed;
                 if focus_changed {
