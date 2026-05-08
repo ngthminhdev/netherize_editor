@@ -33,7 +33,7 @@ description: "Skill for the Scheduler area of netherize_editor. 88 symbols acros
 Start here when exploring this area:
 
 - **`try_wait_status`** (Function) — `src/terminal/pty.rs:134`
-- **`language_profile_for_binary`** (Function) — `src/lsp/registry.rs:252`
+- **`language_profile_for_binary`** (Function) — `src/lsp/registry.rs:264`
 - **`scan_python_environments`** (Function) — `src/async_runtime/python_env.rs:18`
 - **`resolve_system_path`** (Function) — `src/async_runtime/scheduler/syntax_jobs.rs:419`
 - **`run_system_dep_install`** (Function) — `src/async_runtime/scheduler/syntax_jobs.rs:453`
@@ -43,7 +43,7 @@ Start here when exploring this area:
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `try_wait_status` | Function | `src/terminal/pty.rs` | 134 |
-| `language_profile_for_binary` | Function | `src/lsp/registry.rs` | 252 |
+| `language_profile_for_binary` | Function | `src/lsp/registry.rs` | 264 |
 | `scan_python_environments` | Function | `src/async_runtime/python_env.rs` | 18 |
 | `resolve_system_path` | Function | `src/async_runtime/scheduler/syntax_jobs.rs` | 419 |
 | `run_system_dep_install` | Function | `src/async_runtime/scheduler/syntax_jobs.rs` | 453 |

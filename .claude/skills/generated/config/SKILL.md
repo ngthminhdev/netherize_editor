@@ -48,8 +48,8 @@ Start here when exploring this area:
 | `list_available_theme_entries` | Function | `src/config/theme_config/loader.rs` | 52 |
 | `builtin` | Function | `src/config/ui_config.rs` | 177 |
 | `validate` | Function | `src/config/ui_config.rs` | 661 |
-| `load` | Function | `src/config/keymap_loader.rs` | 35 |
 | `is_valid` | Function | `src/core/command_ids.rs` | 406 |
+| `load` | Function | `src/config/keymap_loader.rs` | 35 |
 | `debounce_ms` | Function | `src/config/ai_config.rs` | 49 |
 | `prefix_chars` | Function | `src/config/ai_config.rs` | 53 |
 | `suffix_chars` | Function | `src/config/ai_config.rs` | 57 |

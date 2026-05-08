@@ -55,7 +55,7 @@ For any input-to-action feature, you MUST follow this exact path:
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **netherize_editor** (6034 symbols, 15878 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **netherize_editor** (6040 symbols, 15888 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -99,7 +99,7 @@ This project is indexed by GitNexus as **netherize_editor** (6034 symbols, 15878
 | Work in the Workbench area (113 symbols) | `.claude/skills/generated/workbench/SKILL.md` |
 | Work in the App area (110 symbols) | `.claude/skills/generated/app/SKILL.md` |
 | Work in the Lsp area (106 symbols) | `.claude/skills/generated/lsp/SKILL.md` |
-| Work in the Syntax area (102 symbols) | `.claude/skills/generated/syntax/SKILL.md` |
+| Work in the Syntax area (103 symbols) | `.claude/skills/generated/syntax/SKILL.md` |
 | Work in the Input area (101 symbols) | `.claude/skills/generated/input/SKILL.md` |
 | Work in the Command_dispatch area (92 symbols) | `.claude/skills/generated/command-dispatch/SKILL.md` |
 | Work in the Scheduler area (88 symbols) | `.claude/skills/generated/scheduler/SKILL.md` |

@@ -1,23 +1,23 @@
 ---
 name: syntax
-description: "Skill for the Syntax area of netherize_editor. 102 symbols across 12 files."
+description: "Skill for the Syntax area of netherize_editor. 103 symbols across 12 files."
 ---
 
 # Syntax
 
-102 symbols | 12 files | Cohesion: 84%
+103 symbols | 12 files | Cohesion: 75%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how as_str, root_node, new work
+- Understanding how parse, as_str, root_node work
 - Modifying syntax-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
-| `src/syntax/highlight.rs` | generate_highlight_spans, generate_dotenv_highlight_spans, should_highlight_inline, highlight_snippet, markdown_inline_highlight_query (+52) |
+| `src/syntax/highlight.rs` | generate_highlight_spans, generate_dotenv_highlight_spans, should_highlight_inline, highlight_snippet, markdown_inline_highlight_query (+53) |
 | `src/syntax/syntax_engine.rs` | as_str, root_node, new, new_rust, parse_source (+15) |
 | `src/async_runtime/scheduler/syntax_jobs.rs` | execute_virtual_job, byte_range_for_line_window, highlight_byte_window, should_highlight_full_buffer, cpu_burn_checksum |
 | `src/async_runtime/scheduler/git.rs` | run_git_blame_line, parse_git_blame_summary, run_workspace_git_status, parse_git_file_status, run_fetch_git_baseline |
@@ -32,31 +32,31 @@ description: "Skill for the Syntax area of netherize_editor. 102 symbols across 
 
 Start here when exploring this area:
 
-- **`as_str`** (Function) — `src/syntax/syntax_engine.rs:29`
-- **`root_node`** (Function) — `src/syntax/syntax_engine.rs:73`
-- **`new`** (Function) — `src/syntax/syntax_engine.rs:96`
-- **`new_rust`** (Function) — `src/syntax/syntax_engine.rs:119`
-- **`parse_source`** (Function) — `src/syntax/syntax_engine.rs:125`
+- **`parse`** (Function) — `src/core/command_ids.rs:410`
+- **`as_str`** (Function) — `src/syntax/syntax_engine.rs:30`
+- **`root_node`** (Function) — `src/syntax/syntax_engine.rs:75`
+- **`new`** (Function) — `src/syntax/syntax_engine.rs:98`
+- **`new_rust`** (Function) — `src/syntax/syntax_engine.rs:121`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `as_str` | Function | `src/syntax/syntax_engine.rs` | 29 |
-| `root_node` | Function | `src/syntax/syntax_engine.rs` | 73 |
-| `new` | Function | `src/syntax/syntax_engine.rs` | 96 |
-| `new_rust` | Function | `src/syntax/syntax_engine.rs` | 119 |
-| `parse_source` | Function | `src/syntax/syntax_engine.rs` | 125 |
-| `parse_incremental` | Function | `src/syntax/syntax_engine.rs` | 149 |
-| `current_tree` | Function | `src/syntax/syntax_engine.rs` | 203 |
+| `parse` | Function | `src/core/command_ids.rs` | 410 |
+| `as_str` | Function | `src/syntax/syntax_engine.rs` | 30 |
+| `root_node` | Function | `src/syntax/syntax_engine.rs` | 75 |
+| `new` | Function | `src/syntax/syntax_engine.rs` | 98 |
+| `new_rust` | Function | `src/syntax/syntax_engine.rs` | 121 |
+| `parse_source` | Function | `src/syntax/syntax_engine.rs` | 127 |
+| `parse_incremental` | Function | `src/syntax/syntax_engine.rs` | 151 |
+| `current_tree` | Function | `src/syntax/syntax_engine.rs` | 205 |
 | `language_id_for_extension` | Function | `src/syntax/parser.rs` | 10 |
-| `tree_sitter_markdown_inline_language` | Function | `src/syntax/parser.rs` | 37 |
+| `tree_sitter_markdown_inline_language` | Function | `src/syntax/parser.rs` | 38 |
 | `generate_highlight_spans` | Function | `src/syntax/highlight.rs` | 304 |
 | `generate_dotenv_highlight_spans` | Function | `src/syntax/highlight.rs` | 338 |
 | `should_highlight_inline` | Function | `src/syntax/highlight.rs` | 417 |
 | `highlight_snippet` | Function | `src/syntax/highlight.rs` | 426 |
-| `highlight_markdown_inline` | Function | `src/syntax/highlight.rs` | 654 |
-| `parse` | Function | `src/core/command_ids.rs` | 410 |
+| `highlight_markdown_inline` | Function | `src/syntax/highlight.rs` | 659 |
 | `execute_virtual_job` | Function | `src/async_runtime/scheduler/syntax_jobs.rs` | 23 |
 | `run_git_blame_line` | Function | `src/async_runtime/scheduler/git.rs` | 2 |
 | `parse_git_blame_summary` | Function | `src/async_runtime/scheduler/git.rs` | 33 |
@@ -86,6 +86,6 @@ Start here when exploring this area:
 
 ## How to Explore
 
-1. `gitnexus_context({name: "as_str"})` — see callers and callees
+1. `gitnexus_context({name: "parse"})` — see callers and callees
 2. `gitnexus_query({query: "syntax"})` — find related execution flows
 3. Read key files listed above for implementation details

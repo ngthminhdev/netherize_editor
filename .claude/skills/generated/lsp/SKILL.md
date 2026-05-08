@@ -32,7 +32,7 @@ description: "Skill for the Lsp area of netherize_editor. 106 symbols across 12 
 
 Start here when exploring this area:
 
-- **`language_profile_for_language_id`** (Function) — `src/lsp/registry.rs:246`
+- **`language_profile_for_language_id`** (Function) — `src/lsp/registry.rs:258`
 - **`is_document_open`** (Function) — `src/lsp/client.rs:539`
 - **`mark_document_open`** (Function) — `src/lsp/client.rs:546`
 - **`mark_document_closed`** (Function) — `src/lsp/client.rs:552`
@@ -42,7 +42,7 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `language_profile_for_language_id` | Function | `src/lsp/registry.rs` | 246 |
+| `language_profile_for_language_id` | Function | `src/lsp/registry.rs` | 258 |
 | `is_document_open` | Function | `src/lsp/client.rs` | 539 |
 | `mark_document_open` | Function | `src/lsp/client.rs` | 546 |
 | `mark_document_closed` | Function | `src/lsp/client.rs` | 552 |

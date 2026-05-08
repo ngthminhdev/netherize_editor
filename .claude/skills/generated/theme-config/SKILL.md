@@ -53,12 +53,12 @@ Start here when exploring this area:
 | `as_linear` | Function | `src/config/theme_config/model.rs` | 78 |
 | `srgb_to_linear` | Function | `src/config/theme_config/model.rs` | 88 |
 | `srgb_rgba_to_linear_f32` | Function | `src/config/theme_config/model.rs` | 106 |
-| `sidebar_arrow` | Function | `src/config/theme_config/model.rs` | 276 |
-| `file_icon_for_path` | Function | `src/config/theme_config/model.rs` | 288 |
-| `file_icon_for_extension` | Function | `src/config/theme_config/model.rs` | 306 |
-| `icon_theme_for_filename` | Function | `src/config/theme_config/model.rs` | 329 |
-| `icon_theme_for_path` | Function | `src/config/theme_config/model.rs` | 345 |
-| `get_icon_for_file` | Function | `src/config/theme_config/model.rs` | 366 |
+| `sidebar_arrow` | Function | `src/config/theme_config/model.rs` | 277 |
+| `file_icon_for_path` | Function | `src/config/theme_config/model.rs` | 289 |
+| `file_icon_for_extension` | Function | `src/config/theme_config/model.rs` | 307 |
+| `icon_theme_for_filename` | Function | `src/config/theme_config/model.rs` | 331 |
+| `icon_theme_for_path` | Function | `src/config/theme_config/model.rs` | 347 |
+| `get_icon_for_file` | Function | `src/config/theme_config/model.rs` | 368 |
 | `build_sidebar_rows` | Function | `src/app/event_loop/helpers.rs` | 1242 |
 | `default_profile` | Function | `src/config/theme_config/loader.rs` | 23 |
 

@@ -48,9 +48,9 @@ Start here when exploring this area:
 | `new` | Function | `src/workbench/layout_engine.rs` | 114 |
 | `compute` | Function | `src/workbench/layout_engine.rs` | 125 |
 | `apply_handle_drag` | Function | `src/workbench/layout_engine.rs` | 418 |
-| `language_profile_for_extension` | Function | `src/lsp/registry.rs` | 213 |
-| `lsp_entry_for_extension` | Function | `src/lsp/client.rs` | 42 |
 | `new` | Function | `src/render/surface.rs` | 13 |
+| `language_profile_for_extension` | Function | `src/lsp/registry.rs` | 225 |
+| `lsp_entry_for_extension` | Function | `src/lsp/client.rs` | 42 |
 | `set` | Function | `src/workbench/focus_manager.rs` | 48 |
 | `ensure_valid` | Function | `src/workbench/focus_manager.rs` | 56 |
 | `cycle_next` | Function | `src/workbench/focus_manager.rs` | 68 |
