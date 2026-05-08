@@ -55,7 +55,7 @@ For any input-to-action feature, you MUST follow this exact path:
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **netherize_editor** (5856 symbols, 15405 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **netherize_editor** (6034 symbols, 15862 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -93,25 +93,25 @@ This project is indexed by GitNexus as **netherize_editor** (5856 symbols, 15405
 | Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
 | Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-| Work in the App_state area (442 symbols) | `.claude/skills/generated/app-state/SKILL.md` |
-| Work in the Event_loop area (237 symbols) | `.claude/skills/generated/event-loop/SKILL.md` |
-| Work in the Terminal area (143 symbols) | `.claude/skills/generated/terminal/SKILL.md` |
-| Work in the App area (136 symbols) | `.claude/skills/generated/app/SKILL.md` |
-| Work in the Workbench area (110 symbols) | `.claude/skills/generated/workbench/SKILL.md` |
+| Work in the App_state area (422 symbols) | `.claude/skills/generated/app-state/SKILL.md` |
+| Work in the Event_loop area (247 symbols) | `.claude/skills/generated/event-loop/SKILL.md` |
+| Work in the Terminal area (147 symbols) | `.claude/skills/generated/terminal/SKILL.md` |
+| Work in the Command_dispatch area (119 symbols) | `.claude/skills/generated/command-dispatch/SKILL.md` |
+| Work in the Workbench area (113 symbols) | `.claude/skills/generated/workbench/SKILL.md` |
+| Work in the App area (106 symbols) | `.claude/skills/generated/app/SKILL.md` |
+| Work in the Lsp area (102 symbols) | `.claude/skills/generated/lsp/SKILL.md` |
 | Work in the Input area (101 symbols) | `.claude/skills/generated/input/SKILL.md` |
-| Work in the Command_dispatch area (96 symbols) | `.claude/skills/generated/command-dispatch/SKILL.md` |
-| Work in the Lsp area (95 symbols) | `.claude/skills/generated/lsp/SKILL.md` |
-| Work in the Scheduler area (93 symbols) | `.claude/skills/generated/scheduler/SKILL.md` |
-| Work in the Syntax area (76 symbols) | `.claude/skills/generated/syntax/SKILL.md` |
+| Work in the Syntax area (100 symbols) | `.claude/skills/generated/syntax/SKILL.md` |
+| Work in the Scheduler area (83 symbols) | `.claude/skills/generated/scheduler/SKILL.md` |
+| Work in the Input_map area (79 symbols) | `.claude/skills/generated/input-map/SKILL.md` |
 | Work in the Workspace area (66 symbols) | `.claude/skills/generated/workspace/SKILL.md` |
-| Work in the Theme_config area (64 symbols) | `.claude/skills/generated/theme-config/SKILL.md` |
-| Work in the Renderer area (54 symbols) | `.claude/skills/generated/renderer/SKILL.md` |
-| Work in the Input_map area (50 symbols) | `.claude/skills/generated/input-map/SKILL.md` |
+| Work in the Renderer area (61 symbols) | `.claude/skills/generated/renderer/SKILL.md` |
+| Work in the Theme_config area (59 symbols) | `.claude/skills/generated/theme-config/SKILL.md` |
+| Work in the Text area (42 symbols) | `.claude/skills/generated/text/SKILL.md` |
 | Work in the Config area (41 symbols) | `.claude/skills/generated/config/SKILL.md` |
-| Work in the Text area (40 symbols) | `.claude/skills/generated/text/SKILL.md` |
-| Work in the Benches area (33 symbols) | `.claude/skills/generated/benches/SKILL.md` |
-| Work in the Ui area (30 symbols) | `.claude/skills/generated/ui/SKILL.md` |
+| Work in the Palette area (27 symbols) | `.claude/skills/generated/palette/SKILL.md` |
+| Work in the Benches area (26 symbols) | `.claude/skills/generated/benches/SKILL.md` |
 | Work in the Render area (26 symbols) | `.claude/skills/generated/render/SKILL.md` |
-| Work in the Editor area (22 symbols) | `.claude/skills/generated/editor/SKILL.md` |
+| Work in the Ui area (19 symbols) | `.claude/skills/generated/ui/SKILL.md` |
 
 <!-- gitnexus:end -->

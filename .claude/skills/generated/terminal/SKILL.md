@@ -1,11 +1,11 @@
 ---
 name: terminal
-description: "Skill for the Terminal area of netherize_editor. 143 symbols across 10 files."
+description: "Skill for the Terminal area of netherize_editor. 147 symbols across 13 files."
 ---
 
 # Terminal
 
-143 symbols | 10 files | Cohesion: 82%
+147 symbols | 13 files | Cohesion: 81%
 
 ## When to Use
 
@@ -17,15 +17,15 @@ description: "Skill for the Terminal area of netherize_editor. 143 symbols acros
 
 | File | Symbols |
 |------|---------|
-| `src/terminal/grid.rs` | new, feed_chunk, cell_at, apply_regex_highlights, set_visible_row_style_fg (+77) |
+| `src/terminal/grid.rs` | new, feed_chunk, cell_at, debug_dump, apply_regex_highlights (+81) |
 | `src/terminal/ansi_parser.rs` | collect_events, plain_text_emits_print_chars, newline_and_cr, sgr_reset, sgr_empty_is_reset (+31) |
-| `src/terminal/pty.rs` | spawn_shell, spawn_command, new, resolve_shell_program, resolve_shell_never_returns_empty (+3) |
+| `src/terminal/pty.rs` | spawn_shell, spawn_command, new, write_input, resolve_shell_program (+2) |
 | `src/terminal/terminal_renderer.rs` | new, default_monospace, cell_rect, cell_rect_calculation, default_renderer_has_positive_cell_size |
 | `src/app/event_loop/commands_terminal.rs` | handle_terminal_search_command, word_at_virtual_cursor, map_directional_focus_command, handle_terminal_and_focus_command |
-| `src/render/renderer/lifecycle.rs` | make_text_pipeline, new |
 | `src/async_runtime/scheduler.rs` | alloc_session_id, async_trace_enabled |
-| `src/async_runtime/scheduler/pty.rs` | execute_pty_request, spawn_pty_output_reader |
 | `src/core/command_dispatch/navigation.rs` | dispatch_terminal_normal |
+| `src/async_runtime/scheduler/pty.rs` | execute_pty_request |
+| `src/render/renderer/ui/terminal.rs` | append_terminal_overlay_quads |
 | `src/app/event_loop/setup.rs` | sync_in_file_search_with_palette_query |
 
 ## Entry Points
@@ -35,8 +35,8 @@ Start here when exploring this area:
 - **`new`** (Function) — `src/terminal/grid.rs:186`
 - **`feed_chunk`** (Function) — `src/terminal/grid.rs:209`
 - **`cell_at`** (Function) — `src/terminal/grid.rs:756`
+- **`debug_dump`** (Function) — `src/terminal/grid.rs:811`
 - **`apply_regex_highlights`** (Function) — `src/terminal/grid.rs:864`
-- **`total_rows`** (Function) — `src/terminal/grid.rs:501`
 
 ## Key Symbols
 
@@ -45,8 +45,11 @@ Start here when exploring this area:
 | `new` | Function | `src/terminal/grid.rs` | 186 |
 | `feed_chunk` | Function | `src/terminal/grid.rs` | 209 |
 | `cell_at` | Function | `src/terminal/grid.rs` | 756 |
+| `debug_dump` | Function | `src/terminal/grid.rs` | 811 |
 | `apply_regex_highlights` | Function | `src/terminal/grid.rs` | 864 |
 | `total_rows` | Function | `src/terminal/grid.rs` | 501 |
+| `live_cursor_absolute_position` | Function | `src/terminal/grid.rs` | 505 |
+| `enter_normal_mode` | Function | `src/terminal/grid.rs` | 512 |
 | `move_virtual_left` | Function | `src/terminal/grid.rs` | 540 |
 | `move_virtual_right` | Function | `src/terminal/grid.rs` | 550 |
 | `move_virtual_up` | Function | `src/terminal/grid.rs` | 560 |
@@ -59,9 +62,6 @@ Start here when exploring this area:
 | `move_virtual_to_first_non_whitespace` | Function | `src/terminal/grid.rs` | 616 |
 | `move_virtual_to_first_line` | Function | `src/terminal/grid.rs` | 623 |
 | `move_virtual_to_last_line` | Function | `src/terminal/grid.rs` | 630 |
-| `move_virtual_half_page_up` | Function | `src/terminal/grid.rs` | 637 |
-| `move_virtual_half_page_down` | Function | `src/terminal/grid.rs` | 646 |
-| `center_virtual_cursor_line` | Function | `src/terminal/grid.rs` | 656 |
 
 ## Execution Flows
 
@@ -70,25 +70,24 @@ Start here when exploring this area:
 | `Dispatch → Total_rows` | cross_community | 7 |
 | `Handle_terminal_and_focus_command → Len_chars` | cross_community | 7 |
 | `Dispatch → TerminalPoint` | cross_community | 6 |
+| `Handle_terminal_and_focus_command → Success` | cross_community | 6 |
+| `Handle_terminal_and_focus_command → Open_python_env_selector` | cross_community | 6 |
+| `Handle_terminal_and_focus_command → Success_with_flags` | cross_community | 6 |
 | `Handle_terminal_and_focus_command → StoredFileHistory` | cross_community | 6 |
 | `Dispatch_terminal_normal → Total_rows` | intra_community | 6 |
 | `Handle_command_with_count → Total_rows` | cross_community | 6 |
 | `Dispatch → Point_leq` | cross_community | 5 |
-| `Handle_terminal_and_focus_command → Supports_numeric_count` | cross_community | 5 |
-| `Handle_terminal_and_focus_command → Dispatch_command_with_clipboard_once` | cross_community | 5 |
-| `Handle_terminal_and_focus_command → Groups_repeated_edits_into_single_transaction` | cross_community | 5 |
 
 ## Connected Areas
 
 | Area | Connections |
 |------|-------------|
-| App_state | 4 calls |
+| Command_dispatch | 4 calls |
+| Scheduler | 3 calls |
+| Palette | 2 calls |
 | Workbench | 2 calls |
-| Theme_config | 2 calls |
-| Ui | 1 calls |
-| Text | 1 calls |
-| Scheduler | 1 calls |
-| Command_dispatch | 1 calls |
+| App_state | 1 calls |
+| Theme_config | 1 calls |
 
 ## How to Explore
 

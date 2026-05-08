@@ -1,95 +1,95 @@
 ---
 name: event-loop
-description: "Skill for the Event_loop area of netherize_editor. 237 symbols across 38 files."
+description: "Skill for the Event_loop area of netherize_editor. 247 symbols across 38 files."
 ---
 
 # Event_loop
 
-237 symbols | 38 files | Cohesion: 74%
+247 symbols | 38 files | Cohesion: 76%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how editor_chrome_instances, clear_ai_chat, update_markdown_preview_content work
+- Understanding how editor_chrome_instances, clear_palette, reconfigure_surface work
 - Modifying event_loop-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
-| `src/app/event_loop/setup.rs` | startup_subsystems, submit, submit_workspace_git_status_refresh, submit_active_buffer_git_baseline_refresh, submit_active_palette_fzf_search (+42) |
-| `src/app/event_loop/helpers.rs` | region_color, byte_inside_any_span, rainbow_bracket_spans, render_inline_spans, append_markdown_inline_fallback_spans (+27) |
-| `src/app/event_loop/commands_lsp.rs` | handle_lsp_and_diagnostics_command, open_lazygit_buffer, open_lazydocker_buffer, submit_git_blame_line, select_next_reference_item (+19) |
-| `src/app/event_loop/commands.rs` | dismiss_system_dep_guide, accept_system_dep_guide, clear_expired_transient_toast, dispatch_command_with_focused_terminal, mark_focused_terminal_layout_dirty (+13) |
+| `src/app/event_loop/setup.rs` | startup_subsystems, submit, submit_workspace_git_status_refresh, submit_active_buffer_git_baseline_refresh, flush_lsp_retry_if_due (+42) |
+| `src/app/event_loop/helpers.rs` | byte_inside_any_span, rainbow_bracket_spans, render_markdown_node, render_children, offset_styled_span (+25) |
+| `src/app/event_loop/commands_lsp.rs` | handle_lsp_and_diagnostics_command, open_lazygit_buffer, open_lazydocker_buffer, submit_git_blame_line, select_next_reference_item (+21) |
 | `src/app/event_loop/async_results.rs` | on_worker_result, lsp_uri_to_path, active_fuzzy_preview_target, active_references_preview_target, active_diagnostics_preview_target (+12) |
-| `src/app/event_loop/application.rs` | redraw, focus_target_region_id, focus_ring_instances, focus_ring_keeps_outline_and_panel_fill, window_event (+7) |
+| `src/app/event_loop/commands.rs` | dismiss_system_dep_guide, accept_system_dep_guide, clear_expired_transient_toast, should_persist_history_after, finalize_post_command_hooks (+9) |
+| `src/app/event_loop/application.rs` | redraw, focus_target_region_id, focus_ring_instances, focus_ring_keeps_outline_and_panel_fill, window_event (+8) |
 | `src/app/event_loop/commands_ai_chat.rs` | ai_slash_command_completion_at, slash_command_suggestion_count, clean_ai_file_ref_token, ai_models_help, ai_agent_help (+7) |
+| `src/app/event_loop/commands_tests.rs` | fuzzy_picker_selection_clears_stale_preview_lines, fuzzy_picker_open_search_match_confirm_closes_results_buffer, delete_confirmation_removes_selected_file_after_y, first_real_keypress_after_palette_open_clears_ime_suppression, ai_chat_at_file_suggestions_use_workspace_files (+4) |
 | `src/app/event_loop/commands_prompts.rs` | confirm_theme_selection, pending_confirmation_prompt, begin_explorer_delete_confirmation, begin_dirty_buffer_close_confirmation, open_prompt_overlay (+3) |
-| `src/app/event_loop/commands_tests.rs` | fuzzy_picker_selection_clears_stale_preview_lines, fuzzy_picker_open_search_match_confirm_closes_results_buffer, move_to_first_line_uses_viewport_layout_path, move_to_last_line_uses_viewport_layout_path, center_cursor_line_uses_viewport_layout_path (+3) |
-| `src/app/event_loop/commands_explorer.rs` | explorer_selected_entry, explorer_rename_base_selection, open_explorer_rename_prompt, handle_explorer_and_workspace_command, prepare_for_workspace_switch (+1) |
+| `src/app/event_loop/commands_completion.rs` | select_next_completion_item, select_prev_completion_item, schedule_completion_resolve_debounced, close_completion_popup, accept_completion_item (+3) |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`editor_chrome_instances`** (Function) — `src/render/renderer.rs:293`
-- **`clear_ai_chat`** (Function) — `src/render/renderer/ui_render.rs:1416`
-- **`update_markdown_preview_content`** (Function) — `src/render/renderer/ui_render.rs:1430`
+- **`editor_chrome_instances`** (Function) — `src/render/renderer.rs:309`
 - **`clear_palette`** (Function) — `src/render/renderer/palette.rs:43`
-- **`reconfigure_surface`** (Function) — `src/render/renderer/lifecycle.rs:458`
+- **`reconfigure_surface`** (Function) — `src/render/renderer/lifecycle.rs:461`
+- **`draw_text_region`** (Function) — `src/render/renderer/helpers.rs:141`
+- **`confirm_theme_selection`** (Function) — `src/app/event_loop/commands_prompts.rs:336`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `editor_chrome_instances` | Function | `src/render/renderer.rs` | 293 |
-| `clear_ai_chat` | Function | `src/render/renderer/ui_render.rs` | 1416 |
-| `update_markdown_preview_content` | Function | `src/render/renderer/ui_render.rs` | 1430 |
+| `editor_chrome_instances` | Function | `src/render/renderer.rs` | 309 |
 | `clear_palette` | Function | `src/render/renderer/palette.rs` | 43 |
-| `reconfigure_surface` | Function | `src/render/renderer/lifecycle.rs` | 458 |
+| `reconfigure_surface` | Function | `src/render/renderer/lifecycle.rs` | 461 |
 | `draw_text_region` | Function | `src/render/renderer/helpers.rs` | 141 |
-| `is_dirty` | Function | `src/app/app_state/mod.rs` | 1114 |
-| `region_color` | Function | `src/app/event_loop/helpers.rs` | 1283 |
-| `confirm_theme_selection` | Function | `src/app/event_loop/commands_prompts.rs` | 335 |
-| `dismiss_system_dep_guide` | Function | `src/app/event_loop/commands.rs` | 449 |
-| `accept_system_dep_guide` | Function | `src/app/event_loop/commands.rs` | 457 |
-| `clear_expired_transient_toast` | Function | `src/app/event_loop/commands.rs` | 504 |
+| `confirm_theme_selection` | Function | `src/app/event_loop/commands_prompts.rs` | 336 |
+| `dismiss_system_dep_guide` | Function | `src/app/event_loop/commands.rs` | 456 |
+| `accept_system_dep_guide` | Function | `src/app/event_loop/commands.rs` | 464 |
+| `clear_expired_transient_toast` | Function | `src/app/event_loop/commands.rs` | 511 |
+| `status_label` | Function | `src/app/app_state/mod.rs` | 82 |
+| `is_dirty` | Function | `src/app/app_state/mod.rs` | 1101 |
 | `clear_welcome_logo` | Function | `src/render/renderer/ui/welcome.rs` | 531 |
 | `update_terminal_content` | Function | `src/render/renderer/ui/terminal.rs` | 21 |
 | `clear_terminal` | Function | `src/render/renderer/ui/terminal.rs` | 334 |
 | `clear_buffer_terminal` | Function | `src/render/renderer/ui/terminal.rs` | 342 |
 | `clear_sidebar` | Function | `src/render/renderer/ui/sidebar.rs` | 240 |
-| `clear_system_dep_popup` | Function | `src/render/renderer/ui/popups.rs` | 449 |
-| `clear_toast_popup` | Function | `src/render/renderer/ui/popups.rs` | 522 |
+| `clear_system_dep_popup` | Function | `src/render/renderer/ui/popups.rs` | 458 |
+| `clear_toast_popup` | Function | `src/render/renderer/ui/popups.rs` | 531 |
 | `clear_leap_labels` | Function | `src/render/renderer/palette/leap.rs` | 162 |
+| `render` | Function | `src/render/renderer/lifecycle/frame.rs` | 11 |
+| `clear_editor_content` | Function | `src/render/renderer/editor/viewport.rs` | 43 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
+| `Startup_subsystems → Find_node` | cross_community | 6 |
+| `Handle_explorer_and_workspace_command → Login_shell_path_cache` | cross_community | 6 |
+| `Handle_explorer_and_workspace_command → Probe_path_from_login_shell` | cross_community | 6 |
+| `Handle_explorer_and_workspace_command → Resolve_nvm_bin` | cross_community | 6 |
+| `Handle_explorer_and_workspace_command → Success` | cross_community | 6 |
+| `Handle_explorer_and_workspace_command → Open_python_env_selector` | cross_community | 6 |
 | `Handle_command_with_count → Total_rows` | cross_community | 6 |
-| `Handle_command_with_count → StoredFileHistory` | cross_community | 6 |
-| `Handle_command_with_count → Tree_sitter_language` | cross_community | 6 |
-| `Submit_lsp_did_open_for_active_file → Find_node` | cross_community | 5 |
-| `Submit_lsp_did_change_for_active_file → Find_node` | cross_community | 5 |
-| `Handle_command_with_count → Supports_numeric_count` | cross_community | 5 |
-| `Handle_command_with_count → Dispatch_command_with_clipboard_once` | cross_community | 5 |
-| `Handle_command_with_count → Groups_repeated_edits_into_single_transaction` | cross_community | 5 |
-| `Handle_command_with_count → Root_node` | cross_community | 5 |
-| `Handle_lsp_and_diagnostics_command → Path_to_lsp_uri` | cross_community | 4 |
+| `Handle_command_with_count → Success` | cross_community | 6 |
+| `Handle_command_with_count → Open_python_env_selector` | cross_community | 6 |
+| `Handle_command_with_count → Success_with_flags` | cross_community | 6 |
 
 ## Connected Areas
 
 | Area | Connections |
 |------|-------------|
-| App_state | 18 calls |
-| Ui | 11 calls |
-| Command_dispatch | 11 calls |
-| Renderer | 9 calls |
-| Syntax | 8 calls |
-| Workbench | 7 calls |
-| Editor | 6 calls |
-| Text | 5 calls |
+| App_state | 22 calls |
+| Renderer | 10 calls |
+| Syntax | 9 calls |
+| Workbench | 8 calls |
+| Palette | 8 calls |
+| Text | 6 calls |
+| Ui | 6 calls |
+| Command_dispatch | 5 calls |
 
 ## How to Explore
 

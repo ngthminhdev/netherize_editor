@@ -1,11 +1,11 @@
 ---
 name: workbench
-description: "Skill for the Workbench area of netherize_editor. 110 symbols across 17 files."
+description: "Skill for the Workbench area of netherize_editor. 113 symbols across 18 files."
 ---
 
 # Workbench
 
-110 symbols | 17 files | Cohesion: 87%
+113 symbols | 18 files | Cohesion: 87%
 
 ## When to Use
 
@@ -17,7 +17,7 @@ description: "Skill for the Workbench area of netherize_editor. 110 symbols acro
 
 | File | Symbols |
 |------|---------|
-| `src/workbench/layout_engine.rs` | default, from_ui_theme, new, status_bar_top_gap, compute (+21) |
+| `src/workbench/layout_engine.rs` | default, from_ui_theme, new, status_bar_top_gap, compute (+23) |
 | `src/workbench/panel_state.rs` | active_tab_id, active_tab_label, new, switch_to_prev_tab, default (+12) |
 | `src/workbench/inspector_panel.rs` | title, visible_rows, move_selection_next, toggle_selected_expand, selected_row_label (+10) |
 | `src/workbench/text_coordinate_map.rs` | from_text, map_line_column_to_rect, map_source_location_rect, gutter_marker_rect, maps_line_column_to_stable_pixel_rect (+7) |
@@ -47,8 +47,8 @@ Start here when exploring this area:
 | `from_ui_theme` | Function | `src/workbench/layout_engine.rs` | 87 |
 | `new` | Function | `src/workbench/layout_engine.rs` | 114 |
 | `compute` | Function | `src/workbench/layout_engine.rs` | 125 |
-| `apply_handle_drag` | Function | `src/workbench/layout_engine.rs` | 391 |
-| `language_profile_for_extension` | Function | `src/lsp/registry.rs` | 200 |
+| `apply_handle_drag` | Function | `src/workbench/layout_engine.rs` | 418 |
+| `language_profile_for_extension` | Function | `src/lsp/registry.rs` | 213 |
 | `lsp_entry_for_extension` | Function | `src/lsp/client.rs` | 42 |
 | `new` | Function | `src/render/surface.rs` | 13 |
 | `set` | Function | `src/workbench/focus_manager.rs` | 48 |
@@ -75,15 +75,15 @@ Start here when exploring this area:
 | `Spawn_lsp_server → FlatRegion` | cross_community | 7 |
 | `Picker_open_query_select_flow → Find_node` | cross_community | 7 |
 | `Run_pty_request → FlatRegion` | cross_community | 7 |
+| `Startup_subsystems → Find_node` | cross_community | 6 |
 | `Run_lsp_request → Find_node` | cross_community | 6 |
-| `Execute_lsp_request → FlatRegion` | cross_community | 5 |
 
 ## Connected Areas
 
 | Area | Connections |
 |------|-------------|
-| App_state | 2 calls |
-| Command_dispatch | 2 calls |
+| App_state | 3 calls |
+| Command_dispatch | 1 calls |
 
 ## How to Explore
 

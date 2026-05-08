@@ -50,7 +50,7 @@ Start here when exploring this area:
 | `sampler` | Function | `src/text/atlas.rs` | 93 |
 | `new` | Function | `src/render/text_pipeline.rs` | 51 |
 | `update_screen_size` | Function | `src/render/text_pipeline.rs` | 189 |
-| `update_caret_visibility` | Function | `src/render/renderer.rs` | 299 |
+| `update_caret_visibility` | Function | `src/render/renderer.rs` | 315 |
 | `upload_caret` | Function | `src/render/caret.rs` | 240 |
 | `upload_carets` | Function | `src/render/caret.rs` | 252 |
 | `set_caret_visible` | Function | `src/render/caret.rs` | 270 |

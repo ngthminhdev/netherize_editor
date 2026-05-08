@@ -32,7 +32,7 @@ Start here when exploring this area:
 
 - **`builtin`** (Function) — `src/config/ui_config.rs:177`
 - **`validate`** (Function) — `src/config/ui_config.rs:661`
-- **`is_valid`** (Function) — `src/core/command_ids.rs:392`
+- **`is_valid`** (Function) — `src/core/command_ids.rs:406`
 - **`load`** (Function) — `src/config/keymap_loader.rs:35`
 - **`debounce_ms`** (Function) — `src/config/ai_config.rs:49`
 
@@ -42,14 +42,14 @@ Start here when exploring this area:
 |--------|------|------|------|
 | `builtin` | Function | `src/config/ui_config.rs` | 177 |
 | `validate` | Function | `src/config/ui_config.rs` | 661 |
-| `is_valid` | Function | `src/core/command_ids.rs` | 392 |
+| `is_valid` | Function | `src/core/command_ids.rs` | 406 |
 | `load` | Function | `src/config/keymap_loader.rs` | 35 |
 | `debounce_ms` | Function | `src/config/ai_config.rs` | 49 |
 | `prefix_chars` | Function | `src/config/ai_config.rs` | 53 |
 | `suffix_chars` | Function | `src/config/ai_config.rs` | 57 |
 | `max_tokens` | Function | `src/config/ai_config.rs` | 61 |
-| `flush_pending_ai_inline_completion` | Function | `src/app/event_loop/setup.rs` | 952 |
-| `next_ai_inline_flush_deadline` | Function | `src/app/event_loop/setup.rs` | 1003 |
+| `flush_pending_ai_inline_completion` | Function | `src/app/event_loop/setup.rs` | 1019 |
+| `next_ai_inline_flush_deadline` | Function | `src/app/event_loop/setup.rs` | 1070 |
 | `active_profile` | Function | `src/config/ui_config.rs` | 143 |
 | `load_active` | Function | `src/config/ui_config.rs` | 147 |
 | `load` | Function | `src/config/ui_config.rs` | 162 |
@@ -67,20 +67,20 @@ Start here when exploring this area:
 |------|------|-------|
 | `Bench_edit_loop_latency → Find_profile_path` | cross_community | 7 |
 | `Bench_edit_loop_latency → Active_profile` | cross_community | 6 |
+| `Update_markdown_preview_content → From_str` | cross_community | 6 |
+| `Update_markdown_preview_content → Is_valid` | cross_community | 6 |
 | `Load → Home_dir` | cross_community | 6 |
 | `Terminal_normal_selection_yanks_terminal_grid_and_returns_to_typing_mode → Active_profile` | cross_community | 6 |
+| `Terminal_normal_selection_yanks_terminal_grid_and_returns_to_typing_mode → Find_profile_path` | cross_community | 6 |
 | `Update_ai_chat_content → Find_profile_path` | cross_community | 5 |
+| `Update_markdown_preview_content → Find_profile_path` | cross_community | 5 |
 | `Load_active → WindowUiConfig` | cross_community | 5 |
-| `Load_active → Parse_positive_u32` | cross_community | 5 |
-| `Load_active → Parse_positive_f32` | cross_community | 5 |
-| `Run_local_history_request → Home_dir` | cross_community | 5 |
-| `Default_profile_leader_f_m_routes_to_lsp_format_document → From_str` | cross_community | 5 |
 
 ## Connected Areas
 
 | Area | Connections |
 |------|-------------|
-| Scheduler | 2 calls |
+| Cluster_2 | 2 calls |
 | App | 1 calls |
 | Event_loop | 1 calls |
 

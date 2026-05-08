@@ -1,11 +1,11 @@
 ---
 name: text
-description: "Skill for the Text area of netherize_editor. 40 symbols across 9 files."
+description: "Skill for the Text area of netherize_editor. 42 symbols across 10 files."
 ---
 
 # Text
 
-40 symbols | 9 files | Cohesion: 76%
+42 symbols | 10 files | Cohesion: 72%
 
 ## When to Use
 
@@ -22,6 +22,7 @@ description: "Skill for the Text area of netherize_editor. 40 symbols across 9 f
 | `src/text/raster.rs` | rasterize_glyph_alpha, extract_alpha_from_image_data, mask_alpha_conversion_truncates_to_expected_pixel_count, color_alpha_conversion_reads_only_alpha_channel, subpixel_alpha_conversion_uses_max_channel_per_pixel (+1) |
 | `src/terminal/ansi_parser.rs` | to_rgba_f32, to_rgba_f32_with_defaults, xterm256_to_rgb |
 | `src/text/layout_sync.rs` | rebuild_layout_projection, compute_cursor_overlay |
+| `src/app/event_loop/helpers.rs` | clip_styled_span_to_line, heading_spans |
 | `src/terminal/terminal_renderer.rs` | build_instances |
 | `src/terminal/grid.rs` | iter_visible_cells |
 | `src/render/renderer/lifecycle.rs` | make_text_system |
@@ -57,10 +58,10 @@ Start here when exploring this area:
 | `to_rgba_f32` | Function | `src/terminal/ansi_parser.rs` | 32 |
 | `to_rgba_f32_with_defaults` | Function | `src/terminal/ansi_parser.rs` | 40 |
 | `xterm256_to_rgb` | Function | `src/terminal/ansi_parser.rs` | 567 |
-| `with_style` | Function | `src/text/text_system.rs` | 53 |
 | `set_text_with_color` | Function | `src/text/text_system.rs` | 139 |
 | `set_text_bold_color` | Function | `src/text/text_system.rs` | 151 |
 | `set_text_italic_color` | Function | `src/text/text_system.rs` | 164 |
+| `set_text_with_spans` | Function | `src/text/text_system.rs` | 181 |
 
 ## Execution Flows
 
