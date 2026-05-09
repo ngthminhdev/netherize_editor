@@ -362,6 +362,7 @@ pub(super) fn mode_display_label(mode: EditorMode) -> &'static str {
         EditorMode::TerminalNormal => "T-COPY",
         EditorMode::MultiCursor => "MC-SELECT",
         EditorMode::MultiInsert => "MC-INSERT",
+        EditorMode::Resize => "RESIZE",
     }
 }
 
@@ -374,6 +375,7 @@ pub(super) fn mode_pill_color(mode: EditorMode, theme: &ThemeConfig) -> [f32; 4]
         EditorMode::TerminalFocus => theme.ui.success.as_f32(),
         EditorMode::TerminalNormal => theme.ui.accent.as_f32(),
         EditorMode::MultiCursor | EditorMode::MultiInsert => theme.ui.mode_visual.as_f32(),
+        EditorMode::Resize => theme.ui.amber.as_f32(),
     }
 }
 

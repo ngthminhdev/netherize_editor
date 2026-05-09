@@ -1,5 +1,5 @@
 [inline_completion]
-enabled = true
+enabled = false
 debounce_ms = 300
 prefix_chars = 1200
 suffix_chars = 400

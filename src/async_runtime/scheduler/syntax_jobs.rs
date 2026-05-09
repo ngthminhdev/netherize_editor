@@ -321,7 +321,7 @@ pub(super) async fn execute_virtual_job(
         WorkerRequestPayload::AiInlineCompletionRequest { .. } => {
             Err("AI inline completion request should be handled by dedicated AI runner".to_string())
         }
-        WorkerRequestPayload::AiChatRequest { .. } => {
+        WorkerRequestPayload::AiChatRequest { .. } | WorkerRequestPayload::AiChatCancel => {
             Err("AI chat request should be handled by dedicated AI chat runner".to_string())
         }
         WorkerRequestPayload::AiInstallRequest => {

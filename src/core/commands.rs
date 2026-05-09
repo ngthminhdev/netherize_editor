@@ -146,6 +146,14 @@ pub enum Command {
     SettingsAdjustDecrease,
     SettingsAdjustIncrease,
     SettingsActivate,
+    /// Decrease focused workbench window width in resize mode.
+    ResizeDecreaseWidth,
+    /// Increase focused workbench window width in resize mode.
+    ResizeIncreaseWidth,
+    /// Decrease focused workbench window height in resize mode.
+    ResizeDecreaseHeight,
+    /// Increase focused workbench window height in resize mode.
+    ResizeIncreaseHeight,
     GitOpenLazygit,
     GitOpenLazydocker,
     GitBlameLine,
@@ -298,6 +306,8 @@ pub enum Command {
     AiChatToggle,
     /// Send the current input text to the AI chat agent.
     AiChatSend,
+    /// Stop the currently running AI chat generation.
+    AiChatStop,
     /// Close the AI chat panel.
     AiChatClose,
     /// Unfocus AI chat input — return focus to editor without closing the dock.

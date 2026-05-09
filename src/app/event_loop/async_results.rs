@@ -1131,6 +1131,18 @@ impl AsyncResultRouter for AppShell {
         self.request_redraw();
     }
 
+    fn on_ai_stream_cancelled(&mut self) {
+        self.panel_state.ai_chat.is_generating = false;
+        self.panel_state
+            .ai_chat
+            .messages
+            .push(crate::workbench::panel_state::AiChatMessage {
+                role: crate::workbench::panel_state::AiRole::System,
+                text: "Generation stopped.".to_string(),
+            });
+        self.request_redraw();
+    }
+
     fn on_ai_stream_error(&mut self, error: String) {
         self.panel_state.ai_chat.is_generating = false;
         self.panel_state

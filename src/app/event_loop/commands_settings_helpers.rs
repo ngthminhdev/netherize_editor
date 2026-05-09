@@ -1,6 +1,108 @@
 use super::*;
 
 impl AppShell {
+    pub(super) const RESIZE_STEP_PX: f32 = 20.0;
+
+    pub(super) fn resize_focused_window(&mut self, width_delta: f32, height_delta: f32) -> bool {
+        let focus = self.focus_manager.current();
+        let mut changed = false;
+
+        match focus {
+            FocusTarget::LeftSidebar if width_delta != 0.0 && self.panel_state.left.visible => {
+                let next = (self.panel_state.left.size_px + width_delta).clamp(160.0, 640.0);
+                changed = (next - self.panel_state.left.size_px).abs() > f32::EPSILON;
+                if changed {
+                    self.panel_state.left.size_px = next;
+                    self.ui_config.docks.left.size_px = next;
+                    self.sidebar_needs_layout = true;
+                }
+            }
+            FocusTarget::RightSidebar if width_delta != 0.0 && self.panel_state.right.visible => {
+                let next = (self.panel_state.right.size_px + width_delta).clamp(180.0, 720.0);
+                changed = (next - self.panel_state.right.size_px).abs() > f32::EPSILON;
+                if changed {
+                    self.panel_state.right.size_px = next;
+                    self.ui_config.docks.right.size_px = next;
+                    self.sidebar_needs_layout = true;
+                }
+            }
+            FocusTarget::BottomPanel if height_delta != 0.0 && self.panel_state.bottom.visible => {
+                let next = (self.panel_state.bottom.size_px + height_delta).clamp(120.0, 520.0);
+                changed = (next - self.panel_state.bottom.size_px).abs() > f32::EPSILON;
+                if changed {
+                    self.panel_state.bottom.size_px = next;
+                    self.ui_config.docks.bottom.size_px = next;
+                    self.terminal_needs_layout = true;
+                }
+            }
+            FocusTarget::CenterEditor => {
+                if width_delta > 0.0 {
+                    if self.panel_state.left.visible {
+                        let next = (self.panel_state.left.size_px - width_delta).clamp(160.0, 640.0);
+                        if (next - self.panel_state.left.size_px).abs() > f32::EPSILON {
+                            self.panel_state.left.size_px = next;
+                            self.ui_config.docks.left.size_px = next;
+                            changed = true;
+                        }
+                    }
+                    if self.panel_state.right.visible {
+                        let next = (self.panel_state.right.size_px - width_delta).clamp(180.0, 720.0);
+                        if (next - self.panel_state.right.size_px).abs() > f32::EPSILON {
+                            self.panel_state.right.size_px = next;
+                            self.ui_config.docks.right.size_px = next;
+                            changed = true;
+                        }
+                    }
+                } else if width_delta < 0.0 {
+                    if self.panel_state.left.visible {
+                        let next = (self.panel_state.left.size_px + width_delta.abs()).clamp(160.0, 640.0);
+                        if (next - self.panel_state.left.size_px).abs() > f32::EPSILON {
+                            self.panel_state.left.size_px = next;
+                            self.ui_config.docks.left.size_px = next;
+                            changed = true;
+                        }
+                    } else if self.panel_state.right.visible {
+                        let next = (self.panel_state.right.size_px + width_delta.abs()).clamp(180.0, 720.0);
+                        if (next - self.panel_state.right.size_px).abs() > f32::EPSILON {
+                            self.panel_state.right.size_px = next;
+                            self.ui_config.docks.right.size_px = next;
+                            changed = true;
+                        }
+                    }
+                }
+
+                if height_delta > 0.0 && self.panel_state.bottom.visible {
+                    let next = (self.panel_state.bottom.size_px - height_delta).clamp(120.0, 520.0);
+                    if (next - self.panel_state.bottom.size_px).abs() > f32::EPSILON {
+                        self.panel_state.bottom.size_px = next;
+                        self.ui_config.docks.bottom.size_px = next;
+                        changed = true;
+                    }
+                } else if height_delta < 0.0 && self.panel_state.bottom.visible {
+                    let next = (self.panel_state.bottom.size_px + height_delta.abs()).clamp(120.0, 520.0);
+                    if (next - self.panel_state.bottom.size_px).abs() > f32::EPSILON {
+                        self.panel_state.bottom.size_px = next;
+                        self.ui_config.docks.bottom.size_px = next;
+                        changed = true;
+                    }
+                }
+
+                if changed {
+                    self.sidebar_needs_layout = true;
+                    self.terminal_needs_layout = true;
+                }
+            }
+            _ => {}
+        }
+
+        if changed {
+            let _ = self.ui_config.save_user_override();
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = true;
+        }
+        changed
+    }
+
     pub(super) fn finalize_settings_change(&mut self) -> bool {
         self.apply_scaled_runtime_config();
         let _ = self.ui_config.save_user_override();
@@ -169,7 +271,26 @@ impl AppShell {
                 self.editor_caret_needs_layout = false;
                 true
             }
-            crate::app::app_state::SettingItem::InlineSuggestion { .. } => false,
+            crate::app::app_state::SettingItem::InlineSuggestion { enabled } => {
+                let next = !enabled;
+                if let Err(err) = self.ai_config.set_inline_completion_enabled(next) {
+                    eprintln!("[settings] failed to save AI config: {err}");
+                    return false;
+                }
+                if !next {
+                    self.cancel_ai_inline_completion();
+                    let _ = self.app_state.clear_inline_suggestion();
+                }
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::InlineSuggestion { enabled }) =
+                        state.selected_item_mut()
+                {
+                    *enabled = next;
+                }
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+                true
+            }
             crate::app::app_state::SettingItem::EnableOutline { enabled } => {
                 let next = !enabled;
                 self.ui_config.enable_outline = next;

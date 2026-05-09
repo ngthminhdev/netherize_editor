@@ -4,6 +4,7 @@ use std::{
 };
 
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use winit::event_loop::EventLoopProxy;
 
 use crate::{
@@ -66,6 +67,7 @@ pub(super) async fn dispatch_loop(
     let lsp_sessions = Arc::new(LspSessionRegistry::default());
     let syntax_engine_cache: Arc<SyntaxEngineCache> = Arc::new(Mutex::new(HashMap::new()));
     let mut active_fzf_search: Option<tokio::task::JoinHandle<()>> = None;
+    let mut active_ai_chat_cancel: Option<CancellationToken> = None;
 
     while let Some(request) = request_rx.recv().await {
         async_trace!(
@@ -203,7 +205,19 @@ pub(super) async fn dispatch_loop(
             continue;
         }
 
+        if matches!(request.payload, WorkerRequestPayload::AiChatCancel) {
+            if let Some(cancel_token) = active_ai_chat_cancel.take() {
+                cancel_token.cancel();
+            }
+            continue;
+        }
+
         if matches!(request.payload, WorkerRequestPayload::AiChatRequest { .. }) {
+            if let Some(cancel_token) = active_ai_chat_cancel.take() {
+                cancel_token.cancel();
+            }
+            let cancel_token = CancellationToken::new();
+            active_ai_chat_cancel = Some(cancel_token.clone());
             let (
                 prompt,
                 cursor_position,
@@ -250,6 +264,7 @@ pub(super) async fn dispatch_loop(
                     file_refs,
                     model,
                     agent,
+                    cancel_token,
                 )
                 .await;
             });

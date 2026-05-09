@@ -69,7 +69,7 @@ impl SettingItem {
                 "Press Enter to toggle: spaces keep indent visible; tabs compress display."
             }
             Self::InlineSuggestion { .. } => {
-                "Disabled temporarily while the inline suggestion pipeline is being stabilized."
+                "Press Enter to toggle AI inline completion from config/ai.toml."
             }
             Self::SidebarWidth { .. } => {
                 "Reserved width for the left dock when the workspace sidebar is shown."

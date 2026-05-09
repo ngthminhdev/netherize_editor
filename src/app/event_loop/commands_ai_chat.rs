@@ -405,7 +405,20 @@ impl AppShell {
         true
     }
 
-    /// Handle `AiChatToggle`, `AiChatSend`, `AiChatClose` commands.
+    fn stop_ai_chat_generation(&mut self) -> bool {
+        if !self.panel_state.ai_chat.is_generating {
+            return false;
+        }
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::AiChat,
+            payload: WorkerRequestPayload::AiChatCancel,
+        });
+        true
+    }
+
+    /// Handle `AiChatToggle`, `AiChatSend`, `AiChatStop`, `AiChatClose` commands.
     ///
     /// Returns `Some(changed)` when the command was consumed, `None` otherwise.
     pub(super) fn handle_ai_chat_command(&mut self, command: &Command) -> Option<bool> {
@@ -433,6 +446,7 @@ impl AppShell {
             }
             Command::AiChatPromptInstall => Some(self.begin_ai_chat_install_confirmation()),
             Command::AiChatAddSelectionContext => Some(self.add_visual_selection_to_ai_chat()),
+            Command::AiChatStop => Some(self.stop_ai_chat_generation()),
             Command::AiChatSend => {
                 let raw = self.panel_state.ai_chat.input_buffer.trim().to_string();
                 if raw.is_empty() || self.panel_state.ai_chat.is_generating {
@@ -723,6 +737,9 @@ impl AppShell {
                 }
             }
             Command::AiChatClearInput => {
+                if self.panel_state.ai_chat.is_generating {
+                    return Some(self.stop_ai_chat_generation());
+                }
                 let chat = &mut self.panel_state.ai_chat;
                 if chat.input_buffer.is_empty() {
                     Some(false)

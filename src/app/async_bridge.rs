@@ -39,6 +39,7 @@ pub trait AsyncResultRouter {
     fn on_stale_result(&mut self, stale: WorkerResult);
     fn on_ai_message_chunk(&mut self, text: String);
     fn on_ai_stream_complete(&mut self);
+    fn on_ai_stream_cancelled(&mut self);
     fn on_ai_stream_error(&mut self, error: String);
     fn on_ai_install_success(&mut self);
     fn on_system_dep_tool_progress(&mut self, tool: String, status: InstallStatus);
@@ -138,6 +139,10 @@ impl AppAsyncBridge {
                             async_trace!("[Bridge] AI stream complete");
                             router.on_ai_stream_complete();
                         }
+                        WorkerMessage::AiStreamCancelled => {
+                            async_trace!("[Bridge] AI stream cancelled");
+                            router.on_ai_stream_cancelled();
+                        }
                         WorkerMessage::AiStreamError { error } => {
                             async_trace!("[Bridge] AI stream error: {}", error);
                             router.on_ai_stream_error(error);
@@ -220,6 +225,7 @@ mod tests {
 
         fn on_ai_message_chunk(&mut self, _text: String) {}
         fn on_ai_stream_complete(&mut self) {}
+        fn on_ai_stream_cancelled(&mut self) {}
         fn on_ai_stream_error(&mut self, _error: String) {}
         fn on_ai_install_success(&mut self) {}
         fn on_system_dep_tool_progress(&mut self, _tool: String, _status: InstallStatus) {}

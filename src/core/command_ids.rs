@@ -67,8 +67,10 @@ pub const ENTER_NORMAL: &str = "mode.enter_normal";
 pub const ENTER_INSERT: &str = "mode.enter_insert";
 pub const ENTER_VISUAL: &str = "mode.enter_visual";
 pub const ENTER_VISUAL_LINE: &str = "mode.enter_visual_line";
+pub const ENTER_RESIZE: &str = "mode.resize";
 pub const ENTER_TERMINAL_FOCUS: &str = "mode.enter_terminal_focus";
 pub const EXIT_FOCUS: &str = "mode.exit_focus";
+pub const ESCAPE_MODE: &str = "mode.escape";
 
 // ── Workspace / Project management ───────────────────────────────────────────
 pub const OPEN_FOLDER: &str = "editor.open_folder";
@@ -128,6 +130,10 @@ pub const LSP_TRIGGER_COMPLETION: &str = "lsp.trigger_completion";
 pub const LSP_CODE_ACTION: &str = "lsp.code_action";
 pub const LSP_SELECT_PYTHON_ENV: &str = "lsp.select_python_env";
 pub const RELOAD_WORKSPACE: &str = "workspace.reload";
+pub const RESIZE_DECREASE_WIDTH: &str = "resize.decrease_width";
+pub const RESIZE_INCREASE_WIDTH: &str = "resize.increase_width";
+pub const RESIZE_DECREASE_HEIGHT: &str = "resize.decrease_height";
+pub const RESIZE_INCREASE_HEIGHT: &str = "resize.increase_height";
 pub const COMPLETION_NEXT: &str = "completion.next";
 pub const COMPLETION_PREV: &str = "completion.prev";
 pub const COMPLETION_ACCEPT: &str = "completion.accept";
@@ -138,6 +144,7 @@ pub const AI_ACCEPT_INLINE_WORD: &str = "ai.accept_inline_word";
 // ── AI Chat ──────────────────────────────────────────────────────────────
 pub const AI_CHAT_TOGGLE: &str = "ai.chat_toggle";
 pub const AI_CHAT_SEND: &str = "ai.chat_send";
+pub const AI_CHAT_STOP: &str = "ai.chat_stop";
 pub const AI_CHAT_CLOSE: &str = "ai.chat_close";
 pub const AI_CHAT_UNFOCUS: &str = "ai.chat_unfocus";
 pub const AI_CHAT_FOCUS: &str = "ai.chat_focus";
@@ -292,8 +299,10 @@ pub const ALL_IDS: &[&str] = &[
     ENTER_INSERT,
     ENTER_VISUAL,
     ENTER_VISUAL_LINE,
+    ENTER_RESIZE,
     ENTER_TERMINAL_FOCUS,
     EXIT_FOCUS,
+    ESCAPE_MODE,
     TOGGLE_TERMINAL,
     TOGGLE_BOTTOM_DOCK,
     TOGGLE_LEFT_DOCK,
@@ -496,8 +505,10 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         ENTER_INSERT => Some(Command::SwitchMode(ModeEvent::EnterInsert)),
         ENTER_VISUAL => Some(Command::SwitchMode(ModeEvent::EnterVisual)),
         ENTER_VISUAL_LINE => Some(Command::EnterVisualLine),
+        ENTER_RESIZE => Some(Command::SwitchMode(ModeEvent::EnterResize)),
         ENTER_TERMINAL_FOCUS => Some(Command::SwitchMode(ModeEvent::FocusTerminal)),
         EXIT_FOCUS => Some(Command::SwitchMode(ModeEvent::ExitFocus)),
+        ESCAPE_MODE => Some(Command::SwitchMode(ModeEvent::Escape)),
         TERMINAL_ENTER_NORMAL_MODE => Some(Command::SwitchMode(ModeEvent::EnterTerminalNormal)),
         TERMINAL_PASTE => Some(Command::TerminalPaste),
         TERMINAL_SEARCH_OPEN => Some(Command::TerminalSearchOpen),
@@ -547,6 +558,10 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         LSP_CODE_ACTION => Some(Command::CodeAction),
         LSP_SELECT_PYTHON_ENV => Some(Command::LspSelectPythonEnv),
         RELOAD_WORKSPACE => Some(Command::ReloadWorkspace),
+        RESIZE_DECREASE_WIDTH => Some(Command::ResizeDecreaseWidth),
+        RESIZE_INCREASE_WIDTH => Some(Command::ResizeIncreaseWidth),
+        RESIZE_DECREASE_HEIGHT => Some(Command::ResizeDecreaseHeight),
+        RESIZE_INCREASE_HEIGHT => Some(Command::ResizeIncreaseHeight),
         COMPLETION_NEXT => Some(Command::CompletionNext),
         COMPLETION_PREV => Some(Command::CompletionPrev),
         COMPLETION_ACCEPT => Some(Command::CompletionAccept),
@@ -555,6 +570,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         AI_ACCEPT_INLINE_WORD => Some(Command::AiAcceptInlineWord),
         AI_CHAT_TOGGLE => Some(Command::AiChatToggle),
         AI_CHAT_SEND => Some(Command::AiChatSend),
+        AI_CHAT_STOP => Some(Command::AiChatStop),
         AI_CHAT_CLOSE => Some(Command::AiChatClose),
         AI_CHAT_UNFOCUS => Some(Command::AiChatUnfocus),
         AI_CHAT_FOCUS => Some(Command::AiChatFocus),

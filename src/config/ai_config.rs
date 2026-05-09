@@ -1,15 +1,15 @@
 use std::{fs, path::PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::config::paths::user_config_root;
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct AiConfig {
     pub inline_completion: Option<InlineCompletionConfig>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct InlineCompletionConfig {
     pub enabled: Option<bool>,
     pub provider: AiProviderConfig,
@@ -24,7 +24,7 @@ pub struct InlineCompletionConfig {
     pub min_interval_ms: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AiProviderConfig {
     pub api_url: String,
     pub model: String,
@@ -50,6 +50,35 @@ impl AiConfig {
         self.inline_completion
             .as_ref()
             .filter(|cfg| cfg.enabled.unwrap_or(true))
+    }
+
+    pub fn inline_completion_enabled(&self) -> bool {
+        self.inline_completion
+            .as_ref()
+            .and_then(|cfg| cfg.enabled)
+            .unwrap_or(false)
+    }
+
+    pub fn set_inline_completion_enabled(&mut self, enabled: bool) -> Result<(), String> {
+        let Some(inline_completion) = self.inline_completion.as_mut() else {
+            return Err("inline completion config is missing".to_string());
+        };
+        inline_completion.enabled = Some(enabled);
+        self.save_user_override()
+    }
+
+    pub fn save_user_override(&self) -> Result<(), String> {
+        let path = candidate_paths()
+            .into_iter()
+            .find(|path| path.is_file())
+            .unwrap_or_else(|| user_config_root().join("ai.toml"));
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|err| format!("create ai config dir failed: {err}"))?;
+        }
+        let text = toml::to_string_pretty(self)
+            .map_err(|err| format!("serialize ai config failed: {err}"))?;
+        fs::write(&path, text).map_err(|err| format!("write ai config failed: {err}"))
     }
 }
 
@@ -96,6 +125,7 @@ impl InlineCompletionConfig {
     pub fn min_interval_ms(&self) -> u64 {
         self.min_interval_ms.unwrap_or(250)
     }
+
 }
 
 fn candidate_paths() -> Vec<PathBuf> {

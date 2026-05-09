@@ -326,6 +326,8 @@ pub enum WorkerRequestPayload {
         /// Optional primary agent override (e.g. "build" or "plan").
         agent: Option<String>,
     },
+    /// Cancel the currently running AI chat generation, if any.
+    AiChatCancel,
     /// Install the opencode CLI on the host machine.
     AiInstallRequest,
     /// Check for missing system CLI tools (fzf, lazygit, lazydocker, rg, etc.).
@@ -687,6 +689,7 @@ pub enum WorkerMessage {
         text: String,
     },
     AiStreamComplete,
+    AiStreamCancelled,
     AiStreamError {
         error: String,
     },

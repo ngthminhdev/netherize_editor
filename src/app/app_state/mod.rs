@@ -647,6 +647,7 @@ fn build_help_lines(
     lines.push("AI Assistant".to_string());
     append_help_binding(&mut lines, bindings, "ai.chat_toggle", "Toggle AI chat");
     append_help_binding(&mut lines, bindings, "ai.chat_focus", "Focus AI chat");
+    append_help_binding(&mut lines, bindings, "ai.chat_stop", "Stop AI chat generation");
     append_help_binding(&mut lines, bindings, "ai.accept_inline", "Accept inline suggestion");
     lines.push("".to_string());
 
@@ -837,6 +838,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "ai.accept_inline" => "Accept AI suggestion",
         "ai.chat_toggle" => "Toggle AI chat",
         "ai.chat_send" => "Send AI message",
+        "ai.chat_stop" => "Stop AI chat generation",
         "ai.chat_focus" => "Focus AI chat",
         "ai.chat_close" => "Close AI chat",
         "ai.chat_add_selection_context" => "Add selection to AI",

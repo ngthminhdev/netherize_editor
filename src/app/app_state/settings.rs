@@ -23,7 +23,7 @@ impl SettingItem {
             Self::LineHeight { .. } => "Line Height",
             Self::IndentTabWidth { .. } => "Tab Width",
             Self::IndentInsertSpaces { .. } => "Indent Style",
-            Self::InlineSuggestion { .. } => "Inline Suggestion",
+            Self::InlineSuggestion { .. } => "Inline Completion",
             Self::SidebarWidth { .. } => "Left Dock Width",
             Self::RightSidebarWidth { .. } => "Right Dock Width",
             Self::BottomPanelHeight { .. } => "Bottom Dock Height",
@@ -71,6 +71,7 @@ impl SettingsState {
         ui_rounding_enabled: bool,
         border_radius_px: f32,
         enable_outline: bool,
+        inline_suggestion_enabled: bool,
     ) -> Self {
         Self {
             selected_index: 0,
@@ -104,7 +105,9 @@ impl SettingsState {
                     enabled: insert_spaces,
                 },
                 // AI
-                SettingItem::InlineSuggestion { enabled: false },
+                SettingItem::InlineSuggestion {
+                    enabled: inline_suggestion_enabled,
+                },
                 // LAYOUT
                 SettingItem::SidebarWidth {
                     current: left_width.max(0),

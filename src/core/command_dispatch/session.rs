@@ -136,6 +136,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::JumpForward
         | Command::AiChatToggle
         | Command::AiChatSend
+        | Command::AiChatStop
         | Command::AiChatClose
         | Command::AiChatUnfocus
         | Command::AiChatFocus

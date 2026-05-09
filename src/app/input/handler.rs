@@ -1299,7 +1299,7 @@ impl InputHandler {
                     return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                         input_debug,
                         format!(
-                            "mode={} focus={} -> ai chat: clear input",
+                            "mode={} focus={} -> ai chat: stop generation / clear input",
                             context.mode.as_str(),
                             context.focus.as_str(),
                         ),

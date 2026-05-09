@@ -260,6 +260,15 @@ fn dispatch_command_with_clipboard_once(
         | Command::CloseFilePicker
         | Command::OpenCommandPalette
         | Command::TerminalSearchOpen => palette::dispatch(&mut ctx, command),
+        Command::ResizeDecreaseWidth
+        | Command::ResizeIncreaseWidth
+        | Command::ResizeDecreaseHeight
+        | Command::ResizeIncreaseHeight => {
+            DispatchReport::success(
+                format!("Dispatch: resize command {command:?} handled by event loop"),
+                false,
+            )
+        }
         Command::SaveFile
         | Command::OpenFile(_)
         | Command::OpenFolder
@@ -337,6 +346,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::JumpForward
         | Command::AiChatToggle
         | Command::AiChatSend
+        | Command::AiChatStop
         | Command::AiChatClose
         | Command::AiChatUnfocus
         | Command::AiChatFocus

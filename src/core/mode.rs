@@ -11,6 +11,8 @@ pub enum EditorMode {
     MultiCursor,
     /// Simultaneous insert across all virtual cursors (action phase).
     MultiInsert,
+    /// Workbench dock/window resize mode.
+    Resize,
 }
 
 impl EditorMode {
@@ -24,6 +26,7 @@ impl EditorMode {
             Self::TerminalNormal => "terminal_normal",
             Self::MultiCursor => "multicursor",
             Self::MultiInsert => "multiinsert",
+            Self::Resize => "resize",
         }
     }
 }
@@ -44,6 +47,8 @@ pub enum ModeEvent {
     EnterMultiCursor,
     /// Enter MultiInsert mode (I / A / c action on multi-cursor selection).
     EnterMultiInsert,
+    /// Enter workbench resize mode.
+    EnterResize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,7 +58,7 @@ pub struct ModeTransitionRule {
     pub to: EditorMode,
 }
 
-const TRANSITION_RULES: [ModeTransitionRule; 25] = [
+const TRANSITION_RULES: [ModeTransitionRule; 32] = [
     // Core editing transitions
     ModeTransitionRule {
         from: EditorMode::Normal,
@@ -183,6 +188,42 @@ const TRANSITION_RULES: [ModeTransitionRule; 25] = [
         event: ModeEvent::OpenPalette,
         to: EditorMode::PaletteFocus,
     },
+    // ── Resize mode ───────────────────────────────────────────────────────────
+    ModeTransitionRule {
+        from: EditorMode::Normal,
+        event: ModeEvent::EnterResize,
+        to: EditorMode::Resize,
+    },
+    ModeTransitionRule {
+        from: EditorMode::TerminalNormal,
+        event: ModeEvent::EnterResize,
+        to: EditorMode::Resize,
+    },
+    ModeTransitionRule {
+        from: EditorMode::Resize,
+        event: ModeEvent::Escape,
+        to: EditorMode::Normal,
+    },
+    ModeTransitionRule {
+        from: EditorMode::Resize,
+        event: ModeEvent::EnterNormal,
+        to: EditorMode::Normal,
+    },
+    ModeTransitionRule {
+        from: EditorMode::Resize,
+        event: ModeEvent::OpenPalette,
+        to: EditorMode::PaletteFocus,
+    },
+    ModeTransitionRule {
+        from: EditorMode::Resize,
+        event: ModeEvent::FocusTerminal,
+        to: EditorMode::TerminalFocus,
+    },
+    ModeTransitionRule {
+        from: EditorMode::Resize,
+        event: ModeEvent::EnterInsert,
+        to: EditorMode::Insert,
+    },
 ];
 
 pub fn transition_rules() -> &'static [ModeTransitionRule] {
@@ -257,7 +298,10 @@ impl ModeState {
         // Transition phụ thuộc ngữ cảnh trước: focus mode sẽ quay về mode trước đó.
         if matches!(
             self.current,
-            EditorMode::PaletteFocus | EditorMode::TerminalFocus | EditorMode::TerminalNormal
+            EditorMode::PaletteFocus
+                | EditorMode::TerminalFocus
+                | EditorMode::TerminalNormal
+                | EditorMode::Resize
         ) && matches!(event, ModeEvent::ExitFocus | ModeEvent::Escape)
         {
             return Some(self.return_mode.unwrap_or(EditorMode::Normal));
@@ -269,11 +313,17 @@ impl ModeState {
     fn update_focus_memory(&mut self, from: EditorMode, to: EditorMode) {
         let from_is_focus = matches!(
             from,
-            EditorMode::PaletteFocus | EditorMode::TerminalFocus | EditorMode::TerminalNormal
+            EditorMode::PaletteFocus
+                | EditorMode::TerminalFocus
+                | EditorMode::TerminalNormal
+                | EditorMode::Resize
         );
         let to_is_focus = matches!(
             to,
-            EditorMode::PaletteFocus | EditorMode::TerminalFocus | EditorMode::TerminalNormal
+            EditorMode::PaletteFocus
+                | EditorMode::TerminalFocus
+                | EditorMode::TerminalNormal
+                | EditorMode::Resize
         );
 
         // Đi vào focus mode: nhớ mode trước đó để lúc thoát có chỗ quay về.

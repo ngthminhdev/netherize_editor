@@ -8,6 +8,35 @@ description = "Clean full Neovim-style profile (block TOML, no inline bindings)"
 [meta]
 leader = "space"
 
+[[bindings]]
+key = "<leader>r"
+command = "mode.resize"
+
+[[bindings]]
+mode = "resize"
+key = "h"
+command = "resize.decrease_width"
+
+[[bindings]]
+mode = "resize"
+key = "l"
+command = "resize.increase_width"
+
+[[bindings]]
+mode = "resize"
+key = "j"
+command = "resize.decrease_height"
+
+[[bindings]]
+mode = "resize"
+key = "k"
+command = "resize.increase_height"
+
+[[bindings]]
+mode = "resize"
+key = "esc"
+command = "mode.escape"
+
 # ───────────────── GLOBAL ─────────────────
 [[bindings]]
 key = "mod+s"
@@ -852,6 +881,11 @@ command = "ai.chat_toggle"
 mode = "normal"
 key = "<leader>a f"
 command = "ai.chat_focus"
+
+[[bindings]]
+mode = "normal"
+key = "<leader>a s"
+command = "ai.chat_stop"
 
 [[bindings]]
 mode = "visual"

@@ -299,6 +299,7 @@ pub fn editor_mode_str(mode: EditorMode) -> &'static str {
         EditorMode::TerminalNormal => "terminal_normal",
         EditorMode::MultiCursor => "multicursor",
         EditorMode::MultiInsert => "multiinsert",
+        EditorMode::Resize => "resize",
     }
 }
 
@@ -905,6 +906,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
 
     // Leader bindings (Space = leader) are represented as explicit sequences.
     // Note: <leader>p removed — command palette is opened via mod+p only.
+    km.insert_sequence(
+        None,
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyR)]),
+        ENTER_RESIZE,
+    );
     km.insert_sequence(
         None,
         seq(&[KeySpec::Leader, ph(KeyCode::KeyE)]),
