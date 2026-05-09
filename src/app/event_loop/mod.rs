@@ -376,6 +376,8 @@ pub(super) struct TerminalTab {
     pub session_id: Option<u64>,
     pub label: String,
     pub status: TerminalTabStatus,
+    pub shell_label: String,
+    pub pending_input: String,
 }
 
 impl std::fmt::Debug for TerminalTab {
@@ -384,6 +386,7 @@ impl std::fmt::Debug for TerminalTab {
             .field("session_id", &self.session_id)
             .field("label", &self.label)
             .field("status", &self.status)
+            .field("shell_label", &self.shell_label)
             .finish_non_exhaustive()
     }
 }
@@ -393,8 +396,10 @@ impl TerminalTab {
         Self {
             grid,
             session_id: None,
-            label,
+            label: label.clone(),
             status: TerminalTabStatus::Running,
+            shell_label: label,
+            pending_input: String::new(),
         }
     }
 }

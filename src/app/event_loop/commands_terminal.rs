@@ -3,10 +3,8 @@ use super::*;
 impl AppShell {
     fn default_terminal_working_dir(&self) -> Option<PathBuf> {
         self.app_state
-            .active_file()
-            .and_then(|path| path.parent())
+            .workspace_root_path()
             .map(PathBuf::from)
-            .or_else(|| self.app_state.workspace_root_path().map(PathBuf::from))
             .or_else(|| {
                 std::env::current_dir()
                     .ok()
@@ -233,6 +231,7 @@ impl AppShell {
                 Some(self.handle_command(mapped))
             }
             Command::TerminalWriteInput(input) => {
+                self.track_terminal_tab_input(input);
                 self.forward_to_pty(input);
                 Some(false)
             }
@@ -316,10 +315,42 @@ impl AppShell {
         }
     }
 
+    fn track_terminal_tab_input(&mut self, input: &str) {
+        if self.focus_manager.current() != FocusTarget::BottomPanel {
+            return;
+        }
+        let Some(tab) = self.active_terminal_tab_mut() else {
+            return;
+        };
+
+        match input {
+            "\r" | "\n" | "\r\n" => {
+                let command = tab.pending_input.trim();
+                if !command.is_empty() {
+                    tab.label = terminal_command_title(command, &tab.shell_label);
+                    tab.pending_input.clear();
+                    self.terminal_needs_layout = true;
+                }
+            }
+            "\u{7f}" => {
+                tab.pending_input.pop();
+            }
+            "\u{15}" => {
+                tab.pending_input.clear();
+            }
+            _ => {
+                if input.starts_with('\u{1b}') || input.chars().any(char::is_control) {
+                    return;
+                }
+                tab.pending_input.push_str(input);
+            }
+        }
+    }
+
     fn handle_terminal_tab_new(&mut self) -> bool {
         let mut g = TerminalGrid::new(120, 40);
         g.highlight_colors = HighlightColors::from_theme(&self.theme);
-        let label = format!("bash {}", self.terminal_tabs.len() + 1);
+        let label = format!("terminal {}", self.terminal_tabs.len() + 1);
         self.terminal_tabs.push(TerminalTab::new(g, label));
         self.active_terminal_tab = self.terminal_tabs.len() - 1;
         self.terminal_needs_layout = true;
@@ -433,6 +464,31 @@ impl AppShell {
 /// Uses the grid's scrollback text and `virtual_cursor` position to find a
 /// contiguous span of alphanumeric / underscore characters.  Returns `None`
 /// when the cursor is not on a word character or the grid is empty.
+fn terminal_command_title(command: &str, shell_label: &str) -> String {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        return shell_label.to_string();
+    }
+
+    // Avoid turning common shell-only navigation/cleanup commands into a
+    // permanent-looking task title.
+    let first = trimmed.split_whitespace().next().unwrap_or(trimmed);
+    if matches!(first, "cd" | "clear" | "exit" | "pwd") {
+        return shell_label.to_string();
+    }
+
+    const MAX_TITLE_CHARS: usize = 32;
+    let mut title = String::new();
+    for (idx, ch) in trimmed.chars().enumerate() {
+        if idx >= MAX_TITLE_CHARS {
+            title.push('…');
+            break;
+        }
+        title.push(ch);
+    }
+    title
+}
+
 fn word_at_virtual_cursor(grid: &crate::terminal::grid::TerminalGrid) -> Option<String> {
     let lines = grid.get_scrollback_text();
     let cursor = grid.virtual_cursor;

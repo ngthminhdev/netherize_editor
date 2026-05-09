@@ -10,8 +10,17 @@ use crate::syntax::{
     syntax_engine::{LanguageId, SyntaxEngine, SyntaxTreeState},
 };
 
-pub const INLINE_TREE_SITTER_BYTE_THRESHOLD: usize = 128 * 1024;
-pub const INLINE_TREE_SITTER_LINE_THRESHOLD: usize = 1_500;
+/// Files below these thresholds are small enough for synchronous (blocking)
+/// tree-sitter highlighting on the main thread.  Above the thresholds we
+/// dispatch to the async worker and only highlight the current viewport.
+///
+/// 32 KB / 300 lines is about one typical screenful of code with generous
+/// overscan.  A 600-line file (~48 KB) will skip the inline path entirely:
+/// tree-sitter parse runs on the worker, highlight spans cover only the
+/// visible + overscan window, and normalize_spans paints a ~8 KB array
+/// instead of the full 48 KB.
+pub const INLINE_TREE_SITTER_BYTE_THRESHOLD: usize = 32 * 1024;
+pub const INLINE_TREE_SITTER_LINE_THRESHOLD: usize = 300;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HighlightCategory {

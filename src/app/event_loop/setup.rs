@@ -254,7 +254,7 @@ impl AppShell {
             topic: RequestTopic::TerminalPty,
             payload: WorkerRequestPayload::SpawnPtyShell {
                 shell: None,
-                working_dir: Some(cwd),
+                working_dir: Some(workspace_root.clone()),
             },
         });
 

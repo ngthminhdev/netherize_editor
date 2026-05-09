@@ -281,7 +281,9 @@ impl AsyncResultRouter for AppShell {
                     let cols = tab.grid.cols.min(u16::MAX as usize) as u16;
                     let rows = tab.grid.rows.min(u16::MAX as usize) as u16;
                     tab.session_id = Some(session_id);
-                    tab.label = label;
+                    tab.label = label.clone();
+                    tab.shell_label = label;
+                    tab.pending_input.clear();
                     tab.status = TerminalTabStatus::Running;
                     self.terminal_needs_layout = true;
                     self.submit(RequestSpec {

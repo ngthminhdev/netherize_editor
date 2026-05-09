@@ -365,13 +365,13 @@ impl Renderer {
 
     // ── Terminal tab bar ─────────────────────────────────────────────────────────
 
-    const TAB_BAR_HEIGHT: f32 = 52.0;
-    const TAB_BAR_OUTLINE_INSET: f32 = 2.0;
-    const TAB_BAR_PADDING_X: f32 = 0.0;
-    const TAB_BAR_TAB_MIN_WIDTH: f32 = 180.0;
-    const TAB_BAR_TAB_MAX_WIDTH: f32 = 230.0;
-    const TAB_BAR_DOT_SIZE: f32 = 10.0;
-    const TAB_BAR_DOT_GAP: f32 = 22.0;
+    const TAB_BAR_HEIGHT: f32 = 72.0;
+    const TAB_BAR_OUTLINE_INSET: f32 = 3.0;
+    const TAB_BAR_PADDING_X: f32 = 3.0;
+    const TAB_BAR_TAB_MIN_WIDTH: f32 = 240.0;
+    const TAB_BAR_TAB_MAX_WIDTH: f32 = 300.0;
+    const TAB_BAR_DOT_SIZE: f32 = 15.0;
+    const TAB_BAR_DOT_GAP: f32 = 25.0;
     const TAB_BAR_TOP_BORDER: f32 = 3.0;
 
     /// Render terminal tab bar at the top of the bottom panel.
@@ -442,14 +442,19 @@ impl Renderer {
         let body_count = self.terminal_glyph_instances.len() as u32;
         let tab_text_start = body_count;
 
-        let tab_bar_bounds = [bounds[0], tab_bar_y, bounds[2], tab_bar_h];
+        let tab_bar_bounds = [
+            bounds[0] + Self::TAB_BAR_PADDING_X,
+            tab_bar_y,
+            (bounds[2] - Self::TAB_BAR_PADDING_X * 2.0).max(0.0),
+            tab_bar_h,
+        ];
         let terminal_bounds = self.terminal_tab_bar_content_bounds(bounds);
 
         // Tab bar background
         chrome.push(RegionDrawInstance::new(tab_bar_bounds, tab_bg));
 
         let tab_count = tab_labels.len();
-        
+
         let mut tab_x = bounds[0] + Self::TAB_BAR_PADDING_X;
         let right_limit = bounds[0] + bounds[2] - Self::TAB_BAR_PADDING_X;
 
@@ -523,7 +528,12 @@ impl Renderer {
 
         // Bottom divider between tab strip and terminal body.
         chrome.push(RegionDrawInstance::new(
-            [bounds[0], tab_bar_y + tab_bar_h - 1.0, bounds[2], 1.0],
+            [
+                bounds[0] + Self::TAB_BAR_PADDING_X,
+                tab_bar_y + tab_bar_h - 1.0,
+                (bounds[2] - Self::TAB_BAR_PADDING_X * 2.0).max(0.0),
+                1.0,
+            ],
             [0.16, 0.18, 0.24, 0.75],
         ));
 

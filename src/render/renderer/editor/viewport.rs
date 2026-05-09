@@ -146,20 +146,14 @@ impl Renderer {
         // Allow cosmic-text to shape full height; scissor clips the visible region.
         self.text_system.set_size(Some(width), None);
 
-        // Pre-shape the current text so that visual_y_for_logical_scroll can walk the
-        // real LayoutRun positions.  Without this, origin_y would be computed with
-        // current_scroll_y * line_height which is wrong whenever any logical line above
-        // the scroll position has been soft-wrapped into multiple visual rows (e.g. a
-        // JWT token).  rebuild_layout_projection reshapes the same text again — this is
-        // intentional: the second call collects glyphs with the now-correct origin.
-        let text_fg = self.theme.editor.fg.as_f32();
-        let default_color_rgba = linear_rgba_to_srgb_u8(text_fg);
 
         // ── Tối ưu 2: Text Caching ─────────────────────────────────────────────
         // Trong các frame chỉ cuộn (smooth scroll), text revision không đổi →
         // TextSystem buffer đã được shaped từ frame trước → bỏ qua set_text_with_spans.
         // Reshape khi: (a) text thay đổi, (b) syntax/LSP spans thay đổi, hoặc
         // (c) viewport width thay đổi (word-wrap boundary shift).
+        let text_fg = self.theme.editor.fg.as_f32();
+        let default_color_rgba = linear_rgba_to_srgb_u8(text_fg);
         let current_revision = app_state.revision();
         let spans_fp = spans_fingerprint(spans);
         let needs_reshape = self.last_shaped_revision != current_revision
@@ -188,16 +182,14 @@ impl Renderer {
         let viewport_clip = Some((clip_top, clip_bottom));
 
         let result = rebuild_layout_projection(
-            text,
             app_state,
             &mut self.text_system,
             &mut self.atlas,
             &self.queue,
             [geometry.origin_x, corrected_origin_y],
             viewport_clip,
-            text_fg,
+            self.theme.editor.fg.as_f32(),
             self.theme.editor.bg.as_f32(),
-            spans,
         );
 
         match result {

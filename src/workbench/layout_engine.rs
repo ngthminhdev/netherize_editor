@@ -317,8 +317,10 @@ impl WorkbenchLayoutEngine {
         let available_x = outer_gap;
         let available_w = (width - outer_gap * 2.0).max(0.0);
 
-        let target_bounds = if matches!(target, FocusTarget::CenterEditor | FocusTarget::RightSidebar)
-        {
+        let target_bounds = if matches!(
+            target,
+            FocusTarget::CenterEditor | FocusTarget::RightSidebar | FocusTarget::BottomPanel
+        ) {
             self.compute_centered_zen_bounds(available_x, available_y, available_w, available_h)
         } else {
             RegionBounds::new(available_x, available_y, available_w, available_h)
@@ -1023,7 +1025,7 @@ mod tests {
     }
 
     #[test]
-    fn maximize_bottom_panel_gives_full_space() {
+    fn maximize_bottom_panel_centers_terminal_with_zen_width() {
         use crate::workbench::focus_manager::FocusTarget;
 
         let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
@@ -1038,6 +1040,8 @@ mod tests {
         assert!(bottom.visible);
         assert!(bottom.bounds.width > 0.0);
         assert!(bottom.bounds.height > 0.0);
+        assert!(bottom.bounds.x > 0.0);
+        assert!(bottom.bounds.width < 1280.0);
 
         let center = find(RegionId::Center).expect("center");
         assert!(!center.visible);

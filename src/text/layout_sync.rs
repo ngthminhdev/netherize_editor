@@ -1,11 +1,10 @@
 use crate::{
     app::app_state::AppState,
-    config::theme_config::linear_rgba_to_srgb_u8,
     render::glyph_instance::GlyphInstance,
     text::{
         atlas::GlyphAtlas,
         raster::rasterize_glyph_alpha,
-        text_system::{StyledTextSpan, TextSystem},
+        text_system::TextSystem,
     },
 };
 
@@ -33,7 +32,6 @@ pub struct LayoutProjection {
 }
 
 pub fn rebuild_layout_projection(
-    text: &str,
     app_state: &AppState,
     text_system: &mut TextSystem,
     atlas: &mut GlyphAtlas,
@@ -42,10 +40,16 @@ pub fn rebuild_layout_projection(
     viewport_clip: Option<(f32, f32)>,
     text_color: [f32; 4],
     cursor_overlay_color: [f32; 4],
-    styled_spans: &[StyledTextSpan],
 ) -> Result<LayoutProjection, String> {
-    let default_color_rgba = color_f32_to_u8(text_color);
-    text_system.set_text_with_spans(text, default_color_rgba, styled_spans);
+    // The caller (update_editor_content) is responsible for shaping the text
+    // buffer before calling this function.  On the fast path (needs_reshape=false)
+    // the buffer already holds the shaped text from a previous frame; on the
+    // slow path (needs_reshape=true) the caller calls set_text_with_spans first.
+    //
+    // Removing the redundant set_text_with_spans from here avoids a full-buffer
+    // reshape on every frame during smooth scroll — previously the caller's cache
+    // skipped reshaping but this function reshaped unconditionally, doubling
+    // the per-frame cost for files of any size.
 
     let (cursor_line, _) = app_state.cursor_line_col();
     let cursor_byte_in_line = app_state.cursor_byte_in_line();
@@ -167,10 +171,6 @@ pub fn compute_cursor_overlay(
         uv_max,
         overlay_color,
     )))
-}
-
-fn color_f32_to_u8(color: [f32; 4]) -> [u8; 4] {
-    linear_rgba_to_srgb_u8(color)
 }
 
 /// Map a logical-line scroll position to the physical Y offset inside the shaped buffer.
