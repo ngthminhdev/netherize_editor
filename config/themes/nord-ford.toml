@@ -9,10 +9,6 @@ cursor = "#88C0D0"
 selection = "#434C5E"
 gutter = "#2E3440"
 gutter_active = "#D8DEE9"
-font_size = 14.0
-line_height = 22.0
-font_family = "Google Sans Code"
-nerd_font_family = "Hack Nerd Font"
 
 [ui]
 bg = "#242933"
@@ -41,14 +37,7 @@ mode_normal = "#88C0D0"
 mode_insert = "#A3BE8C"
 mode_visual = "#B48EAD"
 
-sidebar_font_size = 14.0
-sidebar_line_height = 22.0
-panel_font_size = 14.0
-panel_line_height = 22.0
 
-sidebar_width = 280.0
-right_sidebar_width = 540.0
-bottom_panel_height = 220.0
 top_bar_height = 36.0
 
 [git]

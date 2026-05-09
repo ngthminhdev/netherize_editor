@@ -191,7 +191,7 @@ impl Default for WorkbenchPanelState {
             left: PanelState::new(true, 240.0, vec![PanelTabId::Explorer, PanelTabId::Search]),
             right: PanelState::new(
                 false,
-                500.0,
+                650.0,
                 vec![
                     PanelTabId::AiChat,
                     PanelTabId::MarkdownPreview,
@@ -201,7 +201,7 @@ impl Default for WorkbenchPanelState {
             ),
             bottom: PanelState::new(
                 false,
-                220.0,
+                420.0,
                 vec![
                     PanelTabId::Terminal,
                     PanelTabId::DebugConsole,

@@ -207,11 +207,11 @@ impl UiConfig {
                 },
                 right: DockSectionConfig {
                     visible: false,
-                    size_px: 320.0,
+                    size_px: 650.0,
                 },
                 bottom: DockSectionConfig {
                     visible: false,
-                    size_px: 230.0,
+                    size_px: 420.0,
                 },
                 overlay_visible: false,
             },

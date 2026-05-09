@@ -11,10 +11,6 @@ gutter = "#1E1E1E"
 gutter_active = "#D4D4D4"
 indent_guide = "#40404040"
 rainbow_brackets = ["#FFD700", "#DA70D6", "#179FFF", "#FFD700", "#DA70D6", "#179FFF"]
-font_size = 14.0
-line_height = 22.0
-font_family = "Google Sans Code"
-nerd_font_family = "Hack Nerd Font"
 
 [ui]
 bg = "#181818"
@@ -44,14 +40,7 @@ mode_normal = "#4FC1FF"
 mode_insert = "#6A9955"
 mode_visual = "#C586C0"
 
-sidebar_font_size = 14.0
-sidebar_line_height = 22.0
-panel_font_size = 14.0
-panel_line_height = 22.0
 
-sidebar_width = 280.0
-right_sidebar_width = 540.0
-bottom_panel_height = 220.0
 top_bar_height = 36.0
 
 [git]

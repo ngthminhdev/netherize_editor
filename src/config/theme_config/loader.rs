@@ -125,14 +125,20 @@ impl ThemeConfig {
             file_icons: raw_file_icons,
         } = raw;
 
-        let editor = parse_editor(&raw_editor)?;
-        let ui = parse_ui(&raw_ui, &raw_editor)?;
+        let default_theme_source = load_default_theme_icon_source();
+        let merged_editor = merge_raw_editor(
+            default_theme_source.as_ref().map(|src| &src.editor),
+            &raw_editor,
+        );
+        let merged_ui = merge_raw_ui(default_theme_source.as_ref().map(|src| &src.ui), &raw_ui);
+
+        let editor = parse_editor(&merged_editor)?;
+        let ui = parse_ui(&merged_ui, &merged_editor)?;
         let git = parse_git(&raw_git, &ui)?;
         let syntax = parse_syntax(&raw_syntax)?;
-        let default_icon_source = load_default_theme_icon_source();
-        let merged_icons = merge_raw_icons(default_icon_source.as_ref().map(|src| &src.icons), &raw_icons);
+        let merged_icons = merge_raw_icons(default_theme_source.as_ref().map(|src| &src.icons), &raw_icons);
         let merged_file_icons = merge_raw_file_icons(
-            default_icon_source.as_ref().map(|src| &src.file_icons),
+            default_theme_source.as_ref().map(|src| &src.file_icons),
             &raw_file_icons,
         );
         let icons = parse_icons(&merged_icons, &ui)?;
@@ -169,6 +175,92 @@ fn load_default_theme_icon_source() -> Option<RawThemeFile> {
     let path = find_profile_path(ThemeConfig::default_profile())?;
     let content = std::fs::read_to_string(path).ok()?;
     toml::from_str(&content).ok()
+}
+
+fn merge_raw_editor(defaults: Option<&RawEditor>, current: &RawEditor) -> RawEditor {
+    let Some(defaults) = defaults else {
+        return current.clone();
+    };
+
+    RawEditor {
+        bg: current.bg.clone(),
+        fg: current.fg.clone(),
+        cursor: current.cursor.clone(),
+        selection: current.selection.clone(),
+        gutter: current.gutter.clone(),
+        gutter_active: current
+            .gutter_active
+            .clone()
+            .or_else(|| defaults.gutter_active.clone()),
+        indent_guide: current
+            .indent_guide
+            .clone()
+            .or_else(|| defaults.indent_guide.clone()),
+        rainbow_brackets: current
+            .rainbow_brackets
+            .clone()
+            .or_else(|| defaults.rainbow_brackets.clone()),
+        font_size: current.font_size.or(defaults.font_size),
+        line_height: current.line_height.or(defaults.line_height),
+        font_family: current.font_family.clone().or_else(|| defaults.font_family.clone()),
+        nerd_font_family: current
+            .nerd_font_family
+            .clone()
+            .or_else(|| defaults.nerd_font_family.clone()),
+    }
+}
+
+fn merge_raw_ui(defaults: Option<&RawUi>, current: &RawUi) -> RawUi {
+    let Some(defaults) = defaults else {
+        return current.clone();
+    };
+
+    RawUi {
+        bg: current.bg.clone().or_else(|| defaults.bg.clone()),
+        sidebar_bg: current.sidebar_bg.clone(),
+        panel_bg: current.panel_bg.clone(),
+        terminal_bg: current.terminal_bg.clone().or_else(|| defaults.terminal_bg.clone()),
+        overlay_bg: current.overlay_bg.clone().or_else(|| defaults.overlay_bg.clone()),
+        status_bar_bg: current.status_bar_bg.clone(),
+        border_color: current.border_color.clone(),
+        selection_bg: current.selection_bg.clone().or_else(|| defaults.selection_bg.clone()),
+        dirty_indicator: current
+            .dirty_indicator
+            .clone()
+            .or_else(|| defaults.dirty_indicator.clone()),
+        fg: current.fg.clone().or_else(|| defaults.fg.clone()),
+        fg_dim: current.fg_dim.clone().or_else(|| defaults.fg_dim.clone()),
+        fg_ghost: current.fg_ghost.clone().or_else(|| defaults.fg_ghost.clone()),
+        accent: current.accent.clone().or_else(|| defaults.accent.clone()),
+        cyan: current.cyan.clone().or_else(|| defaults.cyan.clone()),
+        magenta: current.magenta.clone().or_else(|| defaults.magenta.clone()),
+        amber: current.amber.clone().or_else(|| defaults.amber.clone()),
+        success: current.success.clone().or_else(|| defaults.success.clone()),
+        warning: current.warning.clone().or_else(|| defaults.warning.clone()),
+        info: current.info.clone().or_else(|| defaults.info.clone()),
+        error: current.error.clone().or_else(|| defaults.error.clone()),
+        mode_normal: current
+            .mode_normal
+            .clone()
+            .or_else(|| defaults.mode_normal.clone()),
+        mode_insert: current
+            .mode_insert
+            .clone()
+            .or_else(|| defaults.mode_insert.clone()),
+        mode_visual: current
+            .mode_visual
+            .clone()
+            .or_else(|| defaults.mode_visual.clone()),
+        sidebar_font_size: current.sidebar_font_size.or(defaults.sidebar_font_size),
+        sidebar_line_height: current.sidebar_line_height.or(defaults.sidebar_line_height),
+        panel_font_size: current.panel_font_size.or(defaults.panel_font_size),
+        panel_line_height: current.panel_line_height.or(defaults.panel_line_height),
+        sidebar_width: current.sidebar_width.or(defaults.sidebar_width),
+        right_sidebar_width: current.right_sidebar_width.or(defaults.right_sidebar_width),
+        bottom_panel_height: current.bottom_panel_height.or(defaults.bottom_panel_height),
+        top_bar_height: current.top_bar_height.or(defaults.top_bar_height),
+        status_bar_height: current.status_bar_height.or(defaults.status_bar_height),
+    }
 }
 
 fn merge_raw_icons(defaults: Option<&RawIcons>, current: &RawIcons) -> RawIcons {
