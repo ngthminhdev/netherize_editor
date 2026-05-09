@@ -273,7 +273,8 @@ impl Renderer {
 
         match terminal_mode {
             EditorMode::TerminalNormal => {
-                let selection_color = theme.ui.selection_bg.as_f32();
+                let mut selection_color = theme.ui.selection_bg.as_f32();
+                selection_color[3] = selection_color[3].clamp(0.18, 0.28);
                 for (display_row, start_col, end_col_exclusive) in grid.visible_selection_spans() {
                     if start_col >= end_col_exclusive {
                         continue;

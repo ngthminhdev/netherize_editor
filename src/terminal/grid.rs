@@ -1394,6 +1394,19 @@ fn word_end_at_or_after_chars(text: &[char], cursor: usize) -> Option<usize> {
     }
 
     let mut i = cursor;
+    let start_class = classify_terminal_char(text[i]);
+
+    if start_class != WordClass::Space && start_class != WordClass::Newline {
+        let mut end = i;
+        while end + 1 < n && classify_terminal_char(text[end + 1]) == start_class {
+            end += 1;
+        }
+        if end > i {
+            return Some(end);
+        }
+        i = end.saturating_add(1);
+    }
+
     while i < n {
         let cls = classify_terminal_char(text[i]);
         if cls != WordClass::Space && cls != WordClass::Newline {
