@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub(in crate::config::theme_config) struct RawThemeFile {
     #[serde(default)]
     pub(in crate::config::theme_config) theme: RawThemeMeta,
@@ -17,7 +17,7 @@ pub(in crate::config::theme_config) struct RawThemeFile {
     pub(in crate::config::theme_config) file_icons: RawFileIcons,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub(in crate::config::theme_config) struct RawGit {
     pub(in crate::config::theme_config) modified_sidebar: Option<String>,
     pub(in crate::config::theme_config) added_sidebar: Option<String>,
@@ -26,14 +26,14 @@ pub(in crate::config::theme_config) struct RawGit {
     pub(in crate::config::theme_config) deleted_gutter: Option<String>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub(in crate::config::theme_config) struct RawThemeMeta {
     #[serde(default)]
     pub(in crate::config::theme_config) name: String,
     pub(in crate::config::theme_config) description: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub(in crate::config::theme_config) struct RawEditor {
     pub(in crate::config::theme_config) bg: String,
     pub(in crate::config::theme_config) fg: String,
@@ -50,7 +50,7 @@ pub(in crate::config::theme_config) struct RawEditor {
     pub(in crate::config::theme_config) nerd_font_family: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub(in crate::config::theme_config) struct RawUi {
     pub(in crate::config::theme_config) bg: Option<String>,
     pub(in crate::config::theme_config) sidebar_bg: String,
@@ -86,7 +86,7 @@ pub(in crate::config::theme_config) struct RawUi {
     pub(in crate::config::theme_config) status_bar_height: Option<f32>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub(in crate::config::theme_config) struct RawSyntax {
     pub(in crate::config::theme_config) keyword: String,
     pub(in crate::config::theme_config) string: String,
@@ -112,7 +112,7 @@ pub(in crate::config::theme_config) struct RawSyntax {
     pub(in crate::config::theme_config) tag: Option<String>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub(in crate::config::theme_config) struct RawIcons {
     pub(in crate::config::theme_config) explorer_file_marker: Option<String>,
     pub(in crate::config::theme_config) explorer_folder_collapsed_marker: Option<String>,
@@ -126,6 +126,42 @@ pub(in crate::config::theme_config) struct RawIcons {
     pub(in crate::config::theme_config) typescript: Option<RawFileIconTheme>,
     pub(in crate::config::theme_config) tsx: Option<RawFileIconTheme>,
     pub(in crate::config::theme_config) jsx: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) java: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) kotlin: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) c: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) cpp: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) csharp: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) dart: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) swift: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) php: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) ruby: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) lua: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) zig: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) scala: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) docker: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) sql: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) xml: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) gradle: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) vue: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) svelte: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) astro: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) elm: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) haskell: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) ocaml: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) r: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) perl: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) clojure: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) fsharp: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) nim: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) solidity: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) graphql: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) toml: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) yaml: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) makefile: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) cmake: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) nginx: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) terraform: Option<RawFileIconTheme>,
+    pub(in crate::config::theme_config) ansible: Option<RawFileIconTheme>,
     pub(in crate::config::theme_config) python: Option<RawFileIconTheme>,
     pub(in crate::config::theme_config) go: Option<RawFileIconTheme>,
     pub(in crate::config::theme_config) config: Option<RawFileIconTheme>,
@@ -141,13 +177,13 @@ pub(in crate::config::theme_config) struct RawIcons {
     pub(in crate::config::theme_config) proto: Option<RawFileIconTheme>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub(in crate::config::theme_config) struct RawFileIconTheme {
     pub(in crate::config::theme_config) glyph: Option<String>,
     pub(in crate::config::theme_config) color: Option<String>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub(in crate::config::theme_config) struct RawFileIcons {
     pub(in crate::config::theme_config) default_file: Option<String>,
     pub(in crate::config::theme_config) default_folder: Option<String>,

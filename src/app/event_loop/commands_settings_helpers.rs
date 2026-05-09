@@ -9,7 +9,7 @@ impl AppShell {
 
         match focus {
             FocusTarget::LeftSidebar if width_delta != 0.0 && self.panel_state.left.visible => {
-                let next = (self.panel_state.left.size_px + width_delta).clamp(160.0, 640.0);
+                let next = (self.panel_state.left.size_px + width_delta).clamp(160.0, 1280.0);
                 changed = (next - self.panel_state.left.size_px).abs() > f32::EPSILON;
                 if changed {
                     self.panel_state.left.size_px = next;
@@ -18,7 +18,7 @@ impl AppShell {
                 }
             }
             FocusTarget::RightSidebar if width_delta != 0.0 && self.panel_state.right.visible => {
-                let next = (self.panel_state.right.size_px + width_delta).clamp(180.0, 720.0);
+                let next = (self.panel_state.right.size_px + width_delta).clamp(180.0, 1440.0);
                 changed = (next - self.panel_state.right.size_px).abs() > f32::EPSILON;
                 if changed {
                     self.panel_state.right.size_px = next;
@@ -27,7 +27,7 @@ impl AppShell {
                 }
             }
             FocusTarget::BottomPanel if height_delta != 0.0 && self.panel_state.bottom.visible => {
-                let next = (self.panel_state.bottom.size_px + height_delta).clamp(120.0, 520.0);
+                let next = (self.panel_state.bottom.size_px + height_delta).clamp(120.0, 1040.0);
                 changed = (next - self.panel_state.bottom.size_px).abs() > f32::EPSILON;
                 if changed {
                     self.panel_state.bottom.size_px = next;
@@ -36,50 +36,24 @@ impl AppShell {
                 }
             }
             FocusTarget::CenterEditor => {
-                if width_delta > 0.0 {
-                    if self.panel_state.left.visible {
-                        let next = (self.panel_state.left.size_px - width_delta).clamp(160.0, 640.0);
-                        if (next - self.panel_state.left.size_px).abs() > f32::EPSILON {
-                            self.panel_state.left.size_px = next;
-                            self.ui_config.docks.left.size_px = next;
-                            changed = true;
-                        }
+                if width_delta > 0.0 && self.panel_state.left.visible {
+                    let next = (self.panel_state.left.size_px - width_delta).clamp(160.0, 1280.0);
+                    if (next - self.panel_state.left.size_px).abs() > f32::EPSILON {
+                        self.panel_state.left.size_px = next;
+                        self.ui_config.docks.left.size_px = next;
+                        changed = true;
                     }
-                    if self.panel_state.right.visible {
-                        let next = (self.panel_state.right.size_px - width_delta).clamp(180.0, 720.0);
-                        if (next - self.panel_state.right.size_px).abs() > f32::EPSILON {
-                            self.panel_state.right.size_px = next;
-                            self.ui_config.docks.right.size_px = next;
-                            changed = true;
-                        }
-                    }
-                } else if width_delta < 0.0 {
-                    if self.panel_state.left.visible {
-                        let next = (self.panel_state.left.size_px + width_delta.abs()).clamp(160.0, 640.0);
-                        if (next - self.panel_state.left.size_px).abs() > f32::EPSILON {
-                            self.panel_state.left.size_px = next;
-                            self.ui_config.docks.left.size_px = next;
-                            changed = true;
-                        }
-                    } else if self.panel_state.right.visible {
-                        let next = (self.panel_state.right.size_px + width_delta.abs()).clamp(180.0, 720.0);
-                        if (next - self.panel_state.right.size_px).abs() > f32::EPSILON {
-                            self.panel_state.right.size_px = next;
-                            self.ui_config.docks.right.size_px = next;
-                            changed = true;
-                        }
+                } else if width_delta < 0.0 && self.panel_state.right.visible {
+                    let next = (self.panel_state.right.size_px - width_delta).clamp(180.0, 1440.0);
+                    if (next - self.panel_state.right.size_px).abs() > f32::EPSILON {
+                        self.panel_state.right.size_px = next;
+                        self.ui_config.docks.right.size_px = next;
+                        changed = true;
                     }
                 }
 
-                if height_delta > 0.0 && self.panel_state.bottom.visible {
-                    let next = (self.panel_state.bottom.size_px - height_delta).clamp(120.0, 520.0);
-                    if (next - self.panel_state.bottom.size_px).abs() > f32::EPSILON {
-                        self.panel_state.bottom.size_px = next;
-                        self.ui_config.docks.bottom.size_px = next;
-                        changed = true;
-                    }
-                } else if height_delta < 0.0 && self.panel_state.bottom.visible {
-                    let next = (self.panel_state.bottom.size_px + height_delta.abs()).clamp(120.0, 520.0);
+                if height_delta != 0.0 && self.panel_state.bottom.visible {
+                    let next = (self.panel_state.bottom.size_px - height_delta).clamp(120.0, 1040.0);
                     if (next - self.panel_state.bottom.size_px).abs() > f32::EPSILON {
                         self.panel_state.bottom.size_px = next;
                         self.ui_config.docks.bottom.size_px = next;
@@ -99,6 +73,42 @@ impl AppShell {
             let _ = self.ui_config.save_user_override();
             self.editor_needs_layout = true;
             self.editor_caret_needs_layout = true;
+        }
+        changed
+    }
+
+    pub(super) fn resize_editor_left_edge(&mut self, editor_width_delta: f32) -> bool {
+        if self.focus_manager.current() != FocusTarget::CenterEditor || !self.panel_state.left.visible {
+            return false;
+        }
+
+        let next = (self.panel_state.left.size_px - editor_width_delta).clamp(160.0, 1280.0);
+        let changed = (next - self.panel_state.left.size_px).abs() > f32::EPSILON;
+        if changed {
+            self.panel_state.left.size_px = next;
+            self.ui_config.docks.left.size_px = next;
+            self.sidebar_needs_layout = true;
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = true;
+            let _ = self.ui_config.save_user_override();
+        }
+        changed
+    }
+
+    pub(super) fn resize_editor_right_edge(&mut self, editor_width_delta: f32) -> bool {
+        if self.focus_manager.current() != FocusTarget::CenterEditor || !self.panel_state.right.visible {
+            return false;
+        }
+
+        let next = (self.panel_state.right.size_px - editor_width_delta).clamp(180.0, 1440.0);
+        let changed = (next - self.panel_state.right.size_px).abs() > f32::EPSILON;
+        if changed {
+            self.panel_state.right.size_px = next;
+            self.ui_config.docks.right.size_px = next;
+            self.sidebar_needs_layout = true;
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = true;
+            let _ = self.ui_config.save_user_override();
         }
         changed
     }
@@ -149,15 +159,15 @@ impl AppShell {
                     self.update_active_settings_edit_draft(next.to_string())
                 }
                 crate::app::app_state::SettingItem::SidebarWidth { current } => {
-                    let next = (current + delta * 20).clamp(160, 640);
+                    let next = (current + delta * 20).clamp(160, 1280);
                     self.update_active_settings_edit_draft(next.to_string())
                 }
                 crate::app::app_state::SettingItem::RightSidebarWidth { current } => {
-                    let next = (current + delta * 20).clamp(180, 720);
+                    let next = (current + delta * 20).clamp(180, 1440);
                     self.update_active_settings_edit_draft(next.to_string())
                 }
                 crate::app::app_state::SettingItem::BottomPanelHeight { current } => {
-                    let next = (current + delta * 20).clamp(120, 520);
+                    let next = (current + delta * 20).clamp(120, 1040);
                     self.update_active_settings_edit_draft(next.to_string())
                 }
                 _ => false,
@@ -190,7 +200,7 @@ impl AppShell {
                 self.finalize_settings_change()
             }
             crate::app::app_state::SettingItem::SidebarWidth { current } => {
-                let next = (current + delta * 20).clamp(160, 640);
+                let next = (current + delta * 20).clamp(160, 1280);
                 self.ui_config.docks.left.size_px = next as f32;
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
                     && let Some(crate::app::app_state::SettingItem::SidebarWidth { current }) =
@@ -201,7 +211,7 @@ impl AppShell {
                 self.finalize_settings_change()
             }
             crate::app::app_state::SettingItem::RightSidebarWidth { current } => {
-                let next = (current + delta * 20).clamp(180, 720);
+                let next = (current + delta * 20).clamp(180, 1440);
                 self.ui_config.docks.right.size_px = next as f32;
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
                     && let Some(crate::app::app_state::SettingItem::RightSidebarWidth { current }) =
@@ -212,7 +222,7 @@ impl AppShell {
                 self.finalize_settings_change()
             }
             crate::app::app_state::SettingItem::BottomPanelHeight { current } => {
-                let next = (current + delta * 20).clamp(120, 520);
+                let next = (current + delta * 20).clamp(120, 1040);
                 self.ui_config.docks.bottom.size_px = next as f32;
                 if let Some(state) = self.app_state.active_settings_buffer_mut()
                     && let Some(crate::app::app_state::SettingItem::BottomPanelHeight { current }) =
@@ -408,7 +418,7 @@ impl AppShell {
             }
             crate::app::app_state::SettingsEditingKind::SidebarWidth => {
                 if let Ok(value) = trimmed.parse::<i32>() {
-                    let value = value.clamp(160, 640);
+                    let value = value.clamp(160, 1280);
                     self.ui_config.docks.left.size_px = value as f32;
                     if let Some(state) = self.app_state.active_settings_buffer_mut()
                         && let Some(crate::app::app_state::SettingItem::SidebarWidth { current }) =
@@ -421,7 +431,7 @@ impl AppShell {
             }
             crate::app::app_state::SettingsEditingKind::RightSidebarWidth => {
                 if let Ok(value) = trimmed.parse::<i32>() {
-                    let value = value.clamp(180, 720);
+                    let value = value.clamp(180, 1440);
                     self.ui_config.docks.right.size_px = value as f32;
                     if let Some(state) = self.app_state.active_settings_buffer_mut()
                         && let Some(crate::app::app_state::SettingItem::RightSidebarWidth {
@@ -435,7 +445,7 @@ impl AppShell {
             }
             crate::app::app_state::SettingsEditingKind::BottomPanelHeight => {
                 if let Ok(value) = trimmed.parse::<i32>() {
-                    let value = value.clamp(120, 520);
+                    let value = value.clamp(120, 1040);
                     self.ui_config.docks.bottom.size_px = value as f32;
                     if let Some(state) = self.app_state.active_settings_buffer_mut()
                         && let Some(crate::app::app_state::SettingItem::BottomPanelHeight {

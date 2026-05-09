@@ -136,6 +136,150 @@ color = "#69C3FF"
 glyph = "\uE7BA"
 color = "#EACD61"
 
+[icons.java]
+glyph = "\uE738"
+color = "#E35535"
+
+[icons.kotlin]
+glyph = "\uE634"
+color = "#F38CEC"
+
+[icons.c]
+glyph = "\uE61E"
+color = "#69C3FF"
+
+[icons.cpp]
+glyph = "\uE61D"
+color = "#69C3FF"
+
+[icons.csharp]
+glyph = "\uF81A"
+color = "#3CEC85"
+
+[icons.dart]
+glyph = "\uE798"
+color = "#22ECDB"
+
+[icons.swift]
+glyph = "\uE755"
+color = "#FF955C"
+
+[icons.php]
+glyph = "\uE73D"
+color = "#F38CEC"
+
+[icons.ruby]
+glyph = "\uE739"
+color = "#E35535"
+
+[icons.lua]
+glyph = "\uE620"
+color = "#69C3FF"
+
+[icons.zig]
+glyph = "\uE6A9"
+color = "#FF955C"
+
+[icons.scala]
+glyph = "\uE737"
+color = "#E35535"
+
+[icons.docker]
+glyph = "\uF308"
+color = "#69C3FF"
+
+[icons.sql]
+glyph = "\uE706"
+color = "#EACD61"
+
+[icons.xml]
+glyph = "\uE619"
+color = "#EACD61"
+
+[icons.gradle]
+glyph = "\uE70E"
+color = "#3CEC85"
+
+[icons.vue]
+glyph = "\uFD42"
+color = "#3CEC85"
+
+[icons.svelte]
+glyph = "\uE697"
+color = "#E35535"
+
+[icons.astro]
+glyph = "\uE6B3"
+color = "#FF955C"
+
+[icons.elm]
+glyph = "\uE62C"
+color = "#69C3FF"
+
+[icons.haskell]
+glyph = "\uE61F"
+color = "#F38CEC"
+
+[icons.ocaml]
+glyph = "\uE67A"
+color = "#EACD61"
+
+[icons.r]
+glyph = "\uF25D"
+color = "#69C3FF"
+
+[icons.perl]
+glyph = "\uE769"
+color = "#69C3FF"
+
+[icons.clojure]
+glyph = "\uE768"
+color = "#3CEC85"
+
+[icons.fsharp]
+glyph = "\uE7A7"
+color = "#69C3FF"
+
+[icons.nim]
+glyph = "\uE677"
+color = "#EACD61"
+
+[icons.solidity]
+glyph = "\uE6A8"
+color = "#afbbd2"
+
+[icons.graphql]
+glyph = "\uE662"
+color = "#F38CEC"
+
+[icons.toml]
+glyph = "\uE615"
+color = "#4a5e84"
+
+[icons.yaml]
+glyph = "\uE60B"
+color = "#EACD61"
+
+[icons.makefile]
+glyph = "\uE779"
+color = "#FF955C"
+
+[icons.cmake]
+glyph = "\uE794"
+color = "#69C3FF"
+
+[icons.nginx]
+glyph = "\uF146B"
+color = "#3CEC85"
+
+[icons.terraform]
+glyph = "\uE69B"
+color = "#F38CEC"
+
+[icons.ansible]
+glyph = "\uE615"
+color = "#E35535"
+
 [icons.python]
 glyph = "\uE73C"
 color = "#69C3FF"
@@ -194,6 +338,24 @@ ts = ""
 tsx = ""
 js = ""
 jsx = ""
+java = ""
+kt = ""
+kts = ""
+c = ""
+h = ""
+cc = ""
+cpp = ""
+cxx = ""
+hpp = ""
+cs = "󰌛"
+dart = ""
+swift = ""
+php = ""
+rb = ""
+lua = ""
+zig = ""
+scala = ""
+sc = ""
 go = ""
 json = ""
 jsonc = ""
@@ -201,6 +363,29 @@ yaml = ""
 yml = ""
 toml = ""
 sql = ""
+xml = "󰗀"
+gradle = ""
+vue = ""
+svelte = ""
+astro = ""
+elm = ""
+hs = ""
+ml = ""
+mli = ""
+r = "󰟔"
+pl = ""
+pm = ""
+clj = ""
+cljs = ""
+cljc = ""
+edn = ""
+fs = ""
+fsi = ""
+fsx = ""
+nim = "󰆥"
+sol = "󰡪"
+graphql = ""
+gql = ""
 md = ""
 mdx = ""
 dockerfile = ""
@@ -209,6 +394,15 @@ bash = ""
 zsh = ""
 fish = ""
 lock = ""
+mk = ""
+mak = ""
+cmake = ""
+conf = ""
+nginxconf = ""
+tf = ""
+tfvars = ""
+hcl = ""
+ansible = ""
 
 [file_icons.exact]
 Dockerfile = ""
@@ -222,6 +416,16 @@ Dockerfile = ""
 "tsconfig.json" = ""
 "Cargo.toml" = ""
 Makefile = ""
+GNUmakefile = ""
+Justfile = ""
+"CMakeLists.txt" = ""
+"nginx.conf" = ""
+"build.gradle" = ""
+"settings.gradle" = ""
+"gradle.properties" = ""
+"playbook.yml" = ""
+"playbook.yaml" = ""
+"ansible.cfg" = ""
 "README.md" = ""
 
 [syntax]

@@ -280,6 +280,10 @@ impl InputMap {
         if let Some(command) =
             resolved_keymap::resolve_command(&self.keymap, input, mode_str, &self.open_file_path)
         {
+            if !Self::command_allowed_in_context(&command, context) {
+                return None;
+            }
+
             return Some(KeybindingMatch {
                 command,
                 reason: "keymap binding",
@@ -356,6 +360,10 @@ impl InputMap {
             match self.keymap.lookup_sequence(&steps, mode_for_sequence) {
                 SequenceLookup::Exact(id) => {
                     let command = command_ids::parse(id, Some(&self.open_file_path))?;
+                    if !Self::command_allowed_in_context(&command, context) {
+                        return None;
+                    }
+
                     return Some(SequenceMatch::Dispatch(KeybindingMatch {
                         command,
                         reason: "keymap: chord binding",
@@ -371,6 +379,14 @@ impl InputMap {
         }
 
         pending.map(SequenceMatch::Pending)
+    }
+
+    fn command_allowed_in_context(command: &Command, context: KeybindingContext) -> bool {
+        if matches!(command, Command::SwitchMode(ModeEvent::EnterResize)) {
+            return context.focus == InputFocusContext::Editor;
+        }
+
+        true
     }
 
     fn context_allows_leader_sequence(&self, context: KeybindingContext) -> bool {

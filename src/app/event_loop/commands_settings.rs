@@ -60,6 +60,10 @@ impl AppShell {
             Command::ResizeIncreaseWidth => {
                 Some(self.resize_focused_window(Self::RESIZE_STEP_PX, 0.0))
             }
+            Command::ResizeIncreaseLeftWidth => Some(self.resize_editor_left_edge(Self::RESIZE_STEP_PX)),
+            Command::ResizeDecreaseLeftWidth => Some(self.resize_editor_left_edge(-Self::RESIZE_STEP_PX)),
+            Command::ResizeIncreaseRightWidth => Some(self.resize_editor_right_edge(Self::RESIZE_STEP_PX)),
+            Command::ResizeDecreaseRightWidth => Some(self.resize_editor_right_edge(-Self::RESIZE_STEP_PX)),
             Command::ResizeDecreaseHeight => {
                 Some(self.resize_focused_window(0.0, -Self::RESIZE_STEP_PX))
             }

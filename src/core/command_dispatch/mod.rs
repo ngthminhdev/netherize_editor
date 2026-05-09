@@ -262,6 +262,10 @@ fn dispatch_command_with_clipboard_once(
         | Command::TerminalSearchOpen => palette::dispatch(&mut ctx, command),
         Command::ResizeDecreaseWidth
         | Command::ResizeIncreaseWidth
+        | Command::ResizeIncreaseLeftWidth
+        | Command::ResizeDecreaseLeftWidth
+        | Command::ResizeIncreaseRightWidth
+        | Command::ResizeDecreaseRightWidth
         | Command::ResizeDecreaseHeight
         | Command::ResizeIncreaseHeight => {
             DispatchReport::success(

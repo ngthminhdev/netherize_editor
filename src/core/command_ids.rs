@@ -132,6 +132,10 @@ pub const LSP_SELECT_PYTHON_ENV: &str = "lsp.select_python_env";
 pub const RELOAD_WORKSPACE: &str = "workspace.reload";
 pub const RESIZE_DECREASE_WIDTH: &str = "resize.decrease_width";
 pub const RESIZE_INCREASE_WIDTH: &str = "resize.increase_width";
+pub const RESIZE_INCREASE_LEFT_WIDTH: &str = "resize.increase_left_width";
+pub const RESIZE_DECREASE_LEFT_WIDTH: &str = "resize.decrease_left_width";
+pub const RESIZE_INCREASE_RIGHT_WIDTH: &str = "resize.increase_right_width";
+pub const RESIZE_DECREASE_RIGHT_WIDTH: &str = "resize.decrease_right_width";
 pub const RESIZE_DECREASE_HEIGHT: &str = "resize.decrease_height";
 pub const RESIZE_INCREASE_HEIGHT: &str = "resize.increase_height";
 pub const COMPLETION_NEXT: &str = "completion.next";
@@ -300,6 +304,14 @@ pub const ALL_IDS: &[&str] = &[
     ENTER_VISUAL,
     ENTER_VISUAL_LINE,
     ENTER_RESIZE,
+    RESIZE_DECREASE_WIDTH,
+    RESIZE_INCREASE_WIDTH,
+    RESIZE_INCREASE_LEFT_WIDTH,
+    RESIZE_DECREASE_LEFT_WIDTH,
+    RESIZE_INCREASE_RIGHT_WIDTH,
+    RESIZE_DECREASE_RIGHT_WIDTH,
+    RESIZE_DECREASE_HEIGHT,
+    RESIZE_INCREASE_HEIGHT,
     ENTER_TERMINAL_FOCUS,
     EXIT_FOCUS,
     ESCAPE_MODE,
@@ -560,6 +572,10 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         RELOAD_WORKSPACE => Some(Command::ReloadWorkspace),
         RESIZE_DECREASE_WIDTH => Some(Command::ResizeDecreaseWidth),
         RESIZE_INCREASE_WIDTH => Some(Command::ResizeIncreaseWidth),
+        RESIZE_INCREASE_LEFT_WIDTH => Some(Command::ResizeIncreaseLeftWidth),
+        RESIZE_DECREASE_LEFT_WIDTH => Some(Command::ResizeDecreaseLeftWidth),
+        RESIZE_INCREASE_RIGHT_WIDTH => Some(Command::ResizeIncreaseRightWidth),
+        RESIZE_DECREASE_RIGHT_WIDTH => Some(Command::ResizeDecreaseRightWidth),
         RESIZE_DECREASE_HEIGHT => Some(Command::ResizeDecreaseHeight),
         RESIZE_INCREASE_HEIGHT => Some(Command::ResizeIncreaseHeight),
         COMPLETION_NEXT => Some(Command::CompletionNext),

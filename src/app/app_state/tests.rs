@@ -1350,4 +1350,120 @@ mod tests {
         let closed = state.insert_html_auto_close_tag();
         assert!(!closed, "Rust file should not trigger HTML auto-close");
     }
+
+    // ── Multi-cursor tests ────────────────────────────────────────────────────
+
+    fn setup_multi_cursor(text: &str) -> AppState {
+        AppState::from_text(PathBuf::from("test.rs"), text)
+    }
+
+    /// After `c` (change), primary and virtual cursors must land at the start of
+    /// their respective deleted selections, adjusted for all lower-index deletions.
+    #[test]
+    fn multi_cursor_change_places_cursors_at_deleted_selection_starts() {
+        // "foo bar foo" — primary on first "foo" [0,3), virtual on second "foo" [8,11)
+        let mut state = setup_multi_cursor("foo bar foo");
+
+        // Put cursor on first "foo" and select it via ctrl-n.
+        state.cursor_char_idx = 0;
+        assert!(state.multi_cursor_add_next()); // seeds word "foo", primary sel [0,3)
+        assert!(state.multi_cursor_add_next()); // adds second "foo", virtual sel [8,11)
+
+        assert_eq!(state.current_mode(), EditorMode::MultiCursor);
+
+        // Execute `c` (change): delete both selections, enter MultiInsert.
+        assert!(state.multi_cursor_change());
+        assert_eq!(state.current_mode(), EditorMode::MultiInsert);
+
+        // Buffer is now " bar " (5 chars: space bar space, then the remaining space)
+        // Actually "foo bar foo" → delete [8,11) first: "foo bar " → delete [0,3): " bar "
+        // Primary cursor should be at 0 (start of where first "foo" was).
+        assert_eq!(
+            state.cursor_char_idx,
+            0,
+            "primary cursor must be at position 0 after deleting first 'foo'"
+        );
+
+        // Virtual cursor: original sel_start = 8. After deleting [0,3), shift = 3.
+        // Expected position = 8 - 3 = 5.
+        assert_eq!(
+            state.virtual_cursors().len(),
+            1,
+            "one virtual cursor must remain"
+        );
+        assert_eq!(
+            state.virtual_cursors()[0].char_idx,
+            5,
+            "virtual cursor must be at position 5 (8 - 3) after deleting first 'foo'"
+        );
+
+        // Buffer content check: "foo bar foo" minus "foo" twice = " bar "
+        assert_eq!(state.text_string(), " bar ");
+    }
+
+    /// Three occurrences — verifies each virtual cursor position is independently
+    /// adjusted by the total chars deleted below it.
+    #[test]
+    fn multi_cursor_change_three_occurrences_cursor_positions() {
+        // "ab|ab|ab" (| is a separator, word = "ab")
+        // sel [0,2), [3,5), [6,8)
+        let mut state = setup_multi_cursor("ab|ab|ab");
+
+        state.cursor_char_idx = 0;
+        assert!(state.multi_cursor_add_next()); // primary: "ab" at [0,2)
+        assert!(state.multi_cursor_add_next()); // virtual: "ab" at [3,5)
+        assert!(state.multi_cursor_add_next()); // virtual: "ab" at [6,8)
+
+        assert!(state.multi_cursor_change());
+
+        // Deleted [6,8) first, then [3,5), then [0,2). Buffer: "||"
+        // Primary at 0: shift from ranges below 0 = 0 → pos 0
+        // VC1 at orig 3: ranges below 3 → [0,2) len=2 → pos = 3 - 2 = 1
+        // VC2 at orig 6: ranges below 6 → [0,2) len=2 + [3,5) len=2 = 4 → pos = 6 - 4 = 2
+        assert_eq!(state.cursor_char_idx, 0);
+        assert_eq!(state.virtual_cursors()[0].char_idx, 1);
+        assert_eq!(state.virtual_cursors()[1].char_idx, 2);
+        assert_eq!(state.text_string(), "||");
+    }
+
+    /// `d` (delete) shares the same deletion logic — cursors should also be correct.
+    #[test]
+    fn multi_cursor_delete_places_cursors_correctly() {
+        let mut state = setup_multi_cursor("foo bar foo");
+
+        state.cursor_char_idx = 0;
+        assert!(state.multi_cursor_add_next());
+        assert!(state.multi_cursor_add_next());
+        assert!(state.multi_cursor_delete());
+
+        assert_eq!(state.current_mode(), EditorMode::MultiCursor);
+        assert_eq!(state.cursor_char_idx, 0);
+        assert_eq!(state.virtual_cursors()[0].char_idx, 5);
+        assert_eq!(state.text_string(), " bar ");
+    }
+
+    /// `I` must move cursors to sel_start, `A` to sel_end — unchanged behavior.
+    #[test]
+    fn multi_cursor_insert_before_and_append_after_unchanged() {
+        // Test `I`
+        let mut state = setup_multi_cursor("foo bar foo");
+        state.cursor_char_idx = 0;
+        assert!(state.multi_cursor_add_next());
+        assert!(state.multi_cursor_add_next());
+
+        let mut state_i = state.clone();
+        assert!(state_i.multi_cursor_insert_before());
+        assert_eq!(state_i.cursor_char_idx, 0, "I: primary at sel start");
+        assert_eq!(state_i.virtual_cursors()[0].char_idx, 8, "I: vc at its sel start");
+        assert_eq!(state_i.current_mode(), EditorMode::MultiInsert);
+
+        // Test `A`
+        let mut state_a = state.clone();
+        assert!(state_a.multi_cursor_append_after());
+        // primary: anchor=0, cursor=2 → end = max(0,2)+1 = 3
+        assert_eq!(state_a.cursor_char_idx, 3, "A: primary at sel end");
+        // vc: sel_end = 11 → char_idx = 11
+        assert_eq!(state_a.virtual_cursors()[0].char_idx, 11, "A: vc at its sel end");
+        assert_eq!(state_a.current_mode(), EditorMode::MultiInsert);
+    }
 }

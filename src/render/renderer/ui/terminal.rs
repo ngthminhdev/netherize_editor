@@ -366,10 +366,8 @@ impl Renderer {
     // ── Terminal tab bar ─────────────────────────────────────────────────────────
 
     const TAB_BAR_HEIGHT: f32 = 72.0;
-    const TAB_BAR_OUTLINE_INSET: f32 = 3.0;
+    const TAB_BAR_OUTLINE_INSET: f32 = 2.0;
     const TAB_BAR_PADDING_X: f32 = 3.0;
-    const TAB_BAR_TAB_MIN_WIDTH: f32 = 240.0;
-    const TAB_BAR_TAB_MAX_WIDTH: f32 = 300.0;
     const TAB_BAR_DOT_SIZE: f32 = 15.0;
     const TAB_BAR_DOT_GAP: f32 = 25.0;
     const TAB_BAR_TOP_BORDER: f32 = 3.0;
@@ -379,7 +377,10 @@ impl Renderer {
     /// Returns chrome quads (backgrounds, dots, borders) to be added to
     /// `region_instances` and the remaining `[x, y, w, h]` bounds for the
     /// terminal grid below the tab strip.
-    pub fn terminal_tab_bar_content_bounds(&self, bounds: [f32; 4]) -> [f32; 4] {
+    pub fn terminal_tab_bar_content_bounds(&self, bounds: [f32; 4], tab_count: usize) -> [f32; 4] {
+        if tab_count <= 1 {
+            return bounds;
+        }
         let inset = Self::TAB_BAR_OUTLINE_INSET.min(bounds[3].max(0.0));
         let tab_bar_h = Self::TAB_BAR_HEIGHT.min((bounds[3] - inset).max(0.0));
         if tab_bar_h < 1.0 {
@@ -401,10 +402,11 @@ impl Renderer {
         bounds: [f32; 4],
     ) -> (Vec<RegionDrawInstance>, [f32; 4]) {
         let mut chrome = Vec::new();
+        let tab_count = tab_labels.len();
         let outline_inset = Self::TAB_BAR_OUTLINE_INSET.min(bounds[3].max(0.0));
         let tab_bar_h = Self::TAB_BAR_HEIGHT.min((bounds[3] - outline_inset).max(0.0));
         self.terminal_tab_bar_batch = None;
-        if tab_bar_h < 1.0 || tab_labels.is_empty() {
+        if tab_bar_h < 1.0 || tab_count <= 1 {
             self.terminal_text_pipeline.upload_instances(
                 &self.device,
                 &self.queue,
@@ -448,26 +450,31 @@ impl Renderer {
             (bounds[2] - Self::TAB_BAR_PADDING_X * 2.0).max(0.0),
             tab_bar_h,
         ];
-        let terminal_bounds = self.terminal_tab_bar_content_bounds(bounds);
+        let terminal_bounds = self.terminal_tab_bar_content_bounds(bounds, tab_count);
 
         // Tab bar background
         chrome.push(RegionDrawInstance::new(tab_bar_bounds, tab_bg));
 
-        let tab_count = tab_labels.len();
+        let show_tab_titles = tab_count >= 2;
 
         let mut tab_x = bounds[0] + Self::TAB_BAR_PADDING_X;
         let right_limit = bounds[0] + bounds[2] - Self::TAB_BAR_PADDING_X;
 
         let tab_width = if tab_count > 0 {
-            let per_tab = (right_limit - tab_x) / tab_count as f32;
-            per_tab.clamp(Self::TAB_BAR_TAB_MIN_WIDTH, Self::TAB_BAR_TAB_MAX_WIDTH)
+            ((right_limit - tab_x) / tab_count as f32).max(0.0)
         } else {
-            Self::TAB_BAR_TAB_MIN_WIDTH
+            0.0
         };
 
         for i in 0..tab_count {
-            let tab_w = tab_width.min(right_limit - tab_x);
-            if tab_w < Self::TAB_BAR_TAB_MIN_WIDTH {
+            let remaining_width = (right_limit - tab_x).max(0.0);
+            let tabs_left = (tab_count - i) as f32;
+            let tab_w = if i + 1 == tab_count {
+                remaining_width
+            } else {
+                tab_width.min(remaining_width - (tabs_left - 1.0).max(0.0))
+            };
+            if tab_w <= 0.0 {
                 break;
             }
 
@@ -497,21 +504,23 @@ impl Renderer {
             ));
 
             // Text label
-            let label_x = tab_x + label_x_offset;
-            let label_max_w = (tab_w - label_x_offset - label_right_padding).max(0.0);
-            let label = clamp_monospace_text(tab_labels[i], label_max_w, font_size);
-            if !label.is_empty() {
-                self.terminal_text_system
-                    .set_size(Some(label_max_w), Some(tab_bar_h));
-                self.terminal_glyph_instances.extend(layout_panel_text(
-                    &label,
-                    &mut self.terminal_text_system,
-                    &mut self.atlas,
-                    &self.queue,
-                    label_x,
-                    text_y,
-                    if is_active { active_fg } else { inactive_fg },
-                ));
+            if show_tab_titles {
+                let label_x = tab_x + label_x_offset;
+                let label_max_w = (tab_w - label_x_offset - label_right_padding).max(0.0);
+                let label = clamp_monospace_text(tab_labels[i], label_max_w, font_size);
+                if !label.is_empty() {
+                    self.terminal_text_system
+                        .set_size(Some(label_max_w), Some(tab_bar_h));
+                    self.terminal_glyph_instances.extend(layout_panel_text(
+                        &label,
+                        &mut self.terminal_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        label_x,
+                        text_y,
+                        if is_active { active_fg } else { inactive_fg },
+                    ));
+                }
             }
 
             // Separator between tabs

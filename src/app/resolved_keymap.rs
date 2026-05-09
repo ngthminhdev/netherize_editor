@@ -17,6 +17,8 @@ pub enum KeySpec {
     Named(NamedKey),
     /// A physical key code (no modifier): h, j, k, l, backtick, etc.
     Physical(KeyCode),
+    /// Shift + physical key: "H", "L", etc.
+    ShiftPlus(KeyCode),
     /// Command/Ctrl modifier + physical key: "mod+s"
     ModPlus(KeyCode),
     /// Command/Ctrl + Shift + physical key: "mod+shift+p"
@@ -35,7 +37,14 @@ impl KeySpec {
         match self {
             Self::Named(named) => !input.has_command_modifier() && input.named_key == Some(*named),
             Self::Physical(code) => {
-                !input.has_command_modifier() && input.physical_key == Some(*code)
+                !input.has_command_modifier()
+                    && !input.modifiers.shift_key()
+                    && input.physical_key == Some(*code)
+            }
+            Self::ShiftPlus(code) => {
+                !input.has_command_modifier()
+                    && input.modifiers.shift_key()
+                    && input.physical_key == Some(*code)
             }
             Self::ModPlus(code) => {
                 input.has_command_modifier() && input.physical_key == Some(*code)
@@ -65,6 +74,7 @@ impl KeySpec {
         match self {
             Self::Named(named) => named_key_display(*named),
             Self::Physical(code) => physical_key_display(*code),
+            Self::ShiftPlus(code) => physical_key_display(*code).to_ascii_uppercase(),
             Self::ModPlus(code) => format!("mod+{}", physical_key_display(*code)),
             Self::ModShiftPlus(code) => format!("mod+shift+{}", physical_key_display(*code)),
             Self::CtrlPlus(code) => format!("ctrl+{}", physical_key_display(*code)),
@@ -209,6 +219,9 @@ fn parse_non_leader_key(token: &str) -> Option<KeySpec> {
     {
         if ch.is_ascii_lowercase() || ch.is_ascii_digit() {
             return char_key_to_code(token).map(KeySpec::Physical);
+        }
+        if ch.is_ascii_uppercase() {
+            return char_key_to_code(token).map(KeySpec::ShiftPlus);
         }
         return Some(KeySpec::Char(ch));
     }
@@ -497,6 +510,11 @@ fn input_to_specs(input: &NormalizedInput) -> Vec<KeySpec> {
     } else {
         if let Some(named) = input.named_key {
             specs.push(KeySpec::Named(named));
+        }
+        if input.modifiers.shift_key()
+            && let Some(code) = input.physical_key
+        {
+            specs.push(KeySpec::ShiftPlus(code));
         }
         // Char needs to be checked before Physical so shifted keys like `I` / `O`
         // can override lowercase physical bindings (`i` / `o`) in normal mode.
@@ -795,6 +813,23 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("terminal_normal"), ch('n'), SEARCH_NEXT);
     km.insert(Some("terminal_normal"), ch('N'), SEARCH_PREV);
     km.insert(Some("terminal_normal"), ch('*'), SEARCH_WORD_UNDER_CURSOR);
+
+    // ── Resize mode bindings ──────────────────────────────────────────────────
+    km.insert(Some("resize"), ph(KeyCode::KeyH), RESIZE_INCREASE_LEFT_WIDTH);
+    km.insert(
+        Some("resize"),
+        KeySpec::ShiftPlus(KeyCode::KeyH),
+        RESIZE_DECREASE_LEFT_WIDTH,
+    );
+    km.insert(Some("resize"), ph(KeyCode::KeyL), RESIZE_INCREASE_RIGHT_WIDTH);
+    km.insert(
+        Some("resize"),
+        KeySpec::ShiftPlus(KeyCode::KeyL),
+        RESIZE_DECREASE_RIGHT_WIDTH,
+    );
+    km.insert(Some("resize"), ph(KeyCode::KeyJ), RESIZE_INCREASE_HEIGHT);
+    km.insert(Some("resize"), ph(KeyCode::KeyK), RESIZE_DECREASE_HEIGHT);
+    km.insert(Some("resize"), nk(NamedKey::Escape), ENTER_NORMAL);
 
     // ── Explorer focus mode bindings (mode-only lookup in InputMap) ──────────
     km.insert(Some("explorer"), nk(NamedKey::Escape), FOCUS_EDITOR);

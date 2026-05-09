@@ -469,31 +469,42 @@ impl AppState {
         // Sort descending by start so each delete doesn't shift subsequent ranges.
         ranges.sort_by(|a, b| b.0.cmp(&a.0));
 
-        for (s, e) in ranges {
+        for &(s, e) in &ranges {
             self.apply_delete_raw(s, e - s);
         }
 
-        // After bulk delete: re-position all cursors at start of their former selection
-        // (which is now the deletion point, adjusted for prior deletions above them).
-        // Simplest safe choice: place all cursors at the primary selection start.
-        let new_primary = self
+        // After bulk deletion in descending order, cursors at lower positions are
+        // shifted downward by each deletion that occurred above them.  For an original
+        // start position `orig`, the correct post-deletion position is:
+        //   orig - Σ(e_k - s_k) for every deleted range (s_k, e_k) where s_k < orig
+        fn adjusted_pos(orig: usize, ranges: &[(usize, usize)]) -> usize {
+            let shift: usize = ranges
+                .iter()
+                .filter(|&&(s, _)| s < orig)
+                .map(|&(s, e)| e - s)
+                .sum();
+            orig.saturating_sub(shift)
+        }
+
+        let primary_orig = self
             .selection_anchor_char_idx
             .map(|a| a.min(self.cursor_char_idx))
-            .unwrap_or(self.cursor_char_idx)
-            .min(self.text.len_chars());
-        self.cursor_char_idx = new_primary;
+            .unwrap_or(self.cursor_char_idx);
+        self.cursor_char_idx = adjusted_pos(primary_orig, &ranges).min(self.text.len_chars());
         let (_, col) = self.cursor_line_col();
         self.target_col = col;
         self.selection_anchor_char_idx = None;
 
-        // Place each virtual cursor at its former selection start (adjusted for
-        // deletions above it — simplified: use selection_start clamped to buffer).
-        for vc in &mut self.virtual_cursors {
-            let pos = vc
-                .selection_start
-                .unwrap_or(vc.char_idx)
-                .min(self.text.len_chars());
-            vc.char_idx = pos;
+        // Collect original starts before mutating virtual_cursors.
+        let vc_orig_starts: Vec<usize> = self
+            .virtual_cursors
+            .iter()
+            .map(|vc| vc.selection_start.unwrap_or(vc.char_idx))
+            .collect();
+
+        let len_chars = self.text.len_chars();
+        for (vc, orig) in self.virtual_cursors.iter_mut().zip(vc_orig_starts) {
+            vc.char_idx = adjusted_pos(orig, &ranges).min(len_chars);
             vc.selection_start = None;
             vc.selection_end = None;
         }

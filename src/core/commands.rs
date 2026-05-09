@@ -150,6 +150,14 @@ pub enum Command {
     ResizeDecreaseWidth,
     /// Increase focused workbench window width in resize mode.
     ResizeIncreaseWidth,
+    /// Increase editor width from the left edge by shrinking the left dock.
+    ResizeIncreaseLeftWidth,
+    /// Decrease editor width from the left edge by growing the left dock.
+    ResizeDecreaseLeftWidth,
+    /// Increase editor width from the right edge by shrinking the right dock.
+    ResizeIncreaseRightWidth,
+    /// Decrease editor width from the right edge by growing the right dock.
+    ResizeDecreaseRightWidth,
     /// Decrease focused workbench window height in resize mode.
     ResizeDecreaseHeight,
     /// Increase focused workbench window height in resize mode.

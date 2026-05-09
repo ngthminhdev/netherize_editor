@@ -1226,7 +1226,12 @@ impl AppShell {
                 let terminal_content_bounds = self
                     .renderer
                     .as_ref()
-                    .map(|renderer| renderer.terminal_tab_bar_content_bounds(bottom_bounds))
+                    .map(|renderer| {
+                        renderer.terminal_tab_bar_content_bounds(
+                            bottom_bounds,
+                            self.terminal_tabs.len(),
+                        )
+                    })
                     .unwrap_or(bottom_bounds);
 
                 let bounds_changed = self.last_terminal_bounds != Some(bottom_bounds);

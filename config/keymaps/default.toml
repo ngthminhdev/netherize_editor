@@ -15,22 +15,32 @@ command = "mode.resize"
 [[bindings]]
 mode = "resize"
 key = "h"
-command = "resize.decrease_width"
+command = "resize.increase_left_width"
+
+[[bindings]]
+mode = "resize"
+key = "H"
+command = "resize.decrease_left_width"
 
 [[bindings]]
 mode = "resize"
 key = "l"
-command = "resize.increase_width"
+command = "resize.increase_right_width"
+
+[[bindings]]
+mode = "resize"
+key = "L"
+command = "resize.decrease_right_width"
 
 [[bindings]]
 mode = "resize"
 key = "j"
-command = "resize.decrease_height"
+command = "resize.increase_height"
 
 [[bindings]]
 mode = "resize"
 key = "k"
-command = "resize.increase_height"
+command = "resize.decrease_height"
 
 [[bindings]]
 mode = "resize"
