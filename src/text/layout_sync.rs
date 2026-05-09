@@ -38,6 +38,7 @@ pub fn rebuild_layout_projection(
     queue: &wgpu::Queue,
     viewport_origin: [f32; 2],
     viewport_clip: Option<(f32, f32)>,
+    virtual_gap_after_line: Option<(usize, f32)>,
     text_color: [f32; 4],
     cursor_overlay_color: [f32; 4],
 ) -> Result<LayoutProjection, String> {
@@ -80,9 +81,13 @@ pub fn rebuild_layout_projection(
 
         let (uv_min, uv_max) = atlas.uv_min_max(entry.region);
         let top_left_x = glyph.physical_x + entry.placement_left;
-        let top_left_y = glyph.physical_y - entry.placement_top;
+        let virtual_gap_y = virtual_gap_after_line
+            .filter(|(line, gap)| glyph.line_i > *line && *gap > 0.0)
+            .map(|(_, gap)| gap)
+            .unwrap_or(0.0);
+        let top_left_y = (glyph.physical_y - entry.placement_top) as f32 + virtual_gap_y;
 
-        let position = [top_left_x as f32, top_left_y as f32];
+        let position = [top_left_x as f32, top_left_y];
         let size = [entry.region.width as f32, entry.region.height as f32];
 
         glyph_instances.push(GlyphInstance::new(

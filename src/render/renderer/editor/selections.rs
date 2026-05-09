@@ -522,6 +522,12 @@ impl Renderer {
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - visual_scroll_y;
         let viewport_top = center_bounds[1];
         let viewport_bottom = center_bounds[1] + center_bounds[3];
+        let virtual_gap_y = app_state
+            .inline_suggestion()
+            .map(|suggestion| suggestion.split('\n').take(6).count().saturating_sub(1))
+            .filter(|extra_lines| *extra_lines > 0)
+            .map(|extra_lines| extra_lines as f32 * line_height.max(1.0))
+            .unwrap_or(0.0);
 
         let mut gutter_glyphs: Vec<GlyphInstance> = Vec::new();
         let mut quads: Vec<RegionDrawInstance> = Vec::new();
@@ -557,7 +563,13 @@ impl Renderer {
             let is_continuation = last_seen_line == Some(abs_line);
             last_seen_line = Some(abs_line);
 
-            let line_top_y = origin_y + run.line_top;
+            let line_top_y = origin_y
+                + run.line_top
+                + if abs_line > cursor_line {
+                    virtual_gap_y
+                } else {
+                    0.0
+                };
 
             if is_continuation {
                 // Continuation visual row: extend the cursor-line active highlight so

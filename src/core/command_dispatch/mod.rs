@@ -164,6 +164,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::Newline
         | Command::InsertTab
         | Command::AiAcceptInline
+        | Command::AiAcceptInlineWord
         | Command::Backspace
         | Command::InsertLineBelow
         | Command::InsertLineAbove

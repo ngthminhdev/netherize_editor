@@ -1,5 +1,7 @@
 use std::{ops::Range, path::PathBuf};
 
+use tokio_util::sync::CancellationToken;
+
 use crate::syntax::{highlight::HighlightSpan, syntax_engine::LanguageId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -308,6 +310,7 @@ pub enum WorkerRequestPayload {
         language_id: Option<String>,
         file_path: Option<PathBuf>,
         max_tokens: u32,
+        cancel_token: CancellationToken,
     },
     AiChatRequest {
         prompt: String,
@@ -624,6 +627,9 @@ pub enum WorkerResultPayload {
         file_path: PathBuf,
         target_line: Option<usize>,
         lines: Vec<FilePreviewLine>,
+    },
+    AiInlineCompletionChunk {
+        chunk: String,
     },
     AiInlineCompletionResult {
         suggestion: String,

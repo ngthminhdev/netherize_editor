@@ -261,7 +261,7 @@ impl AppShell {
         ) && self.app_state.current_mode() == EditorMode::Insert;
         if is_insert_typing {
             let _ = self.app_state.clear_inline_suggestion();
-            self.pending_ai_inline_request = None;
+            self.cancel_ai_inline_completion();
         }
         if matches!(command, Command::TerminalPaste) {
             return self.handle_terminal_paste();

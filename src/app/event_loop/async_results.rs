@@ -1015,6 +1015,13 @@ impl AsyncResultRouter for AppShell {
                     self.request_redraw();
                 }
             }
+            WorkerResultPayload::AiInlineCompletionChunk { chunk } => {
+                if self.app_state.append_inline_suggestion_chunk(&chunk) {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    self.request_redraw();
+                }
+            }
             WorkerResultPayload::AiInlineCompletionResult { suggestion } => {
                 if self.app_state.set_inline_suggestion(Some(suggestion)) {
                     self.editor_needs_layout = true;

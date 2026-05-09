@@ -29,6 +29,19 @@ use crate::text::text_system::StyledTextSpan;
 
 /// Quick fingerprint để phát hiện thay đổi trong syntax / diagnostic spans.
 /// Không cần hoàn hảo — chỉ cần bắt được phần lớn thay đổi thực tế.
+fn inline_suggestion_virtual_gap(app_state: &AppState, line_height: f32) -> Option<(usize, f32)> {
+    const MAX_INLINE_SUGGESTION_LINES: usize = 6;
+
+    let suggestion = app_state.inline_suggestion()?;
+    let rendered_lines = suggestion.split('\n').take(MAX_INLINE_SUGGESTION_LINES).count();
+    let extra_lines = rendered_lines.saturating_sub(1);
+    if extra_lines == 0 {
+        return None;
+    }
+    let (cursor_line, _) = app_state.cursor_line_col();
+    Some((cursor_line, extra_lines as f32 * line_height.max(1.0)))
+}
+
 fn spans_fingerprint(spans: &[StyledTextSpan]) -> u64 {
     let mut h: u64 = spans.len() as u64 ^ 0xcbf29ce484222325;
     for (i, s) in spans.iter().take(32).enumerate() {
@@ -176,9 +189,13 @@ impl Renderer {
 
         // Cull glyphs ngoài viewport (overscan 1 dòng mỗi đầu) — file 10k dòng
         // chỉ build instance cho ~100 dòng visible thay vì toàn buffer.
+        let virtual_gap_after_line = inline_suggestion_virtual_gap(app_state, geometry.line_height);
+        let virtual_gap_y = virtual_gap_after_line.map(|(_, gap)| gap).unwrap_or(0.0);
         let clip_top = geometry.viewport_text_top - geometry.line_height;
-        let clip_bottom =
-            geometry.viewport_text_top + geometry.viewport_text_height + geometry.line_height;
+        let clip_bottom = geometry.viewport_text_top
+            + geometry.viewport_text_height
+            + geometry.line_height
+            + virtual_gap_y;
         let viewport_clip = Some((clip_top, clip_bottom));
 
         let result = rebuild_layout_projection(
@@ -188,6 +205,7 @@ impl Renderer {
             &self.queue,
             [geometry.origin_x, corrected_origin_y],
             viewport_clip,
+            virtual_gap_after_line,
             self.theme.editor.fg.as_f32(),
             self.theme.editor.bg.as_f32(),
         );
@@ -345,58 +363,80 @@ impl Renderer {
         let Some(suggestion) = app_state.inline_suggestion() else {
             return Vec::new();
         };
-        let first_line = suggestion.lines().next().unwrap_or_default();
-        if first_line.is_empty() {
-            return Vec::new();
-        }
+        const MAX_INLINE_SUGGESTION_LINES: usize = 6;
+
+        let caret = compute_caret_layout(&self.text_system, app_state, [origin_x, origin_y]);
+        let line_height = self.theme.editor.line_height.max(1.0);
+        let color =
+            crate::config::theme_config::linear_rgba_to_srgb_u8(self.theme.ui.fg_ghost.as_f32());
+        let ghost_color = self.theme.ui.fg_ghost.as_f32();
+        let mut instances = Vec::new();
 
         self.editor_overlay_text_system.set_metrics(Metrics::new(
             self.theme.editor.font_size,
             self.theme.editor.line_height,
         ));
-        self.editor_overlay_text_system.set_size(Some(width), None);
-        let color =
-            crate::config::theme_config::linear_rgba_to_srgb_u8(self.theme.ui.fg_ghost.as_f32());
-        self.editor_overlay_text_system
-            .set_text_with_color(first_line, color);
 
-        let caret = compute_caret_layout(&self.text_system, app_state, [origin_x, origin_y]);
-        let raw_glyphs = self.editor_overlay_text_system.collect_visible_glyphs(
-            caret.x,
-            caret.top,
-            self.theme.ui.fg_ghost.as_f32(),
-            None,
-        );
-        let mut instances = Vec::with_capacity(raw_glyphs.len());
-        for glyph in raw_glyphs {
-            let entry = if let Some(entry) = self.atlas.get(glyph.cache_key) {
-                entry
-            } else {
-                let Some(rasterized) = crate::text::raster::rasterize_glyph_alpha(
-                    &mut self.editor_overlay_text_system,
-                    glyph.cache_key,
-                ) else {
-                    continue;
-                };
-                let Ok(entry) = self.atlas.get_or_reserve(glyph.cache_key, &rasterized) else {
-                    continue;
-                };
-                entry
-            };
-            if entry.region.width == 0 || entry.region.height == 0 {
+        for (line_idx, line) in suggestion
+            .split('\n')
+            .take(MAX_INLINE_SUGGESTION_LINES)
+            .enumerate()
+        {
+            if line.is_empty() {
                 continue;
             }
-            let (uv_min, uv_max) = self.atlas.uv_min_max(entry.region);
-            let top_left_x = glyph.physical_x + entry.placement_left;
-            let top_left_y = glyph.physical_y - entry.placement_top;
-            instances.push(GlyphInstance::new(
-                [top_left_x as f32, top_left_y as f32],
-                [entry.region.width as f32, entry.region.height as f32],
-                uv_min,
-                uv_max,
-                glyph.color,
-            ));
+
+            let (line_x, line_width) = if line_idx == 0 {
+                let remaining_width = (origin_x + width - caret.x).max(1.0);
+                (caret.x, remaining_width)
+            } else {
+                (origin_x, width.max(1.0))
+            };
+            let line_y = caret.top + line_idx as f32 * line_height;
+
+            self.editor_overlay_text_system
+                .set_size(Some(line_width), Some(line_height));
+            self.editor_overlay_text_system
+                .set_text_with_color(line, color);
+
+            let raw_glyphs = self.editor_overlay_text_system.collect_visible_glyphs(
+                line_x,
+                line_y,
+                ghost_color,
+                None,
+            );
+            instances.reserve(raw_glyphs.len());
+            for glyph in raw_glyphs {
+                let entry = if let Some(entry) = self.atlas.get(glyph.cache_key) {
+                    entry
+                } else {
+                    let Some(rasterized) = crate::text::raster::rasterize_glyph_alpha(
+                        &mut self.editor_overlay_text_system,
+                        glyph.cache_key,
+                    ) else {
+                        continue;
+                    };
+                    let Ok(entry) = self.atlas.get_or_reserve(glyph.cache_key, &rasterized) else {
+                        continue;
+                    };
+                    entry
+                };
+                if entry.region.width == 0 || entry.region.height == 0 {
+                    continue;
+                }
+                let (uv_min, uv_max) = self.atlas.uv_min_max(entry.region);
+                let top_left_x = glyph.physical_x + entry.placement_left;
+                let top_left_y = glyph.physical_y - entry.placement_top;
+                instances.push(GlyphInstance::new(
+                    [top_left_x as f32, top_left_y as f32],
+                    [entry.region.width as f32, entry.region.height as f32],
+                    uv_min,
+                    uv_max,
+                    glyph.color,
+                ));
+            }
         }
+
         self.atlas.flush_pending(&self.queue);
         instances
     }

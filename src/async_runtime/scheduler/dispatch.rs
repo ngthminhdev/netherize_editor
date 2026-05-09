@@ -155,7 +155,7 @@ pub(super) async fn dispatch_loop(
                         kind: WorkerEventKind::Started,
                     }),
                 );
-                match execute_ai_inline_request(&request).await {
+                match execute_ai_inline_request(&request, Some(&worker_tx)).await {
                     Ok(payload) => {
                         emit_message(
                             &worker_tx,
@@ -178,18 +178,23 @@ pub(super) async fn dispatch_loop(
                         let _ = ai_event_proxy.send_event(AppEvent::AiInlineReady);
                     }
                     Err(message) => {
+                        let kind = if message.contains("cancelled") {
+                            WorkerEventKind::Cancelled { reason: message }
+                        } else {
+                            WorkerEventKind::Failed {
+                                error: WorkerFailure {
+                                    kind: WorkerFailureKind::Execution,
+                                    message,
+                                },
+                            }
+                        };
                         emit_message(
                             &worker_tx,
                             WorkerMessage::Event(WorkerEvent {
                                 request_id: request.request_id,
                                 revision_id: request.revision_id,
                                 topic: request.topic,
-                                kind: WorkerEventKind::Failed {
-                                    error: WorkerFailure {
-                                        kind: WorkerFailureKind::Execution,
-                                        message,
-                                    },
-                                },
+                                kind,
                             }),
                         );
                     }

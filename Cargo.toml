@@ -11,6 +11,7 @@ arboard = "3.4.1"
 bytemuck = { version = "1.24.0", features = ["derive"] }
 cosmic-text = "0.18.2"
 font-kit = "0.14.3"
+futures-util = "0.3"
 notify = "6.1.1"
 rfd = "0.14"
 pollster = "0.4.0"
@@ -22,7 +23,8 @@ lsp-types = "0.97.0"
 toml = "0.8"
 swash = "0.2.7"
 sysinfo = "0.37.2"
-tokio = { version = "1.52.1", features = ["io-util", "rt-multi-thread", "sync", "time", "process"] }
+tokio = { version = "1.52.1", features = ["io-util", "rt-multi-thread", "sync", "time", "process", "macros"] }
+tokio-util = "0.7"
 sha2 = "0.10.9"
 similar = "2.2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }

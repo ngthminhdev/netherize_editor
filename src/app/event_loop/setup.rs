@@ -1,5 +1,9 @@
 use super::*;
 
+fn is_ai_inline_word_char(ch: char) -> bool {
+    ch == '_' || ch.is_alphanumeric()
+}
+
 impl AppShell {
     pub fn new(event_proxy: EventLoopProxy<AppEvent>) -> Result<Self, String> {
         let (scheduler, rx) = AsyncScheduler::new(event_proxy)?;
@@ -205,6 +209,9 @@ impl AppShell {
             pending_completion_resolve_revision: 0,
             ai_inline_revision: 0,
             pending_ai_inline_request: None,
+            ai_inline_cancel_token: None,
+            last_ai_inline_queue_at: None,
+            last_ai_inline_submit_at: None,
             pending_lsp_document_sync: None,
             last_editor_bounds: None,
             last_show_welcome: None,
@@ -1006,24 +1013,75 @@ impl AppShell {
         self.submit_parse_for_active_buffer(true);
     }
 
+    pub(super) fn cancel_ai_inline_completion(&mut self) {
+        self.pending_ai_inline_request = None;
+        if let Some(token) = self.ai_inline_cancel_token.take() {
+            token.cancel();
+        }
+    }
+
     pub(super) fn queue_ai_inline_completion(&mut self) {
         if self.app_state.current_mode() != EditorMode::Insert {
-            self.pending_ai_inline_request = None;
+            self.cancel_ai_inline_completion();
             return;
         }
         if self.app_state.active_buffer_is_terminal() || self.app_state.active_file().is_none() {
-            self.pending_ai_inline_request = None;
+            self.cancel_ai_inline_completion();
             return;
         }
-        if self.ai_config.inline_completion().is_none() {
+        let Some(cfg) = self.ai_config.inline_completion() else {
+            self.cancel_ai_inline_completion();
+            return;
+        };
+        let now = Instant::now();
+        if !self.should_queue_ai_inline_completion(cfg, now) {
             self.pending_ai_inline_request = None;
+            self.last_ai_inline_queue_at = Some(now);
             return;
         }
+        self.last_ai_inline_queue_at = Some(now);
         self.ai_inline_revision = self.ai_inline_revision.saturating_add(1);
         self.pending_ai_inline_request = Some(PendingAiInlineRequest {
             revision: self.ai_inline_revision,
-            queued_at: Instant::now(),
+            queued_at: now,
         });
+    }
+
+    fn should_queue_ai_inline_completion(
+        &self,
+        cfg: &crate::config::ai_config::InlineCompletionConfig,
+        now: Instant,
+    ) -> bool {
+        if let Some(last_submit) = self.last_ai_inline_submit_at
+            && last_submit.elapsed() < Duration::from_millis(cfg.min_interval_ms())
+        {
+            return false;
+        }
+
+        let cursor = self.app_state.cursor_char_idx();
+        if cursor < cfg.min_prefix_chars() {
+            return false;
+        }
+
+        let text = self.app_state.text_string();
+        let mut chars = text.chars();
+        let before = cursor.checked_sub(1).and_then(|idx| chars.nth(idx));
+        let after = text.chars().nth(cursor);
+
+        if cfg.suppress_in_middle_of_word()
+            && before.is_some_and(is_ai_inline_word_char)
+            && after.is_some_and(is_ai_inline_word_char)
+        {
+            return false;
+        }
+
+        if before.is_some_and(|ch| cfg.trigger_chars().contains(&ch)) {
+            return true;
+        }
+
+        self.last_ai_inline_queue_at
+            .map(|last| now.duration_since(last) >= Duration::from_millis(cfg.idle_trigger_ms()))
+            .unwrap_or(true)
     }
 
     pub(super) fn flush_pending_ai_inline_completion(&mut self) {
@@ -1031,7 +1089,7 @@ impl AppShell {
             return;
         };
         let Some(cfg) = self.ai_config.inline_completion().cloned() else {
-            self.pending_ai_inline_request = None;
+            self.cancel_ai_inline_completion();
             return;
         };
         if pending.queued_at.elapsed() < Duration::from_millis(cfg.debounce_ms()) {
@@ -1039,6 +1097,11 @@ impl AppShell {
         }
         let revision = pending.revision;
         self.pending_ai_inline_request = None;
+        if let Some(token) = self.ai_inline_cancel_token.take() {
+            token.cancel();
+        }
+        let cancel_token = CancellationToken::new();
+        self.ai_inline_cancel_token = Some(cancel_token.clone());
         let api_url = cfg.provider.api_url.clone();
         let api_key = cfg.provider.api_key.clone();
         let model = cfg.provider.model.clone();
@@ -1057,9 +1120,11 @@ impl AppShell {
             .skip(prefix_chars.len().saturating_sub(prefix_take))
             .collect::<String>();
         if prefix.trim().is_empty() && suffix.trim().is_empty() {
+            self.cancel_ai_inline_completion();
             return;
         }
         let language_id = self.app_state.active_file().map(language_id_for_path);
+        self.last_ai_inline_submit_at = Some(Instant::now());
         self.submit(RequestSpec {
             revision_id: revision,
             topic: RequestTopic::AiInlineCompletion,
@@ -1073,6 +1138,7 @@ impl AppShell {
                 language_id,
                 file_path: self.app_state.active_file().map(PathBuf::from),
                 max_tokens,
+                cancel_token,
             },
         });
     }

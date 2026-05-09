@@ -5,6 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use tokio_util::sync::CancellationToken;
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalSize},
@@ -198,6 +199,9 @@ pub struct AppShell {
     pending_completion_resolve_revision: u64,
     ai_inline_revision: u64,
     pending_ai_inline_request: Option<PendingAiInlineRequest>,
+    ai_inline_cancel_token: Option<CancellationToken>,
+    last_ai_inline_queue_at: Option<Instant>,
+    last_ai_inline_submit_at: Option<Instant>,
     pending_lsp_document_sync: Option<PendingLspDocumentSync>,
     last_editor_bounds: Option<[f32; 4]>,
     last_show_welcome: Option<bool>,

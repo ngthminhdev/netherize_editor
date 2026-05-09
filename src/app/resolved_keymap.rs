@@ -568,6 +568,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         KeySpec::CtrlPlus(KeyCode::KeyJ),
         AI_ACCEPT_INLINE,
     );
+    km.insert(
+        Some("insert"),
+        KeySpec::CtrlPlus(KeyCode::KeyL),
+        AI_ACCEPT_INLINE_WORD,
+    );
 
     // ── Normal mode ───────────────────────────────────────────────────────────
     km.insert(

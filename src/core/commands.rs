@@ -290,6 +290,8 @@ pub enum Command {
     CompletionClose,
     /// Accept AI inline ghost-text suggestion into the real buffer.
     AiAcceptInline,
+    /// Accept the next word/token from the AI inline ghost-text suggestion.
+    AiAcceptInlineWord,
 
     // ── AI Chat ───────────────────────────────────────────────────────────────
     /// Toggle the AI chat panel open/closed.

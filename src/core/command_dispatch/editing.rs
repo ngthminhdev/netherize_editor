@@ -99,6 +99,17 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 changed,
             )
         }
+        Command::AiAcceptInlineWord => {
+            let changed = ctx.app_state.accept_inline_suggestion_word();
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: applied to active buffer (accept inline suggestion word)"
+                } else {
+                    "Dispatch: accept inline suggestion word ignored (no suggestion)"
+                },
+                changed,
+            )
+        }
         Command::Backspace => {
             let changed = ctx.app_state.backspace();
             DispatchReport::success(

@@ -1,6 +1,59 @@
 use super::overlays::{build_completion_display_items, is_completion_identifier_char};
 use super::*;
 
+fn inline_suggestion_accept_prefix_byte_len(suggestion: &str) -> usize {
+    let mut saw_leading_whitespace = false;
+    let mut token_kind: Option<InlineSuggestionTokenKind> = None;
+    let mut last_end = 0;
+
+    for (idx, ch) in suggestion.char_indices() {
+        if token_kind.is_none() && ch.is_whitespace() {
+            saw_leading_whitespace = true;
+            last_end = idx + ch.len_utf8();
+            if ch == '\n' {
+                return last_end;
+            }
+            continue;
+        }
+
+        let kind = InlineSuggestionTokenKind::for_char(ch);
+        match token_kind {
+            None => {
+                token_kind = Some(kind);
+                last_end = idx + ch.len_utf8();
+                if kind == InlineSuggestionTokenKind::Punctuation {
+                    return last_end;
+                }
+            }
+            Some(current) if current == kind && kind != InlineSuggestionTokenKind::Punctuation => {
+                last_end = idx + ch.len_utf8();
+            }
+            Some(_) => return if saw_leading_whitespace { idx } else { last_end },
+        }
+    }
+
+    last_end
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InlineSuggestionTokenKind {
+    Word,
+    Number,
+    Punctuation,
+}
+
+impl InlineSuggestionTokenKind {
+    fn for_char(ch: char) -> Self {
+        if ch == '_' || ch.is_alphabetic() {
+            Self::Word
+        } else if ch.is_ascii_digit() {
+            Self::Number
+        } else {
+            Self::Punctuation
+        }
+    }
+}
+
 impl AppState {
     pub fn file_history_picker_items(
         &self,
@@ -758,6 +811,19 @@ impl AppState {
         self.set_inline_suggestion(None)
     }
 
+    pub fn append_inline_suggestion_chunk(&mut self, chunk: &str) -> bool {
+        let normalized = chunk.replace("\r\n", "\n").replace('\r', "\n");
+        if normalized.is_empty() {
+            return false;
+        }
+        match self.inline_suggestion.as_mut() {
+            Some(suggestion) => suggestion.push_str(&normalized),
+            None => self.inline_suggestion = Some(normalized),
+        }
+        self.bump_revision();
+        true
+    }
+
     pub fn accept_inline_suggestion(&mut self) -> bool {
         let Some(suggestion) = self.inline_suggestion.clone() else {
             return false;
@@ -770,6 +836,29 @@ impl AppState {
         let (_, col) = self.cursor_line_col();
         self.target_col = col;
         self.inline_suggestion = None;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
+    pub fn accept_inline_suggestion_word(&mut self) -> bool {
+        let Some(suggestion) = self.inline_suggestion.clone() else {
+            return false;
+        };
+        let split_byte = inline_suggestion_accept_prefix_byte_len(&suggestion);
+        if split_byte == 0 {
+            return false;
+        }
+        let accepted = suggestion[..split_byte].to_string();
+        let remaining = suggestion[split_byte..].to_string();
+        let accepted_chars = accepted.chars().count();
+        if !self.apply_insert(self.cursor_char_idx, accepted) {
+            return false;
+        }
+        self.cursor_char_idx += accepted_chars;
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.inline_suggestion = (!remaining.is_empty()).then_some(remaining);
         self.dirty = true;
         self.bump_revision();
         true
