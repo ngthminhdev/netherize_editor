@@ -81,8 +81,7 @@ Start here when exploring this area:
 | Workbench | 5 calls |
 | Syntax | 3 calls |
 | Command_dispatch | 2 calls |
-| App_state | 1 calls |
-| Editor | 1 calls |
+| App_state | 2 calls |
 | App | 1 calls |
 | Lsp | 1 calls |
 

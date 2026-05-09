@@ -5,7 +5,7 @@ description: "Skill for the Lsp area of netherize_editor. 106 symbols across 12 
 
 # Lsp
 
-106 symbols | 12 files | Cohesion: 75%
+106 symbols | 12 files | Cohesion: 74%
 
 ## When to Use
 
@@ -20,7 +20,7 @@ description: "Skill for the Lsp area of netherize_editor. 106 symbols across 12 
 | `src/lsp/client.rs` | is_document_open, mark_document_open, mark_document_closed, build_did_open_notification, build_did_change_notification (+67) |
 | `src/lsp/registry.rs` | language_profile_for_language_id, language_profile_for_path, language_profile_detects_dockerfile_by_filename, language_profile_detects_dockerfile_variants, language_profile_detects_sql_by_extension (+9) |
 | `src/async_runtime/scheduler.rs` | get_by_binary, get_handle, get_handle_by_uri, take_any, drain_all (+1) |
-| `src/async_runtime/scheduler/lsp_parse.rs` | lsp_request_response, lsp_cancellable_request_response, parse_locations, handle_lsp_definition, handle_lsp_references |
+| `src/async_runtime/scheduler/lsp_parse.rs` | parse_locations, handle_lsp_definition, handle_lsp_references, lsp_request_response, lsp_cancellable_request_response |
 | `src/async_runtime/scheduler/lsp_io.rs` | spawn_lsp_stderr_logger, spawn_lsp_stdout_reader |
 | `src/async_runtime/scheduler/lsp.rs` | execute_lsp_request |
 | `src/syntax/parser.rs` | language_id_for_path |
@@ -49,19 +49,19 @@ Start here when exploring this area:
 | `build_did_open_notification` | Function | `src/lsp/client.rs` | 1014 |
 | `build_did_change_notification` | Function | `src/lsp/client.rs` | 1030 |
 | `build_did_close_notification` | Function | `src/lsp/client.rs` | 1042 |
-| `get_by_binary` | Function | `src/async_runtime/scheduler.rs` | 104 |
-| `get_handle` | Function | `src/async_runtime/scheduler.rs` | 118 |
-| `get_handle_by_uri` | Function | `src/async_runtime/scheduler.rs` | 129 |
-| `take_any` | Function | `src/async_runtime/scheduler.rs` | 140 |
-| `drain_all` | Function | `src/async_runtime/scheduler.rs` | 168 |
+| `get_by_binary` | Function | `src/async_runtime/scheduler.rs` | 110 |
+| `get_handle` | Function | `src/async_runtime/scheduler.rs` | 124 |
+| `get_handle_by_uri` | Function | `src/async_runtime/scheduler.rs` | 135 |
+| `take_any` | Function | `src/async_runtime/scheduler.rs` | 146 |
+| `drain_all` | Function | `src/async_runtime/scheduler.rs` | 174 |
+| `handle_lsp_definition` | Function | `src/async_runtime/scheduler/lsp_parse.rs` | 458 |
+| `handle_lsp_references` | Function | `src/async_runtime/scheduler/lsp_parse.rs` | 524 |
 | `spawn_lsp_stderr_logger` | Function | `src/async_runtime/scheduler/lsp_io.rs` | 185 |
 | `swap_inflight` | Function | `src/lsp/client.rs` | 387 |
 | `clear_inflight_if_matches` | Function | `src/lsp/client.rs` | 394 |
+| `send_cancel_request` | Function | `src/lsp/client.rs` | 405 |
+| `send_notification` | Function | `src/lsp/client.rs` | 458 |
 | `allocate_request_id` | Function | `src/lsp/client.rs` | 484 |
-| `send_request_with_id` | Function | `src/lsp/client.rs` | 507 |
-| `register_pending_request` | Function | `src/lsp/client.rs` | 513 |
-| `clear_pending_request` | Function | `src/lsp/client.rs` | 533 |
-| `lsp_request_response` | Function | `src/async_runtime/scheduler/lsp_parse.rs` | 18 |
 
 ## Execution Flows
 

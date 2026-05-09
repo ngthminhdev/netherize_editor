@@ -1,11 +1,11 @@
 ---
 name: terminal
-description: "Skill for the Terminal area of netherize_editor. 145 symbols across 11 files."
+description: "Skill for the Terminal area of netherize_editor. 140 symbols across 11 files."
 ---
 
 # Terminal
 
-145 symbols | 11 files | Cohesion: 82%
+140 symbols | 11 files | Cohesion: 83%
 
 ## When to Use
 
@@ -17,13 +17,13 @@ description: "Skill for the Terminal area of netherize_editor. 145 symbols acros
 
 | File | Symbols |
 |------|---------|
-| `src/terminal/grid.rs` | new, feed_chunk, cell_at, debug_dump, apply_regex_highlights (+80) |
+| `src/terminal/grid.rs` | new, feed_chunk, cell_at, apply_regex_highlights, set_visible_row_style_fg (+77) |
 | `src/terminal/ansi_parser.rs` | collect_events, plain_text_emits_print_chars, newline_and_cr, sgr_reset, sgr_empty_is_reset (+31) |
 | `src/terminal/pty.rs` | spawn_shell, spawn_command, new, write_input, resolve_shell_program (+2) |
 | `src/terminal/terminal_renderer.rs` | new, default_monospace, cell_rect, cell_rect_calculation, default_renderer_has_positive_cell_size |
-| `src/app/event_loop/commands_terminal.rs` | handle_terminal_search_command, word_at_virtual_cursor, map_directional_focus_command, handle_terminal_and_focus_command |
 | `src/async_runtime/scheduler.rs` | alloc_session_id, async_trace_enabled |
 | `src/render/renderer/lifecycle.rs` | make_text_pipeline, new |
+| `src/app/event_loop/commands_terminal.rs` | handle_terminal_search_command, word_at_virtual_cursor |
 | `src/core/command_dispatch/navigation.rs` | dispatch_terminal_normal |
 | `src/async_runtime/scheduler/pty.rs` | execute_pty_request |
 | `src/render/renderer/ui/terminal.rs` | append_terminal_overlay_quads |
@@ -32,64 +32,64 @@ description: "Skill for the Terminal area of netherize_editor. 145 symbols acros
 
 Start here when exploring this area:
 
-- **`new`** (Function) — `src/terminal/grid.rs:186`
-- **`feed_chunk`** (Function) — `src/terminal/grid.rs:209`
-- **`cell_at`** (Function) — `src/terminal/grid.rs:756`
-- **`debug_dump`** (Function) — `src/terminal/grid.rs:811`
-- **`apply_regex_highlights`** (Function) — `src/terminal/grid.rs:864`
+- **`new`** (Function) — `src/terminal/grid.rs:187`
+- **`feed_chunk`** (Function) — `src/terminal/grid.rs:210`
+- **`cell_at`** (Function) — `src/terminal/grid.rs:757`
+- **`apply_regex_highlights`** (Function) — `src/terminal/grid.rs:865`
+- **`total_rows`** (Function) — `src/terminal/grid.rs:502`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `new` | Function | `src/terminal/grid.rs` | 186 |
-| `feed_chunk` | Function | `src/terminal/grid.rs` | 209 |
-| `cell_at` | Function | `src/terminal/grid.rs` | 756 |
-| `debug_dump` | Function | `src/terminal/grid.rs` | 811 |
-| `apply_regex_highlights` | Function | `src/terminal/grid.rs` | 864 |
-| `total_rows` | Function | `src/terminal/grid.rs` | 501 |
-| `live_cursor_absolute_position` | Function | `src/terminal/grid.rs` | 505 |
-| `enter_normal_mode` | Function | `src/terminal/grid.rs` | 512 |
-| `move_virtual_left` | Function | `src/terminal/grid.rs` | 540 |
-| `move_virtual_right` | Function | `src/terminal/grid.rs` | 550 |
-| `move_virtual_up` | Function | `src/terminal/grid.rs` | 560 |
-| `move_virtual_down` | Function | `src/terminal/grid.rs` | 570 |
-| `move_virtual_word_forward` | Function | `src/terminal/grid.rs` | 581 |
-| `move_virtual_word_backward` | Function | `src/terminal/grid.rs` | 588 |
-| `move_virtual_word_end` | Function | `src/terminal/grid.rs` | 595 |
-| `move_virtual_to_line_start` | Function | `src/terminal/grid.rs` | 602 |
-| `move_virtual_to_line_end` | Function | `src/terminal/grid.rs` | 609 |
-| `move_virtual_to_first_non_whitespace` | Function | `src/terminal/grid.rs` | 616 |
-| `move_virtual_to_first_line` | Function | `src/terminal/grid.rs` | 623 |
-| `move_virtual_to_last_line` | Function | `src/terminal/grid.rs` | 630 |
+| `new` | Function | `src/terminal/grid.rs` | 187 |
+| `feed_chunk` | Function | `src/terminal/grid.rs` | 210 |
+| `cell_at` | Function | `src/terminal/grid.rs` | 757 |
+| `apply_regex_highlights` | Function | `src/terminal/grid.rs` | 865 |
+| `total_rows` | Function | `src/terminal/grid.rs` | 502 |
+| `live_cursor_absolute_position` | Function | `src/terminal/grid.rs` | 506 |
+| `enter_normal_mode` | Function | `src/terminal/grid.rs` | 513 |
+| `move_virtual_left` | Function | `src/terminal/grid.rs` | 541 |
+| `move_virtual_right` | Function | `src/terminal/grid.rs` | 551 |
+| `move_virtual_up` | Function | `src/terminal/grid.rs` | 561 |
+| `move_virtual_down` | Function | `src/terminal/grid.rs` | 571 |
+| `move_virtual_word_forward` | Function | `src/terminal/grid.rs` | 582 |
+| `move_virtual_word_backward` | Function | `src/terminal/grid.rs` | 589 |
+| `move_virtual_word_end` | Function | `src/terminal/grid.rs` | 596 |
+| `move_virtual_to_line_start` | Function | `src/terminal/grid.rs` | 603 |
+| `move_virtual_to_line_end` | Function | `src/terminal/grid.rs` | 610 |
+| `move_virtual_to_first_non_whitespace` | Function | `src/terminal/grid.rs` | 617 |
+| `move_virtual_to_first_line` | Function | `src/terminal/grid.rs` | 624 |
+| `move_virtual_to_last_line` | Function | `src/terminal/grid.rs` | 631 |
+| `move_virtual_half_page_up` | Function | `src/terminal/grid.rs` | 638 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
 | `Dispatch → Total_rows` | cross_community | 7 |
-| `Handle_terminal_and_focus_command → Len_chars` | cross_community | 7 |
 | `Dispatch → TerminalPoint` | cross_community | 6 |
-| `Handle_terminal_and_focus_command → Success` | cross_community | 6 |
-| `Handle_terminal_and_focus_command → Open_python_env_selector` | cross_community | 6 |
-| `Handle_terminal_and_focus_command → Success_with_flags` | cross_community | 6 |
 | `Dispatch_terminal_normal → Total_rows` | intra_community | 6 |
 | `Handle_command_with_count → Total_rows` | cross_community | 6 |
 | `Dispatch → Point_leq` | cross_community | 5 |
-| `Handle_terminal_and_focus_command → Supports_numeric_count` | cross_community | 5 |
+| `New → From_rgba_u8` | cross_community | 5 |
+| `Terminal_normal_selection_yanks_terminal_grid_and_returns_to_typing_mode → Clamp_add` | cross_community | 5 |
+| `Terminal_normal_selection_yanks_terminal_grid_and_returns_to_typing_mode → Blank` | cross_community | 5 |
+| `Terminal_normal_selection_yanks_terminal_grid_and_returns_to_typing_mode → Total_rows` | cross_community | 5 |
+| `Terminal_normal_selection_yanks_terminal_grid_and_returns_to_typing_mode → TerminalPoint` | cross_community | 5 |
 
 ## Connected Areas
 
 | Area | Connections |
 |------|-------------|
-| Command_dispatch | 4 calls |
-| Renderer | 2 calls |
+| Command_dispatch | 3 calls |
 | Workbench | 2 calls |
+| Palette | 2 calls |
 | Theme_config | 2 calls |
 | Scheduler | 2 calls |
 | App_state | 1 calls |
 | Text | 1 calls |
-| App | 1 calls |
+| Event_loop | 1 calls |
 
 ## How to Explore
 

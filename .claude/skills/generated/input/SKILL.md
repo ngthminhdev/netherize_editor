@@ -31,7 +31,7 @@ description: "Skill for the Input area of netherize_editor. 101 symbols across 9
 
 Start here when exploring this area:
 
-- **`supports_press_and_hold_repeat`** (Function) — `src/core/commands.rs:443`
+- **`supports_press_and_hold_repeat`** (Function) — `src/core/commands.rs:449`
 - **`for_mode`** (Function) — `src/app/input_map/mod.rs:101`
 - **`with_focus`** (Function) — `src/app/input_map/mod.rs:126`
 - **`with_keymap`** (Function) — `src/app/input_map/mod.rs:171`
@@ -41,7 +41,7 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `supports_press_and_hold_repeat` | Function | `src/core/commands.rs` | 443 |
+| `supports_press_and_hold_repeat` | Function | `src/core/commands.rs` | 449 |
 | `for_mode` | Function | `src/app/input_map/mod.rs` | 101 |
 | `with_focus` | Function | `src/app/input_map/mod.rs` | 126 |
 | `with_keymap` | Function | `src/app/input_map/mod.rs` | 171 |

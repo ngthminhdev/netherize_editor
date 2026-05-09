@@ -1,16 +1,16 @@
 ---
 name: input-map
-description: "Skill for the Input_map area of netherize_editor. 80 symbols across 10 files."
+description: "Skill for the Input_map area of netherize_editor. 79 symbols across 9 files."
 ---
 
 # Input_map
 
-80 symbols | 10 files | Cohesion: 71%
+79 symbols | 9 files | Cohesion: 70%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how parse, matches, is_leader_input work
+- Understanding how matches, is_leader_input, lookup_mode_only work
 - Modifying input_map-related functionality
 
 ## Key Files
@@ -18,13 +18,12 @@ description: "Skill for the Input_map area of netherize_editor. 80 symbols acros
 | File | Symbols |
 |------|---------|
 | `src/app/input_map/tests.rs` | make_default_profile_map, input_from_named, input_from_physical, default_profile_leader_f_m_routes_to_lsp_format_document, default_profile_leader_m_f_routes_to_focus_markdown_preview (+26) |
-| `src/app/resolved_keymap.rs` | matches, is_leader_input, lookup, lookup_mode_only, lookup_global (+9) |
+| `src/app/resolved_keymap.rs` | matches, is_leader_input, lookup_mode_only, lookup_global, input_to_specs (+9) |
 | `src/app/input_map/focus.rs` | resolve_settings_focus, resolve_diagnostics_focus, resolve_references_focus, resolve_explorer_focus, resolve_inspector_focus (+6) |
-| `src/app/input_map/mod.rs` | resolve_sequence_start, resolve_sequence_next, allows_leader, resolve_sequence_from_steps, context_allows_leader_sequence (+5) |
+| `src/app/input_map/mod.rs` | resolve_sequence_start, resolve_sequence_next, resolve, translate, allows_leader (+5) |
 | `src/app/input/helpers.rs` | numeric_count_digit_from_input, should_start_replace_pending, should_start_yank_pending, inner_or_around_from_input, text_object_kind_from_input (+2) |
 | `src/app/input_map/helpers.rs` | palette_query_from_text, insert_command_from_text |
 | `src/app/input/tests.rs` | ime_commit_is_redirected_to_file_picker_when_palette_is_open, ime_commit_is_redirected_to_ai_chat_text |
-| `src/core/command_ids.rs` | parse |
 | `src/app/input/model.rs` | has_command_modifier |
 | `src/app/input/handler.rs` | translate_ime_commit |
 
@@ -32,25 +31,22 @@ description: "Skill for the Input_map area of netherize_editor. 80 symbols acros
 
 Start here when exploring this area:
 
-- **`parse`** (Function) — `src/core/command_ids.rs:410`
 - **`matches`** (Function) — `src/app/resolved_keymap.rs:33`
 - **`is_leader_input`** (Function) — `src/app/resolved_keymap.rs:284`
-- **`lookup`** (Function) — `src/app/resolved_keymap.rs:373`
 - **`lookup_mode_only`** (Function) — `src/app/resolved_keymap.rs:395`
+- **`lookup_global`** (Function) — `src/app/resolved_keymap.rs:410`
+- **`resolve_command_mode_only`** (Function) — `src/app/resolved_keymap.rs:1002`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `parse` | Function | `src/core/command_ids.rs` | 410 |
 | `matches` | Function | `src/app/resolved_keymap.rs` | 33 |
 | `is_leader_input` | Function | `src/app/resolved_keymap.rs` | 284 |
-| `lookup` | Function | `src/app/resolved_keymap.rs` | 373 |
 | `lookup_mode_only` | Function | `src/app/resolved_keymap.rs` | 395 |
 | `lookup_global` | Function | `src/app/resolved_keymap.rs` | 410 |
-| `resolve_command` | Function | `src/app/resolved_keymap.rs` | 934 |
-| `resolve_command_mode_only` | Function | `src/app/resolved_keymap.rs` | 944 |
-| `resolve_global_command` | Function | `src/app/resolved_keymap.rs` | 954 |
+| `resolve_command_mode_only` | Function | `src/app/resolved_keymap.rs` | 1002 |
+| `resolve_global_command` | Function | `src/app/resolved_keymap.rs` | 1012 |
 | `palette_query_from_text` | Function | `src/app/input_map/helpers.rs` | 13 |
 | `resolve_settings_focus` | Function | `src/app/input_map/focus.rs` | 6 |
 | `resolve_diagnostics_focus` | Function | `src/app/input_map/focus.rs` | 121 |
@@ -58,10 +54,13 @@ Start here when exploring this area:
 | `resolve_explorer_focus` | Function | `src/app/input_map/focus.rs` | 229 |
 | `resolve_inspector_focus` | Function | `src/app/input_map/focus.rs` | 312 |
 | `resolve_markdown_preview_focus` | Function | `src/app/input_map/focus.rs` | 364 |
-| `resolve_help_focus` | Function | `src/app/input_map/focus.rs` | 441 |
-| `resolve_bottom_panel_focus` | Function | `src/app/input_map/focus.rs` | 497 |
-| `resolve_palette_focus` | Function | `src/app/input_map/focus.rs` | 549 |
-| `resolve_fuzzy_picker_focus` | Function | `src/app/input_map/focus.rs` | 707 |
+| `resolve_help_focus` | Function | `src/app/input_map/focus.rs` | 445 |
+| `resolve_bottom_panel_focus` | Function | `src/app/input_map/focus.rs` | 501 |
+| `resolve_palette_focus` | Function | `src/app/input_map/focus.rs` | 557 |
+| `resolve_fuzzy_picker_focus` | Function | `src/app/input_map/focus.rs` | 715 |
+| `has_command_modifier` | Function | `src/app/input/model.rs` | 42 |
+| `numeric_count_digit_from_input` | Function | `src/app/input/helpers.rs` | 55 |
+| `should_start_replace_pending` | Function | `src/app/input/helpers.rs` | 104 |
 
 ## Execution Flows
 
@@ -84,10 +83,11 @@ Start here when exploring this area:
 |------|-------------|
 | Input | 22 calls |
 | App | 5 calls |
+| Syntax | 4 calls |
 | Config | 1 calls |
 
 ## How to Explore
 
-1. `gitnexus_context({name: "parse"})` — see callers and callees
+1. `gitnexus_context({name: "matches"})` — see callers and callees
 2. `gitnexus_query({query: "input_map"})` — find related execution flows
 3. Read key files listed above for implementation details

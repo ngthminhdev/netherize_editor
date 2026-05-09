@@ -1,53 +1,51 @@
 ---
 name: app-state
-description: "Skill for the App_state area of netherize_editor. 400 symbols across 32 files."
+description: "Skill for the App_state area of netherize_editor. 391 symbols across 33 files."
 ---
 
 # App_state
 
-400 symbols | 32 files | Cohesion: 69%
+391 symbols | 33 files | Cohesion: 71%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how move_word_forward, move_word_end, delete_word_forward work
+- Understanding how delete_current_line, find_text_object_range, len_chars work
 - Modifying app_state-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
-| `src/app/app_state/overlays.rs` | len_chars, preview, cursor_state, restore_cursor_state, snapshot_editor_view (+61) |
-| `src/app/app_state/tests.rs` | unique_temp_path, text_edits_record_highlight_byte_deltas, backspace_between_empty_auto_pair_deletes_both_chars, backspace_between_empty_quotes_deletes_both_chars, backspace_between_empty_backticks_deletes_both_chars (+56) |
-| `src/app/app_state/state.rs` | clipboard_record_kind_for_text, completion_prefix_info_at, begin_file_history_preview_session, cancel_file_history_preview, clear_search_highlights (+45) |
-| `src/app/app_state/palette.rs` | active_buffer_is_fuzzy_picker, open_command_palette_mode, open_theme_selector_palette, open_document_symbols_palette_loading, close_command_palette (+40) |
-| `src/app/app_state/editor.rs` | insert_tab, step_over_closing_char, insert_auto_pair, smart_insert_newline, backspace (+20) |
-| `src/app/app_state/multi_cursor.rs` | multi_cursor_select_all_visual, multi_cursor_add_next, multi_cursor_skip, merge_overlapping_cursors, word_bounds_at_cursor (+18) |
-| `src/app/app_state/buffers.rs` | clear_visual_selection, delete_char_text_at_cursor, substitute_current_line_text, delete_visual_selection, paste_after (+17) |
+| `src/app/app_state/overlays.rs` | len_chars, len_lines, preview, cursor_state, restore_cursor_state (+60) |
+| `src/app/app_state/tests.rs` | text_object_delete_removes_inner, text_object_select_enters_visual_mode, unique_temp_path, text_edits_record_highlight_byte_deltas, backspace_between_empty_auto_pair_deletes_both_chars (+56) |
+| `src/app/app_state/state.rs` | clipboard_record_kind_for_text, completion_prefix_info_at, search_highlights, byte_to_line_idx, line_start_byte_idx (+45) |
+| `src/app/app_state/palette.rs` | active_buffer_is_fuzzy_picker, open_terminal_buffer, diagnostics_for_path, open_pending_references_buffer, command_palette_append_query (+37) |
+| `src/app/app_state/editor.rs` | insert_tab, step_over_closing_char, insert_auto_pair, smart_insert_newline, backspace (+23) |
+| `src/app/app_state/multi_cursor.rs` | multi_cursor_selection_ranges, char_range_to_vsr, virtual_cursors, multi_cursor_select_all_visual, multi_cursor_add_next (+18) |
+| `src/app/app_state/buffers.rs` | text_object_text, delete_text_object, clear_visual_selection, delete_char_text_at_cursor, substitute_current_line_text (+17) |
 | `src/app/app_state/mod.rs` | from_bindings, build_help_sections, build_help_lines, command_label_for_help, append_help_binding (+9) |
-| `src/editor_core.rs` | move_word_forward, move_word_end, delete_word_forward, change_word_forward, classify_char (+6) |
-| `src/core/command_dispatch/common.rs` | write_text_to_clipboard, read_text_from_clipboard, remember_clipboard_text, write_text_to_clipboard_and_remember, normalize_palette_clipboard_text (+3) |
+| `src/render/renderer/editor/selections.rs` | leading_indent_columns, indent_guide_quads, current_line_highlight_quad, visual_selection_quads, multi_cursor_selection_quads (+3) |
+| `src/core/mode.rs` | default, new, apply_with_side_effects, normal_to_insert_is_allowed, visual_to_normal_by_escape_is_allowed (+3) |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`move_word_forward`** (Function) — `src/editor_core.rs:137`
-- **`move_word_end`** (Function) — `src/editor_core.rs:161`
-- **`delete_word_forward`** (Function) — `src/editor_core.rs:340`
-- **`change_word_forward`** (Function) — `src/editor_core.rs:377`
-- **`delete`** (Function) — `src/syntax/highlight.rs:140`
+- **`delete_current_line`** (Function) — `src/editor_core.rs:449`
+- **`find_text_object_range`** (Function) — `src/core/text_object.rs:3`
+- **`len_chars`** (Function) — `src/app/app_state/overlays.rs:94`
+- **`len_lines`** (Function) — `src/app/app_state/overlays.rs:98`
+- **`preview`** (Function) — `src/app/app_state/overlays.rs:146`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `move_word_forward` | Function | `src/editor_core.rs` | 137 |
-| `move_word_end` | Function | `src/editor_core.rs` | 161 |
-| `delete_word_forward` | Function | `src/editor_core.rs` | 340 |
-| `change_word_forward` | Function | `src/editor_core.rs` | 377 |
-| `delete` | Function | `src/syntax/highlight.rs` | 140 |
+| `delete_current_line` | Function | `src/editor_core.rs` | 449 |
+| `find_text_object_range` | Function | `src/core/text_object.rs` | 3 |
 | `len_chars` | Function | `src/app/app_state/overlays.rs` | 94 |
+| `len_lines` | Function | `src/app/app_state/overlays.rs` | 98 |
 | `preview` | Function | `src/app/app_state/overlays.rs` | 146 |
 | `cursor_state` | Function | `src/app/app_state/overlays.rs` | 209 |
 | `restore_cursor_state` | Function | `src/app/app_state/overlays.rs` | 216 |
@@ -61,7 +59,9 @@ Start here when exploring this area:
 | `char_range_text` | Function | `src/app/app_state/overlays.rs` | 310 |
 | `linewise_text_for_range` | Function | `src/app/app_state/overlays.rs` | 323 |
 | `delete_char_range_at_cursor` | Function | `src/app/app_state/overlays.rs` | 331 |
+| `current_line_delete_range` | Function | `src/app/app_state/overlays.rs` | 360 |
 | `delete_word_forward_range` | Function | `src/app/app_state/overlays.rs` | 384 |
+| `yank_word_end_range` | Function | `src/app/app_state/overlays.rs` | 403 |
 
 ## Execution Flows
 
@@ -82,17 +82,17 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Command_dispatch | 58 calls |
+| Command_dispatch | 61 calls |
+| Event_loop | 16 calls |
 | Benches | 14 calls |
-| Editor | 11 calls |
-| Workbench | 10 calls |
-| Cluster_3 | 6 calls |
+| Workbench | 9 calls |
+| Text | 7 calls |
 | App | 4 calls |
-| Event_loop | 3 calls |
-| Ui | 2 calls |
+| Palette | 3 calls |
+| Renderer | 3 calls |
 
 ## How to Explore
 
-1. `gitnexus_context({name: "move_word_forward"})` — see callers and callees
+1. `gitnexus_context({name: "delete_current_line"})` — see callers and callees
 2. `gitnexus_query({query: "app_state"})` — find related execution flows
 3. Read key files listed above for implementation details

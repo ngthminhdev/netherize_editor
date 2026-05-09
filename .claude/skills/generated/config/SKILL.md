@@ -1,11 +1,11 @@
 ---
 name: config
-description: "Skill for the Config area of netherize_editor. 44 symbols across 9 files."
+description: "Skill for the Config area of netherize_editor. 41 symbols across 9 files."
 ---
 
 # Config
 
-44 symbols | 9 files | Cohesion: 76%
+41 symbols | 9 files | Cohesion: 74%
 
 ## When to Use
 
@@ -20,8 +20,8 @@ description: "Skill for the Config area of netherize_editor. 44 symbols across 9
 | `src/config/ui_config.rs` | default, builtin, from_raw, validate, parse_positive_f32 (+11) |
 | `src/config/keymap_loader.rs` | default_user_overrides_path, load, find_profile_path, load_validated_file, invalid_toml_returns_none (+3) |
 | `src/config/ai_config.rs` | load, candidate_paths, debounce_ms, prefix_chars, suffix_chars (+1) |
-| `src/config/theme_config/loader.rs` | list_available_themes, list_available_theme_entries, find_profile_path, theme_search_dirs, list_available_theme_entries_in_dir |
 | `src/config/paths.rs` | home_dir, user_config_root, legacy_app_state_root |
+| `src/config/theme_config/loader.rs` | find_profile_path, theme_search_dirs |
 | `src/app/event_loop/setup.rs` | flush_pending_ai_inline_completion, next_ai_inline_flush_deadline |
 | `src/app/input_map/mod.rs` | new, default |
 | `src/app/persistence.rs` | state_dir |
@@ -34,8 +34,8 @@ Start here when exploring this area:
 - **`user_config_root`** (Function) — `src/config/paths.rs:18`
 - **`legacy_app_state_root`** (Function) — `src/config/paths.rs:30`
 - **`load`** (Function) — `src/config/ai_config.rs:30`
-- **`list_available_themes`** (Function) — `src/config/theme_config/loader.rs:45`
-- **`list_available_theme_entries`** (Function) — `src/config/theme_config/loader.rs:52`
+- **`builtin`** (Function) — `src/config/ui_config.rs:177`
+- **`validate`** (Function) — `src/config/ui_config.rs:661`
 
 ## Key Symbols
 
@@ -44,23 +44,23 @@ Start here when exploring this area:
 | `user_config_root` | Function | `src/config/paths.rs` | 18 |
 | `legacy_app_state_root` | Function | `src/config/paths.rs` | 30 |
 | `load` | Function | `src/config/ai_config.rs` | 30 |
-| `list_available_themes` | Function | `src/config/theme_config/loader.rs` | 45 |
-| `list_available_theme_entries` | Function | `src/config/theme_config/loader.rs` | 52 |
 | `builtin` | Function | `src/config/ui_config.rs` | 177 |
 | `validate` | Function | `src/config/ui_config.rs` | 661 |
+| `is_valid` | Function | `src/core/command_ids.rs` | 428 |
 | `load` | Function | `src/config/keymap_loader.rs` | 35 |
-| `is_valid` | Function | `src/core/command_ids.rs` | 406 |
 | `debounce_ms` | Function | `src/config/ai_config.rs` | 49 |
 | `prefix_chars` | Function | `src/config/ai_config.rs` | 53 |
 | `suffix_chars` | Function | `src/config/ai_config.rs` | 57 |
 | `max_tokens` | Function | `src/config/ai_config.rs` | 61 |
-| `flush_pending_ai_inline_completion` | Function | `src/app/event_loop/setup.rs` | 1018 |
-| `next_ai_inline_flush_deadline` | Function | `src/app/event_loop/setup.rs` | 1069 |
+| `flush_pending_ai_inline_completion` | Function | `src/app/event_loop/setup.rs` | 1028 |
+| `next_ai_inline_flush_deadline` | Function | `src/app/event_loop/setup.rs` | 1079 |
 | `active_profile` | Function | `src/config/ui_config.rs` | 143 |
 | `load_active` | Function | `src/config/ui_config.rs` | 147 |
 | `load` | Function | `src/config/ui_config.rs` | 162 |
 | `load_from_path` | Function | `src/config/ui_config.rs` | 168 |
 | `load_user_editor_overrides` | Function | `src/config/ui_config.rs` | 628 |
+| `user_override_path` | Function | `src/config/ui_config.rs` | 643 |
+| `save_user_override` | Function | `src/config/ui_config.rs` | 647 |
 
 ## Execution Flows
 

@@ -1,11 +1,11 @@
 ---
 name: workbench
-description: "Skill for the Workbench area of netherize_editor. 114 symbols across 18 files."
+description: "Skill for the Workbench area of netherize_editor. 108 symbols across 17 files."
 ---
 
 # Workbench
 
-114 symbols | 18 files | Cohesion: 87%
+108 symbols | 17 files | Cohesion: 87%
 
 ## When to Use
 
@@ -18,15 +18,15 @@ description: "Skill for the Workbench area of netherize_editor. 114 symbols acro
 | File | Symbols |
 |------|---------|
 | `src/workbench/layout_engine.rs` | default, from_ui_theme, new, status_bar_top_gap, compute (+23) |
-| `src/workbench/panel_state.rs` | active_tab_id, active_tab_label, new, switch_to_prev_tab, default (+12) |
 | `src/workbench/inspector_panel.rs` | title, visible_rows, move_selection_next, toggle_selected_expand, selected_row_label (+10) |
+| `src/workbench/panel_state.rs` | new, switch_to_prev_tab, default, switch_bottom_prev_tab, switch_left_prev_tab (+10) |
 | `src/workbench/text_coordinate_map.rs` | from_text, map_line_column_to_rect, map_source_location_rect, gutter_marker_rect, maps_line_column_to_stable_pixel_rect (+7) |
-| `src/workbench/focus_manager.rs` | default, set, ensure_valid, cycle_next, cycle_prev (+6) |
+| `src/workbench/focus_manager.rs` | default, set, ensure_valid, cycle_next, cycle_prev (+5) |
 | `src/workbench/region_model.rs` | flatten, flatten_node, find, find_node, new (+2) |
 | `src/workbench/overlay_manager.rs` | default, build_overlays, clamp_to_bounds, builds_both_window_and_editor_relative_overlays |
 | `src/workbench/debug_state.rs` | default, toggle_breakpoint_on_execution_line, toggle_breakpoint_at_line, toggle_breakpoint_adds_and_removes_on_same_line |
-| `src/app/event_loop/mod.rs` | active_terminal_grid_mut, focused_terminal_grid_mut, focused_terminal_session_id |
-| `src/render/renderer/palette/file_picker.rs` | split_symbol_badge, shift_ranges_after_badge |
+| `src/app/event_loop/helpers.rs` | preserve_markdown_blank_lines, should_preserve_markdown_blank_line, markdown_line_indent_level |
+| `src/app/event_loop/commands_tests.rs` | explorer_filter_commands_update_workspace_state, leap_uses_editor_targets_even_when_explorer_is_focused |
 
 ## Entry Points
 
@@ -47,10 +47,10 @@ Start here when exploring this area:
 | `from_ui_theme` | Function | `src/workbench/layout_engine.rs` | 87 |
 | `new` | Function | `src/workbench/layout_engine.rs` | 114 |
 | `compute` | Function | `src/workbench/layout_engine.rs` | 125 |
-| `apply_handle_drag` | Function | `src/workbench/layout_engine.rs` | 418 |
-| `new` | Function | `src/render/surface.rs` | 13 |
+| `apply_handle_drag` | Function | `src/workbench/layout_engine.rs` | 420 |
 | `language_profile_for_extension` | Function | `src/lsp/registry.rs` | 225 |
 | `lsp_entry_for_extension` | Function | `src/lsp/client.rs` | 42 |
+| `new` | Function | `src/render/surface.rs` | 13 |
 | `set` | Function | `src/workbench/focus_manager.rs` | 48 |
 | `ensure_valid` | Function | `src/workbench/focus_manager.rs` | 56 |
 | `cycle_next` | Function | `src/workbench/focus_manager.rs` | 68 |
@@ -83,7 +83,6 @@ Start here when exploring this area:
 | Area | Connections |
 |------|-------------|
 | Command_dispatch | 2 calls |
-| App_state | 2 calls |
 
 ## How to Explore
 

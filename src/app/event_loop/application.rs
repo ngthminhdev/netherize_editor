@@ -4,6 +4,8 @@ use winit::{
     keyboard::{Key, NamedKey},
 };
 
+const FOCUS_RING_THICKNESS: f32 = 2.0;
+
 impl ApplicationHandler<AppEvent> for AppShell {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -575,13 +577,18 @@ impl AppShell {
                     } else {
                         let outline_color =
                             if is_focused { focused_outline } else { default_outline };
-                        let mut quads =
-                            focus_ring_instances(bounds, outline_color, 3.0, panel_radius, rs_panel_bg);
+                        let mut quads = focus_ring_instances(
+                            bounds,
+                            outline_color,
+                            FOCUS_RING_THICKNESS,
+                            panel_radius,
+                            rs_panel_bg,
+                        );
                         if let Some([ix, iy, iw, ih]) = ai_chat_input_bounds {
                             if iw > 0.0 && ih > 0.0 {
                                 quads.push(
                                     RegionDrawInstance::new([ix, iy, iw, ih], rs_input_bg)
-                                        .with_radius((panel_radius - 3.0).max(0.0)),
+                                        .with_radius((panel_radius - FOCUS_RING_THICKNESS).max(0.0)),
                                 );
                             }
                         }
@@ -598,7 +605,7 @@ impl AppShell {
                     focus_ring_instances(
                         bounds,
                         outline_color,
-                        3.0,
+                        FOCUS_RING_THICKNESS,
                         panel_radius,
                         region_color(region.id, &self.theme),
                     )

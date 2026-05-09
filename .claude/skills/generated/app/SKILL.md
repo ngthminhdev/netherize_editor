@@ -1,11 +1,11 @@
 ---
 name: app
-description: "Skill for the App area of netherize_editor. 113 symbols across 20 files."
+description: "Skill for the App area of netherize_editor. 108 symbols across 15 files."
 ---
 
 # App
 
-113 symbols | 20 files | Cohesion: 74%
+108 symbols | 15 files | Cohesion: 76%
 
 ## When to Use
 
@@ -17,12 +17,12 @@ description: "Skill for the App area of netherize_editor. 113 symbols across 20 
 
 | File | Symbols |
 |------|---------|
-| `src/app/command_palette.rs` | prompt_prefix, empty_hint, title, is_complex_picker, render (+33) |
+| `src/app/command_palette.rs` | command, open, append_query, backspace_query, selected_action (+33) |
 | `src/app/resolved_keymap.rs` | parse_key_sequence, parse_key_spec, new, insert_sequence, apply_overrides (+16) |
 | `src/app/file_picker.rs` | default, open, append_query, backspace_query, select_next (+6) |
-| `src/app/persistence.rs` | most_recent_existing, configured_theme_profile, legacy_state_dir, state_path, legacy_state_path (+3) |
+| `src/app/persistence.rs` | legacy_state_dir, state_path, legacy_state_path, load_from_path, load (+3) |
 | `src/app/match_ranges.rs` | compute_label_match_ranges, score_label_match, build_lowercase_byte_map, map_lower_range_to_original, push_match_range (+2) |
-| `src/app/async_bridge.rs` | new, bridge_discards_stale_result_when_old_revision_arrives_last, bridge_accepts_same_revision_result, bridge_tracks_multiple_worker_failure_events, pump (+2) |
+| `src/app/async_bridge.rs` | new, bridge_counts_failed_event_in_summary, lsp_diagnostics_bypass_stale_revision_filter, bridge_tracks_multiple_worker_failure_events, pump (+2) |
 | `src/app/clipboard.rs` | new, ensure_initialized, clipboard_mut, get_text, set_text |
 | `src/app/event_loop/setup.rs` | new, new_with_scheduler, pump_bridge |
 | `src/app/event_loop/commands_prompts.rs` | confirm_explorer_prompt, resolve_explorer_creation_target |
@@ -47,7 +47,7 @@ Start here when exploring this area:
 | `apply_overrides` | Function | `src/app/resolved_keymap.rs` | 366 |
 | `from_bindings` | Function | `src/app/resolved_keymap.rs` | 464 |
 | `builtin_defaults` | Function | `src/app/resolved_keymap.rs` | 529 |
-| `build` | Function | `src/app/resolved_keymap.rs` | 924 |
+| `build` | Function | `src/app/resolved_keymap.rs` | 982 |
 | `open` | Function | `src/app/file_picker.rs` | 48 |
 | `append_query` | Function | `src/app/file_picker.rs` | 65 |
 | `backspace_query` | Function | `src/app/file_picker.rs` | 76 |
@@ -58,10 +58,10 @@ Start here when exploring this area:
 | `confirm_explorer_prompt` | Function | `src/app/event_loop/commands_prompts.rs` | 129 |
 | `resolve_explorer_creation_target` | Function | `src/app/event_loop/commands_prompts.rs` | 229 |
 | `load_image_buffer` | Function | `src/app/app_state/overlays.rs` | 1407 |
-| `prompt_prefix` | Function | `src/app/command_palette.rs` | 54 |
-| `empty_hint` | Function | `src/app/command_palette.rs` | 78 |
-| `title` | Function | `src/app/command_palette.rs` | 102 |
-| `is_complex_picker` | Function | `src/app/command_palette.rs` | 127 |
+| `command` | Function | `src/app/command_palette.rs` | 224 |
+| `open` | Function | `src/app/command_palette.rs` | 378 |
+| `append_query` | Function | `src/app/command_palette.rs` | 454 |
+| `backspace_query` | Function | `src/app/command_palette.rs` | 486 |
 
 ## Execution Flows
 
@@ -82,14 +82,14 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Theme_config | 6 calls |
+| Event_loop | 5 calls |
+| Theme_config | 5 calls |
 | Config | 3 calls |
 | Workbench | 3 calls |
 | Command_dispatch | 3 calls |
 | Workspace | 2 calls |
-| App_state | 2 calls |
-| Scheduler | 1 calls |
 | Benches | 1 calls |
+| App_state | 1 calls |
 
 ## How to Explore
 
