@@ -102,7 +102,7 @@ impl Renderer {
 
         self.buffer_terminal_header_batch = None;
 
-        if grid.used_rows() == 0 {
+        if grid.is_empty() {
             self.buffer_terminal_text_system
                 .set_size(Some(width), Some(bounds[3]));
             self.buffer_terminal_glyph_instances = layout_panel_text(
@@ -191,7 +191,7 @@ impl Renderer {
         let default_fg = theme.editor.fg.as_f32();
         let default_bg = theme.ui.terminal_bg.as_f32();
 
-        if grid.used_rows() == 0 {
+        if grid.is_empty() {
             text_system.set_size(Some(width), Some(height));
             *glyph_instances = layout_panel_text(
                 EMPTY_TERMINAL_HINT,
@@ -303,7 +303,7 @@ impl Renderer {
                     }
                 }
             }
-            EditorMode::TerminalFocus if grid.used_rows() > 0 && grid.scroll_offset == 0 => {
+            EditorMode::TerminalFocus if !grid.is_empty() && grid.scroll_offset == 0 => {
                 let [cell_x, cell_y, cell_w, cell_h] =
                     view_renderer.cell_rect(grid.cursor_row, grid.cursor_col);
                 if cell_x < clip_right {
