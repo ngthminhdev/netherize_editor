@@ -171,6 +171,7 @@ pub struct AppShell {
     /// paste) — the worker falls back to a full reparse in that case.
     last_syntax_edit_hint: Option<SyntaxEditHint>,
     active_highlight_request_revision: u64,
+    semantic_highlight_request_revision: u64,
     references_request_revision: u64,
     document_symbols_request_revision: u64,
     /// In-flight `completionItem/resolve` request id; used to correlate failure events

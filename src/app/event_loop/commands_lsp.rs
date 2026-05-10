@@ -252,6 +252,40 @@ impl AppShell {
         changed
     }
 
+    pub(super) fn submit_lsp_document_highlight(&mut self) -> bool {
+        if self.active_lsp_server.is_none() {
+            let changed = self.app_state.clear_semantic_symbol_highlights();
+            if changed {
+                self.editor_caret_needs_layout = true;
+                self.request_redraw();
+            }
+            return changed;
+        }
+        self.force_flush_lsp_did_change_for_active_file();
+        let Some((language_id, uri, line, character)) = self.lsp_cursor_context() else {
+            let changed = self.app_state.clear_semantic_symbol_highlights();
+            if changed {
+                self.editor_caret_needs_layout = true;
+                self.request_redraw();
+            }
+            return changed;
+        };
+
+        self.semantic_highlight_request_revision =
+            self.semantic_highlight_request_revision.saturating_add(1);
+        self.submit(RequestSpec {
+            revision_id: self.semantic_highlight_request_revision,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspDocumentHighlightRequest {
+                language_id,
+                uri,
+                line,
+                character,
+            },
+        });
+        false
+    }
+
     pub(super) fn submit_lsp_references(&mut self) -> bool {
         self.force_flush_lsp_did_change_for_active_file();
         let Some((_language_id, uri, line, character)) = self.lsp_cursor_context() else {

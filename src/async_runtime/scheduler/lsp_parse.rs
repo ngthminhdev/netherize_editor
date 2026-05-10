@@ -4,8 +4,9 @@ use serde_json::Value;
 
 use crate::{
     async_runtime::message::{
-        LspCodeAction, LspCompletionItem, LspDiagnostic, LspDocumentSymbol, LspLocation,
-        LspPosition, LspRange, LspTextEdit, WorkerResultPayload,
+        LspCodeAction, LspCompletionItem, LspDiagnostic, LspDocumentHighlight,
+        LspDocumentSymbol, LspLocation, LspPosition, LspRange, LspTextEdit,
+        WorkerResultPayload,
     },
     lsp::client::LspClientProcess,
 };
@@ -550,6 +551,66 @@ pub(super) fn handle_lsp_references(
         return Err("references: empty result".to_string());
     }
     Ok(locations)
+}
+
+pub(super) fn handle_lsp_document_highlight(
+    session: &Arc<LspClientProcess>,
+    uri: &str,
+    line: u32,
+    character: u32,
+) -> Result<WorkerResultPayload, String> {
+    let params = serde_json::json!({
+        "textDocument": { "uri": uri },
+        "position": { "line": line, "character": character }
+    });
+    let response = lsp_request_response(
+        session,
+        "textDocument/documentHighlight",
+        params,
+        LSP_REFERENCES_TIMEOUT_SECS,
+    )?;
+    let result = response
+        .get("result")
+        .ok_or_else(|| "document highlight: no result".to_string())?;
+    if result.is_null() {
+        return Ok(WorkerResultPayload::LspDocumentHighlightResult {
+            uri: uri.to_string(),
+            highlights: Vec::new(),
+        });
+    }
+
+    Ok(WorkerResultPayload::LspDocumentHighlightResult {
+        uri: uri.to_string(),
+        highlights: parse_document_highlights(result),
+    })
+}
+
+fn parse_document_highlights(result: &Value) -> Vec<LspDocumentHighlight> {
+    result
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            let start_line = item.pointer("/range/start/line")?.as_u64()? as u32;
+            let start_character = item.pointer("/range/start/character")?.as_u64()? as u32;
+            let end_line = item.pointer("/range/end/line")?.as_u64()? as u32;
+            let end_character = item.pointer("/range/end/character")?.as_u64()? as u32;
+            let kind = item.get("kind").and_then(Value::as_u64).map(|kind| kind as u32);
+            Some(LspDocumentHighlight {
+                range: LspRange {
+                    start: LspPosition {
+                        line: start_line,
+                        character: start_character,
+                    },
+                    end: LspPosition {
+                        line: end_line,
+                        character: end_character,
+                    },
+                },
+                kind,
+            })
+        })
+        .collect()
 }
 
 pub(super) fn handle_lsp_document_symbols(

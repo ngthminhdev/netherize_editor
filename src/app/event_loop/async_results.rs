@@ -703,6 +703,45 @@ impl AsyncResultRouter for AppShell {
                     }
                 }
             }
+            WorkerResultPayload::LspDocumentHighlightResult { uri, highlights } => {
+                if revision_id < self.semantic_highlight_request_revision {
+                    eprintln!(
+                        "[AppShell] stale document highlight result ignored request_id={} revision={} latest_revision={}",
+                        request_id, revision_id, self.semantic_highlight_request_revision
+                    );
+                    return;
+                }
+                let Some(path) = lsp_uri_to_path(&uri) else {
+                    return;
+                };
+                if self.app_state.active_file().map(PathBuf::from) != Some(path) {
+                    return;
+                }
+                let mut next: Vec<(usize, usize)> = highlights
+                    .into_iter()
+                    .filter_map(|highlight| {
+                        let start_line = highlight.range.start.line as usize;
+                        let end_line = highlight.range.end.line as usize;
+                        let start_byte = self
+                            .app_state
+                            .line_char_to_byte_idx(start_line, highlight.range.start.character as usize);
+                        let mut end_byte = self
+                            .app_state
+                            .line_char_to_byte_idx(end_line, highlight.range.end.character as usize);
+                        if end_byte <= start_byte {
+                            end_byte = start_byte.saturating_add(1);
+                        }
+                        (end_byte > start_byte).then_some((start_byte, end_byte))
+                    })
+                    .collect();
+                if next.is_empty() {
+                    next = self.app_state.fallback_symbol_highlights_under_cursor();
+                }
+                if self.app_state.set_semantic_symbol_highlights(next) {
+                    self.editor_caret_needs_layout = true;
+                    self.request_redraw();
+                }
+            }
             WorkerResultPayload::LspReferencesResult { locations, .. } => {
                 if revision_id < self.references_request_revision {
                     if self
@@ -1361,8 +1400,9 @@ mod tests {
     use crate::{
         app::{app_state::ReferencesBufferItem, async_bridge::AsyncResultRouter},
         async_runtime::message::{
-            FilePreviewLine, LspLocation, RequestTopic, WorkerEvent, WorkerEventKind,
-            WorkerFailure, WorkerFailureKind, WorkerResult, WorkerResultPayload,
+            FilePreviewLine, LspDocumentHighlight, LspLocation, LspPosition, LspRange,
+            RequestTopic, WorkerEvent, WorkerEventKind, WorkerFailure, WorkerFailureKind,
+            WorkerResult, WorkerResultPayload,
         },
         lsp::client::path_to_lsp_uri,
         syntax::{
@@ -1479,6 +1519,210 @@ mod tests {
         assert_eq!(shell.highlight_spans.len(), 1);
         assert!(shell.editor_needs_layout);
         assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn document_highlight_result_maps_ranges_into_active_buffer_bytes() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = write_temp_file(
+            "document_highlight.rs",
+            "let count = 1;\ncount += 1;\nother();\n",
+        );
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        shell.semantic_highlight_request_revision = 2;
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = false;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 88,
+                revision_id: 2,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspDocumentHighlightResult {
+                    uri: path_to_lsp_uri(&file_path),
+                    highlights: vec![
+                        LspDocumentHighlight {
+                            range: LspRange {
+                                start: LspPosition {
+                                    line: 0,
+                                    character: 4,
+                                },
+                                end: LspPosition {
+                                    line: 0,
+                                    character: 9,
+                                },
+                            },
+                            kind: Some(1),
+                        },
+                        LspDocumentHighlight {
+                            range: LspRange {
+                                start: LspPosition {
+                                    line: 1,
+                                    character: 0,
+                                },
+                                end: LspPosition {
+                                    line: 1,
+                                    character: 5,
+                                },
+                            },
+                            kind: Some(2),
+                        },
+                    ],
+                },
+            },
+        );
+
+        assert_eq!(
+            shell.app_state.semantic_symbol_highlights(),
+            &[(4, 9), (15, 20)]
+        );
+        assert!(shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn stale_document_highlight_result_is_ignored() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = write_temp_file("stale_document_highlight.rs", "let count = 1;\n");
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        let _ = shell
+            .app_state
+            .set_semantic_symbol_highlights(vec![(4, 9)]);
+        shell.semantic_highlight_request_revision = 3;
+        shell.editor_caret_needs_layout = false;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 89,
+                revision_id: 2,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspDocumentHighlightResult {
+                    uri: path_to_lsp_uri(&file_path),
+                    highlights: vec![],
+                },
+            },
+        );
+
+        assert_eq!(shell.app_state.semantic_symbol_highlights(), &[(4, 9)]);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn empty_document_highlight_result_falls_back_to_local_identifier_matches() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = write_temp_file(
+            "fallback_document_highlight.rs",
+            "let goals = 1;\ngoals += 1;\nlet go = goals;\n",
+        );
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        assert!(shell.app_state.jump_to_line_and_column(1, 1));
+        shell.semantic_highlight_request_revision = 4;
+        shell.editor_caret_needs_layout = false;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 90,
+                revision_id: 4,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspDocumentHighlightResult {
+                    uri: path_to_lsp_uri(&file_path),
+                    highlights: vec![],
+                },
+            },
+        );
+
+        assert_eq!(
+            shell.app_state.semantic_symbol_highlights(),
+            &[(4, 9), (15, 20), (36, 41)]
+        );
+        assert!(shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn empty_document_highlight_result_does_not_match_identifier_substrings() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = write_temp_file(
+            "fallback_document_highlight_boundaries.rs",
+            "goal goals goaler\ngoal\n",
+        );
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        assert!(shell.app_state.jump_to_line_and_column(0, 1));
+        shell.semantic_highlight_request_revision = 5;
+        shell.editor_caret_needs_layout = false;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 91,
+                revision_id: 5,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspDocumentHighlightResult {
+                    uri: path_to_lsp_uri(&file_path),
+                    highlights: vec![],
+                },
+            },
+        );
+
+        assert_eq!(shell.app_state.semantic_symbol_highlights(), &[(0, 4), (18, 22)]);
+        assert!(shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn non_empty_document_highlight_result_keeps_lsp_ranges() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = write_temp_file(
+            "lsp_document_highlight_preferred.rs",
+            "let goals = 1;\ngoals += 1;\n",
+        );
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        assert!(shell.app_state.jump_to_line_and_column(0, 5));
+        shell.semantic_highlight_request_revision = 6;
+        shell.editor_caret_needs_layout = false;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 92,
+                revision_id: 6,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspDocumentHighlightResult {
+                    uri: path_to_lsp_uri(&file_path),
+                    highlights: vec![LspDocumentHighlight {
+                        range: LspRange {
+                            start: LspPosition {
+                                line: 0,
+                                character: 4,
+                            },
+                            end: LspPosition {
+                                line: 0,
+                                character: 9,
+                            },
+                        },
+                        kind: Some(1),
+                    }],
+                },
+            },
+        );
+
+        assert_eq!(shell.app_state.semantic_symbol_highlights(), &[(4, 9)]);
+        assert!(shell.editor_caret_needs_layout);
     }
 
     #[test]

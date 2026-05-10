@@ -1,4 +1,6 @@
-use super::overlays::{build_completion_display_items, is_completion_identifier_char};
+use super::overlays::{
+    build_completion_display_items, collect_search_highlights, is_completion_identifier_char,
+};
 use super::*;
 
 fn inline_suggestion_accept_prefix_byte_len(suggestion: &str) -> usize {
@@ -387,6 +389,34 @@ impl AppState {
 
     pub fn search_highlights(&self) -> &[(usize, usize)] {
         &self.search_highlights
+    }
+
+    pub fn semantic_symbol_highlights(&self) -> &[(usize, usize)] {
+        &self.semantic_symbol_highlights
+    }
+
+    pub fn set_semantic_symbol_highlights(&mut self, highlights: Vec<(usize, usize)>) -> bool {
+        if self.semantic_symbol_highlights == highlights {
+            return false;
+        }
+        self.semantic_symbol_highlights = highlights;
+        true
+    }
+
+    pub fn clear_semantic_symbol_highlights(&mut self) -> bool {
+        if self.semantic_symbol_highlights.is_empty() {
+            return false;
+        }
+        self.semantic_symbol_highlights.clear();
+        true
+    }
+
+    pub fn fallback_symbol_highlights_under_cursor(&self) -> Vec<(usize, usize)> {
+        let Some(word) = self.word_under_cursor() else {
+            return Vec::new();
+        };
+        let text = self.text.to_string();
+        collect_search_highlights(&text, &word, true)
     }
 
     pub fn active_search_match_position(&self) -> Option<(usize, usize)> {

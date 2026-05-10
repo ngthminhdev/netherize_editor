@@ -196,6 +196,7 @@ impl AppShell {
             last_git_diff_recalc_at: None,
             last_syntax_edit_hint: None,
             active_highlight_request_revision: 0,
+            semantic_highlight_request_revision: 0,
             references_request_revision: 0,
             completion_resolve_request_id: None,
             hover_loading_request_id: None,

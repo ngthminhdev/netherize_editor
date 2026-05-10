@@ -245,9 +245,8 @@ impl Renderer {
         let viewport_bottom =
             viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
 
-        // Use accent color for clear MC match visibility.
         let base = self.theme.editor.selection.as_f32();
-        let color = [base[0], base[1], base[2], 0.55f32.max(base[3])];
+        let color = [base[0], base[1], base[2], 0.30];
 
         let mut quads = Vec::new();
         for selection in &selections {
@@ -288,13 +287,14 @@ impl Renderer {
         quads
     }
 
-    /// Returns per-match quads for `/` and `*` search highlights in the active buffer.
-    pub fn search_highlight_quads(
+    fn byte_range_highlight_quads(
         &self,
         app_state: &AppState,
         center_bounds: [f32; 4],
+        ranges: &[(usize, usize)],
+        color: [f32; 4],
     ) -> Vec<RegionDrawInstance> {
-        if app_state.search_highlights().is_empty() {
+        if ranges.is_empty() {
             return Vec::new();
         }
 
@@ -312,11 +312,8 @@ impl Renderer {
         let viewport_bottom =
             viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
 
-        let mut color = self.theme.ui.warning.as_f32();
-        color[3] = color[3].clamp(0.26, 0.38);
-
         let mut quads = Vec::new();
-        for &(start_byte, end_byte) in app_state.search_highlights() {
+        for &(start_byte, end_byte) in ranges {
             if start_byte >= end_byte {
                 continue;
             }
@@ -376,6 +373,51 @@ impl Renderer {
         }
 
         quads
+    }
+
+    pub fn semantic_symbol_highlight_quads(
+        &self,
+        app_state: &AppState,
+        center_bounds: [f32; 4],
+    ) -> Vec<RegionDrawInstance> {
+        // Use fg (white-ish) for the background tint so it stays visible on dark themes.
+        let mut bg_color = self.theme.ui.fg.as_f32();
+        bg_color[3] = 0.12;
+        let mut quads = self.byte_range_highlight_quads(
+            app_state,
+            center_bounds,
+            app_state.semantic_symbol_highlights(),
+            bg_color,
+        );
+        // Accent-colored underline for clear visual identification.
+        let mut underline_color = self.theme.ui.accent.as_f32();
+        underline_color[3] = 0.85;
+        let underline_h = 2.0f32;
+        let underlines: Vec<RegionDrawInstance> = quads
+            .iter()
+            .map(|q| {
+                let [x, y, w, h] = q.rect;
+                RegionDrawInstance::new([x, y + h - underline_h, w, underline_h], underline_color)
+            })
+            .collect();
+        quads.extend(underlines);
+        quads
+    }
+
+    /// Returns per-match quads for `/` and `*` search highlights in the active buffer.
+    pub fn search_highlight_quads(
+        &self,
+        app_state: &AppState,
+        center_bounds: [f32; 4],
+    ) -> Vec<RegionDrawInstance> {
+        let mut color = self.theme.ui.warning.as_f32();
+        color[3] = color[3].clamp(0.26, 0.38);
+        self.byte_range_highlight_quads(
+            app_state,
+            center_bounds,
+            app_state.search_highlights(),
+            color,
+        )
     }
 
     pub fn diagnostic_underline_quads(

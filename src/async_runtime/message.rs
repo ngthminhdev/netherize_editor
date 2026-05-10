@@ -255,6 +255,13 @@ pub enum WorkerRequestPayload {
         line: u32,
         character: u32,
     },
+    /// textDocument/documentHighlight request for the active file/cursor.
+    LspDocumentHighlightRequest {
+        language_id: String,
+        uri: String,
+        line: u32,
+        character: u32,
+    },
     /// textDocument/documentSymbol request for the active file.
     LspDocumentSymbolsRequest {
         language_id: String,
@@ -397,6 +404,12 @@ pub struct LspDocumentSymbol {
     pub name: String,
     pub kind: String,
     pub range: LspRange,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LspDocumentHighlight {
+    pub range: LspRange,
+    pub kind: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -574,6 +587,11 @@ pub enum WorkerResultPayload {
     /// textDocument/references response.
     LspReferencesResult {
         locations: Vec<LspLocation>,
+    },
+    /// textDocument/documentHighlight response.
+    LspDocumentHighlightResult {
+        uri: String,
+        highlights: Vec<LspDocumentHighlight>,
     },
     /// textDocument/documentSymbol response.
     LspDocumentSymbolsResult {

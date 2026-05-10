@@ -331,6 +331,7 @@ pub(super) async fn execute_virtual_job(
         | WorkerRequestPayload::DetectRuntimeVersions { .. } => {
             Err("request should be handled by dedicated runner".to_string())
         }
+        _ => Err("execute_virtual_job received non-virtual payload".to_string()),
     }
 }
 
