@@ -274,6 +274,17 @@ impl AppShell {
             }
         }
 
+        if matches!(command, Command::ToggleMaximizeFocus)
+            && self.panel_state.maximized_region.is_some()
+            && let Some(changed) = self.handle_terminal_and_focus_command(&command)
+        {
+            return self.finalize_post_command_hooks(
+                &command_for_post_hooks,
+                should_persist_history_after,
+                changed,
+            );
+        }
+
         if let Some(changed) = self.handle_terminal_normal_command(&command, repeat_count) {
             return changed;
         }

@@ -268,9 +268,18 @@ impl InputHandler {
         let input_debug = normalized.debug_label();
         self.reset_prefix_if_timed_out(now);
 
-        // AI Chat input mode: intercept all keys when right sidebar AI Chat is focused.
-        // Bypasses vim mode processing entirely — input goes to chat input_box.
-        if context.focus == InputFocusContext::AiChat {
+        // AI Chat input mode normally intercepts all keys into the chat input box.
+        // While Zen Mode is active, keep leader chords available so <leader>z m
+        // can always restore the normal layout regardless of current focus.
+        if context.focus == InputFocusContext::AiChat
+            && !(context.zen_mode_active
+                && (normalized.named_key == Some(NamedKey::Space)
+                    || self.pending_input.as_ref().is_some_and(|pending| {
+                        pending.sequence.as_ref().is_some_and(|sequence| {
+                            sequence.steps.first() == Some(&crate::app::resolved_keymap::KeySpec::Leader)
+                        })
+                    })))
+        {
             return self.route_ai_chat_input(normalized, input_debug, context);
         }
 

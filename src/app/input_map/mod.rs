@@ -96,6 +96,7 @@ pub struct KeybindingContext {
     pub command_palette_mode: Option<CommandPaletteMode>,
     pub welcome_visible: bool,
     pub completion_visible: bool,
+    pub zen_mode_active: bool,
 }
 
 impl KeybindingContext {
@@ -111,6 +112,7 @@ impl KeybindingContext {
             command_palette_mode: None,
             welcome_visible: false,
             completion_visible: false,
+            zen_mode_active: false,
         }
     }
 
@@ -132,6 +134,7 @@ impl KeybindingContext {
             command_palette_mode: None,
             welcome_visible: false,
             completion_visible: false,
+            zen_mode_active: false,
         }
     }
 }
@@ -341,10 +344,11 @@ impl InputMap {
         }
         if context.focus == InputFocusContext::Terminal
             && context.mode != EditorMode::TerminalNormal
+            && !context.zen_mode_active
         {
             return None;
         }
-        if context.focus == InputFocusContext::AiChat {
+        if context.focus == InputFocusContext::AiChat && !context.zen_mode_active {
             return None;
         }
 
@@ -362,6 +366,9 @@ impl InputMap {
                     let command = command_ids::parse(id, Some(&self.open_file_path))?;
                     if !Self::command_allowed_in_context(&command, context) {
                         return None;
+                    }
+                    if context.zen_mode_active && !matches!(command, Command::ToggleMaximizeFocus) {
+                        continue;
                     }
 
                     return Some(SequenceMatch::Dispatch(KeybindingMatch {
@@ -390,6 +397,9 @@ impl InputMap {
     }
 
     fn context_allows_leader_sequence(&self, context: KeybindingContext) -> bool {
+        if context.zen_mode_active {
+            return true;
+        }
         if !context.focus.allows_leader() {
             return false;
         }
@@ -416,6 +426,7 @@ impl InputMap {
             InputFocusContext::Diagnostics => editor_mode_str(context.mode),
             InputFocusContext::Explorer => "explorer",
             InputFocusContext::Inspector => "inspector",
+            InputFocusContext::AiChat if context.zen_mode_active => "normal",
             InputFocusContext::AiChat => "ai_chat",
             InputFocusContext::MarkdownPreview => "preview",
             InputFocusContext::Help => "help",

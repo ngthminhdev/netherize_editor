@@ -907,9 +907,9 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         ch('G'),
         MARKDOWN_PREVIEW_SCROLL_BOTTOM,
     );
-    // ── Leader sequences for preview mode ──────────────────────────────────
+    // ── Global Zen Mode toggle ─────────────────────────────────────────────
     km.insert_sequence(
-        Some("preview"),
+        None,
         seq(&[KeySpec::Leader, ph(KeyCode::KeyZ), ph(KeyCode::KeyM)]),
         TOGGLE_MAXIMIZE_FOCUS,
     );

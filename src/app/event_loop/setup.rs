@@ -729,6 +729,7 @@ impl AppShell {
             command_palette_mode: self.app_state.command_palette_mode(),
             welcome_visible,
             completion_visible: self.app_state.has_completion(),
+            zen_mode_active: self.panel_state.maximized_region.is_some(),
         }
     }
 

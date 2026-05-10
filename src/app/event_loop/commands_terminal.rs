@@ -286,7 +286,12 @@ impl AppShell {
                         self.panel_state.maximized_region = None;
                     }
                 }
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
                 self.sidebar_needs_layout = true;
+                self.terminal_needs_layout = true;
+                self.right_terminal_needs_layout = true;
+                self.buffer_terminal_needs_layout = true;
                 Some(true)
             }
             Command::MoveFocusCycle => {
