@@ -217,6 +217,30 @@ static LANGUAGE_REGISTRY: &[LanguageProfile] = &[
         extensions: &["env"],
         filenames: &[".env", ".env*", "env.*"],
     },
+    LanguageProfile {
+        key: "xml",
+        language_label: "XML",
+        language_id: "xml",
+        syntax_language_id: Some(LanguageId::Xml),
+        lsp_binary: "",
+        launch_args: &[],
+        install_command: "",
+        root_markers: NO_ROOT_MARKERS,
+        extensions: &["xml"],
+        filenames: &[],
+    },
+    LanguageProfile {
+        key: "plaintext",
+        language_label: "Plain Text",
+        language_id: "plaintext",
+        syntax_language_id: Some(LanguageId::Plaintext),
+        lsp_binary: "",
+        launch_args: &[],
+        install_command: "",
+        root_markers: NO_ROOT_MARKERS,
+        extensions: &["txt"],
+        filenames: &[],
+    },
 ];
 
 pub fn all_language_profiles() -> &'static [LanguageProfile] {

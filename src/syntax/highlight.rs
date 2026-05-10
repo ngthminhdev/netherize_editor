@@ -399,6 +399,58 @@ pub fn generate_dotenv_highlight_spans(source: &str) -> Vec<HighlightSpan> {
     spans
 }
 
+pub fn generate_plaintext_highlight_spans(source: &str) -> Vec<HighlightSpan> {
+    use crate::terminal::highlighter::{
+        RE_BOOL, RE_KEYWORD, RE_NULL, RE_NUMBER, RE_STRING, RE_TIME,
+    };
+
+    let mut raw = Vec::new();
+
+    for m in RE_STRING.find_iter(source) {
+        raw.push(HighlightSpan {
+            range: m.start()..m.end(),
+            category: HighlightCategory::String,
+        });
+    }
+
+    for m in RE_NUMBER.find_iter(source) {
+        raw.push(HighlightSpan {
+            range: m.start()..m.end(),
+            category: HighlightCategory::Number,
+        });
+    }
+
+    for m in RE_TIME.find_iter(source) {
+        raw.push(HighlightSpan {
+            range: m.start()..m.end(),
+            category: HighlightCategory::Number,
+        });
+    }
+
+    for m in RE_BOOL.find_iter(source) {
+        raw.push(HighlightSpan {
+            range: m.start()..m.end(),
+            category: HighlightCategory::Boolean,
+        });
+    }
+
+    for m in RE_NULL.find_iter(source) {
+        raw.push(HighlightSpan {
+            range: m.start()..m.end(),
+            category: HighlightCategory::Boolean,
+        });
+    }
+
+    for m in RE_KEYWORD.find_iter(source) {
+        raw.push(HighlightSpan {
+            range: m.start()..m.end(),
+            category: HighlightCategory::Keyword,
+        });
+    }
+
+    normalize_spans(source, raw, None)
+}
+
 pub fn generate_highlight_spans_in_byte_window(
     tree_state: &SyntaxTreeState,
     source: &str,
@@ -525,6 +577,8 @@ fn highlight_query(language_id: LanguageId) -> Option<&'static Query> {
         LanguageId::Html => html_highlight_query(),
         LanguageId::Css => css_highlight_query(),
         LanguageId::Protobuf => protobuf_highlight_query(),
+        LanguageId::Xml => xml_highlight_query(),
+        LanguageId::Plaintext => None,
     }
 }
 
@@ -782,6 +836,17 @@ fn protobuf_highlight_query() -> Option<&'static Query> {
             LanguageId::Protobuf,
             include_str!("queries/proto/highlights.scm"),
             "protobuf",
+        )
+    }).as_ref()
+}
+
+fn xml_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        build_highlight_query(
+            LanguageId::Xml,
+            include_str!("queries/xml/highlights.scm"),
+            "xml",
         )
     }).as_ref()
 }

@@ -46,3 +46,16 @@ pub static RE_NULL: Lazy<Regex> =
 /// Matches a time format `HH:MM:SS` (24-hour).
 pub static RE_TIME: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\b\d{2}:\d{2}:\d{2}\b").expect("invalid time regex"));
+
+/// Matches common programming language keywords as whole words.
+pub static RE_KEYWORD: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"\b(?:if|else|for|while|do|switch|case|break|continue|return|function|fn|def|\
+          class|struct|enum|interface|var|let|const|import|export|module|package|\
+          async|await|try|catch|finally|throw|new|this|super|extends|implements|\
+          public|private|protected|static|final|abstract|void|int|float|double|\
+          char|boolean|string|type|namespace|using|from|as|in|of|is|not|and|or|\
+          nil|None|Some|Ok|Err|include|require|print|log|console|error|warn|info|debug)\b",
+    )
+    .expect("invalid keyword regex")
+});

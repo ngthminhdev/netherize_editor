@@ -14,3 +14,7 @@
 # cli
 - Luôn prefix shell commands với `rtk` để tiết kiệm token consumption. Confidence: 0.85
 
+# syntax
+- Với file .txt, dùng terminal regex highlighting (string, number, keyword, plaintext pattern). Confidence: 0.85
+- Language không có syntax engine match thì fallback về plaintext. Confidence: 0.85
+

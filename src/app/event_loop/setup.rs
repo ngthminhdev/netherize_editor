@@ -873,6 +873,22 @@ impl AppShell {
             let viewport_line_count = self.editor_viewport_lines().max(1);
             self.active_highlight_request_revision =
                 self.active_highlight_request_revision.saturating_add(1);
+
+            // Plaintext: regex highlight inline cho mọi kích thước file.
+            if language_id == crate::syntax::syntax_engine::LanguageId::Plaintext {
+                let text_snapshot = self.app_state.text_string();
+                self.highlight_spans =
+                    crate::syntax::highlight::generate_plaintext_highlight_spans(&text_snapshot);
+                self.semantic_highlight_spans.clear();
+                self.syntax_engine = None;
+                self.syntax_engine_file = None;
+                self.pending_parse_after_debounce = false;
+                self.last_parse_submit_at = Some(std::time::Instant::now());
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+                return;
+            }
+
             self.pending_parse_after_debounce = false;
             let edit_hint = self.last_syntax_edit_hint.take();
             self.submit(RequestSpec {
@@ -937,6 +953,20 @@ impl AppShell {
         let text_snapshot = self.app_state.text_string();
         if !crate::syntax::highlight::should_highlight_inline(&text_snapshot) {
             return false;
+        }
+
+        // Plaintext dùng regex highlight thay vì tree-sitter.
+        if language_id == crate::syntax::syntax_engine::LanguageId::Plaintext {
+            self.highlight_spans =
+                crate::syntax::highlight::generate_plaintext_highlight_spans(&text_snapshot);
+            self.semantic_highlight_spans.clear();
+            self.syntax_engine = None;
+            self.syntax_engine_file = None;
+            self.pending_parse_after_debounce = false;
+            self.last_parse_submit_at = Some(std::time::Instant::now());
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+            return true;
         }
 
         let buffer_revision = self.app_state.revision();
