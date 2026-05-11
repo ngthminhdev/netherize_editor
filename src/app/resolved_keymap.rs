@@ -17,6 +17,8 @@ pub enum KeySpec {
     Named(NamedKey),
     /// A physical key code (no modifier): h, j, k, l, backtick, etc.
     Physical(KeyCode),
+    /// Shift + physical key: "H", "L", etc.
+    ShiftPlus(KeyCode),
     /// Command/Ctrl modifier + physical key: "mod+s"
     ModPlus(KeyCode),
     /// Command/Ctrl + Shift + physical key: "mod+shift+p"
@@ -35,7 +37,14 @@ impl KeySpec {
         match self {
             Self::Named(named) => !input.has_command_modifier() && input.named_key == Some(*named),
             Self::Physical(code) => {
-                !input.has_command_modifier() && input.physical_key == Some(*code)
+                !input.has_command_modifier()
+                    && !input.modifiers.shift_key()
+                    && input.physical_key == Some(*code)
+            }
+            Self::ShiftPlus(code) => {
+                !input.has_command_modifier()
+                    && input.modifiers.shift_key()
+                    && input.physical_key == Some(*code)
             }
             Self::ModPlus(code) => {
                 input.has_command_modifier() && input.physical_key == Some(*code)
@@ -65,6 +74,7 @@ impl KeySpec {
         match self {
             Self::Named(named) => named_key_display(*named),
             Self::Physical(code) => physical_key_display(*code),
+            Self::ShiftPlus(code) => physical_key_display(*code).to_ascii_uppercase(),
             Self::ModPlus(code) => format!("mod+{}", physical_key_display(*code)),
             Self::ModShiftPlus(code) => format!("mod+shift+{}", physical_key_display(*code)),
             Self::CtrlPlus(code) => format!("ctrl+{}", physical_key_display(*code)),
@@ -210,6 +220,9 @@ fn parse_non_leader_key(token: &str) -> Option<KeySpec> {
         if ch.is_ascii_lowercase() || ch.is_ascii_digit() {
             return char_key_to_code(token).map(KeySpec::Physical);
         }
+        if ch.is_ascii_uppercase() {
+            return char_key_to_code(token).map(KeySpec::ShiftPlus);
+        }
         return Some(KeySpec::Char(ch));
     }
 
@@ -299,6 +312,7 @@ pub fn editor_mode_str(mode: EditorMode) -> &'static str {
         EditorMode::TerminalNormal => "terminal_normal",
         EditorMode::MultiCursor => "multicursor",
         EditorMode::MultiInsert => "multiinsert",
+        EditorMode::Resize => "resize",
     }
 }
 
@@ -497,6 +511,11 @@ fn input_to_specs(input: &NormalizedInput) -> Vec<KeySpec> {
         if let Some(named) = input.named_key {
             specs.push(KeySpec::Named(named));
         }
+        if input.modifiers.shift_key()
+            && let Some(code) = input.physical_key
+        {
+            specs.push(KeySpec::ShiftPlus(code));
+        }
         // Char needs to be checked before Physical so shifted keys like `I` / `O`
         // can override lowercase physical bindings (`i` / `o`) in normal mode.
         if let Some(text) = &input.text
@@ -567,6 +586,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         Some("insert"),
         KeySpec::CtrlPlus(KeyCode::KeyJ),
         AI_ACCEPT_INLINE,
+    );
+    km.insert(
+        Some("insert"),
+        KeySpec::CtrlPlus(KeyCode::KeyL),
+        AI_ACCEPT_INLINE_WORD,
     );
 
     // ── Normal mode ───────────────────────────────────────────────────────────
@@ -672,7 +696,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("palette"), mp(KeyCode::KeyV), EDITOR_PASTE);
 
     // ── Terminal focus mode bindings (mode-only lookup in InputMap) ──────────
-    km.insert(Some("terminal"), nk(NamedKey::Escape), FOCUS_EDITOR);
+    km.insert(Some("terminal"), nk(NamedKey::Escape), FOCUS_BACK);
     km.insert(
         Some("terminal"),
         KeySpec::CtrlPlus(KeyCode::KeyQ),
@@ -680,6 +704,17 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert(Some("terminal"), nk(NamedKey::F12), FOCUS_TERMINAL);
     km.insert(Some("terminal"), mp(KeyCode::KeyV), TERMINAL_PASTE);
+    km.insert(Some("terminal"), mp(KeyCode::KeyT), TERMINAL_TAB_NEW);
+    km.insert(Some("terminal"), mp(KeyCode::KeyW), TERMINAL_TAB_CLOSE);
+    km.insert(Some("terminal"), mp(KeyCode::Digit1), TERMINAL_TAB_SWITCH_1);
+    km.insert(Some("terminal"), mp(KeyCode::Digit2), TERMINAL_TAB_SWITCH_2);
+    km.insert(Some("terminal"), mp(KeyCode::Digit3), TERMINAL_TAB_SWITCH_3);
+    km.insert(Some("terminal"), mp(KeyCode::Digit4), TERMINAL_TAB_SWITCH_4);
+    km.insert(Some("terminal"), mp(KeyCode::Digit5), TERMINAL_TAB_SWITCH_5);
+    km.insert(Some("terminal"), mp(KeyCode::Digit6), TERMINAL_TAB_SWITCH_6);
+    km.insert(Some("terminal"), mp(KeyCode::Digit7), TERMINAL_TAB_SWITCH_7);
+    km.insert(Some("terminal"), mp(KeyCode::Digit8), TERMINAL_TAB_SWITCH_8);
+    km.insert(Some("terminal"), mp(KeyCode::Digit9), TERMINAL_TAB_SWITCH_9);
 
     // ── Terminal normal mode bindings (copy mode / virtual cursor) ──────────
     km.insert(
@@ -727,10 +762,74 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyV), ENTER_VISUAL);
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyY), YANK_SELECTION);
     km.insert(Some("terminal_normal"), mp(KeyCode::KeyV), TERMINAL_PASTE);
+    km.insert(Some("terminal_normal"), mp(KeyCode::KeyT), TERMINAL_TAB_NEW);
+    km.insert(Some("terminal_normal"), mp(KeyCode::KeyW), TERMINAL_TAB_CLOSE);
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit1),
+        TERMINAL_TAB_SWITCH_1,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit2),
+        TERMINAL_TAB_SWITCH_2,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit3),
+        TERMINAL_TAB_SWITCH_3,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit4),
+        TERMINAL_TAB_SWITCH_4,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit5),
+        TERMINAL_TAB_SWITCH_5,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit6),
+        TERMINAL_TAB_SWITCH_6,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit7),
+        TERMINAL_TAB_SWITCH_7,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit8),
+        TERMINAL_TAB_SWITCH_8,
+    );
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::Digit9),
+        TERMINAL_TAB_SWITCH_9,
+    );
     km.insert(Some("terminal_normal"), ch('/'), TERMINAL_SEARCH_OPEN);
     km.insert(Some("terminal_normal"), ch('n'), SEARCH_NEXT);
     km.insert(Some("terminal_normal"), ch('N'), SEARCH_PREV);
     km.insert(Some("terminal_normal"), ch('*'), SEARCH_WORD_UNDER_CURSOR);
+
+    // ── Resize mode bindings ──────────────────────────────────────────────────
+    km.insert(Some("resize"), ph(KeyCode::KeyH), RESIZE_INCREASE_LEFT_WIDTH);
+    km.insert(
+        Some("resize"),
+        KeySpec::ShiftPlus(KeyCode::KeyH),
+        RESIZE_DECREASE_LEFT_WIDTH,
+    );
+    km.insert(Some("resize"), ph(KeyCode::KeyL), RESIZE_INCREASE_RIGHT_WIDTH);
+    km.insert(
+        Some("resize"),
+        KeySpec::ShiftPlus(KeyCode::KeyL),
+        RESIZE_DECREASE_RIGHT_WIDTH,
+    );
+    km.insert(Some("resize"), ph(KeyCode::KeyJ), RESIZE_INCREASE_HEIGHT);
+    km.insert(Some("resize"), ph(KeyCode::KeyK), RESIZE_DECREASE_HEIGHT);
+    km.insert(Some("resize"), nk(NamedKey::Escape), ENTER_NORMAL);
 
     // ── Explorer focus mode bindings (mode-only lookup in InputMap) ──────────
     km.insert(Some("explorer"), nk(NamedKey::Escape), FOCUS_EDITOR);
@@ -799,6 +898,22 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         EXPLORER_MOVE_TO_TOP,
     );
     km.insert_sequence(
+        Some("preview"),
+        seq(&[ph(KeyCode::KeyG), ph(KeyCode::KeyG)]),
+        MARKDOWN_PREVIEW_SCROLL_TOP,
+    );
+    km.insert(
+        Some("preview"),
+        ch('G'),
+        MARKDOWN_PREVIEW_SCROLL_BOTTOM,
+    );
+    // ── Global Zen Mode toggle ─────────────────────────────────────────────
+    km.insert_sequence(
+        None,
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyZ), ph(KeyCode::KeyM)]),
+        TOGGLE_MAXIMIZE_FOCUS,
+    );
+    km.insert_sequence(
         Some("normal"),
         seq(&[ph(KeyCode::KeyZ), ph(KeyCode::KeyZ)]),
         CENTER_CURSOR_LINE,
@@ -828,6 +943,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     // Note: <leader>p removed — command palette is opened via mod+p only.
     km.insert_sequence(
         None,
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyR)]),
+        ENTER_RESIZE,
+    );
+    km.insert_sequence(
+        None,
         seq(&[KeySpec::Leader, ph(KeyCode::KeyE)]),
         FOCUS_EXPLORER,
     );
@@ -853,8 +973,18 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert_sequence(
         Some("normal"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyC), ph(KeyCode::KeyA)]),
+        LSP_CODE_ACTION,
+    );
+    km.insert_sequence(
+        Some("normal"),
         seq(&[KeySpec::Leader, ph(KeyCode::KeyT), ph(KeyCode::KeyH)]),
         OPEN_THEME_SELECTOR,
+    );
+    km.insert_sequence(
+        Some("normal"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyM), ph(KeyCode::KeyF)]),
+        FOCUS_MARKDOWN_PREVIEW,
     );
     km.insert_sequence(
         Some("normal"),

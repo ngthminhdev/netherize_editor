@@ -1,11 +1,11 @@
 ---
 name: theme-config
-description: "Skill for the Theme_config area of netherize_editor. 54 symbols across 7 files."
+description: "Skill for the Theme_config area of netherize_editor. 55 symbols across 9 files."
 ---
 
 # Theme_config
 
-54 symbols | 7 files | Cohesion: 78%
+55 symbols | 9 files | Cohesion: 76%
 
 ## When to Use
 
@@ -17,12 +17,14 @@ description: "Skill for the Theme_config area of netherize_editor. 54 symbols ac
 
 | File | Symbols |
 |------|---------|
-| `src/config/theme_config/loader.rs` | from_raw, parse_extension_file_icons, parse_exact_file_icons, parse_editor, parse_ui (+19) |
+| `src/config/theme_config/loader.rs` | from_raw, parse_extension_file_icons, parse_exact_file_icons, parse_editor, parse_ui (+17) |
 | `src/config/theme_config/model.rs` | from_rgba_u8, file_icon_lookup_prefers_dir_then_exact_then_extension_then_default, new, to_wgpu, as_srgb_f32 (+12) |
 | `src/config/theme_config/builtin.rs` | builtin_dark, builtin_editor_tokens, builtin_ui_tokens, builtin_syntax_tokens, builtin_git_tokens (+4) |
-| `src/app/event_loop/helpers.rs` | syntax_spans_to_styled_applies_theme_colors_and_emphasis |
+| `src/render/renderer/helpers.rs` | theme_color_to_wgpu, ext_icon_dot |
+| `src/app/command_palette.rs` | theme |
+| `src/core/command_dispatch/palette.rs` | open_theme_selector |
+| `src/app/app_state/palette.rs` | open_theme_selector_palette |
 | `src/render/renderer/lifecycle.rs` | apply_theme |
-| `src/render/renderer/helpers.rs` | theme_color_to_wgpu |
 | `src/text/text_system.rs` | rgba_f32_from_color |
 
 ## Entry Points
@@ -48,41 +50,42 @@ Start here when exploring this area:
 | `load_preferred` | Function | `src/config/theme_config/loader.rs` | 74 |
 | `load` | Function | `src/config/theme_config/loader.rs` | 89 |
 | `load_from_path` | Function | `src/config/theme_config/loader.rs` | 95 |
-| `apply_theme` | Function | `src/render/renderer/lifecycle.rs` | 288 |
-| `theme_color_to_wgpu` | Function | `src/render/renderer/helpers.rs` | 365 |
+| `theme` | Function | `src/app/command_palette.rs` | 233 |
+| `list_available_themes` | Function | `src/config/theme_config/loader.rs` | 45 |
+| `list_available_theme_entries` | Function | `src/config/theme_config/loader.rs` | 52 |
+| `open_theme_selector_palette` | Function | `src/app/app_state/palette.rs` | 110 |
+| `apply_theme` | Function | `src/render/renderer/lifecycle.rs` | 305 |
+| `theme_color_to_wgpu` | Function | `src/render/renderer/helpers.rs` | 379 |
 | `new` | Function | `src/config/theme_config/model.rs` | 16 |
 | `to_wgpu` | Function | `src/config/theme_config/model.rs` | 24 |
 | `as_srgb_f32` | Function | `src/config/theme_config/model.rs` | 69 |
 | `as_linear` | Function | `src/config/theme_config/model.rs` | 78 |
-| `list_available_themes` | Function | `src/config/theme_config/loader.rs` | 45 |
-| `list_available_theme_entries` | Function | `src/config/theme_config/loader.rs` | 52 |
-| `srgb_to_linear` | Function | `src/config/theme_config/model.rs` | 88 |
-| `srgb_rgba_to_linear_f32` | Function | `src/config/theme_config/model.rs` | 106 |
-| `from_hex` | Function | `src/config/theme_config/model.rs` | 41 |
+| `ext_icon_dot` | Function | `src/render/renderer/helpers.rs` | 386 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
 | `Update_settings_buffer_content → From_rgba_u8` | cross_community | 6 |
-| `Rebuild_layout_projection → From_rgba_u8` | cross_community | 6 |
-| `Update_welcome_screen_content → From_rgba_u8` | cross_community | 6 |
-| `Update_topbar_content → From_rgba_u8` | cross_community | 6 |
 | `Layout_shortcut_hint → From_rgba_u8` | cross_community | 6 |
-| `New → From_rgba_u8` | cross_community | 5 |
 | `Update_statusbar_content → As_srgb_f32` | cross_community | 5 |
 | `Update_statusbar_content → New` | cross_community | 5 |
 | `Update_statusbar_content → Srgb_to_linear` | cross_community | 5 |
+| `New → From_rgba_u8` | cross_community | 5 |
+| `Render_live_grep_picker → As_array` | cross_community | 4 |
 | `New → UiThemeTokens` | cross_community | 4 |
+| `New → EditorThemeTokens` | cross_community | 4 |
+| `New → GitThemeTokens` | cross_community | 4 |
 
 ## Connected Areas
 
 | Area | Connections |
 |------|-------------|
+| Event_loop | 2 calls |
+| App_state | 2 calls |
+| Command_dispatch | 2 calls |
 | Config | 2 calls |
-| Cluster_2 | 1 calls |
-| Workbench | 1 calls |
-| Event_loop | 1 calls |
+| Scheduler | 1 calls |
 
 ## How to Explore
 

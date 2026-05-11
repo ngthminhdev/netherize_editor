@@ -1,5 +1,9 @@
 use super::*;
 
+fn is_ai_inline_word_char(ch: char) -> bool {
+    ch == '_' || ch.is_alphanumeric()
+}
+
 impl AppShell {
     pub fn new(event_proxy: EventLoopProxy<AppEvent>) -> Result<Self, String> {
         let (scheduler, rx) = AsyncScheduler::new(event_proxy)?;
@@ -21,6 +25,20 @@ impl AppShell {
         let now = Instant::now();
         let bridge = AppAsyncBridge::new(rx);
 
+        // ── Parse CLI args ────────────────────────────────────────────────
+        let cli_args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
+
+        // First directory arg becomes workspace root (like `zed .` / `code .`).
+        let cli_workspace_dir = cli_args.iter().find_map(|p| {
+            p.canonicalize().ok().filter(|cp| cp.is_dir())
+        });
+
+        let cli_files: Vec<PathBuf> = cli_args
+            .iter()
+            .filter(|p| p.is_file())
+            .cloned()
+            .collect();
+
         // Load persisted state and restore most recent project if it still exists.
         let mut persistent_state = AppPersistentState::load();
 
@@ -28,17 +46,25 @@ impl AppShell {
         let _ = app_state.apply_mode_event(ModeEvent::EnterNormal);
 
         let mut restored_workspace = false;
-        if let Some(recent_dir) = persistent_state.most_recent_existing() {
-            match app_state.attach_workspace(recent_dir.clone()) {
-                Ok(()) => {
-                    restored_workspace = true;
-                }
-                Err(err) => {
-                    eprintln!("[AppShell] workspace attach skipped: {err}");
-                    // Remove the stale entry so it doesn't keep failing
-                    persistent_state
-                        .recent_projects
-                        .retain(|p| p != &recent_dir);
+        // Priority: CLI directory > recent project > cwd
+        if let Some(ref ws_dir) = cli_workspace_dir {
+            match app_state.attach_workspace(ws_dir.clone()) {
+                Ok(()) => restored_workspace = true,
+                Err(err) => eprintln!("[AppShell] CLI workspace attach skipped ({}): {err}", ws_dir.display()),
+            }
+        }
+        if !restored_workspace {
+            if let Some(recent_dir) = persistent_state.most_recent_existing() {
+                match app_state.attach_workspace(recent_dir.clone()) {
+                    Ok(()) => {
+                        restored_workspace = true;
+                    }
+                    Err(err) => {
+                        eprintln!("[AppShell] workspace attach skipped: {err}");
+                        persistent_state
+                            .recent_projects
+                            .retain(|p| p != &recent_dir);
+                    }
                 }
             }
         }
@@ -46,10 +72,8 @@ impl AppShell {
             eprintln!("[AppShell] cwd workspace attach skipped: {err}");
         }
 
-        for cli_path in std::env::args_os().skip(1).map(PathBuf::from) {
-            if cli_path.is_file()
-                && let Err(err) = app_state.open_file(cli_path.clone())
-            {
+        for cli_path in &cli_files {
+            if let Err(err) = app_state.open_file(cli_path.clone()) {
                 eprintln!(
                     "[AppShell] CLI file open skipped ({}): {err}",
                     cli_path.display()
@@ -107,7 +131,6 @@ impl AppShell {
             input_map: InputMap::new(save_path),
             scheduler,
             bridge: Some(bridge),
-            pty_session_id: None,
             right_pty_session_id: None,
             right_terminal_grid: {
                 let mut g = TerminalGrid::new(120, 40);
@@ -124,11 +147,14 @@ impl AppShell {
             semantic_highlight_spans: Vec::new(),
             syntax_engine: None,
             syntax_engine_file: None,
-            terminal_grid: {
+            terminal_tabs: {
                 let mut g = TerminalGrid::new(120, 40);
                 g.highlight_colors = HighlightColors::from_theme(&theme);
-                g
+                vec![TerminalTab::new(g, "bash".to_string())]
             },
+            active_terminal_tab: 0,
+            pending_terminal_tab_spawns: HashMap::new(),
+            ignored_terminal_tab_spawns: HashSet::new(),
             explorer_cursor: 0,
             explorer_snapshot: ExplorerSnapshot::default(),
             explorer_snapshot_dirty: true,
@@ -170,14 +196,23 @@ impl AppShell {
             last_git_diff_recalc_at: None,
             last_syntax_edit_hint: None,
             active_highlight_request_revision: 0,
+            semantic_highlight_request_revision: 0,
             references_request_revision: 0,
+            completion_resolve_request_id: None,
+            hover_loading_request_id: None,
+            latest_definition_request_id: None,
             document_symbols_request_revision: 0,
             fzf_search_revision: 0,
-            local_history_revision: 0,
             pending_parse_after_debounce: false,
             pending_git_diff_after_debounce: false,
+            pending_completion_resolve_after_debounce: false,
+            last_completion_resolve_select_at: None,
+            pending_completion_resolve_revision: 0,
             ai_inline_revision: 0,
             pending_ai_inline_request: None,
+            ai_inline_cancel_token: None,
+            last_ai_inline_queue_at: None,
+            last_ai_inline_submit_at: None,
             pending_lsp_document_sync: None,
             last_editor_bounds: None,
             last_show_welcome: None,
@@ -189,12 +224,20 @@ impl AppShell {
             suppress_next_palette_ime_commit: false,
             leap_state: None,
             git_overlay_revision: 0,
+            git_status_revision: 0,
+            git_baseline_revision: 0,
             last_scroll_animation_tick: now,
             last_git_branch_refresh_at: now,
             last_thinking_animation_tick: now,
+            last_lsp_loading_animation_tick: now,
+            lsp_loading_frame: 0,
             caret_blink_visible: true,
             caret_blink_dirty: false,
             pre_markdown_preview_right_width: None,
+            pending_code_actions: Vec::new(),
+            selected_python_env: None,
+            runtime_versions: RuntimeVersionInfo::default(),
+            lsp_retry_at: None,
         })
     }
 
@@ -219,7 +262,7 @@ impl AppShell {
             topic: RequestTopic::TerminalPty,
             payload: WorkerRequestPayload::SpawnPtyShell {
                 shell: None,
-                working_dir: Some(cwd),
+                working_dir: Some(workspace_root.clone()),
             },
         });
 
@@ -231,6 +274,20 @@ impl AppShell {
             topic: RequestTopic::SystemDepCheck,
             payload: WorkerRequestPayload::CheckSystemDeps,
         });
+
+        // ── Runtime Version Detection ────────────────────────────────────
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::SystemTask,
+            payload: WorkerRequestPayload::DetectRuntimeVersions {
+                python_binary: None,
+                workspace_root: workspace_root.clone(),
+            },
+        });
+
+        // ── Git Status & Baseline ────────────────────────────────────────
+        self.submit_workspace_git_status_refresh();
+        self.submit_active_buffer_git_baseline_refresh();
 
         eprintln!(
             "[AppShell] subsystems started - profile={}",
@@ -317,10 +374,10 @@ impl AppShell {
         let Some(workspace_root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
             return;
         };
-        self.git_overlay_revision = self.git_overlay_revision.saturating_add(1);
+        self.git_status_revision = self.git_status_revision.saturating_add(1);
         self.submit(RequestSpec {
-            revision_id: self.git_overlay_revision,
-            topic: RequestTopic::Git,
+            revision_id: self.git_status_revision,
+            topic: RequestTopic::GitStatus,
             payload: WorkerRequestPayload::RefreshWorkspaceGitStatus { workspace_root },
         });
     }
@@ -334,10 +391,10 @@ impl AppShell {
         };
         self.pending_git_diff_after_debounce = false;
         self.last_git_diff_recalc_at = None;
-        self.git_overlay_revision = self.git_overlay_revision.saturating_add(1);
+        self.git_baseline_revision = self.git_baseline_revision.saturating_add(1);
         self.submit(RequestSpec {
-            revision_id: self.git_overlay_revision,
-            topic: RequestTopic::Git,
+            revision_id: self.git_baseline_revision,
+            topic: RequestTopic::GitBaseline,
             payload: WorkerRequestPayload::FetchGitBaseline {
                 workspace_root,
                 file_path,
@@ -385,6 +442,21 @@ impl AppShell {
         self.pending_git_diff_after_debounce
             .then(|| self.last_git_diff_recalc_at.unwrap_or_else(Instant::now))
             .map(|last| last + GIT_DIFF_DEBOUNCE_INTERVAL)
+    }
+
+    pub(super) fn next_lsp_retry_deadline(&self) -> Option<Instant> {
+        self.lsp_retry_at
+    }
+
+    pub(super) fn flush_lsp_retry_if_due(&mut self) -> bool {
+        let Some(retry_at) = self.lsp_retry_at else {
+            return false;
+        };
+        if Instant::now() < retry_at {
+            return false;
+        }
+        self.lsp_retry_at = None;
+        self.sync_lsp_server_for_workspace()
     }
 
     pub(super) fn next_git_branch_refresh_deadline(&self) -> Instant {
@@ -455,6 +527,8 @@ impl AppShell {
         self.layout_engine.config.center_min_height = scaled_ui.layout.center_min_height;
         self.layout_engine.config.sidebar_min_width = scaled_ui.layout.sidebar_min_width;
         self.layout_engine.config.bottom_min_height = scaled_ui.layout.bottom_min_height;
+        self.layout_engine.config.chat_input_height = scaled_ui.layout.chat_input_height;
+        self.layout_engine.config.panel_border_width = scaled_ui.layout.panel_border_width;
 
         self.panel_state.left.size_px = scaled_ui.docks.left.size_px;
         self.panel_state.right.size_px = scaled_ui.docks.right.size_px;
@@ -522,12 +596,21 @@ impl AppShell {
         let cols = (content_width / cell_width).floor().max(1.0) as usize;
         let rows = (content_height / line_height).floor().max(1.0) as usize;
 
-        let grid_changed = self.terminal_grid.resize(cols, rows);
+        let mut changed_sessions = Vec::new();
+        let mut grid_changed = false;
+        for tab in &mut self.terminal_tabs {
+            if tab.grid.resize(cols, rows) {
+                grid_changed = true;
+                if let Some(session_id) = tab.session_id {
+                    changed_sessions.push(session_id);
+                }
+            }
+        }
         if grid_changed {
             self.terminal_needs_layout = true;
         }
 
-        if grid_changed && let Some(session_id) = self.pty_session_id {
+        for session_id in changed_sessions {
             self.submit(RequestSpec {
                 revision_id: 0,
                 topic: RequestTopic::TerminalPty,
@@ -633,6 +716,9 @@ impl AppShell {
                 FocusTarget::CenterEditor if self.app_state.active_buffer_is_references() => {
                     InputFocusContext::References
                 }
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_help() => {
+                    InputFocusContext::Help
+                }
                 _ => InputFocusContext::Editor,
             }
         };
@@ -643,6 +729,7 @@ impl AppShell {
             command_palette_mode: self.app_state.command_palette_mode(),
             welcome_visible,
             completion_visible: self.app_state.has_completion(),
+            zen_mode_active: self.panel_state.maximized_region.is_some(),
         }
     }
 
@@ -786,6 +873,22 @@ impl AppShell {
             let viewport_line_count = self.editor_viewport_lines().max(1);
             self.active_highlight_request_revision =
                 self.active_highlight_request_revision.saturating_add(1);
+
+            // Plaintext: regex highlight inline cho mọi kích thước file.
+            if language_id == crate::syntax::syntax_engine::LanguageId::Plaintext {
+                let text_snapshot = self.app_state.text_string();
+                self.highlight_spans =
+                    crate::syntax::highlight::generate_plaintext_highlight_spans(&text_snapshot);
+                self.semantic_highlight_spans.clear();
+                self.syntax_engine = None;
+                self.syntax_engine_file = None;
+                self.pending_parse_after_debounce = false;
+                self.last_parse_submit_at = Some(std::time::Instant::now());
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+                return;
+            }
+
             self.pending_parse_after_debounce = false;
             let edit_hint = self.last_syntax_edit_hint.take();
             self.submit(RequestSpec {
@@ -852,6 +955,20 @@ impl AppShell {
             return false;
         }
 
+        // Plaintext dùng regex highlight thay vì tree-sitter.
+        if language_id == crate::syntax::syntax_engine::LanguageId::Plaintext {
+            self.highlight_spans =
+                crate::syntax::highlight::generate_plaintext_highlight_spans(&text_snapshot);
+            self.semantic_highlight_spans.clear();
+            self.syntax_engine = None;
+            self.syntax_engine_file = None;
+            self.pending_parse_after_debounce = false;
+            self.last_parse_submit_at = Some(std::time::Instant::now());
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+            return true;
+        }
+
         let buffer_revision = self.app_state.revision();
         let needs_reset = self
             .syntax_engine_file
@@ -893,6 +1010,11 @@ impl AppShell {
             Ok(tree) => {
                 self.highlight_spans =
                     crate::syntax::highlight::generate_highlight_spans(tree, &text_snapshot);
+                let foldable = crate::syntax::fold::compute_foldable_ranges(
+                    tree.root_node(),
+                    tree.language_id(),
+                );
+                self.app_state.set_foldable_ranges_cache(foldable);
                 self.pending_parse_after_debounce = false;
                 self.last_parse_submit_at = Some(std::time::Instant::now());
                 self.editor_needs_layout = true;
@@ -928,24 +1050,75 @@ impl AppShell {
         self.submit_parse_for_active_buffer(true);
     }
 
+    pub(super) fn cancel_ai_inline_completion(&mut self) {
+        self.pending_ai_inline_request = None;
+        if let Some(token) = self.ai_inline_cancel_token.take() {
+            token.cancel();
+        }
+    }
+
     pub(super) fn queue_ai_inline_completion(&mut self) {
         if self.app_state.current_mode() != EditorMode::Insert {
-            self.pending_ai_inline_request = None;
+            self.cancel_ai_inline_completion();
             return;
         }
         if self.app_state.active_buffer_is_terminal() || self.app_state.active_file().is_none() {
-            self.pending_ai_inline_request = None;
+            self.cancel_ai_inline_completion();
             return;
         }
-        if self.ai_config.inline_completion().is_none() {
+        let Some(cfg) = self.ai_config.inline_completion() else {
+            self.cancel_ai_inline_completion();
+            return;
+        };
+        let now = Instant::now();
+        if !self.should_queue_ai_inline_completion(cfg, now) {
             self.pending_ai_inline_request = None;
+            self.last_ai_inline_queue_at = Some(now);
             return;
         }
+        self.last_ai_inline_queue_at = Some(now);
         self.ai_inline_revision = self.ai_inline_revision.saturating_add(1);
         self.pending_ai_inline_request = Some(PendingAiInlineRequest {
             revision: self.ai_inline_revision,
-            queued_at: Instant::now(),
+            queued_at: now,
         });
+    }
+
+    fn should_queue_ai_inline_completion(
+        &self,
+        cfg: &crate::config::ai_config::InlineCompletionConfig,
+        now: Instant,
+    ) -> bool {
+        if let Some(last_submit) = self.last_ai_inline_submit_at
+            && last_submit.elapsed() < Duration::from_millis(cfg.min_interval_ms())
+        {
+            return false;
+        }
+
+        let cursor = self.app_state.cursor_char_idx();
+        if cursor < cfg.min_prefix_chars() {
+            return false;
+        }
+
+        let text = self.app_state.text_string();
+        let mut chars = text.chars();
+        let before = cursor.checked_sub(1).and_then(|idx| chars.nth(idx));
+        let after = text.chars().nth(cursor);
+
+        if cfg.suppress_in_middle_of_word()
+            && before.is_some_and(is_ai_inline_word_char)
+            && after.is_some_and(is_ai_inline_word_char)
+        {
+            return false;
+        }
+
+        if before.is_some_and(|ch| cfg.trigger_chars().contains(&ch)) {
+            return true;
+        }
+
+        self.last_ai_inline_queue_at
+            .map(|last| now.duration_since(last) >= Duration::from_millis(cfg.idle_trigger_ms()))
+            .unwrap_or(true)
     }
 
     pub(super) fn flush_pending_ai_inline_completion(&mut self) {
@@ -953,7 +1126,7 @@ impl AppShell {
             return;
         };
         let Some(cfg) = self.ai_config.inline_completion().cloned() else {
-            self.pending_ai_inline_request = None;
+            self.cancel_ai_inline_completion();
             return;
         };
         if pending.queued_at.elapsed() < Duration::from_millis(cfg.debounce_ms()) {
@@ -961,6 +1134,11 @@ impl AppShell {
         }
         let revision = pending.revision;
         self.pending_ai_inline_request = None;
+        if let Some(token) = self.ai_inline_cancel_token.take() {
+            token.cancel();
+        }
+        let cancel_token = CancellationToken::new();
+        self.ai_inline_cancel_token = Some(cancel_token.clone());
         let api_url = cfg.provider.api_url.clone();
         let api_key = cfg.provider.api_key.clone();
         let model = cfg.provider.model.clone();
@@ -979,9 +1157,11 @@ impl AppShell {
             .skip(prefix_chars.len().saturating_sub(prefix_take))
             .collect::<String>();
         if prefix.trim().is_empty() && suffix.trim().is_empty() {
+            self.cancel_ai_inline_completion();
             return;
         }
         let language_id = self.app_state.active_file().map(language_id_for_path);
+        self.last_ai_inline_submit_at = Some(Instant::now());
         self.submit(RequestSpec {
             revision_id: revision,
             topic: RequestTopic::AiInlineCompletion,
@@ -995,6 +1175,7 @@ impl AppShell {
                 language_id,
                 file_path: self.app_state.active_file().map(PathBuf::from),
                 max_tokens,
+                cancel_token,
             },
         });
     }
@@ -1071,36 +1252,6 @@ impl AppShell {
         });
     }
 
-    pub(super) fn submit_active_file_history_load(&mut self) {
-        let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
-            return;
-        };
-        self.local_history_revision = self.local_history_revision.saturating_add(1);
-        self.submit(RequestSpec {
-            revision_id: self.local_history_revision,
-            topic: RequestTopic::LocalHistory,
-            payload: WorkerRequestPayload::LoadLocalHistory { file_path },
-        });
-    }
-
-    pub(super) fn submit_active_file_history_save(&mut self) {
-        let Some(file_path) = self.app_state.active_file().map(PathBuf::from) else {
-            return;
-        };
-        let Some(history) = self.app_state.active_file_history_envelope() else {
-            return;
-        };
-        self.local_history_revision = self.local_history_revision.saturating_add(1);
-        self.submit(RequestSpec {
-            revision_id: self.local_history_revision,
-            topic: RequestTopic::LocalHistory,
-            payload: WorkerRequestPayload::SaveLocalHistory {
-                file_path,
-                history,
-                max_bytes: 1024 * 1024,
-            },
-        });
-    }
 
     pub(super) fn submit_references_preview_load(&mut self) {
         if !self.app_state.active_buffer_is_references() {
@@ -1157,9 +1308,10 @@ impl AppShell {
         // the bottom panel terminal isn't the active buffer, so
         // `active_buffer_is_terminal()` would return false.
         if self.terminal_search_palette_active {
-            // Access self.terminal_grid directly — not through
+            // Access active tab's grid directly — not through
             // focused_terminal_grid_mut(), because focus is on OverlayLayer.
-            let grid = &mut self.terminal_grid;
+            let Some(tab) = self.active_terminal_tab_mut() else { return false };
+            let grid = &mut tab.grid;
             grid.search_in_terminal(&query, false);
             let _ = grid.search_next();
             self.mark_focused_terminal_layout_dirty();
@@ -1212,6 +1364,9 @@ impl AppShell {
             return None;
         };
         let profile = crate::lsp::registry::language_profile_for_path(path)?;
+        if profile.lsp_binary.is_empty() {
+            return None;
+        }
         let server_name = profile.lsp_binary.to_string();
         let root_path = crate::lsp::registry::find_project_root(path, profile.root_markers);
 
@@ -1286,11 +1441,16 @@ impl AppShell {
         }
 
         let version = self.app_state.revision().min(i32::MAX as u64) as i32;
+        // Use LspDidOpen instead of LspDidChange: the worker already handles both
+        // "register + open" and "already open → change" in a single payload, so
+        // the first call after server start doesn't silently drop the sync because
+        // the document hasn't been registered yet.
         self.submit(RequestSpec {
             revision_id: self.app_state.revision(),
             topic: RequestTopic::LspClient,
-            payload: WorkerRequestPayload::LspDidChange {
+            payload: WorkerRequestPayload::LspDidOpen {
                 uri: path_to_lsp_uri(path),
+                language_id: language_id_for_path(path),
                 version,
                 text: self.app_state.text_string(),
             },
@@ -1346,7 +1506,10 @@ impl AppShell {
     /// Nếu extension không có trong registry, request bị skip (worker sẽ fail
     /// silently — không hiển thị lỗi ra UI).
     pub(super) fn submit_lsp_check_for_path(&self, path: PathBuf) {
-        if crate::lsp::registry::language_profile_for_path(&path).is_none() {
+        let Some(profile) = crate::lsp::registry::language_profile_for_path(&path) else {
+            return;
+        };
+        if profile.lsp_binary.is_empty() {
             return;
         }
 

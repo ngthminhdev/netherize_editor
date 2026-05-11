@@ -108,7 +108,7 @@ enum CharsetTarget {
     G1,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ParseState {
     /// Đang đọc ký tự bình thường.
     Normal,
@@ -128,6 +128,7 @@ enum ParseState {
 ///
 /// Parser không lưu kết quả; mọi event được emit qua closure `emit` ngay lập tức,
 /// giúp tránh allocation trung gian khi chunk lớn.
+#[derive(Clone)]
 pub struct AnsiParser {
     state: ParseState,
     g0_charset: TerminalCharset,

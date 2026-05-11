@@ -68,7 +68,7 @@ impl Renderer {
         let pad_x = self.editor_padding_x.max(18.0);
         let pad_y = self.editor_padding_y.max(18.0);
         let panel_x = center_bounds[0] + pad_x;
-        let panel_y = center_bounds[1] + pad_y;
+        let panel_y = center_bounds[1] + pad_y - help.scroll_y;
         let panel_w = (center_bounds[2] - pad_x * 2.0).max(1.0);
         let panel_h = (center_bounds[3] - pad_y * 2.0).max(1.0);
         let fg = self.theme.ui.fg.as_f32();
@@ -265,9 +265,10 @@ impl Renderer {
             let col = idx % columns;
             let row = idx / columns;
             let x = panel_x + col as f32 * (card_w + col_gap);
-            let y = grid_top + row as f32 * (card_h + col_gap);
-            if y > panel_y + panel_h - 40.0 {
-                break;
+            let y = grid_top + row as f32 * (card_h + col_gap) - help.scroll_y;
+            if y + card_h < panel_y + 40.0 {
+                // card is entirely above the visible area
+                continue;
             }
             chrome.push(RegionDrawInstance::new([x, y, card_w, card_h], card_border));
             chrome.push(RegionDrawInstance::new(

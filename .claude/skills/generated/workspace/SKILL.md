@@ -29,8 +29,8 @@ Start here when exploring this area:
 - **`new`** (Function) — `src/workspace/scanner.rs:30`
 - **`scan`** (Function) — `src/workspace/scanner.rs:37`
 - **`should_ignore_dir`** (Function) — `src/workspace/model.rs:63`
-- **`select_path`** (Function) — `src/workspace/model.rs:267`
-- **`expand_path`** (Function) — `src/workspace/model.rs:279`
+- **`select_path`** (Function) — `src/workspace/model.rs:280`
+- **`expand_path`** (Function) — `src/workspace/model.rs:292`
 
 ## Key Symbols
 
@@ -39,13 +39,13 @@ Start here when exploring this area:
 | `new` | Function | `src/workspace/scanner.rs` | 30 |
 | `scan` | Function | `src/workspace/scanner.rs` | 37 |
 | `should_ignore_dir` | Function | `src/workspace/model.rs` | 63 |
-| `select_path` | Function | `src/workspace/model.rs` | 267 |
-| `expand_path` | Function | `src/workspace/model.rs` | 279 |
-| `collapse_path` | Function | `src/workspace/model.rs` | 287 |
-| `collapse_path_and_descendants` | Function | `src/workspace/model.rs` | 295 |
-| `expand_path_and_descendants` | Function | `src/workspace/model.rs` | 315 |
-| `reveal_path` | Function | `src/workspace/model.rs` | 330 |
-| `expand_to_path` | Function | `src/workspace/model.rs` | 365 |
+| `select_path` | Function | `src/workspace/model.rs` | 280 |
+| `expand_path` | Function | `src/workspace/model.rs` | 292 |
+| `collapse_path` | Function | `src/workspace/model.rs` | 300 |
+| `collapse_path_and_descendants` | Function | `src/workspace/model.rs` | 308 |
+| `expand_path_and_descendants` | Function | `src/workspace/model.rs` | 328 |
+| `reveal_path` | Function | `src/workspace/model.rs` | 343 |
+| `expand_to_path` | Function | `src/workspace/model.rs` | 378 |
 | `workspace_select_path` | Function | `src/app/app_state/workspace.rs` | 283 |
 | `workspace_expand_path` | Function | `src/app/app_state/workspace.rs` | 289 |
 | `workspace_collapse_path` | Function | `src/app/app_state/workspace.rs` | 295 |
@@ -54,7 +54,7 @@ Start here when exploring this area:
 | `workspace_expand_to_path` | Function | `src/app/app_state/workspace.rs` | 313 |
 | `workspace_reveal_path` | Function | `src/app/app_state/workspace.rs` | 319 |
 | `new` | Function | `src/workspace/model.rs` | 48 |
-| `load_with_rules` | Function | `src/workspace/model.rs` | 117 |
+| `load_with_rules` | Function | `src/workspace/model.rs` | 130 |
 | `find_file_matches` | Function | `src/workspace/fuzzy.rs` | 11 |
 
 ## Execution Flows

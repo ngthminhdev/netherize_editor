@@ -18,27 +18,23 @@ gutter = "#132c34"
 # Active line-number color in the gutter.
 gutter_active = "#c3e0e9"
 # Editor text metrics for cosmic-text layout.
-font_size = 14.0
-line_height = 22.0
 # Primary font for editor text, overlays, top bar, and status bar.
-font_family = "Google Sans Code"
 # Nerd Font used for explorer/file icons and terminal glyph fallback.
-nerd_font_family = "Hack Nerd Font"
 
 # Shared UI chrome colors and workbench sizing tokens.
 [ui]
 # Window clear color behind every region and palette pill foreground base.
 bg = "#10252c"
 # Left/right sidebar region background.
-sidebar_bg = "#10252c"
+sidebar_bg = "#132c34"
 # Generic chrome background for top bar, cards, and inspector surfaces.
-panel_bg = "#10252c"
+panel_bg = "#132c34"
 # Bottom terminal panel and terminal-buffer background.
 terminal_bg = "#132c34"
 # Scrim + modal panel background for command palette and Leap overlay.
 overlay_bg = "#10252cD9"
 # Status bar region background.
-status_bar_bg = "#10252c"
+status_bar_bg = "#132c34"
 # Borders, separators, and subtle region dividers.
 border_color = "#0b191e"
 # Active row / selected tab / focused list item background.
@@ -65,15 +61,8 @@ mode_insert = "#a5b82e"
 mode_visual = "#df96d9"
 
 # Sidebar and panel text metrics.
-sidebar_font_size = 14.0
-sidebar_line_height = 22.0
-panel_font_size = 14.0
-panel_line_height = 22.0
 
 # Theme-driven workbench chrome sizes.
-sidebar_width = 280.0
-right_sidebar_width = 540.0
-bottom_panel_height = 220.0
 top_bar_height = 36.0
 
 [git]
@@ -85,143 +74,10 @@ deleted_gutter = "#dc322f"
 status_bar_height = 32.0
 
 # Disclosure markers and file-picker bullet glyph.
-[icons]
-# Marker for plain files in the explorer tree.
-explorer_file_marker = "·"
-# Marker for collapsed folders.
-explorer_folder_collapsed_marker = "▶"
-# Marker for expanded folders.
-explorer_folder_expanded_marker = "▼"
-# Dot marker rendered in file picker style rows.
-file_picker_dot = "●"
 
-# Folder icons in the explorer tree.
-[icons.folder_closed]
-glyph = "\uF07B"
-color = "#e2ae10"
-
-[icons.folder_open]
-glyph = "\uF07C"
-color = "#e2ae10"
-
-# Generic fallback file icon.
-[icons.default_file]
-glyph = "\uF15B"
-color = "#367b90"
-
-# Extension-specific file icons used by the explorer and fuzzy lists.
-[icons.rust]
-glyph = "\uE7A8"
-color = "#e8913b"
-
-[icons.javascript]
-glyph = "\uE781"
-color = "#e2ae10"
-
-[icons.typescript]
-glyph = "\uE628"
-color = "#4db0f7"
-
-[icons.tsx]
-glyph = "\uE7BA"
-color = "#4db0f7"
-
-[icons.jsx]
-glyph = "\uE7BA"
-color = "#e2ae10"
-
-[icons.python]
-glyph = "\uE73C"
-color = "#4db0f7"
-
-[icons.go]
-glyph = "\uE724"
-color = "#26bbae"
-
-[icons.config]
-glyph = "\uE615"
-color = "#367b90"
-
-[icons.json]
-glyph = "\uE60B"
-color = "#e2ae10"
-
-[icons.markdown]
-glyph = "\uF48A"
-color = "#4db0f7"
-
-[icons.html]
-glyph = "\uE736"
-color = "#f45645"
-
-[icons.css]
-glyph = "\uE749"
-color = "#4db0f7"
-
-[icons.sass]
-glyph = "\uE603"
-color = "#df96d9"
-
-[icons.shell]
-glyph = "\uF489"
-color = "#a5b82e"
-
-[icons.git]
-glyph = "\uF1D3"
-color = "#e8913b"
-
-[icons.lock]
-glyph = "\uF13E"
-color = "#367b90"
-
-[icons.image]
-glyph = "\uF1C5"
-color = "#a5b82e"
-
-[file_icons]
-default_file = "📄"
-default_folder = "📁"
-
-[file_icons.extensions]
-rs = ""
-ts = ""
-tsx = ""
-js = ""
-jsx = ""
-go = ""
-json = ""
-jsonc = ""
-yaml = ""
-yml = ""
-toml = ""
-sql = ""
-md = ""
-mdx = ""
-dockerfile = ""
-sh = ""
-bash = ""
-zsh = ""
-fish = ""
-lock = ""
-
-[file_icons.exact]
-Dockerfile = ""
-"docker-compose.yml" = ""
-"docker-compose.yaml" = ""
-".gitignore" = ""
-".gitattributes" = ""
-".gitmodules" = ""
-"package.json" = ""
-"package-lock.json" = ""
-"tsconfig.json" = ""
-"Cargo.toml" = ""
-Makefile = ""
-"README.md" = ""
-
-# Syntax colors consumed by the tree-sitter highlight categories currently rendered.
 [syntax]
 # Keywords like `fn`, `let`, `match`.
-keyword = "#e2ae10"
+keyword = "#e2ae10"       # Gold (Solarized identity)
 # String literals.
 string = "#a5b82e"
 # Function names and callable symbols.
@@ -233,17 +89,17 @@ type = "#858bf7"
 # Numeric literals.
 number = "#f45645"
 # Plain variable names that do not fall into a richer semantic bucket.
-identifier = "#c3e0e9"
+identifier = "#c3e0e9"    # Foreground (cho variable references)
 # Function and closure parameters.
-parameter = "#df96d9"
+parameter = "#df96d9"     # Magenta (Solarized palette)
 # Struct field declarations and member access like `self.name`.
-field = "#c3e0e9"
+field = "#47cfc4"         # Cyan (Solarized palette)
 # Struct literal property labels like `Demo { name: value }`.
-property = "#c3e0e9"
+property = "#47cfc4"      # Cyan (đồng bộ với field)
 # Named constants such as `MAX_SIZE` and boolean literals.
 constant = "#f45645"
 # Operators such as `=`, `+`, `&&`, `->`.
-operator = "#e2ae10"
+operator = "#e2ae10"      # Gold (Solarized palette)
 # Punctuation such as commas, braces, and separators.
 punctuation = "#c3e0e966"
 # Macro invocation highlight.
@@ -255,11 +111,11 @@ boolean = "#FF955C"
 # Escape sequences inside strings/chars.
 escape = "#FF955C"
 # Local variables and bindings.
-variable = "#d0d7e4"
+variable = "#df96d9"      # Magenta (khác với identifier #c3e0e9)
 # Constructors, enum variants, and nominal type definitions.
 constructor = "#B78AFF"
 # Attributes/annotations.
-attribute = "#EACD61"
+attribute = "#e2ae10"     # Gold (đồng bộ keyword)
 # Module/namespace qualifiers.
 namespace = "#B78AFF"
 # Markup/JSX-style tags.

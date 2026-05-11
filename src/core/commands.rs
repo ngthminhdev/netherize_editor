@@ -146,6 +146,22 @@ pub enum Command {
     SettingsAdjustDecrease,
     SettingsAdjustIncrease,
     SettingsActivate,
+    /// Decrease focused workbench window width in resize mode.
+    ResizeDecreaseWidth,
+    /// Increase focused workbench window width in resize mode.
+    ResizeIncreaseWidth,
+    /// Increase editor width from the left edge by shrinking the left dock.
+    ResizeIncreaseLeftWidth,
+    /// Decrease editor width from the left edge by growing the left dock.
+    ResizeDecreaseLeftWidth,
+    /// Increase editor width from the right edge by shrinking the right dock.
+    ResizeIncreaseRightWidth,
+    /// Decrease editor width from the right edge by growing the right dock.
+    ResizeDecreaseRightWidth,
+    /// Decrease focused workbench window height in resize mode.
+    ResizeDecreaseHeight,
+    /// Increase focused workbench window height in resize mode.
+    ResizeIncreaseHeight,
     GitOpenLazygit,
     GitOpenLazydocker,
     GitBlameLine,
@@ -170,6 +186,12 @@ pub enum Command {
     TerminalScrollUp,
     /// Scroll terminal viewport down (towards live output).
     TerminalScrollDown,
+    /// Create a new terminal tab in the bottom panel.
+    TerminalTabNew,
+    /// Close the current terminal tab in the bottom panel.
+    TerminalTabClose,
+    /// Switch to terminal tab N (0-based index).
+    SwitchTerminalTab(usize),
 
     // ── Workbench focus navigation (Module 12 Phase 2) ─────────────────────────
     /// Move keyboard focus to the center editor region.
@@ -270,6 +292,10 @@ pub enum Command {
     LspFormatDocument,
     /// ctrl+space trong insert mode: gửi textDocument/completion.
     TriggerCompletion,
+    /// <leader>ca: Gửi textDocument/codeAction, hiển thị quickfix/refactor menu.
+    CodeAction,
+    LspSelectPythonEnv,
+    ReloadWorkspace,
     /// Completion popup: chọn item kế tiếp.
     CompletionNext,
     /// Completion popup: chọn item trước đó.
@@ -280,12 +306,16 @@ pub enum Command {
     CompletionClose,
     /// Accept AI inline ghost-text suggestion into the real buffer.
     AiAcceptInline,
+    /// Accept the next word/token from the AI inline ghost-text suggestion.
+    AiAcceptInlineWord,
 
     // ── AI Chat ───────────────────────────────────────────────────────────────
     /// Toggle the AI chat panel open/closed.
     AiChatToggle,
     /// Send the current input text to the AI chat agent.
     AiChatSend,
+    /// Stop the currently running AI chat generation.
+    AiChatStop,
     /// Close the AI chat panel.
     AiChatClose,
     /// Unfocus AI chat input — return focus to editor without closing the dock.
@@ -298,6 +328,8 @@ pub enum Command {
     AiChatInputChar(char),
     /// Delete the last character from the AI chat input buffer.
     AiChatBackspace,
+    /// Clear all text currently typed in the AI chat input buffer.
+    AiChatClearInput,
     /// Complete the current slash command from the AI chat suggestion list.
     AiChatAcceptSuggestion,
     /// Cycle to the next suggestion in the AI chat suggestion popup.
@@ -306,8 +338,14 @@ pub enum Command {
     AiChatSuggestionPrev,
     /// Append a text string to the AI chat input buffer (IME commit).
     AiChatInputText(String),
+    /// Paste system clipboard text into the AI chat input buffer.
+    AiChatPasteClipboard,
     /// Show the "opencode not found — install?" confirmation overlay.
     AiChatPromptInstall,
+    /// Scroll AI chat message history up by half a page (see older messages).
+    AiChatScrollHalfPageUp,
+    /// Scroll AI chat message history down by half a page (see newer messages).
+    AiChatScrollHalfPageDown,
     /// References view: chọn item kế tiếp.
     ReferencesSelectNext,
     /// References view: chọn item trước đó.
@@ -330,6 +368,8 @@ pub enum Command {
     // ── Markdown Preview ──────────────────────────────────────────────────────
     /// Toggle markdown preview panel in the right sidebar.
     ToggleMarkdownPreview,
+    /// Focus markdown preview in the right sidebar, opening it if needed.
+    FocusMarkdownPreview,
     /// Scroll markdown preview up.
     MarkdownPreviewScrollUp,
     /// Scroll markdown preview down.
@@ -338,6 +378,20 @@ pub enum Command {
     MarkdownPreviewScrollHalfPageUp,
     /// Scroll markdown preview down half page.
     MarkdownPreviewScrollHalfPageDown,
+    /// Scroll markdown preview to top (gg).
+    MarkdownPreviewScrollTop,
+    /// Scroll markdown preview to bottom (G).
+    MarkdownPreviewScrollBottom,
+
+    // ── Help / Cheat Sheet ────────────────────────────────────────────────────
+    /// Scroll help / cheat sheet down.
+    HelpScrollDown,
+    /// Scroll help / cheat sheet up.
+    HelpScrollUp,
+    /// Scroll help / cheat sheet down half page.
+    HelpScrollHalfPageDown,
+    /// Scroll help / cheat sheet up half page.
+    HelpScrollHalfPageUp,
 
     // ── Multiple Cursors (Module: MultiCursor) ────────────────────────────────
     /// Select word under cursor; on subsequent calls find the next identical
@@ -356,6 +410,12 @@ pub enum Command {
     /// From Visual mode: select ALL occurrences of the visual selection and
     /// enter MultiCursor mode with a cursor on each match simultaneously.
     MultiCursorSelectAll,
+
+    // ── Code folding ─────────────────────────────────────────────────────────
+    /// Toggle fold/unfold the scope at the cursor line (Vim `za`).
+    ToggleFold,
+    /// Toggle fold all / unfold all scopes in the current file (Vim `zA`).
+    ToggleFoldAll,
 }
 
 impl Command {
@@ -461,6 +521,12 @@ impl Command {
                 | Self::MarkdownPreviewScrollDown
                 | Self::MarkdownPreviewScrollHalfPageUp
                 | Self::MarkdownPreviewScrollHalfPageDown
+                | Self::MarkdownPreviewScrollTop
+                | Self::MarkdownPreviewScrollBottom
+                | Self::HelpScrollDown
+                | Self::HelpScrollUp
+                | Self::HelpScrollHalfPageDown
+                | Self::HelpScrollHalfPageUp
         )
     }
 }

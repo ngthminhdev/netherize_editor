@@ -11,7 +11,9 @@ const AI_MODEL_PRESETS: &[&str] = &[
 ];
 
 const AI_SLASH_COMMANDS: &[&str] = &[
-    "/clear", "/new", "/plan", "/build", "/model", "/models", "/mode", "/help",
+    "/clear", "/new", "/review", "/explain", "/fix", "/test", "/commit", "/diff",
+    "/context", "/plan", "/build", "/mode", "/agent", "/model", "/models",
+    "/status", "/compact", "/tokens", "/help",
 ];
 
 /// Like [`ai_slash_command_completion`] but selects the Nth matching command.
@@ -27,7 +29,10 @@ fn ai_slash_command_completion_at(input: &str, index: usize) -> Option<String> {
         .copied()
         .filter(|command| command.trim_start_matches('/').starts_with(&query))
         .nth(index)?;
-    let suffix = if matches!(command, "/model" | "/mode") {
+    let suffix = if matches!(
+        command,
+        "/model" | "/mode" | "/agent" | "/review" | "/explain" | "/fix" | "/test" | "/diff"
+    ) {
         " "
     } else {
         ""
@@ -279,6 +284,7 @@ impl AppShell {
             });
             chat.input_buffer.clear();
             chat.is_generating = true;
+            chat.scroll_y = f32::MAX;
 
             let history: Vec<(String, String)> = chat
                 .messages
@@ -399,7 +405,20 @@ impl AppShell {
         true
     }
 
-    /// Handle `AiChatToggle`, `AiChatSend`, `AiChatClose` commands.
+    fn stop_ai_chat_generation(&mut self) -> bool {
+        if !self.panel_state.ai_chat.is_generating {
+            return false;
+        }
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::AiChat,
+            payload: WorkerRequestPayload::AiChatCancel,
+        });
+        true
+    }
+
+    /// Handle `AiChatToggle`, `AiChatSend`, `AiChatStop`, `AiChatClose` commands.
     ///
     /// Returns `Some(changed)` when the command was consumed, `None` otherwise.
     pub(super) fn handle_ai_chat_command(&mut self, command: &Command) -> Option<bool> {
@@ -427,6 +446,7 @@ impl AppShell {
             }
             Command::AiChatPromptInstall => Some(self.begin_ai_chat_install_confirmation()),
             Command::AiChatAddSelectionContext => Some(self.add_visual_selection_to_ai_chat()),
+            Command::AiChatStop => Some(self.stop_ai_chat_generation()),
             Command::AiChatSend => {
                 let raw = self.panel_state.ai_chat.input_buffer.trim().to_string();
                 if raw.is_empty() || self.panel_state.ai_chat.is_generating {
@@ -447,6 +467,73 @@ impl AppShell {
                             chat.messages.clear();
                             chat.attached_code_contexts.clear();
                             chat.is_generating = false;
+                        }
+                        "review" => {
+                            let focus = arg.filter(|s| !s.is_empty());
+                            let prompt = match focus {
+                                Some(f) => format!("Please review this code with a focus on: {f}. Look for bugs, logic errors, style issues, and suggest improvements."),
+                                None => "Please review this code thoroughly. Look for bugs, logic errors, performance issues, and suggest concrete improvements.".to_string(),
+                            };
+                            let display = format!("/review{}", arg.map(|a| format!(" {a}")).unwrap_or_default());
+                            return Some(self.submit_ai_chat_prompt(prompt, display, Vec::new()));
+                        }
+                        "explain" => {
+                            let topic = arg.filter(|s| !s.is_empty());
+                            let prompt = match topic {
+                                Some(t) => format!("Please explain this clearly: {t}"),
+                                None => "Please explain this code clearly — what it does, how it works, and any non-obvious design decisions.".to_string(),
+                            };
+                            let display = format!("/explain{}", arg.map(|a| format!(" {a}")).unwrap_or_default());
+                            return Some(self.submit_ai_chat_prompt(prompt, display, Vec::new()));
+                        }
+                        "fix" => {
+                            let issue = arg.filter(|s| !s.is_empty());
+                            let prompt = match issue {
+                                Some(i) => format!("Please fix the following issue in this code: {i}"),
+                                None => "Please identify and fix any bugs or issues in this code.".to_string(),
+                            };
+                            let display = format!("/fix{}", arg.map(|a| format!(" {a}")).unwrap_or_default());
+                            return Some(self.submit_ai_chat_prompt(prompt, display, Vec::new()));
+                        }
+                        "test" => {
+                            let desc = arg.filter(|s| !s.is_empty());
+                            let prompt = match desc {
+                                Some(d) => format!("Generate unit tests for this code. Focus on: {d}"),
+                                None => "Generate comprehensive unit tests for this code. Cover happy paths, edge cases, and error conditions.".to_string(),
+                            };
+                            let display = format!("/test{}", arg.map(|a| format!(" {a}")).unwrap_or_default());
+                            return Some(self.submit_ai_chat_prompt(prompt, display, Vec::new()));
+                        }
+                        "commit" => {
+                            return Some(self.submit_ai_chat_prompt(
+                                "Write a concise, well-structured git commit message for the current staged changes. Follow the conventional commits format if appropriate. Output only the commit message.".to_string(),
+                                "/commit".to_string(),
+                                Vec::new(),
+                            ));
+                        }
+                        "diff" => {
+                            return Some(self.submit_ai_chat_prompt(
+                                "Summarize the current git diff or pending changes. Describe what was changed, why it matters, and flag anything that looks risky.".to_string(),
+                                "/diff".to_string(),
+                                Vec::new(),
+                            ));
+                        }
+                        "context" => {
+                            let ctx_count = chat.attached_code_contexts.len();
+                            let detail = if ctx_count == 0 {
+                                "No file contexts attached. Use @path in your message to attach a file.".to_string()
+                            } else {
+                                let names: Vec<_> = chat
+                                    .attached_code_contexts
+                                    .iter()
+                                    .map(|c| c.title.as_str())
+                                    .collect();
+                                format!("{ctx_count} context(s) attached:\n{}", names.join("\n  "))
+                            };
+                            chat.messages.push(AiChatMessage {
+                                role: AiRole::System,
+                                text: detail,
+                            });
                         }
                         "plan" => {
                             chat.agent = AiAgentMode::Plan;
@@ -524,22 +611,58 @@ impl AppShell {
                                 text: ai_models_help(chat.model.as_deref()),
                             });
                         }
+                        "status" => {
+                            let model = chat.model.as_deref().unwrap_or("default (opencode config)");
+                            chat.messages.push(AiChatMessage {
+                                role: AiRole::System,
+                                text: format!(
+                                    "AI chat status:\n- agent: {}\n- model: {model}\n- messages: {}\n- attached contexts: {}\n- generating: {}",
+                                    chat.agent.label(),
+                                    chat.messages.len(),
+                                    chat.attached_code_contexts.len(),
+                                    chat.is_generating,
+                                ),
+                            });
+                        }
+                        "compact" => {
+                            chat.messages.push(AiChatMessage {
+                                role: AiRole::System,
+                                text: "Compact is not wired to opencode yet. Tip: use /new to start a fresh context or ask Netherize to summarize this chat.".to_string(),
+                            });
+                        }
+                        "tokens" => {
+                            chat.messages.push(AiChatMessage {
+                                role: AiRole::System,
+                                text: "Token usage is reported by opencode in stream status lines when available. Netherize currently filters noisy status lines from history.".to_string(),
+                            });
+                        }
                         "" | "help" => {
                             chat.messages.push(AiChatMessage {
                                 role: AiRole::System,
                                 text: [
                                     "Available commands:",
-                                    "  /clear       clear chat history",
-                                    "  /new         same as /clear",
-                                    "  /plan        switch to opencode plan agent",
-                                    "  /build       switch to opencode build agent",
-                                    "  /mode        show current agent mode",
-                                    "  /mode <name> set mode: build or plan",
-                                    "  /model <id>  set model (e.g. anthropic/claude-opus-4-5)",
-                                    "  /model default clear model override",
-                                    "  /model       show current model",
-                                    "  /models      show common model ids",
-                                    "  /help        show this help",
+                                    "  /review [focus]   review code for bugs / improvements",
+                                    "  /explain [topic]  explain the current code or topic",
+                                    "  /fix [issue]      find and fix bugs",
+                                    "  /test [focus]     generate unit tests",
+                                    "  /commit           write a git commit message",
+                                    "  /diff             summarise current git diff",
+                                    "  /context          show attached file contexts",
+                                    "  /clear            clear chat history",
+                                    "  /new              same as /clear",
+                                    "  /plan             switch to opencode plan agent",
+                                    "  /build            switch to opencode build agent",
+                                    "  /mode             show current agent mode",
+                                    "  /mode <name>      set mode: build or plan",
+                                    "  /agent <name>     alias for /mode <name>",
+                                    "  /model <id>       set model (e.g. anthropic/claude-opus-4-5)",
+                                    "  /model default    clear model override",
+                                    "  /model            show current model",
+                                    "  /models           show common model ids",
+                                    "  /status           show current chat settings",
+                                    "  /compact          summarize/compact context hint",
+                                    "  /tokens           show token usage hint",
+                                    "  /help             show this help",
                                 ]
                                 .join("\n"),
                             });
@@ -551,6 +674,8 @@ impl AppShell {
                             });
                         }
                     }
+                    // Always jump to the latest message after a client-side command.
+                    self.panel_state.ai_chat.scroll_y = f32::MAX;
                     return Some(true);
                 }
 
@@ -609,6 +734,19 @@ impl AppShell {
                     Some(true)
                 } else {
                     Some(false)
+                }
+            }
+            Command::AiChatClearInput => {
+                if self.panel_state.ai_chat.is_generating {
+                    return Some(self.stop_ai_chat_generation());
+                }
+                let chat = &mut self.panel_state.ai_chat;
+                if chat.input_buffer.is_empty() {
+                    Some(false)
+                } else {
+                    chat.input_buffer.clear();
+                    chat.selected_suggestion_index = 0;
+                    Some(true)
                 }
             }
             Command::AiChatAcceptSuggestion => {
@@ -671,6 +809,29 @@ impl AppShell {
             Command::AiChatInputText(text) => {
                 self.panel_state.ai_chat.input_buffer.push_str(text);
                 self.panel_state.ai_chat.selected_suggestion_index = 0;
+                Some(true)
+            }
+            Command::AiChatPasteClipboard => {
+                let Ok(text) = self.clipboard.get_text() else {
+                    return Some(false);
+                };
+                if text.is_empty() {
+                    return Some(false);
+                }
+                self.panel_state.ai_chat.input_buffer.push_str(&text);
+                self.panel_state.ai_chat.selected_suggestion_index = 0;
+                Some(true)
+            }
+            Command::AiChatScrollHalfPageUp => {
+                let chat = &mut self.panel_state.ai_chat;
+                let current = chat.scroll_y.min(chat.max_scroll_y);
+                chat.scroll_y = (current - 200.0).max(0.0);
+                Some(true)
+            }
+            Command::AiChatScrollHalfPageDown => {
+                let chat = &mut self.panel_state.ai_chat;
+                let current = chat.scroll_y.min(chat.max_scroll_y);
+                chat.scroll_y = (current + 200.0).min(chat.max_scroll_y);
                 Some(true)
             }
             _ => None,

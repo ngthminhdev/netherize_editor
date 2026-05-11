@@ -146,6 +146,7 @@ impl HighlightColors {
 /// Khi cursor xuống quá dòng cuối, grid **scroll up** (xóa dòng đầu, thêm dòng trống cuối).
 const SCROLLBACK_LIMIT: usize = 500;
 
+#[derive(Clone)]
 pub struct TerminalGrid {
     pub cols: usize,
     pub rows: usize,
@@ -808,6 +809,23 @@ impl TerminalGrid {
         0
     }
 
+    /// Kiểm tra grid có bất kỳ nội dung nào không (bao gồm cả scrollback).
+    ///
+    /// Khác với `used_rows()` chỉ kiểm tra live grid, method này cũng kiểm tra
+    /// scrollback buffer để tránh hiển thị EMPTY_TERMINAL_HINT khi nội dung
+    /// đã bị đẩy vào scrollback sau resize.
+    pub fn is_empty(&self) -> bool {
+        if self.used_rows() > 0 {
+            return false;
+        }
+        for row in &self.scrollback {
+            if row.iter().any(|c| !c.is_visually_empty()) {
+                return false;
+            }
+        }
+        true
+    }
+
     /// Debug: dump grid thành string nhiều dòng (only printable chars).
     pub fn debug_dump(&self) -> String {
         let used = self.used_rows().max(self.cursor_row + 1);
@@ -1393,6 +1411,19 @@ fn word_end_at_or_after_chars(text: &[char], cursor: usize) -> Option<usize> {
     }
 
     let mut i = cursor;
+    let start_class = classify_terminal_char(text[i]);
+
+    if start_class != WordClass::Space && start_class != WordClass::Newline {
+        let mut end = i;
+        while end + 1 < n && classify_terminal_char(text[end + 1]) == start_class {
+            end += 1;
+        }
+        if end > i {
+            return Some(end);
+        }
+        i = end.saturating_add(1);
+    }
+
     while i < n {
         let cls = classify_terminal_char(text[i]);
         if cls != WordClass::Space && cls != WordClass::Newline {

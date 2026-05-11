@@ -19,6 +19,7 @@ const INSTALL_ARGS: &[&str] = &[
 ];
 
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio_util::sync::CancellationToken;
 use winit::event_loop::EventLoopProxy;
 
 use crate::app::event_loop::AppEvent;
@@ -144,6 +145,7 @@ pub(super) async fn run_ai_chat_stream(
     file_refs: Vec<PathBuf>,
     model: Option<String>,
     agent: Option<String>,
+    cancel_token: CancellationToken,
 ) {
     let binary = match resolve_opencode_binary() {
         Some(p) => p,
@@ -159,7 +161,13 @@ pub(super) async fn run_ai_chat_stream(
         }
     };
 
-    let prompt = build_prompt_with_file_context(prompt, file_refs).await;
+    let prompt = tokio::select! {
+        _ = cancel_token.cancelled() => {
+            emit_message_and_wake(&worker_tx, &event_proxy, WorkerMessage::AiStreamCancelled);
+            return;
+        }
+        prompt = build_prompt_with_file_context(prompt, file_refs) => prompt,
+    };
 
     let mut cmd = tokio::process::Command::new(&binary);
     cmd.arg("run");
@@ -234,7 +242,31 @@ pub(super) async fn run_ai_chat_stream(
     let mut lines = BufReader::new(stdout).lines();
     let mut first_line = true;
 
-    while let Ok(Some(line)) = lines.next_line().await {
+    loop {
+        let next_line = tokio::select! {
+            _ = cancel_token.cancelled() => {
+                let _ = child.kill().await;
+                emit_message_and_wake(&worker_tx, &event_proxy, WorkerMessage::AiStreamCancelled);
+                return;
+            }
+            next_line = lines.next_line() => next_line,
+        };
+
+        let line = match next_line {
+            Ok(Some(line)) => line,
+            Ok(None) => break,
+            Err(err) => {
+                emit_message_and_wake(
+                    &worker_tx,
+                    &event_proxy,
+                    WorkerMessage::AiStreamError {
+                        error: format!("opencode stdout read failed: {err}"),
+                    },
+                );
+                return;
+            }
+        };
+
         let Some(line) = sanitize_opencode_line(&line) else {
             continue;
         };
@@ -256,7 +288,16 @@ pub(super) async fn run_ai_chat_stream(
     }
 
     // Wait for the process to exit and surface any error.
-    match child.wait().await {
+    let wait_result = tokio::select! {
+        _ = cancel_token.cancelled() => {
+            let _ = child.kill().await;
+            emit_message_and_wake(&worker_tx, &event_proxy, WorkerMessage::AiStreamCancelled);
+            return;
+        }
+        wait_result = child.wait() => wait_result,
+    };
+
+    match wait_result {
         Ok(status) if status.success() => {
             emit_message_and_wake(&worker_tx, &event_proxy, WorkerMessage::AiStreamComplete);
         }

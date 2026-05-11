@@ -77,7 +77,7 @@ impl Default for WorkbenchLayoutConfig {
             sidebar_min_width: 140.0,
             bottom_min_height: 100.0,
             panel_border_width: 1.0,
-            chat_input_height: 120.0,
+            chat_input_height: 150.0,
         }
     }
 }
@@ -120,9 +120,7 @@ impl WorkbenchLayoutEngine {
         if status_h <= 0.0 {
             return 0.0;
         }
-        (self.config.panel_gap.max(0.0) * 0.35)
-            .clamp(3.0, 6.0)
-            .min(status_h * 0.5)
+        self.config.panel_gap.max(0.0).min(status_h * 0.5)
     }
 
     pub fn compute(
@@ -140,6 +138,7 @@ impl WorkbenchLayoutEngine {
         }
 
         let outer_gap = self.config.outer_gap.max(0.0);
+        let gap = self.config.panel_gap.max(0.0);
         let viewport_bounds = RegionBounds::new(
             outer_gap.min(width * 0.5),
             outer_gap.min(height * 0.5),
@@ -150,14 +149,14 @@ impl WorkbenchLayoutEngine {
         let top_h = self
             .config
             .top_bar_height
-            .min((height - outer_gap).max(0.0));
-        let remain_after_top = (height - outer_gap - top_h).max(0.0);
+            .min((height - gap).max(0.0));
+        let remain_after_top = (height - gap - top_h).max(0.0);
         let status_h = self.config.status_bar_height.min(remain_after_top);
         let status_top_gap = self
             .status_bar_top_gap(status_h)
             .min(remain_after_top - status_h);
-        let body_y = viewport_bounds.y + top_h;
-        let body_h = (height - outer_gap - top_h - status_h - status_top_gap).max(0.0);
+        let body_y = top_h + gap;
+        let body_h = (height - gap - top_h - status_h - status_top_gap).max(0.0);
 
         let (center_h, bottom_h, vertical_gap) =
             self.compute_vertical_split(body_h, panels.bottom.visible, panels.bottom.size_px);
@@ -183,7 +182,7 @@ impl WorkbenchLayoutEngine {
 
         let top_bar = RegionNode::new(
             RegionId::TopBar,
-            RegionBounds::new(viewport_bounds.x, 0.0, viewport_bounds.width, top_h),
+            RegionBounds::new(0.0, 0.0, width, top_h),
             true,
         );
         let left_sidebar = RegionNode::new(
@@ -300,30 +299,37 @@ impl WorkbenchLayoutEngine {
         let width = size.width as f32;
         let height = size.height as f32;
         let outer_gap = self.config.outer_gap.max(0.0);
+        let gap = self.config.panel_gap.max(0.0);
 
         // Keep TopBar and StatusBar, give everything else to target
         let top_h = self
             .config
             .top_bar_height
-            .min((height - outer_gap).max(0.0));
-        let remain_after_top = (height - outer_gap - top_h).max(0.0);
+            .min((height - gap).max(0.0));
+        let remain_after_top = (height - gap - top_h).max(0.0);
         let status_h = self.config.status_bar_height.min(remain_after_top);
         let status_top_gap = self
             .status_bar_top_gap(status_h)
             .min(remain_after_top - status_h);
 
-        let available_y = outer_gap + top_h;
-        let available_h =
-            (height - outer_gap - top_h - status_h - status_top_gap - outer_gap).max(0.0);
+        let available_y = top_h + gap;
+        let available_h = (height - gap - top_h - status_h - status_top_gap).max(0.0);
         let available_x = outer_gap;
         let available_w = (width - outer_gap * 2.0).max(0.0);
 
-        let target_bounds = RegionBounds::new(available_x, available_y, available_w, available_h);
+        let target_bounds = if matches!(
+            target,
+            FocusTarget::CenterEditor | FocusTarget::RightSidebar | FocusTarget::BottomPanel
+        ) {
+            self.compute_centered_zen_bounds(available_x, available_y, available_w, available_h)
+        } else {
+            RegionBounds::new(available_x, available_y, available_w, available_h)
+        };
         let zero = RegionBounds::new(0.0, 0.0, 0.0, 0.0);
 
         let top_bar = RegionNode::new(
             RegionId::TopBar,
-            RegionBounds::new(outer_gap, 0.0, (width - outer_gap * 2.0).max(0.0), top_h),
+            RegionBounds::new(0.0, 0.0, width, top_h),
             true,
         );
 
@@ -390,6 +396,28 @@ impl WorkbenchLayoutEngine {
         }
     }
 
+    fn compute_centered_zen_bounds(
+        &self,
+        available_x: f32,
+        available_y: f32,
+        available_w: f32,
+        available_h: f32,
+    ) -> RegionBounds {
+        if available_w <= 0.0 {
+            return RegionBounds::new(available_x, available_y, 0.0, available_h);
+        }
+
+        // Editor-like Zen Mode targets should read like a centered writing
+        // column, not a full-width pane pinned to the left. Keep equal side
+        // gaps and constrain the window to 70–80% of the available viewport.
+        let min_w = available_w * 0.70;
+        let max_w = available_w * 0.80;
+        let target_w = max_w.clamp(min_w, available_w).round();
+        let target_x = (available_x + (available_w - target_w) * 0.5).round();
+
+        RegionBounds::new(target_x, available_y, target_w, available_h)
+    }
+
     pub fn apply_handle_drag(
         &self,
         size: PhysicalSize<u32>,
@@ -402,8 +430,9 @@ impl WorkbenchLayoutEngine {
         let height = size.height as f32;
         let outer_gap = self.config.outer_gap.max(0.0);
         let usable_width = (width - outer_gap * 2.0).max(0.0);
+        let gap = self.config.panel_gap.max(0.0);
         let body_h = (height
-            - outer_gap
+            - gap
             - self.config.top_bar_height
             - self.config.status_bar_height
             - self.status_bar_top_gap(self.config.status_bar_height))
@@ -705,7 +734,7 @@ mod tests {
             - top.height
             - status.height
             - engine.status_bar_top_gap(status.height)
-            - engine.config.outer_gap;
+            - engine.config.panel_gap;
 
         assert!(
             (left.height - expected_body_height).abs() <= 0.001,
@@ -891,7 +920,7 @@ mod tests {
     }
 
     #[test]
-    fn maximize_center_gives_full_space_to_center() {
+    fn maximize_center_centers_editor_with_zen_width() {
         use crate::workbench::focus_manager::FocusTarget;
 
         let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
@@ -910,11 +939,19 @@ mod tests {
         assert!(status.bounds.height > 0.0);
         assert!(status.visible);
 
-        // Center is visible with full space
+        // Center is visible as a centered Zen window using 80% available width.
         let center = find(RegionId::Center).expect("center");
         assert!(center.visible);
         assert!(center.bounds.width > 0.0);
         assert!(center.bounds.height > 0.0);
+        let available_w = 1280.0 - engine.config.outer_gap * 2.0;
+        let expected_w = (available_w * 0.80).round();
+        let expected_x = (engine.config.outer_gap + (available_w - expected_w) * 0.5).round();
+        assert!((center.bounds.width - expected_w).abs() <= 0.001);
+        assert!((center.bounds.x - expected_x).abs() <= 0.001);
+        let left_gap = center.bounds.x - engine.config.outer_gap;
+        let right_gap = 1280.0 - engine.config.outer_gap - (center.bounds.x + center.bounds.width);
+        assert!((left_gap - right_gap).abs() <= 1.0);
 
         // Other regions are hidden with zero bounds
         let left = find(RegionId::LeftSidebar).expect("left");
@@ -931,6 +968,35 @@ mod tests {
         assert!(bottom.bounds.width == 0.0);
 
         // No split handles
+        assert!(layout.handles.is_empty());
+    }
+
+    #[test]
+    fn maximize_right_sidebar_centers_preview_with_zen_width() {
+        use crate::workbench::focus_manager::FocusTarget;
+
+        let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
+        let mut state = WorkbenchPanelState::default();
+        state.maximized_region = Some(FocusTarget::RightSidebar);
+
+        let layout = engine.compute(PhysicalSize::new(1280, 800), &state);
+        let flat = layout.model.flatten();
+        let find = |id: RegionId| flat.iter().find(|r| r.id == id);
+
+        let right = find(RegionId::RightSidebar).expect("right");
+        assert!(right.visible);
+        let available_w = 1280.0 - engine.config.outer_gap * 2.0;
+        let expected_w = (available_w * 0.80).round();
+        let expected_x = (engine.config.outer_gap + (available_w - expected_w) * 0.5).round();
+        assert!((right.bounds.width - expected_w).abs() <= 0.001);
+        assert!((right.bounds.x - expected_x).abs() <= 0.001);
+        let left_gap = right.bounds.x - engine.config.outer_gap;
+        let right_gap = 1280.0 - engine.config.outer_gap - (right.bounds.x + right.bounds.width);
+        assert!((left_gap - right_gap).abs() <= 1.0);
+
+        let center = find(RegionId::Center).expect("center");
+        assert!(!center.visible);
+
         assert!(layout.handles.is_empty());
     }
 
@@ -959,7 +1025,7 @@ mod tests {
     }
 
     #[test]
-    fn maximize_bottom_panel_gives_full_space() {
+    fn maximize_bottom_panel_centers_terminal_with_zen_width() {
         use crate::workbench::focus_manager::FocusTarget;
 
         let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
@@ -974,6 +1040,8 @@ mod tests {
         assert!(bottom.visible);
         assert!(bottom.bounds.width > 0.0);
         assert!(bottom.bounds.height > 0.0);
+        assert!(bottom.bounds.x > 0.0);
+        assert!(bottom.bounds.width < 1280.0);
 
         let center = find(RegionId::Center).expect("center");
         assert!(!center.visible);

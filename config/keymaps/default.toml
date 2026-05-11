@@ -8,6 +8,45 @@ description = "Clean full Neovim-style profile (block TOML, no inline bindings)"
 [meta]
 leader = "space"
 
+[[bindings]]
+key = "<leader>r"
+command = "mode.resize"
+
+[[bindings]]
+mode = "resize"
+key = "h"
+command = "resize.increase_left_width"
+
+[[bindings]]
+mode = "resize"
+key = "H"
+command = "resize.decrease_left_width"
+
+[[bindings]]
+mode = "resize"
+key = "l"
+command = "resize.increase_right_width"
+
+[[bindings]]
+mode = "resize"
+key = "L"
+command = "resize.decrease_right_width"
+
+[[bindings]]
+mode = "resize"
+key = "j"
+command = "resize.increase_height"
+
+[[bindings]]
+mode = "resize"
+key = "k"
+command = "resize.decrease_height"
+
+[[bindings]]
+mode = "resize"
+key = "esc"
+command = "mode.escape"
+
 # ───────────────── GLOBAL ─────────────────
 [[bindings]]
 key = "mod+s"
@@ -235,6 +274,11 @@ mode = "normal"
 key = "<leader>f m"
 command = "lsp.format_document"
 
+[[bindings]]
+mode = "normal"
+key = "<leader>m f"
+command = "app.focus_markdown_preview"
+
 # `r<char>` cần payload ký tự động nên được xử lý trong InputHandler pending state,
 # không khai báo static binding ở đây.
 
@@ -289,6 +333,17 @@ command = "editor.move_to_last_line"
 mode = "normal"
 key = "z z"
 command = "editor.center_cursor_line"
+
+# fold
+[[bindings]]
+mode = "normal"
+key = "z a"
+command = "editor.toggle_fold"
+
+[[bindings]]
+mode = "normal"
+key = "z A"
+command = "editor.toggle_fold_all"
 
 [[bindings]]
 mode = "normal"
@@ -455,7 +510,7 @@ command = "editor.search_word_under_cursor"
 [[bindings]]
 mode = "terminal"
 key = "Escape"
-command = "app.focus_editor"
+command = "app.focus_back"
 
 [[bindings]]
 mode = "terminal"
@@ -582,6 +637,62 @@ command = "editor.search_prev"
 mode = "terminal_normal"
 key = "<leader>z m"
 command = "app.toggle_maximize_focus"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "<leader>t n"
+command = "terminal.tab_new"
+
+[[bindings]]
+mode = "terminal_normal"
+key = "<leader>x"
+command = "terminal.tab_close"
+
+# ── Terminal tab switching (mod+1..9) ──
+[[bindings]]
+mode = "terminal"
+key = "mod+1"
+command = "terminal.tab_switch_1"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+2"
+command = "terminal.tab_switch_2"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+3"
+command = "terminal.tab_switch_3"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+4"
+command = "terminal.tab_switch_4"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+5"
+command = "terminal.tab_switch_5"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+6"
+command = "terminal.tab_switch_6"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+7"
+command = "terminal.tab_switch_7"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+8"
+command = "terminal.tab_switch_8"
+
+[[bindings]]
+mode = "terminal"
+key = "mod+9"
+command = "terminal.tab_switch_9"
 
 # ───────────────── EXPLORER ─────────────────
 [[bindings]]
@@ -791,6 +902,11 @@ command = "ai.chat_toggle"
 mode = "normal"
 key = "<leader>a f"
 command = "ai.chat_focus"
+
+[[bindings]]
+mode = "normal"
+key = "<leader>a s"
+command = "ai.chat_stop"
 
 [[bindings]]
 mode = "visual"

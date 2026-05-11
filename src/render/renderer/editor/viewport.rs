@@ -13,8 +13,8 @@ use crate::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
     text::layout_sync::{
-        compute_caret_layout, compute_caret_layout_at, compute_cursor_overlay,
-        rebuild_layout_projection, visual_y_for_logical_scroll,
+        compute_caret_layout_at_with_folds, compute_caret_layout_with_folds,
+        compute_cursor_overlay, rebuild_layout_projection, visual_y_for_logical_scroll_with_folds,
     },
 };
 use cosmic_text::Metrics;
@@ -29,6 +29,19 @@ use crate::text::text_system::StyledTextSpan;
 
 /// Quick fingerprint để phát hiện thay đổi trong syntax / diagnostic spans.
 /// Không cần hoàn hảo — chỉ cần bắt được phần lớn thay đổi thực tế.
+fn inline_suggestion_virtual_gap(app_state: &AppState, line_height: f32) -> Option<(usize, f32)> {
+    const MAX_INLINE_SUGGESTION_LINES: usize = 6;
+
+    let suggestion = app_state.inline_suggestion()?;
+    let rendered_lines = suggestion.split('\n').take(MAX_INLINE_SUGGESTION_LINES).count();
+    let extra_lines = rendered_lines.saturating_sub(1);
+    if extra_lines == 0 {
+        return None;
+    }
+    let (cursor_line, _) = app_state.cursor_line_col();
+    Some((cursor_line, extra_lines as f32 * line_height.max(1.0)))
+}
+
 fn spans_fingerprint(spans: &[StyledTextSpan]) -> u64 {
     let mut h: u64 = spans.len() as u64 ^ 0xcbf29ce484222325;
     for (i, s) in spans.iter().take(32).enumerate() {
@@ -146,20 +159,14 @@ impl Renderer {
         // Allow cosmic-text to shape full height; scissor clips the visible region.
         self.text_system.set_size(Some(width), None);
 
-        // Pre-shape the current text so that visual_y_for_logical_scroll can walk the
-        // real LayoutRun positions.  Without this, origin_y would be computed with
-        // current_scroll_y * line_height which is wrong whenever any logical line above
-        // the scroll position has been soft-wrapped into multiple visual rows (e.g. a
-        // JWT token).  rebuild_layout_projection reshapes the same text again — this is
-        // intentional: the second call collects glyphs with the now-correct origin.
-        let text_fg = self.theme.editor.fg.as_f32();
-        let default_color_rgba = linear_rgba_to_srgb_u8(text_fg);
 
         // ── Tối ưu 2: Text Caching ─────────────────────────────────────────────
         // Trong các frame chỉ cuộn (smooth scroll), text revision không đổi →
         // TextSystem buffer đã được shaped từ frame trước → bỏ qua set_text_with_spans.
         // Reshape khi: (a) text thay đổi, (b) syntax/LSP spans thay đổi, hoặc
         // (c) viewport width thay đổi (word-wrap boundary shift).
+        let text_fg = self.theme.editor.fg.as_f32();
+        let default_color_rgba = linear_rgba_to_srgb_u8(text_fg);
         let current_revision = app_state.revision();
         let spans_fp = spans_fingerprint(spans);
         let needs_reshape = self.last_shaped_revision != current_revision
@@ -175,29 +182,35 @@ impl Renderer {
             self.text_system.set_size(Some(width), None);
         }
 
-        let visual_scroll_y =
-            visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y.max(0.0));
+        let visual_scroll_y = visual_y_for_logical_scroll_with_folds(
+            &self.text_system,
+            app_state.current_scroll_y.max(0.0),
+            app_state.folded_ranges(),
+        );
         let corrected_origin_y =
             center_bounds[1] + self.editor_padding_y + geometry.line_height - visual_scroll_y;
 
         // Cull glyphs ngoài viewport (overscan 1 dòng mỗi đầu) — file 10k dòng
         // chỉ build instance cho ~100 dòng visible thay vì toàn buffer.
+        let virtual_gap_after_line = inline_suggestion_virtual_gap(app_state, geometry.line_height);
+        let virtual_gap_y = virtual_gap_after_line.map(|(_, gap)| gap).unwrap_or(0.0);
         let clip_top = geometry.viewport_text_top - geometry.line_height;
-        let clip_bottom =
-            geometry.viewport_text_top + geometry.viewport_text_height + geometry.line_height;
+        let clip_bottom = geometry.viewport_text_top
+            + geometry.viewport_text_height
+            + geometry.line_height
+            + virtual_gap_y;
         let viewport_clip = Some((clip_top, clip_bottom));
 
         let result = rebuild_layout_projection(
-            text,
             app_state,
             &mut self.text_system,
             &mut self.atlas,
             &self.queue,
             [geometry.origin_x, corrected_origin_y],
             viewport_clip,
-            text_fg,
+            virtual_gap_after_line,
+            self.theme.editor.fg.as_f32(),
             self.theme.editor.bg.as_f32(),
-            spans,
         );
 
         match result {
@@ -258,7 +271,7 @@ impl Renderer {
             center_bounds,
             geometry.line_height,
             geometry.font_size,
-            app_state.total_lines().max(1).to_string().len().max(3),
+            app_state.visible_line_count().max(1).to_string().len().max(3),
             geometry.gutter_width,
         );
     }
@@ -275,15 +288,19 @@ impl Renderer {
 
         // The text_system buffer is already shaped from the last update_editor_content call.
         // Use it to compute the correct visual scroll Y (accounts for wrapped long lines).
-        let visual_scroll_y =
-            visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y.max(0.0));
+        let visual_scroll_y = visual_y_for_logical_scroll_with_folds(
+            &self.text_system,
+            app_state.current_scroll_y.max(0.0),
+            app_state.folded_ranges(),
+        );
         let corrected_origin_y =
             center_bounds[1] + self.editor_padding_y + geometry.line_height - visual_scroll_y;
 
-        let caret_layout = compute_caret_layout(
+        let caret_layout = compute_caret_layout_with_folds(
             &self.text_system,
             app_state,
             [geometry.origin_x, corrected_origin_y],
+            app_state.folded_ranges(),
         );
         let primary_caret = caret_rect_for_mode(
             caret_layout,
@@ -317,6 +334,7 @@ impl Renderer {
                 &self.queue,
                 [geometry.origin_x, corrected_origin_y],
                 self.theme.editor.bg.as_f32(),
+                app_state.folded_ranges(),
             )
             .unwrap_or(None)
         } else {
@@ -334,7 +352,7 @@ impl Renderer {
             center_bounds,
             geometry.line_height,
             geometry.font_size,
-            app_state.total_lines().max(1).to_string().len().max(3),
+            app_state.visible_line_count().max(1).to_string().len().max(3),
             geometry.gutter_width,
         );
     }
@@ -353,58 +371,85 @@ impl Renderer {
         let Some(suggestion) = app_state.inline_suggestion() else {
             return Vec::new();
         };
-        let first_line = suggestion.lines().next().unwrap_or_default();
-        if first_line.is_empty() {
-            return Vec::new();
-        }
+        const MAX_INLINE_SUGGESTION_LINES: usize = 6;
+
+        let caret = compute_caret_layout_with_folds(
+            &self.text_system,
+            app_state,
+            [origin_x, origin_y],
+            app_state.folded_ranges(),
+        );
+        let line_height = self.theme.editor.line_height.max(1.0);
+        let color =
+            crate::config::theme_config::linear_rgba_to_srgb_u8(self.theme.ui.fg_ghost.as_f32());
+        let ghost_color = self.theme.ui.fg_ghost.as_f32();
+        let mut instances = Vec::new();
 
         self.editor_overlay_text_system.set_metrics(Metrics::new(
             self.theme.editor.font_size,
             self.theme.editor.line_height,
         ));
-        self.editor_overlay_text_system.set_size(Some(width), None);
-        let color =
-            crate::config::theme_config::linear_rgba_to_srgb_u8(self.theme.ui.fg_ghost.as_f32());
-        self.editor_overlay_text_system
-            .set_text_with_color(first_line, color);
 
-        let caret = compute_caret_layout(&self.text_system, app_state, [origin_x, origin_y]);
-        let raw_glyphs = self.editor_overlay_text_system.collect_visible_glyphs(
-            caret.x,
-            caret.top,
-            self.theme.ui.fg_ghost.as_f32(),
-            None,
-        );
-        let mut instances = Vec::with_capacity(raw_glyphs.len());
-        for glyph in raw_glyphs {
-            let entry = if let Some(entry) = self.atlas.get(glyph.cache_key) {
-                entry
-            } else {
-                let Some(rasterized) = crate::text::raster::rasterize_glyph_alpha(
-                    &mut self.editor_overlay_text_system,
-                    glyph.cache_key,
-                ) else {
-                    continue;
-                };
-                let Ok(entry) = self.atlas.get_or_reserve(glyph.cache_key, &rasterized) else {
-                    continue;
-                };
-                entry
-            };
-            if entry.region.width == 0 || entry.region.height == 0 {
+        for (line_idx, line) in suggestion
+            .split('\n')
+            .take(MAX_INLINE_SUGGESTION_LINES)
+            .enumerate()
+        {
+            if line.is_empty() {
                 continue;
             }
-            let (uv_min, uv_max) = self.atlas.uv_min_max(entry.region);
-            let top_left_x = glyph.physical_x + entry.placement_left;
-            let top_left_y = glyph.physical_y - entry.placement_top;
-            instances.push(GlyphInstance::new(
-                [top_left_x as f32, top_left_y as f32],
-                [entry.region.width as f32, entry.region.height as f32],
-                uv_min,
-                uv_max,
-                glyph.color,
-            ));
+
+            let (line_x, line_width) = if line_idx == 0 {
+                let remaining_width = (origin_x + width - caret.x).max(1.0);
+                (caret.x, remaining_width)
+            } else {
+                (origin_x, width.max(1.0))
+            };
+            let line_y = caret.top + line_idx as f32 * line_height;
+
+            self.editor_overlay_text_system
+                .set_size(Some(line_width), Some(line_height));
+            self.editor_overlay_text_system
+                .set_text_with_color(line, color);
+
+            let raw_glyphs = self.editor_overlay_text_system.collect_visible_glyphs(
+                line_x,
+                line_y,
+                ghost_color,
+                None,
+            );
+            instances.reserve(raw_glyphs.len());
+            for glyph in raw_glyphs {
+                let entry = if let Some(entry) = self.atlas.get(glyph.cache_key) {
+                    entry
+                } else {
+                    let Some(rasterized) = crate::text::raster::rasterize_glyph_alpha(
+                        &mut self.editor_overlay_text_system,
+                        glyph.cache_key,
+                    ) else {
+                        continue;
+                    };
+                    let Ok(entry) = self.atlas.get_or_reserve(glyph.cache_key, &rasterized) else {
+                        continue;
+                    };
+                    entry
+                };
+                if entry.region.width == 0 || entry.region.height == 0 {
+                    continue;
+                }
+                let (uv_min, uv_max) = self.atlas.uv_min_max(entry.region);
+                let top_left_x = glyph.physical_x + entry.placement_left;
+                let top_left_y = glyph.physical_y - entry.placement_top;
+                instances.push(GlyphInstance::new(
+                    [top_left_x as f32, top_left_y as f32],
+                    [entry.region.width as f32, entry.region.height as f32],
+                    uv_min,
+                    uv_max,
+                    glyph.color,
+                ));
+            }
         }
+
         self.atlas.flush_pending(&self.queue);
         instances
     }
@@ -455,11 +500,16 @@ fn build_caret_rects(
     for vc in app_state.virtual_cursors() {
         let (line_idx, byte_in_line) =
             app_state.char_idx_to_line_and_byte_in_line(vc.char_idx);
-        let layout = compute_caret_layout_at(
+        let line_hidden = app_state.is_line_folded(line_idx);
+        if line_hidden {
+            continue;
+        }
+        let layout = compute_caret_layout_at_with_folds(
             text_system,
             line_idx,
             byte_in_line,
             viewport_origin,
+            app_state.folded_ranges(),
         );
         let rect = caret_rect_for_mode(
             layout,

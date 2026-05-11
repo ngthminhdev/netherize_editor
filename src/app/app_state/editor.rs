@@ -48,6 +48,78 @@ impl AppState {
         true
     }
 
+    /// Sau khi `>` được insert, kiểm tra xem vừa đóng một opening tag chưa.
+    /// Nếu có → insert closing tag và giữ cursor giữa 2 tag.
+    /// Chỉ kích hoạt cho HTML / JSX / TSX.
+    pub fn insert_html_auto_close_tag(&mut self) -> bool {
+        let ext = self
+            .active_file()
+            .and_then(|p| p.extension())
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .unwrap_or_default();
+        if !matches!(ext.as_str(), "html" | "htm" | "jsx" | "tsx") {
+            return false;
+        }
+
+        if self.cursor_char_idx == 0 {
+            return false;
+        }
+
+        // Scan at most 512 chars back để tìm `<`
+        let scan_end = self.cursor_char_idx; // đã qua `>`
+        let scan_start = scan_end.saturating_sub(512);
+        let chars: Vec<char> = self.text.slice(scan_start..scan_end).chars().collect();
+
+        let lt_pos = match chars.iter().rposition(|&c| c == '<') {
+            Some(p) => p,
+            None => return false,
+        };
+
+        let after_lt = &chars[lt_pos + 1..];
+        if after_lt.is_empty() {
+            return false;
+        }
+
+        // Bỏ qua closing tag, comment, doctype, processing instruction
+        match after_lt[0] {
+            '/' | '!' | '?' => return false,
+            c if !c.is_alphabetic() && c != '_' => return false,
+            _ => {}
+        }
+
+        // Tên tag: chữ/số, `-`, `_`, `.`, `:`
+        let tag_name: String = after_lt
+            .iter()
+            .take_while(|&&c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | ':'))
+            .collect();
+
+        if tag_name.is_empty() {
+            return false;
+        }
+
+        // Self-closing `<br />` — char trước `>` là `/`
+        if chars.len() >= 2 && chars[chars.len() - 2] == '/' {
+            return false;
+        }
+
+        // Void elements (HTML / HTM / JSX / TSX đều bỏ qua)
+        const VOID: &[&str] = &[
+            "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
+            "source", "track", "wbr",
+        ];
+        if VOID.contains(&tag_name.to_ascii_lowercase().as_str()) {
+            return false;
+        }
+
+        // Insert closing tag; cursor không di chuyển → ở giữa 2 tag
+        let close_tag = format!("</{tag_name}>");
+        self.apply_insert(self.cursor_char_idx, close_tag);
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
     pub fn insert_auto_pair(&mut self, open: char) -> bool {
         let Some(close) = matching_close_char(open) else {
             return false;
@@ -765,8 +837,9 @@ impl AppState {
             next_target_col = col - 1;
         } else if line_idx > 0 {
             // Ở đầu dòng và đi trái -> sang cuối dòng trước.
-            target_idx = self.cursor_char_idx.saturating_sub(1);
-            next_target_col = self.max_col_for_line(line_idx - 1);
+            let target_line = self.previous_visible_line_before(line_idx);
+            target_idx = self.text.line_to_char(target_line) + self.max_col_for_line(target_line);
+            next_target_col = self.max_col_for_line(target_line);
         }
 
         let _ = self.update_cursor_position(target_idx);
@@ -786,9 +859,9 @@ impl AppState {
             next_target_col = col + 1;
         } else {
             // Ở cuối dòng, ArrowRight sẽ nhảy sang đầu dòng kế tiếp (nếu có).
-            let total_lines = self.text.len_lines();
-            if line_idx + 1 < total_lines {
-                target_idx = self.text.line_to_char(line_idx + 1);
+            let target_line = self.next_visible_line_after(line_idx);
+            if target_line != line_idx {
+                target_idx = self.text.line_to_char(target_line);
                 next_target_col = 0;
             }
         }
@@ -804,7 +877,7 @@ impl AppState {
         let next_idx = if line_idx == 0 {
             self.cursor_char_idx
         } else {
-            let target_line = line_idx - 1;
+            let target_line = self.previous_visible_line_before(line_idx);
             let line_start = self.text.line_to_char(target_line);
             let new_col = self.target_col.min(self.max_col_for_line(target_line));
             line_start + new_col
@@ -814,11 +887,10 @@ impl AppState {
 
     pub fn move_down(&mut self) {
         let (line_idx, _) = self.cursor_line_col();
-        let total_lines = self.text.len_lines();
-        let next_idx = if line_idx + 1 >= total_lines {
+        let target_line = self.next_visible_line_after(line_idx);
+        let next_idx = if target_line == line_idx {
             self.cursor_char_idx
         } else {
-            let target_line = line_idx + 1;
             let line_start = self.text.line_to_char(target_line);
             let new_col = self.target_col.min(self.max_col_for_line(target_line));
             line_start + new_col
@@ -957,7 +1029,14 @@ impl AppState {
 
     /// Adjust target_scroll_y so the cursor is within the viewport.
     pub fn auto_scroll_to_cursor(&mut self, viewport_lines: usize) {
-        let (cursor_line, _) = self.cursor_line_col();
+        let (raw_cursor_line, _) = self.cursor_line_col();
+
+        // If the cursor is on a hidden line, use the visible marker line instead.
+        // This prevents viewport jitter when navigating through folded regions.
+        let cursor_line = self
+            .fold_marker_line_for_hidden_line(raw_cursor_line)
+            .unwrap_or(raw_cursor_line);
+
         let margin = 3usize;
         let target_line = self.target_scroll_y.floor().max(0.0) as usize;
         if cursor_line < target_line + margin {

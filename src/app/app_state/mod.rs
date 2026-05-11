@@ -18,7 +18,6 @@ use crate::app::{
 };
 use crate::async_runtime::message::{
     FilePreviewLine, FileSystemChangeKind, FileSystemEvent, LspCompletionItem, LspDiagnostic,
-    PersistedHistoryEnvelope,
 };
 use crate::config::keymap_loader::KeymapLoader;
 use crate::config::ui_config::IndentConfig;
@@ -58,6 +57,42 @@ pub struct ExternalChangeReport {
     pub notices: Vec<String>,
 }
 
+/// `WorkDoneProgress` lifecycle kind sent by the LSP server inside a
+/// `$/progress` notification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LspProgressKind {
+    Begin,
+    Report,
+    End,
+}
+
+/// Snapshot of the most recent `$/progress` notification reported by an LSP
+/// server (e.g. rust-analyzer's `PrimeCaches`/`Indexing`). When `Some`, the
+/// status bar shows a "[⏳ LSP: …]" hint so the user knows the server is busy.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LspProgressEntry {
+    pub server: String,
+    pub token: String,
+    pub title: Option<String>,
+    pub message: Option<String>,
+    pub percentage: Option<u32>,
+}
+
+impl LspProgressEntry {
+    pub fn status_label(&self) -> String {
+        let head = match (self.title.as_deref(), self.message.as_deref()) {
+            (Some(t), Some(m)) if !m.is_empty() && t != m => format!("{t}: {m}"),
+            (Some(t), _) => t.to_string(),
+            (None, Some(m)) => m.to_string(),
+            (None, None) => "working".to_string(),
+        };
+        match self.percentage {
+            Some(pct) => format!("{head} {pct}%"),
+            None => head,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VisualSelectionRange {
     pub start_char: usize,
@@ -80,6 +115,8 @@ pub struct EditorBuffer {
     pub language_id: Option<String>,
     pub git_baseline: Option<String>,
     pub git_line_statuses: HashMap<usize, GitLineStatus>,
+    /// Per-buffer RAM-only undo/redo stack. Lives until the buffer is closed.
+    pub history: EditHistory,
 }
 
 impl EditorBuffer {
@@ -89,6 +126,7 @@ impl EditorBuffer {
             language_id,
             git_baseline: None,
             git_line_statuses: HashMap::new(),
+            history: EditHistory::new(),
         }
     }
 }
@@ -195,7 +233,7 @@ pub struct HelpEntry {
     pub label: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HelpState {
     pub title: String,
     pub subtitle: String,
@@ -203,6 +241,7 @@ pub struct HelpState {
     pub source_label: String,
     pub sections: Vec<HelpSection>,
     pub lines: Vec<String>,
+    pub scroll_y: f32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -219,6 +258,7 @@ pub struct MarkdownPreviewLine {
     pub text: String,
     pub spans: Vec<StyledTextSpan>,
     pub block_type: MarkdownBlockType,
+    pub code_language: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -267,6 +307,7 @@ impl HelpState {
             source_label: source_label.to_string(),
             sections: build_help_sections(bindings),
             lines: build_help_lines(profile_name, source_label, bindings),
+            scroll_y: 0.0,
         }
     }
 }
@@ -278,6 +319,11 @@ fn build_help_sections(bindings: &[crate::config::keymap_config::KeyBinding]) ->
         (Some("palette"), "PALETTE", "mode = palette"),
         (Some("normal"), "NORMAL", "mode = normal"),
         (Some("visual"), "VISUAL", "mode = visual"),
+        (Some("terminal"), "TERMINAL", "mode = terminal"),
+        (Some("terminal_normal"), "TERMINAL NORMAL", "mode = terminal_normal"),
+        (Some("explorer"), "EXPLORER", "mode = explorer"),
+        (Some("multicursor"), "MULTICURSOR", "mode = multicursor"),
+        (Some("multiinsert"), "MULTIINSERT", "mode = multiinsert"),
     ];
 
     let mut sections: Vec<HelpSection> = specs
@@ -391,88 +437,11 @@ fn build_help_sections(bindings: &[crate::config::keymap_config::KeyBinding]) ->
     };
     sections.insert(1, vim_commands);
 
-    // ── Terminal section ─────────────────────────────────────────────────────
-    let terminal_section = HelpSection {
-        title: "TERMINAL".to_string(),
-        mode_hint: "F12 / mod+\\ to toggle".to_string(),
-        entries: vec![
-            HelpEntry {
-                keys: vec!["F12".into()],
-                label: "Toggle terminal".into(),
-            },
-            HelpEntry {
-                keys: vec!["Ctrl+q".into()],
-                label: "Terminal → normal mode".into(),
-            },
-            HelpEntry {
-                keys: vec!["Esc".into()],
-                label: "Terminal → editor focus".into(),
-            },
-            HelpEntry {
-                keys: vec!["mod+v".into()],
-                label: "Paste into terminal".into(),
-            },
-        ],
-    };
-    sections.push(terminal_section);
-
-    // ── Explorer section ─────────────────────────────────────────────────────
-    let explorer_section = HelpSection {
-        title: "EXPLORER".to_string(),
-        mode_hint: "leader+e to focus".to_string(),
-        entries: vec![
-            HelpEntry {
-                keys: vec!["j".into(), "k".into()],
-                label: "Navigate up/down".into(),
-            },
-            HelpEntry {
-                keys: vec!["o".into()],
-                label: "Open file / toggle dir".into(),
-            },
-            HelpEntry {
-                keys: vec!["a".into()],
-                label: "Create file".into(),
-            },
-            HelpEntry {
-                keys: vec!["A".into()],
-                label: "Create folder".into(),
-            },
-            HelpEntry {
-                keys: vec!["d".into()],
-                label: "Delete node".into(),
-            },
-            HelpEntry {
-                keys: vec!["r".into()],
-                label: "Rename".into(),
-            },
-            HelpEntry {
-                keys: vec!["H".into()],
-                label: "Toggle hidden files".into(),
-            },
-            HelpEntry {
-                keys: vec!["e".into(), "E".into()],
-                label: "Expand / expand all".into(),
-            },
-        ],
-    };
-    sections.push(explorer_section);
-
     // ── Append built-in leader sequences not already in TOML ────────────────
     let normal_extra = vec![
         (vec!["spc".into(), "e".into()], "Focus explorer"),
         (vec!["spc".into(), "i".into()], "Focus inspector"),
-        (vec!["spc".into(), "f".into(), "f".into()], "Open file picker"),
-        (vec!["spc".into(), "f".into(), "w".into()], "Search in files"),
-        (vec!["spc".into(), "f".into(), "m".into()], "Format document"),
-        (vec!["spc".into(), "t".into(), "h".into()], "Theme selector"),
-        (vec!["spc".into(), "x".into()], "Close buffer"),
         (vec!["spc".into(), "s".into()], "Leap jump"),
-        (vec!["spc".into(), "g".into(), "f".into()], "Open lazygit"),
-        (vec!["spc".into(), "g".into(), "l".into()], "Git blame line"),
-        (vec!["spc".into(), "d".into(), "f".into()], "Open lazydocker"),
-        (vec!["g".into(), "g".into()], "First line"),
-        (vec!["g".into(), "c".into(), "c".into()], "Toggle comment"),
-        (vec!["z".into(), "z".into()], "Center cursor"),
     ];
     if let Some(section) = sections.iter_mut().find(|s| s.title == "NORMAL") {
         for (keys, label) in normal_extra {
@@ -485,12 +454,7 @@ fn build_help_sections(bindings: &[crate::config::keymap_config::KeyBinding]) ->
         }
     }
 
-    let visual_extra = vec![
-        (vec!["spc".into(), "a".into(), "c".into()], "Add to AI context"),
-        (vec!["g".into(), "c".into()], "Toggle comment"),
-        (vec!["g".into(), "g".into()], "First line"),
-        (vec!["z".into(), "z".into()], "Center cursor"),
-    ];
+    let visual_extra: Vec<(Vec<String>, &str)> = vec![];
     if let Some(section) = sections.iter_mut().find(|s| s.title == "VISUAL") {
         for (keys, label) in visual_extra {
             if !section.entries.iter().any(|e| e.keys == keys) {
@@ -505,9 +469,6 @@ fn build_help_sections(bindings: &[crate::config::keymap_config::KeyBinding]) ->
     let global_extra = vec![
         (vec!["spc".into(), "e".into()], "Focus explorer"),
         (vec!["spc".into(), "i".into()], "Focus inspector"),
-        (vec!["spc".into(), "f".into(), "f".into()], "Open file picker"),
-        (vec!["spc".into(), "f".into(), "w".into()], "Search in files"),
-        (vec!["spc".into(), "f".into(), "m".into()], "Format document"),
     ];
     if let Some(section) = sections.iter_mut().find(|s| s.title == "GLOBAL") {
         for (keys, label) in global_extra {
@@ -677,6 +638,8 @@ fn build_help_lines(
     lines.push("Terminal".to_string());
     append_help_binding(&mut lines, bindings, "app.toggle_terminal", "Toggle terminal");
     append_help_binding(&mut lines, bindings, "app.focus_terminal", "Focus terminal");
+    append_help_binding(&mut lines, bindings, "terminal.tab_new", "New terminal tab");
+    append_help_binding(&mut lines, bindings, "terminal.tab_close", "Close terminal tab");
     lines.push("  tip: Ctrl+Q in terminal → terminal normal mode (navigate with hjkl)".to_string());
     lines.push("".to_string());
 
@@ -684,6 +647,7 @@ fn build_help_lines(
     lines.push("AI Assistant".to_string());
     append_help_binding(&mut lines, bindings, "ai.chat_toggle", "Toggle AI chat");
     append_help_binding(&mut lines, bindings, "ai.chat_focus", "Focus AI chat");
+    append_help_binding(&mut lines, bindings, "ai.chat_stop", "Stop AI chat generation");
     append_help_binding(&mut lines, bindings, "ai.accept_inline", "Accept inline suggestion");
     lines.push("".to_string());
 
@@ -696,6 +660,7 @@ fn build_help_lines(
     append_help_binding(&mut lines, bindings, "git.open_lazygit", "Open lazygit");
     append_help_binding(&mut lines, bindings, "git.blame_line", "Git blame line");
     append_help_binding(&mut lines, bindings, "app.toggle_markdown_preview", "Markdown preview");
+    append_help_binding(&mut lines, bindings, "app.focus_markdown_preview", "Focus markdown preview");
     append_help_binding(&mut lines, bindings, "editor.leap_start", "Leap jump");
 
     lines
@@ -719,6 +684,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "app.open_workspace_symbols" => "Workspace symbols",
         "app.open_document_symbols" => "Find symbol in file",
         "app.toggle_markdown_preview" => "Toggle markdown preview",
+        "app.focus_markdown_preview" => "Focus markdown preview",
         // ── Focus & docks ─────────────────────────────────────────────────
         "app.focus_explorer" => "Focus explorer",
         "app.focus_terminal" => "Focus terminal",
@@ -739,6 +705,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "mode.enter_insert" => "Insert mode",
         "mode.enter_visual" => "→ Visual mode",
         "mode.enter_visual_line" => "→ Visual line",
+        "mode.enter_terminal_focus" => "→ Terminal focus",
         // ── Movement ──────────────────────────────────────────────────────
         "editor.move_left" => "Move left",
         "editor.move_down" => "Move down",
@@ -797,6 +764,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "editor.insert_at_line_start" => "Insert at line start",
         "editor.insert_line_below" => "New line below",
         "editor.insert_line_above" => "New line above",
+        "editor.insert_newline" => "Insert newline",
         // ── Completion ────────────────────────────────────────────────────
         "completion.next" => "Select next",
         "completion.prev" => "Select previous",
@@ -839,9 +807,27 @@ fn command_label_for_help(command_id: &str) -> String {
         "explorer.toggle_ignored" => "Toggle ignored",
         "explorer.move_to_top" => "Move to top",
         "explorer.move_to_bottom" => "Move to bottom",
+        "explorer.collapse_node" => "Collapse node",
+        "explorer.collapse_all_under_node" => "Collapse all",
+        "explorer.expand_all_under_node" => "Expand all",
+        "explorer.start_filter" => "Start filter",
+        "explorer.clear_filter" => "Clear filter",
         // ── Terminal ──────────────────────────────────────────────────────
         "app.toggle_terminal" => "Toggle terminal",
         "terminal.paste" => "Terminal paste",
+        "terminal.enter_normal_mode" => "Enter terminal normal",
+        "terminal.search_open" => "Search in terminal",
+        "terminal.tab_new" => "New terminal tab",
+        "terminal.tab_close" => "Close terminal tab",
+        "terminal.tab_switch_1" => "Terminal tab 1",
+        "terminal.tab_switch_2" => "Terminal tab 2",
+        "terminal.tab_switch_3" => "Terminal tab 3",
+        "terminal.tab_switch_4" => "Terminal tab 4",
+        "terminal.tab_switch_5" => "Terminal tab 5",
+        "terminal.tab_switch_6" => "Terminal tab 6",
+        "terminal.tab_switch_7" => "Terminal tab 7",
+        "terminal.tab_switch_8" => "Terminal tab 8",
+        "terminal.tab_switch_9" => "Terminal tab 9",
         // ── Git ───────────────────────────────────────────────────────────
         "git.open_lazygit" => "Open lazygit",
         "git.open_lazydocker" => "Open lazydocker",
@@ -852,6 +838,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "ai.accept_inline" => "Accept AI suggestion",
         "ai.chat_toggle" => "Toggle AI chat",
         "ai.chat_send" => "Send AI message",
+        "ai.chat_stop" => "Stop AI chat generation",
         "ai.chat_focus" => "Focus AI chat",
         "ai.chat_close" => "Close AI chat",
         "ai.chat_add_selection_context" => "Add selection to AI",
@@ -860,6 +847,19 @@ fn command_label_for_help(command_id: &str) -> String {
         // ── Jump list ─────────────────────────────────────────────────────
         "editor.jump_back" => "Jump back",
         "editor.jump_forward" => "Jump forward",
+        // ── Multi-cursor ──────────────────────────────────────────────────
+        "multicursor.add_next" => "Add next match",
+        "multicursor.skip" => "Skip match",
+        "multicursor.insert_before" => "Insert before cursors",
+        "multicursor.append_after" => "Append after cursors",
+        "multicursor.change" => "Change at cursors",
+        "multicursor.delete" => "Delete at cursors",
+        // ── Overlay / palette ─────────────────────────────────────────────
+        "overlay.select_prev" => "Select previous",
+        "overlay.select_next" => "Select next",
+        // ── Misc ──────────────────────────────────────────────────────────
+        "app.toggle_maximize_focus" => "Toggle maximize focus",
+        "projects.recent" => "Recent projects",
         _ => command_id,
     };
     label.to_string()
@@ -920,6 +920,17 @@ pub struct CompletionState {
     pub trigger_pos: CompletionTriggerPosition,
     pub anchor_line: usize,
     pub anchor_col: usize,
+    pub prefix_col: usize,
+    /// Hover documentation fetched on-demand for the selected item.
+    pub hover_doc: Option<String>,
+    /// `true` once we've received a final answer (success, failure, or "skip — already inline")
+    /// so the UI can stop showing the "Loading…" hint.
+    pub hover_doc_resolved: bool,
+    /// Monotonic counter bumped on every selection change. Each in-flight
+    /// `completionItem/resolve` (or fallback hover) carries the revision it
+    /// was issued for; results whose revision != `current_revision` on arrival
+    /// are silently dropped so a slow/late doc never lands on a newer item.
+    pub current_revision: u64,
 }
 
 impl CompletionState {
@@ -943,6 +954,10 @@ impl CompletionState {
             },
             anchor_line,
             anchor_col,
+            prefix_col: prefix_start_col,
+            hover_doc: None,
+            hover_doc_resolved: false,
+            current_revision: 0,
         }
     }
 }
@@ -964,11 +979,6 @@ pub struct FileHistoryEntrySummary {
     pub index: usize,
     pub label: String,
     pub secondary_label: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-struct StoredFileHistory {
-    history: EditHistory,
 }
 
 #[derive(Debug, Clone)]
@@ -1184,10 +1194,11 @@ pub struct AppState {
     pub current_scroll_y: f32,
     pub scroll_column: usize,
     workspace_model: Option<WorkspaceModel>,
-    command_palette: CommandPalette,
+    pub(crate) command_palette: CommandPalette,
     file_picker_results_cache: Vec<FilePickerEntry>,
     last_search_query: String,
     search_highlights: Vec<(usize, usize)>,
+    semantic_symbol_highlights: Vec<(usize, usize)>,
     search_whole_word: bool,
     terminal_panel_open: bool,
     external_conflict: Option<String>,
@@ -1195,16 +1206,21 @@ pub struct AppState {
     last_saved_at: Option<Instant>,
     clipboard_record: Option<ClipboardRecord>,
     history: EditHistory,
-    stored_file_histories: HashMap<PathBuf, StoredFileHistory>,
     current_transaction: Option<PendingTransaction>,
     file_history_preview: Option<FileHistoryPreviewSession>,
     pending_highlight_edits: Vec<HighlightEdit>,
     current_overlays: Vec<EditorOverlay>,
     completion: Option<CompletionState>,
+    completion_loading: bool,
     inline_suggestion: Option<String>,
     jump_back_stack: Vec<(PathBuf, usize)>,
     jump_forward_stack: Vec<(PathBuf, usize)>,
     diagnostics: HashMap<PathBuf, Vec<LspDiagnostic>>,
+    /// Latest `$/progress` snapshot, keyed by `(server, token)` so concurrent
+    /// progress streams don't clobber each other. The status bar reads the
+    /// most recently updated entry.
+    lsp_progress: HashMap<(String, String), LspProgressEntry>,
+    lsp_progress_active_key: Option<(String, String)>,
     pending_explorer_rename_path: Option<PathBuf>,
     indent_config: IndentConfig,
     is_initial_launch_welcome: bool,
@@ -1216,6 +1232,11 @@ pub struct AppState {
     /// When false (Visual-seeded search), use plain substring matching instead
     /// of whole-word matching for subsequent Ctrl+n calls.
     mc_whole_word: bool,
+    // ── Code folding ──────────────────────────────────────────────────────────
+    // Ranges are start/end inclusive. The start line remains visible as the
+    // fold marker; every following line through end is hidden from layout.
+    folded_ranges: Vec<(usize, usize)>,
+    foldable_ranges_cache: Option<Vec<(usize, usize)>>,
 }
 
 impl AppState {
@@ -1250,24 +1271,29 @@ impl AppState {
             last_saved_at: None,
             clipboard_record: None,
             history: EditHistory::new(),
-            stored_file_histories: HashMap::new(),
             current_transaction: None,
             file_history_preview: None,
             pending_highlight_edits: Vec::new(),
             current_overlays: Vec::new(),
             completion: None,
+            completion_loading: false,
             inline_suggestion: None,
             jump_back_stack: Vec::new(),
             jump_forward_stack: Vec::new(),
             diagnostics: HashMap::new(),
+            lsp_progress: HashMap::new(),
+            lsp_progress_active_key: None,
             pending_explorer_rename_path: None,
             indent_config: IndentConfig::default(),
             is_initial_launch_welcome: true,
             markdown_preview: MarkdownPreviewState::default(),
+            semantic_symbol_highlights: Vec::new(),
             virtual_cursors: Vec::new(),
             mc_search_word: None,
             mc_search_start: 0,
             mc_whole_word: true,
+            folded_ranges: Vec::new(),
+            foldable_ranges_cache: None,
         }
     }
 
@@ -1300,24 +1326,29 @@ impl AppState {
             last_saved_at: None,
             clipboard_record: None,
             history: EditHistory::new(),
-            stored_file_histories: HashMap::new(),
             current_transaction: None,
             file_history_preview: None,
             pending_highlight_edits: Vec::new(),
             current_overlays: Vec::new(),
             completion: None,
+            completion_loading: false,
             inline_suggestion: None,
             jump_back_stack: Vec::new(),
             jump_forward_stack: Vec::new(),
             diagnostics: HashMap::new(),
+            lsp_progress: HashMap::new(),
+            lsp_progress_active_key: None,
             pending_explorer_rename_path: None,
             indent_config: IndentConfig::default(),
             is_initial_launch_welcome: false,
             markdown_preview: MarkdownPreviewState::default(),
+            semantic_symbol_highlights: Vec::new(),
             virtual_cursors: Vec::new(),
             mc_search_word: None,
             mc_search_start: 0,
             mc_whole_word: true,
+            folded_ranges: Vec::new(),
+            foldable_ranges_cache: None,
         }
     }
 
@@ -1350,4 +1381,244 @@ impl AppState {
         fs::write(path, content)
             .map_err(|err| format!("create probe file {:?} failed: {err}", path))
     }
+
+    // ── Code folding ──────────────────────────────────────────────────────────
+
+    pub fn folded_ranges(&self) -> &[(usize, usize)] {
+        &self.folded_ranges
+    }
+
+    /// Returns true when `line_idx` is hidden by a folded range.
+    ///
+    /// The marker/start line is intentionally not considered folded because it
+    /// still participates in layout and cursor navigation.
+    pub fn is_line_folded(&self, line_idx: usize) -> bool {
+        self.folded_ranges
+            .iter()
+            .any(|&(s, e)| s < line_idx && line_idx <= e)
+    }
+
+    pub fn is_fold_marker_line(&self, line_idx: usize) -> bool {
+        self.folded_ranges.iter().any(|&(s, _)| s == line_idx)
+    }
+
+    pub fn folded_line_count_at_marker(&self, line_idx: usize) -> Option<usize> {
+        self.folded_ranges
+            .iter()
+            .find(|&&(s, _)| s == line_idx)
+            .map(|&(s, e)| e.saturating_sub(s))
+    }
+
+    pub fn fold_marker_line_for_hidden_line(&self, line_idx: usize) -> Option<usize> {
+        self.folded_ranges
+            .iter()
+            .find(|&&(s, e)| s < line_idx && line_idx <= e)
+            .map(|&(s, _)| s)
+    }
+
+    pub fn folded_visual_y_offset_before(&self, line_idx: usize, line_height: f32) -> f32 {
+        self.folded_ranges
+            .iter()
+            .filter(|&&(_s, e)| e < line_idx)
+            .map(|&(s, e)| e.saturating_sub(s) as f32 * line_height)
+            .sum()
+    }
+
+    pub fn next_visible_line_after(&self, line_idx: usize) -> usize {
+        let total = self.text.len_lines();
+        if line_idx + 1 >= total {
+            return line_idx;
+        }
+
+        let mut candidate = line_idx + 1;
+        loop {
+            let Some(&(_s, e)) = self
+                .folded_ranges
+                .iter()
+                .find(|&&(s, e)| s < candidate && candidate <= e)
+            else {
+                break;
+            };
+            candidate = e.saturating_add(1);
+            if candidate >= total {
+                return line_idx;
+            }
+        }
+        candidate
+    }
+
+    pub fn previous_visible_line_before(&self, line_idx: usize) -> usize {
+        if line_idx == 0 {
+            return line_idx;
+        }
+
+        let candidate = line_idx - 1;
+        self.fold_marker_line_for_hidden_line(candidate)
+            .unwrap_or(candidate)
+    }
+
+    pub fn set_foldable_ranges_cache(&mut self, ranges: Vec<(usize, usize)>) {
+        self.foldable_ranges_cache = Some(ranges);
+    }
+
+    pub fn foldable_ranges_cache(&self) -> Option<&[(usize, usize)]> {
+        self.foldable_ranges_cache.as_deref()
+    }
+
+    pub fn visible_line_count(&self) -> usize {
+        let total = self.text.len_lines().max(1);
+        let last_line = total.saturating_sub(1);
+        let hidden: usize = self
+            .folded_ranges
+            .iter()
+            .filter(|&&(s, _)| s < total)
+            .map(|&(s, e)| e.min(last_line).saturating_sub(s))
+            .sum();
+        total.saturating_sub(hidden).max(1)
+    }
+
+    pub fn compute_visible_line_map(&self) -> Vec<usize> {
+        let total = self.text.len_lines();
+        let mut map = Vec::with_capacity(total);
+        let mut logical = 0;
+        for &(s, e) in &self.folded_ranges {
+            while logical < s && logical < total {
+                map.push(logical);
+                logical += 1;
+            }
+            if s < total {
+                map.push(s);
+                logical = e.saturating_add(1);
+            }
+        }
+        while logical < total {
+            map.push(logical);
+            logical += 1;
+        }
+        map
+    }
+
+    pub fn logical_to_visible_line(&self, logical: usize) -> Option<usize> {
+        if self.is_line_folded(logical) {
+            return None;
+        }
+        let map = self.compute_visible_line_map();
+        map.iter().position(|&l| l == logical)
+    }
+
+    pub fn visible_to_logical_line(&self, visible: usize) -> usize {
+        let map = self.compute_visible_line_map();
+        map.get(visible).copied().unwrap_or(visible)
+    }
+
+    pub fn toggle_fold_at_line(&mut self, logical_line: usize) -> bool {
+        if let Some(pos) = self
+            .folded_ranges
+            .iter()
+            .position(|&(s, e)| s == logical_line || (s < logical_line && logical_line <= e))
+        {
+            self.folded_ranges.remove(pos);
+            self.bump_revision();
+            return true;
+        }
+
+        let cache = match self.foldable_ranges_cache.as_ref() {
+            Some(c) => c.clone(),
+            None => return false,
+        };
+
+        let mut best_match: Option<(usize, usize)> = None;
+        for &(s, e) in &cache {
+            if s <= logical_line && logical_line <= e {
+                if let Some((_, best_e)) = best_match {
+                    if e < best_e {
+                        best_match = Some((s, e));
+                    }
+                } else {
+                    best_match = Some((s, e));
+                }
+            }
+        }
+
+        if let Some((s, e)) = best_match {
+            let overlaps = self
+                .folded_ranges
+                .iter()
+                .any(|&(fs, fe)| s <= fe && fs <= e);
+            if overlaps {
+                return false;
+            }
+
+            self.folded_ranges.push((s, e));
+            self.folded_ranges.sort_by_key(|&(start, _)| start);
+            self.folded_ranges = merge_fold_ranges(&self.folded_ranges);
+
+            if let Some(marker_line) =
+                self.fold_marker_line_for_hidden_line(self.cursor_line_col().0)
+            {
+                let line_start = self.text.line_to_char(marker_line);
+                self.cursor_char_idx = line_start;
+                let (_, col) = self.cursor_line_col();
+                self.target_col = col;
+            }
+            self.bump_revision();
+            return true;
+        }
+
+        false
+    }
+
+    pub fn toggle_fold_all(&mut self) -> bool {
+        if !self.folded_ranges.is_empty() {
+            return self.unfold_all();
+        }
+        self.fold_all()
+    }
+
+    pub fn unfold_all(&mut self) -> bool {
+        if self.folded_ranges.is_empty() {
+            return false;
+        }
+        self.folded_ranges.clear();
+        self.bump_revision();
+        true
+    }
+
+    pub fn fold_all(&mut self) -> bool {
+        let cache = match self.foldable_ranges_cache.as_ref() {
+            Some(c) if !c.is_empty() => c.clone(),
+            _ => return false,
+        };
+
+        let mut new_ranges: Vec<(usize, usize)> = cache.into_iter().collect();
+        new_ranges.sort_by_key(|&(start, _)| start);
+        self.folded_ranges = merge_fold_ranges(&new_ranges);
+        let (cursor_line, _) = self.cursor_line_col();
+        if let Some(marker_line) = self.fold_marker_line_for_hidden_line(cursor_line) {
+            let line_start = self.text.line_to_char(marker_line);
+            self.cursor_char_idx = line_start;
+            let (_, col) = self.cursor_line_col();
+            self.target_col = col;
+        }
+        self.bump_revision();
+        true
+    }
+}
+
+fn merge_fold_ranges(ranges: &[(usize, usize)]) -> Vec<(usize, usize)> {
+    if ranges.is_empty() {
+        return Vec::new();
+    }
+    let mut merged: Vec<(usize, usize)> = Vec::new();
+    let mut current = ranges[0];
+    for &(s, e) in &ranges[1..] {
+        if s <= current.1 {
+            current.1 = current.1.max(e);
+        } else {
+            merged.push(current);
+            current = (s, e);
+        }
+    }
+    merged.push(current);
+    merged
 }

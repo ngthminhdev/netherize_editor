@@ -45,6 +45,10 @@ pub enum CommandPaletteMode {
     FileHistory,
     /// AI Chat install confirmation overlay — asks user whether to auto-install opencode.
     AiChatInstallConfirm,
+    /// LSP Code Action picker — danh sách các action user có thể chọn để apply.
+    CodeAction,
+    /// Python environment selector — opened from the command palette.
+    PythonEnvSelector,
 }
 
 impl CommandPaletteMode {
@@ -67,6 +71,8 @@ impl CommandPaletteMode {
             Self::LspReferences => "refs> ",
             Self::FileHistory => "history> ",
             Self::AiChatInstallConfirm => "install> ",
+            Self::CodeAction => "action> ",
+            Self::PythonEnvSelector => "python> ",
         }
     }
 
@@ -89,6 +95,8 @@ impl CommandPaletteMode {
             Self::LspReferences => "no references found",
             Self::FileHistory => "no local history entries",
             Self::AiChatInstallConfirm => "Install opencode CLI? (y/n)",
+            Self::CodeAction => "no code actions available",
+            Self::PythonEnvSelector => "scanning Python environments...",
         }
     }
 
@@ -111,6 +119,8 @@ impl CommandPaletteMode {
             Self::LspReferences => "REFS",
             Self::FileHistory => "HISTORY",
             Self::AiChatInstallConfirm => "INSTALL",
+            Self::CodeAction => "ACTIONS",
+            Self::PythonEnvSelector => "PYTHON ENV",
         }
     }
 
@@ -147,6 +157,10 @@ pub enum CommandPaletteAction {
         column: u32,
     },
     SelectFileHistoryEntry(usize),
+    /// Áp dụng code action tại index đã chọn trong pending_code_actions của AppShell.
+    ApplyCodeAction(usize),
+    /// Chọn Python environment path để restart LSP.
+    SelectPythonEnv(PathBuf),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -518,10 +532,13 @@ impl CommandPalette {
     }
 
     pub fn refresh_results(&mut self, _workspace: Option<&WorkspaceModel>) {
-        // LspReferences: static list, never overwrite with fzf results.
+        // LspReferences / CodeAction / PythonEnvSelector: static list populated by async results.
         if matches!(
             self.mode,
-            CommandPaletteMode::LspReferences | CommandPaletteMode::FileHistory
+            CommandPaletteMode::LspReferences
+                | CommandPaletteMode::FileHistory
+                | CommandPaletteMode::CodeAction
+                | CommandPaletteMode::PythonEnvSelector
         ) {
             self.results = self.static_items.clone();
             if self.results.is_empty() {
@@ -590,6 +607,8 @@ impl CommandPalette {
             CommandPaletteMode::ThemeSelector => unreachable!("handled above"),
             CommandPaletteMode::LspReferences => unreachable!("handled above"),
             CommandPaletteMode::FileHistory => unreachable!("handled above"),
+            CommandPaletteMode::CodeAction => unreachable!("handled above"),
+            CommandPaletteMode::PythonEnvSelector => Vec::new(),
         };
 
         if self.results.is_empty() {
@@ -716,10 +735,18 @@ impl CommandPalette {
                 let visible_result_rows = (body_height / row_height).floor() as usize;
                 (pw, px, py, ph, visible_result_rows.max(1))
             } else if self.mode.is_complex_picker() {
-                // File Picker / LiveGrep — min 30% screen, TRUE CENTER giống command palette
-                // Rộng hơn command palette một chút để hiển thị đường dẫn file
+                // File Picker / LiveGrep / Recent Projects — min 35% screen, TRUE CENTER
+                // Recent Projects ưu tiên rộng hơn để hiển thị full path.
+                let available_w = (width - 48.0).max(320.0);
                 let min_w = (width * 0.35).max(400.0);
-                let pw = min_w.max(660.0_f32.min(width - 48.0));
+                let pw = if matches!(
+                    self.mode,
+                    CommandPaletteMode::RecentProjects | CommandPaletteMode::FilePicker
+                ) {
+                    (width * 0.70).clamp(min_w, available_w)
+                } else {
+                    min_w.max(660.0_f32.min(available_w))
+                };
                 let px = x + ((width - pw) * 0.5).max(0.0);
                 let body_rows = complex_picker_body_rows(
                     self.mode,
@@ -902,14 +929,20 @@ impl CommandPalette {
 
 fn symbol_icon(kind: &str) -> &'static str {
     match kind {
-        "Function" | "Method" | "Constructor" => "ƒ",
+        "Function" | "Method" => "fn",
+        "Constructor" => "fn",
+        "Field" => "f",
+        "Variable" | "Constant" => "v",
         "Class" => "C",
-        "Struct" => "S",
         "Interface" => "I",
+        "Module" | "Namespace" | "Package" => "m",
+        "Property" => "p",
         "Enum" | "EnumMember" => "E",
-        "Variable" | "Constant" | "Field" | "Property" => "v",
-        "Module" | "Namespace" | "Package" => "M",
-        _ => "*",
+        "Keyword" => "k",
+        "Operator" => "op",
+        "TypeParameter" => "T",
+        "Struct" => "S",
+        _ => "·",
     }
 }
 
@@ -946,9 +979,12 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
         ("app.search_in_files", "Search In Files"),
         ("app.open_workspace_symbols", "Open Workspace Symbols"),
         ("app.open_document_symbols", "Find Symbol in File"),
+        ("lsp.select_python_env", "Change Python Venv"),
+        ("workspace.reload", "Reload Workspace"),
         ("app.open_vim_command", "Open Vim Command"),
         ("app.open_help", "Open Cheat Sheet"),
         ("app.toggle_terminal", "Toggle Terminal"),
+        ("app.toggle_maximize_focus", "Toggle Zen Mode"),
         ("app.toggle_left_dock", "Toggle Left Dock"),
         ("app.focus_editor", "Focus Editor"),
         ("app.focus_explorer", "Focus Explorer"),
@@ -1252,7 +1288,7 @@ mod tests {
         };
 
         let item = CommandPaletteItem::document_symbol(&symbol);
-        assert_eq!(item.label, "[ƒ] build_picker  Function  Ln 43");
+        assert_eq!(item.label, "[fn] build_picker  Function  Ln 43");
         assert_eq!(item.tone, CommandPaletteItemTone::Function);
         assert_eq!(
             item.action,

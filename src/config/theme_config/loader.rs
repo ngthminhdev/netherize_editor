@@ -125,11 +125,23 @@ impl ThemeConfig {
             file_icons: raw_file_icons,
         } = raw;
 
-        let editor = parse_editor(&raw_editor)?;
-        let ui = parse_ui(&raw_ui, &raw_editor)?;
+        let default_theme_source = load_default_theme_icon_source();
+        let merged_editor = merge_raw_editor(
+            default_theme_source.as_ref().map(|src| &src.editor),
+            &raw_editor,
+        );
+        let merged_ui = merge_raw_ui(default_theme_source.as_ref().map(|src| &src.ui), &raw_ui);
+
+        let editor = parse_editor(&merged_editor)?;
+        let ui = parse_ui(&merged_ui, &merged_editor)?;
         let git = parse_git(&raw_git, &ui)?;
         let syntax = parse_syntax(&raw_syntax)?;
-        let icons = parse_icons(&raw_icons, &ui)?;
+        let merged_icons = merge_raw_icons(default_theme_source.as_ref().map(|src| &src.icons), &raw_icons);
+        let merged_file_icons = merge_raw_file_icons(
+            default_theme_source.as_ref().map(|src| &src.file_icons),
+            &raw_file_icons,
+        );
+        let icons = parse_icons(&merged_icons, &ui)?;
 
         Ok(Self {
             name: theme.name,
@@ -139,16 +151,16 @@ impl ThemeConfig {
             git,
             syntax,
             icons,
-            exact_icons: parse_exact_file_icons(&raw_file_icons),
-            extension_icons: parse_extension_file_icons(&raw_file_icons),
-            default_file_icon: raw_file_icons
+            exact_icons: parse_exact_file_icons(&merged_file_icons),
+            extension_icons: parse_extension_file_icons(&merged_file_icons),
+            default_file_icon: merged_file_icons
                 .default_file
                 .as_deref()
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .unwrap_or("📄")
                 .to_string(),
-            default_folder_icon: raw_file_icons
+            default_folder_icon: merged_file_icons
                 .default_folder
                 .as_deref()
                 .map(str::trim)
@@ -156,6 +168,213 @@ impl ThemeConfig {
                 .unwrap_or("📁")
                 .to_string(),
         })
+    }
+}
+
+fn load_default_theme_icon_source() -> Option<RawThemeFile> {
+    let path = find_profile_path(ThemeConfig::default_profile())?;
+    let content = std::fs::read_to_string(path).ok()?;
+    toml::from_str(&content).ok()
+}
+
+fn merge_raw_editor(defaults: Option<&RawEditor>, current: &RawEditor) -> RawEditor {
+    let Some(defaults) = defaults else {
+        return current.clone();
+    };
+
+    RawEditor {
+        bg: current.bg.clone(),
+        fg: current.fg.clone(),
+        cursor: current.cursor.clone(),
+        selection: current.selection.clone(),
+        gutter: current.gutter.clone(),
+        gutter_active: current
+            .gutter_active
+            .clone()
+            .or_else(|| defaults.gutter_active.clone()),
+        indent_guide: current
+            .indent_guide
+            .clone()
+            .or_else(|| defaults.indent_guide.clone()),
+        rainbow_brackets: current
+            .rainbow_brackets
+            .clone()
+            .or_else(|| defaults.rainbow_brackets.clone()),
+        font_size: current.font_size.or(defaults.font_size),
+        line_height: current.line_height.or(defaults.line_height),
+        font_family: current.font_family.clone().or_else(|| defaults.font_family.clone()),
+        nerd_font_family: current
+            .nerd_font_family
+            .clone()
+            .or_else(|| defaults.nerd_font_family.clone()),
+    }
+}
+
+fn merge_raw_ui(defaults: Option<&RawUi>, current: &RawUi) -> RawUi {
+    let Some(defaults) = defaults else {
+        return current.clone();
+    };
+
+    RawUi {
+        bg: current.bg.clone().or_else(|| defaults.bg.clone()),
+        sidebar_bg: current.sidebar_bg.clone(),
+        panel_bg: current.panel_bg.clone(),
+        terminal_bg: current.terminal_bg.clone().or_else(|| defaults.terminal_bg.clone()),
+        overlay_bg: current.overlay_bg.clone().or_else(|| defaults.overlay_bg.clone()),
+        status_bar_bg: current.status_bar_bg.clone(),
+        border_color: current.border_color.clone(),
+        selection_bg: current.selection_bg.clone().or_else(|| defaults.selection_bg.clone()),
+        dirty_indicator: current
+            .dirty_indicator
+            .clone()
+            .or_else(|| defaults.dirty_indicator.clone()),
+        fg: current.fg.clone().or_else(|| defaults.fg.clone()),
+        fg_dim: current.fg_dim.clone().or_else(|| defaults.fg_dim.clone()),
+        fg_ghost: current.fg_ghost.clone().or_else(|| defaults.fg_ghost.clone()),
+        accent: current.accent.clone().or_else(|| defaults.accent.clone()),
+        cyan: current.cyan.clone().or_else(|| defaults.cyan.clone()),
+        magenta: current.magenta.clone().or_else(|| defaults.magenta.clone()),
+        amber: current.amber.clone().or_else(|| defaults.amber.clone()),
+        success: current.success.clone().or_else(|| defaults.success.clone()),
+        warning: current.warning.clone().or_else(|| defaults.warning.clone()),
+        info: current.info.clone().or_else(|| defaults.info.clone()),
+        error: current.error.clone().or_else(|| defaults.error.clone()),
+        mode_normal: current
+            .mode_normal
+            .clone()
+            .or_else(|| defaults.mode_normal.clone()),
+        mode_insert: current
+            .mode_insert
+            .clone()
+            .or_else(|| defaults.mode_insert.clone()),
+        mode_visual: current
+            .mode_visual
+            .clone()
+            .or_else(|| defaults.mode_visual.clone()),
+        sidebar_font_size: current.sidebar_font_size.or(defaults.sidebar_font_size),
+        sidebar_line_height: current.sidebar_line_height.or(defaults.sidebar_line_height),
+        panel_font_size: current.panel_font_size.or(defaults.panel_font_size),
+        panel_line_height: current.panel_line_height.or(defaults.panel_line_height),
+        sidebar_width: current.sidebar_width.or(defaults.sidebar_width),
+        right_sidebar_width: current.right_sidebar_width.or(defaults.right_sidebar_width),
+        bottom_panel_height: current.bottom_panel_height.or(defaults.bottom_panel_height),
+        top_bar_height: current.top_bar_height.or(defaults.top_bar_height),
+        status_bar_height: current.status_bar_height.or(defaults.status_bar_height),
+    }
+}
+
+fn merge_raw_icons(defaults: Option<&RawIcons>, current: &RawIcons) -> RawIcons {
+    let Some(defaults) = defaults else {
+        return current.clone();
+    };
+
+    RawIcons {
+        explorer_file_marker: current
+            .explorer_file_marker
+            .clone()
+            .or_else(|| defaults.explorer_file_marker.clone()),
+        explorer_folder_collapsed_marker: current
+            .explorer_folder_collapsed_marker
+            .clone()
+            .or_else(|| defaults.explorer_folder_collapsed_marker.clone()),
+        explorer_folder_expanded_marker: current
+            .explorer_folder_expanded_marker
+            .clone()
+            .or_else(|| defaults.explorer_folder_expanded_marker.clone()),
+        file_picker_dot: current
+            .file_picker_dot
+            .clone()
+            .or_else(|| defaults.file_picker_dot.clone()),
+        folder_closed: current.folder_closed.clone().or_else(|| defaults.folder_closed.clone()),
+        folder_open: current.folder_open.clone().or_else(|| defaults.folder_open.clone()),
+        default_file: current.default_file.clone().or_else(|| defaults.default_file.clone()),
+        rust: current.rust.clone().or_else(|| defaults.rust.clone()),
+        javascript: current.javascript.clone().or_else(|| defaults.javascript.clone()),
+        typescript: current.typescript.clone().or_else(|| defaults.typescript.clone()),
+        tsx: current.tsx.clone().or_else(|| defaults.tsx.clone()),
+        jsx: current.jsx.clone().or_else(|| defaults.jsx.clone()),
+        java: current.java.clone().or_else(|| defaults.java.clone()),
+        kotlin: current.kotlin.clone().or_else(|| defaults.kotlin.clone()),
+        c: current.c.clone().or_else(|| defaults.c.clone()),
+        cpp: current.cpp.clone().or_else(|| defaults.cpp.clone()),
+        csharp: current.csharp.clone().or_else(|| defaults.csharp.clone()),
+        dart: current.dart.clone().or_else(|| defaults.dart.clone()),
+        swift: current.swift.clone().or_else(|| defaults.swift.clone()),
+        php: current.php.clone().or_else(|| defaults.php.clone()),
+        ruby: current.ruby.clone().or_else(|| defaults.ruby.clone()),
+        lua: current.lua.clone().or_else(|| defaults.lua.clone()),
+        zig: current.zig.clone().or_else(|| defaults.zig.clone()),
+        scala: current.scala.clone().or_else(|| defaults.scala.clone()),
+        docker: current.docker.clone().or_else(|| defaults.docker.clone()),
+        sql: current.sql.clone().or_else(|| defaults.sql.clone()),
+        xml: current.xml.clone().or_else(|| defaults.xml.clone()),
+        gradle: current.gradle.clone().or_else(|| defaults.gradle.clone()),
+        vue: current.vue.clone().or_else(|| defaults.vue.clone()),
+        svelte: current.svelte.clone().or_else(|| defaults.svelte.clone()),
+        astro: current.astro.clone().or_else(|| defaults.astro.clone()),
+        elm: current.elm.clone().or_else(|| defaults.elm.clone()),
+        haskell: current.haskell.clone().or_else(|| defaults.haskell.clone()),
+        ocaml: current.ocaml.clone().or_else(|| defaults.ocaml.clone()),
+        r: current.r.clone().or_else(|| defaults.r.clone()),
+        perl: current.perl.clone().or_else(|| defaults.perl.clone()),
+        clojure: current.clojure.clone().or_else(|| defaults.clojure.clone()),
+        fsharp: current.fsharp.clone().or_else(|| defaults.fsharp.clone()),
+        nim: current.nim.clone().or_else(|| defaults.nim.clone()),
+        solidity: current.solidity.clone().or_else(|| defaults.solidity.clone()),
+        graphql: current.graphql.clone().or_else(|| defaults.graphql.clone()),
+        toml: current.toml.clone().or_else(|| defaults.toml.clone()),
+        yaml: current.yaml.clone().or_else(|| defaults.yaml.clone()),
+        makefile: current.makefile.clone().or_else(|| defaults.makefile.clone()),
+        cmake: current.cmake.clone().or_else(|| defaults.cmake.clone()),
+        nginx: current.nginx.clone().or_else(|| defaults.nginx.clone()),
+        terraform: current.terraform.clone().or_else(|| defaults.terraform.clone()),
+        ansible: current.ansible.clone().or_else(|| defaults.ansible.clone()),
+        python: current.python.clone().or_else(|| defaults.python.clone()),
+        go: current.go.clone().or_else(|| defaults.go.clone()),
+        config: current.config.clone().or_else(|| defaults.config.clone()),
+        json: current.json.clone().or_else(|| defaults.json.clone()),
+        markdown: current.markdown.clone().or_else(|| defaults.markdown.clone()),
+        html: current.html.clone().or_else(|| defaults.html.clone()),
+        css: current.css.clone().or_else(|| defaults.css.clone()),
+        sass: current.sass.clone().or_else(|| defaults.sass.clone()),
+        shell: current.shell.clone().or_else(|| defaults.shell.clone()),
+        git: current.git.clone().or_else(|| defaults.git.clone()),
+        lock: current.lock.clone().or_else(|| defaults.lock.clone()),
+        image: current.image.clone().or_else(|| defaults.image.clone()),
+        proto: current.proto.clone().or_else(|| defaults.proto.clone()),
+    }
+}
+
+fn merge_raw_file_icons(defaults: Option<&RawFileIcons>, current: &RawFileIcons) -> RawFileIcons {
+    let Some(defaults) = defaults else {
+        return current.clone();
+    };
+
+    let mut extensions = defaults.extensions.clone().unwrap_or_default();
+    if let Some(current_extensions) = &current.extensions {
+        for (key, value) in current_extensions {
+            extensions.insert(key.clone(), value.clone());
+        }
+    }
+
+    let mut exact = defaults.exact.clone().unwrap_or_default();
+    if let Some(current_exact) = &current.exact {
+        for (key, value) in current_exact {
+            exact.insert(key.clone(), value.clone());
+        }
+    }
+
+    RawFileIcons {
+        default_file: current
+            .default_file
+            .clone()
+            .or_else(|| defaults.default_file.clone()),
+        default_folder: current
+            .default_folder
+            .clone()
+            .or_else(|| defaults.default_folder.clone()),
+        extensions: Some(extensions),
+        exact: Some(exact),
     }
 }
 
@@ -584,6 +803,42 @@ fn parse_icons(raw: &RawIcons, ui: &UiThemeTokens) -> Result<IconThemeTokens, St
         )?,
         tsx: parse_file_icon("icons.tsx", raw.tsx.as_ref(), "\u{E7BA}", ui.info)?,
         jsx: parse_file_icon("icons.jsx", raw.jsx.as_ref(), "\u{E7BA}", ui.amber)?,
+        java: parse_file_icon("icons.java", raw.java.as_ref(), "\u{E738}", ui.error)?,
+        kotlin: parse_file_icon("icons.kotlin", raw.kotlin.as_ref(), "\u{E634}", ui.magenta)?,
+        c: parse_file_icon("icons.c", raw.c.as_ref(), "\u{E61E}", ui.info)?,
+        cpp: parse_file_icon("icons.cpp", raw.cpp.as_ref(), "\u{E61D}", ui.info)?,
+        csharp: parse_file_icon("icons.csharp", raw.csharp.as_ref(), "\u{F81A}", ui.success)?,
+        dart: parse_file_icon("icons.dart", raw.dart.as_ref(), "\u{E798}", ui.cyan)?,
+        swift: parse_file_icon("icons.swift", raw.swift.as_ref(), "\u{E755}", ui.warning)?,
+        php: parse_file_icon("icons.php", raw.php.as_ref(), "\u{E73D}", ui.magenta)?,
+        ruby: parse_file_icon("icons.ruby", raw.ruby.as_ref(), "\u{E739}", ui.error)?,
+        lua: parse_file_icon("icons.lua", raw.lua.as_ref(), "\u{E620}", ui.info)?,
+        zig: parse_file_icon("icons.zig", raw.zig.as_ref(), "\u{E6A9}", ui.warning)?,
+        scala: parse_file_icon("icons.scala", raw.scala.as_ref(), "\u{E737}", ui.error)?,
+        docker: parse_file_icon("icons.docker", raw.docker.as_ref(), "\u{F308}", ui.info)?,
+        sql: parse_file_icon("icons.sql", raw.sql.as_ref(), "\u{E706}", ui.amber)?,
+        xml: parse_file_icon("icons.xml", raw.xml.as_ref(), "\u{E619}", ui.amber)?,
+        gradle: parse_file_icon("icons.gradle", raw.gradle.as_ref(), "\u{E70E}", ui.success)?,
+        vue: parse_file_icon("icons.vue", raw.vue.as_ref(), "\u{FD42}", ui.success)?,
+        svelte: parse_file_icon("icons.svelte", raw.svelte.as_ref(), "\u{E697}", ui.error)?,
+        astro: parse_file_icon("icons.astro", raw.astro.as_ref(), "\u{E6B3}", ui.warning)?,
+        elm: parse_file_icon("icons.elm", raw.elm.as_ref(), "\u{E62C}", ui.info)?,
+        haskell: parse_file_icon("icons.haskell", raw.haskell.as_ref(), "\u{E61F}", ui.magenta)?,
+        ocaml: parse_file_icon("icons.ocaml", raw.ocaml.as_ref(), "\u{E67A}", ui.amber)?,
+        r: parse_file_icon("icons.r", raw.r.as_ref(), "\u{F25D}", ui.info)?,
+        perl: parse_file_icon("icons.perl", raw.perl.as_ref(), "\u{E769}", ui.info)?,
+        clojure: parse_file_icon("icons.clojure", raw.clojure.as_ref(), "\u{E768}", ui.success)?,
+        fsharp: parse_file_icon("icons.fsharp", raw.fsharp.as_ref(), "\u{E7A7}", ui.info)?,
+        nim: parse_file_icon("icons.nim", raw.nim.as_ref(), "\u{E677}", ui.amber)?,
+        solidity: parse_file_icon("icons.solidity", raw.solidity.as_ref(), "\u{E6A8}", ui.fg_dim)?,
+        graphql: parse_file_icon("icons.graphql", raw.graphql.as_ref(), "\u{E662}", ui.magenta)?,
+        toml: parse_file_icon("icons.toml", raw.toml.as_ref(), "\u{E615}", ui.fg_ghost)?,
+        yaml: parse_file_icon("icons.yaml", raw.yaml.as_ref(), "\u{E60B}", ui.amber)?,
+        makefile: parse_file_icon("icons.makefile", raw.makefile.as_ref(), "\u{E779}", ui.warning)?,
+        cmake: parse_file_icon("icons.cmake", raw.cmake.as_ref(), "\u{E794}", ui.info)?,
+        nginx: parse_file_icon("icons.nginx", raw.nginx.as_ref(), "\u{F146B}", ui.success)?,
+        terraform: parse_file_icon("icons.terraform", raw.terraform.as_ref(), "\u{E69B}", ui.magenta)?,
+        ansible: parse_file_icon("icons.ansible", raw.ansible.as_ref(), "\u{E615}", ui.error)?,
         python: parse_file_icon("icons.python", raw.python.as_ref(), "\u{E73C}", ui.info)?,
         go: parse_file_icon("icons.go", raw.go.as_ref(), "\u{E724}", ui.cyan)?,
         config: parse_file_icon("icons.config", raw.config.as_ref(), "\u{E615}", ui.fg_ghost)?,
@@ -596,6 +851,7 @@ fn parse_icons(raw: &RawIcons, ui: &UiThemeTokens) -> Result<IconThemeTokens, St
         git: parse_file_icon("icons.git", raw.git.as_ref(), "\u{F1D3}", ui.warning)?,
         lock: parse_file_icon("icons.lock", raw.lock.as_ref(), "\u{F13E}", ui.fg_ghost)?,
         image: parse_file_icon("icons.image", raw.image.as_ref(), "\u{F1C5}", ui.success)?,
+        proto: parse_file_icon("icons.proto", raw.proto.as_ref(), "\u{F471}", ui.info)?,
     })
 }
 

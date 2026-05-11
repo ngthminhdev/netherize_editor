@@ -149,6 +149,10 @@ pub struct AiChatState {
     pub agent: AiAgentMode,
     /// Index of the currently highlighted suggestion in the suggestion popup.
     pub selected_suggestion_index: usize,
+    /// Pixel offset from the top of chat history. `f32::MAX` = follow latest (bottom).
+    pub scroll_y: f32,
+    /// Maximum valid scroll_y as computed by the renderer each frame.
+    pub max_scroll_y: f32,
 }
 
 impl Default for AiChatState {
@@ -162,6 +166,8 @@ impl Default for AiChatState {
             model: None,
             agent: AiAgentMode::Build,
             selected_suggestion_index: 0,
+            scroll_y: f32::MAX,
+            max_scroll_y: 0.0,
         }
     }
 }
@@ -185,7 +191,7 @@ impl Default for WorkbenchPanelState {
             left: PanelState::new(true, 240.0, vec![PanelTabId::Explorer, PanelTabId::Search]),
             right: PanelState::new(
                 false,
-                500.0,
+                650.0,
                 vec![
                     PanelTabId::AiChat,
                     PanelTabId::MarkdownPreview,
@@ -195,7 +201,7 @@ impl Default for WorkbenchPanelState {
             ),
             bottom: PanelState::new(
                 false,
-                220.0,
+                420.0,
                 vec![
                     PanelTabId::Terminal,
                     PanelTabId::DebugConsole,

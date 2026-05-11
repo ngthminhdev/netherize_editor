@@ -150,6 +150,7 @@ impl AppShell {
                     if (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON {
                         self.submit_parse_for_active_buffer(true);
                     }
+                    self.submit_lsp_document_highlight();
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                     Some(
@@ -282,6 +283,7 @@ impl AppShell {
             } else {
                 self.editor_caret_needs_layout = true;
             }
+            self.submit_lsp_document_highlight();
         } else if report.state_changed {
             self.editor_needs_layout = true;
             self.editor_caret_needs_layout = false;
@@ -296,6 +298,7 @@ impl AppShell {
             } else {
                 self.force_flush_lsp_did_change_for_active_file();
             }
+            let _ = self.app_state.clear_semantic_symbol_highlights();
         }
         if report.success
             && let Some(ch) = auto_trigger_char
@@ -305,6 +308,7 @@ impl AppShell {
         }
         if report.success && should_notify_did_open {
             self.submit_lsp_did_open_for_active_file();
+            self.submit_lsp_document_highlight();
         }
 
         report.request_redraw

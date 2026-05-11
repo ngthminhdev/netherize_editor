@@ -9,18 +9,14 @@ cursor = "#FABD2F"
 selection = "#3C3836"
 gutter = "#282828"
 gutter_active = "#EBDBB2"
-font_size = 14.0
-line_height = 22.0
-font_family = "Google Sans Code"
-nerd_font_family = "Hack Nerd Font"
 
 [ui]
 bg = "#1D2021"
-sidebar_bg = "#1B1B1B"
-panel_bg = "#1B1B1B"
+sidebar_bg = "#282828"
+panel_bg = "#282828"
 terminal_bg = "#141414"
 overlay_bg = "#1D2021D9"
-status_bar_bg = "#141414"
+status_bar_bg = "#282828"
 border_color = "#504945"
 selection_bg = "#665C54"
 
@@ -41,14 +37,7 @@ mode_normal = "#83A598"
 mode_insert = "#B8BB26"
 mode_visual = "#D3869B"
 
-sidebar_font_size = 14.0
-sidebar_line_height = 22.0
-panel_font_size = 14.0
-panel_line_height = 22.0
 
-sidebar_width = 280.0
-right_sidebar_width = 540.0
-bottom_panel_height = 220.0
 top_bar_height = 36.0
 
 [git]
@@ -59,152 +48,27 @@ added_gutter = "#B8BB26"
 deleted_gutter = "#FB4934"
 status_bar_height = 32.0
 
-[icons]
-explorer_file_marker = "·"
-explorer_folder_collapsed_marker = "▶"
-explorer_folder_expanded_marker = "▼"
-file_picker_dot = "●"
-
-[icons.folder_closed]
-glyph = "\uF07B"
-color = "#FABD2F"
-
-[icons.folder_open]
-glyph = "\uF07C"
-color = "#FABD2F"
-
-[icons.default_file]
-glyph = "\uF15B"
-color = "#7C6F64"
-
-[icons.rust]
-glyph = "\uE7A8"
-color = "#FE8019"
-
-[icons.javascript]
-glyph = "\uE781"
-color = "#FABD2F"
-
-[icons.typescript]
-glyph = "\uE628"
-color = "#83A598"
-
-[icons.tsx]
-glyph = "\uE7BA"
-color = "#83A598"
-
-[icons.jsx]
-glyph = "\uE7BA"
-color = "#FABD2F"
-
-[icons.python]
-glyph = "\uE73C"
-color = "#83A598"
-
-[icons.go]
-glyph = "\uE724"
-color = "#83A598"
-
-[icons.config]
-glyph = "\uE615"
-color = "#7C6F64"
-
-[icons.json]
-glyph = "\uE60B"
-color = "#FABD2F"
-
-[icons.markdown]
-glyph = "\uF48A"
-color = "#83A598"
-
-[icons.html]
-glyph = "\uE736"
-color = "#FB4934"
-
-[icons.css]
-glyph = "\uE749"
-color = "#83A598"
-
-[icons.sass]
-glyph = "\uE603"
-color = "#D3869B"
-
-[icons.shell]
-glyph = "\uF489"
-color = "#B8BB26"
-
-[icons.git]
-glyph = "\uF1D3"
-color = "#FE8019"
-
-[icons.lock]
-glyph = "\uF13E"
-color = "#7C6F64"
-
-[icons.image]
-glyph = "\uF1C5"
-color = "#B8BB26"
-
-[file_icons]
-default_file = "📄"
-default_folder = "📁"
-
-[file_icons.extensions]
-rs = ""
-ts = ""
-tsx = ""
-js = ""
-jsx = ""
-go = ""
-json = ""
-jsonc = ""
-yaml = ""
-yml = ""
-toml = ""
-sql = ""
-md = ""
-mdx = ""
-dockerfile = ""
-sh = ""
-bash = ""
-zsh = ""
-fish = ""
-lock = ""
-
-[file_icons.exact]
-Dockerfile = ""
-"docker-compose.yml" = ""
-"docker-compose.yaml" = ""
-".gitignore" = ""
-".gitattributes" = ""
-".gitmodules" = ""
-"package.json" = ""
-"package-lock.json" = ""
-"tsconfig.json" = ""
-"Cargo.toml" = ""
-Makefile = ""
-"README.md" = ""
 
 [syntax]
-keyword = "#FB4934"
-string = "#B8BB26"
-function = "#FABD2F"
+keyword = "#fb4934"       # Red (Gruvbox identity)
+string = "#b8bb26"
+function = "#fabd2f"
 comment = "#928374"
-type = "#83A598"
-number = "#D3869B"
-identifier = "#EBDBB2"
-parameter = "#FE8019"
-field = "#83A598"
-property = "#83A598"
-constant = "#D3869B"
-operator = "#FE8019"
-punctuation = "#EBDBB2"
-macro = "#8EC07C"
-lifetime = "#FE8019"
-boolean = "#D3869B"
-escape = "#FE8019"
-variable = "#EBDBB2"
-constructor = "#FABD2F"
-attribute = "#D79921"
-namespace = "#83A598"
-tag = "#FB4934"
+type = "#83a598"
+number = "#d3869b"
+identifier = "#ebdbb2"    # Foreground (cho variable references)
+parameter = "#fe8019"     # Orange (Gruvbox palette)
+field = "#83a598"         # Blue (Gruvbox palette)
+property = "#83a598"      # Blue (đồng bộ với field)
+constant = "#d3869b"
+operator = "#fe8019"      # Orange (Gruvbox palette)
+punctuation = "#ebdbb2"
+macro = "#8ec07c"
+lifetime = "#fe8019"
+boolean = "#d3869b"
+escape = "#fe8019"
+variable = "#fabd2f"      # Yellow (khác với identifier #ebdbb2)
+constructor = "#fabd2f"
+attribute = "#fb4934"     # Red (đồng bộ keyword)
+namespace = "#83a598"
+tag = "#fb4934"

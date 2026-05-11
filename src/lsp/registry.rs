@@ -5,6 +5,8 @@ use crate::syntax::syntax_engine::LanguageId;
 const RUST_ROOT_MARKERS: &[&str] = &["Cargo.toml", ".git"];
 const JS_TS_ROOT_MARKERS: &[&str] = &["package.json", "tsconfig.json", ".git"];
 const GO_ROOT_MARKERS: &[&str] = &["go.mod", ".git"];
+const JAVA_ROOT_MARKERS: &[&str] = &["pom.xml", "build.gradle", "build.gradle.kts", ".git"];
+const PYTHON_ROOT_MARKERS: &[&str] = &["pyproject.toml", "setup.py", "setup.cfg", ".git"];
 const SQL_ROOT_MARKERS: &[&str] = &[".sqls.json", "docker-compose.yml", ".git"];
 const NO_ROOT_MARKERS: &[&str] = &[];
 
@@ -96,6 +98,30 @@ static LANGUAGE_REGISTRY: &[LanguageProfile] = &[
         filenames: &[],
     },
     LanguageProfile {
+        key: "python",
+        language_label: "Python",
+        language_id: "python",
+        syntax_language_id: Some(LanguageId::Python),
+        lsp_binary: "pylsp",
+        launch_args: &[],
+        install_command: "pip install python-lsp-server",
+        root_markers: PYTHON_ROOT_MARKERS,
+        extensions: &["py"],
+        filenames: &[],
+    },
+    LanguageProfile {
+        key: "java",
+        language_label: "Java",
+        language_id: "java",
+        syntax_language_id: Some(LanguageId::Java),
+        lsp_binary: "jdtls",
+        launch_args: &["-data", ".jdtls_data"],
+        install_command: "brew install jdtls",
+        root_markers: JAVA_ROOT_MARKERS,
+        extensions: &["java"],
+        filenames: &[],
+    },
+    LanguageProfile {
         key: "sql",
         language_label: "SQL",
         language_id: "sql",
@@ -168,6 +194,18 @@ static LANGUAGE_REGISTRY: &[LanguageProfile] = &[
         filenames: &[],
     },
     LanguageProfile {
+        key: "protobuf",
+        language_label: "Protobuf",
+        language_id: "protobuf",
+        syntax_language_id: Some(LanguageId::Protobuf),
+        lsp_binary: "",
+        launch_args: &[],
+        install_command: "",
+        root_markers: NO_ROOT_MARKERS,
+        extensions: &["proto"],
+        filenames: &[],
+    },
+    LanguageProfile {
         key: "dotenv",
         language_label: "Dotenv",
         language_id: "dotenv",
@@ -178,6 +216,30 @@ static LANGUAGE_REGISTRY: &[LanguageProfile] = &[
         root_markers: NO_ROOT_MARKERS,
         extensions: &["env"],
         filenames: &[".env", ".env*", "env.*"],
+    },
+    LanguageProfile {
+        key: "xml",
+        language_label: "XML",
+        language_id: "xml",
+        syntax_language_id: Some(LanguageId::Xml),
+        lsp_binary: "",
+        launch_args: &[],
+        install_command: "",
+        root_markers: NO_ROOT_MARKERS,
+        extensions: &["xml"],
+        filenames: &[],
+    },
+    LanguageProfile {
+        key: "plaintext",
+        language_label: "Plain Text",
+        language_id: "plaintext",
+        syntax_language_id: Some(LanguageId::Plaintext),
+        lsp_binary: "",
+        launch_args: &[],
+        install_command: "",
+        root_markers: NO_ROOT_MARKERS,
+        extensions: &["txt"],
+        filenames: &[],
     },
 ];
 
@@ -261,6 +323,8 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
+    use crate::syntax::syntax_engine::LanguageId;
+
     use super::{SQL_ROOT_MARKERS, find_project_root, language_profile_for_path};
 
     fn unique_temp_dir(label: &str) -> PathBuf {
@@ -339,5 +403,48 @@ mod tests {
 
         assert_eq!(detected, nested);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn workspace_server_detection_supports_java_maven_marker() {
+        let root = unique_temp_dir("java_maven");
+        let project = root.join("workspace");
+        let nested = project.join("src/main/java/com/example");
+        fs::create_dir_all(&nested).expect("create nested dirs");
+        fs::write(project.join("pom.xml"), "<project/>").expect("write pom.xml");
+
+        let file_path = nested.join("Main.java");
+        let profile = language_profile_for_path(&file_path).expect("java profile");
+        assert_eq!(profile.key, "java");
+        assert_eq!(profile.lsp_binary, "jdtls");
+        let detected = find_project_root(&file_path, profile.root_markers);
+        assert_eq!(detected, project);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn workspace_server_detection_supports_java_gradle_marker() {
+        let root = unique_temp_dir("java_gradle");
+        let project = root.join("workspace");
+        let nested = project.join("src/main/java/com/example");
+        fs::create_dir_all(&nested).expect("create nested dirs");
+        fs::write(project.join("build.gradle"), "").expect("write build.gradle");
+
+        let file_path = nested.join("Main.java");
+        let profile = language_profile_for_path(&file_path).expect("java profile");
+        assert_eq!(profile.key, "java");
+        let detected = find_project_root(&file_path, profile.root_markers);
+        assert_eq!(detected, project);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn file_server_detection_matches_java_extension() {
+        let profile = language_profile_for_path(PathBuf::from("/tmp/MyClass.java").as_path())
+            .expect("java profile");
+        assert_eq!(profile.key, "java");
+        assert_eq!(profile.language_id, "java");
+        assert_eq!(profile.lsp_binary, "jdtls");
+        assert_eq!(profile.syntax_language_id, Some(LanguageId::Java));
     }
 }

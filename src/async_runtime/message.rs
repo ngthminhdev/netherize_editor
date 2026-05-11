@@ -1,6 +1,6 @@
 use std::{ops::Range, path::PathBuf};
 
-use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
 
 use crate::syntax::{highlight::HighlightSpan, syntax_engine::LanguageId};
 
@@ -8,6 +8,25 @@ use crate::syntax::{highlight::HighlightSpan, syntax_engine::LanguageId};
 pub enum GitFileStatus {
     Modified,
     Added,
+}
+
+/// Trạng thái cài đặt của từng tool hệ thống.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallStatus {
+    Pending,
+    Installing,
+    Success,
+    Failed,
+}
+
+/// Wire-format mirror of `WorkDoneProgress` lifecycle. Decoupled from
+/// `app::app_state::LspProgressKind` so the message layer doesn't depend on
+/// the app crate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LspProgressKindWire {
+    Begin,
+    Report,
+    End,
 }
 
 /// Topic giúp app biết result thuộc subsystem nào để so revision.
@@ -19,6 +38,8 @@ pub enum RequestTopic {
     WorkspaceWatch,
     TerminalPty,
     Git,
+    GitStatus,
+    GitBaseline,
     LspClient,
     LspCheck,
     /// Các LSP interactive requests: hover, definition, references.
@@ -26,17 +47,13 @@ pub enum RequestTopic {
     FzfSearch,
     FilePreview,
     AiInlineCompletion,
-    LocalHistory,
     AiChat,
     AiInstall,
     SystemDepCheck,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PersistedHistoryEnvelope {
-    pub version: u32,
-    pub file_path: PathBuf,
-    pub history: crate::core::transaction::EditHistory,
+    /// Per-tool streaming installation.
+    SystemDepInstall,
+    /// General-purpose system tasks (Python env scan, etc).
+    SystemTask,
 }
 
 /// Which search mode the fzf worker is running.
@@ -193,14 +210,6 @@ pub enum WorkerRequestPayload {
         max_lines: usize,
         target_line: Option<usize>,
     },
-    LoadLocalHistory {
-        file_path: PathBuf,
-    },
-    SaveLocalHistory {
-        file_path: PathBuf,
-        history: PersistedHistoryEnvelope,
-        max_bytes: usize,
-    },
     LspDidOpen {
         uri: String,
         language_id: String,
@@ -225,6 +234,12 @@ pub enum WorkerRequestPayload {
         uri: String,
         line: u32,
         character: u32,
+        /// When true, result goes into CompletionState.hover_doc instead of overlay.
+        for_completion: bool,
+        /// `Some(revision)` only when `for_completion=true`: snapshot of
+        /// `CompletionState.current_revision` to echo back so a stale
+        /// fallback-hover doesn't overwrite docs for a newer item.
+        completion_revision: Option<u64>,
     },
     /// textDocument/definition request — jump hoặc peek.
     LspDefinitionRequest {
@@ -236,6 +251,13 @@ pub enum WorkerRequestPayload {
     },
     /// textDocument/references request.
     LspReferencesRequest {
+        uri: String,
+        line: u32,
+        character: u32,
+    },
+    /// textDocument/documentHighlight request for the active file/cursor.
+    LspDocumentHighlightRequest {
+        language_id: String,
         uri: String,
         line: u32,
         character: u32,
@@ -263,6 +285,28 @@ pub enum WorkerRequestPayload {
         prefix_start_col: usize,
         prefix: String,
     },
+    /// textDocument/codeAction request.
+    LspCodeActionRequest {
+        uri: String,
+        line: u32,
+        character: u32,
+        diagnostics: Vec<LspDiagnostic>,
+    },
+    /// completionItem/resolve request — fetches additional `documentation`/`detail`
+    /// for a previously returned completion item.
+    LspCompletionResolveRequest {
+        language_id: String,
+        uri: String,
+        /// Original JSON of the completion item (round-tripped to the server).
+        item_json: String,
+        /// Label used to verify the response still matches the requested item.
+        item_label: String,
+        /// Snapshot of `CompletionState.current_revision` when this request
+        /// was issued. Echoed back in `LspCompletionResolveResult` so the
+        /// main thread can drop the result if the user has since moved on
+        /// to a different item (race-condition guard).
+        completion_revision: u64,
+    },
     AiInlineCompletionRequest {
         api_url: String,
         api_key: Option<String>,
@@ -273,6 +317,7 @@ pub enum WorkerRequestPayload {
         language_id: Option<String>,
         file_path: Option<PathBuf>,
         max_tokens: u32,
+        cancel_token: CancellationToken,
     },
     AiChatRequest {
         prompt: String,
@@ -288,12 +333,27 @@ pub enum WorkerRequestPayload {
         /// Optional primary agent override (e.g. "build" or "plan").
         agent: Option<String>,
     },
+    /// Cancel the currently running AI chat generation, if any.
+    AiChatCancel,
     /// Install the opencode CLI on the host machine.
     AiInstallRequest,
     /// Check for missing system CLI tools (fzf, lazygit, lazydocker, rg, etc.).
     CheckSystemDeps,
+    /// Install system CLI tools one-by-one, streaming per-tool progress messages.
+    InstallSystemDeps {
+        tools: Vec<String>,
+    },
     StopLspServer,
     ShutdownAllLspServers,
+    ScanPythonEnvironments {
+        workspace_root: PathBuf,
+    },
+    /// Detect Python / Node / Go runtime versions for statusbar display.
+    /// `python_binary` is the interpreter path from the selected venv (or system).
+    DetectRuntimeVersions {
+        python_binary: Option<PathBuf>,
+        workspace_root: PathBuf,
+    },
 }
 
 /// Loại location từ LSP — dùng cho definition và references.
@@ -333,6 +393,10 @@ pub struct LspCompletionItem {
     pub insert_text: Option<String>,
     pub text_edit_text: Option<String>,
     pub kind: Option<u32>,
+    pub documentation: Option<String>,
+    /// Original JSON of the item — needed to round-trip through `completionItem/resolve`.
+    /// `None` for items synthesized in tests.
+    pub raw_json: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -343,9 +407,38 @@ pub struct LspDocumentSymbol {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LspDocumentHighlight {
+    pub range: LspRange,
+    pub kind: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LspTextEdit {
     pub range: LspRange,
     pub new_text: String,
+}
+
+/// Pre-parsed markdown block produced on the worker for hover overlays.
+/// `Code` carries Tree-sitter highlight spans (theme-agnostic) so the main
+/// thread only does the cheap colour-resolution step on layout.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HoverDocBlock {
+    Prose(String),
+    Code {
+        text: String,
+        /// Highlight spans produced by `highlight_snippet` on the worker.
+        /// Empty when the language is unknown or the snippet is too long
+        /// for inline tree-sitter (mirrors the threshold check used elsewhere).
+        spans: Vec<HighlightSpan>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LspCodeAction {
+    pub title: String,
+    pub edits: Vec<LspTextEdit>,
+    /// Raw action JSON for codeAction/resolve when edits are empty but command is present.
+    pub raw_action: Option<String>,
 }
 
 /// Result worker trả về main thread.
@@ -444,6 +537,18 @@ pub enum WorkerResultPayload {
         level: String,
         message: String,
     },
+    /// Decoded `$/progress` notification (`WorkDoneProgress`). The main
+    /// thread renders this on the status bar so the user knows the LSP server
+    /// is busy (e.g. rust-analyzer indexing) and avoids spamming requests
+    /// that would just queue up.
+    LspProgress {
+        server_name: String,
+        token: String,
+        kind: LspProgressKindWire,
+        title: Option<String>,
+        message: Option<String>,
+        percentage: Option<u32>,
+    },
     LspCheckResult {
         /// File path gốc được check.
         path: PathBuf,
@@ -463,6 +568,15 @@ pub enum WorkerResultPayload {
         /// Vị trí cursor tại thời điểm gửi request (dùng để định vị popup).
         cursor_line: usize,
         cursor_col: usize,
+        /// Mirrors the request flag — routes result to completion doc panel.
+        for_completion: bool,
+        /// Echoed from request — only meaningful when `for_completion=true`.
+        /// Used by main thread to drop stale fallback-hover results.
+        completion_revision: Option<u64>,
+        /// Pre-parsed markdown blocks for the **non-completion** hover overlay
+        /// (Tree-sitter syntax highlighting computed on the worker so the main
+        /// thread doesn't block on heavy parses). `None` for completion path.
+        parsed_blocks: Option<Vec<HoverDocBlock>>,
     },
     /// textDocument/definition response.
     LspDefinitionResult {
@@ -473,6 +587,11 @@ pub enum WorkerResultPayload {
     /// textDocument/references response.
     LspReferencesResult {
         locations: Vec<LspLocation>,
+    },
+    /// textDocument/documentHighlight response.
+    LspDocumentHighlightResult {
+        uri: String,
+        highlights: Vec<LspDocumentHighlight>,
     },
     /// textDocument/documentSymbol response.
     LspDocumentSymbolsResult {
@@ -491,6 +610,20 @@ pub enum WorkerResultPayload {
         cursor_col: usize,
         prefix_start_col: usize,
         prefix: String,
+    },
+    /// textDocument/codeAction response.
+    LspCodeActionResult {
+        actions: Vec<LspCodeAction>,
+    },
+    /// completionItem/resolve response — augmented detail/documentation for the item
+    /// that the client requested resolution for.
+    LspCompletionResolveResult {
+        item_label: String,
+        detail: Option<String>,
+        documentation: Option<String>,
+        /// Echoed from the request so the main thread can compare against
+        /// `CompletionState.current_revision` and drop stale results.
+        completion_revision: u64,
     },
     FzfResults {
         query: String,
@@ -515,14 +648,8 @@ pub enum WorkerResultPayload {
         target_line: Option<usize>,
         lines: Vec<FilePreviewLine>,
     },
-    LocalHistoryLoaded {
-        file_path: PathBuf,
-        history: Option<PersistedHistoryEnvelope>,
-    },
-    LocalHistorySaved {
-        file_path: PathBuf,
-        bytes_written: usize,
-        trimmed_transactions: usize,
+    AiInlineCompletionChunk {
+        chunk: String,
     },
     AiInlineCompletionResult {
         suggestion: String,
@@ -530,6 +657,14 @@ pub enum WorkerResultPayload {
     /// Result of system dependency check: list of tools not found by `which`.
     SystemDepCheckResult {
         missing: Vec<String>,
+    },
+    /// Kết quả scan Python environments.
+    PythonEnvironmentsDiscovered(Vec<crate::async_runtime::python_env::PythonEnv>),
+    /// Runtime version strings for statusbar display.
+    RuntimeVersionsDetected {
+        python_version: Option<String>,
+        node_version: Option<String>,
+        go_version: Option<String>,
     },
 }
 
@@ -572,11 +707,24 @@ pub enum WorkerMessage {
         text: String,
     },
     AiStreamComplete,
+    AiStreamCancelled,
     AiStreamError {
         error: String,
     },
     /// The opencode CLI was installed successfully; the editor should restart.
     AiInstallSuccess,
+    /// Per-tool progress update during system dependency installation.
+    SystemDepToolProgress {
+        tool: String,
+        status: InstallStatus,
+    },
+    /// All system dep tools have been processed — installation loop is done.
+    SystemDepInstallDone,
+    /// LSP binary was not found on PATH when attempting to spawn the server.
+    LspMissingDependency {
+        language_id: String,
+        tool_name: String,
+    },
 }
 
 /// RequestSpec giúp caller tạo request mà không cần tự cấp request_id.

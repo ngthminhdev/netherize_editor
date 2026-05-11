@@ -9,6 +9,61 @@ impl AppState {
         true
     }
 
+    /// Update an item's `detail` (signature) by label. Used to apply data filled in
+    /// by `completionItem/resolve` (some LSPs only populate detail via resolve).
+    /// Updates both the raw item and the matching display item so the renderer sees it.
+    pub fn update_completion_item_detail(&mut self, label: &str, detail: Option<String>) {
+        let Some(state) = self.completion.as_mut() else {
+            return;
+        };
+        let mut changed = false;
+        for raw in state.raw_items.iter_mut() {
+            if raw.label == label && raw.detail != detail {
+                raw.detail = detail.clone();
+                changed = true;
+            }
+        }
+        for entry in state.filtered_items.iter_mut() {
+            if entry.item.label == label && entry.item.detail != detail {
+                entry.item.detail = detail.clone();
+                changed = true;
+            }
+        }
+        if changed {
+            self.revision += 1;
+        }
+    }
+
+    pub fn set_completion_hover_doc(&mut self, doc: Option<String>) {
+        if let Some(state) = self.completion.as_mut() {
+            state.hover_doc = doc;
+            // Calling with `None` means "back to loading" (e.g. on selection change).
+            // Calling with `Some(_)` means we have a definitive answer.
+            state.hover_doc_resolved = state.hover_doc.is_some();
+            self.revision += 1;
+        }
+    }
+
+    /// Mark the resolve as finished without populating any docs (e.g. server returned
+    /// no documentation, or the request failed, or no resolve was needed). Lets the
+    /// UI swap "Loading…" for "No docs available".
+    pub fn mark_completion_hover_doc_resolved(&mut self) {
+        if let Some(state) = self.completion.as_mut() {
+            if !state.hover_doc_resolved {
+                state.hover_doc_resolved = true;
+                self.revision += 1;
+            }
+        }
+    }
+
+    pub fn set_completion_loading(&mut self, loading: bool) {
+        self.completion_loading = loading;
+    }
+
+    pub fn is_completion_loading(&self) -> bool {
+        self.completion_loading
+    }
+
     pub fn clear_current_overlays(&mut self) -> bool {
         if self.current_overlays.is_empty() {
             return false;
@@ -235,6 +290,11 @@ impl AppState {
         let insert_at = index.min(self.text.len_chars());
         self.text.insert(insert_at, text);
         let _ = self.refresh_active_search_highlights();
+
+        // Clear folded ranges when text is modified to prevent corruption
+        if !self.folded_ranges.is_empty() {
+            self.folded_ranges.clear();
+        }
     }
 
     pub(super) fn apply_delete_raw(&mut self, index: usize, len_chars: usize) -> Option<String> {
@@ -250,6 +310,12 @@ impl AppState {
         let deleted = self.text.slice(index..end).to_string();
         self.text.remove(index..end);
         let _ = self.refresh_active_search_highlights();
+
+        // Clear folded ranges when text is modified to prevent corruption
+        if !self.folded_ranges.is_empty() {
+            self.folded_ranges.clear();
+        }
+
         Some(deleted)
     }
 
@@ -523,6 +589,24 @@ impl AppState {
 
     pub fn char_before_cursor(&self) -> Option<char> {
         (self.cursor_char_idx > 0).then(|| self.text.char(self.cursor_char_idx - 1))
+    }
+
+    /// Returns the char at (line, col) in the rope, or None if out of bounds.
+    pub fn char_at_line_col(&self, line: usize, col: usize) -> Option<char> {
+        if line >= self.text.len_lines() {
+            return None;
+        }
+        let line_start = self.text.line_to_char(line);
+        let line_len = self.text.line(line).len_chars();
+        let newline_adj = if line_len > 0 && self.text.char(line_start + line_len - 1) == '\n' {
+            1
+        } else {
+            0
+        };
+        if col >= line_len.saturating_sub(newline_adj) {
+            return None;
+        }
+        Some(self.text.char(line_start + col))
     }
 
     pub(super) fn line_indent_string(&self, line_idx: usize) -> String {
@@ -846,7 +930,27 @@ impl AppState {
 
         match buffer.content {
             BufferContent::Text(buffer) => {
+                // Commit any pending edits, then save the live history back into
+                // the old EditorBuffer so it survives the switch.
+                let _ = self.commit_transaction();
+                if let Some(old_idx) = self.active_buffer_index {
+                    if old_idx != index {
+                        let saved = std::mem::take(&mut self.history);
+                        if let Some(slot) = self.buffers.get_mut(old_idx) {
+                            if let BufferContent::Text(ref mut old_buf) = slot.content {
+                                old_buf.history = saved;
+                            }
+                        }
+                    }
+                }
+                // Load new file content (this calls clear_history internally).
                 self.load_buffer_from_file_resetting_view(&buffer.path)?;
+                // Restore the new buffer's per-buffer history.
+                if let Some(slot) = self.buffers.get(index) {
+                    if let BufferContent::Text(ref new_buf) = slot.content {
+                        self.history = new_buf.history.clone();
+                    }
+                }
                 self.active_file = Some(buffer.path.clone());
                 self.active_buffer_index = Some(index);
                 self.selection_anchor_char_idx = None;
@@ -856,6 +960,7 @@ impl AppState {
                 let _ = self.workspace_expand_to_path(&buffer.path);
             }
             BufferContent::Image(buffer) => {
+                self.save_current_text_buffer_history();
                 self.reset_text_editor_state();
                 let refreshed = load_image_buffer(&buffer.path);
                 if let Some(slot) = self.buffers.get_mut(index) {
@@ -865,6 +970,7 @@ impl AppState {
                 let _ = self.workspace_expand_to_path(&buffer.path);
             }
             BufferContent::Terminal(_) => {
+                self.save_current_text_buffer_history();
                 self.active_file = None;
                 self.active_buffer_index = Some(index);
                 self.selection_anchor_char_idx = None;
@@ -876,6 +982,7 @@ impl AppState {
             | BufferContent::FuzzyPicker(_)
             | BufferContent::SettingsTab(_)
             | BufferContent::Help(_) => {
+                self.save_current_text_buffer_history();
                 self.reset_text_editor_state();
                 self.active_buffer_index = Some(index);
                 let _ = self.clear_current_overlays();
@@ -884,6 +991,20 @@ impl AppState {
 
         self.bump_revision();
         Ok(())
+    }
+
+    /// Save the live `self.history` into the active EditorBuffer if it is a text buffer.
+    /// Must be called before switching away from any text buffer.
+    pub(super) fn save_current_text_buffer_history(&mut self) {
+        let _ = self.commit_transaction();
+        if let Some(old_idx) = self.active_buffer_index {
+            let saved = std::mem::take(&mut self.history);
+            if let Some(slot) = self.buffers.get_mut(old_idx) {
+                if let BufferContent::Text(ref mut buf) = slot.content {
+                    buf.history = saved;
+                }
+            }
+        }
     }
 
     pub(super) fn reset_text_editor_state(&mut self) {

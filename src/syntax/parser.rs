@@ -5,7 +5,10 @@ use tree_sitter::Language;
 use crate::{lsp::registry::language_profile_for_path, syntax::syntax_engine::LanguageId};
 
 pub fn language_id_for_path(path: &Path) -> Option<LanguageId> {
-    language_profile_for_path(path).and_then(|profile| profile.syntax_language_id)
+    language_profile_for_path(path)
+        .and_then(|profile| profile.syntax_language_id)
+        .or_else(|| language_id_for_extension(path.extension()?.to_str()?))
+        .or(Some(LanguageId::Plaintext))
 }
 
 pub fn language_id_for_extension(extension: &str) -> Option<LanguageId> {
@@ -27,8 +30,19 @@ pub fn language_id_for_extension(extension: &str) -> Option<LanguageId> {
         "dockerfile" => Some(LanguageId::Dockerfile),
         "md" | "markdown" | "mdx" => Some(LanguageId::Markdown),
         "env" => Some(LanguageId::Dotenv),
+        "java" => Some(LanguageId::Java),
+        "py" | "python" => Some(LanguageId::Python),
+        "html" | "htm" => Some(LanguageId::Html),
+        "css" => Some(LanguageId::Css),
+        "proto" | "protobuf" => Some(LanguageId::Protobuf),
+        "xml" => Some(LanguageId::Xml),
+        "txt" => Some(LanguageId::Plaintext),
         _ => None,
     }
+}
+
+pub fn tree_sitter_markdown_inline_language() -> Language {
+    tree_sitter_md::INLINE_LANGUAGE.into()
 }
 
 pub fn tree_sitter_language(language_id: LanguageId) -> Option<Language> {
@@ -45,5 +59,12 @@ pub fn tree_sitter_language(language_id: LanguageId) -> Option<Language> {
         LanguageId::Dockerfile => Some(tree_sitter_containerfile::LANGUAGE.into()),
         LanguageId::Markdown => Some(tree_sitter_md::LANGUAGE.into()),
         LanguageId::Dotenv => Some(tree_sitter_bash::LANGUAGE.into()),
+        LanguageId::Java => Some(tree_sitter_java::LANGUAGE.into()),
+        LanguageId::Python => Some(tree_sitter_python::LANGUAGE.into()),
+        LanguageId::Html => Some(tree_sitter_html::LANGUAGE.into()),
+        LanguageId::Css => Some(tree_sitter_css::LANGUAGE.into()),
+        LanguageId::Protobuf => Some(tree_sitter_proto::LANGUAGE.into()),
+        LanguageId::Xml => Some(tree_sitter_xml::LANGUAGE_XML.into()),
+        LanguageId::Plaintext => None,
     }
 }

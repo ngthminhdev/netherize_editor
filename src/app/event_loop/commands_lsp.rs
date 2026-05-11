@@ -12,6 +12,8 @@ impl AppShell {
             Command::LspReferences => Some(self.submit_lsp_references()),
             Command::LspFormatDocument => Some(self.submit_lsp_format_document()),
             Command::TriggerCompletion => Some(self.submit_lsp_completion()),
+            Command::CodeAction => Some(self.submit_lsp_code_action()),
+            Command::LspSelectPythonEnv => Some(self.handle_lsp_select_python_env()),
             Command::CompletionNext => Some(self.select_next_completion_item()),
             Command::CompletionPrev => Some(self.select_prev_completion_item()),
             Command::CompletionAccept => Some(self.accept_completion_item()),
@@ -69,19 +71,23 @@ impl AppShell {
         }
 
         let mut changed = true;
-        if let Some(session_id) = self.pty_session_id {
-            changed |= self.handle_command(Command::FocusTerminal);
-            self.forward_to_terminal_session(session_id, &format!("{install_cmd}\r"));
-        } else {
-            self.submit(RequestSpec {
-                revision_id: 0,
-                topic: RequestTopic::TerminalPty,
-                payload: WorkerRequestPayload::SpawnDetachedShellCommand {
-                    command: install_cmd,
-                    working_dir: self.lsp_install_working_dir(),
-                },
-            });
-            self.show_transient_toast(format!("Installing {binary} in background..."));
+        if !install_cmd.is_empty() {
+            if let Some(session_id) = self.focused_terminal_session_id() {
+                changed |= self.handle_command(Command::FocusTerminal);
+                self.forward_to_terminal_session(session_id, &format!("{install_cmd}\r"));
+            } else {
+                self.submit(RequestSpec {
+                    revision_id: 0,
+                    topic: RequestTopic::TerminalPty,
+                    payload: WorkerRequestPayload::SpawnDetachedShellCommand {
+                        command: install_cmd,
+                        working_dir: self.lsp_install_working_dir(),
+                    },
+                });
+                self.show_transient_toast(format!("Installing {binary} in background..."));
+            }
+            self.pending_lsp_server = None;
+            self.lsp_retry_at = Some(Instant::now() + Duration::from_secs(15));
         }
 
         changed
@@ -182,12 +188,30 @@ impl AppShell {
     }
 
     pub(super) fn submit_lsp_hover(&mut self) -> bool {
+        if self.active_lsp_server.is_none() {
+            if self.pending_lsp_server.is_some() {
+                self.show_transient_toast("LSP is starting up, please wait…".to_string());
+            }
+            return false;
+        }
         self.force_flush_lsp_did_change_for_active_file();
         let Some((language_id, uri, line, character)) = self.lsp_cursor_context() else {
             return false;
         };
-        let changed = self.app_state.clear_current_overlays();
-        self.submit(RequestSpec {
+        let (anchor_line, anchor_col) = self.app_state.cursor_line_col();
+        // Show a loading overlay immediately so the user sees feedback right away.
+        let loading_block = crate::app::app_state::FloatingBoxBlock::Prose(
+            "⟳  Loading documentation…".to_string(),
+        );
+        self.app_state.set_current_overlays(vec![
+            crate::app::app_state::EditorOverlay::FloatingBox {
+                anchor_line,
+                anchor_col,
+                blocks: vec![loading_block],
+                style: crate::app::app_state::FloatingBoxStyle::DocHover,
+            },
+        ]);
+        let request = self.submit(RequestSpec {
             revision_id: 0,
             topic: RequestTopic::LspRequest,
             payload: WorkerRequestPayload::LspHoverRequest {
@@ -195,9 +219,12 @@ impl AppShell {
                 uri,
                 line,
                 character,
+                for_completion: false,
+                completion_revision: None,
             },
         });
-        changed
+        self.hover_loading_request_id = request.map(|r| r.request_id);
+        true
     }
 
     pub(super) fn submit_lsp_definition(&mut self, jump: bool) -> bool {
@@ -206,7 +233,12 @@ impl AppShell {
             return false;
         };
         let changed = self.app_state.clear_current_overlays();
-        self.submit(RequestSpec {
+        // Track the latest in-flight definition id so a stale response
+        // arriving after the user fired a new `gd`/`gD` is dropped on the
+        // main thread (the worker also sends `$/cancelRequest` to the LSP
+        // server for the previous id; this guard handles the race window
+        // where the old response is already on the wire).
+        let request = self.submit(RequestSpec {
             revision_id: 0,
             topic: RequestTopic::LspRequest,
             payload: WorkerRequestPayload::LspDefinitionRequest {
@@ -216,7 +248,42 @@ impl AppShell {
                 jump,
             },
         });
+        self.latest_definition_request_id = request.map(|r| r.request_id);
         changed
+    }
+
+    pub(super) fn submit_lsp_document_highlight(&mut self) -> bool {
+        if self.active_lsp_server.is_none() {
+            let changed = self.app_state.clear_semantic_symbol_highlights();
+            if changed {
+                self.editor_caret_needs_layout = true;
+                self.request_redraw();
+            }
+            return changed;
+        }
+        self.force_flush_lsp_did_change_for_active_file();
+        let Some((language_id, uri, line, character)) = self.lsp_cursor_context() else {
+            let changed = self.app_state.clear_semantic_symbol_highlights();
+            if changed {
+                self.editor_caret_needs_layout = true;
+                self.request_redraw();
+            }
+            return changed;
+        };
+
+        self.semantic_highlight_request_revision =
+            self.semantic_highlight_request_revision.saturating_add(1);
+        self.submit(RequestSpec {
+            revision_id: self.semantic_highlight_request_revision,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspDocumentHighlightRequest {
+                language_id,
+                uri,
+                line,
+                character,
+            },
+        });
+        false
     }
 
     pub(super) fn submit_lsp_references(&mut self) -> bool {
@@ -295,6 +362,43 @@ impl AppShell {
             },
         });
         changed
+    }
+
+    pub(super) fn submit_lsp_code_action(&mut self) -> bool {
+        self.force_flush_lsp_did_change_for_active_file();
+        let Some((_language_id, uri, line, character)) = self.lsp_cursor_context() else {
+            self.show_transient_toast("Code Action: no active file".to_string());
+            return false;
+        };
+        let diagnostics: Vec<crate::async_runtime::message::LspDiagnostic> = self
+            .app_state
+            .active_file()
+            .and_then(|path| self.app_state.diagnostics_for_path(path))
+            .map(|items| {
+                items
+                    .iter()
+                    .filter(|d| {
+                        let s = &d.range.start;
+                        let e = &d.range.end;
+                        // cursor must be within [start, end)
+                        (s.line < line || (s.line == line && s.character <= character))
+                            && (e.line > line || (e.line == line && e.character >= character))
+                    })
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspCodeActionRequest {
+                uri,
+                line,
+                character,
+                diagnostics,
+            },
+        });
+        false
     }
 
     pub(super) fn select_next_reference_item(&mut self) -> bool {
@@ -487,6 +591,140 @@ impl AppShell {
         self.submit_lsp_check_for_path(path);
         self.submit_lsp_did_open_for_active_file();
         self.editor_needs_layout = true;
+        true
+    }
+
+    /// Apply edits từ một LspCodeAction đã được resolve.
+    pub(crate) fn do_apply_code_action_edits(
+        &mut self,
+        edits: &[crate::async_runtime::message::LspTextEdit],
+        title: &str,
+    ) {
+        let text = self.app_state.text_string();
+        match super::async_results::apply_lsp_text_edits(&text, edits) {
+            Ok(next) => {
+                if self
+                    .app_state
+                    .replace_active_document_text_preserve_cursor(&next)
+                {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = true;
+                    self.submit_parse_for_active_buffer(true);
+                    self.force_flush_lsp_did_change_for_active_file();
+                    self.show_transient_toast(format!("Applied: {title}"));
+                    self.request_redraw();
+                } else {
+                    self.show_transient_toast("Code Action: no changes".to_string());
+                }
+            }
+            Err(err) => {
+                self.show_transient_toast(format!("Code Action failed: {err}"));
+            }
+        }
+    }
+
+    /// Handle Enter khi user chọn một action trong CodeAction picker.
+    pub(super) fn confirm_code_action_selection(&mut self) -> bool {
+        let selected_idx = match self.app_state.command_palette_selected_action() {
+            Some(crate::app::command_palette::CommandPaletteAction::ApplyCodeAction(idx)) => idx,
+            _ => return false,
+        };
+
+        // Đóng palette trước.
+        let _ = self.app_state.close_command_palette();
+        if let Ok(result) = self.app_state.apply_mode_event(crate::core::mode::ModeEvent::ExitFocus) {
+            if result.changed {
+                self.editor_needs_layout = true;
+            }
+        }
+        self.focus_manager.set(FocusTarget::CenterEditor);
+        self.input_handler.clear_pending_prefix();
+
+        let Some(action) = self.pending_code_actions.get(selected_idx).cloned() else {
+            self.show_transient_toast("Code Action: selection out of range".to_string());
+            return true;
+        };
+
+        if action.edits.is_empty() {
+            self.show_transient_toast(format!(
+                "Code Action '{}' has no edits (needs resolve support)",
+                action.title
+            ));
+            return true;
+        }
+
+        let edits = action.edits.clone();
+        let title = action.title.clone();
+        self.do_apply_code_action_edits(&edits, &title);
+        true
+    }
+
+    pub(super) fn handle_lsp_select_python_env(&mut self) -> bool {
+        let Some(workspace_root) = self
+            .app_state
+            .workspace_root_path()
+            .map(|p| p.to_path_buf())
+        else {
+            self.show_transient_toast("Python Env: no workspace open".to_string());
+            return false;
+        };
+
+        self.app_state.open_python_env_selector();
+        self.request_redraw();
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::SystemTask,
+            payload: WorkerRequestPayload::ScanPythonEnvironments { workspace_root },
+        });
+        true
+    }
+
+    pub(super) fn confirm_python_env_selection(&mut self) -> bool {
+        let selected_path = match self.app_state.command_palette_selected_action() {
+            Some(CommandPaletteAction::SelectPythonEnv(path)) => path,
+            _ => return false,
+        };
+
+        let _ = self.app_state.close_command_palette();
+        if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
+            if result.changed {
+                self.editor_needs_layout = true;
+            }
+        }
+        self.focus_manager.set(FocusTarget::CenterEditor);
+        self.input_handler.clear_pending_prefix();
+
+        // Derive a short venv display name from the parent directory of the binary.
+        // e.g. /project/venv/bin/python → "venv"  or  /project/.venv/bin/python → ".venv"
+        let venv_name = selected_path
+            .parent()          // bin/
+            .and_then(|p| p.parent()) // venv/
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .map(str::to_string);
+        self.runtime_versions.venv_name = venv_name;
+
+        // Store selected env and re-detect versions against the chosen interpreter.
+        self.selected_python_env = Some(selected_path.clone());
+        let workspace_root = self
+            .app_state
+            .workspace_root_path()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_default();
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::SystemTask,
+            payload: WorkerRequestPayload::DetectRuntimeVersions {
+                python_binary: Some(selected_path.clone()),
+                workspace_root,
+            },
+        });
+
+        self.show_transient_toast(format!(
+            "Python env selected: {}",
+            selected_path.display()
+        ));
         true
     }
 }

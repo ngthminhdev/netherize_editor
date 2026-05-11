@@ -49,26 +49,15 @@ impl AppShell {
                         if let Some((lines, preview_text)) =
                             self.app_state.build_file_history_diff_preview()
                         {
-                            let extension = self
-                                .app_state
-                                .active_fuzzy_picker_buffer()
-                                .and_then(|state| state.source_file_path.as_ref())
-                                .and_then(|path| path.extension())
-                                .and_then(|ext| ext.to_str())
-                                .unwrap_or_default();
-                            let preview_spans = syntax_spans_to_styled(
-                                &crate::syntax::highlight::highlight_snippet(
-                                    &preview_text,
-                                    extension,
-                                    &self.theme,
-                                ),
-                                &preview_text,
-                                &self.theme,
-                            );
+                            // FileHistory diff preview uses + / - markers — tree-sitter
+                            // syntax highlighting would produce misaligned spans on the
+                            // diff-formatted text. The renderer already applies green/red
+                            // backgrounds based on the line prefix, so plain text is
+                            // visually sufficient.
                             let _ = self.app_state.set_fuzzy_picker_preview(
                                 lines,
                                 preview_text,
-                                preview_spans,
+                                Vec::new(),
                             );
                         }
                     }
@@ -100,19 +89,12 @@ impl AppShell {
                         || self.app_state.command_palette_mode()
                             == Some(CommandPaletteMode::RecentProjects)) =>
             {
-                self.app_state
-                    .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
-                let selected = self.app_state.command_palette_selected_index().min(
-                    self.persistent_state
-                        .recent_projects
-                        .len()
-                        .saturating_sub(1),
-                );
-                let Some(root) = self.persistent_state.recent_projects.get(selected).cloned()
-                else {
-                    return Some(false);
-                };
-                Some(self.switch_workspace_to(root))
+                if !self.app_state.is_command_palette_visible() {
+                    // Palette not yet open — populate it first so selected_action works.
+                    self.app_state
+                        .sync_welcome_recent_projects(&self.persistent_state.recent_projects);
+                }
+                Some(self.confirm_recent_project_selection())
             }
             Command::OverlaySelectNext
             | Command::OverlaySelectPrev
@@ -148,26 +130,13 @@ impl AppShell {
                         if let Some((lines, preview_text)) =
                             self.app_state.build_file_history_diff_preview()
                         {
-                            let extension = self
-                                .app_state
-                                .active_fuzzy_picker_buffer()
-                                .and_then(|state| state.source_file_path.as_ref())
-                                .and_then(|path| path.extension())
-                                .and_then(|ext| ext.to_str())
-                                .unwrap_or_default();
-                            let preview_spans = syntax_spans_to_styled(
-                                &crate::syntax::highlight::highlight_snippet(
-                                    &preview_text,
-                                    extension,
-                                    &self.theme,
-                                ),
-                                &preview_text,
-                                &self.theme,
-                            );
+                            // FileHistory diff preview uses + / - markers — tree-sitter
+                            // syntax highlighting would produce misaligned spans. Plain
+                            // text with green/red backgrounds from the renderer is sufficient.
                             let _ = self.app_state.set_fuzzy_picker_preview(
                                 lines,
                                 preview_text,
-                                preview_spans,
+                                Vec::new(),
                             );
                         }
                     }
@@ -329,6 +298,24 @@ impl AppShell {
                 if matches!(command, Command::FilePickerConfirmSelection)
                     && matches!(
                         self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::CodeAction)
+                    )
+                {
+                    return Some(self.confirm_code_action_selection());
+                }
+
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::PythonEnvSelector)
+                    )
+                {
+                    return Some(self.confirm_python_env_selection());
+                }
+
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
                         Some(CommandPaletteMode::InFileSearch)
                     )
                 {
@@ -384,6 +371,9 @@ impl AppShell {
                 } else {
                     None
                 };
+                let confirmed_from_fuzzy_picker =
+                    matches!(command, Command::FilePickerConfirmSelection)
+                        && self.app_state.active_buffer_is_fuzzy_picker();
 
                 let is_open_file = matches!(command, Command::OpenFile(_));
                 let report = {
@@ -391,6 +381,21 @@ impl AppShell {
                     dispatch_command_with_clipboard(app_state, command.clone(), Some(clipboard))
                 };
                 self.reconcile_highlight_spans_with_pending_edits();
+
+                // Command palette can open PythonEnvSelector without closing the overlay.
+                // Keep palette focus and kick off the async environment scan.
+                if self.app_state.command_palette_mode() == Some(CommandPaletteMode::PythonEnvSelector) {
+                    if let Some(workspace_root) = self.app_state.workspace_root_path().map(|p| p.to_path_buf()) {
+                        self.submit(RequestSpec {
+                            revision_id: 0,
+                            topic: RequestTopic::SystemTask,
+                            payload: WorkerRequestPayload::ScanPythonEnvironments { workspace_root },
+                        });
+                    }
+                    self.arm_palette_ime_commit_suppression();
+                    self.focus_manager.set(FocusTarget::OverlayLayer);
+                    return Some(true);
+                }
 
                 let file_after = self.app_state.active_file().map(PathBuf::from);
                 let file_changed = report.success && file_after != file_before;
@@ -434,6 +439,12 @@ impl AppShell {
                         self.input_handler.clear_pending_prefix();
                     }
                     let _ = self.release_focus_mode_to_editor();
+                    if confirmed_from_fuzzy_picker
+                        && !self.app_state.active_buffer_is_fuzzy_picker()
+                        && self.app_state.current_mode() != EditorMode::Normal
+                    {
+                        let _ = self.app_state.apply_mode_event(ModeEvent::EnterNormal);
+                    }
                 }
 
                 Some(report.request_redraw || report.success)

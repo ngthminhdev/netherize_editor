@@ -632,6 +632,23 @@ fn file_picker_confirm_scrolls_explorer_to_opened_file() {
 }
 
 #[test]
+fn focus_markdown_preview_opens_preview_tab_and_focuses_sidebar() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.right.visible = false;
+    shell.app_state.markdown_preview.visible = false;
+
+    assert!(shell.handle_command(Command::FocusMarkdownPreview));
+
+    assert!(shell.panel_state.right.visible);
+    assert!(shell.app_state.markdown_preview.visible);
+    assert_eq!(
+        shell.panel_state.right.active_tab_id(),
+        Some(PanelTabId::MarkdownPreview)
+    );
+    assert_eq!(shell.focus_manager.current(), FocusTarget::RightSidebar);
+}
+
+#[test]
 fn open_theme_selector_opens_overlay_with_theme_profiles() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
 
@@ -865,6 +882,7 @@ fn fuzzy_picker_open_search_match_confirm_closes_results_buffer() {
     assert!(shell.handle_command(Command::FilePickerConfirmSelection));
 
     assert!(!shell.app_state.active_buffer_is_fuzzy_picker());
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
     assert_eq!(
         shell.app_state.active_file(),
         Some(canonical_target.as_path())
@@ -984,6 +1002,8 @@ fn completion_accept_replaces_typed_prefix_instead_of_inserting_after_it() {
             insert_text: Some("getInstance()".to_string()),
             text_edit_text: None,
             kind: Some(2),
+            documentation: None,
+            raw_json: None,
         }],
         0,
         "MessageManager.ge".chars().count(),
@@ -1020,6 +1040,8 @@ fn completion_accept_deduplicates_trigger_char_in_insert_text() {
             insert_text: Some(".getInstance()".to_string()),
             text_edit_text: None,
             kind: Some(2),
+            documentation: None,
+            raw_json: None,
         }],
         0,
         cursor_col,
@@ -1041,4 +1063,215 @@ fn welcome_hides_while_command_palette_is_visible() {
     assert!(shell.should_show_welcome());
     assert!(shell.handle_command(Command::OpenCommandPalette));
     assert!(!shell.should_show_welcome());
+}
+
+// ── Resize mode tests ─────────────────────────────────────────────────────────
+// Clamp bounds: left [160, 1280], right [180, 1440], bottom [120, 1040]
+// Step: 20px
+
+#[test]
+fn resize_left_sidebar_increases_width_on_increase_command() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.left.visible = true;
+    shell.panel_state.left.size_px = 280.0;
+    shell.focus_manager.set(FocusTarget::LeftSidebar);
+
+    let changed = shell.handle_command(Command::ResizeIncreaseWidth);
+
+    assert!(changed);
+    assert_eq!(shell.panel_state.left.size_px, 300.0);
+    assert_eq!(shell.ui_config.docks.left.size_px, 300.0);
+}
+
+#[test]
+fn resize_left_sidebar_decreases_width_on_decrease_command() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.left.visible = true;
+    shell.panel_state.left.size_px = 280.0;
+    shell.focus_manager.set(FocusTarget::LeftSidebar);
+
+    let changed = shell.handle_command(Command::ResizeDecreaseWidth);
+
+    assert!(changed);
+    assert_eq!(shell.panel_state.left.size_px, 260.0);
+    assert_eq!(shell.ui_config.docks.left.size_px, 260.0);
+}
+
+#[test]
+fn resize_left_sidebar_clamps_at_max_1280() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.left.visible = true;
+    shell.panel_state.left.size_px = 1270.0;
+    shell.focus_manager.set(FocusTarget::LeftSidebar);
+
+    assert!(shell.handle_command(Command::ResizeIncreaseWidth));
+    assert_eq!(shell.panel_state.left.size_px, 1280.0);
+
+    // Already at max — no change
+    let changed = shell.handle_command(Command::ResizeIncreaseWidth);
+    assert!(!changed);
+    assert_eq!(shell.panel_state.left.size_px, 1280.0);
+}
+
+#[test]
+fn resize_left_sidebar_clamps_at_min_160() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.left.visible = true;
+    shell.panel_state.left.size_px = 170.0;
+    shell.focus_manager.set(FocusTarget::LeftSidebar);
+
+    assert!(shell.handle_command(Command::ResizeDecreaseWidth));
+    assert_eq!(shell.panel_state.left.size_px, 160.0);
+
+    let changed = shell.handle_command(Command::ResizeDecreaseWidth);
+    assert!(!changed);
+    assert_eq!(shell.panel_state.left.size_px, 160.0);
+}
+
+#[test]
+fn resize_right_sidebar_clamps_at_max_1440() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.size_px = 1430.0;
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+
+    assert!(shell.handle_command(Command::ResizeIncreaseWidth));
+    assert_eq!(shell.panel_state.right.size_px, 1440.0);
+
+    let changed = shell.handle_command(Command::ResizeIncreaseWidth);
+    assert!(!changed);
+}
+
+#[test]
+fn resize_right_sidebar_clamps_at_min_180() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.size_px = 190.0;
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+
+    assert!(shell.handle_command(Command::ResizeDecreaseWidth));
+    assert_eq!(shell.panel_state.right.size_px, 180.0);
+
+    let changed = shell.handle_command(Command::ResizeDecreaseWidth);
+    assert!(!changed);
+}
+
+#[test]
+fn resize_bottom_panel_clamps_at_max_1040() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.bottom.visible = true;
+    shell.panel_state.bottom.size_px = 1030.0;
+    shell.focus_manager.set(FocusTarget::BottomPanel);
+
+    assert!(shell.handle_command(Command::ResizeIncreaseHeight));
+    assert_eq!(shell.panel_state.bottom.size_px, 1040.0);
+
+    let changed = shell.handle_command(Command::ResizeIncreaseHeight);
+    assert!(!changed);
+}
+
+#[test]
+fn resize_bottom_panel_clamps_at_min_120() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.bottom.visible = true;
+    shell.panel_state.bottom.size_px = 130.0;
+    shell.focus_manager.set(FocusTarget::BottomPanel);
+
+    assert!(shell.handle_command(Command::ResizeDecreaseHeight));
+    assert_eq!(shell.panel_state.bottom.size_px, 120.0);
+
+    let changed = shell.handle_command(Command::ResizeDecreaseHeight);
+    assert!(!changed);
+}
+
+#[test]
+fn resize_returns_false_when_panel_not_visible() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.left.visible = false;
+    shell.panel_state.left.size_px = 280.0;
+    shell.focus_manager.set(FocusTarget::LeftSidebar);
+
+    let changed = shell.handle_command(Command::ResizeIncreaseWidth);
+
+    assert!(!changed);
+    assert_eq!(shell.panel_state.left.size_px, 280.0);
+}
+
+#[test]
+fn resize_center_editor_increase_width_shrinks_left_sidebar_only() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.left.visible = true;
+    shell.panel_state.left.size_px = 280.0;
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.size_px = 320.0;
+    shell.focus_manager.set(FocusTarget::CenterEditor);
+
+    let changed = shell.handle_command(Command::ResizeIncreaseLeftWidth);
+
+    assert!(changed);
+    assert_eq!(shell.panel_state.left.size_px, 260.0);
+    assert_eq!(shell.panel_state.right.size_px, 320.0);
+}
+
+#[test]
+fn resize_center_editor_decrease_left_width_grows_left_sidebar_only() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.left.visible = true;
+    shell.panel_state.left.size_px = 280.0;
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.size_px = 320.0;
+    shell.focus_manager.set(FocusTarget::CenterEditor);
+
+    let changed = shell.handle_command(Command::ResizeDecreaseLeftWidth);
+
+    assert!(changed);
+    assert_eq!(shell.panel_state.left.size_px, 300.0);
+    assert_eq!(shell.panel_state.right.size_px, 320.0);
+}
+
+#[test]
+fn resize_center_editor_increase_right_width_shrinks_right_sidebar_only() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.left.visible = true;
+    shell.panel_state.left.size_px = 280.0;
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.size_px = 320.0;
+    shell.focus_manager.set(FocusTarget::CenterEditor);
+
+    let changed = shell.handle_command(Command::ResizeIncreaseRightWidth);
+
+    assert!(changed);
+    assert_eq!(shell.panel_state.left.size_px, 280.0);
+    assert_eq!(shell.panel_state.right.size_px, 300.0);
+}
+
+#[test]
+fn resize_center_editor_decrease_width_grows_right_sidebar_only() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.left.visible = true;
+    shell.panel_state.left.size_px = 280.0;
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.size_px = 320.0;
+    shell.focus_manager.set(FocusTarget::CenterEditor);
+
+    let changed = shell.handle_command(Command::ResizeDecreaseRightWidth);
+
+    assert!(changed);
+    assert_eq!(shell.panel_state.left.size_px, 280.0);
+    assert_eq!(shell.panel_state.right.size_px, 340.0);
+}
+
+#[test]
+fn resize_panel_and_ui_config_stay_in_sync() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.bottom.visible = true;
+    shell.panel_state.bottom.size_px = 230.0;
+    shell.focus_manager.set(FocusTarget::BottomPanel);
+
+    shell.handle_command(Command::ResizeIncreaseHeight);
+
+    assert_eq!(
+        shell.panel_state.bottom.size_px,
+        shell.ui_config.docks.bottom.size_px
+    );
 }

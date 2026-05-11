@@ -8,6 +8,13 @@ impl AppShell {
     }
 
     pub(super) fn submit_lsp_completion(&mut self) -> bool {
+        if self.active_lsp_server.is_none() {
+            if self.pending_lsp_server.is_some() {
+                self.show_transient_toast("LSP is starting up, please wait…".to_string());
+            }
+            return false;
+        }
+        self.app_state.set_completion_loading(true);
         self.force_flush_lsp_did_change_for_active_file();
         let Some((language_id, uri, line, character)) = self.lsp_cursor_context() else {
             return false;
@@ -38,6 +45,8 @@ impl AppShell {
     pub(super) fn select_next_completion_item(&mut self) -> bool {
         let changed = self.app_state.completion_select_next();
         if changed {
+            self.app_state.set_completion_hover_doc(None);
+            self.schedule_completion_resolve_debounced();
             self.editor_caret_needs_layout = true;
             self.request_redraw();
         }
@@ -47,13 +56,110 @@ impl AppShell {
     pub(super) fn select_prev_completion_item(&mut self) -> bool {
         let changed = self.app_state.completion_select_prev();
         if changed {
+            self.app_state.set_completion_hover_doc(None);
+            self.schedule_completion_resolve_debounced();
             self.editor_caret_needs_layout = true;
             self.request_redraw();
         }
         changed
     }
 
+    /// Mark a debounced LSP `completionItem/resolve` for the current selection.
+    /// The actual request fires from `flush_pending_completion_resolve_after_debounce`
+    /// once the user has dwelt on the item for `COMPLETION_RESOLVE_DEBOUNCE_INTERVAL`.
+    /// Cancels any pending dwell timer from a prior selection (only the latest wins).
+    pub(in crate::app::event_loop) fn schedule_completion_resolve_debounced(&mut self) {
+        let Some(state) = self.app_state.completion() else {
+            self.pending_completion_resolve_after_debounce = false;
+            self.last_completion_resolve_select_at = None;
+            return;
+        };
+        self.pending_completion_resolve_revision = state.current_revision;
+        self.pending_completion_resolve_after_debounce = true;
+        self.last_completion_resolve_select_at = Some(std::time::Instant::now());
+    }
+
+    pub(in crate::app::event_loop) fn flush_pending_completion_resolve_after_debounce(
+        &mut self,
+    ) {
+        if !self.pending_completion_resolve_after_debounce {
+            return;
+        }
+        let Some(last) = self.last_completion_resolve_select_at else {
+            self.pending_completion_resolve_after_debounce = false;
+            return;
+        };
+        if last.elapsed() < COMPLETION_RESOLVE_DEBOUNCE_INTERVAL {
+            return;
+        }
+        self.pending_completion_resolve_after_debounce = false;
+        self.last_completion_resolve_select_at = None;
+        if self.app_state.completion().is_none() {
+            return;
+        }
+        self.submit_completion_resolve();
+    }
+
+    /// Send `completionItem/resolve` for the currently selected item so its
+    /// `documentation` and `detail` fields get filled in. When no fetch is needed
+    /// (or possible), marks the doc-state as resolved so the UI swaps "Loading…"
+    /// for either inline docs or "No docs available".
+    pub(in crate::app::event_loop) fn submit_completion_resolve(&mut self) {
+        self.completion_resolve_request_id = None;
+        let Some(completion) = self.app_state.completion() else {
+            return;
+        };
+        let Some(entry) = completion.filtered_items.get(completion.selected_index) else {
+            return;
+        };
+        // Inline doc already present: no resolve needed; mark as resolved so the
+        // panel doesn't spin on "Loading…" if the user happens to land on an item
+        // with no inline docs next.
+        if entry
+            .item
+            .documentation
+            .as_ref()
+            .is_some_and(|doc| !doc.trim().is_empty())
+        {
+            self.app_state.mark_completion_hover_doc_resolved();
+            return;
+        }
+        let Some(item_json) = entry.item.raw_json.clone() else {
+            // Synthesized item (tests) — nothing to resolve.
+            self.app_state.mark_completion_hover_doc_resolved();
+            return;
+        };
+        let Some((language_id, uri, _line, _character)) = self.lsp_cursor_context() else {
+            self.app_state.mark_completion_hover_doc_resolved();
+            return;
+        };
+        let item_label = entry.item.label.clone();
+        let completion_revision = completion.current_revision;
+        let request = self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspCompletionResolveRequest {
+                language_id,
+                uri,
+                item_json,
+                item_label,
+                completion_revision,
+            },
+        });
+        match request {
+            Some(req) => {
+                self.completion_resolve_request_id = Some(req.request_id);
+            }
+            None => {
+                // Scheduler refused to enqueue — treat as resolved with no docs.
+                self.app_state.mark_completion_hover_doc_resolved();
+            }
+        }
+    }
+
     pub(super) fn close_completion_popup(&mut self) -> bool {
+        self.pending_completion_resolve_after_debounce = false;
+        self.last_completion_resolve_select_at = None;
         let changed = self.app_state.clear_completion();
         if changed {
             self.editor_caret_needs_layout = true;
@@ -82,11 +188,16 @@ impl AppShell {
             return self.close_completion_popup();
         }
 
-        if let Some(char_left) = self.app_state.char_before_cursor() {
-            if self.lsp_completion_trigger_chars.contains(&char_left) {
-                if insert_text.starts_with(char_left) {
-                    insert_text = insert_text.chars().skip(1).collect();
-                }
+        // Strip a leading trigger char from insert_text when the buffer already
+        // contains that char just before the typed prefix. This handles both:
+        //   - user typed just `.`  (prefix=""), char_before_cursor = '.'
+        //   - user typed `.trim`  (prefix="trim"), trigger char is '.' before prefix start
+        // Without this, LSP items that include the leading '.' in insert_text would
+        // produce `obj..trim()` instead of `obj.trim()`.
+        let trigger_col = completion.trigger_pos.col.saturating_sub(1);
+        if let Some(ch) = self.app_state.char_at_line_col(completion.trigger_pos.line, trigger_col) {
+            if self.lsp_completion_trigger_chars.contains(&ch) && insert_text.starts_with(ch) {
+                insert_text = insert_text.chars().skip(1).collect();
             }
         }
 

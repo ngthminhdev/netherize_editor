@@ -8,24 +8,24 @@ min_content_scale = 1.0
 max_content_scale = 2.0
 
 [layout]
-outer_gap = 18.0
+outer_gap = 14.0
 panel_gap = 14.0
 inner_padding = 12.0
 round_ui = true
 top_bar_height = 34.0
-status_bar_height = 22.0
+status_bar_height = 28.0
 center_min_width = 320.0
 center_min_height = 180.0
 sidebar_min_width = 180.0
 bottom_min_height = 120.0
 panel_border_width = 1.0
-chat_input_height = 120.0
+chat_input_height = 150.0
 
 [docks]
 left_visible = false
 left_size_px = 280.0
 right_visible = false
-right_size_px = 300.0
+right_size_px = 600.0
 bottom_visible = false
 bottom_size_px = 500.0
 overlay_visible = false
@@ -43,9 +43,9 @@ explorer_padding = 10.0
 topbar_dirty_gap = 6.0
 
 [status_bar]
-padding_x = 14.0
-font_size = 11.0
-line_height = 14.0
+padding_x = 16.0
+font_size = 13.0
+line_height = 21.0
 
 [editor]
 relative_numbers = true

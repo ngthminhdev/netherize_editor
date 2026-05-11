@@ -575,14 +575,6 @@ impl AppState {
         let transaction = Transaction::new(edit, pending.before_cursor, self.cursor_state());
         self.history.undo_stack.push(transaction);
         self.history.redo_stack.clear();
-        if let Some(path) = self.active_file.clone() {
-            self.stored_file_histories.insert(
-                path,
-                StoredFileHistory {
-                    history: self.history.clone(),
-                },
-            );
-        }
         true
     }
 }

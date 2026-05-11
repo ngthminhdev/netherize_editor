@@ -22,6 +22,13 @@ impl AppState {
         Ok(count)
     }
 
+    /// Mở Python Environment selector palette — envs sẽ được đổ vào qua async result.
+    pub fn open_python_env_selector(&mut self) -> bool {
+        let workspace = self.workspace_model.as_ref();
+        self.command_palette
+            .open(CommandPaletteMode::PythonEnvSelector, workspace) > 0
+    }
+
     /// Push current file+line onto the jump back stack before a jump (e.g. gd).
     /// Clears the forward stack since jumping starts a new branch.
     pub fn push_jump(&mut self) {
@@ -56,6 +63,15 @@ impl AppState {
         let current_line = self.cursor_line_col().0;
         self.jump_back_stack.push((current_path, current_line));
         Some(entry)
+    }
+
+    /// Mở Command Palette ở CodeAction mode với danh sách actions do LSP trả về.
+    pub fn open_code_action_picker(
+        &mut self,
+        items: Vec<crate::app::command_palette::CommandPaletteItem>,
+    ) {
+        self.command_palette
+            .open_with_items(CommandPaletteMode::CodeAction, items);
     }
 
     /// Mở Command Palette ở LspReferences mode với danh sách references tĩnh từ LSP.
@@ -539,6 +555,77 @@ impl AppState {
         changed
     }
 
+    /// Currently displayed LSP progress entry, if any. The status bar uses this
+    /// to show the user that the language server is busy (e.g. rust-analyzer
+    /// indexing) so they avoid spamming `gd`/`K` and getting stuck requests.
+    pub fn lsp_progress(&self) -> Option<&LspProgressEntry> {
+        let key = self.lsp_progress_active_key.as_ref()?;
+        self.lsp_progress.get(key)
+    }
+
+    /// Update or remove the progress entry for `(server, token)`. Returns
+    /// `true` if anything changed (so the caller can mark the frame dirty).
+    pub fn update_lsp_progress(
+        &mut self,
+        server: &str,
+        token: &str,
+        kind: LspProgressKind,
+        title: Option<String>,
+        message: Option<String>,
+        percentage: Option<u32>,
+    ) -> bool {
+        let key = (server.to_string(), token.to_string());
+        match kind {
+            LspProgressKind::End => {
+                let removed = self.lsp_progress.remove(&key).is_some();
+                if self.lsp_progress_active_key.as_ref() == Some(&key) {
+                    self.lsp_progress_active_key = self
+                        .lsp_progress
+                        .keys()
+                        .next()
+                        .cloned();
+                }
+                removed
+            }
+            LspProgressKind::Begin | LspProgressKind::Report => {
+                let entry = self
+                    .lsp_progress
+                    .entry(key.clone())
+                    .or_insert_with(|| LspProgressEntry {
+                        server: server.to_string(),
+                        token: token.to_string(),
+                        ..LspProgressEntry::default()
+                    });
+                let prev = entry.clone();
+                if matches!(kind, LspProgressKind::Begin) {
+                    entry.title = title.clone();
+                }
+                if title.is_some() && entry.title.is_none() {
+                    entry.title = title;
+                }
+                entry.message = message;
+                entry.percentage = percentage;
+                let changed = *entry != prev;
+                self.lsp_progress_active_key = Some(key);
+                changed
+            }
+        }
+    }
+
+    /// Drop every progress entry for the given server (e.g. when the LSP
+    /// session is shut down). Returns `true` if anything was removed.
+    pub fn clear_lsp_progress_for_server(&mut self, server: &str) -> bool {
+        let before = self.lsp_progress.len();
+        self.lsp_progress.retain(|(s, _), _| s != server);
+        let changed = self.lsp_progress.len() != before;
+        if let Some(key) = self.lsp_progress_active_key.as_ref() {
+            if key.0 == server {
+                self.lsp_progress_active_key = self.lsp_progress.keys().next().cloned();
+            }
+        }
+        changed
+    }
+
     pub fn open_diagnostics_buffer(&mut self, items: Vec<DiagnosticItem>) -> Result<usize, String> {
         if items.is_empty() {
             return Err("cannot open diagnostics buffer without items".to_string());
@@ -575,6 +662,11 @@ impl AppState {
     pub fn active_buffer_is_settings(&self) -> bool {
         self.active_buffer()
             .is_some_and(|buffer| matches!(buffer.content, BufferContent::SettingsTab(_)))
+    }
+
+    pub fn active_buffer_is_help(&self) -> bool {
+        self.active_buffer()
+            .is_some_and(|buffer| matches!(buffer.content, BufferContent::Help(_)))
     }
 
     pub fn active_settings_buffer(&self) -> Option<&SettingsState> {
@@ -723,6 +815,27 @@ impl AppState {
         self.external_conflict = None;
         self.bump_revision();
         index
+    }
+
+    pub fn help_scroll_down(&mut self, amount: f32) {
+        if let Some(buf) = self.active_help_buffer_mut() {
+            buf.scroll_y += amount;
+        }
+    }
+
+    pub fn help_scroll_up(&mut self, amount: f32) {
+        if let Some(buf) = self.active_help_buffer_mut() {
+            buf.scroll_y = (buf.scroll_y - amount).max(0.0);
+        }
+    }
+
+    fn active_help_buffer_mut(&mut self) -> Option<&mut HelpState> {
+        self.active_buffer_index
+            .and_then(|idx| self.buffers.get_mut(idx))
+            .and_then(|buffer| match &mut buffer.content {
+                BufferContent::Help(state) => Some(state),
+                _ => None,
+            })
     }
 
     pub fn open_help_buffer(&mut self) -> usize {
@@ -876,6 +989,7 @@ impl AppState {
     }
 
     pub fn open_fuzzy_picker_buffer(&mut self, mode: CommandPaletteMode) -> usize {
+        self.save_current_text_buffer_history();
         let mut state = FuzzyState::new(mode);
         if mode == CommandPaletteMode::FileHistory {
             state.source_file_path = self.active_file.clone();
@@ -907,6 +1021,7 @@ impl AppState {
         ui_rounding_enabled: bool,
         border_radius_px: f32,
         enable_outline: bool,
+        inline_suggestion_enabled: bool,
     ) -> usize {
         if let Some(existing_idx) = self
             .buffers
@@ -934,6 +1049,7 @@ impl AppState {
             ui_rounding_enabled,
             border_radius_px,
             enable_outline,
+            inline_suggestion_enabled,
         );
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {

@@ -91,6 +91,8 @@ impl Renderer {
             crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
         let ai_chat_hero_image_pipeline =
             crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
+        let topbar_logo_image_pipeline =
+            crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
 
         let theme = ThemeConfig::builtin_dark();
         let clear_color = theme_color_to_wgpu(theme.ui.bg);
@@ -200,6 +202,8 @@ impl Renderer {
             terminal_glyph_instances: Vec::new(),
             terminal_cursor_instances: Vec::new(),
             terminal_scissor: None,
+            terminal_body_batch: None,
+            terminal_tab_bar_batch: None,
             buffer_terminal_text_system: make_text_system(panel_metrics, font_family.as_deref()),
             buffer_terminal_text_pipeline,
             buffer_terminal_view_renderer: TerminalViewRenderer::default_monospace(),
@@ -220,6 +224,8 @@ impl Renderer {
             topbar_scissor: None,
             topbar_text_batches: Vec::new(),
             last_topbar_layout_key: None,
+            topbar_logo_image_pipeline,
+            topbar_logo_scissor: None,
             statusbar_text_system,
             statusbar_text_pipeline,
             statusbar_glyph_instances: Vec::new(),
@@ -284,6 +290,9 @@ impl Renderer {
             ai_chat_header_image_pipeline,
             ai_chat_hero_image_pipeline,
             ai_chat_glyph_instances: Vec::new(),
+            ai_chat_history_chrome_instances: Vec::new(),
+            ai_chat_suggestion_chrome_instances: Vec::new(),
+            ai_chat_suggestion_glyph_start: None,
             ai_chat_history_scissor: None,
             ai_chat_image_scissor: None,
             ai_chat_input_scissor: None,
@@ -363,6 +372,8 @@ impl Renderer {
         self.topbar_glyph_instances.clear();
         self.topbar_chrome_instances.clear();
         self.topbar_text_batches.clear();
+        self.topbar_logo_image_pipeline.clear();
+        self.topbar_logo_scissor = None;
         self.topbar_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
         self.statusbar_scissor = None;

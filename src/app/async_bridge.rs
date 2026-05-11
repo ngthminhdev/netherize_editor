@@ -4,7 +4,8 @@ use std::sync::{
 };
 
 use crate::async_runtime::message::{
-    RequestTopic, WorkerEvent, WorkerEventKind, WorkerMessage, WorkerResult, WorkerResultPayload,
+    InstallStatus, RequestTopic, WorkerEvent, WorkerEventKind, WorkerMessage, WorkerResult,
+    WorkerResultPayload,
 };
 
 fn async_trace_enabled() -> bool {
@@ -38,8 +39,12 @@ pub trait AsyncResultRouter {
     fn on_stale_result(&mut self, stale: WorkerResult);
     fn on_ai_message_chunk(&mut self, text: String);
     fn on_ai_stream_complete(&mut self);
+    fn on_ai_stream_cancelled(&mut self);
     fn on_ai_stream_error(&mut self, error: String);
     fn on_ai_install_success(&mut self);
+    fn on_system_dep_tool_progress(&mut self, tool: String, status: InstallStatus);
+    fn on_system_dep_install_done(&mut self);
+    fn on_lsp_missing_dependency(&mut self, language_id: String, tool_name: String);
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -102,6 +107,8 @@ impl AppAsyncBridge {
                             let bypass_revision_check = matches!(
                                 result.payload,
                                 WorkerResultPayload::LspDiagnostics { .. }
+                                    | WorkerResultPayload::LspProgress { .. }
+                                    | WorkerResultPayload::LspLogMessage { .. }
                             );
                             if !bypass_revision_check && result.revision_id < latest_revision {
                                 async_trace!(
@@ -132,6 +139,10 @@ impl AppAsyncBridge {
                             async_trace!("[Bridge] AI stream complete");
                             router.on_ai_stream_complete();
                         }
+                        WorkerMessage::AiStreamCancelled => {
+                            async_trace!("[Bridge] AI stream cancelled");
+                            router.on_ai_stream_cancelled();
+                        }
                         WorkerMessage::AiStreamError { error } => {
                             async_trace!("[Bridge] AI stream error: {}", error);
                             router.on_ai_stream_error(error);
@@ -139,6 +150,25 @@ impl AppAsyncBridge {
                         WorkerMessage::AiInstallSuccess => {
                             async_trace!("[Bridge] AI install success — restarting editor");
                             router.on_ai_install_success();
+                        }
+                        WorkerMessage::SystemDepToolProgress { tool, status } => {
+                            async_trace!("[Bridge] system dep progress: {} {:?}", tool, status);
+                            router.on_system_dep_tool_progress(tool, status);
+                        }
+                        WorkerMessage::SystemDepInstallDone => {
+                            async_trace!("[Bridge] system dep install done");
+                            router.on_system_dep_install_done();
+                        }
+                        WorkerMessage::LspMissingDependency {
+                            language_id,
+                            tool_name,
+                        } => {
+                            async_trace!(
+                                "[Bridge] lsp missing dependency: {} ({})",
+                                tool_name,
+                                language_id
+                            );
+                            router.on_lsp_missing_dependency(language_id, tool_name);
                         }
                     }
                 }
@@ -160,7 +190,7 @@ mod tests {
     use std::{collections::HashMap, sync::mpsc};
 
     use crate::async_runtime::message::{
-        RequestTopic, WorkerEvent, WorkerEventKind, WorkerMessage, WorkerResult,
+        InstallStatus, RequestTopic, WorkerEvent, WorkerEventKind, WorkerMessage, WorkerResult,
         WorkerResultPayload,
     };
 
@@ -195,8 +225,12 @@ mod tests {
 
         fn on_ai_message_chunk(&mut self, _text: String) {}
         fn on_ai_stream_complete(&mut self) {}
+        fn on_ai_stream_cancelled(&mut self) {}
         fn on_ai_stream_error(&mut self, _error: String) {}
         fn on_ai_install_success(&mut self) {}
+        fn on_system_dep_tool_progress(&mut self, _tool: String, _status: InstallStatus) {}
+        fn on_system_dep_install_done(&mut self) {}
+        fn on_lsp_missing_dependency(&mut self, _language_id: String, _tool_name: String) {}
     }
 
     #[test]

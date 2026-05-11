@@ -60,7 +60,7 @@ impl Transaction {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EditHistory {
     pub undo_stack: Vec<Transaction>,
     pub redo_stack: Vec<Transaction>,

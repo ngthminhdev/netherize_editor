@@ -20,6 +20,13 @@ pub enum LanguageId {
     Bash,
     Markdown,
     Dotenv,
+    Java,
+    Python,
+    Html,
+    Css,
+    Protobuf,
+    Xml,
+    Plaintext,
 }
 
 impl LanguageId {
@@ -38,6 +45,13 @@ impl LanguageId {
             Self::Bash => "bash",
             Self::Markdown => "markdown",
             Self::Dotenv => "dotenv",
+            Self::Java => "java",
+            Self::Python => "python",
+            Self::Html => "html",
+            Self::Css => "css",
+            Self::Protobuf => "protobuf",
+            Self::Xml => "xml",
+            Self::Plaintext => "plaintext",
         }
     }
 }
@@ -366,5 +380,40 @@ mod tests {
         );
         assert!(!updated.contains("first"));
         assert_eq!(state.root_node().kind(), "source_file");
+    }
+
+    #[test]
+    fn html_parser_bootstrap_returns_fragment_root() {
+        let mut engine = SyntaxEngine::new(LanguageId::Html).expect("init html parser");
+        let state = engine
+            .parse_source("<html><body><p>Hello</p></body></html>", 1)
+            .expect("parse html");
+
+        assert_eq!(state.language_id().as_str(), "html");
+        assert_eq!(state.root_node().kind(), "document");
+    }
+
+    #[test]
+    fn css_parser_bootstrap_returns_stylesheet_root() {
+        let mut engine = SyntaxEngine::new(LanguageId::Css).expect("init css parser");
+        let state = engine
+            .parse_source("body { color: red; font-size: 16px; }", 1)
+            .expect("parse css");
+
+        assert_eq!(state.language_id().as_str(), "css");
+        assert_eq!(state.root_node().kind(), "stylesheet");
+    }
+
+    #[test]
+    fn java_parser_bootstrap_returns_program_root() {
+        let mut engine = SyntaxEngine::new(LanguageId::Java).expect("init java parser");
+        let state = engine
+            .parse_source(
+                "public class Main { public static void main(String[] args) {} }",
+                1,
+            )
+            .expect("parse java");
+        assert_eq!(state.language_id().as_str(), "java");
+        assert_eq!(state.root_node().kind(), "program");
     }
 }

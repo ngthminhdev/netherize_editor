@@ -48,6 +48,35 @@ mod tests {
     }
 
     #[test]
+    fn folded_ranges_hide_lines_after_marker_through_end_line() {
+        let mut state = AppState::from_text(unique_temp_path("fold_map"), "a\nb\nc\nd\ne");
+        state.folded_ranges = vec![(1, 3)];
+
+        assert!(!state.is_line_folded(1));
+        assert!(state.is_line_folded(2));
+        assert!(state.is_line_folded(3));
+        assert_eq!(state.folded_line_count_at_marker(1), Some(2));
+        assert_eq!(state.compute_visible_line_map(), vec![0, 1, 4]);
+        assert_eq!(state.visible_line_count(), 3);
+        assert_eq!(state.logical_to_visible_line(1), Some(1));
+        assert_eq!(state.logical_to_visible_line(2), None);
+        assert_eq!(state.logical_to_visible_line(4), Some(2));
+    }
+
+    #[test]
+    fn vertical_movement_skips_folded_hidden_lines() {
+        let mut state = AppState::from_text(unique_temp_path("fold_move"), "a\nb\nc\nd\ne");
+        state.folded_ranges = vec![(1, 3)];
+        assert!(state.jump_to_line(1));
+
+        state.move_down();
+        assert_eq!(state.cursor_line_col(), (4, 0));
+
+        state.move_up();
+        assert_eq!(state.cursor_line_col(), (1, 0));
+    }
+
+    #[test]
     fn text_edits_record_highlight_byte_deltas() {
         let mut state = AppState::from_text(unique_temp_path("scratch"), "");
 
@@ -1268,5 +1297,212 @@ mod tests {
         assert_eq!(state.text_string(), "old new");
         assert_eq!(state.history.undo_stack.len(), 2);
         assert!(state.history.redo_stack.is_empty());
+    }
+
+    // ── HTML auto-close tag ────────────────────────────────────────────────────
+
+    fn html_state_with(content: &str) -> AppState {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("netherize_autoclose_{nanos}.html"));
+        std::fs::write(&path, content).expect("write temp html");
+        let mut state = AppState::from_text(path.clone(), "");
+        state.open_file(path).expect("open html");
+        // Move cursor to end of loaded text
+        state.cursor_char_idx = state.text.len_chars();
+        state
+    }
+
+    #[test]
+    fn html_auto_close_inserts_closing_tag_after_gt() {
+        let mut state = html_state_with("<div");
+        // Cursor is at end (after 'v'). Insert '>' then auto-close.
+        state.insert_char('>');
+        let closed = state.insert_html_auto_close_tag();
+        assert!(closed, "should have inserted closing tag");
+        assert_eq!(state.text_string(), "<div></div>");
+        // Cursor should be between the two tags (position 5)
+        assert_eq!(state.cursor_char_idx, 5);
+    }
+
+    #[test]
+    fn html_auto_close_with_attributes() {
+        let mut state = html_state_with(r#"<div class="foo""#);
+        state.insert_char('>');
+        let closed = state.insert_html_auto_close_tag();
+        assert!(closed);
+        assert!(state.text_string().ends_with("></div>"));
+    }
+
+    #[test]
+    fn html_auto_close_skips_void_elements() {
+        for void_tag in &["img", "br", "hr", "input", "meta", "link"] {
+            let content = format!("<{void_tag}");
+            let mut state = html_state_with(&content);
+            state.insert_char('>');
+            let closed = state.insert_html_auto_close_tag();
+            assert!(!closed, "{void_tag} should not be auto-closed");
+        }
+    }
+
+    #[test]
+    fn html_auto_close_skips_self_closing_tag() {
+        let mut state = html_state_with("<br /");
+        state.insert_char('>');
+        let closed = state.insert_html_auto_close_tag();
+        assert!(!closed, "self-closing tag should be skipped");
+    }
+
+    #[test]
+    fn html_auto_close_skips_closing_tag() {
+        let mut state = html_state_with("<div></");
+        // Simulate typing "</div>" — the `>` inside a closing tag should be ignored
+        // Manually position cursor after the closing slash context
+        state.insert_char('d');
+        state.insert_char('i');
+        state.insert_char('v');
+        state.insert_char('>');
+        let closed = state.insert_html_auto_close_tag();
+        assert!(
+            !closed,
+            "closing tag sequence should not trigger auto-close"
+        );
+    }
+
+    #[test]
+    fn html_auto_close_does_not_apply_to_non_html_files() {
+        // from_text has no active_file → extension is empty → returns false
+        let mut state = AppState::from_text(PathBuf::from("test.rs"), "");
+        for ch in "<div>".chars() {
+            state.insert_char(ch);
+        }
+        state.cursor_char_idx = state.text.len_chars();
+        let closed = state.insert_html_auto_close_tag();
+        assert!(!closed, "Rust file should not trigger HTML auto-close");
+    }
+
+    // ── Multi-cursor tests ────────────────────────────────────────────────────
+
+    fn setup_multi_cursor(text: &str) -> AppState {
+        AppState::from_text(PathBuf::from("test.rs"), text)
+    }
+
+    /// After `c` (change), primary and virtual cursors must land at the start of
+    /// their respective deleted selections, adjusted for all lower-index deletions.
+    #[test]
+    fn multi_cursor_change_places_cursors_at_deleted_selection_starts() {
+        // "foo bar foo" — primary on first "foo" [0,3), virtual on second "foo" [8,11)
+        let mut state = setup_multi_cursor("foo bar foo");
+
+        // Put cursor on first "foo" and select it via ctrl-n.
+        state.cursor_char_idx = 0;
+        assert!(state.multi_cursor_add_next()); // seeds word "foo", primary sel [0,3)
+        assert!(state.multi_cursor_add_next()); // adds second "foo", virtual sel [8,11)
+
+        assert_eq!(state.current_mode(), EditorMode::MultiCursor);
+
+        // Execute `c` (change): delete both selections, enter MultiInsert.
+        assert!(state.multi_cursor_change());
+        assert_eq!(state.current_mode(), EditorMode::MultiInsert);
+
+        // Buffer is now " bar " (5 chars: space bar space, then the remaining space)
+        // Actually "foo bar foo" → delete [8,11) first: "foo bar " → delete [0,3): " bar "
+        // Primary cursor should be at 0 (start of where first "foo" was).
+        assert_eq!(
+            state.cursor_char_idx, 0,
+            "primary cursor must be at position 0 after deleting first 'foo'"
+        );
+
+        // Virtual cursor: original sel_start = 8. After deleting [0,3), shift = 3.
+        // Expected position = 8 - 3 = 5.
+        assert_eq!(
+            state.virtual_cursors().len(),
+            1,
+            "one virtual cursor must remain"
+        );
+        assert_eq!(
+            state.virtual_cursors()[0].char_idx,
+            5,
+            "virtual cursor must be at position 5 (8 - 3) after deleting first 'foo'"
+        );
+
+        // Buffer content check: "foo bar foo" minus "foo" twice = " bar "
+        assert_eq!(state.text_string(), " bar ");
+    }
+
+    /// Three occurrences — verifies each virtual cursor position is independently
+    /// adjusted by the total chars deleted below it.
+    #[test]
+    fn multi_cursor_change_three_occurrences_cursor_positions() {
+        // "ab|ab|ab" (| is a separator, word = "ab")
+        // sel [0,2), [3,5), [6,8)
+        let mut state = setup_multi_cursor("ab|ab|ab");
+
+        state.cursor_char_idx = 0;
+        assert!(state.multi_cursor_add_next()); // primary: "ab" at [0,2)
+        assert!(state.multi_cursor_add_next()); // virtual: "ab" at [3,5)
+        assert!(state.multi_cursor_add_next()); // virtual: "ab" at [6,8)
+
+        assert!(state.multi_cursor_change());
+
+        // Deleted [6,8) first, then [3,5), then [0,2). Buffer: "||"
+        // Primary at 0: shift from ranges below 0 = 0 → pos 0
+        // VC1 at orig 3: ranges below 3 → [0,2) len=2 → pos = 3 - 2 = 1
+        // VC2 at orig 6: ranges below 6 → [0,2) len=2 + [3,5) len=2 = 4 → pos = 6 - 4 = 2
+        assert_eq!(state.cursor_char_idx, 0);
+        assert_eq!(state.virtual_cursors()[0].char_idx, 1);
+        assert_eq!(state.virtual_cursors()[1].char_idx, 2);
+        assert_eq!(state.text_string(), "||");
+    }
+
+    /// `d` (delete) shares the same deletion logic — cursors should also be correct.
+    #[test]
+    fn multi_cursor_delete_places_cursors_correctly() {
+        let mut state = setup_multi_cursor("foo bar foo");
+
+        state.cursor_char_idx = 0;
+        assert!(state.multi_cursor_add_next());
+        assert!(state.multi_cursor_add_next());
+        assert!(state.multi_cursor_delete());
+
+        assert_eq!(state.current_mode(), EditorMode::MultiCursor);
+        assert_eq!(state.cursor_char_idx, 0);
+        assert_eq!(state.virtual_cursors()[0].char_idx, 5);
+        assert_eq!(state.text_string(), " bar ");
+    }
+
+    /// `I` must move cursors to sel_start, `A` to sel_end — unchanged behavior.
+    #[test]
+    fn multi_cursor_insert_before_and_append_after_unchanged() {
+        // Test `I`
+        let mut state = setup_multi_cursor("foo bar foo");
+        state.cursor_char_idx = 0;
+        assert!(state.multi_cursor_add_next());
+        assert!(state.multi_cursor_add_next());
+
+        let mut state_i = state.clone();
+        assert!(state_i.multi_cursor_insert_before());
+        assert_eq!(state_i.cursor_char_idx, 0, "I: primary at sel start");
+        assert_eq!(
+            state_i.virtual_cursors()[0].char_idx,
+            8,
+            "I: vc at its sel start"
+        );
+        assert_eq!(state_i.current_mode(), EditorMode::MultiInsert);
+
+        // Test `A`
+        let mut state_a = state.clone();
+        assert!(state_a.multi_cursor_append_after());
+        // primary: anchor=0, cursor=2 → end = max(0,2)+1 = 3
+        assert_eq!(state_a.cursor_char_idx, 3, "A: primary at sel end");
+        // vc: sel_end = 11 → char_idx = 11
+        assert_eq!(
+            state_a.virtual_cursors()[0].char_idx,
+            11,
+            "A: vc at its sel end"
+        );
+        assert_eq!(state_a.current_mode(), EditorMode::MultiInsert);
     }
 }

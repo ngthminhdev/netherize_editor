@@ -91,7 +91,20 @@ impl WorkspaceIgnoreRules {
 
 impl Default for WorkspaceIgnoreRules {
     fn default() -> Self {
-        Self::new([".git", "target"])
+        Self::new([
+            ".git",
+            "target",
+            // Python virtual environments and cache
+            "venv",
+            "__pycache__",
+            ".mypy_cache",
+            ".pytest_cache",
+            ".ruff_cache",
+            // Node.js
+            "node_modules",
+            // Build output
+            "dist",
+        ])
     }
 }
 

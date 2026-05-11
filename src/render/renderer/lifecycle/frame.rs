@@ -43,7 +43,16 @@ impl Renderer {
         let buf_term_cursor_start = term_cursor_start + term_cursor_count;
         let buf_term_cursor_count = self.buffer_terminal_cursor_instances.len() as u32;
 
-        let palette_start = buf_term_cursor_start + buf_term_cursor_count;
+        let ai_chat_history_chrome_start = buf_term_cursor_start + buf_term_cursor_count;
+        let ai_chat_history_chrome_count = self.ai_chat_history_chrome_instances.len() as u32;
+
+        // Suggestion popup chrome is a separate range drawn *after* bubble text.
+        let ai_chat_suggestion_chrome_start =
+            ai_chat_history_chrome_start + ai_chat_history_chrome_count;
+        let ai_chat_suggestion_chrome_count =
+            self.ai_chat_suggestion_chrome_instances.len() as u32;
+
+        let palette_start = ai_chat_suggestion_chrome_start + ai_chat_suggestion_chrome_count;
         let palette_count = self.palette_chrome_instances.len() as u32;
 
         let lsp_guide_start = palette_start + palette_count;
@@ -67,6 +76,8 @@ impl Renderer {
         all_instances.extend_from_slice(&self.leap_label_bg_instances);
         all_instances.extend_from_slice(&self.terminal_cursor_instances);
         all_instances.extend_from_slice(&self.buffer_terminal_cursor_instances);
+        all_instances.extend_from_slice(&self.ai_chat_history_chrome_instances);
+        all_instances.extend_from_slice(&self.ai_chat_suggestion_chrome_instances);
         all_instances.extend_from_slice(&self.palette_chrome_instances);
         all_instances.extend_from_slice(&self.lsp_guide_chrome_instances);
         all_instances.extend_from_slice(&self.system_dep_chrome_instances);
@@ -214,29 +225,88 @@ impl Renderer {
                     self.ai_chat_hero_image_pipeline.draw(render_pass);
                 },
             );
-            draw_text_region(
-                &mut pass,
-                self.ai_chat_history_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    // Draw only the history glyphs (before input batch).
-                    let total = self.ai_chat_glyph_instances.len() as u32;
-                    let hist_count = match &self.ai_chat_input_batch {
-                        Some(batch) => batch.range.start,
-                        None => total,
-                    };
-                    if hist_count > 0 {
-                        self.ai_chat_text_pipeline.draw_range(
+            if ai_chat_history_chrome_count > 0 {
+                draw_text_region(
+                    &mut pass,
+                    self.ai_chat_history_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline.draw_range(
                             render_pass,
-                            crate::render::text_pipeline::InstanceDrawRange {
-                                start: 0,
-                                count: hist_count,
+                            ai_chat_history_chrome_start,
+                            ai_chat_history_chrome_count,
+                        );
+                    },
+                );
+            }
+            // 4b-i. Draw message-bubble glyphs up to where suggestion text begins.
+            //        If there is no suggestion, this draws all history glyphs at once.
+            {
+                let total = self.ai_chat_glyph_instances.len() as u32;
+                let hist_count = match &self.ai_chat_input_batch {
+                    Some(batch) => batch.range.start,
+                    None => total,
+                };
+                let pre_suggestion = self
+                    .ai_chat_suggestion_glyph_start
+                    .unwrap_or(hist_count)
+                    .min(hist_count);
+                if pre_suggestion > 0 {
+                    draw_text_region(
+                        &mut pass,
+                        self.ai_chat_history_scissor,
+                        viewport_width,
+                        viewport_height,
+                        |render_pass| {
+                            self.ai_chat_text_pipeline.draw_range(
+                                render_pass,
+                                crate::render::text_pipeline::InstanceDrawRange {
+                                    start: 0,
+                                    count: pre_suggestion,
+                                },
+                            );
+                        },
+                    );
+                }
+                // 4b-ii. Suggestion popup chrome on top of bubble text.
+                if ai_chat_suggestion_chrome_count > 0 {
+                    draw_text_region(
+                        &mut pass,
+                        self.ai_chat_history_scissor,
+                        viewport_width,
+                        viewport_height,
+                        |render_pass| {
+                            self.region_pipeline.draw_range(
+                                render_pass,
+                                ai_chat_suggestion_chrome_start,
+                                ai_chat_suggestion_chrome_count,
+                            );
+                        },
+                    );
+                }
+                // 4b-iii. Suggestion text on top of popup chrome.
+                if let Some(sug_start) = self.ai_chat_suggestion_glyph_start {
+                    let sug_count = hist_count.saturating_sub(sug_start);
+                    if sug_count > 0 {
+                        draw_text_region(
+                            &mut pass,
+                            self.ai_chat_history_scissor,
+                            viewport_width,
+                            viewport_height,
+                            |render_pass| {
+                                self.ai_chat_text_pipeline.draw_range(
+                                    render_pass,
+                                    crate::render::text_pipeline::InstanceDrawRange {
+                                        start: sug_start,
+                                        count: sug_count,
+                                    },
+                                );
                             },
                         );
                     }
-                },
-            );
+                }
+            }
 
             // 4c. AI Chat text — input box (scissor clipped to input bounds).
             if let Some(batch) = &self.ai_chat_input_batch {
@@ -278,15 +348,40 @@ impl Renderer {
             }
 
             // 6. Terminal panel.
-            draw_text_region(
-                &mut pass,
-                self.terminal_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.terminal_text_pipeline.draw(render_pass);
-                },
-            );
+            if let Some(body_batch) = self.terminal_body_batch {
+                draw_text_region(
+                    &mut pass,
+                    Some(body_batch.scissor),
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.terminal_text_pipeline
+                            .draw_range(render_pass, body_batch.range);
+                    },
+                );
+                if let Some(tab_batch) = self.terminal_tab_bar_batch {
+                    draw_text_region(
+                        &mut pass,
+                        Some(tab_batch.scissor),
+                        viewport_width,
+                        viewport_height,
+                        |render_pass| {
+                            self.terminal_text_pipeline
+                                .draw_range(render_pass, tab_batch.range);
+                        },
+                    );
+                }
+            } else {
+                draw_text_region(
+                    &mut pass,
+                    self.terminal_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.terminal_text_pipeline.draw(render_pass);
+                    },
+                );
+            }
             if term_cursor_count > 0 {
                 draw_text_region(
                     &mut pass,
@@ -408,6 +503,17 @@ impl Renderer {
                     },
                 );
             }
+
+            // 8b. TopBar logo.
+            draw_text_region(
+                &mut pass,
+                self.topbar_logo_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.topbar_logo_image_pipeline.draw(render_pass);
+                },
+            );
 
             // 9. StatusBar.
             draw_text_region(

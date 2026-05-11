@@ -5,10 +5,11 @@ impl AsyncResultRouter for AppShell {
         match topic {
             RequestTopic::ActiveBufferLayout => self.active_highlight_request_revision,
             RequestTopic::FzfSearch => self.fzf_search_revision,
-            RequestTopic::LocalHistory => self.local_history_revision,
             RequestTopic::Git => self.git_overlay_revision,
+            RequestTopic::GitStatus => self.git_status_revision,
+            RequestTopic::GitBaseline => self.git_baseline_revision,
             RequestTopic::AiInlineCompletion => self.ai_inline_revision,
-            RequestTopic::SystemDepCheck => 0,
+            RequestTopic::SystemDepCheck | RequestTopic::SystemDepInstall => 0,
             _ => 0,
         }
     }
@@ -18,8 +19,46 @@ impl AsyncResultRouter for AppShell {
         let revision_id = event.revision_id;
         let topic = event.topic;
         if let crate::async_runtime::message::WorkerEventKind::Failed { error } = event.kind {
+            if topic == RequestTopic::TerminalPty
+                && let Some(tab_idx) = self.pending_terminal_tab_spawns.remove(&request_id)
+            {
+                if let Some(tab) = self.terminal_tabs.get_mut(tab_idx) {
+                    tab.status = TerminalTabStatus::Exited(1);
+                    tab.label = "terminal failed".to_string();
+                    self.terminal_needs_layout = true;
+                }
+            }
             if topic == RequestTopic::LspClient {
                 self.pending_lsp_server = None;
+            }
+            // completionItem/resolve failed (e.g. server doesn't advertise resolveProvider).
+            // Mark as resolved so the panel shows "No documentation available".
+            if self.completion_resolve_request_id == Some(request_id) {
+                self.completion_resolve_request_id = None;
+                self.app_state.mark_completion_hover_doc_resolved();
+                self.editor_caret_needs_layout = true;
+                self.request_redraw();
+            }
+            // Hover request failed — dismiss the loading overlay we showed eagerly.
+            if self.hover_loading_request_id == Some(request_id) {
+                self.hover_loading_request_id = None;
+                let changed = self.app_state.clear_current_overlays();
+                if changed {
+                    self.editor_caret_needs_layout = true;
+                    self.request_redraw();
+                }
+            }
+            // Definition request failed (timeout, server error, or our own
+            // $/cancelRequest racing in). If this was the request we're still
+            // waiting on, free the slot so the next `gd` isn't filtered out
+            // as "superseded".
+            if self.latest_definition_request_id == Some(request_id) {
+                self.latest_definition_request_id = None;
+            }
+            // Completion request failed — clear the spinner.
+            if self.app_state.is_completion_loading() {
+                self.app_state.set_completion_loading(false);
+                self.request_redraw();
             }
             if topic == RequestTopic::LspRequest
                 && revision_id >= self.document_symbols_request_revision
@@ -162,17 +201,6 @@ impl AsyncResultRouter for AppShell {
                     self.request_redraw();
                 }
             }
-            WorkerResultPayload::LocalHistoryLoaded { file_path, history } => {
-                if self
-                    .app_state
-                    .reconcile_loaded_file_history(&file_path, history)
-                {
-                    self.editor_needs_layout = true;
-                    self.editor_caret_needs_layout = false;
-                    self.request_redraw();
-                }
-            }
-            WorkerResultPayload::LocalHistorySaved { .. } => {}
             WorkerResultPayload::PtySpawned {
                 session_id,
                 shell,
@@ -222,19 +250,49 @@ impl AsyncResultRouter for AppShell {
                         let _ = self.sync_terminal_buffer_layout(session_id, bounds);
                     }
                 } else {
+                    if self.ignored_terminal_tab_spawns.remove(&result.request_id) {
+                        self.submit(RequestSpec {
+                            revision_id: 0,
+                            topic: RequestTopic::TerminalPty,
+                            payload: WorkerRequestPayload::ClosePtySession { session_id },
+                        });
+                        self.request_redraw();
+                        return;
+                    }
                     eprintln!(
                         "[AppShell] PTY ready: session={session_id} shell={shell} dir={}",
                         working_dir.display()
                     );
-                    self.pty_session_id = Some(session_id);
+                    // Create label from shell name (e.g. "/bin/bash" → "bash").
+                    let label = shell.rsplit('/').next().unwrap_or(&shell).to_string();
+                    let idx = self
+                        .pending_terminal_tab_spawns
+                        .remove(&result.request_id)
+                        .unwrap_or(self.active_terminal_tab);
+                    let Some(tab) = self.terminal_tabs.get_mut(idx) else {
+                        self.submit(RequestSpec {
+                            revision_id: 0,
+                            topic: RequestTopic::TerminalPty,
+                            payload: WorkerRequestPayload::ClosePtySession { session_id },
+                        });
+                        self.request_redraw();
+                        return;
+                    };
+                    let cols = tab.grid.cols.min(u16::MAX as usize) as u16;
+                    let rows = tab.grid.rows.min(u16::MAX as usize) as u16;
+                    tab.session_id = Some(session_id);
+                    tab.label = label.clone();
+                    tab.shell_label = label;
+                    tab.pending_input.clear();
+                    tab.status = TerminalTabStatus::Running;
                     self.terminal_needs_layout = true;
                     self.submit(RequestSpec {
                         revision_id: 0,
                         topic: RequestTopic::TerminalPty,
                         payload: WorkerRequestPayload::ResizePtySession {
                             session_id,
-                            cols: self.terminal_grid.cols.min(u16::MAX as usize) as u16,
-                            rows: self.terminal_grid.rows.min(u16::MAX as usize) as u16,
+                            cols,
+                            rows,
                         },
                     });
                 }
@@ -244,16 +302,20 @@ impl AsyncResultRouter for AppShell {
                 let preserve_viewport = self.app_state.current_mode() == EditorMode::TerminalNormal
                     && self.focused_terminal_session_id() == Some(session_id);
                 let mut should_redraw = false;
-                if self.pty_session_id == Some(session_id) {
-                    let scrolled_rows = self.terminal_grid.feed_bytes(&chunk);
-                    self.terminal_grid.apply_regex_highlights();
-                    if preserve_viewport {
-                        self.terminal_grid.view_scroll_up(scrolled_rows);
-                    } else {
-                        self.terminal_grid.view_scroll_to_bottom();
+                // Route PTY output to the matching bottom-panel tab.
+                for tab in &mut self.terminal_tabs {
+                    if tab.session_id == Some(session_id) {
+                        let scrolled_rows = tab.grid.feed_bytes(&chunk);
+                        tab.grid.apply_regex_highlights();
+                        if preserve_viewport {
+                            tab.grid.view_scroll_up(scrolled_rows);
+                        } else {
+                            tab.grid.view_scroll_to_bottom();
+                        }
+                        self.terminal_needs_layout = true;
+                        should_redraw = true;
+                        break;
                     }
-                    self.terminal_needs_layout = true;
-                    should_redraw = true;
                 }
                 if self.right_pty_session_id == Some(session_id) {
                     let scrolled_rows = self.right_terminal_grid.feed_bytes(&chunk);
@@ -295,7 +357,7 @@ impl AsyncResultRouter for AppShell {
                 cols,
                 rows,
             } => {
-                if self.pty_session_id == Some(session_id) {
+                if self.terminal_tabs.iter().any(|t| t.session_id == Some(session_id)) {
                     eprintln!("[AppShell] PTY {session_id} resized to {cols}x{rows}");
                 }
                 if self
@@ -309,9 +371,12 @@ impl AsyncResultRouter for AppShell {
             WorkerResultPayload::PtySessionClosed {
                 session_id, reason, ..
             } => {
-                if self.pty_session_id == Some(session_id) {
+                if let Some(tab) = self.terminal_tabs.iter_mut().find(|t| t.session_id == Some(session_id)) {
                     eprintln!("[AppShell] PTY {session_id} closed: {reason}");
-                    self.pty_session_id = None;
+                    tab.session_id = None;
+                    tab.status = TerminalTabStatus::Exited(0);
+                    tab.label = format!("{} (dead)", tab.label.trim_end_matches(" (dead)"));
+                    self.terminal_needs_layout = true;
                 }
                 if self.right_pty_session_id == Some(session_id) {
                     eprintln!("[AppShell] right PTY {session_id} closed: {reason}");
@@ -391,7 +456,14 @@ impl AsyncResultRouter for AppShell {
                 }
             }
             WorkerResultPayload::LspServerStopped { .. } => {
-                self.active_lsp_server = None;
+                if let Some(server) = self.active_lsp_server.take() {
+                    if self
+                        .app_state
+                        .clear_lsp_progress_for_server(&server.server_name)
+                    {
+                        self.request_redraw();
+                    }
+                }
                 self.pending_lsp_document_sync = None;
                 self.lsp_completion_trigger_chars.clear();
             }
@@ -420,16 +492,40 @@ impl AsyncResultRouter for AppShell {
             WorkerResultPayload::LspLogMessage { level, message } => {
                 eprintln!("[LSP/{level}] {message}");
             }
+            WorkerResultPayload::LspProgress {
+                server_name,
+                token,
+                kind,
+                title,
+                message,
+                percentage,
+            } => {
+                use crate::app::app_state::LspProgressKind;
+                use crate::async_runtime::message::LspProgressKindWire;
+                let app_kind = match kind {
+                    LspProgressKindWire::Begin => LspProgressKind::Begin,
+                    LspProgressKindWire::Report => LspProgressKind::Report,
+                    LspProgressKindWire::End => LspProgressKind::End,
+                };
+                let changed = self.app_state.update_lsp_progress(
+                    &server_name,
+                    &token,
+                    app_kind,
+                    title,
+                    message,
+                    percentage,
+                );
+                if changed {
+                    self.request_redraw();
+                }
+            }
             WorkerResultPayload::LspCheckResult {
                 binary,
                 install_cmd,
                 is_installed,
                 ..
             } => {
-                if !is_installed
-                    && !install_cmd.is_empty()
-                    && !self.dismissed_lsp_binaries.contains(&binary)
-                {
+                if !is_installed && !self.dismissed_lsp_binaries.contains(&binary) {
                     // Hiển thị popup hướng dẫn cài LSP.
                     self.active_lsp_guide = Some(LspInstallGuide {
                         binary,
@@ -437,16 +533,71 @@ impl AsyncResultRouter for AppShell {
                     });
                     self.request_redraw();
                 }
-                // Nếu đã cài hoặc user đã dismiss hoặc không có install_cmd: không cần làm gì.
+                // Nếu đã cài hoặc user đã dismiss: không cần làm gì.
             }
-            WorkerResultPayload::LspHoverResult { content, .. } => {
-                use crate::app::app_state::{EditorOverlay, FloatingBoxStyle};
+            WorkerResultPayload::LspHoverResult {
+                content,
+                for_completion,
+                completion_revision,
+                parsed_blocks,
+                ..
+            } => {
+                // Clear the in-flight tracker regardless of outcome.
+                if self.hover_loading_request_id == Some(request_id) {
+                    self.hover_loading_request_id = None;
+                }
+                // Result Reconciliation for the completion-hover path: if the
+                // user moved to a different completion item since we asked
+                // for this hover, drop it silently (don't update state).
+                if for_completion {
+                    let current_revision = self
+                        .app_state
+                        .completion()
+                        .map(|state| state.current_revision);
+                    if completion_revision != current_revision {
+                        return;
+                    }
+                }
                 if content.is_empty() {
+                    if for_completion {
+                        // Hover fallback also found nothing — mark resolved so the panel
+                        // shows "No documentation available" instead of spinning.
+                        self.app_state.mark_completion_hover_doc_resolved();
+                        self.editor_caret_needs_layout = true;
+                    } else {
+                        // No docs — dismiss the loading overlay we showed eagerly.
+                        let changed = self.app_state.clear_current_overlays();
+                        if changed {
+                            self.editor_caret_needs_layout = true;
+                            self.request_redraw();
+                        }
+                    }
                     return;
                 }
+                if for_completion {
+                    if self.app_state.has_completion() {
+                        self.app_state
+                            .set_completion_hover_doc(Some(content.clone()));
+                        self.editor_caret_needs_layout = true;
+                        self.request_redraw();
+                    }
+                    return;
+                }
+                use crate::app::app_state::{EditorOverlay, FloatingBoxStyle};
                 let (anchor_line, anchor_col) = self.app_state.cursor_line_col();
-                let blocks = parse_hover_markdown_blocks(&content, &self.theme);
+                // Prefer worker-parsed blocks (Tree-sitter already done off the
+                // main thread); only fall back to main-thread parsing if the
+                // worker didn't ship them (e.g. legacy/mismatched build).
+                let blocks = match parsed_blocks {
+                    Some(raw) => convert_worker_hover_blocks(raw, &self.theme),
+                    None => parse_hover_markdown_blocks(&content, &self.theme),
+                };
                 if blocks.is_empty() {
+                    let changed = self.app_state.clear_current_overlays();
+                    if changed {
+                        self.editor_caret_needs_layout = true;
+                        self.request_redraw();
+                    }
                     return;
                 }
                 let changed =
@@ -466,6 +617,23 @@ impl AsyncResultRouter for AppShell {
                 locations, jump, ..
             } => {
                 use crate::app::app_state::{EditorOverlay, FloatingBoxStyle};
+                // Drop any result whose request was superseded by a newer
+                // `gd`/`gD`. The worker already sent $/cancelRequest, but the
+                // response may have been on the wire before cancellation
+                // reached the server.
+                if self
+                    .latest_definition_request_id
+                    .is_some_and(|latest| latest != request_id)
+                {
+                    eprintln!(
+                        "[AppShell] dropping stale LSP definition response request_id={request_id} latest={:?}",
+                        self.latest_definition_request_id
+                    );
+                    return;
+                }
+                if self.latest_definition_request_id == Some(request_id) {
+                    self.latest_definition_request_id = None;
+                }
                 let Some(loc) = locations.into_iter().next() else {
                     eprintln!("[AppShell] LSP definition: no locations");
                     return;
@@ -533,6 +701,45 @@ impl AsyncResultRouter for AppShell {
                         self.editor_caret_needs_layout = true;
                         self.request_redraw();
                     }
+                }
+            }
+            WorkerResultPayload::LspDocumentHighlightResult { uri, highlights } => {
+                if revision_id < self.semantic_highlight_request_revision {
+                    eprintln!(
+                        "[AppShell] stale document highlight result ignored request_id={} revision={} latest_revision={}",
+                        request_id, revision_id, self.semantic_highlight_request_revision
+                    );
+                    return;
+                }
+                let Some(path) = lsp_uri_to_path(&uri) else {
+                    return;
+                };
+                if self.app_state.active_file().map(PathBuf::from) != Some(path) {
+                    return;
+                }
+                let mut next: Vec<(usize, usize)> = highlights
+                    .into_iter()
+                    .filter_map(|highlight| {
+                        let start_line = highlight.range.start.line as usize;
+                        let end_line = highlight.range.end.line as usize;
+                        let start_byte = self
+                            .app_state
+                            .line_char_to_byte_idx(start_line, highlight.range.start.character as usize);
+                        let mut end_byte = self
+                            .app_state
+                            .line_char_to_byte_idx(end_line, highlight.range.end.character as usize);
+                        if end_byte <= start_byte {
+                            end_byte = start_byte.saturating_add(1);
+                        }
+                        (end_byte > start_byte).then_some((start_byte, end_byte))
+                    })
+                    .collect();
+                if next.is_empty() {
+                    next = self.app_state.fallback_symbol_highlights_under_cursor();
+                }
+                if self.app_state.set_semantic_symbol_highlights(next) {
+                    self.editor_caret_needs_layout = true;
+                    self.request_redraw();
                 }
             }
             WorkerResultPayload::LspReferencesResult { locations, .. } => {
@@ -650,6 +857,44 @@ impl AsyncResultRouter for AppShell {
                     self.request_redraw();
                 }
             }
+            WorkerResultPayload::LspCodeActionResult { actions } => {
+                if actions.is_empty() {
+                    return;
+                }
+                // Luôn mở picker để user chọn, dù chỉ có 1 action.
+                use crate::app::command_palette::{
+                    CommandPaletteAction, CommandPaletteItem, CommandPaletteItemTone,
+                };
+                let items: Vec<CommandPaletteItem> = actions
+                    .iter()
+                    .enumerate()
+                    .map(|(i, a)| CommandPaletteItem {
+                        label: a.title.clone(),
+                        secondary_label: if a.edits.is_empty() {
+                            Some("needs resolve".to_string())
+                        } else {
+                            None
+                        },
+                        action: CommandPaletteAction::ApplyCodeAction(i),
+                        tone: CommandPaletteItemTone::Default,
+                    })
+                    .collect();
+
+                self.pending_code_actions = actions;
+                self.app_state.open_code_action_picker(items);
+                if let Ok(result) = self
+                    .app_state
+                    .apply_mode_event(crate::core::mode::ModeEvent::OpenPalette)
+                {
+                    if result.changed {
+                        self.editor_needs_layout = true;
+                    }
+                }
+                self.focus_manager
+                    .set(crate::workbench::focus_manager::FocusTarget::OverlayLayer);
+                self.input_handler.clear_pending_prefix();
+                self.request_redraw();
+            }
             WorkerResultPayload::LspCompletionResult {
                 items,
                 cursor_line,
@@ -657,7 +902,9 @@ impl AsyncResultRouter for AppShell {
                 prefix_start_col,
                 prefix,
             } => {
+                self.app_state.set_completion_loading(false);
                 if items.is_empty() {
+                    self.request_redraw();
                     return;
                 }
                 let completion = crate::app::app_state::CompletionState::from_lsp_items(
@@ -672,9 +919,57 @@ impl AsyncResultRouter for AppShell {
                 }
                 let changed = self.app_state.set_completion(completion);
                 if changed {
+                    self.submit_completion_resolve();
                     self.editor_caret_needs_layout = true;
                     self.request_redraw();
                 }
+            }
+            WorkerResultPayload::LspCompletionResolveResult {
+                item_label,
+                detail,
+                documentation,
+                completion_revision,
+            } => {
+                // Drop the in-flight tracker only if this result matches it.
+                if self.completion_resolve_request_id == Some(request_id) {
+                    self.completion_resolve_request_id = None;
+                }
+                // Result Reconciliation: if the user has selected a different
+                // item since this resolve was issued, the echoed revision will
+                // no longer match `current_revision`. Drop the entire result —
+                // including the `detail` cache update — because the items list
+                // may have been replaced by a re-trigger and we don't want to
+                // pollute a freshly built list with stale data keyed by label.
+                let Some(completion) = self.app_state.completion() else {
+                    return;
+                };
+                if completion.current_revision != completion_revision {
+                    return;
+                }
+                let cleaned_detail = detail.filter(|d| !d.trim().is_empty());
+                if cleaned_detail.is_some() {
+                    self.app_state
+                        .update_completion_item_detail(&item_label, cleaned_detail);
+                }
+                // Re-borrow after the mutable update_completion_item_detail above.
+                let Some(completion) = self.app_state.completion() else {
+                    return;
+                };
+                let Some(entry) = completion.filtered_items.get(completion.selected_index) else {
+                    return;
+                };
+                if entry.item.label != item_label {
+                    return;
+                }
+                let cleaned = documentation.filter(|d| !d.trim().is_empty());
+                if cleaned.is_some() {
+                    self.app_state.set_completion_hover_doc(cleaned);
+                } else {
+                    // Resolve returned no body docs — mark as resolved.
+                    self.app_state.mark_completion_hover_doc_resolved();
+                }
+                self.editor_caret_needs_layout = true;
+                self.request_redraw();
             }
             WorkerResultPayload::FilePreviewLoaded {
                 file_path,
@@ -759,6 +1054,13 @@ impl AsyncResultRouter for AppShell {
                     self.request_redraw();
                 }
             }
+            WorkerResultPayload::AiInlineCompletionChunk { chunk } => {
+                if self.app_state.append_inline_suggestion_chunk(&chunk) {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    self.request_redraw();
+                }
+            }
             WorkerResultPayload::AiInlineCompletionResult { suggestion } => {
                 if self.app_state.set_inline_suggestion(Some(suggestion)) {
                     self.editor_needs_layout = true;
@@ -776,11 +1078,54 @@ impl AsyncResultRouter for AppShell {
                     format!("sudo apt-get install -y {}", missing.join(" "))
                 };
                 let missing_names: Vec<String> = missing.iter().map(|s| s.to_string()).collect();
+                let tool_statuses = missing_names
+                    .iter()
+                    .map(|t| {
+                        (t.clone(), crate::async_runtime::message::InstallStatus::Pending)
+                    })
+                    .collect();
                 self.active_system_dep_guide = Some(SystemDepGuide {
                     state: SystemDepState::Detected,
                     missing_tools: Some(missing_names),
                     install_command: Some(install_cmd),
+                    tool_statuses,
                 });
+                self.request_redraw();
+            }
+            WorkerResultPayload::RuntimeVersionsDetected {
+                python_version,
+                node_version,
+                go_version,
+            } => {
+                self.runtime_versions.python_version = python_version;
+                self.runtime_versions.node_version = node_version;
+                self.runtime_versions.go_version = go_version;
+                self.request_redraw();
+            }
+            WorkerResultPayload::PythonEnvironmentsDiscovered(envs) => {
+                use crate::app::command_palette::{
+                    CommandPaletteAction, CommandPaletteItem, CommandPaletteItemTone,
+                };
+                let items: Vec<CommandPaletteItem> = envs
+                    .iter()
+                    .map(|env| CommandPaletteItem {
+                        label: format!(
+                            "[{}] {}",
+                            match &env.kind {
+                                crate::async_runtime::python_env::PythonEnvKind::Venv(_) => "venv",
+                                crate::async_runtime::python_env::PythonEnvKind::Pyenv(_) => "pyenv",
+                                crate::async_runtime::python_env::PythonEnvKind::Global => "global",
+                            },
+                            env.display_name
+                        ),
+                        secondary_label: Some(env.executable.display().to_string()),
+                        action: CommandPaletteAction::SelectPythonEnv(env.executable.clone()),
+                        tone: CommandPaletteItemTone::Default,
+                    })
+                    .collect();
+                self.app_state
+                    .command_palette
+                    .replace_static_results(items);
                 self.request_redraw();
             }
             _ => {}
@@ -822,6 +1167,18 @@ impl AsyncResultRouter for AppShell {
 
     fn on_ai_stream_complete(&mut self) {
         self.panel_state.ai_chat.is_generating = false;
+        self.request_redraw();
+    }
+
+    fn on_ai_stream_cancelled(&mut self) {
+        self.panel_state.ai_chat.is_generating = false;
+        self.panel_state
+            .ai_chat
+            .messages
+            .push(crate::workbench::panel_state::AiChatMessage {
+                role: crate::workbench::panel_state::AiRole::System,
+                text: "Generation stopped.".to_string(),
+            });
         self.request_redraw();
     }
 
@@ -871,6 +1228,44 @@ impl AsyncResultRouter for AppShell {
             });
         self.request_redraw();
     }
+
+    fn on_system_dep_tool_progress(
+        &mut self,
+        tool: String,
+        status: crate::async_runtime::message::InstallStatus,
+    ) {
+        let Some(guide) = self.active_system_dep_guide.as_mut() else {
+            return;
+        };
+        if let Some(entry) = guide.tool_statuses.iter_mut().find(|(t, _)| *t == tool) {
+            entry.1 = status;
+        }
+        self.editor_needs_layout = true;
+        self.request_redraw();
+    }
+
+    fn on_system_dep_install_done(&mut self) {
+        if let Some(guide) = self.active_system_dep_guide.as_mut() {
+            guide.state = SystemDepState::Complete;
+        }
+        self.editor_needs_layout = true;
+        self.request_redraw();
+    }
+
+    fn on_lsp_missing_dependency(&mut self, _language_id: String, tool_name: String) {
+        if self.dismissed_lsp_binaries.contains(&tool_name) {
+            return;
+        }
+        let install_cmd = crate::lsp::registry::language_profile_for_binary(&tool_name)
+            .map(|p| p.install_command.to_string())
+            .unwrap_or_default();
+        self.pending_lsp_server = None;
+        self.active_lsp_guide = Some(LspInstallGuide {
+            binary: tool_name,
+            install_cmd,
+        });
+        self.request_redraw();
+    }
 }
 
 /// Convert `file:///path/to/file` URI thành PathBuf.
@@ -880,7 +1275,7 @@ fn lsp_uri_to_path(uri: &str) -> Option<std::path::PathBuf> {
     path.canonicalize().ok().or(Some(path))
 }
 
-fn apply_lsp_text_edits(
+pub(super) fn apply_lsp_text_edits(
     source: &str,
     edits: &[crate::async_runtime::message::LspTextEdit],
 ) -> Result<String, String> {
@@ -1005,8 +1400,9 @@ mod tests {
     use crate::{
         app::{app_state::ReferencesBufferItem, async_bridge::AsyncResultRouter},
         async_runtime::message::{
-            FilePreviewLine, LspLocation, RequestTopic, WorkerEvent, WorkerEventKind,
-            WorkerFailure, WorkerFailureKind, WorkerResult, WorkerResultPayload,
+            FilePreviewLine, LspDocumentHighlight, LspLocation, LspPosition, LspRange,
+            RequestTopic, WorkerEvent, WorkerEventKind, WorkerFailure, WorkerFailureKind,
+            WorkerResult, WorkerResultPayload,
         },
         lsp::client::path_to_lsp_uri,
         syntax::{
@@ -1123,6 +1519,210 @@ mod tests {
         assert_eq!(shell.highlight_spans.len(), 1);
         assert!(shell.editor_needs_layout);
         assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn document_highlight_result_maps_ranges_into_active_buffer_bytes() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = write_temp_file(
+            "document_highlight.rs",
+            "let count = 1;\ncount += 1;\nother();\n",
+        );
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        shell.semantic_highlight_request_revision = 2;
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = false;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 88,
+                revision_id: 2,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspDocumentHighlightResult {
+                    uri: path_to_lsp_uri(&file_path),
+                    highlights: vec![
+                        LspDocumentHighlight {
+                            range: LspRange {
+                                start: LspPosition {
+                                    line: 0,
+                                    character: 4,
+                                },
+                                end: LspPosition {
+                                    line: 0,
+                                    character: 9,
+                                },
+                            },
+                            kind: Some(1),
+                        },
+                        LspDocumentHighlight {
+                            range: LspRange {
+                                start: LspPosition {
+                                    line: 1,
+                                    character: 0,
+                                },
+                                end: LspPosition {
+                                    line: 1,
+                                    character: 5,
+                                },
+                            },
+                            kind: Some(2),
+                        },
+                    ],
+                },
+            },
+        );
+
+        assert_eq!(
+            shell.app_state.semantic_symbol_highlights(),
+            &[(4, 9), (15, 20)]
+        );
+        assert!(shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn stale_document_highlight_result_is_ignored() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = write_temp_file("stale_document_highlight.rs", "let count = 1;\n");
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        let _ = shell
+            .app_state
+            .set_semantic_symbol_highlights(vec![(4, 9)]);
+        shell.semantic_highlight_request_revision = 3;
+        shell.editor_caret_needs_layout = false;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 89,
+                revision_id: 2,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspDocumentHighlightResult {
+                    uri: path_to_lsp_uri(&file_path),
+                    highlights: vec![],
+                },
+            },
+        );
+
+        assert_eq!(shell.app_state.semantic_symbol_highlights(), &[(4, 9)]);
+        assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn empty_document_highlight_result_falls_back_to_local_identifier_matches() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = write_temp_file(
+            "fallback_document_highlight.rs",
+            "let goals = 1;\ngoals += 1;\nlet go = goals;\n",
+        );
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        assert!(shell.app_state.jump_to_line_and_column(1, 1));
+        shell.semantic_highlight_request_revision = 4;
+        shell.editor_caret_needs_layout = false;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 90,
+                revision_id: 4,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspDocumentHighlightResult {
+                    uri: path_to_lsp_uri(&file_path),
+                    highlights: vec![],
+                },
+            },
+        );
+
+        assert_eq!(
+            shell.app_state.semantic_symbol_highlights(),
+            &[(4, 9), (15, 20), (36, 41)]
+        );
+        assert!(shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn empty_document_highlight_result_does_not_match_identifier_substrings() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = write_temp_file(
+            "fallback_document_highlight_boundaries.rs",
+            "goal goals goaler\ngoal\n",
+        );
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        assert!(shell.app_state.jump_to_line_and_column(0, 1));
+        shell.semantic_highlight_request_revision = 5;
+        shell.editor_caret_needs_layout = false;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 91,
+                revision_id: 5,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspDocumentHighlightResult {
+                    uri: path_to_lsp_uri(&file_path),
+                    highlights: vec![],
+                },
+            },
+        );
+
+        assert_eq!(shell.app_state.semantic_symbol_highlights(), &[(0, 4), (18, 22)]);
+        assert!(shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn non_empty_document_highlight_result_keeps_lsp_ranges() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = write_temp_file(
+            "lsp_document_highlight_preferred.rs",
+            "let goals = 1;\ngoals += 1;\n",
+        );
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        assert!(shell.app_state.jump_to_line_and_column(0, 5));
+        shell.semantic_highlight_request_revision = 6;
+        shell.editor_caret_needs_layout = false;
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 92,
+                revision_id: 6,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspDocumentHighlightResult {
+                    uri: path_to_lsp_uri(&file_path),
+                    highlights: vec![LspDocumentHighlight {
+                        range: LspRange {
+                            start: LspPosition {
+                                line: 0,
+                                character: 4,
+                            },
+                            end: LspPosition {
+                                line: 0,
+                                character: 9,
+                            },
+                        },
+                        kind: Some(1),
+                    }],
+                },
+            },
+        );
+
+        assert_eq!(shell.app_state.semantic_symbol_highlights(), &[(4, 9)]);
+        assert!(shell.editor_caret_needs_layout);
     }
 
     #[test]

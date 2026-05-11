@@ -116,6 +116,9 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::PrevPanelTab
         | Command::TerminalScrollUp
         | Command::TerminalScrollDown
+        | Command::TerminalTabNew
+        | Command::TerminalTabClose
+        | Command::SwitchTerminalTab(_)
         | Command::OpenFolder
         | Command::OpenRecentProjects
         | Command::LspHover
@@ -133,24 +136,65 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::JumpForward
         | Command::AiChatToggle
         | Command::AiChatSend
+        | Command::AiChatStop
         | Command::AiChatClose
         | Command::AiChatUnfocus
         | Command::AiChatFocus
         | Command::AiChatAddSelectionContext
         | Command::AiChatInputChar(_)
         | Command::AiChatBackspace
+        | Command::AiChatClearInput
         | Command::AiChatAcceptSuggestion
         | Command::AiChatSuggestionNext
         | Command::AiChatSuggestionPrev
         | Command::AiChatInputText(_)
+        | Command::AiChatPasteClipboard
         | Command::AiChatPromptInstall
+        | Command::AiChatScrollHalfPageUp
+        | Command::AiChatScrollHalfPageDown
         | Command::ToggleMarkdownPreview
+        | Command::FocusMarkdownPreview
         | Command::MarkdownPreviewScrollUp
-        | Command::MarkdownPreviewScrollDown => DispatchReport::success_with_flags(
+        | Command::MarkdownPreviewScrollDown
+        | Command::MarkdownPreviewScrollTop
+        | Command::MarkdownPreviewScrollBottom
+        | Command::MarkdownPreviewScrollHalfPageUp
+        | Command::MarkdownPreviewScrollHalfPageDown => DispatchReport::success_with_flags(
             "Dispatch: workbench navigation (handled by event loop)",
             true,
             false,
         ),
+        | Command::HelpScrollDown
+        | Command::HelpScrollUp
+        | Command::HelpScrollHalfPageDown
+        | Command::HelpScrollHalfPageUp => DispatchReport::success_with_flags(
+            "Dispatch: help/cheatsheet scroll (handled by event loop)",
+            true,
+            false,
+        ),
+        Command::ToggleFold => {
+            let (cursor_line, _) = ctx.app_state.cursor_line_col();
+            let changed = ctx.app_state.toggle_fold_at_line(cursor_line);
+            DispatchReport::success(
+                if changed {
+                    format!("Dispatch: toggled fold at line {cursor_line}")
+                } else {
+                    format!("Dispatch: no foldable scope at line {cursor_line}")
+                },
+                changed,
+            )
+        }
+        Command::ToggleFoldAll => {
+            let changed = ctx.app_state.toggle_fold_all();
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: toggled fold all".to_string()
+                } else {
+                    "Dispatch: no foldable ranges".to_string()
+                },
+                changed,
+            )
+        }
         Command::SwitchMode(event) => match ctx.app_state.apply_mode_event(event) {
             Ok(result) => {
                 let mut changed = result.changed;

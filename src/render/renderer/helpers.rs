@@ -362,6 +362,7 @@ pub(super) fn mode_display_label(mode: EditorMode) -> &'static str {
         EditorMode::TerminalNormal => "T-COPY",
         EditorMode::MultiCursor => "MC-SELECT",
         EditorMode::MultiInsert => "MC-INSERT",
+        EditorMode::Resize => "RESIZE",
     }
 }
 
@@ -374,6 +375,7 @@ pub(super) fn mode_pill_color(mode: EditorMode, theme: &ThemeConfig) -> [f32; 4]
         EditorMode::TerminalFocus => theme.ui.success.as_f32(),
         EditorMode::TerminalNormal => theme.ui.accent.as_f32(),
         EditorMode::MultiCursor | EditorMode::MultiInsert => theme.ui.mode_visual.as_f32(),
+        EditorMode::Resize => theme.ui.amber.as_f32(),
     }
 }
 
@@ -405,6 +407,19 @@ pub(super) fn ext_icon_dot(ext: &str, theme: &ThemeConfig) -> ([f32; 4], &'stati
         "lock" => (icon.color.as_f32(), "lock"),
         "env" => (icon.color.as_f32(), "env"),
         "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "ico" => (icon.color.as_f32(), "img"),
+        "java" => (icon.color.as_f32(), "java"),
+        "kt" | "kts" => (icon.color.as_f32(), "kt"),
+        "swift" => (icon.color.as_f32(), "swift"),
+        "c" | "h" => (icon.color.as_f32(), "c"),
+        "cpp" | "cc" | "cxx" | "hpp" => (icon.color.as_f32(), "cpp"),
+        "cs" => (icon.color.as_f32(), "cs"),
+        "rb" => (icon.color.as_f32(), "rb"),
+        "php" => (icon.color.as_f32(), "php"),
+        "lua" => (icon.color.as_f32(), "lua"),
+        "sql" => (icon.color.as_f32(), "sql"),
+        "xml" => (icon.color.as_f32(), "xml"),
+        "vue" => (icon.color.as_f32(), "vue"),
+        "tf" | "hcl" => (icon.color.as_f32(), "tf"),
         _ => (icon.color.as_f32(), ""),
     }
 }

@@ -1,98 +1,98 @@
 ---
 name: event-loop
-description: "Skill for the Event_loop area of netherize_editor. 202 symbols across 28 files."
+description: "Skill for the Event_loop area of netherize_editor. 289 symbols across 46 files."
 ---
 
 # Event_loop
 
-202 symbols | 28 files | Cohesion: 80%
+289 symbols | 46 files | Cohesion: 76%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how is_bold, is_italic, as_u8 work
+- Understanding how set_metrics, from_theme, editor_chrome_instances work
 - Modifying event_loop-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
-| `src/app/event_loop/setup.rs` | startup_subsystems, submit, submit_workspace_git_status_refresh, submit_active_buffer_git_baseline_refresh, submit_active_palette_fzf_search (+42) |
-| `src/app/event_loop/helpers.rs` | byte_inside_any_span, rainbow_bracket_spans, syntax_spans_to_styled, render_markdown_node, render_children (+23) |
-| `src/app/event_loop/commands_lsp.rs` | handle_lsp_and_diagnostics_command, open_lazygit_buffer, open_lazydocker_buffer, submit_git_blame_line, select_next_reference_item (+16) |
-| `src/app/event_loop/async_results.rs` | on_worker_result, lsp_uri_to_path, apply_lsp_text_edits, utf16_code_unit_to_byte_idx, lsp_position_to_byte_idx (+12) |
+| `src/app/event_loop/setup.rs` | startup_subsystems, submit, submit_workspace_git_status_refresh, submit_active_buffer_git_baseline_refresh, flush_lsp_retry_if_due (+41) |
+| `src/app/event_loop/helpers.rs` | build_sidebar_rows, region_color, byte_inside_any_span, rainbow_bracket_spans, render_markdown_node (+33) |
+| `src/app/event_loop/commands_lsp.rs` | handle_lsp_and_diagnostics_command, open_lazygit_buffer, open_lazydocker_buffer, submit_git_blame_line, select_next_reference_item (+20) |
+| `src/app/event_loop/async_results.rs` | on_worker_result, lsp_uri_to_path, active_fuzzy_preview_target, active_references_preview_target, active_diagnostics_preview_target (+12) |
+| `src/app/event_loop/commands.rs` | dismiss_system_dep_guide, accept_system_dep_guide, clear_expired_transient_toast, should_persist_history_after, finalize_post_command_hooks (+9) |
+| `src/app/event_loop/commands_tests.rs` | move_to_first_line_uses_viewport_layout_path, move_to_last_line_uses_viewport_layout_path, center_cursor_line_uses_viewport_layout_path, scroll_half_page_down_uses_viewport_layout_path, fuzzy_picker_selection_clears_stale_preview_lines (+8) |
 | `src/app/event_loop/commands_ai_chat.rs` | ai_slash_command_completion_at, slash_command_suggestion_count, clean_ai_file_ref_token, ai_models_help, ai_agent_help (+7) |
-| `src/app/event_loop/commands.rs` | should_persist_history_after, finalize_post_command_hooks, dispatch_command_with_focused_terminal, mark_focused_terminal_layout_dirty, handle_terminal_normal_command (+6) |
-| `src/app/event_loop/commands_tests.rs` | delete_confirmation_removes_selected_file_after_y, fuzzy_picker_selection_clears_stale_preview_lines, fuzzy_picker_open_search_match_confirm_closes_results_buffer, move_to_first_line_uses_viewport_layout_path, move_to_last_line_uses_viewport_layout_path (+3) |
-| `src/app/event_loop/application.rs` | window_event, handle_explorer_filter_ime_commit, handle_explorer_filter_key_event, handle_pending_confirmation_key_event, about_to_wait (+3) |
-| `src/app/event_loop/commands_prompts.rs` | pending_confirmation_prompt, begin_explorer_delete_confirmation, begin_dirty_buffer_close_confirmation, open_prompt_overlay, begin_ai_chat_install_confirmation (+2) |
-| `src/app/event_loop/commands_explorer.rs` | explorer_selected_entry, explorer_rename_base_selection, open_explorer_rename_prompt, handle_explorer_and_workspace_command, prepare_for_workspace_switch (+1) |
+| `src/app/event_loop/application.rs` | redraw, focus_target_region_id, window_event, handle_explorer_filter_ime_commit, handle_explorer_filter_key_event (+6) |
+| `src/app/event_loop/mod.rs` | is_running, active_terminal_grid_mut, focused_terminal_grid_mut, focused_terminal_session_id, active_terminal_tab (+5) |
+| `src/app/event_loop/commands_terminal.rs` | default_terminal_working_dir, spawn_shell_for_terminal_tab, ensure_active_terminal_tab_spawned, map_directional_focus_command, handle_terminal_and_focus_command (+5) |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`is_bold`** (Function) — `src/syntax/highlight.rs:68`
-- **`is_italic`** (Function) — `src/syntax/highlight.rs:72`
-- **`as_u8`** (Function) — `src/config/theme_config/model.rs:65`
-- **`welcome_screen_content`** (Function) — `src/app/event_loop/welcome.rs:2`
-- **`syntax_spans_to_styled`** (Function) — `src/app/event_loop/helpers.rs:87`
+- **`set_metrics`** (Function) — `src/text/text_system.rs:127`
+- **`from_theme`** (Function) — `src/terminal/grid.rs:128`
+- **`editor_chrome_instances`** (Function) — `src/render/renderer.rs:311`
+- **`clear_palette`** (Function) — `src/render/renderer/palette.rs:43`
+- **`reconfigure_surface`** (Function) — `src/render/renderer/lifecycle.rs:463`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `is_bold` | Function | `src/syntax/highlight.rs` | 68 |
-| `is_italic` | Function | `src/syntax/highlight.rs` | 72 |
-| `as_u8` | Function | `src/config/theme_config/model.rs` | 65 |
-| `welcome_screen_content` | Function | `src/app/event_loop/welcome.rs` | 2 |
-| `syntax_spans_to_styled` | Function | `src/app/event_loop/helpers.rs` | 87 |
-| `path_to_lsp_uri` | Function | `src/lsp/client.rs` | 889 |
-| `startup_subsystems` | Function | `src/app/event_loop/setup.rs` | 198 |
-| `submit` | Function | `src/app/event_loop/setup.rs` | 231 |
-| `submit_workspace_git_status_refresh` | Function | `src/app/event_loop/setup.rs` | 306 |
-| `submit_active_buffer_git_baseline_refresh` | Function | `src/app/event_loop/setup.rs` | 318 |
-| `submit_active_palette_fzf_search` | Function | `src/app/event_loop/setup.rs` | 998 |
-| `submit_fuzzy_picker_preview_load` | Function | `src/app/event_loop/setup.rs` | 1033 |
-| `submit_active_file_history_load` | Function | `src/app/event_loop/setup.rs` | 1064 |
-| `submit_active_file_history_save` | Function | `src/app/event_loop/setup.rs` | 1076 |
-| `submit_references_preview_load` | Function | `src/app/event_loop/setup.rs` | 1095 |
-| `submit_diagnostics_preview_load` | Function | `src/app/event_loop/setup.rs` | 1115 |
-| `sync_lsp_server_for_workspace` | Function | `src/app/event_loop/setup.rs` | 1167 |
-| `submit_lsp_did_open_for_active_file` | Function | `src/app/event_loop/setup.rs` | 1199 |
-| `submit_lsp_did_change_for_active_file` | Function | `src/app/event_loop/setup.rs` | 1225 |
-| `force_flush_lsp_did_change_for_active_file` | Function | `src/app/event_loop/setup.rs` | 1250 |
+| `set_metrics` | Function | `src/text/text_system.rs` | 127 |
+| `from_theme` | Function | `src/terminal/grid.rs` | 128 |
+| `editor_chrome_instances` | Function | `src/render/renderer.rs` | 311 |
+| `clear_palette` | Function | `src/render/renderer/palette.rs` | 43 |
+| `reconfigure_surface` | Function | `src/render/renderer/lifecycle.rs` | 463 |
+| `draw_text_region` | Function | `src/render/renderer/helpers.rs` | 141 |
+| `as_f32` | Function | `src/config/theme_config/model.rs` | 83 |
+| `sidebar_arrow` | Function | `src/config/theme_config/model.rs` | 277 |
+| `get_icon_for_file` | Function | `src/config/theme_config/model.rs` | 368 |
+| `is_running` | Function | `src/app/event_loop/mod.rs` | 365 |
+| `build_sidebar_rows` | Function | `src/app/event_loop/helpers.rs` | 1414 |
+| `region_color` | Function | `src/app/event_loop/helpers.rs` | 1475 |
+| `confirm_theme_selection` | Function | `src/app/event_loop/commands_prompts.rs` | 336 |
+| `switch_workspace_to` | Function | `src/app/event_loop/commands_explorer.rs` | 118 |
+| `dismiss_system_dep_guide` | Function | `src/app/event_loop/commands.rs` | 449 |
+| `accept_system_dep_guide` | Function | `src/app/event_loop/commands.rs` | 457 |
+| `clear_expired_transient_toast` | Function | `src/app/event_loop/commands.rs` | 504 |
+| `status_label` | Function | `src/app/app_state/mod.rs` | 81 |
+| `is_dirty` | Function | `src/app/app_state/mod.rs` | 1111 |
+| `update_terminal_content` | Function | `src/render/renderer/ui/terminal.rs` | 25 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `Handle_command_with_count → Total_rows` | cross_community | 6 |
-| `Handle_command_with_count → StoredFileHistory` | cross_community | 6 |
-| `Handle_command_with_count → Tree_sitter_language` | cross_community | 6 |
-| `Submit_lsp_did_open_for_active_file → Find_node` | cross_community | 5 |
-| `Submit_lsp_did_change_for_active_file → Find_node` | cross_community | 5 |
-| `Handle_command_with_count → Supports_numeric_count` | cross_community | 5 |
-| `Handle_command_with_count → Dispatch_command_with_clipboard_once` | cross_community | 5 |
-| `Handle_command_with_count → Groups_repeated_edits_into_single_transaction` | cross_community | 5 |
-| `Handle_command_with_count → Root_node` | cross_community | 5 |
-| `Handle_lsp_and_diagnostics_command → Path_to_lsp_uri` | cross_community | 4 |
+| `Handle_terminal_and_focus_command → Len_chars` | cross_community | 7 |
+| `Handle_terminal_and_focus_command → Success` | cross_community | 6 |
+| `Handle_terminal_and_focus_command → Open_python_env_selector` | cross_community | 6 |
+| `Handle_terminal_and_focus_command → Success_with_flags` | cross_community | 6 |
+| `Startup_subsystems → Find_node` | cross_community | 6 |
+| `Handle_explorer_and_workspace_command → Login_shell_path_cache` | cross_community | 6 |
+| `Handle_explorer_and_workspace_command → Probe_path_from_login_shell` | cross_community | 6 |
+| `Handle_explorer_and_workspace_command → Resolve_nvm_bin` | cross_community | 6 |
+| `Handle_explorer_and_workspace_command → Success` | cross_community | 6 |
+| `Handle_explorer_and_workspace_command → Open_python_env_selector` | cross_community | 6 |
 
 ## Connected Areas
 
 | Area | Connections |
 |------|-------------|
-| App_state | 14 calls |
-| Command_dispatch | 8 calls |
-| Syntax | 6 calls |
-| Workbench | 5 calls |
-| Renderer | 4 calls |
-| App | 3 calls |
-| Benches | 3 calls |
-| Terminal | 3 calls |
+| App_state | 23 calls |
+| Renderer | 15 calls |
+| Command_dispatch | 12 calls |
+| Palette | 10 calls |
+| Workbench | 9 calls |
+| Syntax | 9 calls |
+| Text | 7 calls |
+| Theme_config | 4 calls |
 
 ## How to Explore
 
-1. `gitnexus_context({name: "is_bold"})` — see callers and callees
+1. `gitnexus_context({name: "set_metrics"})` — see callers and callees
 2. `gitnexus_query({query: "event_loop"})` — find related execution flows
 3. Read key files listed above for implementation details

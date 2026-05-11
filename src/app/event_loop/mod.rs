@@ -5,6 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use tokio_util::sync::CancellationToken;
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalSize},
@@ -18,7 +19,7 @@ use crate::{
         app_state::{AppState, BufferContent, EditorOverlay, OverlayColorToken},
         async_bridge::{AppAsyncBridge, AsyncResultRouter},
         clipboard::SystemClipboard,
-        command_palette::CommandPaletteMode,
+        command_palette::{CommandPaletteAction, CommandPaletteMode},
         input::{InputHandler, InputRouteOutcome, LeapState},
         input_map::{InputFocusContext, InputMap, KeybindingContext},
         persistence::AppPersistentState,
@@ -69,9 +70,10 @@ mod setup;
 mod welcome;
 
 use helpers::{
-    build_preview_render_data, build_sidebar_rows, collect_explorer_entries, detect_git_branch,
-    diagnostic_spans_to_styled, language_id_for_path, parse_hover_markdown_blocks, region_color,
-    scale_theme, scale_ui_config, syntax_spans_to_styled,
+    build_preview_render_data, build_sidebar_rows, collect_explorer_entries,
+    convert_worker_hover_blocks, detect_git_branch, diagnostic_spans_to_styled,
+    language_id_for_path, parse_hover_markdown_blocks, region_color, scale_theme, scale_ui_config,
+    syntax_spans_to_styled,
 };
 use welcome::welcome_screen_content;
 
@@ -91,7 +93,6 @@ pub struct AppShell {
     input_map: InputMap,
     scheduler: AsyncScheduler,
     bridge: Option<AppAsyncBridge>,
-    pty_session_id: Option<u64>,
     right_pty_session_id: Option<u64>,
     right_terminal_grid: TerminalGrid,
     right_terminal_needs_layout: bool,
@@ -104,7 +105,19 @@ pub struct AppShell {
     semantic_highlight_spans: Vec<HighlightSpan>,
     syntax_engine: Option<SyntaxEngine>,
     syntax_engine_file: Option<PathBuf>,
-    terminal_grid: TerminalGrid,
+    /// Bottom-panel terminal tabs. Always non-empty when the panel is open.
+    terminal_tabs: Vec<TerminalTab>,
+    active_terminal_tab: usize,
+    /// Spawn request id → target bottom-panel tab index.
+    ///
+    /// PTY spawn completes asynchronously, so binding `PtySpawned` to the
+    /// currently active tab is racy if the user creates/switches tabs before
+    /// the worker replies.
+    pending_terminal_tab_spawns: HashMap<u64, usize>,
+    /// Spawn requests that belonged to terminal tabs reset during a workspace
+    /// switch. If the worker reports them later, close the newborn PTY instead
+    /// of binding it into the new workspace's terminal tab ring.
+    ignored_terminal_tab_spawns: HashSet<u64>,
     explorer_cursor: usize,
     explorer_snapshot: ExplorerSnapshot,
     explorer_snapshot_dirty: bool,
@@ -158,14 +171,38 @@ pub struct AppShell {
     /// paste) — the worker falls back to a full reparse in that case.
     last_syntax_edit_hint: Option<SyntaxEditHint>,
     active_highlight_request_revision: u64,
+    semantic_highlight_request_revision: u64,
     references_request_revision: u64,
     document_symbols_request_revision: u64,
+    /// In-flight `completionItem/resolve` request id; used to correlate failure events
+    /// back to the pending docs panel so we can flip "Loading…" to "No docs" when the
+    /// server rejects or times out.
+    completion_resolve_request_id: Option<u64>,
+    /// Request id of the last in-flight hover — used to clear the loading overlay
+    /// when the request fails or returns empty (so the overlay doesn't get stuck).
+    hover_loading_request_id: Option<u64>,
+    /// Request id of the last in-flight `gd`/`gD` definition request. When a
+    /// new request is dispatched, the previous one's result must be dropped on
+    /// arrival to avoid a flicker (or a wrong jump) if the server replies out
+    /// of order.
+    latest_definition_request_id: Option<u64>,
     fzf_search_revision: u64,
-    local_history_revision: u64,
     pending_parse_after_debounce: bool,
     pending_git_diff_after_debounce: bool,
+    /// Set when the user changes the selected completion item; the timer is
+    /// drained from `about_to_wait` after `COMPLETION_RESOLVE_DEBOUNCE_INTERVAL`,
+    /// at which point the actual LSP resolve is dispatched.
+    pending_completion_resolve_after_debounce: bool,
+    last_completion_resolve_select_at: Option<Instant>,
+    /// Revision (matching `CompletionState.current_revision`) that the pending
+    /// debounced resolve was queued for; used to skip dispatch if the user
+    /// has already moved on, but mainly to tag the eventual request payload.
+    pending_completion_resolve_revision: u64,
     ai_inline_revision: u64,
     pending_ai_inline_request: Option<PendingAiInlineRequest>,
+    ai_inline_cancel_token: Option<CancellationToken>,
+    last_ai_inline_queue_at: Option<Instant>,
+    last_ai_inline_submit_at: Option<Instant>,
     pending_lsp_document_sync: Option<PendingLspDocumentSync>,
     last_editor_bounds: Option<[f32; 4]>,
     last_show_welcome: Option<bool>,
@@ -179,21 +216,38 @@ pub struct AppShell {
     /// `typed_prefix` giữ các phím user đã gõ, `targets` giữ labels + char_idx.
     leap_state: Option<LeapState>,
     git_overlay_revision: u64,
+    git_status_revision: u64,
+    git_baseline_revision: u64,
     last_scroll_animation_tick: Instant,
     last_git_branch_refresh_at: Instant,
     last_thinking_animation_tick: Instant,
+    last_lsp_loading_animation_tick: Instant,
+    lsp_loading_frame: u8,
     caret_blink_visible: bool,
     caret_blink_dirty: bool,
     pre_markdown_preview_right_width: Option<f32>,
+    /// Code actions từ lần request gần nhất, dùng để apply khi user chọn trong picker.
+    pending_code_actions: Vec<crate::async_runtime::message::LspCodeAction>,
+    /// Python interpreter path selected by the user from the command palette.
+    selected_python_env: Option<std::path::PathBuf>,
+    /// Cached runtime version strings for the statusbar right zone.
+    runtime_versions: RuntimeVersionInfo,
+    /// Scheduled instant to auto-retry LSP server start after user accepted an install guide.
+    lsp_retry_at: Option<Instant>,
 }
 
 const DEBUG_UI_ENABLED: bool = false;
-const PARSE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(80);
+const PARSE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(20);
 const GIT_DIFF_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(80);
+/// User must dwell on a completion item for at least this long before we fire
+/// `completionItem/resolve`. Prevents spamming the LSP server while the user
+/// scrolls quickly through items with arrow keys.
+const COMPLETION_RESOLVE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(100);
 const LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(500);
 const FPS_METRICS_UPDATE_INTERVAL: Duration = Duration::from_millis(500);
 const GIT_BRANCH_REFRESH_INTERVAL: Duration = Duration::from_millis(750);
 const THINKING_ANIMATION_INTERVAL: Duration = Duration::from_millis(400);
+const LSP_LOADING_ANIMATION_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone)]
 struct ExplorerEntry {
@@ -236,6 +290,16 @@ struct ActiveLspServer {
     root_path: PathBuf,
 }
 
+/// Cached runtime version strings shown in the statusbar right zone.
+#[derive(Debug, Clone, Default)]
+pub(super) struct RuntimeVersionInfo {
+    pub(super) python_version: Option<String>,
+    pub(super) node_version: Option<String>,
+    pub(super) go_version: Option<String>,
+    /// Display name of the selected Python venv (e.g. "venv", ".venv/py3.11").
+    pub(super) venv_name: Option<String>,
+}
+
 /// State cho popup hướng dẫn cài đặt Language Server.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LspInstallGuide {
@@ -254,6 +318,8 @@ pub struct SystemDepGuide {
     pub missing_tools: Option<Vec<String>>,
     /// Full install command suitable for the detected package manager.
     pub install_command: Option<String>,
+    /// Per-tool install progress tracked during the Installing phase.
+    pub tool_statuses: Vec<(String, crate::async_runtime::message::InstallStatus)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -290,6 +356,57 @@ pub enum AppEvent {
     TerminalOutputReady,
     AiInlineReady,
     WorkerMessageReady,
+}
+
+/// Trạng thái của một terminal tab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum TerminalTabStatus {
+    /// PTY session đang chạy.
+    Running,
+    /// PTY session đã kết thúc với exit code.
+    Exited(i32),
+}
+
+impl TerminalTabStatus {
+    pub fn is_running(&self) -> bool {
+        matches!(self, Self::Running)
+    }
+
+}
+
+/// Một tab terminal trong bottom panel.
+#[derive(Clone)]
+pub(super) struct TerminalTab {
+    pub grid: TerminalGrid,
+    pub session_id: Option<u64>,
+    pub label: String,
+    pub status: TerminalTabStatus,
+    pub shell_label: String,
+    pub pending_input: String,
+}
+
+impl std::fmt::Debug for TerminalTab {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TerminalTab")
+            .field("session_id", &self.session_id)
+            .field("label", &self.label)
+            .field("status", &self.status)
+            .field("shell_label", &self.shell_label)
+            .finish_non_exhaustive()
+    }
+}
+
+impl TerminalTab {
+    fn new(grid: TerminalGrid, label: String) -> Self {
+        Self {
+            grid,
+            session_id: None,
+            label: label.clone(),
+            status: TerminalTabStatus::Running,
+            shell_label: label,
+            pending_input: String::new(),
+        }
+    }
 }
 
 pub fn run() -> Result<(), winit::error::EventLoopError> {
@@ -364,7 +481,7 @@ impl AppShell {
             return self.active_terminal_grid_mut();
         }
         if self.focus_manager.current() == FocusTarget::BottomPanel {
-            return Some(&mut self.terminal_grid);
+            return self.active_terminal_tab_mut().map(|tab| &mut tab.grid);
         }
         None
     }
@@ -376,7 +493,7 @@ impl AppShell {
             return self.app_state.active_terminal_session_id();
         }
         if self.focus_manager.current() == FocusTarget::BottomPanel {
-            return self.pty_session_id;
+            return self.active_terminal_tab().and_then(|tab| tab.session_id);
         }
         if self.focus_manager.current() == FocusTarget::RightSidebar
             && self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal)
@@ -384,6 +501,15 @@ impl AppShell {
             return self.right_pty_session_id;
         }
         None
+    }
+
+    fn active_terminal_tab(&self) -> Option<&TerminalTab> {
+        self.terminal_tabs.get(self.active_terminal_tab)
+    }
+
+    fn active_terminal_tab_mut(&mut self) -> Option<&mut TerminalTab> {
+        let idx = self.active_terminal_tab;
+        self.terminal_tabs.get_mut(idx)
     }
 
     fn sync_focus_mode_for_active_buffer(&mut self) -> bool {

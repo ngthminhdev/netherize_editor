@@ -164,6 +164,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::Newline
         | Command::InsertTab
         | Command::AiAcceptInline
+        | Command::AiAcceptInlineWord
         | Command::Backspace
         | Command::InsertLineBelow
         | Command::InsertLineAbove
@@ -259,6 +260,19 @@ fn dispatch_command_with_clipboard_once(
         | Command::CloseFilePicker
         | Command::OpenCommandPalette
         | Command::TerminalSearchOpen => palette::dispatch(&mut ctx, command),
+        Command::ResizeDecreaseWidth
+        | Command::ResizeIncreaseWidth
+        | Command::ResizeIncreaseLeftWidth
+        | Command::ResizeDecreaseLeftWidth
+        | Command::ResizeIncreaseRightWidth
+        | Command::ResizeDecreaseRightWidth
+        | Command::ResizeDecreaseHeight
+        | Command::ResizeIncreaseHeight => {
+            DispatchReport::success(
+                format!("Dispatch: resize command {command:?} handled by event loop"),
+                false,
+            )
+        }
         Command::SaveFile
         | Command::OpenFile(_)
         | Command::OpenFolder
@@ -270,6 +284,9 @@ fn dispatch_command_with_clipboard_once(
         | Command::TerminalPaste
         | Command::TerminalScrollUp
         | Command::TerminalScrollDown
+        | Command::TerminalTabNew
+        | Command::TerminalTabClose
+        | Command::SwitchTerminalTab(_)
         | Command::FocusEditor
         | Command::FocusExplorer
         | Command::FocusTerminal
@@ -317,6 +334,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::LspReferences
         | Command::LspFormatDocument
         | Command::TriggerCompletion
+        | Command::CodeAction
         | Command::CompletionNext
         | Command::CompletionPrev
         | Command::CompletionAccept
@@ -332,21 +350,46 @@ fn dispatch_command_with_clipboard_once(
         | Command::JumpForward
         | Command::AiChatToggle
         | Command::AiChatSend
+        | Command::AiChatStop
         | Command::AiChatClose
         | Command::AiChatUnfocus
         | Command::AiChatFocus
         | Command::AiChatAddSelectionContext
         | Command::AiChatInputChar(_)
         | Command::AiChatBackspace
+        | Command::AiChatClearInput
         | Command::AiChatAcceptSuggestion
         | Command::AiChatSuggestionNext
         | Command::AiChatSuggestionPrev
         | Command::AiChatInputText(_)
+        | Command::AiChatPasteClipboard
         | Command::AiChatPromptInstall
+        | Command::AiChatScrollHalfPageUp
+        | Command::AiChatScrollHalfPageDown
         | Command::ToggleMarkdownPreview
+        | Command::FocusMarkdownPreview
         | Command::MarkdownPreviewScrollUp
         | Command::MarkdownPreviewScrollDown
         | Command::MarkdownPreviewScrollHalfPageUp
-        | Command::MarkdownPreviewScrollHalfPageDown => session::dispatch(&mut ctx, command),
+        | Command::MarkdownPreviewScrollHalfPageDown
+        | Command::MarkdownPreviewScrollTop
+        | Command::MarkdownPreviewScrollBottom => session::dispatch(&mut ctx, command),
+        | Command::HelpScrollDown
+        | Command::HelpScrollUp
+        | Command::HelpScrollHalfPageDown
+        | Command::HelpScrollHalfPageUp => session::dispatch(&mut ctx, command),
+        Command::ToggleFold | Command::ToggleFoldAll => session::dispatch(&mut ctx, command),
+        Command::ReloadWorkspace => DispatchReport::success(
+            "Dispatch: reload workspace routed to event loop".to_string(),
+            false,
+        ),
+        Command::LspSelectPythonEnv => {
+            let changed = ctx.app_state.open_python_env_selector();
+            DispatchReport::success_with_flags(
+                "Dispatch: python env selector opened".to_string(),
+                changed,
+                changed,
+            )
+        }
     }
 }

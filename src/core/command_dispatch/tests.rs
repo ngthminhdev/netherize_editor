@@ -1497,3 +1497,157 @@ fn toggle_terminal_closes_existing_panel_even_when_editor_has_focus() {
     assert_eq!(app_state.current_mode(), EditorMode::Normal);
     assert!(!app_state.is_terminal_panel_open());
 }
+
+// ── Per-Buffer Undo Isolation Tests ────────────────────────────────────────
+
+/// Mô phỏng chính xác bug cross-tab: edit+save Tab A, switch sang B, edit+save B,
+/// quay lại A bấm Undo → phải khôi phục đúng nội dung A, B không bị ảnh hưởng.
+/// (Buffer text được reload từ disk khi switch tab nên cần save trước khi switch.)
+#[test]
+fn undo_is_isolated_per_buffer() {
+    let path_a = unique_temp_path("cross_buf_a");
+    let path_b = unique_temp_path("cross_buf_b");
+    fs::write(&path_a, "File A").expect("write file A");
+    fs::write(&path_b, "File B").expect("write file B");
+
+    let mut app = AppState::new(unique_temp_path("cross_buf_save"));
+
+    // Open buffer A, append " - Edit 1", save.
+    app.open_file(path_a.clone()).expect("open A");
+    let _ = dispatch_command(&mut app, Command::SwitchMode(ModeEvent::EnterNormal));
+    let _ = dispatch_command(&mut app, Command::AppendAtLineEnd);
+    for ch in " - Edit 1".chars() {
+        let _ = dispatch_command(&mut app, Command::InsertChar(ch));
+    }
+    let _ = dispatch_command(&mut app, Command::SwitchMode(ModeEvent::EnterNormal));
+    assert_eq!(app.text_string(), "File A - Edit 1");
+    let _ = dispatch_command(&mut app, Command::SaveFile);
+
+    // Switch to buffer B, delete the last character 'B', save.
+    app.open_file(path_b.clone()).expect("open B");
+    assert_eq!(app.text_string(), "File B");
+    let _ = dispatch_command(&mut app, Command::SwitchMode(ModeEvent::EnterNormal));
+    let _ = dispatch_command(&mut app, Command::MoveToLineEnd);
+    let _ = dispatch_command(&mut app, Command::DeleteChar);
+    assert_eq!(app.text_string(), "File ");
+    let _ = dispatch_command(&mut app, Command::SaveFile);
+
+    // Return to buffer A and undo one transaction.
+    app.open_file(path_a.clone()).expect("re-open A");
+    assert_eq!(app.text_string(), "File A - Edit 1", "buffer A must load saved content");
+    let undo = dispatch_command(&mut app, Command::Undo);
+    assert!(undo.success, "undo must succeed on buffer A");
+    assert!(undo.state_changed, "undo must change state");
+    assert_eq!(app.text_string(), "File A", "undo must restore buffer A to pre-edit state");
+
+    // Verify buffer B is untouched — its undo stack must be independent.
+    app.open_file(path_b.clone()).expect("re-open B");
+    assert_eq!(app.text_string(), "File ", "buffer B must still show its own saved state");
+    let b_undo = dispatch_command(&mut app, Command::Undo);
+    assert!(b_undo.success);
+    assert!(b_undo.state_changed, "buffer B must have its own undo entry");
+    assert_eq!(app.text_string(), "File B", "undo on buffer B must restore 'File B'");
+
+    let _ = fs::remove_file(&path_a);
+    let _ = fs::remove_file(&path_b);
+}
+
+/// Undo một lần phải xóa toàn bộ word "Hello" được gõ trong một insert session.
+#[test]
+fn undo_removes_entire_insert_session_word() {
+    let mut app = AppState::new(unique_temp_path("session_word_undo"));
+
+    let _ = dispatch_command(&mut app, Command::SwitchMode(ModeEvent::EnterInsert));
+    for ch in "Hello".chars() {
+        let _ = dispatch_command(&mut app, Command::InsertChar(ch));
+    }
+    assert_eq!(app.text_string(), "Hello");
+
+    // Exit insert → commits the transaction.
+    let _ = dispatch_command(&mut app, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    let undo = dispatch_command(&mut app, Command::Undo);
+    assert!(undo.success);
+    assert!(undo.state_changed);
+    assert_eq!(
+        app.text_string(),
+        "",
+        "single undo must remove the whole word typed in one session"
+    );
+}
+
+/// Paste nhiều dòng rồi Undo phải khôi phục lại đúng số dòng cũ.
+#[test]
+fn paste_multiline_undo_restores_line_count() {
+    let mut app = AppState::new(unique_temp_path("paste_multiline_undo"));
+    let mut clipboard = MockClipboard::default();
+
+    let _ = dispatch_command(&mut app, Command::SwitchMode(ModeEvent::EnterInsert));
+    let _ = dispatch_command(
+        &mut app,
+        Command::InsertText("line1\nline2\nline3".to_string()),
+    );
+    assert_eq!(app.text_string(), "line1\nline2\nline3");
+    let lines_before = app.text_string().lines().count();
+
+    // Commit the insert transaction.
+    let _ = dispatch_command(&mut app, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    // Paste a multi-line block via clipboard.
+    clipboard.text = "A\nB\nC".to_string();
+    let _ = dispatch_command(&mut app, Command::MoveToFirstLine);
+    let _ = dispatch_command_with_clipboard(
+        &mut app,
+        Command::PasteSystemClipboard,
+        Some(&mut clipboard),
+    );
+    let lines_after_paste = app.text_string().lines().count();
+    assert!(
+        lines_after_paste > lines_before,
+        "paste should add lines"
+    );
+
+    // Commit if still in insert mode.
+    if app.current_mode() == EditorMode::Insert {
+        let _ = dispatch_command(&mut app, Command::SwitchMode(ModeEvent::EnterNormal));
+    }
+
+    let undo = dispatch_command(&mut app, Command::Undo);
+    assert!(undo.success);
+    assert!(undo.state_changed);
+    assert_eq!(
+        app.text_string().lines().count(),
+        lines_before,
+        "undo must restore original line count"
+    );
+}
+
+/// Ctrl+A select-all, delete, Undo phải khôi phục nguyên vẹn kể cả emoji (Unicode multi-byte).
+#[test]
+fn undo_after_select_all_delete_restores_unicode_content() {
+    let original = "Hello 🌍 world\nwith emoji 🎉\nthird line";
+    let mut app = AppState::from_text(unique_temp_path("unicode_undo"), original);
+
+    assert_eq!(app.text_string(), original);
+
+    // Enter normal, select all, delete selection.
+    let _ = dispatch_command(&mut app, Command::SwitchMode(ModeEvent::EnterNormal));
+    let _ = dispatch_command(&mut app, Command::SwitchMode(ModeEvent::EnterVisual));
+    let _ = dispatch_command(&mut app, Command::MoveToLastLine);
+    let _ = dispatch_command(&mut app, Command::MoveToLineEnd);
+    let _ = dispatch_command(&mut app, Command::DeleteSelection);
+    let _ = dispatch_command(&mut app, Command::SwitchMode(ModeEvent::EnterNormal));
+    assert!(
+        app.text_string().len() < original.len(),
+        "text should be shorter after delete"
+    );
+
+    let undo = dispatch_command(&mut app, Command::Undo);
+    assert!(undo.success);
+    assert!(undo.state_changed);
+    assert_eq!(
+        app.text_string(),
+        original,
+        "undo must restore exact unicode content including emoji"
+    );
+}

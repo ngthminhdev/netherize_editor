@@ -41,8 +41,17 @@ impl Renderer {
 
         let title = "[ LSP Missing ]";
         let subtitle = format!("File type requires Language Server: {binary}");
-        let command = format!("Command: {install_cmd}");
-        let hint = "Press [Enter] to auto-install in Terminal  |  [Esc] to cancel";
+        let (command, hint) = if install_cmd.is_empty() {
+            (
+                format!("Install {binary} manually using your package manager."),
+                "[Esc] to dismiss",
+            )
+        } else {
+            (
+                format!("Command: {install_cmd}"),
+                "Press [Enter] to auto-install in Terminal  |  [Esc] to cancel",
+            )
+        };
 
         let title_font = (self.theme.ui.panel_font_size + 2.0).max(12.0);
         let title_line_h = (self.theme.ui.panel_line_height + 4.0).max(1.0);
@@ -256,7 +265,10 @@ impl Renderer {
             SystemDepState::Detected => {
                 if let Some(ref missing) = guide.missing_tools {
                     let list = missing.join(", ");
-                    let desc = format!("The following tools are required for full functionality:\n{}", list);
+                    let desc = format!(
+                        "The following tools are required for full functionality:\n{}",
+                        list
+                    );
                     blocks.push(DepBlock {
                         text: desc,
                         color: fg,
@@ -282,13 +294,32 @@ impl Renderer {
                 });
             }
             SystemDepState::Installing => {
-                blocks.push(DepBlock {
-                    text: "Installing system dependencies. This may take a few moments...".to_string(),
-                    color: fg,
-                    style: PopupTextStyle::Normal,
-                    font_size: body_font,
-                    line_height: body_line_h,
-                });
+                use crate::async_runtime::message::InstallStatus;
+                // Per-tool progress list
+                for (tool, status) in &guide.tool_statuses {
+                    let (icon, label, color) = match status {
+                        InstallStatus::Pending => ("[ ] ", tool.as_str(), fg_ghost),
+                        InstallStatus::Installing => ("[~] ", tool.as_str(), warn),
+                        InstallStatus::Success => ("[✓] ", tool.as_str(), accent),
+                        InstallStatus::Failed => ("[✗] ", tool.as_str(), warn),
+                    };
+                    let suffix = match status {
+                        InstallStatus::Installing => " (installing...)",
+                        InstallStatus::Failed => " (failed)",
+                        _ => "",
+                    };
+                    blocks.push(DepBlock {
+                        text: format!("{icon}{label}{suffix}"),
+                        color,
+                        style: if matches!(status, InstallStatus::Installing) {
+                            PopupTextStyle::Bold
+                        } else {
+                            PopupTextStyle::Normal
+                        },
+                        font_size: body_font,
+                        line_height: body_line_h,
+                    });
+                }
                 blocks.push(DepBlock {
                     text: "Please wait, do not close the editor.".to_string(),
                     color: fg_ghost,
@@ -298,15 +329,24 @@ impl Renderer {
                 });
             }
             SystemDepState::Complete => {
+                use crate::async_runtime::message::InstallStatus;
+                // Show final per-tool result list
+                for (tool, status) in &guide.tool_statuses {
+                    let (icon, color) = match status {
+                        InstallStatus::Success => ("[✓] ", accent),
+                        InstallStatus::Failed => ("[✗] ", warn),
+                        _ => ("[✓] ", accent),
+                    };
+                    blocks.push(DepBlock {
+                        text: format!("{icon}{tool}"),
+                        color,
+                        style: PopupTextStyle::Normal,
+                        font_size: body_font,
+                        line_height: body_line_h,
+                    });
+                }
                 blocks.push(DepBlock {
-                    text: "All tools have been installed successfully.".to_string(),
-                    color: accent,
-                    style: PopupTextStyle::Normal,
-                    font_size: body_font,
-                    line_height: body_line_h,
-                });
-                blocks.push(DepBlock {
-                    text: "Run 'source ~/.zshrc' in your terminal, then restart Netherize Editor to apply changes.".to_string(),
+                    text: "Installation complete! Run 'source ~/.zshrc' in your terminal, then restart Netherize Editor.".to_string(),
                     color: fg,
                     style: PopupTextStyle::Normal,
                     font_size: body_font,
@@ -425,7 +465,7 @@ impl Renderer {
     }
 
     pub fn update_toast_popup(&mut self, message: &str, window_w: f32, window_h: f32) {
-        const TOAST_W: f32 = 360.0;
+        const TOAST_W: f32 = 720.0;
         const MARGIN_X: f32 = 18.0;
         const MARGIN_Y: f32 = 18.0;
         const BORDER: f32 = 1.0;

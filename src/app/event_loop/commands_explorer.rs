@@ -1,7 +1,58 @@
 use super::*;
 
 impl AppShell {
+    fn reset_terminals_for_workspace_switch(&mut self) {
+        let bottom_sessions: Vec<u64> = self
+            .terminal_tabs
+            .iter()
+            .filter_map(|tab| tab.session_id)
+            .collect();
+        let right_session = self.right_pty_session_id;
+        let buffer_sessions: Vec<u64> = self.terminal_buffer_grids.keys().copied().collect();
+
+        for session_id in bottom_sessions
+            .into_iter()
+            .chain(right_session)
+            .chain(buffer_sessions)
+        {
+            self.submit(RequestSpec {
+                revision_id: 0,
+                topic: RequestTopic::TerminalPty,
+                payload: WorkerRequestPayload::ClosePtySession { session_id },
+            });
+        }
+
+        self.ignored_terminal_tab_spawns
+            .extend(self.pending_terminal_tab_spawns.keys().copied());
+        self.pending_terminal_tab_spawns.clear();
+        self.terminal_buffer_grids.clear();
+        self.pending_lazygit_buffer_index = None;
+        self.pending_lazydocker_buffer_index = None;
+        self.right_pty_session_id = None;
+        self.pending_right_pty_spawn = false;
+        self.right_terminal_grid = TerminalGrid::new(120, 40);
+        self.right_terminal_grid.highlight_colors = HighlightColors::from_theme(&self.theme);
+        self.right_terminal_needs_layout = true;
+        self.last_right_terminal_bounds = None;
+
+        let mut grid = TerminalGrid::new(120, 40);
+        grid.highlight_colors = HighlightColors::from_theme(&self.theme);
+        self.terminal_tabs = vec![TerminalTab::new(grid, "bash".to_string())];
+        self.active_terminal_tab = 0;
+        self.terminal_needs_layout = true;
+        self.buffer_terminal_needs_layout = true;
+        self.last_terminal_bounds = None;
+        self.last_buffer_terminal_bounds = None;
+
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_terminal();
+            renderer.clear_buffer_terminal();
+        }
+    }
+
     fn prepare_for_workspace_switch(&mut self) {
+        self.reset_terminals_for_workspace_switch();
+
         self.submit(RequestSpec {
             revision_id: 0,
             topic: RequestTopic::LspClient,
@@ -18,6 +69,53 @@ impl AppShell {
         self.semantic_highlight_spans.clear();
     }
 
+    pub(super) fn reload_workspace(&mut self) -> bool {
+        let Some(root_path) = self.app_state.workspace_root_path().map(PathBuf::from) else {
+            self.show_transient_toast("Reload Workspace: no workspace open".to_string());
+            return false;
+        };
+
+        let _ = crate::lsp::client::refresh_patched_env_path();
+
+        if let Err(err) = self.app_state.attach_workspace(root_path.clone()) {
+            self.show_transient_toast(format!("Reload Workspace failed: {err}"));
+            return false;
+        }
+
+        self.explorer_snapshot = ExplorerSnapshot::default();
+        self.explorer_snapshot_dirty = true;
+        self.mark_explorer_dirty();
+        self.workspace_git_branch = self
+            .app_state
+            .workspace_root_path()
+            .and_then(detect_git_branch);
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::WorkspaceWatch,
+            payload: WorkerRequestPayload::StartFileWatch {
+                root_path: root_path.clone(),
+            },
+        });
+        self.submit_workspace_git_status_refresh();
+        self.submit_active_buffer_git_baseline_refresh();
+        self.sync_lsp_server_for_workspace();
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::SystemTask,
+            payload: WorkerRequestPayload::DetectRuntimeVersions {
+                python_binary: self.selected_python_env.clone(),
+                workspace_root: root_path,
+            },
+        });
+
+        self.show_transient_toast("Workspace reloaded".to_string());
+        self.update_window_title();
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = true;
+        true
+    }
+
     pub(in crate::app::event_loop) fn switch_workspace_to(&mut self, root_path: PathBuf) -> bool {
         self.prepare_for_workspace_switch();
 
@@ -26,8 +124,10 @@ impl AppShell {
             return false;
         }
 
-        // Show welcome page for the new project (like a fresh open).
-        let _ = self.app_state.set_initial_launch_welcome(true);
+        // Do NOT re-enter welcome mode here: the explorer Enter key maps to
+        // FilePickerConfirmSelection when welcome_visible=true, which silently
+        // fails when no recent-projects palette is open (shows "[no file]").
+        let _ = self.app_state.set_initial_launch_welcome(false);
 
         // Hide ALL panels so the new workspace starts clean (like a fresh open).
         self.panel_state.left.visible = false;
@@ -59,15 +159,6 @@ impl AppShell {
 
         self.submit_workspace_git_status_refresh();
         self.submit_active_buffer_git_baseline_refresh();
-
-        if let Some(session_id) = self.pty_session_id {
-            let quoted = shell_quote_path(&root_path);
-            self.forward_to_terminal_session(session_id, &format!("\x15cd {quoted}\r"));
-        }
-        if let Some(session_id) = self.right_pty_session_id {
-            let quoted = shell_quote_path(&root_path);
-            self.forward_to_terminal_session(session_id, &format!("\x15cd {quoted}\r"));
-        }
 
         self.sync_lsp_server_for_workspace();
 
@@ -143,6 +234,7 @@ impl AppShell {
         command: &Command,
     ) -> Option<bool> {
         match command {
+            Command::ReloadWorkspace => Some(self.reload_workspace()),
             Command::OpenFolder => Some(self.open_folder_with_dialog()),
             Command::OpenRecentProjects => Some(self.open_recent_projects_palette()),
             Command::ToggleLeftDock => {
@@ -465,6 +557,7 @@ impl AppShell {
                     return Some(false);
                 }
                 self.clear_highlight_layers();
+                self.submit_active_buffer_git_baseline_refresh();
                 self.submit_parse_for_active_buffer(true);
                 self.submit_lsp_did_open_for_active_file();
                 let mut changed = report.request_redraw || report.state_changed;

@@ -137,7 +137,7 @@ pub(super) fn editor_viewport_geometry(
     app_state: &AppState,
     center_bounds: [f32; 4],
 ) -> EditorViewportGeometry {
-    let left_inset = renderer.editor_padding_x + 10.0;
+    let left_inset = renderer.editor_padding_x;
     let line_height = renderer.theme.editor.line_height;
     let font_size = renderer.theme.editor.font_size;
     let total_lines = app_state.total_lines().max(1);

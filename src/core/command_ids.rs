@@ -67,8 +67,10 @@ pub const ENTER_NORMAL: &str = "mode.enter_normal";
 pub const ENTER_INSERT: &str = "mode.enter_insert";
 pub const ENTER_VISUAL: &str = "mode.enter_visual";
 pub const ENTER_VISUAL_LINE: &str = "mode.enter_visual_line";
+pub const ENTER_RESIZE: &str = "mode.resize";
 pub const ENTER_TERMINAL_FOCUS: &str = "mode.enter_terminal_focus";
 pub const EXIT_FOCUS: &str = "mode.exit_focus";
+pub const ESCAPE_MODE: &str = "mode.escape";
 
 // ── Workspace / Project management ───────────────────────────────────────────
 pub const OPEN_FOLDER: &str = "editor.open_folder";
@@ -95,6 +97,17 @@ pub const GIT_BLAME_LINE: &str = "git.blame_line";
 pub const TERMINAL_ENTER_NORMAL_MODE: &str = "terminal.enter_normal_mode";
 pub const TERMINAL_PASTE: &str = "terminal.paste";
 pub const TERMINAL_SEARCH_OPEN: &str = "terminal.search_open";
+pub const TERMINAL_TAB_NEW: &str = "terminal.tab_new";
+pub const TERMINAL_TAB_CLOSE: &str = "terminal.tab_close";
+pub const TERMINAL_TAB_SWITCH_1: &str = "terminal.tab_switch_1";
+pub const TERMINAL_TAB_SWITCH_2: &str = "terminal.tab_switch_2";
+pub const TERMINAL_TAB_SWITCH_3: &str = "terminal.tab_switch_3";
+pub const TERMINAL_TAB_SWITCH_4: &str = "terminal.tab_switch_4";
+pub const TERMINAL_TAB_SWITCH_5: &str = "terminal.tab_switch_5";
+pub const TERMINAL_TAB_SWITCH_6: &str = "terminal.tab_switch_6";
+pub const TERMINAL_TAB_SWITCH_7: &str = "terminal.tab_switch_7";
+pub const TERMINAL_TAB_SWITCH_8: &str = "terminal.tab_switch_8";
+pub const TERMINAL_TAB_SWITCH_9: &str = "terminal.tab_switch_9";
 
 // ── Buffer goto ─────────────────────────────────────────────────────────────
 pub const BUFFER_GOTO_1: &str = "buffer.goto_1";
@@ -114,15 +127,28 @@ pub const LSP_PREVIEW_DEFINITION: &str = "lsp.preview_definition";
 pub const LSP_REFERENCES: &str = "lsp.references";
 pub const LSP_FORMAT_DOCUMENT: &str = "lsp.format_document";
 pub const LSP_TRIGGER_COMPLETION: &str = "lsp.trigger_completion";
+pub const LSP_CODE_ACTION: &str = "lsp.code_action";
+pub const LSP_SELECT_PYTHON_ENV: &str = "lsp.select_python_env";
+pub const RELOAD_WORKSPACE: &str = "workspace.reload";
+pub const RESIZE_DECREASE_WIDTH: &str = "resize.decrease_width";
+pub const RESIZE_INCREASE_WIDTH: &str = "resize.increase_width";
+pub const RESIZE_INCREASE_LEFT_WIDTH: &str = "resize.increase_left_width";
+pub const RESIZE_DECREASE_LEFT_WIDTH: &str = "resize.decrease_left_width";
+pub const RESIZE_INCREASE_RIGHT_WIDTH: &str = "resize.increase_right_width";
+pub const RESIZE_DECREASE_RIGHT_WIDTH: &str = "resize.decrease_right_width";
+pub const RESIZE_DECREASE_HEIGHT: &str = "resize.decrease_height";
+pub const RESIZE_INCREASE_HEIGHT: &str = "resize.increase_height";
 pub const COMPLETION_NEXT: &str = "completion.next";
 pub const COMPLETION_PREV: &str = "completion.prev";
 pub const COMPLETION_ACCEPT: &str = "completion.accept";
 pub const COMPLETION_CLOSE: &str = "completion.close";
 pub const AI_ACCEPT_INLINE: &str = "ai.accept_inline";
+pub const AI_ACCEPT_INLINE_WORD: &str = "ai.accept_inline_word";
 
 // ── AI Chat ──────────────────────────────────────────────────────────────
 pub const AI_CHAT_TOGGLE: &str = "ai.chat_toggle";
 pub const AI_CHAT_SEND: &str = "ai.chat_send";
+pub const AI_CHAT_STOP: &str = "ai.chat_stop";
 pub const AI_CHAT_CLOSE: &str = "ai.chat_close";
 pub const AI_CHAT_UNFOCUS: &str = "ai.chat_unfocus";
 pub const AI_CHAT_FOCUS: &str = "ai.chat_focus";
@@ -142,12 +168,25 @@ pub const MULTI_CURSOR_CHANGE: &str = "multicursor.change";
 pub const MULTI_CURSOR_DELETE: &str = "multicursor.delete";
 pub const MULTI_CURSOR_SELECT_ALL: &str = "multicursor.select_all";
 
+// ── Code folding ────────────────────────────────────────────────────────────
+pub const TOGGLE_FOLD: &str = "editor.toggle_fold";
+pub const TOGGLE_FOLD_ALL: &str = "editor.toggle_fold_all";
+
 // ── Markdown Preview ─────────────────────────────────────────────────────────
 pub const TOGGLE_MARKDOWN_PREVIEW: &str = "app.toggle_markdown_preview";
+pub const FOCUS_MARKDOWN_PREVIEW: &str = "app.focus_markdown_preview";
 pub const MARKDOWN_PREVIEW_SCROLL_UP: &str = "app.markdown_preview_scroll_up";
 pub const MARKDOWN_PREVIEW_SCROLL_DOWN: &str = "app.markdown_preview_scroll_down";
 pub const MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP: &str = "app.markdown_preview_scroll_half_page_up";
 pub const MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN: &str = "app.markdown_preview_scroll_half_page_down";
+pub const MARKDOWN_PREVIEW_SCROLL_TOP: &str = "app.markdown_preview_scroll_top";
+pub const MARKDOWN_PREVIEW_SCROLL_BOTTOM: &str = "app.markdown_preview_scroll_bottom";
+
+// ── Help / Cheat Sheet ───────────────────────────────────────────────────────
+pub const HELP_SCROLL_DOWN: &str = "app.help_scroll_down";
+pub const HELP_SCROLL_UP: &str = "app.help_scroll_up";
+pub const HELP_SCROLL_HALF_PAGE_DOWN: &str = "app.help_scroll_half_page_down";
+pub const HELP_SCROLL_HALF_PAGE_UP: &str = "app.help_scroll_half_page_up";
 
 // ── Workbench focus navigation ────────────────────────────────────────────────
 pub const FOCUS_EDITOR: &str = "app.focus_editor";
@@ -268,8 +307,18 @@ pub const ALL_IDS: &[&str] = &[
     ENTER_INSERT,
     ENTER_VISUAL,
     ENTER_VISUAL_LINE,
+    ENTER_RESIZE,
+    RESIZE_DECREASE_WIDTH,
+    RESIZE_INCREASE_WIDTH,
+    RESIZE_INCREASE_LEFT_WIDTH,
+    RESIZE_DECREASE_LEFT_WIDTH,
+    RESIZE_INCREASE_RIGHT_WIDTH,
+    RESIZE_DECREASE_RIGHT_WIDTH,
+    RESIZE_DECREASE_HEIGHT,
+    RESIZE_INCREASE_HEIGHT,
     ENTER_TERMINAL_FOCUS,
     EXIT_FOCUS,
+    ESCAPE_MODE,
     TOGGLE_TERMINAL,
     TOGGLE_BOTTOM_DOCK,
     TOGGLE_LEFT_DOCK,
@@ -289,6 +338,17 @@ pub const ALL_IDS: &[&str] = &[
     TERMINAL_ENTER_NORMAL_MODE,
     TERMINAL_PASTE,
     TERMINAL_SEARCH_OPEN,
+    TERMINAL_TAB_NEW,
+    TERMINAL_TAB_CLOSE,
+    TERMINAL_TAB_SWITCH_1,
+    TERMINAL_TAB_SWITCH_2,
+    TERMINAL_TAB_SWITCH_3,
+    TERMINAL_TAB_SWITCH_4,
+    TERMINAL_TAB_SWITCH_5,
+    TERMINAL_TAB_SWITCH_6,
+    TERMINAL_TAB_SWITCH_7,
+    TERMINAL_TAB_SWITCH_8,
+    TERMINAL_TAB_SWITCH_9,
     BUFFER_GOTO_1,
     BUFFER_GOTO_2,
     BUFFER_GOTO_3,
@@ -304,11 +364,15 @@ pub const ALL_IDS: &[&str] = &[
     LSP_REFERENCES,
     LSP_FORMAT_DOCUMENT,
     LSP_TRIGGER_COMPLETION,
+    LSP_CODE_ACTION,
+    LSP_SELECT_PYTHON_ENV,
+    RELOAD_WORKSPACE,
     COMPLETION_NEXT,
     COMPLETION_PREV,
     COMPLETION_ACCEPT,
     COMPLETION_CLOSE,
     AI_ACCEPT_INLINE,
+    AI_ACCEPT_INLINE_WORD,
     AI_CHAT_TOGGLE,
     AI_CHAT_SEND,
     AI_CHAT_CLOSE,
@@ -377,11 +441,18 @@ pub const ALL_IDS: &[&str] = &[
     MULTI_CURSOR_DELETE,
     MULTI_CURSOR_SELECT_ALL,
     TOGGLE_MARKDOWN_PREVIEW,
+    FOCUS_MARKDOWN_PREVIEW,
     MARKDOWN_PREVIEW_SCROLL_UP,
     MARKDOWN_PREVIEW_SCROLL_DOWN,
     MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP,
     MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN,
+    HELP_SCROLL_DOWN,
+    HELP_SCROLL_UP,
+    HELP_SCROLL_HALF_PAGE_DOWN,
+    HELP_SCROLL_HALF_PAGE_UP,
     TOGGLE_MAXIMIZE_FOCUS,
+    TOGGLE_FOLD,
+    TOGGLE_FOLD_ALL,
 ];
 
 pub fn is_valid(id: &str) -> bool {
@@ -452,11 +523,24 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         ENTER_INSERT => Some(Command::SwitchMode(ModeEvent::EnterInsert)),
         ENTER_VISUAL => Some(Command::SwitchMode(ModeEvent::EnterVisual)),
         ENTER_VISUAL_LINE => Some(Command::EnterVisualLine),
+        ENTER_RESIZE => Some(Command::SwitchMode(ModeEvent::EnterResize)),
         ENTER_TERMINAL_FOCUS => Some(Command::SwitchMode(ModeEvent::FocusTerminal)),
         EXIT_FOCUS => Some(Command::SwitchMode(ModeEvent::ExitFocus)),
+        ESCAPE_MODE => Some(Command::SwitchMode(ModeEvent::Escape)),
         TERMINAL_ENTER_NORMAL_MODE => Some(Command::SwitchMode(ModeEvent::EnterTerminalNormal)),
         TERMINAL_PASTE => Some(Command::TerminalPaste),
         TERMINAL_SEARCH_OPEN => Some(Command::TerminalSearchOpen),
+        TERMINAL_TAB_NEW => Some(Command::TerminalTabNew),
+        TERMINAL_TAB_CLOSE => Some(Command::TerminalTabClose),
+        TERMINAL_TAB_SWITCH_1 => Some(Command::SwitchTerminalTab(0)),
+        TERMINAL_TAB_SWITCH_2 => Some(Command::SwitchTerminalTab(1)),
+        TERMINAL_TAB_SWITCH_3 => Some(Command::SwitchTerminalTab(2)),
+        TERMINAL_TAB_SWITCH_4 => Some(Command::SwitchTerminalTab(3)),
+        TERMINAL_TAB_SWITCH_5 => Some(Command::SwitchTerminalTab(4)),
+        TERMINAL_TAB_SWITCH_6 => Some(Command::SwitchTerminalTab(5)),
+        TERMINAL_TAB_SWITCH_7 => Some(Command::SwitchTerminalTab(6)),
+        TERMINAL_TAB_SWITCH_8 => Some(Command::SwitchTerminalTab(7)),
+        TERMINAL_TAB_SWITCH_9 => Some(Command::SwitchTerminalTab(8)),
         BUFFER_GOTO_1 => Some(Command::BufferGoto(0)),
         BUFFER_GOTO_2 => Some(Command::BufferGoto(1)),
         BUFFER_GOTO_3 => Some(Command::BufferGoto(2)),
@@ -489,13 +573,26 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         LSP_REFERENCES => Some(Command::LspReferences),
         LSP_FORMAT_DOCUMENT => Some(Command::LspFormatDocument),
         LSP_TRIGGER_COMPLETION => Some(Command::TriggerCompletion),
+        LSP_CODE_ACTION => Some(Command::CodeAction),
+        LSP_SELECT_PYTHON_ENV => Some(Command::LspSelectPythonEnv),
+        RELOAD_WORKSPACE => Some(Command::ReloadWorkspace),
+        RESIZE_DECREASE_WIDTH => Some(Command::ResizeDecreaseWidth),
+        RESIZE_INCREASE_WIDTH => Some(Command::ResizeIncreaseWidth),
+        RESIZE_INCREASE_LEFT_WIDTH => Some(Command::ResizeIncreaseLeftWidth),
+        RESIZE_DECREASE_LEFT_WIDTH => Some(Command::ResizeDecreaseLeftWidth),
+        RESIZE_INCREASE_RIGHT_WIDTH => Some(Command::ResizeIncreaseRightWidth),
+        RESIZE_DECREASE_RIGHT_WIDTH => Some(Command::ResizeDecreaseRightWidth),
+        RESIZE_DECREASE_HEIGHT => Some(Command::ResizeDecreaseHeight),
+        RESIZE_INCREASE_HEIGHT => Some(Command::ResizeIncreaseHeight),
         COMPLETION_NEXT => Some(Command::CompletionNext),
         COMPLETION_PREV => Some(Command::CompletionPrev),
         COMPLETION_ACCEPT => Some(Command::CompletionAccept),
         COMPLETION_CLOSE => Some(Command::CompletionClose),
         AI_ACCEPT_INLINE => Some(Command::AiAcceptInline),
+        AI_ACCEPT_INLINE_WORD => Some(Command::AiAcceptInlineWord),
         AI_CHAT_TOGGLE => Some(Command::AiChatToggle),
         AI_CHAT_SEND => Some(Command::AiChatSend),
+        AI_CHAT_STOP => Some(Command::AiChatStop),
         AI_CHAT_CLOSE => Some(Command::AiChatClose),
         AI_CHAT_UNFOCUS => Some(Command::AiChatUnfocus),
         AI_CHAT_FOCUS => Some(Command::AiChatFocus),
@@ -561,11 +658,20 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         MULTI_CURSOR_DELETE => Some(Command::MultiCursorDelete),
         MULTI_CURSOR_SELECT_ALL => Some(Command::MultiCursorSelectAll),
         TOGGLE_MARKDOWN_PREVIEW => Some(Command::ToggleMarkdownPreview),
+        FOCUS_MARKDOWN_PREVIEW => Some(Command::FocusMarkdownPreview),
         MARKDOWN_PREVIEW_SCROLL_UP => Some(Command::MarkdownPreviewScrollUp),
         MARKDOWN_PREVIEW_SCROLL_DOWN => Some(Command::MarkdownPreviewScrollDown),
         MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP => Some(Command::MarkdownPreviewScrollHalfPageUp),
         MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN => Some(Command::MarkdownPreviewScrollHalfPageDown),
+        MARKDOWN_PREVIEW_SCROLL_TOP => Some(Command::MarkdownPreviewScrollTop),
+        MARKDOWN_PREVIEW_SCROLL_BOTTOM => Some(Command::MarkdownPreviewScrollBottom),
+        HELP_SCROLL_DOWN => Some(Command::HelpScrollDown),
+        HELP_SCROLL_UP => Some(Command::HelpScrollUp),
+        HELP_SCROLL_HALF_PAGE_DOWN => Some(Command::HelpScrollHalfPageDown),
+        HELP_SCROLL_HALF_PAGE_UP => Some(Command::HelpScrollHalfPageUp),
         TOGGLE_MAXIMIZE_FOCUS => Some(Command::ToggleMaximizeFocus),
+        TOGGLE_FOLD => Some(Command::ToggleFold),
+        TOGGLE_FOLD_ALL => Some(Command::ToggleFoldAll),
         _ => None,
     }
 }

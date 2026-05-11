@@ -28,6 +28,7 @@ impl AppShell {
                     self.ui_config.border_radius_px > 0.0,
                     self.ui_config.border_radius_px,
                     self.ui_config.enable_outline,
+                    self.ai_config.inline_completion_enabled(),
                 );
                 let _ = self.sync_focus_mode_for_active_buffer();
                 self.editor_needs_layout = true;
@@ -53,6 +54,22 @@ impl AppShell {
             Command::SettingsAdjustDecrease => Some(self.adjust_selected_setting(-1)),
             Command::SettingsAdjustIncrease => Some(self.adjust_selected_setting(1)),
             Command::SettingsActivate => Some(self.activate_selected_setting()),
+            Command::ResizeDecreaseWidth => {
+                Some(self.resize_focused_window(-Self::RESIZE_STEP_PX, 0.0))
+            }
+            Command::ResizeIncreaseWidth => {
+                Some(self.resize_focused_window(Self::RESIZE_STEP_PX, 0.0))
+            }
+            Command::ResizeIncreaseLeftWidth => Some(self.resize_editor_left_edge(Self::RESIZE_STEP_PX)),
+            Command::ResizeDecreaseLeftWidth => Some(self.resize_editor_left_edge(-Self::RESIZE_STEP_PX)),
+            Command::ResizeIncreaseRightWidth => Some(self.resize_editor_right_edge(Self::RESIZE_STEP_PX)),
+            Command::ResizeDecreaseRightWidth => Some(self.resize_editor_right_edge(-Self::RESIZE_STEP_PX)),
+            Command::ResizeDecreaseHeight => {
+                Some(self.resize_focused_window(0.0, -Self::RESIZE_STEP_PX))
+            }
+            Command::ResizeIncreaseHeight => {
+                Some(self.resize_focused_window(0.0, Self::RESIZE_STEP_PX))
+            }
             Command::CloseFilePicker if self.app_state.active_buffer_is_settings() => {
                 if self.app_state.settings_is_editing() {
                     let changed = self.app_state.settings_cancel_editing();

@@ -259,6 +259,42 @@ pub struct IconThemeTokens {
     pub typescript: FileIconThemeTokens,
     pub tsx: FileIconThemeTokens,
     pub jsx: FileIconThemeTokens,
+    pub java: FileIconThemeTokens,
+    pub kotlin: FileIconThemeTokens,
+    pub c: FileIconThemeTokens,
+    pub cpp: FileIconThemeTokens,
+    pub csharp: FileIconThemeTokens,
+    pub dart: FileIconThemeTokens,
+    pub swift: FileIconThemeTokens,
+    pub php: FileIconThemeTokens,
+    pub ruby: FileIconThemeTokens,
+    pub lua: FileIconThemeTokens,
+    pub zig: FileIconThemeTokens,
+    pub scala: FileIconThemeTokens,
+    pub docker: FileIconThemeTokens,
+    pub sql: FileIconThemeTokens,
+    pub xml: FileIconThemeTokens,
+    pub gradle: FileIconThemeTokens,
+    pub vue: FileIconThemeTokens,
+    pub svelte: FileIconThemeTokens,
+    pub astro: FileIconThemeTokens,
+    pub elm: FileIconThemeTokens,
+    pub haskell: FileIconThemeTokens,
+    pub ocaml: FileIconThemeTokens,
+    pub r: FileIconThemeTokens,
+    pub perl: FileIconThemeTokens,
+    pub clojure: FileIconThemeTokens,
+    pub fsharp: FileIconThemeTokens,
+    pub nim: FileIconThemeTokens,
+    pub solidity: FileIconThemeTokens,
+    pub graphql: FileIconThemeTokens,
+    pub toml: FileIconThemeTokens,
+    pub yaml: FileIconThemeTokens,
+    pub makefile: FileIconThemeTokens,
+    pub cmake: FileIconThemeTokens,
+    pub nginx: FileIconThemeTokens,
+    pub terraform: FileIconThemeTokens,
+    pub ansible: FileIconThemeTokens,
     pub python: FileIconThemeTokens,
     pub go: FileIconThemeTokens,
     pub config: FileIconThemeTokens,
@@ -271,6 +307,7 @@ pub struct IconThemeTokens {
     pub git: FileIconThemeTokens,
     pub lock: FileIconThemeTokens,
     pub image: FileIconThemeTokens,
+    pub proto: FileIconThemeTokens,
 }
 
 impl ThemeConfig {
@@ -311,9 +348,21 @@ impl ThemeConfig {
             "ts" => &self.icons.typescript,
             "tsx" => &self.icons.tsx,
             "jsx" => &self.icons.jsx,
+            "java" => &self.icons.java,
+            "kt" | "kts" => &self.icons.kotlin,
+            "c" | "h" => &self.icons.c,
+            "cc" | "cpp" | "cxx" | "hpp" | "hh" | "hxx" => &self.icons.cpp,
+            "cs" => &self.icons.csharp,
+            "dart" => &self.icons.dart,
+            "swift" => &self.icons.swift,
+            "php" => &self.icons.php,
+            "rb" => &self.icons.ruby,
+            "lua" => &self.icons.lua,
+            "zig" => &self.icons.zig,
+            "scala" | "sc" => &self.icons.scala,
             "py" | "pyw" => &self.icons.python,
             "go" => &self.icons.go,
-            "toml" | "yaml" | "yml" | "ini" | "env" => &self.icons.config,
+            "ini" | "env" => &self.icons.config,
             "json" | "jsonc" => &self.icons.json,
             "md" | "mdx" | "markdown" => &self.icons.markdown,
             "html" | "htm" => &self.icons.html,
@@ -322,6 +371,31 @@ impl ThemeConfig {
             "sh" | "bash" | "zsh" | "fish" => &self.icons.shell,
             "gitignore" | "gitmodules" | "gitattributes" => &self.icons.git,
             "lock" => &self.icons.lock,
+            "proto" | "protobuf" => &self.icons.proto,
+            "dockerfile" | "containerfile" => &self.icons.docker,
+            "sql" => &self.icons.sql,
+            "xml" | "xsd" | "xsl" | "xslt" | "plist" => &self.icons.xml,
+            "gradle" => &self.icons.gradle,
+            "vue" => &self.icons.vue,
+            "svelte" => &self.icons.svelte,
+            "astro" => &self.icons.astro,
+            "elm" => &self.icons.elm,
+            "hs" => &self.icons.haskell,
+            "ml" | "mli" => &self.icons.ocaml,
+            "r" => &self.icons.r,
+            "pl" | "pm" => &self.icons.perl,
+            "clj" | "cljs" | "cljc" | "edn" => &self.icons.clojure,
+            "fs" | "fsi" | "fsx" => &self.icons.fsharp,
+            "nim" => &self.icons.nim,
+            "sol" => &self.icons.solidity,
+            "graphql" | "gql" => &self.icons.graphql,
+            "toml" => &self.icons.toml,
+            "yaml" | "yml" => &self.icons.yaml,
+            "mk" | "mak" => &self.icons.makefile,
+            "cmake" => &self.icons.cmake,
+            "conf" | "nginxconf" => &self.icons.nginx,
+            "tf" | "tfvars" | "hcl" => &self.icons.terraform,
+            "ansible" => &self.icons.ansible,
             "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "ico" => &self.icons.image,
             _ => &self.icons.default_file,
         }
@@ -330,6 +404,36 @@ impl ThemeConfig {
     pub fn icon_theme_for_filename(&self, filename: &str, is_dir: bool) -> &FileIconThemeTokens {
         if is_dir {
             return &self.icons.folder_closed;
+        }
+
+        if filename.eq_ignore_ascii_case("dockerfile")
+            || filename.eq_ignore_ascii_case("containerfile")
+        {
+            return &self.icons.docker;
+        }
+        if filename.eq_ignore_ascii_case("build.gradle")
+            || filename.eq_ignore_ascii_case("settings.gradle")
+            || filename.eq_ignore_ascii_case("gradle.properties")
+        {
+            return &self.icons.gradle;
+        }
+        if filename.eq_ignore_ascii_case("makefile")
+            || filename.eq_ignore_ascii_case("gnumakefile")
+            || filename.eq_ignore_ascii_case("justfile")
+        {
+            return &self.icons.makefile;
+        }
+        if filename.eq_ignore_ascii_case("cmakelists.txt") {
+            return &self.icons.cmake;
+        }
+        if filename.eq_ignore_ascii_case("nginx.conf") {
+            return &self.icons.nginx;
+        }
+        if filename.eq_ignore_ascii_case("ansible.cfg")
+            || filename.eq_ignore_ascii_case("playbook.yml")
+            || filename.eq_ignore_ascii_case("playbook.yaml")
+        {
+            return &self.icons.ansible;
         }
 
         if let Some(exact) = filename.strip_prefix('.') {

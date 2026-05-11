@@ -1,0 +1,137 @@
+# Theme metadata shown after the profile is loaded.
+[theme]
+name = "one-dark"
+description = "One Dark palette adapted for Netherize Editor runtime themes"
+
+# Core editor surface: text buffer, caret, selection, and gutter.
+[editor]
+# Main text canvas background for the center editor region.
+bg = "#282C34"
+# Default foreground color for plain text in the editor.
+fg = "#ABB2BF"
+# Caret / cursor color in insert, normal, and visual rendering.
+cursor = "#61AFEF"
+# Selection fill used by visual mode and selected ranges.
+selection = "#3E4451"
+# Background behind line numbers.
+gutter = "#282C34"
+# Active line-number color in the gutter.
+gutter_active = "#FFFFFF"
+# Subtle vertical indentation guides in the code area.
+indent_guide = "#5C637040"
+# Nested bracket colors used for rainbow-style pair rendering.
+rainbow_brackets = ["#61AFEF", "#C678DD", "#E5C07B", "#98C379", "#D19A66", "#56B6C2"]
+# Editor text metrics for cosmic-text layout.
+# Primary font for editor text, overlays, top bar, and status bar.
+# Nerd Font used for explorer/file icons and terminal glyph fallback.
+
+# Shared UI chrome colors and workbench sizing tokens.
+[ui]
+# Window clear color behind every region and palette pill foreground base.
+bg = "#21252B"
+# Left/right sidebar region background.
+sidebar_bg = "#282C34"
+# Generic chrome background for top bar, cards, and inspector surfaces.
+panel_bg = "#282C34"
+# Bottom terminal panel and terminal-buffer background.
+terminal_bg = "#282C34"
+# Scrim + modal panel background for command palette and Leap overlay.
+overlay_bg = "#21252BD9"
+# Status bar region background.
+status_bar_bg = "#282C34"
+# Borders, separators, and subtle region dividers.
+border_color = "#181A1F"
+# Active row / selected tab / focused list item background.
+selection_bg = "#3E4451"
+# Unsaved topbar tab marker color.
+dirty_indicator = "#E5C07B"
+
+# Shared foreground tokens for labels and chrome text.
+fg = "#ABB2BF"
+fg_dim = "#828997"
+fg_ghost = "#5C6370"
+
+# Accent and semantic colors used across overlays, status pills, icons, and diagnostics.
+accent = "#61AFEF"
+cyan = "#56B6C2"
+magenta = "#C678DD"
+amber = "#E5C07B"
+success = "#98C379"
+warning = "#D19A66"
+info = "#61AFEF"
+error = "#E06C75"
+
+# Mode badge colors in the status bar.
+mode_normal = "#56B6C2"
+mode_insert = "#98C379"
+mode_visual = "#C678DD"
+
+# Sidebar and panel text metrics.
+
+# Theme-driven workbench chrome sizes.
+top_bar_height = 36.0
+
+[git]
+modified_sidebar = "#E5C07B"
+added_sidebar = "#98C379"
+modified_gutter = "#E5C07B"
+added_gutter = "#98C379"
+deleted_gutter = "#E06C75"
+status_bar_height = 32.0
+
+# Disclosure markers and file-picker bullet glyph.
+
+[syntax]
+# ── Lõi ngôn ngữ (Core) ──
+# Keywords like `fn`, `let`, `match`, `const`, `if`, `return`, `async`.
+keyword = "#c678dd"       # Magenta (One Dark identity)
+# Operators such as `=`, `+`, `&&`, `->`, `!`, `??`.
+operator = "#56b6c2"      # Cyan (One Dark palette)
+# Punctuation such as commas, braces, and separators.
+punctuation = "#abb2bf"
+
+# ── Giá trị (Literals) ──
+# String literals.
+string = "#98c379"
+# Numeric literals.
+number = "#d19a66"
+# Boolean literals (true/false).
+boolean = "#d19a66"
+# Escape sequences inside strings (e.g., \n, \t).
+escape = "#56b6c2"
+
+# ── Định danh (Identifiers) ──
+# Plain variable names that do not fall into a richer semantic bucket.
+identifier = "#abb2bf"    # Foreground (cho variable references)
+# Local variables (const, let, var).
+variable = "#e06c75"      # Red (khác với identifier #abb2bf)
+# Function names and callable symbols.
+function = "#61afef"
+# Macro invocation highlight.
+macro = "#61afef"
+# Function and closure parameters.
+parameter = "#d19a66"     # Orange (One Dark palette)
+
+# ── Hướng đối tượng & Cấu trúc (OOP & Structs) ──
+# Type names.
+type = "#e5c07b"
+# Constructor functions (e.g., String::new).
+constructor = "#e5c07b"
+# Struct field declarations and member access like `self.name`, `obj.property`.
+field = "#61afef"         # Blue (One Dark palette)
+# Struct literal property labels like `Demo { name: value }`.
+property = "#61afef"      # Blue (đồng bộ với field)
+# Named constants such as `MAX_SIZE`.
+constant = "#d19a66"
+
+# ── Đặc tả ngôn ngữ (Language-specific) ──
+# Comments and muted inline docs.
+comment = "#5c6370"
+# Decorators and attributes like `#[derive(Debug)]` or `@Controller`.
+attribute = "#c678dd"     # Magenta (đồng bộ keyword)
+# Module namespaces (e.g., `std::` in Rust).
+namespace = "#e5c07b"
+# Rust lifetime highlight.
+lifetime = "#d19a66"
+# HTML/XML/JSX Tags.
+tag = "#61afef"           # Blue (đồng bộ function)

@@ -1,77 +1,99 @@
-use super::overlays::{build_completion_display_items, is_completion_identifier_char};
+use super::overlays::{
+    build_completion_display_items, collect_search_highlights, is_completion_identifier_char,
+};
 use super::*;
 
-impl AppState {
-    pub fn active_file_history_envelope(&self) -> Option<PersistedHistoryEnvelope> {
-        let file_path = self.active_file.clone()?;
-        Some(PersistedHistoryEnvelope {
-            version: 1,
-            file_path,
-            history: self.history.clone(),
-        })
-    }
+fn inline_suggestion_accept_prefix_byte_len(suggestion: &str) -> usize {
+    let mut saw_leading_whitespace = false;
+    let mut token_kind: Option<InlineSuggestionTokenKind> = None;
+    let mut last_end = 0;
 
-    pub fn reconcile_loaded_file_history(
-        &mut self,
-        file_path: &Path,
-        envelope: Option<PersistedHistoryEnvelope>,
-    ) -> bool {
-        let Some(active_file) = self.active_file.as_ref() else {
-            return false;
-        };
-        if active_file != file_path {
-            if let Some(envelope) = envelope {
-                self.stored_file_histories.insert(
-                    file_path.to_path_buf(),
-                    StoredFileHistory {
-                        history: envelope.history,
-                    },
-                );
-                return true;
+    for (idx, ch) in suggestion.char_indices() {
+        if token_kind.is_none() && ch.is_whitespace() {
+            saw_leading_whitespace = true;
+            last_end = idx + ch.len_utf8();
+            if ch == '\n' {
+                return last_end;
             }
-            return false;
+            continue;
         }
 
-        let loaded_history = envelope.map(|item| item.history).unwrap_or_default();
-        self.history = loaded_history.clone();
-        self.current_transaction = None;
-        self.stored_file_histories.insert(
-            file_path.to_path_buf(),
-            StoredFileHistory {
-                history: loaded_history,
-            },
-        );
-        self.bump_revision();
-        true
+        let kind = InlineSuggestionTokenKind::for_char(ch);
+        match token_kind {
+            None => {
+                token_kind = Some(kind);
+                last_end = idx + ch.len_utf8();
+                if kind == InlineSuggestionTokenKind::Punctuation {
+                    return last_end;
+                }
+            }
+            Some(current) if current == kind && kind != InlineSuggestionTokenKind::Punctuation => {
+                last_end = idx + ch.len_utf8();
+            }
+            Some(_) => return if saw_leading_whitespace { idx } else { last_end },
+        }
     }
 
+    last_end
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InlineSuggestionTokenKind {
+    Word,
+    Number,
+    Punctuation,
+}
+
+impl InlineSuggestionTokenKind {
+    fn for_char(ch: char) -> Self {
+        if ch == '_' || ch.is_alphabetic() {
+            Self::Word
+        } else if ch.is_ascii_digit() {
+            Self::Number
+        } else {
+            Self::Punctuation
+        }
+    }
+}
+
+impl AppState {
     pub fn file_history_picker_items(
         &self,
     ) -> Vec<crate::app::command_palette::CommandPaletteItem> {
-        let file_path = if let Some(index) = self.active_buffer_index {
-            self.buffers
-                .get(index)
-                .and_then(|buffer| match &buffer.content {
-                    BufferContent::FuzzyPicker(state)
-                        if state.mode == CommandPaletteMode::FileHistory =>
-                    {
-                        state.source_file_path.as_ref()
+        // When a FileHistory FuzzyPicker is the active buffer, its source_file_path
+        // tells us which EditorBuffer's history to display.
+        let history: &EditHistory = if let Some(active_idx) = self.active_buffer_index {
+            if let Some(slot) = self.buffers.get(active_idx) {
+                if let BufferContent::FuzzyPicker(ref state) = slot.content {
+                    if state.mode == CommandPaletteMode::FileHistory {
+                        if let Some(ref src_path) = state.source_file_path {
+                            // The text buffer's history is stored inside its EditorBuffer.
+                            let found = self.buffers.iter().find_map(|b| match &b.content {
+                                BufferContent::Text(eb) if &eb.path == src_path => {
+                                    Some(&eb.history)
+                                }
+                                _ => None,
+                            });
+                            found.unwrap_or(&self.history)
+                        } else {
+                            &self.history
+                        }
+                    } else {
+                        &self.history
                     }
-                    _ => None,
-                })
+                } else {
+                    &self.history
+                }
+            } else {
+                &self.history
+            }
         } else {
-            None
-        }
-        .or(self.active_file.as_ref());
-
-        let Some(active_file) = file_path else {
-            return Vec::new();
+            &self.history
         };
-        let history = self
-            .stored_file_histories
-            .get(active_file)
-            .map(|stored| &stored.history)
-            .unwrap_or(&self.history);
+
+        if history.undo_stack.is_empty() {
+            return Vec::new();
+        }
         history
             .undo_stack
             .iter()
@@ -185,14 +207,6 @@ impl AppState {
         self.history = session.baseline_history;
         self.history.undo_stack.truncate(keep_len);
         self.history.redo_stack.clear();
-        if let Some(path) = self.active_file.clone() {
-            self.stored_file_histories.insert(
-                path,
-                StoredFileHistory {
-                    history: self.history.clone(),
-                },
-            );
-        }
         self.current_transaction = None;
         self.bump_revision();
         true
@@ -375,6 +389,34 @@ impl AppState {
 
     pub fn search_highlights(&self) -> &[(usize, usize)] {
         &self.search_highlights
+    }
+
+    pub fn semantic_symbol_highlights(&self) -> &[(usize, usize)] {
+        &self.semantic_symbol_highlights
+    }
+
+    pub fn set_semantic_symbol_highlights(&mut self, highlights: Vec<(usize, usize)>) -> bool {
+        if self.semantic_symbol_highlights == highlights {
+            return false;
+        }
+        self.semantic_symbol_highlights = highlights;
+        true
+    }
+
+    pub fn clear_semantic_symbol_highlights(&mut self) -> bool {
+        if self.semantic_symbol_highlights.is_empty() {
+            return false;
+        }
+        self.semantic_symbol_highlights.clear();
+        true
+    }
+
+    pub fn fallback_symbol_highlights_under_cursor(&self) -> Vec<(usize, usize)> {
+        let Some(word) = self.word_under_cursor() else {
+            return Vec::new();
+        };
+        let text = self.text.to_string();
+        collect_search_highlights(&text, &word, true)
     }
 
     pub fn active_search_match_position(&self) -> Option<(usize, usize)> {
@@ -799,6 +841,19 @@ impl AppState {
         self.set_inline_suggestion(None)
     }
 
+    pub fn append_inline_suggestion_chunk(&mut self, chunk: &str) -> bool {
+        let normalized = chunk.replace("\r\n", "\n").replace('\r', "\n");
+        if normalized.is_empty() {
+            return false;
+        }
+        match self.inline_suggestion.as_mut() {
+            Some(suggestion) => suggestion.push_str(&normalized),
+            None => self.inline_suggestion = Some(normalized),
+        }
+        self.bump_revision();
+        true
+    }
+
     pub fn accept_inline_suggestion(&mut self) -> bool {
         let Some(suggestion) = self.inline_suggestion.clone() else {
             return false;
@@ -811,6 +866,29 @@ impl AppState {
         let (_, col) = self.cursor_line_col();
         self.target_col = col;
         self.inline_suggestion = None;
+        self.dirty = true;
+        self.bump_revision();
+        true
+    }
+
+    pub fn accept_inline_suggestion_word(&mut self) -> bool {
+        let Some(suggestion) = self.inline_suggestion.clone() else {
+            return false;
+        };
+        let split_byte = inline_suggestion_accept_prefix_byte_len(&suggestion);
+        if split_byte == 0 {
+            return false;
+        }
+        let accepted = suggestion[..split_byte].to_string();
+        let remaining = suggestion[split_byte..].to_string();
+        let accepted_chars = accepted.chars().count();
+        if !self.apply_insert(self.cursor_char_idx, accepted) {
+            return false;
+        }
+        self.cursor_char_idx += accepted_chars;
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.inline_suggestion = (!remaining.is_empty()).then_some(remaining);
         self.dirty = true;
         self.bump_revision();
         true
@@ -858,6 +936,7 @@ impl AppState {
             return false;
         }
         state.selected_index = next;
+        state.current_revision = state.current_revision.wrapping_add(1);
         self.bump_revision();
         true
     }
@@ -875,6 +954,7 @@ impl AppState {
             return false;
         }
         state.selected_index = next;
+        state.current_revision = state.current_revision.wrapping_add(1);
         self.bump_revision();
         true
     }

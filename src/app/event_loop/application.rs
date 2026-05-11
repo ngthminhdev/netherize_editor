@@ -4,6 +4,8 @@ use winit::{
     keyboard::{Key, NamedKey},
 };
 
+const FOCUS_RING_THICKNESS: f32 = 2.0;
+
 impl ApplicationHandler<AppEvent> for AppShell {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -240,6 +242,10 @@ impl ApplicationHandler<AppEvent> for AppShell {
         self.flush_pending_git_diff_after_debounce();
         self.flush_pending_ai_inline_completion();
         self.flush_pending_lsp_did_change_after_debounce();
+        self.flush_pending_completion_resolve_after_debounce();
+        if self.flush_lsp_retry_if_due() {
+            self.request_redraw();
+        }
         if self.maybe_refresh_workspace_git_branch(false) {
             self.request_redraw();
         }
@@ -247,6 +253,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
             self.request_redraw();
         }
         if self.tick_thinking_animation() {
+            self.request_redraw();
+        }
+        if self.tick_lsp_loading_animation() {
             self.request_redraw();
         }
         if self.tick_caret_blink() {
@@ -280,6 +289,12 @@ impl ApplicationHandler<AppEvent> for AppShell {
             next_deadline = Some(match next_deadline {
                 Some(existing) => existing.min(git_diff_deadline),
                 None => git_diff_deadline,
+            });
+        }
+        if let Some(lsp_retry_deadline) = self.next_lsp_retry_deadline() {
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(lsp_retry_deadline),
+                None => lsp_retry_deadline,
             });
         }
 
@@ -347,6 +362,20 @@ impl AppShell {
         }
         self.editor_needs_layout = true;
         (target - self.app_state.current_scroll_y).abs() > epsilon
+    }
+
+    fn tick_lsp_loading_animation(&mut self) -> bool {
+        if self.pending_lsp_server.is_none() {
+            return false;
+        }
+        let now = Instant::now();
+        if now.duration_since(self.last_lsp_loading_animation_tick) >= LSP_LOADING_ANIMATION_INTERVAL {
+            self.last_lsp_loading_animation_tick = now;
+            self.lsp_loading_frame = self.lsp_loading_frame.wrapping_add(1);
+            true
+        } else {
+            false
+        }
     }
 
     fn tick_thinking_animation(&mut self) -> bool {
@@ -494,10 +523,16 @@ impl AppShell {
         // RightSidebar (AI Chat) background: flat fill + input-box accent.
         let rs_panel_bg = self.theme.ui.panel_bg.as_f32();
         let rs_input_bg = self.theme.editor.bg.as_f32();
-        let ai_chat_input_bounds = flat_regions
-            .iter()
-            .find(|r| r.id == RegionId::AiChatInput && r.visible)
-            .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
+        let right_panel_tab = self.panel_state.right.active_tab_id();
+        let right_panel_uses_ai_chat_input = right_panel_tab == Some(PanelTabId::AiChat);
+        let ai_chat_input_bounds = if right_panel_uses_ai_chat_input {
+            flat_regions
+                .iter()
+                .find(|r| r.id == RegionId::AiChatInput && r.visible)
+                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height])
+        } else {
+            None
+        };
 
         let mut region_instances: Vec<RegionDrawInstance> = flat_regions
             .iter()
@@ -521,7 +556,8 @@ impl AppShell {
                 let is_focused = Some(region.id) == focus_region;
                 // When enable_outline is off, hide borders on unfocused panels only —
                 // the focused panel keeps its ring so the user always knows where focus is.
-                let suppress_ring = !self.ui_config.enable_outline && !is_focused;
+                let suppress_ring = (!self.ui_config.enable_outline && !is_focused)
+                    || region.id == RegionId::TopBar;
 
                 if region.id == RegionId::RightSidebar {
                     if suppress_ring {
@@ -541,13 +577,18 @@ impl AppShell {
                     } else {
                         let outline_color =
                             if is_focused { focused_outline } else { default_outline };
-                        let mut quads =
-                            focus_ring_instances(bounds, outline_color, 3.0, panel_radius, rs_panel_bg);
+                        let mut quads = focus_ring_instances(
+                            bounds,
+                            outline_color,
+                            FOCUS_RING_THICKNESS,
+                            panel_radius,
+                            rs_panel_bg,
+                        );
                         if let Some([ix, iy, iw, ih]) = ai_chat_input_bounds {
                             if iw > 0.0 && ih > 0.0 {
                                 quads.push(
                                     RegionDrawInstance::new([ix, iy, iw, ih], rs_input_bg)
-                                        .with_radius((panel_radius - 3.0).max(0.0)),
+                                        .with_radius((panel_radius - FOCUS_RING_THICKNESS).max(0.0)),
                                 );
                             }
                         }
@@ -564,7 +605,7 @@ impl AppShell {
                     focus_ring_instances(
                         bounds,
                         outline_color,
-                        3.0,
+                        FOCUS_RING_THICKNESS,
                         panel_radius,
                         region_color(region.id, &self.theme),
                     )
@@ -659,25 +700,34 @@ impl AppShell {
                     } else if let Some(image) = self.app_state.active_image_buffer() {
                         renderer.update_image_content(image, center_bounds);
                     } else {
-                        renderer.clear_welcome_logo();
-                        renderer.clear_buffer_terminal();
-                        let effective_highlights =
-                            crate::syntax::highlight::overlay_highlight_layers(
-                                &self.highlight_spans,
-                                &self.semantic_highlight_spans,
+                        // Skip editor content rendering in Zen Mode when target is not CenterEditor
+                        let zen_mode_active = self.panel_state.maximized_region.is_some()
+                            && self.panel_state.maximized_region != Some(FocusTarget::CenterEditor);
+
+                        if zen_mode_active {
+                            renderer.clear_editor_content();
+                            renderer.clear_editor_overlays();
+                        } else {
+                            renderer.clear_welcome_logo();
+                            renderer.clear_buffer_terminal();
+                            let effective_highlights =
+                                crate::syntax::highlight::overlay_highlight_layers(
+                                    &self.highlight_spans,
+                                    &self.semantic_highlight_spans,
+                                );
+                            let text = self.app_state.text_string();
+                            let mut styled_spans =
+                                syntax_spans_to_styled(&effective_highlights, &text, &self.theme);
+                            styled_spans
+                                .extend(diagnostic_spans_to_styled(&self.app_state, &self.theme));
+                            renderer.update_editor_content(
+                                &text,
+                                &self.app_state,
+                                center_bounds,
+                                &styled_spans,
                             );
-                        let text = self.app_state.text_string();
-                        let mut styled_spans =
-                            syntax_spans_to_styled(&effective_highlights, &text, &self.theme);
-                        styled_spans
-                            .extend(diagnostic_spans_to_styled(&self.app_state, &self.theme));
-                        renderer.update_editor_content(
-                            &text,
-                            &self.app_state,
-                            center_bounds,
-                            &styled_spans,
-                        );
-                        renderer.update_editor_overlays(&self.app_state, center_bounds);
+                            renderer.update_editor_overlays(&self.app_state, center_bounds);
+                        }
                     }
                 }
                 self.last_editor_bounds = Some(center_bounds);
@@ -912,7 +962,8 @@ impl AppShell {
                 if let Some(renderer) = self.renderer.as_mut() {
                     let show_cursor = self.focus_manager.current() == FocusTarget::RightSidebar;
                     let inner_padding = self.layout_engine.config.inner_padding;
-                    let cursor_quads = renderer.update_ai_chat_content(
+                    let scroll_y = chat.scroll_y;
+                    let (cursor_quads, max_scroll_y) = renderer.update_ai_chat_content(
                         hb,
                         ib,
                         &chat.messages,
@@ -925,7 +976,9 @@ impl AppShell {
                         chat.model.as_deref(),
                         chat.agent.label(),
                         chat.is_generating,
+                        scroll_y,
                     );
+                    self.panel_state.ai_chat.max_scroll_y = max_scroll_y;
                     region_instances.extend(cursor_quads);
                 }
             }
@@ -966,7 +1019,7 @@ impl AppShell {
         if md_preview_active && self.app_state.markdown_preview.visible {
             let preview_bounds = flat_regions
                 .iter()
-                .find(|r| r.id == RegionId::AiChatHistory && r.visible)
+                .find(|r| r.id == RegionId::RightSidebar && r.visible)
                 .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
 
             if let Some(bounds) = preview_bounds {
@@ -998,26 +1051,48 @@ impl AppShell {
                 .buffers()
                 .iter()
                 .enumerate()
-                .map(|(idx, buffer)| TopbarTab {
-                    label: buffer.label(),
-                    kind: match &buffer.content {
-                        BufferContent::Text(text) => TopbarTabKind::Text {
-                            path: text.path.clone(),
+                .map(|(idx, buffer)| {
+                    let (file_path, git_color) = match &buffer.content {
+                        BufferContent::Text(text) => {
+                            let status = self.app_state.workspace_git_status(&text.path);
+                            let color = match status {
+                                Some(WorkspaceGitStatus::Modified) => {
+                                    Some(self.theme.git.modified_sidebar.as_f32())
+                                }
+                                Some(WorkspaceGitStatus::Added) => {
+                                    Some(self.theme.git.added_sidebar.as_f32())
+                                }
+                                Some(WorkspaceGitStatus::Dirty) => {
+                                    Some(self.theme.git.modified_sidebar.as_f32())
+                                }
+                                None => None,
+                            };
+                            (text.path.clone(), color)
+                        }
+                        _ => (PathBuf::new(), None),
+                    };
+                    TopbarTab {
+                        label: buffer.label(),
+                        kind: match &buffer.content {
+                            BufferContent::Text(_text) => TopbarTabKind::Text {
+                                path: file_path,
+                            },
+                            BufferContent::Image(image) => TopbarTabKind::Image {
+                                path: image.path.clone(),
+                            },
+                            BufferContent::Terminal(_) => TopbarTabKind::Terminal,
+                            BufferContent::References(_) => TopbarTabKind::References,
+                            BufferContent::Diagnostics(_) => TopbarTabKind::Diagnostics,
+                            BufferContent::FuzzyPicker(_) => TopbarTabKind::FuzzyPicker,
+                            BufferContent::SettingsTab(_) => TopbarTabKind::Settings,
+                            BufferContent::Help(_) => TopbarTabKind::Help,
                         },
-                        BufferContent::Image(image) => TopbarTabKind::Image {
-                            path: image.path.clone(),
-                        },
-                        BufferContent::Terminal(_) => TopbarTabKind::Terminal,
-                        BufferContent::References(_) => TopbarTabKind::References,
-                        BufferContent::Diagnostics(_) => TopbarTabKind::Diagnostics,
-                        BufferContent::FuzzyPicker(_) => TopbarTabKind::FuzzyPicker,
-                        BufferContent::SettingsTab(_) => TopbarTabKind::Settings,
-                        BufferContent::Help(_) => TopbarTabKind::Help,
-                    },
-                    is_dirty: buffer.is_dirty(
-                        self.app_state.active_buffer_index() == Some(idx),
-                        self.app_state.is_dirty(),
-                    ),
+                        is_dirty: buffer.is_dirty(
+                            self.app_state.active_buffer_index() == Some(idx),
+                            self.app_state.is_dirty(),
+                        ),
+                        git_color,
+                    }
                 })
                 .collect::<Vec<_>>();
             if let Some(renderer) = self.renderer.as_mut() {
@@ -1038,15 +1113,25 @@ impl AppShell {
             let (
                 filetype,
                 git_branch,
+                is_dirty,
+                active_file_name,
                 status_line,
                 status_col,
                 diagnostics_errors,
                 diagnostics_warnings,
             ) = if show_welcome {
-                ("Welcome", "", 0, 0, 0, 0)
+                ("Welcome", "", false, String::new(), 0, 0, 0, 0)
             } else {
-                let filetype = self.app_state.active_filetype_label();
+                let filetype   = self.app_state.active_filetype_label();
                 let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");
+                let is_dirty   = self.app_state.is_dirty();
+                let active_file_name = self
+                    .app_state
+                    .active_file()
+                    .and_then(|p| p.file_name())
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
                 let (diagnostics_errors, diagnostics_warnings) = self
                     .app_state
                     .active_file()
@@ -1064,6 +1149,8 @@ impl AppShell {
                 (
                     filetype,
                     git_branch,
+                    is_dirty,
+                    active_file_name,
                     line,
                     col,
                     diagnostics_errors,
@@ -1071,16 +1158,29 @@ impl AppShell {
                 )
             };
             if let Some(renderer) = self.renderer.as_mut() {
+                let lsp_progress_label = self
+                    .app_state
+                    .lsp_progress()
+                    .map(|entry| entry.status_label());
                 let pill_quads = renderer.update_statusbar_content(
                     mode,
                     &pending_keys,
                     git_branch,
+                    is_dirty,
+                    &active_file_name,
                     filetype,
                     self.app_state.active_search_match_position(),
                     status_line,
                     status_col,
                     diagnostics_errors,
                     diagnostics_warnings,
+                    self.pending_lsp_server.is_some(),
+                    self.lsp_loading_frame,
+                    lsp_progress_label.as_deref(),
+                    self.runtime_versions.venv_name.as_deref(),
+                    self.runtime_versions.python_version.as_deref(),
+                    self.runtime_versions.node_version.as_deref(),
+                    self.runtime_versions.go_version.as_deref(),
                     status_bounds,
                 );
                 region_instances.extend(pill_quads);
@@ -1122,19 +1222,42 @@ impl AppShell {
                     bottom.bounds.width,
                     bottom.bounds.height,
                 ];
+
+                let terminal_content_bounds = self
+                    .renderer
+                    .as_ref()
+                    .map(|renderer| {
+                        renderer.terminal_tab_bar_content_bounds(
+                            bottom_bounds,
+                            self.terminal_tabs.len(),
+                        )
+                    })
+                    .unwrap_or(bottom_bounds);
+
                 let bounds_changed = self.last_terminal_bounds != Some(bottom_bounds);
-                let grid_changed = self.sync_terminal_layout(bottom_bounds);
+                let grid_changed = self.sync_terminal_layout(terminal_content_bounds);
                 if (self.terminal_needs_layout || bounds_changed || grid_changed)
                     && let Some(renderer) = self.renderer.as_mut()
                 {
                     renderer.update_terminal_content(
-                        &self.terminal_grid,
-                        bottom_bounds,
+                        &self.terminal_tabs[self.active_terminal_tab].grid,
+                        terminal_content_bounds,
                         self.app_state.current_mode(),
                     );
                     self.last_terminal_bounds = Some(bottom_bounds);
                     self.terminal_needs_layout = false;
                 }
+
+                // Render tab bar after terminal content layout so tab labels are
+                // appended after body glyphs in the shared terminal text pipeline.
+                let tab_bar_quads = if let Some(renderer) = self.renderer.as_mut() {
+                    let labels: Vec<&str> = self.terminal_tabs.iter().map(|t| t.label.as_str()).collect();
+                    let running: Vec<bool> = self.terminal_tabs.iter().map(|t| t.status.is_running()).collect();
+                    renderer.update_terminal_tab_bar(&labels, &running, self.active_terminal_tab, bottom_bounds).0
+                } else {
+                    Vec::new()
+                };
+                region_instances.extend(tab_bar_quads);
             } else if self.last_terminal_bounds.is_some() {
                 if let Some(renderer) = self.renderer.as_mut() {
                     renderer.clear_terminal();

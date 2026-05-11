@@ -5,12 +5,12 @@ use tokio::io::AsyncBufReadExt;
 
 use crate::{
     async_runtime::message::{
-        RequestTopic, WorkerEvent, WorkerEventKind, WorkerFailure, WorkerFailureKind,
-        WorkerMessage, WorkerResult, WorkerResultPayload,
+        LspProgressKindWire, RequestTopic, WorkerEvent, WorkerEventKind, WorkerFailure,
+        WorkerFailureKind, WorkerMessage, WorkerResult, WorkerResultPayload,
     },
     lsp::client::{
-        LspClientProcess, parse_publish_diagnostics, parse_window_log_message,
-        read_json_rpc_message_async,
+        LspClientProcess, ProgressKind, parse_progress_notification, parse_publish_diagnostics,
+        parse_server_request, parse_window_log_message, read_json_rpc_message_async,
     },
 };
 
@@ -20,6 +20,7 @@ pub(super) fn spawn_lsp_stdout_reader(
     session: Arc<LspClientProcess>,
     mut reader: tokio::io::BufReader<tokio::process::ChildStdout>,
     topic: RequestTopic,
+    server_name: String,
     lsp_sessions: Arc<LspSessionRegistry>,
     worker_tx: std_mpsc::Sender<WorkerMessage>,
 ) -> Result<(), String> {
@@ -98,6 +99,57 @@ pub(super) fn spawn_lsp_stdout_reader(
                         },
                     }),
                 );
+                continue;
+            }
+
+            if let Some(progress) = parse_progress_notification(&message) {
+                let kind = match progress.kind {
+                    ProgressKind::Begin => LspProgressKindWire::Begin,
+                    ProgressKind::Report => LspProgressKindWire::Report,
+                    ProgressKind::End => LspProgressKindWire::End,
+                };
+                emit_message(
+                    &worker_tx,
+                    WorkerMessage::Result(WorkerResult {
+                        request_id: session.latest_request_id(),
+                        revision_id: session.latest_revision(),
+                        topic,
+                        payload: WorkerResultPayload::LspProgress {
+                            server_name: server_name.clone(),
+                            token: progress.token,
+                            kind,
+                            title: progress.title,
+                            message: progress.message,
+                            percentage: progress.percentage,
+                        },
+                    }),
+                );
+                continue;
+            }
+
+            // A server → client request is a JSON-RPC payload that has BOTH an
+            // `id` and a `method`. Plain responses only have `id` (and `result`
+            // or `error`), and notifications only have `method`. Differentiating
+            // here lets us auto-acknowledge requests like
+            // `window/workDoneProgress/create` while still routing real
+            // responses through the pending-response map.
+            if let Some(server_request) = parse_server_request(&message) {
+                if matches!(
+                    server_request.method.as_str(),
+                    "window/workDoneProgress/create"
+                        | "client/registerCapability"
+                        | "client/unregisterCapability"
+                ) {
+                    if let Err(err) = session
+                        .send_response_async(server_request.id, Value::Null)
+                        .await
+                    {
+                        eprintln!(
+                            "[LSP] reply to {} (id={}) failed: {err}",
+                            server_request.method, server_request.id
+                        );
+                    }
+                }
                 continue;
             }
 

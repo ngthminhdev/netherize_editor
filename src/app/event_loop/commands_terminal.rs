@@ -1,6 +1,44 @@
 use super::*;
 
 impl AppShell {
+    fn default_terminal_working_dir(&self) -> Option<PathBuf> {
+        self.app_state
+            .workspace_root_path()
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::current_dir()
+                    .ok()
+                    .filter(|path| path != &PathBuf::from("/"))
+            })
+    }
+
+    fn spawn_shell_for_terminal_tab(&mut self, tab_idx: usize) {
+        let Some(tab) = self.terminal_tabs.get_mut(tab_idx) else {
+            return;
+        };
+        if tab.session_id.is_some() {
+            return;
+        }
+        tab.status = TerminalTabStatus::Running;
+        let working_dir = self.default_terminal_working_dir();
+        if let Some(request) = self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::TerminalPty,
+            payload: WorkerRequestPayload::SpawnPtyShell {
+                shell: None,
+                working_dir,
+            },
+        }) {
+            self.pending_terminal_tab_spawns
+                .insert(request.request_id, tab_idx);
+        }
+    }
+
+    fn ensure_active_terminal_tab_spawned(&mut self) {
+        let idx = self.active_terminal_tab;
+        self.spawn_shell_for_terminal_tab(idx);
+    }
+
     fn map_directional_focus_command(&self, command: &Command) -> Command {
         match command {
             Command::FocusLeft => match self.focus_manager.current() {
@@ -36,27 +74,7 @@ impl AppShell {
 
                 let focus_changed = if is_open {
                     let changed = self.focus_manager.set(FocusTarget::BottomPanel);
-                    if self.pty_session_id.is_none() {
-                        let working_dir = self
-                            .app_state
-                            .active_file()
-                            .and_then(|path| path.parent())
-                            .map(PathBuf::from)
-                            .or_else(|| self.app_state.workspace_root_path().map(PathBuf::from))
-                            .or_else(|| {
-                                std::env::current_dir()
-                                    .ok()
-                                    .filter(|path| path != &PathBuf::from("/"))
-                            });
-                        self.submit(RequestSpec {
-                            revision_id: 0,
-                            topic: RequestTopic::TerminalPty,
-                            payload: WorkerRequestPayload::SpawnPtyShell {
-                                shell: None,
-                                working_dir,
-                            },
-                        });
-                    }
+                    self.ensure_active_terminal_tab_spawned();
                     changed
                 } else if self.focus_manager.current() == FocusTarget::BottomPanel {
                     self.focus_manager.set(FocusTarget::CenterEditor)
@@ -80,26 +98,8 @@ impl AppShell {
                 changed |= self.app_state.set_terminal_panel_open(next_visible);
                 self.terminal_needs_layout = true;
 
-                if next_visible && self.pty_session_id.is_none() {
-                    let working_dir = self
-                        .app_state
-                        .active_file()
-                        .and_then(|path| path.parent())
-                        .map(PathBuf::from)
-                        .or_else(|| self.app_state.workspace_root_path().map(PathBuf::from))
-                        .or_else(|| {
-                            std::env::current_dir()
-                                .ok()
-                                .filter(|path| path != &PathBuf::from("/"))
-                        });
-                    self.submit(RequestSpec {
-                        revision_id: 0,
-                        topic: RequestTopic::TerminalPty,
-                        payload: WorkerRequestPayload::SpawnPtyShell {
-                            shell: None,
-                            working_dir,
-                        },
-                    });
+                if next_visible {
+                    self.ensure_active_terminal_tab_spawned();
                 }
 
                 if !next_visible
@@ -126,8 +126,36 @@ impl AppShell {
 
                 Some(changed || focus_changed)
             }
-            Command::FocusEditor | Command::FocusBack => {
+            Command::FocusEditor => {
                 let mut changed = self.release_focus_mode_to_editor();
+                let focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
+                changed |= focus_changed;
+                if focus_changed {
+                    self.input_handler.clear_pending_prefix();
+                }
+                Some(changed)
+            }
+            Command::FocusBack => {
+                let mut changed = self.release_focus_mode_to_editor();
+
+                // In Zen Mode, FocusBack is a mode escape only: return the status
+                // to NORMAL while preserving the currently maximized surface
+                // (terminal, markdown preview, etc.) instead of forcing focus back
+                // to the main editor.
+                if self.panel_state.maximized_region.is_some() {
+                    if matches!(
+                        self.app_state.current_mode(),
+                        EditorMode::Insert
+                            | EditorMode::Visual
+                            | EditorMode::MultiCursor
+                            | EditorMode::MultiInsert
+                    ) && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::Escape)
+                    {
+                        changed |= result.changed;
+                    }
+                    return Some(changed);
+                }
+
                 let focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
                 changed |= focus_changed;
                 if focus_changed {
@@ -194,27 +222,7 @@ impl AppShell {
                     self.input_handler.clear_pending_prefix();
                 }
 
-                if self.pty_session_id.is_none() {
-                    let working_dir = self
-                        .app_state
-                        .active_file()
-                        .and_then(|path| path.parent())
-                        .map(PathBuf::from)
-                        .or_else(|| self.app_state.workspace_root_path().map(PathBuf::from))
-                        .or_else(|| {
-                            std::env::current_dir()
-                                .ok()
-                                .filter(|path| path != &PathBuf::from("/"))
-                        });
-                    self.submit(RequestSpec {
-                        revision_id: 0,
-                        topic: RequestTopic::TerminalPty,
-                        payload: WorkerRequestPayload::SpawnPtyShell {
-                            shell: None,
-                            working_dir,
-                        },
-                    });
-                }
+                self.ensure_active_terminal_tab_spawned();
 
                 Some(changed)
             }
@@ -223,6 +231,7 @@ impl AppShell {
                 Some(self.handle_command(mapped))
             }
             Command::TerminalWriteInput(input) => {
+                self.track_terminal_tab_input(input);
                 self.forward_to_pty(input);
                 Some(false)
             }
@@ -277,7 +286,12 @@ impl AppShell {
                         self.panel_state.maximized_region = None;
                     }
                 }
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
                 self.sidebar_needs_layout = true;
+                self.terminal_needs_layout = true;
+                self.right_terminal_needs_layout = true;
+                self.buffer_terminal_needs_layout = true;
                 Some(true)
             }
             Command::MoveFocusCycle => {
@@ -299,8 +313,96 @@ impl AppShell {
                 FocusTarget::RightSidebar => self.panel_state.switch_right_prev_tab(),
                 _ => false,
             }),
+            Command::TerminalTabNew => Some(self.handle_terminal_tab_new()),
+            Command::TerminalTabClose => Some(self.handle_terminal_tab_close()),
+            Command::SwitchTerminalTab(idx) => Some(self.handle_switch_terminal_tab(*idx)),
             _ => None,
         }
+    }
+
+    fn track_terminal_tab_input(&mut self, input: &str) {
+        if self.focus_manager.current() != FocusTarget::BottomPanel {
+            return;
+        }
+        let Some(tab) = self.active_terminal_tab_mut() else {
+            return;
+        };
+
+        match input {
+            "\r" | "\n" | "\r\n" => {
+                let command = tab.pending_input.trim();
+                if !command.is_empty() {
+                    tab.label = terminal_command_title(command, &tab.shell_label);
+                    tab.pending_input.clear();
+                    self.terminal_needs_layout = true;
+                }
+            }
+            "\u{7f}" => {
+                tab.pending_input.pop();
+            }
+            "\u{15}" => {
+                tab.pending_input.clear();
+            }
+            _ => {
+                if input.starts_with('\u{1b}') || input.chars().any(char::is_control) {
+                    return;
+                }
+                tab.pending_input.push_str(input);
+            }
+        }
+    }
+
+    fn handle_terminal_tab_new(&mut self) -> bool {
+        let mut g = TerminalGrid::new(120, 40);
+        g.highlight_colors = HighlightColors::from_theme(&self.theme);
+        let label = format!("terminal {}", self.terminal_tabs.len() + 1);
+        self.terminal_tabs.push(TerminalTab::new(g, label));
+        self.active_terminal_tab = self.terminal_tabs.len() - 1;
+        self.terminal_needs_layout = true;
+        self.spawn_shell_for_terminal_tab(self.active_terminal_tab);
+        true
+    }
+
+    fn handle_terminal_tab_close(&mut self) -> bool {
+        if self.terminal_tabs.len() <= 1 {
+            return false;
+        }
+        let idx = self.active_terminal_tab;
+        let session_id = self.terminal_tabs[idx].session_id;
+        self.pending_terminal_tab_spawns
+            .retain(|_, pending_idx| *pending_idx != idx);
+        self.terminal_tabs.remove(idx);
+        for pending_idx in self.pending_terminal_tab_spawns.values_mut() {
+            if *pending_idx > idx {
+                *pending_idx -= 1;
+            }
+        }
+        if self.active_terminal_tab >= self.terminal_tabs.len() {
+            self.active_terminal_tab = self.terminal_tabs.len().saturating_sub(1);
+        }
+        self.terminal_needs_layout = true;
+
+        if let Some(sid) = session_id {
+            self.submit(RequestSpec {
+                revision_id: 0,
+                topic: RequestTopic::TerminalPty,
+                payload: WorkerRequestPayload::ClosePtySession { session_id: sid },
+            });
+        }
+        true
+    }
+
+    fn handle_switch_terminal_tab(&mut self, idx: usize) -> bool {
+        if idx >= self.terminal_tabs.len() {
+            return false;
+        }
+        if self.active_terminal_tab == idx {
+            return false;
+        }
+        self.active_terminal_tab = idx;
+        self.terminal_needs_layout = true;
+        self.ensure_active_terminal_tab_spawned();
+        true
     }
 
     /// Handle search commands when in Terminal Normal Mode.
@@ -367,6 +469,31 @@ impl AppShell {
 /// Uses the grid's scrollback text and `virtual_cursor` position to find a
 /// contiguous span of alphanumeric / underscore characters.  Returns `None`
 /// when the cursor is not on a word character or the grid is empty.
+fn terminal_command_title(command: &str, shell_label: &str) -> String {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        return shell_label.to_string();
+    }
+
+    // Avoid turning common shell-only navigation/cleanup commands into a
+    // permanent-looking task title.
+    let first = trimmed.split_whitespace().next().unwrap_or(trimmed);
+    if matches!(first, "cd" | "clear" | "exit" | "pwd") {
+        return shell_label.to_string();
+    }
+
+    const MAX_TITLE_CHARS: usize = 32;
+    let mut title = String::new();
+    for (idx, ch) in trimmed.chars().enumerate() {
+        if idx >= MAX_TITLE_CHARS {
+            title.push('…');
+            break;
+        }
+        title.push(ch);
+    }
+    title
+}
+
 fn word_at_virtual_cursor(grid: &crate::terminal::grid::TerminalGrid) -> Option<String> {
     let lines = grid.get_scrollback_text();
     let cursor = grid.virtual_cursor;

@@ -13,7 +13,7 @@ use crate::{
             build_did_change_notification, build_did_close_notification,
             build_did_open_notification, spawn_lsp_server,
         },
-        registry::language_profile_for_language_id,
+        registry::{language_profile_for_binary, language_profile_for_language_id},
     },
 };
 
@@ -22,7 +22,8 @@ use super::{
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
     lsp_io::{spawn_lsp_stderr_logger, spawn_lsp_stdout_reader},
     lsp_parse::{
-        handle_lsp_completion, handle_lsp_definition, handle_lsp_document_symbols,
+        handle_lsp_code_action, handle_lsp_completion, handle_lsp_completion_resolve,
+        handle_lsp_definition, handle_lsp_document_highlight, handle_lsp_document_symbols,
         handle_lsp_formatting, handle_lsp_hover, handle_lsp_references,
     },
 };
@@ -84,26 +85,45 @@ pub(super) async fn run_lsp_request(
             );
         }
         Ok(Err(message)) => {
-            emit_message_and_wake(
-                &worker_tx,
-                &event_proxy,
-                WorkerMessage::Event(WorkerEvent {
-                    request_id: request.request_id,
-                    revision_id: request.revision_id,
-                    topic: request.topic,
-                    kind: WorkerEventKind::Failed {
-                        error: WorkerFailure {
-                            kind: WorkerFailureKind::Execution,
-                            message,
-                        },
+            if let Some(tool_name) = message.strip_prefix("LSPMISSING:") {
+                let language_id = language_profile_for_binary(tool_name)
+                    .map(|p| p.language_id.to_string())
+                    .unwrap_or_default();
+                emit_message_and_wake(
+                    &worker_tx,
+                    &event_proxy,
+                    WorkerMessage::LspMissingDependency {
+                        language_id,
+                        tool_name: tool_name.to_string(),
                     },
-                }),
-            );
-            async_trace!(
-                "[Worker] failed lsp request_id={} revision={}",
-                request.request_id,
-                request.revision_id
-            );
+                );
+                async_trace!(
+                    "[Worker] lsp binary missing request_id={} revision={}",
+                    request.request_id,
+                    request.revision_id
+                );
+            } else {
+                emit_message_and_wake(
+                    &worker_tx,
+                    &event_proxy,
+                    WorkerMessage::Event(WorkerEvent {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        kind: WorkerEventKind::Failed {
+                            error: WorkerFailure {
+                                kind: WorkerFailureKind::Execution,
+                                message,
+                            },
+                        },
+                    }),
+                );
+                async_trace!(
+                    "[Worker] failed lsp request_id={} revision={}",
+                    request.request_id,
+                    request.revision_id
+                );
+            }
         }
         Err(join_error) => {
             emit_message_and_wake(
@@ -161,6 +181,7 @@ fn execute_lsp_request(
                 session,
                 spawned.reader,
                 request.topic,
+                spawned.server_name.clone(),
                 lsp_sessions.clone(),
                 worker_tx.clone(),
             )?;
@@ -303,6 +324,8 @@ fn execute_lsp_request(
             uri,
             line,
             character,
+            for_completion,
+            completion_revision,
         } => {
             let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
                 language_profile_for_language_id(language_id)
@@ -321,7 +344,16 @@ fn execute_lsp_request(
             handle
                 .process
                 .update_request_meta(request.request_id, request.revision_id);
-            handle_lsp_hover(&handle.process, uri, *line, *character, 0, 0)
+            handle_lsp_hover(
+                &handle.process,
+                uri,
+                *line,
+                *character,
+                0,
+                0,
+                *for_completion,
+                *completion_revision,
+            )
         }
         WorkerRequestPayload::LspDefinitionRequest {
             uri,
@@ -362,6 +394,31 @@ fn execute_lsp_request(
                 .update_request_meta(request.request_id, request.revision_id);
             handle_lsp_references(&handle.process, uri, *line, *character)
                 .map(|locations| WorkerResultPayload::LspReferencesResult { locations })
+        }
+        WorkerRequestPayload::LspDocumentHighlightRequest {
+            language_id,
+            uri,
+            line,
+            character,
+        } => {
+            let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
+                language_profile_for_language_id(language_id)
+                    .map(|profile| profile.lsp_binary)
+                    .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
+            });
+            let Some(handle) = handle else {
+                return Err("document highlight rejected: LSP server not running".to_string());
+            };
+            if !handle.capabilities.document_highlight {
+                return Err(format!(
+                    "document highlight rejected: {} does not advertise documentHighlightProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_document_highlight(&handle.process, uri, *line, *character)
         }
         WorkerRequestPayload::LspDocumentSymbolsRequest { language_id, uri } => {
             let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
@@ -445,6 +502,57 @@ fn execute_lsp_request(
                 *prefix_start_col,
                 prefix,
             )
+        }
+        WorkerRequestPayload::LspCompletionResolveRequest {
+            language_id,
+            uri,
+            item_json,
+            item_label,
+            completion_revision,
+        } => {
+            let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
+                language_profile_for_language_id(language_id)
+                    .map(|profile| profile.lsp_binary)
+                    .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
+            });
+            let Some(handle) = handle else {
+                return Err("completion resolve rejected: LSP server not running".to_string());
+            };
+            if !handle.capabilities.completion_resolve {
+                return Err(format!(
+                    "completion resolve rejected: {} does not advertise resolveProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_completion_resolve(
+                &handle.process,
+                item_label,
+                item_json,
+                *completion_revision,
+            )
+        }
+        WorkerRequestPayload::LspCodeActionRequest {
+            uri,
+            line,
+            character,
+            diagnostics,
+        } => {
+            let Some(handle) = lsp_sessions.get_handle_by_uri(uri)? else {
+                return Err("codeAction rejected: LSP server not running".to_string());
+            };
+            if !handle.capabilities.code_action {
+                return Err(format!(
+                    "codeAction rejected: {} does not advertise codeActionProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_code_action(&handle.process, uri, *line, *character, diagnostics)
         }
         _ => Err("execute_lsp_request received non-lsp payload".to_string()),
     }

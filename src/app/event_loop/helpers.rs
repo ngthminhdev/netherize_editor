@@ -146,6 +146,18 @@ pub(super) fn syntax_spans_to_styled(
                     theme.syntax.namespace.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::Tag => theme.syntax.tag.as_u8(),
+                crate::syntax::highlight::HighlightCategory::MarkupStrong => {
+                    theme.syntax.keyword.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::MarkupItalic => {
+                    theme.syntax.comment.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::MarkupInlineCode => {
+                    theme.syntax.string.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::MarkupLink => {
+                    theme.syntax.function.as_u8()
+                }
             };
             StyledTextSpan::with_style(
                 span.range.start,
@@ -233,6 +245,28 @@ pub(super) fn build_preview_render_data(
     (text, spans)
 }
 
+/// Convert worker-pre-parsed hover blocks into the renderer's `FloatingBoxBlock`
+/// shape. The worker has already done the expensive Tree-sitter parsing; here
+/// we only resolve theme colours (cheap hash lookups in `syntax_spans_to_styled`).
+pub(super) fn convert_worker_hover_blocks(
+    raw: Vec<crate::async_runtime::message::HoverDocBlock>,
+    theme: &ThemeConfig,
+) -> Vec<FloatingBoxBlock> {
+    use crate::async_runtime::message::HoverDocBlock;
+    raw.into_iter()
+        .map(|block| match block {
+            HoverDocBlock::Prose(text) => FloatingBoxBlock::Prose(text),
+            HoverDocBlock::Code { text, spans } => {
+                let styled = syntax_spans_to_styled(&spans, &text, theme);
+                FloatingBoxBlock::Code {
+                    text,
+                    spans: styled,
+                }
+            }
+        })
+        .collect()
+}
+
 pub(super) fn parse_hover_markdown_blocks(
     content: &str,
     theme: &ThemeConfig,
@@ -317,7 +351,57 @@ pub(super) fn parse_markdown_preview_blocks(
     let mut lines = Vec::new();
     let root = tree_state.root_node();
     render_markdown_node(root, source, theme, &mut lines);
+    preserve_markdown_blank_lines(source, &mut lines);
     lines
+}
+
+fn preserve_markdown_blank_lines(source: &str, lines: &mut Vec<MarkdownPreviewLine>) {
+    let source_lines = source.lines().collect::<Vec<_>>();
+    let blank_count = source_lines.iter().filter(|line| line.trim().is_empty()).count();
+    if blank_count == 0 {
+        return;
+    }
+
+    let mut expanded = Vec::with_capacity(lines.len().saturating_add(blank_count));
+    let mut rendered_iter = lines.drain(..);
+    for idx in 0..source_lines.len() {
+        let source_line = source_lines[idx];
+        if source_line.trim().is_empty() {
+            if should_preserve_markdown_blank_line(&source_lines, idx) {
+                expanded.push(MarkdownPreviewLine {
+                    text: String::new(),
+                    spans: Vec::new(),
+                    block_type: MarkdownBlockType::Empty,
+                    code_language: None,
+                });
+            }
+        } else if let Some(line) = rendered_iter.next() {
+            expanded.push(line);
+        }
+    }
+    expanded.extend(rendered_iter);
+    *lines = expanded;
+}
+
+fn should_preserve_markdown_blank_line(lines: &[&str], blank_idx: usize) -> bool {
+    let prev = lines[..blank_idx]
+        .iter()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .map(|line| line.trim_start());
+    let next = lines[blank_idx.saturating_add(1)..]
+        .iter()
+        .find(|line| !line.trim().is_empty())
+        .map(|line| line.trim_start());
+
+    match (prev, next) {
+        (Some(prev), Some(next)) => markdown_line_indent_level(prev) != markdown_line_indent_level(next),
+        _ => false,
+    }
+}
+
+fn markdown_line_indent_level(line: &str) -> usize {
+    line.chars().take_while(|ch| ch.is_whitespace()).count() / 2
 }
 
 fn fallback_markdown_preview(source: &str, _theme: &ThemeConfig) -> Vec<MarkdownPreviewLine> {
@@ -327,6 +411,7 @@ fn fallback_markdown_preview(source: &str, _theme: &ThemeConfig) -> Vec<Markdown
             text: line.to_string(),
             spans: Vec::new(),
             block_type: MarkdownBlockType::Paragraph,
+            code_language: None,
         })
         .collect()
 }
@@ -345,92 +430,141 @@ fn render_markdown_node(
         }
         "atx_heading" => {
             let level = heading_level_from_atx(node, source);
-            let content_text = heading_content_text(node, source);
+            let raw_content = heading_content_text(node, source);
             let color = heading_color(level, theme);
-            let styled = if level <= 2 {
-                StyledTextSpan::with_style(
-                    0,
-                    content_text.len(),
-                    color,
-                    true,
-                    false,
-                )
-            } else {
-                StyledTextSpan::new(0, content_text.len(), color)
-            };
+            let (content_text, inline_spans) = render_markdown_inline_text(&raw_content, theme);
+            let spans = heading_spans(&content_text, inline_spans, color, level);
             out.push(MarkdownPreviewLine {
                 text: content_text,
-                spans: vec![styled],
+                spans,
                 block_type: MarkdownBlockType::Heading(level),
+                code_language: None,
             });
         }
         "setext_heading" => {
             let level = setext_heading_level(node, source);
-            let content_text = setext_heading_content(node, source);
+            let raw_content = setext_heading_content(node, source);
             let color = heading_color(level, theme);
-            let styled = if level <= 2 {
-                StyledTextSpan::with_style(
-                    0,
-                    content_text.len(),
-                    color,
-                    true,
-                    false,
-                )
-            } else {
-                StyledTextSpan::new(0, content_text.len(), color)
-            };
+            let (content_text, inline_spans) = render_markdown_inline_text(&raw_content, theme);
+            let spans = heading_spans(&content_text, inline_spans, color, level);
             out.push(MarkdownPreviewLine {
                 text: content_text,
-                spans: vec![styled],
+                spans,
                 block_type: MarkdownBlockType::Heading(level),
+                code_language: None,
             });
         }
         "paragraph" => {
-            let text = node_text(node, source);
-            let spans = render_inline_spans(node, source, theme);
+            let raw_text = node_text(node, source);
+            let (text, spans) = render_markdown_inline_text(&raw_text, theme);
             out.push(MarkdownPreviewLine {
                 text,
                 spans,
                 block_type: MarkdownBlockType::Paragraph,
+                code_language: None,
             });
+        }
+        "link_reference_definition" | "link_reference_definition_block" => {
+            let raw_text = node_text(node, source);
+            let raw_text = raw_text.trim();
+            if let Some((label, url)) = parse_link_reference_definition(raw_text) {
+                let text = format!("{label}: {url}");
+                let label_end = label.len();
+                let separator_end = label_end.saturating_add(2).min(text.len());
+                out.push(MarkdownPreviewLine {
+                    spans: vec![
+                        StyledTextSpan::with_style(
+                            0,
+                            label_end,
+                            theme.syntax.function.as_u8(),
+                            false,
+                            false,
+                        ),
+                        StyledTextSpan::new(
+                            label_end,
+                            separator_end,
+                            theme.syntax.punctuation.as_u8(),
+                        ),
+                        StyledTextSpan::new(
+                            separator_end,
+                            text.len(),
+                            theme.syntax.string.as_u8(),
+                        ),
+                    ],
+                    text,
+                    block_type: MarkdownBlockType::Paragraph,
+                    code_language: None,
+                });
+            } else if !raw_text.is_empty() {
+                out.push(MarkdownPreviewLine {
+                    text: raw_text.to_string(),
+                    spans: vec![StyledTextSpan::new(
+                        0,
+                        raw_text.len(),
+                        theme.syntax.identifier.as_u8(),
+                    )],
+                    block_type: MarkdownBlockType::Paragraph,
+                    code_language: None,
+                });
+            }
         }
         "fenced_code_block" | "indented_code_block" => {
             let code_text = code_block_content(node, source);
             let lang = code_block_language(node, source);
+            let preview_lang = if lang.trim().is_empty() {
+                "txt".to_string()
+            } else {
+                lang.clone()
+            };
             let raw_spans = highlight_snippet(&code_text, &lang, theme);
             let styled = syntax_spans_to_styled(&raw_spans, &code_text, theme);
+            let mut line_start = 0usize;
             for line_str in code_text.lines() {
+                let line_end = line_start + line_str.len();
+                let spans = styled
+                    .iter()
+                    .filter_map(|span| clip_styled_span_to_line(*span, line_start, line_end))
+                    .collect();
                 out.push(MarkdownPreviewLine {
                     text: line_str.to_string(),
-                    spans: styled
-                        .iter()
-                        .filter(|s| s.start < line_str.len())
-                        .cloned()
-                        .collect(),
+                    spans,
                     block_type: MarkdownBlockType::CodeBlock,
+                    code_language: Some(preview_lang.clone()),
                 });
+                line_start = line_end.saturating_add(1);
             }
             if code_text.ends_with('\n') || code_text.is_empty() {
                 out.push(MarkdownPreviewLine {
                     text: String::new(),
                     spans: Vec::new(),
                     block_type: MarkdownBlockType::CodeBlock,
+                    code_language: Some(preview_lang.clone()),
                 });
             }
         }
         "block_quote" => {
             let text = node_text(node, source);
             for line_str in text.lines() {
-                let prefixed = format!("  │ {}", line_str);
-                let span = StyledTextSpan::new(
+                let content = line_str.trim_start_matches('>').trim_start();
+                let prefixed = format!("  │ {}", content);
+                let prefix_len = prefixed.len().saturating_sub(content.len());
+                let mut spans = vec![StyledTextSpan::new(
                     0,
-                    prefixed.len(),
+                    prefix_len,
                     theme.syntax.constant.as_u8(),
+                )];
+                let (rendered_content, inline_spans) = render_markdown_inline_text(content, theme);
+                let prefixed = format!("  │ {}", rendered_content);
+                spans.extend(
+                    inline_spans
+                        .into_iter()
+                        .map(|span| offset_styled_span(span, prefix_len)),
                 );
                 out.push(MarkdownPreviewLine {
                     text: prefixed,
-                    spans: vec![span],
+                    spans,
                     block_type: MarkdownBlockType::BlockQuote,
+                    code_language: None,
                 });
             }
         }
@@ -438,28 +572,45 @@ fn render_markdown_node(
             render_children(node, source, theme, out);
         }
         "list_item" | "task_list_item" => {
-            let marker = list_marker_text(node, source);
+            let indent = "  ".repeat(markdown_list_item_depth(node));
+            let marker = format!("{indent}{}", list_marker_text(node, source));
             let marker_len = marker.len();
             let content = list_item_content(node, source);
-            let full_text = format!("{marker}{content}");
+            let (rendered_content, inline_spans) = render_markdown_inline_text(&content, theme);
+            let full_text = format!("{marker}{rendered_content}");
             let mut spans = Vec::new();
             spans.push(StyledTextSpan::new(
                 0,
                 marker_len,
                 theme.syntax.operator.as_u8(),
             ));
-            if content.len() > 0 {
-                spans.push(StyledTextSpan::new(
-                    marker_len,
-                    full_text.len(),
-                    theme.syntax.identifier.as_u8(),
-                ));
+            if rendered_content.len() > 0 {
+                spans.extend(
+                    inline_spans
+                        .into_iter()
+                        .map(|span| offset_styled_span(span, marker_len)),
+                );
+                if spans.len() == 1 {
+                    spans.push(StyledTextSpan::new(
+                        marker_len,
+                        full_text.len(),
+                        theme.syntax.identifier.as_u8(),
+                    ));
+                }
             }
             out.push(MarkdownPreviewLine {
                 text: full_text,
                 spans,
                 block_type: MarkdownBlockType::ListItem,
+                code_language: None,
             });
+
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if matches!(child.kind(), "list" | "tight_list" | "loose_list") {
+                    render_markdown_node(child, source, theme, out);
+                }
+            }
         }
         "thematic_break" => {
             out.push(MarkdownPreviewLine {
@@ -470,9 +621,10 @@ fn render_markdown_node(
                     theme.syntax.punctuation.as_u8(),
                 )],
                 block_type: MarkdownBlockType::HorizontalRule,
+                code_language: None,
             });
         }
-        "table" => {
+        "table" | "pipe_table" => {
             render_table(node, source, theme, out);
         }
         "html_block" => {
@@ -486,6 +638,7 @@ fn render_markdown_node(
                         theme.syntax.tag.as_u8(),
                     )],
                     block_type: MarkdownBlockType::Paragraph,
+                    code_language: None,
                 });
             }
         }
@@ -507,151 +660,161 @@ fn render_children(
     }
 }
 
-fn render_inline_spans(
-    node: tree_sitter::Node<'_>,
-    source: &str,
-    theme: &ThemeConfig,
-) -> Vec<StyledTextSpan> {
-    let mut spans = Vec::new();
-    collect_inline_spans(node, source, theme, &mut spans);
-    // Fallback: if tree-sitter inline grammar didn't produce spans,
-    // manually parse backticks for inline code highlighting.
-    if spans.is_empty() {
-        let text = node_text(node, source);
-        let byte_offset = node.start_byte();
-        let chars: Vec<char> = text.chars().collect();
-        let mut i = 0;
-        while i < chars.len() {
-            if chars[i] == '`' {
-                let content_start = i + 1;
-                let mut content_end = content_start;
-                while content_end < chars.len() && chars[content_end] != '`' {
-                    content_end += 1;
-                }
-                if content_end < chars.len() && content_end > content_start {
-                    let byte_start = byte_offset
-                        + text[..]
-                            .char_indices()
-                            .nth(content_start)
-                            .map(|(idx, _)| idx)
-                            .unwrap_or(text.len());
-                    let byte_end = byte_offset
-                        + text[..]
-                            .char_indices()
-                            .nth(content_end)
-                            .map(|(idx, _)| idx)
-                            .unwrap_or(text.len());
-                    spans.push(StyledTextSpan::new(
-                        byte_start,
-                        byte_end,
-                        theme.syntax.string.as_u8(),
-                    ));
-                    i = content_end + 1;
-                    continue;
-                }
-            }
-            i += 1;
-        }
+fn clip_styled_span_to_line(
+    span: StyledTextSpan,
+    line_start: usize,
+    line_end: usize,
+) -> Option<StyledTextSpan> {
+    let start = span.start.max(line_start);
+    let end = span.end.min(line_end);
+    if start >= end {
+        return None;
     }
-    spans
+    Some(StyledTextSpan::with_style(
+        start.saturating_sub(line_start),
+        end.saturating_sub(line_start),
+        span.color_rgba,
+        span.bold,
+        span.italic,
+    ))
 }
 
-fn collect_inline_spans(
-    node: tree_sitter::Node<'_>,
-    source: &str,
-    theme: &ThemeConfig,
-    spans: &mut Vec<StyledTextSpan>,
-) {
-    let kind = node.kind();
-    let start = node.start_byte();
-    let end = node.end_byte();
+fn offset_styled_span(span: StyledTextSpan, offset: usize) -> StyledTextSpan {
+    StyledTextSpan::with_style(
+        span.start.saturating_add(offset),
+        span.end.saturating_add(offset),
+        span.color_rgba,
+        span.bold,
+        span.italic,
+    )
+}
 
-    match kind {
-        "emphasis" => {
-            spans.push(StyledTextSpan::with_style(
-                start,
-                end,
-                theme.syntax.comment.as_u8(),
-                false,
-                true,
-            ));
-        }
-        "strong_emphasis" => {
-            spans.push(StyledTextSpan::with_style(
-                start,
-                end,
-                theme.syntax.keyword.as_u8(),
-                true,
-                false,
-            ));
-        }
-        "code_span" => {
-            spans.push(StyledTextSpan::new(
-                start,
-                end,
-                theme.syntax.string.as_u8(),
-            ));
-        }
-        "link" | "link_text" => {
-            spans.push(StyledTextSpan::with_style(
-                start,
-                end,
-                theme.syntax.function.as_u8(),
-                false,
-                true,
-            ));
-        }
-        "link_destination" | "uri_autolink" | "email_autolink" | "www_autolink" => {
-            spans.push(StyledTextSpan::new(
-                start,
-                end,
-                theme.syntax.string.as_u8(),
-            ));
-        }
-        "image" => {
-            spans.push(StyledTextSpan::new(
-                start,
-                end,
-                theme.syntax.constant.as_u8(),
-            ));
-        }
-        "strikethrough" => {
-            spans.push(StyledTextSpan::new(
-                start,
-                end,
-                theme.syntax.punctuation.as_u8(),
-            ));
-        }
-        "backslash_escape" | "character_reference" => {
-            spans.push(StyledTextSpan::new(
-                start,
-                end,
-                theme.syntax.escape.as_u8(),
-            ));
-        }
-        "html_open_tag" | "html_close_tag" | "html_self_closing_tag" => {
-            spans.push(StyledTextSpan::new(
-                start,
-                end,
-                theme.syntax.tag.as_u8(),
-            ));
-        }
-        "html_comment" => {
-            spans.push(StyledTextSpan::with_style(
-                start,
-                end,
-                theme.syntax.comment.as_u8(),
-                false,
-                true,
-            ));
-        }
-        _ => {
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                collect_inline_spans(child, source, theme, spans);
+fn render_markdown_inline_text(text: &str, theme: &ThemeConfig) -> (String, Vec<StyledTextSpan>) {
+    let mut rendered = String::new();
+    let mut spans = Vec::new();
+    let mut i = 0usize;
+
+    while i < text.len() {
+        let rest = &text[i..];
+        if let Some(after_label_open) = rest.strip_prefix('[')
+            && let Some(label_close_rel) = after_label_open.find(']')
+        {
+            let after_label = &after_label_open[label_close_rel + 1..];
+            if let Some(after_url_open) = after_label.strip_prefix('(')
+                && let Some(url_close_rel) = after_url_open.find(')')
+            {
+                let label = &after_label_open[..label_close_rel];
+                let url = &after_url_open[..url_close_rel];
+                let start = rendered.len();
+                rendered.push_str(label);
+                let label_end = rendered.len();
+                if !url.trim().is_empty() {
+                    rendered.push_str(" ↗");
+                }
+                let end = rendered.len();
+                if label_end > start {
+                    spans.push(StyledTextSpan::with_style(
+                        start,
+                        label_end,
+                        theme.syntax.function.as_u8(),
+                        false,
+                        false,
+                    ));
+                }
+                if end > label_end {
+                    spans.push(StyledTextSpan::new(
+                        label_end,
+                        end,
+                        theme.syntax.punctuation.as_u8(),
+                    ));
+                }
+                i += 1 + label_close_rel + 1 + 1 + url_close_rel + 1;
+                continue;
             }
         }
+        if let Some(after_open) = rest.strip_prefix("**")
+            && let Some(close_rel) = after_open.find("**")
+        {
+            let content = &after_open[..close_rel];
+            let start = rendered.len();
+            rendered.push_str(content);
+            let end = rendered.len();
+            if end > start {
+                spans.push(StyledTextSpan::with_style(
+                    start,
+                    end,
+                    theme.syntax.keyword.as_u8(),
+                    true,
+                    false,
+                ));
+            }
+            i += 2 + close_rel + 2;
+            continue;
+        }
+        if let Some(after_open) = rest.strip_prefix('`')
+            && let Some(close_rel) = after_open.find('`')
+        {
+            let content = &after_open[..close_rel];
+            let start = rendered.len();
+            rendered.push_str(content);
+            let end = rendered.len();
+            if end > start {
+                spans.push(StyledTextSpan::new(start, end, theme.syntax.string.as_u8()));
+            }
+            i += 1 + close_rel + 1;
+            continue;
+        }
+        if let Some(after_open) = rest.strip_prefix('*')
+            && let Some(close_rel) = after_open.find('*')
+        {
+            let content = &after_open[..close_rel];
+            let start = rendered.len();
+            rendered.push_str(content);
+            let end = rendered.len();
+            if end > start {
+                spans.push(StyledTextSpan::with_style(
+                    start,
+                    end,
+                    theme.syntax.comment.as_u8(),
+                    false,
+                    true,
+                ));
+            }
+            i += 1 + close_rel + 1;
+            continue;
+        }
+
+        if let Some(ch) = rest.chars().next() {
+            rendered.push(ch);
+            i += ch.len_utf8();
+        } else {
+            break;
+        }
     }
+
+    (rendered, spans)
+}
+
+
+
+
+
+
+
+
+fn parse_link_reference_definition(text: &str) -> Option<(String, String)> {
+    let after_open = text.strip_prefix('[')?;
+    let close_idx = after_open.find("]: ").or_else(|| after_open.find("]:"))?;
+    let label = after_open[..close_idx].trim();
+    if label.is_empty() {
+        return None;
+    }
+    let after_label = &after_open[close_idx + 1..];
+    let url = after_label.strip_prefix(':')?.trim();
+    if url.is_empty() {
+        return None;
+    }
+    Some((label.to_string(), url.to_string()))
 }
 
 fn heading_level_from_atx(node: tree_sitter::Node<'_>, _source: &str) -> u8 {
@@ -713,6 +876,35 @@ fn setext_heading_content(node: tree_sitter::Node<'_>, source: &str) -> String {
     lines.join(" ").trim().to_string()
 }
 
+fn heading_spans(
+    text: &str,
+    inline_spans: Vec<StyledTextSpan>,
+    color: [u8; 4],
+    level: u8,
+) -> Vec<StyledTextSpan> {
+    if text.is_empty() {
+        return Vec::new();
+    }
+    let heading_bold = level <= 2;
+    let mut spans = vec![StyledTextSpan::with_style(
+        0,
+        text.len(),
+        color,
+        heading_bold,
+        false,
+    )];
+    spans.extend(inline_spans.into_iter().map(|span| {
+        StyledTextSpan::with_style(
+            span.start,
+            span.end,
+            span.color_rgba,
+            heading_bold || span.bold,
+            span.italic,
+        )
+    }));
+    spans
+}
+
 fn heading_color(level: u8, theme: &ThemeConfig) -> [u8; 4] {
     match level {
         1 => theme.syntax.keyword.as_u8(),
@@ -751,16 +943,47 @@ fn code_block_language(node: tree_sitter::Node<'_>, source: &str) -> String {
     String::new()
 }
 
+fn markdown_list_item_depth(node: tree_sitter::Node<'_>) -> usize {
+    let mut depth = 0usize;
+    let mut parent = node.parent();
+    while let Some(current) = parent {
+        if matches!(current.kind(), "list_item" | "task_list_item") {
+            depth = depth.saturating_add(1);
+        }
+        parent = current.parent();
+    }
+    depth
+}
+
 fn list_marker_text(node: tree_sitter::Node<'_>, source: &str) -> String {
+    let raw = node_text(node, source);
+    let trimmed = raw.trim_start();
+    if trimmed.starts_with("- [x]")
+        || trimmed.starts_with("* [x]")
+        || trimmed.starts_with("+ [x]")
+        || trimmed.starts_with("- [X]")
+        || trimmed.starts_with("* [X]")
+        || trimmed.starts_with("+ [X]")
+    {
+        return "☑ ".to_string();
+    }
+    if trimmed.starts_with("- [ ]")
+        || trimmed.starts_with("* [ ]")
+        || trimmed.starts_with("+ [ ]")
+    {
+        return "☐ ".to_string();
+    }
+
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
             "list_marker_plus" | "list_marker_minus" | "list_marker_star"
-            | "list_marker_dot" | "list_marker_parenthesis"
-            | "task_list_marker_checked" | "task_list_marker_unchecked"
-            | "list_marker" | "task_list_item_marker" => {
+            | "list_marker_dot" | "list_marker_parenthesis" | "list_marker"
+            | "task_list_item_marker" => {
                 return format!("{} ", node_text(child, source).trim());
             }
+            "task_list_marker_checked" => return "☑ ".to_string(),
+            "task_list_marker_unchecked" => return "☐ ".to_string(),
             _ => {}
         }
     }
@@ -768,7 +991,15 @@ fn list_marker_text(node: tree_sitter::Node<'_>, source: &str) -> String {
 }
 
 fn list_item_content(node: tree_sitter::Node<'_>, source: &str) -> String {
-    let mut parts = Vec::new();
+    let raw = node_text(node, source);
+    let first_line = raw.lines().next().unwrap_or_default();
+    let trimmed = first_line.trim_start();
+    for prefix in ["- [x]", "* [x]", "+ [x]", "- [X]", "* [X]", "+ [X]", "- [ ]", "* [ ]", "+ [ ]"] {
+        if let Some(rest) = trimmed.strip_prefix(prefix) {
+            return rest.trim_start().to_string();
+        }
+    }
+
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
@@ -776,16 +1007,23 @@ fn list_item_content(node: tree_sitter::Node<'_>, source: &str) -> String {
             | "list_marker_dot" | "list_marker_parenthesis"
             | "task_list_marker_checked" | "task_list_marker_unchecked"
             | "list_marker" | "task_list_item_marker"
-            | "paragraph_continuation" => {}
+            | "paragraph_continuation"
+            | "list" | "tight_list" | "loose_list" => {}
             _ => {
                 let text = node_text(child, source);
                 if !text.is_empty() {
-                    parts.push(text.trim().to_string());
+                    return text.lines().next().unwrap_or_default().trim().to_string();
                 }
             }
         }
     }
-    parts.join(" ")
+
+    let marker = list_marker_text(node, source);
+    trimmed
+        .strip_prefix(marker.trim())
+        .unwrap_or(trimmed)
+        .trim_start()
+        .to_string()
 }
 
 fn render_table(
@@ -794,43 +1032,152 @@ fn render_table(
     theme: &ThemeConfig,
     out: &mut Vec<MarkdownPreviewLine>,
 ) {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "table_header_row" => {
-                let text = node_text(child, source);
-                let spans = vec![StyledTextSpan::with_style(
-                    0,
-                    text.len(),
-                    theme.syntax.keyword.as_u8(),
-                    true,
-                    false,
-                )];
-                out.push(MarkdownPreviewLine {
-                    text,
-                    spans,
-                    block_type: MarkdownBlockType::TableHeader,
-                });
+    let raw = node_text(node, source);
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut header_idx: Option<usize> = None;
+
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with('|') || !trimmed.ends_with('|') {
+            continue;
+        }
+        let cells: Vec<String> = trimmed
+            .trim_matches('|')
+            .split('|')
+            .map(|cell| cell.trim().to_string())
+            .collect();
+        if cells.is_empty() {
+            continue;
+        }
+        let is_delimiter = cells.iter().all(|cell| {
+            let clean = cell.trim();
+            !clean.is_empty()
+                && clean
+                    .chars()
+                    .all(|ch| matches!(ch, '-' | ':' | ' ' | '\t'))
+                && clean.chars().any(|ch| ch == '-')
+        });
+        if is_delimiter {
+            if !rows.is_empty() {
+                header_idx = Some(rows.len().saturating_sub(1));
             }
-            "table_delimiter_row" => {
-                let text = node_text(child, source);
-                out.push(MarkdownPreviewLine {
-                    text,
-                    spans: vec![],
-                    block_type: MarkdownBlockType::Empty,
-                });
-            }
-            "table_data_row" => {
-                let text = node_text(child, source);
-                out.push(MarkdownPreviewLine {
-                    text,
-                    spans: vec![],
-                    block_type: MarkdownBlockType::TableRow,
-                });
-            }
-            _ => {}
+            continue;
+        }
+        rows.push(cells);
+    }
+
+    if rows.is_empty() {
+        render_children(node, source, theme, out);
+        return;
+    }
+
+    let col_count = rows.iter().map(Vec::len).max().unwrap_or(0);
+    let rendered_rows: Vec<Vec<(String, Vec<StyledTextSpan>)>> = rows
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(|cell| render_markdown_inline_text(cell, theme))
+                .collect()
+        })
+        .collect();
+    let mut widths = vec![0usize; col_count];
+    for row in &rendered_rows {
+        for (idx, (cell, _)) in row.iter().enumerate() {
+            widths[idx] = widths[idx].max(cell.chars().count());
         }
     }
+
+    push_table_rule(out, &widths, '┌', '┬', '┐', theme);
+
+    for (row_idx, row) in rendered_rows.iter().enumerate() {
+        let mut text = String::new();
+        let mut spans = Vec::new();
+        text.push('│');
+        spans.push(StyledTextSpan::new(0, text.len(), theme.syntax.punctuation.as_u8()));
+
+        for idx in 0..col_count {
+            text.push(' ');
+            let cell_start = text.len();
+            let (cell, cell_spans) = row
+                .get(idx)
+                .map(|(cell, spans)| (cell.as_str(), spans.as_slice()))
+                .unwrap_or(("", &[]));
+            text.push_str(cell);
+            for span in cell_spans {
+                spans.push(offset_styled_span(*span, cell_start));
+            }
+            if cell_spans.is_empty() && !cell.is_empty() {
+                spans.push(StyledTextSpan::new(
+                    cell_start,
+                    text.len(),
+                    theme.syntax.identifier.as_u8(),
+                ));
+            }
+            let pad = widths[idx].saturating_sub(cell.chars().count());
+            text.extend(std::iter::repeat(' ').take(pad));
+            text.push(' ');
+            let border_start = text.len();
+            text.push('│');
+            spans.push(StyledTextSpan::new(
+                border_start,
+                text.len(),
+                theme.syntax.punctuation.as_u8(),
+            ));
+        }
+
+        let is_header = header_idx == Some(row_idx);
+        if is_header {
+            spans.push(StyledTextSpan::with_style(
+                0,
+                text.len(),
+                theme.syntax.keyword.as_u8(),
+                true,
+                false,
+            ));
+        }
+        out.push(MarkdownPreviewLine {
+            text,
+            spans,
+            block_type: if is_header {
+                MarkdownBlockType::TableHeader
+            } else {
+                MarkdownBlockType::TableRow
+            },
+            code_language: None,
+        });
+
+        if is_header {
+            push_table_rule(out, &widths, '├', '┼', '┤', theme);
+        }
+    }
+
+    push_table_rule(out, &widths, '└', '┴', '┘', theme);
+}
+
+fn push_table_rule(
+    out: &mut Vec<MarkdownPreviewLine>,
+    widths: &[usize],
+    left: char,
+    join: char,
+    right: char,
+    theme: &ThemeConfig,
+) {
+    if widths.is_empty() {
+        return;
+    }
+
+    let mut text = String::new();
+    text.push(left);
+    for (idx, width) in widths.iter().enumerate() {
+        text.extend(std::iter::repeat('─').take(width.saturating_add(2)));
+        text.push(if idx + 1 == widths.len() { right } else { join });
+    }
+    out.push(MarkdownPreviewLine {
+        spans: vec![StyledTextSpan::new(0, text.len(), theme.syntax.punctuation.as_u8())],
+        text,
+        block_type: MarkdownBlockType::TableRow,
+        code_language: None,
+    });
 }
 
 pub(super) fn scale_theme(base: &ThemeConfig, scale: f32) -> ThemeConfig {
@@ -1177,12 +1524,31 @@ fn find_git_dir(start: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Shift global byte coordinates to local (0-based) by subtracting `offset`.
+/// Filters out spans that collapse to zero length after offsetting.
+#[allow(dead_code)]
+fn normalize_spans(spans: Vec<StyledTextSpan>, offset: usize) -> Vec<StyledTextSpan> {
+    spans
+        .into_iter()
+        .filter_map(|mut span| {
+            span.start = span.start.saturating_sub(offset);
+            span.end = span.end.saturating_sub(offset);
+            if span.start < span.end {
+                Some(span)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::syntax_spans_to_styled;
+    use super::{normalize_spans, syntax_spans_to_styled};
     use crate::{
         config::theme_config::ThemeConfig,
         syntax::highlight::{HighlightCategory, HighlightSpan},
+        text::text_system::StyledTextSpan,
     };
 
     #[test]
@@ -1216,6 +1582,41 @@ mod tests {
         assert_eq!(styled[2].color_rgba, theme.syntax.parameter.as_u8());
         assert!(!styled[2].bold);
         assert!(!styled[2].italic);
+    }
+
+    #[test]
+    fn normalize_spans_shifts_global_coordinates_to_local() {
+        let spans = vec![
+            StyledTextSpan::with_style(10, 12, [255, 0, 0, 255], true, false),
+            StyledTextSpan::new(15, 17, [0, 255, 0, 255]),
+            StyledTextSpan::with_style(10, 11, [0, 0, 255, 255], false, true),
+        ];
+        let normalized = normalize_spans(spans, 10);
+        assert_eq!(normalized.len(), 3);
+        assert_eq!(normalized[0].start, 0);
+        assert_eq!(normalized[0].end, 2);
+        assert!(normalized[0].bold);
+        assert_eq!(normalized[1].start, 5);
+        assert_eq!(normalized[1].end, 7);
+        assert_eq!(normalized[2].start, 0);
+        assert_eq!(normalized[2].end, 1);
+        assert!(normalized[2].italic);
+    }
+
+    #[test]
+    fn normalize_spans_filters_zero_length() {
+        let spans = vec![StyledTextSpan::new(5, 5, [255, 0, 0, 255])];
+        let normalized = normalize_spans(spans, 0);
+        assert!(normalized.is_empty());
+    }
+
+    #[test]
+    fn normalize_spans_clamps_negative_start_to_zero() {
+        let spans = vec![StyledTextSpan::new(5, 15, [255, 0, 0, 255])];
+        let normalized = normalize_spans(spans, 10);
+        assert_eq!(normalized.len(), 1);
+        assert_eq!(normalized[0].start, 0);
+        assert_eq!(normalized[0].end, 5);
     }
 }
 

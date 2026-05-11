@@ -175,12 +175,34 @@ fn resolve_gvm_paths(gvm_root: &str) -> Vec<String> {
 ///
 /// Returns `None` when every candidate shell fails or emits empty output
 /// (sandboxed build, CI runner, missing shell binary).
+fn login_shell_path_cache() -> &'static Mutex<Option<Option<String>>> {
+    static CACHED: std::sync::OnceLock<Mutex<Option<Option<String>>>> = std::sync::OnceLock::new();
+    CACHED.get_or_init(|| Mutex::new(None))
+}
+
 fn extract_path_from_login_shell() -> Option<String> {
-    static CACHED: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
-    CACHED
-        .get_or_init(|| {
-            let shell_var = std::env::var("SHELL").unwrap_or_default();
-            let candidates: Vec<String> = {
+    let cached = login_shell_path_cache();
+    let mut guard = cached.lock().ok()?;
+    if let Some(value) = guard.clone() {
+        return value;
+    }
+
+    let value = probe_path_from_login_shell();
+    *guard = Some(value.clone());
+    value
+}
+
+pub fn refresh_patched_env_path() -> String {
+    let cached = login_shell_path_cache();
+    if let Ok(mut guard) = cached.lock() {
+        *guard = Some(probe_path_from_login_shell());
+    }
+    patched_env_path()
+}
+
+fn probe_path_from_login_shell() -> Option<String> {
+    let shell_var = std::env::var("SHELL").unwrap_or_default();
+    let candidates: Vec<String> = {
                 let mut v: Vec<String> = vec![];
                 if !shell_var.is_empty() {
                     v.push(shell_var);
@@ -191,9 +213,9 @@ fn extract_path_from_login_shell() -> Option<String> {
                 // Deduplicate while preserving preference order.
                 let mut seen = HashSet::new();
                 v.into_iter().filter(|s| seen.insert(s.clone())).collect()
-            };
+    };
 
-            for shell in &candidates {
+    for shell in &candidates {
                 let Ok(output) = std::process::Command::new(shell)
                     .args(["-ilc", "printenv PATH"])
                     .stdout(Stdio::piped())
@@ -213,10 +235,8 @@ fn extract_path_from_login_shell() -> Option<String> {
                 if !trimmed.is_empty() && trimmed.contains('/') {
                     return Some(trimmed);
                 }
-            }
-            None
-        })
-        .clone()
+    }
+    None
 }
 
 /// Returns an augmented `PATH` by first attempting a live login-shell probe
@@ -285,6 +305,10 @@ fn static_patched_env_path() -> String {
     // npm global with custom prefix.
     candidates.push(format!("{home}/.npm-global/bin"));
 
+    // jenv — Java version manager (shims for java, javac, jdtls, etc.).
+    candidates.push(format!("{home}/.jenv/shims"));
+    candidates.push(format!("{home}/.jenv/bin"));
+
     // Homebrew (system fallback — lower priority than user-managed tools).
     candidates.push("/opt/homebrew/bin".to_string());
     candidates.push("/opt/homebrew/sbin".to_string());
@@ -319,6 +343,9 @@ pub fn check_lsp_installed(binary: &str) -> bool {
 
 pub fn lsp_entry_and_status_for_path(path: &Path) -> Option<(LspEntry, bool)> {
     let profile = language_profile_for_path(path)?;
+    if profile.lsp_binary.is_empty() {
+        return None;
+    }
     let entry = LspEntry {
         binary: profile.lsp_binary,
         language_label: profile.language_label,
@@ -335,6 +362,10 @@ pub struct LspClientProcess {
     latest_request_id: AtomicU64,
     pending_responses: Mutex<HashMap<u64, std_mpsc::SyncSender<Value>>>,
     open_documents: Mutex<HashSet<String>>,
+    /// Per-category latest in-flight RPC id (e.g. "definition", "hover"). When
+    /// the client dispatches a new cancellable request, the previous id stored
+    /// here is the one we send `$/cancelRequest` for so the server stops work.
+    cancellable_inflight: Mutex<HashMap<&'static str, u64>>,
 }
 
 impl LspClientProcess {
@@ -347,7 +378,56 @@ impl LspClientProcess {
             latest_request_id: AtomicU64::new(0),
             pending_responses: Mutex::new(HashMap::new()),
             open_documents: Mutex::new(HashSet::new()),
+            cancellable_inflight: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Atomically records `new_id` as the latest in-flight request for `key`
+    /// and returns the previous id (if any). Callers send `$/cancelRequest`
+    /// for the returned id so the server can free its worker slot.
+    pub fn swap_inflight(&self, key: &'static str, new_id: u64) -> Option<u64> {
+        let mut guard = self.cancellable_inflight.lock().ok()?;
+        guard.insert(key, new_id)
+    }
+
+    /// Drop the inflight entry for `key` only when it still matches `id`.
+    /// We never want to clobber a *newer* entry recorded by another task.
+    pub fn clear_inflight_if_matches(&self, key: &'static str, id: u64) {
+        if let Ok(mut guard) = self.cancellable_inflight.lock() {
+            if guard.get(key) == Some(&id) {
+                guard.remove(key);
+            }
+        }
+    }
+
+    /// Fire-and-forget `$/cancelRequest` notification for the given JSON-RPC
+    /// id. The server should reply to that id with an error response, which
+    /// flows back through `deliver_response` and unblocks the original waiter.
+    pub fn send_cancel_request(&self, id: u64) {
+        if let Err(err) = self
+            .send_notification("$/cancelRequest", json!({ "id": id }))
+        {
+            eprintln!("[LSP] send $/cancelRequest({id}) failed: {err}");
+        }
+    }
+
+    /// Reply to a server→client request with `result` (use `Value::Null` for a
+    /// no-op acknowledgement, e.g. `window/workDoneProgress/create`).
+    pub fn send_response(&self, id: u64, result: Value) -> Result<(), String> {
+        block_on_runtime(self.send_response_async(id, result))
+    }
+
+    pub async fn send_response_async(&self, id: u64, result: Value) -> Result<(), String> {
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": result,
+        });
+        let mut writer = self.writer.lock().await;
+        let writer = writer
+            .as_mut()
+            .ok_or_else(|| format!("lsp writer unavailable while responding to id {id}"))?;
+        write_json_rpc_message_async(writer, &payload).await
     }
 
     pub fn update_request_meta(&self, request_id: u64, revision_id: u64) {
@@ -561,6 +641,80 @@ pub struct ParsedLogMessage {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProgressKind {
+    Begin,
+    Report,
+    End,
+}
+
+/// Decoded `$/progress` notification (`WorkDoneProgress*` payloads).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedProgress {
+    pub token: String,
+    pub kind: ProgressKind,
+    pub title: Option<String>,
+    pub message: Option<String>,
+    pub percentage: Option<u32>,
+}
+
+/// Decoded server→client request that the client must answer (e.g.
+/// `window/workDoneProgress/create`). Carries the `id` so the caller can
+/// reply with a result envelope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedServerRequest {
+    pub id: u64,
+    pub method: String,
+}
+
+pub fn parse_progress_notification(message: &Value) -> Option<ParsedProgress> {
+    if message.get("method")?.as_str()? != "$/progress" {
+        return None;
+    }
+    let params = message.get("params")?;
+    let token = match params.get("token")? {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        _ => return None,
+    };
+    let value = params.get("value")?;
+    let kind_str = value.get("kind")?.as_str()?;
+    let kind = match kind_str {
+        "begin" => ProgressKind::Begin,
+        "report" => ProgressKind::Report,
+        "end" => ProgressKind::End,
+        _ => return None,
+    };
+    let title = value
+        .get("title")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let message = value
+        .get("message")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let percentage = value
+        .get("percentage")
+        .and_then(Value::as_u64)
+        .and_then(|v| u32::try_from(v).ok());
+    Some(ParsedProgress {
+        token,
+        kind,
+        title,
+        message,
+        percentage,
+    })
+}
+
+/// Detect a server→client request that the client must respond to. The
+/// scheduler currently auto-replies with `null` for the small set of
+/// requests we know are safe to acknowledge.
+pub fn parse_server_request(message: &Value) -> Option<ParsedServerRequest> {
+    let id = message.get("id").and_then(Value::as_u64)?;
+    let method = message.get("method")?.as_str()?.to_string();
+    Some(ParsedServerRequest { id, method })
+}
+
 pub async fn spawn_lsp_server(
     requested_command: Option<&str>,
     root_path: &Path,
@@ -579,9 +733,13 @@ pub async fn spawn_lsp_server(
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
 
-    let mut child = command
-        .spawn()
-        .map_err(|err| format!("spawn LSP server {:?} failed: {err}", server_name))?;
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Err(format!("LSPMISSING:{}", server_name));
+        }
+        Err(err) => return Err(format!("spawn LSP server {:?} failed: {err}", server_name)),
+    };
 
     let stdin = child
         .stdin
@@ -618,6 +776,9 @@ pub async fn spawn_lsp_server(
                         "publishDiagnostics": {
                             "relatedInformation": true
                         }
+                    },
+                    "window": {
+                        "workDoneProgress": true
                     }
                 },
                 "trace": "off",

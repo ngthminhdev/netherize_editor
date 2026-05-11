@@ -49,6 +49,9 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 ctx.app_state.insert_auto_pair(ch)
             } else {
                 ctx.app_state.insert_char(ch);
+                if ch == '>' {
+                    ctx.app_state.insert_html_auto_close_tag();
+                }
                 true
             };
             DispatchReport::success(
@@ -92,6 +95,17 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                     "Dispatch: applied to active buffer (accept inline suggestion)"
                 } else {
                     "Dispatch: accept inline suggestion ignored (no suggestion)"
+                },
+                changed,
+            )
+        }
+        Command::AiAcceptInlineWord => {
+            let changed = ctx.app_state.accept_inline_suggestion_word();
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: applied to active buffer (accept inline suggestion word)"
+                } else {
+                    "Dispatch: accept inline suggestion word ignored (no suggestion)"
                 },
                 changed,
             )

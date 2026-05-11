@@ -187,8 +187,8 @@ impl UiConfig {
                 max_content_scale: 1.0,
             },
             layout: WorkbenchLayoutConfig {
-                outer_gap: 10.0,
-                panel_gap: 8.0,
+                outer_gap: 14.0,
+                panel_gap: 14.0,
                 inner_padding: 12.0,
                 round_ui: true,
                 top_bar_height: 34.0,
@@ -198,7 +198,7 @@ impl UiConfig {
                 sidebar_min_width: 180.0,
                 bottom_min_height: 120.0,
                 panel_border_width: 1.0,
-                chat_input_height: 120.0,
+                chat_input_height: 150.0,
             },
             docks: DockUiConfig {
                 left: DockSectionConfig {
@@ -207,11 +207,11 @@ impl UiConfig {
                 },
                 right: DockSectionConfig {
                     visible: false,
-                    size_px: 320.0,
+                    size_px: 650.0,
                 },
                 bottom: DockSectionConfig {
                     visible: false,
-                    size_px: 230.0,
+                    size_px: 420.0,
                 },
                 overlay_visible: false,
             },

@@ -89,22 +89,17 @@ impl AppShell {
     fn finalize_post_command_hooks(
         &mut self,
         command_for_post_hooks: &Command,
-        should_persist_history_after: bool,
+        _should_persist_history_after: bool,
         changed: bool,
     ) -> bool {
         if changed {
             match command_for_post_hooks {
                 Command::OpenFile(_) | Command::BufferNext | Command::BufferPrev => {
                     self.submit_active_buffer_git_baseline_refresh();
-                    self.submit_active_file_history_load();
                 }
                 Command::SaveFile => {
-                    self.submit_active_file_history_save();
                     self.submit_workspace_git_status_refresh();
                     self.submit_active_buffer_git_baseline_refresh();
-                }
-                _ if should_persist_history_after => {
-                    self.submit_active_file_history_save();
                 }
                 _ => {}
             }
@@ -163,7 +158,10 @@ impl AppShell {
         }
 
         if focus_target == FocusTarget::BottomPanel {
-            let terminal = Some(&mut self.terminal_grid);
+            // Access grid via direct indexing to avoid borrowing self
+            // (focused_terminal_grid_mut borrows self, conflicting with app_state/clipboard).
+            let idx = self.active_terminal_tab;
+            let terminal = Some(&mut self.terminal_tabs[idx].grid);
             let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
             return dispatch_command_with_clipboard_count_with_terminal(
                 app_state,
@@ -263,10 +261,28 @@ impl AppShell {
         ) && self.app_state.current_mode() == EditorMode::Insert;
         if is_insert_typing {
             let _ = self.app_state.clear_inline_suggestion();
-            self.pending_ai_inline_request = None;
+            self.cancel_ai_inline_completion();
         }
         if matches!(command, Command::TerminalPaste) {
             return self.handle_terminal_paste();
+        }
+
+        // Bất kỳ action nào trong lúc welcome đang hiện → dismiss về tabnone.
+        if self.should_show_welcome() {
+            if self.app_state.dismiss_initial_launch_welcome() {
+                self.request_redraw();
+            }
+        }
+
+        if matches!(command, Command::ToggleMaximizeFocus)
+            && self.panel_state.maximized_region.is_some()
+            && let Some(changed) = self.handle_terminal_and_focus_command(&command)
+        {
+            return self.finalize_post_command_hooks(
+                &command_for_post_hooks,
+                should_persist_history_after,
+                changed,
+            );
         }
 
         if let Some(changed) = self.handle_terminal_normal_command(&command, repeat_count) {
@@ -353,6 +369,13 @@ impl AppShell {
                 changed,
             );
         }
+        if let Some(changed) = self.handle_help_command(&command) {
+            return self.finalize_post_command_hooks(
+                &command_for_post_hooks,
+                should_persist_history_after,
+                changed,
+            );
+        }
 
         let changed = self.handle_generic_editor_command(command, repeat_count);
 
@@ -360,15 +383,10 @@ impl AppShell {
             match &command_for_post_hooks {
                 Command::OpenFile(_) | Command::BufferNext | Command::BufferPrev => {
                     self.submit_active_buffer_git_baseline_refresh();
-                    self.submit_active_file_history_load();
                 }
                 Command::SaveFile => {
-                    self.submit_active_file_history_save();
                     self.submit_workspace_git_status_refresh();
                     self.submit_active_buffer_git_baseline_refresh();
-                }
-                _ if should_persist_history_after => {
-                    self.submit_active_file_history_save();
                 }
                 _ => {}
             }
@@ -449,7 +467,7 @@ impl AppShell {
     }
 
     pub(super) fn accept_system_dep_guide(&mut self) -> bool {
-        let (install_cmd, missing_list, _state) = {
+        let tools_to_install = {
             let Some(guide) = self.active_system_dep_guide.as_mut() else {
                 return false;
             };
@@ -467,36 +485,24 @@ impl AppShell {
                     return false;
                 }
                 SystemDepState::Detected => {
-                    let cmd = guide.install_command.clone().unwrap_or_default();
-                    let list = guide.missing_tools.clone().unwrap_or_default().join(", ");
+                    let tools = guide.missing_tools.clone().unwrap_or_default();
                     guide.state = SystemDepState::Installing;
-                    (cmd, list, SystemDepState::Installing)
+                    // Reset per-tool statuses to Pending before install starts.
+                    for entry in &mut guide.tool_statuses {
+                        entry.1 = crate::async_runtime::message::InstallStatus::Pending;
+                    }
+                    tools
                 }
             }
         };
 
-        let shell = std::env::var("SHELL").unwrap_or_default();
-        let source_cmd = if shell.contains("zsh") {
-            "source ~/.zshrc"
-        } else if shell.contains("bash") {
-            "source ~/.bash_profile"
-        } else if shell.contains("fish") {
-            "source ~/.config/fish/config.fish"
-        } else {
-            "source ~/.profile"
-        };
-
         self.submit(RequestSpec {
             revision_id: 0,
-            topic: RequestTopic::TerminalPty,
-            payload: WorkerRequestPayload::SpawnDetachedShellCommand {
-                command: install_cmd,
-                working_dir: std::env::current_dir().ok(),
+            topic: RequestTopic::SystemDepInstall,
+            payload: WorkerRequestPayload::InstallSystemDeps {
+                tools: tools_to_install,
             },
         });
-        self.show_transient_toast(format!(
-            "Installing {missing_list} in background. Run '{source_cmd}' in terminal and restart editor when done."
-        ));
         true
     }
 
@@ -594,6 +600,38 @@ impl AppShell {
                 }
                 Some(true)
             }
+            Command::FocusMarkdownPreview => {
+                let mut changed = self.release_focus_mode_to_editor();
+                let preview = &mut self.app_state.markdown_preview;
+                if !preview.visible {
+                    preview.visible = true;
+                    changed = true;
+                }
+                if !self.panel_state.right.visible {
+                    self.panel_state.right.visible = true;
+                    self.sidebar_needs_layout = true;
+                    changed = true;
+                }
+                if self.pre_markdown_preview_right_width.is_none() {
+                    self.pre_markdown_preview_right_width = Some(self.panel_state.right.size_px);
+                }
+                let half_width = (self.window_size.width as f32 * 0.5).max(200.0);
+                if (self.panel_state.right.size_px - half_width).abs() > f32::EPSILON {
+                    self.panel_state.right.size_px = half_width;
+                    changed = true;
+                }
+                changed |= self
+                    .panel_state
+                    .right
+                    .switch_to_tab(PanelTabId::MarkdownPreview);
+                let focus_changed = self.focus_manager.set(FocusTarget::RightSidebar);
+                changed |= focus_changed;
+                if focus_changed {
+                    self.input_handler.clear_pending_prefix();
+                }
+                self.update_markdown_preview_content();
+                Some(changed)
+            }
             Command::MarkdownPreviewScrollUp => {
                 let preview = &mut self.app_state.markdown_preview;
                 if !preview.visible {
@@ -628,6 +666,45 @@ impl AppShell {
                 preview.scroll_y = (preview.scroll_y + 15.0).min(max_scroll);
                 Some(true)
             }
+            Command::MarkdownPreviewScrollTop => {
+                let preview = &mut self.app_state.markdown_preview;
+                if !preview.visible {
+                    return Some(false);
+                }
+                preview.scroll_y = 0.0;
+                Some(true)
+            }
+            Command::MarkdownPreviewScrollBottom => {
+                let preview = &mut self.app_state.markdown_preview;
+                if !preview.visible {
+                    return Some(false);
+                }
+                let max_scroll = preview.rendered_lines.len().saturating_sub(1) as f32;
+                preview.scroll_y = max_scroll;
+                Some(true)
+            }
+            _ => None,
+        }
+    }
+
+    fn handle_help_command(&mut self, command: &Command) -> Option<bool> {
+        match command {
+            Command::HelpScrollDown => {
+                self.app_state.help_scroll_down(100.0);
+                Some(true)
+            }
+            Command::HelpScrollUp => {
+                self.app_state.help_scroll_up(100.0);
+                Some(true)
+            }
+            Command::HelpScrollHalfPageDown => {
+                self.app_state.help_scroll_down(400.0);
+                Some(true)
+            }
+            Command::HelpScrollHalfPageUp => {
+                self.app_state.help_scroll_up(400.0);
+                Some(true)
+            }
             _ => None,
         }
     }
@@ -650,12 +727,7 @@ impl AppShell {
     }
 }
 
-/// Wraps a filesystem path in single quotes suitable for POSIX shell, escaping
-/// any embedded single-quote characters so the path can be safely passed to cd.
-fn shell_quote_path(path: &std::path::Path) -> String {
-    let s = path.to_string_lossy();
-    format!("'{}'", s.replace('\'', "'\\''"))
-}
+
 
 fn normalize_terminal_paste_text(text: &str) -> String {
     let mut normalized = String::with_capacity(text.len());

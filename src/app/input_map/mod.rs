@@ -37,6 +37,8 @@ pub enum InputFocusContext {
     AiChat,
     /// Right sidebar Markdown Preview tab — scroll with j/k/Ctrl-u/Ctrl-d.
     MarkdownPreview,
+    /// Right sidebar Help / Cheat Sheet — scroll with j/k/Ctrl-u/Ctrl-d.
+    Help,
     BottomPanel,
     /// Bottom panel terminal (ESC = unfocus).
     Terminal,
@@ -58,6 +60,7 @@ impl InputFocusContext {
             Self::Inspector => "inspector",
             Self::AiChat => "ai_chat",
             Self::MarkdownPreview => "markdown_preview",
+            Self::Help => "help",
             Self::BottomPanel => "bottom_panel",
             Self::Terminal => "terminal",
             Self::BufferTerminal => "buffer_terminal",
@@ -78,6 +81,7 @@ impl InputFocusContext {
                 | Self::Terminal
                 | Self::AiChat
                 | Self::MarkdownPreview
+                | Self::Help
                 | Self::FuzzyPicker
                 | Self::SettingsTab
         )
@@ -92,6 +96,7 @@ pub struct KeybindingContext {
     pub command_palette_mode: Option<CommandPaletteMode>,
     pub welcome_visible: bool,
     pub completion_visible: bool,
+    pub zen_mode_active: bool,
 }
 
 impl KeybindingContext {
@@ -107,6 +112,7 @@ impl KeybindingContext {
             command_palette_mode: None,
             welcome_visible: false,
             completion_visible: false,
+            zen_mode_active: false,
         }
     }
 
@@ -128,6 +134,7 @@ impl KeybindingContext {
             command_palette_mode: None,
             welcome_visible: false,
             completion_visible: false,
+            zen_mode_active: false,
         }
     }
 }
@@ -225,6 +232,9 @@ impl InputMap {
         if context.focus == InputFocusContext::MarkdownPreview {
             return self.resolve_markdown_preview_focus(input);
         }
+        if context.focus == InputFocusContext::Help {
+            return self.resolve_help_focus(input);
+        }
         if context.focus == InputFocusContext::BottomPanel {
             return self.resolve_bottom_panel_focus(input);
         }
@@ -273,6 +283,10 @@ impl InputMap {
         if let Some(command) =
             resolved_keymap::resolve_command(&self.keymap, input, mode_str, &self.open_file_path)
         {
+            if !Self::command_allowed_in_context(&command, context) {
+                return None;
+            }
+
             return Some(KeybindingMatch {
                 command,
                 reason: "keymap binding",
@@ -330,10 +344,11 @@ impl InputMap {
         }
         if context.focus == InputFocusContext::Terminal
             && context.mode != EditorMode::TerminalNormal
+            && !context.zen_mode_active
         {
             return None;
         }
-        if context.focus == InputFocusContext::AiChat {
+        if context.focus == InputFocusContext::AiChat && !context.zen_mode_active {
             return None;
         }
 
@@ -349,6 +364,13 @@ impl InputMap {
             match self.keymap.lookup_sequence(&steps, mode_for_sequence) {
                 SequenceLookup::Exact(id) => {
                     let command = command_ids::parse(id, Some(&self.open_file_path))?;
+                    if !Self::command_allowed_in_context(&command, context) {
+                        return None;
+                    }
+                    if context.zen_mode_active && !matches!(command, Command::ToggleMaximizeFocus) {
+                        continue;
+                    }
+
                     return Some(SequenceMatch::Dispatch(KeybindingMatch {
                         command,
                         reason: "keymap: chord binding",
@@ -366,7 +388,18 @@ impl InputMap {
         pending.map(SequenceMatch::Pending)
     }
 
+    fn command_allowed_in_context(command: &Command, context: KeybindingContext) -> bool {
+        if matches!(command, Command::SwitchMode(ModeEvent::EnterResize)) {
+            return context.focus == InputFocusContext::Editor;
+        }
+
+        true
+    }
+
     fn context_allows_leader_sequence(&self, context: KeybindingContext) -> bool {
+        if context.zen_mode_active {
+            return true;
+        }
         if !context.focus.allows_leader() {
             return false;
         }
@@ -393,8 +426,10 @@ impl InputMap {
             InputFocusContext::Diagnostics => editor_mode_str(context.mode),
             InputFocusContext::Explorer => "explorer",
             InputFocusContext::Inspector => "inspector",
+            InputFocusContext::AiChat if context.zen_mode_active => "normal",
             InputFocusContext::AiChat => "ai_chat",
             InputFocusContext::MarkdownPreview => "preview",
+            InputFocusContext::Help => "help",
             InputFocusContext::Terminal => editor_mode_str(context.mode),
             InputFocusContext::BufferTerminal => "terminal",
             InputFocusContext::BottomPanel => "bottom_panel",

@@ -299,11 +299,39 @@ impl TextSystem {
         fallback_color: [f32; 4],
         viewport_clip: Option<(f32, f32)>,
     ) -> Vec<VisibleGlyph> {
+        self.collect_visible_glyphs_with_folds(
+            origin_x,
+            origin_y,
+            fallback_color,
+            viewport_clip,
+            &[],
+        )
+    }
+
+    pub fn collect_visible_glyphs_with_folds(
+        &self,
+        origin_x: f32,
+        origin_y: f32,
+        fallback_color: [f32; 4],
+        viewport_clip: Option<(f32, f32)>,
+        folded_ranges: &[(usize, usize)],
+    ) -> Vec<VisibleGlyph> {
         let mut glyphs = Vec::new();
+        let has_folds = !folded_ranges.is_empty();
 
         for run in self.buffer.layout_runs() {
+            let line_i = run.line_i;
+            if has_folds && is_line_hidden_by_fold(line_i, folded_ranges) {
+                continue;
+            }
+
+            // Adjust Y position by subtracting accumulated offset from folded lines
+            let y_offset = folded_visual_y_offset_before(line_i, run.line_height, folded_ranges);
+            let adjusted_line_y = run.line_y - y_offset;
+            let adjusted_line_top = run.line_top - y_offset;
+
             if let Some((clip_top, clip_bottom)) = viewport_clip {
-                let line_top_window = origin_y + run.line_top;
+                let line_top_window = origin_y + adjusted_line_top;
                 let line_bottom_window = line_top_window + run.line_height;
                 if line_bottom_window < clip_top {
                     continue;
@@ -312,8 +340,9 @@ impl TextSystem {
                     break;
                 }
             }
+
             for glyph in run.glyphs {
-                let physical = glyph.physical((origin_x, origin_y + run.line_y), 1.0);
+                let physical = glyph.physical((origin_x, origin_y + adjusted_line_y), 1.0);
                 let color = glyph
                     .color_opt
                     .map(Self::rgba_f32_from_color)
@@ -390,6 +419,24 @@ impl TextSystem {
     }
 }
 
+fn is_line_hidden_by_fold(line_i: usize, folded_ranges: &[(usize, usize)]) -> bool {
+    folded_ranges
+        .iter()
+        .any(|&(s, e)| s < line_i && line_i <= e)
+}
+
+fn folded_visual_y_offset_before(
+    line_i: usize,
+    line_height: f32,
+    folded_ranges: &[(usize, usize)],
+) -> f32 {
+    folded_ranges
+        .iter()
+        .filter(|&&(_s, e)| e < line_i)
+        .map(|&(s, e)| e.saturating_sub(s) as f32 * line_height)
+        .sum()
+}
+
 fn apply_family<'a>(attrs: Attrs<'a>, family: Option<&'a str>) -> Attrs<'a> {
     match family {
         Some(name) => attrs.family(Family::Name(name)),
@@ -420,6 +467,26 @@ mod tests {
             max_line >= total_lines.saturating_sub(2),
             "deep lines were not shaped: max_line={max_line}, total_lines={total_lines}"
         );
+    }
+
+    #[test]
+    fn folded_glyph_collection_excludes_hidden_end_line() {
+        let mut system = TextSystem::new(Metrics::new(16.0, 22.0), Some(900.0), None);
+        system.set_text("start\nhidden\nend\nnext");
+
+        let glyphs = system.collect_visible_glyphs_with_folds(
+            0.0,
+            0.0,
+            [1.0, 1.0, 1.0, 1.0],
+            None,
+            &[(0, 2)],
+        );
+        let lines = glyphs.iter().map(|glyph| glyph.line_i).collect::<Vec<_>>();
+
+        assert!(lines.contains(&0));
+        assert!(!lines.contains(&1));
+        assert!(!lines.contains(&2));
+        assert!(lines.contains(&3));
     }
 
     #[test]

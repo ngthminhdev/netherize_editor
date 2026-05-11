@@ -90,6 +90,7 @@ pub struct TopbarTab {
     pub label: String,
     pub kind: TopbarTabKind,
     pub is_dirty: bool,
+    pub git_color: Option<[f32; 4]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -110,13 +111,22 @@ pub(super) struct StatusbarLayoutKey {
     pub(super) mode: EditorMode,
     pub(super) pending_keys: String,
     pub(super) git_branch: String,
+    pub(super) is_dirty: bool,
+    pub(super) active_file_name: String,
     pub(super) filetype: String,
     pub(super) search_match_position: Option<(usize, usize)>,
     pub(super) line: usize,
     pub(super) col: usize,
     pub(super) diagnostics_errors: usize,
     pub(super) diagnostics_warnings: usize,
+    pub(super) lsp_loading: bool,
+    pub(super) lsp_loading_frame: u8,
+    pub(super) lsp_progress: Option<String>,
     pub(super) bounds: [f32; 4],
+    pub(super) venv_name: Option<String>,
+    pub(super) python_version: Option<String>,
+    pub(super) node_version: Option<String>,
+    pub(super) go_version: Option<String>,
 }
 
 // ── Renderer struct ────────────────────────────────────────────────────────────
@@ -168,6 +178,8 @@ pub struct Renderer {
     pub(super) terminal_glyph_instances: Vec<GlyphInstance>,
     pub(super) terminal_cursor_instances: Vec<RegionDrawInstance>,
     pub(super) terminal_scissor: Option<[u32; 4]>,
+    pub(super) terminal_body_batch: Option<TextScissorBatch>,
+    pub(super) terminal_tab_bar_batch: Option<TextScissorBatch>,
 
     // ── Full-screen terminal buffer tabs ─────────────────────────────────────
     pub(super) buffer_terminal_text_system: TextSystem,
@@ -193,6 +205,8 @@ pub struct Renderer {
     pub(super) topbar_scissor: Option<[u32; 4]>,
     pub(super) topbar_text_batches: Vec<TextScissorBatch>,
     pub(super) last_topbar_layout_key: Option<TopbarLayoutKey>,
+    pub(super) topbar_logo_image_pipeline: ImagePipeline,
+    pub(super) topbar_logo_scissor: Option<[u32; 4]>,
 
     // ── StatusBar ─────────────────────────────────────────────────────────────
     pub(super) statusbar_text_system: TextSystem,
@@ -272,6 +286,12 @@ pub struct Renderer {
     pub(super) ai_chat_header_image_pipeline: ImagePipeline,
     pub(super) ai_chat_hero_image_pipeline: ImagePipeline,
     pub(super) ai_chat_glyph_instances: Vec<GlyphInstance>,
+    pub(super) ai_chat_history_chrome_instances: Vec<RegionDrawInstance>,
+    /// Background rects for the slash-command suggestion popup, rendered as a
+    /// separate pass *after* message bubble text so they appear on top.
+    pub(super) ai_chat_suggestion_chrome_instances: Vec<RegionDrawInstance>,
+    /// Index into `ai_chat_glyph_instances` where suggestion-popup glyphs begin.
+    pub(super) ai_chat_suggestion_glyph_start: Option<u32>,
     pub(super) ai_chat_history_scissor: Option<[u32; 4]>,
     pub(super) ai_chat_image_scissor: Option<[u32; 4]>,
     pub(super) ai_chat_input_scissor: Option<[u32; 4]>,

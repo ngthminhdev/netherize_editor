@@ -368,12 +368,16 @@ impl InputMap {
     ) -> Option<KeybindingMatch> {
         use KeyCode::*;
 
-        if input.named_key == Some(NamedKey::Escape)
-            || (input.has_command_modifier() && input.physical_key == Some(KeyW))
-        {
+        if input.named_key == Some(NamedKey::Escape) {
+            return Some(KeybindingMatch {
+                command: Command::FocusBack,
+                reason: "preview: Esc -> FocusBack",
+            });
+        }
+        if input.has_command_modifier() && input.physical_key == Some(KeyW) {
             return Some(KeybindingMatch {
                 command: Command::FocusEditor,
-                reason: "preview: Esc/Ctrl+W -> FocusEditor",
+                reason: "preview: Ctrl+W -> FocusEditor",
             });
         }
 
@@ -391,6 +395,16 @@ impl InputMap {
             return Some(KeybindingMatch {
                 command: Command::MarkdownPreviewScrollUp,
                 reason: "preview: k/up -> scroll up",
+            });
+        }
+
+        if !input.has_command_modifier()
+            && input.physical_key == Some(KeyG)
+            && input.modifiers.shift_key()
+        {
+            return Some(KeybindingMatch {
+                command: Command::MarkdownPreviewScrollBottom,
+                reason: "preview: G -> scroll bottom",
             });
         }
 
@@ -429,7 +443,7 @@ impl InputMap {
         )
     }
 
-    pub(super) fn resolve_bottom_panel_focus(
+    pub(super) fn resolve_help_focus(
         &self,
         input: &NormalizedInput,
     ) -> Option<KeybindingMatch> {
@@ -437,10 +451,70 @@ impl InputMap {
 
         if input.named_key == Some(NamedKey::Escape)
             || (input.has_command_modifier() && input.physical_key == Some(KeyW))
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyQ))
         {
             return Some(KeybindingMatch {
+                command: Command::BufferCloseCurrent,
+                reason: "help: Esc/q/Ctrl+W -> close help buffer",
+            });
+        }
+
+        if !input.has_command_modifier()
+            && (input.named_key == Some(NamedKey::ArrowDown) || input.physical_key == Some(KeyJ))
+        {
+            return Some(KeybindingMatch {
+                command: Command::HelpScrollDown,
+                reason: "help: j/down -> scroll down",
+            });
+        }
+        if !input.has_command_modifier()
+            && (input.named_key == Some(NamedKey::ArrowUp) || input.physical_key == Some(KeyK))
+        {
+            return Some(KeybindingMatch {
+                command: Command::HelpScrollUp,
+                reason: "help: k/up -> scroll up",
+            });
+        }
+
+        if input.modifiers.control_key() && !input.modifiers.super_key() && input.physical_key == Some(KeyD)
+        {
+            return Some(KeybindingMatch {
+                command: Command::HelpScrollHalfPageDown,
+                reason: "help: Ctrl+d -> scroll down half page",
+            });
+        }
+        if input.modifiers.control_key() && !input.modifiers.super_key() && input.physical_key == Some(KeyU)
+        {
+            return Some(KeybindingMatch {
+                command: Command::HelpScrollHalfPageUp,
+                reason: "help: Ctrl+u -> scroll up half page",
+            });
+        }
+
+        resolved_keymap::resolve_global_command(&self.keymap, input, &self.open_file_path).map(
+            |command| KeybindingMatch {
+                command,
+                reason: "help: global binding",
+            },
+        )
+    }
+
+    pub(super) fn resolve_bottom_panel_focus(
+        &self,
+        input: &NormalizedInput,
+    ) -> Option<KeybindingMatch> {
+        use KeyCode::*;
+
+        if input.named_key == Some(NamedKey::Escape) {
+            return Some(KeybindingMatch {
+                command: Command::FocusBack,
+                reason: "bottom: Esc -> FocusBack",
+            });
+        }
+        if input.has_command_modifier() && input.physical_key == Some(KeyW) {
+            return Some(KeybindingMatch {
                 command: Command::FocusEditor,
-                reason: "bottom: Esc/Ctrl+W -> FocusEditor",
+                reason: "bottom: Ctrl+W -> FocusEditor",
             });
         }
 
@@ -576,8 +650,7 @@ impl InputMap {
             }
         }
 
-        if welcome_visible
-            && palette_mode == Some(CommandPaletteMode::RecentProjects)
+        if palette_mode == Some(CommandPaletteMode::RecentProjects)
             && !input.has_command_modifier()
         {
             use KeyCode::*;
@@ -585,13 +658,13 @@ impl InputMap {
                 Some(KeyJ) => {
                     return Some(KeybindingMatch {
                         command: Command::OverlaySelectNext,
-                        reason: "welcome recent projects palette: j -> SelectNext",
+                        reason: "recent projects palette: j -> SelectNext",
                     });
                 }
                 Some(KeyK) => {
                     return Some(KeybindingMatch {
                         command: Command::OverlaySelectPrev,
-                        reason: "welcome recent projects palette: k -> SelectPrev",
+                        reason: "recent projects palette: k -> SelectPrev",
                     });
                 }
                 _ => {}
@@ -775,8 +848,8 @@ impl InputMap {
 
         if mode == EditorMode::TerminalFocus && input.named_key == Some(NamedKey::Escape) {
             return Some(KeybindingMatch {
-                command: Command::FocusEditor,
-                reason: "terminal focus: Esc -> FocusEditor",
+                command: Command::FocusBack,
+                reason: "terminal focus: Esc -> FocusBack",
             });
         }
         None

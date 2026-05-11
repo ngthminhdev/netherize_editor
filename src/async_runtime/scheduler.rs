@@ -19,7 +19,6 @@ mod emit;
 mod file_watch;
 mod fzf;
 mod git;
-mod local_history;
 mod lsp;
 mod lsp_io;
 mod lsp_parse;
@@ -31,8 +30,14 @@ mod tests;
 
 pub use runtime::AsyncScheduler;
 
-pub(super) const FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD: usize = 128 * 1024;
-pub(super) const FULL_BUFFER_HIGHLIGHT_LINE_THRESHOLD: usize = 1_500;
+/// When a file is below both thresholds the async worker highlights the full
+/// buffer (parse once, generate spans for everything).  Above the thresholds
+/// it switches to viewport-only: only the visible + overscan window is parsed
+/// and painted, avoiding O(file-size) per-frame work.
+///
+/// Matches INLINE_TREE_SITTER_* so the async path uses the same cutoff.
+pub(super) const FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD: usize = 32 * 1024;
+pub(super) const FULL_BUFFER_HIGHLIGHT_LINE_THRESHOLD: usize = 300;
 pub(super) const VIEWPORT_HIGHLIGHT_OVERSCAN_MULTIPLIER: usize = 3;
 pub(super) const VIEWPORT_HIGHLIGHT_MIN_OVERSCAN_LINES: usize = 48;
 pub(super) const FILE_WATCH_BATCH_WINDOW: Duration = Duration::from_millis(50);
@@ -40,8 +45,10 @@ pub(super) const LSP_HOVER_TIMEOUT_SECS: u64 = 10;
 pub(super) const LSP_DEFINITION_TIMEOUT_SECS: u64 = 10;
 pub(super) const LSP_REFERENCES_TIMEOUT_SECS: u64 = 15;
 pub(super) const LSP_COMPLETION_TIMEOUT_SECS: u64 = 10;
+pub(super) const LSP_COMPLETION_RESOLVE_TIMEOUT_SECS: u64 = 5;
 pub(super) const LSP_FORMATTING_TIMEOUT_SECS: u64 = 15;
 pub(super) const LSP_DOCUMENT_SYMBOLS_TIMEOUT_SECS: u64 = 10;
+pub(super) const LSP_CODE_ACTION_TIMEOUT_SECS: u64 = 10;
 
 pub(super) type SyntaxEngineCache = Mutex<HashMap<PathBuf, SyntaxEngine>>;
 
