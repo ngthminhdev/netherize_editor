@@ -410,6 +410,12 @@ pub enum Command {
     /// From Visual mode: select ALL occurrences of the visual selection and
     /// enter MultiCursor mode with a cursor on each match simultaneously.
     MultiCursorSelectAll,
+
+    // ── Code folding ─────────────────────────────────────────────────────────
+    /// Toggle fold/unfold the scope at the cursor line (Vim `za`).
+    ToggleFold,
+    /// Toggle fold all / unfold all scopes in the current file (Vim `zA`).
+    ToggleFoldAll,
 }
 
 impl Command {

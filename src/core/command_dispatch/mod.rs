@@ -378,6 +378,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::HelpScrollUp
         | Command::HelpScrollHalfPageDown
         | Command::HelpScrollHalfPageUp => session::dispatch(&mut ctx, command),
+        Command::ToggleFold | Command::ToggleFoldAll => session::dispatch(&mut ctx, command),
         Command::ReloadWorkspace => DispatchReport::success(
             "Dispatch: reload workspace routed to event loop".to_string(),
             false,

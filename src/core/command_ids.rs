@@ -168,6 +168,10 @@ pub const MULTI_CURSOR_CHANGE: &str = "multicursor.change";
 pub const MULTI_CURSOR_DELETE: &str = "multicursor.delete";
 pub const MULTI_CURSOR_SELECT_ALL: &str = "multicursor.select_all";
 
+// ── Code folding ────────────────────────────────────────────────────────────
+pub const TOGGLE_FOLD: &str = "editor.toggle_fold";
+pub const TOGGLE_FOLD_ALL: &str = "editor.toggle_fold_all";
+
 // ── Markdown Preview ─────────────────────────────────────────────────────────
 pub const TOGGLE_MARKDOWN_PREVIEW: &str = "app.toggle_markdown_preview";
 pub const FOCUS_MARKDOWN_PREVIEW: &str = "app.focus_markdown_preview";
@@ -447,6 +451,8 @@ pub const ALL_IDS: &[&str] = &[
     HELP_SCROLL_HALF_PAGE_DOWN,
     HELP_SCROLL_HALF_PAGE_UP,
     TOGGLE_MAXIMIZE_FOCUS,
+    TOGGLE_FOLD,
+    TOGGLE_FOLD_ALL,
 ];
 
 pub fn is_valid(id: &str) -> bool {
@@ -664,6 +670,8 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         HELP_SCROLL_HALF_PAGE_DOWN => Some(Command::HelpScrollHalfPageDown),
         HELP_SCROLL_HALF_PAGE_UP => Some(Command::HelpScrollHalfPageUp),
         TOGGLE_MAXIMIZE_FOCUS => Some(Command::ToggleMaximizeFocus),
+        TOGGLE_FOLD => Some(Command::ToggleFold),
+        TOGGLE_FOLD_ALL => Some(Command::ToggleFoldAll),
         _ => None,
     }
 }

@@ -48,6 +48,35 @@ mod tests {
     }
 
     #[test]
+    fn folded_ranges_hide_lines_after_marker_through_end_line() {
+        let mut state = AppState::from_text(unique_temp_path("fold_map"), "a\nb\nc\nd\ne");
+        state.folded_ranges = vec![(1, 3)];
+
+        assert!(!state.is_line_folded(1));
+        assert!(state.is_line_folded(2));
+        assert!(state.is_line_folded(3));
+        assert_eq!(state.folded_line_count_at_marker(1), Some(2));
+        assert_eq!(state.compute_visible_line_map(), vec![0, 1, 4]);
+        assert_eq!(state.visible_line_count(), 3);
+        assert_eq!(state.logical_to_visible_line(1), Some(1));
+        assert_eq!(state.logical_to_visible_line(2), None);
+        assert_eq!(state.logical_to_visible_line(4), Some(2));
+    }
+
+    #[test]
+    fn vertical_movement_skips_folded_hidden_lines() {
+        let mut state = AppState::from_text(unique_temp_path("fold_move"), "a\nb\nc\nd\ne");
+        state.folded_ranges = vec![(1, 3)];
+        assert!(state.jump_to_line(1));
+
+        state.move_down();
+        assert_eq!(state.cursor_line_col(), (4, 0));
+
+        state.move_up();
+        assert_eq!(state.cursor_line_col(), (1, 0));
+    }
+
+    #[test]
     fn text_edits_record_highlight_byte_deltas() {
         let mut state = AppState::from_text(unique_temp_path("scratch"), "");
 
@@ -1336,7 +1365,10 @@ mod tests {
         state.insert_char('v');
         state.insert_char('>');
         let closed = state.insert_html_auto_close_tag();
-        assert!(!closed, "closing tag sequence should not trigger auto-close");
+        assert!(
+            !closed,
+            "closing tag sequence should not trigger auto-close"
+        );
     }
 
     #[test]
@@ -1379,8 +1411,7 @@ mod tests {
         // Actually "foo bar foo" → delete [8,11) first: "foo bar " → delete [0,3): " bar "
         // Primary cursor should be at 0 (start of where first "foo" was).
         assert_eq!(
-            state.cursor_char_idx,
-            0,
+            state.cursor_char_idx, 0,
             "primary cursor must be at position 0 after deleting first 'foo'"
         );
 
@@ -1454,7 +1485,11 @@ mod tests {
         let mut state_i = state.clone();
         assert!(state_i.multi_cursor_insert_before());
         assert_eq!(state_i.cursor_char_idx, 0, "I: primary at sel start");
-        assert_eq!(state_i.virtual_cursors()[0].char_idx, 8, "I: vc at its sel start");
+        assert_eq!(
+            state_i.virtual_cursors()[0].char_idx,
+            8,
+            "I: vc at its sel start"
+        );
         assert_eq!(state_i.current_mode(), EditorMode::MultiInsert);
 
         // Test `A`
@@ -1463,7 +1498,11 @@ mod tests {
         // primary: anchor=0, cursor=2 → end = max(0,2)+1 = 3
         assert_eq!(state_a.cursor_char_idx, 3, "A: primary at sel end");
         // vc: sel_end = 11 → char_idx = 11
-        assert_eq!(state_a.virtual_cursors()[0].char_idx, 11, "A: vc at its sel end");
+        assert_eq!(
+            state_a.virtual_cursors()[0].char_idx,
+            11,
+            "A: vc at its sel end"
+        );
         assert_eq!(state_a.current_mode(), EditorMode::MultiInsert);
     }
 }

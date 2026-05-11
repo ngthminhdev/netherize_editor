@@ -430,10 +430,10 @@ Justfile = ""
 
 [syntax]
 # ── Lõi ngôn ngữ (Core) ──
-# Keywords like `fn`, `let`, `match`.
-keyword = "#EACD61"
-# Operators such as `=`, `+`, `&&`, `->`.
-operator = "#afbbd2"
+# Keywords like `fn`, `let`, `match`, `const`, `if`, `return`, `async`.
+keyword = "#EACD61"       # Gold (Default Dark identity)
+# Operators such as `=`, `+`, `&&`, `->`, `!`, `??`.
+operator = "#afbbd2"      # Blue-gray (Default Dark palette)
 # Punctuation such as commas, braces, and separators.
 punctuation = "#8196b5"
 
@@ -443,31 +443,31 @@ string = "#3CEC85"
 # Numeric literals.
 number = "#E35535"
 # Boolean literals (true/false).
-boolean = "#FF955C"       # [MỚI] Dùng màu Cam Peach đồng bộ với constant
+boolean = "#FF955C"
 # Escape sequences inside strings (e.g., \n, \t).
-escape = "#E35535"        # [MỚI] Dùng màu Đỏ Cam (tương phản cực tốt trên nền string xanh lá #3CEC85)
+escape = "#E35535"
 
 # ── Định danh (Identifiers) ──
 # Plain variable names that do not fall into a richer semantic bucket.
-identifier = "#d0d7e4"
-# Local variables.
-variable = "#d0d7e4"      # [MỚI] Cùng tone với identifier, giữ code base không bị "loè loẹt"
+identifier = "#d0d7e4"    # Foreground (cho variable references)
+# Local variables (const, let, var).
+variable = "#22ECDB"      # Cyan (khác với identifier #d0d7e4)
 # Function names and callable symbols.
-function = "#69C3FF"
+function = "#69C3FF"      # Blue (Default Dark palette)
 # Macro invocation highlight.
 macro = "#69C3FF"
 # Function and closure parameters.
-parameter = "#22ECDB"
+parameter = "#22ECDB"     # Cyan (Default Dark palette)
 
 # ── Hướng đối tượng & Cấu trúc (OOP & Structs) ──
 # Type names.
 type = "#B78AFF"
 # Constructor functions (e.g., String::new).
-constructor = "#B78AFF"   # [MỚI] Đồng màu với Type để phân biệt rõ hàm khởi tạo với hàm thông thường
-# Struct field declarations and member access like `self.name`.
-field = "#69C3FF"
+constructor = "#B78AFF"
+# Struct field declarations and member access like `self.name`, `obj.property`.
+field = "#69C3FF"         # Blue (Default Dark palette)
 # Struct literal property labels like `Demo { name: value }`.
-property = "#d0d7e4"
+property = "#69C3FF"      # Blue (đồng bộ với field)
 # Named constants such as `MAX_SIZE`.
 constant = "#FF955C"
 
@@ -477,8 +477,8 @@ comment = "#4a5e84"
 # Decorators and attributes like `#[derive(Debug)]` or `@Controller`.
 attribute = "#EACD61"     # [MỚI] Dùng màu Vàng Gold giống keyword để làm nổi bật các annotation
 # Module namespaces (e.g., `std::` in Rust).
-namespace = "#B78AFF"     # [MỚI] Dùng màu Tím giống type để tách biệt các crate/module khỏi biến thông thường
+namespace = "#B78AFF"
 # Rust lifetime highlight.
 lifetime = "#FF955C"
 # HTML/XML/JSX Tags.
-tag = "#69C3FF"           # [MỚI] Dùng màu Xanh Blue giống function cho các thẻ tag
+tag = "#4A9EFF"           # Deep Blue (đồng bộ function)

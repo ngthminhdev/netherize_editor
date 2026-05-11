@@ -84,54 +84,54 @@ status_bar_height = 32.0
 [syntax]
 # ── Lõi ngôn ngữ (Core) ──
 # Keywords like `fn`, `let`, `match`.
-keyword = "#D99A4E"
+keyword = "#d99a4e"       # Gold (Sakura identity)
 # Operators such as `=`, `+`, `&&`, `->`.
-operator = "#6F5F69"
+operator = "#d99a4e"      # Gold (Sakura palette)
 # Punctuation such as commas, braces, and separators.
-punctuation = "#D96C9F"
+punctuation = "#d96c9f"
 
 # ── Giá trị (Literals) ──
 # String literals.
-string = "#5FA58D"
+string = "#5fa58d"
 # Numeric literals.
-number = "#D85C5C"
+number = "#d85c5c"
 # Boolean literals (true/false).
-boolean = "#D9826B"       # [MỚI] Dùng màu Cam Peach đồng bộ với constant
+boolean = "#d9826b"
 # Escape sequences inside strings (e.g., \n, \t).
-escape = "#D85C5C"        # [MỚI] Dùng màu Đỏ Cam (tương phản cực tốt trên nền string xanh lá #5FA58D)
+escape = "#d85c5c"
 
 # ── Định danh (Identifiers) ──
 # Plain variable names that do not fall into a richer semantic bucket.
-identifier = "#4A3F46"
+identifier = "#4a3f46"    # Foreground (cho variable references)
 # Local variables.
-variable = "#4A3F46"      # [MỚI] Cùng tone với identifier, giữ code base không bị "loè loẹt"
+variable = "#d96c9f"      # Rose Pink (khác với identifier #4a3f46)
 # Function names and callable symbols.
-function = "#7A8FD9"
+function = "#7a8fd9"
 # Macro invocation highlight.
-macro = "#7A8FD9"
+macro = "#7a8fd9"
 # Function and closure parameters.
-parameter = "#D96C9F"
+parameter = "#d96c9f"     # Rose Pink (Sakura palette)
 
 # ── Hướng đối tượng & Cấu trúc (OOP & Structs) ──
 # Type names.
-type = "#B76FD3"
+type = "#b76fd3"
 # Constructor functions (e.g., String::new).
-constructor = "#B76FD3"   # [MỚI] Đồng màu với Type để phân biệt rõ hàm khởi tạo với hàm thông thường
+constructor = "#b76fd3"
 # Struct field declarations and member access like `self.name`.
-field = "#7A8FD9"
+field = "#7a8fd9"         # Blue (Sakura palette)
 # Struct literal property labels like `Demo { name: value }`.
-property = "#4A3F46"
+property = "#7a8fd9"      # Blue (đồng bộ với field)
 # Named constants such as `MAX_SIZE`.
-constant = "#D9826B"
+constant = "#d9826b"
 
 # ── Đặc tả ngôn ngữ (Language-specific) ──
 # Comments and muted inline docs.
-comment = "#B79AAA"
+comment = "#b79aaa"
 # Decorators and attributes like `#[derive(Debug)]` or `@Controller`.
-attribute = "#D99A4E"     # [MỚI] Dùng màu Vàng Gold giống keyword để làm nổi bật các annotation
+attribute = "#d99a4e"     # Gold (đồng bộ keyword)
 # Module namespaces (e.g., `std::` in Rust).
-namespace = "#B76FD3"     # [MỚI] Dùng màu Tím giống type để tách biệt các crate/module khỏi biến thông thường
+namespace = "#b76fd3"
 # Rust lifetime highlight.
-lifetime = "#D9826B"
+lifetime = "#d9826b"
 # HTML/XML/JSX Tags.
-tag = "#7A8FD9"           # [MỚI] Dùng màu Xanh Blue giống function cho các thẻ tag
+tag = "#7a8fd9"

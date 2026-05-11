@@ -84,9 +84,9 @@ status_bar_height = 32.0
 [syntax]
 # ── Lõi ngôn ngữ (Core) ──
 # Keywords like `fn`, `let`, `match`.
-keyword = "#f6c177"
+keyword = "#f6c177"       # Gold (Rosé Pine identity)
 # Operators such as `=`, `+`, `&&`, `->`.
-operator = "#908caa"
+operator = "#f6c177"      # Gold (Rosé Pine palette)
 # Punctuation such as commas, braces, and separators.
 punctuation = "#908caa"
 
@@ -96,31 +96,31 @@ string = "#31748f"
 # Numeric literals.
 number = "#eb6f92"
 # Boolean literals (true/false).
-boolean = "#ebbcba"       # [MỚI] Dùng màu Cam Peach đồng bộ với constant
+boolean = "#ebbcba"
 # Escape sequences inside strings (e.g., \n, \t).
-escape = "#eb6f92"        # [MỚI] Dùng màu Đỏ Cam (tương phản cực tốt trên nền string xanh lá #31748f)
+escape = "#eb6f92"
 
 # ── Định danh (Identifiers) ──
 # Plain variable names that do not fall into a richer semantic bucket.
-identifier = "#e0def4"
+identifier = "#e0def4"    # Foreground (cho variable references)
 # Local variables.
-variable = "#e0def4"      # [MỚI] Cùng tone với identifier, giữ code base không bị "loè loẹt"
+variable = "#c4a7e7"      # Iris (khác với identifier #e0def4)
 # Function names and callable symbols.
 function = "#9ccfd8"
 # Macro invocation highlight.
 macro = "#9ccfd8"
 # Function and closure parameters.
-parameter = "#9ccfd8"
+parameter = "#ebbcba"     # Peach (Rosé Pine palette)
 
 # ── Hướng đối tượng & Cấu trúc (OOP & Structs) ──
 # Type names.
 type = "#c4a7e7"
 # Constructor functions (e.g., String::new).
-constructor = "#c4a7e7"   # [MỚI] Đồng màu với Type để phân biệt rõ hàm khởi tạo với hàm thông thường
+constructor = "#c4a7e7"
 # Struct field declarations and member access like `self.name`.
-field = "#9ccfd8"
+field = "#9ccfd8"         # Foam (Rosé Pine palette)
 # Struct literal property labels like `Demo { name: value }`.
-property = "#e0def4"
+property = "#9ccfd8"      # Foam (đồng bộ với field)
 # Named constants such as `MAX_SIZE`.
 constant = "#ebbcba"
 
@@ -128,10 +128,10 @@ constant = "#ebbcba"
 # Comments and muted inline docs.
 comment = "#6e6a86"
 # Decorators and attributes like `#[derive(Debug)]` or `@Controller`.
-attribute = "#f6c177"     # [MỚI] Dùng màu Vàng Gold giống keyword để làm nổi bật các annotation
+attribute = "#f6c177"     # Gold (đồng bộ keyword)
 # Module namespaces (e.g., `std::` in Rust).
-namespace = "#c4a7e7"     # [MỚI] Dùng màu Tím giống type để tách biệt các crate/module khỏi biến thông thường
+namespace = "#c4a7e7"
 # Rust lifetime highlight.
 lifetime = "#ebbcba"
 # HTML/XML/JSX Tags.
-tag = "#9ccfd8"           # [MỚI] Dùng màu Xanh Blue giống function cho các thẻ tag
+tag = "#9ccfd8"

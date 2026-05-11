@@ -77,7 +77,7 @@ status_bar_height = 32.0
 
 [syntax]
 # Keywords like `fn`, `let`, `match`.
-keyword = "#e2ae10"
+keyword = "#e2ae10"       # Gold (Solarized identity)
 # String literals.
 string = "#a5b82e"
 # Function names and callable symbols.
@@ -89,17 +89,17 @@ type = "#858bf7"
 # Numeric literals.
 number = "#f45645"
 # Plain variable names that do not fall into a richer semantic bucket.
-identifier = "#c3e0e9"
+identifier = "#c3e0e9"    # Foreground (cho variable references)
 # Function and closure parameters.
-parameter = "#df96d9"
+parameter = "#df96d9"     # Magenta (Solarized palette)
 # Struct field declarations and member access like `self.name`.
-field = "#c3e0e9"
+field = "#47cfc4"         # Cyan (Solarized palette)
 # Struct literal property labels like `Demo { name: value }`.
-property = "#c3e0e9"
+property = "#47cfc4"      # Cyan (đồng bộ với field)
 # Named constants such as `MAX_SIZE` and boolean literals.
 constant = "#f45645"
 # Operators such as `=`, `+`, `&&`, `->`.
-operator = "#e2ae10"
+operator = "#e2ae10"      # Gold (Solarized palette)
 # Punctuation such as commas, braces, and separators.
 punctuation = "#c3e0e966"
 # Macro invocation highlight.
@@ -111,11 +111,11 @@ boolean = "#FF955C"
 # Escape sequences inside strings/chars.
 escape = "#FF955C"
 # Local variables and bindings.
-variable = "#d0d7e4"
+variable = "#df96d9"      # Magenta (khác với identifier #c3e0e9)
 # Constructors, enum variants, and nominal type definitions.
 constructor = "#B78AFF"
 # Attributes/annotations.
-attribute = "#EACD61"
+attribute = "#e2ae10"     # Gold (đồng bộ keyword)
 # Module/namespace qualifiers.
 namespace = "#B78AFF"
 # Markup/JSX-style tags.

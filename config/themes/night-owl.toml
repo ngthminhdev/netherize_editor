@@ -83,55 +83,55 @@ status_bar_height = 32.0
 
 [syntax]
 # ── Lõi ngôn ngữ (Core) ──
-# Keywords like `fn`, `let`, `match`.
-keyword = "#C792EA"
-# Operators such as `=`, `+`, `&&`, `->`.
-operator = "#7FDBCA"
+# Keywords like `fn`, `let`, `match`, `const`, `if`, `return`, `async`.
+keyword = "#c792ea"       # Magenta (Night Owl identity)
+# Operators such as `=`, `+`, `&&`, `->`, `!`, `??`.
+operator = "#7fdbca"      # Cyan (Night Owl palette)
 # Punctuation such as commas, braces, and separators.
-punctuation = "#D6DEEB"
+punctuation = "#d6deeb"
 
 # ── Giá trị (Literals) ──
 # String literals.
-string = "#ECC48D"
+string = "#ecc48d"
 # Numeric literals.
-number = "#F78C6C"
+number = "#f78c6c"
 # Boolean literals (true/false).
-boolean = "#FF5874"       # [MỚI] Dùng màu hồng đỏ Night Owl cho boolean/constant nổi bật
+boolean = "#ff5874"
 # Escape sequences inside strings (e.g., \n, \t).
-escape = "#ADDB67"        # [MỚI] Dùng màu xanh lá Night Owl để tách escape khỏi string vàng
+escape = "#addb67"
 
 # ── Định danh (Identifiers) ──
 # Plain variable names that do not fall into a richer semantic bucket.
-identifier = "#D6DEEB"
-# Local variables.
-variable = "#D6DEEB"      # [MỚI] Cùng tone với identifier, giữ code base không bị "loè loẹt"
+identifier = "#d6deeb"    # Foreground (cho variable references)
+# Local variables (const, let, var).
+variable = "#c792ea"      # Magenta (khác với identifier #d6deeb)
 # Function names and callable symbols.
-function = "#82AAFF"
+function = "#82aaff"
 # Macro invocation highlight.
-macro = "#82AAFF"
+macro = "#82aaff"
 # Function and closure parameters.
-parameter = "#7FDBCA"
+parameter = "#7fdbca"     # Cyan (Night Owl palette)
 
 # ── Hướng đối tượng & Cấu trúc (OOP & Structs) ──
 # Type names.
-type = "#FFCB8B"
+type = "#ffcb8b"
 # Constructor functions (e.g., String::new).
-constructor = "#FFCB8B"   # [MỚI] Đồng màu với Type để phân biệt rõ hàm khởi tạo với hàm thông thường
-# Struct field declarations and member access like `self.name`.
-field = "#ADDB67"
+constructor = "#ffcb8b"
+# Struct field declarations and member access like `self.name`, `obj.property`.
+field = "#80cbc4"         # Teal (Night Owl palette)
 # Struct literal property labels like `Demo { name: value }`.
-property = "#80CBC4"
+property = "#80cbc4"      # Teal (đồng bộ với field)
 # Named constants such as `MAX_SIZE`.
-constant = "#FFCB8B"
+constant = "#ffcb8b"
 
 # ── Đặc tả ngôn ngữ (Language-specific) ──
 # Comments and muted inline docs.
 comment = "#637777"
 # Decorators and attributes like `#[derive(Debug)]` or `@Controller`.
-attribute = "#C792EA"     # [MỚI] Dùng màu tím Night Owl giống keyword để làm nổi bật annotation
+attribute = "#c792ea"     # Magenta (đồng bộ keyword)
 # Module namespaces (e.g., `std::` in Rust).
-namespace = "#82AAFF"     # [MỚI] Dùng màu xanh Night Owl để tách biệt crate/module khỏi biến thông thường
+namespace = "#82aaff"
 # Rust lifetime highlight.
-lifetime = "#FFCB8B"
+lifetime = "#ffcb8b"
 # HTML/XML/JSX Tags.
-tag = "#7FDBCA"           # [MỚI] Dùng màu cyan Night Owl cho các thẻ tag
+tag = "#82aaff"

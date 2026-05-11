@@ -13,8 +13,8 @@ use crate::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
     text::layout_sync::{
-        compute_caret_layout, compute_caret_layout_at, compute_cursor_overlay,
-        rebuild_layout_projection, visual_y_for_logical_scroll,
+        compute_caret_layout_at_with_folds, compute_caret_layout_with_folds,
+        compute_cursor_overlay, rebuild_layout_projection, visual_y_for_logical_scroll_with_folds,
     },
 };
 use cosmic_text::Metrics;
@@ -182,8 +182,11 @@ impl Renderer {
             self.text_system.set_size(Some(width), None);
         }
 
-        let visual_scroll_y =
-            visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y.max(0.0));
+        let visual_scroll_y = visual_y_for_logical_scroll_with_folds(
+            &self.text_system,
+            app_state.current_scroll_y.max(0.0),
+            app_state.folded_ranges(),
+        );
         let corrected_origin_y =
             center_bounds[1] + self.editor_padding_y + geometry.line_height - visual_scroll_y;
 
@@ -268,7 +271,7 @@ impl Renderer {
             center_bounds,
             geometry.line_height,
             geometry.font_size,
-            app_state.total_lines().max(1).to_string().len().max(3),
+            app_state.visible_line_count().max(1).to_string().len().max(3),
             geometry.gutter_width,
         );
     }
@@ -285,15 +288,19 @@ impl Renderer {
 
         // The text_system buffer is already shaped from the last update_editor_content call.
         // Use it to compute the correct visual scroll Y (accounts for wrapped long lines).
-        let visual_scroll_y =
-            visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y.max(0.0));
+        let visual_scroll_y = visual_y_for_logical_scroll_with_folds(
+            &self.text_system,
+            app_state.current_scroll_y.max(0.0),
+            app_state.folded_ranges(),
+        );
         let corrected_origin_y =
             center_bounds[1] + self.editor_padding_y + geometry.line_height - visual_scroll_y;
 
-        let caret_layout = compute_caret_layout(
+        let caret_layout = compute_caret_layout_with_folds(
             &self.text_system,
             app_state,
             [geometry.origin_x, corrected_origin_y],
+            app_state.folded_ranges(),
         );
         let primary_caret = caret_rect_for_mode(
             caret_layout,
@@ -327,6 +334,7 @@ impl Renderer {
                 &self.queue,
                 [geometry.origin_x, corrected_origin_y],
                 self.theme.editor.bg.as_f32(),
+                app_state.folded_ranges(),
             )
             .unwrap_or(None)
         } else {
@@ -344,7 +352,7 @@ impl Renderer {
             center_bounds,
             geometry.line_height,
             geometry.font_size,
-            app_state.total_lines().max(1).to_string().len().max(3),
+            app_state.visible_line_count().max(1).to_string().len().max(3),
             geometry.gutter_width,
         );
     }
@@ -365,7 +373,12 @@ impl Renderer {
         };
         const MAX_INLINE_SUGGESTION_LINES: usize = 6;
 
-        let caret = compute_caret_layout(&self.text_system, app_state, [origin_x, origin_y]);
+        let caret = compute_caret_layout_with_folds(
+            &self.text_system,
+            app_state,
+            [origin_x, origin_y],
+            app_state.folded_ranges(),
+        );
         let line_height = self.theme.editor.line_height.max(1.0);
         let color =
             crate::config::theme_config::linear_rgba_to_srgb_u8(self.theme.ui.fg_ghost.as_f32());
@@ -487,11 +500,16 @@ fn build_caret_rects(
     for vc in app_state.virtual_cursors() {
         let (line_idx, byte_in_line) =
             app_state.char_idx_to_line_and_byte_in_line(vc.char_idx);
-        let layout = compute_caret_layout_at(
+        let line_hidden = app_state.is_line_folded(line_idx);
+        if line_hidden {
+            continue;
+        }
+        let layout = compute_caret_layout_at_with_folds(
             text_system,
             line_idx,
             byte_in_line,
             viewport_origin,
+            app_state.folded_ranges(),
         );
         let rect = caret_rect_for_mode(
             layout,

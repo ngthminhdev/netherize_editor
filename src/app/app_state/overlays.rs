@@ -290,6 +290,11 @@ impl AppState {
         let insert_at = index.min(self.text.len_chars());
         self.text.insert(insert_at, text);
         let _ = self.refresh_active_search_highlights();
+
+        // Clear folded ranges when text is modified to prevent corruption
+        if !self.folded_ranges.is_empty() {
+            self.folded_ranges.clear();
+        }
     }
 
     pub(super) fn apply_delete_raw(&mut self, index: usize, len_chars: usize) -> Option<String> {
@@ -305,6 +310,12 @@ impl AppState {
         let deleted = self.text.slice(index..end).to_string();
         self.text.remove(index..end);
         let _ = self.refresh_active_search_highlights();
+
+        // Clear folded ranges when text is modified to prevent corruption
+        if !self.folded_ranges.is_empty() {
+            self.folded_ranges.clear();
+        }
+
         Some(deleted)
     }
 

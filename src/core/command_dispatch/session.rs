@@ -172,6 +172,29 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             true,
             false,
         ),
+        Command::ToggleFold => {
+            let (cursor_line, _) = ctx.app_state.cursor_line_col();
+            let changed = ctx.app_state.toggle_fold_at_line(cursor_line);
+            DispatchReport::success(
+                if changed {
+                    format!("Dispatch: toggled fold at line {cursor_line}")
+                } else {
+                    format!("Dispatch: no foldable scope at line {cursor_line}")
+                },
+                changed,
+            )
+        }
+        Command::ToggleFoldAll => {
+            let changed = ctx.app_state.toggle_fold_all();
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: toggled fold all".to_string()
+                } else {
+                    "Dispatch: no foldable ranges".to_string()
+                },
+                changed,
+            )
+        }
         Command::SwitchMode(event) => match ctx.app_state.apply_mode_event(event) {
             Ok(result) => {
                 let mut changed = result.changed;

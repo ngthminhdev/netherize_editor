@@ -50,25 +50,25 @@ status_bar_height = 32.0
 
 
 [syntax]
-keyword = "#BB9AF7"
+keyword = "#BB9AF7"       # Purple (Tokyo Night identity)
 string = "#9ECE6A"
 function = "#7AA2F7"
 comment = "#565F89"
 type = "#2AC3DE"
 number = "#FF9E64"
-identifier = "#C0CAF5"
-parameter = "#E0AF68"
-field = "#7DCFFF"
-property = "#7DCFFF"
+identifier = "#C0CAF5"    # Foreground color (cho variable references)
+parameter = "#E0AF68"     # Amber (Tokyo Night palette)
+field = "#7DCFFF"         # Cyan (Tokyo Night palette)
+property = "#7DCFFF"      # Cyan (đồng bộ với field)
 constant = "#BB9AF7"
-operator = "#89DDFF"
+operator = "#E0AF68"      # Amber (Tokyo Night palette)
 punctuation = "#C0CAF5"
 macro = "#7DCFFF"
 lifetime = "#E0AF68"
 boolean = "#FF9E64"
 escape = "#FF9E64"
-variable = "#C0CAF5"
+variable = "#BB9AF7"      # Purple (khác với identifier #C0CAF5)
 constructor = "#BB9AF7"
-attribute = "#E0AF68"
+attribute = "#BB9AF7"     # Purple (đồng bộ keyword)
 namespace = "#7AA2F7"
-tag = "#F7768E"
+tag = "#7AA2F7"

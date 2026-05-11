@@ -55,11 +55,12 @@ pub fn rebuild_layout_projection(
     let (cursor_line, _) = app_state.cursor_line_col();
     let cursor_byte_in_line = app_state.cursor_byte_in_line();
 
-    let visible_glyphs = text_system.collect_visible_glyphs(
+    let visible_glyphs = text_system.collect_visible_glyphs_with_folds(
         viewport_origin[0],
         viewport_origin[1],
         text_color,
         viewport_clip,
+        app_state.folded_ranges(),
     );
     let mut glyph_instances = Vec::with_capacity(visible_glyphs.len());
     let mut cursor_overlay: Option<GlyphInstance> = None;
@@ -114,7 +115,12 @@ pub fn rebuild_layout_projection(
 
     atlas.flush_pending(queue);
 
-    let caret_layout = compute_caret_layout(text_system, app_state, viewport_origin);
+    let caret_layout = compute_caret_layout_with_folds(
+        text_system,
+        app_state,
+        viewport_origin,
+        app_state.folded_ranges(),
+    );
     Ok(LayoutProjection {
         glyph_instances,
         cursor_overlay,
@@ -133,12 +139,19 @@ pub fn compute_cursor_overlay(
     queue: &wgpu::Queue,
     viewport_origin: [f32; 2],
     overlay_color: [f32; 4],
+    folded_ranges: &[(usize, usize)],
 ) -> Result<Option<GlyphInstance>, String> {
     let (cursor_line, _) = app_state.cursor_line_col();
     let cursor_byte_in_line = app_state.cursor_byte_in_line();
 
     let target = text_system
-        .collect_visible_glyphs(viewport_origin[0], viewport_origin[1], overlay_color, None)
+        .collect_visible_glyphs_with_folds(
+            viewport_origin[0],
+            viewport_origin[1],
+            overlay_color,
+            None,
+            folded_ranges,
+        )
         .into_iter()
         .find(|g| {
             g.line_i == cursor_line
@@ -188,14 +201,27 @@ pub fn compute_cursor_overlay(
 /// `logical_scroll` is the same `app_state.current_scroll_y` value (may be fractional
 /// for smooth scrolling).  Returns 0.0 if the buffer has not been shaped yet.
 pub fn visual_y_for_logical_scroll(text_system: &TextSystem, logical_scroll: f32) -> f32 {
+    visual_y_for_logical_scroll_with_folds(text_system, logical_scroll, &[])
+}
+
+pub fn visual_y_for_logical_scroll_with_folds(
+    text_system: &TextSystem,
+    logical_scroll: f32,
+    folded_ranges: &[(usize, usize)],
+) -> f32 {
     if logical_scroll <= 0.0 {
         return 0.0;
     }
-    let target_line = logical_scroll.floor() as usize;
+    let mut target_line = logical_scroll.floor() as usize;
     let frac = logical_scroll.fract();
+    if let Some(marker_line) = fold_marker_line_for_hidden_line(target_line, folded_ranges) {
+        target_line = marker_line;
+    }
     for run in text_system.buffer().layout_runs() {
         if run.line_i == target_line {
-            return run.line_top + frac * run.line_height;
+            return run.line_top
+                - folded_visual_y_offset_before(run.line_i, run.line_height, folded_ranges)
+                + frac * run.line_height;
         }
     }
     // Scroll is past the last shaped line — clamp to the buffer bottom.
@@ -214,10 +240,25 @@ pub fn compute_caret_layout(
     app_state: &AppState,
     viewport_origin: [f32; 2],
 ) -> CaretLayout {
-    let (target_line, _) = app_state.cursor_line_col();
+    compute_caret_layout_with_folds(text_system, app_state, viewport_origin, &[])
+}
+
+pub fn compute_caret_layout_with_folds(
+    text_system: &TextSystem,
+    app_state: &AppState,
+    viewport_origin: [f32; 2],
+    folded_ranges: &[(usize, usize)],
+) -> CaretLayout {
+    let (raw_target_line, _) = app_state.cursor_line_col();
+    let hidden_marker = fold_marker_line_for_hidden_line(raw_target_line, folded_ranges);
+    let target_line = hidden_marker.unwrap_or(raw_target_line);
     // glyph.start/end ở run hiện tại là offset theo line text, không phải toàn buffer.
     // Vì vậy caret cũng phải so theo byte offset trong line.
-    let cursor_byte_in_line = app_state.cursor_byte_in_line();
+    let cursor_byte_in_line = if hidden_marker.is_some() {
+        0
+    } else {
+        app_state.cursor_byte_in_line()
+    };
 
     let metrics_line_height = text_system.buffer().metrics().line_height.max(1.0);
     let default_glyph_width = (metrics_line_height * 0.5).max(1.0);
@@ -230,9 +271,15 @@ pub fn compute_caret_layout(
     };
 
     for run in text_system.buffer().layout_runs() {
+        if is_line_hidden_by_fold(run.line_i, folded_ranges) {
+            continue;
+        }
+        let line_top = run.line_top
+            - folded_visual_y_offset_before(run.line_i, run.line_height, folded_ranges);
+
         fallback = CaretLayout {
             x: viewport_origin[0] + run.line_w,
-            top: viewport_origin[1] + run.line_top,
+            top: viewport_origin[1] + line_top,
             height: run.line_height.max(1.0),
             glyph_width: default_glyph_width,
         };
@@ -244,7 +291,7 @@ pub fn compute_caret_layout(
         if run.glyphs.is_empty() {
             return CaretLayout {
                 x: viewport_origin[0],
-                top: viewport_origin[1] + run.line_top,
+                top: viewport_origin[1] + line_top,
                 height: run.line_height.max(1.0),
                 glyph_width: default_glyph_width,
             };
@@ -277,7 +324,7 @@ pub fn compute_caret_layout(
 
         return CaretLayout {
             x: caret_x,
-            top: viewport_origin[1] + run.line_top,
+            top: viewport_origin[1] + line_top,
             height: run.line_height.max(1.0),
             glyph_width: caret_glyph_width,
         };
@@ -294,6 +341,29 @@ pub fn compute_caret_layout_at(
     cursor_byte_in_line: usize,
     viewport_origin: [f32; 2],
 ) -> CaretLayout {
+    compute_caret_layout_at_with_folds(
+        text_system,
+        target_line,
+        cursor_byte_in_line,
+        viewport_origin,
+        &[],
+    )
+}
+
+pub fn compute_caret_layout_at_with_folds(
+    text_system: &TextSystem,
+    target_line: usize,
+    cursor_byte_in_line: usize,
+    viewport_origin: [f32; 2],
+    folded_ranges: &[(usize, usize)],
+) -> CaretLayout {
+    let hidden_marker = fold_marker_line_for_hidden_line(target_line, folded_ranges);
+    let target_line = hidden_marker.unwrap_or(target_line);
+    let cursor_byte_in_line = if hidden_marker.is_some() {
+        0
+    } else {
+        cursor_byte_in_line
+    };
     let metrics_line_height = text_system.buffer().metrics().line_height.max(1.0);
     let default_glyph_width = (metrics_line_height * 0.5).max(1.0);
 
@@ -305,9 +375,15 @@ pub fn compute_caret_layout_at(
     };
 
     for run in text_system.buffer().layout_runs() {
+        if is_line_hidden_by_fold(run.line_i, folded_ranges) {
+            continue;
+        }
+        let line_top = run.line_top
+            - folded_visual_y_offset_before(run.line_i, run.line_height, folded_ranges);
+
         fallback = CaretLayout {
             x: viewport_origin[0] + run.line_w,
-            top: viewport_origin[1] + run.line_top,
+            top: viewport_origin[1] + line_top,
             height: run.line_height.max(1.0),
             glyph_width: default_glyph_width,
         };
@@ -319,7 +395,7 @@ pub fn compute_caret_layout_at(
         if run.glyphs.is_empty() {
             return CaretLayout {
                 x: viewport_origin[0],
-                top: viewport_origin[1] + run.line_top,
+                top: viewport_origin[1] + line_top,
                 height: run.line_height.max(1.0),
                 glyph_width: default_glyph_width,
             };
@@ -349,13 +425,41 @@ pub fn compute_caret_layout_at(
 
         return CaretLayout {
             x: caret_x,
-            top: viewport_origin[1] + run.line_top,
+            top: viewport_origin[1] + line_top,
             height: run.line_height.max(1.0),
             glyph_width: caret_glyph_width,
         };
     }
 
     fallback
+}
+
+fn is_line_hidden_by_fold(line_i: usize, folded_ranges: &[(usize, usize)]) -> bool {
+    folded_ranges
+        .iter()
+        .any(|&(s, e)| s < line_i && line_i <= e)
+}
+
+fn fold_marker_line_for_hidden_line(
+    line_i: usize,
+    folded_ranges: &[(usize, usize)],
+) -> Option<usize> {
+    folded_ranges
+        .iter()
+        .find(|&&(s, e)| s < line_i && line_i <= e)
+        .map(|&(s, _)| s)
+}
+
+fn folded_visual_y_offset_before(
+    line_i: usize,
+    line_height: f32,
+    folded_ranges: &[(usize, usize)],
+) -> f32 {
+    folded_ranges
+        .iter()
+        .filter(|&&(_s, e)| e < line_i)
+        .map(|&(s, e)| e.saturating_sub(s) as f32 * line_height)
+        .sum()
 }
 
 #[cfg(test)]

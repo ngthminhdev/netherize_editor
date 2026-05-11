@@ -1010,6 +1010,11 @@ impl AppShell {
             Ok(tree) => {
                 self.highlight_spans =
                     crate::syntax::highlight::generate_highlight_spans(tree, &text_snapshot);
+                let foldable = crate::syntax::fold::compute_foldable_ranges(
+                    tree.root_node(),
+                    tree.language_id(),
+                );
+                self.app_state.set_foldable_ranges_cache(foldable);
                 self.pending_parse_after_debounce = false;
                 self.last_parse_submit_at = Some(std::time::Instant::now());
                 self.editor_needs_layout = true;

@@ -1,11 +1,11 @@
 #![allow(unused_imports)]
 
 use crate::{
-    text::layout_sync::visual_y_for_logical_scroll,
     app::{app_state::AppState, command_palette::CommandPaletteRenderModel, input::LeapTarget},
     render::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
+    text::layout_sync::visual_y_for_logical_scroll_with_folds,
 };
 
 use super::super::helpers::{
@@ -39,7 +39,11 @@ impl Renderer {
         let line_height = self.theme.editor.line_height;
         let font_size = self.theme.editor.font_size;
         let total_lines = app_state.total_lines().max(1);
-        let scroll_y = visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y);
+        let scroll_y = visual_y_for_logical_scroll_with_folds(
+            &self.text_system,
+            app_state.current_scroll_y,
+            app_state.folded_ranges(),
+        );
         let gutter_digits = total_lines.to_string().len().max(3);
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
         let origin_x = center_bounds[0] + self.editor_padding_x + gutter_width;
@@ -91,6 +95,10 @@ impl Renderer {
         let mut glyph_instances: Vec<GlyphInstance> = Vec::with_capacity(labels.len());
 
         for run in self.text_system.buffer().layout_runs() {
+            if app_state.is_line_folded(run.line_i) {
+                continue;
+            }
+            let y_offset = app_state.folded_visual_y_offset_before(run.line_i, run.line_height);
             for glyph in run.glyphs {
                 let rope_char_idx = app_state
                     .char_idx_for_line(run.line_i)
@@ -106,7 +114,7 @@ impl Renderer {
                 }
 
                 let glyph_x = origin_x + glyph.x;
-                let glyph_top = origin_y + run.line_top;
+                let glyph_top = origin_y + run.line_top - y_offset;
                 let cell_w = glyph.w.max(font_size * 0.5);
                 let cell_h = run.line_height.max(1.0);
                 let badge_padding_x = (font_size * 0.30).max(4.0);
@@ -125,7 +133,7 @@ impl Renderer {
                 ));
 
                 // Render only the remaining suffix so the overlay visually narrows as the user types.
-                let baseline_y = origin_y + run.line_y;
+                let baseline_y = origin_y + run.line_y - y_offset;
                 let label_origin_y = baseline_y - label_line_y;
                 let label_origin_x = badge_x + (badge_w - label_width) * 0.5;
                 glyph_instances.extend(layout_panel_text_bold(

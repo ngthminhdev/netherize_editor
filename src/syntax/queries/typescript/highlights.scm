@@ -55,6 +55,10 @@
 (call_expression function: (identifier) @syntax.function)
 (call_expression function: (member_expression property: (property_identifier) @syntax.function))
 
+; --- Constants (must come before variables) ---
+((identifier) @syntax.constant
+ (#match? @syntax.constant "^_*[A-Z][A-Z\d_]+$"))
+
 ; --- Parameters / variables ---
 (required_parameter pattern: (identifier) @syntax.parameter)
 (optional_parameter pattern: (identifier) @syntax.parameter)
@@ -73,10 +77,6 @@
 ; --- Attributes / decorators ---
 (decorator) @syntax.attribute
 
-; --- Constants ---
-((identifier) @syntax.constant
- (#match? @syntax.constant "^_*[A-Z][A-Z\d_]+$"))
-
 ; --- Operators ---
 [
   "+" "-" "*" "/" "%" "**" "=" "==" "===" "!=" "!=="
@@ -91,6 +91,6 @@
   ";" "," "?" "(" ")" "[" "]" "{" "}" "<" ">"
 ] @syntax.punctuation
 
-; --- Fallback ---
+; --- Fallback (identifier references) ---
 (identifier) @syntax.identifier
 (property_identifier) @syntax.identifier

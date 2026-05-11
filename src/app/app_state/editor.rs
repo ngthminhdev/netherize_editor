@@ -837,8 +837,9 @@ impl AppState {
             next_target_col = col - 1;
         } else if line_idx > 0 {
             // Ở đầu dòng và đi trái -> sang cuối dòng trước.
-            target_idx = self.cursor_char_idx.saturating_sub(1);
-            next_target_col = self.max_col_for_line(line_idx - 1);
+            let target_line = self.previous_visible_line_before(line_idx);
+            target_idx = self.text.line_to_char(target_line) + self.max_col_for_line(target_line);
+            next_target_col = self.max_col_for_line(target_line);
         }
 
         let _ = self.update_cursor_position(target_idx);
@@ -858,9 +859,9 @@ impl AppState {
             next_target_col = col + 1;
         } else {
             // Ở cuối dòng, ArrowRight sẽ nhảy sang đầu dòng kế tiếp (nếu có).
-            let total_lines = self.text.len_lines();
-            if line_idx + 1 < total_lines {
-                target_idx = self.text.line_to_char(line_idx + 1);
+            let target_line = self.next_visible_line_after(line_idx);
+            if target_line != line_idx {
+                target_idx = self.text.line_to_char(target_line);
                 next_target_col = 0;
             }
         }
@@ -876,7 +877,7 @@ impl AppState {
         let next_idx = if line_idx == 0 {
             self.cursor_char_idx
         } else {
-            let target_line = line_idx - 1;
+            let target_line = self.previous_visible_line_before(line_idx);
             let line_start = self.text.line_to_char(target_line);
             let new_col = self.target_col.min(self.max_col_for_line(target_line));
             line_start + new_col
@@ -886,11 +887,10 @@ impl AppState {
 
     pub fn move_down(&mut self) {
         let (line_idx, _) = self.cursor_line_col();
-        let total_lines = self.text.len_lines();
-        let next_idx = if line_idx + 1 >= total_lines {
+        let target_line = self.next_visible_line_after(line_idx);
+        let next_idx = if target_line == line_idx {
             self.cursor_char_idx
         } else {
-            let target_line = line_idx + 1;
             let line_start = self.text.line_to_char(target_line);
             let new_col = self.target_col.min(self.max_col_for_line(target_line));
             line_start + new_col
@@ -1029,7 +1029,14 @@ impl AppState {
 
     /// Adjust target_scroll_y so the cursor is within the viewport.
     pub fn auto_scroll_to_cursor(&mut self, viewport_lines: usize) {
-        let (cursor_line, _) = self.cursor_line_col();
+        let (raw_cursor_line, _) = self.cursor_line_col();
+
+        // If the cursor is on a hidden line, use the visible marker line instead.
+        // This prevents viewport jitter when navigating through folded regions.
+        let cursor_line = self
+            .fold_marker_line_for_hidden_line(raw_cursor_line)
+            .unwrap_or(raw_cursor_line);
+
         let margin = 3usize;
         let target_line = self.target_scroll_y.floor().max(0.0) as usize;
         if cursor_line < target_line + margin {

@@ -334,6 +334,17 @@ mode = "normal"
 key = "z z"
 command = "editor.center_cursor_line"
 
+# fold
+[[bindings]]
+mode = "normal"
+key = "z a"
+command = "editor.toggle_fold"
+
+[[bindings]]
+mode = "normal"
+key = "z A"
+command = "editor.toggle_fold_all"
+
 [[bindings]]
 mode = "normal"
 key = "/"

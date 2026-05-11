@@ -76,8 +76,8 @@ status_bar_height = 32.0
 # Disclosure markers and file-picker bullet glyph.
 
 [syntax]
-# Keywords like `fn`, `let`, `match`.
-keyword = "#ff79c6"
+# Keywords like `fn`, `let`, `match`, `const`, `if`, `return`, `async`.
+keyword = "#ff79c6"       # Pink (Dracula identity)
 # String literals.
 string = "#f1fa8c"
 # Function names and callable symbols.
@@ -89,34 +89,34 @@ type = "#8be9fd"
 # Numeric literals.
 number = "#bd93f9"
 # Plain variable names that do not fall into a richer semantic bucket.
-identifier = "#f8f8f2"
+identifier = "#f8f8f2"    # Foreground (cho variable references)
+# Local variables (const, let, var).
+variable = "#ff79c6"      # Pink (khác với identifier #f8f8f2)
 # Function and closure parameters.
-parameter = "#ffb86c"
-# Struct field declarations and member access like `self.name`.
-field = "#8be9fd"
+parameter = "#ffb86c"     # Orange (Dracula palette)
+# Struct field declarations and member access like `self.name`, `obj.property`.
+field = "#8be9fd"         # Cyan (Dracula palette)
 # Struct literal property labels like `Demo { name: value }`.
-property = "#8be9fd"
+property = "#8be9fd"      # Cyan (đồng bộ với field)
 # Named constants such as `MAX_SIZE` and boolean literals.
 constant = "#bd93f9"
-# Operators such as `=`, `+`, `&&`, `->`.
-operator = "#ff79c6"
+# Operators such as `=`, `+`, `&&`, `->`, `!`, `??`.
+operator = "#ff79c6"      # Pink (Dracula palette)
 # Punctuation such as commas, braces, and separators.
 punctuation = "#f8f8f2"
 # Macro invocation highlight.
-macro = "#8be9fd"
+macro = "#50fa7b"
 # Rust lifetime highlight.
 lifetime = "#ffb86c"
 # Boolean literals (`true`, `false`).
-boolean = "#FF955C"
+boolean = "#bd93f9"
 # Escape sequences inside strings/chars.
-escape = "#FF955C"
-# Local variables and bindings.
-variable = "#d0d7e4"
+escape = "#bd93f9"
 # Constructors, enum variants, and nominal type definitions.
-constructor = "#B78AFF"
+constructor = "#8be9fd"
 # Attributes/annotations.
-attribute = "#EACD61"
+attribute = "#ff79c6"     # Pink (đồng bộ keyword)
 # Module/namespace qualifiers.
-namespace = "#B78AFF"
+namespace = "#8be9fd"
 # Markup/JSX-style tags.
-tag = "#B78AFF"
+tag = "#50fa7b"

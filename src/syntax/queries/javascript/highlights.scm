@@ -55,12 +55,13 @@
 (formal_parameters (identifier) @syntax.parameter)
 (arrow_function parameter: (identifier) @syntax.parameter)
 
-; --- Variables / constants ---
-(variable_declarator name: (identifier) @syntax.variable)
-(lexical_declaration (variable_declarator name: (identifier) @syntax.variable))
-
+; --- Constants (must come before variables) ---
 ((identifier) @syntax.constant
  (#match? @syntax.constant "^_*[A-Z][A-Z\d_]+$"))
+
+; --- Variables / declarations ---
+(variable_declarator name: (identifier) @syntax.variable)
+(lexical_declaration (variable_declarator name: (identifier) @syntax.variable))
 
 ; --- Properties / fields ---
 (pair key: (property_identifier) @syntax.property)
@@ -82,5 +83,5 @@
   ";" "," ":" "?" "(" ")" "[" "]" "{" "}"
 ] @syntax.punctuation
 
-; --- Fallback ---
+; --- Fallback (identifier references) ---
 (identifier) @syntax.identifier

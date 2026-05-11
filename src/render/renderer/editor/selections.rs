@@ -13,8 +13,8 @@ use crate::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
     text::layout_sync::{
-        compute_caret_layout, compute_cursor_overlay, rebuild_layout_projection,
-        visual_y_for_logical_scroll,
+        compute_caret_layout_with_folds, compute_cursor_overlay, rebuild_layout_projection,
+        visual_y_for_logical_scroll_with_folds,
     },
 };
 use cosmic_text::Metrics;
@@ -58,7 +58,11 @@ impl Renderer {
         let gutter_digits = total_lines.to_string().len().max(3);
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
         let text_area_x = center_bounds[0] + gutter_inset_left + gutter_width;
-        let scroll_y = visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y);
+        let scroll_y = visual_y_for_logical_scroll_with_folds(
+            &self.text_system,
+            app_state.current_scroll_y,
+            app_state.folded_ranges(),
+        );
         let scroll_x = app_state.scroll_column as f32 * (font_size * 0.6).max(1.0);
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
         let viewport_top = center_bounds[1] + self.editor_padding_y;
@@ -75,6 +79,7 @@ impl Renderer {
         color[3] = color[3].clamp(0.08, 0.22);
         let mut quads = Vec::new();
         let mut last_drawn_line: Option<usize> = None;
+        let folded_ranges = app_state.folded_ranges();
 
         for run in self.text_system.buffer().layout_runs() {
             let line_idx = run.line_i;
@@ -83,7 +88,12 @@ impl Renderer {
             }
             last_drawn_line = Some(line_idx);
 
-            let line_top = origin_y + run.line_top;
+            if !folded_ranges.is_empty() && app_state.is_line_folded(line_idx) {
+                continue;
+            }
+
+            let line_top = origin_y + run.line_top
+                - app_state.folded_visual_y_offset_before(line_idx, run.line_height);
             let line_height_px = run.line_height.max(1.0);
             let line_bottom = line_top + line_height_px;
             if line_bottom <= viewport_top || line_top >= viewport_bottom {
@@ -122,10 +132,18 @@ impl Renderer {
         let text_area_x = center_bounds[0] + gutter_inset_left + gutter_width;
         let text_area_w =
             (center_bounds[2] - gutter_inset_left - self.editor_padding_x - gutter_width).max(1.0);
-        let scroll_y = visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y);
+        let scroll_y = visual_y_for_logical_scroll_with_folds(
+            &self.text_system,
+            app_state.current_scroll_y,
+            app_state.folded_ranges(),
+        );
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
-        let caret_layout =
-            compute_caret_layout(&self.text_system, app_state, [text_area_x, origin_y]);
+        let caret_layout = compute_caret_layout_with_folds(
+            &self.text_system,
+            app_state,
+            [text_area_x, origin_y],
+            app_state.folded_ranges(),
+        );
 
         let viewport_top = center_bounds[1] + self.editor_padding_y;
         let viewport_bottom =
@@ -178,7 +196,11 @@ impl Renderer {
         let mut color = self.theme.editor.selection.as_f32();
         color[3] = (color[3] * 0.45).clamp(0.18, 0.42);
 
-        let scroll_y_px = visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y);
+        let scroll_y_px = visual_y_for_logical_scroll_with_folds(
+            &self.text_system,
+            app_state.current_scroll_y,
+            app_state.folded_ranges(),
+        );
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y_px;
 
         let mut quads = Vec::new();
@@ -186,7 +208,11 @@ impl Renderer {
             if run.line_i < selection.start_line || run.line_i > selection.end_line {
                 continue;
             }
-            let line_top = origin_y + run.line_top;
+            if app_state.is_line_folded(run.line_i) {
+                continue;
+            }
+            let line_top = origin_y + run.line_top
+                - app_state.folded_visual_y_offset_before(run.line_i, run.line_height);
             let line_height_px = run.line_height.max(1.0);
             let line_bottom = line_top + line_height_px;
             if line_bottom <= viewport_top || line_top >= viewport_bottom {
@@ -239,7 +265,11 @@ impl Renderer {
         let text_area_w =
             (center_bounds[2] - gutter_inset_left - self.editor_padding_x - gutter_width).max(1.0);
         // Use visual_y_for_logical_scroll to match the actual rendered text Y (handles soft-wrapped lines).
-        let scroll_y_px = visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y);
+        let scroll_y_px = visual_y_for_logical_scroll_with_folds(
+            &self.text_system,
+            app_state.current_scroll_y,
+            app_state.folded_ranges(),
+        );
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y_px;
         let viewport_top = center_bounds[1] + self.editor_padding_y;
         let viewport_bottom =
@@ -254,7 +284,11 @@ impl Renderer {
                 if run.line_i < selection.start_line || run.line_i > selection.end_line {
                     continue;
                 }
-                let line_top = origin_y + run.line_top;
+                if app_state.is_line_folded(run.line_i) {
+                    continue;
+                }
+                let line_top = origin_y + run.line_top
+                    - app_state.folded_visual_y_offset_before(run.line_i, run.line_height);
                 let line_height_px = run.line_height.max(1.0);
                 let line_bottom = line_top + line_height_px;
                 if line_bottom <= viewport_top || line_top >= viewport_bottom {
@@ -305,7 +339,11 @@ impl Renderer {
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
         let text_area_x = center_bounds[0] + self.editor_padding_x + gutter_width;
         let text_area_w = (center_bounds[2] - self.editor_padding_x - gutter_width).max(1.0);
-        let scroll_y = visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y);
+        let scroll_y = visual_y_for_logical_scroll_with_folds(
+            &self.text_system,
+            app_state.current_scroll_y,
+            app_state.folded_ranges(),
+        );
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
 
         let viewport_top = center_bounds[1] + self.editor_padding_y;
@@ -325,8 +363,12 @@ impl Renderer {
                 if run.line_i < start_line || run.line_i > end_line {
                     continue;
                 }
+                if app_state.is_line_folded(run.line_i) {
+                    continue;
+                }
 
-                let line_top = origin_y + run.line_top;
+                let line_top = origin_y + run.line_top
+                    - app_state.folded_visual_y_offset_before(run.line_i, run.line_height);
                 let line_height_px = run.line_height.max(1.0);
                 let line_bottom = line_top + line_height_px;
                 if line_bottom <= viewport_top || line_top >= viewport_bottom {
@@ -439,7 +481,11 @@ impl Renderer {
         let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
         let text_area_x = center_bounds[0] + self.editor_padding_x + gutter_width;
         let text_area_w = (center_bounds[2] - self.editor_padding_x - gutter_width).max(1.0);
-        let scroll_y = visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y);
+        let scroll_y = visual_y_for_logical_scroll_with_folds(
+            &self.text_system,
+            app_state.current_scroll_y,
+            app_state.folded_ranges(),
+        );
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
         let viewport_top = center_bounds[1] + self.editor_padding_y;
         let viewport_bottom =
@@ -464,8 +510,12 @@ impl Renderer {
                 if run.line_i < start_line || run.line_i > end_line {
                     continue;
                 }
+                if app_state.is_line_folded(run.line_i) {
+                    continue;
+                }
 
-                let line_top = origin_y + run.line_top;
+                let line_top = origin_y + run.line_top
+                    - app_state.folded_visual_y_offset_before(run.line_i, run.line_height);
                 let line_height_px = run.line_height.max(1.0);
                 let line_bottom = line_top + line_height_px;
                 if line_bottom <= viewport_top || line_top >= viewport_bottom {
@@ -539,8 +589,11 @@ impl Renderer {
         gutter_width: f32,
     ) {
         let gutter_inset_left = self.editor_padding_x + 6.0;
-        let total_lines = app_state.total_lines().max(1);
         let (cursor_line, _) = app_state.cursor_line_col();
+        let folded = app_state.folded_ranges();
+        let has_folds = !folded.is_empty();
+
+        let total_lines = app_state.total_lines().max(1);
         let gutter_bg_color = self.theme.editor.gutter.as_f32();
         let gutter_active_color = self.theme.editor.gutter_active.as_f32();
         let mut gutter_text_color = gutter_active_color;
@@ -559,8 +612,11 @@ impl Renderer {
 
         // Use visual Y scroll derived from LayoutRun positions so that soft-wrapped
         // logical lines (e.g. a JWT token) do not shift all subsequent gutter numbers.
-        let visual_scroll_y =
-            visual_y_for_logical_scroll(&self.text_system, app_state.current_scroll_y.max(0.0));
+        let visual_scroll_y = visual_y_for_logical_scroll_with_folds(
+            &self.text_system,
+            app_state.current_scroll_y.max(0.0),
+            app_state.folded_ranges(),
+        );
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - visual_scroll_y;
         let viewport_top = center_bounds[1];
         let viewport_bottom = center_bounds[1] + center_bounds[3];
@@ -596,17 +652,27 @@ impl Renderer {
         // mistakenly given a line number even when the first visual row of that logical
         // line was above the visible area.
         let mut last_seen_line: Option<usize> = None;
+
         for run in self.text_system.buffer().layout_runs() {
             let abs_line = run.line_i;
             if abs_line >= total_lines {
                 break;
             }
+            let is_fold_marker = has_folds && app_state.is_fold_marker_line(abs_line);
+            if has_folds && app_state.is_line_folded(abs_line) {
+                continue;
+            }
+
+            let y_offset = if has_folds {
+                app_state.folded_visual_y_offset_before(abs_line, run.line_height)
+            } else {
+                0.0
+            };
 
             let is_continuation = last_seen_line == Some(abs_line);
             last_seen_line = Some(abs_line);
 
-            let line_top_y = origin_y
-                + run.line_top
+            let line_top_y = origin_y + run.line_top - y_offset
                 + if abs_line > cursor_line {
                     virtual_gap_y
                 } else {
@@ -636,6 +702,7 @@ impl Renderer {
                 break;
             }
 
+            // ── Fold handling ─────────────────────────────────────────────────
             if abs_line == cursor_line {
                 quads.push(RegionDrawInstance::new(
                     [gutter_x, line_top_y, gutter_width, run.line_height.max(1.0)],
@@ -681,7 +748,16 @@ impl Renderer {
                 }
             }
 
-            let num_str = if self.relative_numbers {
+            let num_str = if has_folds && is_fold_marker {
+                // Tìm số dòng bị fold
+                let folded_line_count =
+                    app_state.folded_line_count_at_marker(abs_line).unwrap_or(0);
+                if folded_line_count > 0 {
+                    format!("▶{}", folded_line_count)
+                } else {
+                    format!("▶")
+                }
+            } else if self.relative_numbers {
                 let dist = abs_line.abs_diff(cursor_line);
                 if dist == 0 {
                     format!("{}", abs_line + 1)
@@ -694,6 +770,10 @@ impl Renderer {
             let label = format!("{:>width$} ", num_str, width = gutter_digits);
             let color = if abs_line == cursor_line {
                 gutter_active_color
+            } else if has_folds && is_fold_marker {
+                let mut fold_color = gutter_text_color;
+                fold_color[3] = fold_color[3] * 0.7;
+                fold_color
             } else {
                 gutter_text_color
             };

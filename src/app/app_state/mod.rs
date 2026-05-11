@@ -1232,6 +1232,11 @@ pub struct AppState {
     /// When false (Visual-seeded search), use plain substring matching instead
     /// of whole-word matching for subsequent Ctrl+n calls.
     mc_whole_word: bool,
+    // ── Code folding ──────────────────────────────────────────────────────────
+    // Ranges are start/end inclusive. The start line remains visible as the
+    // fold marker; every following line through end is hidden from layout.
+    folded_ranges: Vec<(usize, usize)>,
+    foldable_ranges_cache: Option<Vec<(usize, usize)>>,
 }
 
 impl AppState {
@@ -1287,6 +1292,8 @@ impl AppState {
             mc_search_word: None,
             mc_search_start: 0,
             mc_whole_word: true,
+            folded_ranges: Vec::new(),
+            foldable_ranges_cache: None,
         }
     }
 
@@ -1340,6 +1347,8 @@ impl AppState {
             mc_search_word: None,
             mc_search_start: 0,
             mc_whole_word: true,
+            folded_ranges: Vec::new(),
+            foldable_ranges_cache: None,
         }
     }
 
@@ -1372,4 +1381,244 @@ impl AppState {
         fs::write(path, content)
             .map_err(|err| format!("create probe file {:?} failed: {err}", path))
     }
+
+    // ── Code folding ──────────────────────────────────────────────────────────
+
+    pub fn folded_ranges(&self) -> &[(usize, usize)] {
+        &self.folded_ranges
+    }
+
+    /// Returns true when `line_idx` is hidden by a folded range.
+    ///
+    /// The marker/start line is intentionally not considered folded because it
+    /// still participates in layout and cursor navigation.
+    pub fn is_line_folded(&self, line_idx: usize) -> bool {
+        self.folded_ranges
+            .iter()
+            .any(|&(s, e)| s < line_idx && line_idx <= e)
+    }
+
+    pub fn is_fold_marker_line(&self, line_idx: usize) -> bool {
+        self.folded_ranges.iter().any(|&(s, _)| s == line_idx)
+    }
+
+    pub fn folded_line_count_at_marker(&self, line_idx: usize) -> Option<usize> {
+        self.folded_ranges
+            .iter()
+            .find(|&&(s, _)| s == line_idx)
+            .map(|&(s, e)| e.saturating_sub(s))
+    }
+
+    pub fn fold_marker_line_for_hidden_line(&self, line_idx: usize) -> Option<usize> {
+        self.folded_ranges
+            .iter()
+            .find(|&&(s, e)| s < line_idx && line_idx <= e)
+            .map(|&(s, _)| s)
+    }
+
+    pub fn folded_visual_y_offset_before(&self, line_idx: usize, line_height: f32) -> f32 {
+        self.folded_ranges
+            .iter()
+            .filter(|&&(_s, e)| e < line_idx)
+            .map(|&(s, e)| e.saturating_sub(s) as f32 * line_height)
+            .sum()
+    }
+
+    pub fn next_visible_line_after(&self, line_idx: usize) -> usize {
+        let total = self.text.len_lines();
+        if line_idx + 1 >= total {
+            return line_idx;
+        }
+
+        let mut candidate = line_idx + 1;
+        loop {
+            let Some(&(_s, e)) = self
+                .folded_ranges
+                .iter()
+                .find(|&&(s, e)| s < candidate && candidate <= e)
+            else {
+                break;
+            };
+            candidate = e.saturating_add(1);
+            if candidate >= total {
+                return line_idx;
+            }
+        }
+        candidate
+    }
+
+    pub fn previous_visible_line_before(&self, line_idx: usize) -> usize {
+        if line_idx == 0 {
+            return line_idx;
+        }
+
+        let candidate = line_idx - 1;
+        self.fold_marker_line_for_hidden_line(candidate)
+            .unwrap_or(candidate)
+    }
+
+    pub fn set_foldable_ranges_cache(&mut self, ranges: Vec<(usize, usize)>) {
+        self.foldable_ranges_cache = Some(ranges);
+    }
+
+    pub fn foldable_ranges_cache(&self) -> Option<&[(usize, usize)]> {
+        self.foldable_ranges_cache.as_deref()
+    }
+
+    pub fn visible_line_count(&self) -> usize {
+        let total = self.text.len_lines().max(1);
+        let last_line = total.saturating_sub(1);
+        let hidden: usize = self
+            .folded_ranges
+            .iter()
+            .filter(|&&(s, _)| s < total)
+            .map(|&(s, e)| e.min(last_line).saturating_sub(s))
+            .sum();
+        total.saturating_sub(hidden).max(1)
+    }
+
+    pub fn compute_visible_line_map(&self) -> Vec<usize> {
+        let total = self.text.len_lines();
+        let mut map = Vec::with_capacity(total);
+        let mut logical = 0;
+        for &(s, e) in &self.folded_ranges {
+            while logical < s && logical < total {
+                map.push(logical);
+                logical += 1;
+            }
+            if s < total {
+                map.push(s);
+                logical = e.saturating_add(1);
+            }
+        }
+        while logical < total {
+            map.push(logical);
+            logical += 1;
+        }
+        map
+    }
+
+    pub fn logical_to_visible_line(&self, logical: usize) -> Option<usize> {
+        if self.is_line_folded(logical) {
+            return None;
+        }
+        let map = self.compute_visible_line_map();
+        map.iter().position(|&l| l == logical)
+    }
+
+    pub fn visible_to_logical_line(&self, visible: usize) -> usize {
+        let map = self.compute_visible_line_map();
+        map.get(visible).copied().unwrap_or(visible)
+    }
+
+    pub fn toggle_fold_at_line(&mut self, logical_line: usize) -> bool {
+        if let Some(pos) = self
+            .folded_ranges
+            .iter()
+            .position(|&(s, e)| s == logical_line || (s < logical_line && logical_line <= e))
+        {
+            self.folded_ranges.remove(pos);
+            self.bump_revision();
+            return true;
+        }
+
+        let cache = match self.foldable_ranges_cache.as_ref() {
+            Some(c) => c.clone(),
+            None => return false,
+        };
+
+        let mut best_match: Option<(usize, usize)> = None;
+        for &(s, e) in &cache {
+            if s <= logical_line && logical_line <= e {
+                if let Some((_, best_e)) = best_match {
+                    if e < best_e {
+                        best_match = Some((s, e));
+                    }
+                } else {
+                    best_match = Some((s, e));
+                }
+            }
+        }
+
+        if let Some((s, e)) = best_match {
+            let overlaps = self
+                .folded_ranges
+                .iter()
+                .any(|&(fs, fe)| s <= fe && fs <= e);
+            if overlaps {
+                return false;
+            }
+
+            self.folded_ranges.push((s, e));
+            self.folded_ranges.sort_by_key(|&(start, _)| start);
+            self.folded_ranges = merge_fold_ranges(&self.folded_ranges);
+
+            if let Some(marker_line) =
+                self.fold_marker_line_for_hidden_line(self.cursor_line_col().0)
+            {
+                let line_start = self.text.line_to_char(marker_line);
+                self.cursor_char_idx = line_start;
+                let (_, col) = self.cursor_line_col();
+                self.target_col = col;
+            }
+            self.bump_revision();
+            return true;
+        }
+
+        false
+    }
+
+    pub fn toggle_fold_all(&mut self) -> bool {
+        if !self.folded_ranges.is_empty() {
+            return self.unfold_all();
+        }
+        self.fold_all()
+    }
+
+    pub fn unfold_all(&mut self) -> bool {
+        if self.folded_ranges.is_empty() {
+            return false;
+        }
+        self.folded_ranges.clear();
+        self.bump_revision();
+        true
+    }
+
+    pub fn fold_all(&mut self) -> bool {
+        let cache = match self.foldable_ranges_cache.as_ref() {
+            Some(c) if !c.is_empty() => c.clone(),
+            _ => return false,
+        };
+
+        let mut new_ranges: Vec<(usize, usize)> = cache.into_iter().collect();
+        new_ranges.sort_by_key(|&(start, _)| start);
+        self.folded_ranges = merge_fold_ranges(&new_ranges);
+        let (cursor_line, _) = self.cursor_line_col();
+        if let Some(marker_line) = self.fold_marker_line_for_hidden_line(cursor_line) {
+            let line_start = self.text.line_to_char(marker_line);
+            self.cursor_char_idx = line_start;
+            let (_, col) = self.cursor_line_col();
+            self.target_col = col;
+        }
+        self.bump_revision();
+        true
+    }
+}
+
+fn merge_fold_ranges(ranges: &[(usize, usize)]) -> Vec<(usize, usize)> {
+    if ranges.is_empty() {
+        return Vec::new();
+    }
+    let mut merged: Vec<(usize, usize)> = Vec::new();
+    let mut current = ranges[0];
+    for &(s, e) in &ranges[1..] {
+        if s <= current.1 {
+            current.1 = current.1.max(e);
+        } else {
+            merged.push(current);
+            current = (s, e);
+        }
+    }
+    merged.push(current);
+    merged
 }
