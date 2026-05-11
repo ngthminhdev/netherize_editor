@@ -214,12 +214,39 @@ impl AppState {
         }
     }
 
+    pub(super) fn text_buffer_view_state(&self) -> TextBufferViewState {
+        TextBufferViewState {
+            cursor: self.cursor_state(),
+            selection_anchor_char_idx: self.selection_anchor_char_idx,
+            visual_line_mode: self.visual_line_mode,
+            target_scroll_y: self.target_scroll_y,
+            current_scroll_y: self.current_scroll_y,
+            scroll_column: self.scroll_column,
+        }
+    }
+
     pub(super) fn restore_cursor_state(&mut self, state: CursorState) {
         self.cursor_char_idx = state.char_idx.min(self.text.len_chars());
         let line_idx = self
             .text
             .char_to_line(self.cursor_char_idx.min(self.text.len_chars()));
         self.target_col = state.target_col.min(self.max_col_for_line(line_idx));
+    }
+
+    pub(super) fn restore_text_buffer_view_state(&mut self, state: TextBufferViewState) {
+        self.restore_cursor_state(state.cursor);
+        let max_char_idx = self.text.len_chars();
+        self.selection_anchor_char_idx =
+            state.selection_anchor_char_idx.map(|anchor| anchor.min(max_char_idx));
+        if self.selection_anchor_char_idx == Some(self.cursor_char_idx) {
+            self.selection_anchor_char_idx = None;
+        }
+
+        let max_scroll = self.text.len_lines().saturating_sub(1) as f32;
+        self.target_scroll_y = state.target_scroll_y.min(max_scroll);
+        self.current_scroll_y = state.current_scroll_y.min(max_scroll);
+        self.scroll_column = state.scroll_column;
+        self.visual_line_mode = state.visual_line_mode && self.selection_anchor_char_idx.is_some();
     }
 
     pub(super) fn snapshot_editor_view(&self) -> EditorViewSnapshot {
@@ -936,9 +963,11 @@ impl AppState {
                 if let Some(old_idx) = self.active_buffer_index {
                     if old_idx != index {
                         let saved = std::mem::take(&mut self.history);
+                        let saved_view_state = self.text_buffer_view_state();
                         if let Some(slot) = self.buffers.get_mut(old_idx) {
                             if let BufferContent::Text(ref mut old_buf) = slot.content {
                                 old_buf.history = saved;
+                                old_buf.view_state = saved_view_state;
                             }
                         }
                     }
@@ -946,17 +975,18 @@ impl AppState {
                 // Load new file content (this calls clear_history internally).
                 self.load_buffer_from_file_resetting_view(&buffer.path)?;
                 // Restore the new buffer's per-buffer history.
+                let mut restored_view_state = TextBufferViewState::default();
                 if let Some(slot) = self.buffers.get(index) {
                     if let BufferContent::Text(ref new_buf) = slot.content {
                         self.history = new_buf.history.clone();
+                        restored_view_state = new_buf.view_state;
                     }
                 }
+                self.restore_text_buffer_view_state(restored_view_state);
                 self.active_file = Some(buffer.path.clone());
                 self.active_buffer_index = Some(index);
-                self.selection_anchor_char_idx = None;
                 self.dirty = false;
                 self.external_conflict = None;
-                self.visual_line_mode = false;
                 let _ = self.workspace_expand_to_path(&buffer.path);
             }
             BufferContent::Image(buffer) => {
@@ -993,15 +1023,17 @@ impl AppState {
         Ok(())
     }
 
-    /// Save the live `self.history` into the active EditorBuffer if it is a text buffer.
+    /// Save the live history and view state into the active EditorBuffer.
     /// Must be called before switching away from any text buffer.
     pub(super) fn save_current_text_buffer_history(&mut self) {
         let _ = self.commit_transaction();
         if let Some(old_idx) = self.active_buffer_index {
             let saved = std::mem::take(&mut self.history);
+            let saved_view_state = self.text_buffer_view_state();
             if let Some(slot) = self.buffers.get_mut(old_idx) {
                 if let BufferContent::Text(ref mut buf) = slot.content {
                     buf.history = saved;
+                    buf.view_state = saved_view_state;
                 }
             }
         }

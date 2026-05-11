@@ -255,6 +255,41 @@ mod tests {
     }
 
     #[test]
+    fn switching_back_to_text_buffer_restores_cursor_and_scroll_state() {
+        let mut state = AppState::new(unique_temp_path("buffer_view_restore"));
+        let root = unique_temp_dir("buffer_view_restore");
+        fs::create_dir_all(&root).expect("create buffer view root");
+        let file_a = root.join("a.rs");
+        let file_b = root.join("b.rs");
+        fs::write(&file_a, "zero\none\ntwo\nthree\nfour\n").expect("write a");
+        fs::write(&file_b, "alpha\nbeta\ngamma\n").expect("write b");
+
+        state.open_file(file_a.clone()).expect("open a");
+        state.cursor_char_idx = state.text.line_to_char(3) + 2;
+        state.target_col = 2;
+        state.selection_anchor_char_idx = Some(state.text.line_to_char(2));
+        state.visual_line_mode = true;
+        state.target_scroll_y = 3.0;
+        state.current_scroll_y = 2.5;
+        state.scroll_column = 4;
+
+        state.open_file(file_b).expect("open b");
+        assert!(state.active_file().expect("active file").ends_with("b.rs"));
+
+        assert!(state.buffer_prev().expect("switch back to a"));
+        assert!(state.active_file().expect("active file").ends_with("a.rs"));
+        assert_eq!(state.cursor_char_idx, state.text.line_to_char(3) + 2);
+        assert_eq!(state.target_col, 2);
+        assert_eq!(state.selection_anchor_char_idx, Some(state.text.line_to_char(2)));
+        assert!(state.visual_line_mode);
+        assert_eq!(state.target_scroll_y, 3.0);
+        assert_eq!(state.current_scroll_y, 2.5);
+        assert_eq!(state.scroll_column, 4);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn terminal_buffer_entries_are_tracked_in_tab_ring() {
         let mut state = AppState::new(unique_temp_path("terminal_buffer"));
         let root = unique_temp_dir("terminal_buffer");

@@ -32,17 +32,18 @@ const DIAGNOSTIC_SEVERITY_WARNING: u32 = 2;
 const EDITOR_FRAME_INSET: f32 = 4.0;
 const GUTTER_BG_RIGHT_TRIM: f32 = 10.0;
 
-fn leading_indent_columns(app_state: &AppState, line_idx: usize, tab_width: usize) -> usize {
+fn leading_indent_info(app_state: &AppState, line_idx: usize, tab_width: usize) -> (usize, bool) {
     let text = app_state.line_string(line_idx);
     let mut cols = 0usize;
     for ch in text.chars() {
         match ch {
             ' ' => cols += 1,
             '\t' => cols += tab_width.max(1),
-            _ => break,
+            '\r' | '\n' => return (cols, false),
+            _ => return (cols, true),
         }
     }
-    cols
+    (cols, false)
 }
 
 impl Renderer {
@@ -64,6 +65,7 @@ impl Renderer {
             app_state.folded_ranges(),
         );
         let scroll_x = app_state.scroll_column as f32 * (font_size * 0.6).max(1.0);
+        let origin_x = text_area_x - scroll_x;
         let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
         let viewport_top = center_bounds[1] + self.editor_padding_y;
         let viewport_bottom =
@@ -71,9 +73,6 @@ impl Renderer {
         let tab_width = app_state.indent_config().tab_width as usize;
         let char_width = (font_size * 0.6).max(1.0);
         let guide_step = char_width * tab_width.max(1) as f32;
-        if guide_step <= 0.0 {
-            return Vec::new();
-        }
 
         let mut color = self.theme.editor.indent_guide.as_f32();
         color[3] = color[3].clamp(0.08, 0.22);
@@ -100,14 +99,22 @@ impl Renderer {
                 continue;
             }
 
-            let indent_columns = leading_indent_columns(app_state, line_idx, tab_width);
+            let (indent_columns, has_text_after_indent) =
+                leading_indent_info(app_state, line_idx, tab_width);
             let full_levels = indent_columns / tab_width.max(1);
+
+            // Skip lines with no indentation
             if full_levels == 0 {
                 continue;
             }
 
-            for level in 0..full_levels {
-                let x = text_area_x - scroll_x + guide_step * level as f32 + guide_step * 0.5;
+            for level in 1..=full_levels {
+                let guide_column = level * tab_width.max(1);
+                if has_text_after_indent && guide_column == indent_columns {
+                    continue;
+                }
+
+                let x = origin_x + guide_step * level as f32;
                 quads.push(RegionDrawInstance::new(
                     [x, line_top + 1.0, 1.0, (line_height_px - 2.0).max(1.0)],
                     color,

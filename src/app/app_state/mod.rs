@@ -109,7 +109,33 @@ pub enum ClipboardRecordKind {
     Linewise,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct TextBufferViewState {
+    cursor: CursorState,
+    selection_anchor_char_idx: Option<usize>,
+    visual_line_mode: bool,
+    target_scroll_y: f32,
+    current_scroll_y: f32,
+    scroll_column: usize,
+}
+
+impl Default for TextBufferViewState {
+    fn default() -> Self {
+        Self {
+            cursor: CursorState {
+                char_idx: 0,
+                target_col: 0,
+            },
+            selection_anchor_char_idx: None,
+            visual_line_mode: false,
+            target_scroll_y: 0.0,
+            current_scroll_y: 0.0,
+            scroll_column: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct EditorBuffer {
     pub path: PathBuf,
     pub language_id: Option<String>,
@@ -117,6 +143,7 @@ pub struct EditorBuffer {
     pub git_line_statuses: HashMap<usize, GitLineStatus>,
     /// Per-buffer RAM-only undo/redo stack. Lives until the buffer is closed.
     pub history: EditHistory,
+    view_state: TextBufferViewState,
 }
 
 impl EditorBuffer {
@@ -127,6 +154,7 @@ impl EditorBuffer {
             git_baseline: None,
             git_line_statuses: HashMap::new(),
             history: EditHistory::new(),
+            view_state: TextBufferViewState::default(),
         }
     }
 }
