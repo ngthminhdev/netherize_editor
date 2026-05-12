@@ -158,20 +158,25 @@ impl Renderer {
         self.editor_scissor = rect_to_scissor(center_bounds);
         // Allow cosmic-text to shape full height; scissor clips the visible region.
         self.text_system.set_size(Some(width), None);
-
+        let tab_width = u16::from(app_state.indent_config().tab_width.max(1));
+        let tab_width_changed = self.text_system.tab_width() != tab_width;
+        if tab_width_changed {
+            self.text_system.set_tab_width(tab_width);
+        }
 
         // ── Tối ưu 2: Text Caching ─────────────────────────────────────────────
         // Trong các frame chỉ cuộn (smooth scroll), text revision không đổi →
         // TextSystem buffer đã được shaped từ frame trước → bỏ qua set_text_with_spans.
         // Reshape khi: (a) text thay đổi, (b) syntax/LSP spans thay đổi, hoặc
-        // (c) viewport width thay đổi (word-wrap boundary shift).
+        // (c) viewport width/tab width thay đổi (word-wrap/tab-stop boundary shift).
         let text_fg = self.theme.editor.fg.as_f32();
         let default_color_rgba = linear_rgba_to_srgb_u8(text_fg);
         let current_revision = app_state.revision();
         let spans_fp = spans_fingerprint(spans);
         let needs_reshape = self.last_shaped_revision != current_revision
             || self.last_shaped_spans_fingerprint != spans_fp
-            || (self.last_shaped_viewport_width - width).abs() > 0.5;
+            || (self.last_shaped_viewport_width - width).abs() > 0.5
+            || tab_width_changed;
         if needs_reshape {
             self.text_system
                 .set_text_with_spans(text, default_color_rgba, spans);

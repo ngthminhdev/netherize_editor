@@ -129,6 +129,14 @@ impl TextSystem {
         self.buffer.set_metrics(&mut self.font_system, metrics);
     }
 
+    pub fn tab_width(&self) -> u16 {
+        self.buffer.tab_width()
+    }
+
+    pub fn set_tab_width(&mut self, tab_width: u16) {
+        self.buffer.set_tab_width(&mut self.font_system, tab_width);
+    }
+
     pub fn set_text(&mut self, text: &str) {
         let family = self.font_family.as_deref();
         let attrs = apply_family(Attrs::new(), family);
@@ -556,6 +564,33 @@ mod tests {
         assert!(
             !glyphs.is_empty(),
             "missing font family should still shape text via fallback"
+        );
+    }
+
+    #[test]
+    fn tab_width_controls_shaped_tab_advance() {
+        let mut system = TextSystem::new(Metrics::new(16.0, 22.0), Some(900.0), None);
+        system.set_tab_width(8);
+        system.set_text("\tvalue");
+        let width_with_eight = system
+            .buffer()
+            .layout_runs()
+            .next()
+            .map(|run| run.line_w)
+            .unwrap_or(0.0);
+
+        system.set_tab_width(4);
+        let width_with_four = system
+            .buffer()
+            .layout_runs()
+            .next()
+            .map(|run| run.line_w)
+            .unwrap_or(0.0);
+
+        assert!(width_with_four > 0.0);
+        assert!(
+            width_with_four < width_with_eight,
+            "tab width should shrink shaped tab advance: four={width_with_four}, eight={width_with_eight}"
         );
     }
 }
