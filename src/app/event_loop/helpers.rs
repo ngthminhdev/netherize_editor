@@ -421,6 +421,28 @@ fn fallback_markdown_preview(source: &str, _theme: &ThemeConfig) -> Vec<Markdown
         .collect()
 }
 
+/// Calculate display width for text in monospace font.
+/// Uses a simple heuristic: ASCII = 1, CJK/fullwidth = 2, others = 1.
+/// This is more accurate than `.chars().count()` for Unicode text.
+fn display_width(text: &str) -> usize {
+    text.chars()
+        .map(|ch| {
+            let code = ch as u32;
+            // CJK Unified Ideographs, Hangul, Katakana, Hiragana, fullwidth forms
+            if (0x4E00..=0x9FFF).contains(&code)  // CJK
+                || (0x3040..=0x30FF).contains(&code)  // Hiragana, Katakana
+                || (0xAC00..=0xD7AF).contains(&code)  // Hangul
+                || (0xFF00..=0xFFEF).contains(&code)  // Fullwidth
+                || (0x1F300..=0x1F9FF).contains(&code) // Emoji
+            {
+                2
+            } else {
+                1
+            }
+        })
+        .sum()
+}
+
 fn render_markdown_node(
     node: tree_sitter::Node<'_>,
     source: &str,
@@ -614,9 +636,16 @@ fn render_markdown_node(
             }
         }
         "thematic_break" => {
+            // Use 80 chars for horizontal rule (will be wrapped by renderer if needed)
+            let rule_width = 80;
+            let rule_text = "─".repeat(rule_width);
             out.push(MarkdownPreviewLine {
-                text: "─".repeat(40),
-                spans: vec![StyledTextSpan::new(0, 40, theme.syntax.punctuation.as_u8())],
+                text: rule_text.clone(),
+                spans: vec![StyledTextSpan::new(
+                    0,
+                    rule_text.len(),
+                    theme.syntax.punctuation.as_u8(),
+                )],
                 block_type: MarkdownBlockType::HorizontalRule,
                 code_language: None,
             });
@@ -1077,7 +1106,7 @@ fn render_table(
     let mut widths = vec![0usize; col_count];
     for row in &rendered_rows {
         for (idx, (cell, _)) in row.iter().enumerate() {
-            widths[idx] = widths[idx].max(cell.chars().count());
+            widths[idx] = widths[idx].max(display_width(cell));
         }
     }
 
@@ -1111,7 +1140,7 @@ fn render_table(
                     theme.syntax.identifier.as_u8(),
                 ));
             }
-            let pad = widths[idx].saturating_sub(cell.chars().count());
+            let pad = widths[idx].saturating_sub(display_width(cell));
             text.extend(std::iter::repeat(' ').take(pad));
             text.push(' ');
             let border_start = text.len();
@@ -1546,7 +1575,7 @@ fn normalize_spans(spans: Vec<StyledTextSpan>, offset: usize) -> Vec<StyledTextS
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_spans, syntax_spans_to_styled};
+    use super::{display_width, normalize_spans, syntax_spans_to_styled};
     use crate::{
         config::theme_config::ThemeConfig,
         syntax::highlight::{HighlightCategory, HighlightSpan},
@@ -1619,6 +1648,36 @@ mod tests {
         assert_eq!(normalized.len(), 1);
         assert_eq!(normalized[0].start, 0);
         assert_eq!(normalized[0].end, 5);
+    }
+
+    #[test]
+    fn display_width_handles_ascii() {
+        assert_eq!(display_width("hello"), 5);
+        assert_eq!(display_width("API Endpoint"), 12);
+    }
+
+    #[test]
+    fn display_width_handles_vietnamese() {
+        // Vietnamese with diacritics should count as 1 per char
+        assert_eq!(display_width("Tình trạng"), 10);
+        assert_eq!(display_width("Xung đột"), 8);
+        assert_eq!(display_width("Tương đồng"), 10);
+        assert_eq!(display_width("đ"), 1); // single char with diacritic
+    }
+
+    #[test]
+    fn display_width_handles_mixed_content() {
+        // Mix of ASCII and Vietnamese
+        assert_eq!(display_width("Source A"), 8);
+        assert_eq!(display_width("Common"), 6);
+        assert_eq!(display_width("Conflict"), 8);
+    }
+
+    #[test]
+    fn display_width_handles_cjk() {
+        // CJK characters should count as 2
+        assert_eq!(display_width("你好"), 4); // 2 chars × 2 width
+        assert_eq!(display_width("日本語"), 6); // 3 chars × 2 width
     }
 }
 
