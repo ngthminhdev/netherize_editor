@@ -283,6 +283,12 @@ impl InputMap {
                 reason: "explorer: Esc -> FocusEditor",
             });
         }
+        if !input.has_command_modifier() && input.physical_key == Some(KeyCode::KeyQ) {
+            return Some(KeybindingMatch {
+                command: Command::CloseSidebars,
+                reason: "explorer: q -> CloseSidebars (close explorer)",
+            });
+        }
         if input.has_command_modifier() && input.physical_key == Some(KeyCode::KeyW) {
             return Some(KeybindingMatch {
                 command: Command::FocusEditor,
@@ -372,6 +378,12 @@ impl InputMap {
             return Some(KeybindingMatch {
                 command: Command::FocusBack,
                 reason: "preview: Esc -> FocusBack",
+            });
+        }
+        if !input.has_command_modifier() && input.physical_key == Some(KeyQ) {
+            return Some(KeybindingMatch {
+                command: Command::CloseSidebars,
+                reason: "preview: q -> CloseSidebars (close preview)",
             });
         }
         if input.has_command_modifier() && input.physical_key == Some(KeyW) {

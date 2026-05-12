@@ -368,6 +368,10 @@ pub enum Command {
     // ── Markdown Preview ──────────────────────────────────────────────────────
     /// Toggle markdown preview panel in the right sidebar.
     ToggleMarkdownPreview,
+    /// Close focused sidebar(s): when RightSidebar has focus, close only the
+    /// right dock; when LeftSidebar has focus, close only the left dock;
+    /// otherwise close both if visible.
+    CloseSidebars,
     /// Focus markdown preview in the right sidebar, opening it if needed.
     FocusMarkdownPreview,
     /// Scroll markdown preview up.

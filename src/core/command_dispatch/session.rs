@@ -153,6 +153,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::AiChatScrollHalfPageUp
         | Command::AiChatScrollHalfPageDown
         | Command::ToggleMarkdownPreview
+        | Command::CloseSidebars
         | Command::FocusMarkdownPreview
         | Command::MarkdownPreviewScrollUp
         | Command::MarkdownPreviewScrollDown

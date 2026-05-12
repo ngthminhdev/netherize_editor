@@ -1004,6 +1004,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "app.open_workspace_symbols" => "Workspace symbols",
         "app.open_document_symbols" => "Find symbol in file",
         "app.toggle_markdown_preview" => "Toggle markdown preview",
+        "app.close_sidebars" => "Close sidebars",
         "app.focus_markdown_preview" => "Focus markdown preview",
         // ── Focus & docks ─────────────────────────────────────────────────
         "app.focus_explorer" => "Focus explorer",

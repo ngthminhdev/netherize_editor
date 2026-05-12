@@ -561,7 +561,16 @@ impl AppShell {
     fn handle_markdown_preview_command(&mut self, command: &Command) -> Option<bool> {
         match command {
             Command::ToggleMarkdownPreview => {
+                let is_markdown = self.app_state.active_file()
+                    .and_then(|p| p.extension())
+                    .is_some_and(|ext| ext == "md");
+
                 let preview = &mut self.app_state.markdown_preview;
+                
+                if !preview.visible && !is_markdown {
+                    return Some(false);
+                }
+
                 preview.visible = !preview.visible;
                 if preview.visible {
                     if !self.panel_state.right.visible {
@@ -598,6 +607,42 @@ impl AppShell {
                     }
                 }
                 Some(true)
+            }
+            Command::CloseSidebars => {
+                let mut changed = false;
+
+                let focus = self.focus_manager.current();
+                let close_right = focus != FocusTarget::LeftSidebar;
+                let close_left = focus != FocusTarget::RightSidebar;
+
+                // Close right panel if it's on Markdown Preview
+                if close_right && self.app_state.markdown_preview.visible {
+                    self.app_state.markdown_preview.visible = false;
+
+                    if let Some(original_width) = self.pre_markdown_preview_right_width.take() {
+                        self.panel_state.right.size_px = original_width;
+                    }
+                    if self.panel_state.right.active_tab_id() == Some(PanelTabId::MarkdownPreview) {
+                        self.panel_state.right.visible = false;
+                        self.sidebar_needs_layout = true;
+                    }
+                    if self.focus_manager.current() == FocusTarget::RightSidebar {
+                        self.focus_manager.set(FocusTarget::CenterEditor);
+                    }
+                    changed = true;
+                }
+
+                // Close left panel (file tree/explorer)
+                if close_left && self.panel_state.left.visible {
+                    self.panel_state.left.visible = false;
+                    self.sidebar_needs_layout = true;
+                    if self.focus_manager.current() == FocusTarget::LeftSidebar {
+                        self.focus_manager.set(FocusTarget::CenterEditor);
+                    }
+                    changed = true;
+                }
+
+                Some(changed)
             }
             Command::FocusMarkdownPreview => {
                 let mut changed = self.release_focus_mode_to_editor();

@@ -284,6 +284,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::TerminalScrollDown
         | Command::TerminalTabNew
         | Command::TerminalTabClose
+        | Command::CloseSidebars
         | Command::SwitchTerminalTab(_)
         | Command::FocusEditor
         | Command::FocusExplorer
