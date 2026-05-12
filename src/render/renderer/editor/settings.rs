@@ -34,9 +34,9 @@ impl SettingsSection {
 impl SettingItem {
     fn section(&self) -> SettingsSection {
         match self {
-            Self::ThemeSelector { .. }
-            | Self::UiRounding { .. }
-            | Self::EnableOutline { .. } => SettingsSection::Appearance,
+            Self::ThemeSelector { .. } | Self::UiRounding { .. } | Self::EnableOutline { .. } => {
+                SettingsSection::Appearance
+            }
             Self::FontFamily { .. } | Self::FontSize { .. } | Self::LineHeight { .. } => {
                 SettingsSection::Typography
             }
@@ -137,9 +137,7 @@ impl SettingItem {
             Self::InlineSuggestion { enabled } => {
                 if *enabled { "Enabled" } else { "Disabled" }.to_string()
             }
-            Self::EnableOutline { enabled } => {
-                if *enabled { "On" } else { "Off" }.to_string()
-            }
+            Self::EnableOutline { enabled } => if *enabled { "On" } else { "Off" }.to_string(),
             Self::SidebarWidth { current }
             | Self::RightSidebarWidth { current }
             | Self::BottomPanelHeight { current } => format!("{current} px"),
@@ -450,7 +448,11 @@ impl Renderer {
                 } else {
                     (None, 0.0)
                 };
-                layouts.push(ItemLayout { sec_header, sec_y, item_y: vy });
+                layouts.push(ItemLayout {
+                    sec_header,
+                    sec_y,
+                    item_y: vy,
+                });
                 vy += row_h + 4.0;
             }
             total_virt_h = vy;
@@ -473,12 +475,18 @@ impl Renderer {
             let thumb_h = (vis_h / total_virt_h * track_h).max(18.0).min(track_h);
             let thumb_y = track_top + (scroll_y / total_virt_h * track_h).min(track_h - thumb_h);
             chrome.push(
-                RegionDrawInstance::new([track_x, track_top, 3.0, track_h], with_alpha(fg_ghost, 0.12))
-                    .with_radius(1.5),
+                RegionDrawInstance::new(
+                    [track_x, track_top, 3.0, track_h],
+                    with_alpha(fg_ghost, 0.12),
+                )
+                .with_radius(1.5),
             );
             chrome.push(
-                RegionDrawInstance::new([track_x, thumb_y, 3.0, thumb_h], with_alpha(fg_ghost, 0.45))
-                    .with_radius(1.5),
+                RegionDrawInstance::new(
+                    [track_x, thumb_y, 3.0, thumb_h],
+                    with_alpha(fg_ghost, 0.45),
+                )
+                .with_radius(1.5),
             );
         }
 
@@ -605,7 +613,11 @@ impl Renderer {
                     );
                     let badge_label = match item {
                         SettingItem::IndentInsertSpaces { enabled } => {
-                            if *enabled { "SPC" } else { "TAB" }
+                            if *enabled {
+                                "SPC"
+                            } else {
+                                "TAB"
+                            }
                         }
                         SettingItem::InlineSuggestion { .. } => "OFF",
                         _ => "",

@@ -192,6 +192,7 @@ impl Renderer {
             gutter_glyph_instances: Vec::new(),
             relative_numbers: false,
             last_editor_chrome_instances: Vec::new(),
+            editor_breadcrumb_segments: Vec::new(),
             sidebar_text_system,
             sidebar_text_pipeline,
             sidebar_glyph_instances: Vec::new(),
@@ -379,6 +380,7 @@ impl Renderer {
         self.statusbar_scissor = None;
         self.statusbar_glyph_instances.clear();
         self.statusbar_chrome_instances.clear();
+        self.editor_breadcrumb_segments.clear();
         self.buffer_terminal_header_batch = None;
         self.statusbar_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);

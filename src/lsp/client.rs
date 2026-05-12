@@ -203,38 +203,38 @@ pub fn refresh_patched_env_path() -> String {
 fn probe_path_from_login_shell() -> Option<String> {
     let shell_var = std::env::var("SHELL").unwrap_or_default();
     let candidates: Vec<String> = {
-                let mut v: Vec<String> = vec![];
-                if !shell_var.is_empty() {
-                    v.push(shell_var);
-                }
-                for s in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
-                    v.push(s.to_string());
-                }
-                // Deduplicate while preserving preference order.
-                let mut seen = HashSet::new();
-                v.into_iter().filter(|s| seen.insert(s.clone())).collect()
+        let mut v: Vec<String> = vec![];
+        if !shell_var.is_empty() {
+            v.push(shell_var);
+        }
+        for s in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
+            v.push(s.to_string());
+        }
+        // Deduplicate while preserving preference order.
+        let mut seen = HashSet::new();
+        v.into_iter().filter(|s| seen.insert(s.clone())).collect()
     };
 
     for shell in &candidates {
-                let Ok(output) = std::process::Command::new(shell)
-                    .args(["-ilc", "printenv PATH"])
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::null())
-                    .output()
-                else {
-                    continue;
-                };
-                if !output.status.success() {
-                    continue;
-                }
-                let Ok(raw) = String::from_utf8(output.stdout) else {
-                    continue;
-                };
-                let trimmed = raw.trim().to_string();
-                // Sanity-check: a real PATH is non-empty and contains at least one '/'.
-                if !trimmed.is_empty() && trimmed.contains('/') {
-                    return Some(trimmed);
-                }
+        let Ok(output) = std::process::Command::new(shell)
+            .args(["-ilc", "printenv PATH"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+        else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+        let Ok(raw) = String::from_utf8(output.stdout) else {
+            continue;
+        };
+        let trimmed = raw.trim().to_string();
+        // Sanity-check: a real PATH is non-empty and contains at least one '/'.
+        if !trimmed.is_empty() && trimmed.contains('/') {
+            return Some(trimmed);
+        }
     }
     None
 }
@@ -404,9 +404,7 @@ impl LspClientProcess {
     /// id. The server should reply to that id with an error response, which
     /// flows back through `deliver_response` and unblocks the original waiter.
     pub fn send_cancel_request(&self, id: u64) {
-        if let Err(err) = self
-            .send_notification("$/cancelRequest", json!({ "id": id }))
-        {
+        if let Err(err) = self.send_notification("$/cancelRequest", json!({ "id": id })) {
             eprintln!("[LSP] send $/cancelRequest({id}) failed: {err}");
         }
     }

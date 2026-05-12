@@ -30,7 +30,13 @@ fn inline_suggestion_accept_prefix_byte_len(suggestion: &str) -> usize {
             Some(current) if current == kind && kind != InlineSuggestionTokenKind::Punctuation => {
                 last_end = idx + ch.len_utf8();
             }
-            Some(_) => return if saw_leading_whitespace { idx } else { last_end },
+            Some(_) => {
+                return if saw_leading_whitespace {
+                    idx
+                } else {
+                    last_end
+                };
+            }
         }
     }
 

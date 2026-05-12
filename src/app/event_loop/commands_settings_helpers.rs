@@ -53,7 +53,8 @@ impl AppShell {
                 }
 
                 if height_delta != 0.0 && self.panel_state.bottom.visible {
-                    let next = (self.panel_state.bottom.size_px - height_delta).clamp(120.0, 1040.0);
+                    let next =
+                        (self.panel_state.bottom.size_px - height_delta).clamp(120.0, 1040.0);
                     if (next - self.panel_state.bottom.size_px).abs() > f32::EPSILON {
                         self.panel_state.bottom.size_px = next;
                         self.ui_config.docks.bottom.size_px = next;
@@ -78,7 +79,9 @@ impl AppShell {
     }
 
     pub(super) fn resize_editor_left_edge(&mut self, editor_width_delta: f32) -> bool {
-        if self.focus_manager.current() != FocusTarget::CenterEditor || !self.panel_state.left.visible {
+        if self.focus_manager.current() != FocusTarget::CenterEditor
+            || !self.panel_state.left.visible
+        {
             return false;
         }
 
@@ -96,7 +99,9 @@ impl AppShell {
     }
 
     pub(super) fn resize_editor_right_edge(&mut self, editor_width_delta: f32) -> bool {
-        if self.focus_manager.current() != FocusTarget::CenterEditor || !self.panel_state.right.visible {
+        if self.focus_manager.current() != FocusTarget::CenterEditor
+            || !self.panel_state.right.visible
+        {
             return false;
         }
 

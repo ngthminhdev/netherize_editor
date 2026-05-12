@@ -262,8 +262,8 @@ impl Renderer {
                 if x >= clip_right {
                     continue;
                 }
-                let width = (end_col_exclusive.saturating_sub(start_col) as f32)
-                    * view_renderer.cell_width;
+                let width =
+                    (end_col_exclusive.saturating_sub(start_col) as f32) * view_renderer.cell_width;
                 cursor_instances.push(RegionDrawInstance::new(
                     [x, y, width.min((clip_right - x).max(0.0)), h.max(1.0)],
                     search_color,
@@ -434,7 +434,7 @@ impl Renderer {
         };
         let accent = self.theme.ui.cyan.as_f32();
         let running_color = [0.32, 0.92, 0.52, 0.95_f32]; // green
-        let dead_color = [0.45, 0.45, 0.45, 0.55_f32];   // gray
+        let dead_color = [0.45, 0.45, 0.45, 0.55_f32]; // gray
         let active_fg = self.theme.editor.fg.as_f32();
         let inactive_fg = self.theme.ui.fg_dim.as_f32();
         let font_size = (self.theme.ui.panel_font_size + 2.0).max(self.theme.ui.panel_font_size);
@@ -551,13 +551,14 @@ impl Renderer {
             .terminal_glyph_instances
             .len()
             .saturating_sub(tab_text_start as usize) as u32;
-        self.terminal_tab_bar_batch = rect_to_scissor(tab_bar_bounds).map(|scissor| TextScissorBatch {
-            scissor,
-            range: InstanceDrawRange {
-                start: tab_text_start,
-                count: tab_text_count,
-            },
-        });
+        self.terminal_tab_bar_batch =
+            rect_to_scissor(tab_bar_bounds).map(|scissor| TextScissorBatch {
+                scissor,
+                range: InstanceDrawRange {
+                    start: tab_text_start,
+                    count: tab_text_count,
+                },
+            });
         self.terminal_text_pipeline.upload_instances(
             &self.device,
             &self.queue,

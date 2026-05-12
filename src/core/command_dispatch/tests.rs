@@ -1534,19 +1534,38 @@ fn undo_is_isolated_per_buffer() {
 
     // Return to buffer A and undo one transaction.
     app.open_file(path_a.clone()).expect("re-open A");
-    assert_eq!(app.text_string(), "File A - Edit 1", "buffer A must load saved content");
+    assert_eq!(
+        app.text_string(),
+        "File A - Edit 1",
+        "buffer A must load saved content"
+    );
     let undo = dispatch_command(&mut app, Command::Undo);
     assert!(undo.success, "undo must succeed on buffer A");
     assert!(undo.state_changed, "undo must change state");
-    assert_eq!(app.text_string(), "File A", "undo must restore buffer A to pre-edit state");
+    assert_eq!(
+        app.text_string(),
+        "File A",
+        "undo must restore buffer A to pre-edit state"
+    );
 
     // Verify buffer B is untouched — its undo stack must be independent.
     app.open_file(path_b.clone()).expect("re-open B");
-    assert_eq!(app.text_string(), "File ", "buffer B must still show its own saved state");
+    assert_eq!(
+        app.text_string(),
+        "File ",
+        "buffer B must still show its own saved state"
+    );
     let b_undo = dispatch_command(&mut app, Command::Undo);
     assert!(b_undo.success);
-    assert!(b_undo.state_changed, "buffer B must have its own undo entry");
-    assert_eq!(app.text_string(), "File B", "undo on buffer B must restore 'File B'");
+    assert!(
+        b_undo.state_changed,
+        "buffer B must have its own undo entry"
+    );
+    assert_eq!(
+        app.text_string(),
+        "File B",
+        "undo on buffer B must restore 'File B'"
+    );
 
     let _ = fs::remove_file(&path_a);
     let _ = fs::remove_file(&path_b);
@@ -1602,10 +1621,7 @@ fn paste_multiline_undo_restores_line_count() {
         Some(&mut clipboard),
     );
     let lines_after_paste = app.text_string().lines().count();
-    assert!(
-        lines_after_paste > lines_before,
-        "paste should add lines"
-    );
+    assert!(lines_after_paste > lines_before, "paste should add lines");
 
     // Commit if still in insert mode.
     if app.current_mode() == EditorMode::Insert {

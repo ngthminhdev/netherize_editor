@@ -29,6 +29,106 @@ fn statusbar_source_path_label(
         .unwrap_or_else(|| path.display().to_string())
 }
 
+fn symbol_kind_label(kind: &str) -> String {
+    match kind {
+        "Class" => "class".to_string(),
+        "Method" => "method".to_string(),
+        "Function" => "fn".to_string(),
+        "Constant" => "const".to_string(),
+        "Variable" => "var".to_string(),
+        "Property" => "prop".to_string(),
+        "Field" => "field".to_string(),
+        "Interface" => "interface".to_string(),
+        "Struct" => "struct".to_string(),
+        "Enum" => "enum".to_string(),
+        "EnumMember" => "member".to_string(),
+        "Namespace" => "namespace".to_string(),
+        "Module" => "module".to_string(),
+        "Constructor" => "constructor".to_string(),
+        other => other.to_ascii_lowercase(),
+    }
+}
+
+fn symbol_kind_color(kind: &str, theme: &ThemeConfig) -> [f32; 4] {
+    match kind {
+        "Class" | "Interface" | "Struct" | "Enum" | "TypeParameter" => theme.ui.magenta.as_f32(),
+        "Method" | "Function" | "Constructor" => theme.ui.cyan.as_f32(),
+        "Constant" | "Variable" | "Property" | "Field" | "EnumMember" => theme.ui.info.as_f32(),
+        "Namespace" | "Module" | "Package" => theme.ui.amber.as_f32(),
+        _ => theme.ui.fg.as_f32(),
+    }
+}
+
+fn breadcrumb_segment_text(kind: &str, name: &str) -> String {
+    let label = symbol_kind_label(kind);
+    if kind == "Constructor" && name.eq_ignore_ascii_case("constructor") {
+        label
+    } else {
+        format!("{label} {name}")
+    }
+}
+
+fn cursor_in_lsp_range(
+    range: &crate::async_runtime::message::LspRange,
+    line: usize,
+    col: usize,
+) -> bool {
+    let start_line = range.start.line as usize;
+    let end_line = range.end.line as usize;
+    let start_col = range.start.character as usize;
+    let end_col = range.end.character as usize;
+    (line > start_line || (line == start_line && col >= start_col))
+        && (line < end_line || (line == end_line && col <= end_col))
+}
+
+fn symbol_range_score(range: &crate::async_runtime::message::LspRange) -> (usize, usize) {
+    let start_line = range.start.line as usize;
+    let end_line = range.end.line as usize;
+    let start_col = range.start.character as usize;
+    let end_col = range.end.character as usize;
+    (
+        end_line.saturating_sub(start_line),
+        end_col.saturating_sub(start_col),
+    )
+}
+
+fn build_editor_breadcrumb_segments(
+    symbols: &[crate::async_runtime::message::LspDocumentSymbol],
+    cursor_line: usize,
+    cursor_col: usize,
+    theme: &ThemeConfig,
+) -> Vec<crate::render::renderer::EditorBreadcrumbSegment> {
+    let current = symbols
+        .iter()
+        .filter(|symbol| cursor_in_lsp_range(&symbol.range, cursor_line, cursor_col))
+        .min_by(|left, right| {
+            left.ancestors
+                .len()
+                .cmp(&right.ancestors.len())
+                .reverse()
+                .then_with(|| {
+                    symbol_range_score(&left.range).cmp(&symbol_range_score(&right.range))
+                })
+        });
+
+    let Some(current) = current else {
+        return Vec::new();
+    };
+
+    let mut segments = Vec::new();
+    for ancestor in &current.ancestors {
+        segments.push(crate::render::renderer::EditorBreadcrumbSegment {
+            text: breadcrumb_segment_text(&ancestor.kind, &ancestor.name),
+            color: symbol_kind_color(&ancestor.kind, theme),
+        });
+    }
+    segments.push(crate::render::renderer::EditorBreadcrumbSegment {
+        text: breadcrumb_segment_text(&current.kind, &current.name),
+        color: symbol_kind_color(&current.kind, theme),
+    });
+    segments
+}
+
 impl ApplicationHandler<AppEvent> for AppShell {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -210,7 +310,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 }
 
                 // System Dependency Check popup — intercept input khi popup active.
-                if self.active_system_dep_guide.is_some() && key_event.state == ElementState::Pressed {
+                if self.active_system_dep_guide.is_some()
+                    && key_event.state == ElementState::Pressed
+                {
                     let named = match &key_event.logical_key {
                         Key::Named(n) => Some(*n),
                         _ => None,
@@ -392,7 +494,9 @@ impl AppShell {
             return false;
         }
         let now = Instant::now();
-        if now.duration_since(self.last_lsp_loading_animation_tick) >= LSP_LOADING_ANIMATION_INTERVAL {
+        if now.duration_since(self.last_lsp_loading_animation_tick)
+            >= LSP_LOADING_ANIMATION_INTERVAL
+        {
             self.last_lsp_loading_animation_tick = now;
             self.lsp_loading_frame = self.lsp_loading_frame.wrapping_add(1);
             true
@@ -585,8 +689,7 @@ impl AppShell {
                 if region.id == RegionId::RightSidebar {
                     if suppress_ring {
                         let mut quads = vec![
-                            RegionDrawInstance::new(bounds, rs_panel_bg)
-                                .with_radius(panel_radius),
+                            RegionDrawInstance::new(bounds, rs_panel_bg).with_radius(panel_radius),
                         ];
                         if let Some([ix, iy, iw, ih]) = ai_chat_input_bounds {
                             if iw > 0.0 && ih > 0.0 {
@@ -598,8 +701,11 @@ impl AppShell {
                         }
                         quads
                     } else {
-                        let outline_color =
-                            if is_focused { focused_outline } else { default_outline };
+                        let outline_color = if is_focused {
+                            focused_outline
+                        } else {
+                            default_outline
+                        };
                         let mut quads = focus_ring_instances(
                             bounds,
                             outline_color,
@@ -611,7 +717,9 @@ impl AppShell {
                             if iw > 0.0 && ih > 0.0 {
                                 quads.push(
                                     RegionDrawInstance::new([ix, iy, iw, ih], rs_input_bg)
-                                        .with_radius((panel_radius - FOCUS_RING_THICKNESS).max(0.0)),
+                                        .with_radius(
+                                            (panel_radius - FOCUS_RING_THICKNESS).max(0.0),
+                                        ),
                                 );
                             }
                         }
@@ -623,8 +731,11 @@ impl AppShell {
                             .with_radius(panel_radius),
                     ]
                 } else {
-                    let outline_color =
-                        if is_focused { focused_outline } else { default_outline };
+                    let outline_color = if is_focused {
+                        focused_outline
+                    } else {
+                        default_outline
+                    };
                     focus_ring_instances(
                         bounds,
                         outline_color,
@@ -663,6 +774,7 @@ impl AppShell {
             if self.editor_needs_layout || bounds_changed || show_welcome_changed || show_welcome {
                 if let Some(renderer) = self.renderer.as_mut() {
                     if show_welcome {
+                        renderer.set_editor_breadcrumb_segments(Vec::new());
                         let (text, styled) = welcome_screen_content(&self.theme);
                         renderer.clear_editor_content();
                         renderer.clear_buffer_terminal();
@@ -674,6 +786,7 @@ impl AppShell {
                             self.app_state.command_palette_selected_index(),
                         );
                     } else if let Some(session_id) = active_terminal_session {
+                        renderer.set_editor_breadcrumb_segments(Vec::new());
                         renderer.clear_welcome_logo();
                         renderer.clear_editor_content();
                         if let Some(grid) = self.terminal_buffer_grids.get(&session_id) {
@@ -688,11 +801,13 @@ impl AppShell {
                             renderer.clear_buffer_terminal();
                         }
                     } else if let Some(fuzzy_state) = self.app_state.active_fuzzy_picker_buffer() {
+                        renderer.set_editor_breadcrumb_segments(Vec::new());
                         renderer.clear_welcome_logo();
                         renderer.clear_buffer_terminal();
                         renderer.clear_editor_content();
                         renderer.update_fuzzy_picker_buffer_content(fuzzy_state, center_bounds);
                     } else if diagnostics_active {
+                        renderer.set_editor_breadcrumb_segments(Vec::new());
                         renderer.clear_welcome_logo();
                         renderer.clear_buffer_terminal();
                         renderer.clear_editor_content();
@@ -702,6 +817,7 @@ impl AppShell {
                             renderer.clear_editor_overlays();
                         }
                     } else if references_active {
+                        renderer.set_editor_breadcrumb_segments(Vec::new());
                         renderer.clear_welcome_logo();
                         renderer.clear_buffer_terminal();
                         renderer.clear_editor_content();
@@ -711,16 +827,19 @@ impl AppShell {
                             renderer.clear_editor_overlays();
                         }
                     } else if let Some(settings) = self.app_state.active_settings_buffer() {
+                        renderer.set_editor_breadcrumb_segments(Vec::new());
                         renderer.clear_welcome_logo();
                         renderer.clear_buffer_terminal();
                         renderer.clear_editor_content();
                         renderer.update_settings_buffer_content(settings, center_bounds);
                     } else if let Some(help) = self.app_state.active_help_buffer() {
+                        renderer.set_editor_breadcrumb_segments(Vec::new());
                         renderer.clear_welcome_logo();
                         renderer.clear_buffer_terminal();
                         renderer.clear_editor_content();
                         renderer.update_help_buffer_content(help, center_bounds);
                     } else if let Some(image) = self.app_state.active_image_buffer() {
+                        renderer.set_editor_breadcrumb_segments(Vec::new());
                         renderer.update_image_content(image, center_bounds);
                     } else {
                         // Skip editor content rendering in Zen Mode when target is not CenterEditor
@@ -728,11 +847,21 @@ impl AppShell {
                             && self.panel_state.maximized_region != Some(FocusTarget::CenterEditor);
 
                         if zen_mode_active {
+                            renderer.set_editor_breadcrumb_segments(Vec::new());
                             renderer.clear_editor_content();
                             renderer.clear_editor_overlays();
                         } else {
                             renderer.clear_welcome_logo();
                             renderer.clear_buffer_terminal();
+                            let (cursor_line, cursor_col) = self.app_state.cursor_line_col();
+                            renderer.set_editor_breadcrumb_segments(
+                                build_editor_breadcrumb_segments(
+                                    &self.cached_document_symbols,
+                                    cursor_line,
+                                    cursor_col,
+                                    &self.theme,
+                                ),
+                            );
                             let effective_highlights =
                                 crate::syntax::highlight::overlay_highlight_layers(
                                     &self.highlight_spans,
@@ -812,14 +941,21 @@ impl AppShell {
                     }
                 } else if let Some(image) = self.app_state.active_image_buffer() {
                     if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_editor_breadcrumb_segments(Vec::new());
                         renderer.update_image_content(image, center_bounds);
                     }
                 } else if !show_welcome
                     && (self.panel_state.maximized_region.is_none()
-                        || self.panel_state.maximized_region
-                            == Some(FocusTarget::CenterEditor))
+                        || self.panel_state.maximized_region == Some(FocusTarget::CenterEditor))
                     && let Some(renderer) = self.renderer.as_mut()
                 {
+                    let (cursor_line, cursor_col) = self.app_state.cursor_line_col();
+                    renderer.set_editor_breadcrumb_segments(build_editor_breadcrumb_segments(
+                        &self.cached_document_symbols,
+                        cursor_line,
+                        cursor_col,
+                        &self.theme,
+                    ));
                     renderer.update_editor_caret(&self.app_state, center_bounds);
                     renderer.update_editor_overlays(&self.app_state, center_bounds);
                 }
@@ -1097,9 +1233,7 @@ impl AppShell {
                     TopbarTab {
                         label: buffer.label(),
                         kind: match &buffer.content {
-                            BufferContent::Text(_text) => TopbarTabKind::Text {
-                                path: file_path,
-                            },
+                            BufferContent::Text(_text) => TopbarTabKind::Text { path: file_path },
                             BufferContent::Image(image) => TopbarTabKind::Image {
                                 path: image.path.clone(),
                             },
@@ -1271,9 +1405,24 @@ impl AppShell {
                 // Render tab bar after terminal content layout so tab labels are
                 // appended after body glyphs in the shared terminal text pipeline.
                 let tab_bar_quads = if let Some(renderer) = self.renderer.as_mut() {
-                    let labels: Vec<&str> = self.terminal_tabs.iter().map(|t| t.label.as_str()).collect();
-                    let running: Vec<bool> = self.terminal_tabs.iter().map(|t| t.status.is_running()).collect();
-                    renderer.update_terminal_tab_bar(&labels, &running, self.active_terminal_tab, bottom_bounds).0
+                    let labels: Vec<&str> = self
+                        .terminal_tabs
+                        .iter()
+                        .map(|t| t.label.as_str())
+                        .collect();
+                    let running: Vec<bool> = self
+                        .terminal_tabs
+                        .iter()
+                        .map(|t| t.status.is_running())
+                        .collect();
+                    renderer
+                        .update_terminal_tab_bar(
+                            &labels,
+                            &running,
+                            self.active_terminal_tab,
+                            bottom_bounds,
+                        )
+                        .0
                 } else {
                     Vec::new()
                 };
@@ -1420,7 +1569,14 @@ fn focus_ring_instances(
 
 #[cfg(test)]
 mod tests {
-    use super::{focus_ring_instances, focus_target_region_id, statusbar_source_path_label};
+    use super::{
+        breadcrumb_segment_text, build_editor_breadcrumb_segments, focus_ring_instances,
+        focus_target_region_id, statusbar_source_path_label,
+    };
+    use crate::async_runtime::message::{
+        LspDocumentSymbol, LspDocumentSymbolSegment, LspPosition, LspRange,
+    };
+    use crate::config::theme_config::ThemeConfig;
     use crate::workbench::{focus_manager::FocusTarget, region_model::RegionId};
     use std::path::Path;
 
@@ -1469,6 +1625,162 @@ mod tests {
         assert_eq!(
             statusbar_source_path_label(Some(file), Some(root)),
             "main.rs"
+        );
+    }
+
+    #[test]
+    fn build_editor_breadcrumb_segments_uses_deepest_matching_symbol() {
+        let theme = ThemeConfig::builtin_dark();
+        let symbols = vec![
+            LspDocumentSymbol {
+                name: "SubscribeLogSync".to_string(),
+                kind: "Class".to_string(),
+                range: LspRange {
+                    start: LspPosition {
+                        line: 10,
+                        character: 0,
+                    },
+                    end: LspPosition {
+                        line: 80,
+                        character: 1,
+                    },
+                },
+                ancestors: Vec::new(),
+            },
+            LspDocumentSymbol {
+                name: "stop".to_string(),
+                kind: "Method".to_string(),
+                range: LspRange {
+                    start: LspPosition {
+                        line: 24,
+                        character: 2,
+                    },
+                    end: LspPosition {
+                        line: 40,
+                        character: 1,
+                    },
+                },
+                ancestors: vec![LspDocumentSymbolSegment {
+                    name: "SubscribeLogSync".to_string(),
+                    kind: "Class".to_string(),
+                }],
+            },
+            LspDocumentSymbol {
+                name: "intervalId".to_string(),
+                kind: "Constant".to_string(),
+                range: LspRange {
+                    start: LspPosition {
+                        line: 25,
+                        character: 4,
+                    },
+                    end: LspPosition {
+                        line: 25,
+                        character: 22,
+                    },
+                },
+                ancestors: vec![
+                    LspDocumentSymbolSegment {
+                        name: "SubscribeLogSync".to_string(),
+                        kind: "Class".to_string(),
+                    },
+                    LspDocumentSymbolSegment {
+                        name: "stop".to_string(),
+                        kind: "Method".to_string(),
+                    },
+                ],
+            },
+        ];
+
+        let breadcrumb = build_editor_breadcrumb_segments(&symbols, 25, 10, &theme);
+        let labels: Vec<&str> = breadcrumb
+            .iter()
+            .map(|segment| segment.text.as_str())
+            .collect();
+        assert_eq!(
+            labels,
+            vec!["class SubscribeLogSync", "method stop", "const intervalId"]
+        );
+    }
+
+    #[test]
+    fn build_editor_breadcrumb_segments_renders_constructor_chain() {
+        let theme = ThemeConfig::builtin_dark();
+        let symbols = vec![
+            LspDocumentSymbol {
+                name: "KafkaProducer".to_string(),
+                kind: "Class".to_string(),
+                range: LspRange {
+                    start: LspPosition {
+                        line: 6,
+                        character: 0,
+                    },
+                    end: LspPosition {
+                        line: 30,
+                        character: 1,
+                    },
+                },
+                ancestors: Vec::new(),
+            },
+            LspDocumentSymbol {
+                name: "constructor".to_string(),
+                kind: "Constructor".to_string(),
+                range: LspRange {
+                    start: LspPosition {
+                        line: 12,
+                        character: 2,
+                    },
+                    end: LspPosition {
+                        line: 22,
+                        character: 3,
+                    },
+                },
+                ancestors: vec![LspDocumentSymbolSegment {
+                    name: "KafkaProducer".to_string(),
+                    kind: "Class".to_string(),
+                }],
+            },
+            LspDocumentSymbol {
+                name: "kafkaClient".to_string(),
+                kind: "Constant".to_string(),
+                range: LspRange {
+                    start: LspPosition {
+                        line: 14,
+                        character: 8,
+                    },
+                    end: LspPosition {
+                        line: 14,
+                        character: 30,
+                    },
+                },
+                ancestors: vec![
+                    LspDocumentSymbolSegment {
+                        name: "KafkaProducer".to_string(),
+                        kind: "Class".to_string(),
+                    },
+                    LspDocumentSymbolSegment {
+                        name: "constructor".to_string(),
+                        kind: "Constructor".to_string(),
+                    },
+                ],
+            },
+        ];
+
+        let breadcrumb = build_editor_breadcrumb_segments(&symbols, 14, 12, &theme);
+        let labels: Vec<&str> = breadcrumb
+            .iter()
+            .map(|segment| segment.text.as_str())
+            .collect();
+        assert_eq!(
+            labels,
+            vec!["class KafkaProducer", "constructor", "const kafkaClient"]
+        );
+    }
+
+    #[test]
+    fn breadcrumb_segment_text_dedupes_constructor_label() {
+        assert_eq!(
+            breadcrumb_segment_text("Constructor", "constructor"),
+            "constructor"
         );
     }
 }

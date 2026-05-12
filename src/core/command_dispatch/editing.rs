@@ -604,10 +604,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             // Save the selected text to clipboard (nvim register-swap behavior:
             // the replaced text becomes the new register content).
             let selected_text = ctx.app_state.visual_selection_text();
-            ctx.write_text_to_clipboard_and_remember(
-                selected_text,
-                ClipboardRecordKind::Charwise,
-            );
+            ctx.write_text_to_clipboard_and_remember(selected_text, ClipboardRecordKind::Charwise);
 
             // Replace selection with clipboard content and exit visual mode.
             let text_changed = ctx.app_state.replace_selection_with_text(&clipboard_text);

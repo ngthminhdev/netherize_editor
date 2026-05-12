@@ -572,12 +572,13 @@ impl AppShell {
                     // restored when the preview is closed.  This prevents the
                     // 50 % width from leaking into other right-panel tabs
                     // such as AI chat.
-                    self.pre_markdown_preview_right_width =
-                        Some(self.panel_state.right.size_px);
+                    self.pre_markdown_preview_right_width = Some(self.panel_state.right.size_px);
                     // Auto-set width to 50% of window
                     let half_width = (self.window_size.width as f32 * 0.5).max(200.0);
                     self.panel_state.right.size_px = half_width;
-                    self.panel_state.right.switch_to_tab(PanelTabId::MarkdownPreview);
+                    self.panel_state
+                        .right
+                        .switch_to_tab(PanelTabId::MarkdownPreview);
                     self.focus_manager.set(FocusTarget::RightSidebar);
                     self.input_handler.clear_pending_prefix();
                     self.update_markdown_preview_content();
@@ -588,9 +589,7 @@ impl AppShell {
                     if let Some(original_width) = self.pre_markdown_preview_right_width.take() {
                         self.panel_state.right.size_px = original_width;
                     }
-                    if self.panel_state.right.active_tab_id()
-                        == Some(PanelTabId::MarkdownPreview)
-                    {
+                    if self.panel_state.right.active_tab_id() == Some(PanelTabId::MarkdownPreview) {
                         self.panel_state.right.visible = false;
                         self.sidebar_needs_layout = true;
                     }
@@ -720,14 +719,10 @@ impl AppShell {
 
         preview.source_text = source.clone();
         preview.source_revision = revision;
-        preview.rendered_lines = crate::app::event_loop::helpers::parse_markdown_preview_blocks(
-            &source,
-            &self.theme,
-        );
+        preview.rendered_lines =
+            crate::app::event_loop::helpers::parse_markdown_preview_blocks(&source, &self.theme);
     }
 }
-
-
 
 fn normalize_terminal_paste_text(text: &str) -> String {
     let mut normalized = String::with_capacity(text.len());

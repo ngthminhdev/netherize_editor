@@ -357,7 +357,10 @@ pub(super) fn parse_markdown_preview_blocks(
 
 fn preserve_markdown_blank_lines(source: &str, lines: &mut Vec<MarkdownPreviewLine>) {
     let source_lines = source.lines().collect::<Vec<_>>();
-    let blank_count = source_lines.iter().filter(|line| line.trim().is_empty()).count();
+    let blank_count = source_lines
+        .iter()
+        .filter(|line| line.trim().is_empty())
+        .count();
     if blank_count == 0 {
         return;
     }
@@ -395,7 +398,9 @@ fn should_preserve_markdown_blank_line(lines: &[&str], blank_idx: usize) -> bool
         .map(|line| line.trim_start());
 
     match (prev, next) {
-        (Some(prev), Some(next)) => markdown_line_indent_level(prev) != markdown_line_indent_level(next),
+        (Some(prev), Some(next)) => {
+            markdown_line_indent_level(prev) != markdown_line_indent_level(next)
+        }
         _ => false,
     }
 }
@@ -485,11 +490,7 @@ fn render_markdown_node(
                             separator_end,
                             theme.syntax.punctuation.as_u8(),
                         ),
-                        StyledTextSpan::new(
-                            separator_end,
-                            text.len(),
-                            theme.syntax.string.as_u8(),
-                        ),
+                        StyledTextSpan::new(separator_end, text.len(), theme.syntax.string.as_u8()),
                     ],
                     text,
                     block_type: MarkdownBlockType::Paragraph,
@@ -615,11 +616,7 @@ fn render_markdown_node(
         "thematic_break" => {
             out.push(MarkdownPreviewLine {
                 text: "─".repeat(40),
-                spans: vec![StyledTextSpan::new(
-                    0,
-                    40,
-                    theme.syntax.punctuation.as_u8(),
-                )],
+                spans: vec![StyledTextSpan::new(0, 40, theme.syntax.punctuation.as_u8())],
                 block_type: MarkdownBlockType::HorizontalRule,
                 code_language: None,
             });
@@ -795,13 +792,6 @@ fn render_markdown_inline_text(text: &str, theme: &ThemeConfig) -> (String, Vec<
     (rendered, spans)
 }
 
-
-
-
-
-
-
-
 fn parse_link_reference_definition(text: &str) -> Option<(String, String)> {
     let after_open = text.strip_prefix('[')?;
     let close_idx = after_open.find("]: ").or_else(|| after_open.find("]:"))?;
@@ -864,10 +854,7 @@ fn setext_heading_content(node: tree_sitter::Node<'_>, source: &str) -> String {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() != "setext_h1_underline" && child.kind() != "setext_h2_underline" {
-            let text = child
-                .utf8_text(source.as_bytes())
-                .unwrap_or("")
-                .to_string();
+            let text = child.utf8_text(source.as_bytes()).unwrap_or("").to_string();
             if !text.is_empty() {
                 lines.push(text);
             }
@@ -915,9 +902,7 @@ fn heading_color(level: u8, theme: &ThemeConfig) -> [u8; 4] {
 }
 
 fn node_text(node: tree_sitter::Node<'_>, source: &str) -> String {
-    node.utf8_text(source.as_bytes())
-        .unwrap_or("")
-        .to_string()
+    node.utf8_text(source.as_bytes()).unwrap_or("").to_string()
 }
 
 fn code_block_content(node: tree_sitter::Node<'_>, source: &str) -> String {
@@ -967,9 +952,7 @@ fn list_marker_text(node: tree_sitter::Node<'_>, source: &str) -> String {
     {
         return "☑ ".to_string();
     }
-    if trimmed.starts_with("- [ ]")
-        || trimmed.starts_with("* [ ]")
-        || trimmed.starts_with("+ [ ]")
+    if trimmed.starts_with("- [ ]") || trimmed.starts_with("* [ ]") || trimmed.starts_with("+ [ ]")
     {
         return "☐ ".to_string();
     }
@@ -977,8 +960,12 @@ fn list_marker_text(node: tree_sitter::Node<'_>, source: &str) -> String {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "list_marker_plus" | "list_marker_minus" | "list_marker_star"
-            | "list_marker_dot" | "list_marker_parenthesis" | "list_marker"
+            "list_marker_plus"
+            | "list_marker_minus"
+            | "list_marker_star"
+            | "list_marker_dot"
+            | "list_marker_parenthesis"
+            | "list_marker"
             | "task_list_item_marker" => {
                 return format!("{} ", node_text(child, source).trim());
             }
@@ -994,7 +981,9 @@ fn list_item_content(node: tree_sitter::Node<'_>, source: &str) -> String {
     let raw = node_text(node, source);
     let first_line = raw.lines().next().unwrap_or_default();
     let trimmed = first_line.trim_start();
-    for prefix in ["- [x]", "* [x]", "+ [x]", "- [X]", "* [X]", "+ [X]", "- [ ]", "* [ ]", "+ [ ]"] {
+    for prefix in [
+        "- [x]", "* [x]", "+ [x]", "- [X]", "* [X]", "+ [X]", "- [ ]", "* [ ]", "+ [ ]",
+    ] {
         if let Some(rest) = trimmed.strip_prefix(prefix) {
             return rest.trim_start().to_string();
         }
@@ -1003,12 +992,19 @@ fn list_item_content(node: tree_sitter::Node<'_>, source: &str) -> String {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "list_marker_plus" | "list_marker_minus" | "list_marker_star"
-            | "list_marker_dot" | "list_marker_parenthesis"
-            | "task_list_marker_checked" | "task_list_marker_unchecked"
-            | "list_marker" | "task_list_item_marker"
+            "list_marker_plus"
+            | "list_marker_minus"
+            | "list_marker_star"
+            | "list_marker_dot"
+            | "list_marker_parenthesis"
+            | "task_list_marker_checked"
+            | "task_list_marker_unchecked"
+            | "list_marker"
+            | "task_list_item_marker"
             | "paragraph_continuation"
-            | "list" | "tight_list" | "loose_list" => {}
+            | "list"
+            | "tight_list"
+            | "loose_list" => {}
             _ => {
                 let text = node_text(child, source);
                 if !text.is_empty() {
@@ -1052,9 +1048,7 @@ fn render_table(
         let is_delimiter = cells.iter().all(|cell| {
             let clean = cell.trim();
             !clean.is_empty()
-                && clean
-                    .chars()
-                    .all(|ch| matches!(ch, '-' | ':' | ' ' | '\t'))
+                && clean.chars().all(|ch| matches!(ch, '-' | ':' | ' ' | '\t'))
                 && clean.chars().any(|ch| ch == '-')
         });
         if is_delimiter {
@@ -1093,7 +1087,11 @@ fn render_table(
         let mut text = String::new();
         let mut spans = Vec::new();
         text.push('│');
-        spans.push(StyledTextSpan::new(0, text.len(), theme.syntax.punctuation.as_u8()));
+        spans.push(StyledTextSpan::new(
+            0,
+            text.len(),
+            theme.syntax.punctuation.as_u8(),
+        ));
 
         for idx in 0..col_count {
             text.push(' ');
@@ -1173,7 +1171,11 @@ fn push_table_rule(
         text.push(if idx + 1 == widths.len() { right } else { join });
     }
     out.push(MarkdownPreviewLine {
-        spans: vec![StyledTextSpan::new(0, text.len(), theme.syntax.punctuation.as_u8())],
+        spans: vec![StyledTextSpan::new(
+            0,
+            text.len(),
+            theme.syntax.punctuation.as_u8(),
+        )],
         text,
         block_type: MarkdownBlockType::TableRow,
         code_language: None,

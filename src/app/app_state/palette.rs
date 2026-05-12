@@ -26,7 +26,8 @@ impl AppState {
     pub fn open_python_env_selector(&mut self) -> bool {
         let workspace = self.workspace_model.as_ref();
         self.command_palette
-            .open(CommandPaletteMode::PythonEnvSelector, workspace) > 0
+            .open(CommandPaletteMode::PythonEnvSelector, workspace)
+            > 0
     }
 
     /// Push current file+line onto the jump back stack before a jump (e.g. gd).
@@ -579,23 +580,19 @@ impl AppState {
             LspProgressKind::End => {
                 let removed = self.lsp_progress.remove(&key).is_some();
                 if self.lsp_progress_active_key.as_ref() == Some(&key) {
-                    self.lsp_progress_active_key = self
-                        .lsp_progress
-                        .keys()
-                        .next()
-                        .cloned();
+                    self.lsp_progress_active_key = self.lsp_progress.keys().next().cloned();
                 }
                 removed
             }
             LspProgressKind::Begin | LspProgressKind::Report => {
-                let entry = self
-                    .lsp_progress
-                    .entry(key.clone())
-                    .or_insert_with(|| LspProgressEntry {
-                        server: server.to_string(),
-                        token: token.to_string(),
-                        ..LspProgressEntry::default()
-                    });
+                let entry =
+                    self.lsp_progress
+                        .entry(key.clone())
+                        .or_insert_with(|| LspProgressEntry {
+                            server: server.to_string(),
+                            token: token.to_string(),
+                            ..LspProgressEntry::default()
+                        });
                 let prev = entry.clone();
                 if matches!(kind, LspProgressKind::Begin) {
                     entry.title = title.clone();

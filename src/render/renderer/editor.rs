@@ -15,6 +15,10 @@ use crate::{
 
 use super::helpers::gutter_width_for_editor;
 
+pub(super) const EDITOR_BREADCRUMB_GAP_Y: f32 = 6.0;
+pub(super) const EDITOR_BREADCRUMB_PAD_Y: f32 = 10.0;
+pub(super) const EDITOR_BREADCRUMB_TOP_INSET: f32 = 2.0;
+
 pub(super) fn run_x_for_byte(
     text_area_x: f32,
     run: &cosmic_text::LayoutRun,
@@ -145,13 +149,24 @@ pub(super) fn editor_viewport_geometry(
     let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
     let scroll_y = app_state.current_scroll_y * line_height;
     let scroll_x = app_state.scroll_column as f32 * (font_size * 0.6).max(1.0);
+    let top_inset = if renderer.editor_breadcrumb_segments.is_empty() {
+        renderer.editor_padding_y
+    } else {
+        EDITOR_BREADCRUMB_TOP_INSET
+    };
+    let breadcrumb_height = if renderer.editor_breadcrumb_segments.is_empty() {
+        0.0
+    } else {
+        line_height + EDITOR_BREADCRUMB_PAD_Y * 2.0 + EDITOR_BREADCRUMB_GAP_Y
+    };
     let viewport_text_left = center_bounds[0] + left_inset + gutter_width;
     let origin_x = viewport_text_left - scroll_x;
-    let origin_y = center_bounds[1] + renderer.editor_padding_y + line_height - scroll_y;
+    let origin_y = center_bounds[1] + top_inset + breadcrumb_height + line_height - scroll_y;
     let viewport_text_width =
         (center_bounds[2] - left_inset - renderer.editor_padding_x - gutter_width).max(1.0);
-    let viewport_text_top = center_bounds[1] + renderer.editor_padding_y;
-    let viewport_text_height = (center_bounds[3] - 2.0 * renderer.editor_padding_y).max(0.0);
+    let viewport_text_top = center_bounds[1] + top_inset + breadcrumb_height;
+    let viewport_text_height =
+        (center_bounds[3] - renderer.editor_padding_y - top_inset - breadcrumb_height).max(0.0);
 
     EditorViewportGeometry {
         line_height,

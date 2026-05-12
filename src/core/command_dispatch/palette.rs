@@ -521,13 +521,11 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
                 closed,
             )
         }
-        CommandPaletteAction::SelectPythonEnv(_path) => {
-            DispatchReport::success_with_flags(
-                "Dispatch: python env selected (handled by AppShell)".to_string(),
-                true,
-                false,
-            )
-        }
+        CommandPaletteAction::SelectPythonEnv(_path) => DispatchReport::success_with_flags(
+            "Dispatch: python env selected (handled by AppShell)".to_string(),
+            true,
+            false,
+        ),
     }
 }
 

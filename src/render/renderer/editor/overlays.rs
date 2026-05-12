@@ -19,14 +19,16 @@ use crate::{
 use cosmic_text::Metrics;
 
 use super::super::helpers::{
-    caret_rect_for_mode, clamp_monospace_text, clamp_popup_width,
-    estimate_monospace_width, gutter_width_for_editor, layout_panel_rich_text, layout_panel_text,
-    layout_panel_text_italic, rect_to_scissor, should_draw_block_cursor,
+    caret_rect_for_mode, clamp_monospace_text, clamp_popup_width, estimate_monospace_width,
+    gutter_width_for_editor, layout_panel_rich_text, layout_panel_text, layout_panel_text_italic,
+    rect_to_scissor, should_draw_block_cursor,
 };
 use super::completion::{completion_kind_badge, completion_label_spans};
+use super::{EDITOR_BREADCRUMB_GAP_Y, EDITOR_BREADCRUMB_PAD_Y, EDITOR_BREADCRUMB_TOP_INSET};
 
 const DIAGNOSTIC_SEVERITY_ERROR: u32 = 1;
 const DIAGNOSTIC_SEVERITY_WARNING: u32 = 2;
+const EDITOR_BREADCRUMB_FRAME_INSET_X: f32 = 4.0;
 use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
 use crate::text::text_system::StyledTextSpan;
 
@@ -36,14 +38,88 @@ impl Renderer {
             .active_file()
             .and_then(|path| app_state.diagnostics_for_path(path));
         let geometry = editor_viewport_geometry(self, app_state, center_bounds);
-        let viewport_top = center_bounds[1] + self.editor_padding_y;
-        let viewport_bottom =
-            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
+        let viewport_top = geometry.viewport_text_top;
+        let viewport_bottom = viewport_top + geometry.viewport_text_height.max(1.0);
         let viewport_right = center_bounds[0] + center_bounds[2] - self.editor_padding_x;
 
         self.editor_overlay_scissor = rect_to_scissor(center_bounds);
         let mut glyphs = Vec::new();
         let mut chrome_quads: Vec<RegionDrawInstance> = Vec::new();
+
+        if !self.editor_breadcrumb_segments.is_empty() {
+            let header_h = geometry.viewport_text_top
+                - (center_bounds[1] + EDITOR_BREADCRUMB_TOP_INSET)
+                - EDITOR_BREADCRUMB_GAP_Y;
+            if header_h > 0.0 {
+                let header_y = center_bounds[1] + EDITOR_BREADCRUMB_TOP_INSET;
+                let header_x = center_bounds[0] + EDITOR_BREADCRUMB_FRAME_INSET_X;
+                let header_w = (center_bounds[2] - EDITOR_BREADCRUMB_FRAME_INSET_X * 2.0).max(0.0);
+                let header_bg = blend_rgba(
+                    self.theme.editor.bg.as_f32(),
+                    self.theme.ui.status_bar_bg.as_f32(),
+                    0.62,
+                    1.0,
+                );
+                let divider = blend_rgba(header_bg, self.theme.ui.border_color.as_f32(), 0.7, 1.0);
+                chrome_quads.push(
+                    RegionDrawInstance::new([header_x, header_y, header_w, header_h], header_bg)
+                        .with_radius(self.panel_corner_radius),
+                );
+                chrome_quads.push(RegionDrawInstance::new(
+                    [header_x, header_y + header_h - 1.0, header_w, 1.0],
+                    divider,
+                ));
+
+                let mut x = geometry.viewport_text_left;
+                let text_y = header_y + ((header_h - geometry.line_height).max(0.0) * 0.5);
+                let max_x = header_x + header_w - self.editor_padding_x;
+                let separator = " › ";
+                let separator_w = estimate_monospace_width(separator, geometry.font_size);
+                let separator_color = self.theme.ui.fg_ghost.as_f32();
+
+                for (index, segment) in self.editor_breadcrumb_segments.iter().enumerate() {
+                    let is_last = index + 1 == self.editor_breadcrumb_segments.len();
+                    let available = (max_x - x).max(1.0);
+                    if available <= 1.0 {
+                        break;
+                    }
+                    let text = clamp_monospace_text(
+                        &segment.text,
+                        if is_last {
+                            available
+                        } else {
+                            available - separator_w
+                        },
+                        geometry.font_size,
+                    );
+                    if text.is_empty() {
+                        break;
+                    }
+                    glyphs.extend(layout_panel_text(
+                        &text,
+                        &mut self.editor_overlay_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        x,
+                        text_y,
+                        segment.color,
+                    ));
+                    x += estimate_monospace_width(&text, geometry.font_size);
+                    if !is_last && x + separator_w < max_x {
+                        glyphs.extend(layout_panel_text(
+                            separator,
+                            &mut self.editor_overlay_text_system,
+                            &mut self.atlas,
+                            &self.queue,
+                            x,
+                            text_y,
+                            separator_color,
+                        ));
+                        x += separator_w;
+                    }
+                }
+            }
+        }
 
         if let Some(diagnostics) = active_diagnostics {
             for diagnostic in diagnostics {
@@ -176,10 +252,8 @@ impl Renderer {
                     let max_popup_w = (center_bounds[2] * 0.5)
                         .max(120.0)
                         .min(geometry.viewport_text_width);
-                    let max_popup_h = (center_bounds[3] * 0.5)
-                        .max(geometry.line_height * 2.0);
-                    let wrap_cols =
-                        ((max_popup_w - PAD_X * 2.0) / char_w).floor() as usize;
+                    let max_popup_h = (center_bounds[3] * 0.5).max(geometry.line_height * 2.0);
+                    let wrap_cols = ((max_popup_w - PAD_X * 2.0) / char_w).floor() as usize;
 
                     // ── Pre-render: word-wrap prose, keep code verbatim ─────────
                     // (is_code, rendered_lines, spans_for_code)
@@ -205,8 +279,10 @@ impl Renderer {
                         .map(|l| l.chars().count())
                         .max()
                         .unwrap_or(0);
-                    let total_lines: usize =
-                        rendered.iter().map(|(_, lines, _)| lines.len().max(1)).sum();
+                    let total_lines: usize = rendered
+                        .iter()
+                        .map(|(_, lines, _)| lines.len().max(1))
+                        .sum();
 
                     let desired_popup_w = max_len as f32 * char_w + PAD_X * 2.0;
                     let popup_w = clamp_popup_width(desired_popup_w, 120.0, max_popup_w);
@@ -264,8 +340,7 @@ impl Renderer {
                             for (line_idx, line_text) in lines.iter().enumerate() {
                                 let text_y = popup_y
                                     + PAD_Y
-                                    + (block_line_offset + line_idx) as f32
-                                        * geometry.line_height;
+                                    + (block_line_offset + line_idx) as f32 * geometry.line_height;
                                 let line_byte_end = line_byte_start + line_text.len();
                                 if text_y > popup_content_bottom
                                     || text_y + geometry.line_height < viewport_top
@@ -309,8 +384,7 @@ impl Renderer {
                             for (line_idx, line_text) in lines.iter().enumerate() {
                                 let text_y = popup_y
                                     + PAD_Y
-                                    + (block_line_offset + line_idx) as f32
-                                        * geometry.line_height;
+                                    + (block_line_offset + line_idx) as f32 * geometry.line_height;
                                 if text_y > popup_content_bottom
                                     || text_y + geometry.line_height < viewport_top
                                     || text_y > viewport_bottom
@@ -359,7 +433,12 @@ impl Renderer {
                 border,
             ));
             chrome_quads.push(RegionDrawInstance::new(
-                [spinner_x + 1.0, spinner_y + 1.0, spinner_w - 2.0, spinner_h - 2.0],
+                [
+                    spinner_x + 1.0,
+                    spinner_y + 1.0,
+                    spinner_w - 2.0,
+                    spinner_h - 2.0,
+                ],
                 bg,
             ));
             self.editor_overlay_text_system
@@ -408,10 +487,20 @@ impl Renderer {
             // This ensures the panel appears consistently for TypeScript too, not just
             // for languages that return inline detail/documentation upfront.
             let has_doc = selected_item.is_some_and(|item| {
-                item.item.detail.as_ref().is_some_and(|d| !d.trim().is_empty())
-                    || item.item.documentation.as_ref().is_some_and(|d| !d.trim().is_empty())
+                item.item
+                    .detail
+                    .as_ref()
+                    .is_some_and(|d| !d.trim().is_empty())
+                    || item
+                        .item
+                        .documentation
+                        .as_ref()
+                        .is_some_and(|d| !d.trim().is_empty())
                     || item.item.raw_json.is_some()
-            }) || completion.hover_doc.as_ref().is_some_and(|d| !d.trim().is_empty());
+            }) || completion
+                .hover_doc
+                .as_ref()
+                .is_some_and(|d| !d.trim().is_empty());
 
             let visible_rows = completion.filtered_items.len().min(MAX_VISIBLE_ROWS).max(1);
             let row_gap = 4.0_f32;
@@ -449,8 +538,7 @@ impl Renderer {
             let anchor_x = geometry.origin_x + completion.prefix_col as f32 * char_w;
             let popup_right = anchor_x + popup_w;
             let anchor_x = if popup_right > viewport_right - 8.0 {
-                (anchor_x - (popup_right - viewport_right + 8.0))
-                    .max(center_bounds[0] + 4.0)
+                (anchor_x - (popup_right - viewport_right + 8.0)).max(center_bounds[0] + 4.0)
             } else {
                 anchor_x.max(center_bounds[0] + 4.0)
             };
@@ -504,7 +592,12 @@ impl Renderer {
             // --- Inner background: doc panel (if present) ---
             if has_doc {
                 chrome_quads.push(RegionDrawInstance::new(
-                    [popup_x + list_w + 1.0, popup_y + 1.0, doc_w - 1.0, popup_h - 2.0],
+                    [
+                        popup_x + list_w + 1.0,
+                        popup_y + 1.0,
+                        doc_w - 1.0,
+                        popup_h - 2.0,
+                    ],
                     doc_bg,
                 ));
                 // Divider
@@ -561,16 +654,18 @@ impl Renderer {
 
                 // Badge background fill
                 chrome_quads.push(
-                    RegionDrawInstance::new(
-                        [badge_x, badge_y, badge_size, badge_size],
-                        kind_bg,
-                    )
-                    .with_radius(badge_radius),
+                    RegionDrawInstance::new([badge_x, badge_y, badge_size, badge_size], kind_bg)
+                        .with_radius(badge_radius),
                 );
                 // Badge border (inset 0.5px)
                 chrome_quads.push(
                     RegionDrawInstance::new(
-                        [badge_x + 0.5, badge_y + 0.5, badge_size - 1.0, badge_size - 1.0],
+                        [
+                            badge_x + 0.5,
+                            badge_y + 0.5,
+                            badge_size - 1.0,
+                            badge_size - 1.0,
+                        ],
                         kind_border_color,
                     )
                     .with_radius((badge_radius - 0.5).max(0.5)),
@@ -705,8 +800,10 @@ impl Renderer {
                         let detail_trimmed = detail.trim().to_string();
                         if !detail_trimmed.is_empty() {
                             signature_rendered = true;
-                            let max_sig_chars = (doc_content_w / (doc_signature_font_size * 0.6)) as usize;
-                            let mut sig_lines = wrap_text_lines(&detail_trimmed, max_sig_chars.max(12));
+                            let max_sig_chars =
+                                (doc_content_w / (doc_signature_font_size * 0.6)) as usize;
+                            let mut sig_lines =
+                                wrap_text_lines(&detail_trimmed, max_sig_chars.max(12));
                             sig_lines.truncate(4);
                             if sig_lines.len() == 4 {
                                 sig_lines = sig_lines.into_iter().take(3).collect();
@@ -745,7 +842,9 @@ impl Renderer {
                     }
 
                     // --- DOCUMENTATION ---
-                    let has_documentation = item.item.documentation
+                    let has_documentation = item
+                        .item
+                        .documentation
                         .as_ref()
                         .is_some_and(|d| !d.trim().is_empty());
 
@@ -753,10 +852,10 @@ impl Renderer {
                         let doc_str = item.item.documentation.as_ref().unwrap();
                         let doc_clean = strip_markdown_inline(doc_str);
                         if !doc_clean.trim().is_empty() {
-                            let max_body_chars = (doc_content_w / (doc_body_font_size * 0.52)) as usize;
+                            let max_body_chars =
+                                (doc_content_w / (doc_body_font_size * 0.52)) as usize;
                             let body_lines = wrap_text_lines(&doc_clean, max_body_chars.max(10));
-                            let remaining_h =
-                                (popup_y + popup_h - 8.0 - doc_y).max(doc_line_h);
+                            let remaining_h = (popup_y + popup_h - 8.0 - doc_y).max(doc_line_h);
                             let max_visible = (remaining_h / doc_line_h) as usize;
                             let visible_body = body_lines
                                 .iter()
@@ -779,15 +878,23 @@ impl Renderer {
                                 ));
                             }
                         }
-                    } else if let Some(hover_text) = completion.hover_doc.as_ref().filter(|d| !d.trim().is_empty()) {
+                    } else if let Some(hover_text) = completion
+                        .hover_doc
+                        .as_ref()
+                        .filter(|d| !d.trim().is_empty())
+                    {
                         // Hover doc fetched via LSP hover request for this item
                         let doc_clean = strip_markdown_inline(hover_text);
                         if !doc_clean.trim().is_empty() {
-                            let max_body_chars = (doc_content_w / (doc_body_font_size * 0.52)) as usize;
+                            let max_body_chars =
+                                (doc_content_w / (doc_body_font_size * 0.52)) as usize;
                             let body_lines = wrap_text_lines(&doc_clean, max_body_chars.max(10));
                             let remaining_h = (popup_y + popup_h - 8.0 - doc_y).max(doc_line_h);
                             let max_visible = (remaining_h / doc_line_h) as usize;
-                            let visible_body = body_lines.iter().take(max_visible.max(1)).collect::<Vec<_>>();
+                            let visible_body = body_lines
+                                .iter()
+                                .take(max_visible.max(1))
+                                .collect::<Vec<_>>();
                             self.editor_overlay_text_system
                                 .set_metrics(Metrics::new(doc_body_font_size, doc_line_h));
                             for (li, line) in visible_body.iter().enumerate() {
@@ -819,7 +926,8 @@ impl Renderer {
                         if let Some(hint) = hint_opt {
                             let hint_font = doc_body_font_size;
                             let hint_line_h = hint_font * 1.5;
-                            let hint_y = doc_y + (popup_y + popup_h - doc_y - hint_line_h - FOOTER_H) * 0.5;
+                            let hint_y =
+                                doc_y + (popup_y + popup_h - doc_y - hint_line_h - FOOTER_H) * 0.5;
                             self.editor_overlay_text_system
                                 .set_metrics(Metrics::new(hint_font, hint_line_h));
                             self.editor_overlay_text_system
@@ -842,31 +950,23 @@ impl Renderer {
                             let return_type = detail[arrow_pos + 2..].trim();
                             if !return_type.is_empty() {
                                 let tag_text = return_type;
-                                let tag_w = estimate_monospace_width(tag_text, doc_body_font_size) + 12.0;
+                                let tag_w =
+                                    estimate_monospace_width(tag_text, doc_body_font_size) + 12.0;
                                 let tag_h = doc_body_font_size * 1.3;
                                 let tag_x = doc_x + DOC_PAD;
                                 let tag_y = popup_y + popup_h - tag_h - 8.0;
                                 // Background
                                 chrome_quads.push(RegionDrawInstance::new(
                                     [tag_x, tag_y, tag_w, tag_h],
-                                    [
-                                        success[0],
-                                        success[1],
-                                        success[2],
-                                        (success[3] * 0.08),
-                                    ],
+                                    [success[0], success[1], success[2], (success[3] * 0.08)],
                                 ));
                                 // Border
                                 chrome_quads.push(RegionDrawInstance::new(
                                     [tag_x, tag_y, tag_w, tag_h],
-                                    [
-                                        success[0],
-                                        success[1],
-                                        success[2],
-                                        (success[3] * 0.25),
-                                    ],
+                                    [success[0], success[1], success[2], (success[3] * 0.25)],
                                 ));
-                                let tag_text_w = estimate_monospace_width(tag_text, doc_body_font_size);
+                                let tag_text_w =
+                                    estimate_monospace_width(tag_text, doc_body_font_size);
                                 let tag_text_x = tag_x + (tag_w - tag_text_w) * 0.5;
                                 self.editor_overlay_text_system
                                     .set_metrics(Metrics::new(doc_body_font_size, tag_h));
@@ -955,39 +1055,62 @@ fn strip_markdown_inline(text: &str) -> String {
         if i + 1 < chars.len() && chars[i] == '*' && chars[i + 1] == '*' {
             i += 2;
             while i + 1 < chars.len() {
-                if chars[i] == '*' && chars[i + 1] == '*' { i += 2; break; }
-                out.push(chars[i]); i += 1;
+                if chars[i] == '*' && chars[i + 1] == '*' {
+                    i += 2;
+                    break;
+                }
+                out.push(chars[i]);
+                i += 1;
             }
             continue;
         }
         // Italic *...*
         if i < chars.len() && chars[i] == '*' {
             i += 1;
-            while i < chars.len() && chars[i] != '*' { out.push(chars[i]); i += 1; }
-            if i < chars.len() { i += 1; } // skip closing *
+            while i < chars.len() && chars[i] != '*' {
+                out.push(chars[i]);
+                i += 1;
+            }
+            if i < chars.len() {
+                i += 1;
+            } // skip closing *
             continue;
         }
         // Bold __...__
         if i + 1 < chars.len() && chars[i] == '_' && chars[i + 1] == '_' {
             i += 2;
             while i + 1 < chars.len() {
-                if chars[i] == '_' && chars[i + 1] == '_' { i += 2; break; }
-                out.push(chars[i]); i += 1;
+                if chars[i] == '_' && chars[i + 1] == '_' {
+                    i += 2;
+                    break;
+                }
+                out.push(chars[i]);
+                i += 1;
             }
             continue;
         }
         // Italic _..._
         if i < chars.len() && chars[i] == '_' {
             i += 1;
-            while i < chars.len() && chars[i] != '_' { out.push(chars[i]); i += 1; }
-            if i < chars.len() { i += 1; }
+            while i < chars.len() && chars[i] != '_' {
+                out.push(chars[i]);
+                i += 1;
+            }
+            if i < chars.len() {
+                i += 1;
+            }
             continue;
         }
         // Inline code `...`
         if i < chars.len() && chars[i] == '`' {
             i += 1;
-            while i < chars.len() && chars[i] != '`' { out.push(chars[i]); i += 1; }
-            if i < chars.len() { i += 1; }
+            while i < chars.len() && chars[i] != '`' {
+                out.push(chars[i]);
+                i += 1;
+            }
+            if i < chars.len() {
+                i += 1;
+            }
             continue;
         }
         out.push(chars[i]);

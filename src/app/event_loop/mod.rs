@@ -103,6 +103,8 @@ pub struct AppShell {
     pending_lazydocker_buffer_index: Option<usize>,
     highlight_spans: Vec<HighlightSpan>,
     semantic_highlight_spans: Vec<HighlightSpan>,
+    cached_document_symbols_path: Option<PathBuf>,
+    cached_document_symbols: Vec<crate::async_runtime::message::LspDocumentSymbol>,
     syntax_engine: Option<SyntaxEngine>,
     syntax_engine_file: Option<PathBuf>,
     /// Bottom-panel terminal tabs. Always non-empty when the panel is open.

@@ -659,12 +659,30 @@ fn default_profile_resize_keys_map_to_requested_directions() {
     let context = KeybindingContext::for_mode(EditorMode::Resize);
 
     let cases = [
-        (input_from_physical(KeyCode::KeyH, "h"), Command::ResizeIncreaseLeftWidth),
-        (shifted_input_from_physical(KeyCode::KeyH, "H"), Command::ResizeDecreaseLeftWidth),
-        (input_from_physical(KeyCode::KeyL, "l"), Command::ResizeIncreaseRightWidth),
-        (shifted_input_from_physical(KeyCode::KeyL, "L"), Command::ResizeDecreaseRightWidth),
-        (input_from_physical(KeyCode::KeyJ, "j"), Command::ResizeIncreaseHeight),
-        (input_from_physical(KeyCode::KeyK, "k"), Command::ResizeDecreaseHeight),
+        (
+            input_from_physical(KeyCode::KeyH, "h"),
+            Command::ResizeIncreaseLeftWidth,
+        ),
+        (
+            shifted_input_from_physical(KeyCode::KeyH, "H"),
+            Command::ResizeDecreaseLeftWidth,
+        ),
+        (
+            input_from_physical(KeyCode::KeyL, "l"),
+            Command::ResizeIncreaseRightWidth,
+        ),
+        (
+            shifted_input_from_physical(KeyCode::KeyL, "L"),
+            Command::ResizeDecreaseRightWidth,
+        ),
+        (
+            input_from_physical(KeyCode::KeyJ, "j"),
+            Command::ResizeIncreaseHeight,
+        ),
+        (
+            input_from_physical(KeyCode::KeyK, "k"),
+            Command::ResizeDecreaseHeight,
+        ),
     ];
 
     for (input, expected) in cases {
@@ -678,7 +696,8 @@ fn default_profile_leader_r_enters_resize_only_from_editor_context() {
     let input_space = input_from_named(NamedKey::Space);
     let input_r = input_from_physical(KeyCode::KeyR, "r");
 
-    let editor_context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Editor);
+    let editor_context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Editor);
     let SequenceMatch::Pending(sequence) = map
         .resolve_sequence_start(&input_space, editor_context)
         .expect("editor leader should start sequence")
@@ -698,11 +717,15 @@ fn default_profile_leader_r_enters_resize_only_from_editor_context() {
         (EditorMode::TerminalNormal, InputFocusContext::Terminal),
     ] {
         let context = KeybindingContext::with_focus(mode, focus);
-        let Some(SequenceMatch::Pending(sequence)) = map.resolve_sequence_start(&input_space, context)
+        let Some(SequenceMatch::Pending(sequence)) =
+            map.resolve_sequence_start(&input_space, context)
         else {
             continue;
         };
-        assert_eq!(map.resolve_sequence_next(&sequence, &input_r, context), None);
+        assert_eq!(
+            map.resolve_sequence_next(&sequence, &input_r, context),
+            None
+        );
     }
 }
 

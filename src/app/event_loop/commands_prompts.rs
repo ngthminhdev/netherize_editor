@@ -284,7 +284,9 @@ impl AppShell {
     pub(super) fn open_recent_projects_palette(&mut self) -> bool {
         let recent = self.persistent_state.recent_projects.clone();
         if recent.is_empty() {
-            self.show_transient_toast("No recent projects. Use Ctrl+O to open a folder.".to_string());
+            self.show_transient_toast(
+                "No recent projects. Use Ctrl+O to open a folder.".to_string(),
+            );
             return false;
         }
 

@@ -235,17 +235,18 @@ fn zen_mode_active_blocks_other_leader_commands_from_ai_chat_focus() {
 
     let resolved =
         handler.route_normalized_input(char_input('f', KeyCode::KeyF), &map, context, t0);
-    assert!(matches!(resolved, Some(InputRouteOutcome::NoDispatch { .. }) | None));
+    assert!(matches!(
+        resolved,
+        Some(InputRouteOutcome::NoDispatch { .. }) | None
+    ));
 }
 
 #[test]
 fn zen_mode_active_allows_leader_z_m_from_terminal_focus_mode() {
     let mut handler = InputHandler::new();
     let map = make_map();
-    let mut context = KeybindingContext::with_focus(
-        EditorMode::TerminalFocus,
-        InputFocusContext::Terminal,
-    );
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal);
     context.zen_mode_active = true;
     let t0 = std::time::Instant::now();
 
@@ -274,7 +275,8 @@ fn zen_mode_active_allows_leader_z_m_from_terminal_focus_mode() {
 fn zen_mode_active_allows_leader_z_m_from_bottom_panel_normal_mode() {
     let mut handler = InputHandler::new();
     let map = make_map();
-    let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::BottomPanel);
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::BottomPanel);
     context.zen_mode_active = true;
     let t0 = std::time::Instant::now();
 

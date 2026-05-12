@@ -128,6 +128,12 @@ pub(super) struct StatusbarLayoutKey {
     pub(super) go_version: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct EditorBreadcrumbSegment {
+    pub(crate) text: String,
+    pub(crate) color: [f32; 4],
+}
+
 // ── Renderer struct ────────────────────────────────────────────────────────────
 
 pub struct Renderer {
@@ -163,6 +169,7 @@ pub struct Renderer {
     pub(super) gutter_glyph_instances: Vec<GlyphInstance>,
     pub relative_numbers: bool,
     pub(super) last_editor_chrome_instances: Vec<RegionDrawInstance>,
+    pub(super) editor_breadcrumb_segments: Vec<EditorBreadcrumbSegment>,
 
     // ── Explorer sidebar ──────────────────────────────────────────────────────
     pub(super) sidebar_text_system: TextSystem,

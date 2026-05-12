@@ -79,9 +79,7 @@ impl AppShell {
         self.last_completion_resolve_select_at = Some(std::time::Instant::now());
     }
 
-    pub(in crate::app::event_loop) fn flush_pending_completion_resolve_after_debounce(
-        &mut self,
-    ) {
+    pub(in crate::app::event_loop) fn flush_pending_completion_resolve_after_debounce(&mut self) {
         if !self.pending_completion_resolve_after_debounce {
             return;
         }
@@ -195,7 +193,10 @@ impl AppShell {
         // Without this, LSP items that include the leading '.' in insert_text would
         // produce `obj..trim()` instead of `obj.trim()`.
         let trigger_col = completion.trigger_pos.col.saturating_sub(1);
-        if let Some(ch) = self.app_state.char_at_line_col(completion.trigger_pos.line, trigger_col) {
+        if let Some(ch) = self
+            .app_state
+            .char_at_line_col(completion.trigger_pos.line, trigger_col)
+        {
             if self.lsp_completion_trigger_chars.contains(&ch) && insert_text.starts_with(ch) {
                 insert_text = insert_text.chars().skip(1).collect();
             }

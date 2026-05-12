@@ -366,6 +366,7 @@ pub(super) fn handle_lsp_result(
             };
             let Some(active_path) = app.app_state.active_file().map(PathBuf::from) else {
                 let _ = app.app_state.finish_document_symbol_picker_loading();
+                let _ = app.clear_document_symbol_breadcrumb_cache();
                 app.request_redraw();
                 return;
             };
@@ -374,7 +375,12 @@ pub(super) fn handle_lsp_result(
                 app.request_redraw();
                 return;
             }
+            app.cached_document_symbols_path = Some(path);
+            app.cached_document_symbols = symbols.clone();
             if app.app_state.command_palette_mode() != Some(CommandPaletteMode::DocumentSymbols) {
+                app.editor_needs_layout = true;
+                app.editor_caret_needs_layout = false;
+                app.request_redraw();
                 return;
             }
             if app.app_state.set_document_symbol_picker_results(symbols) {

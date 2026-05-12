@@ -1242,6 +1242,7 @@ mod tests {
                         character: 1,
                     },
                 },
+                ancestors: Vec::new(),
             },
             crate::async_runtime::message::LspDocumentSymbol {
                 name: "AppState".to_string(),
@@ -1256,6 +1257,7 @@ mod tests {
                         character: 1,
                     },
                 },
+                ancestors: Vec::new(),
             },
         ];
         let items = symbols
@@ -1285,6 +1287,7 @@ mod tests {
                     character: 1,
                 },
             },
+            ancestors: Vec::new(),
         };
 
         let item = CommandPaletteItem::document_symbol(&symbol);

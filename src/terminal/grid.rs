@@ -900,7 +900,10 @@ impl TerminalGrid {
             let row_text: String = if source_from_bottom < rows {
                 let live_row = rows - 1 - source_from_bottom;
                 let start = live_row * cols;
-                self.cells[start..start + cols].iter().map(|c| c.ch).collect()
+                self.cells[start..start + cols]
+                    .iter()
+                    .map(|c| c.ch)
+                    .collect()
             } else {
                 let sb_idx = sb_len.saturating_sub(source_from_bottom - rows + 1);
                 if sb_idx < sb_len {

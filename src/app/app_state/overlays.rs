@@ -236,8 +236,9 @@ impl AppState {
     pub(super) fn restore_text_buffer_view_state(&mut self, state: TextBufferViewState) {
         self.restore_cursor_state(state.cursor);
         let max_char_idx = self.text.len_chars();
-        self.selection_anchor_char_idx =
-            state.selection_anchor_char_idx.map(|anchor| anchor.min(max_char_idx));
+        self.selection_anchor_char_idx = state
+            .selection_anchor_char_idx
+            .map(|anchor| anchor.min(max_char_idx));
         if self.selection_anchor_char_idx == Some(self.cursor_char_idx) {
             self.selection_anchor_char_idx = None;
         }

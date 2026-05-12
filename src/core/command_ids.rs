@@ -178,7 +178,8 @@ pub const FOCUS_MARKDOWN_PREVIEW: &str = "app.focus_markdown_preview";
 pub const MARKDOWN_PREVIEW_SCROLL_UP: &str = "app.markdown_preview_scroll_up";
 pub const MARKDOWN_PREVIEW_SCROLL_DOWN: &str = "app.markdown_preview_scroll_down";
 pub const MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP: &str = "app.markdown_preview_scroll_half_page_up";
-pub const MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN: &str = "app.markdown_preview_scroll_half_page_down";
+pub const MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN: &str =
+    "app.markdown_preview_scroll_half_page_down";
 pub const MARKDOWN_PREVIEW_SCROLL_TOP: &str = "app.markdown_preview_scroll_top";
 pub const MARKDOWN_PREVIEW_SCROLL_BOTTOM: &str = "app.markdown_preview_scroll_bottom";
 

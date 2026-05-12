@@ -44,6 +44,47 @@ impl AppShell {
         }
     }
 
+    pub(in crate::app::event_loop) fn clear_document_symbol_breadcrumb_cache(&mut self) -> bool {
+        let had_cache = self.cached_document_symbols_path.take().is_some()
+            || !self.cached_document_symbols.is_empty();
+        self.cached_document_symbols.clear();
+        had_cache
+    }
+
+    pub(in crate::app::event_loop) fn ensure_document_symbol_breadcrumbs(
+        &mut self,
+        force_refresh: bool,
+    ) -> bool {
+        let Some(active_path) = self.app_state.active_file().map(PathBuf::from) else {
+            return self.clear_document_symbol_breadcrumb_cache();
+        };
+
+        if !force_refresh
+            && self.cached_document_symbols_path.as_deref() == Some(active_path.as_path())
+            && !self.cached_document_symbols.is_empty()
+        {
+            return false;
+        }
+
+        if self.active_lsp_server.is_none() {
+            return self.clear_document_symbol_breadcrumb_cache();
+        }
+
+        self.force_flush_lsp_did_change_for_active_file();
+        let Some((language_id, uri, _line, _character)) = self.lsp_cursor_context() else {
+            return self.clear_document_symbol_breadcrumb_cache();
+        };
+
+        self.document_symbols_request_revision =
+            self.document_symbols_request_revision.saturating_add(1);
+        self.submit(RequestSpec {
+            revision_id: self.document_symbols_request_revision,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspDocumentSymbolsRequest { language_id, uri },
+        });
+        false
+    }
+
     fn lsp_install_working_dir(&self) -> Option<PathBuf> {
         self.app_state
             .workspace_root_path()
@@ -200,9 +241,8 @@ impl AppShell {
         };
         let (anchor_line, anchor_col) = self.app_state.cursor_line_col();
         // Show a loading overlay immediately so the user sees feedback right away.
-        let loading_block = crate::app::app_state::FloatingBoxBlock::Prose(
-            "⟳  Loading documentation…".to_string(),
-        );
+        let loading_block =
+            crate::app::app_state::FloatingBoxBlock::Prose("⟳  Loading documentation…".to_string());
         self.app_state.set_current_overlays(vec![
             crate::app::app_state::EditorOverlay::FloatingBox {
                 anchor_line,
@@ -325,22 +365,17 @@ impl AppShell {
     }
 
     pub(super) fn submit_lsp_document_symbols(&mut self) -> bool {
-        self.force_flush_lsp_did_change_for_active_file();
-        let Some((language_id, uri, _line, _character)) = self.lsp_cursor_context() else {
+        let changed = self.ensure_document_symbol_breadcrumbs(true);
+        let Some((_language_id, _uri, _line, _character)) = self.lsp_cursor_context() else {
             let changed = self.app_state.finish_document_symbol_picker_loading();
             if changed {
                 self.request_redraw();
             }
             return changed;
         };
-
-        self.document_symbols_request_revision =
-            self.document_symbols_request_revision.saturating_add(1);
-        self.submit(RequestSpec {
-            revision_id: self.document_symbols_request_revision,
-            topic: RequestTopic::LspRequest,
-            payload: WorkerRequestPayload::LspDocumentSymbolsRequest { language_id, uri },
-        });
+        if changed {
+            self.request_redraw();
+        }
         true
     }
 
@@ -632,7 +667,10 @@ impl AppShell {
 
         // Đóng palette trước.
         let _ = self.app_state.close_command_palette();
-        if let Ok(result) = self.app_state.apply_mode_event(crate::core::mode::ModeEvent::ExitFocus) {
+        if let Ok(result) = self
+            .app_state
+            .apply_mode_event(crate::core::mode::ModeEvent::ExitFocus)
+        {
             if result.changed {
                 self.editor_needs_layout = true;
             }
@@ -698,7 +736,7 @@ impl AppShell {
         // Derive a short venv display name from the parent directory of the binary.
         // e.g. /project/venv/bin/python → "venv"  or  /project/.venv/bin/python → ".venv"
         let venv_name = selected_path
-            .parent()          // bin/
+            .parent() // bin/
             .and_then(|p| p.parent()) // venv/
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
@@ -721,10 +759,7 @@ impl AppShell {
             },
         });
 
-        self.show_transient_toast(format!(
-            "Python env selected: {}",
-            selected_path.display()
-        ));
+        self.show_transient_toast(format!("Python env selected: {}", selected_path.display()));
         true
     }
 }

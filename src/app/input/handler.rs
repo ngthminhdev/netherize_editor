@@ -276,7 +276,8 @@ impl InputHandler {
                 && (normalized.named_key == Some(NamedKey::Space)
                     || self.pending_input.as_ref().is_some_and(|pending| {
                         pending.sequence.as_ref().is_some_and(|sequence| {
-                            sequence.steps.first() == Some(&crate::app::resolved_keymap::KeySpec::Leader)
+                            sequence.steps.first()
+                                == Some(&crate::app::resolved_keymap::KeySpec::Leader)
                         })
                     })))
         {

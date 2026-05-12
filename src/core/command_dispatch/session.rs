@@ -164,7 +164,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             true,
             false,
         ),
-        | Command::HelpScrollDown
+        Command::HelpScrollDown
         | Command::HelpScrollUp
         | Command::HelpScrollHalfPageDown
         | Command::HelpScrollHalfPageUp => DispatchReport::success_with_flags(

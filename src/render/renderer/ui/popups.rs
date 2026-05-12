@@ -227,15 +227,9 @@ impl Renderer {
         let body_line_h = self.theme.ui.panel_line_height.max(1.0);
 
         let (title_text, title_color) = match guide.state {
-            SystemDepState::Detected => {
-                ("[ Missing System Tools ]", warn)
-            }
-            SystemDepState::Installing => {
-                ("[ Installing Dependencies... ]", accent)
-            }
-            SystemDepState::Complete => {
-                ("[ Installation Complete ]", accent)
-            }
+            SystemDepState::Detected => ("[ Missing System Tools ]", warn),
+            SystemDepState::Installing => ("[ Installing Dependencies... ]", accent),
+            SystemDepState::Complete => ("[ Installation Complete ]", accent),
         };
 
         let title_h = measure_wrapped_block_height(

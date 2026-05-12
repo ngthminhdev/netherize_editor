@@ -29,7 +29,6 @@ use crate::text::text_system::StyledTextSpan;
 
 const DIAGNOSTIC_SEVERITY_ERROR: u32 = 1;
 const DIAGNOSTIC_SEVERITY_WARNING: u32 = 2;
-const EDITOR_FRAME_INSET: f32 = 4.0;
 const GUTTER_BG_RIGHT_TRIM: f32 = 10.0;
 
 fn leading_indent_info(app_state: &AppState, line_idx: usize, tab_width: usize) -> (usize, bool) {
@@ -52,13 +51,10 @@ impl Renderer {
         app_state: &AppState,
         center_bounds: [f32; 4],
     ) -> Vec<RegionDrawInstance> {
-        let gutter_inset_left = self.editor_padding_x;
-        let line_height = self.theme.editor.line_height;
-        let font_size = self.theme.editor.font_size;
-        let total_lines = app_state.total_lines().max(1);
-        let gutter_digits = total_lines.to_string().len().max(3);
-        let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
-        let text_area_x = center_bounds[0] + gutter_inset_left + gutter_width;
+        let geometry = editor_viewport_geometry(self, app_state, center_bounds);
+        let line_height = geometry.line_height;
+        let font_size = geometry.font_size;
+        let text_area_x = geometry.viewport_text_left;
         let scroll_y = visual_y_for_logical_scroll_with_folds(
             &self.text_system,
             app_state.current_scroll_y,
@@ -66,10 +62,9 @@ impl Renderer {
         );
         let scroll_x = app_state.scroll_column as f32 * (font_size * 0.6).max(1.0);
         let origin_x = text_area_x - scroll_x;
-        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
-        let viewport_top = center_bounds[1] + self.editor_padding_y;
-        let viewport_bottom =
-            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
+        let origin_y = geometry.viewport_text_top + line_height - scroll_y;
+        let viewport_top = geometry.viewport_text_top;
+        let viewport_bottom = viewport_top + geometry.viewport_text_height.max(1.0);
         let tab_width = app_state.indent_config().tab_width as usize;
         let char_width = (font_size * 0.6).max(1.0);
         let guide_step = char_width * tab_width.max(1) as f32;
@@ -130,21 +125,15 @@ impl Renderer {
         app_state: &AppState,
         center_bounds: [f32; 4],
     ) -> Option<RegionDrawInstance> {
-        let gutter_inset_left = self.editor_padding_x;
-        let line_height = self.theme.editor.line_height;
-        let font_size = self.theme.editor.font_size;
-        let total_lines = app_state.total_lines().max(1);
-        let gutter_digits = total_lines.to_string().len().max(3);
-        let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
-        let text_area_x = center_bounds[0] + gutter_inset_left + gutter_width;
-        let text_area_w =
-            (center_bounds[2] - gutter_inset_left - self.editor_padding_x - gutter_width).max(1.0);
+        let geometry = editor_viewport_geometry(self, app_state, center_bounds);
+        let text_area_x = geometry.viewport_text_left;
+        let text_area_w = geometry.viewport_text_width;
         let scroll_y = visual_y_for_logical_scroll_with_folds(
             &self.text_system,
             app_state.current_scroll_y,
             app_state.folded_ranges(),
         );
-        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
+        let origin_y = geometry.viewport_text_top + geometry.line_height - scroll_y;
         let caret_layout = compute_caret_layout_with_folds(
             &self.text_system,
             app_state,
@@ -152,9 +141,8 @@ impl Renderer {
             app_state.folded_ranges(),
         );
 
-        let viewport_top = center_bounds[1] + self.editor_padding_y;
-        let viewport_bottom =
-            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
+        let viewport_top = geometry.viewport_text_top;
+        let viewport_bottom = viewport_top + geometry.viewport_text_height.max(1.0);
         let line_top = caret_layout.top;
         let line_bottom = line_top + caret_layout.height.max(1.0);
         if line_bottom <= viewport_top || line_top >= viewport_bottom {
@@ -187,18 +175,12 @@ impl Renderer {
             return Vec::new();
         };
 
-        let line_height = self.theme.editor.line_height;
-        let font_size = self.theme.editor.font_size;
-        let total_lines = app_state.total_lines().max(1);
-        let gutter_digits = total_lines.to_string().len().max(3);
-        let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
-        let gutter_inset_left = self.editor_padding_x;
-        let text_area_x = center_bounds[0] + gutter_inset_left + gutter_width;
-        let text_area_w =
-            (center_bounds[2] - gutter_inset_left - self.editor_padding_x - gutter_width).max(1.0);
-        let viewport_top = center_bounds[1] + self.editor_padding_y;
-        let viewport_bottom =
-            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
+        let geometry = editor_viewport_geometry(self, app_state, center_bounds);
+        let line_height = geometry.line_height;
+        let text_area_x = geometry.viewport_text_left;
+        let text_area_w = geometry.viewport_text_width;
+        let viewport_top = geometry.viewport_text_top;
+        let viewport_bottom = viewport_top + geometry.viewport_text_height.max(1.0);
 
         let mut color = self.theme.editor.selection.as_f32();
         color[3] = (color[3] * 0.45).clamp(0.18, 0.42);
@@ -208,7 +190,7 @@ impl Renderer {
             app_state.current_scroll_y,
             app_state.folded_ranges(),
         );
-        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y_px;
+        let origin_y = geometry.viewport_text_top + line_height - scroll_y_px;
 
         let mut quads = Vec::new();
         for run in self.text_system.buffer().layout_runs() {
@@ -262,25 +244,19 @@ impl Renderer {
             return Vec::new();
         }
 
-        let line_height = self.theme.editor.line_height;
-        let font_size = self.theme.editor.font_size;
-        let total_lines = app_state.total_lines().max(1);
-        let gutter_digits = total_lines.to_string().len().max(3);
-        let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
-        let gutter_inset_left = self.editor_padding_x;
-        let text_area_x = center_bounds[0] + gutter_inset_left + gutter_width;
-        let text_area_w =
-            (center_bounds[2] - gutter_inset_left - self.editor_padding_x - gutter_width).max(1.0);
+        let geometry = editor_viewport_geometry(self, app_state, center_bounds);
+        let line_height = geometry.line_height;
+        let text_area_x = geometry.viewport_text_left;
+        let text_area_w = geometry.viewport_text_width;
         // Use visual_y_for_logical_scroll to match the actual rendered text Y (handles soft-wrapped lines).
         let scroll_y_px = visual_y_for_logical_scroll_with_folds(
             &self.text_system,
             app_state.current_scroll_y,
             app_state.folded_ranges(),
         );
-        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y_px;
-        let viewport_top = center_bounds[1] + self.editor_padding_y;
-        let viewport_bottom =
-            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
+        let origin_y = geometry.viewport_text_top + line_height - scroll_y_px;
+        let viewport_top = geometry.viewport_text_top;
+        let viewport_bottom = viewport_top + geometry.viewport_text_height.max(1.0);
 
         let base = self.theme.editor.selection.as_f32();
         let color = [base[0], base[1], base[2], 0.30];
@@ -339,23 +315,19 @@ impl Renderer {
             return Vec::new();
         }
 
-        let line_height = self.theme.editor.line_height;
-        let font_size = self.theme.editor.font_size;
-        let total_lines = app_state.total_lines().max(1);
-        let gutter_digits = total_lines.to_string().len().max(3);
-        let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
-        let text_area_x = center_bounds[0] + self.editor_padding_x + gutter_width;
-        let text_area_w = (center_bounds[2] - self.editor_padding_x - gutter_width).max(1.0);
+        let geometry = editor_viewport_geometry(self, app_state, center_bounds);
+        let line_height = geometry.line_height;
+        let text_area_x = geometry.viewport_text_left;
+        let text_area_w = geometry.viewport_text_width;
         let scroll_y = visual_y_for_logical_scroll_with_folds(
             &self.text_system,
             app_state.current_scroll_y,
             app_state.folded_ranges(),
         );
-        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
+        let origin_y = geometry.viewport_text_top + line_height - scroll_y;
 
-        let viewport_top = center_bounds[1] + self.editor_padding_y;
-        let viewport_bottom =
-            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
+        let viewport_top = geometry.viewport_text_top;
+        let viewport_bottom = viewport_top + geometry.viewport_text_height.max(1.0);
 
         let mut quads = Vec::new();
         for &(start_byte, end_byte) in ranges {
@@ -481,22 +453,18 @@ impl Renderer {
             return Vec::new();
         };
 
-        let line_height = self.theme.editor.line_height;
-        let font_size = self.theme.editor.font_size;
-        let total_lines = app_state.total_lines().max(1);
-        let gutter_digits = total_lines.to_string().len().max(3);
-        let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
-        let text_area_x = center_bounds[0] + self.editor_padding_x + gutter_width;
-        let text_area_w = (center_bounds[2] - self.editor_padding_x - gutter_width).max(1.0);
+        let geometry = editor_viewport_geometry(self, app_state, center_bounds);
+        let line_height = geometry.line_height;
+        let text_area_x = geometry.viewport_text_left;
+        let text_area_w = geometry.viewport_text_width;
         let scroll_y = visual_y_for_logical_scroll_with_folds(
             &self.text_system,
             app_state.current_scroll_y,
             app_state.folded_ranges(),
         );
-        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - scroll_y;
-        let viewport_top = center_bounds[1] + self.editor_padding_y;
-        let viewport_bottom =
-            viewport_top + (center_bounds[3] - self.editor_padding_y * 2.0).max(1.0);
+        let origin_y = geometry.viewport_text_top + line_height - scroll_y;
+        let viewport_top = geometry.viewport_text_top;
+        let viewport_bottom = viewport_top + geometry.viewport_text_height.max(1.0);
 
         let mut quads = Vec::new();
         for diagnostic in diagnostics {
@@ -595,6 +563,7 @@ impl Renderer {
         gutter_digits: usize,
         gutter_width: f32,
     ) {
+        let geometry = editor_viewport_geometry(self, app_state, center_bounds);
         let gutter_inset_left = self.editor_padding_x + 6.0;
         let (cursor_line, _) = app_state.cursor_line_col();
         let folded = app_state.folded_ranges();
@@ -624,9 +593,9 @@ impl Renderer {
             app_state.current_scroll_y.max(0.0),
             app_state.folded_ranges(),
         );
-        let origin_y = center_bounds[1] + self.editor_padding_y + line_height - visual_scroll_y;
-        let viewport_top = center_bounds[1];
-        let viewport_bottom = center_bounds[1] + center_bounds[3];
+        let origin_y = geometry.viewport_text_top + line_height - visual_scroll_y;
+        let viewport_top = geometry.viewport_text_top;
+        let viewport_bottom = viewport_top + geometry.viewport_text_height.max(1.0);
         let virtual_gap_y = app_state
             .inline_suggestion()
             .map(|suggestion| suggestion.split('\n').take(6).count().saturating_sub(1))
@@ -641,9 +610,9 @@ impl Renderer {
         quads.push(RegionDrawInstance::new(
             [
                 gutter_x,
-                center_bounds[1] + EDITOR_FRAME_INSET,
+                geometry.viewport_text_top,
                 gutter_bg_width,
-                (center_bounds[3] - EDITOR_FRAME_INSET * 2.0).max(0.0),
+                geometry.viewport_text_height.max(0.0),
             ],
             gutter_bg_color,
         ));
@@ -738,7 +707,12 @@ impl Renderer {
                             self.theme.git.modified_gutter.as_f32(),
                         ),
                         crate::app::app_state::GitLineStatus::DeletedAbove => (
-                            [gutter_x + 1.0, clipped_top, 4.0, 2.0_f32.min(clipped_height)],
+                            [
+                                gutter_x + 1.0,
+                                clipped_top,
+                                4.0,
+                                2.0_f32.min(clipped_height),
+                            ],
                             self.theme.git.deleted_gutter.as_f32(),
                         ),
                         crate::app::app_state::GitLineStatus::DeletedBelow => (

@@ -23,7 +23,11 @@ fn bundled_app_logo() -> Option<&'static AppLogo> {
         let decoded = image::load_from_memory(bytes).ok()?;
         let rgba = decoded.to_rgba8();
         let (width, height) = (rgba.width(), rgba.height());
-        Some(AppLogo { width, height, rgba: rgba.into_raw() })
+        Some(AppLogo {
+            width,
+            height,
+            rgba: rgba.into_raw(),
+        })
     })
     .as_ref()
 }
@@ -245,9 +249,9 @@ impl Renderer {
                 let batch_start = glyphs.len() as u32;
                 self.topbar_text_system.set_font_family(font_family);
 
-                let label_color = tab
-                    .git_color
-                    .unwrap_or(if is_active { active_fg } else { inactive_fg });
+                let label_color =
+                    tab.git_color
+                        .unwrap_or(if is_active { active_fg } else { inactive_fg });
 
                 if is_active {
                     glyphs.extend(layout_panel_text_bold(

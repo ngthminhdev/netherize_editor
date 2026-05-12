@@ -763,7 +763,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyY), YANK_SELECTION);
     km.insert(Some("terminal_normal"), mp(KeyCode::KeyV), TERMINAL_PASTE);
     km.insert(Some("terminal_normal"), mp(KeyCode::KeyT), TERMINAL_TAB_NEW);
-    km.insert(Some("terminal_normal"), mp(KeyCode::KeyW), TERMINAL_TAB_CLOSE);
+    km.insert(
+        Some("terminal_normal"),
+        mp(KeyCode::KeyW),
+        TERMINAL_TAB_CLOSE,
+    );
     km.insert(
         Some("terminal_normal"),
         mp(KeyCode::Digit1),
@@ -815,13 +819,21 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("terminal_normal"), ch('*'), SEARCH_WORD_UNDER_CURSOR);
 
     // ── Resize mode bindings ──────────────────────────────────────────────────
-    km.insert(Some("resize"), ph(KeyCode::KeyH), RESIZE_INCREASE_LEFT_WIDTH);
+    km.insert(
+        Some("resize"),
+        ph(KeyCode::KeyH),
+        RESIZE_INCREASE_LEFT_WIDTH,
+    );
     km.insert(
         Some("resize"),
         KeySpec::ShiftPlus(KeyCode::KeyH),
         RESIZE_DECREASE_LEFT_WIDTH,
     );
-    km.insert(Some("resize"), ph(KeyCode::KeyL), RESIZE_INCREASE_RIGHT_WIDTH);
+    km.insert(
+        Some("resize"),
+        ph(KeyCode::KeyL),
+        RESIZE_INCREASE_RIGHT_WIDTH,
+    );
     km.insert(
         Some("resize"),
         KeySpec::ShiftPlus(KeyCode::KeyL),
@@ -902,11 +914,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         seq(&[ph(KeyCode::KeyG), ph(KeyCode::KeyG)]),
         MARKDOWN_PREVIEW_SCROLL_TOP,
     );
-    km.insert(
-        Some("preview"),
-        ch('G'),
-        MARKDOWN_PREVIEW_SCROLL_BOTTOM,
-    );
+    km.insert(Some("preview"), ch('G'), MARKDOWN_PREVIEW_SCROLL_BOTTOM);
     // ── Global Zen Mode toggle ─────────────────────────────────────────────
     km.insert_sequence(
         None,

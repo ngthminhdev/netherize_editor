@@ -28,12 +28,14 @@ pub static RE_LOG_ERROR: Lazy<Regex> =
 // ─── Data Type Patterns ──────────────────────────────────────────────────────
 
 /// Matches a quoted string literal (double or single quotes, supports escaped quotes).
-pub static RE_STRING: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"#).expect("invalid string regex"));
+pub static RE_STRING: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"#).expect("invalid string regex")
+});
 
 /// Matches an integer or floating-point number (including negative).
-pub static RE_NUMBER: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b").expect("invalid number regex"));
+pub static RE_NUMBER: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b").expect("invalid number regex")
+});
 
 /// Matches boolean literals `true` or `false`.
 pub static RE_BOOL: Lazy<Regex> =

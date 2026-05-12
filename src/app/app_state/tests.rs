@@ -280,7 +280,10 @@ mod tests {
         assert!(state.active_file().expect("active file").ends_with("a.rs"));
         assert_eq!(state.cursor_char_idx, state.text.line_to_char(3) + 2);
         assert_eq!(state.target_col, 2);
-        assert_eq!(state.selection_anchor_char_idx, Some(state.text.line_to_char(2)));
+        assert_eq!(
+            state.selection_anchor_char_idx,
+            Some(state.text.line_to_char(2))
+        );
         assert!(state.visual_line_mode);
         assert_eq!(state.target_scroll_y, 3.0);
         assert_eq!(state.current_scroll_y, 2.5);

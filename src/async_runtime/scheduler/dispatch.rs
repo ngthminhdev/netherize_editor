@@ -29,9 +29,7 @@ use super::{
 };
 
 async fn detect_python_version(python_binary: Option<&std::path::Path>) -> Option<String> {
-    let cmd = python_binary
-        .and_then(|p| p.to_str())
-        .unwrap_or("python3");
+    let cmd = python_binary.and_then(|p| p.to_str()).unwrap_or("python3");
     detect_command_version(
         cmd,
         &[
@@ -281,7 +279,10 @@ pub(super) async fn dispatch_loop(
             continue;
         }
 
-        if matches!(request.payload, WorkerRequestPayload::InstallSystemDeps { .. }) {
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::InstallSystemDeps { .. }
+        ) {
             let tools = match request.payload {
                 WorkerRequestPayload::InstallSystemDeps { tools } => tools,
                 _ => unreachable!(),
@@ -294,7 +295,10 @@ pub(super) async fn dispatch_loop(
             continue;
         }
 
-        if matches!(request.payload, WorkerRequestPayload::ScanPythonEnvironments { .. }) {
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::ScanPythonEnvironments { .. }
+        ) {
             let workspace_root = match request.payload {
                 WorkerRequestPayload::ScanPythonEnvironments { workspace_root } => workspace_root,
                 _ => unreachable!(),
@@ -319,20 +323,26 @@ pub(super) async fn dispatch_loop(
             continue;
         }
 
-        if matches!(request.payload, WorkerRequestPayload::DetectRuntimeVersions { .. }) {
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::DetectRuntimeVersions { .. }
+        ) {
             let (python_binary, _workspace_root) = match request.payload {
-                WorkerRequestPayload::DetectRuntimeVersions { python_binary, workspace_root } => {
-                    (python_binary, workspace_root)
-                }
+                WorkerRequestPayload::DetectRuntimeVersions {
+                    python_binary,
+                    workspace_root,
+                } => (python_binary, workspace_root),
                 _ => unreachable!(),
             };
             let worker_tx = result_tx.clone();
             let event_proxy = event_proxy.clone();
             tokio::spawn(async move {
                 let python_version = detect_python_version(python_binary.as_deref()).await;
-                let node_version = detect_command_version("node", &["--version"]).await
+                let node_version = detect_command_version("node", &["--version"])
+                    .await
                     .map(|v| v.trim_start_matches('v').to_string());
-                let go_version = detect_command_version("go", &["version"]).await
+                let go_version = detect_command_version("go", &["version"])
+                    .await
                     .and_then(|v| {
                         // "go version go1.22.0 darwin/arm64" → "1.22.0"
                         v.split_whitespace()

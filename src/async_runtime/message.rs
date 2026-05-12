@@ -400,10 +400,17 @@ pub struct LspCompletionItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LspDocumentSymbolSegment {
+    pub name: String,
+    pub kind: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LspDocumentSymbol {
     pub name: String,
     pub kind: String,
     pub range: LspRange,
+    pub ancestors: Vec<LspDocumentSymbolSegment>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
