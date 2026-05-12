@@ -271,15 +271,16 @@ pub(super) fn layout_help_keycaps(
     }
     let mut glyphs = Vec::new();
     let mut cursor_x = origin_x;
-    let key_gap = (font_size * 0.44).max(8.0);
-    let key_height = layout_clamp(font_size + 36.0, 52.0, row_height - 8.0);
-    let key_radius = layout_clamp(key_height * 0.24, 8.0, 16.0);
-    let border_thickness = layout_clamp(key_height * 0.075, 1.0, 2.0);
-    let key_padding_x = layout_clamp(font_size * 1.44, 20.0, 36.0);
-    let key_shadow_height = layout_clamp(key_height * 0.12, 3.0, 6.0);
+    let scale = (font_size / 14.0).max(0.5);
+    let key_gap = (font_size * 0.44).max(4.0 * scale);
+    let key_height = layout_clamp(font_size + 12.0 * scale, 24.0 * scale, row_height - 6.0 * scale);
+    let key_radius = layout_clamp(key_height * 0.20, 4.0 * scale, 12.0 * scale);
+    let border_thickness = layout_clamp(key_height * 0.06, 1.0, 1.5 * scale);
+    let key_padding_x = layout_clamp(font_size * 0.8, 8.0 * scale, 24.0 * scale);
+    let key_shadow_height = layout_clamp(key_height * 0.10, 2.0 * scale, 4.0 * scale);
     let key_origin_y = centered_text_origin_y(origin_y, row_height, key_height);
-    let key_line_height = font_size + 4.0;
-    let inner_radius = (key_radius - border_thickness).max(4.0);
+    let key_line_height = font_size + 2.0 * scale;
+    let inner_radius = (key_radius - border_thickness).max(2.0 * scale);
 
     text_system.set_size(None, Some(key_line_height));
     let dummy = [255u8, 255u8, 255u8, 255u8];
@@ -306,7 +307,7 @@ pub(super) fn layout_help_keycaps(
             cursor_x += key_gap;
             continue;
         }
-        let key_width = layout_clamp(label_w + key_padding_x * 2.0, 88.0, 480.0);
+        let key_width = layout_clamp(label_w + key_padding_x * 2.0, 32.0 * scale, 400.0 * scale);
         let key_text_x = centered_text_origin_x(cursor_x, key_width, label_w);
         let palette = help_keycap_palette(key, fg, fg_dim, accent, info, warning, error, panel_bg);
 
@@ -370,21 +371,23 @@ pub(super) fn layout_help_keycaps(
     glyphs
 }
 
-pub(super) fn estimate_help_keycaps_width(keys: &[&str], font_size: f32) -> f32 {
+pub(super) fn estimate_help_keycaps_width(
+    keys: &[&str],
+    font_size: f32,
+) -> f32 {
     if font_size.is_nan() {
         return 0.0;
     }
-    let key_gap = (font_size * 0.44).max(8.0);
-    let key_padding_x = layout_clamp(font_size * 1.44, 20.0, 36.0);
+    let scale = (font_size / 14.0).max(0.5);
+    let key_gap = (font_size * 0.44).max(4.0 * scale);
+    let key_padding_x = layout_clamp(font_size * 0.8, 8.0 * scale, 24.0 * scale);
     let mut total = 0.0;
-
-    for (idx, key) in keys.iter().copied().enumerate() {
-        if idx > 0 {
+    for (i, key) in keys.iter().copied().enumerate() {
+        if i > 0 {
             total += key_gap;
         }
         let label_w = estimate_monospace_width(key, font_size);
-        total += layout_clamp(label_w + key_padding_x * 2.0, 88.0, 480.0);
+        total += layout_clamp(label_w + key_padding_x * 2.0, 32.0 * scale, 400.0 * scale);
     }
-
     total
 }

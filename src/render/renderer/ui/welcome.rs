@@ -63,7 +63,9 @@ impl Renderer {
         let fg_dim = self.theme.ui.fg_dim.as_f32();
         let fg_ghost = self.theme.ui.fg_ghost.as_f32();
         let accent = self.theme.ui.accent.as_f32();
-        let welcome_scale = layout_clamp(self.welcome_card_max_width / 560.0, 0.5, 3.0);
+        let runtime_scale = (self.theme.editor.font_size / 14.0).max(0.5);
+        let welcome_scale =
+            layout_clamp((self.welcome_card_max_width / 560.0) * runtime_scale, 0.5, 3.0);
         let sx = |value: f32| value * welcome_scale;
         let text_w = |text: &str, size: f32| estimate_monospace_width(text, size);
         let centered_x = |center: f32, text: &str, size: f32| center - text_w(text, size) * 0.5;
@@ -410,7 +412,7 @@ impl Renderer {
         ];
         let shortcut_key_font_size = sx(14.0);
         let shortcut_row_height = sx(52.0);
-        let shortcut_label_x = rx + sx(210.0);
+        let shortcut_label_x = rx + sx(260.0);
         for (keys, label) in shortcuts {
             let row_y = y;
             self.welcome_logo_text_system

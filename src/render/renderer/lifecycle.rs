@@ -111,7 +111,7 @@ impl Renderer {
         let ui_metrics = Metrics::new(theme.ui.sidebar_font_size, theme.ui.sidebar_line_height);
         let panel_metrics = Metrics::new(theme.ui.panel_font_size, theme.ui.panel_line_height);
         let leap_metrics =
-            Metrics::new(theme.editor.font_size * 2.0, theme.editor.line_height * 2.0);
+            Metrics::new(theme.editor.font_size * 1.1, theme.editor.line_height * 1.1);
 
         let text_system = make_text_system(editor_metrics, font_family.as_deref());
         let editor_overlay_text_system = make_text_system(editor_metrics, font_family.as_deref());
@@ -340,6 +340,12 @@ impl Renderer {
         ));
         self.toast_text_system.set_metrics(ui_metrics);
         self.ai_chat_text_system.set_metrics(ui_metrics);
+        let panel_metrics = Metrics::new(theme.ui.panel_font_size, theme.ui.panel_line_height);
+        self.welcome_logo_text_system.set_metrics(panel_metrics);
+        self.leap_label_text_system.set_metrics(Metrics::new(
+            theme.editor.font_size * 1.1,
+            theme.editor.line_height * 1.1,
+        ));
 
         let family = theme.editor.font_family.as_deref();
         let nerd_family = theme
