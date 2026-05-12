@@ -13,7 +13,6 @@ mod helpers;
 mod lifecycle;
 mod palette;
 mod ui;
-pub(crate) mod ui_render;
 
 use std::path::PathBuf;
 

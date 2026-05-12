@@ -26,8 +26,8 @@ use crate::{
     },
     async_runtime::{
         message::{
-            FzfSearchMode, RequestSpec, RequestTopic, SyntaxEditHint, WorkerEvent,
-            WorkerRequestPayload, WorkerResult, WorkerResultPayload,
+            FzfSearchMode, RequestSpec, RequestTopic, SyntaxEditHint, WorkerRequestPayload,
+            WorkerResult,
         },
         scheduler::AsyncScheduler,
     },
@@ -371,7 +371,6 @@ impl TerminalTabStatus {
     pub fn is_running(&self) -> bool {
         matches!(self, Self::Running)
     }
-
 }
 
 /// Một tab terminal trong bottom panel.
