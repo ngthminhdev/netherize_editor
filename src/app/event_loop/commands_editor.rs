@@ -204,6 +204,8 @@ impl AppShell {
                 | Command::MoveToLineStart
                 | Command::MoveToLineEnd
                 | Command::MoveToFirstNonWhitespace
+                | Command::MoveParagraphUp
+                | Command::MoveParagraphDown
                 | Command::InsertAtLineStart
                 | Command::AppendAtLineEnd
                 | Command::AppendAfterCursor

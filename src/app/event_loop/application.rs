@@ -6,6 +6,29 @@ use winit::{
 
 const FOCUS_RING_THICKNESS: f32 = 2.0;
 
+fn statusbar_source_path_label(
+    active_file: Option<&Path>,
+    workspace_root: Option<&Path>,
+) -> String {
+    let Some(path) = active_file else {
+        return String::new();
+    };
+
+    if let Some(root) = workspace_root
+        && let Ok(relative) = path.strip_prefix(root)
+    {
+        let relative = relative.display().to_string();
+        if !relative.is_empty() {
+            return relative;
+        }
+    }
+
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_owned)
+        .unwrap_or_else(|| path.display().to_string())
+}
+
 impl ApplicationHandler<AppEvent> for AppShell {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -1122,16 +1145,13 @@ impl AppShell {
             ) = if show_welcome {
                 ("Welcome", "", false, String::new(), 0, 0, 0, 0)
             } else {
-                let filetype   = self.app_state.active_filetype_label();
+                let filetype = self.app_state.active_filetype_label();
                 let git_branch = self.workspace_git_branch.as_deref().unwrap_or("-");
-                let is_dirty   = self.app_state.is_dirty();
-                let active_file_name = self
-                    .app_state
-                    .active_file()
-                    .and_then(|p| p.file_name())
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("")
-                    .to_string();
+                let is_dirty = self.app_state.is_dirty();
+                let active_file_name = statusbar_source_path_label(
+                    self.app_state.active_file(),
+                    self.app_state.workspace_root_path(),
+                );
                 let (diagnostics_errors, diagnostics_warnings) = self
                     .app_state
                     .active_file()
@@ -1400,8 +1420,9 @@ fn focus_ring_instances(
 
 #[cfg(test)]
 mod tests {
-    use super::{focus_ring_instances, focus_target_region_id};
+    use super::{focus_ring_instances, focus_target_region_id, statusbar_source_path_label};
     use crate::workbench::{focus_manager::FocusTarget, region_model::RegionId};
+    use std::path::Path;
 
     #[test]
     fn focus_target_region_id_maps_center_editor() {
@@ -1426,6 +1447,28 @@ mod tests {
             instances.len(),
             2,
             "panel regions should still render both outline and fill"
+        );
+    }
+
+    #[test]
+    fn statusbar_source_path_label_prefers_workspace_relative_path() {
+        let root = Path::new("/tmp/demo");
+        let file = Path::new("/tmp/demo/src/app/main.rs");
+
+        assert_eq!(
+            statusbar_source_path_label(Some(file), Some(root)),
+            "src/app/main.rs"
+        );
+    }
+
+    #[test]
+    fn statusbar_source_path_label_falls_back_to_filename_outside_workspace() {
+        let root = Path::new("/tmp/demo");
+        let file = Path::new("/tmp/other/main.rs");
+
+        assert_eq!(
+            statusbar_source_path_label(Some(file), Some(root)),
+            "main.rs"
         );
     }
 }
