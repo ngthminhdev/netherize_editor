@@ -302,6 +302,28 @@ fn zen_mode_active_allows_leader_z_m_from_bottom_panel_normal_mode() {
 }
 
 #[test]
+fn zen_mode_markdown_preview_still_allows_gg_scroll_top() {
+    let mut handler = InputHandler::new();
+    let map = make_default_profile_map();
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::MarkdownPreview);
+    context.zen_mode_active = true;
+    let t0 = std::time::Instant::now();
+
+    let start = handler.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, t0);
+    assert!(matches!(start, Some(InputRouteOutcome::NoDispatch { .. })));
+
+    let resolved =
+        handler.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, t0);
+    match resolved {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::MarkdownPreviewScrollTop);
+        }
+        other => panic!("expected markdown preview gg dispatch, got {:?}", other),
+    }
+}
+
+#[test]
 fn d_d_maps_to_delete_current_line() {
     let mut handler = InputHandler::new();
     let map = make_map();
