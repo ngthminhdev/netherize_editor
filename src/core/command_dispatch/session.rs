@@ -268,6 +268,19 @@ fn dispatch_terminal_normal(
                 changed,
             ))
         }
+        Command::EnterVisualLine => {
+            let changed = ctx
+                .terminal_grid_mut()
+                .is_some_and(|grid| grid.begin_line_selection());
+            Some(DispatchReport::success(
+                if changed {
+                    "Dispatch: began terminal visual line selection"
+                } else {
+                    "Dispatch: terminal visual line selection ignored"
+                },
+                changed,
+            ))
+        }
         Command::SwitchMode(ModeEvent::FocusTerminal) => {
             let mut changed = false;
             if let Some(grid) = ctx.terminal_grid_mut() {

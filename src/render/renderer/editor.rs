@@ -11,6 +11,7 @@ mod viewport;
 
 use crate::{
     app::app_state::AppState, async_runtime::message::LspDiagnostic, render::renderer::Renderer,
+    text::layout_sync::visual_y_for_logical_scroll_with_folds,
 };
 
 use super::helpers::gutter_width_for_editor;
@@ -147,13 +148,8 @@ pub(super) fn editor_viewport_geometry(
     let total_lines = app_state.total_lines().max(1);
     let gutter_digits = total_lines.to_string().len().max(3);
     let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
-    let scroll_y = app_state.current_scroll_y * line_height;
     let scroll_x = app_state.scroll_column as f32 * (font_size * 0.6).max(1.0);
-    let top_inset = if renderer.editor_breadcrumb_segments.is_empty() {
-        renderer.editor_padding_y
-    } else {
-        EDITOR_BREADCRUMB_TOP_INSET
-    };
+    let top_inset = EDITOR_BREADCRUMB_TOP_INSET;
     let breadcrumb_height = if renderer.editor_breadcrumb_segments.is_empty() {
         0.0
     } else {
@@ -161,12 +157,17 @@ pub(super) fn editor_viewport_geometry(
     };
     let viewport_text_left = center_bounds[0] + left_inset + gutter_width;
     let origin_x = viewport_text_left - scroll_x;
-    let origin_y = center_bounds[1] + top_inset + breadcrumb_height + line_height - scroll_y;
     let viewport_text_width =
         (center_bounds[2] - left_inset - renderer.editor_padding_x - gutter_width).max(1.0);
     let viewport_text_top = center_bounds[1] + top_inset + breadcrumb_height;
     let viewport_text_height =
         (center_bounds[3] - renderer.editor_padding_y - top_inset - breadcrumb_height).max(0.0);
+    let scroll_y = visual_y_for_logical_scroll_with_folds(
+        &renderer.text_system,
+        app_state.current_scroll_y.max(0.0),
+        app_state.folded_ranges(),
+    );
+    let origin_y = viewport_text_top + line_height - scroll_y;
 
     EditorViewportGeometry {
         line_height,

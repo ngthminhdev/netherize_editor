@@ -93,26 +93,26 @@ status_bar_height = 32.0
 # Disclosure markers and file-picker bullet glyph.
 [icons]
 # Marker for plain files in the explorer tree.
-explorer_file_marker = "·"
+explorer_file_marker = ""
 # Marker for collapsed folders.
-explorer_folder_collapsed_marker = "▶"
+explorer_folder_collapsed_marker = ""
 # Marker for expanded folders.
-explorer_folder_expanded_marker = "▼"
+explorer_folder_expanded_marker = ""
 # Dot marker rendered in file picker style rows.
 file_picker_dot = "●"
 
 # Folder icons in the explorer tree.
 [icons.folder_closed]
-glyph = "\uF07B"
+glyph = "󰉋"
 color = "#EACD61"
 
 [icons.folder_open]
-glyph = "\uF07C"
+glyph = "󰝰"
 color = "#EACD61"
 
 # Generic fallback file icon.
 [icons.default_file]
-glyph = "\uF15B"
+glyph = "󰈔"
 color = "#4a5e84"
 
 # Extension-specific file icons used by the explorer and fuzzy lists.
@@ -125,15 +125,15 @@ glyph = "\uE781"
 color = "#EACD61"
 
 [icons.typescript]
-glyph = "\uE628"
+glyph = ""
 color = "#69C3FF"
 
 [icons.tsx]
-glyph = "\uE7BA"
+glyph = "󰜈"
 color = "#69C3FF"
 
 [icons.jsx]
-glyph = "\uE7BA"
+glyph = "󰜈"
 color = "#EACD61"
 
 [icons.java]
@@ -313,7 +313,7 @@ glyph = "\uE603"
 color = "#F38CEC"
 
 [icons.shell]
-glyph = "\uF489"
+glyph = ""
 color = "#3CEC85"
 
 [icons.git]
@@ -329,8 +329,8 @@ glyph = "\uF1C5"
 color = "#3CEC85"
 
 [file_icons]
-default_file = "📄"
-default_folder = "📁"
+default_file = "󰈔"
+default_folder = "󰉋"
 
 [file_icons.extensions]
 rs = ""
@@ -389,10 +389,10 @@ gql = ""
 md = ""
 mdx = ""
 dockerfile = ""
-sh = ""
-bash = ""
-zsh = ""
-fish = ""
+sh = ""
+bash = ""
+zsh = ""
+fish = ""
 lock = ""
 mk = ""
 mak = ""

@@ -59,9 +59,12 @@ fn spans_fingerprint(spans: &[StyledTextSpan]) -> u64 {
 impl Renderer {
     pub(crate) fn set_editor_breadcrumb_segments(
         &mut self,
-        segments: Vec<crate::render::renderer::EditorBreadcrumbSegment>,
-    ) {
-        self.editor_breadcrumb_segments = segments;
+        _segments: Vec<crate::render::renderer::EditorBreadcrumbSegment>,
+    ) -> bool {
+        // Temporary kill-switch: breadcrumb UI is disabled, so keep the render list empty.
+        let had_segments = !self.editor_breadcrumb_segments.is_empty();
+        self.editor_breadcrumb_segments.clear();
+        had_segments
     }
 
     pub fn clear_editor_content(&mut self) {

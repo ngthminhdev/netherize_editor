@@ -271,17 +271,71 @@ impl InputHandler {
         // AI Chat input mode normally intercepts all keys into the chat input box.
         // While Zen Mode is active, keep leader chords available so <leader>z m
         // can always restore the normal layout regardless of current focus.
-        if context.focus == InputFocusContext::AiChat
-            && !(context.zen_mode_active
-                && (normalized.named_key == Some(NamedKey::Space)
-                    || self.pending_input.as_ref().is_some_and(|pending| {
-                        pending.sequence.as_ref().is_some_and(|sequence| {
-                            sequence.steps.first()
-                                == Some(&crate::app::resolved_keymap::KeySpec::Leader)
-                        })
-                    })))
-        {
+        let terminal_raw_focus = context.focus == InputFocusContext::Terminal
+            && context.mode == EditorMode::TerminalFocus;
+        let zen_mode_allows_leader = context.zen_mode_active
+            && !terminal_raw_focus
+            && (normalized.named_key == Some(NamedKey::Space)
+                || self.pending_input.as_ref().is_some_and(|pending| {
+                    pending.sequence.as_ref().is_some_and(|sequence| {
+                        sequence.steps.first()
+                            == Some(&crate::app::resolved_keymap::KeySpec::Leader)
+                    })
+                }));
+
+        if context.focus == InputFocusContext::AiChat && !zen_mode_allows_leader {
             return self.route_ai_chat_input(normalized, input_debug, context);
+        }
+
+        // Terminal input mode: in TerminalFocus (typing mode), route raw input to PTY.
+        // In TerminalNormal (T-COPY mode), allow vim-style navigation and search.
+        // While Zen Mode is active, keep leader chords available for layout control.
+        //
+        // IMPORTANT: in TerminalFocus, Ctrl+Q must switch to T-COPY mode instead of
+        // being forwarded as raw ^Q into PTY. Keep other Ctrl+* keys raw by default.
+        if context.focus == InputFocusContext::Terminal
+            && context.mode == EditorMode::TerminalFocus
+            && !zen_mode_allows_leader
+            && let Some(resolved) = input_map.resolve(&normalized, context)
+            && matches!(
+                resolved.command,
+                Command::SwitchMode(crate::core::mode::ModeEvent::EnterTerminalNormal)
+                    | Command::TerminalPaste
+            )
+        {
+            let (repeat_count, count_ignored) =
+                self.consume_repeat_count_for_command(&resolved.command, None);
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> terminal ctrl+q priority -> {}",
+                    context.mode.as_str(),
+                    context.focus.as_str(),
+                    resolved.reason
+                ),
+                resolved.command,
+                repeat_count,
+                count_ignored,
+            )));
+        }
+
+        if context.focus == InputFocusContext::Terminal
+            && context.mode == EditorMode::TerminalFocus
+            && !zen_mode_allows_leader
+            && let Some(payload) = terminal_input_payload(&normalized)
+        {
+            self.clear_pending_counts();
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> zen-aware terminal raw input",
+                    context.mode.as_str(),
+                    context.focus.as_str()
+                ),
+                Command::TerminalWriteInput(payload),
+                1,
+                false,
+            )));
         }
 
         if let Some(pending) = self.pending_input.clone() {
@@ -1160,24 +1214,6 @@ impl InputHandler {
                 resolved.command,
                 repeat_count,
                 count_ignored,
-            )));
-        }
-
-        if context.focus == InputFocusContext::Terminal
-            && context.mode == EditorMode::TerminalFocus
-            && let Some(payload) = terminal_input_payload(&normalized)
-        {
-            self.clear_pending_counts();
-            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
-                input_debug,
-                format!(
-                    "mode={} focus={} -> strict terminal raw input routing",
-                    context.mode.as_str(),
-                    context.focus.as_str()
-                ),
-                Command::TerminalWriteInput(payload),
-                1,
-                false,
             )));
         }
 

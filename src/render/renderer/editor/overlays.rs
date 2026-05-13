@@ -46,77 +46,75 @@ impl Renderer {
         let mut glyphs = Vec::new();
         let mut chrome_quads: Vec<RegionDrawInstance> = Vec::new();
 
-        if !self.editor_breadcrumb_segments.is_empty() {
-            let header_h = geometry.viewport_text_top
-                - (center_bounds[1] + EDITOR_BREADCRUMB_TOP_INSET)
-                - EDITOR_BREADCRUMB_GAP_Y;
-            if header_h > 0.0 {
-                let header_y = center_bounds[1] + EDITOR_BREADCRUMB_TOP_INSET;
-                let header_x = center_bounds[0] + EDITOR_BREADCRUMB_FRAME_INSET_X;
-                let header_w = (center_bounds[2] - EDITOR_BREADCRUMB_FRAME_INSET_X * 2.0).max(0.0);
-                let header_bg = blend_rgba(
-                    self.theme.editor.bg.as_f32(),
-                    self.theme.ui.status_bar_bg.as_f32(),
-                    0.62,
-                    1.0,
+        let header_h = geometry.viewport_text_top
+            - (center_bounds[1] + EDITOR_BREADCRUMB_TOP_INSET)
+            - EDITOR_BREADCRUMB_GAP_Y;
+        if header_h > 0.0 {
+            let header_y = center_bounds[1] + EDITOR_BREADCRUMB_TOP_INSET;
+            let header_x = center_bounds[0] + EDITOR_BREADCRUMB_FRAME_INSET_X;
+            let header_w = (center_bounds[2] - EDITOR_BREADCRUMB_FRAME_INSET_X * 2.0).max(0.0);
+            let header_bg = blend_rgba(
+                self.theme.editor.bg.as_f32(),
+                self.theme.ui.status_bar_bg.as_f32(),
+                0.62,
+                1.0,
+            );
+            let divider = blend_rgba(header_bg, self.theme.ui.border_color.as_f32(), 0.7, 1.0);
+            chrome_quads.push(
+                RegionDrawInstance::new([header_x, header_y, header_w, header_h], header_bg)
+                    .with_radius(self.panel_corner_radius),
+            );
+            chrome_quads.push(RegionDrawInstance::new(
+                [header_x, header_y + header_h - 1.0, header_w, 1.0],
+                divider,
+            ));
+
+            let mut x = geometry.viewport_text_left;
+            let text_y = header_y + ((header_h - geometry.line_height).max(0.0) * 0.5);
+            let max_x = header_x + header_w - self.editor_padding_x;
+            let separator = " › ";
+            let separator_w = estimate_monospace_width(separator, geometry.font_size);
+            let separator_color = self.theme.ui.fg_ghost.as_f32();
+
+            for (index, segment) in self.editor_breadcrumb_segments.iter().enumerate() {
+                let is_last = index + 1 == self.editor_breadcrumb_segments.len();
+                let available = (max_x - x).max(1.0);
+                if available <= 1.0 {
+                    break;
+                }
+                let text = clamp_monospace_text(
+                    &segment.text,
+                    if is_last {
+                        available
+                    } else {
+                        available - separator_w
+                    },
+                    geometry.font_size,
                 );
-                let divider = blend_rgba(header_bg, self.theme.ui.border_color.as_f32(), 0.7, 1.0);
-                chrome_quads.push(
-                    RegionDrawInstance::new([header_x, header_y, header_w, header_h], header_bg)
-                        .with_radius(self.panel_corner_radius),
-                );
-                chrome_quads.push(RegionDrawInstance::new(
-                    [header_x, header_y + header_h - 1.0, header_w, 1.0],
-                    divider,
+                if text.is_empty() {
+                    break;
+                }
+                glyphs.extend(layout_panel_text(
+                    &text,
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    x,
+                    text_y,
+                    segment.color,
                 ));
-
-                let mut x = geometry.viewport_text_left;
-                let text_y = header_y + ((header_h - geometry.line_height).max(0.0) * 0.5);
-                let max_x = header_x + header_w - self.editor_padding_x;
-                let separator = " › ";
-                let separator_w = estimate_monospace_width(separator, geometry.font_size);
-                let separator_color = self.theme.ui.fg_ghost.as_f32();
-
-                for (index, segment) in self.editor_breadcrumb_segments.iter().enumerate() {
-                    let is_last = index + 1 == self.editor_breadcrumb_segments.len();
-                    let available = (max_x - x).max(1.0);
-                    if available <= 1.0 {
-                        break;
-                    }
-                    let text = clamp_monospace_text(
-                        &segment.text,
-                        if is_last {
-                            available
-                        } else {
-                            available - separator_w
-                        },
-                        geometry.font_size,
-                    );
-                    if text.is_empty() {
-                        break;
-                    }
+                x += estimate_monospace_width(&text, geometry.font_size);
+                if !is_last && x + separator_w < max_x {
                     glyphs.extend(layout_panel_text(
-                        &text,
+                        separator,
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,
                         x,
                         text_y,
-                        segment.color,
+                        separator_color,
                     ));
-                    x += estimate_monospace_width(&text, geometry.font_size);
-                    if !is_last && x + separator_w < max_x {
-                        glyphs.extend(layout_panel_text(
-                            separator,
-                            &mut self.editor_overlay_text_system,
-                            &mut self.atlas,
-                            &self.queue,
-                            x,
-                            text_y,
-                            separator_color,
-                        ));
-                        x += separator_w;
-                    }
+                    x += separator_w;
                 }
             }
         }

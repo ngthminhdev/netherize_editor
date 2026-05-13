@@ -605,6 +605,11 @@ command = "mode.enter_visual"
 
 [[bindings]]
 mode = "terminal_normal"
+key = "V"
+command = "editor.enter_visual_line"
+
+[[bindings]]
+mode = "terminal_normal"
 key = "y"
 command = "editor.yank_selection"
 

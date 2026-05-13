@@ -60,11 +60,12 @@ fn symbol_kind_color(kind: &str, theme: &ThemeConfig) -> [f32; 4] {
 }
 
 fn breadcrumb_segment_text(kind: &str, name: &str) -> String {
+    const BREADCRUMB_ICON_PREFIX: &str = "[󰊕]";
     let label = symbol_kind_label(kind);
     if kind == "Constructor" && name.eq_ignore_ascii_case("constructor") {
-        label
+        format!("{BREADCRUMB_ICON_PREFIX} {label}")
     } else {
-        format!("{label} {name}")
+        format!("{BREADCRUMB_ICON_PREFIX} {label} {name}")
     }
 }
 
@@ -950,13 +951,34 @@ impl AppShell {
                     && let Some(renderer) = self.renderer.as_mut()
                 {
                     let (cursor_line, cursor_col) = self.app_state.cursor_line_col();
-                    renderer.set_editor_breadcrumb_segments(build_editor_breadcrumb_segments(
-                        &self.cached_document_symbols,
-                        cursor_line,
-                        cursor_col,
-                        &self.theme,
-                    ));
-                    renderer.update_editor_caret(&self.app_state, center_bounds);
+                    let breadcrumb_viewport_changed = renderer.set_editor_breadcrumb_segments(
+                        build_editor_breadcrumb_segments(
+                            &self.cached_document_symbols,
+                            cursor_line,
+                            cursor_col,
+                            &self.theme,
+                        ),
+                    );
+                    if breadcrumb_viewport_changed {
+                        let effective_highlights =
+                            crate::syntax::highlight::overlay_highlight_layers(
+                                &self.highlight_spans,
+                                &self.semantic_highlight_spans,
+                            );
+                        let text = self.app_state.text_string();
+                        let mut styled_spans =
+                            syntax_spans_to_styled(&effective_highlights, &text, &self.theme);
+                        styled_spans
+                            .extend(diagnostic_spans_to_styled(&self.app_state, &self.theme));
+                        renderer.update_editor_content(
+                            &text,
+                            &self.app_state,
+                            center_bounds,
+                            &styled_spans,
+                        );
+                    } else {
+                        renderer.update_editor_caret(&self.app_state, center_bounds);
+                    }
                     renderer.update_editor_overlays(&self.app_state, center_bounds);
                 }
                 self.editor_caret_needs_layout = false;
@@ -1698,7 +1720,11 @@ mod tests {
             .collect();
         assert_eq!(
             labels,
-            vec!["class SubscribeLogSync", "method stop", "const intervalId"]
+            vec![
+                "[󰊕] class SubscribeLogSync",
+                "[󰊕] method stop",
+                "[󰊕] const intervalId"
+            ]
         );
     }
 
@@ -1772,7 +1798,11 @@ mod tests {
             .collect();
         assert_eq!(
             labels,
-            vec!["class KafkaProducer", "constructor", "const kafkaClient"]
+            vec![
+                "[󰊕] class KafkaProducer",
+                "[󰊕] constructor",
+                "[󰊕] const kafkaClient"
+            ]
         );
     }
 
@@ -1780,7 +1810,7 @@ mod tests {
     fn breadcrumb_segment_text_dedupes_constructor_label() {
         assert_eq!(
             breadcrumb_segment_text("Constructor", "constructor"),
-            "constructor"
+            "[󰊕] constructor"
         );
     }
 }

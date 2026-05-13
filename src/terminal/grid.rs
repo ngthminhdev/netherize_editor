@@ -535,6 +535,24 @@ impl TerminalGrid {
         true
     }
 
+    pub fn begin_line_selection(&mut self) -> bool {
+        let line_start = TerminalPoint {
+            row: self.virtual_cursor.row,
+            col: 0,
+        };
+        if self.selection_anchor == Some(line_start) {
+            return false;
+        }
+        self.selection_anchor = Some(line_start);
+        // Move cursor to end of line to select the entire line
+        let line_end_col = self.line_end_col_for_absolute_row(self.virtual_cursor.row);
+        self.set_virtual_cursor(TerminalPoint {
+            row: self.virtual_cursor.row,
+            col: line_end_col,
+        });
+        true
+    }
+
     pub fn clear_selection(&mut self) -> bool {
         self.selection_anchor.take().is_some()
     }
