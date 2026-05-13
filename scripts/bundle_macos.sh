@@ -25,7 +25,8 @@ cp "target/release/$BINARY" "$BUNDLE/Contents/MacOS/$BINARY"
 chmod +x "$BUNDLE/Contents/MacOS/$BINARY"
 
 # ── 4. Config (must sit next to binary so exe.parent()/config/ resolves) ──────
-cp -r "$PROJECT_DIR/config" "$BUNDLE/Contents/MacOS/config"
+rm -rf "$BUNDLE/Contents/MacOS/config"
+cp -R "$PROJECT_DIR/config" "$BUNDLE/Contents/MacOS/config"
 
 # ── 5. Icon: PNG → ICNS ───────────────────────────────────────────────────────
 ICONSET="$PROJECT_DIR/target/AppIcon.iconset"
