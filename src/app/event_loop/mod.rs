@@ -263,6 +263,8 @@ struct ExplorerEntry {
     is_expanded: bool,
     name: String,
     git_status: Option<WorkspaceGitStatus>,
+    is_hidden: bool,
+    is_ignored: bool,
 }
 
 #[derive(Debug, Clone, Default)]

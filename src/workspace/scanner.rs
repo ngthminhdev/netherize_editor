@@ -52,7 +52,7 @@ impl WorkspaceScanner {
             .map_err(|err| format!("build gitignore matcher for {:?} failed: {err}", root_path))?;
 
         let mut nodes = Vec::new();
-        self.push_node(&root_path, WorkspaceNodeType::Folder, &mut nodes)?;
+        self.push_node(&root_path, WorkspaceNodeType::Folder, false, false, &mut nodes)?;
         self.scan_dir_recursive(&root_path, &root_path, &gitignore, &mut nodes)?;
 
         // Sort path để output ổn định cho test/debug.
@@ -99,7 +99,8 @@ impl WorkspaceScanner {
                 Err(err) => return Err(format!("file_type {:?} failed: {err}", path)),
             };
 
-            if self.should_skip_path(&path, root_path, gitignore, is_hidden, file_type.is_dir()) {
+            let is_ignored = self.is_gitignored_path(&path, root_path, gitignore, file_type.is_dir());
+            if self.should_skip_path(is_hidden, is_ignored) {
                 continue;
             }
 
@@ -108,13 +109,13 @@ impl WorkspaceScanner {
                     continue;
                 }
 
-                self.push_node(&path, WorkspaceNodeType::Folder, nodes)?;
+                self.push_node(&path, WorkspaceNodeType::Folder, is_hidden, is_ignored, nodes)?;
                 self.scan_dir_recursive(&path, root_path, gitignore, nodes)?;
                 continue;
             }
 
             if file_type.is_file() {
-                self.push_node(&path, WorkspaceNodeType::File, nodes)?;
+                self.push_node(&path, WorkspaceNodeType::File, is_hidden, is_ignored, nodes)?;
             }
         }
 
@@ -166,29 +167,29 @@ impl WorkspaceScanner {
         Ok(())
     }
 
-    fn should_skip_path(
-        &self,
-        path: &Path,
-        root_path: &Path,
-        gitignore: &Gitignore,
-        is_hidden: bool,
-        is_dir: bool,
-    ) -> bool {
+    fn should_skip_path(&self, is_hidden: bool, is_ignored: bool) -> bool {
         if !self.options.show_hidden && is_hidden {
             return true;
         }
 
-        if !self.options.show_ignored {
-            let relative = path.strip_prefix(root_path).unwrap_or(path);
-            if gitignore
-                .matched_path_or_any_parents(relative, is_dir)
-                .is_ignore()
-            {
-                return true;
-            }
+        if !self.options.show_ignored && is_ignored {
+            return true;
         }
 
         false
+    }
+
+    fn is_gitignored_path(
+        &self,
+        path: &Path,
+        root_path: &Path,
+        gitignore: &Gitignore,
+        is_dir: bool,
+    ) -> bool {
+        let relative = path.strip_prefix(root_path).unwrap_or(path);
+        gitignore
+            .matched_path_or_any_parents(relative, is_dir)
+            .is_ignore()
     }
 
     fn is_hidden_name(&self, name: Option<&std::ffi::OsStr>) -> bool {
@@ -200,6 +201,8 @@ impl WorkspaceScanner {
         &self,
         path: &Path,
         file_type: WorkspaceNodeType,
+        is_hidden: bool,
+        is_ignored: bool,
         nodes: &mut Vec<WorkspaceNode>,
     ) -> Result<(), String> {
         let metadata = match fs::metadata(path) {
@@ -213,6 +216,8 @@ impl WorkspaceScanner {
             path.to_path_buf(),
             file_type,
             modified_time,
+            is_hidden,
+            is_ignored,
         ));
         Ok(())
     }
@@ -319,7 +324,7 @@ mod tests {
         let mut nodes = Vec::new();
 
         scanner
-            .push_node(&ghost, WorkspaceNodeType::File, &mut nodes)
+            .push_node(&ghost, WorkspaceNodeType::File, false, false, &mut nodes)
             .expect("missing path should be skipped");
 
         assert!(nodes.is_empty());

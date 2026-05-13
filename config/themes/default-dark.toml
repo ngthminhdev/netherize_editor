@@ -281,11 +281,11 @@ glyph = "\uE615"
 color = "#E35535"
 
 [icons.python]
-glyph = "\uE73C"
+glyph = "󰌠"
 color = "#69C3FF"
 
 [icons.go]
-glyph = "\uE724"
+glyph = "󰟓"
 color = "#22ECDB"
 
 [icons.config]
@@ -356,7 +356,7 @@ lua = ""
 zig = ""
 scala = ""
 sc = ""
-go = ""
+go = "󰟓"
 json = ""
 jsonc = ""
 yaml = ""

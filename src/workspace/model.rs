@@ -24,6 +24,8 @@ pub struct WorkspaceNode {
     pub path: PathBuf,
     pub file_type: WorkspaceNodeType,
     pub modified_time: Option<SystemTime>,
+    pub is_hidden: bool,
+    pub is_ignored: bool,
 }
 
 impl WorkspaceNode {
@@ -31,11 +33,15 @@ impl WorkspaceNode {
         path: PathBuf,
         file_type: WorkspaceNodeType,
         modified_time: Option<SystemTime>,
+        is_hidden: bool,
+        is_ignored: bool,
     ) -> Self {
         Self {
             path,
             file_type,
             modified_time,
+            is_hidden,
+            is_ignored,
         }
     }
 }

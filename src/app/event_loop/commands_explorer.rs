@@ -99,15 +99,6 @@ impl AppShell {
         });
         self.submit_workspace_git_status_refresh();
         self.submit_active_buffer_git_baseline_refresh();
-        self.sync_lsp_server_for_workspace();
-        self.submit(RequestSpec {
-            revision_id: 0,
-            topic: RequestTopic::SystemTask,
-            payload: WorkerRequestPayload::DetectRuntimeVersions {
-                python_binary: self.selected_python_env.clone(),
-                workspace_root: root_path,
-            },
-        });
 
         self.show_transient_toast("Workspace reloaded".to_string());
         self.update_window_title();

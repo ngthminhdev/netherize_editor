@@ -1277,10 +1277,14 @@ pub(super) fn collect_explorer_entries(app_state: &AppState) -> Vec<ExplorerEntr
     };
 
     let mut node_types: HashMap<PathBuf, WorkspaceNodeType> = HashMap::new();
+    let mut hidden_flags: HashMap<PathBuf, bool> = HashMap::new();
+    let mut ignored_flags: HashMap<PathBuf, bool> = HashMap::new();
     let mut children_map: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
 
     for node in nodes {
         node_types.insert(node.path.clone(), node.file_type);
+        hidden_flags.insert(node.path.clone(), node.is_hidden);
+        ignored_flags.insert(node.path.clone(), node.is_ignored);
     }
 
     for node in nodes.iter() {
@@ -1339,6 +1343,8 @@ pub(super) fn collect_explorer_entries(app_state: &AppState) -> Vec<ExplorerEntr
         &root,
         0,
         &node_types,
+        &hidden_flags,
+        &ignored_flags,
         &children_map,
         filter_query.as_deref(),
         &subtree_matches,
@@ -1374,6 +1380,8 @@ fn collect_visible_explorer_entries(
     parent: &Path,
     depth: usize,
     node_types: &HashMap<PathBuf, WorkspaceNodeType>,
+    hidden_flags: &HashMap<PathBuf, bool>,
+    ignored_flags: &HashMap<PathBuf, bool>,
     children_map: &HashMap<PathBuf, Vec<PathBuf>>,
     filter_query: Option<&str>,
     subtree_matches: &HashMap<PathBuf, bool>,
@@ -1426,6 +1434,8 @@ fn collect_visible_explorer_entries(
                     app_state.workspace_git_status(child)
                 }
             },
+            is_hidden: hidden_flags.get(child).copied().unwrap_or(false),
+            is_ignored: ignored_flags.get(child).copied().unwrap_or(false),
         });
 
         if file_type == WorkspaceNodeType::Folder && is_expanded {
@@ -1434,6 +1444,8 @@ fn collect_visible_explorer_entries(
                 child,
                 depth + 1,
                 node_types,
+                hidden_flags,
+                ignored_flags,
                 children_map,
                 filter_query,
                 subtree_matches,
@@ -1462,6 +1474,8 @@ pub(super) fn build_sidebar_rows(
             } else {
                 "(no files)".to_string()
             },
+            prefix_marker: None,
+            prefix_color: None,
             git_marker: None,
             git_color: None,
             is_selected: false,
@@ -1477,15 +1491,30 @@ pub(super) fn build_sidebar_rows(
         .map(|(idx, entry)| {
             let is_dir = entry.file_type == WorkspaceNodeType::Folder;
             let arrow = theme.sidebar_arrow(is_dir, entry.is_expanded).to_string();
-            let icon = theme.get_icon_for_file(&entry.name, is_dir).to_string();
+            let is_hidden_or_ignored = entry.is_hidden || entry.is_ignored;
+            let icon = if is_hidden_or_ignored {
+                if is_dir {
+                    "󱞞".to_string()
+                } else {
+                    "󰘓".to_string()
+                }
+            } else {
+                theme.get_icon_for_file(&entry.name, is_dir).to_string()
+            };
             let icon_theme = theme.icon_theme_for_path(&entry.path, is_dir, entry.is_expanded);
             SidebarRow {
                 path: Some(entry.path.clone()),
                 depth: entry.depth,
                 arrow,
                 nerd_icon: icon,
-                icon_color: icon_theme.color.as_f32(),
+                icon_color: if is_hidden_or_ignored {
+                    theme.ui.warning.as_f32()
+                } else {
+                    icon_theme.color.as_f32()
+                },
                 label: entry.name.clone(),
+                prefix_marker: None,
+                prefix_color: None,
                 git_marker: match entry.git_status {
                     Some(WorkspaceGitStatus::Modified) => Some('M'),
                     Some(WorkspaceGitStatus::Added) => Some('A'),

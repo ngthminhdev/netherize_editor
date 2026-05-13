@@ -49,6 +49,8 @@ pub struct SidebarRow {
     /// RGBA color for `nerd_icon` — per-filetype.
     pub icon_color: [f32; 4],
     pub label: String,
+    pub prefix_marker: Option<String>,
+    pub prefix_color: Option<[f32; 4]>,
     pub git_marker: Option<char>,
     pub git_color: Option<[f32; 4]>,
     pub is_selected: bool,
