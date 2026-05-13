@@ -8,6 +8,8 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE="$PROJECT_DIR/target/$APP_NAME.app"
 ZIP="$PROJECT_DIR/target/${APP_NAME}-${VERSION}-macos.zip"
 LOGO_SRC="$PROJECT_DIR/assets/app_logo_black.png"
+USER_CONFIG_ROOT="${HOME}/.config/netherize"
+LEGACY_CONFIG_ROOT="${HOME}/.netherize_editor"
 
 # ── 1. Build ───────────────────────────────────────────────────────────────────
 echo "Building $BINARY (release)..."
@@ -27,6 +29,23 @@ chmod +x "$BUNDLE/Contents/MacOS/$BINARY"
 # ── 4. Config (must sit next to binary so exe.parent()/config/ resolves) ──────
 rm -rf "$BUNDLE/Contents/MacOS/config"
 cp -R "$PROJECT_DIR/config" "$BUNDLE/Contents/MacOS/config"
+
+# Also sync host-level config so local test machines don't keep stale themes
+# from ~/.config/netherize or ~/.netherize_editor overriding the bundled files.
+echo "Syncing host config overrides from source..."
+rm -rf "$USER_CONFIG_ROOT/config" "$USER_CONFIG_ROOT/themes" "$USER_CONFIG_ROOT/keymaps"
+mkdir -p "$USER_CONFIG_ROOT"
+cp -R "$PROJECT_DIR/config" "$USER_CONFIG_ROOT/config"
+mkdir -p "$USER_CONFIG_ROOT/themes"
+cp -R "$PROJECT_DIR/config/themes/." "$USER_CONFIG_ROOT/themes/"
+mkdir -p "$USER_CONFIG_ROOT/keymaps"
+cp -R "$PROJECT_DIR/config/keymaps/." "$USER_CONFIG_ROOT/keymaps/"
+
+rm -rf "$LEGACY_CONFIG_ROOT/themes" "$LEGACY_CONFIG_ROOT/keymaps"
+mkdir -p "$LEGACY_CONFIG_ROOT/themes"
+cp -R "$PROJECT_DIR/config/themes/." "$LEGACY_CONFIG_ROOT/themes/"
+mkdir -p "$LEGACY_CONFIG_ROOT/keymaps"
+cp -R "$PROJECT_DIR/config/keymaps/." "$LEGACY_CONFIG_ROOT/keymaps/"
 
 # ── 5. Icon: PNG → ICNS ───────────────────────────────────────────────────────
 ICONSET="$PROJECT_DIR/target/AppIcon.iconset"
