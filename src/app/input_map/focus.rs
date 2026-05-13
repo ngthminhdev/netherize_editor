@@ -283,6 +283,12 @@ impl InputMap {
                 reason: "explorer: Esc -> FocusEditor",
             });
         }
+        if !input.has_command_modifier() && input.physical_key == Some(KeyCode::KeyQ) {
+            return Some(KeybindingMatch {
+                command: Command::CloseSidebars,
+                reason: "explorer: q -> CloseSidebars (close explorer)",
+            });
+        }
         if input.has_command_modifier() && input.physical_key == Some(KeyCode::KeyW) {
             return Some(KeybindingMatch {
                 command: Command::FocusEditor,
@@ -374,6 +380,12 @@ impl InputMap {
                 reason: "preview: Esc -> FocusBack",
             });
         }
+        if !input.has_command_modifier() && input.physical_key == Some(KeyQ) {
+            return Some(KeybindingMatch {
+                command: Command::CloseSidebars,
+                reason: "preview: q -> CloseSidebars (close preview)",
+            });
+        }
         if input.has_command_modifier() && input.physical_key == Some(KeyW) {
             return Some(KeybindingMatch {
                 command: Command::FocusEditor,
@@ -408,14 +420,18 @@ impl InputMap {
             });
         }
 
-        if input.modifiers.control_key() && !input.modifiers.super_key() && input.physical_key == Some(KeyD)
+        if input.modifiers.control_key()
+            && !input.modifiers.super_key()
+            && input.physical_key == Some(KeyD)
         {
             return Some(KeybindingMatch {
                 command: Command::MarkdownPreviewScrollHalfPageDown,
                 reason: "preview: Ctrl+d -> scroll down half page",
             });
         }
-        if input.modifiers.control_key() && !input.modifiers.super_key() && input.physical_key == Some(KeyU)
+        if input.modifiers.control_key()
+            && !input.modifiers.super_key()
+            && input.physical_key == Some(KeyU)
         {
             return Some(KeybindingMatch {
                 command: Command::MarkdownPreviewScrollHalfPageUp,
@@ -443,10 +459,7 @@ impl InputMap {
         )
     }
 
-    pub(super) fn resolve_help_focus(
-        &self,
-        input: &NormalizedInput,
-    ) -> Option<KeybindingMatch> {
+    pub(super) fn resolve_help_focus(&self, input: &NormalizedInput) -> Option<KeybindingMatch> {
         use KeyCode::*;
 
         if input.named_key == Some(NamedKey::Escape)
@@ -476,14 +489,18 @@ impl InputMap {
             });
         }
 
-        if input.modifiers.control_key() && !input.modifiers.super_key() && input.physical_key == Some(KeyD)
+        if input.modifiers.control_key()
+            && !input.modifiers.super_key()
+            && input.physical_key == Some(KeyD)
         {
             return Some(KeybindingMatch {
                 command: Command::HelpScrollHalfPageDown,
                 reason: "help: Ctrl+d -> scroll down half page",
             });
         }
-        if input.modifiers.control_key() && !input.modifiers.super_key() && input.physical_key == Some(KeyU)
+        if input.modifiers.control_key()
+            && !input.modifiers.super_key()
+            && input.physical_key == Some(KeyU)
         {
             return Some(KeybindingMatch {
                 command: Command::HelpScrollHalfPageUp,
@@ -650,8 +667,7 @@ impl InputMap {
             }
         }
 
-        if palette_mode == Some(CommandPaletteMode::RecentProjects)
-            && !input.has_command_modifier()
+        if palette_mode == Some(CommandPaletteMode::RecentProjects) && !input.has_command_modifier()
         {
             use KeyCode::*;
             match input.physical_key {

@@ -260,16 +260,13 @@ pub fn language_profile_for_extension(ext: &str) -> Option<&'static LanguageProf
 pub fn language_profile_for_path(path: &Path) -> Option<&'static LanguageProfile> {
     if let Some(file_name) = path.file_name().and_then(|value| value.to_str())
         && let Some(profile) = LANGUAGE_REGISTRY.iter().find(|profile| {
-            profile
-                .filenames
-                .iter()
-                .any(|candidate| {
-                    if let Some(prefix) = candidate.strip_suffix('*') {
-                        file_name.starts_with(prefix)
-                    } else {
-                        candidate.eq_ignore_ascii_case(file_name)
-                    }
-                })
+            profile.filenames.iter().any(|candidate| {
+                if let Some(prefix) = candidate.strip_suffix('*') {
+                    file_name.starts_with(prefix)
+                } else {
+                    candidate.eq_ignore_ascii_case(file_name)
+                }
+            })
         })
     {
         return Some(profile);
@@ -345,9 +342,15 @@ mod tests {
 
     #[test]
     fn language_profile_detects_dockerfile_variants() {
-        for name in ["Dockerfile-base", "Dockerfile.base", "Dockerfile-all", "Dockerfile.dev"] {
+        for name in [
+            "Dockerfile-base",
+            "Dockerfile.base",
+            "Dockerfile-all",
+            "Dockerfile.dev",
+        ] {
             let path = PathBuf::from(format!("/tmp/{}", name));
-            let profile = language_profile_for_path(&path).expect(&format!("{} should match", name));
+            let profile =
+                language_profile_for_path(&path).expect(&format!("{} should match", name));
             assert_eq!(profile.key, "dockerfile");
         }
     }

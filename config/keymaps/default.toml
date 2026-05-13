@@ -9,7 +9,8 @@ description = "Clean full Neovim-style profile (block TOML, no inline bindings)"
 leader = "space"
 
 [[bindings]]
-key = "<leader>r"
+mode = "normal"
+key = "<leader>r r"
 command = "mode.resize"
 
 [[bindings]]
@@ -605,6 +606,11 @@ command = "mode.enter_visual"
 
 [[bindings]]
 mode = "terminal_normal"
+key = "V"
+command = "editor.enter_visual_line"
+
+[[bindings]]
+mode = "terminal_normal"
 key = "y"
 command = "editor.yank_selection"
 
@@ -831,6 +837,11 @@ command = "lsp.preview_definition"
 mode = "normal"
 key = "g r"
 command = "lsp.references"
+
+[[bindings]]
+mode = "normal"
+key = "<leader>r n"
+command = "lsp.rename"
 
 [[bindings]]
 mode = "insert"

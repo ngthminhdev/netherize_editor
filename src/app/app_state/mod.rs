@@ -54,6 +54,7 @@ pub struct ExternalChangeReport {
     pub workspace_reloaded: bool,
     pub active_file_reloaded: bool,
     pub conflict_detected: bool,
+    pub conflict_path: Option<PathBuf>,
     pub notices: Vec<String>,
 }
 
@@ -109,14 +110,45 @@ pub enum ClipboardRecordKind {
     Linewise,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct TextBufferViewState {
+    cursor: CursorState,
+    selection_anchor_char_idx: Option<usize>,
+    visual_line_mode: bool,
+    target_scroll_y: f32,
+    current_scroll_y: f32,
+    scroll_column: usize,
+}
+
+impl Default for TextBufferViewState {
+    fn default() -> Self {
+        Self {
+            cursor: CursorState {
+                char_idx: 0,
+                target_col: 0,
+            },
+            selection_anchor_char_idx: None,
+            visual_line_mode: false,
+            target_scroll_y: 0.0,
+            current_scroll_y: 0.0,
+            scroll_column: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct EditorBuffer {
     pub path: PathBuf,
     pub language_id: Option<String>,
     pub git_baseline: Option<String>,
     pub git_line_statuses: HashMap<usize, GitLineStatus>,
-    /// Per-buffer RAM-only undo/redo stack. Lives until the buffer is closed.
+    /// Per-buffer RAM-only undo/redo stack. Lives for the current app session.
     pub history: EditHistory,
+    /// Last in-memory text snapshot for this tab in the current app session.
+    pub in_memory_text: Option<Rope>,
+    /// Dirty flag captured when this buffer lost focus.
+    pub dirty: bool,
+    view_state: TextBufferViewState,
 }
 
 impl EditorBuffer {
@@ -127,6 +159,9 @@ impl EditorBuffer {
             git_baseline: None,
             git_line_statuses: HashMap::new(),
             history: EditHistory::new(),
+            in_memory_text: None,
+            dirty: false,
+            view_state: TextBufferViewState::default(),
         }
     }
 }
@@ -320,7 +355,11 @@ fn build_help_sections(bindings: &[crate::config::keymap_config::KeyBinding]) ->
         (Some("normal"), "NORMAL", "mode = normal"),
         (Some("visual"), "VISUAL", "mode = visual"),
         (Some("terminal"), "TERMINAL", "mode = terminal"),
-        (Some("terminal_normal"), "TERMINAL NORMAL", "mode = terminal_normal"),
+        (
+            Some("terminal_normal"),
+            "TERMINAL NORMAL",
+            "mode = terminal_normal",
+        ),
         (Some("explorer"), "EXPLORER", "mode = explorer"),
         (Some("multicursor"), "MULTICURSOR", "mode = multicursor"),
         (Some("multiinsert"), "MULTIINSERT", "mode = multiinsert"),
@@ -506,16 +545,39 @@ fn build_help_lines(
     lines.push("  PALETTE mode  — Command palette / file picker overlay.".to_string());
     lines.push("".to_string());
     lines.push("  Key concepts:".to_string());
-    lines.push("    leader = Space     Prefix key for custom shortcuts (press Space then key).".to_string());
-    lines.push("    mod    = Cmd (macOS) / Ctrl (Linux)   Modifier key for app shortcuts.".to_string());
-    lines.push("    count  = number    Repeat a command N times (e.g. 5j = move down 5 lines).".to_string());
+    lines.push(
+        "    leader = Space     Prefix key for custom shortcuts (press Space then key)."
+            .to_string(),
+    );
+    lines.push(
+        "    mod    = Cmd (macOS) / Ctrl (Linux)   Modifier key for app shortcuts.".to_string(),
+    );
+    lines.push(
+        "    count  = number    Repeat a command N times (e.g. 5j = move down 5 lines)."
+            .to_string(),
+    );
     lines.push("".to_string());
 
     // ── Command Palette & Vim Commands ──────────────────────────────────────
     lines.push("Command Palette & Vim Commands".to_string());
-    append_help_binding(&mut lines, bindings, "app.open_file_picker", "Open file picker");
-    append_help_binding(&mut lines, bindings, "app.open_command_palette", "Open command palette");
-    append_help_binding(&mut lines, bindings, "app.open_vim_command", "Vim command line");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "app.open_file_picker",
+        "Open file picker",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "app.open_command_palette",
+        "Open command palette",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "app.open_vim_command",
+        "Vim command line",
+    );
     lines.push("".to_string());
     lines.push("  Vim commands (type : in normal mode):".to_string());
     lines.push("    :w                     Save current file".to_string());
@@ -530,10 +592,30 @@ fn build_help_lines(
 
     // ── Modes ───────────────────────────────────────────────────────────────
     lines.push("Mode Switching".to_string());
-    append_help_binding(&mut lines, bindings, "mode.enter_insert", "Enter insert mode");
-    append_help_binding(&mut lines, bindings, "mode.enter_normal", "Return to normal mode");
-    append_help_binding(&mut lines, bindings, "mode.enter_visual", "Enter visual mode");
-    append_help_binding(&mut lines, bindings, "mode.enter_visual_line", "Visual line mode");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "mode.enter_insert",
+        "Enter insert mode",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "mode.enter_normal",
+        "Return to normal mode",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "mode.enter_visual",
+        "Enter visual mode",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "mode.enter_visual_line",
+        "Visual line mode",
+    );
     lines.push("".to_string());
 
     // ── Navigation ──────────────────────────────────────────────────────────
@@ -542,39 +624,164 @@ fn build_help_lines(
     append_help_binding(&mut lines, bindings, "editor.move_down", "Move down");
     append_help_binding(&mut lines, bindings, "editor.move_up", "Move up");
     append_help_binding(&mut lines, bindings, "editor.move_right", "Move right");
-    append_help_binding(&mut lines, bindings, "editor.move_word_forward", "Word forward");
-    append_help_binding(&mut lines, bindings, "editor.move_word_backward", "Word backward");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.move_word_forward",
+        "Word forward",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.move_word_backward",
+        "Word backward",
+    );
     append_help_binding(&mut lines, bindings, "editor.move_word_end", "Word end");
-    append_help_binding(&mut lines, bindings, "editor.move_to_line_start", "Line start");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.move_to_line_start",
+        "Line start",
+    );
     append_help_binding(&mut lines, bindings, "editor.move_to_line_end", "Line end");
-    append_help_binding(&mut lines, bindings, "editor.move_to_first_non_whitespace", "First non-blank");
-    append_help_binding(&mut lines, bindings, "editor.move_to_first_line", "First line");
-    append_help_binding(&mut lines, bindings, "editor.move_to_last_line", "Last line");
-    append_help_binding(&mut lines, bindings, "editor.move_paragraph_up", "Paragraph up");
-    append_help_binding(&mut lines, bindings, "editor.move_paragraph_down", "Paragraph down");
-    append_help_binding(&mut lines, bindings, "editor.scroll_half_page_up", "½ page up");
-    append_help_binding(&mut lines, bindings, "editor.scroll_half_page_down", "½ page down");
-    append_help_binding(&mut lines, bindings, "editor.center_cursor_line", "Center cursor");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.move_to_first_non_whitespace",
+        "First non-blank",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.move_to_first_line",
+        "First line",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.move_to_last_line",
+        "Last line",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.move_paragraph_up",
+        "Paragraph up",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.move_paragraph_down",
+        "Paragraph down",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.scroll_half_page_up",
+        "½ page up",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.scroll_half_page_down",
+        "½ page down",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.center_cursor_line",
+        "Center cursor",
+    );
     lines.push("".to_string());
 
     // ── Editing ─────────────────────────────────────────────────────────────
     lines.push("Editing (Normal mode)".to_string());
-    append_help_binding(&mut lines, bindings, "editor.append_after_cursor", "Append after cursor");
-    append_help_binding(&mut lines, bindings, "editor.append_at_line_end", "Append at line end");
-    append_help_binding(&mut lines, bindings, "editor.insert_at_line_start", "Insert at line start");
-    append_help_binding(&mut lines, bindings, "editor.insert_line_below", "New line below");
-    append_help_binding(&mut lines, bindings, "editor.insert_line_above", "New line above");
-    append_help_binding(&mut lines, bindings, "editor.substitute_line", "Substitute line");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.append_after_cursor",
+        "Append after cursor",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.append_at_line_end",
+        "Append at line end",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.insert_at_line_start",
+        "Insert at line start",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.insert_line_below",
+        "New line below",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.insert_line_above",
+        "New line above",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.substitute_line",
+        "Substitute line",
+    );
     append_help_binding(&mut lines, bindings, "editor.delete_char", "Delete char");
-    append_help_binding(&mut lines, bindings, "editor.delete_current_line", "Delete line");
-    append_help_binding(&mut lines, bindings, "editor.delete_to_line_end", "Delete to line end");
-    append_help_binding(&mut lines, bindings, "editor.delete_word_forward", "Delete word →");
-    append_help_binding(&mut lines, bindings, "editor.delete_word_backward", "Delete word ←");
-    append_help_binding(&mut lines, bindings, "editor.change_word_forward", "Change word →");
-    append_help_binding(&mut lines, bindings, "editor.change_word_backward", "Change word ←");
-    append_help_binding(&mut lines, bindings, "editor.change_to_line_end", "Change to line end");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.delete_current_line",
+        "Delete line",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.delete_to_line_end",
+        "Delete to line end",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.delete_word_forward",
+        "Delete word →",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.delete_word_backward",
+        "Delete word ←",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.change_word_forward",
+        "Change word →",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.change_word_backward",
+        "Change word ←",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.change_to_line_end",
+        "Change to line end",
+    );
     append_help_binding(&mut lines, bindings, "editor.join_lines", "Join lines");
-    append_help_binding(&mut lines, bindings, "editor.toggle_line_comment", "Toggle comment");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.toggle_line_comment",
+        "Toggle comment",
+    );
     append_help_binding(&mut lines, bindings, "editor.paste_after", "Paste after");
     append_help_binding(&mut lines, bindings, "editor.paste_before", "Paste before");
     append_help_binding(&mut lines, bindings, "editor.undo", "Undo");
@@ -583,16 +790,46 @@ fn build_help_lines(
 
     // ── Visual mode ─────────────────────────────────────────────────────────
     lines.push("Visual Mode".to_string());
-    append_help_binding(&mut lines, bindings, "editor.delete_selection", "Delete selection");
-    append_help_binding(&mut lines, bindings, "editor.change_selection", "Change selection");
-    append_help_binding(&mut lines, bindings, "editor.yank_selection", "Yank (copy) selection");
-    append_help_binding(&mut lines, bindings, "editor.toggle_selection_comment", "Toggle comment");
-    append_help_binding(&mut lines, bindings, "editor.wrap_selection_with_star", "Wrap with *");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.delete_selection",
+        "Delete selection",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.change_selection",
+        "Change selection",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.yank_selection",
+        "Yank (copy) selection",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.toggle_selection_comment",
+        "Toggle comment",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.wrap_selection_with_star",
+        "Wrap with *",
+    );
     lines.push("".to_string());
 
     // ── Search ──────────────────────────────────────────────────────────────
     lines.push("Search".to_string());
-    append_help_binding(&mut lines, bindings, "editor.open_in_file_search", "Search in file");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.open_in_file_search",
+        "Search in file",
+    );
     append_help_binding(
         &mut lines,
         bindings,
@@ -601,8 +838,18 @@ fn build_help_lines(
     );
     append_help_binding(&mut lines, bindings, "editor.search_next", "Next match");
     append_help_binding(&mut lines, bindings, "editor.search_prev", "Previous match");
-    append_help_binding(&mut lines, bindings, "editor.clear_search_highlights", "Clear highlights");
-    append_help_binding(&mut lines, bindings, "app.search_in_files", "Search in files (project)");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.clear_search_highlights",
+        "Clear highlights",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "app.search_in_files",
+        "Search in files (project)",
+    );
     lines.push("".to_string());
 
     // ── Buffers ─────────────────────────────────────────────────────────────
@@ -616,30 +863,76 @@ fn build_help_lines(
     // ── LSP ─────────────────────────────────────────────────────────────────
     lines.push("LSP / Code Intelligence".to_string());
     append_help_binding(&mut lines, bindings, "lsp.hover", "Hover documentation");
-    append_help_binding(&mut lines, bindings, "lsp.go_to_definition", "Go to definition");
-    append_help_binding(&mut lines, bindings, "lsp.preview_definition", "Preview definition");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "lsp.go_to_definition",
+        "Go to definition",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "lsp.preview_definition",
+        "Preview definition",
+    );
     append_help_binding(&mut lines, bindings, "lsp.references", "Find references");
-    append_help_binding(&mut lines, bindings, "lsp.format_document", "Format document");
-    append_help_binding(&mut lines, bindings, "lsp.trigger_completion", "Trigger completion");
+    append_help_binding(&mut lines, bindings, "lsp.rename", "Rename symbol");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "lsp.format_document",
+        "Format document",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "lsp.trigger_completion",
+        "Trigger completion",
+    );
     lines.push("".to_string());
 
     // ── Explorer ────────────────────────────────────────────────────────────
     lines.push("File Explorer".to_string());
     append_help_binding(&mut lines, bindings, "app.focus_explorer", "Focus explorer");
-    append_help_binding(&mut lines, bindings, "explorer.toggle_or_open", "Open file / toggle dir");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "explorer.toggle_or_open",
+        "Open file / toggle dir",
+    );
     append_help_binding(&mut lines, bindings, "explorer.create_file", "Create file");
-    append_help_binding(&mut lines, bindings, "explorer.create_folder", "Create folder");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "explorer.create_folder",
+        "Create folder",
+    );
     append_help_binding(&mut lines, bindings, "explorer.delete_node", "Delete");
     append_help_binding(&mut lines, bindings, "explorer.rename_full", "Rename");
-    append_help_binding(&mut lines, bindings, "explorer.toggle_hidden", "Toggle hidden files");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "explorer.toggle_hidden",
+        "Toggle hidden files",
+    );
     lines.push("".to_string());
 
     // ── Terminal ────────────────────────────────────────────────────────────
     lines.push("Terminal".to_string());
-    append_help_binding(&mut lines, bindings, "app.toggle_terminal", "Toggle terminal");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "app.toggle_terminal",
+        "Toggle terminal",
+    );
     append_help_binding(&mut lines, bindings, "app.focus_terminal", "Focus terminal");
     append_help_binding(&mut lines, bindings, "terminal.tab_new", "New terminal tab");
-    append_help_binding(&mut lines, bindings, "terminal.tab_close", "Close terminal tab");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "terminal.tab_close",
+        "Close terminal tab",
+    );
     lines.push("  tip: Ctrl+Q in terminal → terminal normal mode (navigate with hjkl)".to_string());
     lines.push("".to_string());
 
@@ -647,20 +940,55 @@ fn build_help_lines(
     lines.push("AI Assistant".to_string());
     append_help_binding(&mut lines, bindings, "ai.chat_toggle", "Toggle AI chat");
     append_help_binding(&mut lines, bindings, "ai.chat_focus", "Focus AI chat");
-    append_help_binding(&mut lines, bindings, "ai.chat_stop", "Stop AI chat generation");
-    append_help_binding(&mut lines, bindings, "ai.accept_inline", "Accept inline suggestion");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "ai.chat_stop",
+        "Stop AI chat generation",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "ai.accept_inline",
+        "Accept inline suggestion",
+    );
     lines.push("".to_string());
 
     // ── Tools ───────────────────────────────────────────────────────────────
     lines.push("Tools & Misc".to_string());
     append_help_binding(&mut lines, bindings, "app.open_settings", "Open settings");
-    append_help_binding(&mut lines, bindings, "app.open_theme_selector", "Theme selector");
-    append_help_binding(&mut lines, bindings, "app.open_file_history", "File history");
-    append_help_binding(&mut lines, bindings, "diagnostics.open_picker", "Diagnostics picker");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "app.open_theme_selector",
+        "Theme selector",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "app.open_file_history",
+        "File history",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "diagnostics.open_picker",
+        "Diagnostics picker",
+    );
     append_help_binding(&mut lines, bindings, "git.open_lazygit", "Open lazygit");
     append_help_binding(&mut lines, bindings, "git.blame_line", "Git blame line");
-    append_help_binding(&mut lines, bindings, "app.toggle_markdown_preview", "Markdown preview");
-    append_help_binding(&mut lines, bindings, "app.focus_markdown_preview", "Focus markdown preview");
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "app.toggle_markdown_preview",
+        "Markdown preview",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "app.focus_markdown_preview",
+        "Focus markdown preview",
+    );
     append_help_binding(&mut lines, bindings, "editor.leap_start", "Leap jump");
 
     lines
@@ -684,6 +1012,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "app.open_workspace_symbols" => "Workspace symbols",
         "app.open_document_symbols" => "Find symbol in file",
         "app.toggle_markdown_preview" => "Toggle markdown preview",
+        "app.close_sidebars" => "Close sidebars",
         "app.focus_markdown_preview" => "Focus markdown preview",
         // ── Focus & docks ─────────────────────────────────────────────────
         "app.focus_explorer" => "Focus explorer",
@@ -789,6 +1118,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "lsp.go_to_definition" => "Go to definition",
         "lsp.preview_definition" => "Preview definition",
         "lsp.references" => "References",
+        "lsp.rename" => "Rename symbol",
         "lsp.format_document" => "Format document",
         "lsp.trigger_completion" => "Trigger completion",
         // ── Explorer ──────────────────────────────────────────────────────
@@ -1113,7 +1443,13 @@ impl BufferEntry {
 
     pub fn is_dirty(&self, is_active: bool, active_editor_dirty: bool) -> bool {
         match &self.content {
-            BufferContent::Text(_) => is_active && active_editor_dirty,
+            BufferContent::Text(buffer) => {
+                if is_active {
+                    active_editor_dirty
+                } else {
+                    buffer.dirty
+                }
+            }
             BufferContent::Image(_)
             | BufferContent::Terminal(_)
             | BufferContent::References(_)
@@ -1187,6 +1523,8 @@ pub struct AppState {
     selection_anchor_char_idx: Option<usize>,
     visual_line_mode: bool,
     buffers: Vec<BufferEntry>,
+    /// Session-only cache for closed text buffers. Reopen restores undo/redo and unsaved text.
+    closed_text_buffers: HashMap<PathBuf, EditorBuffer>,
     active_buffer_index: Option<usize>,
     default_save_path: PathBuf,
     dirty: bool,
@@ -1253,6 +1591,7 @@ impl AppState {
             selection_anchor_char_idx: None,
             visual_line_mode: false,
             buffers: Vec::new(),
+            closed_text_buffers: HashMap::new(),
             active_buffer_index: None,
             default_save_path,
             dirty: false,
@@ -1308,6 +1647,7 @@ impl AppState {
             selection_anchor_char_idx: None,
             visual_line_mode: false,
             buffers: Vec::new(),
+            closed_text_buffers: HashMap::new(),
             active_buffer_index: None,
             default_save_path,
             dirty: false,

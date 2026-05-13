@@ -29,15 +29,11 @@ impl AppShell {
         let cli_args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
 
         // First directory arg becomes workspace root (like `zed .` / `code .`).
-        let cli_workspace_dir = cli_args.iter().find_map(|p| {
-            p.canonicalize().ok().filter(|cp| cp.is_dir())
-        });
-
-        let cli_files: Vec<PathBuf> = cli_args
+        let cli_workspace_dir = cli_args
             .iter()
-            .filter(|p| p.is_file())
-            .cloned()
-            .collect();
+            .find_map(|p| p.canonicalize().ok().filter(|cp| cp.is_dir()));
+
+        let cli_files: Vec<PathBuf> = cli_args.iter().filter(|p| p.is_file()).cloned().collect();
 
         // Load persisted state and restore most recent project if it still exists.
         let mut persistent_state = AppPersistentState::load();
@@ -50,7 +46,10 @@ impl AppShell {
         if let Some(ref ws_dir) = cli_workspace_dir {
             match app_state.attach_workspace(ws_dir.clone()) {
                 Ok(()) => restored_workspace = true,
-                Err(err) => eprintln!("[AppShell] CLI workspace attach skipped ({}): {err}", ws_dir.display()),
+                Err(err) => eprintln!(
+                    "[AppShell] CLI workspace attach skipped ({}): {err}",
+                    ws_dir.display()
+                ),
             }
         }
         if !restored_workspace {
@@ -145,6 +144,8 @@ impl AppShell {
             pending_lazydocker_buffer_index: None,
             highlight_spans: Vec::new(),
             semantic_highlight_spans: Vec::new(),
+            cached_document_symbols_path: None,
+            cached_document_symbols: Vec::new(),
             syntax_engine: None,
             syntax_engine_file: None,
             terminal_tabs: {
@@ -202,6 +203,8 @@ impl AppShell {
             hover_loading_request_id: None,
             latest_definition_request_id: None,
             document_symbols_request_revision: 0,
+            lsp_rename_request_revision: 0,
+            latest_rename_request_id: None,
             fzf_search_revision: 0,
             pending_parse_after_debounce: false,
             pending_git_diff_after_debounce: false,
@@ -675,21 +678,19 @@ impl AppShell {
         } else {
             match self.focus_manager.current() {
                 FocusTarget::LeftSidebar => InputFocusContext::Explorer,
-                FocusTarget::RightSidebar => {
-                    match self.panel_state.right.active_tab_id() {
-                        Some(PanelTabId::AiChat) => InputFocusContext::AiChat,
-                        Some(PanelTabId::MarkdownPreview) => InputFocusContext::MarkdownPreview,
-                        Some(PanelTabId::Terminal)
-                            if matches!(
-                                mode,
-                                EditorMode::TerminalFocus | EditorMode::TerminalNormal
-                            ) =>
-                        {
-                            InputFocusContext::Terminal
-                        }
-                        _ => InputFocusContext::Inspector,
+                FocusTarget::RightSidebar => match self.panel_state.right.active_tab_id() {
+                    Some(PanelTabId::AiChat) => InputFocusContext::AiChat,
+                    Some(PanelTabId::MarkdownPreview) => InputFocusContext::MarkdownPreview,
+                    Some(PanelTabId::Terminal)
+                        if matches!(
+                            mode,
+                            EditorMode::TerminalFocus | EditorMode::TerminalNormal
+                        ) =>
+                    {
+                        InputFocusContext::Terminal
                     }
-                }
+                    _ => InputFocusContext::Inspector,
+                },
                 FocusTarget::BottomPanel => {
                     if matches!(mode, EditorMode::TerminalFocus | EditorMode::TerminalNormal) {
                         InputFocusContext::Terminal
@@ -1252,7 +1253,6 @@ impl AppShell {
         });
     }
 
-
     pub(super) fn submit_references_preview_load(&mut self) {
         if !self.app_state.active_buffer_is_references() {
             return;
@@ -1310,7 +1310,9 @@ impl AppShell {
         if self.terminal_search_palette_active {
             // Access active tab's grid directly — not through
             // focused_terminal_grid_mut(), because focus is on OverlayLayer.
-            let Some(tab) = self.active_terminal_tab_mut() else { return false };
+            let Some(tab) = self.active_terminal_tab_mut() else {
+                return false;
+            };
             let grid = &mut tab.grid;
             grid.search_in_terminal(&query, false);
             let _ = grid.search_next();

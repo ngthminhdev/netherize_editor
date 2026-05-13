@@ -17,6 +17,15 @@ impl ClipboardProvider for MockClipboard {
     }
 }
 
+fn select_ui_rounding(shell: &mut AppShell) {
+    shell.handle_command(Command::OpenSettings);
+    let settings = shell
+        .app_state
+        .active_settings_buffer_mut()
+        .expect("settings buffer");
+    settings.selected_index = 1;
+}
+
 #[test]
 fn palette_paste_uses_clipboard_provider() {
     let mut app_state = AppState::from_text(PathBuf::from("palette-paste.txt"), "alpha beta");
@@ -119,6 +128,84 @@ fn center_cursor_line_uses_viewport_layout_path() {
     );
     assert!(shell.editor_needs_layout);
     assert!(!shell.editor_caret_needs_layout);
+}
+
+#[test]
+fn settings_activate_begins_numeric_edit_for_ui_rounding() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.ui_config.border_radius_px = 16.0;
+    select_ui_rounding(&mut shell);
+
+    let changed = shell.handle_command(Command::SettingsActivate);
+
+    assert!(changed);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Insert);
+    let settings = shell
+        .app_state
+        .active_settings_buffer()
+        .expect("settings buffer");
+    let editing = settings.editing.as_ref().expect("editing state");
+    assert_eq!(
+        editing.kind,
+        crate::app::app_state::SettingsEditingKind::UiRounding
+    );
+    assert_eq!(editing.draft, "16");
+}
+
+#[test]
+fn settings_adjust_increase_allows_ui_rounding_to_reach_24() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.ui_config.border_radius_px = 16.0;
+    select_ui_rounding(&mut shell);
+
+    let changed = shell.handle_command(Command::SettingsAdjustIncrease);
+
+    assert!(changed);
+    assert_eq!(shell.ui_config.border_radius_px, 24.0);
+    let settings = shell
+        .app_state
+        .active_settings_buffer()
+        .expect("settings buffer");
+    assert_eq!(
+        settings.selected_item(),
+        Some(&crate::app::app_state::SettingItem::UiRounding {
+            enabled: true,
+            radius_px: 24.0,
+        })
+    );
+}
+
+#[test]
+fn settings_commit_ui_rounding_edit_clamps_to_24() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.ui_config.border_radius_px = 16.0;
+    select_ui_rounding(&mut shell);
+    assert!(shell.handle_command(Command::SettingsActivate));
+    {
+        let settings = shell
+            .app_state
+            .active_settings_buffer_mut()
+            .expect("settings buffer");
+        let editing = settings.editing.as_mut().expect("editing state");
+        editing.draft = "32".to_string();
+    }
+
+    let changed = shell.handle_command(Command::SettingsActivate);
+
+    assert!(changed);
+    assert_eq!(shell.ui_config.border_radius_px, 24.0);
+    let settings = shell
+        .app_state
+        .active_settings_buffer()
+        .expect("settings buffer");
+    assert!(settings.editing.is_none());
+    assert_eq!(
+        settings.selected_item(),
+        Some(&crate::app::app_state::SettingItem::UiRounding {
+            enabled: true,
+            radius_px: 24.0,
+        })
+    );
 }
 
 #[test]
@@ -420,6 +507,60 @@ fn dirty_buffer_close_confirmation_no_discards_changes_and_closes() {
 }
 
 #[test]
+fn external_overwrite_confirmation_yes_saves_local_buffer_to_disk() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_path = std::env::temp_dir().join(format!(
+        "netherize_external_overwrite_yes_{}.txt",
+        std::process::id()
+    ));
+    std::fs::write(&file_path, "hello\n").expect("write file");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.app_state.insert_char('!');
+
+    assert!(shell.begin_external_overwrite_confirmation(file_path.clone()));
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(crate::app::command_palette::CommandPaletteMode::ExplorerDeleteConfirm)
+    );
+    assert!(shell.respond_to_pending_confirmation(true));
+    assert_eq!(
+        std::fs::read_to_string(&file_path).expect("read file"),
+        "!hello\n"
+    );
+    assert!(!shell.app_state.is_dirty());
+    assert!(!shell.app_state.is_command_palette_visible());
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn external_overwrite_confirmation_no_reloads_from_disk_and_discards_local_dirty() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_path = std::env::temp_dir().join(format!(
+        "netherize_external_overwrite_no_{}.txt",
+        std::process::id()
+    ));
+    std::fs::write(&file_path, "hello\n").expect("write file");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.app_state.insert_char('!');
+    std::fs::write(&file_path, "external\n").expect("write external");
+
+    assert!(shell.begin_external_overwrite_confirmation(file_path.clone()));
+    assert!(shell.respond_to_pending_confirmation(false));
+    assert_eq!(shell.app_state.text_string(), "external\n");
+    assert!(!shell.app_state.is_dirty());
+    assert!(!shell.app_state.is_command_palette_visible());
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
 fn opening_palette_arms_one_shot_ime_suppression() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
 
@@ -632,6 +773,40 @@ fn file_picker_confirm_scrolls_explorer_to_opened_file() {
 }
 
 #[test]
+fn file_picker_confirm_submits_git_baseline_refresh_for_opened_file() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!(
+        "netherize_picker_git_baseline_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("create workspace");
+    let target = root.join("changed.rs");
+    std::fs::write(&target, "fn changed() {}\n").expect("write file");
+
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    let revision_before = shell.git_baseline_revision;
+
+    assert!(shell.handle_command(Command::OpenFileFinder));
+    assert!(shell.handle_command(Command::FilePickerAppendQuery("changed".to_string())));
+    assert!(shell.app_state.set_command_palette_results(
+        CommandPaletteMode::FilePicker,
+        "changed",
+        vec![crate::app::command_palette::CommandPaletteItem::file_match(
+            "changed.rs".to_string(),
+            target,
+        )],
+    ));
+    assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+
+    assert!(shell.git_baseline_revision > revision_before);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn focus_markdown_preview_opens_preview_tab_and_focuses_sidebar() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     shell.panel_state.right.visible = false;
@@ -735,6 +910,36 @@ fn lsp_references_open_loading_buffer_immediately() {
     assert!(references.pending_request_id.is_some());
     assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
     assert!(shell.editor_needs_layout);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn lsp_rename_opens_palette_prompt() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!("netherize_rename_prompt_{}", std::process::id()));
+    std::fs::create_dir_all(root.join("src")).expect("create workspace");
+    let file_path = root.join("src/main.rs");
+    std::fs::write(&file_path, "fn demo() { let value = 1; }\n").expect("write file");
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "rust-analyzer".to_string(),
+        root_path: root.clone(),
+    });
+
+    assert!(shell.handle_command(Command::LspRename));
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(CommandPaletteMode::LspRename)
+    );
+    assert_eq!(shell.focus_manager.current(), FocusTarget::OverlayLayer);
 
     let _ = std::fs::remove_dir_all(root);
 }

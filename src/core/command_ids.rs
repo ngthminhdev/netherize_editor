@@ -125,6 +125,7 @@ pub const LSP_HOVER: &str = "lsp.hover";
 pub const LSP_GO_TO_DEFINITION: &str = "lsp.go_to_definition";
 pub const LSP_PREVIEW_DEFINITION: &str = "lsp.preview_definition";
 pub const LSP_REFERENCES: &str = "lsp.references";
+pub const LSP_RENAME: &str = "lsp.rename";
 pub const LSP_FORMAT_DOCUMENT: &str = "lsp.format_document";
 pub const LSP_TRIGGER_COMPLETION: &str = "lsp.trigger_completion";
 pub const LSP_CODE_ACTION: &str = "lsp.code_action";
@@ -174,11 +175,13 @@ pub const TOGGLE_FOLD_ALL: &str = "editor.toggle_fold_all";
 
 // ── Markdown Preview ─────────────────────────────────────────────────────────
 pub const TOGGLE_MARKDOWN_PREVIEW: &str = "app.toggle_markdown_preview";
+pub const CLOSE_SIDEBARS: &str = "app.close_sidebars";
 pub const FOCUS_MARKDOWN_PREVIEW: &str = "app.focus_markdown_preview";
 pub const MARKDOWN_PREVIEW_SCROLL_UP: &str = "app.markdown_preview_scroll_up";
 pub const MARKDOWN_PREVIEW_SCROLL_DOWN: &str = "app.markdown_preview_scroll_down";
 pub const MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_UP: &str = "app.markdown_preview_scroll_half_page_up";
-pub const MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN: &str = "app.markdown_preview_scroll_half_page_down";
+pub const MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN: &str =
+    "app.markdown_preview_scroll_half_page_down";
 pub const MARKDOWN_PREVIEW_SCROLL_TOP: &str = "app.markdown_preview_scroll_top";
 pub const MARKDOWN_PREVIEW_SCROLL_BOTTOM: &str = "app.markdown_preview_scroll_bottom";
 
@@ -362,6 +365,7 @@ pub const ALL_IDS: &[&str] = &[
     LSP_GO_TO_DEFINITION,
     LSP_PREVIEW_DEFINITION,
     LSP_REFERENCES,
+    LSP_RENAME,
     LSP_FORMAT_DOCUMENT,
     LSP_TRIGGER_COMPLETION,
     LSP_CODE_ACTION,
@@ -441,6 +445,7 @@ pub const ALL_IDS: &[&str] = &[
     MULTI_CURSOR_DELETE,
     MULTI_CURSOR_SELECT_ALL,
     TOGGLE_MARKDOWN_PREVIEW,
+    CLOSE_SIDEBARS,
     FOCUS_MARKDOWN_PREVIEW,
     MARKDOWN_PREVIEW_SCROLL_UP,
     MARKDOWN_PREVIEW_SCROLL_DOWN,
@@ -571,6 +576,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         LSP_GO_TO_DEFINITION => Some(Command::LspGoToDefinition),
         LSP_PREVIEW_DEFINITION => Some(Command::LspPreviewDefinition),
         LSP_REFERENCES => Some(Command::LspReferences),
+        LSP_RENAME => Some(Command::LspRename),
         LSP_FORMAT_DOCUMENT => Some(Command::LspFormatDocument),
         LSP_TRIGGER_COMPLETION => Some(Command::TriggerCompletion),
         LSP_CODE_ACTION => Some(Command::CodeAction),
@@ -658,6 +664,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         MULTI_CURSOR_DELETE => Some(Command::MultiCursorDelete),
         MULTI_CURSOR_SELECT_ALL => Some(Command::MultiCursorSelectAll),
         TOGGLE_MARKDOWN_PREVIEW => Some(Command::ToggleMarkdownPreview),
+        CLOSE_SIDEBARS => Some(Command::CloseSidebars),
         FOCUS_MARKDOWN_PREVIEW => Some(Command::FocusMarkdownPreview),
         MARKDOWN_PREVIEW_SCROLL_UP => Some(Command::MarkdownPreviewScrollUp),
         MARKDOWN_PREVIEW_SCROLL_DOWN => Some(Command::MarkdownPreviewScrollDown),

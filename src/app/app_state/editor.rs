@@ -1007,10 +1007,12 @@ impl AppState {
     pub fn center_cursor_line(&mut self, viewport_lines: usize) {
         let (cursor_line, _) = self.cursor_line_col();
         self.target_scroll_y = cursor_line.saturating_sub(viewport_lines / 2) as f32;
+        self.current_scroll_y = self.target_scroll_y;
     }
 
     pub fn scroll_half_page_up(&mut self, half: usize) {
         self.target_scroll_y = (self.target_scroll_y - half as f32).max(0.0);
+        self.current_scroll_y = self.target_scroll_y;
         let new_line = self.cursor_line_col().0.saturating_sub(half);
         self.cursor_char_idx = self.text.line_to_char(new_line);
         self.target_col = 0;
@@ -1021,6 +1023,7 @@ impl AppState {
         let total = self.text.len_lines();
         self.target_scroll_y =
             (self.target_scroll_y + half as f32).min(total.saturating_sub(1) as f32);
+        self.current_scroll_y = self.target_scroll_y;
         let new_line = (self.cursor_line_col().0 + half).min(total.saturating_sub(1));
         self.cursor_char_idx = self.text.line_to_char(new_line);
         self.target_col = 0;

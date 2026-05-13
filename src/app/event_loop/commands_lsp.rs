@@ -10,6 +10,7 @@ impl AppShell {
             Command::LspGoToDefinition => Some(self.submit_lsp_definition(true)),
             Command::LspPreviewDefinition => Some(self.submit_lsp_definition(false)),
             Command::LspReferences => Some(self.submit_lsp_references()),
+            Command::LspRename => Some(self.open_lsp_rename_prompt()),
             Command::LspFormatDocument => Some(self.submit_lsp_format_document()),
             Command::TriggerCompletion => Some(self.submit_lsp_completion()),
             Command::CodeAction => Some(self.submit_lsp_code_action()),
@@ -42,6 +43,47 @@ impl AppShell {
             Command::JumpForward => Some(self.execute_jump_forward()),
             _ => None,
         }
+    }
+
+    pub(in crate::app::event_loop) fn clear_document_symbol_breadcrumb_cache(&mut self) -> bool {
+        let had_cache = self.cached_document_symbols_path.take().is_some()
+            || !self.cached_document_symbols.is_empty();
+        self.cached_document_symbols.clear();
+        had_cache
+    }
+
+    pub(in crate::app::event_loop) fn ensure_document_symbol_breadcrumbs(
+        &mut self,
+        force_refresh: bool,
+    ) -> bool {
+        let Some(active_path) = self.app_state.active_file().map(PathBuf::from) else {
+            return self.clear_document_symbol_breadcrumb_cache();
+        };
+
+        if !force_refresh
+            && self.cached_document_symbols_path.as_deref() == Some(active_path.as_path())
+            && !self.cached_document_symbols.is_empty()
+        {
+            return false;
+        }
+
+        if self.active_lsp_server.is_none() {
+            return self.clear_document_symbol_breadcrumb_cache();
+        }
+
+        self.force_flush_lsp_did_change_for_active_file();
+        let Some((language_id, uri, _line, _character)) = self.lsp_cursor_context() else {
+            return self.clear_document_symbol_breadcrumb_cache();
+        };
+
+        self.document_symbols_request_revision =
+            self.document_symbols_request_revision.saturating_add(1);
+        self.submit(RequestSpec {
+            revision_id: self.document_symbols_request_revision,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspDocumentSymbolsRequest { language_id, uri },
+        });
+        false
     }
 
     fn lsp_install_working_dir(&self) -> Option<PathBuf> {
@@ -200,9 +242,8 @@ impl AppShell {
         };
         let (anchor_line, anchor_col) = self.app_state.cursor_line_col();
         // Show a loading overlay immediately so the user sees feedback right away.
-        let loading_block = crate::app::app_state::FloatingBoxBlock::Prose(
-            "⟳  Loading documentation…".to_string(),
-        );
+        let loading_block =
+            crate::app::app_state::FloatingBoxBlock::Prose("⟳  Loading documentation…".to_string());
         self.app_state.set_current_overlays(vec![
             crate::app::app_state::EditorOverlay::FloatingBox {
                 anchor_line,
@@ -324,23 +365,99 @@ impl AppShell {
         changed || focus_changed
     }
 
-    pub(super) fn submit_lsp_document_symbols(&mut self) -> bool {
+    pub(super) fn open_lsp_rename_prompt(&mut self) -> bool {
+        if self.active_lsp_server.is_none() {
+            if self.pending_lsp_server.is_some() {
+                self.show_transient_toast("LSP is starting up, please wait...".to_string());
+            } else {
+                self.show_transient_toast("LSP rename: no active language server".to_string());
+            }
+            return false;
+        }
+
+        let report = dispatch_command(&mut self.app_state, Command::LspRename);
+        if !report.success {
+            self.show_transient_toast("LSP rename: could not open prompt".to_string());
+            return report.request_redraw;
+        }
+
+        let focus_changed = self.focus_manager.set(FocusTarget::OverlayLayer);
+        if focus_changed {
+            self.input_handler.clear_pending_prefix();
+        }
+        self.arm_palette_ime_commit_suppression();
+        report.request_redraw || report.state_changed || focus_changed
+    }
+
+    pub(super) fn confirm_lsp_rename_prompt(&mut self) -> bool {
+        let new_name = self
+            .app_state
+            .command_palette_query_text()
+            .trim()
+            .to_string();
+        if new_name.is_empty() {
+            self.show_transient_toast("LSP rename: enter a new name".to_string());
+            return true;
+        }
+
+        let _ = self.app_state.close_command_palette();
+        if let Ok(result) = self
+            .app_state
+            .apply_mode_event(crate::core::mode::ModeEvent::ExitFocus)
+            && result.changed
+        {
+            self.editor_needs_layout = true;
+        }
+        if self.focus_manager.set(FocusTarget::CenterEditor) {
+            self.input_handler.clear_pending_prefix();
+        }
+        self.clear_palette_ime_commit_suppression();
+
+        if !self.submit_lsp_rename(new_name) {
+            self.request_redraw();
+        }
+        true
+    }
+
+    pub(super) fn submit_lsp_rename(&mut self, new_name: String) -> bool {
+        if self.active_lsp_server.is_none() {
+            self.show_transient_toast("LSP rename: no active language server".to_string());
+            return false;
+        }
         self.force_flush_lsp_did_change_for_active_file();
-        let Some((language_id, uri, _line, _character)) = self.lsp_cursor_context() else {
+        let Some((_language_id, uri, line, character)) = self.lsp_cursor_context() else {
+            self.show_transient_toast("LSP rename: no active file".to_string());
+            return false;
+        };
+
+        self.lsp_rename_request_revision = self.lsp_rename_request_revision.saturating_add(1);
+        let request = self.submit(RequestSpec {
+            revision_id: self.lsp_rename_request_revision,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspRenameRequest {
+                uri,
+                line,
+                character,
+                new_name,
+            },
+        });
+        self.latest_rename_request_id = request.map(|r| r.request_id);
+        self.show_transient_toast("Renaming symbol...".to_string());
+        false
+    }
+
+    pub(super) fn submit_lsp_document_symbols(&mut self) -> bool {
+        let changed = self.ensure_document_symbol_breadcrumbs(true);
+        let Some((_language_id, _uri, _line, _character)) = self.lsp_cursor_context() else {
             let changed = self.app_state.finish_document_symbol_picker_loading();
             if changed {
                 self.request_redraw();
             }
             return changed;
         };
-
-        self.document_symbols_request_revision =
-            self.document_symbols_request_revision.saturating_add(1);
-        self.submit(RequestSpec {
-            revision_id: self.document_symbols_request_revision,
-            topic: RequestTopic::LspRequest,
-            payload: WorkerRequestPayload::LspDocumentSymbolsRequest { language_id, uri },
-        });
+        if changed {
+            self.request_redraw();
+        }
         true
     }
 
@@ -632,7 +749,10 @@ impl AppShell {
 
         // Đóng palette trước.
         let _ = self.app_state.close_command_palette();
-        if let Ok(result) = self.app_state.apply_mode_event(crate::core::mode::ModeEvent::ExitFocus) {
+        if let Ok(result) = self
+            .app_state
+            .apply_mode_event(crate::core::mode::ModeEvent::ExitFocus)
+        {
             if result.changed {
                 self.editor_needs_layout = true;
             }
@@ -698,7 +818,7 @@ impl AppShell {
         // Derive a short venv display name from the parent directory of the binary.
         // e.g. /project/venv/bin/python → "venv"  or  /project/.venv/bin/python → ".venv"
         let venv_name = selected_path
-            .parent()          // bin/
+            .parent() // bin/
             .and_then(|p| p.parent()) // venv/
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
@@ -721,10 +841,7 @@ impl AppShell {
             },
         });
 
-        self.show_transient_toast(format!(
-            "Python env selected: {}",
-            selected_path.display()
-        ));
+        self.show_transient_toast(format!("Python env selected: {}", selected_path.display()));
         true
     }
 }

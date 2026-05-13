@@ -34,9 +34,9 @@ impl SettingsSection {
 impl SettingItem {
     fn section(&self) -> SettingsSection {
         match self {
-            Self::ThemeSelector { .. }
-            | Self::UiRounding { .. }
-            | Self::EnableOutline { .. } => SettingsSection::Appearance,
+            Self::ThemeSelector { .. } | Self::UiRounding { .. } | Self::EnableOutline { .. } => {
+                SettingsSection::Appearance
+            }
             Self::FontFamily { .. } | Self::FontSize { .. } | Self::LineHeight { .. } => {
                 SettingsSection::Typography
             }
@@ -65,6 +65,9 @@ impl SettingItem {
             Self::IndentTabWidth { .. } => {
                 "Spaces inserted per Tab key press. Use h/l or Enter to edit (range 1–8)."
             }
+            Self::UiRounding { .. } => {
+                "Corner radius for panels and shells. Use h/l for quick 8 px steps or Enter to edit (range 0–24)."
+            }
             Self::IndentInsertSpaces { .. } => {
                 "Press Enter to toggle: spaces keep indent visible; tabs compress display."
             }
@@ -79,9 +82,6 @@ impl SettingItem {
             }
             Self::BottomPanelHeight { .. } => {
                 "Resting height for terminal, logs, and lower utility surfaces."
-            }
-            Self::UiRounding { .. } => {
-                "Rounds shell and panel corners to match the softer visual style."
             }
             Self::EnableOutline { .. } => {
                 "Show borders on all panels. Off = only unfocused panels keep their accent border."
@@ -137,9 +137,7 @@ impl SettingItem {
             Self::InlineSuggestion { enabled } => {
                 if *enabled { "Enabled" } else { "Disabled" }.to_string()
             }
-            Self::EnableOutline { enabled } => {
-                if *enabled { "On" } else { "Off" }.to_string()
-            }
+            Self::EnableOutline { enabled } => if *enabled { "On" } else { "Off" }.to_string(),
             Self::SidebarWidth { current }
             | Self::RightSidebarWidth { current }
             | Self::BottomPanelHeight { current } => format!("{current} px"),
@@ -173,6 +171,7 @@ fn current_row_value(settings: &SettingsState, item: &SettingItem, is_selected: 
         | (SettingsEditingKind::FontSize, SettingItem::FontSize { .. })
         | (SettingsEditingKind::LineHeight, SettingItem::LineHeight { .. })
         | (SettingsEditingKind::IndentTabWidth, SettingItem::IndentTabWidth { .. })
+        | (SettingsEditingKind::UiRounding, SettingItem::UiRounding { .. })
         | (SettingsEditingKind::SidebarWidth, SettingItem::SidebarWidth { .. })
         | (SettingsEditingKind::RightSidebarWidth, SettingItem::RightSidebarWidth { .. })
         | (SettingsEditingKind::BottomPanelHeight, SettingItem::BottomPanelHeight { .. }) => {
@@ -450,7 +449,11 @@ impl Renderer {
                 } else {
                     (None, 0.0)
                 };
-                layouts.push(ItemLayout { sec_header, sec_y, item_y: vy });
+                layouts.push(ItemLayout {
+                    sec_header,
+                    sec_y,
+                    item_y: vy,
+                });
                 vy += row_h + 4.0;
             }
             total_virt_h = vy;
@@ -473,12 +476,18 @@ impl Renderer {
             let thumb_h = (vis_h / total_virt_h * track_h).max(18.0).min(track_h);
             let thumb_y = track_top + (scroll_y / total_virt_h * track_h).min(track_h - thumb_h);
             chrome.push(
-                RegionDrawInstance::new([track_x, track_top, 3.0, track_h], with_alpha(fg_ghost, 0.12))
-                    .with_radius(1.5),
+                RegionDrawInstance::new(
+                    [track_x, track_top, 3.0, track_h],
+                    with_alpha(fg_ghost, 0.12),
+                )
+                .with_radius(1.5),
             );
             chrome.push(
-                RegionDrawInstance::new([track_x, thumb_y, 3.0, thumb_h], with_alpha(fg_ghost, 0.45))
-                    .with_radius(1.5),
+                RegionDrawInstance::new(
+                    [track_x, thumb_y, 3.0, thumb_h],
+                    with_alpha(fg_ghost, 0.45),
+                )
+                .with_radius(1.5),
             );
         }
 
@@ -568,8 +577,7 @@ impl Renderer {
             ));
 
             match item {
-                SettingItem::UiRounding { enabled, .. }
-                | SettingItem::EnableOutline { enabled }
+                SettingItem::EnableOutline { enabled }
                 | SettingItem::IndentInsertSpaces { enabled }
                 | SettingItem::InlineSuggestion { enabled } => {
                     let toggle_w = 40.0;
@@ -605,7 +613,11 @@ impl Renderer {
                     );
                     let badge_label = match item {
                         SettingItem::IndentInsertSpaces { enabled } => {
-                            if *enabled { "SPC" } else { "TAB" }
+                            if *enabled {
+                                "SPC"
+                            } else {
+                                "TAB"
+                            }
                         }
                         SettingItem::InlineSuggestion { .. } => "OFF",
                         _ => "",

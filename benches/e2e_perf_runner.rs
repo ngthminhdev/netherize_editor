@@ -151,7 +151,9 @@ fn scenario_insert_and_scroll() -> FrameSamples {
 
         // Simulate the layout engine work done every frame.
         let layout = layout_engine.compute(window_size, &panel_state);
-        let _ = layout.model.find(netherize_editor::workbench::region_model::RegionId::Center);
+        let _ = layout
+            .model
+            .find(netherize_editor::workbench::region_model::RegionId::Center);
 
         // Simulate text access (what renderer would do).
         let _text_len = state.text_len_bytes();

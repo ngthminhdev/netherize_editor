@@ -136,7 +136,10 @@ impl ThemeConfig {
         let ui = parse_ui(&merged_ui, &merged_editor)?;
         let git = parse_git(&raw_git, &ui)?;
         let syntax = parse_syntax(&raw_syntax)?;
-        let merged_icons = merge_raw_icons(default_theme_source.as_ref().map(|src| &src.icons), &raw_icons);
+        let merged_icons = merge_raw_icons(
+            default_theme_source.as_ref().map(|src| &src.icons),
+            &raw_icons,
+        );
         let merged_file_icons = merge_raw_file_icons(
             default_theme_source.as_ref().map(|src| &src.file_icons),
             &raw_file_icons,
@@ -202,7 +205,10 @@ fn merge_raw_editor(defaults: Option<&RawEditor>, current: &RawEditor) -> RawEdi
             .or_else(|| defaults.rainbow_brackets.clone()),
         font_size: current.font_size.or(defaults.font_size),
         line_height: current.line_height.or(defaults.line_height),
-        font_family: current.font_family.clone().or_else(|| defaults.font_family.clone()),
+        font_family: current
+            .font_family
+            .clone()
+            .or_else(|| defaults.font_family.clone()),
         nerd_font_family: current
             .nerd_font_family
             .clone()
@@ -219,18 +225,30 @@ fn merge_raw_ui(defaults: Option<&RawUi>, current: &RawUi) -> RawUi {
         bg: current.bg.clone().or_else(|| defaults.bg.clone()),
         sidebar_bg: current.sidebar_bg.clone(),
         panel_bg: current.panel_bg.clone(),
-        terminal_bg: current.terminal_bg.clone().or_else(|| defaults.terminal_bg.clone()),
-        overlay_bg: current.overlay_bg.clone().or_else(|| defaults.overlay_bg.clone()),
+        terminal_bg: current
+            .terminal_bg
+            .clone()
+            .or_else(|| defaults.terminal_bg.clone()),
+        overlay_bg: current
+            .overlay_bg
+            .clone()
+            .or_else(|| defaults.overlay_bg.clone()),
         status_bar_bg: current.status_bar_bg.clone(),
         border_color: current.border_color.clone(),
-        selection_bg: current.selection_bg.clone().or_else(|| defaults.selection_bg.clone()),
+        selection_bg: current
+            .selection_bg
+            .clone()
+            .or_else(|| defaults.selection_bg.clone()),
         dirty_indicator: current
             .dirty_indicator
             .clone()
             .or_else(|| defaults.dirty_indicator.clone()),
         fg: current.fg.clone().or_else(|| defaults.fg.clone()),
         fg_dim: current.fg_dim.clone().or_else(|| defaults.fg_dim.clone()),
-        fg_ghost: current.fg_ghost.clone().or_else(|| defaults.fg_ghost.clone()),
+        fg_ghost: current
+            .fg_ghost
+            .clone()
+            .or_else(|| defaults.fg_ghost.clone()),
         accent: current.accent.clone().or_else(|| defaults.accent.clone()),
         cyan: current.cyan.clone().or_else(|| defaults.cyan.clone()),
         magenta: current.magenta.clone().or_else(|| defaults.magenta.clone()),
@@ -285,12 +303,27 @@ fn merge_raw_icons(defaults: Option<&RawIcons>, current: &RawIcons) -> RawIcons 
             .file_picker_dot
             .clone()
             .or_else(|| defaults.file_picker_dot.clone()),
-        folder_closed: current.folder_closed.clone().or_else(|| defaults.folder_closed.clone()),
-        folder_open: current.folder_open.clone().or_else(|| defaults.folder_open.clone()),
-        default_file: current.default_file.clone().or_else(|| defaults.default_file.clone()),
+        folder_closed: current
+            .folder_closed
+            .clone()
+            .or_else(|| defaults.folder_closed.clone()),
+        folder_open: current
+            .folder_open
+            .clone()
+            .or_else(|| defaults.folder_open.clone()),
+        default_file: current
+            .default_file
+            .clone()
+            .or_else(|| defaults.default_file.clone()),
         rust: current.rust.clone().or_else(|| defaults.rust.clone()),
-        javascript: current.javascript.clone().or_else(|| defaults.javascript.clone()),
-        typescript: current.typescript.clone().or_else(|| defaults.typescript.clone()),
+        javascript: current
+            .javascript
+            .clone()
+            .or_else(|| defaults.javascript.clone()),
+        typescript: current
+            .typescript
+            .clone()
+            .or_else(|| defaults.typescript.clone()),
         tsx: current.tsx.clone().or_else(|| defaults.tsx.clone()),
         jsx: current.jsx.clone().or_else(|| defaults.jsx.clone()),
         java: current.java.clone().or_else(|| defaults.java.clone()),
@@ -320,20 +353,32 @@ fn merge_raw_icons(defaults: Option<&RawIcons>, current: &RawIcons) -> RawIcons 
         clojure: current.clojure.clone().or_else(|| defaults.clojure.clone()),
         fsharp: current.fsharp.clone().or_else(|| defaults.fsharp.clone()),
         nim: current.nim.clone().or_else(|| defaults.nim.clone()),
-        solidity: current.solidity.clone().or_else(|| defaults.solidity.clone()),
+        solidity: current
+            .solidity
+            .clone()
+            .or_else(|| defaults.solidity.clone()),
         graphql: current.graphql.clone().or_else(|| defaults.graphql.clone()),
         toml: current.toml.clone().or_else(|| defaults.toml.clone()),
         yaml: current.yaml.clone().or_else(|| defaults.yaml.clone()),
-        makefile: current.makefile.clone().or_else(|| defaults.makefile.clone()),
+        makefile: current
+            .makefile
+            .clone()
+            .or_else(|| defaults.makefile.clone()),
         cmake: current.cmake.clone().or_else(|| defaults.cmake.clone()),
         nginx: current.nginx.clone().or_else(|| defaults.nginx.clone()),
-        terraform: current.terraform.clone().or_else(|| defaults.terraform.clone()),
+        terraform: current
+            .terraform
+            .clone()
+            .or_else(|| defaults.terraform.clone()),
         ansible: current.ansible.clone().or_else(|| defaults.ansible.clone()),
         python: current.python.clone().or_else(|| defaults.python.clone()),
         go: current.go.clone().or_else(|| defaults.go.clone()),
         config: current.config.clone().or_else(|| defaults.config.clone()),
         json: current.json.clone().or_else(|| defaults.json.clone()),
-        markdown: current.markdown.clone().or_else(|| defaults.markdown.clone()),
+        markdown: current
+            .markdown
+            .clone()
+            .or_else(|| defaults.markdown.clone()),
         html: current.html.clone().or_else(|| defaults.html.clone()),
         css: current.css.clone().or_else(|| defaults.css.clone()),
         sass: current.sass.clone().or_else(|| defaults.sass.clone()),
@@ -823,21 +868,51 @@ fn parse_icons(raw: &RawIcons, ui: &UiThemeTokens) -> Result<IconThemeTokens, St
         svelte: parse_file_icon("icons.svelte", raw.svelte.as_ref(), "\u{E697}", ui.error)?,
         astro: parse_file_icon("icons.astro", raw.astro.as_ref(), "\u{E6B3}", ui.warning)?,
         elm: parse_file_icon("icons.elm", raw.elm.as_ref(), "\u{E62C}", ui.info)?,
-        haskell: parse_file_icon("icons.haskell", raw.haskell.as_ref(), "\u{E61F}", ui.magenta)?,
+        haskell: parse_file_icon(
+            "icons.haskell",
+            raw.haskell.as_ref(),
+            "\u{E61F}",
+            ui.magenta,
+        )?,
         ocaml: parse_file_icon("icons.ocaml", raw.ocaml.as_ref(), "\u{E67A}", ui.amber)?,
         r: parse_file_icon("icons.r", raw.r.as_ref(), "\u{F25D}", ui.info)?,
         perl: parse_file_icon("icons.perl", raw.perl.as_ref(), "\u{E769}", ui.info)?,
-        clojure: parse_file_icon("icons.clojure", raw.clojure.as_ref(), "\u{E768}", ui.success)?,
+        clojure: parse_file_icon(
+            "icons.clojure",
+            raw.clojure.as_ref(),
+            "\u{E768}",
+            ui.success,
+        )?,
         fsharp: parse_file_icon("icons.fsharp", raw.fsharp.as_ref(), "\u{E7A7}", ui.info)?,
         nim: parse_file_icon("icons.nim", raw.nim.as_ref(), "\u{E677}", ui.amber)?,
-        solidity: parse_file_icon("icons.solidity", raw.solidity.as_ref(), "\u{E6A8}", ui.fg_dim)?,
-        graphql: parse_file_icon("icons.graphql", raw.graphql.as_ref(), "\u{E662}", ui.magenta)?,
+        solidity: parse_file_icon(
+            "icons.solidity",
+            raw.solidity.as_ref(),
+            "\u{E6A8}",
+            ui.fg_dim,
+        )?,
+        graphql: parse_file_icon(
+            "icons.graphql",
+            raw.graphql.as_ref(),
+            "\u{E662}",
+            ui.magenta,
+        )?,
         toml: parse_file_icon("icons.toml", raw.toml.as_ref(), "\u{E615}", ui.fg_ghost)?,
         yaml: parse_file_icon("icons.yaml", raw.yaml.as_ref(), "\u{E60B}", ui.amber)?,
-        makefile: parse_file_icon("icons.makefile", raw.makefile.as_ref(), "\u{E779}", ui.warning)?,
+        makefile: parse_file_icon(
+            "icons.makefile",
+            raw.makefile.as_ref(),
+            "\u{E779}",
+            ui.warning,
+        )?,
         cmake: parse_file_icon("icons.cmake", raw.cmake.as_ref(), "\u{E794}", ui.info)?,
         nginx: parse_file_icon("icons.nginx", raw.nginx.as_ref(), "\u{F146B}", ui.success)?,
-        terraform: parse_file_icon("icons.terraform", raw.terraform.as_ref(), "\u{E69B}", ui.magenta)?,
+        terraform: parse_file_icon(
+            "icons.terraform",
+            raw.terraform.as_ref(),
+            "\u{E69B}",
+            ui.magenta,
+        )?,
         ansible: parse_file_icon("icons.ansible", raw.ansible.as_ref(), "\u{E615}", ui.error)?,
         python: parse_file_icon("icons.python", raw.python.as_ref(), "\u{E73C}", ui.info)?,
         go: parse_file_icon("icons.go", raw.go.as_ref(), "\u{E724}", ui.cyan)?,

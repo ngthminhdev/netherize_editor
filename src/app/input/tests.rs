@@ -235,17 +235,44 @@ fn zen_mode_active_blocks_other_leader_commands_from_ai_chat_focus() {
 
     let resolved =
         handler.route_normalized_input(char_input('f', KeyCode::KeyF), &map, context, t0);
-    assert!(matches!(resolved, Some(InputRouteOutcome::NoDispatch { .. }) | None));
+    assert!(matches!(
+        resolved,
+        Some(InputRouteOutcome::NoDispatch { .. }) | None
+    ));
 }
 
 #[test]
-fn zen_mode_active_allows_leader_z_m_from_terminal_focus_mode() {
+fn zen_mode_active_routes_space_to_terminal_focus_input() {
     let mut handler = InputHandler::new();
     let map = make_map();
-    let mut context = KeybindingContext::with_focus(
-        EditorMode::TerminalFocus,
-        InputFocusContext::Terminal,
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal);
+    context.zen_mode_active = true;
+    let t0 = std::time::Instant::now();
+
+    let start = handler.route_normalized_input(
+        named_input(NamedKey::Space, Some(KeyCode::Space)),
+        &map,
+        context,
+        t0,
     );
+    match start {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::TerminalWriteInput(" ".to_string())
+            );
+        }
+        other => panic!("expected terminal space dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn zen_mode_active_allows_leader_z_m_from_terminal_normal_mode() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::TerminalNormal, InputFocusContext::Terminal);
     context.zen_mode_active = true;
     let t0 = std::time::Instant::now();
 
@@ -274,7 +301,8 @@ fn zen_mode_active_allows_leader_z_m_from_terminal_focus_mode() {
 fn zen_mode_active_allows_leader_z_m_from_bottom_panel_normal_mode() {
     let mut handler = InputHandler::new();
     let map = make_map();
-    let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::BottomPanel);
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::BottomPanel);
     context.zen_mode_active = true;
     let t0 = std::time::Instant::now();
 
@@ -296,6 +324,28 @@ fn zen_mode_active_allows_leader_z_m_from_bottom_panel_normal_mode() {
             assert_eq!(translated.command, Command::ToggleMaximizeFocus);
         }
         other => panic!("expected Zen toggle dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn zen_mode_markdown_preview_still_allows_gg_scroll_top() {
+    let mut handler = InputHandler::new();
+    let map = make_default_profile_map();
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::MarkdownPreview);
+    context.zen_mode_active = true;
+    let t0 = std::time::Instant::now();
+
+    let start = handler.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, t0);
+    assert!(matches!(start, Some(InputRouteOutcome::NoDispatch { .. })));
+
+    let resolved =
+        handler.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, t0);
+    match resolved {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::MarkdownPreviewScrollTop);
+        }
+        other => panic!("expected markdown preview gg dispatch, got {:?}", other),
     }
 }
 

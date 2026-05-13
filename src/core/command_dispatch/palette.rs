@@ -86,6 +86,16 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             ),
             Err(report) => report,
         },
+        Command::LspRename => {
+            match open_palette_mode(ctx, CommandPaletteMode::LspRename, "lsp rename") {
+                Ok((result_count, mode_changed)) => DispatchReport::success_with_flags(
+                    format!("Dispatch: lsp rename prompt opened ({result_count} items)"),
+                    true,
+                    mode_changed,
+                ),
+                Err(report) => report,
+            }
+        }
         Command::SearchInFiles => {
             let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterInsert);
             let buffer_index = ctx
@@ -521,13 +531,11 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
                 closed,
             )
         }
-        CommandPaletteAction::SelectPythonEnv(_path) => {
-            DispatchReport::success_with_flags(
-                "Dispatch: python env selected (handled by AppShell)".to_string(),
-                true,
-                false,
-            )
-        }
+        CommandPaletteAction::SelectPythonEnv(_path) => DispatchReport::success_with_flags(
+            "Dispatch: python env selected (handled by AppShell)".to_string(),
+            true,
+            false,
+        ),
     }
 }
 

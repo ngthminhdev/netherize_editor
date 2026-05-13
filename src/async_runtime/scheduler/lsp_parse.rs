@@ -4,9 +4,8 @@ use serde_json::Value;
 
 use crate::{
     async_runtime::message::{
-        LspCodeAction, LspCompletionItem, LspDiagnostic, LspDocumentHighlight,
-        LspDocumentSymbol, LspLocation, LspPosition, LspRange, LspTextEdit,
-        WorkerResultPayload,
+        LspCodeAction, LspCompletionItem, LspDiagnostic, LspDocumentHighlight, LspDocumentSymbol,
+        LspLocation, LspPosition, LspRange, LspTextEdit, WorkerResultPayload,
     },
     lsp::client::LspClientProcess,
 };
@@ -317,17 +316,16 @@ fn parse_hover_doc_blocks(content: &str) -> Vec<crate::async_runtime::message::H
         }
     };
 
-    let flush_code = |blocks: &mut Vec<HoverDocBlock>,
-                      code_lines: &mut Vec<String>,
-                      code_language: &str| {
-        let text = code_lines.join("\n");
-        code_lines.clear();
-        if text.trim().is_empty() {
-            return;
-        }
-        let spans = highlight_snippet(&text, code_language, &theme);
-        blocks.push(HoverDocBlock::Code { text, spans });
-    };
+    let flush_code =
+        |blocks: &mut Vec<HoverDocBlock>, code_lines: &mut Vec<String>, code_language: &str| {
+            let text = code_lines.join("\n");
+            code_lines.clear();
+            if text.trim().is_empty() {
+                return;
+            }
+            let spans = highlight_snippet(&text, code_language, &theme);
+            blocks.push(HoverDocBlock::Code { text, spans });
+        };
 
     for line in content.lines() {
         let trimmed = line.trim_start();
@@ -377,13 +375,11 @@ fn parse_documentation_field(value: &Value) -> Option<String> {
         let parts: Vec<String> = arr
             .iter()
             .filter_map(|item| {
-                item.as_str()
-                    .map(str::to_string)
-                    .or_else(|| {
-                        item.pointer("/value")
-                            .and_then(Value::as_str)
-                            .map(str::to_string)
-                    })
+                item.as_str().map(str::to_string).or_else(|| {
+                    item.pointer("/value")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
             })
             .filter(|s| !s.trim().is_empty())
             .collect();
@@ -553,6 +549,79 @@ pub(super) fn handle_lsp_references(
     Ok(locations)
 }
 
+pub(super) fn handle_lsp_rename(
+    session: &Arc<LspClientProcess>,
+    uri: &str,
+    line: u32,
+    character: u32,
+    new_name: &str,
+) -> Result<WorkerResultPayload, String> {
+    let params = serde_json::json!({
+        "textDocument": { "uri": uri },
+        "position": { "line": line, "character": character },
+        "newName": new_name,
+    });
+    let response = lsp_request_response(
+        session,
+        "textDocument/rename",
+        params,
+        LSP_REFERENCES_TIMEOUT_SECS,
+    )?;
+    let result = response
+        .get("result")
+        .ok_or_else(|| "rename: no result".to_string())?;
+    if result.is_null() {
+        return Ok(WorkerResultPayload::LspRenameResult {
+            uri: uri.to_string(),
+            edits: Vec::new(),
+            other_file_edit_count: 0,
+        });
+    }
+
+    let (edits, other_file_edit_count) = parse_workspace_edit_for_uri(result, uri);
+    Ok(WorkerResultPayload::LspRenameResult {
+        uri: uri.to_string(),
+        edits,
+        other_file_edit_count,
+    })
+}
+
+fn parse_workspace_edit_for_uri(result: &Value, target_uri: &str) -> (Vec<LspTextEdit>, usize) {
+    let mut edits = Vec::new();
+    let mut other_file_edit_count = 0usize;
+
+    if let Some(changes) = result.get("changes").and_then(Value::as_object) {
+        for (uri, value) in changes {
+            let parsed = parse_text_edits(value);
+            if uri == target_uri {
+                edits.extend(parsed);
+            } else {
+                other_file_edit_count = other_file_edit_count.saturating_add(parsed.len());
+            }
+        }
+    }
+
+    if let Some(document_changes) = result.get("documentChanges").and_then(Value::as_array) {
+        for change in document_changes {
+            if let Some(uri) = change.pointer("/textDocument/uri").and_then(Value::as_str) {
+                let parsed = change
+                    .get("edits")
+                    .map(parse_text_edits)
+                    .unwrap_or_default();
+                if uri == target_uri {
+                    edits.extend(parsed);
+                } else {
+                    other_file_edit_count = other_file_edit_count.saturating_add(parsed.len());
+                }
+            } else {
+                other_file_edit_count = other_file_edit_count.saturating_add(1);
+            }
+        }
+    }
+
+    (edits, other_file_edit_count)
+}
+
 pub(super) fn handle_lsp_document_highlight(
     session: &Arc<LspClientProcess>,
     uri: &str,
@@ -595,7 +664,10 @@ fn parse_document_highlights(result: &Value) -> Vec<LspDocumentHighlight> {
             let start_character = item.pointer("/range/start/character")?.as_u64()? as u32;
             let end_line = item.pointer("/range/end/line")?.as_u64()? as u32;
             let end_character = item.pointer("/range/end/character")?.as_u64()? as u32;
-            let kind = item.get("kind").and_then(Value::as_u64).map(|kind| kind as u32);
+            let kind = item
+                .get("kind")
+                .and_then(Value::as_u64)
+                .map(|kind| kind as u32);
             Some(LspDocumentHighlight {
                 range: LspRange {
                     start: LspPosition {
@@ -700,31 +772,154 @@ fn parse_document_symbols(result: &Value) -> Vec<LspDocumentSymbol> {
         .to_string()
     }
 
-    fn push_nested(out: &mut Vec<LspDocumentSymbol>, symbols: &[lsp_types::DocumentSymbol]) {
+    fn position_leq(left: &LspPosition, right: &LspPosition) -> bool {
+        left.line < right.line || (left.line == right.line && left.character <= right.character)
+    }
+
+    fn range_strictly_contains(outer: &LspRange, inner: &LspRange) -> bool {
+        position_leq(&outer.start, &inner.start)
+            && position_leq(&inner.end, &outer.end)
+            && (outer.start.line != inner.start.line
+                || outer.start.character != inner.start.character
+                || outer.end.line != inner.end.line
+                || outer.end.character != inner.end.character)
+    }
+
+    fn ancestor_sort_key(
+        symbol: &LspDocumentSymbol,
+    ) -> (u32, u32, std::cmp::Reverse<u32>, std::cmp::Reverse<u32>) {
+        (
+            symbol.range.start.line,
+            symbol.range.start.character,
+            std::cmp::Reverse(symbol.range.end.line),
+            std::cmp::Reverse(symbol.range.end.character),
+        )
+    }
+
+    fn attach_flat_symbol_ancestors(symbols: &mut [LspDocumentSymbol]) {
+        let snapshot = symbols.to_vec();
+        for (index, symbol) in symbols.iter_mut().enumerate() {
+            let mut ancestors: Vec<_> = snapshot
+                .iter()
+                .enumerate()
+                .filter(|(candidate_index, candidate)| {
+                    *candidate_index != index
+                        && range_strictly_contains(&candidate.range, &symbol.range)
+                })
+                .map(|(_, candidate)| candidate)
+                .collect();
+            ancestors.sort_by_key(|candidate| ancestor_sort_key(candidate));
+            symbol.ancestors = ancestors
+                .into_iter()
+                .map(
+                    |candidate| crate::async_runtime::message::LspDocumentSymbolSegment {
+                        name: candidate.name.clone(),
+                        kind: candidate.kind.clone(),
+                    },
+                )
+                .collect();
+        }
+    }
+
+    fn push_nested(
+        out: &mut Vec<LspDocumentSymbol>,
+        symbols: &[lsp_types::DocumentSymbol],
+        ancestors: &[crate::async_runtime::message::LspDocumentSymbolSegment],
+    ) {
         for symbol in symbols {
-            out.push(LspDocumentSymbol {
+            let current = crate::async_runtime::message::LspDocumentSymbolSegment {
                 name: symbol.name.clone(),
                 kind: kind_label(&symbol.kind),
+            };
+            out.push(LspDocumentSymbol {
+                name: current.name.clone(),
+                kind: current.kind.clone(),
                 range: range_from_lsp(&symbol.range),
+                ancestors: ancestors.to_vec(),
             });
             if let Some(children) = &symbol.children {
-                push_nested(out, children);
+                let mut next_ancestors = ancestors.to_vec();
+                next_ancestors.push(current);
+                push_nested(out, children, &next_ancestors);
             }
         }
     }
 
     let mut out = Vec::new();
     match response {
-        lsp_types::DocumentSymbolResponse::Nested(symbols) => push_nested(&mut out, &symbols),
+        lsp_types::DocumentSymbolResponse::Nested(symbols) => push_nested(&mut out, &symbols, &[]),
         lsp_types::DocumentSymbolResponse::Flat(symbols) => {
             out.extend(symbols.into_iter().map(|symbol| LspDocumentSymbol {
                 name: symbol.name,
                 kind: kind_label(&symbol.kind),
                 range: range_from_lsp(&symbol.location.range),
+                ancestors: Vec::new(),
             }));
+            attach_flat_symbol_ancestors(&mut out);
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_document_symbols;
+    use serde_json::json;
+
+    #[test]
+    fn parse_document_symbols_rebuilds_ancestors_for_flat_symbols() {
+        let response = json!([
+            {
+                "name": "KafkaProducer",
+                "kind": 5,
+                "location": {
+                    "uri": "file:///tmp/demo.ts",
+                    "range": {
+                        "start": { "line": 6, "character": 0 },
+                        "end": { "line": 30, "character": 1 }
+                    }
+                }
+            },
+            {
+                "name": "constructor",
+                "kind": 9,
+                "location": {
+                    "uri": "file:///tmp/demo.ts",
+                    "range": {
+                        "start": { "line": 12, "character": 2 },
+                        "end": { "line": 22, "character": 3 }
+                    }
+                }
+            },
+            {
+                "name": "kafkaClient",
+                "kind": 14,
+                "location": {
+                    "uri": "file:///tmp/demo.ts",
+                    "range": {
+                        "start": { "line": 14, "character": 8 },
+                        "end": { "line": 14, "character": 30 }
+                    }
+                }
+            }
+        ]);
+
+        let symbols = parse_document_symbols(&response);
+        let kafka_client = symbols
+            .iter()
+            .find(|symbol| symbol.name == "kafkaClient")
+            .expect("expected kafkaClient symbol");
+
+        let labels: Vec<(&str, &str)> = kafka_client
+            .ancestors
+            .iter()
+            .map(|segment| (segment.kind.as_str(), segment.name.as_str()))
+            .collect();
+        assert_eq!(
+            labels,
+            vec![("Class", "KafkaProducer"), ("Constructor", "constructor")]
+        );
+    }
 }
 
 pub(super) fn handle_lsp_completion(
@@ -876,7 +1071,10 @@ fn parse_workspace_edit_into_edits(workspace_edit: &Value) -> Vec<LspTextEdit> {
 
     // Format mới: documentChanges: TextDocumentEdit[]
     // Mỗi entry có dạng { textDocument: {...}, edits: TextEdit[] }
-    if let Some(doc_changes) = workspace_edit.get("documentChanges").and_then(|v| v.as_array()) {
+    if let Some(doc_changes) = workspace_edit
+        .get("documentChanges")
+        .and_then(|v| v.as_array())
+    {
         for doc_edit in doc_changes {
             if let Some(text_edits) = doc_edit.get("edits").and_then(|v| v.as_array()) {
                 for edit in text_edits {

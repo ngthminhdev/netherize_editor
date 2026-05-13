@@ -41,29 +41,35 @@ pub async fn scan_python_environments(workspace_root: &Path) -> Vec<PythonEnv> {
         .await
         .ok()
         .and_then(|cmd_result| cmd_result.ok())
-        .and_then(|output| if output.status.success() { Some(output) } else { None });
-        if let Some(output) = timeout_result {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for line in stdout.lines() {
-            let version = line.trim();
-            if version.is_empty() {
-                continue;
+        .and_then(|output| {
+            if output.status.success() {
+                Some(output)
+            } else {
+                None
             }
-            let pyenv_python = PathBuf::from(&env)
-                .join(".pyenv")
-                .join("versions")
-                .join(version)
-                .join("bin")
-                .join("python");
-            if pyenv_python.try_exists().unwrap_or(false) {
-                envs.push(PythonEnv {
-                    kind: PythonEnvKind::Pyenv(version.to_string()),
-                    display_name: format!("[pyenv] {}", version),
-                    executable: pyenv_python,
-                });
+        });
+        if let Some(output) = timeout_result {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let version = line.trim();
+                if version.is_empty() {
+                    continue;
+                }
+                let pyenv_python = PathBuf::from(&env)
+                    .join(".pyenv")
+                    .join("versions")
+                    .join(version)
+                    .join("bin")
+                    .join("python");
+                if pyenv_python.try_exists().unwrap_or(false) {
+                    envs.push(PythonEnv {
+                        kind: PythonEnvKind::Pyenv(version.to_string()),
+                        display_name: format!("[pyenv] {}", version),
+                        executable: pyenv_python,
+                    });
+                }
             }
         }
-    }
     }
 
     let timeout_result = tokio::time::timeout(
@@ -76,7 +82,13 @@ pub async fn scan_python_environments(workspace_root: &Path) -> Vec<PythonEnv> {
     .await
     .ok()
     .and_then(|cmd_result| cmd_result.ok())
-    .and_then(|output| if output.status.success() { Some(output) } else { None });
+    .and_then(|output| {
+        if output.status.success() {
+            Some(output)
+        } else {
+            None
+        }
+    });
     if let Some(output) = timeout_result {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let path = stdout.lines().next().map(|s| s.trim()).unwrap_or("");

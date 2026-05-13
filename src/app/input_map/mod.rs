@@ -367,7 +367,7 @@ impl InputMap {
                     if !Self::command_allowed_in_context(&command, context) {
                         return None;
                     }
-                    if context.zen_mode_active && !matches!(command, Command::ToggleMaximizeFocus) {
+                    if !Self::zen_mode_allows_sequence_command(&command, context) {
                         continue;
                     }
 
@@ -394,6 +394,23 @@ impl InputMap {
         }
 
         true
+    }
+
+    fn zen_mode_allows_sequence_command(command: &Command, context: KeybindingContext) -> bool {
+        if !context.zen_mode_active {
+            return true;
+        }
+
+        match context.focus {
+            // These focuses normally consume raw input. While Zen Mode is active we
+            // still allow the dedicated "space z m" escape hatch, but other
+            // sequences should not steal keystrokes from the embedded surface.
+            InputFocusContext::AiChat => matches!(command, Command::ToggleMaximizeFocus),
+            InputFocusContext::Terminal if context.mode != EditorMode::TerminalNormal => {
+                matches!(command, Command::ToggleMaximizeFocus)
+            }
+            _ => true,
+        }
     }
 
     fn context_allows_leader_sequence(&self, context: KeybindingContext) -> bool {

@@ -33,7 +33,10 @@ fn inline_suggestion_virtual_gap(app_state: &AppState, line_height: f32) -> Opti
     const MAX_INLINE_SUGGESTION_LINES: usize = 6;
 
     let suggestion = app_state.inline_suggestion()?;
-    let rendered_lines = suggestion.split('\n').take(MAX_INLINE_SUGGESTION_LINES).count();
+    let rendered_lines = suggestion
+        .split('\n')
+        .take(MAX_INLINE_SUGGESTION_LINES)
+        .count();
     let extra_lines = rendered_lines.saturating_sub(1);
     if extra_lines == 0 {
         return None;
@@ -54,6 +57,16 @@ fn spans_fingerprint(spans: &[StyledTextSpan]) -> u64 {
 }
 
 impl Renderer {
+    pub(crate) fn set_editor_breadcrumb_segments(
+        &mut self,
+        _segments: Vec<crate::render::renderer::EditorBreadcrumbSegment>,
+    ) -> bool {
+        // Temporary kill-switch: breadcrumb UI is disabled, so keep the render list empty.
+        let had_segments = !self.editor_breadcrumb_segments.is_empty();
+        self.editor_breadcrumb_segments.clear();
+        had_segments
+    }
+
     pub fn clear_editor_content(&mut self) {
         self.glyph_instances.clear();
         self.text_pipeline
@@ -155,23 +168,33 @@ impl Renderer {
         let geometry = editor_viewport_geometry(self, app_state, center_bounds);
         let width = geometry.viewport_text_width;
 
-        self.editor_scissor = rect_to_scissor(center_bounds);
+        self.editor_scissor = rect_to_scissor([
+            center_bounds[0],
+            geometry.viewport_text_top,
+            center_bounds[2],
+            geometry.viewport_text_height,
+        ]);
         // Allow cosmic-text to shape full height; scissor clips the visible region.
         self.text_system.set_size(Some(width), None);
-
+        let tab_width = u16::from(app_state.indent_config().tab_width.max(1));
+        let tab_width_changed = self.text_system.tab_width() != tab_width;
+        if tab_width_changed {
+            self.text_system.set_tab_width(tab_width);
+        }
 
         // ── Tối ưu 2: Text Caching ─────────────────────────────────────────────
         // Trong các frame chỉ cuộn (smooth scroll), text revision không đổi →
         // TextSystem buffer đã được shaped từ frame trước → bỏ qua set_text_with_spans.
         // Reshape khi: (a) text thay đổi, (b) syntax/LSP spans thay đổi, hoặc
-        // (c) viewport width thay đổi (word-wrap boundary shift).
+        // (c) viewport width/tab width thay đổi (word-wrap/tab-stop boundary shift).
         let text_fg = self.theme.editor.fg.as_f32();
         let default_color_rgba = linear_rgba_to_srgb_u8(text_fg);
         let current_revision = app_state.revision();
         let spans_fp = spans_fingerprint(spans);
         let needs_reshape = self.last_shaped_revision != current_revision
             || self.last_shaped_spans_fingerprint != spans_fp
-            || (self.last_shaped_viewport_width - width).abs() > 0.5;
+            || (self.last_shaped_viewport_width - width).abs() > 0.5
+            || tab_width_changed;
         if needs_reshape {
             self.text_system
                 .set_text_with_spans(text, default_color_rgba, spans);
@@ -188,13 +211,13 @@ impl Renderer {
             app_state.folded_ranges(),
         );
         let corrected_origin_y =
-            center_bounds[1] + self.editor_padding_y + geometry.line_height - visual_scroll_y;
+            geometry.viewport_text_top + geometry.line_height - visual_scroll_y;
 
         // Cull glyphs ngoài viewport (overscan 1 dòng mỗi đầu) — file 10k dòng
         // chỉ build instance cho ~100 dòng visible thay vì toàn buffer.
         let virtual_gap_after_line = inline_suggestion_virtual_gap(app_state, geometry.line_height);
         let virtual_gap_y = virtual_gap_after_line.map(|(_, gap)| gap).unwrap_or(0.0);
-        let clip_top = geometry.viewport_text_top - geometry.line_height;
+        let clip_top = geometry.viewport_text_top;
         let clip_bottom = geometry.viewport_text_top
             + geometry.viewport_text_height
             + geometry.line_height
@@ -271,7 +294,12 @@ impl Renderer {
             center_bounds,
             geometry.line_height,
             geometry.font_size,
-            app_state.visible_line_count().max(1).to_string().len().max(3),
+            app_state
+                .visible_line_count()
+                .max(1)
+                .to_string()
+                .len()
+                .max(3),
             geometry.gutter_width,
         );
     }
@@ -294,7 +322,7 @@ impl Renderer {
             app_state.folded_ranges(),
         );
         let corrected_origin_y =
-            center_bounds[1] + self.editor_padding_y + geometry.line_height - visual_scroll_y;
+            geometry.viewport_text_top + geometry.line_height - visual_scroll_y;
 
         let caret_layout = compute_caret_layout_with_folds(
             &self.text_system,
@@ -352,7 +380,12 @@ impl Renderer {
             center_bounds,
             geometry.line_height,
             geometry.font_size,
-            app_state.visible_line_count().max(1).to_string().len().max(3),
+            app_state
+                .visible_line_count()
+                .max(1)
+                .to_string()
+                .len()
+                .max(3),
             geometry.gutter_width,
         );
     }
@@ -458,9 +491,7 @@ impl Renderer {
 // ── Multi-cursor caret batching ───────────────────────────────────────────────
 
 use crate::{
-    config::ui_config::CursorShape,
-    render::caret::CaretScreenRect,
-    text::text_system::TextSystem,
+    config::ui_config::CursorShape, render::caret::CaretScreenRect, text::text_system::TextSystem,
 };
 
 /// Build the full list of caret rects: primary at index 0, then one per virtual
@@ -498,8 +529,7 @@ fn build_caret_rects(
     ];
 
     for vc in app_state.virtual_cursors() {
-        let (line_idx, byte_in_line) =
-            app_state.char_idx_to_line_and_byte_in_line(vc.char_idx);
+        let (line_idx, byte_in_line) = app_state.char_idx_to_line_and_byte_in_line(vc.char_idx);
         let line_hidden = app_state.is_line_folded(line_idx);
         if line_hidden {
             continue;

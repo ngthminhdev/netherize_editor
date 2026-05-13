@@ -1,11 +1,7 @@
 use crate::{
     app::app_state::AppState,
     render::glyph_instance::GlyphInstance,
-    text::{
-        atlas::GlyphAtlas,
-        raster::rasterize_glyph_alpha,
-        text_system::TextSystem,
-    },
+    text::{atlas::GlyphAtlas, raster::rasterize_glyph_alpha, text_system::TextSystem},
 };
 
 #[derive(Debug, Clone, Copy)]

@@ -204,6 +204,8 @@ impl AppShell {
                 | Command::MoveToLineStart
                 | Command::MoveToLineEnd
                 | Command::MoveToFirstNonWhitespace
+                | Command::MoveParagraphUp
+                | Command::MoveParagraphDown
                 | Command::InsertAtLineStart
                 | Command::AppendAtLineEnd
                 | Command::AppendAfterCursor
@@ -284,6 +286,7 @@ impl AppShell {
                 self.editor_caret_needs_layout = true;
             }
             self.submit_lsp_document_highlight();
+            self.ensure_document_symbol_breadcrumbs(false);
         } else if report.state_changed {
             self.editor_needs_layout = true;
             self.editor_caret_needs_layout = false;
@@ -297,6 +300,7 @@ impl AppShell {
                 self.submit_lsp_did_change_for_active_file();
             } else {
                 self.force_flush_lsp_did_change_for_active_file();
+                self.ensure_document_symbol_breadcrumbs(true);
             }
             let _ = self.app_state.clear_semantic_symbol_highlights();
         }
@@ -309,6 +313,7 @@ impl AppShell {
         if report.success && should_notify_did_open {
             self.submit_lsp_did_open_for_active_file();
             self.submit_lsp_document_highlight();
+            self.ensure_document_symbol_breadcrumbs(true);
         }
 
         report.request_redraw

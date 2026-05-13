@@ -51,44 +51,39 @@ netherize_editor/
 │   ├── app/                       # Application shell
 │   │   ├── app_state/             # AppState module tree — authoritative editor state split by domain
 │   │   │   ├── mod.rs             # Root AppState types, constructors, shared state models
-│   │   │   ├── settings.rs        # Settings tab models and editing state
-│   │   │   ├── workspace.rs       # Workspace/explorer attachment + query/mutation helpers
-│   │   │   ├── palette.rs         # Command palette, file picker, diagnostics/reference picker state
 │   │   │   ├── editor.rs          # Core editor mutation/cursor/navigation logic
 │   │   │   ├── buffers.rs         # Buffer lifecycle, open/save, references/help/settings buffers
+│   │   │   ├── workspace.rs       # Workspace/explorer attachment + query/mutation helpers
+│   │   │   ├── palette.rs         # Command palette, file picker, diagnostics/reference picker state
+│   │   │   ├── multi_cursor.rs    # Multi-cursor management
+│   │   │   ├── settings.rs        # Settings tab models and editing state
 │   │   │   ├── state.rs           # Derived/query helpers, completion/search/undo-redo state access
 │   │   │   ├── overlays.rs        # Overlay + shared internal helper logic
 │   │   │   └── tests.rs           # AppState regression tests
 │   │   ├── event_loop/            # winit ApplicationHandler impl + command dispatch
 │   │   │   ├── mod.rs             # run() entrypoint
 │   │   │   ├── application.rs     # winit::ApplicationHandler impl
+│   │   │   ├── async_results/     # Async result processing split by topic (LSP, AI, Terminal, etc.)
 │   │   │   ├── commands.rs        # Command orchestration facade + shared helpers
 │   │   │   ├── commands_editor.rs # Editor edit/navigation/leap command helpers
 │   │   │   ├── commands_completion.rs # Completion popup and insert flows
 │   │   │   ├── commands_terminal.rs # Terminal/panel/focus commands
 │   │   │   ├── commands_explorer.rs # Explorer/sidebar/workspace commands
 │   │   │   ├── commands_palette.rs # Palette/open-file/open-buffer commands
-│   │   │   ├── commands_settings.rs # Settings-buffer commands
-│   │   │   ├── commands_settings_helpers.rs # Settings value/editing helpers
-│   │   │   ├── commands_prompts.rs # Confirmation/prompt/theme/recent-project flows
 │   │   │   ├── commands_lsp.rs    # LSP/diagnostics/inline-AI commands
-│   │   │   ├── async_results.rs   # Polling async channel results into the main loop
+│   │   │   ├── commands_ai_chat.rs # AI chat panel commands
+│   │   │   ├── commands_prompts.rs # Confirmation/prompt/theme/recent-project flows
 │   │   │   ├── helpers.rs         # Shared render/layout helpers
 │   │   │   ├── setup.rs           # GPU + window init
 │   │   │   └── welcome.rs         # Welcome screen logic
-│   │   ├── input_map/             # Keymap resolution (key event → Command)
-│   │   │   ├── mod.rs
-│   │   │   ├── focus.rs           # Focus-context-aware key routing
-│   │   │   ├── helpers.rs
-│   │   │   └── tests.rs
 │   │   ├── input/                 # Key normalization + pending-state router
 │   │   │   ├── mod.rs             # Public input module surface
 │   │   │   ├── handler.rs         # Main input state machine / router
 │   │   │   ├── model.rs           # NormalizedInput / TranslatedInput
 │   │   │   ├── pending.rs         # Pending chord/operator state types
-│   │   │   ├── helpers.rs         # Key classification + terminal payload helpers
-│   │   │   └── tests.rs           # Input routing regression tests
-│   │   ├── resolved_keymap.rs     # Merged keymap at runtime
+│   │   ├── input_map/             # Keymap resolution (key event → Command)
+│   │   │   ├── mod.rs
+│   │   │   └── focus.rs           # Focus-context-aware key routing
 │   │   ├── command_palette.rs     # Command palette state + filtering
 │   │   ├── file_picker.rs         # File picker state + fuzzy results
 │   │   └── async_bridge.rs        # Tokio ↔ winit message bridge
@@ -97,7 +92,11 @@ netherize_editor/
 │   │   ├── mode.rs                # EditorMode enum + ModeState transition machine
 │   │   ├── commands.rs            # Command enum (all editor actions)
 │   │   ├── command_ids.rs         # Stable string IDs for palette lookup
-│   │   ├── command_dispatch.rs    # Routes Command → handler
+│   │   ├── command_dispatch/      # Command execution logic split by domain
+│   │   │   ├── mod.rs             # Routes Command → handler
+│   │   │   ├── editing.rs         # Text mutation handlers
+│   │   │   ├── navigation.rs      # Cursor movement handlers
+│   │   │   └── palette.rs         # Command palette/picker handlers
 │   │   └── mod.rs
 │   │
 │   ├── lsp/                       # Polyglot language server client
@@ -107,18 +106,17 @@ netherize_editor/
 │   │
 │   ├── render/                    # GPU rendering layer (wgpu)
 │   │   ├── renderer.rs            # Renderer facade + shared render types
-│   │   ├── renderer/
-│   │   │   ├── lifecycle.rs       # GPU init, resize, theme/ui config apply, frame submit
-│   │   │   ├── editor_render.rs   # Editor/gutter/caret/selection render prep
-│   │   │   ├── ui_render.rs       # Sidebar, terminal, topbar, statusbar, welcome UI
-│   │   │   ├── palette_render.rs  # Command palette, file picker, leap overlay
+│   │   ├── renderer/              # Modular rendering implementation
+│   │   │   ├── ui/                # UI components: sidebar, terminal, statusbar, AI chat, etc.
+│   │   │   ├── editor/            # Editor components: buffers, selections, overlays, completion, etc.
+│   │   │   ├── palette/           # Palette components: file picker, leap, recent projects, etc.
+│   │   │   ├── lifecycle/         # GPU frame management and lifecycle
+│   │   │   ├── components.rs      # Common UI component primitives
 │   │   │   └── helpers.rs         # Shared pure helpers for render modules
-│   │   ├── pipeline.rs            # Generic wgpu pipeline builder
+│   │   ├── caret.rs               # Cursor/caret rendering
 │   │   ├── text_pipeline.rs       # Glyph-instance pipeline (text quads)
 │   │   ├── region_pipeline.rs     # Colored quad pipeline (backgrounds, highlights)
-│   │   ├── caret.rs               # Cursor/caret rendering
-│   │   ├── glyph_instance.rs      # GlyphInstance vertex layout
-│   │   ├── surface.rs             # wgpu Surface + swapchain management
+│   │   ├── image_pipeline.rs      # Image/texture rendering pipeline
 │   │   ├── shaders/               # WGSL shader sources
 │   │   └── mod.rs
 │   │
@@ -130,9 +128,10 @@ netherize_editor/
 │   │   └── mod.rs
 │   │
 │   ├── syntax/                    # Syntax highlighting
+│   │   ├── highlight/             # Highlighting logic split into categories, engine, queries, spans
 │   │   ├── parser.rs              # Language registry bridge → tree-sitter grammar bootstrap
 │   │   ├── syntax_engine.rs       # tree-sitter parser lifecycle for each supported language
-│   │   ├── highlight.rs           # Query capture → theme token spans / emphasis flags
+│   │   ├── queries/               # Tree-sitter query sources (.scm files)
 │   │   └── mod.rs
 │   │
 │   ├── workbench/                 # UI layout + panel management
@@ -141,9 +140,6 @@ netherize_editor/
 │   │   ├── panel_state.rs         # Sidebar/bottom panel open-state + sizes
 │   │   ├── focus_manager.rs       # Which region currently holds keyboard focus
 │   │   ├── overlay_manager.rs     # Overlay stack (palette, picker, etc.)
-│   │   ├── inspector_panel.rs     # Right sidebar inspector content
-│   │   ├── text_coordinate_map.rs # Screen pixel ↔ editor char-index mapping
-│   │   ├── debug_state.rs         # Debug overlay lines
 │   │   └── mod.rs
 │   │
 │   ├── workspace/                 # File system workspace
@@ -156,40 +152,16 @@ netherize_editor/
 │   │   ├── pty.rs                 # portable-pty spawn + read/write
 │   │   ├── ansi_parser.rs         # ANSI escape sequence parser
 │   │   ├── grid.rs                # Terminal cell grid + scrollback
-│   │   ├── terminal_renderer.rs   # Renders terminal grid via TextSystem
-│   │   └── mod.rs
-│   │
-│   ├── lsp/                       # Language Server Protocol client
-│   │   ├── client.rs              # LSP process spawn + JSON-RPC (partial)
 │   │   └── mod.rs
 │   │
 │   ├── async_runtime/             # Tokio async bridge
 │   │   ├── scheduler.rs           # Thin facade: shared registries/constants + AsyncScheduler surface
-│   │   ├── scheduler/
-│   │   │   ├── runtime.rs         # AsyncScheduler runtime bootstrap + submit path
-│   │   │   ├── dispatch.rs        # Request routing to PTY/LSP/FZF/history/syntax workers
-│   │   │   ├── emit.rs            # WorkerMessage send helpers + join/panic failure mapping
-│   │   │   ├── pty.rs             # PTY worker runner + output reader
-│   │   │   ├── lsp.rs             # LSP request runner + session lifecycle
-│   │   │   ├── lsp_io.rs          # LSP stdout/stderr reader tasks
-│   │   │   ├── lsp_parse.rs       # Hover/completion/definition/document-symbol parsing
-│   │   │   ├── syntax_jobs.rs     # Tree-sitter parse/highlight + mock/git/file-preview jobs
-│   │   │   ├── fzf.rs             # Find-file/live-grep worker
-│   │   │   ├── file_watch.rs      # notify watcher batching + normalization
-│   │   │   ├── local_history.rs   # Persisted undo-history load/save worker
-│   │   │   ├── git.rs             # blame/status/baseline helpers
-│   │   │   ├── ai.rs              # Inline AI completion worker
-│   │   │   └── tests.rs           # Scheduler subsystem regression tests
+│   │   ├── scheduler/             # Modular scheduler tasks (LSP, PTY, Syntax, AI, etc.)
 │   │   ├── message.rs             # Worker request/result/event types sent across the bridge
 │   │   └── mod.rs
 │   │
 │   └── config/                    # Config loading
-│       ├── theme_config.rs        # Theme module entrypoint + public re-exports
-│       ├── theme_config/
-│       │   ├── model.rs           # Public theme tokens + file-icon lookup helpers
-│       │   ├── loader.rs          # TOML loading, validation, profile lookup
-│       │   ├── raw.rs             # Serde-only structs matching theme TOML
-│       │   └── builtin.rs         # Built-in dark fallback theme
+│       ├── theme_config/          # Theme loading and model logic
 │       ├── paths.rs               # Shared user-config / legacy-state path helpers
 │       ├── ui_config.rs           # UiConfig — layout sizes, cursor style, padding
 │       ├── keymap_config.rs       # KeymapConfig — raw key binding table
@@ -265,12 +237,12 @@ AppShell::handle_command_with_count()
       │
       ▼
 dispatch_command_with_clipboard_count()
-  (core/command_dispatch.rs)
+  (core/command_dispatch/mod.rs)
   - loop repeatable commands
   - group repeated text edits into one undo transaction
       │
       ▼
-AppState  (app/app_state.rs)
+AppState  (app/app_state/mod.rs)
   ├── text: Rope              (ropey)
   ├── cursor_char_idx
   ├── mode_state: ModeState   (core/mode.rs)
@@ -284,13 +256,13 @@ layout_sync → TextSystem.set_text_with_spans()  (text/layout_sync.rs)
 syntax_engine → StyledTextSpan[]  (syntax/syntax_engine.rs)
       │
       ▼
-Renderer.update_editor_content()  (render/renderer.rs)
-  ├── TextSystem.collect_visible_glyphs()
+Renderer.render()  (render/renderer.rs)
+  ├── Modular UI/Editor update passes
   ├── GlyphAtlas.get_or_insert()  →  GPU texture upload
   └── GlyphInstance[] → vertex buffer
       │
       ▼
-Renderer.render()  →  wgpu submit  →  screen
+wgpu submit  →  screen
 ```
 
 ### Async Runtime Flow
@@ -318,10 +290,10 @@ EventLoopProxy<AppEvent>
   - wakes winit when worker output matters for redraw
       │
       ▼
-app/event_loop/async_results.rs
+app/event_loop/async_results/mod.rs
   - drain bridge
   - reject stale buffer/revision results
-  - apply spans, diagnostics, git state, picker results
+  - delegate to focused handlers (lsp.rs, syntax.rs, etc.)
       │
       ▼
 window.request_redraw()
@@ -342,7 +314,7 @@ window.request_redraw()
 
 For almost every "why didn't this key do what I expected?" bug, read the path below in order:
 
-`application.rs` -> `app/input/handler.rs` -> `app/input_map/mod.rs` -> `app/resolved_keymap.rs` -> `app/event_loop/commands.rs` -> `core/command_dispatch.rs` -> `app/app_state.rs`
+`application.rs` -> `app/input/handler.rs` -> `app/input_map/mod.rs` -> `app/resolved_keymap.rs` -> `app/event_loop/commands.rs` -> `core/command_dispatch/mod.rs` -> `app/app_state/mod.rs`
 
 That path is the fastest way to debug:
 
@@ -362,15 +334,15 @@ Use this table when you want to jump straight to the likely file instead of read
 |------|------|------|
 | Vim counts, pending operators, chord interruption, `r<char>`, Leap pending states | `src/app/input/handler.rs`, `src/app/input/pending.rs` | Handler owns the state machine; pending types keep the router states readable |
 | A shortcut does not fire, or `0/F12/<leader>` maps wrong | `config/keymaps/default.toml`, `src/app/input_map/mod.rs`, `src/app/resolved_keymap.rs` | Binding definition, sequence matching, and merged runtime keymap live here |
-| A command should repeat `count` times or should/should not support counts | `src/core/commands.rs`, `src/core/command_dispatch.rs` | Count policy and the actual execution loop are centralized here |
-| Undo transaction boundaries for repeated delete/paste/edit commands | `src/core/command_dispatch.rs`, `src/app/app_state.rs` | Dispatch decides when to commit; AppState stores the transaction stack |
-| Mode transitions such as Normal/Insert/Visual/TerminalFocus | `src/core/mode.rs`, `src/app/app_state.rs` | `ModeState` validates transitions; `AppState` applies them |
+| A command should repeat `count` times or should/should not support counts | `src/core/commands.rs`, `src/core/command_dispatch/mod.rs` | Count policy and the actual execution loop are centralized here |
+| Undo transaction boundaries for repeated delete/paste/edit commands | `src/core/command_dispatch/mod.rs`, `src/app/app_state/mod.rs` | Dispatch decides when to commit; AppState stores the transaction stack |
+| Mode transitions such as Normal/Insert/Visual/TerminalFocus | `src/core/mode.rs`, `src/app/app_state/mod.rs` | `ModeState` validates transitions; `AppState` applies them |
 | F12 terminal behavior, focus handoff, explorer/panel focus routing | `src/app/event_loop/commands.rs`, `src/app/event_loop/commands_terminal.rs`, `src/app/event_loop/commands_explorer.rs` | The facade routes by UI domain; terminal and explorer behavior now live in focused modules |
-| Completion popup behavior, acceptance, and auto-trigger after typing | `src/app/event_loop/commands_completion.rs`, `src/app/event_loop/commands_lsp.rs`, `src/app/event_loop/async_results.rs` | Request submit lives with command helpers; result application still lands in async results |
+| Completion popup behavior, acceptance, and auto-trigger after typing | `src/app/event_loop/commands_completion.rs`, `src/app/event_loop/commands_lsp.rs`, `src/app/event_loop/async_results/` | Request submit lives with command helpers; result application lands in async results sub-modules |
 | Delete/close confirmations, theme selection, recent-project palette, explorer create/rename prompts | `src/app/event_loop/commands_prompts.rs`, `src/app/event_loop/commands_palette.rs` | Prompt lifecycle and confirm flows were split out of the main command facade |
 | Terminal raw input, ANSI behavior, PTY I/O | `src/app/input/helpers.rs`, `src/app/input/handler.rs`, `src/terminal/pty.rs`, `src/terminal/grid.rs` | Terminal key payload building lives in input helpers, then flows into PTY/grid behavior |
 | Sidebar / bottom panel overlap, docking geometry, resize handles | `src/workbench/layout_engine.rs`, `src/workbench/panel_state.rs` | Region bounds and panel sizes come from the workbench layout engine |
-| Cursor/caret rendering, terminal cursor visibility, status bar UI | `src/render/caret.rs`, `src/render/renderer/ui_render.rs`, `src/app/event_loop/application.rs` | Render prep happens in UI/caret code, driven by event-loop state |
+| Cursor/caret rendering, terminal cursor visibility, status bar UI | `src/render/caret.rs`, `src/render/renderer/ui/`, `src/app/event_loop/application.rs` | Render prep happens in modular UI code, driven by event-loop state |
 | Theme token bug or wrong color/icon | `config/themes/default-dark.toml`, `src/config/theme_config/` | Theme data is defined in TOML and validated/loaded in the theme module |
 | UI spacing, panel sizes, cursor shape defaults | `config/ui/default.toml`, `src/config/ui_config.rs` | Geometry defaults come from UI config, not from the renderer |
 
@@ -380,10 +352,10 @@ Use this table when you want to jump straight to the likely file instead of read
    `config/keymaps/default.toml` -> `src/app/resolved_keymap.rs` -> `src/app/input_map/mod.rs`
 
 2. Key maps correctly but behavior is wrong:
-   `src/app/input/handler.rs` -> `src/app/event_loop/commands.rs` -> `src/core/command_dispatch.rs`
+   `src/app/input/handler.rs` -> `src/app/event_loop/commands.rs` -> `src/core/command_dispatch/mod.rs`
 
 3. Command succeeds but screen looks wrong:
-   `src/app/app_state.rs` -> `src/workbench/layout_engine.rs` -> `src/render/renderer/ui_render.rs`
+   `src/app/app_state/mod.rs` -> `src/workbench/layout_engine.rs` -> `src/render/renderer/ui/`
 
 ---
 
@@ -391,7 +363,7 @@ Use this table when you want to jump straight to the likely file instead of read
 
 | Struct | File | Role |
 |--------|------|------|
-| `AppState` | `app/app_state.rs` | Central editor state (text, cursor, mode, buffers, workspace) |
+| `AppState` | `app/app_state/mod.rs` | Central editor state (text, cursor, mode, buffers, workspace) |
 | `ModeState` | `core/mode.rs` | Vim-style mode FSM with return-mode memory |
 | `Command` | `core/commands.rs` | All possible editor actions as an enum |
 | `Renderer` | `render/renderer.rs` | Owns all wgpu resources + orchestrates render passes |
@@ -509,7 +481,7 @@ string = ...
 comment = ...
 
 [icons]
-explorer_folder_collapsed_marker = "▶"
+explorer_folder_collapsed_marker = ""
 
 [icons.rust]
 glyph = "\uE7A8"
@@ -602,19 +574,12 @@ Terminal shortcut semantics are now intentionally centralized on `F12`:
 
 ## Render Pipeline (wgpu)
 
-Each frame in `Renderer::render()` runs these passes in order:
+Each frame in `Renderer::render()` runs modularized update passes before submitting to GPU:
 
-1. **Region quads** — background color fills for each visible region (via `region_pipeline`)
-2. **Gutter text** — line numbers (via `gutter_text_pipeline`)
-3. **Editor text** — syntax-highlighted content (via `text_pipeline`, scissored to Center bounds)
-4. **Current line highlight** — colored quad behind active line
-5. **Visual selection quads** — highlight quads for selected text
-6. **Cursor / caret** — block, beam, or underline shape (via `caret_pipeline`)
-7. **Sidebar text** — file explorer tree (via `sidebar_text_pipeline`)
-8. **Terminal** — ANSI grid cells (via `terminal_text_pipeline`)
-9. **Topbar** — tab/file labels
-10. **Statusbar** — mode pill, file path, cursor position, diagnostics
-11. **Palette overlay** — command palette or file picker (rendered last, on top)
+1. **Backgrounds**: region quads for visible panels (sidebar, editor, terminal, etc.)
+2. **Editor**: gutter, text, selections, caret
+3. **UI**: topbar, statusbar, sidebars, terminal grid
+4. **Overlays**: command palette, file picker, completion popups
 
 ---
 
@@ -652,73 +617,8 @@ Read in this order to build a mental model quickly:
 6. **`src/app/event_loop/commands.rs`** — the event-loop command facade; read this first to see how commands are delegated
 7. **`src/app/event_loop/commands_editor.rs`** + **`src/app/event_loop/commands_terminal.rs`** + **`src/app/event_loop/commands_explorer.rs`** — the main workbench command domains
 8. **`src/app/event_loop/commands_palette.rs`** + **`src/app/event_loop/commands_prompts.rs`** + **`src/app/event_loop/commands_completion.rs`** — overlay, prompt, and completion flows
-9. **`src/core/command_dispatch.rs`** — how commands mutate editor state and how undo grouping works
-10. **`src/app/app_state.rs`** — the central source of truth for text, cursor, mode, buffers, and transactions
+9. **`src/core/command_dispatch/mod.rs`** — how commands mutate editor state and how undo grouping works
+10. **`src/app/app_state/mod.rs`** — the central source of truth for text, cursor, mode, buffers, and transactions
 11. **`src/workbench/layout_engine.rs`** — UI region geometry when a bug is visual/layout-related
-12. **`src/render/renderer.rs`** + **`src/render/renderer/ui_render.rs`** — frame assembly and UI rendering
+12. **`src/render/renderer.rs`** + **`src/render/renderer/ui/`** — frame assembly and UI rendering
 13. **`src/text/text_system.rs`** + **`src/text/atlas.rs`** — text shaping/raster path when glyph/render bugs appear
-
----
-
-## Known Gaps / Next Steps
-
-- **LSP UI**: diagnostics are parsed and logged, but inline squiggles / gutter markers / semantic-token overlays are not rendered yet.
-- **Scrolling**: vertical scroll works via `scroll_line`; horizontal scroll not yet implemented.
-- **Multiple splits**: layout engine supports Left/Center/Right/Bottom but no arbitrary splits yet.
-- **Atlas overflow**: when the glyph atlas fills up, new glyphs are dropped silently. Atlas eviction/resize not yet implemented.
-- **Undo/redo**: implemented for normal edit flows, including grouped repeated commands, but coverage is still strongest around editor-core mutations rather than every future UI action.
-- **Visual line mode**: `EnterVisualLine` command exists but selection logic is partial.
-- **Dockerfile tree-sitter highlight**: Dockerfile is wired in the language registry + LSP install flow, but syntax highlighting still depends on a compatible modern grammar wrapper.
-
----
-
-## Render Layout Fixes (Module 12 — Phase 2)
-
-### Explorer Tree — `update_sidebar_content`
-
-Field-level color hierarchy now matches theme tokens exactly:
-
-| Element | Token | Color |
-|---------|-------|-------|
-| Arrow icon (`▶ ▼ ·`) | `ui.fg_ghost` | Muted gray — de-emphasized |
-| File/folder (normal) | `ui.fg_dim` | Soft gray — readable but not dominant |
-| Selected item (unfocused) | `ui.fg` | Bright white |
-| Selected item (focused) | `ui.accent` | Green accent |
-| Header label | `ui.fg_ghost` | Same as icon — muted |
-
-Icon and label are rendered as two separate `layout_panel_text` calls so colors can differ within the same row. Y-coordinate uses `current_y` accumulated each node (`current_y += line_h`) to prevent node overlap.
-
-### Gutter (Line Numbers) — `update_editor_gutter`
-
-Gutter quads (background clear + active-line highlight) are uploaded directly inside the function via `region_pipeline.upload_instances()`. Previously the function returned the quads, which caused a compile error when callers didn't collect the return value.
-
-| Element | Token | Color |
-|---------|-------|-------|
-| Gutter background | `editor.bg` | Clears old frame artifacts |
-| Active line highlight | `editor.selection` @ 22% alpha | Subtle row highlight |
-| Active line number | `editor.gutter_active` | Bright |
-| Other line numbers | `editor.gutter` | Muted gray |
-
-### File Picker (Fuzzy Finder) — `update_palette_content` + `CommandPaletteRenderModel`
-
-`CommandPaletteRenderModel` now carries split prompt fields and match ranges:
-
-```rust
-pub prompt_prefix: String,        // "find> " — rendered with hint_color
-pub prompt_query: String,         // user query — rendered with text_color / hint_color
-pub result_match_ranges: Vec<Vec<(usize, usize)>>,  // byte ranges for accent highlight
-pub match_color: [f32; 4],        // ui.accent — matched chars
-pub label_color: [f32; 4],        // ui.fg_dim  — normal label text
-```
-
-Renderer splits each result label into segments: non-matched parts use `label_color` (`fg_dim`), matched parts use `match_color` (`accent`). Substring matches produce one continuous highlight range; fuzzy matches highlight individual matching chars.
-
-| Element | Token | Behavior |
-|---------|-------|----------|
-| Prompt prefix (`find> `) | `hint_color` | Muted — always dim |
-| Query text (user input) | `text_color` | Bright when user has typed |
-| Empty hint placeholder | `hint_color` | Dim when query is empty |
-| Result labels (normal) | `label_color` = `fg_dim` | Soft gray |
-| Matched chars in labels | `match_color` = `accent` | Green accent |
-| Active item background | `selection_bg` | Subtle highlight strip |
-| "(no matches)" | `hint_color` | Muted, below separator |

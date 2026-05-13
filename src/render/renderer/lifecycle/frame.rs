@@ -49,8 +49,7 @@ impl Renderer {
         // Suggestion popup chrome is a separate range drawn *after* bubble text.
         let ai_chat_suggestion_chrome_start =
             ai_chat_history_chrome_start + ai_chat_history_chrome_count;
-        let ai_chat_suggestion_chrome_count =
-            self.ai_chat_suggestion_chrome_instances.len() as u32;
+        let ai_chat_suggestion_chrome_count = self.ai_chat_suggestion_chrome_instances.len() as u32;
 
         let palette_start = ai_chat_suggestion_chrome_start + ai_chat_suggestion_chrome_count;
         let palette_count = self.palette_chrome_instances.len() as u32;
@@ -119,8 +118,7 @@ impl Renderer {
             let viewport_height = self.surface_state.config.height;
 
             // 1. Panel backgrounds (no scissor) — single draw_range for all 34 regions.
-            self.region_pipeline
-                .draw_range(&mut pass, 0, base_count);
+            self.region_pipeline.draw_range(&mut pass, 0, base_count);
 
             // 2. Editor text + caret + cursor overlay + gutter.
             draw_text_region(
@@ -143,8 +141,11 @@ impl Renderer {
                     viewport_width,
                     viewport_height,
                     |render_pass| {
-                        self.region_pipeline
-                            .draw_range(render_pass, ed_overlay_start, ed_overlay_count);
+                        self.region_pipeline.draw_range(
+                            render_pass,
+                            ed_overlay_start,
+                            ed_overlay_count,
+                        );
                     },
                 );
             }
@@ -331,8 +332,11 @@ impl Renderer {
                         viewport_width,
                         viewport_height,
                         |render_pass| {
-                            self.region_pipeline
-                                .draw_range(render_pass, leap_bg_start, leap_bg_count);
+                            self.region_pipeline.draw_range(
+                                render_pass,
+                                leap_bg_start,
+                                leap_bg_count,
+                            );
                         },
                     );
                 }
@@ -389,8 +393,11 @@ impl Renderer {
                     viewport_width,
                     viewport_height,
                     |render_pass| {
-                        self.region_pipeline
-                            .draw_range(render_pass, term_cursor_start, term_cursor_count);
+                        self.region_pipeline.draw_range(
+                            render_pass,
+                            term_cursor_start,
+                            term_cursor_count,
+                        );
                     },
                 );
             }
@@ -550,8 +557,11 @@ impl Renderer {
                     viewport_width,
                     viewport_height,
                     |render_pass| {
-                        self.region_pipeline
-                            .draw_range(render_pass, lsp_guide_start, lsp_guide_count);
+                        self.region_pipeline.draw_range(
+                            render_pass,
+                            lsp_guide_start,
+                            lsp_guide_count,
+                        );
                     },
                 );
             }
@@ -572,8 +582,11 @@ impl Renderer {
                     viewport_width,
                     viewport_height,
                     |render_pass| {
-                        self.region_pipeline
-                            .draw_range(render_pass, system_dep_start, system_dep_count);
+                        self.region_pipeline.draw_range(
+                            render_pass,
+                            system_dep_start,
+                            system_dep_count,
+                        );
                     },
                 );
             }
@@ -618,8 +631,11 @@ impl Renderer {
                     viewport_height,
                     |render_pass| {
                         render_pass.set_scissor_rect(0, 0, viewport_width, viewport_height);
-                        self.region_pipeline
-                            .draw_range(render_pass, diag_hover_start, diag_hover_count);
+                        self.region_pipeline.draw_range(
+                            render_pass,
+                            diag_hover_start,
+                            diag_hover_count,
+                        );
                     },
                 );
             }

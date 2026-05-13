@@ -76,14 +76,29 @@ impl AppState {
         ) else {
             return false;
         };
+        let current_text = if self.active_buffer_index == Some(index) {
+            Some(self.text.to_string())
+        } else {
+            self.buffers
+                .get(index)
+                .and_then(|entry| match &entry.content {
+                    BufferContent::Text(buffer) => {
+                        buffer.in_memory_text.as_ref().map(ToString::to_string)
+                    }
+                    _ => None,
+                })
+        };
         let BufferContent::Text(buffer) = &mut self.buffers[index].content else {
             return false;
         };
-        if buffer.git_baseline == baseline {
-            return false;
+        let baseline_changed = buffer.git_baseline != baseline;
+        if baseline_changed {
+            buffer.git_baseline = baseline;
         }
-        buffer.git_baseline = baseline;
-        true
+        let diff_changed = current_text
+            .as_deref()
+            .is_some_and(|text| recalculate_git_diff(buffer, text));
+        baseline_changed || diff_changed
     }
 
     pub fn recalculate_active_buffer_git_diff(&mut self) -> bool {
@@ -170,7 +185,21 @@ fn compute_git_line_statuses(baseline: &str, current: &str) -> HashMap<usize, Gi
 
 #[cfg(test)]
 mod tests {
-    use super::{GitLineStatus, compute_git_line_statuses};
+    use std::{fs, time::SystemTime};
+
+    use super::{AppState, GitLineStatus, compute_git_line_statuses};
+
+    fn unique_temp_dir(label: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        std::env::temp_dir().join(format!(
+            "netherize_{label}_{}_{}",
+            std::process::id(),
+            nanos
+        ))
+    }
 
     #[test]
     fn git_line_statuses_use_new_buffer_indexes_for_inserts() {
@@ -197,6 +226,37 @@ mod tests {
             trailing.get(&0),
             Some(GitLineStatus::DeletedBelow)
         ));
+    }
+
+    #[test]
+    fn setting_git_baseline_recalculates_inactive_buffer_statuses() {
+        let root = unique_temp_dir("inactive_git_baseline");
+        fs::create_dir_all(&root).expect("create temp workspace");
+        let changed_path = root.join("changed.rs");
+        let active_path = root.join("active.rs");
+        fs::write(&changed_path, "fn value() -> i32 { 2 }\n").expect("write changed file");
+        fs::write(&active_path, "fn active() {}\n").expect("write active file");
+        let changed_path = changed_path.canonicalize().expect("canonical changed");
+        let active_path = active_path.canonicalize().expect("canonical active");
+
+        let mut state = AppState::new(root.join("scratch.rs"));
+        state.open_file(changed_path.clone()).expect("open changed");
+        state.open_file(active_path).expect("open active");
+
+        assert!(
+            state.set_buffer_git_baseline(
+                &changed_path,
+                Some("fn value() -> i32 { 1 }\n".to_string()),
+            )
+        );
+
+        state
+            .open_file(changed_path)
+            .expect("switch back to changed");
+        let statuses = state
+            .active_buffer_git_line_statuses()
+            .expect("active git statuses");
+        assert!(matches!(statuses.get(&0), Some(GitLineStatus::Modified)));
     }
 }
 

@@ -24,7 +24,7 @@ use super::{
     lsp_parse::{
         handle_lsp_code_action, handle_lsp_completion, handle_lsp_completion_resolve,
         handle_lsp_definition, handle_lsp_document_highlight, handle_lsp_document_symbols,
-        handle_lsp_formatting, handle_lsp_hover, handle_lsp_references,
+        handle_lsp_formatting, handle_lsp_hover, handle_lsp_references, handle_lsp_rename,
     },
 };
 
@@ -394,6 +394,26 @@ fn execute_lsp_request(
                 .update_request_meta(request.request_id, request.revision_id);
             handle_lsp_references(&handle.process, uri, *line, *character)
                 .map(|locations| WorkerResultPayload::LspReferencesResult { locations })
+        }
+        WorkerRequestPayload::LspRenameRequest {
+            uri,
+            line,
+            character,
+            new_name,
+        } => {
+            let Some(handle) = lsp_sessions.get_handle_by_uri(uri)? else {
+                return Err("rename rejected: LSP server not running".to_string());
+            };
+            if !handle.capabilities.rename {
+                return Err(format!(
+                    "rename rejected: {} does not advertise renameProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_rename(&handle.process, uri, *line, *character, new_name)
         }
         WorkerRequestPayload::LspDocumentHighlightRequest {
             language_id,

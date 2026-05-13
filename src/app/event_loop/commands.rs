@@ -561,7 +561,16 @@ impl AppShell {
     fn handle_markdown_preview_command(&mut self, command: &Command) -> Option<bool> {
         match command {
             Command::ToggleMarkdownPreview => {
+                let is_markdown = self.app_state.active_file()
+                    .and_then(|p| p.extension())
+                    .is_some_and(|ext| ext == "md");
+
                 let preview = &mut self.app_state.markdown_preview;
+                
+                if !preview.visible && !is_markdown {
+                    return Some(false);
+                }
+
                 preview.visible = !preview.visible;
                 if preview.visible {
                     if !self.panel_state.right.visible {
@@ -572,12 +581,13 @@ impl AppShell {
                     // restored when the preview is closed.  This prevents the
                     // 50 % width from leaking into other right-panel tabs
                     // such as AI chat.
-                    self.pre_markdown_preview_right_width =
-                        Some(self.panel_state.right.size_px);
+                    self.pre_markdown_preview_right_width = Some(self.panel_state.right.size_px);
                     // Auto-set width to 50% of window
                     let half_width = (self.window_size.width as f32 * 0.5).max(200.0);
                     self.panel_state.right.size_px = half_width;
-                    self.panel_state.right.switch_to_tab(PanelTabId::MarkdownPreview);
+                    self.panel_state
+                        .right
+                        .switch_to_tab(PanelTabId::MarkdownPreview);
                     self.focus_manager.set(FocusTarget::RightSidebar);
                     self.input_handler.clear_pending_prefix();
                     self.update_markdown_preview_content();
@@ -588,9 +598,7 @@ impl AppShell {
                     if let Some(original_width) = self.pre_markdown_preview_right_width.take() {
                         self.panel_state.right.size_px = original_width;
                     }
-                    if self.panel_state.right.active_tab_id()
-                        == Some(PanelTabId::MarkdownPreview)
-                    {
+                    if self.panel_state.right.active_tab_id() == Some(PanelTabId::MarkdownPreview) {
                         self.panel_state.right.visible = false;
                         self.sidebar_needs_layout = true;
                     }
@@ -599,6 +607,42 @@ impl AppShell {
                     }
                 }
                 Some(true)
+            }
+            Command::CloseSidebars => {
+                let mut changed = false;
+
+                let focus = self.focus_manager.current();
+                let close_right = focus != FocusTarget::LeftSidebar;
+                let close_left = focus != FocusTarget::RightSidebar;
+
+                // Close right panel if it's on Markdown Preview
+                if close_right && self.app_state.markdown_preview.visible {
+                    self.app_state.markdown_preview.visible = false;
+
+                    if let Some(original_width) = self.pre_markdown_preview_right_width.take() {
+                        self.panel_state.right.size_px = original_width;
+                    }
+                    if self.panel_state.right.active_tab_id() == Some(PanelTabId::MarkdownPreview) {
+                        self.panel_state.right.visible = false;
+                        self.sidebar_needs_layout = true;
+                    }
+                    if self.focus_manager.current() == FocusTarget::RightSidebar {
+                        self.focus_manager.set(FocusTarget::CenterEditor);
+                    }
+                    changed = true;
+                }
+
+                // Close left panel (file tree/explorer)
+                if close_left && self.panel_state.left.visible {
+                    self.panel_state.left.visible = false;
+                    self.sidebar_needs_layout = true;
+                    if self.focus_manager.current() == FocusTarget::LeftSidebar {
+                        self.focus_manager.set(FocusTarget::CenterEditor);
+                    }
+                    changed = true;
+                }
+
+                Some(changed)
             }
             Command::FocusMarkdownPreview => {
                 let mut changed = self.release_focus_mode_to_editor();
@@ -720,14 +764,10 @@ impl AppShell {
 
         preview.source_text = source.clone();
         preview.source_revision = revision;
-        preview.rendered_lines = crate::app::event_loop::helpers::parse_markdown_preview_blocks(
-            &source,
-            &self.theme,
-        );
+        preview.rendered_lines =
+            crate::app::event_loop::helpers::parse_markdown_preview_blocks(&source, &self.theme);
     }
 }
-
-
 
 fn normalize_terminal_paste_text(text: &str) -> String {
     let mut normalized = String::with_capacity(text.len());

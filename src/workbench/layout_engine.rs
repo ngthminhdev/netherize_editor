@@ -146,10 +146,7 @@ impl WorkbenchLayoutEngine {
             (height - outer_gap * 2.0).max(0.0),
         );
 
-        let top_h = self
-            .config
-            .top_bar_height
-            .min((height - gap).max(0.0));
+        let top_h = self.config.top_bar_height.min((height - gap).max(0.0));
         let remain_after_top = (height - gap - top_h).max(0.0);
         let status_h = self.config.status_bar_height.min(remain_after_top);
         let status_top_gap = self
@@ -302,10 +299,7 @@ impl WorkbenchLayoutEngine {
         let gap = self.config.panel_gap.max(0.0);
 
         // Keep TopBar and StatusBar, give everything else to target
-        let top_h = self
-            .config
-            .top_bar_height
-            .min((height - gap).max(0.0));
+        let top_h = self.config.top_bar_height.min((height - gap).max(0.0));
         let remain_after_top = (height - gap - top_h).max(0.0);
         let status_h = self.config.status_bar_height.min(remain_after_top);
         let status_top_gap = self
@@ -384,14 +378,8 @@ impl WorkbenchLayoutEngine {
 
         let root_bounds = RegionBounds::new(0.0, 0.0, width, height);
         WorkbenchLayout {
-            model: RegionModel::new(root_bounds).with_children(vec![
-                top_bar,
-                left,
-                center,
-                right,
-                bottom,
-                status_bar,
-            ]),
+            model: RegionModel::new(root_bounds)
+                .with_children(vec![top_bar, left, center, right, bottom, status_bar]),
             handles: vec![],
         }
     }

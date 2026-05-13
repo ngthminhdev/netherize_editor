@@ -41,6 +41,8 @@ pub enum CommandPaletteMode {
     ThemeSelector,
     /// LSP References — danh sách tĩnh kết quả `gr` từ LSP server.
     LspReferences,
+    /// LSP Rename prompt — nhập tên mới cho symbol dưới cursor.
+    LspRename,
     /// Local file history picker with live editor preview.
     FileHistory,
     /// AI Chat install confirmation overlay — asks user whether to auto-install opencode.
@@ -69,6 +71,7 @@ impl CommandPaletteMode {
             Self::RecentProjects => "project> ",
             Self::ThemeSelector => "Select Theme> ",
             Self::LspReferences => "refs> ",
+            Self::LspRename => "rename> ",
             Self::FileHistory => "history> ",
             Self::AiChatInstallConfirm => "install> ",
             Self::CodeAction => "action> ",
@@ -93,6 +96,7 @@ impl CommandPaletteMode {
             Self::RecentProjects => "no recent projects",
             Self::ThemeSelector => "type to filter themes...",
             Self::LspReferences => "no references found",
+            Self::LspRename => "enter a new symbol name...",
             Self::FileHistory => "no local history entries",
             Self::AiChatInstallConfirm => "Install opencode CLI? (y/n)",
             Self::CodeAction => "no code actions available",
@@ -117,6 +121,7 @@ impl CommandPaletteMode {
             Self::RecentProjects => "RECENT",
             Self::ThemeSelector => "THEMES",
             Self::LspReferences => "REFS",
+            Self::LspRename => "RENAME",
             Self::FileHistory => "HISTORY",
             Self::AiChatInstallConfirm => "INSTALL",
             Self::CodeAction => "ACTIONS",
@@ -601,6 +606,7 @@ impl CommandPalette {
             | CommandPaletteMode::ExplorerDeleteConfirm
             | CommandPaletteMode::ExplorerRenameFull
             | CommandPaletteMode::ExplorerRenameBase
+            | CommandPaletteMode::LspRename
             | CommandPaletteMode::BufferCloseConfirm
             | CommandPaletteMode::AiChatInstallConfirm => Vec::new(),
             CommandPaletteMode::RecentProjects => unreachable!("handled above"),
@@ -702,6 +708,7 @@ impl CommandPalette {
                 | CommandPaletteMode::ExplorerDeleteConfirm
                 | CommandPaletteMode::ExplorerRenameFull
                 | CommandPaletteMode::ExplorerRenameBase
+                | CommandPaletteMode::LspRename
                 | CommandPaletteMode::BufferCloseConfirm
                 | CommandPaletteMode::AiChatInstallConfirm
         );
@@ -979,6 +986,7 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
         ("app.search_in_files", "Search In Files"),
         ("app.open_workspace_symbols", "Open Workspace Symbols"),
         ("app.open_document_symbols", "Find Symbol in File"),
+        ("lsp.rename", "Rename Symbol"),
         ("lsp.select_python_env", "Change Python Venv"),
         ("workspace.reload", "Reload Workspace"),
         ("app.open_vim_command", "Open Vim Command"),
@@ -1242,6 +1250,7 @@ mod tests {
                         character: 1,
                     },
                 },
+                ancestors: Vec::new(),
             },
             crate::async_runtime::message::LspDocumentSymbol {
                 name: "AppState".to_string(),
@@ -1256,6 +1265,7 @@ mod tests {
                         character: 1,
                     },
                 },
+                ancestors: Vec::new(),
             },
         ];
         let items = symbols
@@ -1285,6 +1295,7 @@ mod tests {
                     character: 1,
                 },
             },
+            ancestors: Vec::new(),
         };
 
         let item = CommandPaletteItem::document_symbol(&symbol);

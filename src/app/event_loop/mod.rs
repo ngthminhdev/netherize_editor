@@ -26,8 +26,8 @@ use crate::{
     },
     async_runtime::{
         message::{
-            FzfSearchMode, RequestSpec, RequestTopic, SyntaxEditHint, WorkerEvent,
-            WorkerRequestPayload, WorkerResult, WorkerResultPayload,
+            FzfSearchMode, RequestSpec, RequestTopic, SyntaxEditHint, WorkerRequestPayload,
+            WorkerResult,
         },
         scheduler::AsyncScheduler,
     },
@@ -103,6 +103,8 @@ pub struct AppShell {
     pending_lazydocker_buffer_index: Option<usize>,
     highlight_spans: Vec<HighlightSpan>,
     semantic_highlight_spans: Vec<HighlightSpan>,
+    cached_document_symbols_path: Option<PathBuf>,
+    cached_document_symbols: Vec<crate::async_runtime::message::LspDocumentSymbol>,
     syntax_engine: Option<SyntaxEngine>,
     syntax_engine_file: Option<PathBuf>,
     /// Bottom-panel terminal tabs. Always non-empty when the panel is open.
@@ -174,6 +176,7 @@ pub struct AppShell {
     semantic_highlight_request_revision: u64,
     references_request_revision: u64,
     document_symbols_request_revision: u64,
+    lsp_rename_request_revision: u64,
     /// In-flight `completionItem/resolve` request id; used to correlate failure events
     /// back to the pending docs panel so we can flip "Loading…" to "No docs" when the
     /// server rejects or times out.
@@ -186,6 +189,8 @@ pub struct AppShell {
     /// arrival to avoid a flicker (or a wrong jump) if the server replies out
     /// of order.
     latest_definition_request_id: Option<u64>,
+    /// Request id of the latest `textDocument/rename`; stale responses are dropped.
+    latest_rename_request_id: Option<u64>,
     fzf_search_revision: u64,
     pending_parse_after_debounce: bool,
     pending_git_diff_after_debounce: bool,
@@ -273,6 +278,9 @@ enum PendingConfirmationAction {
     },
     CloseDirtyBuffer {
         path: Option<PathBuf>,
+    },
+    ExternalOverwrite {
+        path: PathBuf,
     },
     /// User confirmed or cancelled the opencode auto-install prompt.
     AiChatInstall,
@@ -371,7 +379,6 @@ impl TerminalTabStatus {
     pub fn is_running(&self) -> bool {
         matches!(self, Self::Running)
     }
-
 }
 
 /// Một tab terminal trong bottom panel.

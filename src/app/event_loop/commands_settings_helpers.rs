@@ -53,7 +53,8 @@ impl AppShell {
                 }
 
                 if height_delta != 0.0 && self.panel_state.bottom.visible {
-                    let next = (self.panel_state.bottom.size_px - height_delta).clamp(120.0, 1040.0);
+                    let next =
+                        (self.panel_state.bottom.size_px - height_delta).clamp(120.0, 1040.0);
                     if (next - self.panel_state.bottom.size_px).abs() > f32::EPSILON {
                         self.panel_state.bottom.size_px = next;
                         self.ui_config.docks.bottom.size_px = next;
@@ -78,7 +79,9 @@ impl AppShell {
     }
 
     pub(super) fn resize_editor_left_edge(&mut self, editor_width_delta: f32) -> bool {
-        if self.focus_manager.current() != FocusTarget::CenterEditor || !self.panel_state.left.visible {
+        if self.focus_manager.current() != FocusTarget::CenterEditor
+            || !self.panel_state.left.visible
+        {
             return false;
         }
 
@@ -96,7 +99,9 @@ impl AppShell {
     }
 
     pub(super) fn resize_editor_right_edge(&mut self, editor_width_delta: f32) -> bool {
-        if self.focus_manager.current() != FocusTarget::CenterEditor || !self.panel_state.right.visible {
+        if self.focus_manager.current() != FocusTarget::CenterEditor
+            || !self.panel_state.right.visible
+        {
             return false;
         }
 
@@ -156,6 +161,15 @@ impl AppShell {
                 }
                 crate::app::app_state::SettingItem::IndentTabWidth { current } => {
                     let next = (current as i32 + delta).clamp(1, 8) as u8;
+                    self.update_active_settings_edit_draft(next.to_string())
+                }
+                crate::app::app_state::SettingItem::UiRounding { enabled, radius_px } => {
+                    let current = if enabled && radius_px > 0.0 {
+                        radius_px.round() as i32
+                    } else {
+                        0
+                    };
+                    let next = (current + delta * 8).clamp(0, 24);
                     self.update_active_settings_edit_draft(next.to_string())
                 }
                 crate::app::app_state::SettingItem::SidebarWidth { current } => {
@@ -244,6 +258,26 @@ impl AppShell {
                 }
                 self.finalize_settings_change()
             }
+            crate::app::app_state::SettingItem::UiRounding { enabled, radius_px } => {
+                let current = if enabled && radius_px > 0.0 {
+                    radius_px.round() as i32
+                } else {
+                    0
+                };
+                let next = (current + delta * 8).clamp(0, 24) as f32;
+                let next_enabled = next > 0.0;
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::UiRounding {
+                        enabled,
+                        radius_px,
+                    }) = state.selected_item_mut()
+                {
+                    *enabled = next_enabled;
+                    *radius_px = next;
+                }
+                self.ui_config.border_radius_px = next;
+                self.finalize_settings_change()
+            }
             _ => false,
         }
     }
@@ -319,6 +353,7 @@ impl AppShell {
             | crate::app::app_state::SettingItem::FontSize { .. }
             | crate::app::app_state::SettingItem::LineHeight { .. }
             | crate::app::app_state::SettingItem::IndentTabWidth { .. }
+            | crate::app::app_state::SettingItem::UiRounding { .. }
             | crate::app::app_state::SettingItem::SidebarWidth { .. }
             | crate::app::app_state::SettingItem::RightSidebarWidth { .. }
             | crate::app::app_state::SettingItem::BottomPanelHeight { .. } => {
@@ -334,29 +369,6 @@ impl AppShell {
                     self.editor_caret_needs_layout = false;
                 }
                 changed
-            }
-            crate::app::app_state::SettingItem::UiRounding { enabled, radius_px } => {
-                let next_radius = if !enabled || radius_px <= 0.0 {
-                    8.0
-                } else if radius_px < 12.0 {
-                    16.0
-                } else {
-                    0.0
-                };
-                let next_enabled = next_radius > 0.0;
-                if let Some(state) = self.app_state.active_settings_buffer_mut()
-                    && let Some(crate::app::app_state::SettingItem::UiRounding {
-                        enabled,
-                        radius_px,
-                    }) = state.selected_item_mut()
-                {
-                    *enabled = next_enabled;
-                    *radius_px = next_radius;
-                }
-                self.ui_config.border_radius_px = next_radius;
-                self.apply_scaled_runtime_config();
-                let _ = self.ui_config.save_user_override();
-                true
             }
         }
     }
@@ -467,6 +479,22 @@ impl AppShell {
                             state.selected_item_mut()
                     {
                         *current = value;
+                    }
+                    changed = true;
+                }
+            }
+            crate::app::app_state::SettingsEditingKind::UiRounding => {
+                if let Ok(value) = trimmed.parse::<f32>() {
+                    let value = value.clamp(0.0, 24.0).round();
+                    self.ui_config.border_radius_px = value;
+                    if let Some(state) = self.app_state.active_settings_buffer_mut()
+                        && let Some(crate::app::app_state::SettingItem::UiRounding {
+                            enabled,
+                            radius_px,
+                        }) = state.selected_item_mut()
+                    {
+                        *enabled = value > 0.0;
+                        *radius_px = value;
                     }
                     changed = true;
                 }

@@ -306,6 +306,7 @@ pub(super) async fn execute_virtual_job(
         | WorkerRequestPayload::LspHoverRequest { .. }
         | WorkerRequestPayload::LspDefinitionRequest { .. }
         | WorkerRequestPayload::LspReferencesRequest { .. }
+        | WorkerRequestPayload::LspRenameRequest { .. }
         | WorkerRequestPayload::LspDocumentSymbolsRequest { .. }
         | WorkerRequestPayload::LspFormattingRequest { .. }
         | WorkerRequestPayload::LspCompletionRequest { .. }
@@ -430,10 +431,7 @@ pub(super) fn resolve_system_path() -> String {
         "/sbin",
     ];
 
-    let home_extras = [
-        format!("{home}/.cargo/bin"),
-        format!("{home}/.local/bin"),
-    ];
+    let home_extras = [format!("{home}/.cargo/bin"), format!("{home}/.local/bin")];
 
     let mut dirs: Vec<&str> = current.split(':').filter(|s| !s.is_empty()).collect();
     for extra in extras {
@@ -455,8 +453,8 @@ pub(super) async fn run_system_dep_install(
     tx: std::sync::mpsc::Sender<crate::async_runtime::message::WorkerMessage>,
     event_proxy: EventLoopProxy<AppEvent>,
 ) {
-    use crate::async_runtime::message::{InstallStatus, WorkerMessage};
     use super::emit::emit_message_and_wake;
+    use crate::async_runtime::message::{InstallStatus, WorkerMessage};
 
     let resolved_path = resolve_system_path();
 

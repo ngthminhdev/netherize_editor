@@ -11,9 +11,9 @@ const AI_MODEL_PRESETS: &[&str] = &[
 ];
 
 const AI_SLASH_COMMANDS: &[&str] = &[
-    "/clear", "/new", "/review", "/explain", "/fix", "/test", "/commit", "/diff",
-    "/context", "/plan", "/build", "/mode", "/agent", "/model", "/models",
-    "/status", "/compact", "/tokens", "/help",
+    "/clear", "/new", "/review", "/explain", "/fix", "/test", "/commit", "/diff", "/context",
+    "/plan", "/build", "/mode", "/agent", "/model", "/models", "/status", "/compact", "/tokens",
+    "/help",
 ];
 
 /// Like [`ai_slash_command_completion`] but selects the Nth matching command.
@@ -474,7 +474,10 @@ impl AppShell {
                                 Some(f) => format!("Please review this code with a focus on: {f}. Look for bugs, logic errors, style issues, and suggest improvements."),
                                 None => "Please review this code thoroughly. Look for bugs, logic errors, performance issues, and suggest concrete improvements.".to_string(),
                             };
-                            let display = format!("/review{}", arg.map(|a| format!(" {a}")).unwrap_or_default());
+                            let display = format!(
+                                "/review{}",
+                                arg.map(|a| format!(" {a}")).unwrap_or_default()
+                            );
                             return Some(self.submit_ai_chat_prompt(prompt, display, Vec::new()));
                         }
                         "explain" => {
@@ -483,16 +486,23 @@ impl AppShell {
                                 Some(t) => format!("Please explain this clearly: {t}"),
                                 None => "Please explain this code clearly — what it does, how it works, and any non-obvious design decisions.".to_string(),
                             };
-                            let display = format!("/explain{}", arg.map(|a| format!(" {a}")).unwrap_or_default());
+                            let display = format!(
+                                "/explain{}",
+                                arg.map(|a| format!(" {a}")).unwrap_or_default()
+                            );
                             return Some(self.submit_ai_chat_prompt(prompt, display, Vec::new()));
                         }
                         "fix" => {
                             let issue = arg.filter(|s| !s.is_empty());
                             let prompt = match issue {
-                                Some(i) => format!("Please fix the following issue in this code: {i}"),
-                                None => "Please identify and fix any bugs or issues in this code.".to_string(),
+                                Some(i) => {
+                                    format!("Please fix the following issue in this code: {i}")
+                                }
+                                None => "Please identify and fix any bugs or issues in this code."
+                                    .to_string(),
                             };
-                            let display = format!("/fix{}", arg.map(|a| format!(" {a}")).unwrap_or_default());
+                            let display =
+                                format!("/fix{}", arg.map(|a| format!(" {a}")).unwrap_or_default());
                             return Some(self.submit_ai_chat_prompt(prompt, display, Vec::new()));
                         }
                         "test" => {
@@ -501,7 +511,10 @@ impl AppShell {
                                 Some(d) => format!("Generate unit tests for this code. Focus on: {d}"),
                                 None => "Generate comprehensive unit tests for this code. Cover happy paths, edge cases, and error conditions.".to_string(),
                             };
-                            let display = format!("/test{}", arg.map(|a| format!(" {a}")).unwrap_or_default());
+                            let display = format!(
+                                "/test{}",
+                                arg.map(|a| format!(" {a}")).unwrap_or_default()
+                            );
                             return Some(self.submit_ai_chat_prompt(prompt, display, Vec::new()));
                         }
                         "commit" => {
@@ -612,7 +625,8 @@ impl AppShell {
                             });
                         }
                         "status" => {
-                            let model = chat.model.as_deref().unwrap_or("default (opencode config)");
+                            let model =
+                                chat.model.as_deref().unwrap_or("default (opencode config)");
                             chat.messages.push(AiChatMessage {
                                 role: AiRole::System,
                                 text: format!(
@@ -754,10 +768,7 @@ impl AppShell {
                 let completed = self
                     .ai_chat_file_ref_completion_at(&self.panel_state.ai_chat.input_buffer, idx)
                     .or_else(|| {
-                        ai_slash_command_completion_at(
-                            &self.panel_state.ai_chat.input_buffer,
-                            idx,
-                        )
+                        ai_slash_command_completion_at(&self.panel_state.ai_chat.input_buffer, idx)
                     });
                 let Some(completed) = completed else {
                     return Some(false);
@@ -783,8 +794,7 @@ impl AppShell {
                 };
                 let chat = &mut self.panel_state.ai_chat;
                 if count > 0 {
-                    chat.selected_suggestion_index =
-                        (chat.selected_suggestion_index + 1) % count;
+                    chat.selected_suggestion_index = (chat.selected_suggestion_index + 1) % count;
                 }
                 Some(true)
             }

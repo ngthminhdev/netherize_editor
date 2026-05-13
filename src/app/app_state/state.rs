@@ -30,7 +30,13 @@ fn inline_suggestion_accept_prefix_byte_len(suggestion: &str) -> usize {
             Some(current) if current == kind && kind != InlineSuggestionTokenKind::Punctuation => {
                 last_end = idx + ch.len_utf8();
             }
-            Some(_) => return if saw_leading_whitespace { idx } else { last_end },
+            Some(_) => {
+                return if saw_leading_whitespace {
+                    idx
+                } else {
+                    last_end
+                };
+            }
         }
     }
 
@@ -922,6 +928,21 @@ impl AppState {
         self.clear_inline_suggestion();
         self.bump_revision();
         true
+    }
+
+    pub fn replace_active_document_text_preserve_cursor_with_undo(&mut self, text: &str) -> bool {
+        if self.active_text_buffer().is_none() || self.text.to_string() == text {
+            return false;
+        }
+
+        self.ensure_current_transaction();
+        let changed = self.replace_active_document_text_preserve_cursor(text);
+        if changed {
+            let _ = self.commit_transaction();
+        } else {
+            self.current_transaction = None;
+        }
+        changed
     }
 
     pub fn completion_select_next(&mut self) -> bool {

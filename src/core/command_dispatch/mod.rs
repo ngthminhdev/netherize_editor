@@ -237,6 +237,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::OpenInFileSearch
         | Command::OpenWorkspaceSymbols
         | Command::OpenDocumentSymbols
+        | Command::LspRename
         | Command::SearchInFiles
         | Command::OpenThemeSelector
         | Command::OpenFileHistory
@@ -267,12 +268,10 @@ fn dispatch_command_with_clipboard_once(
         | Command::ResizeIncreaseRightWidth
         | Command::ResizeDecreaseRightWidth
         | Command::ResizeDecreaseHeight
-        | Command::ResizeIncreaseHeight => {
-            DispatchReport::success(
-                format!("Dispatch: resize command {command:?} handled by event loop"),
-                false,
-            )
-        }
+        | Command::ResizeIncreaseHeight => DispatchReport::success(
+            format!("Dispatch: resize command {command:?} handled by event loop"),
+            false,
+        ),
         Command::SaveFile
         | Command::OpenFile(_)
         | Command::OpenFolder
@@ -286,6 +285,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::TerminalScrollDown
         | Command::TerminalTabNew
         | Command::TerminalTabClose
+        | Command::CloseSidebars
         | Command::SwitchTerminalTab(_)
         | Command::FocusEditor
         | Command::FocusExplorer
@@ -374,7 +374,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::MarkdownPreviewScrollHalfPageDown
         | Command::MarkdownPreviewScrollTop
         | Command::MarkdownPreviewScrollBottom => session::dispatch(&mut ctx, command),
-        | Command::HelpScrollDown
+        Command::HelpScrollDown
         | Command::HelpScrollUp
         | Command::HelpScrollHalfPageDown
         | Command::HelpScrollHalfPageUp => session::dispatch(&mut ctx, command),

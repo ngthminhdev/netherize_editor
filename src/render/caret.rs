@@ -260,7 +260,10 @@ impl CaretPipeline {
         let clamped = &rects[..rects.len().min(MAX_CARET_INSTANCES)];
         self.cached_rect = Some(clamped[0]);
 
-        let instances: Vec<CaretInstance> = clamped.iter().map(|r| CaretInstance::from_rect(*r)).collect();
+        let instances: Vec<CaretInstance> = clamped
+            .iter()
+            .map(|r| CaretInstance::from_rect(*r))
+            .collect();
         queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
         self.instance_count = instances.len() as u32;
     }

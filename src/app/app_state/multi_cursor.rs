@@ -1,4 +1,6 @@
-use super::{overlays::classify_char, overlays::WordClass, AppState, VirtualCursor, VisualSelectionRange};
+use super::{
+    AppState, VirtualCursor, VisualSelectionRange, overlays::WordClass, overlays::classify_char,
+};
 use crate::core::mode::{EditorMode, ModeEvent};
 
 impl AppState {
@@ -27,7 +29,10 @@ impl AppState {
 
         if let Some(anchor) = self.selection_anchor_char_idx {
             let sc = anchor.min(self.cursor_char_idx).min(len_chars);
-            let ec = anchor.max(self.cursor_char_idx).saturating_add(1).min(len_chars);
+            let ec = anchor
+                .max(self.cursor_char_idx)
+                .saturating_add(1)
+                .min(len_chars);
             if let Some(r) = self.char_range_to_vsr(sc, ec) {
                 ranges.push(r);
             }
@@ -46,7 +51,11 @@ impl AppState {
         ranges
     }
 
-    fn char_range_to_vsr(&self, start_char: usize, end_char: usize) -> Option<VisualSelectionRange> {
+    fn char_range_to_vsr(
+        &self,
+        start_char: usize,
+        end_char: usize,
+    ) -> Option<VisualSelectionRange> {
         if start_char >= end_char {
             return None;
         }
@@ -124,7 +133,10 @@ impl AppState {
 
         // The original visual selection becomes the primary cursor.
         self.selection_anchor_char_idx = Some(sel.start_char);
-        self.cursor_char_idx = sel.end_char.saturating_sub(1).min(len_chars.saturating_sub(1));
+        self.cursor_char_idx = sel
+            .end_char
+            .saturating_sub(1)
+            .min(len_chars.saturating_sub(1));
         let (_, col) = self.cursor_line_col();
         self.target_col = col;
 
@@ -514,11 +526,7 @@ impl AppState {
     }
 
     fn collect_all_cursor_positions(&self) -> Vec<usize> {
-        let mut v: Vec<usize> = self
-            .virtual_cursors
-            .iter()
-            .map(|vc| vc.char_idx)
-            .collect();
+        let mut v: Vec<usize> = self.virtual_cursors.iter().map(|vc| vc.char_idx).collect();
         v.push(self.cursor_char_idx);
         v
     }
@@ -606,8 +614,8 @@ fn find_whole_word(text: &str, word: &str, from_char: usize) -> Option<(usize, u
         let abs_byte = from_byte + byte_offset + rel;
         let abs_end_byte = abs_byte + word.len();
 
-        let boundary_start = abs_byte == 0
-            || !is_word_char(text[..abs_byte].chars().next_back().unwrap_or(' '));
+        let boundary_start =
+            abs_byte == 0 || !is_word_char(text[..abs_byte].chars().next_back().unwrap_or(' '));
         let boundary_end = abs_end_byte >= text.len()
             || !is_word_char(text[abs_end_byte..].chars().next().unwrap_or(' '));
 

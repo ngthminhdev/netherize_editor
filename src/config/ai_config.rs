@@ -102,7 +102,12 @@ impl InlineCompletionConfig {
     pub fn trigger_chars(&self) -> Vec<char> {
         self.trigger_chars
             .as_ref()
-            .map(|items| items.iter().filter_map(|item| item.chars().next()).collect())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.chars().next())
+                    .collect()
+            })
             .unwrap_or_else(|| {
                 vec![
                     ' ', '\n', '\t', '.', ':', ';', ',', '(', ')', '{', '}', '[', ']',
@@ -125,7 +130,6 @@ impl InlineCompletionConfig {
     pub fn min_interval_ms(&self) -> u64 {
         self.min_interval_ms.unwrap_or(250)
     }
-
 }
 
 fn candidate_paths() -> Vec<PathBuf> {

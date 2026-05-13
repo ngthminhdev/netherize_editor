@@ -14,6 +14,7 @@ impl AppShell {
             | Command::OpenVimCommand
             | Command::OpenWorkspaceSymbols
             | Command::OpenDocumentSymbols
+            | Command::LspRename
             | Command::OpenInFileSearch
             | Command::SearchInFiles
             | Command::OpenFileHistory
@@ -316,6 +317,15 @@ impl AppShell {
                 if matches!(command, Command::FilePickerConfirmSelection)
                     && matches!(
                         self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::LspRename)
+                    )
+                {
+                    return Some(self.confirm_lsp_rename_prompt());
+                }
+
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
                         Some(CommandPaletteMode::InFileSearch)
                     )
                 {
@@ -335,8 +345,7 @@ impl AppShell {
                         let _ = self
                             .app_state
                             .apply_mode_event(ModeEvent::EnterTerminalNormal);
-                        let focus_changed =
-                            self.focus_manager.set(FocusTarget::BottomPanel);
+                        let focus_changed = self.focus_manager.set(FocusTarget::BottomPanel);
                         if focus_changed {
                             self.input_handler.clear_pending_prefix();
                         }
@@ -349,8 +358,7 @@ impl AppShell {
                         let prev_scroll = self.app_state.target_scroll_y;
                         let viewport_lines = self.editor_viewport_lines();
                         self.app_state.auto_scroll_to_cursor(viewport_lines);
-                        if (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON
-                        {
+                        if (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON {
                             self.editor_needs_layout = true;
                             self.editor_caret_needs_layout = false;
                         } else {
@@ -384,12 +392,20 @@ impl AppShell {
 
                 // Command palette can open PythonEnvSelector without closing the overlay.
                 // Keep palette focus and kick off the async environment scan.
-                if self.app_state.command_palette_mode() == Some(CommandPaletteMode::PythonEnvSelector) {
-                    if let Some(workspace_root) = self.app_state.workspace_root_path().map(|p| p.to_path_buf()) {
+                if self.app_state.command_palette_mode()
+                    == Some(CommandPaletteMode::PythonEnvSelector)
+                {
+                    if let Some(workspace_root) = self
+                        .app_state
+                        .workspace_root_path()
+                        .map(|p| p.to_path_buf())
+                    {
                         self.submit(RequestSpec {
                             revision_id: 0,
                             topic: RequestTopic::SystemTask,
-                            payload: WorkerRequestPayload::ScanPythonEnvironments { workspace_root },
+                            payload: WorkerRequestPayload::ScanPythonEnvironments {
+                                workspace_root,
+                            },
                         });
                     }
                     self.arm_palette_ime_commit_suppression();
@@ -410,6 +426,9 @@ impl AppShell {
                     }
 
                     self.submit_lsp_did_open_for_active_file();
+                    if !is_open_file {
+                        self.submit_active_buffer_git_baseline_refresh();
+                    }
                     let _ = self.sync_focus_mode_for_active_buffer();
 
                     if let Some(path) = file_after.as_ref() {

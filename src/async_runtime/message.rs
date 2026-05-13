@@ -255,6 +255,13 @@ pub enum WorkerRequestPayload {
         line: u32,
         character: u32,
     },
+    /// textDocument/rename request.
+    LspRenameRequest {
+        uri: String,
+        line: u32,
+        character: u32,
+        new_name: String,
+    },
     /// textDocument/documentHighlight request for the active file/cursor.
     LspDocumentHighlightRequest {
         language_id: String,
@@ -400,10 +407,17 @@ pub struct LspCompletionItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LspDocumentSymbolSegment {
+    pub name: String,
+    pub kind: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LspDocumentSymbol {
     pub name: String,
     pub kind: String,
     pub range: LspRange,
+    pub ancestors: Vec<LspDocumentSymbolSegment>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -587,6 +601,12 @@ pub enum WorkerResultPayload {
     /// textDocument/references response.
     LspReferencesResult {
         locations: Vec<LspLocation>,
+    },
+    /// textDocument/rename response.
+    LspRenameResult {
+        uri: String,
+        edits: Vec<LspTextEdit>,
+        other_file_edit_count: usize,
     },
     /// textDocument/documentHighlight response.
     LspDocumentHighlightResult {
