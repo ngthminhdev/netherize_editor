@@ -17,6 +17,15 @@ impl ClipboardProvider for MockClipboard {
     }
 }
 
+fn select_ui_rounding(shell: &mut AppShell) {
+    shell.handle_command(Command::OpenSettings);
+    let settings = shell
+        .app_state
+        .active_settings_buffer_mut()
+        .expect("settings buffer");
+    settings.selected_index = 1;
+}
+
 #[test]
 fn palette_paste_uses_clipboard_provider() {
     let mut app_state = AppState::from_text(PathBuf::from("palette-paste.txt"), "alpha beta");
@@ -119,6 +128,84 @@ fn center_cursor_line_uses_viewport_layout_path() {
     );
     assert!(shell.editor_needs_layout);
     assert!(!shell.editor_caret_needs_layout);
+}
+
+#[test]
+fn settings_activate_begins_numeric_edit_for_ui_rounding() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.ui_config.border_radius_px = 16.0;
+    select_ui_rounding(&mut shell);
+
+    let changed = shell.handle_command(Command::SettingsActivate);
+
+    assert!(changed);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Insert);
+    let settings = shell
+        .app_state
+        .active_settings_buffer()
+        .expect("settings buffer");
+    let editing = settings.editing.as_ref().expect("editing state");
+    assert_eq!(
+        editing.kind,
+        crate::app::app_state::SettingsEditingKind::UiRounding
+    );
+    assert_eq!(editing.draft, "16");
+}
+
+#[test]
+fn settings_adjust_increase_allows_ui_rounding_to_reach_24() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.ui_config.border_radius_px = 16.0;
+    select_ui_rounding(&mut shell);
+
+    let changed = shell.handle_command(Command::SettingsAdjustIncrease);
+
+    assert!(changed);
+    assert_eq!(shell.ui_config.border_radius_px, 24.0);
+    let settings = shell
+        .app_state
+        .active_settings_buffer()
+        .expect("settings buffer");
+    assert_eq!(
+        settings.selected_item(),
+        Some(&crate::app::app_state::SettingItem::UiRounding {
+            enabled: true,
+            radius_px: 24.0,
+        })
+    );
+}
+
+#[test]
+fn settings_commit_ui_rounding_edit_clamps_to_24() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.ui_config.border_radius_px = 16.0;
+    select_ui_rounding(&mut shell);
+    assert!(shell.handle_command(Command::SettingsActivate));
+    {
+        let settings = shell
+            .app_state
+            .active_settings_buffer_mut()
+            .expect("settings buffer");
+        let editing = settings.editing.as_mut().expect("editing state");
+        editing.draft = "32".to_string();
+    }
+
+    let changed = shell.handle_command(Command::SettingsActivate);
+
+    assert!(changed);
+    assert_eq!(shell.ui_config.border_radius_px, 24.0);
+    let settings = shell
+        .app_state
+        .active_settings_buffer()
+        .expect("settings buffer");
+    assert!(settings.editing.is_none());
+    assert_eq!(
+        settings.selected_item(),
+        Some(&crate::app::app_state::SettingItem::UiRounding {
+            enabled: true,
+            radius_px: 24.0,
+        })
+    );
 }
 
 #[test]

@@ -39,6 +39,7 @@ pub enum SettingsEditingKind {
     FontSize,
     LineHeight,
     IndentTabWidth,
+    UiRounding,
     SidebarWidth,
     RightSidebarWidth,
     BottomPanelHeight,
@@ -175,8 +176,15 @@ impl SettingsState {
             SettingItem::IndentTabWidth { current } => {
                 (SettingsEditingKind::IndentTabWidth, current.to_string())
             }
+            SettingItem::UiRounding { enabled, radius_px } => (
+                SettingsEditingKind::UiRounding,
+                if *enabled && *radius_px > 0.0 {
+                    format!("{radius_px:.0}")
+                } else {
+                    "0".to_string()
+                },
+            ),
             SettingItem::ThemeSelector { .. }
-            | SettingItem::UiRounding { .. }
             | SettingItem::EnableOutline { .. }
             | SettingItem::IndentInsertSpaces { .. }
             | SettingItem::InlineSuggestion { .. } => return false,

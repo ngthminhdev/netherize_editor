@@ -65,6 +65,9 @@ impl SettingItem {
             Self::IndentTabWidth { .. } => {
                 "Spaces inserted per Tab key press. Use h/l or Enter to edit (range 1–8)."
             }
+            Self::UiRounding { .. } => {
+                "Corner radius for panels and shells. Use h/l for quick 8 px steps or Enter to edit (range 0–24)."
+            }
             Self::IndentInsertSpaces { .. } => {
                 "Press Enter to toggle: spaces keep indent visible; tabs compress display."
             }
@@ -79,9 +82,6 @@ impl SettingItem {
             }
             Self::BottomPanelHeight { .. } => {
                 "Resting height for terminal, logs, and lower utility surfaces."
-            }
-            Self::UiRounding { .. } => {
-                "Rounds shell and panel corners to match the softer visual style."
             }
             Self::EnableOutline { .. } => {
                 "Show borders on all panels. Off = only unfocused panels keep their accent border."
@@ -171,6 +171,7 @@ fn current_row_value(settings: &SettingsState, item: &SettingItem, is_selected: 
         | (SettingsEditingKind::FontSize, SettingItem::FontSize { .. })
         | (SettingsEditingKind::LineHeight, SettingItem::LineHeight { .. })
         | (SettingsEditingKind::IndentTabWidth, SettingItem::IndentTabWidth { .. })
+        | (SettingsEditingKind::UiRounding, SettingItem::UiRounding { .. })
         | (SettingsEditingKind::SidebarWidth, SettingItem::SidebarWidth { .. })
         | (SettingsEditingKind::RightSidebarWidth, SettingItem::RightSidebarWidth { .. })
         | (SettingsEditingKind::BottomPanelHeight, SettingItem::BottomPanelHeight { .. }) => {
@@ -576,8 +577,7 @@ impl Renderer {
             ));
 
             match item {
-                SettingItem::UiRounding { enabled, .. }
-                | SettingItem::EnableOutline { enabled }
+                SettingItem::EnableOutline { enabled }
                 | SettingItem::IndentInsertSpaces { enabled }
                 | SettingItem::InlineSuggestion { enabled } => {
                     let toggle_w = 40.0;
