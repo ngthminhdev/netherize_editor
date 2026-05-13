@@ -549,6 +549,79 @@ pub(super) fn handle_lsp_references(
     Ok(locations)
 }
 
+pub(super) fn handle_lsp_rename(
+    session: &Arc<LspClientProcess>,
+    uri: &str,
+    line: u32,
+    character: u32,
+    new_name: &str,
+) -> Result<WorkerResultPayload, String> {
+    let params = serde_json::json!({
+        "textDocument": { "uri": uri },
+        "position": { "line": line, "character": character },
+        "newName": new_name,
+    });
+    let response = lsp_request_response(
+        session,
+        "textDocument/rename",
+        params,
+        LSP_REFERENCES_TIMEOUT_SECS,
+    )?;
+    let result = response
+        .get("result")
+        .ok_or_else(|| "rename: no result".to_string())?;
+    if result.is_null() {
+        return Ok(WorkerResultPayload::LspRenameResult {
+            uri: uri.to_string(),
+            edits: Vec::new(),
+            other_file_edit_count: 0,
+        });
+    }
+
+    let (edits, other_file_edit_count) = parse_workspace_edit_for_uri(result, uri);
+    Ok(WorkerResultPayload::LspRenameResult {
+        uri: uri.to_string(),
+        edits,
+        other_file_edit_count,
+    })
+}
+
+fn parse_workspace_edit_for_uri(result: &Value, target_uri: &str) -> (Vec<LspTextEdit>, usize) {
+    let mut edits = Vec::new();
+    let mut other_file_edit_count = 0usize;
+
+    if let Some(changes) = result.get("changes").and_then(Value::as_object) {
+        for (uri, value) in changes {
+            let parsed = parse_text_edits(value);
+            if uri == target_uri {
+                edits.extend(parsed);
+            } else {
+                other_file_edit_count = other_file_edit_count.saturating_add(parsed.len());
+            }
+        }
+    }
+
+    if let Some(document_changes) = result.get("documentChanges").and_then(Value::as_array) {
+        for change in document_changes {
+            if let Some(uri) = change.pointer("/textDocument/uri").and_then(Value::as_str) {
+                let parsed = change
+                    .get("edits")
+                    .map(parse_text_edits)
+                    .unwrap_or_default();
+                if uri == target_uri {
+                    edits.extend(parsed);
+                } else {
+                    other_file_edit_count = other_file_edit_count.saturating_add(parsed.len());
+                }
+            } else {
+                other_file_edit_count = other_file_edit_count.saturating_add(1);
+            }
+        }
+    }
+
+    (edits, other_file_edit_count)
+}
+
 pub(super) fn handle_lsp_document_highlight(
     session: &Arc<LspClientProcess>,
     uri: &str,

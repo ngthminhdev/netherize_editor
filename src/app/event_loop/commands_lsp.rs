@@ -10,6 +10,7 @@ impl AppShell {
             Command::LspGoToDefinition => Some(self.submit_lsp_definition(true)),
             Command::LspPreviewDefinition => Some(self.submit_lsp_definition(false)),
             Command::LspReferences => Some(self.submit_lsp_references()),
+            Command::LspRename => Some(self.open_lsp_rename_prompt()),
             Command::LspFormatDocument => Some(self.submit_lsp_format_document()),
             Command::TriggerCompletion => Some(self.submit_lsp_completion()),
             Command::CodeAction => Some(self.submit_lsp_code_action()),
@@ -362,6 +363,87 @@ impl AppShell {
         }
         self.request_redraw();
         changed || focus_changed
+    }
+
+    pub(super) fn open_lsp_rename_prompt(&mut self) -> bool {
+        if self.active_lsp_server.is_none() {
+            if self.pending_lsp_server.is_some() {
+                self.show_transient_toast("LSP is starting up, please wait...".to_string());
+            } else {
+                self.show_transient_toast("LSP rename: no active language server".to_string());
+            }
+            return false;
+        }
+
+        let report = dispatch_command(&mut self.app_state, Command::LspRename);
+        if !report.success {
+            self.show_transient_toast("LSP rename: could not open prompt".to_string());
+            return report.request_redraw;
+        }
+
+        let focus_changed = self.focus_manager.set(FocusTarget::OverlayLayer);
+        if focus_changed {
+            self.input_handler.clear_pending_prefix();
+        }
+        self.arm_palette_ime_commit_suppression();
+        report.request_redraw || report.state_changed || focus_changed
+    }
+
+    pub(super) fn confirm_lsp_rename_prompt(&mut self) -> bool {
+        let new_name = self
+            .app_state
+            .command_palette_query_text()
+            .trim()
+            .to_string();
+        if new_name.is_empty() {
+            self.show_transient_toast("LSP rename: enter a new name".to_string());
+            return true;
+        }
+
+        let _ = self.app_state.close_command_palette();
+        if let Ok(result) = self
+            .app_state
+            .apply_mode_event(crate::core::mode::ModeEvent::ExitFocus)
+            && result.changed
+        {
+            self.editor_needs_layout = true;
+        }
+        if self.focus_manager.set(FocusTarget::CenterEditor) {
+            self.input_handler.clear_pending_prefix();
+        }
+        self.clear_palette_ime_commit_suppression();
+
+        if !self.submit_lsp_rename(new_name) {
+            self.request_redraw();
+        }
+        true
+    }
+
+    pub(super) fn submit_lsp_rename(&mut self, new_name: String) -> bool {
+        if self.active_lsp_server.is_none() {
+            self.show_transient_toast("LSP rename: no active language server".to_string());
+            return false;
+        }
+        self.force_flush_lsp_did_change_for_active_file();
+        let Some((_language_id, uri, line, character)) = self.lsp_cursor_context() else {
+            self.show_transient_toast("LSP rename: no active file".to_string());
+            return false;
+        };
+
+        self.lsp_rename_request_revision = self.lsp_rename_request_revision.saturating_add(1);
+        let request = self.submit(RequestSpec {
+            revision_id: self.lsp_rename_request_revision,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspRenameRequest {
+                uri,
+                line,
+                character,
+                new_name,
+            },
+        });
+        self.latest_rename_request_id = request.map(|r| r.request_id);
+        self.show_transient_toast("Renaming symbol...".to_string());
+        false
     }
 
     pub(super) fn submit_lsp_document_symbols(&mut self) -> bool {

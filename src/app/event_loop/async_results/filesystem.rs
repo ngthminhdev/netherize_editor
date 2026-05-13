@@ -18,6 +18,12 @@ pub(super) fn handle_filesystem_result(app: &mut AppShell, payload: WorkerResult
                     app.invalidate_highlights_and_parse_active_buffer();
                     app.force_flush_lsp_did_change_for_active_file();
                 }
+                if report.conflict_detected
+                    && app.pending_confirmation.is_none()
+                    && let Some(path) = report.conflict_path.clone()
+                {
+                    let _ = app.begin_external_overwrite_confirmation(path);
+                }
             }
             Err(err) => {
                 eprintln!("[AppShell] fs-event apply failed: {err}");

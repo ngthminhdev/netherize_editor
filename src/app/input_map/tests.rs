@@ -691,10 +691,11 @@ fn default_profile_resize_keys_map_to_requested_directions() {
 }
 
 #[test]
-fn default_profile_leader_r_enters_resize_only_from_editor_context() {
+fn default_profile_leader_rn_renames_and_leader_rr_enters_resize() {
     let map = make_default_profile_map();
     let input_space = input_from_named(NamedKey::Space);
     let input_r = input_from_physical(KeyCode::KeyR, "r");
+    let input_n = input_from_physical(KeyCode::KeyN, "n");
 
     let editor_context =
         KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Editor);
@@ -704,11 +705,37 @@ fn default_profile_leader_r_enters_resize_only_from_editor_context() {
     else {
         panic!("editor leader should be pending");
     };
+    let SequenceMatch::Pending(sequence) = map
+        .resolve_sequence_next(&sequence, &input_r, editor_context)
+        .expect("editor leader r should stay pending")
+    else {
+        panic!("editor leader r should be pending");
+    };
+    let SequenceMatch::Dispatch(matched) = map
+        .resolve_sequence_next(&sequence, &input_n, editor_context)
+        .expect("editor leader r n should dispatch rename")
+    else {
+        panic!("editor leader r n should dispatch");
+    };
+    assert_eq!(matched.command, Command::LspRename);
+
+    let SequenceMatch::Pending(sequence) = map
+        .resolve_sequence_start(&input_space, editor_context)
+        .expect("editor leader should start sequence")
+    else {
+        panic!("editor leader should be pending");
+    };
+    let SequenceMatch::Pending(sequence) = map
+        .resolve_sequence_next(&sequence, &input_r, editor_context)
+        .expect("editor leader r should stay pending")
+    else {
+        panic!("editor leader r should be pending");
+    };
     let SequenceMatch::Dispatch(matched) = map
         .resolve_sequence_next(&sequence, &input_r, editor_context)
-        .expect("editor leader r should dispatch resize mode")
+        .expect("editor leader r r should dispatch resize mode")
     else {
-        panic!("editor leader r should dispatch");
+        panic!("editor leader r r should dispatch");
     };
     assert_eq!(matched.command, Command::SwitchMode(ModeEvent::EnterResize));
 

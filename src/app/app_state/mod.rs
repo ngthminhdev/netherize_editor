@@ -54,6 +54,7 @@ pub struct ExternalChangeReport {
     pub workspace_reloaded: bool,
     pub active_file_reloaded: bool,
     pub conflict_detected: bool,
+    pub conflict_path: Option<PathBuf>,
     pub notices: Vec<String>,
 }
 
@@ -141,8 +142,12 @@ pub struct EditorBuffer {
     pub language_id: Option<String>,
     pub git_baseline: Option<String>,
     pub git_line_statuses: HashMap<usize, GitLineStatus>,
-    /// Per-buffer RAM-only undo/redo stack. Lives until the buffer is closed.
+    /// Per-buffer RAM-only undo/redo stack. Lives for the current app session.
     pub history: EditHistory,
+    /// Last in-memory text snapshot for this tab in the current app session.
+    pub in_memory_text: Option<Rope>,
+    /// Dirty flag captured when this buffer lost focus.
+    pub dirty: bool,
     view_state: TextBufferViewState,
 }
 
@@ -154,6 +159,8 @@ impl EditorBuffer {
             git_baseline: None,
             git_line_statuses: HashMap::new(),
             history: EditHistory::new(),
+            in_memory_text: None,
+            dirty: false,
             view_state: TextBufferViewState::default(),
         }
     }
@@ -869,6 +876,7 @@ fn build_help_lines(
         "Preview definition",
     );
     append_help_binding(&mut lines, bindings, "lsp.references", "Find references");
+    append_help_binding(&mut lines, bindings, "lsp.rename", "Rename symbol");
     append_help_binding(
         &mut lines,
         bindings,
@@ -1110,6 +1118,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "lsp.go_to_definition" => "Go to definition",
         "lsp.preview_definition" => "Preview definition",
         "lsp.references" => "References",
+        "lsp.rename" => "Rename symbol",
         "lsp.format_document" => "Format document",
         "lsp.trigger_completion" => "Trigger completion",
         // ── Explorer ──────────────────────────────────────────────────────
@@ -1434,7 +1443,13 @@ impl BufferEntry {
 
     pub fn is_dirty(&self, is_active: bool, active_editor_dirty: bool) -> bool {
         match &self.content {
-            BufferContent::Text(_) => is_active && active_editor_dirty,
+            BufferContent::Text(buffer) => {
+                if is_active {
+                    active_editor_dirty
+                } else {
+                    buffer.dirty
+                }
+            }
             BufferContent::Image(_)
             | BufferContent::Terminal(_)
             | BufferContent::References(_)
@@ -1508,6 +1523,8 @@ pub struct AppState {
     selection_anchor_char_idx: Option<usize>,
     visual_line_mode: bool,
     buffers: Vec<BufferEntry>,
+    /// Session-only cache for closed text buffers. Reopen restores undo/redo and unsaved text.
+    closed_text_buffers: HashMap<PathBuf, EditorBuffer>,
     active_buffer_index: Option<usize>,
     default_save_path: PathBuf,
     dirty: bool,
@@ -1574,6 +1591,7 @@ impl AppState {
             selection_anchor_char_idx: None,
             visual_line_mode: false,
             buffers: Vec::new(),
+            closed_text_buffers: HashMap::new(),
             active_buffer_index: None,
             default_save_path,
             dirty: false,
@@ -1629,6 +1647,7 @@ impl AppState {
             selection_anchor_char_idx: None,
             visual_line_mode: false,
             buffers: Vec::new(),
+            closed_text_buffers: HashMap::new(),
             active_buffer_index: None,
             default_save_path,
             dirty: false,

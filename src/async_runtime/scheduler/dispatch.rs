@@ -110,6 +110,7 @@ pub(super) async fn dispatch_loop(
                 | WorkerRequestPayload::LspHoverRequest { .. }
                 | WorkerRequestPayload::LspDefinitionRequest { .. }
                 | WorkerRequestPayload::LspReferencesRequest { .. }
+                | WorkerRequestPayload::LspRenameRequest { .. }
                 | WorkerRequestPayload::LspDocumentHighlightRequest { .. }
                 | WorkerRequestPayload::LspDocumentSymbolsRequest { .. }
                 | WorkerRequestPayload::LspFormattingRequest { .. }

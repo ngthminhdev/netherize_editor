@@ -288,6 +288,8 @@ pub enum Command {
     LspPreviewDefinition,
     /// gr: Gửi textDocument/references, mở danh sách tham chiếu.
     LspReferences,
+    /// <leader>rn: Mở prompt rename symbol theo LSP.
+    LspRename,
     /// Format active document via LSP textDocument/formatting.
     LspFormatDocument,
     /// ctrl+space trong insert mode: gửi textDocument/completion.

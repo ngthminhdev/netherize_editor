@@ -507,6 +507,60 @@ fn dirty_buffer_close_confirmation_no_discards_changes_and_closes() {
 }
 
 #[test]
+fn external_overwrite_confirmation_yes_saves_local_buffer_to_disk() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_path = std::env::temp_dir().join(format!(
+        "netherize_external_overwrite_yes_{}.txt",
+        std::process::id()
+    ));
+    std::fs::write(&file_path, "hello\n").expect("write file");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.app_state.insert_char('!');
+
+    assert!(shell.begin_external_overwrite_confirmation(file_path.clone()));
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(crate::app::command_palette::CommandPaletteMode::ExplorerDeleteConfirm)
+    );
+    assert!(shell.respond_to_pending_confirmation(true));
+    assert_eq!(
+        std::fs::read_to_string(&file_path).expect("read file"),
+        "!hello\n"
+    );
+    assert!(!shell.app_state.is_dirty());
+    assert!(!shell.app_state.is_command_palette_visible());
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn external_overwrite_confirmation_no_reloads_from_disk_and_discards_local_dirty() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_path = std::env::temp_dir().join(format!(
+        "netherize_external_overwrite_no_{}.txt",
+        std::process::id()
+    ));
+    std::fs::write(&file_path, "hello\n").expect("write file");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.app_state.insert_char('!');
+    std::fs::write(&file_path, "external\n").expect("write external");
+
+    assert!(shell.begin_external_overwrite_confirmation(file_path.clone()));
+    assert!(shell.respond_to_pending_confirmation(false));
+    assert_eq!(shell.app_state.text_string(), "external\n");
+    assert!(!shell.app_state.is_dirty());
+    assert!(!shell.app_state.is_command_palette_visible());
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
 fn opening_palette_arms_one_shot_ime_suppression() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
 
@@ -822,6 +876,36 @@ fn lsp_references_open_loading_buffer_immediately() {
     assert!(references.pending_request_id.is_some());
     assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
     assert!(shell.editor_needs_layout);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn lsp_rename_opens_palette_prompt() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!("netherize_rename_prompt_{}", std::process::id()));
+    std::fs::create_dir_all(root.join("src")).expect("create workspace");
+    let file_path = root.join("src/main.rs");
+    std::fs::write(&file_path, "fn demo() { let value = 1; }\n").expect("write file");
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "rust-analyzer".to_string(),
+        root_path: root.clone(),
+    });
+
+    assert!(shell.handle_command(Command::LspRename));
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(CommandPaletteMode::LspRename)
+    );
+    assert_eq!(shell.focus_manager.current(), FocusTarget::OverlayLayer);
 
     let _ = std::fs::remove_dir_all(root);
 }

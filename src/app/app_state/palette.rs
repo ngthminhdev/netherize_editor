@@ -1210,6 +1210,7 @@ impl AppState {
                 self.external_conflict = Some(warning.clone());
                 self.external_notice = Some(warning.clone());
                 report.conflict_detected = true;
+                report.conflict_path = Some(active_path.clone());
                 report.notices.push(warning);
                 continue;
             }

@@ -481,7 +481,7 @@ string = ...
 comment = ...
 
 [icons]
-explorer_folder_collapsed_marker = "▶"
+explorer_folder_collapsed_marker = ""
 
 [icons.rust]
 glyph = "\uE7A8"

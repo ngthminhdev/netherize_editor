@@ -350,6 +350,78 @@ pub(super) fn handle_lsp_result(
             }
             app.request_redraw();
         }
+        WorkerResultPayload::LspRenameResult {
+            uri,
+            edits,
+            other_file_edit_count,
+        } => {
+            if app
+                .latest_rename_request_id
+                .is_some_and(|latest| latest != request_id)
+            {
+                eprintln!(
+                    "[AppShell] dropping stale LSP rename response request_id={request_id} latest={:?}",
+                    app.latest_rename_request_id
+                );
+                return;
+            }
+            if revision_id < app.lsp_rename_request_revision {
+                eprintln!(
+                    "[AppShell] stale rename result ignored request_id={} revision={} latest_revision={}",
+                    request_id, revision_id, app.lsp_rename_request_revision
+                );
+                return;
+            }
+            if app.latest_rename_request_id == Some(request_id) {
+                app.latest_rename_request_id = None;
+            }
+            if other_file_edit_count > 0 {
+                app.show_transient_toast(format!(
+                    "Rename skipped: {other_file_edit_count} edit(s) are outside the active file"
+                ));
+                app.request_redraw();
+                return;
+            }
+            if edits.is_empty() {
+                app.show_transient_toast("Rename: no edits returned".to_string());
+                app.request_redraw();
+                return;
+            }
+            let Some(path) = lsp_uri_to_path(&uri) else {
+                eprintln!("[AppShell] LSP rename: cannot parse URI {uri}");
+                return;
+            };
+            let Some(active_path) = app.app_state.active_file().map(PathBuf::from) else {
+                return;
+            };
+            if active_path != path {
+                return;
+            }
+
+            let text = app.app_state.text_string();
+            let next = match apply_lsp_text_edits(&text, &edits) {
+                Ok(next) => next,
+                Err(err) => {
+                    app.show_transient_toast(format!("Rename failed: {err}"));
+                    app.request_redraw();
+                    return;
+                }
+            };
+            if app
+                .app_state
+                .replace_active_document_text_preserve_cursor_with_undo(&next)
+            {
+                app.editor_needs_layout = true;
+                app.editor_caret_needs_layout = true;
+                app.submit_parse_for_active_buffer(true);
+                app.force_flush_lsp_did_change_for_active_file();
+                app.show_transient_toast(format!("Renamed {} occurrence(s)", edits.len()));
+                app.request_redraw();
+            } else {
+                app.show_transient_toast("Rename: no changes".to_string());
+                app.request_redraw();
+            }
+        }
         WorkerResultPayload::LspDocumentSymbolsResult { uri, symbols } => {
             if revision_id < app.document_symbols_request_revision {
                 eprintln!(
@@ -532,19 +604,31 @@ pub(super) fn handle_lsp_result(
 }
 
 pub(super) fn handle_stale_result(app: &mut AppShell, stale: WorkerResult) {
-    if let WorkerResultPayload::LspReferencesResult { .. } = stale.payload {
-        if app
-            .app_state
-            .fail_pending_references_buffer(stale.request_id, stale_references_status())
-        {
-            app.editor_needs_layout = true;
-            app.editor_caret_needs_layout = false;
+    match stale.payload {
+        WorkerResultPayload::LspReferencesResult { .. } => {
+            if app
+                .app_state
+                .fail_pending_references_buffer(stale.request_id, stale_references_status())
+            {
+                app.editor_needs_layout = true;
+                app.editor_caret_needs_layout = false;
+            }
+            eprintln!(
+                "[AppShell] bridge discarded stale references result request_id={} revision={} latest_revision={}",
+                stale.request_id, stale.revision_id, app.references_request_revision
+            );
+            app.request_redraw();
         }
-        eprintln!(
-            "[AppShell] bridge discarded stale references result request_id={} revision={} latest_revision={}",
-            stale.request_id, stale.revision_id, app.references_request_revision
-        );
-        app.request_redraw();
+        WorkerResultPayload::LspRenameResult { .. } => {
+            if app.latest_rename_request_id == Some(stale.request_id) {
+                app.latest_rename_request_id = None;
+            }
+            eprintln!(
+                "[AppShell] bridge discarded stale rename result request_id={} revision={} latest_revision={}",
+                stale.request_id, stale.revision_id, app.lsp_rename_request_revision
+            );
+        }
+        _ => {}
     }
 }
 

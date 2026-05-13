@@ -43,6 +43,19 @@ pub(super) fn handle_worker_failure(app: &mut AppShell, event: WorkerEvent) {
         if app.latest_definition_request_id == Some(request_id) {
             app.latest_definition_request_id = None;
         }
+        if app.latest_rename_request_id == Some(request_id) {
+            app.latest_rename_request_id = None;
+            let message = if error.message.contains("renameProvider") {
+                "LSP rename is not supported by this server".to_string()
+            } else if error.message.contains("LSP server not running") {
+                "LSP rename: server is not ready yet".to_string()
+            } else if error.message.contains("timed out") {
+                "LSP rename timed out".to_string()
+            } else {
+                "LSP rename failed".to_string()
+            };
+            app.show_transient_toast(message);
+        }
         // Completion request failed — clear the spinner.
         if app.app_state.is_completion_loading() {
             app.app_state.set_completion_loading(false);

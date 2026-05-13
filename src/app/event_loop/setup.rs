@@ -203,6 +203,8 @@ impl AppShell {
             hover_loading_request_id: None,
             latest_definition_request_id: None,
             document_symbols_request_revision: 0,
+            lsp_rename_request_revision: 0,
+            latest_rename_request_id: None,
             fzf_search_revision: 0,
             pending_parse_after_debounce: false,
             pending_git_diff_after_debounce: false,

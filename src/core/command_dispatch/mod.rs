@@ -237,6 +237,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::OpenInFileSearch
         | Command::OpenWorkspaceSymbols
         | Command::OpenDocumentSymbols
+        | Command::LspRename
         | Command::SearchInFiles
         | Command::OpenThemeSelector
         | Command::OpenFileHistory

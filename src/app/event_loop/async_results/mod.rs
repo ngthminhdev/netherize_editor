@@ -77,6 +77,7 @@ impl AsyncResultRouter for AppShell {
             | WorkerResultPayload::LspDefinitionResult { .. }
             | WorkerResultPayload::LspDocumentHighlightResult { .. }
             | WorkerResultPayload::LspReferencesResult { .. }
+            | WorkerResultPayload::LspRenameResult { .. }
             | WorkerResultPayload::LspDocumentSymbolsResult { .. }
             | WorkerResultPayload::LspFormattingResult { .. }
             | WorkerResultPayload::LspCodeActionResult { .. }
@@ -149,10 +150,11 @@ mod tests {
     use crate::{
         app::{app_state::ReferencesBufferItem, async_bridge::AsyncResultRouter},
         async_runtime::message::{
-            FilePreviewLine, LspDocumentHighlight, LspLocation, LspPosition, LspRange,
-            RequestTopic, WorkerEvent, WorkerEventKind, WorkerFailure, WorkerFailureKind,
-            WorkerResult, WorkerResultPayload,
+            FilePreviewLine, FileSystemChangeKind, FileSystemEvent, LspDocumentHighlight,
+            LspLocation, LspPosition, LspRange, LspTextEdit, RequestTopic, WorkerEvent,
+            WorkerEventKind, WorkerFailure, WorkerFailureKind, WorkerResult, WorkerResultPayload,
         },
+        core::commands::Command,
         lsp::client::path_to_lsp_uri,
         syntax::{
             highlight::{HighlightCategory, HighlightSpan},
@@ -197,6 +199,15 @@ mod tests {
                 parse_time_ms: 1,
                 highlight_time_ms: 1,
             },
+        }
+    }
+
+    fn filesystem_result(root_path: PathBuf, events: Vec<FileSystemEvent>) -> WorkerResult {
+        WorkerResult {
+            request_id: 100,
+            revision_id: 0,
+            topic: RequestTopic::WorkspaceWatch,
+            payload: WorkerResultPayload::FileSystemEvents { root_path, events },
         }
     }
 
@@ -268,6 +279,40 @@ mod tests {
         assert_eq!(shell.highlight_spans.len(), 1);
         assert!(shell.editor_needs_layout);
         assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn dirty_external_modify_opens_overwrite_confirmation_overlay() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = write_temp_file("external_overwrite_prompt.rs", "fn main() {}\n");
+        let root_path = file_path.parent().expect("parent path").to_path_buf();
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        shell.app_state.insert_char('!');
+        fs::write(&file_path, "fn main() { println!(\"external\"); }\n").expect("external write");
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            filesystem_result(
+                root_path,
+                vec![FileSystemEvent {
+                    kind: FileSystemChangeKind::Modify,
+                    path: file_path.clone(),
+                    new_path: None,
+                }],
+            ),
+        );
+
+        assert_eq!(
+            shell.app_state.command_palette_mode(),
+            Some(crate::app::command_palette::CommandPaletteMode::ExplorerDeleteConfirm)
+        );
+        let prompt = shell.app_state.command_palette_query_text();
+        assert!(prompt.contains("Overwrite with current buffer? (y/n)"));
+
+        let _ = fs::remove_file(file_path);
     }
 
     #[test]
@@ -560,6 +605,75 @@ mod tests {
         );
         assert!(shell.editor_needs_layout);
         assert!(!shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn rename_result_applies_as_single_undo_transaction() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let file_path = write_temp_file(
+            "rename_result.rs",
+            "fn main() {\n    let value = 1;\n    value;\n}\n",
+        );
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+        shell.lsp_rename_request_revision = 1;
+        shell.latest_rename_request_id = Some(91);
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 91,
+                revision_id: 1,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspRenameResult {
+                    uri: path_to_lsp_uri(&file_path),
+                    edits: vec![
+                        LspTextEdit {
+                            range: LspRange {
+                                start: LspPosition {
+                                    line: 1,
+                                    character: 8,
+                                },
+                                end: LspPosition {
+                                    line: 1,
+                                    character: 13,
+                                },
+                            },
+                            new_text: "total".to_string(),
+                        },
+                        LspTextEdit {
+                            range: LspRange {
+                                start: LspPosition {
+                                    line: 2,
+                                    character: 4,
+                                },
+                                end: LspPosition {
+                                    line: 2,
+                                    character: 9,
+                                },
+                            },
+                            new_text: "total".to_string(),
+                        },
+                    ],
+                    other_file_edit_count: 0,
+                },
+            },
+        );
+
+        assert_eq!(
+            shell.app_state.text_string(),
+            "fn main() {\n    let total = 1;\n    total;\n}\n"
+        );
+
+        assert!(shell.handle_command(Command::Undo));
+        assert_eq!(
+            shell.app_state.text_string(),
+            "fn main() {\n    let value = 1;\n    value;\n}\n"
+        );
+
+        let _ = fs::remove_file(file_path);
     }
 
     #[test]

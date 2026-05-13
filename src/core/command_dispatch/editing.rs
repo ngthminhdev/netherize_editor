@@ -541,6 +541,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                         | CommandPaletteMode::ExplorerCreateFile
                         | CommandPaletteMode::ExplorerCreateFolder
                         | CommandPaletteMode::ExplorerDeleteConfirm
+                        | CommandPaletteMode::LspRename
                         | CommandPaletteMode::BufferCloseConfirm
                 )
             ) && (ctx.app_state.current_mode() == EditorMode::PaletteFocus

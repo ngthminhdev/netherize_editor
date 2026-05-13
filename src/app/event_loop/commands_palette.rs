@@ -14,6 +14,7 @@ impl AppShell {
             | Command::OpenVimCommand
             | Command::OpenWorkspaceSymbols
             | Command::OpenDocumentSymbols
+            | Command::LspRename
             | Command::OpenInFileSearch
             | Command::SearchInFiles
             | Command::OpenFileHistory
@@ -311,6 +312,15 @@ impl AppShell {
                     )
                 {
                     return Some(self.confirm_python_env_selection());
+                }
+
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::LspRename)
+                    )
+                {
+                    return Some(self.confirm_lsp_rename_prompt());
                 }
 
                 if matches!(command, Command::FilePickerConfirmSelection)

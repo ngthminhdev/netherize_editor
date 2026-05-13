@@ -293,6 +293,61 @@ mod tests {
     }
 
     #[test]
+    fn switching_buffers_keeps_unsaved_dirty_text_until_explicit_save() {
+        let mut state = AppState::new(unique_temp_path("dirty_buffer_switch"));
+        let root = unique_temp_dir("dirty_buffer_switch");
+        fs::create_dir_all(&root).expect("create root");
+        let file_a = root.join("a.rs");
+        let file_b = root.join("b.rs");
+        fs::write(&file_a, "alpha\n").expect("write a");
+        fs::write(&file_b, "beta\n").expect("write b");
+
+        state.open_file(file_a.clone()).expect("open a");
+        state.cursor_char_idx = state.text.len_chars();
+        assert!(state.insert_text_at_cursor("dirty"));
+        let _ = state.commit_transaction();
+        assert!(state.is_dirty());
+        assert_eq!(state.text_string(), "alpha\ndirty");
+
+        state.open_file(file_b.clone()).expect("open b");
+        assert!(state.active_file().expect("active file").ends_with("b.rs"));
+        assert!(!state.is_dirty());
+
+        state.open_file(file_a.clone()).expect("back to a");
+        assert!(state.active_file().expect("active file").ends_with("a.rs"));
+        assert_eq!(state.text_string(), "alpha\ndirty");
+        assert!(state.is_dirty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn closing_and_reopening_buffer_restores_undo_history_within_app_session() {
+        let mut state = AppState::new(unique_temp_path("closed_buffer_undo"));
+        let root = unique_temp_dir("closed_buffer_undo");
+        fs::create_dir_all(&root).expect("create root");
+        let file_path = root.join("history.rs");
+        fs::write(&file_path, "seed").expect("write file");
+
+        state.open_file(file_path.clone()).expect("open file");
+        state.cursor_char_idx = state.text.len_chars();
+        assert!(state.insert_text_at_cursor("_edit"));
+        assert!(state.commit_transaction());
+        assert_eq!(state.text_string(), "seed_edit");
+
+        assert!(state.close_current_buffer().expect("close active buffer"));
+        assert!(state.active_file().is_none());
+
+        state.open_file(file_path.clone()).expect("reopen file");
+        assert_eq!(state.text_string(), "seed_edit");
+        assert!(state.is_dirty());
+        assert!(state.undo());
+        assert_eq!(state.text_string(), "seed");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn terminal_buffer_entries_are_tracked_in_tab_ring() {
         let mut state = AppState::new(unique_temp_path("terminal_buffer"));
         let root = unique_temp_dir("terminal_buffer");
@@ -715,6 +770,12 @@ mod tests {
             }])
             .expect("apply external dirty");
         assert!(dirty_report.conflict_detected);
+        assert!(
+            dirty_report
+                .conflict_path
+                .as_ref()
+                .is_some_and(|path| path.ends_with("src/main.rs"))
+        );
         assert!(state.external_conflict_message().is_some());
 
         let _ = fs::remove_dir_all(root);

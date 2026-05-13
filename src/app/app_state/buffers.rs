@@ -32,11 +32,11 @@ impl AppState {
         {
             Some(idx) => idx,
             None => {
+                let cached = self.closed_text_buffers.remove(&canonical_path);
                 self.buffers.push(BufferEntry {
-                    content: BufferContent::Text(EditorBuffer::new(
-                        canonical_path.clone(),
-                        language_id,
-                    )),
+                    content: BufferContent::Text(cached.unwrap_or_else(|| {
+                        EditorBuffer::new(canonical_path.clone(), language_id)
+                    })),
                 });
                 self.buffers.len().saturating_sub(1)
             }
@@ -75,9 +75,41 @@ impl AppState {
 
         self.active_file = Some(canonical_path.clone());
         self.register_open_text_buffer(canonical_path.clone());
+        if let Some(active_idx) = self.active_buffer_index
+            && let Some(slot) = self.buffers.get_mut(active_idx)
+            && let BufferContent::Text(ref mut buffer) = slot.content
+        {
+            buffer.in_memory_text = Some(self.text.clone());
+            buffer.dirty = false;
+            buffer.history = self.history.clone();
+        }
         let _ = self.workspace_expand_to_path(&canonical_path);
         self.dirty = false;
+        self.external_conflict = None;
         Ok(canonical_path)
+    }
+
+    pub fn reload_active_file_from_disk_discarding_local(&mut self) -> Result<PathBuf, String> {
+        let active_path = self
+            .active_file
+            .clone()
+            .ok_or_else(|| "no active file to reload".to_string())?;
+        self.load_buffer_from_file(&active_path)?;
+        self.dirty = false;
+        self.external_conflict = None;
+        self.external_notice = Some(format!(
+            "reloaded active file from disk (discarded unsaved changes): {}",
+            active_path.display()
+        ));
+        if let Some(active_idx) = self.active_buffer_index
+            && let Some(slot) = self.buffers.get_mut(active_idx)
+            && let BufferContent::Text(ref mut buffer) = slot.content
+        {
+            buffer.in_memory_text = Some(self.text.clone());
+            buffer.dirty = false;
+            buffer.history = self.history.clone();
+        }
+        Ok(active_path)
     }
 
     pub fn new_empty_buffer(&mut self) -> bool {
@@ -124,7 +156,11 @@ impl AppState {
             return Ok(false);
         };
 
-        self.buffers.remove(current_idx);
+        self.save_current_text_buffer_history();
+        let removed = self.buffers.remove(current_idx);
+        if let BufferContent::Text(buffer) = removed.content {
+            self.closed_text_buffers.insert(buffer.path.clone(), buffer);
+        }
         if self.buffers.is_empty() {
             self.reset_text_editor_state();
             self.active_buffer_index = None;

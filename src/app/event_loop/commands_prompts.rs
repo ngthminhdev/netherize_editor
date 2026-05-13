@@ -20,6 +20,16 @@ impl AppShell {
                     .unwrap_or_else(|| "current buffer".to_string());
                 Some(format!("Save changes to {label} before closing? (y/n)"))
             }
+            PendingConfirmationAction::ExternalOverwrite { path } => {
+                let label = path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| path.to_string_lossy().into_owned());
+                Some(format!(
+                    "{label} changed externally while dirty. Overwrite with current buffer? (y/n)"
+                ))
+            }
             PendingConfirmationAction::AiChatInstall => {
                 Some("OpenCode CLI not found — install automatically? (y/n)".to_string())
             }
@@ -75,6 +85,31 @@ impl AppShell {
         }
         if let Err(err) = self.app_state.set_command_palette_query(&prompt) {
             eprintln!("[AppShell] dirty close confirmation prompt failed: {err}");
+            self.pending_confirmation = None;
+            let _ = self.app_state.close_command_palette();
+            let _ = self.app_state.apply_mode_event(ModeEvent::ExitFocus);
+            let _ = self.focus_manager.set(FocusTarget::CenterEditor);
+            return false;
+        }
+        true
+    }
+
+    pub(in crate::app::event_loop) fn begin_external_overwrite_confirmation(
+        &mut self,
+        path: PathBuf,
+    ) -> bool {
+        self.pending_confirmation = Some(PendingConfirmation {
+            action: PendingConfirmationAction::ExternalOverwrite { path },
+            return_focus: FocusTarget::CenterEditor,
+        });
+        let prompt = self.pending_confirmation_prompt().unwrap_or_default();
+        // Reuse the same confirmation overlay style as Explorer delete.
+        if !self.open_prompt_overlay(CommandPaletteMode::ExplorerDeleteConfirm) {
+            self.pending_confirmation = None;
+            return false;
+        }
+        if let Err(err) = self.app_state.set_command_palette_query(&prompt) {
+            eprintln!("[AppShell] external overwrite prompt failed: {err}");
             self.pending_confirmation = None;
             let _ = self.app_state.close_command_palette();
             let _ = self.app_state.apply_mode_event(ModeEvent::ExitFocus);
@@ -456,6 +491,41 @@ impl AppShell {
                     }
                 }
                 changed | self.close_current_buffer_now()
+            }
+            PendingConfirmationAction::ExternalOverwrite { path } => {
+                let active_matches = self
+                    .app_state
+                    .active_file()
+                    .is_some_and(|active| {
+                        if active == path.as_path() {
+                            return true;
+                        }
+                        match (active.canonicalize().ok(), path.canonicalize().ok()) {
+                            (Some(active_canon), Some(target_canon)) => active_canon == target_canon,
+                            _ => false,
+                        }
+                    });
+                if !active_matches {
+                    return changed;
+                }
+                if confirmed {
+                    changed |= self.handle_command(Command::SaveFile);
+                } else {
+                    match self.app_state.reload_active_file_from_disk_discarding_local() {
+                        Ok(_) => {
+                            self.invalidate_highlights_and_parse_active_buffer();
+                            self.force_flush_lsp_did_change_for_active_file();
+                            changed = true;
+                        }
+                        Err(err) => {
+                            eprintln!(
+                                "[AppShell] reload-after-external-conflict failed for {}: {err}",
+                                path.display()
+                            );
+                        }
+                    }
+                }
+                changed
             }
             PendingConfirmationAction::AiChatInstall => {
                 if !confirmed {

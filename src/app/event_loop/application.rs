@@ -456,38 +456,15 @@ impl ApplicationHandler<AppEvent> for AppShell {
 
 impl AppShell {
     fn tick_smooth_scroll_animation(&mut self) -> bool {
-        let now = Instant::now();
-        let dt = now
-            .saturating_duration_since(self.last_scroll_animation_tick)
-            .as_secs_f32();
-        self.last_scroll_animation_tick = now;
-
+        // Global kill-switch: disable smooth scroll and always snap to target.
+        self.last_scroll_animation_tick = Instant::now();
         let target = self.app_state.target_scroll_y;
         let current = self.app_state.current_scroll_y;
-        let epsilon = self.ui_config.editor.smooth_scroll_snap_epsilon;
-        let delta = target - current;
-        if delta.abs() <= epsilon {
-            if delta != 0.0 {
-                self.app_state.current_scroll_y = target;
-                self.editor_needs_layout = true;
-            }
-            return false;
-        }
-
-        if !self.ui_config.editor.smooth_scroll_enabled {
+        if (target - current).abs() > f32::EPSILON {
             self.app_state.current_scroll_y = target;
             self.editor_needs_layout = true;
-            return false;
         }
-
-        let rate = self.ui_config.editor.smooth_scroll_lerp_rate;
-        let alpha = (1.0 - (-rate * dt.max(0.0)).exp()).clamp(0.0, 1.0);
-        self.app_state.current_scroll_y = current + delta * alpha;
-        if (target - self.app_state.current_scroll_y).abs() <= epsilon {
-            self.app_state.current_scroll_y = target;
-        }
-        self.editor_needs_layout = true;
-        (target - self.app_state.current_scroll_y).abs() > epsilon
+        false
     }
 
     fn tick_lsp_loading_animation(&mut self) -> bool {
