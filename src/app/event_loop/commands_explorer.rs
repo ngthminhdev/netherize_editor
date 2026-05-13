@@ -236,7 +236,13 @@ impl AppShell {
         match command {
             Command::ReloadWorkspace => Some(self.reload_workspace()),
             Command::OpenFolder => Some(self.open_folder_with_dialog()),
-            Command::OpenRecentProjects => Some(self.open_recent_projects_palette()),
+            Command::OpenRecentProjects => {
+                let mut changed = self.open_recent_projects_palette();
+                if changed {
+                    changed |= self.dismiss_initial_launch_welcome_if_active();
+                }
+                Some(changed)
+            }
             Command::ToggleLeftDock => {
                 let mut changed = self.panel_state.toggle_left();
                 if changed {
@@ -244,6 +250,7 @@ impl AppShell {
                 }
                 let mut focus_changed = false;
                 if self.panel_state.left.visible {
+                    changed |= self.dismiss_initial_launch_welcome_if_active();
                     changed |= self.release_focus_mode_to_editor();
                     focus_changed = self.focus_manager.set(FocusTarget::LeftSidebar);
                     changed |= focus_changed;

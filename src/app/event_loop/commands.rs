@@ -267,13 +267,6 @@ impl AppShell {
             return self.handle_terminal_paste();
         }
 
-        // Bất kỳ action nào trong lúc welcome đang hiện → dismiss về tabnone.
-        if self.should_show_welcome() {
-            if self.app_state.dismiss_initial_launch_welcome() {
-                self.request_redraw();
-            }
-        }
-
         if matches!(command, Command::ToggleMaximizeFocus)
             && self.panel_state.maximized_region.is_some()
             && let Some(changed) = self.handle_terminal_and_focus_command(&command)
@@ -447,6 +440,17 @@ impl AppShell {
                 input: text.to_string(),
             },
         });
+    }
+
+    pub(super) fn dismiss_initial_launch_welcome_if_active(&mut self) -> bool {
+        if !self.app_state.is_initial_launch_welcome() {
+            return false;
+        }
+        let changed = self.app_state.dismiss_initial_launch_welcome();
+        if changed {
+            self.request_redraw();
+        }
+        changed
     }
 
     pub(super) fn dismiss_lsp_guide(&mut self) {

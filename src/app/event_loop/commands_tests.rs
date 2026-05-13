@@ -697,6 +697,25 @@ fn welcome_recent_projects_can_navigate_without_opening_palette() {
 }
 
 #[test]
+fn welcome_recent_projects_navigation_is_limited_to_visible_rows() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!(
+        "netherize_welcome_recent_limit_{}",
+        std::process::id()
+    ));
+    shell.persistent_state.recent_projects = (0..6)
+        .map(|idx| root.join(format!("project_{idx}")))
+        .collect();
+
+    for _ in 0..5 {
+        assert!(shell.handle_command(Command::OverlaySelectNext));
+    }
+
+    assert!(!shell.app_state.is_command_palette_visible());
+    assert_eq!(shell.app_state.command_palette_selected_index(), 0);
+}
+
+#[test]
 fn colon_help_vim_command_opens_help_buffer() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
 
@@ -1268,6 +1287,60 @@ fn welcome_hides_while_command_palette_is_visible() {
     assert!(shell.should_show_welcome());
     assert!(shell.handle_command(Command::OpenCommandPalette));
     assert!(!shell.should_show_welcome());
+}
+
+#[test]
+fn welcome_stays_visible_for_regular_editor_commands() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+    assert!(shell.should_show_welcome());
+    let _ = shell.handle_command(Command::MoveDown);
+    assert!(shell.should_show_welcome());
+}
+
+#[test]
+fn welcome_hides_when_opening_explorer_or_terminal_surfaces() {
+    let mut explorer_shell = AppShell::new_for_tests().expect("create app shell");
+    assert!(explorer_shell.should_show_welcome());
+    assert!(explorer_shell.handle_command(Command::FocusExplorer));
+    assert!(!explorer_shell.should_show_welcome());
+
+    let mut terminal_shell = AppShell::new_for_tests().expect("create app shell");
+    assert!(terminal_shell.should_show_welcome());
+    assert!(terminal_shell.handle_command(Command::FocusTerminal));
+    assert!(!terminal_shell.should_show_welcome());
+
+    let mut bottom_dock_shell = AppShell::new_for_tests().expect("create app shell");
+    assert!(bottom_dock_shell.should_show_welcome());
+    assert!(bottom_dock_shell.handle_command(Command::ToggleBottomDock));
+    assert!(!bottom_dock_shell.should_show_welcome());
+}
+
+#[test]
+fn welcome_hides_when_opening_palette_surfaces() {
+    let mut vim_shell = AppShell::new_for_tests().expect("create app shell");
+    assert!(vim_shell.should_show_welcome());
+    assert!(vim_shell.handle_command(Command::OpenVimCommand));
+    assert!(!vim_shell.app_state.is_initial_launch_welcome());
+
+    let root = std::env::temp_dir().join(format!(
+        "netherize_welcome_file_picker_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("create workspace");
+
+    let mut picker_shell = AppShell::new_for_tests().expect("create app shell");
+    picker_shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    let _ = picker_shell.app_state.set_initial_launch_welcome(true);
+
+    assert!(picker_shell.should_show_welcome());
+    assert!(picker_shell.handle_command(Command::OpenFilePicker));
+    assert!(!picker_shell.app_state.is_initial_launch_welcome());
+
+    let _ = std::fs::remove_dir_all(root);
 }
 
 // ── Resize mode tests ─────────────────────────────────────────────────────────

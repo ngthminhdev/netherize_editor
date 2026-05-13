@@ -28,7 +28,9 @@ impl AppShell {
                         | Command::OpenHelp
                 );
                 let report = dispatch_command(&mut self.app_state, command.clone());
+                let mut request_redraw = report.request_redraw;
                 if report.success {
+                    request_redraw |= self.dismiss_initial_launch_welcome_if_active();
                     if opens_center_buffer {
                         self.editor_needs_layout = true;
                         self.editor_caret_needs_layout = false;
@@ -66,7 +68,7 @@ impl AppShell {
                         self.submit_lsp_document_symbols();
                     }
                 }
-                Some(report.request_redraw)
+                Some(request_redraw)
             }
             Command::OverlaySelectNext
             | Command::OverlaySelectPrev

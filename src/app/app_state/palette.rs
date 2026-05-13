@@ -1,6 +1,8 @@
 use super::overlays::path_matches;
 use super::*;
 
+const WELCOME_RECENT_PROJECT_LIMIT: usize = 5;
+
 impl AppState {
     pub fn open_command_palette_mode(&mut self, mode: CommandPaletteMode) -> Result<usize, String> {
         let workspace = self.workspace_model.as_ref();
@@ -103,6 +105,7 @@ impl AppState {
         use crate::app::command_palette::CommandPaletteItem;
         let items: Vec<_> = recent
             .iter()
+            .take(WELCOME_RECENT_PROJECT_LIMIT)
             .map(|path| CommandPaletteItem::recent_project(path))
             .collect();
         self.command_palette
