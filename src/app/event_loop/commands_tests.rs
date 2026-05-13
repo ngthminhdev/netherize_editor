@@ -773,6 +773,40 @@ fn file_picker_confirm_scrolls_explorer_to_opened_file() {
 }
 
 #[test]
+fn file_picker_confirm_submits_git_baseline_refresh_for_opened_file() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!(
+        "netherize_picker_git_baseline_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("create workspace");
+    let target = root.join("changed.rs");
+    std::fs::write(&target, "fn changed() {}\n").expect("write file");
+
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    let revision_before = shell.git_baseline_revision;
+
+    assert!(shell.handle_command(Command::OpenFileFinder));
+    assert!(shell.handle_command(Command::FilePickerAppendQuery("changed".to_string())));
+    assert!(shell.app_state.set_command_palette_results(
+        CommandPaletteMode::FilePicker,
+        "changed",
+        vec![crate::app::command_palette::CommandPaletteItem::file_match(
+            "changed.rs".to_string(),
+            target,
+        )],
+    ));
+    assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+
+    assert!(shell.git_baseline_revision > revision_before);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn focus_markdown_preview_opens_preview_tab_and_focuses_sidebar() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     shell.panel_state.right.visible = false;

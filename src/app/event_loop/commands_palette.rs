@@ -426,6 +426,9 @@ impl AppShell {
                     }
 
                     self.submit_lsp_did_open_for_active_file();
+                    if !is_open_file {
+                        self.submit_active_buffer_git_baseline_refresh();
+                    }
                     let _ = self.sync_focus_mode_for_active_buffer();
 
                     if let Some(path) = file_after.as_ref() {

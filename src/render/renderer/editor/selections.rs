@@ -30,6 +30,9 @@ use crate::text::text_system::StyledTextSpan;
 const DIAGNOSTIC_SEVERITY_ERROR: u32 = 1;
 const DIAGNOSTIC_SEVERITY_WARNING: u32 = 2;
 const GUTTER_BG_RIGHT_TRIM: f32 = 10.0;
+const GIT_GUTTER_MARKER_LEFT_INSET: f32 = -10.0;
+const GIT_GUTTER_MARKER_WIDTH: f32 = 6.0;
+const GIT_GUTTER_DELETED_MARKER_HEIGHT: f32 = 2.0;
 
 fn leading_indent_info(app_state: &AppState, line_idx: usize, tab_width: usize) -> (usize, bool) {
     let text = app_state.line_string(line_idx);
@@ -605,6 +608,7 @@ impl Renderer {
 
         let mut gutter_glyphs: Vec<GlyphInstance> = Vec::new();
         let mut quads: Vec<RegionDrawInstance> = Vec::new();
+        let git_line_statuses = app_state.active_buffer_git_line_statuses();
 
         // Clear gutter background to avoid stale pixels from previous frame.
         quads.push(RegionDrawInstance::new(
@@ -686,41 +690,83 @@ impl Renderer {
                 ));
             }
 
-            if let Some(status) = app_state
-                .active_buffer_git_line_statuses()
-                .and_then(|statuses| statuses.get(&abs_line))
+            if let Some(statuses) = git_line_statuses
+                && let Some(status) = statuses.get(&abs_line)
             {
-                let marker_height = run.line_height.max(1.0);
-                // Clip to viewport bounds
-                let clipped_top = line_top_y.max(viewport_top);
-                let clipped_bottom = (line_top_y + marker_height).min(viewport_bottom);
+                let end_trim = ((run.line_height - gutter_font_size.min(run.line_height)).max(0.0)
+                    * 0.5)
+                    .max(0.0);
+                let marker_x = gutter_x + GIT_GUTTER_MARKER_LEFT_INSET;
+
+                let is_vertical_marker = |status: &crate::app::app_state::GitLineStatus| {
+                    matches!(
+                        status,
+                        crate::app::app_state::GitLineStatus::Added
+                            | crate::app::app_state::GitLineStatus::Modified
+                    )
+                };
+
+                let (marker_top, marker_bottom) = if is_vertical_marker(status) {
+                    let connects_above = abs_line
+                        .checked_sub(1)
+                        .and_then(|line| statuses.get(&line))
+                        .is_some_and(is_vertical_marker);
+                    let connects_below = statuses
+                        .get(&(abs_line + 1))
+                        .is_some_and(is_vertical_marker);
+
+                    (
+                        line_top_y + if connects_above { 0.0 } else { end_trim },
+                        line_top_y + run.line_height - if connects_below { 0.0 } else { end_trim },
+                    )
+                } else {
+                    (
+                        line_top_y + end_trim,
+                        line_top_y + run.line_height - end_trim,
+                    )
+                };
+
+                let clipped_top = marker_top.max(viewport_top);
+                let clipped_bottom = marker_bottom.min(viewport_bottom);
                 let clipped_height = (clipped_bottom - clipped_top).max(0.0);
 
                 if clipped_height > 0.0 {
                     let (rect, color) = match status {
                         crate::app::app_state::GitLineStatus::Added => (
-                            [gutter_x + 2.0, clipped_top, 3.0, clipped_height],
+                            [
+                                marker_x,
+                                clipped_top,
+                                GIT_GUTTER_MARKER_WIDTH,
+                                clipped_height,
+                            ],
                             self.theme.git.added_gutter.as_f32(),
                         ),
                         crate::app::app_state::GitLineStatus::Modified => (
-                            [gutter_x + 2.0, clipped_top, 3.0, clipped_height],
+                            [
+                                marker_x,
+                                clipped_top,
+                                GIT_GUTTER_MARKER_WIDTH,
+                                clipped_height,
+                            ],
                             self.theme.git.modified_gutter.as_f32(),
                         ),
                         crate::app::app_state::GitLineStatus::DeletedAbove => (
                             [
-                                gutter_x + 1.0,
+                                marker_x,
                                 clipped_top,
-                                4.0,
-                                2.0_f32.min(clipped_height),
+                                GIT_GUTTER_MARKER_WIDTH,
+                                GIT_GUTTER_DELETED_MARKER_HEIGHT.min(clipped_height),
                             ],
                             self.theme.git.deleted_gutter.as_f32(),
                         ),
                         crate::app::app_state::GitLineStatus::DeletedBelow => (
                             [
-                                gutter_x + 1.0,
-                                (clipped_top + (clipped_height - 2.0).max(0.0)).max(clipped_top),
-                                4.0,
-                                2.0_f32.min(clipped_height),
+                                marker_x,
+                                (clipped_top
+                                    + (clipped_height - GIT_GUTTER_DELETED_MARKER_HEIGHT).max(0.0))
+                                .max(clipped_top),
+                                GIT_GUTTER_MARKER_WIDTH,
+                                GIT_GUTTER_DELETED_MARKER_HEIGHT.min(clipped_height),
                             ],
                             self.theme.git.deleted_gutter.as_f32(),
                         ),
