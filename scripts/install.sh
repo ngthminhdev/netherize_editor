@@ -2,6 +2,7 @@
 set -euo pipefail
 
 BINARY="netherize_editor"
+CLI_ALIAS="netherize"
 INSTALL_DIR="${HOME}/.local/bin"
 CONFIG_DIR="${HOME}/.config/netherize"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -14,6 +15,7 @@ echo "Installing binary → $INSTALL_DIR/$BINARY"
 mkdir -p "$INSTALL_DIR"
 cp "target/release/$BINARY" "$INSTALL_DIR/$BINARY"
 chmod +x "$INSTALL_DIR/$BINARY"
+ln -sf "$INSTALL_DIR/$BINARY" "$INSTALL_DIR/$CLI_ALIAS"
 
 echo "Syncing config/themes → $CONFIG_DIR/themes"
 mkdir -p "$CONFIG_DIR/themes"
@@ -27,4 +29,4 @@ if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
 fi
 
 echo ""
-echo "Done. Run: $BINARY"
+echo "Done. Run: $CLI_ALIAS <file>"

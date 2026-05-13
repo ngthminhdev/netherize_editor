@@ -77,6 +77,43 @@ use helpers::{
 };
 use welcome::welcome_screen_content;
 
+/// Files and workspace supplied by the OS or CLI at process startup.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StartupConfig {
+    pub workspace_dir: Option<PathBuf>,
+    pub initial_files: Vec<PathBuf>,
+}
+
+impl StartupConfig {
+    pub fn from_args<I>(args: I) -> Self
+    where
+        I: IntoIterator<Item = String>,
+    {
+        let mut config = Self::default();
+
+        for arg in args {
+            if arg.starts_with("-psn_") {
+                continue;
+            }
+
+            let path = PathBuf::from(arg);
+            if !path.exists() {
+                continue;
+            }
+
+            if path.is_dir() {
+                if config.workspace_dir.is_none() {
+                    config.workspace_dir = path.canonicalize().ok().or(Some(path));
+                }
+            } else if path.is_file() {
+                config.initial_files.push(path);
+            }
+        }
+
+        config
+    }
+}
+
 /// Unified application shell: the single `ApplicationHandler` for the main window.
 ///
 /// Owns and wires together every subsystem:
@@ -239,6 +276,8 @@ pub struct AppShell {
     runtime_versions: RuntimeVersionInfo,
     /// Scheduled instant to auto-retry LSP server start after user accepted an install guide.
     lsp_retry_at: Option<Instant>,
+    pending_startup_files: Vec<PathBuf>,
+    drag_hover_path: Option<PathBuf>,
 }
 
 const DEBUG_UI_ENABLED: bool = false;
@@ -366,6 +405,7 @@ pub enum AppEvent {
     TerminalOutputReady,
     AiInlineReady,
     WorkerMessageReady,
+    OpenFile(PathBuf),
 }
 
 /// Trạng thái của một terminal tab.
@@ -418,12 +458,12 @@ impl TerminalTab {
     }
 }
 
-pub fn run() -> Result<(), winit::error::EventLoopError> {
+pub fn run(startup_config: StartupConfig) -> Result<(), winit::error::EventLoopError> {
     let event_loop = EventLoop::<AppEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let event_proxy = event_loop.create_proxy();
 
-    let mut app = match AppShell::new(event_proxy) {
+    let mut app = match AppShell::new(event_proxy, startup_config) {
         Ok(app) => app,
         Err(err) => {
             eprintln!("[fatal] AppShell::new failed: {err}");
@@ -432,6 +472,64 @@ pub fn run() -> Result<(), winit::error::EventLoopError> {
     };
 
     event_loop.run_app(&mut app)
+}
+
+#[cfg(test)]
+mod startup_config_tests {
+    use super::StartupConfig;
+    use std::{fs, path::PathBuf};
+
+    fn temp_root(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "netherize_startup_config_{}_{}",
+            std::process::id(),
+            name
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("create temp root");
+        root
+    }
+
+    #[test]
+    fn startup_config_parses_no_args() {
+        let config = StartupConfig::from_args(Vec::<String>::new());
+
+        assert_eq!(config, StartupConfig::default());
+    }
+
+    #[test]
+    fn startup_config_parses_one_file() {
+        let root = temp_root("one_file");
+        let file = root.join("main.rs");
+        fs::write(&file, "fn main() {}\n").expect("write file");
+
+        let config = StartupConfig::from_args(vec![file.display().to_string()]);
+
+        assert_eq!(config.workspace_dir, None);
+        assert_eq!(config.initial_files, vec![file]);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn startup_config_parses_workspace_multiple_files_and_ignores_noise() {
+        let root = temp_root("workspace_files");
+        let first = root.join("a.rs");
+        let second = root.join("b.rs");
+        fs::write(&first, "a\n").expect("write first file");
+        fs::write(&second, "b\n").expect("write second file");
+
+        let config = StartupConfig::from_args(vec![
+            "-psn_0_12345".to_string(),
+            root.display().to_string(),
+            root.join("missing.rs").display().to_string(),
+            first.display().to_string(),
+            second.display().to_string(),
+        ]);
+
+        assert_eq!(config.workspace_dir, root.canonicalize().ok());
+        assert_eq!(config.initial_files, vec![first, second]);
+        let _ = fs::remove_dir_all(root);
+    }
 }
 
 impl AppShell {

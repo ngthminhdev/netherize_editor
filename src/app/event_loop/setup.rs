@@ -5,35 +5,40 @@ fn is_ai_inline_word_char(ch: char) -> bool {
 }
 
 impl AppShell {
-    pub fn new(event_proxy: EventLoopProxy<AppEvent>) -> Result<Self, String> {
+    pub fn new(
+        event_proxy: EventLoopProxy<AppEvent>,
+        startup_config: StartupConfig,
+    ) -> Result<Self, String> {
         let (scheduler, rx) = AsyncScheduler::new(event_proxy)?;
-        Self::new_with_scheduler(scheduler, rx)
+        Self::new_with_scheduler(scheduler, rx, startup_config)
     }
 
     #[cfg(test)]
     pub fn new_for_tests() -> Result<Self, String> {
+        Self::new_for_tests_with_startup_config(StartupConfig::default())
+    }
+
+    #[cfg(test)]
+    pub fn new_for_tests_with_startup_config(
+        startup_config: StartupConfig,
+    ) -> Result<Self, String> {
         let (scheduler, rx) = AsyncScheduler::new_for_tests()?;
-        Self::new_with_scheduler(scheduler, rx)
+        Self::new_with_scheduler(scheduler, rx, startup_config)
     }
 
     fn new_with_scheduler(
         scheduler: AsyncScheduler,
         rx: std::sync::mpsc::Receiver<crate::async_runtime::message::WorkerMessage>,
+        startup_config: StartupConfig,
     ) -> Result<Self, String> {
         let save_path = PathBuf::new();
         let cwd = std::env::current_dir().unwrap_or_default();
         let now = Instant::now();
         let bridge = AppAsyncBridge::new(rx);
-
-        // ── Parse CLI args ────────────────────────────────────────────────
-        let cli_args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
-
-        // First directory arg becomes workspace root (like `zed .` / `code .`).
-        let cli_workspace_dir = cli_args
-            .iter()
-            .find_map(|p| p.canonicalize().ok().filter(|cp| cp.is_dir()));
-
-        let cli_files: Vec<PathBuf> = cli_args.iter().filter(|p| p.is_file()).cloned().collect();
+        let StartupConfig {
+            workspace_dir: cli_workspace_dir,
+            initial_files: pending_startup_files,
+        } = startup_config;
 
         // Load persisted state and restore most recent project if it still exists.
         let mut persistent_state = AppPersistentState::load();
@@ -71,14 +76,6 @@ impl AppShell {
             eprintln!("[AppShell] cwd workspace attach skipped: {err}");
         }
 
-        for cli_path in &cli_files {
-            if let Err(err) = app_state.open_file(cli_path.clone()) {
-                eprintln!(
-                    "[AppShell] CLI file open skipped ({}): {err}",
-                    cli_path.display()
-                );
-            }
-        }
         // Welcome visibility is controlled by AppState's one-shot initial launch
         // flag, not by workspace attachment or later buffer-list emptiness.
 
@@ -241,6 +238,8 @@ impl AppShell {
             selected_python_env: None,
             runtime_versions: RuntimeVersionInfo::default(),
             lsp_retry_at: None,
+            pending_startup_files,
+            drag_hover_path: None,
         })
     }
 
@@ -1678,5 +1677,65 @@ mod tests {
         assert!(shell.syntax_engine.is_some());
 
         let _ = std::fs::remove_file(file_path);
+    }
+
+    #[test]
+    fn startup_files_are_queued_until_drained_through_command_path() {
+        let file_path = std::env::temp_dir().join(format!(
+            "netherize_startup_open_{}.rs",
+            std::process::id()
+        ));
+        std::fs::write(&file_path, "fn main() {}\n").expect("write startup file");
+
+        let mut shell = AppShell::new_for_tests_with_startup_config(StartupConfig {
+            workspace_dir: None,
+            initial_files: vec![file_path.clone()],
+        })
+        .expect("create app shell");
+
+        assert!(shell.app_state.active_file().is_none());
+        assert_eq!(shell.pending_startup_files, vec![file_path.clone()]);
+
+        assert!(shell.drain_pending_startup_files());
+        assert_eq!(shell.pending_startup_files, Vec::<PathBuf>::new());
+        assert_eq!(
+            shell.app_state.active_file().map(PathBuf::from),
+            file_path.canonicalize().ok()
+        );
+
+        let _ = std::fs::remove_file(file_path);
+    }
+
+    #[test]
+    fn app_event_open_file_uses_external_open_command_path() {
+        let file_path = std::env::temp_dir().join(format!(
+            "netherize_app_event_open_{}.rs",
+            std::process::id()
+        ));
+        std::fs::write(&file_path, "fn main() {}\n").expect("write app event file");
+
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        shell.handle_app_event(AppEvent::OpenFile(file_path.clone()));
+
+        assert_eq!(
+            shell.app_state.active_file().map(PathBuf::from),
+            file_path.canonicalize().ok()
+        );
+
+        let _ = std::fs::remove_file(file_path);
+    }
+
+
+
+    #[test]
+    fn drag_hover_state_toggles() {
+        let file_path = PathBuf::from("/tmp/netherize-hover.rs");
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+        assert!(shell.set_drag_hover_path(file_path.clone()));
+        assert_eq!(shell.drag_hover_path, Some(file_path));
+        assert!(shell.clear_drag_hover_path());
+        assert_eq!(shell.drag_hover_path, None);
+        assert!(!shell.clear_drag_hover_path());
     }
 }

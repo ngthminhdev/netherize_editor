@@ -5,6 +5,7 @@ use winit::{
 };
 
 const FOCUS_RING_THICKNESS: f32 = 2.0;
+const DROP_HOVER_RING_THICKNESS: f32 = 3.0;
 
 fn statusbar_source_path_label(
     active_file: Option<&Path>,
@@ -196,6 +197,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
         self.update_runtime_scaling_for_window(scale_factor);
 
         self.startup_subsystems();
+        self.drain_pending_startup_files();
         self.update_window_title();
         self.request_redraw();
     }
@@ -245,6 +247,23 @@ impl ApplicationHandler<AppEvent> for AppShell {
             }
             WindowEvent::Focused(focused) => {
                 self.input_handler.on_focus_changed(focused);
+            }
+            WindowEvent::DroppedFile(path) => {
+                let hover_changed = self.clear_drag_hover_path();
+                let opened = self.handle_external_open_file(path);
+                if hover_changed && !opened {
+                    self.request_redraw();
+                }
+            }
+            WindowEvent::HoveredFile(path) => {
+                if self.set_drag_hover_path(path) {
+                    self.request_redraw();
+                }
+            }
+            WindowEvent::HoveredFileCancelled => {
+                if self.clear_drag_hover_path() {
+                    self.request_redraw();
+                }
             }
             WindowEvent::ModifiersChanged(mods) => {
                 self.input_handler.update_modifiers(mods);
@@ -432,6 +451,12 @@ impl ApplicationHandler<AppEvent> for AppShell {
     }
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AppEvent) {
+        self.handle_app_event(event);
+    }
+}
+
+impl AppShell {
+    pub(super) fn handle_app_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::TerminalOutputReady => {
                 if self.pump_bridge() {
@@ -450,11 +475,43 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     self.request_redraw();
                 }
             }
+            AppEvent::OpenFile(path) => {
+                self.handle_external_open_file(path);
+            }
         }
     }
-}
 
-impl AppShell {
+    pub(super) fn handle_external_open_file(&mut self, path: PathBuf) -> bool {
+        let changed = self.handle_command(Command::OpenFile(path));
+        if changed {
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+            self.request_redraw();
+        }
+        changed
+    }
+
+    pub(super) fn drain_pending_startup_files(&mut self) -> bool {
+        let pending_files = std::mem::take(&mut self.pending_startup_files);
+        let mut changed = false;
+        for path in pending_files {
+            changed |= self.handle_external_open_file(path);
+        }
+        changed
+    }
+
+    pub(super) fn set_drag_hover_path(&mut self, path: PathBuf) -> bool {
+        if self.drag_hover_path.as_ref() == Some(&path) {
+            return false;
+        }
+        self.drag_hover_path = Some(path);
+        true
+    }
+
+    pub(super) fn clear_drag_hover_path(&mut self) -> bool {
+        self.drag_hover_path.take().is_some()
+    }
+
     fn tick_smooth_scroll_animation(&mut self) -> bool {
         // Global kill-switch: disable smooth scroll and always snap to target.
         self.last_scroll_animation_tick = Instant::now();
@@ -1467,6 +1524,22 @@ impl AppShell {
             renderer.clear_toast_popup();
         }
 
+        if self.drag_hover_path.is_some() {
+            let bounds = center_bounds.unwrap_or([
+                0.0,
+                0.0,
+                self.window_size.width as f32,
+                self.window_size.height as f32,
+            ]);
+            let mut color = self.theme.ui.accent.as_f32();
+            color[3] = color[3].max(0.92);
+            region_instances.extend(border_ring_instances(
+                bounds,
+                color,
+                DROP_HOVER_RING_THICKNESS,
+            ));
+        }
+
         // ── Tối ưu 3: Caret Blink ────────────────────────────────────────────
         // Nếu chỉ blink dirty (không có layout rebuild nào), flip caret visibility
         // mà không trigger bất kỳ text pipeline hay glyph rebuild nào.
@@ -1566,10 +1639,32 @@ fn focus_ring_instances(
     instances
 }
 
+fn border_ring_instances(
+    bounds: [f32; 4],
+    mut color: [f32; 4],
+    thickness: f32,
+) -> Vec<RegionDrawInstance> {
+    let [x, y, w, h] = bounds;
+    if w <= 0.0 || h <= 0.0 {
+        return Vec::new();
+    }
+
+    let t = thickness.max(1.0).min(w * 0.5).min(h * 0.5);
+    color[3] = color[3].max(0.9);
+
+    vec![
+        RegionDrawInstance::new([x, y, w, t], color),
+        RegionDrawInstance::new([x, y + h - t, w, t], color),
+        RegionDrawInstance::new([x, y + t, t, (h - t * 2.0).max(0.0)], color),
+        RegionDrawInstance::new([x + w - t, y + t, t, (h - t * 2.0).max(0.0)], color),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        breadcrumb_segment_text, build_editor_breadcrumb_segments, focus_ring_instances,
+        border_ring_instances, breadcrumb_segment_text, build_editor_breadcrumb_segments,
+        focus_ring_instances,
         focus_target_region_id, statusbar_source_path_label,
     };
     use crate::async_runtime::message::{
@@ -1603,6 +1698,13 @@ mod tests {
             2,
             "panel regions should still render both outline and fill"
         );
+    }
+
+    #[test]
+    fn border_ring_uses_four_thin_edges() {
+        let instances = border_ring_instances([0.0, 0.0, 80.0, 40.0], [0.2, 0.6, 1.0, 1.0], 3.0);
+
+        assert_eq!(instances.len(), 4);
     }
 
     #[test]
