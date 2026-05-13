@@ -1,3 +1,5 @@
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ngthminhdev/netherize_editor)
+
 # Netherize Editor
 
 A GPU-accelerated terminal/text editor written in Rust. Currently in active development (Module 12 / Phase 2–3).
