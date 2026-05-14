@@ -1,10 +1,29 @@
 use super::*;
+#[cfg(target_os = "macos")]
+use winit::platform::macos::WindowAttributesExtMacOS;
 use winit::{
     event::ElementState,
     keyboard::{Key, NamedKey},
 };
 
 const FOCUS_RING_THICKNESS: f32 = 2.0;
+
+#[cfg(target_os = "macos")]
+fn apply_platform_window_chrome(
+    attrs: winit::window::WindowAttributes,
+) -> winit::window::WindowAttributes {
+    attrs
+        .with_titlebar_transparent(true)
+        .with_title_hidden(true)
+        .with_fullsize_content_view(true)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn apply_platform_window_chrome(
+    attrs: winit::window::WindowAttributes,
+) -> winit::window::WindowAttributes {
+    attrs
+}
 
 fn statusbar_source_path_label(
     active_file: Option<&Path>,
@@ -164,6 +183,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 attrs.with_maximized(true)
             }
         };
+        attrs = apply_platform_window_chrome(attrs);
 
         let window = match event_loop.create_window(attrs) {
             Ok(window) => Arc::new(window),

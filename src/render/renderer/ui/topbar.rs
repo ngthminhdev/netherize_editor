@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use cosmic_text::Metrics;
 
 use crate::render::{
     region_pipeline::RegionDrawInstance,
@@ -9,28 +9,6 @@ use crate::render::{
 use super::super::helpers::{
     estimate_monospace_width, layout_panel_text, layout_panel_text_bold, rect_to_scissor,
 };
-
-struct AppLogo {
-    width: u32,
-    height: u32,
-    rgba: Vec<u8>,
-}
-
-fn bundled_app_logo() -> Option<&'static AppLogo> {
-    static LOGO: OnceLock<Option<AppLogo>> = OnceLock::new();
-    LOGO.get_or_init(|| {
-        let bytes = include_bytes!("../../../../assets/app_logo.png");
-        let decoded = image::load_from_memory(bytes).ok()?;
-        let rgba = decoded.to_rgba8();
-        let (width, height) = (rgba.width(), rgba.height());
-        Some(AppLogo {
-            width,
-            height,
-            rgba: rgba.into_raw(),
-        })
-    })
-    .as_ref()
-}
 
 fn inset_scissor_rect(bounds: [f32; 4], inset_x: f32, inset_y: f32) -> Option<[u32; 4]> {
     let clip_x = bounds[0] + inset_x;
@@ -44,15 +22,8 @@ fn topbar_tab_text_scissor(bounds: [f32; 4]) -> Option<[u32; 4]> {
     inset_scissor_rect(bounds, 4.0, 2.0)
 }
 
-fn with_alpha(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
-    color[3] = alpha;
-    color
-}
-
-const TOPBAR_PADDING_TOP: f32 = 0.0;
-const TOPBAR_PADDING_BOTTOM: f32 = 0.0;
-const TOPBAR_LOGO_AREA_WIDTH: f32 = 44.0;
-const TOPBAR_TAB_PADDING_X: f32 = 14.0;
+const TOPBAR_TRAFFIC_LIGHT_SPACE_MACOS: f32 = 150.0;
+const TOPBAR_TAB_PADDING_X: f32 = 12.0;
 const TOPBAR_TAB_SEPARATOR_WIDTH: f32 = 1.0;
 const TOPBAR_ACTIVE_BORDER_HEIGHT: f32 = 2.0;
 const TOPBAR_DIRTY_DOT: &str = "●";
@@ -91,10 +62,12 @@ impl Renderer {
         let line_h = self.statusbar_line_height;
         let font_size = self.statusbar_font_size;
         let width = (bounds[2] - self.topbar_padding_x * 2.0).max(1.0);
-        let content_top = TOPBAR_PADDING_TOP.min((bounds[3] * 0.3).max(0.0));
-        let content_bottom = TOPBAR_PADDING_BOTTOM.min((bounds[3] * 0.45).max(0.0));
+        let content_top = 0.0;
+        let content_bottom = 0.0;
         let content_y = bounds[1] + content_top;
         let content_h = (bounds[3] - content_top - content_bottom).max(1.0);
+        self.topbar_text_system
+            .set_metrics(Metrics::new(font_size, line_h));
         self.topbar_text_system.set_size(None, Some(content_h));
         let origin_y = content_y + ((content_h - line_h) * 0.5).max(0.0);
         let active_fg = self.theme.ui.fg.as_f32();
@@ -103,70 +76,22 @@ impl Renderer {
         let dirty_fg = self.theme.ui.warning.as_f32();
         let active_bg = self.theme.editor.bg.as_f32();
         let accent = self.theme.ui.cyan.as_f32();
-        let hover_bg = with_alpha(self.theme.ui.selection_bg.as_f32(), 0.4);
         let border = self.theme.ui.border_color.as_f32();
         let font_family = self.theme.editor.font_family.as_deref();
 
         let mut glyphs = Vec::new();
         let mut text_batches = Vec::new();
         let mut chrome = Vec::new();
-        let logo_bounds = [
-            bounds[0],
-            bounds[1],
-            TOPBAR_LOGO_AREA_WIDTH.min(bounds[2]),
-            bounds[3],
-        ];
-        let mut tab_x = bounds[0] + logo_bounds[2];
         let available_right = bounds[0] + bounds[2];
         let dirty_gap = self.topbar_dirty_gap;
-
-        // Separator between blank logo-area gap and the logo tile / tabs.
-        chrome.push(RegionDrawInstance::new(
-            [
-                logo_bounds[0] + logo_bounds[2] - TOPBAR_TAB_SEPARATOR_WIDTH,
-                logo_bounds[1],
-                TOPBAR_TAB_SEPARATOR_WIDTH.min(logo_bounds[2]),
-                logo_bounds[3],
-            ],
-            border,
-        ));
-
-        // Logo tile: full-height square placed right at tab_x.
-        let logo_tile_size = bounds[3];
-        if let Some(logo) = bundled_app_logo() {
-            self.topbar_logo_image_pipeline.upload_rgba(
-                &self.device,
-                &self.queue,
-                &logo.rgba,
-                logo.width,
-                logo.height,
-                [tab_x, bounds[1], logo_tile_size, logo_tile_size],
-                [
-                    self.surface_state.config.width,
-                    self.surface_state.config.height,
-                ],
-            );
-            self.topbar_logo_scissor =
-                rect_to_scissor([tab_x, bounds[1], logo_tile_size, bounds[3]]);
+        let topbar_start_x = if cfg!(target_os = "macos") {
+            TOPBAR_TRAFFIC_LIGHT_SPACE_MACOS.min(bounds[2])
         } else {
-            self.topbar_logo_image_pipeline.clear();
-            self.topbar_logo_scissor = None;
-        }
-
-        // Separator after logo tile, before first file tab.
-        chrome.push(RegionDrawInstance::new(
-            [
-                tab_x + logo_tile_size,
-                bounds[1],
-                TOPBAR_TAB_SEPARATOR_WIDTH,
-                bounds[3],
-            ],
-            border,
-        ));
-
-        tab_x += logo_tile_size + TOPBAR_TAB_SEPARATOR_WIDTH;
-
-        let _ = hover_bg;
+            0.0
+        };
+        let mut tab_x = bounds[0] + topbar_start_x;
+        self.topbar_logo_image_pipeline.clear();
+        self.topbar_logo_scissor = None;
 
         if tabs.is_empty() {
             let start = glyphs.len() as u32;
@@ -180,7 +105,10 @@ impl Renderer {
                 empty_fg,
             ));
             let count = glyphs.len() as u32 - start;
-            if let Some(scissor) = topbar_tab_text_scissor([tab_x, content_y, width, content_h]) {
+            let empty_width = (available_right - tab_x).max(0.0);
+            if let Some(scissor) =
+                topbar_tab_text_scissor([tab_x, content_y, empty_width, content_h])
+            {
                 if count > 0 {
                     text_batches.push(TextScissorBatch {
                         scissor,
@@ -190,6 +118,7 @@ impl Renderer {
             }
         } else {
             for (idx, tab) in tabs.iter().enumerate() {
+                let is_active = active_buffer_index == Some(idx);
                 let label_width = estimate_monospace_width(&tab.label, font_size);
                 let dirty_marker_width = if tab.is_dirty {
                     estimate_monospace_width(TOPBAR_DIRTY_DOT, font_size)
@@ -216,7 +145,6 @@ impl Renderer {
                     break;
                 }
 
-                let is_active = active_buffer_index == Some(idx);
                 if is_active {
                     chrome.push(RegionDrawInstance::new(
                         [tab_x, content_y, tab_width, content_h.max(0.0)],
