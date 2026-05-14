@@ -677,6 +677,51 @@ mod tests {
     }
 
     #[test]
+    fn formatting_result_applies_as_single_undo_redo_transaction() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        let original = "fn main(){\nprintln!(\"hi\");\n}\n";
+        let formatted = "fn main() {\n    println!(\"hi\");\n}\n";
+        let file_path = write_temp_file("format_result.rs", original);
+        shell
+            .app_state
+            .open_file(file_path.clone())
+            .expect("open file");
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 92,
+                revision_id: 1,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::LspFormattingResult {
+                    uri: path_to_lsp_uri(&file_path),
+                    edits: vec![LspTextEdit {
+                        range: LspRange {
+                            start: LspPosition {
+                                line: 0,
+                                character: 0,
+                            },
+                            end: LspPosition {
+                                line: 3,
+                                character: 0,
+                            },
+                        },
+                        new_text: formatted.to_string(),
+                    }],
+                },
+            },
+        );
+
+        assert_eq!(shell.app_state.text_string(), formatted);
+        assert!(shell.handle_command(Command::Undo));
+        assert_eq!(shell.app_state.text_string(), original);
+        assert!(shell.handle_command(Command::Redo));
+        assert_eq!(shell.app_state.text_string(), formatted);
+
+        let _ = fs::remove_file(file_path);
+    }
+
+    #[test]
     fn failed_references_event_clears_loading_buffer() {
         let mut shell = AppShell::new_for_tests().expect("create app shell");
         shell

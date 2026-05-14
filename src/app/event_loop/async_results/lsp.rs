@@ -486,7 +486,7 @@ pub(super) fn handle_lsp_result(
 
             let changed = app
                 .app_state
-                .replace_active_document_text_preserve_cursor(&formatted);
+                .replace_active_document_text_preserve_cursor_with_undo(&formatted);
             if changed {
                 app.editor_needs_layout = true;
                 app.editor_caret_needs_layout = true;
