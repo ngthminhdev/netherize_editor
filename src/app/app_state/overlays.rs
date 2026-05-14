@@ -963,6 +963,7 @@ impl AppState {
         let Some(buffer) = self.buffers.get(index).cloned() else {
             return Err(format!("buffer index {index} out of range"));
         };
+        let active_buffer_changed = self.active_buffer_index != Some(index);
 
         match buffer.content {
             BufferContent::Text(buffer) => {
@@ -1042,6 +1043,9 @@ impl AppState {
             }
         }
 
+        if active_buffer_changed {
+            let _ = self.clear_semantic_symbol_highlights();
+        }
         self.bump_revision();
         Ok(())
     }
@@ -1076,6 +1080,7 @@ impl AppState {
         self.dirty = false;
         self.external_conflict = None;
         self.visual_line_mode = false;
+        let _ = self.clear_semantic_symbol_highlights();
         self.clear_history();
         let _ = self.refresh_active_search_highlights();
     }

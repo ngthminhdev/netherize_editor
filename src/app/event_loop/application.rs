@@ -29,6 +29,23 @@ fn statusbar_source_path_label(
         .unwrap_or_else(|| path.display().to_string())
 }
 
+fn visible_region_bounds(
+    flat_regions: &[crate::workbench::region_model::FlatRegion],
+    id: RegionId,
+) -> Option<[f32; 4]> {
+    flat_regions
+        .iter()
+        .find(|region| region.id == id && region.visible)
+        .map(|region| {
+            [
+                region.bounds.x,
+                region.bounds.y,
+                region.bounds.width,
+                region.bounds.height,
+            ]
+        })
+}
+
 fn symbol_kind_label(kind: &str) -> String {
     match kind {
         "Class" => "class".to_string(),
@@ -1102,17 +1119,13 @@ impl AppShell {
         }
 
         // ── AI Chat text (right sidebar) ──────────────────────────────────
+        let right_sidebar_bounds = visible_region_bounds(&flat_regions, RegionId::RightSidebar);
         let ai_chat_active = self.panel_state.right.visible
+            && right_sidebar_bounds.is_some()
             && self.panel_state.right.active_tab_id() == Some(PanelTabId::AiChat);
         if ai_chat_active {
-            let history_bounds = flat_regions
-                .iter()
-                .find(|r| r.id == RegionId::AiChatHistory && r.visible)
-                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
-            let input_bounds = flat_regions
-                .iter()
-                .find(|r| r.id == RegionId::AiChatInput && r.visible)
-                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
+            let history_bounds = visible_region_bounds(&flat_regions, RegionId::AiChatHistory);
+            let input_bounds = visible_region_bounds(&flat_regions, RegionId::AiChatInput);
 
             if let (Some(hb), Some(ib)) = (history_bounds, input_bounds) {
                 let chat = &self.panel_state.ai_chat;
@@ -1146,13 +1159,10 @@ impl AppShell {
 
         // ── Right-sidebar terminal ────────────────────────────────────────
         let right_terminal_active = self.panel_state.right.visible
+            && right_sidebar_bounds.is_some()
             && self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal);
         if right_terminal_active {
-            let right_bounds = flat_regions
-                .iter()
-                .find(|r| r.id == RegionId::RightSidebar && r.visible)
-                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
-            if let Some(rb) = right_bounds {
+            if let Some(rb) = right_sidebar_bounds {
                 let bounds_changed = self.last_right_terminal_bounds != Some(rb);
                 let grid_changed = self.sync_right_terminal_layout(rb);
                 if (self.right_terminal_needs_layout || bounds_changed || grid_changed)
@@ -1173,14 +1183,10 @@ impl AppShell {
 
         // ── Markdown Preview (right sidebar) ──────────────────────────────
         let md_preview_active = self.panel_state.right.visible
+            && right_sidebar_bounds.is_some()
             && self.panel_state.right.active_tab_id() == Some(PanelTabId::MarkdownPreview);
         if md_preview_active && self.app_state.markdown_preview.visible {
-            let preview_bounds = flat_regions
-                .iter()
-                .find(|r| r.id == RegionId::RightSidebar && r.visible)
-                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height]);
-
-            if let Some(bounds) = preview_bounds {
+            if let Some(bounds) = right_sidebar_bounds {
                 let preview = &self.app_state.markdown_preview;
                 let inner_padding = self.layout_engine.config.inner_padding;
                 if let Some(renderer) = self.renderer.as_mut() {
@@ -1570,13 +1576,16 @@ fn focus_ring_instances(
 mod tests {
     use super::{
         breadcrumb_segment_text, build_editor_breadcrumb_segments, focus_ring_instances,
-        focus_target_region_id, statusbar_source_path_label,
+        focus_target_region_id, statusbar_source_path_label, visible_region_bounds,
     };
     use crate::async_runtime::message::{
         LspDocumentSymbol, LspDocumentSymbolSegment, LspPosition, LspRange,
     };
     use crate::config::theme_config::ThemeConfig;
-    use crate::workbench::{focus_manager::FocusTarget, region_model::RegionId};
+    use crate::workbench::{
+        focus_manager::FocusTarget,
+        region_model::{FlatRegion, RegionBounds, RegionId},
+    };
     use std::path::Path;
 
     #[test]
@@ -1624,6 +1633,28 @@ mod tests {
         assert_eq!(
             statusbar_source_path_label(Some(file), Some(root)),
             "main.rs"
+        );
+    }
+
+    #[test]
+    fn visible_region_bounds_ignores_hidden_regions() {
+        let regions = vec![
+            FlatRegion {
+                id: RegionId::RightSidebar,
+                bounds: RegionBounds::new(10.0, 20.0, 300.0, 400.0),
+                visible: false,
+            },
+            FlatRegion {
+                id: RegionId::Center,
+                bounds: RegionBounds::new(0.0, 0.0, 800.0, 600.0),
+                visible: true,
+            },
+        ];
+
+        assert_eq!(visible_region_bounds(&regions, RegionId::RightSidebar), None);
+        assert_eq!(
+            visible_region_bounds(&regions, RegionId::Center),
+            Some([0.0, 0.0, 800.0, 600.0])
         );
     }
 

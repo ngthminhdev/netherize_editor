@@ -276,6 +276,29 @@ fn toggle_bottom_dock_keeps_editor_focus_when_opening() {
 }
 
 #[test]
+fn ai_chat_toggle_closing_right_dock_returns_focus_to_editor() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert!(!shell.panel_state.right.visible);
+
+    assert!(shell.handle_command(Command::AiChatToggle));
+    assert!(shell.panel_state.right.visible);
+    assert_eq!(
+        shell.panel_state.right.active_tab_id(),
+        Some(PanelTabId::AiChat)
+    );
+    assert_eq!(shell.focus_manager.current(), FocusTarget::RightSidebar);
+
+    assert!(shell.handle_command(Command::AiChatToggle));
+    assert!(!shell.panel_state.right.visible);
+    assert_eq!(
+        shell.panel_state.right.active_tab_id(),
+        Some(PanelTabId::AiChat)
+    );
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+}
+
+#[test]
 fn explorer_filter_commands_update_workspace_state() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let root = std::env::temp_dir().join(format!(

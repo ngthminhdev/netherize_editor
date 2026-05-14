@@ -293,6 +293,32 @@ mod tests {
     }
 
     #[test]
+    fn switching_text_buffers_clears_stale_semantic_symbol_highlights() {
+        let mut state = AppState::new(unique_temp_path("buffer_highlight_clear"));
+        let root = unique_temp_dir("buffer_highlight_clear");
+        fs::create_dir_all(&root).expect("create buffer highlight root");
+        let file_a = root.join("a.rs");
+        let file_b = root.join("b.rs");
+        fs::write(&file_a, "let old_cursor = 1;\n").expect("write a");
+        fs::write(&file_b, "let new_cursor = 2;\n").expect("write b");
+
+        state.open_file(file_a.clone()).expect("open a");
+        assert!(state.set_semantic_symbol_highlights(vec![(4, 14)]));
+        assert_eq!(state.semantic_symbol_highlights(), &[(4, 14)]);
+
+        state.open_file(file_b.clone()).expect("open b");
+        assert!(state.active_file().expect("active file").ends_with("b.rs"));
+        assert!(state.semantic_symbol_highlights().is_empty());
+
+        assert!(state.set_semantic_symbol_highlights(vec![(4, 14)]));
+        assert!(state.buffer_prev().expect("switch back to a"));
+        assert!(state.active_file().expect("active file").ends_with("a.rs"));
+        assert!(state.semantic_symbol_highlights().is_empty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn switching_buffers_keeps_unsaved_dirty_text_until_explicit_save() {
         let mut state = AppState::new(unique_temp_path("dirty_buffer_switch"));
         let root = unique_temp_dir("dirty_buffer_switch");
