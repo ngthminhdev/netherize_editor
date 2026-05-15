@@ -11,19 +11,19 @@ use crate::app::event_loop::AppEvent;
 use crate::{
     async_runtime::message::{WorkerRequest, WorkerRequestPayload, WorkerResultPayload},
     syntax::{
-        highlight::{generate_highlight_spans, generate_highlight_spans_in_byte_window},
+        highlight::{generate_highlight_spans_in_byte_window, generate_highlight_spans_with_cache},
         syntax_engine::SyntaxEngine,
     },
 };
 
 use super::{
-    FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD, FULL_BUFFER_HIGHLIGHT_LINE_THRESHOLD, SyntaxEngineCache,
+    FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD, FULL_BUFFER_HIGHLIGHT_LINE_THRESHOLD, SyntaxEngineCacheHandle,
     VIEWPORT_HIGHLIGHT_MIN_OVERSCAN_LINES, VIEWPORT_HIGHLIGHT_OVERSCAN_MULTIPLIER, async_trace,
 };
 
 pub(super) async fn execute_virtual_job(
     request: &WorkerRequest,
-    syntax_cache: Arc<SyntaxEngineCache>,
+    syntax_cache: Arc<SyntaxEngineCacheHandle>,
 ) -> Result<WorkerResultPayload, String> {
     match &request.payload {
         WorkerRequestPayload::ParseAndHighlight {
@@ -56,7 +56,7 @@ pub(super) async fn execute_virtual_job(
                     let mut guard = syntax_cache
                         .lock()
                         .map_err(|_| "syntax engine cache lock poisoned".to_string())?;
-                    match guard.remove(&file_key) {
+                    match guard.take_main_parser(&file_key) {
                         Some(cached) if cached.language_id() == language_id => cached,
                         _ => SyntaxEngine::new(language_id)
                             .map_err(|err| format!("init syntax engine failed: {err}"))?,
@@ -88,12 +88,22 @@ pub(super) async fn execute_virtual_job(
                     line_count,
                     byte_count,
                 );
+
+                // Get injection parser cache from the syntax cache
+                let mut injection_cache = {
+                    let mut guard = syntax_cache
+                        .lock()
+                        .map_err(|_| "syntax engine cache lock poisoned".to_string())?;
+                    std::mem::take(&mut guard.injection_parsers)
+                };
+
                 let spans = covered_byte_range
                     .clone()
                     .map(|window| {
                         generate_highlight_spans_in_byte_window(tree, &text_snapshot, window)
                     })
-                    .unwrap_or_else(|| generate_highlight_spans(tree, &text_snapshot));
+                    .unwrap_or_else(|| generate_highlight_spans_with_cache(tree, &text_snapshot, &mut injection_cache));
+
                 let highlight_time_ms = highlight_started.elapsed().as_millis();
                 let total_time_ms = parse_time_ms + highlight_time_ms;
 
@@ -112,7 +122,9 @@ pub(super) async fn execute_virtual_job(
                 );
 
                 if let Ok(mut guard) = syntax_cache.lock() {
-                    guard.insert(file_key, engine);
+                    guard.return_main_parser(file_key, engine);
+                    // Return injection cache back
+                    guard.injection_parsers = injection_cache;
                 }
 
                 Ok(WorkerResultPayload::ParseAndHighlight {

@@ -235,6 +235,7 @@ pub struct ReferencesBufferState {
     pub loading: bool,
     pub status_message: Option<String>,
     pub pending_request_id: Option<u64>,
+    pub path_counts: std::collections::HashMap<String, usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

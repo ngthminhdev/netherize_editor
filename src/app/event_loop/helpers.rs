@@ -97,13 +97,31 @@ pub(super) fn syntax_spans_to_styled(
                 crate::syntax::highlight::HighlightCategory::Keyword => {
                     theme.syntax.keyword.as_u8()
                 }
+                crate::syntax::highlight::HighlightCategory::KeywordControl => {
+                    theme.syntax.keyword.as_u8()  // Use keyword color for now
+                }
+                crate::syntax::highlight::HighlightCategory::KeywordStorage => {
+                    theme.syntax.keyword.as_u8()  // Use keyword color for now
+                }
                 crate::syntax::highlight::HighlightCategory::String => theme.syntax.string.as_u8(),
+                crate::syntax::highlight::HighlightCategory::StringEscape => {
+                    theme.syntax.escape.as_u8()
+                }
                 crate::syntax::highlight::HighlightCategory::Comment => {
                     theme.syntax.comment.as_u8()
                 }
+                crate::syntax::highlight::HighlightCategory::CommentDoc => {
+                    theme.syntax.comment.as_u8()  // Use comment color for now
+                }
                 crate::syntax::highlight::HighlightCategory::Type => theme.syntax.r#type.as_u8(),
+                crate::syntax::highlight::HighlightCategory::TypeBuiltin => {
+                    theme.syntax.r#type.as_u8()  // Use type color for now
+                }
                 crate::syntax::highlight::HighlightCategory::Function => {
                     theme.syntax.function.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::FunctionBuiltin => {
+                    theme.syntax.function.as_u8()  // Use function color for now
                 }
                 crate::syntax::highlight::HighlightCategory::Number => theme.syntax.number.as_u8(),
                 crate::syntax::highlight::HighlightCategory::Boolean => {
@@ -114,6 +132,9 @@ pub(super) fn syntax_spans_to_styled(
                 }
                 crate::syntax::highlight::HighlightCategory::Variable => {
                     theme.syntax.variable.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::VariableBuiltin => {
+                    theme.syntax.variable.as_u8()  // Use variable color for now
                 }
                 crate::syntax::highlight::HighlightCategory::Parameter => {
                     theme.syntax.parameter.as_u8()

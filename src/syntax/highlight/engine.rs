@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ops::Range;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, Query, QueryCursor};
@@ -71,6 +72,7 @@ pub(crate) fn generate_injection_highlights(
     language_id: LanguageId,
     root: Node<'_>,
     source: &str,
+    mut injection_cache: Option<&mut HashMap<LanguageId, SyntaxEngine>>,
 ) -> Vec<HighlightSpan> {
     if !tree_root_matches_source(root, source) {
         return Vec::new();
@@ -89,6 +91,8 @@ pub(crate) fn generate_injection_highlights(
     let mut cursor = QueryCursor::new();
     let mut matches = cursor.matches(injection_q, root, source.as_bytes());
 
+    // Collect all injection content ranges first
+    let mut injection_ranges = Vec::new();
     loop {
         matches.advance();
         let Some(m) = matches.get() else {
@@ -113,24 +117,53 @@ pub(crate) fn generate_injection_highlights(
             }
 
             let content = &source[node_start..node_end];
-            if content.is_empty() {
+            if !content.is_empty() {
+                injection_ranges.push((node_start, node_end));
+            }
+        }
+    }
+
+    // Ensure parser exists in cache if we have one
+    if let Some(cache) = injection_cache.as_mut() {
+        if !cache.contains_key(&injected_lang) {
+            if let Ok(eng) = SyntaxEngine::new(injected_lang) {
+                cache.insert(injected_lang, eng);
+            }
+        }
+    }
+
+    // Process each injection range
+    for (node_start, node_end) in injection_ranges {
+        let content = &source[node_start..node_end];
+
+        // Get spans from cached or temporary parser
+        let inner = if let Some(cache) = injection_cache.as_mut() {
+            // Use cached parser
+            if let Some(engine) = cache.get_mut(&injected_lang) {
+                if let Ok(tree) = engine.parse_source(content, 0) {
+                    generate_query_highlight_spans_for_node(hl_query, tree.root_node(), content)
+                } else {
+                    continue;
+                }
+            } else {
                 continue;
             }
-
-            let Ok(mut eng) = SyntaxEngine::new(injected_lang) else {
-                continue;
-            };
-            let Ok(tree) = eng.parse_source(content, 0) else {
-                continue;
-            };
-
-            let inner =
-                generate_query_highlight_spans_for_node(hl_query, tree.root_node(), content);
-
-            for mut span in inner {
-                span.range = (span.range.start + node_start)..(span.range.end + node_start);
-                spans.push(span);
+        } else {
+            // No cache: create temporary parser and immediately generate spans
+            match SyntaxEngine::new(injected_lang) {
+                Ok(mut eng) => match eng.parse_source(content, 0) {
+                    Ok(tree) => {
+                        generate_query_highlight_spans_for_node(hl_query, tree.root_node(), content)
+                    }
+                    Err(_) => continue,
+                },
+                Err(_) => continue,
             }
+        };
+
+        for mut span in inner {
+            span.range = (span.range.start + node_start)..(span.range.end + node_start);
+            spans.push(span);
         }
     }
 
@@ -212,14 +245,31 @@ pub(crate) fn capture_category(capture_name: &str) -> Option<HighlightCategory> 
         "markup.raw.inline" => Some(HighlightCategory::MarkupInlineCode),
         "markup.link.text" => Some(HighlightCategory::MarkupLink),
         "syntax.keyword" => Some(HighlightCategory::Keyword),
+        "syntax.keyword.control" | "keyword.control" | "keyword.control.return"
+        | "keyword.control.conditional" | "keyword.control.repeat" | "keyword.control.import" => {
+            Some(HighlightCategory::KeywordControl)
+        }
+        "syntax.keyword.storage" | "keyword.storage" | "keyword.storage.type"
+        | "keyword.storage.modifier" => {
+            Some(HighlightCategory::KeywordStorage)
+        }
         "syntax.string" => Some(HighlightCategory::String),
+        "string.escape" | "character.escape" | "escape.sequence" => {
+            Some(HighlightCategory::StringEscape)
+        }
         "syntax.comment" => Some(HighlightCategory::Comment),
+        "comment.documentation" | "comment.doc" | "comment.block.documentation" => {
+            Some(HighlightCategory::CommentDoc)
+        }
         "syntax.type" => Some(HighlightCategory::Type),
+        "type.builtin" | "builtin.type" => Some(HighlightCategory::TypeBuiltin),
         "syntax.function" => Some(HighlightCategory::Function),
+        "function.builtin" | "function.method.builtin" => Some(HighlightCategory::FunctionBuiltin),
         "syntax.number" => Some(HighlightCategory::Number),
         "syntax.boolean" => Some(HighlightCategory::Boolean),
         "syntax.identifier" => Some(HighlightCategory::Identifier),
         "syntax.variable" => Some(HighlightCategory::Variable),
+        "variable.builtin" | "variable.language" => Some(HighlightCategory::VariableBuiltin),
         "syntax.parameter" => Some(HighlightCategory::Parameter),
         "syntax.field" => Some(HighlightCategory::Field),
         "syntax.property" => Some(HighlightCategory::Property),
@@ -246,28 +296,31 @@ pub(crate) fn capture_category(capture_name: &str) -> Option<HighlightCategory> 
         "constructor" => Some(HighlightCategory::Constructor),
         "number" => Some(HighlightCategory::Number),
         "constant" => Some(HighlightCategory::Constant),
-        "type.builtin" | "builtin.type" => Some(HighlightCategory::Type),
         "constant.builtin.boolean" | "boolean" => Some(HighlightCategory::Boolean),
         "constant.builtin" => Some(HighlightCategory::Constant),
-        "function.builtin" | "function.method" | "method.call" => Some(HighlightCategory::Function),
+        "function.method" | "method.call" => Some(HighlightCategory::Function),
         "module" | "namespace" => Some(HighlightCategory::Namespace),
         "tag" | "tag.builtin" => Some(HighlightCategory::Tag),
         "label" => Some(HighlightCategory::Property),
         "identifier" => Some(HighlightCategory::Identifier),
         "variable" => Some(HighlightCategory::Variable),
-        "variable.builtin" => Some(HighlightCategory::Keyword),
         "operator" => Some(HighlightCategory::Operator),
-        "escape" | "string.escape" | "character.escape" => Some(HighlightCategory::Escape),
+        "escape" => Some(HighlightCategory::Escape),
+        _ if capture_name.starts_with("comment.doc") => Some(HighlightCategory::CommentDoc),
         _ if capture_name.starts_with("comment") => Some(HighlightCategory::Comment),
+        _ if capture_name.starts_with("keyword.control") => Some(HighlightCategory::KeywordControl),
+        _ if capture_name.starts_with("keyword.storage") => Some(HighlightCategory::KeywordStorage),
         _ if capture_name.starts_with("keyword") => Some(HighlightCategory::Keyword),
         _ if capture_name.starts_with("string") => Some(HighlightCategory::String),
         _ if capture_name.starts_with("escape") || capture_name.ends_with(".escape") => {
-            Some(HighlightCategory::Escape)
+            Some(HighlightCategory::StringEscape)
         }
         _ if capture_name.starts_with("embedded") => Some(HighlightCategory::String),
+        _ if capture_name.starts_with("type.builtin") => Some(HighlightCategory::TypeBuiltin),
         _ if capture_name.starts_with("type") => Some(HighlightCategory::Type),
         _ if capture_name.starts_with("constructor") => Some(HighlightCategory::Constructor),
         _ if capture_name.starts_with("attribute") => Some(HighlightCategory::Attribute),
+        _ if capture_name.starts_with("function.builtin") => Some(HighlightCategory::FunctionBuiltin),
         _ if capture_name.starts_with("function") || capture_name.starts_with("method") => {
             Some(HighlightCategory::Function)
         }

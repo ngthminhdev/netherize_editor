@@ -897,6 +897,7 @@ impl AppState {
                 loading: false,
                 status_message: None,
                 pending_request_id: None,
+                path_counts: std::collections::HashMap::new(),
             }),
         });
 
@@ -929,6 +930,7 @@ impl AppState {
                 loading: true,
                 status_message: Some("Loading references...".to_string()),
                 pending_request_id: Some(pending_request_id),
+                path_counts: std::collections::HashMap::new(),
             }),
         });
 

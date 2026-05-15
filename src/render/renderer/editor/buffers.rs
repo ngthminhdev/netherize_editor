@@ -430,13 +430,11 @@ fn compact_reference_path(path: &str) -> String {
 }
 
 fn count_reference_files(items: &[ReferencesBufferItem]) -> usize {
-    let mut paths = Vec::<&str>::new();
-    for item in items {
-        if !paths.iter().any(|path| *path == item.relative_path.as_str()) {
-            paths.push(item.relative_path.as_str());
-        }
-    }
-    paths.len()
+    items
+        .iter()
+        .map(|item| item.relative_path.as_str())
+        .collect::<std::collections::HashSet<_>>()
+        .len()
 }
 
 fn count_references_for_path(items: &[ReferencesBufferItem], path: &str) -> usize {

@@ -8,6 +8,8 @@ use crate::syntax::{
     syntax_engine::{LanguageId, SyntaxEngine, SyntaxTreeState},
 };
 
+use std::collections::HashMap;
+
 mod categories;
 mod engine;
 mod queries;
@@ -51,7 +53,48 @@ pub fn generate_highlight_spans(tree_state: &SyntaxTreeState, source: &str) -> V
         None,
     );
     let injected =
-        generate_injection_highlights(tree_state.language_id(), tree_state.root_node(), source);
+        generate_injection_highlights(tree_state.language_id(), tree_state.root_node(), source, None);
+    if injected.is_empty() {
+        base
+    } else {
+        overlay_highlight_layers(&base, &injected)
+    }
+}
+
+/// Generate highlight spans with injection parser cache for better performance.
+/// This version reuses parsers for embedded languages (e.g., bash in Dockerfile, code blocks in markdown).
+pub fn generate_highlight_spans_with_cache(
+    tree_state: &SyntaxTreeState,
+    source: &str,
+    injection_cache: &mut HashMap<LanguageId, SyntaxEngine>,
+) -> Vec<HighlightSpan> {
+    if tree_state.language_id() == LanguageId::Dotenv {
+        return generate_dotenv_highlight_spans(source);
+    }
+
+    if tree_state.language_id() == LanguageId::Markdown {
+        let base = generate_query_highlight_spans(
+            tree_state.language_id(),
+            tree_state.root_node(),
+            source,
+            None,
+        );
+        let inline = generate_markdown_inline_highlights(tree_state.root_node(), source, None);
+        return overlay_highlight_layers(&base, &inline);
+    }
+
+    let base = generate_query_highlight_spans(
+        tree_state.language_id(),
+        tree_state.root_node(),
+        source,
+        None,
+    );
+    let injected = generate_injection_highlights(
+        tree_state.language_id(),
+        tree_state.root_node(),
+        source,
+        Some(injection_cache),
+    );
     if injected.is_empty() {
         base
     } else {
@@ -459,9 +502,11 @@ WHERE id = 42 AND email = 'hi@example.com';
         assert!(
             spans
                 .iter()
-                .any(|s| s.category == HighlightCategory::Function)
+                .any(|s| s.category == HighlightCategory::Function
+                    || s.category == HighlightCategory::FunctionBuiltin)
         );
-        assert!(spans.iter().any(|s| s.category == HighlightCategory::Type));
+        assert!(spans.iter().any(|s| s.category == HighlightCategory::Type
+            || s.category == HighlightCategory::TypeBuiltin));
         assert!(
             spans
                 .iter()
@@ -664,7 +709,7 @@ WHERE id = 42 AND email = 'hi@example.com';
         use engine::capture_category;
         assert_eq!(
             capture_category("function.builtin"),
-            Some(HighlightCategory::Function)
+            Some(HighlightCategory::FunctionBuiltin)
         );
         assert_eq!(
             capture_category("constant.builtin.boolean"),
