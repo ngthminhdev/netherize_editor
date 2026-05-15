@@ -72,6 +72,73 @@ impl AppState {
         true
     }
 
+    pub fn has_scrollable_floating_overlay(&self) -> bool {
+        self.current_overlays.iter().any(|overlay| {
+            matches!(
+                overlay,
+                EditorOverlay::FloatingBox {
+                    style: FloatingBoxStyle::DocHover,
+                    ..
+                }
+            )
+        })
+    }
+
+    pub fn scroll_floating_overlay_lines(&mut self, delta_lines: isize) -> bool {
+        let mut changed = false;
+        for overlay in &mut self.current_overlays {
+            let EditorOverlay::FloatingBox {
+                style: FloatingBoxStyle::DocHover,
+                scroll,
+                ..
+            } = overlay
+            else {
+                continue;
+            };
+
+            let next = if delta_lines.is_negative() {
+                scroll.offset_lines.saturating_sub(delta_lines.unsigned_abs())
+            } else {
+                scroll.offset_lines.saturating_add(delta_lines as usize)
+            };
+            if next != scroll.offset_lines {
+                scroll.offset_lines = next;
+                changed = true;
+            }
+        }
+        if changed {
+            self.revision += 1;
+        }
+        changed
+    }
+
+    pub fn scroll_floating_overlay_half_page(&mut self, down: bool) -> bool {
+        let delta = if down { 8 } else { -8 };
+        self.scroll_floating_overlay_lines(delta)
+    }
+
+    pub fn clamp_floating_overlay_scroll(&mut self, max_offset_lines: usize) -> bool {
+        let mut changed = false;
+        for overlay in &mut self.current_overlays {
+            let EditorOverlay::FloatingBox {
+                style: FloatingBoxStyle::DocHover,
+                scroll,
+                ..
+            } = overlay
+            else {
+                continue;
+            };
+            if scroll.offset_lines > max_offset_lines {
+                scroll.offset_lines = max_offset_lines;
+                changed = true;
+            }
+        }
+        if changed {
+            self.revision += 1;
+        }
+        changed
+    }
+
     pub fn active_filetype_label(&self) -> &'static str {
         if self.active_buffer_is_terminal() {
             return "Terminal";
@@ -560,12 +627,26 @@ impl AppState {
         query_changed || whole_word_changed || highlights_changed
     }
 
+    pub fn search_case_sensitive(&self) -> bool {
+        self.search_case_sensitive
+    }
+
+    pub fn toggle_search_case_sensitive(&mut self) -> bool {
+        self.search_case_sensitive = !self.search_case_sensitive;
+        self.refresh_active_search_highlights() || true
+    }
+
     pub(super) fn refresh_active_search_highlights(&mut self) -> bool {
         let next = if self.last_search_query.is_empty() {
             Vec::new()
         } else {
             let text = self.text.to_string();
-            collect_search_highlights(&text, &self.last_search_query, self.search_whole_word)
+            collect_search_highlights(
+                &text,
+                &self.last_search_query,
+                self.search_whole_word,
+                self.search_case_sensitive,
+            )
         };
 
         if self.search_highlights == next {
@@ -1387,12 +1468,29 @@ pub(super) fn collect_search_highlights(
     text: &str,
     query: &str,
     whole_word: bool,
+    case_sensitive: bool,
 ) -> Vec<(usize, usize)> {
     if query.is_empty() {
         return Vec::new();
     }
 
-    text.match_indices(query)
+    if case_sensitive {
+        return text
+            .match_indices(query)
+            .filter_map(|(start, matched)| {
+                let end = start + matched.len();
+                if whole_word && !is_whole_word_match(text, start, end) {
+                    return None;
+                }
+                Some((start, end))
+            })
+            .collect();
+    }
+
+    let haystack = text.to_lowercase();
+    let needle = query.to_lowercase();
+    haystack
+        .match_indices(&needle)
         .filter_map(|(start, matched)| {
             let end = start + matched.len();
             if whole_word && !is_whole_word_match(text, start, end) {

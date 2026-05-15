@@ -723,6 +723,7 @@ impl AppShell {
             command_palette_mode: self.app_state.command_palette_mode(),
             welcome_visible,
             completion_visible: self.app_state.has_completion(),
+            hover_overlay_visible: self.app_state.has_scrollable_floating_overlay(),
             zen_mode_active: self.panel_state.maximized_region.is_some(),
         }
     }
@@ -999,6 +1000,14 @@ impl AppShell {
                 buffer_revision,
             ),
             None => engine.parse_source(&text_snapshot, buffer_revision),
+        };
+        let parse_result = match parse_result {
+            Ok(tree) if tree.root_node().end_byte() <= text_snapshot.len() => Ok(tree),
+            Ok(_) => engine.parse_source(&text_snapshot, buffer_revision),
+            Err(err) => {
+                eprintln!("[AppShell] incremental tree-sitter parse failed: {err}; retrying full parse");
+                engine.parse_source(&text_snapshot, buffer_revision)
+            }
         };
         match parse_result {
             Ok(tree) => {

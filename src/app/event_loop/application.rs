@@ -3,7 +3,7 @@ use super::*;
 use winit::platform::macos::WindowAttributesExtMacOS;
 use winit::{
     event::ElementState,
-    keyboard::{Key, NamedKey},
+    keyboard::{Key, KeyCode, NamedKey, PhysicalKey},
 };
 
 const FOCUS_RING_THICKNESS: f32 = 2.0;
@@ -312,9 +312,30 @@ impl ApplicationHandler<AppEvent> for AppShell {
             } => {
                 if key_event.state == ElementState::Pressed && !key_event.repeat {
                     self.note_post_open_keyboard_press();
-                    let overlay_cleared = self.invalidate_editor_overlays();
-                    if overlay_cleared {
-                        self.request_redraw();
+                    let has_hover_overlay = self.app_state.has_scrollable_floating_overlay();
+                    let is_modifier_key = matches!(
+                        key_event.logical_key,
+                        Key::Named(
+                            NamedKey::Control
+                                | NamedKey::Shift
+                                | NamedKey::Alt
+                                | NamedKey::Super
+                                | NamedKey::Meta
+                        )
+                    );
+                    let keep_hover_for_scroll = has_hover_overlay
+                        && matches!(
+                            key_event.physical_key,
+                            PhysicalKey::Code(KeyCode::KeyD | KeyCode::KeyU)
+                        )
+                        && self.input_handler.current_modifiers().control_key()
+                        && !self.input_handler.current_modifiers().super_key();
+                    let keep_hover_for_modifier = has_hover_overlay && is_modifier_key;
+                    if !keep_hover_for_scroll && !keep_hover_for_modifier {
+                        let overlay_cleared = self.invalidate_editor_overlays();
+                        if overlay_cleared {
+                            self.request_redraw();
+                        }
                     }
                 }
                 if let Some(changed) = self.handle_pending_confirmation_key_event(&key_event) {

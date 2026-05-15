@@ -175,6 +175,7 @@ impl AppShell {
             Command::FilePickerAppendQuery(_)
             | Command::FilePickerBackspaceQuery
             | Command::ToggleLiveGrepCaseSensitive
+            | Command::ToggleInFileSearchCaseSensitive
             | Command::EditorPaste
             | Command::PasteSystemClipboard
                 if self.app_state.current_mode() == EditorMode::PaletteFocus
@@ -214,7 +215,11 @@ impl AppShell {
                         self.submit_active_palette_fzf_search();
                     }
                     Some(CommandPaletteMode::InFileSearch) => {
-                        let _ = self.sync_in_file_search_with_palette_query();
+                        if matches!(command, Command::ToggleInFileSearchCaseSensitive) {
+                            self.request_redraw();
+                        } else {
+                            let _ = self.sync_in_file_search_with_palette_query();
+                        }
                     }
                     _ => {}
                 }

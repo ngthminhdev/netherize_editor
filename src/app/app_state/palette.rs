@@ -424,7 +424,9 @@ impl AppState {
         theme: &crate::config::theme_config::ThemeConfig,
         overlay_bounds: [f32; 4],
     ) -> Option<CommandPaletteRenderModel> {
-        self.command_palette.render(theme, overlay_bounds)
+        let mut model = self.command_palette.render(theme, overlay_bounds)?;
+        model.search_case_sensitive = self.search_case_sensitive;
+        Some(model)
     }
 
     pub fn set_command_palette_selection_range(&mut self, range: Option<(usize, usize)>) -> bool {

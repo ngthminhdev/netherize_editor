@@ -359,6 +359,7 @@ pub struct CommandPaletteRenderModel {
     pub info_color: [f32; 4],
     pub item_tones: Vec<CommandPaletteItemTone>,
     pub item_preview_colors: Vec<Vec<[f32; 4]>>,
+    pub search_case_sensitive: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -955,6 +956,7 @@ impl CommandPalette {
                 .iter()
                 .map(|entry| entry.preview_colors.clone())
                 .collect(),
+            search_case_sensitive: false,
         })
     }
 }

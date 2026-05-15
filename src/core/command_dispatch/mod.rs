@@ -249,6 +249,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::FilePickerAppendQuery(_)
         | Command::FilePickerBackspaceQuery
         | Command::ToggleLiveGrepCaseSensitive
+        | Command::ToggleInFileSearchCaseSensitive
         | Command::OverlaySelectNext
         | Command::OverlaySelectPrev
         | Command::SettingsSelectNext

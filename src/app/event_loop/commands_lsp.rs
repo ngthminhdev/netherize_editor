@@ -250,6 +250,7 @@ impl AppShell {
                 anchor_col,
                 blocks: vec![loading_block],
                 style: crate::app::app_state::FloatingBoxStyle::DocHover,
+                scroll: crate::app::app_state::FloatingBoxScrollState { offset_lines: 0 },
             },
         ]);
         let request = self.submit(RequestSpec {

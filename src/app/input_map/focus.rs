@@ -636,6 +636,18 @@ impl InputMap {
             return None;
         }
 
+        if palette_mode == Some(CommandPaletteMode::InFileSearch)
+            && input.modifiers.control_key()
+            && !input.modifiers.alt_key()
+            && !input.modifiers.super_key()
+            && input.physical_key == Some(KeyCode::KeyA)
+        {
+            return Some(KeybindingMatch {
+                command: Command::ToggleInFileSearchCaseSensitive,
+                reason: "in-file search: Ctrl+A -> ToggleCaseSensitive",
+            });
+        }
+
         if let Some(command) = resolved_keymap::resolve_command_mode_only(
             &self.keymap,
             input,

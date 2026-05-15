@@ -13,6 +13,10 @@ pub(crate) fn generate_query_highlight_spans(
     source: &str,
     byte_window: Option<Range<usize>>,
 ) -> Vec<HighlightSpan> {
+    if !tree_root_matches_source(root, source) {
+        return Vec::new();
+    }
+
     let Some(query) = highlight_query(language_id) else {
         return Vec::new();
     };
@@ -68,6 +72,10 @@ pub(crate) fn generate_injection_highlights(
     root: Node<'_>,
     source: &str,
 ) -> Vec<HighlightSpan> {
+    if !tree_root_matches_source(root, source) {
+        return Vec::new();
+    }
+
     let Some(injection_q) = injection_query(language_id) else {
         return Vec::new();
     };
@@ -134,6 +142,10 @@ pub(crate) fn generate_query_highlight_spans_for_node(
     root: Node<'_>,
     source: &str,
 ) -> Vec<HighlightSpan> {
+    if !tree_root_matches_source(root, source) {
+        return Vec::new();
+    }
+
     let mut cursor = QueryCursor::new();
     let mut raw_spans = Vec::new();
     let mut query_matches = cursor.matches(query, root, source.as_bytes());
@@ -168,6 +180,10 @@ pub(crate) fn generate_query_highlight_spans_for_node(
     }
 
     normalize_spans(source, raw_spans, None)
+}
+
+fn tree_root_matches_source(root: Node<'_>, source: &str) -> bool {
+    root.start_byte() <= source.len() && root.end_byte() <= source.len()
 }
 
 fn injection_language_for_query(query: &Query) -> LanguageId {

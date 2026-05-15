@@ -1478,6 +1478,11 @@ pub enum FloatingBoxStyle {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FloatingBoxScrollState {
+    pub offset_lines: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FloatingBoxBlock {
     Prose(String),
     Code {
@@ -1502,6 +1507,7 @@ pub enum EditorOverlay {
         /// Nội dung đã được parse thành prose/code blocks.
         blocks: Vec<FloatingBoxBlock>,
         style: FloatingBoxStyle,
+        scroll: FloatingBoxScrollState,
     },
 }
 
@@ -1540,6 +1546,7 @@ pub struct AppState {
     search_highlights: Vec<(usize, usize)>,
     semantic_symbol_highlights: Vec<(usize, usize)>,
     search_whole_word: bool,
+    search_case_sensitive: bool,
     live_grep_case_sensitive: bool,
     terminal_panel_open: bool,
     external_conflict: Option<String>,
@@ -1607,6 +1614,7 @@ impl AppState {
             last_search_query: String::new(),
             search_highlights: Vec::new(),
             search_whole_word: false,
+            search_case_sensitive: true,
             live_grep_case_sensitive: false,
             terminal_panel_open: false,
             external_conflict: None,
@@ -1664,6 +1672,7 @@ impl AppState {
             last_search_query: String::new(),
             search_highlights: Vec::new(),
             search_whole_word: false,
+            search_case_sensitive: true,
             live_grep_case_sensitive: false,
             terminal_panel_open: false,
             external_conflict: None,

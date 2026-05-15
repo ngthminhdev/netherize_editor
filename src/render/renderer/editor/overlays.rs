@@ -240,17 +240,29 @@ impl Renderer {
                     anchor_col: _,
                     blocks,
                     style,
+                    scroll,
                 } => {
-                    const PAD_X: f32 = 10.0;
-                    const PAD_Y: f32 = 6.0;
+                    const PAD_X: f32 = 14.0;
+                    const PAD_Y: f32 = 10.0;
                     const BORDER: f32 = 1.0;
+                    const CODE_PAD_X: f32 = 12.0;
+                    const CODE_PAD_Y: f32 = 8.0;
+                    const CONTENT_INSET_X: f32 = 14.0;
+                    const CONTENT_INSET_Y: f32 = 12.0;
                     let char_w = (geometry.font_size * 0.6).max(1.0);
+                    let is_doc_hover = matches!(style, FloatingBoxStyle::DocHover);
+                    let header_h = if is_doc_hover {
+                        geometry.line_height + 14.0
+                    } else {
+                        0.0
+                    };
+                    let block_gap = if is_doc_hover { 10.0 } else { 0.0 };
 
-                    // ── 50% size caps ───────────────────────────────────────────
-                    let max_popup_w = (center_bounds[2] * 0.5)
-                        .max(120.0)
+                    // ── Hover card size caps ─────────────────────────────────────
+                    let max_popup_w = (center_bounds[2] * 0.58)
+                        .max(260.0)
                         .min(geometry.viewport_text_width);
-                    let max_popup_h = (center_bounds[3] * 0.5).max(geometry.line_height * 2.0);
+                    let max_popup_h = (center_bounds[3] * 0.58).max(geometry.line_height * 3.0);
                     let wrap_cols = ((max_popup_w - PAD_X * 2.0) / char_w).floor() as usize;
 
                     // ── Pre-render: word-wrap prose, keep code verbatim ─────────
@@ -281,14 +293,27 @@ impl Renderer {
                         .iter()
                         .map(|(_, lines, _)| lines.len().max(1))
                         .sum();
+                    let content_block_extra_h: f32 = if is_doc_hover {
+                        rendered
+                            .iter()
+                            .filter(|(is_code, _, _)| *is_code)
+                            .count() as f32
+                            * (CODE_PAD_Y * 2.0 + block_gap)
+                    } else {
+                        0.0
+                    };
+                    let content_inner_pad_y = if is_doc_hover { CONTENT_INSET_Y * 2.0 } else { 0.0 };
 
                     let desired_popup_w = max_len as f32 * char_w + PAD_X * 2.0;
-                    let popup_w = clamp_popup_width(desired_popup_w, 120.0, max_popup_w);
+                    let popup_w = clamp_popup_width(desired_popup_w, 260.0, max_popup_w);
                     debug_assert!(
                         popup_w.is_finite() && popup_w >= 1.0,
                         "floating overlay popup width must stay finite: desired={desired_popup_w}, max_popup_w={max_popup_w}"
                     );
-                    let popup_h = (total_lines as f32 * geometry.line_height + PAD_Y * 2.0)
+                    let total_content_h = total_lines as f32 * geometry.line_height
+                        + content_block_extra_h
+                        + content_inner_pad_y;
+                    let popup_h = (header_h + total_content_h + PAD_Y * 2.0)
                         .max(geometry.line_height)
                         .min(max_popup_h);
 
@@ -307,40 +332,184 @@ impl Renderer {
 
                     // Content clip bottom — glyphs beyond this are skipped (GPU scissor
                     // is center_bounds; this provides popup-level clipping in software).
-                    let popup_content_bottom = popup_y + popup_h - PAD_Y;
 
-                    let bg_color = self.theme.editor.bg.as_f32();
+                    let base_bg = self.theme.editor.bg.as_f32();
+                    let panel_bg = blend_rgba(base_bg, self.theme.ui.panel_bg.as_f32(), 0.72, 1.0);
                     let border_color = match style {
-                        FloatingBoxStyle::DocHover => self.theme.ui.accent.as_f32(),
+                        FloatingBoxStyle::DocHover => blend_rgba(
+                            self.theme.ui.border_color.as_f32(),
+                            self.theme.ui.accent.as_f32(),
+                            0.45,
+                            1.0,
+                        ),
                         FloatingBoxStyle::PeekWindow => self.theme.ui.warning.as_f32(),
                     };
-                    chrome_quads.push(RegionDrawInstance::new(
-                        [
-                            popup_x - BORDER,
-                            popup_y - BORDER,
-                            popup_w + BORDER * 2.0,
-                            popup_h + BORDER * 2.0,
-                        ],
-                        border_color,
-                    ));
-                    chrome_quads.push(RegionDrawInstance::new(
-                        [popup_x, popup_y, popup_w, popup_h],
-                        bg_color,
-                    ));
+                    let shadow_color: [f32; 4] = [0.0, 0.0, 0.0, 0.38];
+                    chrome_quads.push(
+                        RegionDrawInstance::new(
+                            [popup_x + 3.0, popup_y + 5.0, popup_w, popup_h],
+                            shadow_color,
+                        )
+                        .with_radius(self.panel_corner_radius + 2.0),
+                    );
+                    chrome_quads.push(
+                        RegionDrawInstance::new(
+                            [
+                                popup_x - BORDER,
+                                popup_y - BORDER,
+                                popup_w + BORDER * 2.0,
+                                popup_h + BORDER * 2.0,
+                            ],
+                            border_color,
+                        )
+                        .with_radius(self.panel_corner_radius + 2.0),
+                    );
+                    chrome_quads.push(
+                        RegionDrawInstance::new([popup_x, popup_y, popup_w, popup_h], panel_bg)
+                            .with_radius(self.panel_corner_radius + 2.0),
+                    );
 
-                    let text_x = popup_x + PAD_X;
-                    let line_w = (popup_w - PAD_X * 2.0).max(1.0);
-                    let mut block_line_offset = 0usize;
+                    if is_doc_hover {
+                        let header_bg = blend_rgba(panel_bg, self.theme.ui.status_bar_bg.as_f32(), 0.5, 1.0);
+                        let header_divider = blend_rgba(header_bg, border_color, 0.55, 1.0);
+                        chrome_quads.push(
+                            RegionDrawInstance::new([popup_x, popup_y, popup_w, header_h], header_bg)
+                                .with_radius(self.panel_corner_radius + 2.0),
+                        );
+                        chrome_quads.push(RegionDrawInstance::new(
+                            [popup_x, popup_y + header_h - 1.0, popup_w, 1.0],
+                            header_divider,
+                        ));
+
+                        let badge_text = "docs";
+                        let badge_w = badge_text.chars().count() as f32 * char_w + 16.0;
+                        let badge_h = geometry.line_height + 2.0;
+                        let badge_x = popup_x + PAD_X;
+                        let badge_y = popup_y + (header_h - badge_h) * 0.5;
+                        chrome_quads.push(
+                            RegionDrawInstance::new(
+                                [badge_x, badge_y, badge_w, badge_h],
+                                blend_rgba(panel_bg, self.theme.ui.accent.as_f32(), 0.2, 1.0),
+                            )
+                            .with_radius(6.0),
+                        );
+                        self.editor_overlay_text_system
+                            .set_size(Some(badge_w), Some(badge_h));
+                        glyphs.extend(layout_panel_text(
+                            badge_text,
+                            &mut self.editor_overlay_text_system,
+                            &mut self.atlas,
+                            &self.queue,
+                            badge_x + 8.0,
+                            badge_y + 1.0,
+                            self.theme.ui.accent.as_f32(),
+                        ));
+
+                        self.editor_overlay_text_system.set_size(
+                            Some((popup_w - badge_w - PAD_X * 3.0).max(1.0)),
+                            Some(geometry.line_height),
+                        );
+                        glyphs.extend(layout_panel_text(
+                            "Hover Documentation",
+                            &mut self.editor_overlay_text_system,
+                            &mut self.atlas,
+                            &self.queue,
+                            badge_x + badge_w + 12.0,
+                            popup_y + (header_h - geometry.line_height) * 0.5,
+                            self.theme.ui.fg.as_f32(),
+                        ));
+                    }
+
+                    let content_left = popup_x + PAD_X + if is_doc_hover { CONTENT_INSET_X } else { 0.0 };
+                    let content_top = popup_y + PAD_Y + header_h + if is_doc_hover { CONTENT_INSET_Y } else { 0.0 };
+                    let content_bottom = popup_y + popup_h - PAD_Y - if is_doc_hover { CONTENT_INSET_Y } else { 0.0 };
+                    let needs_scrollbar = is_doc_hover && header_h + total_content_h + PAD_Y * 2.0 > popup_h;
+                    let scrollbar_w = if needs_scrollbar { 4.0 } else { 0.0 };
+                    let line_w = (popup_w
+                        - PAD_X * 2.0
+                        - if is_doc_hover { CONTENT_INSET_X * 2.0 } else { 0.0 }
+                        - scrollbar_w
+                        - 10.0)
+                        .max(1.0);
+                    let content_view_h = (content_bottom - content_top).max(geometry.line_height);
+                    let max_scroll_lines = ((total_content_h - content_inner_pad_y - content_view_h).max(0.0)
+                        / geometry.line_height)
+                        .ceil() as usize;
+                    let effective_scroll_lines = scroll.offset_lines.min(max_scroll_lines);
+                    let mut content_y = content_top - effective_scroll_lines as f32 * geometry.line_height;
+
+                    if needs_scrollbar {
+                        let track_x = popup_x + popup_w - PAD_X - 4.0;
+                        let track_y = content_top;
+                        let track_h = content_view_h;
+                        let scrollbar_track = blend_rgba(panel_bg, self.theme.ui.border_color.as_f32(), 0.28, 1.0);
+                        let scrollbar_thumb = blend_rgba(scrollbar_track, self.theme.ui.accent.as_f32(), 0.62, 1.0);
+                        chrome_quads.push(
+                            RegionDrawInstance::new([track_x, track_y, scrollbar_w, track_h], scrollbar_track)
+                                .with_radius(2.0),
+                        );
+                        let visible_ratio = (content_view_h / total_content_h.max(1.0)).clamp(0.08, 1.0);
+                        let thumb_h = (track_h * visible_ratio).max(18.0).min(track_h);
+                        let scroll_ratio = if max_scroll_lines == 0 {
+                            0.0
+                        } else {
+                            effective_scroll_lines as f32 / max_scroll_lines as f32
+                        };
+                        let thumb_y = track_y + (track_h - thumb_h) * scroll_ratio;
+                        chrome_quads.push(
+                            RegionDrawInstance::new([track_x, thumb_y, scrollbar_w, thumb_h], scrollbar_thumb)
+                                .with_radius(2.0),
+                        );
+                    }
 
                     for (is_code, lines, spans) in &rendered {
                         if *is_code {
+                            let code_block_h = lines.len().max(1) as f32 * geometry.line_height
+                                + if is_doc_hover { CODE_PAD_Y * 2.0 } else { 0.0 };
+                            let code_text_x = if is_doc_hover {
+                                content_left + CODE_PAD_X
+                            } else {
+                                content_left
+                            };
+                            let code_text_y = if is_doc_hover {
+                                content_y + CODE_PAD_Y
+                            } else {
+                                content_y
+                            };
+                            if is_doc_hover
+                                && content_y < content_bottom
+                                && content_y + code_block_h > content_top
+                            {
+                                let code_bg = blend_rgba(panel_bg, self.theme.ui.status_bar_bg.as_f32(), 0.35, 1.0);
+                                let code_border = blend_rgba(code_bg, self.theme.ui.border_color.as_f32(), 0.7, 1.0);
+                                let clipped_code_y = content_y.max(content_top);
+                                let clipped_code_h = (content_y + code_block_h).min(content_bottom) - clipped_code_y;
+                                chrome_quads.push(
+                                    RegionDrawInstance::new(
+                                        [content_left, clipped_code_y, line_w, clipped_code_h.max(0.0)],
+                                        code_border,
+                                    )
+                                    .with_radius(8.0),
+                                );
+                                chrome_quads.push(
+                                    RegionDrawInstance::new(
+                                        [
+                                            content_left + 1.0,
+                                            clipped_code_y + 1.0,
+                                            line_w - 2.0,
+                                            (clipped_code_h - 2.0).max(0.0),
+                                        ],
+                                        code_bg,
+                                    )
+                                    .with_radius(8.0),
+                                );
+                            }
                             let mut line_byte_start: usize = 0;
                             for (line_idx, line_text) in lines.iter().enumerate() {
-                                let text_y = popup_y
-                                    + PAD_Y
-                                    + (block_line_offset + line_idx) as f32 * geometry.line_height;
+                                let text_y = code_text_y + line_idx as f32 * geometry.line_height;
                                 let line_byte_end = line_byte_start + line_text.len();
-                                if text_y > popup_content_bottom
+                                if text_y < content_top
+                                    || text_y > content_bottom
                                     || text_y + geometry.line_height < viewport_top
                                     || text_y > viewport_bottom
                                 {
@@ -364,8 +533,18 @@ impl Renderer {
                                         ))
                                     })
                                     .collect();
-                                self.editor_overlay_text_system
-                                    .set_size(Some(line_w), Some(geometry.line_height));
+                                self.editor_overlay_text_system.set_size(
+                                    Some(
+                                        (line_w
+                                            - if is_doc_hover {
+                                                CODE_PAD_X * 2.0
+                                            } else {
+                                                0.0
+                                            })
+                                        .max(1.0),
+                                    ),
+                                    Some(geometry.line_height),
+                                );
                                 glyphs.extend(layout_panel_rich_text(
                                     line_text,
                                     &line_spans,
@@ -373,17 +552,17 @@ impl Renderer {
                                     &mut self.editor_overlay_text_system,
                                     &mut self.atlas,
                                     &self.queue,
-                                    text_x,
+                                    code_text_x,
                                     text_y,
                                 ));
                                 line_byte_start = line_byte_end + 1;
                             }
+                            content_y += code_block_h + block_gap;
                         } else {
                             for (line_idx, line_text) in lines.iter().enumerate() {
-                                let text_y = popup_y
-                                    + PAD_Y
-                                    + (block_line_offset + line_idx) as f32 * geometry.line_height;
-                                if text_y > popup_content_bottom
+                                let text_y = content_y + line_idx as f32 * geometry.line_height;
+                                if text_y < content_top
+                                    || text_y > content_bottom
                                     || text_y + geometry.line_height < viewport_top
                                     || text_y > viewport_bottom
                                 {
@@ -391,18 +570,18 @@ impl Renderer {
                                 }
                                 self.editor_overlay_text_system
                                     .set_size(Some(line_w), Some(geometry.line_height));
-                                glyphs.extend(layout_panel_text_italic(
+                                glyphs.extend(layout_panel_text(
                                     line_text,
                                     &mut self.editor_overlay_text_system,
                                     &mut self.atlas,
                                     &self.queue,
-                                    text_x,
+                                    content_left,
                                     text_y,
                                     self.theme.ui.fg_dim.as_f32(),
                                 ));
                             }
+                            content_y += lines.len().max(1) as f32 * geometry.line_height + block_gap;
                         }
-                        block_line_offset += lines.len().max(1);
                     }
                 }
             }

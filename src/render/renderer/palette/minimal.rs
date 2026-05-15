@@ -317,8 +317,18 @@ impl Renderer {
             prompt_y,
             model.hint_color,
         ));
+        let aa_text = "Aa";
+        let aa_text_w = crate::render::renderer::helpers::estimate_monospace_width(aa_text, font_size);
+        let option_w = if model.mode == crate::app::command_palette::CommandPaletteMode::InFileSearch {
+            aa_text_w + 22.0
+        } else {
+            0.0
+        };
+        let query_w = (inner_width - prefix_w - option_w - 18.0).max(1.0);
+        self.palette_text_system
+            .set_size(Some(query_w), Some(model.line_height));
         glyphs.extend(layout_panel_text(
-            &model.prompt_query,
+            &crate::render::renderer::helpers::clamp_monospace_text(&model.prompt_query, query_w, font_size),
             &mut self.palette_text_system,
             &mut self.atlas,
             &self.queue,
@@ -326,6 +336,28 @@ impl Renderer {
             prompt_y,
             query_color,
         ));
+        if model.mode == crate::app::command_palette::CommandPaletteMode::InFileSearch {
+            let aa_box_x = panel_x + panel_w - model.panel_padding - option_w;
+            let aa_box_y = prompt_y - 2.0;
+            let aa_box_h = (model.line_height + 4.0).max(12.0);
+            if model.search_case_sensitive {
+                let mut aa_bg = model.match_color;
+                aa_bg[3] = aa_bg[3].clamp(0.35, 0.70);
+                quads.push(RegionDrawInstance::new(
+                    [aa_box_x, aa_box_y, option_w, aa_box_h],
+                    aa_bg,
+                ));
+            }
+            glyphs.extend(layout_panel_text(
+                aa_text,
+                &mut self.palette_text_system,
+                &mut self.atlas,
+                &self.queue,
+                aa_box_x + ((option_w - aa_text_w) * 0.5).max(0.0),
+                aa_box_y + ((aa_box_h - model.line_height) * 0.5).max(0.0),
+                if model.search_case_sensitive { model.text_color } else { model.hint_color },
+            ));
+        }
         row_top += prompt_h;
 
         // VimCommand: only prompt — exit early

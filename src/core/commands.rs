@@ -140,6 +140,7 @@ pub enum Command {
     FilePickerAppendQuery(String),
     FilePickerBackspaceQuery,
     ToggleLiveGrepCaseSensitive,
+    ToggleInFileSearchCaseSensitive,
     OverlaySelectNext,
     OverlaySelectPrev,
     SettingsSelectNext,

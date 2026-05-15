@@ -172,7 +172,9 @@ impl Renderer {
             } else {
                 fuzzy_state.query.clone()
             };
-            let option_w = estimate_monospace_width(" Aa ", font_size) + 12.0;
+            let aa_text = "Aa";
+            let aa_text_w = estimate_monospace_width(aa_text, font_size);
+            let option_w = aa_text_w + 22.0;
             glyphs.extend(layout_panel_text(
                 &clamp_monospace_text(&search_text, (search_box_w - option_w - 18.0).max(1.0), font_size),
                 &mut self.editor_overlay_text_system,
@@ -191,13 +193,15 @@ impl Renderer {
                     aa_bg,
                 ));
             }
+            let aa_box_x = search_box_x + search_box_w - option_w - 8.0;
+            let aa_box_h = (line_height + 2.0).max(12.0);
             glyphs.extend(layout_panel_text(
-                "Aa",
+                aa_text,
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
-                search_box_x + search_box_w - option_w,
-                search_box_y + 4.0,
+                aa_box_x + ((option_w - aa_text_w) * 0.5).max(0.0),
+                search_box_y + 3.0 + ((aa_box_h - line_height) * 0.5).max(0.0),
                 if aa_active { fg } else { fg_ghost },
             ));
         }

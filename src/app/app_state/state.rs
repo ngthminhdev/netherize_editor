@@ -422,7 +422,7 @@ impl AppState {
             return Vec::new();
         };
         let text = self.text.to_string();
-        collect_search_highlights(&text, &word, true)
+        collect_search_highlights(&text, &word, true, true)
     }
 
     pub fn active_search_match_position(&self) -> Option<(usize, usize)> {
