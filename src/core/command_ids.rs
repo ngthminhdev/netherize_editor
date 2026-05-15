@@ -242,6 +242,7 @@ pub const EXPLORER_OPEN_FILE: &str = "explorer.open_file";
 // ── File picker ───────────────────────────────────────────────────────────────
 pub const OVERLAY_SELECT_NEXT: &str = "overlay.select_next";
 pub const OVERLAY_SELECT_PREV: &str = "overlay.select_prev";
+pub const TOGGLE_LIVE_GREP_CASE_SENSITIVE: &str = "search.toggle_case_sensitive";
 pub const SETTINGS_SELECT_NEXT: &str = "settings.select_next";
 pub const SETTINGS_SELECT_PREV: &str = "settings.select_prev";
 pub const SETTINGS_ADJUST_DECREASE: &str = "settings.adjust_decrease";
@@ -426,6 +427,7 @@ pub const ALL_IDS: &[&str] = &[
     EXPLORER_OPEN_FILE,
     OVERLAY_SELECT_NEXT,
     OVERLAY_SELECT_PREV,
+    TOGGLE_LIVE_GREP_CASE_SENSITIVE,
     SETTINGS_SELECT_NEXT,
     SETTINGS_SELECT_PREV,
     SETTINGS_ADJUST_DECREASE,
@@ -647,6 +649,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         EXPLORER_OPEN_FILE => Some(Command::ExplorerOpenFile),
         OVERLAY_SELECT_NEXT | FILE_PICKER_SELECT_NEXT => Some(Command::OverlaySelectNext),
         OVERLAY_SELECT_PREV | FILE_PICKER_SELECT_PREV => Some(Command::OverlaySelectPrev),
+        TOGGLE_LIVE_GREP_CASE_SENSITIVE => Some(Command::ToggleLiveGrepCaseSensitive),
         SETTINGS_SELECT_NEXT => Some(Command::SettingsSelectNext),
         SETTINGS_SELECT_PREV => Some(Command::SettingsSelectPrev),
         SETTINGS_ADJUST_DECREASE => Some(Command::SettingsAdjustDecrease),

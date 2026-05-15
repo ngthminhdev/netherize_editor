@@ -192,6 +192,7 @@ pub enum WorkerRequestPayload {
         query: String,
         mode: FzfSearchMode,
         workspace_root: PathBuf,
+        case_sensitive: bool,
     },
     GitBlameLine {
         workspace_root: PathBuf,
@@ -648,6 +649,7 @@ pub enum WorkerResultPayload {
     FzfResults {
         query: String,
         mode: FzfSearchMode,
+        case_sensitive: bool,
         items: Vec<FzfResultItem>,
     },
     GitBlameLine {

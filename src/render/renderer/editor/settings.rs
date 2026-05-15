@@ -720,7 +720,7 @@ impl Renderer {
                 ShortcutHintSegment::Text("type to change  ·"),
                 ShortcutHintSegment::Keys(&["Enter"]),
                 ShortcutHintSegment::Text("commit  ·"),
-                ShortcutHintSegment::Keys(&["Esc"]),
+                ShortcutHintSegment::Keys(&["󱊷"]),
                 ShortcutHintSegment::Text("cancel"),
             ]
         } else {

@@ -605,6 +605,24 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::EditorPaste),
         },
         Case {
+            name: "live grep fuzzy picker ctrl+a -> ToggleLiveGrepCaseSensitive",
+            context: {
+                let mut context = KeybindingContext::with_focus(
+                    EditorMode::Insert,
+                    InputFocusContext::FuzzyPicker,
+                );
+                context.command_palette_mode = Some(CommandPaletteMode::LiveGrep);
+                context
+            },
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyA),
+                named_key: None,
+                text: Some("a".to_string()),
+                modifiers: ModifiersState::CONTROL,
+            },
+            expected: Some(Command::ToggleLiveGrepCaseSensitive),
+        },
+        Case {
             name: "palette ctrl+n -> OverlaySelectNext",
             context: KeybindingContext::for_mode_with_picker(EditorMode::PaletteFocus, true),
             input: NormalizedInput {

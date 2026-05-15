@@ -1211,6 +1211,8 @@ impl AppShell {
                 query,
                 mode: search_mode,
                 workspace_root,
+                case_sensitive: search_mode == FzfSearchMode::LiveGrep
+                    && self.app_state.live_grep_case_sensitive(),
             },
         });
     }

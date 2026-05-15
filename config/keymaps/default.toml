@@ -1010,6 +1010,10 @@ mode = "palette"
 key = "mod+v"
 command = "editor.paste"
 
+[[bindings]]
+mode = "palette"
+key = "Ctrl+a"
+command = "search.toggle_case_sensitive"
 
 # ───────────────── MULTIPLE CURSORS ─────────────────
 

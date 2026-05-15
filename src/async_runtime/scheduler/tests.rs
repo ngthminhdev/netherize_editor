@@ -153,12 +153,14 @@ fn fzf_find_file_script_uses_ripgrep_files_and_ignore_globs() {
 
 #[test]
 fn fzf_live_grep_script_uses_ripgrep_and_ignore_globs() {
-    let script = build_fzf_live_grep_script();
+    let script = build_fzf_live_grep_script(false);
 
-    assert!(script.contains("rg --line-number --column --hidden"));
+    assert!(script.contains("rg --line-number --column --hidden --fixed-strings"));
     assert!(script.contains("--glob '!**/.git/**'"));
     assert!(script.contains("--glob '!**/target/**'"));
-    assert!(script.contains("fzf -f \"$1\""));
+    assert!(script.contains("--ignore-case"));
+    assert!(script.contains("-- \"$1\" ."));
+    assert!(script.contains("fzf -i -f \"$1\""));
 }
 
 #[test]

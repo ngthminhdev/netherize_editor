@@ -7,6 +7,11 @@ use crate::{
     },
 };
 
+use super::{
+    palette_footer_content_height, palette_footer_height, render_palette_badge,
+    render_palette_chrome, render_palette_footer, render_palette_selection, PaletteFooterAction,
+    PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD,
+};
 use super::super::helpers::{
     clamp_monospace_text, estimate_monospace_width, ext_icon_dot, gutter_width_for_editor,
     layout_panel_text, layout_panel_text_bold, rect_to_scissor,
@@ -35,35 +40,27 @@ impl Renderer {
         let icon_col_w = dot_char_w + 4.0 + 4.0 * char_w + 24.0;
         let name_x = text_x + icon_col_w;
 
-        quads.push(RegionDrawInstance::new(
-            model.overlay_bounds,
-            model.scrim_color,
-        ));
-        quads.push(RegionDrawInstance::new(
-            [panel_x - 1.0, panel_y - 1.0, panel_w + 2.0, panel_h + 2.0],
-            model.border_color,
-        ));
-        quads.push(RegionDrawInstance::new(model.panel_bounds, model.panel_bg));
+        render_palette_chrome(model, &mut quads);
 
         let mut row_top = panel_y + model.panel_padding;
 
-        let badge_text = format!(" {} ", model.title);
-        let badge_w = badge_text.chars().count() as f32 * font_size * 0.60 + 4.0;
-        quads.push(RegionDrawInstance::new(
-            [text_x, row_top + 2.0, badge_w, line_h - 4.0],
-            model.success_color,
-        ));
-        glyphs.extend(layout_panel_text(
-            &badge_text,
+        let (badge_w, badge_h, badge_glyphs) = render_palette_badge(
+            &model.title,
             &mut self.palette_text_system,
             &mut self.atlas,
             &self.queue,
-            text_x + 2.0,
+            &mut quads,
+            text_x,
             row_top,
+            font_size,
+            line_h,
+            model.success_color,
             self.theme.ui.bg.as_f32(),
-        ));
+        );
+        glyphs.extend(badge_glyphs);
 
         let query_x = text_x + badge_w + 10.0;
+        let query_y = row_top + ((badge_h - line_h) * 0.5).max(0.0);
         let prefix_w = model.prompt_prefix.chars().count() as f32 * font_size * 0.60;
         glyphs.extend(layout_panel_text(
             &model.prompt_prefix,
@@ -71,7 +68,7 @@ impl Renderer {
             &mut self.atlas,
             &self.queue,
             query_x,
-            row_top,
+            query_y,
             model.hint_color,
         ));
         glyphs.extend(layout_panel_text(
@@ -80,7 +77,7 @@ impl Renderer {
             &mut self.atlas,
             &self.queue,
             query_x + prefix_w,
-            row_top,
+            query_y,
             model.text_color,
         ));
 
@@ -93,10 +90,10 @@ impl Renderer {
             &mut self.atlas,
             &self.queue,
             count_x,
-            row_top,
+            query_y,
             model.hint_color,
         ));
-        row_top += line_h;
+        row_top += badge_h + PALETTE_HEADER_BOTTOM_PAD;
 
         quads.push(RegionDrawInstance::new(
             [panel_x, row_top, panel_w, 1.0],
@@ -104,9 +101,9 @@ impl Renderer {
         ));
         row_top += 6.0;
 
-        let footer_h = line_h + 10.0 + 1.0;
-        let body_h = (panel_h - (row_top - panel_y) - footer_h - model.panel_padding).max(row_h);
-        let max_visible = (body_h / row_h).floor() as usize;
+        let footer_h = palette_footer_height(line_h);
+        let body_h = (panel_h - (row_top - panel_y) - footer_h - model.panel_padding).max(0.0);
+        let max_visible = ((body_h / row_h).floor() as usize).max(1);
         let scroll_offset = model
             .scroll_offset_rows
             .min(model.result_labels.len().saturating_sub(max_visible));
@@ -131,10 +128,7 @@ impl Renderer {
                 .unwrap_or(&[]);
 
             if absolute_idx == model.selected_index {
-                quads.push(RegionDrawInstance::new(
-                    [panel_x + 2.0, row_top, (panel_w - 4.0).max(0.0), row_h],
-                    model.selection_bg,
-                ));
+                render_palette_selection(model, &mut quads, row_top, row_h);
             }
             if visible_idx > 0 {
                 let mut sep = model.border_color;
@@ -230,14 +224,30 @@ impl Renderer {
             [panel_x, footer_y, panel_w, 1.0],
             model.border_color,
         ));
-        glyphs.extend(layout_panel_text(
-            "  ↑↓ navigate   ↵ open match   esc close",
+        glyphs.extend(render_palette_footer(
+            model,
             &mut self.palette_text_system,
             &mut self.atlas,
             &self.queue,
+            &mut quads,
             text_x,
-            footer_y + 5.0,
-            model.hint_color,
+            footer_y + PALETTE_FOOTER_TOP_PAD,
+            font_size,
+            palette_footer_content_height(footer_h),
+            &[
+                PaletteFooterAction {
+                    keys: &["↑↓"],
+                    label: "navigate",
+                },
+                PaletteFooterAction {
+                    keys: &["↵"],
+                    label: "open match",
+                },
+                PaletteFooterAction {
+                    keys: &["󱊷"],
+                    label: "close",
+                },
+            ],
         ));
 
         self.palette_chrome_instances = quads;

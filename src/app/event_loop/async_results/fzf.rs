@@ -3,12 +3,32 @@ use crate::app::command_palette::CommandPaletteMode;
 use crate::async_runtime::message::{FzfSearchMode, WorkerResultPayload};
 
 pub(super) fn handle_fzf_result(app: &mut AppShell, payload: WorkerResultPayload) {
-    if let WorkerResultPayload::FzfResults { query, mode, items } = payload {
+    if let WorkerResultPayload::FzfResults {
+        query,
+        mode,
+        case_sensitive,
+        items,
+    } = payload
+    {
+        if mode == FzfSearchMode::LiveGrep
+            && case_sensitive != app.app_state.live_grep_case_sensitive()
+        {
+            return;
+        }
         let palette_mode = match mode {
             FzfSearchMode::FindFile => CommandPaletteMode::FilePicker,
             FzfSearchMode::LiveGrep => CommandPaletteMode::LiveGrep,
         };
-        let palette_items = items
+        let mut raw_items = items;
+        if mode == FzfSearchMode::LiveGrep {
+            raw_items.sort_by(|a, b| {
+                a.path
+                    .cmp(&b.path)
+                    .then_with(|| a.line.unwrap_or(0).cmp(&b.line.unwrap_or(0)))
+                    .then_with(|| a.column.unwrap_or(0).cmp(&b.column.unwrap_or(0)))
+            });
+        }
+        let palette_items = raw_items
             .into_iter()
             .map(|item| {
                 if let (Some(line), Some(column)) = (item.line, item.column) {

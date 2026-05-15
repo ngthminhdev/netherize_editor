@@ -139,6 +139,7 @@ pub enum Command {
     OpenHelp,
     FilePickerAppendQuery(String),
     FilePickerBackspaceQuery,
+    ToggleLiveGrepCaseSensitive,
     OverlaySelectNext,
     OverlaySelectPrev,
     SettingsSelectNext,
@@ -511,6 +512,7 @@ impl Command {
                 | Self::Redo
                 | Self::OverlaySelectNext
                 | Self::OverlaySelectPrev
+                | Self::FilePickerBackspaceQuery
                 | Self::CompletionNext
                 | Self::CompletionPrev
                 | Self::ReferencesSelectNext

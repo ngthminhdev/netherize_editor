@@ -79,6 +79,7 @@ async fn execute_fzf_async(request: &WorkerRequest) -> Result<WorkerResultPayloa
         query,
         mode,
         workspace_root,
+        case_sensitive,
     } = &request.payload
     else {
         return Err("fzf runner received non-fzf payload".to_string());
@@ -88,18 +89,20 @@ async fn execute_fzf_async(request: &WorkerRequest) -> Result<WorkerResultPayloa
         return Ok(WorkerResultPayload::FzfResults {
             query: query.clone(),
             mode: *mode,
+            case_sensitive: *case_sensitive,
             items: Vec::new(),
         });
     }
 
     let items = match mode {
         FzfSearchMode::FindFile => fzf_find_file(query, workspace_root).await?,
-        FzfSearchMode::LiveGrep => fzf_live_grep(query, workspace_root).await?,
+        FzfSearchMode::LiveGrep => fzf_live_grep(query, workspace_root, *case_sensitive).await?,
     };
 
     Ok(WorkerResultPayload::FzfResults {
         query: query.clone(),
         mode: *mode,
+        case_sensitive: *case_sensitive,
         items,
     })
 }
@@ -124,8 +127,12 @@ async fn fzf_find_file(query: &str, workspace_root: &Path) -> Result<Vec<FzfResu
         .collect())
 }
 
-async fn fzf_live_grep(query: &str, workspace_root: &Path) -> Result<Vec<FzfResultItem>, String> {
-    let script = build_fzf_live_grep_script();
+async fn fzf_live_grep(
+    query: &str,
+    workspace_root: &Path,
+    case_sensitive: bool,
+) -> Result<Vec<FzfResultItem>, String> {
+    let script = build_fzf_live_grep_script(case_sensitive);
     let fzf_output = run_fzf_shell(&script, query, workspace_root, "rg|fzf").await?;
 
     Ok(String::from_utf8_lossy(&fzf_output.stdout)
@@ -184,12 +191,18 @@ pub(super) fn build_fzf_find_file_script() -> String {
     }
 }
 
-pub(super) fn build_fzf_live_grep_script() -> String {
+pub(super) fn build_fzf_live_grep_script(case_sensitive: bool) -> String {
     let glob_args = build_ripgrep_ignore_glob_args();
-    if glob_args.is_empty() {
-        "rg --line-number --column --hidden \"\" . | fzf -f \"$1\"".to_string()
+    let rg_case_arg = if case_sensitive {
+        "--case-sensitive"
     } else {
-        format!("rg --line-number --column --hidden {glob_args} \"\" . | fzf -f \"$1\"")
+        "--ignore-case"
+    };
+    let fzf_case_arg = if case_sensitive { "+i" } else { "-i" };
+    if glob_args.is_empty() {
+        format!("rg --line-number --column --hidden --fixed-strings {rg_case_arg} -- \"$1\" . | fzf {fzf_case_arg} -f \"$1\"")
+    } else {
+        format!("rg --line-number --column --hidden --fixed-strings {rg_case_arg} {glob_args} -- \"$1\" . | fzf {fzf_case_arg} -f \"$1\"")
     }
 }
 

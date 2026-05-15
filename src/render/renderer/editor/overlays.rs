@@ -993,7 +993,7 @@ impl Renderer {
             ));
             let hint_font_size = (geometry.font_size * 0.85).max(11.0);
             let hint_line_h = hint_font_size * 1.4;
-            let hint_text = "↑↓  ↩ accept  esc close";
+            let hint_text = "↑↓ | ↩ accept | 󱊷 close";
             let hint_w = estimate_monospace_width(hint_text, hint_font_size);
             let hint_x = (popup_x + popup_w - hint_w - PAD_X).max(popup_x + PAD_X);
             let hint_y = footer_y + (FOOTER_H - hint_line_h) * 0.5;

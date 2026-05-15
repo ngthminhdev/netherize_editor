@@ -514,6 +514,7 @@ pub(super) fn handle_lsp_result(
                     },
                     action: CommandPaletteAction::ApplyCodeAction(i),
                     tone: CommandPaletteItemTone::Default,
+                    preview_colors: Vec::new(),
                 })
                 .collect();
 

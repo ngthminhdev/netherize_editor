@@ -447,6 +447,25 @@ impl AppState {
         self.open_command_palette_mode(CommandPaletteMode::FilePicker)
     }
 
+    pub fn live_grep_case_sensitive(&self) -> bool {
+        self.live_grep_case_sensitive
+    }
+
+    pub fn toggle_live_grep_case_sensitive(&mut self) -> bool {
+        self.live_grep_case_sensitive = !self.live_grep_case_sensitive;
+        if let Some(index) = self.active_buffer_index
+            && let Some(BufferEntry {
+                content: BufferContent::FuzzyPicker(state),
+                ..
+            }) = self.buffers.get_mut(index)
+            && state.mode == CommandPaletteMode::LiveGrep
+        {
+            state.live_grep_case_sensitive = self.live_grep_case_sensitive;
+        }
+        self.bump_revision();
+        true
+    }
+
     pub fn close_file_picker(&mut self) -> bool {
         if !self.is_file_picker_open() {
             return false;
@@ -993,6 +1012,9 @@ impl AppState {
         let mut state = FuzzyState::new(mode);
         if mode == CommandPaletteMode::FileHistory {
             state.source_file_path = self.active_file.clone();
+        }
+        if mode == CommandPaletteMode::LiveGrep {
+            state.live_grep_case_sensitive = self.live_grep_case_sensitive;
         }
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {

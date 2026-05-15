@@ -180,12 +180,13 @@ pub enum CommandPaletteItemTone {
     Variable,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CommandPaletteItem {
     pub label: String,
     pub secondary_label: Option<String>,
     pub action: CommandPaletteAction,
     pub tone: CommandPaletteItemTone,
+    pub preview_colors: Vec<[f32; 4]>,
 }
 
 impl CommandPaletteItem {
@@ -195,6 +196,7 @@ impl CommandPaletteItem {
             secondary_label: None,
             action: CommandPaletteAction::OpenFile(absolute_path),
             tone: CommandPaletteItemTone::Default,
+            preview_colors: Vec::new(),
         }
     }
 
@@ -209,6 +211,7 @@ impl CommandPaletteItem {
             secondary_label: None,
             action: CommandPaletteAction::OpenFile(path.to_path_buf()),
             tone: CommandPaletteItemTone::Default,
+            preview_colors: Vec::new(),
         }
     }
 
@@ -224,6 +227,7 @@ impl CommandPaletteItem {
             secondary_label,
             action: CommandPaletteAction::OpenSearchMatch { path, line, column },
             tone: CommandPaletteItemTone::Default,
+            preview_colors: Vec::new(),
         }
     }
 
@@ -233,15 +237,20 @@ impl CommandPaletteItem {
             secondary_label: None,
             action: CommandPaletteAction::ExecuteCommand(id.to_string()),
             tone: CommandPaletteItemTone::Default,
+            preview_colors: Vec::new(),
         }
     }
 
     pub fn theme(name: &str, path: &Path) -> Self {
+        let preview_colors = ThemeConfig::load(name)
+            .map(|theme| theme_selector_preview_colors(&theme))
+            .unwrap_or_default();
         Self {
             label: name.to_string(),
             secondary_label: Some(path.display().to_string()),
             action: CommandPaletteAction::SelectTheme(name.to_string()),
             tone: CommandPaletteItemTone::Default,
+            preview_colors,
         }
     }
 
@@ -251,6 +260,7 @@ impl CommandPaletteItem {
             secondary_label: None,
             action: CommandPaletteAction::JumpToSymbol(name.to_string()),
             tone: CommandPaletteItemTone::Default,
+            preview_colors: Vec::new(),
         }
     }
 
@@ -267,6 +277,7 @@ impl CommandPaletteItem {
                 column: symbol.range.start.character,
             },
             tone: symbol_tone(&symbol.kind),
+            preview_colors: Vec::new(),
         }
     }
 
@@ -281,6 +292,7 @@ impl CommandPaletteItem {
             secondary_label,
             action: CommandPaletteAction::SelectFileHistoryEntry(index),
             tone,
+            preview_colors: Vec::new(),
         }
     }
 
@@ -295,6 +307,7 @@ impl CommandPaletteItem {
             secondary_label: None,
             action: CommandPaletteAction::ExecuteVimCommand(trimmed.to_string()),
             tone: CommandPaletteItemTone::Default,
+            preview_colors: Vec::new(),
         }
     }
 }
@@ -345,6 +358,7 @@ pub struct CommandPaletteRenderModel {
     /// Màu info (xanh dương) — dùng cho ext badges của .ts, .go ...
     pub info_color: [f32; 4],
     pub item_tones: Vec<CommandPaletteItemTone>,
+    pub item_preview_colors: Vec<Vec<[f32; 4]>>,
 }
 
 #[derive(Debug, Clone)]
@@ -746,11 +760,17 @@ impl CommandPalette {
                 // Recent Projects ưu tiên rộng hơn để hiển thị full path.
                 let available_w = (width - 48.0).max(320.0);
                 let min_w = (width * 0.35).max(400.0);
-                let pw = if matches!(
-                    self.mode,
-                    CommandPaletteMode::RecentProjects | CommandPaletteMode::FilePicker
-                ) {
+                let pw = if self.mode == CommandPaletteMode::ThemeSelector {
+                    (width * 0.60).clamp(min_w.max(560.0), available_w)
+                } else if self.mode == CommandPaletteMode::FilePicker {
+                    (width * 0.60).clamp(min_w.max(560.0), available_w)
+                } else if self.mode == CommandPaletteMode::RecentProjects {
                     (width * 0.70).clamp(min_w, available_w)
+                } else if matches!(
+                    self.mode,
+                    CommandPaletteMode::WorkspaceSymbols | CommandPaletteMode::DocumentSymbols
+                ) {
+                    (width * 0.60).clamp(min_w.max(560.0), available_w)
                 } else {
                     min_w.max(660.0_f32.min(available_w))
                 };
@@ -930,8 +950,24 @@ impl CommandPalette {
             warning_color: theme.ui.warning.as_f32(),
             info_color: theme.ui.info.as_f32(),
             item_tones: self.results.iter().map(|entry| entry.tone).collect(),
+            item_preview_colors: self
+                .results
+                .iter()
+                .map(|entry| entry.preview_colors.clone())
+                .collect(),
         })
     }
+}
+
+fn theme_selector_preview_colors(theme: &ThemeConfig) -> Vec<[f32; 4]> {
+    vec![
+        theme.ui.accent.as_f32(),
+        theme.syntax.keyword.as_f32(),
+        theme.syntax.string.as_f32(),
+        theme.syntax.function.as_f32(),
+        theme.ui.warning.as_f32(),
+        theme.ui.info.as_f32(),
+    ]
 }
 
 fn symbol_icon(kind: &str) -> &'static str {
@@ -1050,6 +1086,7 @@ fn vim_command_items(query: &str) -> Vec<CommandPaletteItem> {
             secondary_label: None,
             action: CommandPaletteAction::ExecuteVimCommand(trimmed.to_string()),
             tone: CommandPaletteItemTone::Default,
+            preview_colors: Vec::new(),
         }];
     }
 
@@ -1067,7 +1104,7 @@ fn vim_command_items(query: &str) -> Vec<CommandPaletteItem> {
 fn palette_max_items(mode: CommandPaletteMode) -> usize {
     match mode {
         CommandPaletteMode::LiveGrep => 10,
-        CommandPaletteMode::ThemeSelector => 16,
+        CommandPaletteMode::ThemeSelector => 12,
         mode if mode.is_complex_picker() => 12,
         _ => 10,
     }
@@ -1076,6 +1113,7 @@ fn palette_max_items(mode: CommandPaletteMode) -> usize {
 fn palette_row_height(mode: CommandPaletteMode, line_height: f32) -> f32 {
     match mode {
         CommandPaletteMode::LiveGrep => line_height * 2.0 + 16.0,
+        CommandPaletteMode::ThemeSelector => line_height * 1.18 + 18.0,
         _ => line_height + 8.0,
     }
 }
@@ -1085,20 +1123,34 @@ fn complex_picker_reserved_height(
     panel_padding: f32,
     line_height: f32,
 ) -> f32 {
-    let footer_height = line_height + 11.0;
-    let header_height = if matches!(
-        mode,
-        CommandPaletteMode::RecentProjects | CommandPaletteMode::ThemeSelector
-    ) {
-        line_height * 2.0 + 10.0
+    // Keep this in sync with `src/render/renderer/palette.rs` renderer metrics:
+    // badge height (`line + 10`), header bottom pad (12), separator/gap (7),
+    // and footer height (`line + 36 + 1`). If this underestimates, scroll
+    // math thinks selected rows are visible while the renderer has already
+    // clipped them behind the footer.
+    let header_gap = 12.0 + 1.0 + 6.0;
+    let renderer_line_height = if mode == CommandPaletteMode::ThemeSelector {
+        (line_height * 1.18).max(24.0)
     } else {
-        line_height + 6.0
+        line_height
+    };
+    let footer_height = renderer_line_height + 37.0;
+    let header_height = if mode == CommandPaletteMode::ThemeSelector {
+        renderer_line_height + 10.0 + header_gap
+    } else if mode == CommandPaletteMode::RecentProjects {
+        let badge_height = line_height + 10.0 + header_gap;
+        let column_header_height = line_height + 1.0 + 4.0;
+        badge_height + column_header_height
+    } else {
+        line_height + 10.0 + header_gap
     };
     panel_padding * 2.0 + header_height + footer_height
 }
 
 fn live_grep_reserved_height(panel_padding: f32, line_height: f32) -> f32 {
-    panel_padding * 2.0 + line_height + 6.0 + (line_height + 11.0)
+    let footer_height = line_height + 37.0;
+    let header_height = line_height + 10.0 + 12.0 + 1.0 + 6.0;
+    panel_padding * 2.0 + header_height + footer_height
 }
 
 fn complex_picker_body_rows(

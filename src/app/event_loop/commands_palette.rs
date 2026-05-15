@@ -151,6 +151,7 @@ impl AppShell {
             }
             Command::FilePickerAppendQuery(_)
             | Command::FilePickerBackspaceQuery
+            | Command::ToggleLiveGrepCaseSensitive
             | Command::EditorPaste
             | Command::PasteSystemClipboard
                 if self.app_state.active_buffer_is_fuzzy_picker() =>
@@ -173,6 +174,7 @@ impl AppShell {
             }
             Command::FilePickerAppendQuery(_)
             | Command::FilePickerBackspaceQuery
+            | Command::ToggleLiveGrepCaseSensitive
             | Command::EditorPaste
             | Command::PasteSystemClipboard
                 if self.app_state.current_mode() == EditorMode::PaletteFocus
@@ -203,7 +205,12 @@ impl AppShell {
                         | CommandPaletteMode::ExplorerRenameFull
                         | CommandPaletteMode::ExplorerRenameBase,
                     ) => {}
-                    Some(CommandPaletteMode::FilePicker | CommandPaletteMode::LiveGrep) => {
+                    Some(CommandPaletteMode::FilePicker)
+                        if !matches!(command, Command::ToggleLiveGrepCaseSensitive) =>
+                    {
+                        self.submit_active_palette_fzf_search();
+                    }
+                    Some(CommandPaletteMode::LiveGrep) => {
                         self.submit_active_palette_fzf_search();
                     }
                     Some(CommandPaletteMode::InFileSearch) => {

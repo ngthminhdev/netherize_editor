@@ -312,6 +312,7 @@ mod tests {
             payload: WorkerResultPayload::FzfResults {
                 query: "foo".to_string(),
                 mode: crate::async_runtime::message::FzfSearchMode::FindFile,
+                case_sensitive: false,
                 items: Vec::new(),
             },
         }))
