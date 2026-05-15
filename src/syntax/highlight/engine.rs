@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ops::Range;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, Query, QueryCursor};
@@ -13,6 +14,10 @@ pub(crate) fn generate_query_highlight_spans(
     source: &str,
     byte_window: Option<Range<usize>>,
 ) -> Vec<HighlightSpan> {
+    if !tree_root_matches_source(root, source) {
+        return Vec::new();
+    }
+
     let Some(query) = highlight_query(language_id) else {
         return Vec::new();
     };
@@ -67,7 +72,12 @@ pub(crate) fn generate_injection_highlights(
     language_id: LanguageId,
     root: Node<'_>,
     source: &str,
+    mut injection_cache: Option<&mut HashMap<LanguageId, SyntaxEngine>>,
 ) -> Vec<HighlightSpan> {
+    if !tree_root_matches_source(root, source) {
+        return Vec::new();
+    }
+
     let Some(injection_q) = injection_query(language_id) else {
         return Vec::new();
     };
@@ -81,6 +91,8 @@ pub(crate) fn generate_injection_highlights(
     let mut cursor = QueryCursor::new();
     let mut matches = cursor.matches(injection_q, root, source.as_bytes());
 
+    // Collect all injection content ranges first
+    let mut injection_ranges = Vec::new();
     loop {
         matches.advance();
         let Some(m) = matches.get() else {
@@ -105,24 +117,53 @@ pub(crate) fn generate_injection_highlights(
             }
 
             let content = &source[node_start..node_end];
-            if content.is_empty() {
+            if !content.is_empty() {
+                injection_ranges.push((node_start, node_end));
+            }
+        }
+    }
+
+    // Ensure parser exists in cache if we have one
+    if let Some(cache) = injection_cache.as_mut() {
+        if !cache.contains_key(&injected_lang) {
+            if let Ok(eng) = SyntaxEngine::new(injected_lang) {
+                cache.insert(injected_lang, eng);
+            }
+        }
+    }
+
+    // Process each injection range
+    for (node_start, node_end) in injection_ranges {
+        let content = &source[node_start..node_end];
+
+        // Get spans from cached or temporary parser
+        let inner = if let Some(cache) = injection_cache.as_mut() {
+            // Use cached parser
+            if let Some(engine) = cache.get_mut(&injected_lang) {
+                if let Ok(tree) = engine.parse_source(content, 0) {
+                    generate_query_highlight_spans_for_node(hl_query, tree.root_node(), content)
+                } else {
+                    continue;
+                }
+            } else {
                 continue;
             }
-
-            let Ok(mut eng) = SyntaxEngine::new(injected_lang) else {
-                continue;
-            };
-            let Ok(tree) = eng.parse_source(content, 0) else {
-                continue;
-            };
-
-            let inner =
-                generate_query_highlight_spans_for_node(hl_query, tree.root_node(), content);
-
-            for mut span in inner {
-                span.range = (span.range.start + node_start)..(span.range.end + node_start);
-                spans.push(span);
+        } else {
+            // No cache: create temporary parser and immediately generate spans
+            match SyntaxEngine::new(injected_lang) {
+                Ok(mut eng) => match eng.parse_source(content, 0) {
+                    Ok(tree) => {
+                        generate_query_highlight_spans_for_node(hl_query, tree.root_node(), content)
+                    }
+                    Err(_) => continue,
+                },
+                Err(_) => continue,
             }
+        };
+
+        for mut span in inner {
+            span.range = (span.range.start + node_start)..(span.range.end + node_start);
+            spans.push(span);
         }
     }
 
@@ -134,6 +175,10 @@ pub(crate) fn generate_query_highlight_spans_for_node(
     root: Node<'_>,
     source: &str,
 ) -> Vec<HighlightSpan> {
+    if !tree_root_matches_source(root, source) {
+        return Vec::new();
+    }
+
     let mut cursor = QueryCursor::new();
     let mut raw_spans = Vec::new();
     let mut query_matches = cursor.matches(query, root, source.as_bytes());
@@ -170,6 +215,10 @@ pub(crate) fn generate_query_highlight_spans_for_node(
     normalize_spans(source, raw_spans, None)
 }
 
+fn tree_root_matches_source(root: Node<'_>, source: &str) -> bool {
+    root.start_byte() <= source.len() && root.end_byte() <= source.len()
+}
+
 fn injection_language_for_query(query: &Query) -> LanguageId {
     for i in 0..query.pattern_count() {
         for prop in query.property_settings(i) {
@@ -191,19 +240,36 @@ fn injection_language_for_query(query: &Query) -> LanguageId {
 pub(crate) fn capture_category(capture_name: &str) -> Option<HighlightCategory> {
     match capture_name {
         "string.special.key" => Some(HighlightCategory::Property),
-        "markup.strong" => Some(HighlightCategory::MarkupStrong),
-        "markup.italic" => Some(HighlightCategory::MarkupItalic),
-        "markup.raw.inline" => Some(HighlightCategory::MarkupInlineCode),
-        "markup.link.text" => Some(HighlightCategory::MarkupLink),
+        "markup.strong" | "syntax.markup.strong" => Some(HighlightCategory::MarkupStrong),
+        "markup.italic" | "syntax.markup.italic" => Some(HighlightCategory::MarkupItalic),
+        "markup.raw.inline" | "syntax.markup.raw.inline" => Some(HighlightCategory::MarkupInlineCode),
+        "markup.link.text" | "syntax.markup.link.text" => Some(HighlightCategory::MarkupLink),
         "syntax.keyword" => Some(HighlightCategory::Keyword),
+        "syntax.keyword.control" | "keyword.control" | "keyword.control.return"
+        | "keyword.control.conditional" | "keyword.control.repeat" | "keyword.control.import" => {
+            Some(HighlightCategory::KeywordControl)
+        }
+        "syntax.keyword.storage" | "keyword.storage" | "keyword.storage.type"
+        | "keyword.storage.modifier" => {
+            Some(HighlightCategory::KeywordStorage)
+        }
         "syntax.string" => Some(HighlightCategory::String),
+        "syntax.string.escape" | "string.escape" | "character.escape" | "escape.sequence" => {
+            Some(HighlightCategory::StringEscape)
+        }
         "syntax.comment" => Some(HighlightCategory::Comment),
+        "syntax.comment.doc" | "syntax.comment.documentation" | "comment.documentation" | "comment.doc" | "comment.block.documentation" => {
+            Some(HighlightCategory::CommentDoc)
+        }
         "syntax.type" => Some(HighlightCategory::Type),
+        "syntax.type.builtin" | "type.builtin" | "builtin.type" => Some(HighlightCategory::TypeBuiltin),
         "syntax.function" => Some(HighlightCategory::Function),
+        "syntax.function.builtin" | "function.builtin" | "function.method.builtin" => Some(HighlightCategory::FunctionBuiltin),
         "syntax.number" => Some(HighlightCategory::Number),
         "syntax.boolean" => Some(HighlightCategory::Boolean),
         "syntax.identifier" => Some(HighlightCategory::Identifier),
         "syntax.variable" => Some(HighlightCategory::Variable),
+        "syntax.variable.builtin" | "variable.builtin" | "variable.language" => Some(HighlightCategory::VariableBuiltin),
         "syntax.parameter" => Some(HighlightCategory::Parameter),
         "syntax.field" => Some(HighlightCategory::Field),
         "syntax.property" => Some(HighlightCategory::Property),
@@ -230,28 +296,31 @@ pub(crate) fn capture_category(capture_name: &str) -> Option<HighlightCategory> 
         "constructor" => Some(HighlightCategory::Constructor),
         "number" => Some(HighlightCategory::Number),
         "constant" => Some(HighlightCategory::Constant),
-        "type.builtin" | "builtin.type" => Some(HighlightCategory::Type),
         "constant.builtin.boolean" | "boolean" => Some(HighlightCategory::Boolean),
         "constant.builtin" => Some(HighlightCategory::Constant),
-        "function.builtin" | "function.method" | "method.call" => Some(HighlightCategory::Function),
+        "function.method" | "method.call" => Some(HighlightCategory::Function),
         "module" | "namespace" => Some(HighlightCategory::Namespace),
         "tag" | "tag.builtin" => Some(HighlightCategory::Tag),
         "label" => Some(HighlightCategory::Property),
         "identifier" => Some(HighlightCategory::Identifier),
         "variable" => Some(HighlightCategory::Variable),
-        "variable.builtin" => Some(HighlightCategory::Keyword),
         "operator" => Some(HighlightCategory::Operator),
-        "escape" | "string.escape" | "character.escape" => Some(HighlightCategory::Escape),
+        "escape" => Some(HighlightCategory::Escape),
+        _ if capture_name.starts_with("comment.doc") => Some(HighlightCategory::CommentDoc),
         _ if capture_name.starts_with("comment") => Some(HighlightCategory::Comment),
+        _ if capture_name.starts_with("keyword.control") => Some(HighlightCategory::KeywordControl),
+        _ if capture_name.starts_with("keyword.storage") => Some(HighlightCategory::KeywordStorage),
         _ if capture_name.starts_with("keyword") => Some(HighlightCategory::Keyword),
         _ if capture_name.starts_with("string") => Some(HighlightCategory::String),
         _ if capture_name.starts_with("escape") || capture_name.ends_with(".escape") => {
-            Some(HighlightCategory::Escape)
+            Some(HighlightCategory::StringEscape)
         }
         _ if capture_name.starts_with("embedded") => Some(HighlightCategory::String),
+        _ if capture_name.starts_with("type.builtin") => Some(HighlightCategory::TypeBuiltin),
         _ if capture_name.starts_with("type") => Some(HighlightCategory::Type),
         _ if capture_name.starts_with("constructor") => Some(HighlightCategory::Constructor),
         _ if capture_name.starts_with("attribute") => Some(HighlightCategory::Attribute),
+        _ if capture_name.starts_with("function.builtin") => Some(HighlightCategory::FunctionBuiltin),
         _ if capture_name.starts_with("function") || capture_name.starts_with("method") => {
             Some(HighlightCategory::Function)
         }
@@ -289,6 +358,16 @@ pub(crate) fn capture_category(capture_name: &str) -> Option<HighlightCategory> 
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SpanRun {
+    start: usize,
+    end: usize,
+    category: HighlightCategory,
+    priority: u8,
+}
+
+
+
 pub(crate) fn normalize_spans(
     source: &str,
     spans: Vec<HighlightSpan>,
@@ -310,7 +389,10 @@ pub(crate) fn normalize_spans(
         return Vec::new();
     }
 
-    let mut painted: Vec<Option<(HighlightCategory, u8)>> = vec![None; paint_end - paint_start];
+    let mut runs: Vec<SpanRun> = Vec::with_capacity(spans.len());
+    let mut boundaries: Vec<usize> = Vec::with_capacity(spans.len().saturating_mul(2).saturating_add(2));
+    boundaries.push(paint_start);
+    boundaries.push(paint_end);
 
     for span in spans {
         let Some((raw_start, raw_end)) = sanitize_byte_range(source, span.range) else {
@@ -322,55 +404,51 @@ pub(crate) fn normalize_spans(
             continue;
         }
 
-        let priority = span.category.priority();
-        let local_start = start - paint_start;
-        let local_end = end - paint_start;
-        for slot in painted.iter_mut().take(local_end).skip(local_start) {
-            match slot {
-                Some((_, existing_priority)) if *existing_priority >= priority => {}
-                _ => *slot = Some((span.category, priority)),
-            }
-        }
+        runs.push(SpanRun {
+            start,
+            end,
+            category: span.category,
+            priority: span.category.priority(),
+        });
+        boundaries.push(start);
+        boundaries.push(end);
     }
 
-    let mut merged: Vec<HighlightSpan> = Vec::new();
-    let mut cursor = 0usize;
+    if runs.is_empty() {
+        return Vec::new();
+    }
 
-    while cursor < painted.len() {
-        let Some((category, _)) = painted[cursor] else {
-            cursor += 1;
+    boundaries.sort_unstable();
+    boundaries.dedup();
+
+    let mut merged: Vec<HighlightSpan> = Vec::with_capacity(runs.len());
+    for window in boundaries.windows(2) {
+        let [start, end] = window else {
             continue;
         };
-
-        let start = cursor;
-        let mut end = cursor + 1;
-        while end < painted.len() {
-            match painted[end] {
-                Some((next_category, _)) if next_category == category => end += 1,
-                _ => break,
-            }
+        if start >= end {
+            continue;
         }
 
-        let Some((safe_start, safe_end)) =
-            sanitize_byte_range(source, (paint_start + start)..(paint_start + end))
+        let Some(best) = runs
+            .iter()
+            .filter(|run| run.start <= *start && run.end >= *end)
+            .max_by_key(|run| run.priority)
         else {
-            cursor = end;
             continue;
         };
 
         if let Some(last) = merged.last_mut() {
-            if last.category == category && last.range.end == safe_start {
-                last.range.end = safe_end;
-                cursor = end;
+            if last.category == best.category && last.range.end == *start {
+                last.range.end = *end;
                 continue;
             }
         }
 
         merged.push(HighlightSpan {
-            range: safe_start..safe_end,
-            category,
+            range: *start..*end,
+            category: best.category,
         });
-        cursor = end;
     }
 
     merged
@@ -397,3 +475,4 @@ pub(crate) fn sanitize_byte_range(source: &str, range: Range<usize>) -> Option<(
 
     (start < end).then_some((start, end))
 }
+

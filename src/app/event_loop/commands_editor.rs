@@ -50,6 +50,18 @@ impl AppShell {
 
     pub(super) fn handle_viewport_navigation_command(&mut self, command: &Command) -> Option<bool> {
         match command {
+            Command::ScrollHalfPageUp | Command::ScrollHalfPageDown
+                if self.app_state.has_scrollable_floating_overlay() =>
+            {
+                let changed = self
+                    .app_state
+                    .scroll_floating_overlay_half_page(matches!(command, Command::ScrollHalfPageDown));
+                if changed {
+                    self.editor_caret_needs_layout = true;
+                    self.request_redraw();
+                }
+                Some(changed)
+            }
             Command::ScrollHalfPageUp
             | Command::ScrollHalfPageDown
             | Command::CenterCursorLine

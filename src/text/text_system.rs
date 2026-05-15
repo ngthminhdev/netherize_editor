@@ -1,7 +1,14 @@
+use std::sync::Arc;
+
 use cosmic_text::{
     Attrs, Buffer, CacheKey, Color, Family, FontSystem, Metrics, Shaping, SwashCache, SwashImage,
     Wrap, fontdb,
 };
+
+const BUNDLED_GOOGLE_SANS_CODE_FONT: &[u8] =
+    include_bytes!("../../config/fonts/GoogleSansCode.ttf");
+const BUNDLED_HACK_NERD_FONT: &[u8] =
+    include_bytes!("../../config/fonts/HackNerdFont-Regular.ttf");
 
 use crate::config::theme_config::srgb_rgba_to_linear_f32;
 
@@ -78,6 +85,7 @@ pub struct TextSystem {
 impl TextSystem {
     pub fn new(metrics: Metrics, width: Option<f32>, height: Option<f32>) -> Self {
         let mut font_system = FontSystem::new();
+        register_bundled_fonts(&mut font_system);
         let swash_cache = SwashCache::new();
         let mut buffer = Buffer::new(&mut font_system, metrics);
         buffer.set_size(&mut font_system, width, height);
@@ -447,9 +455,19 @@ fn folded_visual_y_offset_before(
 
 fn apply_family<'a>(attrs: Attrs<'a>, family: Option<&'a str>) -> Attrs<'a> {
     match family {
-        Some(name) => attrs.family(Family::Name(name)),
-        None => attrs,
+        Some(name) if !name.trim().is_empty() => attrs.family(Family::Name(name)),
+        _ => attrs,
     }
+}
+
+fn register_bundled_fonts(font_system: &mut FontSystem) {
+    let db = font_system.db_mut();
+    db.load_font_source(fontdb::Source::Binary(Arc::new(
+        BUNDLED_GOOGLE_SANS_CODE_FONT.to_vec(),
+    )));
+    db.load_font_source(fontdb::Source::Binary(Arc::new(
+        BUNDLED_HACK_NERD_FONT.to_vec(),
+    )));
 }
 
 #[cfg(test)]

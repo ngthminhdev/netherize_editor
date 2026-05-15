@@ -135,3 +135,14 @@ namespace = "#b76fd3"
 lifetime = "#d9826b"
 # HTML/XML/JSX Tags.
 tag = "#7a8fd9"
+keyword_control = "#d99a4e"       # Gold (Sakura identity)
+keyword_storage = "#d99a4e"       # Gold (Sakura identity)
+string_escape = "#d85c5c"
+function_builtin = "#7a8fd9"
+comment_doc = "#b79aaa"
+type_builtin = "#b76fd3"
+variable_builtin = "#d96c9f"      # Rose Pink (khác với identifier #4a3f46)
+markup_strong = "#d99a4e"       # Gold (Sakura identity)
+markup_italic = "#b79aaa"
+markup_inline_code = "#5fa58d"
+markup_link = "#7a8fd9"

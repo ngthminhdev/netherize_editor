@@ -169,6 +169,8 @@ impl AppShell {
             active_system_dep_guide: None,
             dismissed_system_deps: false,
             transient_toast: None,
+            theme_picker_original_theme: None,
+            theme_picker_preview_profile: None,
             base_theme,
             theme,
             ui_config,
@@ -269,23 +271,16 @@ impl AppShell {
             },
         });
 
-        self.sync_lsp_server_for_workspace();
+        if let Some(path) = self.app_state.active_file().map(PathBuf::from) {
+            self.submit_lsp_check_for_path(path);
+            self.submit_lsp_did_open_for_active_file();
+        }
 
         // ── System Dependency Check ──────────────────────────────────────
         self.submit(RequestSpec {
             revision_id: 0,
             topic: RequestTopic::SystemDepCheck,
             payload: WorkerRequestPayload::CheckSystemDeps,
-        });
-
-        // ── Runtime Version Detection ────────────────────────────────────
-        self.submit(RequestSpec {
-            revision_id: 0,
-            topic: RequestTopic::SystemTask,
-            payload: WorkerRequestPayload::DetectRuntimeVersions {
-                python_binary: None,
-                workspace_root: workspace_root.clone(),
-            },
         });
 
         // ── Git Status & Baseline ────────────────────────────────────────
@@ -730,6 +725,7 @@ impl AppShell {
             command_palette_mode: self.app_state.command_palette_mode(),
             welcome_visible,
             completion_visible: self.app_state.has_completion(),
+            hover_overlay_visible: self.app_state.has_scrollable_floating_overlay(),
             zen_mode_active: self.panel_state.maximized_region.is_some(),
         }
     }
@@ -903,6 +899,7 @@ impl AppShell {
                     buffer_revision: self.app_state.revision(),
                     viewport_line_start: self.app_state.scroll_line(),
                     viewport_line_count,
+                    line_starts: self.app_state.line_start_byte_indices(),
                     edit_hint,
                 },
             });
@@ -1006,6 +1003,14 @@ impl AppShell {
                 buffer_revision,
             ),
             None => engine.parse_source(&text_snapshot, buffer_revision),
+        };
+        let parse_result = match parse_result {
+            Ok(tree) if tree.root_node().end_byte() <= text_snapshot.len() => Ok(tree),
+            Ok(_) => engine.parse_source(&text_snapshot, buffer_revision),
+            Err(err) => {
+                eprintln!("[AppShell] incremental tree-sitter parse failed: {err}; retrying full parse");
+                engine.parse_source(&text_snapshot, buffer_revision)
+            }
         };
         match parse_result {
             Ok(tree) => {
@@ -1218,6 +1223,8 @@ impl AppShell {
                 query,
                 mode: search_mode,
                 workspace_root,
+                case_sensitive: search_mode == FzfSearchMode::LiveGrep
+                    && self.app_state.live_grep_case_sensitive(),
             },
         });
     }
@@ -1511,6 +1518,7 @@ impl AppShell {
         let Some(profile) = crate::lsp::registry::language_profile_for_path(&path) else {
             return;
         };
+        self.submit_runtime_detection_for_profile(profile, &path);
         if profile.lsp_binary.is_empty() {
             return;
         }
@@ -1519,6 +1527,45 @@ impl AppShell {
             revision_id: 0,
             topic: RequestTopic::LspCheck,
             payload: WorkerRequestPayload::CheckLspForPath { path },
+        });
+    }
+
+    fn submit_runtime_detection_for_profile(
+        &self,
+        profile: &crate::lsp::registry::LanguageProfile,
+        path: &Path,
+    ) {
+        let should_detect_runtime = matches!(
+            profile.key,
+            "javascript"
+                | "jsx"
+                | "typescript"
+                | "tsx"
+                | "go"
+                | "python"
+                | "sql"
+                | "yaml"
+                | "dockerfile"
+                | "json"
+                | "bash"
+        );
+        if !should_detect_runtime {
+            return;
+        }
+
+        let workspace_root = self
+            .app_state
+            .workspace_root_path()
+            .map(PathBuf::from)
+            .or_else(|| path.parent().map(PathBuf::from))
+            .unwrap_or_default();
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::SystemTask,
+            payload: WorkerRequestPayload::DetectRuntimeVersions {
+                python_binary: self.selected_python_env.clone(),
+                workspace_root,
+            },
         });
     }
 

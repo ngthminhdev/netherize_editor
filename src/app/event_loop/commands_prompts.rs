@@ -1,6 +1,60 @@
 use super::*;
 
 impl AppShell {
+    pub(super) fn begin_theme_picker_preview_session(&mut self) {
+        if self.theme_picker_original_theme.is_none() {
+            self.theme_picker_original_theme = Some(self.base_theme.clone());
+        }
+        self.theme_picker_preview_profile = None;
+    }
+
+    pub(super) fn preview_selected_theme_from_picker(&mut self) -> bool {
+        let Some(crate::app::command_palette::CommandPaletteAction::SelectTheme(theme_profile)) =
+            self.app_state.command_palette_selected_action()
+        else {
+            return false;
+        };
+        if self.theme_picker_preview_profile.as_deref() == Some(theme_profile.as_str()) {
+            return false;
+        }
+        if self.theme_picker_original_theme.is_none() {
+            self.theme_picker_original_theme = Some(self.base_theme.clone());
+        }
+        let loaded_theme = match ThemeConfig::load(&theme_profile) {
+            Ok(theme) => theme,
+            Err(err) => {
+                eprintln!(
+                    "[AppShell] theme preview failed for profile '{}': {err}",
+                    theme_profile
+                );
+                return false;
+            }
+        };
+        self.base_theme = loaded_theme;
+        self.theme_picker_preview_profile = Some(theme_profile);
+        self.apply_scaled_runtime_config();
+        self.leap_state = None;
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_leap_labels();
+        }
+        true
+    }
+
+    pub(super) fn restore_theme_picker_preview(&mut self) -> bool {
+        let Some(original_theme) = self.theme_picker_original_theme.take() else {
+            self.theme_picker_preview_profile = None;
+            return false;
+        };
+        self.theme_picker_preview_profile = None;
+        self.base_theme = original_theme;
+        self.apply_scaled_runtime_config();
+        self.leap_state = None;
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_leap_labels();
+        }
+        true
+    }
+
     pub(super) fn pending_confirmation_prompt(&self) -> Option<String> {
         match &self.pending_confirmation.as_ref()?.action {
             PendingConfirmationAction::Delete { path, .. } => {
@@ -378,18 +432,26 @@ impl AppShell {
             return false;
         };
 
-        let loaded_theme = match ThemeConfig::load(&theme_profile) {
-            Ok(theme) => theme,
-            Err(err) => {
-                eprintln!(
-                    "[AppShell] theme load failed for profile '{}': {err}",
-                    theme_profile
-                );
-                self.show_transient_toast(format!("Failed to load theme: {theme_profile}"));
-                return true;
+        let loaded_theme = if self.theme_picker_preview_profile.as_deref()
+            == Some(theme_profile.as_str())
+        {
+            self.base_theme.clone()
+        } else {
+            match ThemeConfig::load(&theme_profile) {
+                Ok(theme) => theme,
+                Err(err) => {
+                    eprintln!(
+                        "[AppShell] theme load failed for profile '{}': {err}",
+                        theme_profile
+                    );
+                    self.show_transient_toast(format!("Failed to load theme: {theme_profile}"));
+                    return true;
+                }
             }
         };
 
+        self.theme_picker_original_theme = None;
+        self.theme_picker_preview_profile = None;
         self.base_theme = loaded_theme;
         self.apply_scaled_runtime_config();
         self.leap_state = None;

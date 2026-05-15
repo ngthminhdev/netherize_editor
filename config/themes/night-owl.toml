@@ -135,3 +135,14 @@ namespace = "#82aaff"
 lifetime = "#ffcb8b"
 # HTML/XML/JSX Tags.
 tag = "#82aaff"
+keyword_control = "#c792ea"       # Magenta (Night Owl identity)
+keyword_storage = "#c792ea"       # Magenta (Night Owl identity)
+string_escape = "#addb67"
+function_builtin = "#82aaff"
+comment_doc = "#637777"
+type_builtin = "#ffcb8b"
+variable_builtin = "#c792ea"      # Magenta (khác với identifier #d6deeb)
+markup_strong = "#c792ea"       # Magenta (Night Owl identity)
+markup_italic = "#637777"
+markup_inline_code = "#ecc48d"
+markup_link = "#82aaff"

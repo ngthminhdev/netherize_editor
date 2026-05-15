@@ -135,3 +135,14 @@ namespace = "#B78AFF"     # [MỚI] Dùng màu Tím giống type để tách bi�
 lifetime = "#FF955C"
 # HTML/XML/JSX Tags.
 tag = "#69C3FF"           # [MỚI] Dùng màu Xanh Blue giống function cho các thẻ tag
+keyword_control = "#EACD61"
+keyword_storage = "#EACD61"
+string_escape = "#E35535"        # [MỚI] Dùng màu Đỏ Cam (tương phản cực tốt trên nền string xanh lá #3CEC85)
+function_builtin = "#69C3FF"
+comment_doc = "#4a5e84"
+type_builtin = "#B78AFF"
+variable_builtin = "#d0d7e4"      # [MỚI] Cùng tone với identifier, giữ code base không bị "loè loẹt"
+markup_strong = "#EACD61"
+markup_italic = "#4a5e84"
+markup_inline_code = "#3CEC85"
+markup_link = "#69C3FF"

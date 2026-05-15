@@ -96,6 +96,7 @@ pub struct KeybindingContext {
     pub command_palette_mode: Option<CommandPaletteMode>,
     pub welcome_visible: bool,
     pub completion_visible: bool,
+    pub hover_overlay_visible: bool,
     pub zen_mode_active: bool,
 }
 
@@ -112,6 +113,7 @@ impl KeybindingContext {
             command_palette_mode: None,
             welcome_visible: false,
             completion_visible: false,
+            hover_overlay_visible: false,
             zen_mode_active: false,
         }
     }
@@ -134,6 +136,7 @@ impl KeybindingContext {
             command_palette_mode: None,
             welcome_visible: false,
             completion_visible: false,
+            hover_overlay_visible: false,
             zen_mode_active: false,
         }
     }
@@ -195,6 +198,29 @@ impl InputMap {
                 context.command_palette_mode,
                 context.welcome_visible,
             );
+        }
+
+        if context.hover_overlay_visible
+            && context.focus == InputFocusContext::Editor
+            && context.mode == EditorMode::Normal
+            && input.modifiers.control_key()
+            && !input.modifiers.super_key()
+        {
+            match input.physical_key {
+                Some(KeyCode::KeyD) => {
+                    return Some(KeybindingMatch {
+                        command: Command::ScrollHalfPageDown,
+                        reason: "hover overlay: Ctrl+d -> scroll hover down",
+                    });
+                }
+                Some(KeyCode::KeyU) => {
+                    return Some(KeybindingMatch {
+                        command: Command::ScrollHalfPageUp,
+                        reason: "hover overlay: Ctrl+u -> scroll hover up",
+                    });
+                }
+                _ => {}
+            }
         }
 
         // BufferTerminal (lazygit, v.v.): bypass keymap hoàn toàn,

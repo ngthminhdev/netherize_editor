@@ -28,7 +28,7 @@
 
 ; ── Escape sequences in strings ───────────────────────────────────────────────
 
-(escape_sequence) @syntax.escape
+(escape_sequence) @syntax.string.escape
 
 ; ── Numbers ───────────────────────────────────────────────────────────────────
 

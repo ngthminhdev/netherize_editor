@@ -1,5 +1,8 @@
 use super::super::*;
-use crate::async_runtime::message::WorkerResultPayload;
+use crate::{
+    app::app_state::FloatingBoxScrollState,
+    async_runtime::message::WorkerResultPayload,
+};
 use std::path::PathBuf;
 
 pub(super) fn handle_lsp_result(
@@ -174,6 +177,7 @@ pub(super) fn handle_lsp_result(
                     anchor_col,
                     blocks,
                     style: FloatingBoxStyle::DocHover,
+                    scroll: FloatingBoxScrollState { offset_lines: 0 },
                 }]);
             if changed {
                 app.editor_caret_needs_layout = true;
@@ -257,6 +261,7 @@ pub(super) fn handle_lsp_result(
                                 spans: preview_spans,
                             }],
                             style: FloatingBoxStyle::PeekWindow,
+                            scroll: FloatingBoxScrollState { offset_lines: 0 },
                         }]);
                 if changed {
                     app.editor_caret_needs_layout = true;
@@ -486,7 +491,7 @@ pub(super) fn handle_lsp_result(
 
             let changed = app
                 .app_state
-                .replace_active_document_text_preserve_cursor(&formatted);
+                .replace_active_document_text_preserve_cursor_with_undo(&formatted);
             if changed {
                 app.editor_needs_layout = true;
                 app.editor_caret_needs_layout = true;
@@ -514,6 +519,7 @@ pub(super) fn handle_lsp_result(
                     },
                     action: CommandPaletteAction::ApplyCodeAction(i),
                     tone: CommandPaletteItemTone::Default,
+                    preview_colors: Vec::new(),
                 })
                 .collect();
 

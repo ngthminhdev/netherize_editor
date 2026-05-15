@@ -135,3 +135,14 @@ namespace = "#e5c07b"
 lifetime = "#d19a66"
 # HTML/XML/JSX Tags.
 tag = "#61afef"           # Blue (đồng bộ function)
+keyword_control = "#c678dd"       # Magenta (One Dark identity)
+keyword_storage = "#c678dd"       # Magenta (One Dark identity)
+string_escape = "#56b6c2"
+function_builtin = "#61afef"
+comment_doc = "#5c6370"
+type_builtin = "#e5c07b"
+variable_builtin = "#e06c75"      # Red (khác với identifier #abb2bf)
+markup_strong = "#c678dd"       # Magenta (One Dark identity)
+markup_italic = "#5c6370"
+markup_inline_code = "#98c379"
+markup_link = "#61afef"

@@ -89,14 +89,21 @@ pub(in crate::config::theme_config) struct RawUi {
 #[derive(Debug, Clone, Deserialize)]
 pub(in crate::config::theme_config) struct RawSyntax {
     pub(in crate::config::theme_config) keyword: String,
+    pub(in crate::config::theme_config) keyword_control: Option<String>,
+    pub(in crate::config::theme_config) keyword_storage: Option<String>,
     pub(in crate::config::theme_config) string: String,
+    pub(in crate::config::theme_config) string_escape: Option<String>,
     pub(in crate::config::theme_config) function: String,
+    pub(in crate::config::theme_config) function_builtin: Option<String>,
     pub(in crate::config::theme_config) comment: String,
+    pub(in crate::config::theme_config) comment_doc: Option<String>,
     pub(in crate::config::theme_config) r#type: String,
+    pub(in crate::config::theme_config) type_builtin: Option<String>,
     pub(in crate::config::theme_config) number: String,
     pub(in crate::config::theme_config) boolean: Option<String>,
     pub(in crate::config::theme_config) identifier: Option<String>,
     pub(in crate::config::theme_config) variable: Option<String>,
+    pub(in crate::config::theme_config) variable_builtin: Option<String>,
     pub(in crate::config::theme_config) parameter: Option<String>,
     pub(in crate::config::theme_config) field: Option<String>,
     pub(in crate::config::theme_config) property: Option<String>,
@@ -110,6 +117,10 @@ pub(in crate::config::theme_config) struct RawSyntax {
     pub(in crate::config::theme_config) attribute: Option<String>,
     pub(in crate::config::theme_config) namespace: Option<String>,
     pub(in crate::config::theme_config) tag: Option<String>,
+    pub(in crate::config::theme_config) markup_strong: Option<String>,
+    pub(in crate::config::theme_config) markup_italic: Option<String>,
+    pub(in crate::config::theme_config) markup_inline_code: Option<String>,
+    pub(in crate::config::theme_config) markup_link: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

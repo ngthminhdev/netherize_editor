@@ -190,6 +190,21 @@ impl Renderer {
                 icon_color,
             ));
 
+            let mut label_x = x + arrow_w + nerd_w;
+            if let (Some(marker), Some(color)) = (row.prefix_marker.as_deref(), row.prefix_color) {
+                let marker_text = format!("{} ", marker);
+                glyphs.extend(layout_panel_text(
+                    &marker_text,
+                    &mut self.sidebar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    label_x,
+                    current_y,
+                    color,
+                ));
+                label_x += marker_text.chars().count() as f32 * font_size * 0.60;
+            }
+
             if let (Some(marker), Some(color)) = (row.git_marker, row.git_color) {
                 let marker_text = format!("{} ", marker);
                 glyphs.extend(layout_panel_text(
@@ -197,7 +212,7 @@ impl Renderer {
                     &mut self.sidebar_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    x + arrow_w + nerd_w,
+                    label_x,
                     current_y,
                     color,
                 ));
@@ -208,7 +223,7 @@ impl Renderer {
                     &mut self.sidebar_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    x + arrow_w + nerd_w + marker_w,
+                    label_x + marker_w,
                     current_y,
                     label_color,
                 ));
@@ -219,7 +234,7 @@ impl Renderer {
                     &mut self.sidebar_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    x + arrow_w + nerd_w,
+                    label_x,
                     current_y,
                     label_color,
                 ));

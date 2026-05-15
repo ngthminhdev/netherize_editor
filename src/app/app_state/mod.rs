@@ -235,6 +235,7 @@ pub struct ReferencesBufferState {
     pub loading: bool,
     pub status_message: Option<String>,
     pub pending_request_id: Option<u64>,
+    pub path_counts: std::collections::HashMap<String, usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1292,7 +1293,7 @@ impl CompletionState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FuzzyState {
     pub mode: CommandPaletteMode,
     pub query: String,
@@ -1302,6 +1303,7 @@ pub struct FuzzyState {
     pub preview_text: String,
     pub preview_spans: Vec<StyledTextSpan>,
     pub results: Vec<CommandPaletteItem>,
+    pub live_grep_case_sensitive: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1348,6 +1350,7 @@ impl FuzzyState {
             preview_text: String::new(),
             preview_spans: Vec::new(),
             results: Vec::new(),
+            live_grep_case_sensitive: false,
         }
     }
 
@@ -1476,6 +1479,11 @@ pub enum FloatingBoxStyle {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FloatingBoxScrollState {
+    pub offset_lines: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FloatingBoxBlock {
     Prose(String),
     Code {
@@ -1500,6 +1508,7 @@ pub enum EditorOverlay {
         /// Nội dung đã được parse thành prose/code blocks.
         blocks: Vec<FloatingBoxBlock>,
         style: FloatingBoxStyle,
+        scroll: FloatingBoxScrollState,
     },
 }
 
@@ -1538,6 +1547,8 @@ pub struct AppState {
     search_highlights: Vec<(usize, usize)>,
     semantic_symbol_highlights: Vec<(usize, usize)>,
     search_whole_word: bool,
+    search_case_sensitive: bool,
+    live_grep_case_sensitive: bool,
     terminal_panel_open: bool,
     external_conflict: Option<String>,
     external_notice: Option<String>,
@@ -1604,6 +1615,8 @@ impl AppState {
             last_search_query: String::new(),
             search_highlights: Vec::new(),
             search_whole_word: false,
+            search_case_sensitive: true,
+            live_grep_case_sensitive: false,
             terminal_panel_open: false,
             external_conflict: None,
             external_notice: None,
@@ -1660,6 +1673,8 @@ impl AppState {
             last_search_query: String::new(),
             search_highlights: Vec::new(),
             search_whole_word: false,
+            search_case_sensitive: true,
+            live_grep_case_sensitive: false,
             terminal_panel_open: false,
             external_conflict: None,
             external_notice: None,

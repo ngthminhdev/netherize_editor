@@ -639,10 +639,44 @@ fn parse_ui(raw: &RawUi, raw_editor: &RawEditor) -> Result<UiThemeTokens, String
 fn parse_syntax(raw: &RawSyntax) -> Result<SyntaxThemeTokens, String> {
     Ok(SyntaxThemeTokens {
         keyword: parse_color("syntax", "keyword", &raw.keyword)?,
+        keyword_control: parse_color(
+            "syntax",
+            "keyword_control",
+            raw.keyword_control.as_deref().unwrap_or(raw.keyword.as_str()),
+        )?,
+        keyword_storage: parse_color(
+            "syntax",
+            "keyword_storage",
+            raw.keyword_storage.as_deref().unwrap_or(raw.keyword.as_str()),
+        )?,
         string: parse_color("syntax", "string", &raw.string)?,
+        string_escape: parse_color(
+            "syntax",
+            "string_escape",
+            raw.string_escape
+                .as_deref()
+                .or(raw.escape.as_deref())
+                .or(raw.constant.as_deref())
+                .unwrap_or(raw.number.as_str()),
+        )?,
         function: parse_color("syntax", "function", &raw.function)?,
+        function_builtin: parse_color(
+            "syntax",
+            "function_builtin",
+            raw.function_builtin.as_deref().unwrap_or(raw.function.as_str()),
+        )?,
         comment: parse_color("syntax", "comment", &raw.comment)?,
+        comment_doc: parse_color(
+            "syntax",
+            "comment_doc",
+            raw.comment_doc.as_deref().unwrap_or(raw.comment.as_str()),
+        )?,
         r#type: parse_color("syntax", "type", &raw.r#type)?,
+        type_builtin: parse_color(
+            "syntax",
+            "type_builtin",
+            raw.type_builtin.as_deref().unwrap_or(raw.r#type.as_str()),
+        )?,
         number: parse_color("syntax", "number", &raw.number)?,
         boolean: parse_color(
             "syntax",
@@ -662,6 +696,15 @@ fn parse_syntax(raw: &RawSyntax) -> Result<SyntaxThemeTokens, String> {
             "variable",
             raw.variable
                 .as_deref()
+                .or(raw.identifier.as_deref())
+                .unwrap_or("#d0d7e4"),
+        )?,
+        variable_builtin: parse_color(
+            "syntax",
+            "variable_builtin",
+            raw.variable_builtin
+                .as_deref()
+                .or(raw.variable.as_deref())
                 .or(raw.identifier.as_deref())
                 .unwrap_or("#d0d7e4"),
         )?,
@@ -746,6 +789,26 @@ fn parse_syntax(raw: &RawSyntax) -> Result<SyntaxThemeTokens, String> {
             "syntax",
             "tag",
             raw.tag.as_deref().unwrap_or(raw.r#type.as_str()),
+        )?,
+        markup_strong: parse_color(
+            "syntax",
+            "markup_strong",
+            raw.markup_strong.as_deref().unwrap_or(raw.keyword.as_str()),
+        )?,
+        markup_italic: parse_color(
+            "syntax",
+            "markup_italic",
+            raw.markup_italic.as_deref().unwrap_or(raw.comment.as_str()),
+        )?,
+        markup_inline_code: parse_color(
+            "syntax",
+            "markup_inline_code",
+            raw.markup_inline_code.as_deref().unwrap_or(raw.string.as_str()),
+        )?,
+        markup_link: parse_color(
+            "syntax",
+            "markup_link",
+            raw.markup_link.as_deref().unwrap_or(raw.function.as_str()),
         )?,
     })
 }

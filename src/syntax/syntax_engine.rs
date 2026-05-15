@@ -214,6 +214,13 @@ impl SyntaxEngine {
     pub fn language_id(&self) -> LanguageId {
         self.language_id
     }
+
+    pub fn current_tree_matches_source(&self, source: &str) -> bool {
+        let Some(state) = self.current_tree.as_ref() else {
+            return false;
+        };
+        state.root_node().end_byte() <= source.len()
+    }
 }
 
 /// Compute a tree-sitter `Point` (row, column in bytes) for the given byte offset.

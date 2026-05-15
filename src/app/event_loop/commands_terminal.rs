@@ -70,6 +70,7 @@ impl AppShell {
                 }
                 if is_open {
                     self.terminal_needs_layout = true;
+                    changed |= self.dismiss_initial_launch_welcome_if_active();
                 }
 
                 let focus_changed = if is_open {
@@ -99,6 +100,7 @@ impl AppShell {
                 self.terminal_needs_layout = true;
 
                 if next_visible {
+                    changed |= self.dismiss_initial_launch_welcome_if_active();
                     self.ensure_active_terminal_tab_spawned();
                 }
 
@@ -170,6 +172,7 @@ impl AppShell {
                     changed = true;
                     self.sidebar_needs_layout = true;
                 }
+                changed |= self.dismiss_initial_launch_welcome_if_active();
                 let focus_changed = self.focus_manager.set(FocusTarget::LeftSidebar);
                 changed |= focus_changed;
                 if focus_changed {
@@ -208,6 +211,7 @@ impl AppShell {
                     self.panel_state.bottom.visible = true;
                     changed = true;
                 }
+                changed |= self.dismiss_initial_launch_welcome_if_active();
                 self.terminal_needs_layout = true;
 
                 if self.app_state.current_mode() != EditorMode::TerminalFocus
@@ -265,6 +269,7 @@ impl AppShell {
             Command::TerminalSearchOpen => {
                 let report = dispatch_command(&mut self.app_state, Command::OpenInFileSearch);
                 if report.success {
+                    let _ = self.dismiss_initial_launch_welcome_if_active();
                     self.terminal_search_palette_active = true;
                     self.arm_palette_ime_commit_suppression();
                     let focus_changed = self.focus_manager.set(FocusTarget::OverlayLayer);

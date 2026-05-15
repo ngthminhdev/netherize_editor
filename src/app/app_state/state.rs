@@ -422,7 +422,7 @@ impl AppState {
             return Vec::new();
         };
         let text = self.text.to_string();
-        collect_search_highlights(&text, &word, true)
+        collect_search_highlights(&text, &word, true, true)
     }
 
     pub fn active_search_match_position(&self) -> Option<(usize, usize)> {
@@ -557,6 +557,17 @@ impl AppState {
 
     pub fn text_string(&self) -> String {
         self.text.to_string()
+    }
+
+    pub fn line_start_byte_indices(&self) -> Vec<usize> {
+        let line_count = self.text.len_lines();
+        if line_count == 0 {
+            return Vec::new();
+        }
+
+        (0..line_count)
+            .map(|line_idx| self.text.line_to_byte(line_idx))
+            .collect()
     }
 
     pub fn line_string(&self, line_idx: usize) -> String {

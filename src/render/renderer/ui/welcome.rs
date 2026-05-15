@@ -64,11 +64,39 @@ impl Renderer {
         let fg_ghost = self.theme.ui.fg_ghost.as_f32();
         let accent = self.theme.ui.accent.as_f32();
         let runtime_scale = (self.theme.editor.font_size / 14.0).max(0.5);
-        let welcome_scale =
-            layout_clamp((self.welcome_card_max_width / 560.0) * runtime_scale, 0.5, 3.0);
+        let welcome_scale = layout_clamp(
+            (self.welcome_card_max_width / 560.0) * runtime_scale,
+            0.5,
+            3.0,
+        );
         let sx = |value: f32| value * welcome_scale;
         let text_w = |text: &str, size: f32| estimate_monospace_width(text, size);
         let centered_x = |center: f32, text: &str, size: f32| center - text_w(text, size) * 0.5;
+        let ellipsize = |text: &str, size: f32, max_width: f32| -> String {
+            if max_width <= 0.0 {
+                return String::new();
+            }
+            if text_w(text, size) <= max_width {
+                return text.to_string();
+            }
+
+            let suffix = "...";
+            let suffix_width = text_w(suffix, size);
+            if max_width <= suffix_width {
+                return String::new();
+            }
+
+            let mut out = String::new();
+            for ch in text.chars() {
+                let next_width = text_w(&out, size) + text_w(ch.encode_utf8(&mut [0; 4]), size);
+                if next_width + suffix_width > max_width {
+                    break;
+                }
+                out.push(ch);
+            }
+            out.push_str(suffix);
+            out
+        };
 
         chrome.push(RegionDrawInstance::new(bounds, bg));
 
@@ -314,6 +342,15 @@ impl Renderer {
                 .map(|ext| ext.to_ascii_uppercase())
                 .unwrap_or_else(|| "DIR".to_string());
             let active = index == selected_recent_index;
+            let tag = if index == 0 { "latest" } else { "recent" };
+            let tag_size = sx(10.0);
+            let tag_x = rx + rw - sx(18.0) - text_w(tag, tag_size);
+            let text_x = rx + sx(60.0);
+            let text_right = (tag_x - sx(18.0)).max(text_x);
+            let name_size = sx(13.0);
+            let path_size = sx(10.0);
+            let name_label = ellipsize(name, name_size, text_right - text_x);
+            let path_label = ellipsize(&path, path_size, text_right - text_x);
             if active {
                 let mut a = accent;
                 a[3] = 0.20;
@@ -347,10 +384,10 @@ impl Renderer {
             line(
                 self,
                 &mut glyphs,
-                name,
-                rx + sx(60.0),
+                &name_label,
+                text_x,
                 y + sx(3.0),
-                sx(13.0),
+                name_size,
                 sx(16.0),
                 if active { fg } else { fg_dim },
                 active,
@@ -358,10 +395,10 @@ impl Renderer {
             line(
                 self,
                 &mut glyphs,
-                &path,
-                rx + sx(60.0),
+                &path_label,
+                text_x,
                 y + sx(20.0),
-                sx(10.0),
+                path_size,
                 sx(13.0),
                 fg_ghost,
                 false,
@@ -369,10 +406,10 @@ impl Renderer {
             line(
                 self,
                 &mut glyphs,
-                if index == 0 { "latest" } else { "recent" },
-                rx + rw - sx(70.0),
+                tag,
+                tag_x,
                 y + sx(12.0),
-                sx(10.0),
+                tag_size,
                 sx(13.0),
                 fg_ghost,
                 false,

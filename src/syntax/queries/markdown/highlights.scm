@@ -53,9 +53,9 @@
 (html_block) @syntax.comment
 
 ; --- Special characters ---
-(backslash_escape)          @syntax.escape
-(entity_reference)          @syntax.escape
-(numeric_character_reference) @syntax.escape
+(backslash_escape)          @syntax.string.escape
+(entity_reference)          @syntax.string.escape
+(numeric_character_reference) @syntax.string.escape
 
 ; --- Structure ---
 (thematic_break)    @syntax.punctuation

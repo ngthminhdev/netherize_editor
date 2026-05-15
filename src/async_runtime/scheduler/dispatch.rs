@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     sync::{Arc, Mutex, mpsc as std_mpsc},
 };
 
@@ -16,7 +15,7 @@ use crate::{
 };
 
 use super::{
-    LspSessionRegistry, PtySessionRegistry, SyntaxEngineCache,
+    LspSessionRegistry, PtySessionRegistry, SyntaxEngineCache, SyntaxEngineCacheHandle,
     ai::execute_ai_inline_request,
     ai_jobs::{run_ai_chat_stream, run_opencode_install},
     async_trace,
@@ -63,7 +62,7 @@ pub(super) async fn dispatch_loop(
 ) {
     let pty_sessions = Arc::new(PtySessionRegistry::default());
     let lsp_sessions = Arc::new(LspSessionRegistry::default());
-    let syntax_engine_cache: Arc<SyntaxEngineCache> = Arc::new(Mutex::new(HashMap::new()));
+    let syntax_engine_cache: Arc<SyntaxEngineCacheHandle> = Arc::new(Mutex::new(SyntaxEngineCache::default()));
     let mut active_fzf_search: Option<tokio::task::JoinHandle<()>> = None;
     let mut active_ai_chat_cancel: Option<CancellationToken> = None;
 

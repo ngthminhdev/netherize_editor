@@ -216,14 +216,21 @@ pub struct GitThemeTokens {
 #[derive(Debug, Clone)]
 pub struct SyntaxThemeTokens {
     pub keyword: ThemeColor,
+    pub keyword_control: ThemeColor,
+    pub keyword_storage: ThemeColor,
     pub string: ThemeColor,
+    pub string_escape: ThemeColor,
     pub function: ThemeColor,
+    pub function_builtin: ThemeColor,
     pub comment: ThemeColor,
+    pub comment_doc: ThemeColor,
     pub r#type: ThemeColor,
+    pub type_builtin: ThemeColor,
     pub number: ThemeColor,
     pub boolean: ThemeColor,
     pub identifier: ThemeColor,
     pub variable: ThemeColor,
+    pub variable_builtin: ThemeColor,
     pub parameter: ThemeColor,
     pub field: ThemeColor,
     pub property: ThemeColor,
@@ -237,6 +244,10 @@ pub struct SyntaxThemeTokens {
     pub attribute: ThemeColor,
     pub namespace: ThemeColor,
     pub tag: ThemeColor,
+    pub markup_strong: ThemeColor,
+    pub markup_italic: ThemeColor,
+    pub markup_inline_code: ThemeColor,
+    pub markup_link: ThemeColor,
 }
 
 #[derive(Debug, Clone)]

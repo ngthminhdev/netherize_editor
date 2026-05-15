@@ -11,7 +11,7 @@
   (string_literal)
   (character_literal)
 ] @syntax.string
-(escape_sequence) @syntax.escape
+(escape_sequence) @syntax.string.escape
 
 ; --- Numbers ---
 [
@@ -30,15 +30,19 @@
 
 ; --- Keywords ---
 [
-  "abstract" "assert" "break" "case" "catch" "class" "continue"
-  "default" "do" "else" "enum" "exports" "extends" "final"
-  "finally" "for" "if" "implements" "import" "instanceof"
-  "interface" "module" "native" "new" "non-sealed" "open"
-  "opens" "package" "permits" "private" "protected" "provides"
-  "public" "record" "requires" "return" "sealed" "static"
-  "strictfp" "switch" "synchronized" "throw" "throws" "to"
-  "transient" "transitive" "try" "uses" "volatile" "while"
-  "with" "yield"
+  "assert" "break" "case" "catch" "continue" "default" "do" "else"
+  "finally" "for" "if" "return" "switch" "throw" "throws" "try" "while" "yield"
+] @syntax.keyword.control
+
+[
+  "abstract" "class" "enum" "final" "interface" "module" "native" "non-sealed"
+  "open" "private" "protected" "public" "record" "sealed" "static" "strictfp"
+  "synchronized" "transient" "volatile"
+] @syntax.keyword.storage
+
+[
+  "exports" "extends" "implements" "import" "instanceof" "new" "opens"
+  "package" "permits" "provides" "requires" "to" "transitive" "uses" "with"
 ] @syntax.keyword
 
 ; --- Types ---
@@ -71,15 +75,15 @@
   (integral_type)
   (floating_point_type)
   (boolean_type)
-] @syntax.type
+] @syntax.type.builtin
 
 ; --- Functions / Methods ---
 (method_declaration      name: (identifier) @syntax.function)
 (constructor_declaration name: (identifier) @syntax.constructor)
 (method_invocation       name: (identifier) @syntax.function)
 (object_creation_expression type: (type_identifier) @syntax.constructor)
-(super) @syntax.function
-(this) @syntax.keyword
+(super) @syntax.variable.builtin
+(this) @syntax.variable.builtin
 
 ; --- Annotations ---
 (annotation        name: (identifier) @syntax.attribute)

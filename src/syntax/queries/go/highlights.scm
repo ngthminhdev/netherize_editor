@@ -10,7 +10,7 @@
   (rune_literal)
 ] @syntax.string
 
-(escape_sequence) @syntax.escape
+(escape_sequence) @syntax.string.escape
 
 ; --- Numbers / booleans / nil ---
 [
@@ -28,10 +28,16 @@
 
 ; --- Keywords ---
 [
-  "break" "case" "chan" "const" "continue" "default" "defer" "else"
-  "fallthrough" "for" "func" "go" "goto" "if" "import" "interface"
-  "map" "package" "range" "return" "select" "struct" "switch" "type"
-  "var"
+  "break" "case" "continue" "default" "else" "fallthrough" "for" "goto"
+  "if" "range" "return" "select" "switch"
+] @syntax.keyword.control
+
+[
+  "chan" "const" "func" "interface" "map" "struct" "type" "var"
+] @syntax.keyword.storage
+
+[
+  "defer" "go" "import" "package"
 ] @syntax.keyword
 
 ; --- Package names as namespace ---

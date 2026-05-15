@@ -10,7 +10,7 @@
   (heredoc_body)
 ] @syntax.string
 
-(escape_sequence) @syntax.escape
+(escape_sequence) @syntax.string.escape
 
 ; --- Numbers ---
 (number) @syntax.number
@@ -18,7 +18,15 @@
 ; --- Keywords ---
 [
   "if" "then" "else" "elif" "fi" "for" "do" "done" "while" "until"
-  "case" "esac" "in" "function" "select" "time" "coproc"
+  "case" "esac" "select"
+] @syntax.keyword.control
+
+[
+  "function"
+] @syntax.keyword.storage
+
+[
+  "in" "time" "coproc"
 ] @syntax.keyword
 
 ; --- Functions / commands ---
@@ -27,8 +35,8 @@
 
 ; --- Variables / parameters / constants ---
 (variable_name) @syntax.variable
-(special_variable_name) @syntax.parameter
-(positional_variable_name) @syntax.parameter
+(special_variable_name) @syntax.variable.builtin
+(positional_variable_name) @syntax.variable.builtin
 ((variable_name) @syntax.constant
  (#match? @syntax.constant "^_*[A-Z][A-Z\d_]+$"))
 

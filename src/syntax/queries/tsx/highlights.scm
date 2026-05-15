@@ -13,7 +13,7 @@
   (regex)
 ] @syntax.string
 
-(escape_sequence) @syntax.escape
+(escape_sequence) @syntax.string.escape
 
 ; --- Numbers / booleans / null ---
 (number) @syntax.number
@@ -23,15 +23,25 @@
 
 ; --- Keywords ---
 [
-  "abstract" "as" "async" "await" "break" "case" "catch" "class"
-  "const" "continue" "declare" "debugger" "default" "delete" "do"
-  "else" "enum" "export" "extends" "finally" "for" "from" "function"
-  "if" "implements" "import" "in" "infer" "instanceof" "interface"
-  "keyof" "let" "namespace" "new" "of" "override" "private"
-  "protected" "public" "readonly" "return" "satisfies" "static"
-  "super" "switch" "this" "throw" "try" "type" "typeof" "using"
-  "var" "void" "while" "with" "yield"
+  "await" "break" "case" "catch" "continue" "default" "do" "else"
+  "finally" "for" "if" "return" "switch" "throw" "try" "while" "with" "yield"
+] @syntax.keyword.control
+
+[
+  "abstract" "class" "const" "declare" "enum" "function" "interface" "let"
+  "namespace" "override" "private" "protected" "public" "readonly" "static"
+  "type" "using" "var"
+] @syntax.keyword.storage
+
+[
+  "as" "async" "debugger" "delete" "export" "extends" "from" "implements"
+  "import" "in" "infer" "instanceof" "keyof" "new" "of" "satisfies"
+  "typeof" "void"
 ] @syntax.keyword
+
+[
+  "this" "super"
+] @syntax.variable.builtin
 
 ; --- JSX tags / attributes ---
 ((jsx_opening_element
@@ -51,7 +61,7 @@
 
 ; --- Types / namespaces / constructors ---
 (type_identifier) @syntax.type
-(predefined_type) @syntax.type
+(predefined_type) @syntax.type.builtin
 (type_alias_declaration name: (type_identifier) @syntax.type)
 (interface_declaration name: (type_identifier) @syntax.type)
 (class_declaration name: (type_identifier) @syntax.type)

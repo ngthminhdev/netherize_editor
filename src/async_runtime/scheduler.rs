@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::lsp::client::LspClientProcess;
-use crate::syntax::syntax_engine::SyntaxEngine;
+use crate::syntax::syntax_engine::{SyntaxEngine, LanguageId};
 use crate::terminal::pty::PtyProcess;
 
 mod ai;
@@ -50,7 +50,33 @@ pub(super) const LSP_FORMATTING_TIMEOUT_SECS: u64 = 15;
 pub(super) const LSP_DOCUMENT_SYMBOLS_TIMEOUT_SECS: u64 = 10;
 pub(super) const LSP_CODE_ACTION_TIMEOUT_SECS: u64 = 10;
 
-pub(super) type SyntaxEngineCache = Mutex<HashMap<PathBuf, SyntaxEngine>>;
+/// Cache for syntax engines to enable incremental parsing and injection parser reuse.
+///
+/// - `main_parsers`: Per-file parser instances for the primary document language
+/// - `injection_parsers`: Shared parser instances for embedded languages (e.g., bash in Dockerfile, code blocks in markdown)
+///
+/// The injection cache eliminates repeated parser initialization when highlighting files with many embedded code blocks.
+/// For example, a markdown file with 50 code blocks will reuse the same Rust/JavaScript/Python parsers instead of
+/// creating 50 new parser instances.
+#[derive(Default)]
+pub(super) struct SyntaxEngineCache {
+    main_parsers: HashMap<PathBuf, SyntaxEngine>,
+    pub(super) injection_parsers: HashMap<LanguageId, SyntaxEngine>,
+}
+
+impl SyntaxEngineCache {
+    /// Get a main parser for a file, removing it from the cache.
+    pub(super) fn take_main_parser(&mut self, file_key: &PathBuf) -> Option<SyntaxEngine> {
+        self.main_parsers.remove(file_key)
+    }
+
+    /// Return a main parser to the cache after use.
+    pub(super) fn return_main_parser(&mut self, file_key: PathBuf, engine: SyntaxEngine) {
+        self.main_parsers.insert(file_key, engine);
+    }
+}
+
+pub(super) type SyntaxEngineCacheHandle = Mutex<SyntaxEngineCache>;
 
 pub(super) fn async_trace_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();

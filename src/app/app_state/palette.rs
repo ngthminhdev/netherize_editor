@@ -1,6 +1,18 @@
 use super::overlays::path_matches;
 use super::*;
 
+const WELCOME_RECENT_PROJECT_LIMIT: usize = 5;
+
+fn reference_path_counts(
+    items: &[ReferencesBufferItem],
+) -> std::collections::HashMap<String, usize> {
+    let mut path_counts = std::collections::HashMap::new();
+    for item in items {
+        *path_counts.entry(item.relative_path.clone()).or_insert(0) += 1;
+    }
+    path_counts
+}
+
 impl AppState {
     pub fn open_command_palette_mode(&mut self, mode: CommandPaletteMode) -> Result<usize, String> {
         let workspace = self.workspace_model.as_ref();
@@ -103,6 +115,7 @@ impl AppState {
         use crate::app::command_palette::CommandPaletteItem;
         let items: Vec<_> = recent
             .iter()
+            .take(WELCOME_RECENT_PROJECT_LIMIT)
             .map(|path| CommandPaletteItem::recent_project(path))
             .collect();
         self.command_palette
@@ -421,7 +434,9 @@ impl AppState {
         theme: &crate::config::theme_config::ThemeConfig,
         overlay_bounds: [f32; 4],
     ) -> Option<CommandPaletteRenderModel> {
-        self.command_palette.render(theme, overlay_bounds)
+        let mut model = self.command_palette.render(theme, overlay_bounds)?;
+        model.search_case_sensitive = self.search_case_sensitive;
+        Some(model)
     }
 
     pub fn set_command_palette_selection_range(&mut self, range: Option<(usize, usize)>) -> bool {
@@ -442,6 +457,25 @@ impl AppState {
 
     pub fn open_file_picker(&mut self) -> Result<usize, String> {
         self.open_command_palette_mode(CommandPaletteMode::FilePicker)
+    }
+
+    pub fn live_grep_case_sensitive(&self) -> bool {
+        self.live_grep_case_sensitive
+    }
+
+    pub fn toggle_live_grep_case_sensitive(&mut self) -> bool {
+        self.live_grep_case_sensitive = !self.live_grep_case_sensitive;
+        if let Some(index) = self.active_buffer_index
+            && let Some(BufferEntry {
+                content: BufferContent::FuzzyPicker(state),
+                ..
+            }) = self.buffers.get_mut(index)
+            && state.mode == CommandPaletteMode::LiveGrep
+        {
+            state.live_grep_case_sensitive = self.live_grep_case_sensitive;
+        }
+        self.bump_revision();
+        true
     }
 
     pub fn close_file_picker(&mut self) -> bool {
@@ -859,6 +893,8 @@ impl AppState {
             return Err("cannot open references buffer without items".to_string());
         }
 
+        let path_counts = reference_path_counts(&items);
+
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::References(ReferencesBufferState {
@@ -873,6 +909,7 @@ impl AppState {
                 loading: false,
                 status_message: None,
                 pending_request_id: None,
+                path_counts,
             }),
         });
 
@@ -905,6 +942,7 @@ impl AppState {
                 loading: true,
                 status_message: Some("Loading references...".to_string()),
                 pending_request_id: Some(pending_request_id),
+                path_counts: std::collections::HashMap::new(),
             }),
         });
 
@@ -937,6 +975,7 @@ impl AppState {
         };
 
         state.title = title.into();
+        state.path_counts = reference_path_counts(&items);
         state.items = items;
         state.selected_index = 0;
         state.preview_lines.clear();
@@ -974,6 +1013,7 @@ impl AppState {
 
         state.title = "References (0)".to_string();
         state.items.clear();
+        state.path_counts.clear();
         state.selected_index = 0;
         state.preview_lines.clear();
         state.preview_text.clear();
@@ -990,6 +1030,9 @@ impl AppState {
         let mut state = FuzzyState::new(mode);
         if mode == CommandPaletteMode::FileHistory {
             state.source_file_path = self.active_file.clone();
+        }
+        if mode == CommandPaletteMode::LiveGrep {
+            state.live_grep_case_sensitive = self.live_grep_case_sensitive;
         }
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {

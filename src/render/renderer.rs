@@ -49,6 +49,8 @@ pub struct SidebarRow {
     /// RGBA color for `nerd_icon` — per-filetype.
     pub icon_color: [f32; 4],
     pub label: String,
+    pub prefix_marker: Option<String>,
+    pub prefix_color: Option<[f32; 4]>,
     pub git_marker: Option<char>,
     pub git_color: Option<[f32; 4]>,
     pub is_selected: bool,
@@ -158,6 +160,8 @@ pub struct Renderer {
     pub(super) editor_overlay_glyph_instances: Vec<GlyphInstance>,
     pub(super) editor_overlay_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) editor_overlay_scissor: Option<[u32; 4]>,
+    pub(super) temp_string_buffer: String,
+    pub(super) temp_string_buffer_alt: String,
     pub(super) image_pipeline: ImagePipeline,
     pub(super) image_scissor: Option<[u32; 4]>,
     pub(super) welcome_image_pipeline: ImagePipeline,

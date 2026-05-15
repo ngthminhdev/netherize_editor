@@ -5,7 +5,7 @@
 
 ; --- Strings / escapes ---
 (string) @syntax.string
-(escape_sequence) @syntax.escape
+(escape_sequence) @syntax.string.escape
 
 ; --- Numbers ---
 (int_lit) @syntax.number
@@ -42,7 +42,7 @@
   "max"
   "public"
   "weak"
-] @syntax.keyword
+] @syntax.keyword.storage
 
 ; --- Package namespace ---
 (package
@@ -50,8 +50,8 @@
     (identifier) @syntax.namespace))
 
 ; --- Built-in types ---
-(key_type) @syntax.type
-(type) @syntax.type
+(key_type) @syntax.type.builtin
+(type) @syntax.type.builtin
 
 ; --- Named types ---
 (message_name) @syntax.type

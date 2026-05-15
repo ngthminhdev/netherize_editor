@@ -144,6 +144,14 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 "Dispatch: file picker query append failed -> {err}"
             )),
         },
+        Command::ToggleLiveGrepCaseSensitive => {
+            let changed = ctx.app_state.toggle_live_grep_case_sensitive();
+            DispatchReport::success("Dispatch: toggled live grep case sensitivity".to_string(), changed)
+        }
+        Command::ToggleInFileSearchCaseSensitive => {
+            let changed = ctx.app_state.toggle_search_case_sensitive();
+            DispatchReport::success("Dispatch: toggled in-file search case sensitivity".to_string(), changed)
+        }
         Command::FilePickerBackspaceQuery => match ctx.app_state.file_picker_backspace_query() {
             Ok(changed) => DispatchReport::success(
                 if changed {

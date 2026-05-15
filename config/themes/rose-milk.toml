@@ -135,3 +135,14 @@ namespace = "#9b74c8"
 lifetime = "#d58a55"
 # HTML/XML/JSX Tags.
 tag = "#6d8fc7"
+keyword_control = "#c06aa6"       # Magenta (Rose Milk identity)
+keyword_storage = "#c06aa6"       # Magenta (Rose Milk identity)
+string_escape = "#c95f6d"
+function_builtin = "#6d8fc7"
+comment_doc = "#b79ba8"
+type_builtin = "#9b74c8"
+variable_builtin = "#d16b9f"      # Rose Pink (khác với identifier #4b3b45)
+markup_strong = "#c06aa6"       # Magenta (Rose Milk identity)
+markup_italic = "#b79ba8"
+markup_inline_code = "#5c9f7a"
+markup_link = "#6d8fc7"

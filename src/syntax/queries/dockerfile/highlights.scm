@@ -22,7 +22,7 @@
   "CROSS_BUILD"
   (heredoc_marker)
   (heredoc_end)
-] @syntax.keyword
+] @syntax.keyword.storage
 
 ; Operators
 [
@@ -49,7 +49,7 @@
 ] @syntax.string
 
 ; Escape sequences
-(escape_sequence) @syntax.escape
+(escape_sequence) @syntax.string.escape
 
 ; Variable expansion
 (expansion

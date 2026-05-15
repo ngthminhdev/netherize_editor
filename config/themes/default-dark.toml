@@ -281,11 +281,11 @@ glyph = "\uE615"
 color = "#E35535"
 
 [icons.python]
-glyph = "\uE73C"
+glyph = "󰌠"
 color = "#69C3FF"
 
 [icons.go]
-glyph = "\uE724"
+glyph = "󰟓"
 color = "#22ECDB"
 
 [icons.config]
@@ -356,7 +356,7 @@ lua = ""
 zig = ""
 scala = ""
 sc = ""
-go = ""
+go = "󰟓"
 json = ""
 jsonc = ""
 yaml = ""
@@ -482,3 +482,14 @@ namespace = "#B78AFF"
 lifetime = "#FF955C"
 # HTML/XML/JSX Tags.
 tag = "#69C3FF"           # Deep Blue (đồng bộ function)
+keyword_control = "#EACD61"       # Gold (Default Dark identity)
+keyword_storage = "#22ECDB"       # Gold (Default Dark identity)
+string_escape = "#FF955C"
+function_builtin = "#69C3FF"      # Blue (Default Dark palette)
+comment_doc = "#4a5e84"
+type_builtin = "#B78AFF"
+variable_builtin = "#FF738A"      # Cyan (khác với identifier #d0d7e4)
+markup_strong = "#EACD61"       # Gold (Default Dark identity)
+markup_italic = "#4a5e84"
+markup_inline_code = "#3CEC85"
+markup_link = "#69C3FF"      # Blue (Default Dark palette)

@@ -19,8 +19,8 @@ use cosmic_text::Metrics;
 
 use super::super::helpers::{
     caret_rect_for_mode, clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
-    layout_panel_rich_text, layout_panel_text, layout_panel_text_italic, rect_to_scissor,
-    should_draw_block_cursor,
+    layout_panel_rich_text, layout_panel_text, layout_panel_text_bold, layout_panel_text_italic,
+    rect_to_scissor, should_draw_block_cursor,
 };
 use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
 use crate::text::text_system::StyledTextSpan;
@@ -48,14 +48,23 @@ impl Renderer {
         let panel_y = center_bounds[1] + pad_y;
         let panel_w = (center_bounds[2] - pad_x * 2.0).max(1.0);
         let panel_h = (center_bounds[3] - pad_y * 2.0).max(1.0);
-        let gap = 16.0;
+        let is_live_grep = fuzzy_state.mode == crate::app::command_palette::CommandPaletteMode::LiveGrep;
+        let gap = if is_live_grep { 0.0 } else { 16.0 };
 
-        let left_w = (panel_w * 0.5).max(1.0);
+        let left_w = if is_live_grep {
+            (panel_w * 0.56).clamp(420.0, 720.0).min(panel_w * 0.62)
+        } else {
+            (panel_w * 0.5).max(1.0)
+        };
         let right_w = (panel_w - left_w - gap).max(1.0);
         let left_x = panel_x;
         let right_x = left_x + left_w + gap;
 
-        let header_h = line_height + 14.0;
+        let header_h = if is_live_grep {
+            line_height * 2.0 + 30.0
+        } else {
+            line_height + 14.0
+        };
         let footer_h = line_height + 10.0;
         let content_top = panel_y + header_h;
         let content_bottom = (panel_y + panel_h - footer_h).max(content_top + line_height);
@@ -81,36 +90,136 @@ impl Renderer {
         let mut chrome = vec![
             RegionDrawInstance::new([left_x, panel_y, left_w, panel_h], panel_bg),
             RegionDrawInstance::new([right_x, panel_y, right_w, panel_h], editor_bg),
-            RegionDrawInstance::new([right_x - gap * 0.5, panel_y, 1.0, panel_h], divider),
+            RegionDrawInstance::new([right_x - 1.0, panel_y, 1.0, panel_h], divider),
             RegionDrawInstance::new([left_x, panel_y + header_h - 1.0, left_w, 1.0], divider),
             RegionDrawInstance::new([right_x, panel_y + header_h - 1.0, right_w, 1.0], divider),
         ];
 
-        let header_y = panel_y + 6.0;
+        let header_y = if is_live_grep { panel_y + 12.0 } else { panel_y + 6.0 };
 
         let title = match fuzzy_state.mode {
             crate::app::command_palette::CommandPaletteMode::FilePicker => "File Picker",
-            crate::app::command_palette::CommandPaletteMode::LiveGrep => "Live Grep",
+            crate::app::command_palette::CommandPaletteMode::LiveGrep => "Search Results",
             crate::app::command_palette::CommandPaletteMode::FileHistory => "File History",
             _ => "Search",
         };
-        let left_header = format!("{}  > {}", title, fuzzy_state.query);
+        let unique_file_count = if is_live_grep {
+            let mut paths = Vec::<String>::new();
+            for item in &fuzzy_state.results {
+                if let crate::app::command_palette::CommandPaletteAction::OpenSearchMatch { path, .. } = &item.action {
+                    let path_label = path.display().to_string();
+                    if !paths.iter().any(|existing| existing == &path_label) {
+                        paths.push(path_label);
+                    }
+                }
+            }
+            paths.len()
+        } else {
+            0
+        };
+        let left_header = if is_live_grep {
+            format!("{}  {} results · {} files", title, fuzzy_state.results.len(), unique_file_count)
+        } else {
+            format!("{}  > {}", title, fuzzy_state.query)
+        };
 
         self.editor_overlay_text_system
             .set_size(Some((left_w - 20.0).max(1.0)), Some(line_height));
-        glyphs.extend(layout_panel_text(
-            &clamp_monospace_text(&left_header, (left_w - 20.0).max(1.0), font_size),
-            &mut self.editor_overlay_text_system,
-            &mut self.atlas,
-            &self.queue,
-            left_x + 10.0,
-            header_y,
-            fg,
-        ));
+        if is_live_grep {
+            let header_count_w = estimate_monospace_width(" 999 results · 999 files", font_size).min(left_w * 0.55);
+            glyphs.extend(layout_panel_text(
+                title,
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                left_x + 10.0,
+                header_y,
+                fg,
+            ));
+            let count_label = format!("{} results · {} files", fuzzy_state.results.len(), unique_file_count);
+            glyphs.extend(layout_panel_text(
+                &clamp_monospace_text(&count_label, header_count_w, font_size),
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                (left_x + left_w - header_count_w - 10.0).max(left_x + 90.0),
+                header_y,
+                fg_dim,
+            ));
+        } else {
+            glyphs.extend(layout_panel_text(
+                &clamp_monospace_text(&left_header, (left_w - 20.0).max(1.0), font_size),
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                left_x + 10.0,
+                header_y,
+                fg,
+            ));
+        }
+
+        if is_live_grep {
+            let search_box_x = left_x + 14.0;
+            let search_box_y = header_y + line_height + 6.0;
+            let search_box_w = (left_w - 28.0).max(1.0);
+            let search_box_h = line_height + 8.0;
+            chrome.push(RegionDrawInstance::new(
+                [search_box_x, search_box_y, search_box_w, search_box_h],
+                self.theme.ui.overlay_bg.as_f32(),
+            ));
+            let search_text = if fuzzy_state.query.trim().is_empty() {
+                "Search workspace...".to_string()
+            } else {
+                fuzzy_state.query.clone()
+            };
+            let aa_text = "Aa";
+            let aa_text_w = estimate_monospace_width(aa_text, font_size);
+            let option_w = aa_text_w + 22.0;
+            glyphs.extend(layout_panel_text(
+                &clamp_monospace_text(&search_text, (search_box_w - option_w - 18.0).max(1.0), font_size),
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                search_box_x + 10.0,
+                search_box_y + 4.0,
+                if fuzzy_state.query.trim().is_empty() { fg_ghost } else { fg_dim },
+            ));
+            let aa_active = fuzzy_state.live_grep_case_sensitive;
+            if aa_active {
+                let mut aa_bg = self.theme.ui.accent.as_f32();
+                aa_bg[3] = aa_bg[3].clamp(0.35, 0.70);
+                chrome.push(RegionDrawInstance::new(
+                    [search_box_x + search_box_w - option_w - 8.0, search_box_y + 3.0, option_w, (line_height + 2.0).max(12.0)],
+                    aa_bg,
+                ));
+            }
+            let aa_box_x = search_box_x + search_box_w - option_w - 8.0;
+            let aa_box_h = (line_height + 2.0).max(12.0);
+            glyphs.extend(layout_panel_text(
+                aa_text,
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                aa_box_x + ((option_w - aa_text_w) * 0.5).max(0.0),
+                search_box_y + 3.0 + ((aa_box_h - line_height) * 0.5).max(0.0),
+                if aa_active { fg } else { fg_ghost },
+            ));
+        }
 
         let selected = fuzzy_state.results.get(fuzzy_state.selected_index);
         let right_header = selected
-            .map(|item| item.label.clone())
+            .map(|item| {
+                if is_live_grep {
+                    match &item.action {
+                        crate::app::command_palette::CommandPaletteAction::OpenSearchMatch { path, line, column } => {
+                            format!("{}:{}:{}", compact_search_path(&path.display().to_string()), line, column)
+                        }
+                        _ => item.label.clone(),
+                    }
+                } else {
+                    item.label.clone()
+                }
+            })
             .unwrap_or_else(|| "No file selected".to_string());
 
         self.editor_overlay_text_system
@@ -125,37 +234,110 @@ impl Renderer {
             fg,
         ));
 
-        let help_text = match fuzzy_state.mode {
-            crate::app::command_palette::CommandPaletteMode::FileHistory => {
-                "J/K / Ctrl+N/P / Up/Down to preview  |  Enter to accept  |  Esc/Q to close"
-            }
-            _ => "Type to search  |  Ctrl+N/P / Up/Down to navigate  |  Enter to open",
-        };
-        self.editor_overlay_text_system
-            .set_size(Some((panel_w - 20.0).max(1.0)), Some(line_height));
-        glyphs.extend(layout_panel_text(
-            &clamp_monospace_text(help_text, (panel_w - 20.0).max(1.0), font_size),
-            &mut self.editor_overlay_text_system,
-            &mut self.atlas,
-            &self.queue,
-            panel_x + 10.0,
-            panel_y + panel_h - footer_h + 4.0,
-            fg_ghost,
-        ));
+        if !is_live_grep {
+            let help_text = match fuzzy_state.mode {
+                crate::app::command_palette::CommandPaletteMode::FileHistory => {
+                    "J/K / Ctrl+N/P / Up/Down to preview  |  Enter to accept  |  Esc/Q to close"
+                }
+                _ => "Type to search  |  Ctrl+N/P / Up/Down to navigate  |  Enter to open",
+            };
+            self.editor_overlay_text_system
+                .set_size(Some((panel_w - 20.0).max(1.0)), Some(line_height));
+            glyphs.extend(layout_panel_text(
+                &clamp_monospace_text(help_text, (panel_w - 20.0).max(1.0), font_size),
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                panel_x + 10.0,
+                panel_y + panel_h - footer_h + 4.0,
+                fg_ghost,
+            ));
+        }
 
-        let row_h = line_height * 2.0 + 8.0;
+        let row_h = if is_live_grep {
+            line_height + 8.0
+        } else {
+            line_height * 2.0 + 8.0
+        };
+        let group_header_h = if is_live_grep { line_height + 7.0 } else { 0.0 };
         let visible_rows = ((content_h / row_h).floor() as usize).max(1);
-        let mut start_idx = fuzzy_state.selected_index.saturating_sub(visible_rows / 2);
+        let mut start_idx = if is_live_grep {
+            (fuzzy_state.selected_index / visible_rows) * visible_rows
+        } else {
+            fuzzy_state.selected_index.saturating_sub(visible_rows / 2)
+        };
         if start_idx + visible_rows > fuzzy_state.results.len() {
             start_idx = fuzzy_state.results.len().saturating_sub(visible_rows);
         }
         let left_text_width = (left_w - 20.0).max(1.0);
-        for (slot, item_idx) in (start_idx..fuzzy_state.results.len())
-            .take(visible_rows)
-            .enumerate()
-        {
+        let mut draw_y = content_top;
+        let mut previous_group_path: Option<String> = None;
+        let mut rendered_rows = 0usize;
+        for item_idx in start_idx..fuzzy_state.results.len() {
+            if rendered_rows >= visible_rows || draw_y + row_h > content_bottom + 1.0 {
+                break;
+            }
             let item = &fuzzy_state.results[item_idx];
-            let row_y = content_top + slot as f32 * row_h;
+            let current_group_path = if is_live_grep {
+                match &item.action {
+                    crate::app::command_palette::CommandPaletteAction::OpenSearchMatch { path, .. } => {
+                        Some(path.display().to_string())
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            if is_live_grep && current_group_path != previous_group_path {
+                if let Some(path_label) = current_group_path.as_deref() {
+                    if draw_y + group_header_h + row_h > content_bottom + 1.0 {
+                        break;
+                    }
+                    self.editor_overlay_text_system
+                        .set_size(Some(left_text_width), Some(line_height));
+                    let (file_name, folder_label) = split_search_path(path_label);
+                    let mut group_bg = self.theme.ui.overlay_bg.as_f32();
+                    group_bg[3] = (group_bg[3] * 0.85).clamp(0.18, 0.45);
+                    chrome.push(RegionDrawInstance::new(
+                        [left_x + 8.0, draw_y + 2.0, (left_w - 16.0).max(1.0), (line_height + 3.0).max(12.0)],
+                        group_bg,
+                    ));
+                    let group_count = count_search_matches_for_path(&fuzzy_state.results, path_label);
+                    let count_label = format!("{}", group_count);
+                    let count_w = estimate_monospace_width(&count_label, font_size).max(16.0);
+                    glyphs.extend(layout_panel_text_bold(
+                        &clamp_monospace_text(&format!("▾ {}", file_name), left_text_width * 0.50, font_size),
+                        &mut self.editor_overlay_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        left_x + 16.0,
+                        draw_y + 4.0,
+                        self.theme.ui.accent.as_f32(),
+                    ));
+                    let folder_x = left_x + left_w * 0.54;
+                    glyphs.extend(layout_panel_text(
+                        &clamp_monospace_text(&folder_label, (left_x + left_w - folder_x - count_w - 26.0).max(1.0), font_size),
+                        &mut self.editor_overlay_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        folder_x,
+                        draw_y + 4.0,
+                        fg_ghost,
+                    ));
+                    glyphs.extend(layout_panel_text_bold(
+                        &count_label,
+                        &mut self.editor_overlay_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        left_x + left_w - count_w - 18.0,
+                        draw_y + 4.0,
+                        fg,
+                    ));
+                    draw_y += group_header_h;
+                    previous_group_path = current_group_path.clone();
+                }
+            }
+            let row_y = draw_y;
             let is_selected = item_idx == fuzzy_state.selected_index;
             if is_selected {
                 chrome.push(RegionDrawInstance::new(
@@ -185,30 +367,86 @@ impl Renderer {
                     }
                 }
             };
-            glyphs.extend(layout_panel_text(
-                &clamp_monospace_text(&item.label, left_text_width, font_size),
-                &mut self.editor_overlay_text_system,
-                &mut self.atlas,
-                &self.queue,
-                left_x + 14.0,
-                row_y + 4.0,
-                row_label_color,
-            ));
-
-            let summary = item.secondary_label.clone().unwrap_or_default();
-            if !summary.is_empty() {
-                self.editor_overlay_text_system
-                    .set_size(Some(left_text_width), Some(line_height));
+            if is_live_grep {
+                // Live grep rows intentionally avoid repeating file/line/column:
+                // the file is represented by the group header and Enter opens
+                // the exact selected match. The row itself focuses on the
+                // matched text value.
+            } else {
                 glyphs.extend(layout_panel_text(
-                    &clamp_monospace_text(&summary, left_text_width, font_size),
+                    &clamp_monospace_text(&item.label, left_text_width, font_size),
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
                     left_x + 14.0,
-                    row_y + line_height + 4.0,
-                    if is_selected { fg_dim } else { fg_ghost },
+                    row_y + 4.0,
+                    row_label_color,
                 ));
             }
+
+            let summary = item.secondary_label.clone().unwrap_or_default();
+            if !summary.is_empty() {
+                let summary_x = if is_live_grep {
+                    left_x + 22.0
+                } else {
+                    left_x + 14.0
+                };
+                let summary_w = (left_x + left_w - summary_x - 10.0).max(1.0);
+                self.editor_overlay_text_system
+                    .set_size(Some(summary_w), Some(line_height));
+                let summary_y = if is_live_grep {
+                    row_y + 4.0
+                } else {
+                    row_y + line_height + 2.0
+                };
+                if is_live_grep && !fuzzy_state.query.trim().is_empty() {
+                    let clamped_summary = clamp_monospace_text(&summary, summary_w, font_size);
+                    let spans = search_summary_spans(&clamped_summary, &fuzzy_state.query, self.theme.ui.warning.as_u8());
+                    glyphs.extend(layout_panel_rich_text(
+                        &clamped_summary,
+                        &spans,
+                        if is_selected { fg } else { fg_dim },
+                        &mut self.editor_overlay_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        summary_x,
+                        summary_y,
+                    ));
+                } else {
+                    glyphs.extend(layout_panel_text(
+                        &clamp_monospace_text(&summary, summary_w, font_size),
+                        &mut self.editor_overlay_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        summary_x,
+                        summary_y,
+                        if is_selected { fg } else { fg_ghost },
+                    ));
+                }
+            }
+            draw_y += row_h;
+            rendered_rows += 1;
+        }
+
+        if is_live_grep {
+            let footer_y = panel_y + panel_h - footer_h;
+            chrome.push(RegionDrawInstance::new([left_x, footer_y, left_w, 1.0], divider));
+            let footer_text = format!(
+                "↑↓ navigate  |  Enter open match  |  Esc/Q close   • {} results   {} files",
+                fuzzy_state.results.len(),
+                unique_file_count
+            );
+            self.editor_overlay_text_system
+                .set_size(Some((left_w - 20.0).max(1.0)), Some(line_height));
+            glyphs.extend(layout_panel_text(
+                &clamp_monospace_text(&footer_text, (left_w - 20.0).max(1.0), font_size),
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                left_x + 10.0,
+                footer_y + 4.0,
+                fg_ghost,
+            ));
         }
 
         if !fuzzy_state.preview_lines.is_empty() {
@@ -349,4 +587,64 @@ impl Renderer {
             &self.editor_overlay_glyph_instances,
         );
     }
+}
+
+fn split_search_path(path: &str) -> (String, String) {
+    let normalized = compact_search_path(path);
+    let Some((folder, file)) = normalized.rsplit_once('/') else {
+        return (normalized, String::new());
+    };
+    (file.to_string(), folder.to_string())
+}
+
+fn compact_search_path(path: &str) -> String {
+    let marker = "/src/";
+    if let Some(index) = path.find(marker) {
+        return path[index + 1..].to_string();
+    }
+
+    let components: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    if components.len() > 3 {
+        components[components.len().saturating_sub(3)..].join("/")
+    } else {
+        path.to_string()
+    }
+}
+
+
+
+fn count_search_matches_for_path(
+    results: &[crate::app::command_palette::CommandPaletteItem],
+    path_label: &str,
+) -> usize {
+    results
+        .iter()
+        .filter(|item| match &item.action {
+            crate::app::command_palette::CommandPaletteAction::OpenSearchMatch { path, .. } => {
+                path.display().to_string() == path_label
+            }
+            _ => false,
+        })
+        .count()
+}
+
+fn search_summary_spans(summary: &str, query: &str, color: [u8; 4]) -> Vec<StyledTextSpan> {
+    let needle = query.trim().to_lowercase();
+    if needle.is_empty() {
+        return Vec::new();
+    }
+
+    let haystack = summary.to_lowercase();
+    let mut spans = Vec::new();
+    let mut offset = 0usize;
+    while let Some(relative_start) = haystack[offset..].find(&needle) {
+        let start = offset + relative_start;
+        let end = start + needle.len();
+        spans.push(StyledTextSpan::with_style(start, end, color, true, false));
+        offset = end;
+        if offset >= haystack.len() {
+            break;
+        }
+    }
+    spans
 }

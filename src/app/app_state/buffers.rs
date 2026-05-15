@@ -161,9 +161,14 @@ impl AppState {
         if let BufferContent::Text(buffer) = removed.content {
             self.closed_text_buffers.insert(buffer.path.clone(), buffer);
         }
+
+        // CRITICAL: Clear active_buffer_index immediately after removal to prevent
+        // stale state from being accessed during buffer switch.
+        // This fixes git decoration and treesitter highlight corruption when closing buffers.
+        self.active_buffer_index = None;
+
         if self.buffers.is_empty() {
             self.reset_text_editor_state();
-            self.active_buffer_index = None;
             let _ = self.clear_current_overlays();
             self.bump_revision();
             return Ok(true);

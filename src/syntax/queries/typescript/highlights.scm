@@ -13,7 +13,7 @@
   (regex)
 ] @syntax.string
 
-(escape_sequence) @syntax.escape
+(escape_sequence) @syntax.string.escape
 
 ; --- Numbers / booleans / null ---
 (number) @syntax.number
@@ -23,19 +23,30 @@
 
 ; --- Keywords ---
 [
-  "abstract" "as" "async" "await" "break" "case" "catch" "class"
-  "const" "continue" "declare" "debugger" "default" "delete" "do"
-  "else" "enum" "export" "extends" "finally" "for" "from" "function"
-  "get" "if" "implements" "import" "in" "infer" "instanceof"
-  "interface" "keyof" "let" "module" "namespace" "new" "of" "override"
-  "private" "protected" "public" "readonly" "require" "return" "satisfies"
-  "set" "static" "super" "switch" "target" "this" "throw" "try"
-  "type" "typeof" "unique" "using" "var" "void" "while" "with" "yield"
+  "break" "case" "catch" "continue" "default" "do" "else" "finally"
+  "for" "if" "return" "switch" "throw" "try" "while" "with" "yield"
+  "await"
+] @syntax.keyword.control
+
+[
+  "abstract" "class" "const" "declare" "enum" "function" "get" "interface"
+  "let" "module" "namespace" "override" "private" "protected" "public"
+  "readonly" "set" "static" "type" "using" "var"
+] @syntax.keyword.storage
+
+[
+  "as" "async" "debugger" "delete" "export" "extends" "from" "implements"
+  "import" "in" "infer" "instanceof" "keyof" "new" "of" "require"
+  "satisfies" "target" "typeof" "unique" "void"
 ] @syntax.keyword
+
+[
+  "this" "super"
+] @syntax.variable.builtin
 
 ; --- Types / namespaces / constructors ---
 (type_identifier) @syntax.type
-(predefined_type) @syntax.type
+(predefined_type) @syntax.type.builtin
 (type_alias_declaration name: (type_identifier) @syntax.type)
 (interface_declaration name: (type_identifier) @syntax.type)
 (enum_declaration name: (identifier) @syntax.type)

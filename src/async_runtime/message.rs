@@ -135,6 +135,7 @@ pub enum WorkerRequestPayload {
         buffer_revision: u64,
         viewport_line_start: usize,
         viewport_line_count: usize,
+        line_starts: Vec<usize>,
         /// Single-edit hint for incremental tree-sitter reparse.
         /// `None` when multiple edits accumulated (debounced typing, paste, undo/redo)
         /// — the worker falls back to a full reparse in that case.
@@ -192,6 +193,7 @@ pub enum WorkerRequestPayload {
         query: String,
         mode: FzfSearchMode,
         workspace_root: PathBuf,
+        case_sensitive: bool,
     },
     GitBlameLine {
         workspace_root: PathBuf,
@@ -648,6 +650,7 @@ pub enum WorkerResultPayload {
     FzfResults {
         query: String,
         mode: FzfSearchMode,
+        case_sensitive: bool,
         items: Vec<FzfResultItem>,
     },
     GitBlameLine {

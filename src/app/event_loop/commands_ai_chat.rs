@@ -424,17 +424,16 @@ impl AppShell {
     pub(super) fn handle_ai_chat_command(&mut self, command: &Command) -> Option<bool> {
         match command {
             Command::AiChatToggle => {
-                let is_now_visible = self.panel_state.toggle_right();
+                self.panel_state.toggle_right();
+                let is_now_visible = self.panel_state.right.visible;
 
                 // Switch the right sidebar to the AI Chat tab.
                 self.panel_state.right.switch_to_tab(PanelTabId::AiChat);
 
                 let focus_changed = if is_now_visible {
                     self.focus_manager.set(FocusTarget::RightSidebar)
-                } else if self.focus_manager.current() == FocusTarget::RightSidebar {
-                    self.focus_manager.set(FocusTarget::CenterEditor)
                 } else {
-                    false
+                    self.focus_manager.set(FocusTarget::CenterEditor)
                 };
 
                 if focus_changed {

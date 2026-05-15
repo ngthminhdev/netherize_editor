@@ -636,6 +636,18 @@ impl InputMap {
             return None;
         }
 
+        if palette_mode == Some(CommandPaletteMode::InFileSearch)
+            && input.modifiers.control_key()
+            && !input.modifiers.alt_key()
+            && !input.modifiers.super_key()
+            && input.physical_key == Some(KeyCode::KeyA)
+        {
+            return Some(KeybindingMatch {
+                command: Command::ToggleInFileSearchCaseSensitive,
+                reason: "in-file search: Ctrl+A -> ToggleCaseSensitive",
+            });
+        }
+
         if let Some(command) = resolved_keymap::resolve_command_mode_only(
             &self.keymap,
             input,
@@ -742,6 +754,17 @@ impl InputMap {
                 return Some(KeybindingMatch {
                     command: Command::EditorPaste,
                     reason: "fuzzy picker: mod+v -> EditorPaste",
+                });
+            }
+            if context.command_palette_mode == Some(CommandPaletteMode::LiveGrep)
+                && input.modifiers.control_key()
+                && !input.modifiers.alt_key()
+                && !input.modifiers.super_key()
+                && input.physical_key == Some(KeyA)
+            {
+                return Some(KeybindingMatch {
+                    command: Command::ToggleLiveGrepCaseSensitive,
+                    reason: "fuzzy picker live grep: Ctrl+A -> ToggleCaseSensitive",
                 });
             }
             if input.named_key == Some(NamedKey::Escape) {
