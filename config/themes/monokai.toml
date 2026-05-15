@@ -1,57 +1,32 @@
-# Theme metadata shown after the profile is loaded.
 [theme]
 name = "monokai"
 description = "Monokai palette adapted for Netherize Editor runtime themes"
 
-# Core editor surface: text buffer, caret, selection, and gutter.
 [editor]
-# Main text canvas background for the center editor region.
 bg = "#272822"
-# Default foreground color for plain text in the editor.
 fg = "#F8F8F2"
-# Caret / cursor color in insert, normal, and visual rendering.
 cursor = "#F8F8F0"
-# Selection fill used by visual mode and selected ranges.
 selection = "#49483E"
-# Background behind line numbers.
 gutter = "#272822"
-# Active line-number color in the gutter.
 gutter_active = "#F8F8F2"
-# Subtle vertical indentation guides in the code area.
 indent_guide = "#75715E55"
-# Nested bracket colors used for rainbow-style pair rendering.
 rainbow_brackets = ["#F92672", "#A6E22E", "#FD971F", "#66D9EF", "#AE81FF", "#E6DB74"]
-# Editor text metrics for cosmic-text layout.
-# Primary font for editor text, overlays, top bar, and status bar.
-# Nerd Font used for explorer/file icons and terminal glyph fallback.
 
-# Shared UI chrome colors and workbench sizing tokens.
 [ui]
-# Window clear color behind every region and palette pill foreground base.
 bg = "#1E1F1C"
-# Left/right sidebar region background.
 sidebar_bg = "#272822"
-# Generic chrome background for top bar, cards, and inspector surfaces.
 panel_bg = "#272822"
-# Bottom terminal panel and terminal-buffer background.
 terminal_bg = "#272822"
-# Scrim + modal panel background for command palette and Leap overlay.
 overlay_bg = "#1E1F1CD9"
-# Status bar region background.
 status_bar_bg = "#272822"
-# Borders, separators, and subtle region dividers.
 border_color = "#10110F"
-# Active row / selected tab / focused list item background.
 selection_bg = "#3E3D32"
-# Unsaved topbar tab marker color.
 dirty_indicator = "#FD971F"
 
-# Shared foreground tokens for labels and chrome text.
 fg = "#F8F8F2"
 fg_dim = "#CFCFC2"
 fg_ghost = "#75715E"
 
-# Accent and semantic colors used across overlays, status pills, icons, and diagnostics.
 accent = "#A6E22E"
 cyan = "#66D9EF"
 magenta = "#F92672"
@@ -61,14 +36,10 @@ warning = "#FD971F"
 info = "#66D9EF"
 error = "#F92672"
 
-# Mode badge colors in the status bar.
 mode_normal = "#66D9EF"
 mode_insert = "#A6E22E"
 mode_visual = "#F92672"
 
-# Sidebar and panel text metrics.
-
-# Theme-driven workbench chrome sizes.
 top_bar_height = 36.0
 
 [git]
@@ -79,70 +50,42 @@ added_gutter = "#A6E22E"
 deleted_gutter = "#F92672"
 status_bar_height = 32.0
 
-# Disclosure markers and file-picker bullet glyph.
-
 [syntax]
-# ── Lõi ngôn ngữ (Core) ──
-# Keywords like `fn`, `let`, `match`.
-keyword = "#f92672"       # Magenta (Monokai identity)
-# Operators such as `=`, `+`, `&&`, `->`.
-operator = "#f92672"      # Magenta (Monokai palette)
-# Punctuation such as commas, braces, and separators.
+keyword = "#f92672"
+operator = "#f92672"
 punctuation = "#f8f8f2"
 
-# ── Giá trị (Literals) ──
-# String literals.
 string = "#e6db74"
-# Numeric literals.
 number = "#ae81ff"
-# Boolean literals (true/false).
 boolean = "#ae81ff"
-# Escape sequences inside strings (e.g., \n, \t).
 escape = "#fd971f"
 
-# ── Định danh (Identifiers) ──
-# Plain variable names that do not fall into a richer semantic bucket.
-identifier = "#f8f8f2"    # Foreground (cho variable references)
-# Local variables.
-variable = "#fd971f"      # Orange (khác với identifier #f8f8f2)
-# Function names and callable symbols.
+identifier = "#f8f8f2"
+variable = "#fd971f"
 function = "#a6e22e"
-# Macro invocation highlight.
 macro = "#a6e22e"
-# Function and closure parameters.
-parameter = "#fd971f"     # Orange (Monokai palette)
+parameter = "#fd971f"
 
-# ── Hướng đối tượng & Cấu trúc (OOP & Structs) ──
-# Type names.
 type = "#66d9ef"
-# Constructor functions (e.g., String::new).
 constructor = "#66d9ef"
-# Struct field declarations and member access like `self.name`.
-field = "#66d9ef"         # Cyan (Monokai palette)
-# Struct literal property labels like `Demo { name: value }`.
-property = "#66d9ef"      # Cyan (đồng bộ với field)
-# Named constants such as `MAX_SIZE`.
+field = "#66d9ef"
+property = "#66d9ef"
 constant = "#ae81ff"
 
-# ── Đặc tả ngôn ngữ (Language-specific) ──
-# Comments and muted inline docs.
 comment = "#75715e"
-# Decorators and attributes like `#[derive(Debug)]` or `@Controller`.
-attribute = "#f92672"     # Magenta (đồng bộ keyword)
-# Module namespaces (e.g., `std::` in Rust).
+attribute = "#f92672"
 namespace = "#66d9ef"
-# Rust lifetime highlight.
 lifetime = "#fd971f"
-# HTML/XML/JSX Tags.
 tag = "#f92672"
-keyword_control = "#f92672"       # Magenta (Monokai identity)
-keyword_storage = "#f92672"       # Magenta (Monokai identity)
+keyword_control = "#f92672"
+keyword_storage = "#f92672"
 string_escape = "#fd971f"
 function_builtin = "#a6e22e"
 comment_doc = "#75715e"
 type_builtin = "#66d9ef"
-variable_builtin = "#fd971f"      # Orange (khác với identifier #f8f8f2)
-markup_strong = "#f92672"       # Magenta (Monokai identity)
+variable_builtin = "#fd971f"
+markup_strong = "#f92672"
 markup_italic = "#75715e"
 markup_inline_code = "#e6db74"
 markup_link = "#a6e22e"
+

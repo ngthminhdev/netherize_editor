@@ -1,57 +1,32 @@
-# Theme metadata shown after the profile is loaded.
 [theme]
 name = "night-owl"
 description = "Night Owl palette adapted for Netherize Editor runtime themes"
 
-# Core editor surface: text buffer, caret, selection, and gutter.
 [editor]
-# Main text canvas background for the center editor region.
 bg = "#011627"
-# Default foreground color for plain text in the editor.
 fg = "#D6DEEB"
-# Caret / cursor color in insert, normal, and visual rendering.
 cursor = "#80CBC4"
-# Selection fill used by visual mode and selected ranges.
 selection = "#1D3B53"
-# Background behind line numbers.
 gutter = "#011627"
-# Active line-number color in the gutter.
 gutter_active = "#D6DEEB"
-# Subtle vertical indentation guides in the code area.
 indent_guide = "#5F7E9740"
-# Nested bracket colors used for rainbow-style pair rendering.
 rainbow_brackets = ["#80CBC4", "#C792EA", "#ECC48D", "#ADDB67", "#F78C6C", "#82AAFF"]
-# Editor text metrics for cosmic-text layout.
-# Primary font for editor text, overlays, top bar, and status bar.
-# Nerd Font used for explorer/file icons and terminal glyph fallback.
 
-# Shared UI chrome colors and workbench sizing tokens.
 [ui]
-# Window clear color behind every region and palette pill foreground base.
 bg = "#010E1A"
-# Left/right sidebar region background.
 sidebar_bg = "#011627"
-# Generic chrome background for top bar, cards, and inspector surfaces.
 panel_bg = "#011627"
-# Bottom terminal panel and terminal-buffer background.
 terminal_bg = "#011627"
-# Scrim + modal panel background for command palette and Leap overlay.
 overlay_bg = "#010E1AD9"
-# Status bar region background.
 status_bar_bg = "#011627"
-# Borders, separators, and subtle region dividers.
 border_color = "#0B2942"
-# Active row / selected tab / focused list item background.
 selection_bg = "#1D3B53"
-# Unsaved topbar tab marker color.
 dirty_indicator = "#ECC48D"
 
-# Shared foreground tokens for labels and chrome text.
 fg = "#D6DEEB"
 fg_dim = "#7FDBCA"
 fg_ghost = "#637777"
 
-# Accent and semantic colors used across overlays, status pills, icons, and diagnostics.
 accent = "#82AAFF"
 cyan = "#80CBC4"
 magenta = "#C792EA"
@@ -61,14 +36,10 @@ warning = "#F78C6C"
 info = "#82AAFF"
 error = "#EF5350"
 
-# Mode badge colors in the status bar.
 mode_normal = "#80CBC4"
 mode_insert = "#ADDB67"
 mode_visual = "#C792EA"
 
-# Sidebar and panel text metrics.
-
-# Theme-driven workbench chrome sizes.
 top_bar_height = 36.0
 
 [git]
@@ -79,70 +50,42 @@ added_gutter = "#ADDB67"
 deleted_gutter = "#EF5350"
 status_bar_height = 32.0
 
-# Disclosure markers and file-picker bullet glyph.
-
 [syntax]
-# ── Lõi ngôn ngữ (Core) ──
-# Keywords like `fn`, `let`, `match`, `const`, `if`, `return`, `async`.
-keyword = "#c792ea"       # Magenta (Night Owl identity)
-# Operators such as `=`, `+`, `&&`, `->`, `!`, `??`.
-operator = "#7fdbca"      # Cyan (Night Owl palette)
-# Punctuation such as commas, braces, and separators.
+keyword = "#c792ea"
+operator = "#7fdbca"
 punctuation = "#d6deeb"
 
-# ── Giá trị (Literals) ──
-# String literals.
 string = "#ecc48d"
-# Numeric literals.
 number = "#f78c6c"
-# Boolean literals (true/false).
 boolean = "#ff5874"
-# Escape sequences inside strings (e.g., \n, \t).
 escape = "#addb67"
 
-# ── Định danh (Identifiers) ──
-# Plain variable names that do not fall into a richer semantic bucket.
-identifier = "#d6deeb"    # Foreground (cho variable references)
-# Local variables (const, let, var).
-variable = "#c792ea"      # Magenta (khác với identifier #d6deeb)
-# Function names and callable symbols.
+identifier = "#d6deeb"
+variable = "#c792ea"
 function = "#82aaff"
-# Macro invocation highlight.
 macro = "#82aaff"
-# Function and closure parameters.
-parameter = "#7fdbca"     # Cyan (Night Owl palette)
+parameter = "#7fdbca"
 
-# ── Hướng đối tượng & Cấu trúc (OOP & Structs) ──
-# Type names.
 type = "#ffcb8b"
-# Constructor functions (e.g., String::new).
 constructor = "#ffcb8b"
-# Struct field declarations and member access like `self.name`, `obj.property`.
-field = "#80cbc4"         # Teal (Night Owl palette)
-# Struct literal property labels like `Demo { name: value }`.
-property = "#80cbc4"      # Teal (đồng bộ với field)
-# Named constants such as `MAX_SIZE`.
+field = "#80cbc4"
+property = "#80cbc4"
 constant = "#ffcb8b"
 
-# ── Đặc tả ngôn ngữ (Language-specific) ──
-# Comments and muted inline docs.
 comment = "#637777"
-# Decorators and attributes like `#[derive(Debug)]` or `@Controller`.
-attribute = "#c792ea"     # Magenta (đồng bộ keyword)
-# Module namespaces (e.g., `std::` in Rust).
+attribute = "#c792ea"
 namespace = "#82aaff"
-# Rust lifetime highlight.
 lifetime = "#ffcb8b"
-# HTML/XML/JSX Tags.
 tag = "#82aaff"
-keyword_control = "#c792ea"       # Magenta (Night Owl identity)
-keyword_storage = "#c792ea"       # Magenta (Night Owl identity)
+keyword_control = "#c792ea"
+keyword_storage = "#c792ea"
 string_escape = "#addb67"
 function_builtin = "#82aaff"
 comment_doc = "#637777"
 type_builtin = "#ffcb8b"
-variable_builtin = "#c792ea"      # Magenta (khác với identifier #d6deeb)
-markup_strong = "#c792ea"       # Magenta (Night Owl identity)
+variable_builtin = "#c792ea"
+markup_strong = "#c792ea"
 markup_italic = "#637777"
 markup_inline_code = "#ecc48d"
 markup_link = "#82aaff"
+

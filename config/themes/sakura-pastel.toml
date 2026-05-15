@@ -1,57 +1,32 @@
-# Theme metadata shown after the profile is loaded.
 [theme]
 name = "sakura-pastel"
 description = "Sakura Pastel pink palette adapted for Netherize Editor runtime themes"
 
-# Core editor surface: text buffer, caret, selection, and gutter.
 [editor]
-# Main text canvas background for the center editor region.
 bg = "#FFF7FB"
-# Default foreground color for plain text in the editor.
 fg = "#4A3F46"
-# Caret / cursor color in insert, normal, and visual rendering.
 cursor = "#D96C9F"
-# Selection fill used by visual mode and selected ranges.
 selection = "#F7DCEB"
-# Background behind line numbers.
 gutter = "#FFF7FB"
-# Active line-number color in the gutter.
 gutter_active = "#4A3F46"
-# Subtle vertical indentation guides in the code area.
 indent_guide = "#D9A9C140"
-# Nested bracket colors used for rainbow-style pair rendering.
 rainbow_brackets = ["#D96C9F", "#C45A8A", "#D99A4E", "#5FA58D", "#D9826B", "#B76FD3"]
-# Editor text metrics for cosmic-text layout.
-# Primary font for editor text, overlays, top bar, and status bar.
-# Nerd Font used for explorer/file icons and terminal glyph fallback.
 
-# Shared UI chrome colors and workbench sizing tokens.
 [ui]
-# Window clear color behind every region and palette pill foreground base.
 bg = "#FFF1F8"
-# Left/right sidebar region background.
 sidebar_bg = "#FFF7FB"
-# Generic chrome background for top bar, cards, and inspector surfaces.
 panel_bg = "#FFF7FB"
-# Bottom terminal panel and terminal-buffer background.
 terminal_bg = "#FFF7FB"
-# Scrim + modal panel background for command palette and Leap overlay.
 overlay_bg = "#FFF1F8D9"
-# Status bar region background.
 status_bar_bg = "#FFF7FB"
-# Borders, separators, and subtle region dividers.
 border_color = "#E8C7D9"
-# Active row / selected tab / focused list item background.
 selection_bg = "#F2CFE1"
-# Unsaved topbar tab marker color.
 dirty_indicator = "#D99A4E"
 
-# Shared foreground tokens for labels and chrome text.
 fg = "#4A3F46"
 fg_dim = "#6F5F69"
 fg_ghost = "#A78B99"
 
-# Accent and semantic colors used across overlays, status pills, icons, and diagnostics.
 accent = "#D96C9F"
 cyan = "#D96C9F"
 magenta = "#C45A8A"
@@ -61,14 +36,10 @@ warning = "#D9826B"
 info = "#7A8FD9"
 error = "#D85C5C"
 
-# Mode badge colors in the status bar.
 mode_normal = "#D96C9F"
 mode_insert = "#5FA58D"
 mode_visual = "#C45A8A"
 
-# Sidebar and panel text metrics.
-
-# Theme-driven workbench chrome sizes.
 top_bar_height = 36.0
 
 [git]
@@ -79,70 +50,42 @@ added_gutter = "#4F9B84"
 deleted_gutter = "#D85C5C"
 status_bar_height = 32.0
 
-# Disclosure markers and file-picker bullet glyph.
-
 [syntax]
-# ── Lõi ngôn ngữ (Core) ──
-# Keywords like `fn`, `let`, `match`.
-keyword = "#d99a4e"       # Gold (Sakura identity)
-# Operators such as `=`, `+`, `&&`, `->`.
-operator = "#d99a4e"      # Gold (Sakura palette)
-# Punctuation such as commas, braces, and separators.
+keyword = "#d99a4e"
+operator = "#d99a4e"
 punctuation = "#d96c9f"
 
-# ── Giá trị (Literals) ──
-# String literals.
 string = "#5fa58d"
-# Numeric literals.
 number = "#d85c5c"
-# Boolean literals (true/false).
 boolean = "#d9826b"
-# Escape sequences inside strings (e.g., \n, \t).
 escape = "#d85c5c"
 
-# ── Định danh (Identifiers) ──
-# Plain variable names that do not fall into a richer semantic bucket.
-identifier = "#4a3f46"    # Foreground (cho variable references)
-# Local variables.
-variable = "#d96c9f"      # Rose Pink (khác với identifier #4a3f46)
-# Function names and callable symbols.
+identifier = "#4a3f46"
+variable = "#d96c9f"
 function = "#7a8fd9"
-# Macro invocation highlight.
 macro = "#7a8fd9"
-# Function and closure parameters.
-parameter = "#d96c9f"     # Rose Pink (Sakura palette)
+parameter = "#d96c9f"
 
-# ── Hướng đối tượng & Cấu trúc (OOP & Structs) ──
-# Type names.
 type = "#b76fd3"
-# Constructor functions (e.g., String::new).
 constructor = "#b76fd3"
-# Struct field declarations and member access like `self.name`.
-field = "#7a8fd9"         # Blue (Sakura palette)
-# Struct literal property labels like `Demo { name: value }`.
-property = "#7a8fd9"      # Blue (đồng bộ với field)
-# Named constants such as `MAX_SIZE`.
+field = "#7a8fd9"
+property = "#7a8fd9"
 constant = "#d9826b"
 
-# ── Đặc tả ngôn ngữ (Language-specific) ──
-# Comments and muted inline docs.
 comment = "#b79aaa"
-# Decorators and attributes like `#[derive(Debug)]` or `@Controller`.
-attribute = "#d99a4e"     # Gold (đồng bộ keyword)
-# Module namespaces (e.g., `std::` in Rust).
+attribute = "#d99a4e"
 namespace = "#b76fd3"
-# Rust lifetime highlight.
 lifetime = "#d9826b"
-# HTML/XML/JSX Tags.
 tag = "#7a8fd9"
-keyword_control = "#d99a4e"       # Gold (Sakura identity)
-keyword_storage = "#d99a4e"       # Gold (Sakura identity)
+keyword_control = "#d99a4e"
+keyword_storage = "#d99a4e"
 string_escape = "#d85c5c"
 function_builtin = "#7a8fd9"
 comment_doc = "#b79aaa"
 type_builtin = "#b76fd3"
-variable_builtin = "#d96c9f"      # Rose Pink (khác với identifier #4a3f46)
-markup_strong = "#d99a4e"       # Gold (Sakura identity)
+variable_builtin = "#d96c9f"
+markup_strong = "#d99a4e"
 markup_italic = "#b79aaa"
 markup_inline_code = "#5fa58d"
 markup_link = "#7a8fd9"
+

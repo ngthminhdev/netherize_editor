@@ -37,7 +37,6 @@ mode_normal = "#83A598"
 mode_insert = "#B8BB26"
 mode_visual = "#D3869B"
 
-
 top_bar_height = 36.0
 
 [git]
@@ -48,38 +47,38 @@ added_gutter = "#B8BB26"
 deleted_gutter = "#FB4934"
 status_bar_height = 32.0
 
-
 [syntax]
-keyword = "#fb4934"       # Red (Gruvbox identity)
+keyword = "#fb4934"
 string = "#b8bb26"
 function = "#fabd2f"
 comment = "#928374"
 type = "#83a598"
 number = "#d3869b"
-identifier = "#ebdbb2"    # Foreground (cho variable references)
-parameter = "#fe8019"     # Orange (Gruvbox palette)
-field = "#83a598"         # Blue (Gruvbox palette)
-property = "#83a598"      # Blue (đồng bộ với field)
+identifier = "#ebdbb2"
+parameter = "#fe8019"
+field = "#83a598"
+property = "#83a598"
 constant = "#d3869b"
-operator = "#fe8019"      # Orange (Gruvbox palette)
+operator = "#fe8019"
 punctuation = "#ebdbb2"
 macro = "#8ec07c"
 lifetime = "#fe8019"
 boolean = "#d3869b"
 escape = "#fe8019"
-variable = "#fabd2f"      # Yellow (khác với identifier #ebdbb2)
+variable = "#fabd2f"
 constructor = "#fabd2f"
-attribute = "#fb4934"     # Red (đồng bộ keyword)
+attribute = "#fb4934"
 namespace = "#83a598"
 tag = "#fb4934"
-keyword_control = "#fb4934"       # Red (Gruvbox identity)
-keyword_storage = "#fb4934"       # Red (Gruvbox identity)
+keyword_control = "#fb4934"
+keyword_storage = "#fb4934"
 string_escape = "#fe8019"
 function_builtin = "#fabd2f"
 comment_doc = "#928374"
 type_builtin = "#83a598"
-variable_builtin = "#fabd2f"      # Yellow (khác với identifier #ebdbb2)
-markup_strong = "#fb4934"       # Red (Gruvbox identity)
+variable_builtin = "#fabd2f"
+markup_strong = "#fb4934"
 markup_italic = "#928374"
 markup_inline_code = "#b8bb26"
 markup_link = "#fabd2f"
+

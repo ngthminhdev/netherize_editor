@@ -37,7 +37,6 @@ mode_normal = "#88C0D0"
 mode_insert = "#A3BE8C"
 mode_visual = "#B48EAD"
 
-
 top_bar_height = 36.0
 
 [git]
@@ -48,38 +47,38 @@ added_gutter = "#A3BE8C"
 deleted_gutter = "#BF616A"
 status_bar_height = 32.0
 
-
 [syntax]
-keyword = "#81a1c1"       # Blue (Nord identity)
+keyword = "#81a1c1"
 string = "#a3be8c"
 function = "#88c0d0"
 comment = "#616e88"
 type = "#8fbcbb"
 number = "#b48ead"
-identifier = "#d8dee9"    # Foreground (cho variable references)
-parameter = "#ebcb8b"     # Amber (Nord palette)
-field = "#8fbcbb"         # Teal (Nord palette)
-property = "#8fbcbb"      # Teal (đồng bộ với field)
+identifier = "#d8dee9"
+parameter = "#ebcb8b"
+field = "#8fbcbb"
+property = "#8fbcbb"
 constant = "#b48ead"
-operator = "#81a1c1"      # Blue (Nord palette)
+operator = "#81a1c1"
 punctuation = "#d8dee9"
 macro = "#8fbcbb"
 lifetime = "#ebcb8b"
 boolean = "#d08770"
 escape = "#d08770"
-variable = "#d08770"      # Orange (khác với identifier #d8dee9)
+variable = "#d08770"
 constructor = "#88c0d0"
-attribute = "#81a1c1"     # Blue (đồng bộ keyword)
+attribute = "#81a1c1"
 namespace = "#81a1c1"
 tag = "#81a1c1"
-keyword_control = "#81a1c1"       # Blue (Nord identity)
-keyword_storage = "#81a1c1"       # Blue (Nord identity)
+keyword_control = "#81a1c1"
+keyword_storage = "#81a1c1"
 string_escape = "#d08770"
 function_builtin = "#88c0d0"
 comment_doc = "#616e88"
 type_builtin = "#8fbcbb"
-variable_builtin = "#d08770"      # Orange (khác với identifier #d8dee9)
-markup_strong = "#81a1c1"       # Blue (Nord identity)
+variable_builtin = "#d08770"
+markup_strong = "#81a1c1"
 markup_italic = "#616e88"
 markup_inline_code = "#a3be8c"
 markup_link = "#88c0d0"
+
