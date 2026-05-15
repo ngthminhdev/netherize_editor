@@ -14,6 +14,8 @@ mod categories;
 mod engine;
 mod queries;
 mod spans;
+#[cfg(test)]
+mod normalize_tests;
 
 pub use categories::{HighlightCategory, HighlightPalette};
 pub use queries::highlight_markdown_inline;

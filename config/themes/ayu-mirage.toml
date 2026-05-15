@@ -135,3 +135,14 @@ namespace = "#d2a6ff"
 lifetime = "#ffae57"
 # HTML/XML/JSX Tags.
 tag = "#73d0ff"
+keyword_control = "#ffcc66"       # Gold (Ayu identity)
+keyword_storage = "#ffcc66"       # Gold (Ayu identity)
+string_escape = "#f07178"
+function_builtin = "#73d0ff"
+comment_doc = "#5c6773"
+type_builtin = "#d2a6ff"
+variable_builtin = "#d2a6ff"      # Purple (khác với identifier #cbccc6)
+markup_strong = "#ffcc66"       # Gold (Ayu identity)
+markup_italic = "#5c6773"
+markup_inline_code = "#bae67e"
+markup_link = "#73d0ff"

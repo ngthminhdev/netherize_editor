@@ -98,31 +98,31 @@ pub(super) fn syntax_spans_to_styled(
                     theme.syntax.keyword.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::KeywordControl => {
-                    theme.syntax.keyword.as_u8()  // Use keyword color for now
-                }
-                crate::syntax::highlight::HighlightCategory::KeywordStorage => {
-                    theme.syntax.keyword.as_u8()  // Use keyword color for now
-                }
+                                    theme.syntax.keyword_control.as_u8()
+                                }
+                                crate::syntax::highlight::HighlightCategory::KeywordStorage => {
+                                    theme.syntax.keyword_storage.as_u8()
+                                }
                 crate::syntax::highlight::HighlightCategory::String => theme.syntax.string.as_u8(),
                 crate::syntax::highlight::HighlightCategory::StringEscape => {
-                    theme.syntax.escape.as_u8()
-                }
+                                    theme.syntax.string_escape.as_u8()
+                                }
                 crate::syntax::highlight::HighlightCategory::Comment => {
                     theme.syntax.comment.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::CommentDoc => {
-                    theme.syntax.comment.as_u8()  // Use comment color for now
-                }
+                                    theme.syntax.comment_doc.as_u8()
+                                }
                 crate::syntax::highlight::HighlightCategory::Type => theme.syntax.r#type.as_u8(),
                 crate::syntax::highlight::HighlightCategory::TypeBuiltin => {
-                    theme.syntax.r#type.as_u8()  // Use type color for now
-                }
+                                    theme.syntax.type_builtin.as_u8()
+                                }
                 crate::syntax::highlight::HighlightCategory::Function => {
                     theme.syntax.function.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::FunctionBuiltin => {
-                    theme.syntax.function.as_u8()  // Use function color for now
-                }
+                                    theme.syntax.function_builtin.as_u8()
+                                }
                 crate::syntax::highlight::HighlightCategory::Number => theme.syntax.number.as_u8(),
                 crate::syntax::highlight::HighlightCategory::Boolean => {
                     theme.syntax.boolean.as_u8()
@@ -134,8 +134,8 @@ pub(super) fn syntax_spans_to_styled(
                     theme.syntax.variable.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::VariableBuiltin => {
-                    theme.syntax.variable.as_u8()  // Use variable color for now
-                }
+                                    theme.syntax.variable_builtin.as_u8()
+                                }
                 crate::syntax::highlight::HighlightCategory::Parameter => {
                     theme.syntax.parameter.as_u8()
                 }
@@ -168,17 +168,17 @@ pub(super) fn syntax_spans_to_styled(
                 }
                 crate::syntax::highlight::HighlightCategory::Tag => theme.syntax.tag.as_u8(),
                 crate::syntax::highlight::HighlightCategory::MarkupStrong => {
-                    theme.syntax.keyword.as_u8()
-                }
-                crate::syntax::highlight::HighlightCategory::MarkupItalic => {
-                    theme.syntax.comment.as_u8()
-                }
-                crate::syntax::highlight::HighlightCategory::MarkupInlineCode => {
-                    theme.syntax.string.as_u8()
-                }
-                crate::syntax::highlight::HighlightCategory::MarkupLink => {
-                    theme.syntax.function.as_u8()
-                }
+                                    theme.syntax.markup_strong.as_u8()
+                                }
+                                crate::syntax::highlight::HighlightCategory::MarkupItalic => {
+                                    theme.syntax.markup_italic.as_u8()
+                                }
+                                crate::syntax::highlight::HighlightCategory::MarkupInlineCode => {
+                                    theme.syntax.markup_inline_code.as_u8()
+                                }
+                                crate::syntax::highlight::HighlightCategory::MarkupLink => {
+                                    theme.syntax.markup_link.as_u8()
+                                }
             };
             StyledTextSpan::with_style(
                 span.range.start,

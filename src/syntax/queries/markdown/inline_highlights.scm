@@ -6,5 +6,5 @@
 (link_destination) @syntax.string
 (uri_autolink) @markup.link.text
 (email_autolink) @markup.link.text
-(backslash_escape) @syntax.escape
-(character_reference) @syntax.escape
+(backslash_escape) @syntax.string.escape
+(character_reference) @syntax.string.escape

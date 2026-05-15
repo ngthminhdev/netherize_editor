@@ -183,6 +183,8 @@ impl Renderer {
             editor_overlay_glyph_instances: Vec::new(),
             editor_overlay_chrome_instances: Vec::new(),
             editor_overlay_scissor: None,
+            temp_string_buffer: String::new(),
+            temp_string_buffer_alt: String::new(),
             image_pipeline,
             image_scissor: None,
             welcome_image_pipeline,
@@ -390,8 +392,15 @@ impl Renderer {
         self.buffer_terminal_header_batch = None;
         self.statusbar_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
+        // Theme changes alter foreground and syntax span colors without changing
+        // text revision or span ranges. Force the editor text buffer to reshape so
+        // the new colors are uploaded immediately instead of waiting for the next
+        // cursor/scroll/edit action to dirty the layout.
+        self.last_shaped_revision = u64::MAX;
+        self.last_shaped_spans_fingerprint = u64::MAX;
+        self.last_shaped_viewport_width = 0.0;
+
         self.clear_sidebar();
-        self.clear_palette();
         self.clear_editor_overlays();
         self.clear_diagnostic_hover_popup();
         self.clear_leap_labels();

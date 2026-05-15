@@ -17,6 +17,7 @@ use crate::{
     text::layout_sync::{compute_caret_layout, compute_cursor_overlay, rebuild_layout_projection},
 };
 use cosmic_text::Metrics;
+use std::fmt::Write;
 
 use super::super::helpers::{
     caret_rect_for_mode, clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
@@ -88,9 +89,12 @@ impl Renderer {
         ];
 
         let header_y = panel_y + 6.0;
-        let unique_file_count = count_reference_files(&references.items);
+        let unique_file_count = references.path_counts.len();
         let left_title = if references.loading { "References · loading..." } else { "References" };
-        let count_label = format!(
+        let count_label = &mut self.temp_string_buffer;
+        count_label.clear();
+        let _ = write!(
+            count_label,
             "{} refs · {} files",
             references.items.len(),
             unique_file_count
@@ -118,21 +122,23 @@ impl Renderer {
         ));
 
         let selected = references.items.get(references.selected_index);
-        let right_header = selected
-            .map(|item| {
-                format!(
-                    "{}:{}:{}",
-                    item.relative_path,
-                    item.line + 1,
-                    item.column + 1
-                )
-            })
-            .unwrap_or_else(|| {
-                references
-                    .status_message
-                    .clone()
-                    .unwrap_or_else(|| "No reference selected".to_string())
-            });
+        let right_header_buffer = &mut self.temp_string_buffer_alt;
+        right_header_buffer.clear();
+        let right_header = if let Some(item) = selected {
+            let _ = write!(
+                right_header_buffer,
+                "{}:{}:{}",
+                item.relative_path,
+                item.line + 1,
+                item.column + 1
+            );
+            right_header_buffer.as_str()
+        } else {
+            references
+                .status_message
+                .as_deref()
+                .unwrap_or("No reference selected")
+        };
         self.editor_overlay_text_system
             .set_size(Some((right_w - 20.0).max(1.0)), Some(line_height));
         glyphs.extend(layout_panel_text(
@@ -185,7 +191,7 @@ impl Renderer {
             }
 
             let mut draw_y = content_top;
-            let mut previous_group_path: Option<String> = None;
+            let mut previous_group_path: Option<&str> = None;
             let mut rendered_rows = 0usize;
             for item_idx in start_idx..references.items.len() {
                 if rendered_rows >= visible_rows || draw_y + row_h > content_bottom + 1.0 {
@@ -203,11 +209,14 @@ impl Renderer {
                         [left_x + 8.0, draw_y + 2.0, (left_w - 16.0).max(1.0), (line_height + 3.0).max(12.0)],
                         group_bg,
                     ));
-                    let group_count = count_references_for_path(&references.items, &item.relative_path);
-                    let count_label = group_count.to_string();
-                    let count_w = estimate_monospace_width(&count_label, font_size).max(16.0);
+                    let group_count = references.path_counts.get(&item.relative_path).copied().unwrap_or(0);
+                    count_label.clear();
+                    let _ = write!(count_label, "{}", group_count);
+                    let count_w = estimate_monospace_width(count_label, font_size).max(16.0);
+                    right_header_buffer.clear();
+                    let _ = write!(right_header_buffer, "▾ {}", file_name);
                     glyphs.extend(layout_panel_text_bold(
-                        &clamp_monospace_text(&format!("▾ {}", file_name), left_text_width * 0.50, font_size),
+                        &clamp_monospace_text(right_header_buffer, left_text_width * 0.50, font_size),
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,
@@ -226,7 +235,7 @@ impl Renderer {
                         fg_ghost,
                     ));
                     glyphs.extend(layout_panel_text_bold(
-                        &count_label,
+                        count_label,
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,
@@ -235,7 +244,7 @@ impl Renderer {
                         fg,
                     ));
                     draw_y += group_header_h;
-                    previous_group_path = Some(item.relative_path.clone());
+                    previous_group_path = Some(item.relative_path.as_str());
                 }
 
                 let row_y = draw_y;
@@ -251,10 +260,11 @@ impl Renderer {
                     ));
                 }
 
-                let line_label = format!("{}", item.line + 1);
+                count_label.clear();
+                let _ = write!(count_label, "{}", item.line + 1);
                 let line_w = estimate_monospace_width("9999", font_size).max(34.0);
                 glyphs.extend(layout_panel_text(
-                    &line_label,
+                    count_label,
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
@@ -264,9 +274,9 @@ impl Renderer {
                 ));
                 let snippet_x = left_x + 22.0 + line_w;
                 let snippet_w = (left_x + left_w - snippet_x - 10.0).max(1.0);
-                let snippet = reference_row_summary(item);
+                let snippet = reference_row_summary(item, right_header_buffer);
                 glyphs.extend(layout_panel_text(
-                    &clamp_monospace_text(&snippet, snippet_w, font_size),
+                    &clamp_monospace_text(snippet, snippet_w, font_size),
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
@@ -281,17 +291,17 @@ impl Renderer {
         }
 
         if !references.preview_lines.is_empty() {
-            let line_number_width = estimate_monospace_width(
-                &format!(
-                    "{:>4}",
-                    references
-                        .preview_lines
-                        .last()
-                        .map(|line| line.line_number)
-                        .unwrap_or(1)
-                ),
-                font_size,
-            ) + 14.0;
+            count_label.clear();
+            let _ = write!(
+                count_label,
+                "{:>4}",
+                references
+                    .preview_lines
+                    .last()
+                    .map(|line| line.line_number)
+                    .unwrap_or(1)
+            );
+            let line_number_width = estimate_monospace_width(count_label, font_size) + 14.0;
             let preview_text_width = (right_w - 20.0 - line_number_width).max(1.0);
             let preview_rows = ((content_h / line_height).floor() as usize).max(1);
             let mut preview_start = 0usize;
@@ -327,8 +337,10 @@ impl Renderer {
 
                 self.editor_overlay_text_system
                     .set_size(Some(line_number_width), Some(line_height));
+                count_label.clear();
+                let _ = write!(count_label, "{:>4}", line.line_number);
                 glyphs.extend(layout_panel_text(
-                    &format!("{:>4}", line.line_number),
+                    count_label,
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
@@ -429,28 +441,17 @@ fn compact_reference_path(path: &str) -> String {
     }
 }
 
-fn count_reference_files(items: &[ReferencesBufferItem]) -> usize {
-    items
-        .iter()
-        .map(|item| item.relative_path.as_str())
-        .collect::<std::collections::HashSet<_>>()
-        .len()
-}
-
-fn count_references_for_path(items: &[ReferencesBufferItem], path: &str) -> usize {
-    items
-        .iter()
-        .filter(|item| item.relative_path == path)
-        .count()
-}
 
 
 
-fn reference_row_summary(item: &ReferencesBufferItem) -> String {
+
+fn reference_row_summary<'a>(item: &'a ReferencesBufferItem, buffer: &'a mut String) -> &'a str {
     let summary = item.summary.trim();
     if summary.is_empty() || summary.starts_with("Ln ") {
-        format!("Ln {}, Col {}", item.line + 1, item.column + 1)
+        buffer.clear();
+        let _ = write!(buffer, "Ln {}, Col {}", item.line + 1, item.column + 1);
+        buffer.as_str()
     } else {
-        summary.to_string()
+        summary
     }
 }

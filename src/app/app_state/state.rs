@@ -559,6 +559,17 @@ impl AppState {
         self.text.to_string()
     }
 
+    pub fn line_start_byte_indices(&self) -> Vec<usize> {
+        let line_count = self.text.len_lines();
+        if line_count == 0 {
+            return Vec::new();
+        }
+
+        (0..line_count)
+            .map(|line_idx| self.text.line_to_byte(line_idx))
+            .collect()
+    }
+
     pub fn line_string(&self, line_idx: usize) -> String {
         if self.text.len_lines() == 0 {
             return String::new();

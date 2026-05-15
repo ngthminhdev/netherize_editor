@@ -137,3 +137,14 @@ namespace = "#A78BFA"     # [SCHEMATIC] Namespace/module tím xanh, khác proper
 lifetime = "#FCA5A5"
 # HTML/XML/JSX Tags.
 tag = "#38BDF8"           # [SCHEMATIC] HTML/XML/JSX tag xanh cyan, khác property sau dấu chấm
+keyword_control = "#FFD166"
+keyword_storage = "#FFD166"
+string_escape = "#FF4D6D"        # [SCHEMATIC] Escape dùng hồng đỏ để nổi bật trong chuỗi
+function_builtin = "#4CC9F0"
+comment_doc = "#63708A"
+type_builtin = "#C77DFF"
+variable_builtin = "#D8DEE9"      # [SCHEMATIC] Biến thường trung tính để không tranh màu với symbol quan trọng
+markup_strong = "#FFD166"
+markup_italic = "#63708A"
+markup_inline_code = "#7DFFB2"
+markup_link = "#4CC9F0"

@@ -67,6 +67,14 @@ impl AppShell {
                     if matches!(command_for_post_hooks, Command::OpenDocumentSymbols) {
                         self.submit_lsp_document_symbols();
                     }
+                    if matches!(command_for_post_hooks, Command::OpenThemeSelector) {
+                        self.begin_theme_picker_preview_session();
+                        request_redraw |= self.preview_selected_theme_from_picker();
+                    }
+                    if self.app_state.command_palette_mode() == Some(CommandPaletteMode::ThemeSelector) {
+                        self.begin_theme_picker_preview_session();
+                        request_redraw |= self.preview_selected_theme_from_picker();
+                    }
                 }
                 Some(request_redraw)
             }
@@ -143,6 +151,8 @@ impl AppShell {
                             );
                         }
                     }
+                } else if self.app_state.command_palette_mode() == Some(CommandPaletteMode::ThemeSelector) {
+                    self.preview_selected_theme_from_picker();
                 } else {
                     self.submit_active_palette_fzf_search();
                     self.submit_fuzzy_picker_preview_load();
@@ -167,10 +177,28 @@ impl AppShell {
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                 }
+                if self.app_state.command_palette_mode() == Some(CommandPaletteMode::ThemeSelector) {
+                    self.preview_selected_theme_from_picker();
+                }
                 self.submit_active_palette_fzf_search();
                 self.submit_fuzzy_picker_preview_load();
                 self.request_redraw();
                 Some(true)
+            }
+            Command::OverlaySelectNext
+            | Command::OverlaySelectPrev
+            | Command::FilePickerSelectNext
+            | Command::FilePickerSelectPrev
+                if self.app_state.current_mode() == EditorMode::PaletteFocus
+                    && self.app_state.is_command_palette_visible() =>
+            {
+                let report = dispatch_command(&mut self.app_state, command.clone());
+                if report.success
+                    && self.app_state.command_palette_mode() == Some(CommandPaletteMode::ThemeSelector)
+                {
+                    self.preview_selected_theme_from_picker();
+                }
+                Some(report.request_redraw || report.state_changed)
             }
             Command::FilePickerAppendQuery(_)
             | Command::FilePickerBackspaceQuery
@@ -221,6 +249,9 @@ impl AppShell {
                             let _ = self.sync_in_file_search_with_palette_query();
                         }
                     }
+                    Some(CommandPaletteMode::ThemeSelector) => {
+                        self.preview_selected_theme_from_picker();
+                    }
                     _ => {}
                 }
 
@@ -246,6 +277,13 @@ impl AppShell {
                 );
                 let was_terminal_search = self.terminal_search_palette_active;
                 self.terminal_search_palette_active = false;
+                let was_theme_selector = self.app_state.command_palette_mode()
+                    == Some(CommandPaletteMode::ThemeSelector);
+                let restored_theme_preview = if was_theme_selector {
+                    self.restore_theme_picker_preview()
+                } else {
+                    false
+                };
                 let report = dispatch_command(&mut self.app_state, command.clone());
                 self.clear_palette_ime_commit_suppression();
                 let focus_changed = if returns_to_explorer {
@@ -275,7 +313,7 @@ impl AppShell {
                 if focus_changed {
                     self.input_handler.clear_pending_prefix();
                 }
-                Some(report.request_redraw)
+                Some(report.request_redraw || restored_theme_preview)
             }
             Command::FilePickerConfirmSelection | Command::OpenFile(_) => {
                 if matches!(command, Command::FilePickerConfirmSelection)

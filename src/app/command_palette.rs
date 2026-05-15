@@ -913,6 +913,11 @@ impl CommandPalette {
         scrim[3] = scrim[3].max(0.72);
         let mut panel_bg = theme.ui.panel_bg.as_f32();
         panel_bg[3] = panel_bg[3].max(0.98);
+        if self.mode == CommandPaletteMode::ThemeSelector {
+            scrim[3] = 0.08;
+            panel_bg = theme.ui.overlay_bg.as_f32();
+            panel_bg[3] = panel_bg[3].min(0.58);
+        }
 
         Some(CommandPaletteRenderModel {
             mode: self.mode,

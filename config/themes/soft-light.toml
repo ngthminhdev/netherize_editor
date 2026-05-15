@@ -135,3 +135,14 @@ namespace = "#6b46c1"
 lifetime = "#c05621"
 # HTML/XML/JSX Tags.
 tag = "#2b6cb0"
+keyword_control = "#b7791f"       # Gold (Soft Light identity)
+keyword_storage = "#b7791f"       # Gold (Soft Light identity)
+string_escape = "#c53030"
+function_builtin = "#2b6cb0"
+comment_doc = "#8a94a6"
+type_builtin = "#6b46c1"
+variable_builtin = "#b83280"      # Magenta (khác với identifier #2e3440)
+markup_strong = "#b7791f"       # Gold (Soft Light identity)
+markup_italic = "#8a94a6"
+markup_inline_code = "#2f855a"
+markup_link = "#2b6cb0"

@@ -13,7 +13,7 @@
   (regex)
 ] @syntax.string
 
-(escape_sequence) @syntax.escape
+(escape_sequence) @syntax.string.escape
 
 ; --- Numbers / booleans / null ---
 (number) @syntax.number
@@ -23,13 +23,22 @@
 
 ; --- Keywords ---
 [
-  "as" "async" "await" "break" "case" "catch" "class" "const"
-  "continue" "debugger" "default" "delete" "do" "else" "export"
-  "extends" "finally" "for" "from" "function" "if" "import"
-  "in" "instanceof" "let" "new" "of" "return" "static" "super"
-  "switch" "this" "throw" "try" "typeof" "var" "void" "while"
-  "with" "yield"
+  "await" "break" "case" "catch" "continue" "default" "do" "else"
+  "finally" "for" "if" "return" "switch" "throw" "try" "while" "with" "yield"
+] @syntax.keyword.control
+
+[
+  "class" "const" "function" "let" "static" "var"
+] @syntax.keyword.storage
+
+[
+  "as" "async" "debugger" "delete" "export" "extends" "from" "import"
+  "in" "instanceof" "new" "of" "typeof" "void"
 ] @syntax.keyword
+
+[
+  "this" "super"
+] @syntax.variable.builtin
 
 ; --- JSX tags / attributes ---
 ((jsx_opening_element

@@ -8,7 +8,7 @@
 (string (string_start) @syntax.string)
 (string (string_end) @syntax.string)
 (string (interpolation "{" @syntax.punctuation "}" @syntax.punctuation))
-(escape_sequence) @syntax.escape
+(escape_sequence) @syntax.string.escape
 
 ; --- Numbers ---
 (integer) @syntax.number
@@ -21,12 +21,17 @@
 
 ; --- Keywords ---
 [
-  "and" "as" "assert" "async" "await" "break"
-  "class" "continue" "def" "del" "elif" "else"
-  "except" "exec" "finally" "for" "from" "global"
-  "if" "import" "in" "is" "lambda" "nonlocal"
-  "not" "or" "pass" "print" "raise" "return"
-  "try" "while" "with" "yield"
+  "await" "break" "continue" "elif" "else" "except" "finally" "for"
+  "if" "raise" "return" "try" "while" "with" "yield"
+] @syntax.keyword.control
+
+[
+  "class" "def" "global" "lambda" "nonlocal"
+] @syntax.keyword.storage
+
+[
+  "and" "as" "assert" "async" "del" "exec" "from" "import" "in"
+  "is" "not" "or" "pass" "print"
 ] @syntax.keyword
 
 ; --- Decorators ---
@@ -57,8 +62,8 @@
 ; --- Types (type annotations) ---
 (type (identifier) @syntax.type)
 (call
-  function: (identifier) @syntax.type
-  (#match? @syntax.type "^(bool|int|float|str|bytes|list|dict|set|tuple|frozenset|type|object)$"))
+  function: (identifier) @syntax.type.builtin
+  (#match? @syntax.type.builtin "^(bool|int|float|str|bytes|list|dict|set|tuple|frozenset|type|object)$"))
 
 ; --- Namespaces / imports / member chains ---
 (import_statement
@@ -86,8 +91,8 @@
 
 ; --- Builtin functions ---
 ((call
-  function: (identifier) @syntax.function)
- (#match? @syntax.function "^(print|len|range|enumerate|zip|map|filter|sorted|reversed|min|max|sum|any|all|isinstance|issubclass|hasattr|getattr|setattr|delattr|type|super|vars|dir|id|hash|repr|chr|ord|bin|oct|hex|input|open|abs|round|pow|divmod|callable|compile|eval|exec|format|globals|locals|iter|next|property|staticmethod|classmethod)$"))
+  function: (identifier) @syntax.function.builtin)
+ (#match? @syntax.function.builtin "^(print|len|range|enumerate|zip|map|filter|sorted|reversed|min|max|sum|any|all|isinstance|issubclass|hasattr|getattr|setattr|delattr|type|super|vars|dir|id|hash|repr|chr|ord|bin|oct|hex|input|open|abs|round|pow|divmod|callable|compile|eval|exec|format|globals|locals|iter|next|property|staticmethod|classmethod)$"))
 
 ; --- Attributes ---
 (attribute
@@ -105,8 +110,8 @@
   (#match? @syntax.constant "^_*[A-Z][A-Z\\d_]+$"))
 
 ; --- self / cls as parameter ---
-((identifier) @syntax.type
-  (#match? @syntax.type "^(self|cls)$"))
+((identifier) @syntax.variable.builtin
+  (#match? @syntax.variable.builtin "^(self|cls)$"))
 
 ; --- Operators ---
 [

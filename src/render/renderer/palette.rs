@@ -42,7 +42,11 @@ pub(super) fn render_palette_chrome(
         model.scrim_color,
     ));
     let mut frame_border = model.border_color;
-    frame_border[3] = frame_border[3].max(0.95);
+    if model.mode == crate::app::command_palette::CommandPaletteMode::ThemeSelector {
+        frame_border[3] = frame_border[3].clamp(0.18, 0.42);
+    } else {
+        frame_border[3] = frame_border[3].max(0.95);
+    }
     chrome.push(
         RegionDrawInstance::new(
             [panel_x - 1.0, panel_y - 1.0, panel_w + 2.0, panel_h + 2.0],

@@ -135,6 +135,7 @@ pub enum WorkerRequestPayload {
         buffer_revision: u64,
         viewport_line_start: usize,
         viewport_line_count: usize,
+        line_starts: Vec<usize>,
         /// Single-edit hint for incremental tree-sitter reparse.
         /// `None` when multiple edits accumulated (debounced typing, paste, undo/redo)
         /// — the worker falls back to a full reparse in that case.

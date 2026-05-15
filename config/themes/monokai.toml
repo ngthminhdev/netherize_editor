@@ -135,3 +135,14 @@ namespace = "#66d9ef"
 lifetime = "#fd971f"
 # HTML/XML/JSX Tags.
 tag = "#f92672"
+keyword_control = "#f92672"       # Magenta (Monokai identity)
+keyword_storage = "#f92672"       # Magenta (Monokai identity)
+string_escape = "#fd971f"
+function_builtin = "#a6e22e"
+comment_doc = "#75715e"
+type_builtin = "#66d9ef"
+variable_builtin = "#fd971f"      # Orange (khác với identifier #f8f8f2)
+markup_strong = "#f92672"       # Magenta (Monokai identity)
+markup_italic = "#75715e"
+markup_inline_code = "#e6db74"
+markup_link = "#a6e22e"

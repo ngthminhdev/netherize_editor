@@ -120,3 +120,14 @@ attribute = "#ff79c6"     # Pink (đồng bộ keyword)
 namespace = "#8be9fd"
 # Markup/JSX-style tags.
 tag = "#50fa7b"
+keyword_control = "#ff79c6"       # Pink (Dracula identity)
+keyword_storage = "#ff79c6"       # Pink (Dracula identity)
+string_escape = "#bd93f9"
+function_builtin = "#50fa7b"
+comment_doc = "#6272a4"
+type_builtin = "#8be9fd"
+variable_builtin = "#ff79c6"      # Pink (khác với identifier #f8f8f2)
+markup_strong = "#ff79c6"       # Pink (Dracula identity)
+markup_italic = "#6272a4"
+markup_inline_code = "#f1fa8c"
+markup_link = "#50fa7b"

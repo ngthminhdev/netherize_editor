@@ -3,6 +3,16 @@ use super::*;
 
 const WELCOME_RECENT_PROJECT_LIMIT: usize = 5;
 
+fn reference_path_counts(
+    items: &[ReferencesBufferItem],
+) -> std::collections::HashMap<String, usize> {
+    let mut path_counts = std::collections::HashMap::new();
+    for item in items {
+        *path_counts.entry(item.relative_path.clone()).or_insert(0) += 1;
+    }
+    path_counts
+}
+
 impl AppState {
     pub fn open_command_palette_mode(&mut self, mode: CommandPaletteMode) -> Result<usize, String> {
         let workspace = self.workspace_model.as_ref();
@@ -883,6 +893,8 @@ impl AppState {
             return Err("cannot open references buffer without items".to_string());
         }
 
+        let path_counts = reference_path_counts(&items);
+
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::References(ReferencesBufferState {
@@ -897,7 +909,7 @@ impl AppState {
                 loading: false,
                 status_message: None,
                 pending_request_id: None,
-                path_counts: std::collections::HashMap::new(),
+                path_counts,
             }),
         });
 
@@ -963,6 +975,7 @@ impl AppState {
         };
 
         state.title = title.into();
+        state.path_counts = reference_path_counts(&items);
         state.items = items;
         state.selected_index = 0;
         state.preview_lines.clear();
@@ -1000,6 +1013,7 @@ impl AppState {
 
         state.title = "References (0)".to_string();
         state.items.clear();
+        state.path_counts.clear();
         state.selected_index = 0;
         state.preview_lines.clear();
         state.preview_text.clear();

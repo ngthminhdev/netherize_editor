@@ -138,6 +138,8 @@ pub struct AppShell {
     dismissed_system_deps: bool,
     /// Toast window-relative ngắn hạn cho các action nền.
     transient_toast: Option<TransientToast>,
+    theme_picker_original_theme: Option<ThemeConfig>,
+    theme_picker_preview_profile: Option<String>,
     base_theme: ThemeConfig,
     theme: ThemeConfig,
     ui_config: UiConfig,

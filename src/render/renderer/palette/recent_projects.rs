@@ -151,6 +151,36 @@ impl Renderer {
         let row_h = if is_theme_selector { line_h + 18.0 } else { row_h };
         let body_h = (panel_h - (row_top - panel_y) - footer_h - model.panel_padding).max(0.0);
         let max_visible = ((body_h / row_h).floor() as usize).max(1);
+        if is_theme_selector && body_h > 1.0 {
+            let mut frost = model.panel_bg;
+            frost[3] = frost[3].max(0.74);
+            quads.push(
+                RegionDrawInstance::new(
+                    [
+                        panel_x + model.panel_padding * 0.5,
+                        row_top - 2.0,
+                        panel_w - model.panel_padding,
+                        body_h + 4.0,
+                    ],
+                    frost,
+                )
+                .with_radius(12.0),
+            );
+            let mut veil = self.theme.ui.bg.as_f32();
+            veil[3] = 0.28;
+            quads.push(
+                RegionDrawInstance::new(
+                    [
+                        panel_x + model.panel_padding * 0.5,
+                        row_top - 2.0,
+                        panel_w - model.panel_padding,
+                        body_h + 4.0,
+                    ],
+                    veil,
+                )
+                .with_radius(12.0),
+            );
+        }
         let scroll_offset = model
             .scroll_offset_rows
             .min(model.result_labels.len().saturating_sub(max_visible));

@@ -4,15 +4,15 @@
 
 (line_comment) @syntax.comment
 (block_comment) @syntax.comment
-(line_comment (doc_comment)) @syntax.comment
-(block_comment (doc_comment)) @syntax.comment
+(line_comment (doc_comment)) @syntax.comment.doc
+(block_comment (doc_comment)) @syntax.comment.doc
 
 ; Strings and numbers
 
 (char_literal) @syntax.string
 (string_literal) @syntax.string
 (raw_string_literal) @syntax.string
-(escape_sequence) @syntax.escape
+(escape_sequence) @syntax.string.escape
 
 (integer_literal) @syntax.number
 (float_literal) @syntax.number
@@ -21,7 +21,7 @@
 ; Type names
 
 (type_identifier) @syntax.type
-(primitive_type) @syntax.type
+(primitive_type) @syntax.type.builtin
 ((identifier) @syntax.type
  (#match? @syntax.type "^[A-Z]"))
 ((scoped_identifier
@@ -88,7 +88,7 @@
 ; Parameters
 
 (parameter pattern: (identifier) @syntax.parameter)
-(self_parameter (self) @syntax.parameter)
+(self_parameter (self) @syntax.variable.builtin)
 (closure_parameters (identifier) @syntax.parameter)
 
 ; Variables
@@ -118,44 +118,46 @@
 
 ; Keywords
 
+"await" @syntax.keyword.control
+"break" @syntax.keyword.control
+"continue" @syntax.keyword.control
+"else" @syntax.keyword.control
+"for" @syntax.keyword.control
+"if" @syntax.keyword.control
+"loop" @syntax.keyword.control
+"match" @syntax.keyword.control
+"return" @syntax.keyword.control
+"while" @syntax.keyword.control
+
+"const" @syntax.keyword.storage
+"enum" @syntax.keyword.storage
+"fn" @syntax.keyword.storage
+"impl" @syntax.keyword.storage
+"let" @syntax.keyword.storage
+"mod" @syntax.keyword.storage
+"static" @syntax.keyword.storage
+"struct" @syntax.keyword.storage
+"trait" @syntax.keyword.storage
+"type" @syntax.keyword.storage
+"union" @syntax.keyword.storage
+(mutable_specifier) @syntax.keyword.storage
+
 "as" @syntax.keyword
 "async" @syntax.keyword
-"await" @syntax.keyword
-"break" @syntax.keyword
-"const" @syntax.keyword
-"continue" @syntax.keyword
 "default" @syntax.keyword
 "dyn" @syntax.keyword
-"else" @syntax.keyword
-"enum" @syntax.keyword
 "extern" @syntax.keyword
-"fn" @syntax.keyword
-"for" @syntax.keyword
-"if" @syntax.keyword
-"impl" @syntax.keyword
 "in" @syntax.keyword
-"let" @syntax.keyword
-"loop" @syntax.keyword
 "macro_rules!" @syntax.keyword
-"match" @syntax.keyword
-"mod" @syntax.keyword
 "move" @syntax.keyword
 "pub" @syntax.keyword
 "ref" @syntax.keyword
-"return" @syntax.keyword
-"static" @syntax.keyword
-"struct" @syntax.keyword
-"trait" @syntax.keyword
-"type" @syntax.keyword
-"union" @syntax.keyword
 "unsafe" @syntax.keyword
 "use" @syntax.keyword
 "where" @syntax.keyword
-"while" @syntax.keyword
-(crate) @syntax.keyword
-(mutable_specifier) @syntax.keyword
-(self) @syntax.keyword
-(super) @syntax.keyword
+(crate) @syntax.variable.builtin
+(self) @syntax.variable.builtin
+(super) @syntax.variable.builtin
 
 ; Operators
 

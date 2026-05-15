@@ -34,12 +34,12 @@
 (Attribute (AttValue) @syntax.string)
 
 ;; ── Doctype ───────────────────────────────────────────────────────────────
-(doctypedecl "DOCTYPE" @syntax.keyword)
+(doctypedecl "DOCTYPE" @syntax.keyword.storage)
 (doctypedecl (Name) @syntax.type)
 
 ;; ── Entities ──────────────────────────────────────────────────────────────
-(EntityRef) @syntax.escape
-(CharRef) @syntax.escape
+(EntityRef) @syntax.string.escape
+(CharRef) @syntax.string.escape
 
 ;; ── CDATA ────────────────────────────────────────────────────────────────
 (CDSect

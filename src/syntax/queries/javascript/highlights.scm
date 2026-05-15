@@ -13,7 +13,7 @@
   (regex)
 ] @syntax.string
 
-(escape_sequence) @syntax.escape
+(escape_sequence) @syntax.string.escape
 
 ; --- Numbers / booleans / null / undefined ---
 (number) @syntax.number
@@ -26,13 +26,22 @@
 
 ; --- Keywords ---
 [
-  "as" "async" "await" "break" "case" "catch" "class" "const"
-  "continue" "debugger" "default" "delete" "do" "else" "export"
-  "extends" "finally" "for" "from" "function" "get" "if" "import"
-  "in" "instanceof" "let" "new" "of" "return" "set" "static"
-  "super" "switch" "target" "this" "throw" "try" "typeof" "var"
-  "void" "while" "with" "yield"
+  "await" "break" "case" "catch" "continue" "default" "do" "else"
+  "finally" "for" "if" "return" "switch" "throw" "try" "while" "with" "yield"
+] @syntax.keyword.control
+
+[
+  "class" "const" "function" "get" "let" "set" "static" "var"
+] @syntax.keyword.storage
+
+[
+  "as" "async" "debugger" "delete" "export" "extends" "from" "import"
+  "in" "instanceof" "new" "of" "target" "typeof" "void"
 ] @syntax.keyword
+
+[
+  "this" "super"
+] @syntax.variable.builtin
 
 ; --- Types / constructors / namespaces ---
 (class_declaration name: (identifier) @syntax.type)

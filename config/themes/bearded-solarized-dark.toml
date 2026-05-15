@@ -16,7 +16,7 @@ selection = "#1a3c47"
 # Background behind line numbers.
 gutter = "#132c34"
 # Active line-number color in the gutter.
-gutter_active = "#c3e0e9"
+gutter_active = "#66afc7"
 # Editor text metrics for cosmic-text layout.
 # Primary font for editor text, overlays, top bar, and status bar.
 # Nerd Font used for explorer/file icons and terminal glyph fallback.
@@ -34,7 +34,7 @@ terminal_bg = "#132c34"
 # Scrim + modal panel background for command palette and Leap overlay.
 overlay_bg = "#10252cD9"
 # Status bar region background.
-status_bar_bg = "#132c34"
+status_bar_bg = "#10252c"
 # Borders, separators, and subtle region dividers.
 border_color = "#0b191e"
 # Active row / selected tab / focused list item background.
@@ -66,11 +66,11 @@ mode_visual = "#df96d9"
 top_bar_height = 36.0
 
 [git]
-modified_sidebar = "#e8913b"
-added_sidebar = "#3CEC85"
-modified_gutter = "#e8913b"
-added_gutter = "#3CEC85"
-deleted_gutter = "#dc322f"
+modified_sidebar = "#4db0f7"
+added_sidebar = "#a5b82e"
+modified_gutter = "#4db0f7"
+added_gutter = "#a5b82e"
+deleted_gutter = "#f45645"
 status_bar_height = 32.0
 
 # Disclosure markers and file-picker bullet glyph.
@@ -107,16 +107,27 @@ macro = "#4db0f7"
 # Rust lifetime highlight.
 lifetime = "#e8913b"
 # Boolean literals (`true`, `false`).
-boolean = "#FF955C"
+boolean = "#f45645"
 # Escape sequences inside strings/chars.
-escape = "#FF955C"
+escape = "#e8913b"
 # Local variables and bindings.
-variable = "#df96d9"      # Magenta (khác với identifier #c3e0e9)
+variable = "#f154a0"      # Magenta (khác với identifier #c3e0e9)
 # Constructors, enum variants, and nominal type definitions.
-constructor = "#B78AFF"
+constructor = "#97e24c"
 # Attributes/annotations.
-attribute = "#e2ae10"     # Gold (đồng bộ keyword)
+attribute = "#df96d9"     # Gold (đồng bộ keyword)
 # Module/namespace qualifiers.
-namespace = "#B78AFF"
+namespace = "#858bf7"
 # Markup/JSX-style tags.
-tag = "#B78AFF"
+tag = "#4db0f7"
+keyword_control = "#e2ae10"       # Gold (Solarized identity)
+keyword_storage = "#26bbae"       # Gold (Solarized identity)
+string_escape = "#e8913b"
+function_builtin = "#4db0f7"
+comment_doc = "#367b90"
+type_builtin = "#858bf7"
+variable_builtin = "#f154a0"      # Magenta (khác với identifier #c3e0e9)
+markup_strong = "#e2ae10"       # Gold (Solarized identity)
+markup_italic = "#367b90"
+markup_inline_code = "#a5b82e"
+markup_link = "#4db0f7"

@@ -15,7 +15,7 @@
 [
   "---"
   "..."
-] @syntax.keyword
+] @syntax.keyword.storage
 
 ; ── Keys ──────────────────────────────────────────────────────────────────────
 ; Keys are highlighted as @syntax.property so they stand out from string values.
@@ -113,7 +113,7 @@
 
 ; ── Escape sequences ─────────────────────────────────────────────────────────
 
-(escape_sequence) @syntax.escape
+(escape_sequence) @syntax.string.escape
 
 ; ── Numbers ───────────────────────────────────────────────────────────────────
 

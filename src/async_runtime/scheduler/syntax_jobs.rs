@@ -34,6 +34,7 @@ pub(super) async fn execute_virtual_job(
             buffer_revision,
             viewport_line_start,
             viewport_line_count,
+            line_starts,
             edit_hint,
         } => {
             let buffer_id = buffer_id.clone();
@@ -43,6 +44,7 @@ pub(super) async fn execute_virtual_job(
             let buffer_revision = *buffer_revision;
             let viewport_line_start = *viewport_line_start;
             let viewport_line_count = *viewport_line_count;
+            let line_starts = line_starts.clone();
             let edit_hint = *edit_hint;
             let request_revision = request.revision_id;
 
@@ -87,6 +89,7 @@ pub(super) async fn execute_virtual_job(
                     viewport_line_count,
                     line_count,
                     byte_count,
+                    &line_starts,
                 );
 
                 // Get injection parser cache from the syntax cache
@@ -352,19 +355,9 @@ fn byte_range_for_line_window(
     source: &str,
     window_start_line: usize,
     window_line_count: usize,
+    line_starts: &[usize],
 ) -> Option<Range<usize>> {
-    if source.is_empty() {
-        return None;
-    }
-
-    let mut line_starts = Vec::with_capacity(source.lines().count().max(1) + 1);
-    line_starts.push(0);
-    for (idx, byte) in source.bytes().enumerate() {
-        if byte == b'\n' && idx + 1 <= source.len() {
-            line_starts.push(idx + 1);
-        }
-    }
-    if line_starts.is_empty() {
+    if source.is_empty() || line_starts.is_empty() {
         return None;
     }
 
@@ -373,9 +366,9 @@ fn byte_range_for_line_window(
     let line_count = window_line_count.max(1);
     let end_line_exclusive = clamped_start.saturating_add(line_count).min(total_lines);
 
-    let start = line_starts[clamped_start];
+    let start = line_starts[clamped_start].min(source.len());
     let end = if end_line_exclusive < total_lines {
-        line_starts[end_line_exclusive]
+        line_starts[end_line_exclusive].min(source.len())
     } else {
         source.len()
     };
@@ -389,6 +382,7 @@ fn highlight_byte_window(
     viewport_line_count: usize,
     line_count: usize,
     byte_count: usize,
+    line_starts: &[usize],
 ) -> Option<Range<usize>> {
     if source.is_empty() {
         return None;
@@ -404,7 +398,7 @@ fn highlight_byte_window(
         .max(VIEWPORT_HIGHLIGHT_MIN_OVERSCAN_LINES);
     let window_line_count = visible_lines.saturating_add(overscan.saturating_mul(2));
     let window_start_line = viewport_line_start.saturating_sub(overscan);
-    byte_range_for_line_window(source, window_start_line, window_line_count)
+    byte_range_for_line_window(source, window_start_line, window_line_count, line_starts)
 }
 
 fn should_highlight_full_buffer(line_count: usize, byte_count: usize) -> bool {

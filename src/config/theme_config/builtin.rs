@@ -89,14 +89,21 @@ fn builtin_ui_tokens() -> UiThemeTokens {
 fn builtin_syntax_tokens() -> SyntaxThemeTokens {
     SyntaxThemeTokens {
         keyword: rgb(231, 122, 233),
+        keyword_control: rgb(231, 122, 233),
+        keyword_storage: rgb(255, 149, 92),
         string: rgb(103, 214, 124),
+        string_escape: rgb(255, 123, 114),
         function: rgb(47, 211, 246),
+        function_builtin: rgb(105, 195, 255),
         comment: rgb(109, 116, 131),
+        comment_doc: rgb(143, 152, 170),
         r#type: rgb(245, 182, 58),
+        type_builtin: rgb(234, 205, 97),
         number: rgb(255, 123, 114),
         boolean: rgb(245, 182, 58),
         identifier: rgb(242, 244, 248),
         variable: rgb(242, 244, 248),
+        variable_builtin: rgb(255, 149, 92),
         parameter: rgb(155, 229, 100),
         field: rgb(73, 198, 248),
         property: rgb(183, 191, 204),
@@ -110,6 +117,10 @@ fn builtin_syntax_tokens() -> SyntaxThemeTokens {
         attribute: rgb(231, 122, 233),
         namespace: rgb(245, 182, 58),
         tag: rgb(245, 182, 58),
+        markup_strong: rgb(231, 122, 233),
+        markup_italic: rgb(143, 152, 170),
+        markup_inline_code: rgb(103, 214, 124),
+        markup_link: rgb(47, 211, 246),
     }
 }
 
