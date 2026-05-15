@@ -227,6 +227,7 @@ pub struct AppShell {
     git_baseline_revision: u64,
     last_scroll_animation_tick: Instant,
     last_git_branch_refresh_at: Instant,
+    last_workspace_git_status_refresh_at: Instant,
     last_thinking_animation_tick: Instant,
     last_lsp_loading_animation_tick: Instant,
     lsp_loading_frame: u8,
@@ -253,6 +254,7 @@ const COMPLETION_RESOLVE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(100
 const LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(500);
 const FPS_METRICS_UPDATE_INTERVAL: Duration = Duration::from_millis(500);
 const GIT_BRANCH_REFRESH_INTERVAL: Duration = Duration::from_millis(750);
+const GIT_STATUS_REFRESH_INTERVAL: Duration = Duration::from_millis(750);
 const THINKING_ANIMATION_INTERVAL: Duration = Duration::from_millis(400);
 const LSP_LOADING_ANIMATION_INTERVAL: Duration = Duration::from_millis(100);
 

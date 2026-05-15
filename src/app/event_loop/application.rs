@@ -433,6 +433,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.maybe_refresh_workspace_git_branch(false) {
             self.request_redraw();
         }
+        if self.maybe_refresh_workspace_git_status() {
+            self.request_redraw();
+        }
         if self.tick_smooth_scroll_animation() {
             self.request_redraw();
         }
@@ -457,6 +460,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
         }
 
         let mut next_deadline = Some(self.next_git_branch_refresh_deadline());
+        if let Some(git_status_deadline) = self.next_workspace_git_status_refresh_deadline() {
+            next_deadline = Some(next_deadline.unwrap_or(git_status_deadline).min(git_status_deadline));
+        }
         if let Some(lsp_deadline) = self.next_lsp_did_change_flush_deadline() {
             next_deadline = Some(match next_deadline {
                 Some(existing) => existing.min(lsp_deadline),

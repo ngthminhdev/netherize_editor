@@ -233,6 +233,7 @@ impl AppShell {
             git_baseline_revision: 0,
             last_scroll_animation_tick: now,
             last_git_branch_refresh_at: now,
+            last_workspace_git_status_refresh_at: now,
             last_thinking_animation_tick: now,
             last_lsp_loading_animation_tick: now,
             lsp_loading_frame: 0,
@@ -372,12 +373,29 @@ impl AppShell {
         let Some(workspace_root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
             return;
         };
+        self.last_workspace_git_status_refresh_at = Instant::now();
         self.git_status_revision = self.git_status_revision.saturating_add(1);
         self.submit(RequestSpec {
             revision_id: self.git_status_revision,
             topic: RequestTopic::GitStatus,
             payload: WorkerRequestPayload::RefreshWorkspaceGitStatus { workspace_root },
         });
+    }
+
+    pub(super) fn maybe_refresh_workspace_git_status(&mut self) -> bool {
+        if !self.app_state.active_buffer_is_terminal() && self.terminal_buffer_grids.is_empty() {
+            return false;
+        }
+        if self.last_workspace_git_status_refresh_at.elapsed() < GIT_STATUS_REFRESH_INTERVAL {
+            return false;
+        }
+        self.submit_workspace_git_status_refresh();
+        true
+    }
+
+    pub(super) fn next_workspace_git_status_refresh_deadline(&self) -> Option<Instant> {
+        (self.app_state.active_buffer_is_terminal() || !self.terminal_buffer_grids.is_empty())
+            .then_some(self.last_workspace_git_status_refresh_at + GIT_STATUS_REFRESH_INTERVAL)
     }
 
     pub(super) fn submit_active_buffer_git_baseline_refresh(&mut self) {
