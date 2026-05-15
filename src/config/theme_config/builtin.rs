@@ -18,8 +18,8 @@ impl ThemeConfig {
             icons: builtin_icon_tokens(&ui),
             exact_icons: HashMap::new(),
             extension_icons: HashMap::new(),
-            default_file_icon: "📄".to_string(),
-            default_folder_icon: "📁".to_string(),
+            default_file_icon: "󰈔".to_string(),
+            default_folder_icon: "󰉋".to_string(),
             ui,
         }
     }
