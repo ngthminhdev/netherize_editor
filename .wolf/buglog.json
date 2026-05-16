@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "bugs": [
+    {
+      "id": "bug-001",
+      "timestamp": "2026-05-16T06:20:38.889Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/app_state/state.rs",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 14→27 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-16T06:20:38.889Z"
+    },
+    {
+      "id": "bug-002",
+      "timestamp": "2026-05-16T06:27:51.013Z",
+      "error_message": "Significant refactor of ",
+      "file": "PERFORMANCE.md",
+      "root_cause": "5 lines replaced/restructured",
+      "fix": "Rewrote 19→43 lines (5 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-16T06:27:51.013Z"
+    }
+  ]
+}

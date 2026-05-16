@@ -14,7 +14,10 @@ use crate::{
     render::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
-    text::layout_sync::{compute_caret_layout, compute_cursor_overlay, rebuild_layout_projection},
+    text::layout_sync::{
+            compute_caret_layout, compute_caret_layout_with_folds, compute_cursor_overlay,
+            rebuild_layout_projection,
+        },
 };
 use cosmic_text::Metrics;
 
@@ -712,15 +715,27 @@ impl Renderer {
                 geometry.viewport_text_width
             );
 
-            let anchor_x = geometry.origin_x + completion.prefix_col as f32 * char_w;
+            // Anchor the popup to the currently rendered caret, not to `line * line_height`.
+            // `geometry.origin_y` already includes scroll, but using logical line math here breaks
+            // for long files and for soft-wrapped/folded lines because cosmic-text layout positions
+            // are visual. Reuse the same caret layout path as the cursor renderer so completion
+            // stays attached to the cursor around line 700+ and with wrapped content.
+            let caret_layout = compute_caret_layout_with_folds(
+                &self.text_system,
+                app_state,
+                [geometry.origin_x, geometry.origin_y],
+                app_state.folded_ranges(),
+            );
+            let anchor_x = (caret_layout.x - completion.typed_prefix.chars().count() as f32 * char_w)
+                .max(geometry.viewport_text_left);
             let popup_right = anchor_x + popup_w;
             let anchor_x = if popup_right > viewport_right - 8.0 {
                 (anchor_x - (popup_right - viewport_right + 8.0)).max(center_bounds[0] + 4.0)
             } else {
                 anchor_x.max(center_bounds[0] + 4.0)
             };
-            let anchor_y = geometry.origin_y + completion.anchor_line as f32 * geometry.line_height;
-            let cursor_bottom = anchor_y + geometry.line_height;
+            let anchor_y = caret_layout.top;
+            let cursor_bottom = anchor_y + caret_layout.height;
             let mut popup_y = cursor_bottom + 2.0;
             let popup_bottom = popup_y + popup_h;
             if popup_bottom > viewport_bottom - 12.0 {

@@ -121,6 +121,9 @@ impl AppShell {
         crate::syntax::highlight::apply_highlight_edits(&mut self.highlight_spans, &edits);
         crate::syntax::highlight::apply_highlight_edits(&mut self.semantic_highlight_spans, &edits);
 
+        // Invalidate line starts cache when text changes
+        self.app_state.invalidate_line_starts_cache();
+
         // Store an incremental-parse hint when the transaction was a single edit.
         // Multiple edits (undo/redo, replace-all, paste of many chars) clear the hint
         // so the worker falls back to a safe full reparse.

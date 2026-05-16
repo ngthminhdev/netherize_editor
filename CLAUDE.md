@@ -1,3 +1,10 @@
+# OpenWolf
+
+@.wolf/OPENWOLF.md
+
+This project uses OpenWolf for context management. Read and follow .wolf/OPENWOLF.md every session. Check .wolf/cerebrum.md before generating code. Check .wolf/anatomy.md before reading files.
+
+
 ## Project Rules Precedence
 - If this repository/workspace contains `CLAUDE.md`, `.clinerules`, or another agent rule file, agents must read and comply with those rules as project-level instructions.
 - These rules supplement system/developer instructions and must be applied consistently across all tasks in this repository.

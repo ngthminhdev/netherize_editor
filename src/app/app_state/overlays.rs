@@ -332,6 +332,7 @@ impl AppState {
 
     pub(super) fn restore_editor_view(&mut self, snapshot: &EditorViewSnapshot) {
         self.text = snapshot.text.clone();
+        self.cached_line_starts = None;
         self.restore_cursor_state(snapshot.cursor);
         self.selection_anchor_char_idx = snapshot.selection_anchor_char_idx;
         self.visual_line_mode = snapshot.visual_line_mode;
@@ -925,6 +926,7 @@ impl AppState {
         let content = fs::read_to_string(canonical_path)
             .map_err(|err| format!("open file {:?} failed: {err}", canonical_path))?;
         self.text = Rope::from(content.as_str());
+        self.cached_line_starts = None;
         self.cursor_char_idx = 0;
         self.target_col = 0;
         self.target_scroll_y = 0.0;
@@ -946,6 +948,7 @@ impl AppState {
         let old_visual_line_mode = self.visual_line_mode;
 
         self.text = Rope::from(content);
+        self.cached_line_starts = None;
         self.revision += 1;
 
         let max_char_idx = self.text.len_chars();
@@ -1073,6 +1076,7 @@ impl AppState {
                 }
                 if let Some(snapshot) = restored_in_memory_text {
                     self.text = snapshot;
+                    self.cached_line_starts = None;
                     let _ = self.refresh_active_search_highlights();
                 } else {
                     // First open of this buffer in current session: load from disk baseline.
@@ -1151,6 +1155,7 @@ impl AppState {
 
     pub(super) fn reset_text_editor_state(&mut self) {
         self.text = Rope::new();
+        self.cached_line_starts = None;
         self.cursor_char_idx = 0;
         self.target_col = 0;
         self.target_scroll_y = 0.0;

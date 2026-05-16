@@ -559,15 +559,28 @@ impl AppState {
         self.text.to_string()
     }
 
-    pub fn line_start_byte_indices(&self) -> Vec<usize> {
-        let line_count = self.text.len_lines();
-        if line_count == 0 {
-            return Vec::new();
+    pub fn line_start_byte_indices(&mut self) -> &[usize] {
+        // If cache exists and is valid, return it
+        if let Some(ref cached) = self.cached_line_starts {
+            return cached;
         }
 
-        (0..line_count)
-            .map(|line_idx| self.text.line_to_byte(line_idx))
-            .collect()
+        // Otherwise, compute and cache
+        let line_count = self.text.len_lines();
+        let line_starts = if line_count == 0 {
+            Vec::new()
+        } else {
+            (0..line_count)
+                .map(|line_idx| self.text.line_to_byte(line_idx))
+                .collect()
+        };
+
+        self.cached_line_starts = Some(line_starts);
+        self.cached_line_starts.as_ref().unwrap()
+    }
+
+    pub fn invalidate_line_starts_cache(&mut self) {
+        self.cached_line_starts = None;
     }
 
     pub fn line_string(&self, line_idx: usize) -> String {
@@ -926,6 +939,7 @@ impl AppState {
 
         let (cursor_line, cursor_col) = self.cursor_line_col();
         self.text = Rope::from(text);
+        self.cached_line_starts = None;
 
         let max_line = self.text.len_lines().saturating_sub(1);
         let clamped_line = cursor_line.min(max_line);

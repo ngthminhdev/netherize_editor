@@ -1586,6 +1586,10 @@ pub struct AppState {
     // fold marker; every following line through end is hidden from layout.
     folded_ranges: Vec<(usize, usize)>,
     foldable_ranges_cache: Option<Vec<(usize, usize)>>,
+    // ── Performance: Line start position cache ────────────────────────────────
+    /// Cached byte offsets for the start of each line. Invalidated on text edits.
+    /// Eliminates O(n) rebuild on every highlight request for large files.
+    cached_line_starts: Option<Vec<usize>>,
 }
 
 impl AppState {
@@ -1646,6 +1650,7 @@ impl AppState {
             mc_whole_word: true,
             folded_ranges: Vec::new(),
             foldable_ranges_cache: None,
+            cached_line_starts: None,
         }
     }
 
@@ -1704,6 +1709,7 @@ impl AppState {
             mc_whole_word: true,
             folded_ranges: Vec::new(),
             foldable_ranges_cache: None,
+            cached_line_starts: None,
         }
     }
 

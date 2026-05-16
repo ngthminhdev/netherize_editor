@@ -906,6 +906,7 @@ impl AppShell {
 
             self.pending_parse_after_debounce = false;
             let edit_hint = self.last_syntax_edit_hint.take();
+            let line_starts = self.app_state.line_start_byte_indices().to_vec();
             self.submit(RequestSpec {
                 revision_id: self.active_highlight_request_revision,
                 topic: RequestTopic::ActiveBufferLayout,
@@ -917,7 +918,7 @@ impl AppShell {
                     buffer_revision: self.app_state.revision(),
                     viewport_line_start: self.app_state.scroll_line(),
                     viewport_line_count,
-                    line_starts: self.app_state.line_start_byte_indices(),
+                    line_starts,
                     edit_hint,
                 },
             });
