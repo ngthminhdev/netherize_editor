@@ -646,6 +646,7 @@ impl Renderer {
             const DOC_PANEL_W: f32 = 650.0;
             const DOC_PAD: f32 = 35.0;
             const MIN_LIST_W: f32 = 700.0;
+            const MAX_LIST_W_WITH_DOCS: f32 = 1200.0;
 
             let char_w = (geometry.font_size * 0.6).max(1.0);
             // Badge size tracks row height so it never overflows the row
@@ -698,7 +699,7 @@ impl Renderer {
             let label_area_w = max_label_chars as f32 * char_w;
             let desired_list_w = badge_col_w + label_area_w + PAD_X + SCROLLBAR_W;
             let list_w = if has_doc {
-                clamp_popup_width(desired_list_w, MIN_LIST_W, 800.0)
+                clamp_popup_width(desired_list_w, MIN_LIST_W, MAX_LIST_W_WITH_DOCS)
             } else {
                 clamp_popup_width(desired_list_w, MIN_LIST_W, geometry.viewport_text_width)
             };

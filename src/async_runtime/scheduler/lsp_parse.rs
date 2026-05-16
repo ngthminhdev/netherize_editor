@@ -7,7 +7,7 @@ use crate::{
         LspCodeAction, LspCompletionItem, LspDiagnostic, LspDocumentHighlight, LspDocumentSymbol,
         LspLocation, LspPosition, LspRange, LspTextEdit, WorkerResultPayload,
     },
-    lsp::client::LspClientProcess,
+    lsp::client::{build_did_change_notification, LspClientProcess},
 };
 
 use super::{
@@ -248,13 +248,74 @@ pub(super) fn handle_lsp_hover(
     for_completion: bool,
     completion_revision: Option<u64>,
 ) -> Result<WorkerResultPayload, String> {
+    handle_lsp_hover_on_uri(
+        session,
+        uri,
+        line,
+        character,
+        cursor_line,
+        cursor_col,
+        for_completion,
+        completion_revision,
+        "hover",
+    )
+}
+
+pub(super) fn handle_lsp_completion_virtual_hover(
+    session: &Arc<LspClientProcess>,
+    uri: &str,
+    original_text: &str,
+    text: &str,
+    hover_line: u32,
+    hover_character: u32,
+    completion_revision: u64,
+) -> Result<WorkerResultPayload, String> {
+    let version = completion_revision.min(i32::MAX as u64) as i32;
+    session.send_notification(
+        "textDocument/didChange",
+        build_did_change_notification(uri, version, text),
+    )?;
+
+    let result = handle_lsp_hover_on_uri(
+        session,
+        uri,
+        hover_line,
+        hover_character,
+        hover_line as usize,
+        hover_character as usize,
+        true,
+        Some(completion_revision),
+        "completion_virtual_hover",
+    );
+
+    if let Err(err) = session.send_notification(
+        "textDocument/didChange",
+        build_did_change_notification(uri, version.saturating_add(1), original_text),
+    ) {
+        eprintln!("[LSP] restore original document after completion hover failed: {err}");
+    }
+
+    result
+}
+
+fn handle_lsp_hover_on_uri(
+    session: &Arc<LspClientProcess>,
+    uri: &str,
+    line: u32,
+    character: u32,
+    cursor_line: usize,
+    cursor_col: usize,
+    for_completion: bool,
+    completion_revision: Option<u64>,
+    cancellation_key: &'static str,
+) -> Result<WorkerResultPayload, String> {
     let params = serde_json::json!({
         "textDocument": { "uri": uri },
         "position": { "line": line, "character": character }
     });
     let response = lsp_cancellable_request_response(
         session,
-        "hover",
+        cancellation_key,
         "textDocument/hover",
         params,
         LSP_HOVER_TIMEOUT_SECS,

@@ -45,7 +45,7 @@ impl AppShell {
     pub(super) fn select_next_completion_item(&mut self) -> bool {
         let changed = self.app_state.completion_select_next();
         if changed {
-            self.app_state.set_completion_hover_doc(None);
+            self.update_completion_hover_doc_for_selection();
             self.schedule_completion_resolve_debounced();
             self.editor_caret_needs_layout = true;
             self.request_redraw();
@@ -56,12 +56,73 @@ impl AppShell {
     pub(super) fn select_prev_completion_item(&mut self) -> bool {
         let changed = self.app_state.completion_select_prev();
         if changed {
-            self.app_state.set_completion_hover_doc(None);
+            self.update_completion_hover_doc_for_selection();
             self.schedule_completion_resolve_debounced();
             self.editor_caret_needs_layout = true;
             self.request_redraw();
         }
         changed
+    }
+
+    /// Mirror inline documentation immediately when selection changes.
+    /// This prevents showing "Loading…" during debounce when inline docs are available.
+    fn update_completion_hover_doc_for_selection(&mut self) {
+        let Some(completion) = self.app_state.completion() else {
+            return;
+        };
+        let Some(entry) = completion.filtered_items.get(completion.selected_index) else {
+            return;
+        };
+
+        // Mirror inline docs immediately if available
+        if let Some(doc) = entry
+            .item
+            .documentation
+            .as_ref()
+            .filter(|d| !d.trim().is_empty())
+            .cloned()
+        {
+            self.app_state.set_completion_hover_doc(Some(doc));
+        } else {
+            // No inline docs - clear and show "Loading…" during resolve
+            self.app_state.set_completion_hover_doc(None);
+        }
+
+        // Also trigger LSP hover to get rich documentation (like Shift+K)
+        self.submit_lsp_hover_for_completion();
+    }
+
+    /// Submit LSP hover request for the currently selected completion item.
+    /// This fetches the same rich documentation shown when pressing Shift+K.
+    fn submit_lsp_hover_for_completion(&mut self) {
+        if self.active_lsp_server.is_none() {
+            return;
+        }
+        let Some(completion) = self.app_state.completion() else {
+            return;
+        };
+        let Some((language_id, uri, _line, _character)) = self.lsp_cursor_context() else {
+            return;
+        };
+
+        // Calculate hover position: trigger position + length of selected item's label
+        let trigger_line = completion.trigger_pos.line;
+        let trigger_col = completion.trigger_pos.col;
+
+        // For hover, we want to query at the position of the symbol being completed
+        // Use trigger position as the hover target
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspHoverRequest {
+                language_id,
+                uri,
+                line: trigger_line as u32,
+                character: trigger_col as u32,
+                for_completion: true,
+                completion_revision: Some(completion.current_revision),
+            },
+        });
     }
 
     /// Mark a debounced LSP `completionItem/resolve` for the current selection.
@@ -110,16 +171,17 @@ impl AppShell {
         let Some(entry) = completion.filtered_items.get(completion.selected_index) else {
             return;
         };
-        // Inline doc already present: no resolve needed; mark as resolved so the
-        // panel doesn't spin on "Loading…" if the user happens to land on an item
-        // with no inline docs next.
-        if entry
+        // Inline doc already present: no resolve needed. Mirror it into hover_doc too
+        // so the doc panel stays populated even after selection changes cleared the
+        // transient resolved-doc slot.
+        if let Some(doc) = entry
             .item
             .documentation
             .as_ref()
-            .is_some_and(|doc| !doc.trim().is_empty())
+            .filter(|doc| !doc.trim().is_empty())
+            .cloned()
         {
-            self.app_state.mark_completion_hover_doc_resolved();
+            self.app_state.set_completion_hover_doc(Some(doc));
             return;
         }
         let Some(item_json) = entry.item.raw_json.clone() else {
@@ -153,6 +215,83 @@ impl AppShell {
                 self.app_state.mark_completion_hover_doc_resolved();
             }
         }
+    }
+
+    pub(in crate::app::event_loop) fn submit_completion_virtual_hover_fallback(
+        &mut self,
+        item_label: String,
+        completion_revision: u64,
+    ) {
+        if self.active_lsp_server.is_none() {
+            return;
+        }
+        let Some(completion) = self.app_state.completion() else {
+            return;
+        };
+        if completion.current_revision != completion_revision {
+            return;
+        }
+        let Some(entry) = completion.filtered_items.get(completion.selected_index) else {
+            return;
+        };
+        if entry.item.label != item_label {
+            return;
+        }
+        let Some((language_id, uri, _line, _character)) = self.lsp_cursor_context() else {
+            return;
+        };
+
+        let mut insert_text = entry
+            .item
+            .insert_text
+            .clone()
+            .or(entry.item.text_edit_text.clone())
+            .unwrap_or_else(|| entry.item.label.clone());
+        if insert_text.is_empty() {
+            return;
+        }
+        let trigger_col = completion.trigger_pos.col.saturating_sub(1);
+        if let Some(ch) = self
+            .app_state
+            .char_at_line_col(completion.trigger_pos.line, trigger_col)
+        {
+            if self.lsp_completion_trigger_chars.contains(&ch) && insert_text.starts_with(ch) {
+                insert_text = insert_text.chars().skip(1).collect();
+            }
+        }
+        if insert_text.is_empty() {
+            return;
+        }
+
+        let original_text = self.app_state.text_string();
+        let mut text = original_text.clone();
+        let start_byte = self
+            .app_state
+            .line_char_to_byte_idx(completion.trigger_pos.line, completion.trigger_pos.col);
+        let end_col = completion.trigger_pos.col + completion.typed_prefix.chars().count();
+        let end_byte = self
+            .app_state
+            .line_char_to_byte_idx(completion.trigger_pos.line, end_col);
+        if start_byte > end_byte || end_byte > text.len() {
+            return;
+        }
+        text.replace_range(start_byte..end_byte, &insert_text);
+
+        let hover_character = completion.trigger_pos.col
+            + insert_text.chars().count().saturating_sub(1);
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::LspCompletionVirtualHoverRequest {
+                language_id,
+                uri,
+                original_text,
+                text,
+                hover_line: completion.trigger_pos.line as u32,
+                hover_character: hover_character as u32,
+                completion_revision,
+            },
+        });
     }
 
     pub(super) fn close_completion_popup(&mut self) -> bool {

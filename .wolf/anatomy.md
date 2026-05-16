@@ -1,10 +1,11 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-16T07:12:16.444Z
-> Files: 354 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-16T09:40:49.954Z
+> Files: 355 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../.claude/plans/
 
+- `cheerful-moseying-wind.md` — Fix LSP Completion Documentation Tab Display (~1505 tok)
 - `performance-md-d-a-tr-n-file-stateful-forest.md` — Phase 4.1: Cache Line Start Positions for Syntax Highlighting (~2631 tok)
 
 ## ./
@@ -318,7 +319,7 @@
 
 - `application.rs` — [cfg(target_os = "macos")] (~22446 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~10569 tok)
-- `commands_completion.rs` (~2926 tok)
+- `commands_completion.rs` (~3362 tok)
 - `commands_editor.rs` (~4432 tok)
 - `commands_explorer.rs` (~6728 tok)
 - `commands_lsp.rs` (~9413 tok)

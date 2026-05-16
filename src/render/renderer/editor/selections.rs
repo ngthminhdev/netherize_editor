@@ -359,16 +359,28 @@ impl Renderer {
 
                 let line_start_byte = app_state.line_start_byte_idx(run.line_i);
                 let line_end_byte = app_state.line_end_byte_idx(run.line_i);
-                let local_start = if run.line_i == start_line {
+                let mut local_start = if run.line_i == start_line {
                     start_byte.saturating_sub(line_start_byte)
                 } else {
                     0
                 };
-                let local_end = if run.line_i == end_line {
+                let mut local_end = if run.line_i == end_line {
                     end_byte.saturating_sub(line_start_byte)
                 } else {
                     line_end_byte.saturating_sub(line_start_byte)
                 };
+
+                // A single logical line can be split into multiple cosmic-text layout runs
+                // by soft-wrap. Only draw the part of the byte range that intersects this
+                // visual run; otherwise a symbol on a wrapped continuation row can be painted
+                // on the first visual row of the same logical line.
+                if let (Some(first), Some(last)) = (run.glyphs.first(), run.glyphs.last()) {
+                    let run_start = first.start;
+                    let run_end = last.end;
+                    local_start = local_start.max(run_start);
+                    local_end = local_end.min(run_end);
+                }
+
                 if local_start >= local_end {
                     continue;
                 }

@@ -316,6 +316,18 @@ pub enum WorkerRequestPayload {
         /// to a different item (race-condition guard).
         completion_revision: u64,
     },
+    /// Fallback docs for completion items that don't provide documentation via
+    /// `completionItem/resolve`: open a short-lived shadow document with the
+    /// selected completion text inserted, then run `textDocument/hover` there.
+    LspCompletionVirtualHoverRequest {
+        language_id: String,
+        uri: String,
+        original_text: String,
+        text: String,
+        hover_line: u32,
+        hover_character: u32,
+        completion_revision: u64,
+    },
     AiInlineCompletionRequest {
         api_url: String,
         api_key: Option<String>,

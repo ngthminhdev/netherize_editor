@@ -52,10 +52,13 @@ pub(super) fn handle_lsp_result(
         WorkerResultPayload::LspDiagnostics {
             uri, diagnostics, ..
         } => {
-            eprintln!(
-                "[AppShell] LSP diagnostics: {} issue(s) in {uri}",
-                diagnostics.len()
-            );
+            if !diagnostics.is_empty() {
+                eprintln!(
+                    "[AppShell] LSP diagnostics: {} issue(s) in {uri}",
+                    diagnostics.len()
+                );
+            }
+          
             if let Some(path) =
                 lsp_uri_to_path(&uri).and_then(|path| path.canonicalize().ok().or(Some(path)))
             {
@@ -601,6 +604,7 @@ pub(super) fn handle_lsp_result(
                 app.app_state.set_completion_hover_doc(cleaned);
             } else {
                 app.app_state.mark_completion_hover_doc_resolved();
+                app.submit_completion_virtual_hover_fallback(item_label, completion_revision);
             }
             app.editor_caret_needs_layout = true;
             app.request_redraw();

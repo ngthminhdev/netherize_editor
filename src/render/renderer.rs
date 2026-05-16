@@ -319,6 +319,15 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    pub fn soft_wrap_visual_move_target(
+        &self,
+        app_state: &crate::app::app_state::AppState,
+        center_bounds: [f32; 4],
+        down: bool,
+    ) -> Option<usize> {
+        crate::render::renderer::editor::soft_wrap_visual_move_target(self, app_state, center_bounds, down)
+    }
+
     pub fn editor_chrome_instances(&self) -> &[RegionDrawInstance] {
         &self.last_editor_chrome_instances
     }

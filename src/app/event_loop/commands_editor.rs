@@ -1,6 +1,22 @@
 use super::*;
 
 impl AppShell {
+    fn try_move_soft_wrap_visual_line(&mut self, down: bool) -> bool {
+        let Some(renderer) = self.renderer.as_ref() else {
+            return false;
+        };
+        let Some(center_bounds) = self.last_editor_bounds else {
+            return false;
+        };
+        let (cursor_line, _) = self.app_state.cursor_line_col();
+        let Some(target_col) = renderer.soft_wrap_visual_move_target(&self.app_state, center_bounds, down) else {
+            return false;
+        };
+        let before = self.app_state.cursor_char_idx();
+        self.app_state.jump_to_line_and_column(cursor_line, target_col)
+            && self.app_state.cursor_char_idx() != before
+    }
+
     pub(super) fn handle_insert_edit_command(
         &mut self,
         command: &Command,
@@ -269,9 +285,25 @@ impl AppShell {
         };
         if is_typing_edit {
             let _ = self.app_state.clear_completion();
+            self.semantic_highlight_request_revision = self
+                .semantic_highlight_request_revision
+                .saturating_add(1);
+            if self.app_state.clear_semantic_symbol_highlights() {
+                self.editor_caret_needs_layout = true;
+                self.request_redraw();
+            }
         }
         let prev_dirty = self.app_state.is_dirty();
-        let report = {
+        let report = if matches!(command, Command::MoveUp | Command::MoveDown)
+            && self.try_move_soft_wrap_visual_line(matches!(command, Command::MoveDown))
+        {
+            crate::core::command_dispatch::DispatchReport {
+                message: "Dispatch: applied to active buffer (move visual wrap line)".to_string(),
+                request_redraw: true,
+                success: true,
+                state_changed: true,
+            }
+        } else {
             let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
             dispatch_command_with_clipboard_count(app_state, command, repeat_count, Some(clipboard))
         };
@@ -314,7 +346,13 @@ impl AppShell {
                 self.force_flush_lsp_did_change_for_active_file();
                 self.ensure_document_symbol_breadcrumbs(true);
             }
-            let _ = self.app_state.clear_semantic_symbol_highlights();
+            self.semantic_highlight_request_revision = self
+                .semantic_highlight_request_revision
+                .saturating_add(1);
+            if self.app_state.clear_semantic_symbol_highlights() {
+                self.editor_caret_needs_layout = true;
+                self.request_redraw();
+            }
         }
         if report.success
             && let Some(ch) = auto_trigger_char

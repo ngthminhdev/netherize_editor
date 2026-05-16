@@ -23,8 +23,9 @@ use super::{
     lsp_io::{spawn_lsp_stderr_logger, spawn_lsp_stdout_reader},
     lsp_parse::{
         handle_lsp_code_action, handle_lsp_completion, handle_lsp_completion_resolve,
-        handle_lsp_definition, handle_lsp_document_highlight, handle_lsp_document_symbols,
-        handle_lsp_formatting, handle_lsp_hover, handle_lsp_references, handle_lsp_rename,
+        handle_lsp_completion_virtual_hover, handle_lsp_definition, handle_lsp_document_highlight,
+        handle_lsp_document_symbols, handle_lsp_formatting, handle_lsp_hover,
+        handle_lsp_references, handle_lsp_rename,
     },
 };
 
@@ -352,6 +353,42 @@ fn execute_lsp_request(
                 0,
                 0,
                 *for_completion,
+                *completion_revision,
+            )
+        }
+        WorkerRequestPayload::LspCompletionVirtualHoverRequest {
+            language_id,
+            uri,
+            original_text,
+            text,
+            hover_line,
+            hover_character,
+            completion_revision,
+        } => {
+            let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
+                language_profile_for_language_id(language_id)
+                    .map(|profile| profile.lsp_binary)
+                    .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
+            });
+            let Some(handle) = handle else {
+                return Err("completion virtual hover rejected: LSP server not running".to_string());
+            };
+            if !handle.capabilities.hover {
+                return Err(format!(
+                    "completion virtual hover rejected: {} does not advertise hoverProvider",
+                    handle.server_name
+                ));
+            }
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            handle_lsp_completion_virtual_hover(
+                &handle.process,
+                uri,
+                original_text,
+                text,
+                *hover_line,
+                *hover_character,
                 *completion_revision,
             )
         }

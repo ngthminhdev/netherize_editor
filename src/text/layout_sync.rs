@@ -293,6 +293,12 @@ pub fn compute_caret_layout_with_folds(
             };
         }
 
+        let run_start = run.glyphs.first().map(|glyph| glyph.start).unwrap_or(0);
+        let run_end = run.glyphs.last().map(|glyph| glyph.end).unwrap_or(run_start);
+        if cursor_byte_in_line < run_start || cursor_byte_in_line > run_end {
+            continue;
+        }
+
         let mut caret_x = viewport_origin[0] + run.line_w;
         let mut caret_glyph_width = default_glyph_width;
         for glyph in run.glyphs {
