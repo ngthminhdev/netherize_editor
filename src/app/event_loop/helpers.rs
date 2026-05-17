@@ -1488,7 +1488,7 @@ pub(super) fn build_sidebar_rows(
             path: None,
             depth: 0,
             arrow: theme.sidebar_arrow(false, false).to_string(),
-            nerd_icon: theme.get_icon_for_file("", false).to_string(),
+            nerd_icon: theme.icon_theme_for_filename("", false).glyph.clone(),
             icon_color: theme.icons.default_file.color.as_f32(),
             label: if filter_active {
                 "(no matches)".to_string()
@@ -1513,6 +1513,7 @@ pub(super) fn build_sidebar_rows(
             let is_dir = entry.file_type == WorkspaceNodeType::Folder;
             let arrow = theme.sidebar_arrow(is_dir, entry.is_expanded).to_string();
             let is_hidden_or_ignored = entry.is_hidden || entry.is_ignored;
+            let icon_theme = theme.icon_theme_for_path(&entry.path, is_dir, entry.is_expanded);
             let icon = if is_hidden_or_ignored {
                 if is_dir {
                     "󱞞".to_string()
@@ -1520,9 +1521,8 @@ pub(super) fn build_sidebar_rows(
                     "󰘓".to_string()
                 }
             } else {
-                theme.get_icon_for_file(&entry.name, is_dir).to_string()
+                icon_theme.glyph.clone()
             };
-            let icon_theme = theme.icon_theme_for_path(&entry.path, is_dir, entry.is_expanded);
             SidebarRow {
                 path: Some(entry.path.clone()),
                 depth: entry.depth,

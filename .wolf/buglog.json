@@ -64,6 +64,39 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-17T10:48:02.693Z"
+    },
+    {
+      "id": "bug-005",
+      "timestamp": "2026-05-17T12:17:10.938Z",
+      "error_message": "Significant refactor of ",
+      "file": "DEPENDENCIES.md",
+      "root_cause": "9 lines replaced/restructured",
+      "fix": "Rewrote 13→20 lines (9 removed) | Also: When packaging for end users, consider:; 1. **Bundle approach**: Include pre-compiled LSP s",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-17T12:17:11.023Z"
+    },
+    {
+      "id": "bug-006",
+      "timestamp": "2026-05-17T12:30:00.000Z",
+      "error_message": "Race condition: closing buffer causes content from closed buffer to overwrite active buffer content. Symptoms: after closing tab, reopening shows wrong content even after git discard.",
+      "file": "src/app/app_state/buffers.rs, src/app/app_state/overlays.rs",
+      "root_cause": "save_current_text_buffer_history() was called with stale active_buffer_index after buffer removal. The function would save closed buffer's content (still in self.text) into wrong buffer slot. Also, self.text was not reset after clearing active_buffer_index, allowing stale content to persist.",
+      "fix": "1. Added bounds check in save_current_text_buffer_history() to prevent saving when old_idx >= buffers.len(). 2. Reset self.text and cached_line_starts immediately after clearing active_buffer_index in close_current_buffer() to prevent stale content from being saved during next activate_buffer_index() call.",
+      "tags": [
+        "race-condition",
+        "buffer-management",
+        "data-corruption",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-17T12:30:00.000Z"
     }
   ]
 }

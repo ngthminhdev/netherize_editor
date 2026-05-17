@@ -78,7 +78,7 @@ pub(super) fn completion_kind_badge<'a>(
 ) -> CompletionKindBadge<'a> {
     match kind {
         Some(COMPLETION_KIND_TEXT) => CompletionKindBadge {
-            icon: "󰉿",
+            icon: "",
             color: theme.ui.fg_dim.as_f32(),
         },
         Some(COMPLETION_KIND_METHOD) | Some(COMPLETION_KIND_FUNCTION) => CompletionKindBadge {
@@ -86,95 +86,95 @@ pub(super) fn completion_kind_badge<'a>(
             color: theme.syntax.function.as_f32(),
         },
         Some(COMPLETION_KIND_CONSTRUCTOR) => CompletionKindBadge {
-            icon: "",
+            icon: "",
             color: theme.syntax.constructor.as_f32(),
         },
         Some(COMPLETION_KIND_FIELD) => CompletionKindBadge {
-            icon: "󰜢",
+            icon: "",
             color: theme.syntax.field.as_f32(),
         },
         Some(COMPLETION_KIND_VARIABLE) => CompletionKindBadge {
-            icon: "󰀫",
+            icon: "",
             color: theme.syntax.variable.as_f32(),
         },
         Some(COMPLETION_KIND_CLASS) => CompletionKindBadge {
-            icon: "󰠱",
+            icon: "",
             color: theme.syntax.r#type.as_f32(),
         },
         Some(COMPLETION_KIND_INTERFACE) => CompletionKindBadge {
-            icon: "",
+            icon: "",
             color: theme.syntax.r#type.as_f32(),
         },
         Some(COMPLETION_KIND_MODULE) => CompletionKindBadge {
-            icon: "󰏗",
+            icon: "",
             color: theme.syntax.namespace.as_f32(),
         },
         Some(COMPLETION_KIND_PROPERTY) => CompletionKindBadge {
-            icon: "󰜢",
+            icon: "",
             color: theme.syntax.property.as_f32(),
         },
         Some(COMPLETION_KIND_UNIT) => CompletionKindBadge {
-            icon: "󰑭",
+            icon: "",
             color: theme.ui.fg_dim.as_f32(),
         },
         Some(COMPLETION_KIND_VALUE) => CompletionKindBadge {
-            icon: "󰎠",
+            icon: "",
             color: theme.syntax.constant.as_f32(),
         },
         Some(COMPLETION_KIND_ENUM) => CompletionKindBadge {
-            icon: "",
+            icon: "",
             color: theme.syntax.r#type.as_f32(),
         },
         Some(COMPLETION_KIND_KEYWORD) => CompletionKindBadge {
-            icon: "󰌋",
+            icon: "",
             color: theme.syntax.keyword.as_f32(),
         },
         Some(COMPLETION_KIND_SNIPPET) => CompletionKindBadge {
-            icon: "",
+            icon: "",
             color: theme.ui.amber.as_f32(),
         },
         Some(COMPLETION_KIND_COLOR) => CompletionKindBadge {
-            icon: "",
+            icon: "",
             color: theme.ui.magenta.as_f32(),
         },
         Some(COMPLETION_KIND_FILE) => CompletionKindBadge {
-            icon: "󰈙",
+            icon: "built_in:file",
             color: theme.ui.fg_dim.as_f32(),
         },
         Some(COMPLETION_KIND_REFERENCE) => CompletionKindBadge {
-            icon: "󰈇",
+            icon: "",
             color: theme.ui.fg_dim.as_f32(),
         },
         Some(COMPLETION_KIND_FOLDER) => CompletionKindBadge {
-            icon: "󰉋",
+            icon: "built_in:folder",
             color: theme.ui.amber.as_f32(),
         },
         Some(COMPLETION_KIND_ENUM_MEMBER) => CompletionKindBadge {
-            icon: "",
+            icon: "",
             color: theme.syntax.constant.as_f32(),
         },
         Some(COMPLETION_KIND_CONSTANT) => CompletionKindBadge {
-            icon: "󰏿",
+            icon: "",
             color: theme.syntax.constant.as_f32(),
         },
         Some(COMPLETION_KIND_STRUCT) => CompletionKindBadge {
-            icon: "󰙅",
+            icon: "",
             color: theme.syntax.r#type.as_f32(),
         },
         Some(COMPLETION_KIND_EVENT) => CompletionKindBadge {
-            icon: "",
+            icon: "",
             color: theme.ui.warning.as_f32(),
         },
         Some(COMPLETION_KIND_OPERATOR) => CompletionKindBadge {
-            icon: "󰆕",
+            icon: "",
             color: theme.syntax.operator.as_f32(),
         },
         Some(COMPLETION_KIND_TYPE_PARAMETER) => CompletionKindBadge {
-            icon: "󰊄",
+            icon: "",
             color: theme.ui.cyan.as_f32(),
         },
         _ => CompletionKindBadge {
-            icon: "",
+            icon: "",
             color: theme.ui.fg_ghost.as_f32(),
         },
     }

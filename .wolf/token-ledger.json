@@ -2,14 +2,14 @@
   "version": 1,
   "created_at": "2026-05-16T05:48:05.030Z",
   "lifetime": {
-    "total_tokens_estimated": 336954,
-    "total_reads": 48,
-    "total_writes": 28,
-    "total_sessions": 13,
-    "anatomy_hits": 44,
+    "total_tokens_estimated": 405593,
+    "total_reads": 61,
+    "total_writes": 34,
+    "total_sessions": 15,
+    "anatomy_hits": 55,
     "anatomy_misses": 4,
-    "repeated_reads_blocked": 32,
-    "estimated_savings_vs_bare_cli": 384754
+    "repeated_reads_blocked": 36,
+    "estimated_savings_vs_bare_cli": 419642
   },
   "sessions": [
     {
@@ -656,12 +656,197 @@
         "repeated_reads_blocked": 1,
         "anatomy_lookups": 4
       }
+    },
+    {
+      "id": "session-2026-05-17-1906",
+      "started": "2026-05-17T12:06:18.403Z",
+      "ended": "2026-05-17T12:07:17.354Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/Cargo.toml",
+          "tokens_estimated": 639,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [],
+      "totals": {
+        "input_tokens_estimated": 639,
+        "output_tokens_estimated": 0,
+        "reads_count": 1,
+        "writes_count": 0,
+        "repeated_reads_blocked": 0,
+        "anatomy_lookups": 1
+      }
+    },
+    {
+      "id": "session-2026-05-17-1906",
+      "started": "2026-05-17T12:06:18.403Z",
+      "ended": "2026-05-17T12:14:11.167Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/Cargo.toml",
+          "tokens_estimated": 639,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/lsp/registry.rs",
+          "tokens_estimated": 4469,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/syntax_jobs.rs",
+          "tokens_estimated": 5509,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/ai_jobs.rs",
+          "tokens_estimated": 3926,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/message.rs",
+          "tokens_estimated": 6344,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/DEPENDENCIES.md",
+          "tokens_estimated": 1605,
+          "action": "create"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 20887,
+        "output_tokens_estimated": 1605,
+        "reads_count": 5,
+        "writes_count": 1,
+        "repeated_reads_blocked": 1,
+        "anatomy_lookups": 4
+      }
+    },
+    {
+      "id": "session-2026-05-17-1906",
+      "started": "2026-05-17T12:06:18.403Z",
+      "ended": "2026-05-17T12:17:26.673Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/Cargo.toml",
+          "tokens_estimated": 639,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/lsp/registry.rs",
+          "tokens_estimated": 4469,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/syntax_jobs.rs",
+          "tokens_estimated": 5509,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/ai_jobs.rs",
+          "tokens_estimated": 3926,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/message.rs",
+          "tokens_estimated": 6344,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/DEPENDENCIES.md",
+          "tokens_estimated": 1605,
+          "action": "create"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/DEPENDENCIES.md",
+          "tokens_estimated": 211,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/DEPENDENCIES.md",
+          "tokens_estimated": 531,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 20887,
+        "output_tokens_estimated": 2347,
+        "reads_count": 5,
+        "writes_count": 3,
+        "repeated_reads_blocked": 1,
+        "anatomy_lookups": 4
+      }
+    },
+    {
+      "id": "session-2026-05-17-2345",
+      "started": "2026-05-17T16:45:47.063Z",
+      "ended": "2026-05-17T16:57:02.088Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/buffers.rs",
+          "tokens_estimated": 6491,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/overlays.rs",
+          "tokens_estimated": 15179,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/overlays.rs",
+          "tokens_estimated": 332,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/buffers.rs",
+          "tokens_estimated": 272,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 21670,
+        "output_tokens_estimated": 604,
+        "reads_count": 2,
+        "writes_count": 2,
+        "repeated_reads_blocked": 2,
+        "anatomy_lookups": 2
+      }
     }
   ],
   "daemon_usage": [],
-  "waste_flags": [],
+  "waste_flags": [
+    {
+      "pattern": "anatomy_miss_rate",
+      "description": "25% of file lookups missed anatomy in session session-2026-05-16-1259",
+      "tokens_wasted": 0,
+      "suggestion": "Run openwolf scan to refresh anatomy.md.",
+      "detected_at": "2026-05-17T17:00:00.685Z"
+    }
+  ],
   "optimization_report": {
-    "last_generated": null,
-    "patterns": []
+    "last_generated": "2026-05-17T17:00:00.685Z",
+    "patterns": [
+      "anatomy_miss_rate"
+    ]
   }
 }

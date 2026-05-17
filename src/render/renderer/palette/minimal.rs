@@ -10,7 +10,7 @@ use crate::{
 use super::{render_palette_chrome, render_palette_selection};
 use super::super::components::{estimate_help_keycaps_width, layout_help_keycaps};
 use super::super::helpers::{
-    clamp_monospace_text, estimate_monospace_width, ext_icon_dot, gutter_width_for_editor,
+    clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
     layout_panel_text, layout_panel_text_bold, rect_to_scissor,
 };
 

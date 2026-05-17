@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-17T11:50:36.469Z
-> Files: 357 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-17T17:00:00.684Z
+> Files: 361 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
 
@@ -9,8 +9,9 @@
 - `.DS_Store` (~1640 tok)
 - `.gitignore` — Git ignore rules (~32 tok)
 - `AGENTS.md` — Project Rules Precedence (~1773 tok)
-- `Cargo.toml` — Rust package manifest (~639 tok)
+- `Cargo.toml` — Rust package manifest (~652 tok)
 - `CLAUDE.md` — OpenWolf (~1827 tok)
+- `DEPENDENCIES.md` — Netherize Editor - Runtime Dependencies (~1867 tok)
 - `PERFORMANCE.md` — Netherize Editor - Performance Optimization Checkpoint (~3258 tok)
 - `README.md` — Project documentation (~6733 tok)
 - `update_themes.sh` — Script to update all theme files with vibrant syntax colors (~410 tok)
@@ -18,7 +19,7 @@
 ## .claude/
 
 - `settings.json` (~441 tok)
-- `settings.local.json` (~1130 tok)
+- `settings.local.json` (~1169 tok)
 
 ## .claude/rules/
 
@@ -151,6 +152,10 @@
 
 - `meta.json` (~105 tok)
 
+## assets/bearded-icons/
+
+- `LICENSE` — Project license (~9374 tok)
+
 ## benches/
 
 - `e2e_perf_runner.rs` — E2E Performance Runner – đo CPU-side frame preparation time. (~3223 tok)
@@ -246,7 +251,7 @@
 - `bearded-void.toml` (~480 tok)
 - `catppuccin-mocha.toml` (~508 tok)
 - `cyberpunk-neon.toml` (~470 tok)
-- `default-dark.toml` — Theme metadata shown after the profile is loaded. (~2842 tok)
+- `default-dark.toml` — Theme metadata shown after the profile is loaded. (~1688 tok)
 - `dracula.toml` (~470 tok)
 - `gruv-box.toml` (~466 tok)
 - `monokai.toml` (~511 tok)
@@ -290,7 +295,7 @@
 
 - `async_bridge.rs` — BridgePumpStats: new, pump (~4152 tok)
 - `clipboard.rs` — SystemClipboard: new (~524 tok)
-- `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~15174 tok)
+- `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~15235 tok)
 - `file_picker.rs` — FilePickerEntry: open, close, append_query, backspace_query + 6 more (~1644 tok)
 - `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~1621 tok)
 - `mod.rs` (~66 tok)
@@ -299,11 +304,11 @@
 
 ## src/app/app_state/
 
-- `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer + 16 more (~6491 tok)
+- `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer + 16 more (~6610 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag + 17 more (~10684 tok)
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new + 1 more (~18941 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~6797 tok)
-- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~15179 tok)
+- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~15275 tok)
 - `palette.rs` — open_command_palette_mode, open_python_env_selector, push_jump, push_jump_entry + 21 more (~13329 tok)
 - `settings.rs` — [derive(Debug, Clone, PartialEq)] (~1971 tok)
 - `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, preview_file_history_index + 9 more (~11241 tok)
@@ -312,7 +317,7 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — [cfg(target_os = "macos")] (~22446 tok)
+- `application.rs` — [cfg(target_os = "macos")] (~22488 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~10569 tok)
 - `commands_completion.rs` (~4377 tok)
 - `commands_editor.rs` (~4920 tok)
@@ -324,9 +329,9 @@
 - `commands_settings.rs` (~1683 tok)
 - `commands_terminal.rs` (~6212 tok)
 - `commands_tests.rs` — [derive(Default)] (~15874 tok)
-- `commands.rs` — [path = "commands_ai_chat.rs"] (~8604 tok)
-- `helpers.rs` — Declares BRACKET_PAIRS (~17593 tok)
-- `mod.rs` — Struct: AppShell (~6223 tok)
+- `commands.rs` — [path = "commands_ai_chat.rs"] (~8683 tok)
+- `helpers.rs` — Declares BRACKET_PAIRS (~17586 tok)
+- `mod.rs` — Struct: AppShell (~6376 tok)
 - `setup.rs` — new, new_for_tests (~18887 tok)
 - `welcome.rs` (~611 tok)
 
@@ -337,7 +342,7 @@
 - `filesystem.rs` (~503 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
-- `lsp.rs` (~8159 tok)
+- `lsp.rs` (~8742 tok)
 - `mod.rs` (~8423 tok)
 - `preview.rs` (~993 tok)
 - `shell.rs` (~112 tok)
@@ -398,9 +403,9 @@
 
 ## src/config/theme_config/
 
-- `builtin.rs` — builtin_dark (~2161 tok)
-- `loader.rs` — ThemeProfileEntry: default_profile, resolved_profile, active_profile, list_available_themes + 5 more (~11709 tok)
-- `model.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5464 tok)
+- `builtin.rs` — builtin_dark (~2263 tok)
+- `loader.rs` — ThemeProfileEntry: default_profile, resolved_profile, active_profile, list_available_themes + 5 more (~11810 tok)
+- `model.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5477 tok)
 - `raw.rs` — [derive(Debug, Clone, Deserialize)] (~3449 tok)
 
 ## src/core/
@@ -434,44 +439,45 @@
 - `caret.rs` — [derive(Debug, Clone, Copy)] (~2993 tok)
 - `color_space.rs` — srgb_color_target_state (~236 tok)
 - `glyph_instance.rs` — Vertex tĩnh của một quad đơn vị (0..1). (~844 tok)
+- `icon_pipeline.rs` — [repr(C)] (~5553 tok)
 - `image_pipeline.rs` — [repr(C)] (~2249 tok)
-- `mod.rs` (~53 tok)
+- `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
 - `region_pipeline.rs` — RegionDrawInstance: new, with_radius, new, update_screen_size + 3 more (~3035 tok)
-- `renderer.rs` — Core renderer types and module layout. (~4046 tok)
+- `renderer.rs` — Core renderer types and module layout. (~4196 tok)
 - `surface.rs` — SurfaceState giữ toàn bộ thông tin liên quan đến swapchain/surface. (~797 tok)
 - `text_pipeline.rs` — TextPipeline: new, update_screen_size, upload_instances, draw + 1 more (~2779 tok)
 
 ## src/render/renderer/
 
-- `components.rs` (~123 tok)
+- `components.rs` (~124 tok)
 - `editor.rs` — Editor viewport rendering modules. (~2278 tok)
-- `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3988 tok)
-- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~6294 tok)
-- `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~2332 tok)
+- `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3413 tok)
+- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~6543 tok)
+- `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~3120 tok)
 - `ui.rs` — Panel UI rendering modules. (~42 tok)
 
 ## src/render/renderer/components/
 
 - `help_keycaps.rs` — HelpKeycapPalette: help_keycap_palette, layout_help_keycaps, estimate_help_keycaps_width (~2002 tok)
 - `highlight_chip.rs` — [derive(Clone, Copy)] (~298 tok)
-- `prefix_icon_badge.rs` — PrefixIconBadge: layout_prefix_icon_badge (~768 tok)
+- `prefix_icon_badge.rs` — PrefixIconBadge: layout_prefix_icon_badge (~736 tok)
 - `shortcut_hint.rs` — Enum: ShortcutHintSegment (61 variants) (~1644 tok)
 
 ## src/render/renderer/editor/
 
 - `buffers.rs` — clear_editor_overlays, update_references_buffer_content (~5424 tok)
-- `completion.rs` — Declares COMPLETION_KIND_TEXT (~1824 tok)
+- `completion.rs` — Declares COMPLETION_KIND_TEXT (~1827 tok)
 - `fuzzy.rs` — update_fuzzy_picker_buffer_content (~7853 tok)
 - `help.rs` — update_help_buffer_content (~4176 tok)
-- `overlays.rs` — update_editor_overlays (~18665 tok)
+- `overlays.rs` — update_editor_overlays (~18996 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, multi_cursor_selection_quads (~9713 tok)
 - `settings.rs` — update_settings_buffer_content (~8472 tok)
 - `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~6090 tok)
 
 ## src/render/renderer/editor/buffers/
 
-- `diagnostics.rs` — update_diagnostics_buffer_content (~3452 tok)
+- `diagnostics.rs` — update_diagnostics_buffer_content (~5482 tok)
 
 ## src/render/renderer/editor/overlays/
 
@@ -479,32 +485,33 @@
 
 ## src/render/renderer/lifecycle/
 
-- `frame.rs` — render (~7587 tok)
+- `frame.rs` — render (~8014 tok)
 
 ## src/render/renderer/palette/
 
-- `file_picker.rs` — Declares to (~3768 tok)
-- `highlighted_label.rs` — Render a label string with fuzzy-match character highlights. (~837 tok)
-- `leap.rs` — update_editor_leap_labels, clear_leap_labels (~1916 tok)
-- `live_grep.rs` — Declares to (~2512 tok)
-- `minimal.rs` (~4685 tok)
-- `recent_projects.rs` (~5262 tok)
+- `file_picker.rs` — Declares to (~3775 tok)
+- `highlighted_label.rs` — Render a label string with fuzzy-match character highlights. (~833 tok)
+- `leap.rs` — update_editor_leap_labels, clear_leap_labels (~1928 tok)
+- `live_grep.rs` — Declares to (~2602 tok)
+- `minimal.rs` (~4681 tok)
+- `recent_projects.rs` (~5337 tok)
 
 ## src/render/renderer/ui/
 
 - `ai_chat.rs` — Right-sidebar AI chat and markdown preview text rendering. (~17818 tok)
-- `popups.rs` — update_lsp_guide_popup, clear_lsp_guide_popup, update_system_dep_popup (~5841 tok)
-- `sidebar.rs` — update_sidebar_content, clear_sidebar (~2626 tok)
+- `popups.rs` — update_lsp_guide_popup, clear_lsp_guide_popup, update_system_dep_popup (~6724 tok)
+- `sidebar.rs` — update_sidebar_content, clear_sidebar (~3076 tok)
 - `statusbar.rs` — Render the three-zone status bar. (~5546 tok)
 - `terminal.rs` — update_terminal_content, update_buffer_terminal_content (~6326 tok)
 - `topbar.rs` — update_topbar_content (~2712 tok)
 - `utils.rs` — Declares BORDER (~2418 tok)
-- `welcome.rs` — update_welcome_screen_content (~5649 tok)
+- `welcome.rs` — update_welcome_screen_content (~7753 tok)
 
 ## src/render/shaders/
 
 - `caret.wgsl` (~221 tok)
 - `glyph.wgsl` (~366 tok)
+- `icon.wgsl` (~190 tok)
 - `image.wgsl` (~136 tok)
 - `quad.wgsl` (~103 tok)
 - `region.wgsl` (~428 tok)

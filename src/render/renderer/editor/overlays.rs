@@ -26,6 +26,7 @@ use super::super::helpers::{
     gutter_width_for_editor, layout_panel_rich_text, layout_panel_text, layout_panel_text_bold,
     layout_panel_text_italic, rect_to_scissor, should_draw_block_cursor,
 };
+use crate::render::icon_pipeline::{canonical_icon_id, IconDrawInstance};
 use super::completion::{completion_kind_badge, completion_label_spans};
 use super::{EDITOR_BREADCRUMB_GAP_Y, EDITOR_BREADCRUMB_PAD_Y, EDITOR_BREADCRUMB_TOP_INSET};
 
@@ -47,6 +48,7 @@ impl Renderer {
 
         self.editor_overlay_scissor = rect_to_scissor(center_bounds);
         let mut glyphs = Vec::new();
+        let mut icon_instances: Vec<IconDrawInstance> = Vec::new();
         let mut chrome_quads: Vec<RegionDrawInstance> = Vec::new();
 
         let header_h = geometry.viewport_text_top
@@ -867,33 +869,47 @@ impl Renderer {
                     .with_radius((badge_radius - badge_border_thickness).max(2.0)),
                 );
 
-                // Bold glyph, scaled down for multi-char icons (`fn`, `op`) so they fit on one line.
-                let icon_char_count = kind_badge.icon.chars().count();
-                let icon_size = if icon_char_count > 1 {
-                    (badge_size * 0.50).max(10.0)
+                if let Some(asset_icon) = canonical_icon_id(kind_badge.icon) {
+                    let icon_size = (badge_size * 0.72).max(12.0);
+                    icon_instances.push(IconDrawInstance {
+                        icon: asset_icon,
+                        rect: [
+                            badge_x + (badge_size - icon_size) * 0.5,
+                            badge_y + (badge_size - icon_size) * 0.5,
+                            icon_size,
+                            icon_size,
+                        ],
+                        tint: [1.0, 1.0, 1.0, 1.0],
+                    });
                 } else {
-                    (badge_size * 0.68).max(12.0)
-                };
-                let icon_w = estimate_monospace_width(kind_badge.icon, icon_size);
-                let icon_x = badge_x + (badge_size - icon_w) * 0.5;
-                let icon_line_h = icon_size * 1.15;
-                let icon_y = badge_y + (badge_size - icon_line_h) * 0.5 + icon_size * 0.08;
-                self.editor_overlay_text_system
-                    .set_metrics(Metrics::new(icon_size, icon_line_h));
-                self.editor_overlay_text_system
-                    .set_size(Some(badge_size), Some(icon_line_h));
-                let icon_glyphs = layout_panel_text_bold(
-                    kind_badge.icon,
-                    &mut self.editor_overlay_text_system,
-                    &mut self.atlas,
-                    &self.queue,
-                    icon_x,
-                    icon_y,
-                    icon_text_color,
-                );
-                glyphs.extend(icon_glyphs);
-                self.editor_overlay_text_system
-                    .set_metrics(Metrics::new(geometry.font_size, geometry.line_height));
+                    // Legacy fallback for user-configured non-Bearded badge glyphs.
+                    let icon_char_count = kind_badge.icon.chars().count();
+                    let icon_size = if icon_char_count > 1 {
+                        (badge_size * 0.50).max(10.0)
+                    } else {
+                        (badge_size * 0.68).max(12.0)
+                    };
+                    let icon_w = estimate_monospace_width(kind_badge.icon, icon_size);
+                    let icon_x = badge_x + (badge_size - icon_w) * 0.5;
+                    let icon_line_h = icon_size * 1.15;
+                    let icon_y = badge_y + (badge_size - icon_line_h) * 0.5 + icon_size * 0.08;
+                    self.editor_overlay_text_system
+                        .set_metrics(Metrics::new(icon_size, icon_line_h));
+                    self.editor_overlay_text_system
+                        .set_size(Some(badge_size), Some(icon_line_h));
+                    let icon_glyphs = layout_panel_text_bold(
+                        kind_badge.icon,
+                        &mut self.editor_overlay_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        icon_x,
+                        icon_y,
+                        icon_text_color,
+                    );
+                    glyphs.extend(icon_glyphs);
+                    self.editor_overlay_text_system
+                        .set_metrics(Metrics::new(geometry.font_size, geometry.line_height));
+                }
 
                 // --- LABEL ---
                 let label_x = popup_x + badge_col_w;
@@ -1223,6 +1239,12 @@ impl Renderer {
         glyphs.extend(ghost_glyphs);
 
         self.editor_overlay_chrome_instances = chrome_quads;
+        self.editor_overlay_icon_instances = icon_instances;
+        self.editor_overlay_icon_pipeline.upload_instances(
+            &self.device,
+            &self.editor_overlay_icon_instances,
+            [self.surface_state.config.width, self.surface_state.config.height],
+        );
         self.editor_overlay_glyph_instances = glyphs;
         self.editor_overlay_text_pipeline.upload_instances(
             &self.device,

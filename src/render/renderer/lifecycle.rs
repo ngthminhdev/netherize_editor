@@ -87,6 +87,14 @@ impl Renderer {
             crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
         let welcome_image_pipeline =
             crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
+        let editor_overlay_icon_pipeline =
+            crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
+        let welcome_icon_pipeline =
+            crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
+        let sidebar_icon_pipeline =
+            crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
+        let palette_icon_pipeline =
+            crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
         let ai_chat_header_image_pipeline =
             crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
         let ai_chat_hero_image_pipeline =
@@ -181,6 +189,8 @@ impl Renderer {
             editor_overlay_text_system,
             editor_overlay_text_pipeline,
             editor_overlay_glyph_instances: Vec::new(),
+            editor_overlay_icon_pipeline,
+            editor_overlay_icon_instances: Vec::new(),
             editor_overlay_chrome_instances: Vec::new(),
             editor_overlay_scissor: None,
             temp_string_buffer: String::new(),
@@ -189,6 +199,8 @@ impl Renderer {
             image_scissor: None,
             welcome_image_pipeline,
             welcome_image_scissor: None,
+            welcome_icon_pipeline,
+            welcome_icon_instances: Vec::new(),
             gutter_text_system,
             gutter_text_pipeline,
             gutter_glyph_instances: Vec::new(),
@@ -198,6 +210,8 @@ impl Renderer {
             sidebar_text_system,
             sidebar_text_pipeline,
             sidebar_glyph_instances: Vec::new(),
+            sidebar_icon_pipeline,
+            sidebar_icon_instances: Vec::new(),
             sidebar_scissor: None,
             terminal_text_system,
             terminal_text_pipeline,
@@ -239,6 +253,8 @@ impl Renderer {
             palette_text_pipeline,
             palette_glyph_instances: Vec::new(),
             palette_chrome_instances: Vec::new(),
+            palette_icon_pipeline,
+            palette_icon_instances: Vec::new(),
             palette_scissor: None,
             last_palette_model: None,
             lsp_guide_text_system,

@@ -1012,23 +1012,27 @@ fn theme_selector_preview_colors(theme: &ThemeConfig) -> Vec<[f32; 4]> {
 
 fn symbol_icon(kind: &str) -> &'static str {
     match kind {
-        "Function" | "Method" => "󰊕",
-        "Constructor" => "",
-        "Field" | "Property" => "󰜢",
-        "Variable" => "󰀫",
-        "Constant" => "󰏿",
-        "Class" => "󰠱",
-        "Interface" => "",
-        "Module" | "Namespace" | "Package" => "󰏗",
-        "Enum" | "EnumMember" => "",
-        "Keyword" => "󰌋",
-        "Operator" => "󰆕",
-        "TypeParameter" => "󰊄",
-        "Struct" => "󰙅",
-        "Event" => "",
-        "File" => "󰈙",
-        "Folder" => "󰉋",
-        _ => "",
+        // LSP symbol kinds are semantic, not file types. Bearded file icons don't map well here,
+        // so use Nerd Font/Codicon symbol glyphs for compact, recognizable badges.
+        "Function" => "󰊕",
+        "Method" | "Constructor" => "",
+        "Field" => "",
+        "Property" => "",
+        "Variable" => "",
+        "Constant" | "EnumMember" => "",
+        "Class" => "",
+        "Interface" => "",
+        "Struct" => "",
+        "Enum" => "",
+        "TypeParameter" => "",
+        "Module" | "Namespace" | "Package" => "",
+        "Keyword" => "",
+        "Operator" => "",
+        "Event" => "",
+        "Reference" => "",
+        "File" => "",
+        "Folder" => "",
+        _ => "",
     }
 }
 
@@ -1398,7 +1402,7 @@ mod tests {
         };
 
         let item = CommandPaletteItem::document_symbol(&symbol);
-        assert_eq!(item.label, "[fn] build_picker  Function  Ln 43");
+        assert_eq!(item.label, "[󰊕] build_picker  Function  Ln 43");
         assert_eq!(item.tone, CommandPaletteItemTone::Function);
         assert_eq!(
             item.action,

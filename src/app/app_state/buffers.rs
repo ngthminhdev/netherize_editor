@@ -167,6 +167,13 @@ impl AppState {
         // This fixes git decoration and treesitter highlight corruption when closing buffers.
         self.active_buffer_index = None;
 
+        // CRITICAL: Reset text state to prevent closed buffer content from being
+        // saved into the next activated buffer during the activate_buffer_index() call.
+        // This fixes race condition where rapid close+switch operations would corrupt
+        // buffer content (closed buffer content overwrites newly opened buffer).
+        self.text = Rope::new();
+        self.cached_line_starts = None;
+
         if self.buffers.is_empty() {
             self.reset_text_editor_state();
             let _ = self.clear_current_overlays();

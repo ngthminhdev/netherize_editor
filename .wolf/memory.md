@@ -105,3 +105,22 @@
 | 18:50 | Edited src/app/event_loop/async_results/lsp.rs | modified is_empty() | ~612 |
 | 18:51 | Fixed LSP diagnostics showing errors in builtin/dependency files | src/app/event_loop/async_results/lsp.rs | Added path pattern filter for node_modules, Go stdlib, Rust stdlib, Python site-packages, vendor dirs | ~200 tokens |
 | 18:52 | Session end: 2 writes across 1 files (lsp.rs) | 4 reads | ~31809 tok |
+
+## Session: 2026-05-17 19:06
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 19:13 | Created DEPENDENCIES.md | — | ~1498 |
+| 19:14 | Session end: 1 writes across 1 files (DEPENDENCIES.md) | 5 reads | ~22492 tok |
+| 19:17 | Edited DEPENDENCIES.md | expanded (+7 lines) | ~197 |
+| 19:17 | Edited DEPENDENCIES.md | modified Minimum() | ~496 |
+| 19:17 | Session end: 3 writes across 1 files (DEPENDENCIES.md) | 5 reads | ~23234 tok |
+
+## Session: 2026-05-17 23:45
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 23:51 | Edited src/app/app_state/overlays.rs | modified save_current_text_buffer_history() | ~310 |
+| 23:51 | Edited src/app/app_state/buffers.rs | expanded (+7 lines) | ~254 |
+| 23:56 | Fixed buffer close race condition | src/app/app_state/buffers.rs, overlays.rs | Added bounds check + text reset to prevent content corruption | ~200 tok |
+| 23:57 | Session end: 2 writes across 2 files (overlays.rs, buffers.rs) | 2 reads | ~22274 tok |

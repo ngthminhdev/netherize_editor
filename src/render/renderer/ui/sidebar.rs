@@ -1,4 +1,5 @@
 use crate::render::{
+    icon_pipeline::{canonical_icon_id, IconDrawInstance},
     region_pipeline::RegionDrawInstance,
     renderer::{Renderer, SidebarFilterState, SidebarRow},
 };
@@ -40,8 +41,14 @@ impl Renderer {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
             self.sidebar_scissor = None;
             self.sidebar_glyph_instances.clear();
+            self.sidebar_icon_instances.clear();
             self.sidebar_text_pipeline
                 .upload_instances(&self.device, &self.queue, &[]);
+            self.sidebar_icon_pipeline.upload_instances(
+                &self.device,
+                &self.sidebar_icon_instances,
+                [self.surface_state.config.width, self.surface_state.config.height],
+            );
             return Vec::new();
         }
 
@@ -63,6 +70,7 @@ impl Renderer {
         self.sidebar_text_system.set_size(Some(width), Some(line_h));
 
         let mut glyphs = Vec::new();
+        let mut icon_instances = Vec::new();
         let mut selection_quads: Vec<RegionDrawInstance> = Vec::new();
         let mut current_y = sidebar_list_top(bounds, filter_state) + self.panel_padding;
         let list_bottom = sidebar_list_bottom(bounds);
@@ -176,21 +184,36 @@ impl Renderer {
                 fg_ghost,
             ));
 
-            // 2. NerdFont icon (folder/filetype), colored per-filetype
-            let nerd_str = format!("{} ", row.nerd_icon);
-            let nerd_w = nerd_str.chars().count() as f32 * font_size * 0.60;
+            // 2. File/folder icon. Bearded asset icons are rendered as textured quads;
+            // legacy glyph icons still fall back to the text pipeline.
             let icon_color = row.icon_color;
-            glyphs.extend(layout_panel_text(
-                &nerd_str,
-                &mut self.sidebar_text_system,
-                &mut self.atlas,
-                &self.queue,
-                x + arrow_w,
-                current_y,
-                icon_color,
-            ));
+            let icon_slot_w = font_size * 1.55;
+            if let Some(asset_icon) = canonical_icon_id(&row.nerd_icon) {
+                let icon_size = (line_h * 0.82).min(font_size * 1.35);
+                icon_instances.push(IconDrawInstance {
+                    icon: asset_icon,
+                    rect: [
+                        x + arrow_w,
+                        current_y + (line_h - icon_size) * 0.5,
+                        icon_size,
+                        icon_size,
+                    ],
+                    tint: [1.0, 1.0, 1.0, 1.0],
+                });
+            } else {
+                let nerd_str = format!("{} ", row.nerd_icon);
+                glyphs.extend(layout_panel_text(
+                    &nerd_str,
+                    &mut self.sidebar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    x + arrow_w,
+                    current_y,
+                    icon_color,
+                ));
+            }
 
-            let mut label_x = x + arrow_w + nerd_w;
+            let mut label_x = x + arrow_w + icon_slot_w;
             if let (Some(marker), Some(color)) = (row.prefix_marker.as_deref(), row.prefix_color) {
                 let marker_text = format!("{} ", marker);
                 glyphs.extend(layout_panel_text(
@@ -243,6 +266,12 @@ impl Renderer {
             current_y += line_h;
         }
 
+        self.sidebar_icon_instances = icon_instances;
+        self.sidebar_icon_pipeline.upload_instances(
+            &self.device,
+            &self.sidebar_icon_instances,
+            [self.surface_state.config.width, self.surface_state.config.height],
+        );
         self.sidebar_glyph_instances = glyphs;
         self.sidebar_text_pipeline.upload_instances(
             &self.device,
@@ -256,7 +285,13 @@ impl Renderer {
     pub fn clear_sidebar(&mut self) {
         self.sidebar_scissor = None;
         self.sidebar_glyph_instances.clear();
+        self.sidebar_icon_instances.clear();
         self.sidebar_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
+        self.sidebar_icon_pipeline.upload_instances(
+            &self.device,
+            &self.sidebar_icon_instances,
+            [self.surface_state.config.width, self.surface_state.config.height],
+        );
     }
 }

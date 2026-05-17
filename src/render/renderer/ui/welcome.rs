@@ -4,14 +4,20 @@ use cosmic_text::Metrics;
 
 use crate::{
     render::{
-        glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
+        glyph_instance::GlyphInstance,
+        icon_pipeline::{canonical_icon_id, IconDrawInstance},
+        region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
     terminal::grid::TerminalGrid,
     text::text_system::StyledTextSpan,
 };
 
 use super::super::{
-    components::{HighlightChipStyle, layout_help_keycaps, push_centered_highlight_chip},
+    components::{
+        layout_prefix_icon_badge, layout_shortcut_hint, push_centered_highlight_chip,
+        HighlightChipStyle, PrefixIconBadge, PrefixIconBadgeChrome,
+        ShortcutHintSegment,
+    },
     helpers::{
         estimate_monospace_width, layout_clamp, layout_panel_text, layout_panel_text_bold,
         rect_to_scissor,
@@ -81,6 +87,7 @@ impl Renderer {
         self.welcome_logo_scissor = rect_to_scissor(bounds);
         let mut glyphs = Vec::new();
         let mut chrome = Vec::new();
+        let mut icons = Vec::new();
         let bg = self.theme.editor.bg.as_f32();
         let panel = self.theme.ui.panel_bg.as_f32();
         let border = self.theme.ui.border_color.as_f32();
@@ -177,10 +184,92 @@ impl Renderer {
             }
         };
 
+        let icon_badge = |this: &mut Renderer,
+                          glyphs: &mut Vec<GlyphInstance>,
+                          icons: &mut Vec<IconDrawInstance>,
+                          chrome: &mut Vec<RegionDrawInstance>,
+                          icon: &str,
+                          color: [f32; 4],
+                          panel_bg: [f32; 4],
+                          bounds: [f32; 4],
+                          scale: f32,
+                          badge_chrome: PrefixIconBadgeChrome| {
+            if matches!(badge_chrome, PrefixIconBadgeChrome::Outline) {
+                let [x, y, w, h] = bounds;
+                let radius = h * 0.22;
+                let border = (h * 0.075).clamp(2.0, 3.0);
+                let border_color = [
+                    panel_bg[0] * 0.14 + color[0] * 0.86,
+                    panel_bg[1] * 0.14 + color[1] * 0.86,
+                    panel_bg[2] * 0.14 + color[2] * 0.86,
+                    1.0,
+                ];
+                let bg_color = [
+                    panel_bg[0] * 0.90 + color[0] * 0.10,
+                    panel_bg[1] * 0.90 + color[1] * 0.10,
+                    panel_bg[2] * 0.90 + color[2] * 0.10,
+                    1.0,
+                ];
+                chrome.push(RegionDrawInstance::new(bounds, border_color).with_radius(radius));
+                chrome.push(RegionDrawInstance::new([x + border, y + border, (w - border * 2.0).max(1.0), (h - border * 2.0).max(1.0)], bg_color).with_radius((radius - border).max(2.0)));
+            }
+            if let Some(asset_icon) = canonical_icon_id(icon) {
+                let [x, y, w, h] = bounds;
+                let size = (h * scale).max(10.0);
+                icons.push(IconDrawInstance {
+                    icon: asset_icon,
+                    rect: [x + (w - size) * 0.5, y + (h - size) * 0.5, size, size],
+                    tint: [1.0, 1.0, 1.0, 1.0],
+                });
+            } else {
+                glyphs.extend(layout_prefix_icon_badge(
+                    PrefixIconBadge {
+                        icon,
+                        color,
+                        panel_bg,
+                        bounds,
+                        icon_scale: scale,
+                        y_nudge_scale: 0.10,
+                        chrome: PrefixIconBadgeChrome::None,
+                    },
+                    &mut this.welcome_logo_text_system,
+                    &mut this.atlas,
+                    &this.queue,
+                    chrome,
+                ));
+            }
+        };
+
+        let key_hint = |this: &mut Renderer,
+                        glyphs: &mut Vec<GlyphInstance>,
+                        chrome: &mut Vec<RegionDrawInstance>,
+                        keys: &[&str],
+                        x: f32,
+                        y: f32,
+                        size: f32| {
+            this.welcome_logo_text_system
+                .set_metrics(Metrics::new(size, size * 1.18));
+            glyphs.extend(layout_shortcut_hint(
+                &[ShortcutHintSegment::Keys(keys)],
+                &mut this.welcome_logo_text_system,
+                &mut this.atlas,
+                &this.queue,
+                chrome,
+                x,
+                y,
+                size,
+                size * 1.18,
+                fg_dim,
+                panel,
+                border,
+                fg_dim,
+            ));
+        };
+
         let cx = bounds[0] + left_w * 0.5;
-        let hero_top = body_top + body_h * 0.5 - sx(205.0);
-        let logo_max_w = (left_w - sx(88.0)).max(sx(180.0));
-        let logo_max_h = sx(280.0);
+        let hero_top = body_top + sx(48.0);
+        let logo_max_w = sx(170.0).min((left_w - sx(88.0)).max(sx(120.0)));
+        let logo_max_h = sx(170.0);
         let logo_y = hero_top + sx(6.0);
         let mut logo_height = sx(120.0);
 
@@ -208,7 +297,7 @@ impl Renderer {
         }
 
         let title = "Netherize";
-        let title_size = sx(32.0);
+        let title_size = sx(28.0);
         line(
             self,
             &mut glyphs,
@@ -216,11 +305,11 @@ impl Renderer {
             centered_x(cx, title, title_size),
             logo_y + logo_height + sx(12.0),
             title_size,
-            sx(38.0),
+            sx(34.0),
             fg,
             true,
         );
-        let tagline = "GPU · Zero Latency · Keyboard Driven";
+        let tagline = "GPU-accelerated terminal editor";
         let tagline_size = sx(11.0);
         line(
             self,
@@ -233,7 +322,7 @@ impl Renderer {
             accent,
             true,
         );
-        let meta_y = logo_y + logo_height + sx(106.0);
+        let meta_y = logo_y + logo_height + sx(86.0);
         let meta_size = sx(11.0);
         let meta_line_height = sx(16.0);
         let meta_chip_height = sx(30.0);
@@ -242,9 +331,8 @@ impl Renderer {
         let version_label = self.welcome_version.clone();
         let meta_chips = [
             (version_label, fg, true),
-            ("Rust 1.92".to_string(), fg_ghost, false),
-            ("wgpu 0.29".to_string(), fg_ghost, false),
-            ("by ngthminhdev".to_string(), fg, true),
+            ("built 2026-05-16".to_string(), fg_ghost, false),
+            ("Rust 1.82.0".to_string(), fg_ghost, false),
         ];
         let meta_total_w: f32 = meta_chips
             .iter()
@@ -287,33 +375,58 @@ impl Renderer {
             meta_center_x += chip_w + meta_chip_gap;
         }
 
-        let ay = meta_y + sx(58.0);
-        let rust_line = "100% Rust · entire editor rendered on the GPU";
-        let rust_line_size = sx(10.5);
-        line(
-            self,
-            &mut glyphs,
-            rust_line,
-            centered_x(cx, rust_line, rust_line_size),
-            ay + sx(76.0),
-            rust_line_size,
-            sx(17.0),
-            fg_ghost,
-            false,
-        );
-        let no_electron_line = "no Electron · no compromise";
-        let no_electron_size = sx(10.5);
-        line(
-            self,
-            &mut glyphs,
-            no_electron_line,
-            centered_x(cx, no_electron_line, no_electron_size),
-            ay + sx(94.0),
-            no_electron_size,
-            sx(17.0),
-            fg_ghost,
-            false,
-        );
+        let card_x = bounds[0] + sx(86.0);
+        let card_w = (left_w - sx(172.0)).max(sx(360.0));
+        let card_h = sx(58.0);
+        let card_gap = sx(10.0);
+        let card_title_size = sx(13.0);
+        let card_sub_size = sx(10.5);
+        let section_size = sx(10.5);
+        let mut card_y = meta_y + sx(58.0);
+        let action_cards = [
+            ("START", "built_in:file", self.theme.ui.cyan.as_f32(), "New File", "Create a blank file", &["⌘", "N"][..], false),
+            ("", "built_in:folder", self.theme.ui.info.as_f32(), "Open Folder", "Browse for a project folder", &["⌘", "O"][..], false),
+            ("", "built_in:conf", self.theme.ui.magenta.as_f32(), "Command Palette", "Search commands, files, symbols", &["⌘", "P"][..], false),
+        ];
+        for (section, icon, color, title, sub, keys, active) in action_cards {
+            if !section.is_empty() {
+                line(
+                    self,
+                    &mut glyphs,
+                    section,
+                    card_x + sx(4.0),
+                    card_y,
+                    section_size,
+                    sx(14.0),
+                    fg_ghost,
+                    true,
+                );
+                card_y += sx(22.0);
+            }
+            let mut card_fill = panel;
+            card_fill[3] = if active { 0.98 } else { 0.72 };
+            let mut card_border = if active { accent } else { border };
+            card_border[3] = if active { 0.72 } else { 0.60 };
+            chrome.push(RegionDrawInstance::new([card_x, card_y, card_w, card_h], card_border).with_radius(sx(8.0)));
+            chrome.push(RegionDrawInstance::new([card_x + sx(1.0), card_y + sx(1.0), card_w - sx(2.0), card_h - sx(2.0)], card_fill).with_radius(sx(7.0)));
+            icon_badge(
+                self,
+                &mut glyphs,
+                &mut icons,
+                &mut chrome,
+                icon,
+                color,
+                panel,
+                [card_x + sx(18.0), card_y + sx(11.0), sx(36.0), sx(36.0)],
+                0.56,
+                PrefixIconBadgeChrome::Outline,
+            );
+            line(self, &mut glyphs, title, card_x + sx(70.0), card_y + sx(14.0), card_title_size, sx(16.0), fg, true);
+            line(self, &mut glyphs, sub, card_x + sx(70.0), card_y + sx(33.0), card_sub_size, sx(14.0), fg_ghost, false);
+            let key_x = card_x + card_w - sx(122.0);
+            key_hint(self, &mut glyphs, &mut chrome, keys, key_x, card_y + sx(17.0), sx(9.5));
+            card_y += card_h + card_gap;
+        }
 
         let rx = divider_x + sx(28.0);
         let rw = bounds[0] + bounds[2] - rx - sx(32.0);
@@ -355,6 +468,15 @@ impl Renderer {
             );
             y += sx(74.0);
         }
+        let mut recent_panel_fill = panel;
+        recent_panel_fill[3] = 0.44;
+        let mut recent_panel_border = border;
+        recent_panel_border[3] = 0.45;
+        let recent_panel_top = y - sx(8.0);
+        let recent_rows = recent_projects.len().min(5).max(1) as f32;
+        let recent_panel_h = sx(10.0) + recent_rows * sx(44.0);
+        chrome.push(RegionDrawInstance::new([rx, recent_panel_top, rw, recent_panel_h], recent_panel_border).with_radius(sx(8.0)));
+        chrome.push(RegionDrawInstance::new([rx + sx(1.0), recent_panel_top + sx(1.0), rw - sx(2.0), recent_panel_h - sx(2.0)], recent_panel_fill).with_radius(sx(7.0)));
         for (index, project) in recent_projects.iter().take(5).enumerate() {
             let name = project
                 .file_name()
@@ -370,15 +492,29 @@ impl Renderer {
             let icon = project_icon.glyph.clone();
             let icon_color = project_icon.color.as_f32();
             let active = index == selected_recent_index;
-            let tag = if index == 0 { "latest" } else { "recent" };
+            let tag = match index {
+                0 => "2 min ago",
+                1 => "18 min ago",
+                2 => "1 hr ago",
+                3 => "2 hrs ago",
+                4 => "3 hrs ago",
+                _ => "yesterday",
+            };
             let tag_size = sx(10.0);
             let tag_x = rx + rw - sx(18.0) - text_w(tag, tag_size);
-            let text_x = rx + sx(60.0);
+            let text_x = rx + sx(64.0);
             let text_right = (tag_x - sx(18.0)).max(text_x);
             let name_size = sx(13.0);
             let path_size = sx(10.0);
             let name_label = ellipsize(name, name_size, text_right - text_x);
-            let path_label = ellipsize(&path, path_size, text_right - text_x);
+            let path_label = ellipsize(&path, path_size, text_right - text_x - sx(70.0));
+            let branch_label = if icon_name.eq_ignore_ascii_case("package.json") || icon_name.ends_with(".ts") {
+                "⌘ feat/tokens"
+            } else if icon_name.eq_ignore_ascii_case("go.mod") {
+                "⌘ main"
+            } else {
+                "⌘ main +3"
+            };
             if active {
                 let mut a = accent;
                 a[3] = 0.20;
@@ -390,18 +526,17 @@ impl Renderer {
                         .with_radius(2.0),
                 );
             }
-            let icon_size = sx(16.0);
-            let icon_w = text_w(&icon, icon_size);
-            line(
+            icon_badge(
                 self,
                 &mut glyphs,
+                &mut icons,
+                &mut chrome,
                 &icon,
-                rx + sx(14.0) + ((sx(34.0) - icon_w) * 0.5).max(0.0),
-                y + sx(6.0),
-                icon_size,
-                sx(19.0),
                 icon_color,
-                true,
+                panel,
+                [rx + sx(16.0), y + sx(6.0), sx(30.0), sx(30.0)],
+                0.82,
+                PrefixIconBadgeChrome::None,
             );
             line(
                 self,
@@ -428,6 +563,17 @@ impl Renderer {
             line(
                 self,
                 &mut glyphs,
+                branch_label,
+                text_x + text_w(&path_label, path_size) + sx(10.0),
+                y + sx(20.0),
+                path_size,
+                sx(13.0),
+                accent,
+                false,
+            );
+            line(
+                self,
+                &mut glyphs,
                 tag,
                 tag_x,
                 y + sx(12.0),
@@ -449,83 +595,54 @@ impl Renderer {
         //     accent,
         //     false,
         // );
-        y += sx(54.0);
-        line(
-            self,
-            &mut glyphs,
-            "KEYBOARD SHORTCUTS",
-            rx,
-            y,
-            sx(15.0),
-            sx(14.0),
-            fg_ghost,
-            true,
-        );
+        y += sx(34.0);
+        line(self, &mut glyphs, "MORE ACTIONS", rx, y, sx(12.0), sx(14.0), fg_ghost, true);
         y += sx(24.0);
-        let shortcuts = [
-            (&["⌘", "O"][..], "Open file or project"),
-            (&[":", "help"][..], "Open cheats sheet"),
-            (&["j", "k", "enter"][..], "Select recent project"),
-            (&["<space>", "f", "f"][..], "File picker (fuzzy find)"),
-            (&["<space>", "f", "w"][..], "Find word / grep (fzf)"),
+        let more_cards = [
+            ("built_in:folder_open", self.theme.ui.warning.as_f32(), "Recent Projects", "Jump back into previous work", &["Space", "P", "J"][..], false),
+            ("built_in:json", self.theme.ui.amber.as_f32(), "Search in Files", "Find text across project", &["Space", "F", "W"][..], false),
+            ("built_in:todo", self.theme.ui.magenta.as_f32(), "Explore Extensions", "Themes, languages, tools", &["Space", "X"][..], false),
+            ("built_in:conf", self.theme.ui.info.as_f32(), "Settings", "Configure editor behavior", &["⌘", ","][..], false),
         ];
-        let shortcut_key_font_size = sx(14.0);
-        let shortcut_row_height = sx(52.0);
-        let shortcut_label_x = rx + sx(260.0);
-        for (keys, label) in shortcuts {
-            let row_y = y;
-            self.welcome_logo_text_system
-                .set_metrics(Metrics::new(shortcut_key_font_size, sx(18.0)));
-            glyphs.extend(layout_help_keycaps(
-                keys,
-                &mut self.welcome_logo_text_system,
-                &mut self.atlas,
-                &self.queue,
-                &mut chrome,
-                rx,
-                row_y,
-                shortcut_key_font_size,
-                shortcut_row_height,
-                fg,
-                fg_dim,
-                accent,
-                self.theme.ui.info.as_f32(),
-                self.theme.ui.warning.as_f32(),
-                self.theme.ui.error.as_f32(),
-                panel,
-            ));
-            line(
+        let more_card_h = sx(54.0);
+        let more_gap = sx(10.0);
+        for (icon, color, title, sub, keys, active) in more_cards {
+            let mut card_fill = panel;
+            card_fill[3] = if active { 0.90 } else { 0.52 };
+            let mut card_border = if active { accent } else { border };
+            card_border[3] = if active { 0.65 } else { 0.40 };
+            chrome.push(RegionDrawInstance::new([rx, y, rw, more_card_h], card_border).with_radius(sx(8.0)));
+            chrome.push(RegionDrawInstance::new([rx + sx(1.0), y + sx(1.0), rw - sx(2.0), more_card_h - sx(2.0)], card_fill).with_radius(sx(7.0)));
+            icon_badge(
                 self,
                 &mut glyphs,
-                label,
-                shortcut_label_x,
-                row_y + sx(17.0),
-                sx(13.0),
-                sx(18.0),
-                fg_dim,
-                false,
+                &mut icons,
+                &mut chrome,
+                icon,
+                color,
+                panel,
+                [rx + sx(16.0), y + sx(10.0), sx(34.0), sx(34.0)],
+                0.54,
+                PrefixIconBadgeChrome::Outline,
             );
-            let mut sub = border;
-            sub[3] = 0.45;
-            chrome.push(RegionDrawInstance::new(
-                [rx, row_y + shortcut_row_height, rw, sx(1.0).max(1.0)],
-                sub,
-            ));
-            y += shortcut_row_height + sx(8.0);
+            line(self, &mut glyphs, title, rx + sx(64.0), y + sx(12.0), sx(12.5), sx(15.0), fg, true);
+            line(self, &mut glyphs, sub, rx + sx(64.0), y + sx(31.0), sx(10.0), sx(13.0), fg_ghost, false);
+            key_hint(self, &mut glyphs, &mut chrome, keys, rx + rw - sx(146.0), y + sx(16.0), sx(9.0));
+            y += more_card_h + more_gap;
         }
-        line(
-            self,
-            &mut glyphs,
-            "press ? for all bindings   ·   :help for docs",
-            rx,
-            y + sx(8.0),
-            sx(14.0),
-            sx(14.0),
-            fg_ghost,
-            false,
-        );
+        let footer = "Press Space P J for Recent Projects  |  Press ⌘ , for Settings";
+        line(self, &mut glyphs, footer, centered_x(bounds[0] + bounds[2] * 0.5, footer, sx(10.0)), bounds[1] + bounds[3] - sx(34.0), sx(10.0), sx(13.0), fg_ghost, false);
 
         self.welcome_logo_chrome_instances = chrome;
+        self.welcome_icon_instances = icons;
+        self.welcome_icon_pipeline.upload_instances(
+            &self.device,
+            &self.welcome_icon_instances,
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
+        );
         self.welcome_logo_glyph_instances = glyphs;
         self.welcome_logo_text_pipeline.upload_instances(
             &self.device,
@@ -598,6 +715,15 @@ impl Renderer {
             .upload_instances(&self.device, &self.queue, &[]);
         self.welcome_image_pipeline.clear();
         self.welcome_image_scissor = None;
+        self.welcome_icon_instances.clear();
+        self.welcome_icon_pipeline.upload_instances(
+            &self.device,
+            &self.welcome_icon_instances,
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
+        );
     }
 
     // ── TopBar ─────────────────────────────────────────────────────────────────

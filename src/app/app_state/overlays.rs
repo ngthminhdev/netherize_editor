@@ -1140,6 +1140,13 @@ impl AppState {
     pub(super) fn save_current_text_buffer_history(&mut self) {
         let _ = self.commit_transaction();
         if let Some(old_idx) = self.active_buffer_index {
+            // CRITICAL: Validate that old_idx is still in bounds before saving.
+            // This prevents race condition where buffer was removed but active_buffer_index
+            // hasn't been updated yet, which would cause content corruption.
+            if old_idx >= self.buffers.len() {
+                return;
+            }
+
             let saved = std::mem::take(&mut self.history);
             let saved_view_state = self.text_buffer_view_state();
             if let Some(slot) = self.buffers.get_mut(old_idx) {

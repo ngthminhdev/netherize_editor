@@ -563,8 +563,8 @@ mod tests {
     #[test]
     fn file_icon_lookup_prefers_dir_then_exact_then_extension_then_default() {
         let mut theme = ThemeConfig::builtin_dark();
-        theme.default_file_icon = "📄".to_string();
-        theme.default_folder_icon = "📁".to_string();
+        theme.default_file_icon = "built_in:file".to_string();
+        theme.default_folder_icon = "built_in:folder".to_string();
         theme.exact_icons = HashMap::from([
             ("Dockerfile".to_string(), "🐳".to_string()),
             ("README.md".to_string(), "📘".to_string()),
@@ -574,11 +574,11 @@ mod tests {
             ("sql".to_string(), "🗄️".to_string()),
         ]);
 
-        assert_eq!(theme.get_icon_for_file("src", true), "📁");
+        assert_eq!(theme.get_icon_for_file("src", true), "built_in:folder");
         assert_eq!(theme.get_icon_for_file("Dockerfile", false), "🐳");
         assert_eq!(theme.get_icon_for_file("README.md", false), "📘");
         assert_eq!(theme.get_icon_for_file("schema.SQL", false), "🗄️");
         assert_eq!(theme.get_icon_for_file("notes.md", false), "📝");
-        assert_eq!(theme.get_icon_for_file("unknown.bin", false), "📄");
+        assert_eq!(theme.get_icon_for_file("unknown.bin", false), "built_in:file");
     }
 }

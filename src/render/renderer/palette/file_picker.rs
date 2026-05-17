@@ -3,20 +3,22 @@
 use crate::{
     app::{app_state::AppState, command_palette::CommandPaletteRenderModel, input::LeapTarget},
     render::{
-        glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
+        glyph_instance::GlyphInstance, icon_pipeline::IconDrawInstance,
+        region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
 };
 
 use super::{
     palette_footer_content_height, palette_footer_height, render_palette_badge,
-    render_palette_chrome, render_palette_footer, render_palette_selection, PaletteFooterAction,
-    PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD,
+    push_palette_icon_or_badge, render_palette_chrome, render_palette_footer,
+    render_palette_selection, PaletteFooterAction, PALETTE_FOOTER_TOP_PAD,
+    PALETTE_HEADER_BOTTOM_PAD,
 };
 
 use super::super::{
     components::{layout_prefix_icon_badge, PrefixIconBadge, PrefixIconBadgeChrome},
     helpers::{
-        clamp_monospace_text, estimate_monospace_width, ext_icon_dot, gutter_width_for_editor,
+        clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
         layout_panel_text, rect_to_scissor,
     },
 };
@@ -32,6 +34,7 @@ impl Renderer {
 
         let mut quads: Vec<RegionDrawInstance> = Vec::new();
         let mut glyphs: Vec<GlyphInstance> = Vec::new();
+        let mut icons: Vec<IconDrawInstance> = Vec::new();
 
         let font_size = self.theme.ui.sidebar_font_size;
         let line_h = model.line_height.max(18.0);
@@ -168,22 +171,20 @@ impl Renderer {
                     let badge_size = (row_h * 0.58).clamp(30.0, 42.0);
                     let badge_x = text_x;
                     let badge_y = row_top + (row_h - badge_size) * 0.5;
-                    let icon_scale = if badge.chars().count() > 1 { 0.42 } else { 0.62 };
-                    glyphs.extend(layout_prefix_icon_badge(
-                        PrefixIconBadge {
-                            icon: &badge,
-                            color: badge_color,
-                            panel_bg: model.panel_bg,
-                            bounds: [badge_x, badge_y, badge_size, badge_size],
-                            icon_scale,
-                            y_nudge_scale: 0.08,
-                            chrome: PrefixIconBadgeChrome::None,
-                        },
+                    push_palette_icon_or_badge(
+                        &badge,
+                        badge_color,
+                        model.panel_bg,
+                        [badge_x, badge_y, badge_size, badge_size],
+                        0.82,
+                        PrefixIconBadgeChrome::None,
                         &mut self.palette_text_system,
                         &mut self.atlas,
                         &self.queue,
                         &mut quads,
-                    ));
+                        &mut glyphs,
+                        &mut icons,
+                    );
                     self.palette_text_system
                         .set_metrics(cosmic_text::Metrics::new(font_size, line_h));
                     self.palette_text_system.set_size(
@@ -208,21 +209,20 @@ impl Renderer {
                     let badge_size = file_badge_size;
                     let badge_x = text_x;
                     let badge_y = row_top + (row_h - badge_size) * 0.5;
-                    glyphs.extend(layout_prefix_icon_badge(
-                        PrefixIconBadge {
-                            icon: badge,
-                            color: badge_color,
-                            panel_bg: model.panel_bg,
-                            bounds: [badge_x, badge_y, badge_size, badge_size],
-                            icon_scale: 0.675,
-                            y_nudge_scale: 0.12,
-                            chrome: PrefixIconBadgeChrome::None,
-                        },
+                    push_palette_icon_or_badge(
+                        badge,
+                        badge_color,
+                        model.panel_bg,
+                        [badge_x, badge_y, badge_size, badge_size],
+                        0.82,
+                        PrefixIconBadgeChrome::None,
                         &mut self.palette_text_system,
                         &mut self.atlas,
                         &self.queue,
                         &mut quads,
-                    ));
+                        &mut glyphs,
+                        &mut icons,
+                    );
                     self.palette_text_system
                         .set_metrics(cosmic_text::Metrics::new(font_size, line_h));
                     self.palette_text_system.set_size(
@@ -299,6 +299,12 @@ impl Renderer {
         ));
 
         self.palette_chrome_instances = quads;
+        self.palette_icon_instances = icons;
+        self.palette_icon_pipeline.upload_instances(
+            &self.device,
+            &self.palette_icon_instances,
+            [self.surface_state.config.width, self.surface_state.config.height],
+        );
         self.palette_glyph_instances = glyphs;
     }
 
