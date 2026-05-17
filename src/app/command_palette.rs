@@ -331,6 +331,7 @@ pub struct CommandPaletteRenderModel {
     pub selected_index: usize,
     pub scroll_offset_rows: usize,
     pub line_height: f32,
+    pub row_height: f32,
     pub panel_padding: f32,
     /// Tiêu đề ngắn ("FIND", "COMMANDS"...) — hiện trong badge header của file picker
     pub title: String,
@@ -776,17 +777,29 @@ impl CommandPalette {
                     min_w.max(660.0_f32.min(available_w))
                 };
                 let px = x + ((width - pw) * 0.5).max(0.0);
-                let body_rows = complex_picker_body_rows(
-                    self.mode,
-                    height,
-                    panel_padding,
-                    line_height,
-                    row_height,
-                    max_items,
-                );
+                let body_rows = if self.mode == CommandPaletteMode::FilePicker
+                    && self.results.is_empty()
+                    && self.query.trim().is_empty()
+                {
+                    0
+                } else {
+                    complex_picker_body_rows(
+                        self.mode,
+                        height,
+                        panel_padding,
+                        line_height,
+                        row_height,
+                        max_items,
+                    )
+                };
+                let min_picker_height = if body_rows == 0 {
+                    complex_picker_reserved_height(self.mode, panel_padding, line_height)
+                } else {
+                    row_height + panel_padding * 2.0
+                };
                 let ph = (complex_picker_reserved_height(self.mode, panel_padding, line_height)
                     + row_height * body_rows as f32)
-                    .min((height - 32.0).max(row_height + panel_padding * 2.0));
+                    .min((height - 32.0).max(min_picker_height));
                 // TRUE CENTER: 50/50
                 let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
                 (pw, px, py, ph, body_rows)
@@ -939,6 +952,7 @@ impl CommandPalette {
             selected_index: self.selected_index,
             scroll_offset_rows,
             line_height,
+            row_height,
             panel_padding,
             title: self.mode.title().to_string(),
             total_results: self.results.len(),
@@ -979,20 +993,23 @@ fn theme_selector_preview_colors(theme: &ThemeConfig) -> Vec<[f32; 4]> {
 
 fn symbol_icon(kind: &str) -> &'static str {
     match kind {
-        "Function" | "Method" => "fn",
-        "Constructor" => "fn",
-        "Field" => "f",
-        "Variable" | "Constant" => "v",
-        "Class" => "C",
-        "Interface" => "I",
-        "Module" | "Namespace" | "Package" => "m",
-        "Property" => "p",
-        "Enum" | "EnumMember" => "E",
-        "Keyword" => "k",
-        "Operator" => "op",
-        "TypeParameter" => "T",
-        "Struct" => "S",
-        _ => "·",
+        "Function" | "Method" => "󰊕",
+        "Constructor" => "",
+        "Field" | "Property" => "󰜢",
+        "Variable" => "󰀫",
+        "Constant" => "󰏿",
+        "Class" => "󰠱",
+        "Interface" => "",
+        "Module" | "Namespace" | "Package" => "󰏗",
+        "Enum" | "EnumMember" => "",
+        "Keyword" => "󰌋",
+        "Operator" => "󰆕",
+        "TypeParameter" => "󰊄",
+        "Struct" => "󰙅",
+        "Event" => "",
+        "File" => "󰈙",
+        "Folder" => "󰉋",
+        _ => "",
     }
 }
 
@@ -1121,6 +1138,9 @@ fn palette_row_height(mode: CommandPaletteMode, line_height: f32) -> f32 {
     match mode {
         CommandPaletteMode::LiveGrep => line_height * 2.0 + 16.0,
         CommandPaletteMode::ThemeSelector => line_height * 1.18 + 18.0,
+        CommandPaletteMode::DocumentSymbols | CommandPaletteMode::FilePicker => {
+            (line_height + 16.0) * 1.5
+        }
         _ => line_height + 8.0,
     }
 }

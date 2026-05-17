@@ -195,38 +195,45 @@ impl AppShell {
                 Some(changed)
             }
             Command::FocusTerminal => {
+                // Toggle bottom panel visibility (like Cmd-B for left sidebar)
+                let next_visible = !self.panel_state.bottom.visible;
                 let mut changed = false;
 
-                if self.app_state.current_mode() == EditorMode::PaletteFocus {
-                    changed |= self.app_state.close_command_palette();
-                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
-                        changed |= result.changed;
+                if self.panel_state.bottom.visible != next_visible {
+                    self.panel_state.bottom.visible = next_visible;
+                    changed = true;
+                }
+                changed |= self.app_state.set_terminal_panel_open(next_visible);
+                self.terminal_needs_layout = true;
+
+                let mut focus_changed = false;
+                if next_visible {
+                    // Opening: focus into BottomPanel
+                    changed |= self.dismiss_initial_launch_welcome_if_active();
+                    self.ensure_active_terminal_tab_spawned();
+                    focus_changed = self.focus_manager.set(FocusTarget::BottomPanel);
+                    changed |= focus_changed;
+                } else {
+                    // Closing: focus back to CenterEditor if currently in BottomPanel
+                    if self.focus_manager.current() == FocusTarget::BottomPanel {
+                        focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
+                        changed |= focus_changed;
+                    }
+
+                    // Exit terminal focus mode if active
+                    if matches!(
+                        self.app_state.current_mode(),
+                        EditorMode::TerminalFocus | EditorMode::TerminalNormal
+                    ) {
+                        if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
+                            changed |= result.changed;
+                        }
                     }
                 }
 
-                if self.app_state.set_terminal_panel_open(true) {
-                    changed = true;
-                }
-                if !self.panel_state.bottom.visible {
-                    self.panel_state.bottom.visible = true;
-                    changed = true;
-                }
-                changed |= self.dismiss_initial_launch_welcome_if_active();
-                self.terminal_needs_layout = true;
-
-                if self.app_state.current_mode() != EditorMode::TerminalFocus
-                    && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal)
-                {
-                    changed |= result.changed;
-                }
-
-                let focus_changed = self.focus_manager.set(FocusTarget::BottomPanel);
-                changed |= focus_changed;
                 if focus_changed {
                     self.input_handler.clear_pending_prefix();
                 }
-
-                self.ensure_active_terminal_tab_spawned();
 
                 Some(changed)
             }

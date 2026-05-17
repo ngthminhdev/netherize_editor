@@ -12,7 +12,7 @@ use crate::{
     render::{glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer},
 };
 
-use super::helpers::{estimate_monospace_width, layout_panel_text};
+use super::helpers::{estimate_monospace_width, layout_panel_text, layout_panel_text_bold};
 use super::components::{estimate_help_keycaps_width, layout_help_keycaps};
 
 pub(super) const PALETTE_FRAME_RADIUS: f32 = 16.0;
@@ -70,23 +70,52 @@ pub(super) fn render_palette_badge(
     fill: [f32; 4],
     text_color: [f32; 4],
 ) -> (f32, f32, Vec<GlyphInstance>) {
-    let badge_text = format!(" {} ", title);
+    let badge_text = title.to_string();
     let badge_h = (line_height + 10.0).max(30.0);
-    let badge_w = badge_text.chars().count() as f32 * font_size * 0.60 + 22.0;
+    let text_w = estimate_monospace_width(&badge_text, font_size);
+    let badge_w = text_w + 44.0;
+    let badge_radius = (badge_h * 0.18).max(7.0);
+    let border_thickness = (badge_h * 0.075).clamp(2.0, 3.0);
+    let badge_fill = blend_palette_badge_color(text_color, fill, 0.10);
+    let badge_border = blend_palette_badge_color(text_color, fill, 0.86);
+    let badge_text_color = blend_palette_badge_color(text_color, fill, 0.78);
+
     chrome.push(
-        RegionDrawInstance::new([x, y, badge_w, badge_h], fill)
-            .with_radius((badge_h * 0.18).max(7.0)),
+        RegionDrawInstance::new([x, y, badge_w, badge_h], badge_border)
+            .with_radius(badge_radius),
     );
-    let glyphs = layout_panel_text(
+    chrome.push(
+        RegionDrawInstance::new(
+            [
+                x + border_thickness,
+                y + border_thickness,
+                (badge_w - border_thickness * 2.0).max(1.0),
+                (badge_h - border_thickness * 2.0).max(1.0),
+            ],
+            badge_fill,
+        )
+        .with_radius((badge_radius - border_thickness).max(2.0)),
+    );
+    let glyphs = layout_panel_text_bold(
         &badge_text,
         text_system,
         atlas,
         queue,
-        x + 10.0,
+        x + (badge_w - text_w) * 0.5,
         y + ((badge_h - line_height) * 0.5).max(0.0),
-        text_color,
+        badge_text_color,
     );
     (badge_w, badge_h, glyphs)
+}
+
+fn blend_palette_badge_color(base: [f32; 4], tint: [f32; 4], amount: f32) -> [f32; 4] {
+    let t = amount.clamp(0.0, 1.0);
+    [
+        base[0] * (1.0 - t) + tint[0] * t,
+        base[1] * (1.0 - t) + tint[1] * t,
+        base[2] * (1.0 - t) + tint[2] * t,
+        1.0,
+    ]
 }
 
 pub(super) fn render_palette_selection(

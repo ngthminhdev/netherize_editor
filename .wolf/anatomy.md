@@ -1,12 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-16T09:40:49.954Z
-> Files: 355 tracked | Anatomy hits: 0 | Misses: 0
-
-## ../../.claude/plans/
-
-- `cheerful-moseying-wind.md` — Fix LSP Completion Documentation Tab Display (~1505 tok)
-- `performance-md-d-a-tr-n-file-stateful-forest.md` — Phase 4.1: Cache Line Start Positions for Syntax Highlighting (~2631 tok)
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-17T06:30:41.428Z
+> Files: 353 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
 
@@ -23,7 +18,7 @@
 ## .claude/
 
 - `settings.json` (~441 tok)
-- `settings.local.json` (~1075 tok)
+- `settings.local.json` (~1119 tok)
 
 ## .claude/rules/
 
@@ -279,7 +274,7 @@
 ## scripts/
 
 - `bundle_macos.sh` (~1328 tok)
-- `bundle_windows.sh` — Cross-compile and bundle for Windows x86_64 using cargo-xwin (~1100 tok)
+- `bundle_windows.sh` (~528 tok)
 - `generate_bench_samples.sh` (~324 tok)
 - `install.sh` (~233 tok)
 - `profile_flamegraph.sh` (~384 tok)
@@ -297,7 +292,7 @@
 - `clipboard.rs` — SystemClipboard: new (~524 tok)
 - `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~14701 tok)
 - `file_picker.rs` — FilePickerEntry: open, close, append_query, backspace_query + 6 more (~1644 tok)
-- `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~1506 tok)
+- `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~1621 tok)
 - `mod.rs` (~66 tok)
 - `persistence.rs` — AppPersistentState: load, save, push_recent, most_recent_existing + 2 more (~792 tok)
 - `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~15238 tok)
@@ -306,12 +301,12 @@
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer + 16 more (~6491 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag + 17 more (~10684 tok)
-- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~17679 tok)
+- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new + 1 more (~18941 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~6797 tok)
-- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~14167 tok)
+- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~15179 tok)
 - `palette.rs` — open_command_palette_mode, open_python_env_selector, push_jump, push_jump_entry + 21 more (~13087 tok)
 - `settings.rs` — [derive(Debug, Clone, PartialEq)] (~1971 tok)
-- `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, prev (~10491 tok)
+- `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, preview_file_history_index + 9 more (~11241 tok)
 - `tests.rs` — [cfg(test)] (~17738 tok)
 - `workspace.rs` — attach_workspace, clear_workspace_session_state, workspace_root_path, workspace_nodes + 24 more (~4044 tok)
 
@@ -319,20 +314,20 @@
 
 - `application.rs` — [cfg(target_os = "macos")] (~22446 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~10569 tok)
-- `commands_completion.rs` (~3362 tok)
-- `commands_editor.rs` (~4432 tok)
+- `commands_completion.rs` (~4377 tok)
+- `commands_editor.rs` (~4920 tok)
 - `commands_explorer.rs` (~6728 tok)
 - `commands_lsp.rs` (~9413 tok)
 - `commands_palette.rs` (~7270 tok)
 - `commands_prompts.rs` (~6945 tok)
 - `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~6809 tok)
 - `commands_settings.rs` (~1683 tok)
-- `commands_terminal.rs` (~6066 tok)
+- `commands_terminal.rs` (~5798 tok)
 - `commands_tests.rs` — [derive(Default)] (~15874 tok)
-- `commands.rs` — [path = "commands_ai_chat.rs"] (~8031 tok)
+- `commands.rs` — [path = "commands_ai_chat.rs"] (~8604 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~17593 tok)
 - `mod.rs` — Struct: AppShell (~6223 tok)
-- `setup.rs` — new, new_for_tests (~17628 tok)
+- `setup.rs` — new, new_for_tests (~18887 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
@@ -342,7 +337,7 @@
 - `filesystem.rs` (~503 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
-- `lsp.rs` (~8320 tok)
+- `lsp.rs` (~8370 tok)
 - `mod.rs` (~8423 tok)
 - `preview.rs` (~993 tok)
 - `shell.rs` (~112 tok)
@@ -352,7 +347,7 @@
 
 ## src/app/input/
 
-- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix + 3 more (~17753 tok)
+- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix + 3 more (~18194 tok)
 - `helpers.rs` — Trả về true nếu đây là event modifier-only (ShiftLeft, ShiftRight, ControlLeft...). (~4349 tok)
 - `mod.rs` (~69 tok)
 - `model.rs` — Dữ liệu key đã chuẩn hóa để tách phần "đọc winit event" (~726 tok)
@@ -368,7 +363,7 @@
 
 ## src/async_runtime/
 
-- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~6208 tok)
+- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~6344 tok)
 - `mod.rs` (~16 tok)
 - `python_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~948 tok)
 - `scheduler.rs` — Declares FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD (~2222 tok)
@@ -384,8 +379,8 @@
 - `git.rs` (~1560 tok)
 - `local_history.rs` — Local history (disk persistence) has been removed. (~42 tok)
 - `lsp_io.rs` (~2423 tok)
-- `lsp_parse.rs` — Declares MAX_COMPLETION_ITEMS (~10983 tok)
-- `lsp.rs` (~6522 tok)
+- `lsp_parse.rs` — Declares MAX_COMPLETION_ITEMS (~11436 tok)
+- `lsp.rs` (~6922 tok)
 - `pty.rs` (~3903 tok)
 - `runtime.rs` — Runtime wrapper duy nhất cho background jobs. (~839 tok)
 - `syntax_jobs.rs` (~5509 tok)
@@ -443,27 +438,27 @@
 - `mod.rs` (~53 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
 - `region_pipeline.rs` — RegionDrawInstance: new, with_radius, new, update_screen_size + 3 more (~3035 tok)
-- `renderer.rs` — Core renderer types and module layout. (~3960 tok)
+- `renderer.rs` — Core renderer types and module layout. (~4046 tok)
 - `surface.rs` — SurfaceState giữ toàn bộ thông tin liên quan đến swapchain/surface. (~797 tok)
 - `text_pipeline.rs` — TextPipeline: new, update_screen_size, upload_instances, draw + 1 more (~2779 tok)
 
 ## src/render/renderer/
 
 - `components.rs` — Declares ShortcutHintSegment (~3792 tok)
-- `editor.rs` — Editor viewport rendering modules. (~1702 tok)
+- `editor.rs` — Editor viewport rendering modules. (~2278 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3988 tok)
 - `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~6294 tok)
-- `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~2026 tok)
+- `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~2321 tok)
 - `ui.rs` — Panel UI rendering modules. (~42 tok)
 
 ## src/render/renderer/editor/
 
 - `buffers.rs` — clear_editor_overlays, update_references_buffer_content (~5424 tok)
-- `completion.rs` (~1377 tok)
+- `completion.rs` — Declares COMPLETION_KIND_TEXT (~1824 tok)
 - `fuzzy.rs` — update_fuzzy_picker_buffer_content (~7853 tok)
 - `help.rs` — update_help_buffer_content (~4176 tok)
-- `overlays.rs` — update_editor_overlays (~18294 tok)
-- `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, multi_cursor_selection_quads (~9519 tok)
+- `overlays.rs` — update_editor_overlays (~18665 tok)
+- `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, multi_cursor_selection_quads (~9713 tok)
 - `settings.rs` — update_settings_buffer_content (~8472 tok)
 - `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~6090 tok)
 
@@ -481,7 +476,7 @@
 
 ## src/render/renderer/palette/
 
-- `file_picker.rs` — Declares to (~3874 tok)
+- `file_picker.rs` — Declares to (~4155 tok)
 - `highlighted_label.rs` — Render a label string with fuzzy-match character highlights. (~837 tok)
 - `leap.rs` — Draw cyan Leap labels over editor glyphs, filtered by the currently typed prefix. (~2177 tok)
 - `live_grep.rs` — Declares to (~2512 tok)
@@ -601,7 +596,7 @@
 ## src/text/
 
 - `atlas.rs` — [derive(Debug, Clone, Copy)] (~2633 tok)
-- `layout_sync.rs` — Width of the glyph under the cursor. Used for block-style caret (~4611 tok)
+- `layout_sync.rs` — Width of the glyph under the cursor. Used for block-style caret (~4691 tok)
 - `mod.rs` (~21 tok)
 - `raster.rs` — Bitmap coverage của một glyph sau bước rasterize. (~892 tok)
 - `text_system.rs` — FontFaceSummary: new, set_font_family, locale, face_count + 16 more (~5793 tok)

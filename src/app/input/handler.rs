@@ -238,6 +238,44 @@ impl InputHandler {
             )));
         }
 
+        if context.focus == InputFocusContext::Editor
+            && context.mode == EditorMode::Insert
+            && context.completion_visible
+            && normalized.modifiers.control_key()
+            && !normalized.modifiers.alt_key()
+            && !normalized.modifiers.super_key()
+        {
+            match normalized.text.as_deref() {
+                Some("n") | Some("N") => {
+                    return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                        input_debug,
+                        format!(
+                            "mode={} focus={} -> repeated completion next intercept (Ctrl+N)",
+                            context.mode.as_str(),
+                            context.focus.as_str()
+                        ),
+                        Command::CompletionNext,
+                        1,
+                        false,
+                    )));
+                }
+                Some("p") | Some("P") => {
+                    return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                        input_debug,
+                        format!(
+                            "mode={} focus={} -> repeated completion prev intercept (Ctrl+P)",
+                            context.mode.as_str(),
+                            context.focus.as_str()
+                        ),
+                        Command::CompletionPrev,
+                        1,
+                        false,
+                    )));
+                }
+                _ => {}
+            }
+        }
+
         let resolved = input_map.resolve(&normalized, context)?;
         if !resolved.command.supports_press_and_hold_repeat() {
             return None;
