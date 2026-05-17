@@ -346,10 +346,31 @@ pub enum SystemDepState {
     Complete,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToastKind {
+    Info,
+    Warning,
+    Error,
+    Success,
+}
+
 #[derive(Debug, Clone)]
 struct TransientToast {
     message: String,
+    kind: ToastKind,
+    created_at: Instant,
     expires_at: Instant,
+}
+
+impl TransientToast {
+    fn progress_fraction(&self, now: Instant) -> f32 {
+        let total = self.expires_at.saturating_duration_since(self.created_at);
+        if total.is_zero() {
+            return 0.0;
+        }
+        let remaining = self.expires_at.saturating_duration_since(now);
+        (remaining.as_secs_f32() / total.as_secs_f32()).clamp(0.0, 1.0)
+    }
 }
 
 #[derive(Debug, Clone)]

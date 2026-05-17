@@ -514,9 +514,20 @@ impl AppShell {
     }
 
     pub(super) fn show_transient_toast(&mut self, message: impl Into<String>) {
+        self.show_transient_toast_kind(message, ToastKind::Info);
+    }
+
+    pub(super) fn show_transient_toast_kind(
+        &mut self,
+        message: impl Into<String>,
+        kind: ToastKind,
+    ) {
+        let now = Instant::now();
         self.transient_toast = Some(TransientToast {
             message: message.into(),
-            expires_at: Instant::now() + Duration::from_secs(4),
+            kind,
+            created_at: now,
+            expires_at: now + Duration::from_secs(4),
         });
     }
 

@@ -13,9 +13,12 @@ use super::{
     PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD,
 };
 
-use super::super::helpers::{
-    clamp_monospace_text, estimate_monospace_width, ext_icon_dot, gutter_width_for_editor,
-    layout_panel_text, layout_panel_text_bold, rect_to_scissor,
+use super::super::{
+    components::{layout_prefix_icon_badge, PrefixIconBadge, PrefixIconBadgeChrome},
+    helpers::{
+        clamp_monospace_text, estimate_monospace_width, ext_icon_dot, gutter_width_for_editor,
+        layout_panel_text, rect_to_scissor,
+    },
 };
 
 impl Renderer {
@@ -165,53 +168,21 @@ impl Renderer {
                     let badge_size = (row_h * 0.58).clamp(30.0, 42.0);
                     let badge_x = text_x;
                     let badge_y = row_top + (row_h - badge_size) * 0.5;
-                    let badge_radius = badge_size * 0.22;
-                    let badge_border_thickness = (badge_size * 0.075).clamp(2.0, 3.0);
-                    let icon_text_color = blend_symbol_badge_color(model.panel_bg, badge_color, 0.78);
-                    let badge_bg = blend_symbol_badge_color(model.panel_bg, badge_color, 0.10);
-                    let badge_border_color =
-                        blend_symbol_badge_color(model.panel_bg, badge_color, 0.86);
-                    quads.push(
-                        RegionDrawInstance::new(
-                            [badge_x, badge_y, badge_size, badge_size],
-                            badge_border_color,
-                        )
-                        .with_radius(badge_radius),
-                    );
-                    quads.push(
-                        RegionDrawInstance::new(
-                            [
-                                badge_x + badge_border_thickness,
-                                badge_y + badge_border_thickness,
-                                (badge_size - badge_border_thickness * 2.0).max(1.0),
-                                (badge_size - badge_border_thickness * 2.0).max(1.0),
-                            ],
-                            badge_bg,
-                        )
-                        .with_radius((badge_radius - badge_border_thickness).max(2.0)),
-                    );
-
-                    let icon_size = if badge.chars().count() > 1 {
-                        (badge_size * 0.42).max(8.0)
-                    } else {
-                        (badge_size * 0.62).max(10.0)
-                    };
-                    let icon_w = estimate_monospace_width(&badge, icon_size);
-                    let icon_line_h = icon_size * 1.15;
-                    let icon_x = badge_x + (badge_size - icon_w) * 0.5;
-                    let icon_y = badge_y + (badge_size - icon_line_h) * 0.5 + icon_size * 0.08;
-                    self.palette_text_system
-                        .set_metrics(cosmic_text::Metrics::new(icon_size, icon_line_h));
-                    self.palette_text_system
-                        .set_size(Some(badge_size), Some(icon_line_h));
-                    glyphs.extend(layout_panel_text_bold(
-                        &badge,
+                    let icon_scale = if badge.chars().count() > 1 { 0.42 } else { 0.62 };
+                    glyphs.extend(layout_prefix_icon_badge(
+                        PrefixIconBadge {
+                            icon: &badge,
+                            color: badge_color,
+                            panel_bg: model.panel_bg,
+                            bounds: [badge_x, badge_y, badge_size, badge_size],
+                            icon_scale,
+                            y_nudge_scale: 0.08,
+                            chrome: PrefixIconBadgeChrome::None,
+                        },
                         &mut self.palette_text_system,
                         &mut self.atlas,
                         &self.queue,
-                        icon_x,
-                        icon_y,
-                        icon_text_color,
+                        &mut quads,
                     ));
                     self.palette_text_system
                         .set_metrics(cosmic_text::Metrics::new(font_size, line_h));
@@ -237,25 +208,20 @@ impl Renderer {
                     let badge_size = file_badge_size;
                     let badge_x = text_x;
                     let badge_y = row_top + (row_h - badge_size) * 0.5;
-                    let icon_text_color = blend_symbol_badge_color(model.panel_bg, badge_color, 0.86);
-
-                    let icon_size = (badge_size * 0.675).max(12.0);
-                    let icon_w = estimate_monospace_width(badge, icon_size);
-                    let icon_line_h = icon_size * 1.15;
-                    let icon_x = badge_x + (badge_size - icon_w) * 0.5;
-                    let icon_y = badge_y + (badge_size - icon_line_h) * 0.5 + icon_size * 0.12;
-                    self.palette_text_system
-                        .set_metrics(cosmic_text::Metrics::new(icon_size, icon_line_h));
-                    self.palette_text_system
-                        .set_size(Some(badge_size), Some(icon_line_h));
-                    glyphs.extend(layout_panel_text_bold(
-                        badge,
+                    glyphs.extend(layout_prefix_icon_badge(
+                        PrefixIconBadge {
+                            icon: badge,
+                            color: badge_color,
+                            panel_bg: model.panel_bg,
+                            bounds: [badge_x, badge_y, badge_size, badge_size],
+                            icon_scale: 0.675,
+                            y_nudge_scale: 0.12,
+                            chrome: PrefixIconBadgeChrome::None,
+                        },
                         &mut self.palette_text_system,
                         &mut self.atlas,
                         &self.queue,
-                        icon_x,
-                        icon_y,
-                        icon_text_color,
+                        &mut quads,
                     ));
                     self.palette_text_system
                         .set_metrics(cosmic_text::Metrics::new(font_size, line_h));
@@ -370,15 +336,7 @@ fn shift_ranges_after_badge(label: &str, ranges: &[(usize, usize)]) -> Vec<(usiz
         .collect()
 }
 
-fn blend_symbol_badge_color(base: [f32; 4], tint: [f32; 4], amount: f32) -> [f32; 4] {
-    let t = amount.clamp(0.0, 1.0);
-    [
-        base[0] * (1.0 - t) + tint[0] * t,
-        base[1] * (1.0 - t) + tint[1] * t,
-        base[2] * (1.0 - t) + tint[2] * t,
-        1.0,
-    ]
-}
+
 
 fn file_picker_tone_color(
     tone: crate::app::command_palette::CommandPaletteItemTone,

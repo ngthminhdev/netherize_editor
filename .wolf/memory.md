@@ -74,3 +74,34 @@
 |------|--------|---------|---------|--------|
 | 13:30 | Edited src/app/event_loop/commands_terminal.rs | modified apply_mode_event() | ~522 |
 | 13:31 | Session end: 1 writes across 1 files (commands_terminal.rs) | 2 reads | ~11652 tok |
+
+## Session: 2026-05-17 17:35
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-05-17 17:38
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 17:47 | Edited src/render/renderer/palette/leap.rs | added 1 import(s) | ~84 |
+| 17:48 | Edited src/render/renderer/palette/leap.rs | modified is_empty() | ~267 |
+| 17:48 | Edited src/render/renderer/palette/leap.rs | modified is_empty() | ~544 |
+| 17:48 | Edited src/render/renderer/palette/leap.rs | 13→13 lines | ~130 |
+| 17:49 | Refactored leap overlay to use badge component | src/render/renderer/palette/leap.rs | Now renders with border + blended background instead of solid rect | ~1650 |
+| 17:50 | Session end: 4 writes across 1 files (leap.rs) | 3 reads | ~9489 tok |
+
+## Session: 2026-05-17 17:59
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-05-17 18:00
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 18:04 | Edited src/app/event_loop/async_results/lsp.rs | modified is_empty() | ~504 |
+| 18:04 | Session end: 1 writes across 1 files (lsp.rs) | 3 reads | ~24662 tok |
+| 18:50 | Edited src/app/event_loop/async_results/lsp.rs | modified is_empty() | ~612 |
+| 18:51 | Fixed LSP diagnostics showing errors in builtin/dependency files | src/app/event_loop/async_results/lsp.rs | Added path pattern filter for node_modules, Go stdlib, Rust stdlib, Python site-packages, vendor dirs | ~200 tokens |
+| 18:52 | Session end: 2 writes across 1 files (lsp.rs) | 4 reads | ~31809 tok |

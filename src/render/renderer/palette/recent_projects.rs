@@ -12,9 +12,11 @@ use super::{
     render_palette_chrome, render_palette_footer, render_palette_selection, PaletteFooterAction,
     PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD,
 };
-use super::super::helpers::{
-    clamp_monospace_text, estimate_monospace_width, layout_panel_text, layout_panel_text_bold,
-    rect_to_scissor,
+use super::super::{
+    components::{layout_prefix_icon_badge, PrefixIconBadge, PrefixIconBadgeChrome},
+    helpers::{
+        clamp_monospace_text, estimate_monospace_width, layout_panel_text, rect_to_scissor,
+    },
 };
 
 impl Renderer {
@@ -283,24 +285,20 @@ impl Renderer {
                 let badge_w = (row_h * 0.58).clamp(30.0, 42.0);
                 let badge_h = badge_w;
                 let badge_y = row_top + (row_h - badge_h) * 0.5;
-                let icon_text_color = blend_recent_badge_color(model.panel_bg, badge_color, 0.86);
-                let icon_size = (badge_h * 0.675).max(12.0);
-                let icon_w = estimate_monospace_width(badge, icon_size);
-                let icon_line_h = icon_size * 1.15;
-                let icon_x = text_x + (badge_w - icon_w) * 0.5;
-                let icon_y = badge_y + (badge_h - icon_line_h) * 0.5 + icon_size * 0.12;
-                self.palette_text_system
-                    .set_metrics(cosmic_text::Metrics::new(icon_size, icon_line_h));
-                self.palette_text_system
-                    .set_size(Some(badge_w), Some(icon_line_h));
-                glyphs.extend(layout_panel_text_bold(
-                    badge,
+                glyphs.extend(layout_prefix_icon_badge(
+                    PrefixIconBadge {
+                        icon: badge,
+                        color: badge_color,
+                        panel_bg: model.panel_bg,
+                        bounds: [text_x, badge_y, badge_w, badge_h],
+                        icon_scale: 0.675,
+                        y_nudge_scale: 0.12,
+                        chrome: PrefixIconBadgeChrome::None,
+                    },
                     &mut self.palette_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    icon_x,
-                    icon_y,
-                    icon_text_color,
+                    &mut quads,
                 ));
                 self.palette_text_system
                     .set_metrics(cosmic_text::Metrics::new(font_size, line_h));
@@ -449,15 +447,7 @@ fn relative_last_opened_label(last_opened_unix_secs: u64) -> String {
     }
 }
 
-fn blend_recent_badge_color(base: [f32; 4], tint: [f32; 4], amount: f32) -> [f32; 4] {
-    let t = amount.clamp(0.0, 1.0);
-    [
-        base[0] * (1.0 - t) + tint[0] * t,
-        base[1] * (1.0 - t) + tint[1] * t,
-        base[2] * (1.0 - t) + tint[2] * t,
-        1.0,
-    ]
-}
+
 
 
 

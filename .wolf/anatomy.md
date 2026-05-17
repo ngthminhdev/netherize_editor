@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-17T06:30:41.428Z
-> Files: 353 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-17T11:50:36.469Z
+> Files: 357 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
 
@@ -18,7 +18,7 @@
 ## .claude/
 
 - `settings.json` (~441 tok)
-- `settings.local.json` (~1119 tok)
+- `settings.local.json` (~1130 tok)
 
 ## .claude/rules/
 
@@ -246,7 +246,7 @@
 - `bearded-void.toml` (~480 tok)
 - `catppuccin-mocha.toml` (~508 tok)
 - `cyberpunk-neon.toml` (~470 tok)
-- `default-dark.toml` — Theme metadata shown after the profile is loaded. (~2845 tok)
+- `default-dark.toml` — Theme metadata shown after the profile is loaded. (~2842 tok)
 - `dracula.toml` (~470 tok)
 - `gruv-box.toml` (~466 tok)
 - `monokai.toml` (~511 tok)
@@ -290,11 +290,11 @@
 
 - `async_bridge.rs` — BridgePumpStats: new, pump (~4152 tok)
 - `clipboard.rs` — SystemClipboard: new (~524 tok)
-- `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~14701 tok)
+- `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~15174 tok)
 - `file_picker.rs` — FilePickerEntry: open, close, append_query, backspace_query + 6 more (~1644 tok)
 - `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~1621 tok)
 - `mod.rs` (~66 tok)
-- `persistence.rs` — AppPersistentState: load, save, push_recent, most_recent_existing + 2 more (~792 tok)
+- `persistence.rs` — AppPersistentState: load, save, push_recent, push_recent_with_icon + 4 more (~1284 tok)
 - `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~15238 tok)
 
 ## src/app/app_state/
@@ -304,7 +304,7 @@
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new + 1 more (~18941 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~6797 tok)
 - `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~15179 tok)
-- `palette.rs` — open_command_palette_mode, open_python_env_selector, push_jump, push_jump_entry + 21 more (~13087 tok)
+- `palette.rs` — open_command_palette_mode, open_python_env_selector, push_jump, push_jump_entry + 21 more (~13329 tok)
 - `settings.rs` — [derive(Debug, Clone, PartialEq)] (~1971 tok)
 - `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, preview_file_history_index + 9 more (~11241 tok)
 - `tests.rs` — [cfg(test)] (~17738 tok)
@@ -316,13 +316,13 @@
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~10569 tok)
 - `commands_completion.rs` (~4377 tok)
 - `commands_editor.rs` (~4920 tok)
-- `commands_explorer.rs` (~6728 tok)
+- `commands_explorer.rs` (~6778 tok)
 - `commands_lsp.rs` (~9413 tok)
 - `commands_palette.rs` (~7270 tok)
-- `commands_prompts.rs` (~6945 tok)
+- `commands_prompts.rs` (~6970 tok)
 - `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~6809 tok)
 - `commands_settings.rs` (~1683 tok)
-- `commands_terminal.rs` (~5798 tok)
+- `commands_terminal.rs` (~6212 tok)
 - `commands_tests.rs` — [derive(Default)] (~15874 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~8604 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~17593 tok)
@@ -337,7 +337,7 @@
 - `filesystem.rs` (~503 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
-- `lsp.rs` (~8370 tok)
+- `lsp.rs` (~8159 tok)
 - `mod.rs` (~8423 tok)
 - `preview.rs` (~993 tok)
 - `shell.rs` (~112 tok)
@@ -400,7 +400,7 @@
 
 - `builtin.rs` — builtin_dark (~2161 tok)
 - `loader.rs` — ThemeProfileEntry: default_profile, resolved_profile, active_profile, list_available_themes + 5 more (~11709 tok)
-- `model.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5147 tok)
+- `model.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5464 tok)
 - `raw.rs` — [derive(Debug, Clone, Deserialize)] (~3449 tok)
 
 ## src/core/
@@ -444,12 +444,19 @@
 
 ## src/render/renderer/
 
-- `components.rs` — Declares ShortcutHintSegment (~3792 tok)
+- `components.rs` (~123 tok)
 - `editor.rs` — Editor viewport rendering modules. (~2278 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3988 tok)
 - `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~6294 tok)
-- `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~2321 tok)
+- `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~2332 tok)
 - `ui.rs` — Panel UI rendering modules. (~42 tok)
+
+## src/render/renderer/components/
+
+- `help_keycaps.rs` — HelpKeycapPalette: help_keycap_palette, layout_help_keycaps, estimate_help_keycaps_width (~2002 tok)
+- `highlight_chip.rs` — [derive(Clone, Copy)] (~298 tok)
+- `prefix_icon_badge.rs` — PrefixIconBadge: layout_prefix_icon_badge (~768 tok)
+- `shortcut_hint.rs` — Enum: ShortcutHintSegment (61 variants) (~1644 tok)
 
 ## src/render/renderer/editor/
 
@@ -476,12 +483,12 @@
 
 ## src/render/renderer/palette/
 
-- `file_picker.rs` — Declares to (~4155 tok)
+- `file_picker.rs` — Declares to (~3768 tok)
 - `highlighted_label.rs` — Render a label string with fuzzy-match character highlights. (~837 tok)
-- `leap.rs` — Draw cyan Leap labels over editor glyphs, filtered by the currently typed prefix. (~2177 tok)
+- `leap.rs` — update_editor_leap_labels, clear_leap_labels (~1916 tok)
 - `live_grep.rs` — Declares to (~2512 tok)
 - `minimal.rs` (~4685 tok)
-- `recent_projects.rs` (~3808 tok)
+- `recent_projects.rs` (~5262 tok)
 
 ## src/render/renderer/ui/
 
@@ -492,7 +499,7 @@
 - `terminal.rs` — update_terminal_content, update_buffer_terminal_content (~6326 tok)
 - `topbar.rs` — update_topbar_content (~2712 tok)
 - `utils.rs` — Declares BORDER (~2418 tok)
-- `welcome.rs` — update_welcome_screen_content (~5474 tok)
+- `welcome.rs` — update_welcome_screen_content (~5649 tok)
 
 ## src/render/shaders/
 

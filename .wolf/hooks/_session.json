@@ -1,30 +1,46 @@
 {
-  "session_id": "session-2026-05-17-1227",
-  "started": "2026-05-17T05:27:24.259Z",
+  "session_id": "session-2026-05-17-1800",
+  "started": "2026-05-17T11:00:00.885Z",
   "files_read": {
-    "/Users/qc-bright/Project/netherize_editor/config/keymaps/default.toml": {
+    "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/lsp_io.rs": {
       "count": 1,
-      "tokens": 5027,
-      "first_read": "2026-05-17T05:33:20.265Z"
+      "tokens": 2423,
+      "first_read": "2026-05-17T11:02:43.817Z"
     },
-    "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/commands_terminal.rs": {
+    "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/async_results/lsp.rs": {
+      "count": 1,
+      "tokens": 8370,
+      "first_read": "2026-05-17T11:02:52.412Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/app_state/palette.rs": {
       "count": 2,
-      "tokens": 6066,
-      "first_read": "2026-05-17T05:33:24.865Z"
+      "tokens": 13329,
+      "first_read": "2026-05-17T11:03:03.979Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/app_state/buffers.rs": {
+      "count": 1,
+      "tokens": 6491,
+      "first_read": "2026-05-17T11:49:08.942Z"
     }
   },
   "files_written": [
     {
-      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/commands_terminal.rs",
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/async_results/lsp.rs",
       "action": "edit",
-      "tokens": 559,
-      "at": "2026-05-17T06:30:41.434Z"
+      "tokens": 540,
+      "at": "2026-05-17T11:04:00.472Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/async_results/lsp.rs",
+      "action": "edit",
+      "tokens": 656,
+      "at": "2026-05-17T11:50:36.476Z"
     }
   ],
   "edit_counts": {
-    "src/app/event_loop/commands_terminal.rs": 1
+    "src/app/event_loop/async_results/lsp.rs": 2
   },
-  "anatomy_hits": 2,
+  "anatomy_hits": 4,
   "anatomy_misses": 0,
   "repeated_reads_warned": 1,
   "cerebrum_warnings": 0,

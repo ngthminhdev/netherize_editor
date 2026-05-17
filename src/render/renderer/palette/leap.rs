@@ -8,6 +8,9 @@ use crate::{
     text::layout_sync::visual_y_for_logical_scroll_with_folds,
 };
 
+use super::super::components::{
+    layout_prefix_icon_badge, PrefixIconBadge, PrefixIconBadgeChrome,
+};
 use super::super::editor::editor_viewport_geometry;
 use super::super::helpers::{
     clamp_monospace_text, estimate_monospace_width, ext_icon_dot, gutter_width_for_editor,
@@ -53,10 +56,8 @@ impl Renderer {
         let origin_x = geometry.origin_x;
         let origin_y = geometry.viewport_text_top + geometry.line_height - scroll_y;
 
-        let mut label_color = self.theme.ui.cyan.as_f32();
-        label_color[3] = 1.0;
-        let mut char_bg_color = self.theme.ui.panel_bg.as_f32();
-        char_bg_color[3] = 0.96;
+        let label_color = self.theme.ui.cyan.as_f32();
+        let panel_bg = self.theme.ui.panel_bg.as_f32();
         let mut overlay_color = self.theme.ui.overlay_bg.as_f32();
         overlay_color[3] = 0.34;
 
@@ -78,25 +79,7 @@ impl Renderer {
             return;
         }
 
-        // Measure the baseline shift of the 1.1x font used for label chars.
-        let color_u8 = (label_color[0] * 255.0) as u8;
-        let dummy_color = [color_u8, color_u8, color_u8, 255u8];
-        let sample_text = label_map
-            .values()
-            .find_map(|label| label.strip_prefix(typed_prefix))
-            .filter(|remaining| !remaining.is_empty())
-            .unwrap_or("a");
-        self.leap_label_text_system
-            .set_text_with_color(sample_text, dummy_color);
-        let label_line_y = self
-            .leap_label_text_system
-            .buffer()
-            .layout_runs()
-            .next()
-            .map(|r| r.line_y)
-            .unwrap_or(0.0);
-
-        let mut bg_per_char: Vec<RegionDrawInstance> = Vec::with_capacity(labels.len());
+        let mut chrome: Vec<RegionDrawInstance> = Vec::with_capacity(labels.len() * 2);
         let mut glyph_instances: Vec<GlyphInstance> = Vec::with_capacity(labels.len());
 
         for run in self.text_system.buffer().layout_runs() {
@@ -132,40 +115,36 @@ impl Renderer {
                 let glyph_top = line_top_physical;
                 let cell_w = glyph.w.max(font_size * 0.5);
                 let cell_h = run.line_height.max(1.0);
-                let badge_padding_x = (font_size * 0.12).max(2.0);
-                let badge_padding_y = (font_size * 0.04).max(1.0);
-                let label_width =
-                    estimate_monospace_width(visible_label, font_size * 1.1).max(cell_w);
-                let badge_w = (label_width + badge_padding_x * 2.0).max(cell_w + 2.0);
-                let badge_h = (cell_h + badge_padding_y * 2.0).max(font_size * 1.0);
+                let badge_padding_x = (font_size * 0.34).max(5.0);
+                let label_width = estimate_monospace_width(visible_label, font_size);
+                let badge_w = (label_width + badge_padding_x * 2.0).max(cell_w + 8.0);
+                let badge_h = (font_size * 1.42).clamp(cell_h * 0.82, cell_h + 4.0);
                 let badge_x = glyph_x - ((badge_w - cell_w) * 0.5);
-                let badge_y = glyph_top - badge_padding_y;
+                let badge_y = glyph_top + ((cell_h - badge_h) * 0.5).max(0.0);
 
-                // Solid badge background overwrites the original glyph before drawing suffix text.
-                bg_per_char.push(RegionDrawInstance::new(
-                    [badge_x, badge_y, badge_w, badge_h],
-                    char_bg_color,
-                ));
-
-                // Render only the remaining suffix so the overlay visually narrows as the user types.
-                let baseline_y = origin_y + run.line_y - y_offset;
-                let label_origin_y = baseline_y - label_line_y;
-                let label_origin_x = badge_x + (badge_w - label_width) * 0.5;
-                glyph_instances.extend(layout_panel_text(
-                    visible_label,
+                // Use shared prefix icon badge component for outline + blended background + label text.
+                let badge = PrefixIconBadge {
+                    icon: visible_label,
+                    color: label_color,
+                    panel_bg,
+                    bounds: [badge_x, badge_y, badge_w, badge_h],
+                    icon_scale: if visible_label.chars().count() > 1 { 0.50 } else { 0.68 },
+                    y_nudge_scale: 0.08,
+                    chrome: PrefixIconBadgeChrome::Outline,
+                };
+                glyph_instances.extend(layout_prefix_icon_badge(
+                    badge,
                     &mut self.leap_label_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    label_origin_x,
-                    label_origin_y,
-                    label_color,
+                    &mut chrome,
                 ));
             }
         }
 
-        // Dim overlay (whole editor area) + per-char backgrounds
+        // Dim overlay (whole editor area) + badge chrome (borders + backgrounds)
         let mut all_bg = vec![RegionDrawInstance::new(viewport_bounds, overlay_color)];
-        all_bg.extend(bg_per_char);
+        all_bg.extend(chrome);
         self.leap_label_bg_instances = all_bg;
         self.leap_label_glyph_instances = glyph_instances;
         self.leap_label_text_pipeline.upload_instances(

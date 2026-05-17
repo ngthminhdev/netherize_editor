@@ -1515,7 +1515,13 @@ impl AppShell {
         {
             let w = self.window_size.width as f32;
             let h = self.window_size.height as f32;
-            renderer.update_toast_popup(&toast.message, w, h);
+            renderer.update_toast_popup(
+                &toast.message,
+                toast.kind,
+                toast.progress_fraction(Instant::now()),
+                w,
+                h,
+            );
         } else if let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_toast_popup();
         }

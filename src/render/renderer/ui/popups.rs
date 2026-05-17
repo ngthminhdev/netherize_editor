@@ -1,6 +1,7 @@
 use cosmic_text::Metrics;
 
 use crate::{
+    app::event_loop::ToastKind,
     config::theme_config::linear_rgba_to_srgb_u8,
     render::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
@@ -458,56 +459,110 @@ impl Renderer {
             .upload_instances(&self.device, &self.queue, &[]);
     }
 
-    pub fn update_toast_popup(&mut self, message: &str, window_w: f32, window_h: f32) {
-        const TOAST_W: f32 = 720.0;
-        const MARGIN_X: f32 = 18.0;
-        const MARGIN_Y: f32 = 18.0;
+    pub fn update_toast_popup(
+        &mut self,
+        message: &str,
+        kind: ToastKind,
+        progress_fraction: f32,
+        window_w: f32,
+        window_h: f32,
+    ) {
+        const TOAST_W: f32 = 840.0;
+        const MARGIN_X: f32 = 22.0;
+        const MARGIN_Y: f32 = 24.0;
         const BORDER: f32 = 1.0;
+        const RAIL_W: f32 = 4.0;
         const INNER_PAD_X: f32 = 16.0;
-        const INNER_PAD_Y: f32 = 12.0;
+        const INNER_PAD_Y: f32 = 14.0;
+        const ICON_W: f32 = 28.0;
+        const PROGRESS_H: f32 = 3.0;
 
-        let toast_available_w = (window_w - MARGIN_X * 2.0).max(140.0);
+        let toast_available_w = (window_w - MARGIN_X * 2.0).max(160.0);
         let toast_w = toast_available_w.min(TOAST_W);
-        let content_w = (toast_w - INNER_PAD_X * 2.0).max(1.0);
-        let font_size = self.theme.ui.sidebar_font_size.max(11.0);
-        let line_h = self.theme.ui.sidebar_line_height.max(1.0);
+        let font_size = self.theme.ui.sidebar_font_size.max(12.0);
+        let line_h = self.theme.ui.sidebar_line_height.max(font_size + 4.0);
         let bg_color = self.theme.ui.panel_bg.as_f32();
-        let accent = self.theme.ui.accent.as_f32();
+        let mut border_color = self.theme.ui.border_color.as_f32();
+        border_color[3] = border_color[3].clamp(0.45, 0.75);
         let fg = self.theme.ui.fg.as_f32();
-
-        let text_h = measure_wrapped_block_height(
-            &mut self.toast_text_system,
-            message,
-            content_w,
-            font_size,
-            line_h,
-            fg,
-            PopupTextStyle::Normal,
-        );
-        let toast_h = INNER_PAD_Y * 2.0 + text_h;
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let accent = match kind {
+            ToastKind::Info => self.theme.ui.info.as_f32(),
+            ToastKind::Warning => self.theme.ui.warning.as_f32(),
+            ToastKind::Error => self.theme.ui.error.as_f32(),
+            ToastKind::Success => self.theme.ui.success.as_f32(),
+        };
+        let icon = match kind {
+            ToastKind::Info => "ⓘ",
+            ToastKind::Warning => "⚠",
+            ToastKind::Error => "✕",
+            ToastKind::Success => "✓",
+        };
+        let title = toast_title_for_kind(kind, message);
+        let body = toast_body_for_message(message);
+        let text_x = INNER_PAD_X + ICON_W;
+        let content_w = (toast_w - text_x - INNER_PAD_X).max(1.0);
+        let body_h = if body.is_empty() {
+            0.0
+        } else {
+            measure_wrapped_block_height(
+                &mut self.toast_text_system,
+                body,
+                content_w,
+                font_size,
+                line_h,
+                fg_dim,
+                PopupTextStyle::Normal,
+            ) + 4.0
+        };
+        let toast_h = INNER_PAD_Y * 2.0 + line_h + body_h + PROGRESS_H;
         let x = (window_w - toast_w - MARGIN_X).max(0.0);
         let y = MARGIN_Y.min((window_h - toast_h).max(0.0));
 
         self.toast_scissor = rect_to_scissor([0.0, 0.0, window_w, window_h]);
-        self.toast_glyph_instances = layout_wrapped_block(
-            message,
+        let mut glyphs = Vec::new();
+        glyphs.extend(layout_panel_text_bold(
+            icon,
             &mut self.toast_text_system,
             &mut self.atlas,
             &self.queue,
             x + INNER_PAD_X,
             y + INNER_PAD_Y,
+            accent,
+        ));
+        glyphs.extend(layout_panel_text_bold(
+            &clamp_toast_text(title, content_w, font_size),
+            &mut self.toast_text_system,
+            &mut self.atlas,
+            &self.queue,
+            x + text_x,
+            y + INNER_PAD_Y,
             fg,
-            content_w,
-            font_size,
-            line_h,
-            PopupTextStyle::Normal,
-        );
+        ));
+        if !body.is_empty() {
+            glyphs.extend(layout_wrapped_block(
+                body,
+                &mut self.toast_text_system,
+                &mut self.atlas,
+                &self.queue,
+                x + text_x,
+                y + INNER_PAD_Y + line_h + 4.0,
+                fg_dim,
+                content_w,
+                font_size,
+                line_h,
+                PopupTextStyle::Normal,
+            ));
+        }
+        self.toast_glyph_instances = glyphs;
         self.toast_text_pipeline.upload_instances(
             &self.device,
             &self.queue,
             &self.toast_glyph_instances,
         );
 
+        let progress_w = (toast_w * progress_fraction.clamp(0.0, 1.0)).max(0.0);
+        let progress_y = y + toast_h - PROGRESS_H;
         self.toast_chrome_instances = vec![
             RegionDrawInstance::new(
                 [
@@ -516,10 +571,11 @@ impl Renderer {
                     toast_w + BORDER * 2.0,
                     toast_h + BORDER * 2.0,
                 ],
-                accent,
+                border_color,
             ),
             RegionDrawInstance::new([x, y, toast_w, toast_h], bg_color),
-            RegionDrawInstance::new([x, y, 4.0, toast_h], accent),
+            RegionDrawInstance::new([x, y, RAIL_W, toast_h], accent),
+            RegionDrawInstance::new([x, progress_y, progress_w, PROGRESS_H], accent),
         ];
     }
 
@@ -530,6 +586,41 @@ impl Renderer {
         self.toast_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
     }
+}
+
+fn toast_title_for_kind<'a>(kind: ToastKind, message: &'a str) -> &'a str {
+    if let Some((title, _body)) = message.split_once('\n') {
+        let title = title.trim();
+        if !title.is_empty() {
+            return title;
+        }
+    }
+
+    match kind {
+        ToastKind::Info => "Info",
+        ToastKind::Warning => "Warning",
+        ToastKind::Error => "Error",
+        ToastKind::Success => "Done",
+    }
+}
+
+fn toast_body_for_message(message: &str) -> &str {
+    if let Some((_title, body)) = message.split_once('\n') {
+        return body.trim();
+    }
+    message.trim()
+}
+
+fn clamp_toast_text(text: &str, width: f32, font_size: f32) -> String {
+    let approx_char_w = font_size * 0.58;
+    let max_chars = (width / approx_char_w).floor().max(1.0) as usize;
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let take = max_chars.saturating_sub(1);
+    let mut clipped = text.chars().take(take).collect::<String>();
+    clipped.push('…');
+    clipped
 }
 
 #[derive(Debug, Clone, Copy)]

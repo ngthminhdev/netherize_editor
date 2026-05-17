@@ -58,10 +58,36 @@ pub(super) fn handle_lsp_result(
                     diagnostics.len()
                 );
             }
-          
+
             if let Some(path) =
                 lsp_uri_to_path(&uri).and_then(|path| path.canonicalize().ok().or(Some(path)))
             {
+                // Filter out diagnostics from builtin/dependency files.
+                // Common patterns: node_modules, Go stdlib, Rust stdlib, Python site-packages, etc.
+                let path_str = path.to_string_lossy();
+                let is_builtin = path_str.contains("/node_modules/")
+                    || path_str.contains("\\node_modules\\")
+                    || path_str.contains("/go/src/")
+                    || path_str.contains("\\go\\src\\")
+                    || path_str.contains("/.rustup/")
+                    || path_str.contains("\\.rustup\\")
+                    || path_str.contains("/site-packages/")
+                    || path_str.contains("\\site-packages\\")
+                    || path_str.contains("/dist-packages/")
+                    || path_str.contains("\\dist-packages\\")
+                    || path_str.contains("/lib/python")
+                    || path_str.contains("\\lib\\python")
+                    || path_str.contains("/vendor/")
+                    || path_str.contains("\\vendor\\");
+
+                if is_builtin {
+                    eprintln!(
+                        "[AppShell] LSP diagnostics ignored for builtin/dependency file: {}",
+                        path.display()
+                    );
+                    return;
+                }
+
                 let is_active_file = app
                     .app_state
                     .active_file()
