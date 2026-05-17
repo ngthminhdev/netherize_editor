@@ -386,7 +386,10 @@ impl AppShell {
             return false;
         }
 
-        if let Err(err) = self.app_state.open_recent_projects_palette(&recent) {
+        if let Err(err) = self.app_state.open_recent_projects_palette_with_meta(
+            &recent,
+            &self.persistent_state.recent_project_meta,
+        ) {
             eprintln!("[AppShell] open recent projects palette failed: {err}");
             return false;
         }

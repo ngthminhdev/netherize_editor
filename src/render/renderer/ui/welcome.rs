@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::OnceLock};
+use std::{path::{Path, PathBuf}, sync::OnceLock};
 
 use cosmic_text::Metrics;
 
@@ -22,6 +22,31 @@ struct BundledLogo {
     width: u32,
     height: u32,
     rgba: Vec<u8>,
+}
+
+fn infer_welcome_project_icon_source(path: &Path) -> PathBuf {
+    const MARKERS: &[&str] = &[
+        "Cargo.toml",
+        "package.json",
+        "go.mod",
+        "flake.nix",
+        "default.nix",
+        "deno.json",
+        "tsconfig.json",
+        "pyproject.toml",
+        "requirements.txt",
+        "build.zig",
+        "CMakeLists.txt",
+        "Makefile",
+        "README.md",
+    ];
+    for marker in MARKERS {
+        let candidate = path.join(marker);
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+    path.to_path_buf()
 }
 
 fn bundled_logo() -> Option<&'static BundledLogo> {
@@ -336,11 +361,14 @@ impl Renderer {
                 .and_then(|name| name.to_str())
                 .unwrap_or("unknown");
             let path = project.display().to_string();
-            let lang = project
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| ext.to_ascii_uppercase())
-                .unwrap_or_else(|| "DIR".to_string());
+            let icon_source = infer_welcome_project_icon_source(project);
+            let icon_name = icon_source
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(name);
+            let project_icon = self.theme.icon_theme_for_filename(icon_name, false);
+            let icon = project_icon.glyph.clone();
+            let icon_color = project_icon.color.as_f32();
             let active = index == selected_recent_index;
             let tag = if index == 0 { "latest" } else { "recent" };
             let tag_size = sx(10.0);
@@ -362,23 +390,17 @@ impl Renderer {
                         .with_radius(2.0),
                 );
             }
-            chrome.push(
-                RegionDrawInstance::new([rx + sx(14.0), y + sx(9.0), sx(34.0), sx(16.0)], panel)
-                    .with_radius(sx(3.0)),
-            );
+            let icon_size = sx(16.0);
+            let icon_w = text_w(&icon, icon_size);
             line(
                 self,
                 &mut glyphs,
-                &lang,
-                rx + sx(19.0),
-                y + sx(10.0),
-                sx(9.0),
-                sx(12.0),
-                if lang == "TS" {
-                    self.theme.ui.info.as_f32()
-                } else {
-                    accent
-                },
+                &icon,
+                rx + sx(14.0) + ((sx(34.0) - icon_w) * 0.5).max(0.0),
+                y + sx(6.0),
+                icon_size,
+                sx(19.0),
+                icon_color,
                 true,
             );
             line(

@@ -417,6 +417,36 @@ impl ThemeConfig {
             return &self.icons.folder_closed;
         }
 
+        if filename.eq_ignore_ascii_case("cargo.toml") {
+            return &self.icons.rust;
+        }
+        if filename.eq_ignore_ascii_case("package.json")
+            || filename.eq_ignore_ascii_case("package-lock.json")
+        {
+            return &self.icons.javascript;
+        }
+        if filename.eq_ignore_ascii_case("tsconfig.json") {
+            return &self.icons.typescript;
+        }
+        if filename.eq_ignore_ascii_case("go.mod") || filename.eq_ignore_ascii_case("go.sum") {
+            return &self.icons.go;
+        }
+        if filename.eq_ignore_ascii_case("flake.nix")
+            || filename.eq_ignore_ascii_case("default.nix")
+        {
+            return &self.icons.config;
+        }
+        if filename.eq_ignore_ascii_case("pyproject.toml")
+            || filename.eq_ignore_ascii_case("requirements.txt")
+        {
+            return &self.icons.python;
+        }
+        if filename.eq_ignore_ascii_case("build.zig") {
+            return &self.icons.zig;
+        }
+        if filename.eq_ignore_ascii_case("readme.md") {
+            return &self.icons.markdown;
+        }
         if filename.eq_ignore_ascii_case("dockerfile")
             || filename.eq_ignore_ascii_case("containerfile")
         {

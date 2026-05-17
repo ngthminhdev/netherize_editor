@@ -131,7 +131,11 @@ impl AppShell {
         self.explorer_snapshot_dirty = true;
         self.explorer_cursor = 0;
 
-        self.persistent_state.push_recent(root_path.clone());
+        let icon_source = crate::app::persistence::AppPersistentState::infer_project_icon_source(
+            &root_path,
+        );
+        self.persistent_state
+            .push_recent_with_icon(root_path.clone(), Some(icon_source));
         self.persistent_state.save();
 
         self.mark_explorer_dirty();

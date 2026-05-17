@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::{collections::HashMap, path::{Path, PathBuf}, time::{SystemTime, UNIX_EPOCH}};
 
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +11,17 @@ pub struct AppPersistentState {
     #[serde(default)]
     pub recent_projects: Vec<PathBuf>,
     #[serde(default)]
+    pub recent_project_meta: HashMap<PathBuf, RecentProjectMeta>,
+    #[serde(default)]
     pub theme_profile: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RecentProjectMeta {
+    #[serde(default)]
+    pub icon_source: Option<String>,
+    #[serde(default)]
+    pub last_opened_unix_secs: Option<u64>,
 }
 
 impl AppPersistentState {
@@ -72,9 +82,51 @@ impl AppPersistentState {
     }
 
     pub fn push_recent(&mut self, path: PathBuf) {
+        self.push_recent_with_icon(path, None);
+    }
+
+    pub fn push_recent_with_icon(&mut self, path: PathBuf, icon_source: Option<String>) {
         self.recent_projects.retain(|p| p != &path);
-        self.recent_projects.insert(0, path);
+        self.recent_projects.insert(0, path.clone());
         self.recent_projects.truncate(MAX_RECENT);
+        let keep: std::collections::HashSet<_> = self.recent_projects.iter().cloned().collect();
+        self.recent_project_meta.retain(|path, _| keep.contains(path));
+        let last_opened_unix_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .ok()
+            .map(|duration| duration.as_secs());
+        self.recent_project_meta.insert(
+            path,
+            RecentProjectMeta {
+                icon_source,
+                last_opened_unix_secs,
+            },
+        );
+    }
+
+    pub fn infer_project_icon_source(path: &Path) -> String {
+        const MARKERS: &[&str] = &[
+            "Cargo.toml",
+            "package.json",
+            "go.mod",
+            "flake.nix",
+            "default.nix",
+            "deno.json",
+            "tsconfig.json",
+            "pyproject.toml",
+            "requirements.txt",
+            "build.zig",
+            "CMakeLists.txt",
+            "Makefile",
+            "README.md",
+        ];
+        for marker in MARKERS {
+            let candidate = path.join(marker);
+            if candidate.exists() {
+                return candidate.display().to_string();
+            }
+        }
+        path.display().to_string()
     }
 
     pub fn most_recent_existing(&self) -> Option<PathBuf> {

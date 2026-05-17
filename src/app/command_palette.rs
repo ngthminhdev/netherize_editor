@@ -201,14 +201,28 @@ impl CommandPaletteItem {
     }
 
     pub fn recent_project(path: &std::path::Path) -> Self {
+        Self::recent_project_with_meta(path, None, None)
+    }
+
+    pub fn recent_project_with_meta(
+        path: &std::path::Path,
+        icon_source: Option<&str>,
+        last_opened_unix_secs: Option<u64>,
+    ) -> Self {
         let name = path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
+        let secondary_label = match (icon_source, last_opened_unix_secs) {
+            (Some(icon), Some(secs)) => Some(format!("icon={icon};last={secs}")),
+            (Some(icon), None) => Some(format!("icon={icon}")),
+            (None, Some(secs)) => Some(format!("last={secs}")),
+            (None, None) => None,
+        };
         Self {
             label: name,
-            secondary_label: None,
+            secondary_label,
             action: CommandPaletteAction::OpenFile(path.to_path_buf()),
             tone: CommandPaletteItemTone::Default,
             preview_colors: Vec::new(),
@@ -879,7 +893,12 @@ impl CommandPalette {
                 .iter()
                 .map(|entry| match self.mode {
                     CommandPaletteMode::RecentProjects => match &entry.action {
-                        CommandPaletteAction::OpenFile(path) => path.display().to_string(),
+                        CommandPaletteAction::OpenFile(path) => match &entry.secondary_label {
+                            Some(meta) if !meta.is_empty() => {
+                                format!("{}\u{1f}{}", path.display(), meta)
+                            }
+                            _ => path.display().to_string(),
+                        },
                         CommandPaletteAction::OpenSearchMatch { path, .. } => {
                             path.display().to_string()
                         }
@@ -1138,6 +1157,7 @@ fn palette_row_height(mode: CommandPaletteMode, line_height: f32) -> f32 {
     match mode {
         CommandPaletteMode::LiveGrep => line_height * 2.0 + 16.0,
         CommandPaletteMode::ThemeSelector => line_height * 1.18 + 18.0,
+        CommandPaletteMode::RecentProjects => line_height * 2.0 + 20.0,
         CommandPaletteMode::DocumentSymbols | CommandPaletteMode::FilePicker => {
             (line_height + 16.0) * 1.5
         }

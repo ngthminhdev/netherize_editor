@@ -111,6 +111,28 @@ impl AppState {
         Ok(())
     }
 
+    pub fn open_recent_projects_palette_with_meta(
+        &mut self,
+        recent: &[std::path::PathBuf],
+        meta: &std::collections::HashMap<std::path::PathBuf, crate::app::persistence::RecentProjectMeta>,
+    ) -> Result<(), String> {
+        use crate::app::command_palette::CommandPaletteItem;
+        let items = recent
+            .iter()
+            .map(|path| {
+                let item_meta = meta.get(path);
+                CommandPaletteItem::recent_project_with_meta(
+                    path,
+                    item_meta.and_then(|meta| meta.icon_source.as_deref()),
+                    item_meta.and_then(|meta| meta.last_opened_unix_secs),
+                )
+            })
+            .collect();
+        self.command_palette
+            .open_with_items(CommandPaletteMode::RecentProjects, items);
+        Ok(())
+    }
+
     pub fn sync_welcome_recent_projects(&mut self, recent: &[std::path::PathBuf]) -> bool {
         use crate::app::command_palette::CommandPaletteItem;
         let items: Vec<_> = recent

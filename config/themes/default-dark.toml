@@ -117,11 +117,11 @@ color = "#4a5e84"
 
 # Extension-specific file icons used by the explorer and fuzzy lists.
 [icons.rust]
-glyph = "\uE7A8"
+glyph = "󱘗"
 color = "#FF955C"
 
 [icons.javascript]
-glyph = "\uE781"
+glyph = "󰌞"
 color = "#EACD61"
 
 [icons.typescript]
