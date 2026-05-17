@@ -792,9 +792,9 @@ impl Renderer {
                 let folded_line_count =
                     app_state.folded_line_count_at_marker(abs_line).unwrap_or(0);
                 if folded_line_count > 0 {
-                    format!("▶{}", folded_line_count)
+                    format!(" {}", folded_line_count)
                 } else {
-                    format!("▶")
+                    format!("")
                 }
             } else if self.relative_numbers {
                 let dist = abs_line.abs_diff(cursor_line);

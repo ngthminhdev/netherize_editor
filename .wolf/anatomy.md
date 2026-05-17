@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-17T17:00:00.684Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-17T17:30:01.266Z
 > Files: 361 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
@@ -308,8 +308,8 @@
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag + 17 more (~10684 tok)
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new + 1 more (~18941 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~6797 tok)
-- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~15275 tok)
-- `palette.rs` — open_command_palette_mode, open_python_env_selector, push_jump, push_jump_entry + 21 more (~13329 tok)
+- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~14341 tok)
+- `palette.rs` — open_command_palette_mode, open_python_env_selector, push_jump, push_jump_entry, pop_jump_back (~12638 tok)
 - `settings.rs` — [derive(Debug, Clone, PartialEq)] (~1971 tok)
 - `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, preview_file_history_index + 9 more (~11241 tok)
 - `tests.rs` — [cfg(test)] (~17738 tok)
@@ -327,7 +327,7 @@
 - `commands_prompts.rs` (~6970 tok)
 - `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~6809 tok)
 - `commands_settings.rs` (~1683 tok)
-- `commands_terminal.rs` (~6212 tok)
+- `commands_terminal.rs` (~6001 tok)
 - `commands_tests.rs` — [derive(Default)] (~15874 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~8683 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~17586 tok)

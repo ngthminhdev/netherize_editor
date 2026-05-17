@@ -684,6 +684,9 @@ impl AppState {
             return Err("cannot open diagnostics buffer without items".to_string());
         }
 
+        // Save current text buffer before switching to diagnostics buffer
+        self.save_current_text_buffer_history();
+
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::Diagnostics(DiagnosticsState {
@@ -852,6 +855,9 @@ impl AppState {
         title: impl Into<String>,
         working_dir: Option<PathBuf>,
     ) -> usize {
+        // Save current text buffer before switching to terminal buffer
+        self.save_current_text_buffer_history();
+
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::Terminal(PtyState {
@@ -892,6 +898,9 @@ impl AppState {
     }
 
     pub fn open_help_buffer(&mut self) -> usize {
+        // Save current text buffer before switching to help buffer
+        self.save_current_text_buffer_history();
+
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::Help(HelpState::new()),
@@ -914,6 +923,9 @@ impl AppState {
         if items.is_empty() {
             return Err("cannot open references buffer without items".to_string());
         }
+
+        // Save current text buffer before switching to references buffer
+        self.save_current_text_buffer_history();
 
         let path_counts = reference_path_counts(&items);
 
@@ -950,6 +962,9 @@ impl AppState {
         origin_line: usize,
         pending_request_id: u64,
     ) -> usize {
+        // Save current text buffer before switching to pending references buffer
+        self.save_current_text_buffer_history();
+
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::References(ReferencesBufferState {
@@ -1085,6 +1100,9 @@ impl AppState {
         enable_outline: bool,
         inline_suggestion_enabled: bool,
     ) -> usize {
+        // Save current text buffer before switching to settings buffer
+        self.save_current_text_buffer_history();
+
         if let Some(existing_idx) = self
             .buffers
             .iter()

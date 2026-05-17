@@ -124,3 +124,23 @@
 | 23:51 | Edited src/app/app_state/buffers.rs | expanded (+7 lines) | ~254 |
 | 23:56 | Fixed buffer close race condition | src/app/app_state/buffers.rs, overlays.rs | Added bounds check + text reset to prevent content corruption | ~200 tok |
 | 23:57 | Session end: 2 writes across 2 files (overlays.rs, buffers.rs) | 2 reads | ~22274 tok |
+| 00:17 | Edited src/app/app_state/palette.rs | modified open_diagnostics_buffer() | ~235 |
+| 00:17 | Edited src/app/app_state/palette.rs | modified open_terminal_buffer() | ~171 |
+| 00:18 | Edited src/app/app_state/palette.rs | modified open_help_buffer() | ~127 |
+| 00:18 | Edited src/app/app_state/palette.rs | modified open_references_buffer() | ~306 |
+| 00:18 | Edited src/app/app_state/palette.rs | modified open_pending_references_buffer() | ~282 |
+| 00:19 | Edited src/app/app_state/palette.rs | modified open_settings_buffer() | ~432 |
+| 00:21 | Edited src/app/app_state/overlays.rs | modified register_open_text_buffer() | ~319 |
+| 00:24 | Edited src/app/app_state/overlays.rs | modified save_current_text_buffer_history() | ~357 |
+| 00:25 | Audited buffer management logic | src/app/app_state/*.rs | Found and fixed data loss bug in 7 open_*_buffer functions + register_open_text_buffer | ~500 tok |
+| 00:25 | Session end: 10 writes across 3 files (overlays.rs, buffers.rs, palette.rs) | 4 reads | ~40575 tok |
+
+## Session: 2026-05-17 00:26
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 00:29 | Edited src/app/event_loop/commands_terminal.rs | modified apply_mode_event() | ~587 |
+| 00:29 | Edited src/app/event_loop/commands_terminal.rs | modified apply_mode_event() | ~420 |
+| 00:30 | Edited src/app/event_loop/commands_terminal.rs | modified apply_mode_event() | ~446 |
+| 00:30 | Fixed F12/ToggleTerminal/ToggleBottomDock not entering TerminalFocus mode | src/app/event_loop/commands_terminal.rs | Added apply_mode_event(ModeEvent::FocusTerminal) calls | ~500 tokens |
+| 00:31 | Session end: 3 writes across 1 files (commands_terminal.rs) | 3 reads | ~16528 tok |

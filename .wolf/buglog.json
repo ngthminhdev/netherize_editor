@@ -97,6 +97,42 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-17T12:30:00.000Z"
+    },
+    {
+      "id": "bug-007",
+      "timestamp": "2026-05-18T00:15:00.000Z",
+      "error_message": "Data loss when opening special buffers (Settings, Terminal, Help, References, Diagnostics, Fuzzy Picker): unsaved changes in current text buffer are lost without being saved to buffer history.",
+      "file": "src/app/app_state/palette.rs, src/app/app_state/overlays.rs",
+      "root_cause": "All open_*_buffer() functions (open_settings_buffer, open_terminal_buffer, open_help_buffer, open_references_buffer, open_diagnostics_buffer, open_pending_references_buffer) and register_open_text_buffer() directly set active_buffer_index without calling save_current_text_buffer_history() first. This causes unsaved changes in the current text buffer to be lost when switching to special buffers.",
+      "fix": "Added save_current_text_buffer_history() call at the beginning of: open_diagnostics_buffer(), open_terminal_buffer(), open_help_buffer(), open_references_buffer(), open_pending_references_buffer(), open_settings_buffer(), and register_open_text_buffer(). Note: open_fuzzy_picker_buffer() already had this fix.",
+      "tags": [
+        "data-loss",
+        "buffer-management",
+        "unsaved-changes",
+        "audit-found"
+      ],
+      "related_bugs": [
+        "bug-006"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-05-18T00:15:00.000Z"
+    },
+    {
+      "id": "bug-008",
+      "timestamp": "2026-05-18T08:00:00.000Z",
+      "error_message": "F12 (FocusTerminal), ToggleTerminal, and ToggleBottomDock open terminal panel and focus it, but don't enter TerminalFocus mode, so text input doesn't work.",
+      "file": "src/app/event_loop/commands_terminal.rs",
+      "root_cause": "When opening terminal panel, the commands set focus_manager to BottomPanel and spawn terminal tab, but never call apply_mode_event(ModeEvent::FocusTerminal) to transition from Normal/Insert/Visual mode into TerminalFocus mode. Without the mode transition, keyboard input is not routed to the terminal.",
+      "fix": "Added apply_mode_event(ModeEvent::FocusTerminal) call after opening terminal in all three commands: FocusTerminal (line 218-220), ToggleTerminal (line 78-82), and ToggleBottomDock (line 115-117). This ensures the editor enters TerminalFocus mode when terminal panel opens, enabling text input.",
+      "tags": [
+        "terminal",
+        "mode-transition",
+        "keyboard-input",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-18T08:00:00.000Z"
     }
   ]
 }

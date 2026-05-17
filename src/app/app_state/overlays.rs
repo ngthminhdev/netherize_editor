@@ -971,6 +971,9 @@ impl AppState {
     }
 
     pub(super) fn register_open_text_buffer(&mut self, active_path: PathBuf) {
+        // Save current text buffer before potentially switching to a different buffer
+        self.save_current_text_buffer_history();
+
         let language_id = crate::lsp::registry::language_profile_for_path(&active_path)
             .map(|profile| profile.language_id.to_string());
         if let Some(existing_idx) = self
@@ -1151,6 +1154,8 @@ impl AppState {
             let saved_view_state = self.text_buffer_view_state();
             if let Some(slot) = self.buffers.get_mut(old_idx) {
                 if let BufferContent::Text(ref mut buf) = slot.content {
+                    // Only save if we have actual content or history to preserve.
+                    // This prevents overwriting buffer state with empty data on double-save.
                     buf.history = saved;
                     buf.view_state = saved_view_state;
                     buf.in_memory_text = Some(self.text.clone());
