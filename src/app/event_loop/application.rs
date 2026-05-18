@@ -1269,7 +1269,7 @@ impl AppShell {
                 .iter()
                 .enumerate()
                 .map(|(idx, buffer)| {
-                    let (file_path, git_color) = match &buffer.content {
+                    let (file_path, git_color, missing_on_disk) = match &buffer.content {
                         BufferContent::Text(text) => {
                             let status = self.app_state.workspace_git_status(&text.path);
                             let color = match status {
@@ -1284,9 +1284,9 @@ impl AppShell {
                                 }
                                 None => None,
                             };
-                            (text.path.clone(), color)
+                            (text.path.clone(), color, text.missing_on_disk)
                         }
-                        _ => (PathBuf::new(), None),
+                        _ => (PathBuf::new(), None, false),
                     };
                     TopbarTab {
                         label: buffer.label(),
@@ -1308,6 +1308,7 @@ impl AppShell {
                             self.app_state.is_dirty(),
                         ),
                         git_color,
+                        missing_on_disk,
                     }
                 })
                 .collect::<Vec<_>>();

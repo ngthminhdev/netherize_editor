@@ -246,6 +246,8 @@ pub enum Command {
     ExplorerMoveToBottom,
     ExplorerRenameFull,
     ExplorerRenameBase,
+    ExplorerCopyFile,
+    ExplorerPasteFile,
     // Legacy aliases (kept for backward compatibility with old keymaps/tests).
     ExplorerExpandCollapse,
     ExplorerOpenFile,

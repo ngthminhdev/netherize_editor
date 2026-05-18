@@ -450,9 +450,8 @@ impl ThemeConfig {
         if filename.eq_ignore_ascii_case("readme.md") {
             return &self.icons.markdown;
         }
-        if filename.eq_ignore_ascii_case("dockerfile")
-            || filename.eq_ignore_ascii_case("containerfile")
-        {
+        let filename_lower = filename.to_ascii_lowercase();
+        if filename_lower.contains("dockerfile") || filename_lower.contains("containerfile") {
             return &self.icons.docker;
         }
         if filename.eq_ignore_ascii_case("build.gradle")

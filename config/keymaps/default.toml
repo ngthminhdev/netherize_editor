@@ -793,6 +793,16 @@ command = "explorer.rename_full"
 
 [[bindings]]
 mode = "explorer"
+key = "c"
+command = "explorer.copy_file"
+
+[[bindings]]
+mode = "explorer"
+key = "p"
+command = "explorer.paste_file"
+
+[[bindings]]
+mode = "explorer"
 key = "R"
 command = "explorer.rename_base"
 

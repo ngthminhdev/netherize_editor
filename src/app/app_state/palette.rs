@@ -1383,6 +1383,10 @@ impl AppState {
             ) || (matches!(event.kind, FileSystemChangeKind::Modify) && !event.path.exists())
         });
 
+        if self.refresh_text_buffer_missing_on_disk_states() {
+            report.workspace_reloaded = true;
+        }
+
         // Chỉ rescan khi tree shape có thể đổi (create/delete/rename).
         // Modify-only thường không đổi cấu trúc workspace, tránh quét cả cây quá nhiều.
         if requires_workspace_rescan && let Some(workspace) = self.workspace_model.as_mut() {
@@ -1441,6 +1445,9 @@ impl AppState {
                         Ok(()) => {
                             self.active_file = Some(active_path.clone());
                             self.register_open_text_buffer(active_path.clone());
+                            if let Some(buffer) = self.active_text_buffer_mut() {
+                                buffer.missing_on_disk = false;
+                            }
                             self.dirty = false;
                             let note = format!(
                                 "auto reloaded active file from disk: {}",
@@ -1452,6 +1459,9 @@ impl AppState {
                             report.notices.push(note);
                         }
                         Err(err) => {
+                            if let Some(buffer) = self.active_text_buffer_mut() {
+                                buffer.missing_on_disk = !active_path.exists();
+                            }
                             let note = format!(
                                 "auto reload skipped for active file {}: {}",
                                 active_path.display(),
@@ -1490,6 +1500,9 @@ impl AppState {
                     }
                 }
                 FileSystemChangeKind::Delete => {
+                    if let Some(buffer) = self.active_text_buffer_mut() {
+                        buffer.missing_on_disk = true;
+                    }
                     let note = format!(
                         "active file deleted externally: {} (buffer kept in memory)",
                         active_path.display()

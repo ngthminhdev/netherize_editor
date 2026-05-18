@@ -1222,6 +1222,26 @@ fn settings_focus_text_input_routes_to_editing_append() {
 }
 
 #[test]
+#[test]
+fn palette_focus_text_input_routes_to_query_append() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let mut context = KeybindingContext::with_focus(EditorMode::PaletteFocus, InputFocusContext::Editor);
+    context.command_palette_visible = true;
+    let now = std::time::Instant::now();
+
+    let typed = handler.route_normalized_input(char_input('x', KeyCode::KeyX), &map, context, now);
+    match typed {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::FilePickerAppendQuery("x".to_string())
+            );
+        }
+        other => panic!("expected palette text append dispatch, got {:?}", other),
+    }
+}
+
 fn settings_focus_j_and_k_navigate_in_normal_mode() {
     let mut handler = InputHandler::new();
     let map = make_map();

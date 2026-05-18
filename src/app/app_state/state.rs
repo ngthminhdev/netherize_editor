@@ -626,6 +626,14 @@ impl AppState {
         }
     }
 
+    pub fn active_text_buffer_mut(&mut self) -> Option<&mut EditorBuffer> {
+        let idx = self.active_buffer_index?;
+        match &mut self.buffers.get_mut(idx)?.content {
+            BufferContent::Text(text) => Some(text),
+            _ => None,
+        }
+    }
+
     pub fn active_buffer_git_line_statuses(&self) -> Option<&HashMap<usize, GitLineStatus>> {
         self.active_text_buffer()
             .map(|buffer| &buffer.git_line_statuses)

@@ -155,7 +155,19 @@ impl AppState {
         let Some(current_idx) = self.active_buffer_index else {
             return Ok(false);
         };
+        self.close_buffer_index(current_idx)
+    }
 
+    pub fn close_buffer_for_path(&mut self, path: &Path) -> Result<bool, String> {
+        let Some(index) = self.buffers.iter().position(|entry| {
+            matches!(&entry.content, BufferContent::Text(buffer) if buffer.path == path)
+        }) else {
+            return Ok(false);
+        };
+        self.close_buffer_index(index)
+    }
+
+    fn close_buffer_index(&mut self, current_idx: usize) -> Result<bool, String> {
         self.save_current_text_buffer_history();
         let removed = self.buffers.remove(current_idx);
         if let BufferContent::Text(buffer) = removed.content {

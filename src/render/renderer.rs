@@ -94,6 +94,7 @@ pub struct TopbarTab {
     pub kind: TopbarTabKind,
     pub is_dirty: bool,
     pub git_color: Option<[f32; 4]>,
+    pub missing_on_disk: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

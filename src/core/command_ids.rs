@@ -236,6 +236,8 @@ pub const EXPLORER_MOVE_TO_TOP: &str = "explorer.move_to_top";
 pub const EXPLORER_MOVE_TO_BOTTOM: &str = "explorer.move_to_bottom";
 pub const EXPLORER_RENAME_FULL: &str = "explorer.rename_full";
 pub const EXPLORER_RENAME_BASE: &str = "explorer.rename_base";
+pub const EXPLORER_COPY_FILE: &str = "explorer.copy_file";
+pub const EXPLORER_PASTE_FILE: &str = "explorer.paste_file";
 // Legacy command IDs.
 pub const EXPLORER_EXPAND_COLLAPSE: &str = "explorer.expand_collapse";
 pub const EXPLORER_OPEN_FILE: &str = "explorer.open_file";
@@ -426,6 +428,8 @@ pub const ALL_IDS: &[&str] = &[
     EXPLORER_MOVE_TO_BOTTOM,
     EXPLORER_RENAME_FULL,
     EXPLORER_RENAME_BASE,
+    EXPLORER_COPY_FILE,
+    EXPLORER_PASTE_FILE,
     EXPLORER_EXPAND_COLLAPSE,
     EXPLORER_OPEN_FILE,
     OVERLAY_SELECT_NEXT,
@@ -650,6 +654,8 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         EXPLORER_MOVE_TO_BOTTOM => Some(Command::ExplorerMoveToBottom),
         EXPLORER_RENAME_FULL => Some(Command::ExplorerRenameFull),
         EXPLORER_RENAME_BASE => Some(Command::ExplorerRenameBase),
+        EXPLORER_COPY_FILE => Some(Command::ExplorerCopyFile),
+        EXPLORER_PASTE_FILE => Some(Command::ExplorerPasteFile),
         EXPLORER_EXPAND_COLLAPSE => Some(Command::ExplorerExpandCollapse),
         EXPLORER_OPEN_FILE => Some(Command::ExplorerOpenFile),
         OVERLAY_SELECT_NEXT | FILE_PICKER_SELECT_NEXT => Some(Command::OverlaySelectNext),

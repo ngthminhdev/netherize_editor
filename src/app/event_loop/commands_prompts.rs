@@ -541,6 +541,24 @@ impl AppShell {
                         path.display()
                     );
                 }
+                if matches!(file_type, WorkspaceNodeType::File) {
+                    match self.app_state.close_buffer_for_path(&path) {
+                        Ok(closed) => {
+                            if closed {
+                                self.editor_needs_layout = true;
+                                self.editor_caret_needs_layout = false;
+                                self.clear_highlight_layers();
+                            }
+                        }
+                        Err(err) => {
+                            eprintln!(
+                                "[AppShell] close buffer after explorer delete failed for {}: {err}",
+                                path.display()
+                            );
+                        }
+                    }
+                }
+                self.submit_workspace_git_status_refresh();
                 if let Some(parent_path) = fallback_selection {
                     let _ = self.app_state.workspace_select_path(&parent_path);
                 }
@@ -611,6 +629,7 @@ impl AppShell {
                 });
                 changed | true
             }
+
         }
     }
 }

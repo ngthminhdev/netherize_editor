@@ -1,5 +1,33 @@
 use super::*;
 
+fn next_available_paste_path(target_dir: &Path, file_name: &str) -> PathBuf {
+    let candidate = target_dir.join(file_name);
+    if !candidate.exists() {
+        return candidate;
+    }
+
+    let path = Path::new(file_name);
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or(file_name);
+    let extension = path.extension().and_then(|value| value.to_str());
+
+    for index in 1.. {
+        let next_name = match extension {
+            Some(ext) if !ext.is_empty() => format!("{stem} ({index}).{ext}"),
+            _ => format!("{stem} ({index})"),
+        };
+        let next = target_dir.join(next_name);
+        if !next.exists() {
+            return next;
+        }
+    }
+
+    candidate
+}
+
 impl AppShell {
     fn reset_terminals_for_workspace_switch(&mut self) {
         let bottom_sessions: Vec<u64> = self
@@ -339,6 +367,56 @@ impl AppShell {
             Command::ExplorerRenameFull => Some(self.open_explorer_rename_prompt(false)),
             Command::ExplorerRenameBase => Some(self.open_explorer_rename_prompt(true)),
             Command::ExplorerDeleteNode => Some(self.begin_explorer_delete_confirmation()),
+            Command::ExplorerCopyFile => {
+                self.ensure_explorer_snapshot();
+                if self.explorer_snapshot.entries.is_empty() {
+                    return Some(false);
+                }
+                let selected_path = &self.explorer_snapshot.entries[self.explorer_cursor].path;
+                self.explorer_clipboard_path = Some(selected_path.clone());
+                self.show_transient_toast(format!("Copied: {}", selected_path.display()));
+                Some(true)
+            }
+            Command::ExplorerPasteFile => {
+                let Some(source_path) = self.explorer_clipboard_path.clone() else {
+                    self.show_transient_toast("No file copied".to_string());
+                    return Some(false);
+                };
+
+                self.ensure_explorer_snapshot();
+                if self.explorer_snapshot.entries.is_empty() {
+                    return Some(false);
+                }
+
+                let selected_entry = &self.explorer_snapshot.entries[self.explorer_cursor];
+                let target_dir = if selected_entry.file_type == WorkspaceNodeType::Folder {
+                    selected_entry.path.clone()
+                } else {
+                    selected_entry.path.parent().map(PathBuf::from).unwrap_or_else(|| {
+                        self.app_state.workspace_root_path().map(PathBuf::from).unwrap_or_default()
+                    })
+                };
+
+                let file_name = source_path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("file")
+                    .to_string();
+                let target_path = next_available_paste_path(&target_dir, &file_name);
+
+                match std::fs::copy(&source_path, &target_path) {
+                    Ok(_) => {
+                        self.show_transient_toast(format!("Pasted: {}", target_path.display()));
+                        let _ = self.app_state.rescan_workspace();
+                        self.submit_workspace_git_status_refresh();
+                        self.mark_explorer_dirty();
+                        Some(true)
+                    }
+                    Err(err) => {
+                        self.show_transient_toast(format!("Paste failed: {err}"));
+                        Some(false)
+                    }
+                }
+            }
             Command::ExplorerMoveUp => {
                 self.ensure_explorer_snapshot();
                 let entries_len = self.explorer_snapshot.entries.len();

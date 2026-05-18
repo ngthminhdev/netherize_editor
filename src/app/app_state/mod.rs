@@ -148,6 +148,8 @@ pub struct EditorBuffer {
     pub in_memory_text: Option<Rope>,
     /// Dirty flag captured when this buffer lost focus.
     pub dirty: bool,
+    /// True when the backing file is missing on disk (for example after switching git branch).
+    pub missing_on_disk: bool,
     view_state: TextBufferViewState,
 }
 
@@ -161,6 +163,7 @@ impl EditorBuffer {
             history: EditHistory::new(),
             in_memory_text: None,
             dirty: false,
+            missing_on_disk: false,
             view_state: TextBufferViewState::default(),
         }
     }

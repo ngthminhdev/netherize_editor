@@ -114,6 +114,30 @@ impl AppState {
         let current_text = self.text.to_string();
         recalculate_git_diff(buffer, &current_text)
     }
+
+    pub fn refresh_text_buffer_missing_on_disk_states(&mut self) -> bool {
+        let mut changed = false;
+        for entry in &mut self.buffers {
+            let BufferContent::Text(buffer) = &mut entry.content else {
+                continue;
+            };
+            let missing = !buffer.path.exists();
+            if buffer.missing_on_disk != missing {
+                buffer.missing_on_disk = missing;
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    pub fn active_text_buffer_missing_on_disk(&self) -> bool {
+        let Some(idx) = self.active_buffer_index else {
+            return false;
+        };
+        self.buffers.get(idx).is_some_and(|entry| {
+            matches!(&entry.content, BufferContent::Text(buffer) if buffer.missing_on_disk)
+        })
+    }
 }
 
 pub fn recalculate_git_diff(buffer: &mut EditorBuffer, current_text: &str) -> bool {

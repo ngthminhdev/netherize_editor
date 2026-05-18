@@ -123,6 +123,8 @@ pub struct AppShell {
     explorer_cursor: usize,
     explorer_snapshot: ExplorerSnapshot,
     explorer_snapshot_dirty: bool,
+    /// Path of the file copied via ExplorerCopyFile command.
+    explorer_clipboard_path: Option<PathBuf>,
     pending_confirmation: Option<PendingConfirmation>,
     workspace_git_branch: Option<String>,
     active_lsp_server: Option<ActiveLspServer>,
@@ -290,6 +292,7 @@ enum PendingConfirmationAction {
     },
     /// User confirmed or cancelled the opencode auto-install prompt.
     AiChatInstall,
+
 }
 
 #[derive(Debug, Clone)]

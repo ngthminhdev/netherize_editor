@@ -128,6 +128,7 @@ pub(super) fn handle_terminal_result(
                 app.right_terminal_needs_layout = true;
                 should_redraw = true;
             }
+            let is_terminal_buffer = app.terminal_buffer_grids.contains_key(&session_id);
             if let Some(grid) = app.terminal_buffer_grids.get_mut(&session_id) {
                 let scrolled_rows = grid.feed_bytes(&chunk);
                 grid.apply_regex_highlights();
@@ -140,6 +141,9 @@ pub(super) fn handle_terminal_result(
                     app.buffer_terminal_needs_layout = true;
                     should_redraw = true;
                 }
+            }
+            if is_terminal_buffer && app.maybe_refresh_workspace_git_status() {
+                should_redraw = true;
             }
             if should_redraw {
                 app.request_redraw();

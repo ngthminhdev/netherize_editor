@@ -202,6 +202,7 @@ impl AppShell {
                 }
                 Some(report.request_redraw || report.state_changed)
             }
+
             Command::FilePickerAppendQuery(_)
             | Command::FilePickerBackspaceQuery
             | Command::ToggleLiveGrepCaseSensitive
@@ -331,6 +332,8 @@ impl AppShell {
                 {
                     return Some(self.confirm_explorer_prompt());
                 }
+
+
 
                 if matches!(command, Command::FilePickerConfirmSelection)
                     && matches!(

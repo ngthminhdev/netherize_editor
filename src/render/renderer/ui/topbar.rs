@@ -177,9 +177,12 @@ impl Renderer {
                 let batch_start = glyphs.len() as u32;
                 self.topbar_text_system.set_font_family(font_family);
 
-                let label_color =
+                let label_color = if tab.missing_on_disk {
+                    inactive_fg
+                } else {
                     tab.git_color
-                        .unwrap_or(if is_active { active_fg } else { inactive_fg });
+                        .unwrap_or(if is_active { active_fg } else { inactive_fg })
+                };
 
                 if is_active {
                     glyphs.extend(layout_panel_text_bold(
@@ -199,6 +202,13 @@ impl Renderer {
                         &self.queue,
                         text_x,
                         origin_y,
+                        label_color,
+                    ));
+                }
+                if tab.missing_on_disk {
+                    let strike_y = origin_y + font_size * 0.55;
+                    chrome.push(RegionDrawInstance::new(
+                        [text_x, strike_y, label_width, 1.0],
                         label_color,
                     ));
                 }

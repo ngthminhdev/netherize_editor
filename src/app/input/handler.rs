@@ -325,6 +325,29 @@ impl InputHandler {
             return self.route_ai_chat_input(normalized, input_debug, context);
         }
 
+        if context.mode == EditorMode::PaletteFocus && context.command_palette_visible {
+            if let Some(text) = normalized.text.as_deref()
+                && !text.is_empty()
+                && !text.chars().any(char::is_control)
+                && !normalized.has_command_modifier()
+                && !normalized.modifiers.alt_key()
+            {
+                self.clear_pending_counts();
+                return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                    input_debug,
+                    format!(
+                        "mode={} focus={} -> palette text append",
+                        context.mode.as_str(),
+                        context.focus.as_str()
+                    ),
+                    Command::FilePickerAppendQuery(text.to_string()),
+                    1,
+                    false,
+                )));
+            }
+        }
+
+        // IMPORTANT: in TerminalFocus, Ctrl+Q must switch to T-COPY mode instead of
         // Terminal input mode: in TerminalFocus (typing mode), route raw input to PTY.
         // In TerminalNormal (T-COPY mode), allow vim-style navigation and search.
         // While Zen Mode is active, keep leader chords available for layout control.

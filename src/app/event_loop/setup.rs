@@ -159,6 +159,7 @@ impl AppShell {
             explorer_cursor: 0,
             explorer_snapshot: ExplorerSnapshot::default(),
             explorer_snapshot_dirty: true,
+            explorer_clipboard_path: None,
             pending_confirmation: None,
             workspace_git_branch,
             active_lsp_server: None,

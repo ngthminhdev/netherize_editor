@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-18T06:53:24.571Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-18T09:09:30.914Z
 > Files: 362 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
@@ -179,7 +179,7 @@
 
 ## config/keymaps/
 
-- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5053 tok)
+- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~4755 tok)
 
 ## config/themes/
 
@@ -295,7 +295,7 @@
 
 - `async_bridge.rs` — BridgePumpStats: new, pump (~4152 tok)
 - `clipboard.rs` — SystemClipboard: new (~524 tok)
-- `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~15235 tok)
+- `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~14326 tok)
 - `file_picker.rs` — FilePickerEntry: open, close, append_query, backspace_query + 6 more (~1644 tok)
 - `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~1621 tok)
 - `mod.rs` (~66 tok)
@@ -321,18 +321,18 @@
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~10569 tok)
 - `commands_completion.rs` (~4377 tok)
 - `commands_editor.rs` (~4920 tok)
-- `commands_explorer.rs` (~6778 tok)
+- `commands_explorer.rs` (~7268 tok)
 - `commands_lsp.rs` (~9413 tok)
-- `commands_palette.rs` (~7299 tok)
-- `commands_prompts.rs` (~6970 tok)
+- `commands_palette.rs` (~7151 tok)
+- `commands_prompts.rs` (~6825 tok)
 - `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~6809 tok)
 - `commands_settings.rs` (~2849 tok)
 - `commands_terminal.rs` (~6430 tok)
 - `commands_tests.rs` — [derive(Default)] (~15874 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~8683 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~17586 tok)
-- `mod.rs` — Struct: AppShell (~6398 tok)
-- `setup.rs` — new, new_for_tests (~18938 tok)
+- `mod.rs` — Struct: AppShell (~6043 tok)
+- `setup.rs` — new, new_for_tests (~17687 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
@@ -410,8 +410,8 @@
 
 ## src/core/
 
-- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~9611 tok)
-- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5374 tok)
+- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~9049 tok)
+- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5052 tok)
 - `mod.rs` (~35 tok)
 - `mode.rs` — Các mode cốt lõi của editor. (~4008 tok)
 - `text_object.rs` — find_text_object_range (~1753 tok)
@@ -421,7 +421,7 @@
 
 - `common.rs` — Struct: DispatchReport (~1739 tok)
 - `editing.rs` (~10093 tok)
-- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~3927 tok)
+- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~3684 tok)
 - `navigation.rs` (~3234 tok)
 - `palette.rs` (~6812 tok)
 - `session.rs` (~3902 tok)

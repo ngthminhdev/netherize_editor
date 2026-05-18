@@ -307,6 +307,7 @@ impl AppShell {
                 changed,
             );
         }
+
         if let Some(changed) = self.handle_settings_command(&command) {
             return self.finalize_post_command_hooks(
                 &command_for_post_hooks,
