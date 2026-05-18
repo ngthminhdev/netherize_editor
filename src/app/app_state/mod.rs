@@ -1290,6 +1290,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "editor.save_file" => "Save file",
         "editor.open_folder" => "Open folder / project",
         "editor.open_file" => "Open file",
+        "app.new_instance" => "New instance",
         "app.open_command_palette" => "Command palette",
         "app.open_settings" => "Open settings",
         "app.open_help" => "Open cheat sheet",

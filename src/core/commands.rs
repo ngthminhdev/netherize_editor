@@ -122,6 +122,8 @@ pub enum Command {
     // ── File & palette ─────────────────────────────────────────────────────────
     SaveFile,
     OpenFile(PathBuf),
+    /// Launch a separate editor process with its own AppState/window.
+    NewInstance,
     /// Open native OS folder picker and set the workspace root.
     OpenFolder,
     /// Open command palette showing recent projects list.

@@ -50,6 +50,10 @@ command = "mode.escape"
 
 # ───────────────── GLOBAL ─────────────────
 [[bindings]]
+key = "mod+shift+n"
+command = "app.new_instance"
+
+[[bindings]]
 key = "mod+s"
 command = "editor.save_file"
 

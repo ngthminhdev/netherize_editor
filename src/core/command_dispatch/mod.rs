@@ -332,6 +332,7 @@ fn dispatch_command_with_clipboard_once(
         ),
         Command::SaveFile
         | Command::OpenFile(_)
+        | Command::NewInstance
         | Command::OpenFolder
         | Command::OpenRecentProjects
         | Command::ToggleTerminal

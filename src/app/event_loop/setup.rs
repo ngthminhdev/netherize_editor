@@ -29,11 +29,26 @@ impl AppShell {
         let cli_args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
 
         // First directory arg becomes workspace root (like `zed .` / `code .`).
+        // If only files are passed, use the first file's parent as the workspace
+        // so a new process opens an isolated project instead of restoring the
+        // globally most-recent project.
         let cli_workspace_dir = cli_args
             .iter()
-            .find_map(|p| p.canonicalize().ok().filter(|cp| cp.is_dir()));
+            .filter_map(|p| p.canonicalize().ok())
+            .find_map(|cp| {
+                if cp.is_dir() {
+                    Some(cp)
+                } else if cp.is_file() {
+                    cp.parent().map(Path::to_path_buf)
+                } else {
+                    None
+                }
+            });
 
-        let cli_files: Vec<PathBuf> = cli_args.iter().filter(|p| p.is_file()).cloned().collect();
+        let cli_files: Vec<PathBuf> = cli_args
+            .iter()
+            .filter_map(|p| p.canonicalize().ok().filter(|cp| cp.is_file()))
+            .collect();
 
         // Load persisted state and restore most recent project if it still exists.
         let mut persistent_state = AppPersistentState::load();

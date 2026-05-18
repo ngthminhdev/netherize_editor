@@ -251,6 +251,10 @@ impl AppShell {
         command: Command,
         repeat_count: usize,
     ) -> bool {
+        if matches!(command, Command::NewInstance) {
+            return self.spawn_new_instance();
+        }
+
         let command_for_post_hooks = command.clone();
         let should_persist_history_after =
             Self::should_persist_history_after(&command_for_post_hooks);
@@ -390,6 +394,33 @@ impl AppShell {
         }
 
         changed
+    }
+
+    fn spawn_new_instance(&mut self) -> bool {
+        let exe_path = match std::env::current_exe() {
+            Ok(path) => path,
+            Err(err) => {
+                eprintln!("[AppShell] resolve current executable failed: {err}");
+                self.show_transient_toast("Unable to open new instance".to_string());
+                return false;
+            }
+        };
+
+        let mut command = std::process::Command::new(exe_path);
+        if let Some(workspace_root) = self.app_state.workspace_root_path() {
+            command.arg(workspace_root);
+        }
+        match command.spawn() {
+            Ok(_) => {
+                self.show_transient_toast("Opened new instance".to_string());
+                true
+            }
+            Err(err) => {
+                eprintln!("[AppShell] spawn new instance failed: {err}");
+                self.show_transient_toast("Unable to open new instance".to_string());
+                false
+            }
+        }
     }
 
     fn handle_terminal_paste(&mut self) -> bool {

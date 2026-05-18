@@ -151,22 +151,26 @@ impl Renderer {
 
         chrome.push(RegionDrawInstance::new(bounds, bg));
 
-        let left_w = bounds[2] * 0.55;
+        let full_screen_width = self.surface_state.config.width.max(1) as f32;
+        let two_column = bounds[2] > full_screen_width * 0.55;
+        let left_w = if two_column { bounds[2] * 0.55 } else { bounds[2] };
         let divider_x = bounds[0] + left_w;
         let body_top = bounds[1];
         let body_h = bounds[3];
 
-        let mut divider = border;
-        divider[3] = 0.65;
-        chrome.push(RegionDrawInstance::new(
-            [
-                divider_x,
-                body_top + sx(40.0),
-                sx(1.0).max(1.0),
-                (body_h - sx(80.0)).max(1.0),
-            ],
-            divider,
-        ));
+        if two_column {
+            let mut divider = border;
+            divider[3] = 0.65;
+            chrome.push(RegionDrawInstance::new(
+                [
+                    divider_x,
+                    body_top + sx(40.0),
+                    sx(1.0).max(1.0),
+                    (body_h - sx(80.0)).max(1.0),
+                ],
+                divider,
+            ));
+        }
 
         let line = |this: &mut Renderer,
                     glyphs: &mut Vec<GlyphInstance>,
@@ -394,8 +398,9 @@ impl Renderer {
             meta_center_x += chip_w + meta_chip_gap;
         }
 
-        let card_x = bounds[0] + sx(86.0);
-        let card_w = (left_w - sx(172.0)).max(sx(360.0));
+        let available_card_w = (left_w - sx(64.0)).max(sx(260.0));
+        let card_w = available_card_w.min(if two_column { sx(420.0) } else { sx(460.0) });
+        let card_x = bounds[0] + ((left_w - card_w) * 0.5).max(sx(24.0));
         let card_h = sx(58.0);
         let card_gap = sx(10.0);
         let card_title_size = sx(13.0);
@@ -403,7 +408,7 @@ impl Renderer {
         let section_size = sx(10.5);
         let mut card_y = meta_y + sx(58.0);
         let action_cards = [
-            ("START", "built_in:file", self.theme.ui.cyan.as_f32(), "New File", "Create a blank file", &["⌘", "N"][..], false),
+            ("START", "built_in:file", self.theme.ui.cyan.as_f32(), "New Instance", "Open another editor window", &["⌘", "⇧", "N"][..], false),
             ("", "built_in:folder", self.theme.ui.info.as_f32(), "Open Folder", "Browse for a project folder", &["⌘", "O"][..], false),
             ("", "built_in:conf", self.theme.ui.magenta.as_f32(), "Command Palette", "Search commands, files, symbols", &["⌘", "P"][..], false),
         ];
@@ -442,9 +447,34 @@ impl Renderer {
             );
             line(self, &mut glyphs, title, card_x + sx(70.0), card_y + sx(14.0), card_title_size, sx(16.0), fg, true);
             line(self, &mut glyphs, sub, card_x + sx(70.0), card_y + sx(33.0), card_sub_size, sx(14.0), fg_ghost, false);
-            let key_x = card_x + card_w - sx(122.0);
-            key_hint(self, &mut glyphs, &mut chrome, keys, key_x, card_y + sx(17.0), sx(9.5));
+            if card_w >= sx(350.0) {
+                let key_x = card_x + card_w - sx(122.0);
+                key_hint(self, &mut glyphs, &mut chrome, keys, key_x, card_y + sx(17.0), sx(9.5));
+            }
             card_y += card_h + card_gap;
+        }
+
+        if !two_column {
+            let footer = "Press ⌘ ⇧ N for New Instance  |  Press ⌘ O for Open Folder";
+            line(self, &mut glyphs, footer, centered_x(bounds[0] + bounds[2] * 0.5, footer, sx(10.0)), bounds[1] + bounds[3] - sx(30.0), sx(10.0), sx(13.0), fg_ghost, false);
+
+            self.welcome_logo_chrome_instances = chrome;
+            self.welcome_icon_instances = icons;
+            self.welcome_icon_pipeline.upload_instances(
+                &self.device,
+                &self.welcome_icon_instances,
+                [
+                    self.surface_state.config.width,
+                    self.surface_state.config.height,
+                ],
+            );
+            self.welcome_logo_glyph_instances = glyphs;
+            self.welcome_logo_text_pipeline.upload_instances(
+                &self.device,
+                &self.queue,
+                &self.welcome_logo_glyph_instances,
+            );
+            return;
         }
 
         let rx = divider_x + sx(28.0);
@@ -642,7 +672,9 @@ impl Renderer {
             );
             line(self, &mut glyphs, title, rx + sx(64.0), y + sx(12.0), sx(12.5), sx(15.0), fg, true);
             line(self, &mut glyphs, sub, rx + sx(64.0), y + sx(31.0), sx(10.0), sx(13.0), fg_ghost, false);
-            key_hint(self, &mut glyphs, &mut chrome, keys, rx + rw - sx(146.0), y + sx(16.0), sx(9.0));
+            if rw >= sx(330.0) {
+                key_hint(self, &mut glyphs, &mut chrome, keys, rx + rw - sx(146.0), y + sx(16.0), sx(9.0));
+            }
             y += more_card_h + more_gap;
         }
         let footer = "Press Space P J for Recent Projects  |  Press ⌘ , for Settings";

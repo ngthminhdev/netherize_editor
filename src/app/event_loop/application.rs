@@ -338,6 +338,17 @@ impl ApplicationHandler<AppEvent> for AppShell {
                         }
                     }
                 }
+                if key_event.state == ElementState::Pressed
+                    && !key_event.repeat
+                    && matches!(key_event.physical_key, PhysicalKey::Code(KeyCode::KeyN))
+                    && self.input_handler.current_modifiers().super_key()
+                    && self.input_handler.current_modifiers().shift_key()
+                    && self.handle_command(Command::NewInstance)
+                {
+                    self.request_redraw();
+                    return;
+                }
+
                 if let Some(changed) = self.handle_pending_confirmation_key_event(&key_event) {
                     if changed {
                         self.request_redraw();

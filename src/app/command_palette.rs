@@ -1085,6 +1085,7 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
         ("app.focus_right", "Focus Right"),
         ("app.focus_up", "Focus Up"),
         ("app.focus_down", "Focus Down"),
+        ("app.new_instance", "New Instance"),
         ("buffer.new", "New Buffer"),
         ("buffer.next", "Next Buffer"),
         ("buffer.prev", "Previous Buffer"),

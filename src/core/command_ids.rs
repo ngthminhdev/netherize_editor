@@ -58,6 +58,7 @@ pub const UNDO: &str = "editor.undo";
 pub const REDO: &str = "editor.redo";
 pub const SAVE_FILE: &str = "editor.save_file";
 pub const OPEN_FILE: &str = "editor.open_file";
+pub const NEW_INSTANCE: &str = "app.new_instance";
 
 // ── Leap / EasyMotion navigation ─────────────────────────────────────────────
 pub const LEAP_START: &str = "editor.leap_start";
@@ -629,6 +630,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         FOCUS_BACK => Some(Command::FocusBack),
         NEXT_PANEL_TAB => Some(Command::NextPanelTab),
         PREV_PANEL_TAB => Some(Command::PrevPanelTab),
+        NEW_INSTANCE => Some(Command::NewInstance),
         BUFFER_NEW => Some(Command::BufferNew),
         BUFFER_NEXT => Some(Command::BufferNext),
         BUFFER_PREV => Some(Command::BufferPrev),
