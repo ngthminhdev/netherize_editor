@@ -984,6 +984,11 @@ mode = "normal"
 key = "<leader>m p"
 command = "app.toggle_markdown_preview"
 
+[[bindings]]
+mode = "normal"
+key = "<leader>m e"
+command = "app.open_extensions_manager"
+
 # ───────────────── PALETTE ─────────────────
 [[bindings]]
 mode = "palette"

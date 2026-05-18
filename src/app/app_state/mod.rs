@@ -280,6 +280,292 @@ pub struct HelpState {
     pub scroll_y: f32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtensionCategory {
+    CliTools,
+    LanguageServers,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtensionItem {
+    pub name: String,
+    pub subtitle: String,
+    pub binary: String,
+    pub category: ExtensionCategory,
+    pub tag: String,
+    pub macos_install: String,
+    pub linux_install: String,
+    pub macos_uninstall: String,
+    pub linux_uninstall: String,
+    pub extensions: Vec<String>,
+    pub installed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExtensionsManagerState {
+    pub title: String,
+    pub platform: String,
+    pub filter: String,
+    pub filter_focused: bool,
+    pub selected_index: usize,
+    pub items: Vec<ExtensionItem>,
+    pub command: Option<ExtensionCommandState>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExtensionCommandState {
+    pub binary: String,
+    pub uninstall: bool,
+    pub running: bool,
+    pub success: Option<bool>,
+    pub exit_code: Option<i32>,
+    pub logs: Vec<String>,
+} 
+
+impl ExtensionsManagerState {
+    pub fn new() -> Self {
+        Self {
+            title: "Extensions".to_string(),
+            platform: if cfg!(target_os = "macos") {
+                "macOS".to_string()
+            } else {
+                "Linux".to_string()
+            },
+            filter: String::new(),
+            filter_focused: false,
+            selected_index: 0,
+            items: default_extension_items(),
+            command: None,
+        }
+    }
+
+    pub fn installed_count(&self) -> usize {
+        self.items.iter().filter(|item| item.installed).count()
+    }
+
+    pub fn available_count(&self) -> usize {
+        self.items.len().saturating_sub(self.installed_count())
+    }
+
+    pub fn category_counts(&self, category: ExtensionCategory) -> (usize, usize) {
+        let total = self
+            .items
+            .iter()
+            .filter(|item| item.category == category)
+            .count();
+        let installed = self
+            .items
+            .iter()
+            .filter(|item| item.category == category && item.installed)
+            .count();
+        (installed, total)
+    }
+
+    pub fn visible_item_indices(&self) -> Vec<usize> {
+        let query = self.filter.trim().to_ascii_lowercase();
+        self.items
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, item)| {
+                if query.is_empty()
+                    || item.name.to_ascii_lowercase().contains(&query)
+                    || item.subtitle.to_ascii_lowercase().contains(&query)
+                    || item.binary.to_ascii_lowercase().contains(&query)
+                    || item.tag.to_ascii_lowercase().contains(&query)
+                {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    pub fn selected_item_index(&self) -> Option<usize> {
+        let visible = self.visible_item_indices();
+        visible.get(self.selected_index.min(visible.len().saturating_sub(1))).copied()
+    }
+
+    pub fn selected_item(&self) -> Option<&ExtensionItem> {
+        self.selected_item_index().and_then(|idx| self.items.get(idx))
+    }
+
+    pub fn select_next(&mut self) -> bool {
+        let len = self.visible_item_indices().len();
+        if self.selected_index + 1 < len {
+            self.selected_index += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn select_prev(&mut self) -> bool {
+        if self.selected_index > 0 {
+            self.selected_index -= 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn append_filter(&mut self, text: &str) -> bool {
+        if text.is_empty() {
+            return false;
+        }
+        self.filter.push_str(text);
+        self.selected_index = 0;
+        true
+    }
+
+    pub fn backspace_filter(&mut self) -> bool {
+        if self.filter.pop().is_some() {
+            self.selected_index = 0;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn start_command(&mut self, binary: String, uninstall: bool) {
+        self.command = Some(ExtensionCommandState {
+            binary,
+            uninstall,
+            running: true,
+            success: None,
+            exit_code: None,
+            logs: Vec::new(),
+        });
+    }
+
+    pub fn push_command_log(&mut self, binary: &str, line: String) -> bool {
+        let Some(command) = self.command.as_mut() else {
+            return false;
+        };
+        if command.binary != binary {
+            return false;
+        }
+        command.logs.push(line);
+        if command.logs.len() > 200 {
+            let drain_count = command.logs.len().saturating_sub(200);
+            command.logs.drain(0..drain_count);
+        }
+        true
+    }
+
+    pub fn finish_command(
+        &mut self,
+        binary: &str,
+        uninstall: bool,
+        success: bool,
+        exit_code: Option<i32>,
+    ) -> bool {
+        let Some(command) = self.command.as_mut() else {
+            return false;
+        };
+        if command.binary != binary {
+            return false;
+        }
+        command.uninstall = uninstall;
+        command.running = false;
+        command.success = Some(success);
+        command.exit_code = exit_code;
+        true
+    }
+}
+
+fn default_extension_items() -> Vec<ExtensionItem> {
+    let mut items = vec![
+        cli_extension("fzf", "Fuzzy finder for file picker & live grep", "fzf", "SEARCH", "brew install fzf", "sudo apt install fzf", true),
+        cli_extension("ripgrep", "Fast text search for live grep", "rg", "SEARCH", "brew install ripgrep", "sudo apt install ripgrep", true),
+        cli_extension("fd", "Fast file finder (alternative to find)", "fd", "SEARCH", "brew install fd", "sudo apt install fd-find", false),
+        cli_extension("lazygit", "Git TUI integration", "lazygit", "GIT", "brew install lazygit", "sudo apt install lazygit", true),
+        cli_extension("lazydocker", "Docker TUI integration", "lazydocker", "DEVOPS", "brew install lazydocker", "sudo apt install lazydocker", false),
+        cli_extension("bat", "Syntax-highlighted file previews", "bat", "UTILITY", "brew install bat", "sudo apt install bat", false),
+        cli_extension("delta", "Git diff viewer with syntax highlighting", "delta", "GIT", "brew install git-delta", "sudo apt install git-delta", true),
+        cli_extension("opencode", "AI code assistant", "opencode", "AI", "curl -fsSL https://opencode.ai/install | sh", "curl -fsSL https://opencode.ai/install | sh", true),
+    ];
+
+    items.extend([
+        lsp_extension("Rust", "rust-analyzer", "rustup component add rust-analyzer", vec![".rs"], true),
+        lsp_extension("JavaScript", "typescript-language-server", "npm install -g typescript typescript-language-server", vec![".js", ".mjs", ".cjs"], false),
+        lsp_extension("JSX", "typescript-language-server", "npm install -g typescript typescript-language-server", vec![".jsx"], false),
+        lsp_extension("TypeScript", "typescript-language-server", "npm install -g typescript typescript-language-server", vec![".ts"], false),
+        lsp_extension("TSX", "typescript-language-server", "npm install -g typescript typescript-language-server", vec![".tsx"], false),
+        lsp_extension("Go", "gopls", "go install golang.org/x/tools/gopls@latest", vec![".go"], false),
+        lsp_extension("Python", "pylsp", "pip install python-lsp-server", vec![".py"], true),
+        lsp_extension("Java", "jdtls", "brew install jdtls", vec![".java"], false),
+        lsp_extension("SQL", "sqls", "go install github.com/sqls-server/sqls@latest", vec![".sql"], false),
+        lsp_extension("YAML", "yaml-language-server", "npm install -g yaml-language-server", vec![".yaml", ".yml"], true),
+        lsp_extension("Dockerfile", "docker-langserver", "npm install -g dockerfile-language-server-nodejs", vec!["Dockerfile*"], false),
+        lsp_extension("JSON", "vscode-json-language-server", "npm install -g vscode-langservers-extracted", vec![".json"], true),
+        lsp_extension("Bash", "bash-language-server", "npm install -g bash-language-server", vec![".sh"], true),
+    ]);
+    items
+}
+
+fn cli_extension(name: &str, subtitle: &str, binary: &str, tag: &str, macos: &str, linux: &str, installed: bool) -> ExtensionItem {
+    let macos_uninstall = macos
+        .strip_prefix("brew install ")
+        .map(|package| format!("brew uninstall {package}"))
+        .unwrap_or_default();
+    let linux_uninstall = linux
+        .strip_prefix("sudo apt install ")
+        .map(|package| format!("sudo apt remove -y {package}"))
+        .unwrap_or_default();
+    ExtensionItem {
+        name: name.to_string(),
+        subtitle: subtitle.to_string(),
+        binary: binary.to_string(),
+        category: ExtensionCategory::CliTools,
+        tag: tag.to_string(),
+        macos_install: macos.to_string(),
+        linux_install: linux.to_string(),
+        macos_uninstall,
+        linux_uninstall,
+        extensions: Vec::new(),
+        installed,
+    }
+}
+
+fn lsp_extension(language: &str, binary: &str, install: &str, extensions: Vec<&str>, installed: bool) -> ExtensionItem {
+    ExtensionItem {
+        name: format!("({binary})"),
+        subtitle: format!("{language} language server"),
+        binary: binary.to_string(),
+        category: ExtensionCategory::LanguageServers,
+        tag: language.to_uppercase(),
+        macos_install: install.to_string(),
+        linux_install: install.to_string(),
+        macos_uninstall: uninstall_command_for_lsp(binary, install),
+        linux_uninstall: uninstall_command_for_lsp(binary, install),
+        extensions: extensions.into_iter().map(str::to_string).collect(),
+        installed,
+    }
+}
+
+fn uninstall_command_for_lsp(binary: &str, install: &str) -> String {
+    if let Some(package) = install.strip_prefix("brew install ") {
+        return format!("brew uninstall {package}");
+    }
+    if let Some(package) = install.strip_prefix("npm install -g ") {
+        return format!("npm uninstall -g {package}");
+    }
+    if install.starts_with("pip install ") {
+        return "pip uninstall -y python-lsp-server".to_string();
+    }
+    if binary == "rust-analyzer" {
+        return "rustup component remove rust-analyzer".to_string();
+    }
+    if binary == "gopls" {
+        return "rm -f $(go env GOPATH)/bin/gopls".to_string();
+    }
+    if binary == "sqls" {
+        return "rm -f $(go env GOPATH)/bin/sqls".to_string();
+    }
+    String::new()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MarkdownPreviewState {
     pub visible: bool,
@@ -1413,6 +1699,7 @@ pub enum BufferContent {
     FuzzyPicker(FuzzyState),
     SettingsTab(SettingsState),
     Help(HelpState),
+    ExtensionsManager(ExtensionsManagerState),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1441,6 +1728,7 @@ impl BufferEntry {
             BufferContent::FuzzyPicker(_) => "[Fuzzy Finder]".to_string(),
             BufferContent::SettingsTab(_) => "[Settings]".to_string(),
             BufferContent::Help(state) => state.title.clone(),
+            BufferContent::ExtensionsManager(state) => format!("[{}]", state.title),
         }
     }
 
@@ -1459,7 +1747,8 @@ impl BufferEntry {
             | BufferContent::Diagnostics(_)
             | BufferContent::FuzzyPicker(_)
             | BufferContent::SettingsTab(_)
-            | BufferContent::Help(_) => false,
+            | BufferContent::Help(_)
+            | BufferContent::ExtensionsManager(_) => false,
         }
     }
 }

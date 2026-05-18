@@ -273,7 +273,8 @@ impl Renderer {
                         .with_radius(4.0),
                 );
             } else {
-                let inferred_icon_source = infer_recent_project_icon_source(full_path);
+                let full_path_buf = std::path::Path::new(full_path);
+                let inferred_icon_source = crate::app::persistence::AppPersistentState::infer_project_icon_source(full_path_buf);
                 let icon_source = recent_meta
                     .icon_source
                     .as_deref()
@@ -459,31 +460,7 @@ fn relative_last_opened_label(last_opened_unix_secs: u64) -> String {
 
 
 
-fn infer_recent_project_icon_source(full_path: &str) -> String {
-    let path = std::path::Path::new(full_path);
-    const MARKERS: &[&str] = &[
-        "Cargo.toml",
-        "package.json",
-        "go.mod",
-        "flake.nix",
-        "default.nix",
-        "deno.json",
-        "tsconfig.json",
-        "pyproject.toml",
-        "requirements.txt",
-        "build.zig",
-        "CMakeLists.txt",
-        "Makefile",
-        "README.md",
-    ];
-    for marker in MARKERS {
-        let candidate = path.join(marker);
-        if candidate.exists() {
-            return candidate.display().to_string();
-        }
-    }
-    full_path.to_string()
-}
+
 
 fn theme_preview_colors(name: &str, model: &CommandPaletteRenderModel) -> [[f32; 4]; 6] {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;

@@ -733,6 +733,9 @@ impl AppShell {
                 FocusTarget::CenterEditor if self.app_state.active_buffer_is_help() => {
                     InputFocusContext::Help
                 }
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_extensions_manager() => {
+                    InputFocusContext::ExtensionsManager
+                }
                 _ => InputFocusContext::Editor,
             }
         };

@@ -4,7 +4,23 @@ use crate::async_runtime::message::WorkerResultPayload;
 pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayload) {
     match payload {
         WorkerResultPayload::SystemDepCheckResult { missing } => {
-            if missing.is_empty() || app.dismissed_system_deps {
+            let missing_names: Vec<String> = missing.iter().map(|s| s.to_string()).collect();
+            if let Some(state) = app.app_state.active_extensions_manager_buffer_mut() {
+                for item in &mut state.items {
+                    if item.category == crate::app::app_state::ExtensionCategory::CliTools {
+                        item.installed = !missing_names.iter().any(|tool| tool == &item.binary);
+                    }
+                }
+            }
+            if missing.is_empty() {
+                app.active_system_dep_guide = None;
+                app.editor_needs_layout = true;
+                app.request_redraw();
+                return;
+            }
+            if app.dismissed_system_deps {
+                app.editor_needs_layout = true;
+                app.request_redraw();
                 return;
             }
             let install_cmd = if cfg!(target_os = "macos") {
@@ -12,7 +28,6 @@ pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayl
             } else {
                 format!("sudo apt-get install -y {}", missing.join(" "))
             };
-            let missing_names: Vec<String> = missing.iter().map(|s| s.to_string()).collect();
             let tool_statuses = missing_names
                 .iter()
                 .map(|t| {
@@ -67,6 +82,66 @@ pub(super) fn handle_system_dep_tool_progress(
 pub(super) fn handle_system_dep_install_done(app: &mut AppShell) {
     if let Some(guide) = app.active_system_dep_guide.as_mut() {
         guide.state = SystemDepState::Complete;
+    }
+    app.editor_needs_layout = true;
+    app.request_redraw();
+}
+
+pub(super) fn handle_extension_command_started(
+    app: &mut AppShell,
+    binary: String,
+    uninstall: bool,
+) {
+    if let Some(state) = app.app_state.active_extensions_manager_buffer_mut() {
+        state.start_command(binary, uninstall);
+    }
+    app.editor_needs_layout = true;
+    app.request_redraw();
+}
+
+pub(super) fn handle_extension_command_log(app: &mut AppShell, binary: String, line: String) {
+    if let Some(state) = app.app_state.active_extensions_manager_buffer_mut() {
+        let _ = state.push_command_log(&binary, line);
+    }
+    app.editor_needs_layout = true;
+    app.request_redraw();
+}
+
+pub(super) fn handle_extension_command_finished(
+    app: &mut AppShell,
+    binary: String,
+    uninstall: bool,
+    success: bool,
+    exit_code: Option<i32>,
+) {
+    if let Some(state) = app.app_state.active_extensions_manager_buffer_mut() {
+        let _ = state.finish_command(&binary, uninstall, success, exit_code);
+        if success {
+            for item in &mut state.items {
+                if item.binary == binary {
+                    item.installed = !uninstall;
+                }
+            }
+        }
+    }
+    app.submit(RequestSpec {
+        revision_id: 0,
+        topic: RequestTopic::SystemDepCheck,
+        payload: WorkerRequestPayload::CheckSystemDeps,
+    });
+    app.pending_lsp_server = None;
+    app.lsp_retry_at = Some(std::time::Instant::now() + std::time::Duration::from_secs(3));
+    let action = if uninstall { "Uninstall" } else { "Install" };
+    if success {
+        app.show_transient_toast_kind(
+            format!("{action} complete\n{binary} finished successfully"),
+            ToastKind::Success,
+        );
+    } else {
+        app.show_transient_toast_kind(
+            format!("{action} failed\n{binary} exited with {:?}", exit_code),
+            ToastKind::Error,
+        );
     }
     app.editor_needs_layout = true;
     app.request_redraw();

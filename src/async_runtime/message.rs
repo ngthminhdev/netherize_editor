@@ -364,6 +364,13 @@ pub enum WorkerRequestPayload {
     InstallSystemDeps {
         tools: Vec<String>,
     },
+    /// Run an extension install/uninstall command and stream stdout/stderr lines.
+    RunExtensionCommand {
+        binary: String,
+        command: String,
+        uninstall: bool,
+        working_dir: Option<PathBuf>,
+    },
     StopLspServer,
     ShutdownAllLspServers,
     ScanPythonEnvironments {
@@ -755,6 +762,20 @@ pub enum WorkerMessage {
     },
     /// All system dep tools have been processed — installation loop is done.
     SystemDepInstallDone,
+    ExtensionCommandStarted {
+        binary: String,
+        uninstall: bool,
+    },
+    ExtensionCommandLog {
+        binary: String,
+        line: String,
+    },
+    ExtensionCommandFinished {
+        binary: String,
+        uninstall: bool,
+        success: bool,
+        exit_code: Option<i32>,
+    },
     /// LSP binary was not found on PATH when attempting to spawn the server.
     LspMissingDependency {
         language_id: String,

@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-17T17:30:01.266Z
-> Files: 361 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-18T06:53:24.571Z
+> Files: 362 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
 
@@ -19,7 +19,7 @@
 ## .claude/
 
 - `settings.json` (~441 tok)
-- `settings.local.json` (~1169 tok)
+- `settings.local.json` (~1190 tok)
 
 ## .claude/rules/
 
@@ -179,7 +179,7 @@
 
 ## config/keymaps/
 
-- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5027 tok)
+- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5053 tok)
 
 ## config/themes/
 
@@ -306,33 +306,33 @@
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer + 16 more (~6610 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag + 17 more (~10684 tok)
-- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new + 1 more (~18941 tok)
+- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new + 10 more (~21155 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~6797 tok)
-- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~14341 tok)
-- `palette.rs` — open_command_palette_mode, open_python_env_selector, push_jump, push_jump_entry, pop_jump_back (~12638 tok)
+- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~15379 tok)
+- `palette.rs` — open_command_palette_mode, open_python_env_selector, push_jump, push_jump_entry + 21 more (~14681 tok)
 - `settings.rs` — [derive(Debug, Clone, PartialEq)] (~1971 tok)
-- `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, preview_file_history_index + 9 more (~11241 tok)
+- `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, preview_file_history_index + 9 more (~11256 tok)
 - `tests.rs` — [cfg(test)] (~17738 tok)
 - `workspace.rs` — attach_workspace, clear_workspace_session_state, workspace_root_path, workspace_nodes + 24 more (~4044 tok)
 
 ## src/app/event_loop/
 
-- `application.rs` — [cfg(target_os = "macos")] (~22488 tok)
+- `application.rs` — [cfg(target_os = "macos")] (~22647 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~10569 tok)
 - `commands_completion.rs` (~4377 tok)
 - `commands_editor.rs` (~4920 tok)
 - `commands_explorer.rs` (~6778 tok)
 - `commands_lsp.rs` (~9413 tok)
-- `commands_palette.rs` (~7270 tok)
+- `commands_palette.rs` (~7299 tok)
 - `commands_prompts.rs` (~6970 tok)
 - `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~6809 tok)
-- `commands_settings.rs` (~1683 tok)
-- `commands_terminal.rs` (~6001 tok)
+- `commands_settings.rs` (~2849 tok)
+- `commands_terminal.rs` (~6430 tok)
 - `commands_tests.rs` — [derive(Default)] (~15874 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~8683 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~17586 tok)
-- `mod.rs` — Struct: AppShell (~6376 tok)
-- `setup.rs` — new, new_for_tests (~18887 tok)
+- `mod.rs` — Struct: AppShell (~6398 tok)
+- `setup.rs` — new, new_for_tests (~18938 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
@@ -361,9 +361,9 @@
 
 ## src/app/input_map/
 
-- `focus.rs` (~9638 tok)
+- `focus.rs` (~10695 tok)
 - `helpers.rs` (~180 tok)
-- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette + 8 more (~4871 tok)
+- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette + 8 more (~4975 tok)
 - `tests.rs` (~15121 tok)
 
 ## src/async_runtime/
@@ -405,13 +405,13 @@
 
 - `builtin.rs` — builtin_dark (~2263 tok)
 - `loader.rs` — ThemeProfileEntry: default_profile, resolved_profile, active_profile, list_available_themes + 5 more (~11810 tok)
-- `model.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5477 tok)
+- `model.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5506 tok)
 - `raw.rs` — [derive(Debug, Clone, Deserialize)] (~3449 tok)
 
 ## src/core/
 
-- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~9561 tok)
-- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5318 tok)
+- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~9611 tok)
+- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5374 tok)
 - `mod.rs` (~35 tok)
 - `mode.rs` — Các mode cốt lõi của editor. (~4008 tok)
 - `text_object.rs` — find_text_object_range (~1753 tok)
@@ -421,9 +421,9 @@
 
 - `common.rs` — Struct: DispatchReport (~1739 tok)
 - `editing.rs` (~10093 tok)
-- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~3842 tok)
+- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~3927 tok)
 - `navigation.rs` (~3234 tok)
-- `palette.rs` (~6544 tok)
+- `palette.rs` (~6812 tok)
 - `session.rs` (~3902 tok)
 - `tests.rs` (~17370 tok)
 
@@ -444,14 +444,14 @@
 - `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
 - `region_pipeline.rs` — RegionDrawInstance: new, with_radius, new, update_screen_size + 3 more (~3035 tok)
-- `renderer.rs` — Core renderer types and module layout. (~4196 tok)
+- `renderer.rs` — Core renderer types and module layout. (~4203 tok)
 - `surface.rs` — SurfaceState giữ toàn bộ thông tin liên quan đến swapchain/surface. (~797 tok)
 - `text_pipeline.rs` — TextPipeline: new, update_screen_size, upload_instances, draw + 1 more (~2779 tok)
 
 ## src/render/renderer/
 
 - `components.rs` (~124 tok)
-- `editor.rs` — Editor viewport rendering modules. (~2278 tok)
+- `editor.rs` — Editor viewport rendering modules. (~2282 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3413 tok)
 - `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~6543 tok)
 - `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~3120 tok)
@@ -468,6 +468,7 @@
 
 - `buffers.rs` — clear_editor_overlays, update_references_buffer_content (~5424 tok)
 - `completion.rs` — Declares COMPLETION_KIND_TEXT (~1827 tok)
+- `extensions.rs` — update_extensions_manager_content (~6649 tok)
 - `fuzzy.rs` — update_fuzzy_picker_buffer_content (~7853 tok)
 - `help.rs` — update_help_buffer_content (~4176 tok)
 - `overlays.rs` — update_editor_overlays (~18996 tok)
@@ -505,7 +506,7 @@
 - `terminal.rs` — update_terminal_content, update_buffer_terminal_content (~6326 tok)
 - `topbar.rs` — update_topbar_content (~2712 tok)
 - `utils.rs` — Declares BORDER (~2418 tok)
-- `welcome.rs` — update_welcome_screen_content (~7753 tok)
+- `welcome.rs` — update_welcome_screen_content (~8129 tok)
 
 ## src/render/shaders/
 

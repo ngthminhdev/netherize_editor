@@ -1123,7 +1123,8 @@ impl AppState {
             | BufferContent::Diagnostics(_)
             | BufferContent::FuzzyPicker(_)
             | BufferContent::SettingsTab(_)
-            | BufferContent::Help(_) => {
+            | BufferContent::Help(_)
+            | BufferContent::ExtensionsManager(_) => {
                 self.save_current_text_buffer_history();
                 self.reset_text_editor_state();
                 self.active_buffer_index = Some(index);

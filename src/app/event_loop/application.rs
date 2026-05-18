@@ -96,7 +96,7 @@ fn symbol_kind_color(kind: &str, theme: &ThemeConfig) -> [f32; 4] {
 }
 
 fn breadcrumb_segment_text(kind: &str, name: &str) -> String {
-    const BREADCRUMB_ICON_PREFIX: &str = "[󰊕]";
+    const BREADCRUMB_ICON_PREFIX: &str = "[sym]";
     let label = symbol_kind_label(kind);
     if kind == "Constructor" && name.eq_ignore_ascii_case("constructor") {
         format!("{BREADCRUMB_ICON_PREFIX} {label}")
@@ -880,6 +880,12 @@ impl AppShell {
                         renderer.clear_buffer_terminal();
                         renderer.clear_editor_content();
                         renderer.update_help_buffer_content(help, center_bounds);
+                    } else if let Some(extensions) = self.app_state.active_extensions_manager_buffer() {
+                        renderer.set_editor_breadcrumb_segments(Vec::new());
+                        renderer.clear_welcome_logo();
+                        renderer.clear_buffer_terminal();
+                        renderer.clear_editor_content();
+                        renderer.update_extensions_manager_content(extensions, center_bounds);
                     } else if let Some(image) = self.app_state.active_image_buffer() {
                         renderer.set_editor_breadcrumb_segments(Vec::new());
                         renderer.update_image_content(image, center_bounds);
@@ -1295,6 +1301,7 @@ impl AppShell {
                             BufferContent::FuzzyPicker(_) => TopbarTabKind::FuzzyPicker,
                             BufferContent::SettingsTab(_) => TopbarTabKind::Settings,
                             BufferContent::Help(_) => TopbarTabKind::Help,
+                            BufferContent::ExtensionsManager(_) => TopbarTabKind::ExtensionsManager,
                         },
                         is_dirty: buffer.is_dirty(
                             self.app_state.active_buffer_index() == Some(idx),
@@ -1782,9 +1789,9 @@ mod tests {
         assert_eq!(
             labels,
             vec![
-                "[󰊕] class SubscribeLogSync",
-                "[󰊕] method stop",
-                "[󰊕] const intervalId"
+                "[sym] class SubscribeLogSync",
+                "[sym] method stop",
+                "[sym] const intervalId"
             ]
         );
     }
@@ -1860,9 +1867,9 @@ mod tests {
         assert_eq!(
             labels,
             vec![
-                "[󰊕] class KafkaProducer",
-                "[󰊕] constructor",
-                "[󰊕] const kafkaClient"
+                "[sym] class KafkaProducer",
+                "[sym] constructor",
+                "[sym] const kafkaClient"
             ]
         );
     }
@@ -1871,7 +1878,7 @@ mod tests {
     fn breadcrumb_segment_text_dedupes_constructor_label() {
         assert_eq!(
             breadcrumb_segment_text("Constructor", "constructor"),
-            "[󰊕] constructor"
+            "[sym] constructor"
         );
     }
 }

@@ -121,9 +121,14 @@ impl AppState {
             .iter()
             .map(|path| {
                 let item_meta = meta.get(path);
+                // Always refresh the icon source from the current project markers.
+                // Older persisted metadata may contain a stale/generic icon source,
+                // which makes the recent-project picker render a file icon while
+                // the welcome page correctly infers the project language/framework.
+                let inferred_icon_source = crate::app::persistence::AppPersistentState::infer_project_icon_source(path);
                 CommandPaletteItem::recent_project_with_meta(
                     path,
-                    item_meta.and_then(|meta| meta.icon_source.as_deref()),
+                    Some(inferred_icon_source.as_str()),
                     item_meta.and_then(|meta| meta.last_opened_unix_secs),
                 )
             })
@@ -138,7 +143,10 @@ impl AppState {
         let items: Vec<_> = recent
             .iter()
             .take(WELCOME_RECENT_PROJECT_LIMIT)
-            .map(|path| CommandPaletteItem::recent_project(path))
+            .map(|path| {
+                let icon_source = crate::app::persistence::AppPersistentState::infer_project_icon_source(path);
+                CommandPaletteItem::recent_project_with_meta(path, Some(icon_source.as_str()), None)
+            })
             .collect();
         self.command_palette
             .set_hidden_items(CommandPaletteMode::RecentProjects, items)
@@ -725,6 +733,27 @@ impl AppState {
             .is_some_and(|buffer| matches!(buffer.content, BufferContent::Help(_)))
     }
 
+    pub fn active_buffer_is_extensions_manager(&self) -> bool {
+        self.active_buffer()
+            .is_some_and(|buffer| matches!(buffer.content, BufferContent::ExtensionsManager(_)))
+    }
+
+    pub fn active_extensions_manager_buffer(&self) -> Option<&ExtensionsManagerState> {
+        match self.active_buffer().map(|buffer| &buffer.content) {
+            Some(BufferContent::ExtensionsManager(state)) => Some(state),
+            _ => None,
+        }
+    }
+
+    pub fn active_extensions_manager_buffer_mut(&mut self) -> Option<&mut ExtensionsManagerState> {
+        self.active_buffer_index
+            .and_then(|idx| self.buffers.get_mut(idx))
+            .and_then(|buffer| match &mut buffer.content {
+                BufferContent::ExtensionsManager(state) => Some(state),
+                _ => None,
+            })
+    }
+
     pub fn active_settings_buffer(&self) -> Option<&SettingsState> {
         match self.active_buffer().map(|buffer| &buffer.content) {
             Some(BufferContent::SettingsTab(state)) => Some(state),
@@ -904,6 +933,34 @@ impl AppState {
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::Help(HelpState::new()),
+        });
+        let index = self.buffers.len().saturating_sub(1);
+        self.reset_text_editor_state();
+        self.active_buffer_index = Some(index);
+        let _ = self.clear_current_overlays();
+        self.bump_revision();
+        index
+    }
+
+    pub fn open_extensions_manager_buffer(&mut self) -> usize {
+        self.save_current_text_buffer_history();
+
+        if let Some(existing_idx) = self
+            .buffers
+            .iter()
+            .position(|buffer| matches!(buffer.content, BufferContent::ExtensionsManager(_)))
+        {
+            self.is_initial_launch_welcome = false;
+            self.reset_text_editor_state();
+            self.active_buffer_index = Some(existing_idx);
+            let _ = self.clear_current_overlays();
+            self.bump_revision();
+            return existing_idx;
+        }
+
+        self.is_initial_launch_welcome = false;
+        self.buffers.push(BufferEntry {
+            content: BufferContent::ExtensionsManager(ExtensionsManagerState::new()),
         });
         let index = self.buffers.len().saturating_sub(1);
         self.reset_text_editor_state();
@@ -1153,6 +1210,80 @@ impl AppState {
             self.bump_revision();
         }
         changed
+    }
+
+    pub fn extensions_select_next(&mut self) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let changed = state.select_next();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn extensions_select_prev(&mut self) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let changed = state.select_prev();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn extensions_set_filter_focused(&mut self, focused: bool) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        if state.filter_focused == focused {
+            return false;
+        }
+        state.filter_focused = focused;
+        self.bump_revision();
+        true
+    }
+
+    pub fn extensions_append_filter(&mut self, text: &str) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let changed = state.append_filter(text);
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn extensions_backspace_filter(&mut self) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let changed = state.backspace_filter();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn extensions_toggle_install_selected(&mut self, installed: bool) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let Some(idx) = state.selected_item_index() else {
+            return false;
+        };
+        let Some(item) = state.items.get_mut(idx) else {
+            return false;
+        };
+        if item.installed == installed {
+            return false;
+        }
+        item.installed = installed;
+        self.bump_revision();
+        true
     }
 
     pub fn settings_select_prev(&mut self) -> bool {

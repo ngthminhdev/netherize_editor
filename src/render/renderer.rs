@@ -85,6 +85,7 @@ pub enum TopbarTabKind {
     FuzzyPicker,
     Settings,
     Help,
+    ExtensionsManager,
 }
 
 #[derive(Debug, Clone, PartialEq)]

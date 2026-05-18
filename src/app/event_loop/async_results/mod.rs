@@ -134,6 +134,24 @@ impl AsyncResultRouter for AppShell {
         system::handle_system_dep_install_done(self);
     }
 
+    fn on_extension_command_started(&mut self, binary: String, uninstall: bool) {
+        system::handle_extension_command_started(self, binary, uninstall);
+    }
+
+    fn on_extension_command_log(&mut self, binary: String, line: String) {
+        system::handle_extension_command_log(self, binary, line);
+    }
+
+    fn on_extension_command_finished(
+        &mut self,
+        binary: String,
+        uninstall: bool,
+        success: bool,
+        exit_code: Option<i32>,
+    ) {
+        system::handle_extension_command_finished(self, binary, uninstall, success, exit_code);
+    }
+
     fn on_lsp_missing_dependency(&mut self, _language_id: String, tool_name: String) {
         lsp::handle_lsp_missing_dependency(self, tool_name);
     }

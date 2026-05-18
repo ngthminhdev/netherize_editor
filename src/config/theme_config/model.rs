@@ -456,10 +456,13 @@ impl ThemeConfig {
             return &self.icons.docker;
         }
         if filename.eq_ignore_ascii_case("build.gradle")
+            || filename.eq_ignore_ascii_case("build.gradle.kts")
             || filename.eq_ignore_ascii_case("settings.gradle")
+            || filename.eq_ignore_ascii_case("settings.gradle.kts")
             || filename.eq_ignore_ascii_case("gradle.properties")
+            || filename.eq_ignore_ascii_case("gradlew")
         {
-            return &self.icons.gradle;
+            return &self.icons.java;
         }
         if filename.eq_ignore_ascii_case("makefile")
             || filename.eq_ignore_ascii_case("gnumakefile")

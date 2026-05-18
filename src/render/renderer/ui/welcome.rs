@@ -72,34 +72,7 @@ fn parse_welcome_git_head(head: &str) -> Option<String> {
     })
 }
 
-fn infer_welcome_project_icon_source(path: &Path) -> PathBuf {
-    const MARKERS: &[&str] = &[
-        "Cargo.toml",
-        "package.json",
-        "go.mod",
-        "pom.xml",
-        "build.gradle",
-        "settings.gradle",
-        "gradle.properties",
-        "flake.nix",
-        "default.nix",
-        "deno.json",
-        "tsconfig.json",
-        "pyproject.toml",
-        "requirements.txt",
-        "build.zig",
-        "CMakeLists.txt",
-        "Makefile",
-        "README.md",
-    ];
-    for marker in MARKERS {
-        let candidate = path.join(marker);
-        if candidate.exists() {
-            return candidate;
-        }
-    }
-    path.to_path_buf()
-}
+
 
 fn bundled_logo() -> Option<&'static BundledLogo> {
     static LOGO: OnceLock<Option<BundledLogo>> = OnceLock::new();
@@ -529,8 +502,8 @@ impl Renderer {
                 .and_then(|name| name.to_str())
                 .unwrap_or("unknown");
             let path = project.display().to_string();
-            let icon_source = infer_welcome_project_icon_source(project);
-            let icon_name = icon_source
+            let icon_source = crate::app::persistence::AppPersistentState::infer_project_icon_source(project);
+            let icon_name = Path::new(&icon_source)
                 .file_name()
                 .and_then(|name| name.to_str())
                 .unwrap_or(name);

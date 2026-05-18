@@ -567,7 +567,9 @@ impl AppShell {
             if focus_changed {
                 self.input_handler.clear_pending_prefix();
             }
-        } else if self.app_state.active_buffer_is_settings() {
+        } else if self.app_state.active_buffer_is_settings()
+            || self.app_state.active_buffer_is_extensions_manager()
+        {
             if matches!(
                 self.app_state.current_mode(),
                 EditorMode::TerminalFocus | EditorMode::TerminalNormal | EditorMode::PaletteFocus

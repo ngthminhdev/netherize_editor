@@ -19,13 +19,15 @@ impl AppShell {
             | Command::SearchInFiles
             | Command::OpenFileHistory
             | Command::OpenThemeSelector
-            | Command::OpenHelp => {
+            | Command::OpenHelp
+            | Command::OpenExtensionsManager => {
                 let opens_center_buffer = matches!(
                     command,
                     Command::OpenFileFinder
                         | Command::SearchInFiles
                         | Command::OpenFileHistory
                         | Command::OpenHelp
+                        | Command::OpenExtensionsManager
                 );
                 let report = dispatch_command(&mut self.app_state, command.clone());
                 let mut request_redraw = report.request_redraw;

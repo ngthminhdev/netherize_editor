@@ -24,7 +24,7 @@ use super::{
     fzf::run_fzf_request,
     lsp::run_lsp_request,
     pty::run_pty_request,
-    syntax_jobs::{execute_virtual_job, run_system_dep_install},
+    syntax_jobs::{execute_virtual_job, run_extension_command, run_system_dep_install},
 };
 
 async fn detect_python_version(python_binary: Option<&std::path::Path>) -> Option<String> {
@@ -275,6 +275,35 @@ pub(super) async fn dispatch_loop(
             let ai_event_proxy = event_proxy.clone();
             tokio::spawn(async move {
                 run_opencode_install(worker_tx, ai_event_proxy).await;
+            });
+            continue;
+        }
+
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::RunExtensionCommand { .. }
+        ) {
+            let (binary, command, uninstall, working_dir) = match request.payload {
+                WorkerRequestPayload::RunExtensionCommand {
+                    binary,
+                    command,
+                    uninstall,
+                    working_dir,
+                } => (binary, command, uninstall, working_dir),
+                _ => unreachable!(),
+            };
+            let worker_tx = result_tx.clone();
+            let extension_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                run_extension_command(
+                    binary,
+                    command,
+                    uninstall,
+                    working_dir,
+                    worker_tx,
+                    extension_proxy,
+                )
+                .await;
             });
             continue;
         }

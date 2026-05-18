@@ -86,53 +86,26 @@ impl AppShell {
         false
     }
 
-    fn lsp_install_working_dir(&self) -> Option<PathBuf> {
-        self.app_state
-            .workspace_root_path()
-            .map(PathBuf::from)
-            .or_else(|| {
-                self.app_state
-                    .active_file()
-                    .and_then(|path| path.parent())
-                    .map(PathBuf::from)
-            })
-            .or_else(|| std::env::current_dir().ok())
-    }
+
 
     pub(in crate::app::event_loop) fn accept_lsp_install_guide(&mut self) -> bool {
         let Some(guide) = self.active_lsp_guide.take() else {
             return false;
         };
-        let LspInstallGuide {
-            binary,
-            install_cmd,
-        } = guide;
+        let LspInstallGuide { binary, .. } = guide;
 
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_lsp_guide_popup();
         }
 
-        let mut changed = true;
-        if !install_cmd.is_empty() {
-            if let Some(session_id) = self.focused_terminal_session_id() {
-                changed |= self.handle_command(Command::FocusTerminal);
-                self.forward_to_terminal_session(session_id, &format!("{install_cmd}\r"));
-            } else {
-                self.submit(RequestSpec {
-                    revision_id: 0,
-                    topic: RequestTopic::TerminalPty,
-                    payload: WorkerRequestPayload::SpawnDetachedShellCommand {
-                        command: install_cmd,
-                        working_dir: self.lsp_install_working_dir(),
-                    },
-                });
-                self.show_transient_toast(format!("Installing {binary} in background..."));
-            }
-            self.pending_lsp_server = None;
-            self.lsp_retry_at = Some(Instant::now() + Duration::from_secs(15));
-        }
-
-        changed
+        let _ = self.app_state.open_extensions_manager_buffer();
+        let _ = self.sync_focus_mode_for_active_buffer();
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        self.show_transient_toast(format!(
+            "Open Extensions Manager\nSelect {binary} and press i to install with live logs."
+        ));
+        true
     }
 
     pub(super) fn open_lazygit_buffer(&mut self) -> bool {

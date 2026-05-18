@@ -137,6 +137,13 @@ pub enum Command {
     OpenFileHistory,
     OpenSettings,
     OpenHelp,
+    OpenExtensionsManager,
+    ExtensionsSelectNext,
+    ExtensionsSelectPrev,
+    ExtensionsStartFilter,
+    ExtensionsCancelFilter,
+    ExtensionsInstallSelected,
+    ExtensionsUninstallSelected,
     FilePickerAppendQuery(String),
     FilePickerBackspaceQuery,
     ToggleLiveGrepCaseSensitive,
@@ -520,6 +527,8 @@ impl Command {
                 | Self::ReferencesSelectPrev
                 | Self::DiagnosticsSelectNext
                 | Self::DiagnosticsSelectPrev
+                | Self::ExtensionsSelectNext
+                | Self::ExtensionsSelectPrev
                 | Self::ExplorerMoveUp
                 | Self::ExplorerMoveDown
                 | Self::ExplorerCollapseOrParent

@@ -4,6 +4,7 @@ mod buffers;
 mod completion;
 mod fuzzy;
 mod help;
+mod extensions;
 mod overlays;
 mod selections;
 mod settings;

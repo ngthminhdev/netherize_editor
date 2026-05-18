@@ -243,6 +243,13 @@ fn dispatch_command_with_clipboard_once(
         | Command::OpenFileHistory
         | Command::OpenSettings
         | Command::OpenHelp
+        | Command::OpenExtensionsManager
+        | Command::ExtensionsSelectNext
+        | Command::ExtensionsSelectPrev
+        | Command::ExtensionsStartFilter
+        | Command::ExtensionsCancelFilter
+        | Command::ExtensionsInstallSelected
+        | Command::ExtensionsUninstallSelected
         | Command::GitOpenLazygit
         | Command::GitOpenLazydocker
         | Command::GitBlameLine

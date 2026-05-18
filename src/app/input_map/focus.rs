@@ -4,6 +4,101 @@ use super::helpers::palette_query_from_text;
 use super::*;
 
 impl InputMap {
+    pub(super) fn resolve_extensions_manager_focus(
+        &self,
+        input: &NormalizedInput,
+        filter_focused: bool,
+    ) -> Option<KeybindingMatch> {
+        use KeyCode::*;
+
+        if filter_focused {
+            if input.named_key == Some(NamedKey::Escape) {
+                return Some(KeybindingMatch {
+                    command: Command::ExtensionsCancelFilter,
+                    reason: "extensions: Esc -> leave filter focus",
+                });
+            }
+            if input.named_key == Some(NamedKey::Backspace) {
+                return Some(KeybindingMatch {
+                    command: Command::FilePickerBackspaceQuery,
+                    reason: "extensions: Backspace -> delete filter char",
+                });
+            }
+            if input.named_key == Some(NamedKey::Space) {
+                return Some(KeybindingMatch {
+                    command: Command::FilePickerAppendQuery(" ".to_string()),
+                    reason: "extensions: Space -> append filter char",
+                });
+            }
+            if let Some(command) = palette_query_from_text(&input.text) {
+                return Some(KeybindingMatch {
+                    command,
+                    reason: "extensions: text -> append filter char",
+                });
+            }
+            return None;
+        }
+
+        if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowDown))
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyJ))
+            || (input.modifiers.control_key()
+                && !input.modifiers.super_key()
+                && input.physical_key == Some(KeyN))
+        {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsSelectNext,
+                reason: "extensions: j/down/ctrl+n -> select next",
+            });
+        }
+
+        if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowUp))
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyK))
+            || (input.modifiers.control_key()
+                && !input.modifiers.super_key()
+                && input.physical_key == Some(KeyP))
+        {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsSelectPrev,
+                reason: "extensions: k/up/ctrl+p -> select previous",
+            });
+        }
+
+        if !input.has_command_modifier() && input.physical_key == Some(KeyF) {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsStartFilter,
+                reason: "extensions: f -> focus filter",
+            });
+        }
+
+        if !input.has_command_modifier() && input.physical_key == Some(KeyI) {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsInstallSelected,
+                reason: "extensions: i -> mark installed",
+            });
+        }
+
+        if !input.has_command_modifier() && input.physical_key == Some(KeyU) {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsUninstallSelected,
+                reason: "extensions: u -> mark uninstalled",
+            });
+        }
+
+        if !input.has_command_modifier() && input.physical_key == Some(KeyQ) {
+            return Some(KeybindingMatch {
+                command: Command::BufferCloseCurrent,
+                reason: "extensions: q -> close tab",
+            });
+        }
+
+        resolved_keymap::resolve_global_command(&self.keymap, input, &self.open_file_path).map(
+            |command| KeybindingMatch {
+                command,
+                reason: "extensions: global binding",
+            },
+        )
+    }
+
     pub(super) fn resolve_settings_focus(
         &self,
         input: &NormalizedInput,

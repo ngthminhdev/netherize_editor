@@ -1,5 +1,6 @@
 use std::{
     ops::Range,
+    path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -454,6 +455,137 @@ pub(super) fn resolve_system_path() -> String {
 }
 
 /// Cài đặt từng tool một, gửi progress message về main thread sau mỗi bước.
+pub(super) async fn run_extension_command(
+    binary: String,
+    command: String,
+    uninstall: bool,
+    working_dir: Option<PathBuf>,
+    tx: std::sync::mpsc::Sender<crate::async_runtime::message::WorkerMessage>,
+    event_proxy: EventLoopProxy<AppEvent>,
+) {
+    use super::emit::emit_message_and_wake;
+    use crate::async_runtime::message::WorkerMessage;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
+    emit_message_and_wake(
+        &tx,
+        &event_proxy,
+        WorkerMessage::ExtensionCommandStarted {
+            binary: binary.clone(),
+            uninstall,
+        },
+    );
+
+    let mut child_cmd = tokio::process::Command::new("sh");
+    child_cmd
+        .arg("-c")
+        .arg(&command)
+        .env("PATH", resolve_system_path())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    if let Some(dir) = working_dir {
+        child_cmd.current_dir(dir);
+    }
+
+    let mut child = match child_cmd.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            emit_message_and_wake(
+                &tx,
+                &event_proxy,
+                WorkerMessage::ExtensionCommandLog {
+                    binary: binary.clone(),
+                    line: format!("spawn failed: {err}"),
+                },
+            );
+            emit_message_and_wake(
+                &tx,
+                &event_proxy,
+                WorkerMessage::ExtensionCommandFinished {
+                    binary,
+                    uninstall,
+                    success: false,
+                    exit_code: None,
+                },
+            );
+            return;
+        }
+    };
+
+    let mut stdout_task = None;
+    if let Some(stdout) = child.stdout.take() {
+        let tx_clone = tx.clone();
+        let proxy_clone = event_proxy.clone();
+        let binary_clone = binary.clone();
+        stdout_task = Some(tokio::spawn(async move {
+            let mut lines = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                emit_message_and_wake(
+                    &tx_clone,
+                    &proxy_clone,
+                    WorkerMessage::ExtensionCommandLog {
+                        binary: binary_clone.clone(),
+                        line,
+                    },
+                );
+            }
+        }));
+    }
+
+    let mut stderr_task = None;
+    if let Some(stderr) = child.stderr.take() {
+        let tx_clone = tx.clone();
+        let proxy_clone = event_proxy.clone();
+        let binary_clone = binary.clone();
+        stderr_task = Some(tokio::spawn(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                emit_message_and_wake(
+                    &tx_clone,
+                    &proxy_clone,
+                    WorkerMessage::ExtensionCommandLog {
+                        binary: binary_clone.clone(),
+                        line,
+                    },
+                );
+            }
+        }));
+    }
+
+    let status = child.wait().await;
+    if let Some(task) = stdout_task {
+        let _ = task.await;
+    }
+    if let Some(task) = stderr_task {
+        let _ = task.await;
+    }
+    let (success, exit_code) = match status {
+        Ok(status) => (status.success(), status.code()),
+        Err(err) => {
+            emit_message_and_wake(
+                &tx,
+                &event_proxy,
+                WorkerMessage::ExtensionCommandLog {
+                    binary: binary.clone(),
+                    line: format!("wait failed: {err}"),
+                },
+            );
+            (false, None)
+        }
+    };
+
+    emit_message_and_wake(
+        &tx,
+        &event_proxy,
+        WorkerMessage::ExtensionCommandFinished {
+            binary,
+            uninstall,
+            success,
+            exit_code,
+        },
+    );
+}
+
 pub(super) async fn run_system_dep_install(
     tools: Vec<String>,
     tx: std::sync::mpsc::Sender<crate::async_runtime::message::WorkerMessage>,

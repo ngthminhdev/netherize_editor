@@ -708,7 +708,8 @@ impl AppState {
                 | BufferContent::Diagnostics(_)
                 | BufferContent::FuzzyPicker(_)
                 | BufferContent::SettingsTab(_)
-                | BufferContent::Help(_) => false,
+                | BufferContent::Help(_)
+                | BufferContent::ExtensionsManager(_) => false,
             })
     }
 
