@@ -78,6 +78,10 @@
 ## Session: 2026-05-17 17:35
 
 | Time | Action | File(s) | Outcome | ~Tokens |
+| 21:18 | Read CLAUDE/OpenWolf project rules and required memory files | CLAUDE.md, .wolf/OPENWOLF.md, .wolf/cerebrum.md, .wolf/anatomy.md | Rules loaded for session | ~6500 |
+| 21:20 | Compared attached extension-manager prototype against current native renderer/state | extensions.rs, app_state/mod.rs, commands.rs | Identified current feature gaps and improvement direction | ~9000 |
+| 21:31 | Implemented native Extensions Manager tabs and inline expansion | app_state/mod.rs, palette.rs, focus.rs, commands.rs, command_dispatch, extensions.rs | cargo check passed | ~15000 |
+| 21:59 | Corrected Extensions Manager layout after user reported unchanged/crooked UI | extensions.rs, buglog.json | Removed oversized footer, expanded list area, cargo check passed | ~6000 |
 |------|--------|---------|---------|--------|
 
 ## Session: 2026-05-17 17:38

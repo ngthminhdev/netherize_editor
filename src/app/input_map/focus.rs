@@ -70,6 +70,38 @@ impl InputMap {
             });
         }
 
+        if !input.has_command_modifier() && input.physical_key == Some(Slash) {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsStartFilter,
+                reason: "extensions: / -> focus filter",
+            });
+        }
+
+        if !input.has_command_modifier() && input.named_key == Some(NamedKey::Enter) {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsToggleExpanded,
+                reason: "extensions: Enter -> expand selected",
+            });
+        }
+
+        if !input.has_command_modifier() && input.named_key == Some(NamedKey::Tab) {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsSwitchTabNext,
+                reason: "extensions: Tab -> next tab",
+            });
+        }
+
+        if input.modifiers.shift_key()
+            && !input.modifiers.control_key()
+            && !input.modifiers.super_key()
+            && input.named_key == Some(NamedKey::Tab)
+        {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsSwitchTabPrev,
+                reason: "extensions: Shift+Tab -> previous tab",
+            });
+        }
+
         if !input.has_command_modifier() && input.physical_key == Some(KeyI) {
             return Some(KeybindingMatch {
                 command: Command::ExtensionsInstallSelected,

@@ -146,6 +146,9 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::ExtensionsSelectPrev
         | Command::ExtensionsStartFilter
         | Command::ExtensionsCancelFilter
+        | Command::ExtensionsToggleExpanded
+        | Command::ExtensionsSwitchTabNext
+        | Command::ExtensionsSwitchTabPrev
         | Command::ExtensionsInstallSelected
         | Command::ExtensionsUninstallSelected => DispatchReport::success(
             "Dispatch: extensions manager command handled by shell".to_string(),

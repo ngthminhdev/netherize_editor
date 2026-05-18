@@ -497,10 +497,7 @@ impl AppState {
             return false;
         }
 
-        let target_line = line_idx.min(self.text.len_lines().saturating_sub(1));
-        let line_start = self.text.line_to_char(target_line);
-        let target_char = line_start + col_idx.min(self.max_col_for_line(target_line));
-        self.move_cursor_to_char_idx(target_char)
+        self.jump_to_line_col(line_idx, col_idx)
     }
 
     pub fn byte_to_char_idx(&self, byte_idx: usize) -> usize {

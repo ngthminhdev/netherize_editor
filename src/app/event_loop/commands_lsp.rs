@@ -520,7 +520,7 @@ impl AppShell {
         let closed = self.close_current_buffer_now();
 
         if let Some((origin_path, origin_line)) = self.app_state.active_references_origin() {
-            self.app_state.push_jump_entry(origin_path, origin_line);
+            self.app_state.push_jump_entry(origin_path, origin_line, 0);
         }
 
         if let Err(err) = self.app_state.open_file(item.path.clone()) {
@@ -621,12 +621,16 @@ impl AppShell {
             .app_state
             .active_file()
             .map(PathBuf::from)
-            .map(|path| (path, self.app_state.cursor_line_col().0));
+            .map(|path| {
+                let (line, col) = self.app_state.cursor_line_col();
+                (path, line, col)
+            });
 
         let _ = self.app_state.close_current_buffer();
 
-        if let Some((active_path, active_line)) = origin {
-            self.app_state.push_jump_entry(active_path, active_line);
+        if let Some((active_path, active_line, active_col)) = origin {
+            self.app_state
+                .push_jump_entry(active_path, active_line, active_col);
         }
 
         if let Err(err) = self.app_state.open_file(item.file_path.clone()) {
@@ -650,14 +654,14 @@ impl AppShell {
     }
 
     pub(super) fn execute_jump_back(&mut self) -> bool {
-        let Some((path, line)) = self.app_state.pop_jump_back() else {
+        let Some((path, line, col)) = self.app_state.pop_jump_back() else {
             return false;
         };
         if let Err(err) = self.app_state.open_file(path.clone()) {
             eprintln!("[AppShell] jump_back open_file failed: {err}");
             return false;
         }
-        self.app_state.jump_to_line(line);
+        self.app_state.jump_to_line_col(line, col);
         let vp = self.editor_viewport_lines();
         self.app_state.auto_scroll_to_cursor(vp);
         self.invalidate_highlights_and_parse_active_buffer();
@@ -668,14 +672,14 @@ impl AppShell {
     }
 
     pub(super) fn execute_jump_forward(&mut self) -> bool {
-        let Some((path, line)) = self.app_state.pop_jump_forward() else {
+        let Some((path, line, col)) = self.app_state.pop_jump_forward() else {
             return false;
         };
         if let Err(err) = self.app_state.open_file(path.clone()) {
             eprintln!("[AppShell] jump_forward open_file failed: {err}");
             return false;
         }
-        self.app_state.jump_to_line(line);
+        self.app_state.jump_to_line_col(line, col);
         let vp = self.editor_viewport_lines();
         self.app_state.auto_scroll_to_cursor(vp);
         self.invalidate_highlights_and_parse_active_buffer();

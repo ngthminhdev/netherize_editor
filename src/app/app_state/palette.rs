@@ -42,39 +42,41 @@ impl AppState {
             > 0
     }
 
-    /// Push current file+line onto the jump back stack before a jump (e.g. gd).
+    /// Push current file+line+column onto the jump back stack before a jump (e.g. gd).
     /// Clears the forward stack since jumping starts a new branch.
     pub fn push_jump(&mut self) {
         let Some(path) = self.active_file.clone() else {
             return;
         };
-        let line = self.cursor_line_col().0;
-        self.jump_back_stack.push((path, line));
+        let (line, col) = self.cursor_line_col();
+        self.jump_back_stack.push((path, line, col));
         self.jump_forward_stack.clear();
     }
 
-    /// Push an explicit file+line onto the jump back stack.
+    /// Push an explicit file+line+column onto the jump back stack.
     /// Useful when the current active surface is a non-file buffer.
-    pub fn push_jump_entry(&mut self, path: PathBuf, line: usize) {
-        self.jump_back_stack.push((path, line));
+    pub fn push_jump_entry(&mut self, path: PathBuf, line: usize, col: usize) {
+        self.jump_back_stack.push((path, line, col));
         self.jump_forward_stack.clear();
     }
 
-    /// Pop from the back stack and return (path, line). Pushes current pos onto forward stack.
-    pub fn pop_jump_back(&mut self) -> Option<(PathBuf, usize)> {
+    /// Pop from the back stack and return (path, line, col). Pushes current pos onto forward stack.
+    pub fn pop_jump_back(&mut self) -> Option<(PathBuf, usize, usize)> {
         let entry = self.jump_back_stack.pop()?;
         let current_path = self.active_file.clone().unwrap_or_default();
-        let current_line = self.cursor_line_col().0;
-        self.jump_forward_stack.push((current_path, current_line));
+        let (current_line, current_col) = self.cursor_line_col();
+        self.jump_forward_stack
+            .push((current_path, current_line, current_col));
         Some(entry)
     }
 
-    /// Pop from the forward stack and return (path, line). Pushes current pos onto back stack.
-    pub fn pop_jump_forward(&mut self) -> Option<(PathBuf, usize)> {
+    /// Pop from the forward stack and return (path, line, col). Pushes current pos onto back stack.
+    pub fn pop_jump_forward(&mut self) -> Option<(PathBuf, usize, usize)> {
         let entry = self.jump_forward_stack.pop()?;
         let current_path = self.active_file.clone().unwrap_or_default();
-        let current_line = self.cursor_line_col().0;
-        self.jump_back_stack.push((current_path, current_line));
+        let (current_line, current_col) = self.cursor_line_col();
+        self.jump_back_stack
+            .push((current_path, current_line, current_col));
         Some(entry)
     }
 
@@ -1262,6 +1264,39 @@ impl AppState {
             return false;
         };
         let changed = state.backspace_filter();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn extensions_toggle_expanded_selected(&mut self) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let changed = state.toggle_expanded_selected();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn extensions_switch_tab_next(&mut self) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let changed = state.switch_tab_next();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn extensions_switch_tab_prev(&mut self) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let changed = state.switch_tab_prev();
         if changed {
             self.bump_revision();
         }

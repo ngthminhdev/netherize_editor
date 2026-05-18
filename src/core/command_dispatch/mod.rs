@@ -297,6 +297,9 @@ fn dispatch_command_with_clipboard_once(
         | Command::ExtensionsSelectPrev
         | Command::ExtensionsStartFilter
         | Command::ExtensionsCancelFilter
+        | Command::ExtensionsToggleExpanded
+        | Command::ExtensionsSwitchTabNext
+        | Command::ExtensionsSwitchTabPrev
         | Command::ExtensionsInstallSelected
         | Command::ExtensionsUninstallSelected
         | Command::GitOpenLazygit

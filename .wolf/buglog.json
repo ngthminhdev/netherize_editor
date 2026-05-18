@@ -2,6 +2,18 @@
   "version": 1,
   "bugs": [
     {
+      "id": "bug-008",
+      "timestamp": "2026-05-18T14:59:27.161473+00:00",
+      "error_message": "User reports Extensions Manager opened via <leader>m e still looks unchanged, crooked/misaligned after initial UI update.",
+      "file": "src/render/renderer/editor/extensions.rs",
+      "root_cause": "Initial update kept the old oversized footer reservation/detail panel, leaving little visible list space and preserving the old bottom-heavy layout. The visible deltas were mostly subtle until pressing Enter/Tab, so the opened tab looked effectively unchanged.",
+      "fix": "Reduced footer reservation to a compact help bar, removed the large selected-item footer panel, kept details inline below expanded rows, narrowed row status/tag columns to reduce text collision, and reran cargo check successfully.",
+      "tags": ["ui", "extensions-manager", "layout", "user-reported"],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-18T14:59:27.161473+00:00"
+    },
+    {
       "id": "bug-001",
       "timestamp": "2026-05-16T06:20:38.889Z",
       "error_message": "Significant refactor of ",

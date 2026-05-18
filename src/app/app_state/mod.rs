@@ -289,6 +289,13 @@ pub enum ExtensionCategory {
     LanguageServers,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtensionsTab {
+    All,
+    Installed,
+    Available,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtensionItem {
     pub name: String,
@@ -311,6 +318,8 @@ pub struct ExtensionsManagerState {
     pub filter: String,
     pub filter_focused: bool,
     pub selected_index: usize,
+    pub tab: ExtensionsTab,
+    pub expanded_binary: Option<String>,
     pub items: Vec<ExtensionItem>,
     pub command: Option<ExtensionCommandState>,
 }
@@ -337,6 +346,8 @@ impl ExtensionsManagerState {
             filter: String::new(),
             filter_focused: false,
             selected_index: 0,
+            tab: ExtensionsTab::All,
+            expanded_binary: None,
             items: default_extension_items(),
             command: None,
         }
@@ -370,16 +381,18 @@ impl ExtensionsManagerState {
             .iter()
             .enumerate()
             .filter_map(|(idx, item)| {
-                if query.is_empty()
+                let matches_tab = match self.tab {
+                    ExtensionsTab::All => true,
+                    ExtensionsTab::Installed => item.installed,
+                    ExtensionsTab::Available => !item.installed,
+                };
+                let matches_query = query.is_empty()
                     || item.name.to_ascii_lowercase().contains(&query)
                     || item.subtitle.to_ascii_lowercase().contains(&query)
                     || item.binary.to_ascii_lowercase().contains(&query)
                     || item.tag.to_ascii_lowercase().contains(&query)
-                {
-                    Some(idx)
-                } else {
-                    None
-                }
+                    || item.extensions.iter().any(|ext| ext.to_ascii_lowercase().contains(&query));
+                if matches_tab && matches_query { Some(idx) } else { None }
             })
             .collect()
     }
@@ -428,6 +441,39 @@ impl ExtensionsManagerState {
         } else {
             false
         }
+    }
+
+    pub fn switch_tab_next(&mut self) -> bool {
+        self.tab = match self.tab {
+            ExtensionsTab::All => ExtensionsTab::Installed,
+            ExtensionsTab::Installed => ExtensionsTab::Available,
+            ExtensionsTab::Available => ExtensionsTab::All,
+        };
+        self.selected_index = 0;
+        true
+    }
+
+    pub fn switch_tab_prev(&mut self) -> bool {
+        self.tab = match self.tab {
+            ExtensionsTab::All => ExtensionsTab::Available,
+            ExtensionsTab::Installed => ExtensionsTab::All,
+            ExtensionsTab::Available => ExtensionsTab::Installed,
+        };
+        self.selected_index = 0;
+        true
+    }
+
+    pub fn toggle_expanded_selected(&mut self) -> bool {
+        let Some(item) = self.selected_item() else {
+            return false;
+        };
+        let binary = item.binary.clone();
+        if self.expanded_binary.as_deref() == Some(binary.as_str()) {
+            self.expanded_binary = None;
+        } else {
+            self.expanded_binary = Some(binary);
+        }
+        true
     }
 
     pub fn start_command(&mut self, binary: String, uninstall: bool) {
@@ -1855,8 +1901,8 @@ pub struct AppState {
     completion: Option<CompletionState>,
     completion_loading: bool,
     inline_suggestion: Option<String>,
-    jump_back_stack: Vec<(PathBuf, usize)>,
-    jump_forward_stack: Vec<(PathBuf, usize)>,
+    jump_back_stack: Vec<(PathBuf, usize, usize)>,
+    jump_forward_stack: Vec<(PathBuf, usize, usize)>,
     diagnostics: HashMap<PathBuf, Vec<LspDiagnostic>>,
     /// Latest `$/progress` snapshot, keyed by `(server, token)` so concurrent
     /// progress streams don't clobber each other. The status bar reads the

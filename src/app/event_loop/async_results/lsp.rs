@@ -248,7 +248,8 @@ pub(super) fn handle_lsp_result(
                     return;
                 }
                 let target_line = loc.line as usize;
-                app.app_state.jump_to_line(target_line);
+                let target_col = loc.character as usize;
+                app.app_state.jump_to_line_col(target_line, target_col);
                 let vp = app.editor_viewport_lines();
                 app.app_state.auto_scroll_to_cursor(vp);
                 app.invalidate_highlights_and_parse_active_buffer();

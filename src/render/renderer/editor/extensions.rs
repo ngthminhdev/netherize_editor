@@ -1,5 +1,5 @@
 use crate::{
-    app::app_state::{ExtensionCategory, ExtensionsManagerState},
+    app::app_state::{ExtensionCategory, ExtensionsManagerState, ExtensionsTab},
     render::{region_pipeline::RegionDrawInstance, renderer::Renderer},
 };
 use cosmic_text::Metrics;
@@ -54,8 +54,8 @@ impl Renderer {
 
         let titlebar_h = line_height + 10.0;
         let header_h = titlebar_h + line_height * 4.0 + 72.0;
-        let footer_h = (line_height * 5.0 + 48.0).max(140.0);
-        let footer_gap = 48.0;
+        let footer_h = 34.0;
+        let footer_gap = 8.0;
         let content_top = panel_y + header_h;
         let content_bottom = panel_y + panel_h;
         let rows_bottom = (content_bottom - footer_h - footer_gap).max(content_top + line_height);
@@ -66,8 +66,8 @@ impl Renderer {
             RegionDrawInstance::new([panel_x, panel_y, panel_w, titlebar_h], panel_bg),
             RegionDrawInstance::new([panel_x, panel_y + titlebar_h - 1.0, panel_w, 1.0], divider),
             RegionDrawInstance::new([panel_x, panel_y + header_h - 1.0, panel_w, 1.0], divider),
-            RegionDrawInstance::new([panel_x, content_bottom - footer_h - footer_gap, panel_w, footer_h + footer_gap], editor_bg),
-            RegionDrawInstance::new([panel_x, content_bottom - footer_h - footer_gap, panel_w, 1.0], divider),
+            RegionDrawInstance::new([panel_x, content_bottom - footer_h, panel_w, footer_h], editor_bg),
+            RegionDrawInstance::new([panel_x, content_bottom - footer_h, panel_w, 1.0], divider),
         ];
         let mut glyphs = Vec::new();
 
@@ -104,9 +104,9 @@ impl Renderer {
         } else {
             &[
                 ("Ctrl-N/P", "nav"),
-                ("i", "install"),
-                ("u", "uninstall"),
+                ("Tab", "tabs"),
                 ("Enter", "expand"),
+                ("i/u", "install"),
                 ("/", "filter"),
             ]
         };
@@ -156,48 +156,45 @@ impl Renderer {
             .set_size(Some(text_w), Some(line_height));
 
         let tabs_y = panel_y + titlebar_h + line_height + 24.0;
-        let cli_total = state
-            .items
-            .iter()
-            .filter(|item| item.category == ExtensionCategory::CliTools)
-            .count();
-        let lsp_total = state
-            .items
-            .iter()
-            .filter(|item| item.category == ExtensionCategory::LanguageServers)
-            .count();
-        let tab_gap = 16.0;
-        let all_label = format!("All {}", state.items.len());
-        glyphs.extend(layout_panel_text_bold(
-            &all_label,
-            &mut self.editor_overlay_text_system,
-            &mut self.atlas,
-            &self.queue,
-            inner_x,
-            tabs_y,
-            accent,
-        ));
-        let cli_x = inner_x + estimate_monospace_width(&all_label, font_size) + tab_gap;
-        let cli_label = format!("CLI Tools {cli_total}");
-        glyphs.extend(layout_panel_text(
-            &cli_label,
-            &mut self.editor_overlay_text_system,
-            &mut self.atlas,
-            &self.queue,
-            cli_x,
-            tabs_y,
-            ghost,
-        ));
-        let lsp_x = cli_x + estimate_monospace_width(&cli_label, font_size) + tab_gap;
-        glyphs.extend(layout_panel_text(
-            &format!("Language Servers {lsp_total}"),
-            &mut self.editor_overlay_text_system,
-            &mut self.atlas,
-            &self.queue,
-            lsp_x,
-            tabs_y,
-            ghost,
-        ));
+        let tab_gap = 8.0;
+        let tabs = [
+            (ExtensionsTab::All, format!("All {}", state.items.len())),
+            (ExtensionsTab::Installed, format!("Installed {}", state.installed_count())),
+            (ExtensionsTab::Available, format!("Available {}", state.available_count())),
+        ];
+        let mut tab_x = inner_x;
+        for (tab_kind, label) in tabs {
+            let active = state.tab == tab_kind;
+            let tab_w = estimate_monospace_width(&label, font_size) + 22.0;
+            let mut tab_bg = if active { selection } else { overlay };
+            tab_bg[3] = tab_bg[3].max(if active { 0.95 } else { 0.62 });
+            chrome.push(RegionDrawInstance::new([tab_x, tabs_y - 5.0, tab_w, line_height + 10.0], tab_bg).with_radius(5.0));
+            if active {
+                chrome.push(RegionDrawInstance::new([tab_x, tabs_y + line_height + 3.0, tab_w, 2.0], accent).with_radius(1.0));
+            }
+            glyphs.extend(if active {
+                layout_panel_text_bold(
+                    &label,
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    tab_x + 11.0,
+                    tabs_y,
+                    accent,
+                )
+            } else {
+                layout_panel_text(
+                    &label,
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    tab_x + 11.0,
+                    tabs_y,
+                    ghost,
+                )
+            });
+            tab_x += tab_w + tab_gap;
+        }
 
         let summary_y = tabs_y + line_height + 12.0;
         chrome.push(RegionDrawInstance::new(
@@ -284,6 +281,7 @@ impl Renderer {
         let entries = build_extension_entries(state);
         let section_h = line_height + 10.0;
         let row_h = (line_height * 2.0 + 16.0).max(54.0);
+        let detail_h = (line_height * 4.0 + 42.0).max(124.0);
         let mut virtual_y = 0.0f32;
         let mut selected_virtual_y = 0.0f32;
         for entry in &entries {
@@ -294,6 +292,9 @@ impl Renderer {
                         selected_virtual_y = virtual_y;
                     }
                     virtual_y += row_h;
+                    if state.items.get(abs_idx).is_some_and(|item| state.expanded_binary.as_deref() == Some(item.binary.as_str())) {
+                        virtual_y += detail_h;
+                    }
                 }
             }
         }
@@ -362,18 +363,29 @@ impl Renderer {
                         let status = if item.installed { "✓ Installed" } else { "⇩ Not installed" };
                         let compact_row = inner_w < 480.0;
                         let right_pad = 14.0;
-                        let status_w = if compact_row { 90.0 } else { 180.0 };
-                        let tag_w = if compact_row { 0.0 } else { 120.0 };
+                        let status_w = if compact_row { 90.0 } else { 142.0 };
+                        let tag_w = if compact_row { 0.0 } else { 86.0 };
                         let status_x = inner_x + inner_w - status_w - right_pad;
                         let tag_x = status_x - tag_w - 18.0;
                         let name_right = if compact_row { status_x - 14.0 } else { tag_x - 18.0 };
-                        let name_w = (name_right - (inner_x + 16.0)).max(36.0);
+                        let name_x = inner_x + 36.0;
+                        let name_w = (name_right - name_x).max(36.0);
+                        let chevron = if state.expanded_binary.as_deref() == Some(item.binary.as_str()) { "▾" } else { "▸" };
+                        glyphs.extend(layout_panel_text_bold(
+                            chevron,
+                            &mut self.editor_overlay_text_system,
+                            &mut self.atlas,
+                            &self.queue,
+                            inner_x + 16.0,
+                            entry_y + 8.0,
+                            if is_selected { accent } else { ghost },
+                        ));
                         glyphs.extend(layout_panel_text_bold(
                             &clamp_monospace_text(&item.name, name_w, font_size),
                             &mut self.editor_overlay_text_system,
                             &mut self.atlas,
                             &self.queue,
-                            inner_x + 16.0,
+                            name_x,
                             entry_y + 8.0,
                             if is_selected { fg } else { dim },
                         ));
@@ -382,7 +394,7 @@ impl Renderer {
                             &mut self.editor_overlay_text_system,
                             &mut self.atlas,
                             &self.queue,
-                            inner_x + 16.0,
+                            name_x,
                             entry_y + 8.0 + line_height,
                             dim,
                         ));
@@ -408,133 +420,71 @@ impl Renderer {
                         ));
                     }
                     entry_y += row_h;
+                    if state.expanded_binary.as_deref() == Some(item.binary.as_str()) {
+                        let detail_y = entry_y;
+                        let detail_color = with_alpha(selection, 0.56);
+                        chrome.push(RegionDrawInstance::new([inner_x + 12.0, detail_y, inner_w - 24.0, detail_h - 8.0], detail_color).with_radius(6.0));
+                        chrome.push(RegionDrawInstance::new([inner_x + 12.0, detail_y, 3.0, detail_h - 8.0], accent).with_radius(1.5));
+                        let install = if state.platform == "macOS" { &item.macos_install } else { &item.linux_install };
+                        let uninstall = if state.platform == "macOS" { &item.macos_uninstall } else { &item.linux_uninstall };
+                        let files = if item.extensions.is_empty() { "files: any".to_string() } else { format!("files: {}", item.extensions.join(", ")) };
+                        glyphs.extend(layout_panel_text_bold(
+                            &clamp_monospace_text(&format!("{} details", item.name), inner_w - 52.0, font_size),
+                            &mut self.editor_overlay_text_system,
+                            &mut self.atlas,
+                            &self.queue,
+                            inner_x + 28.0,
+                            detail_y + 12.0,
+                            fg,
+                        ));
+                        glyphs.extend(layout_panel_text(
+                            &clamp_monospace_text(&format!("binary: {}  •  {}", item.binary, files), inner_w - 52.0, font_size),
+                            &mut self.editor_overlay_text_system,
+                            &mut self.atlas,
+                            &self.queue,
+                            inner_x + 28.0,
+                            detail_y + 12.0 + line_height,
+                            dim,
+                        ));
+                        glyphs.extend(layout_panel_text(
+                            &clamp_monospace_text(&format!("install: {install}"), inner_w - 52.0, font_size),
+                            &mut self.editor_overlay_text_system,
+                            &mut self.atlas,
+                            &self.queue,
+                            inner_x + 28.0,
+                            detail_y + 12.0 + line_height * 2.0,
+                            if item.installed { dim } else { warning },
+                        ));
+                        if !uninstall.trim().is_empty() {
+                            glyphs.extend(layout_panel_text(
+                                &clamp_monospace_text(&format!("uninstall: {uninstall}"), inner_w - 52.0, font_size),
+                                &mut self.editor_overlay_text_system,
+                                &mut self.atlas,
+                                &self.queue,
+                                inner_x + 28.0,
+                                detail_y + 12.0 + line_height * 3.0,
+                                if item.installed { success } else { ghost },
+                            ));
+                        }
+                        entry_y += detail_h;
+                    }
                 }
             }
         }
 
         if let Some(item) = state.selected_item() {
-            let footer_x = inner_x;
-            let footer_y = content_bottom - footer_h + 16.0;
-            let footer_w = inner_w;
-            let footer_panel_h = (footer_h - 32.0).max(line_height + 18.0);
-            let command_for_item = state
-                .command
-                .as_ref()
-                .filter(|command| command.binary == item.binary);
-            let mut footer_border = if command_for_item.is_some_and(|command| command.running) {
-                accent
-            } else if command_for_item.and_then(|command| command.success) == Some(false) {
-                self.theme.ui.error.as_f32()
-            } else if item.installed {
-                success
-            } else {
-                warning
-            };
-            footer_border[3] = 0.72;
-            let mut footer_bg = overlay;
-            footer_bg[3] = footer_bg[3].max(0.92);
-            chrome.push(RegionDrawInstance::new([footer_x, footer_y, footer_w, footer_panel_h], footer_border).with_radius(6.0));
-            chrome.push(
-                RegionDrawInstance::new(
-                    [footer_x + 1.5, footer_y + 1.5, (footer_w - 3.0).max(1.0), (footer_panel_h - 3.0).max(1.0)],
-                    footer_bg,
-                )
-                .with_radius(5.0),
-            );
-
-            let badge_label = if item.category == ExtensionCategory::CliTools { "CLI" } else { "LSP" };
-            let badge_font_size = (font_size * 0.68).max(9.0);
-            let badge_line_h = badge_font_size * 1.15;
-            let badge_w = estimate_monospace_width(badge_label, badge_font_size) + 18.0;
-            let badge_h = line_height * 0.82;
-            let badge_x = footer_x + footer_w - badge_w - 16.0;
-            let badge_y = footer_y + 11.0;
-            let mut badge_border = if item.installed { success } else { warning };
-            badge_border[3] = 0.86;
-            let mut badge_bg = footer_bg;
-            badge_bg[3] = 1.0;
-            chrome.push(RegionDrawInstance::new([badge_x, badge_y, badge_w, badge_h], badge_border).with_radius(badge_h * 0.22));
-            chrome.push(
-                RegionDrawInstance::new(
-                    [badge_x + 2.0, badge_y + 2.0, (badge_w - 4.0).max(1.0), (badge_h - 4.0).max(1.0)],
-                    badge_bg,
-                )
-                .with_radius((badge_h * 0.22 - 2.0).max(2.0)),
-            );
-            self.editor_overlay_text_system
-                .set_metrics(Metrics::new(badge_font_size, badge_line_h));
-            self.editor_overlay_text_system
-                .set_size(Some(badge_w), Some(badge_line_h));
-            glyphs.extend(layout_panel_text_bold(
-                badge_label,
-                &mut self.editor_overlay_text_system,
-                &mut self.atlas,
-                &self.queue,
-                badge_x + (badge_w - estimate_monospace_width(badge_label, badge_font_size)) * 0.5,
-                badge_y + (badge_h - badge_line_h) * 0.5,
-                badge_border,
-            ));
-            self.editor_overlay_text_system
-                .set_metrics(Metrics::new(font_size, line_height));
-            self.editor_overlay_text_system
-                .set_size(Some(text_w), Some(line_height));
-
-            let install = if state.platform == "macOS" { &item.macos_install } else { &item.linux_install };
-            let title = if let Some(command) = command_for_item {
-                let action = if command.uninstall { "uninstall" } else { "install" };
-                let status = if command.running {
-                    "running"
-                } else if command.success == Some(true) {
-                    "done"
-                } else {
-                    "failed"
-                };
-                format!("{}  •  {action} {status}", item.name)
-            } else {
-                format!("{}  •  binary: {}", item.name, item.binary)
-            };
-            let detail = if let Some(command) = command_for_item {
-                command
-                    .logs
-                    .last()
-                    .cloned()
-                    .unwrap_or_else(|| format!("running: {install}"))
-            } else {
-                format!("install: {install}")
-            };
-            let text_w = (footer_w - badge_w - 52.0).max(32.0);
-            glyphs.extend(layout_panel_text_bold(
-                &clamp_monospace_text(&title, text_w, font_size),
-                &mut self.editor_overlay_text_system,
-                &mut self.atlas,
-                &self.queue,
-                footer_x + 14.0,
-                footer_y + 14.0,
-                fg,
-            ));
+            let footer_y = content_bottom - footer_h + 8.0;
+            let status = if item.installed { "installed" } else { "available" };
+            let help = format!("{} · {} · Enter details · Tab tabs · i install · u uninstall · / search", item.name, status);
             glyphs.extend(layout_panel_text(
-                &clamp_monospace_text(&detail, footer_w - 28.0, font_size),
+                &clamp_monospace_text(&help, inner_w - 24.0, font_size),
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
-                footer_x + 14.0,
-                footer_y + 14.0 + line_height + 4.0,
-                if command_for_item.is_some() { fg } else { dim },
+                inner_x + 12.0,
+                footer_y,
+                ghost,
             ));
-            if let Some(command) = command_for_item {
-                let log_start = command.logs.len().saturating_sub(2);
-                for (line_idx, line) in command.logs[log_start..].iter().enumerate() {
-                    glyphs.extend(layout_panel_text(
-                        &clamp_monospace_text(line, footer_w - 28.0, font_size),
-                        &mut self.editor_overlay_text_system,
-                        &mut self.atlas,
-                        &self.queue,
-                        footer_x + 14.0,
-                        footer_y + 14.0 + line_height * (2.0 + line_idx as f32) + 8.0,
-                        dim,
-                    ));
-                }
-            }
         }
 
         self.editor_overlay_chrome_instances = chrome;
