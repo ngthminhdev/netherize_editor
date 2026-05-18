@@ -1,4 +1,4 @@
-use std::{path::{Path, PathBuf}, sync::OnceLock};
+use std::{fs, path::{Path, PathBuf}, sync::OnceLock};
 
 use cosmic_text::Metrics;
 
@@ -30,11 +30,57 @@ struct BundledLogo {
     rgba: Vec<u8>,
 }
 
+fn welcome_project_git_branch(path: &Path) -> Option<String> {
+    let git_dir = find_welcome_git_dir(path)?;
+    let head = fs::read_to_string(git_dir.join("HEAD")).ok()?;
+    parse_welcome_git_head(head.trim())
+}
+
+fn find_welcome_git_dir(start: &Path) -> Option<PathBuf> {
+    for dir in start.ancestors() {
+        let dot_git = dir.join(".git");
+        if dot_git.is_dir() {
+            return Some(dot_git);
+        }
+        if dot_git.is_file() {
+            let raw = fs::read_to_string(&dot_git).ok()?;
+            let gitdir = raw.trim().strip_prefix("gitdir:")?.trim();
+            let gitdir_path = PathBuf::from(gitdir);
+            return Some(if gitdir_path.is_absolute() {
+                gitdir_path
+            } else {
+                dir.join(gitdir_path)
+            });
+        }
+    }
+    None
+}
+
+fn parse_welcome_git_head(head: &str) -> Option<String> {
+    if let Some(reference) = head.strip_prefix("ref:") {
+        return reference
+            .trim()
+            .strip_prefix("refs/heads/")
+            .or_else(|| reference.trim().rsplit_once('/').map(|(_, branch)| branch))
+            .map(str::to_string)
+            .filter(|branch| !branch.is_empty());
+    }
+
+    (!head.is_empty()).then(|| {
+        let short_len = head.len().min(7);
+        format!("detached:{}", &head[..short_len])
+    })
+}
+
 fn infer_welcome_project_icon_source(path: &Path) -> PathBuf {
     const MARKERS: &[&str] = &[
         "Cargo.toml",
         "package.json",
         "go.mod",
+        "pom.xml",
+        "build.gradle",
+        "settings.gradle",
+        "gradle.properties",
         "flake.nix",
         "default.nix",
         "deno.json",
@@ -508,13 +554,9 @@ impl Renderer {
             let path_size = sx(10.0);
             let name_label = ellipsize(name, name_size, text_right - text_x);
             let path_label = ellipsize(&path, path_size, text_right - text_x - sx(70.0));
-            let branch_label = if icon_name.eq_ignore_ascii_case("package.json") || icon_name.ends_with(".ts") {
-                "⌘ feat/tokens"
-            } else if icon_name.eq_ignore_ascii_case("go.mod") {
-                "⌘ main"
-            } else {
-                "⌘ main +3"
-            };
+            let branch_label = welcome_project_git_branch(project)
+                .map(|branch| format!(" {branch}"))
+                .unwrap_or_else(|| " -".to_string());
             if active {
                 let mut a = accent;
                 a[3] = 0.20;
@@ -563,7 +605,7 @@ impl Renderer {
             line(
                 self,
                 &mut glyphs,
-                branch_label,
+                &branch_label,
                 text_x + text_w(&path_label, path_size) + sx(10.0),
                 y + sx(20.0),
                 path_size,

@@ -431,6 +431,9 @@ impl ThemeConfig {
         if filename.eq_ignore_ascii_case("go.mod") || filename.eq_ignore_ascii_case("go.sum") {
             return &self.icons.go;
         }
+        if filename.eq_ignore_ascii_case("pom.xml") {
+            return &self.icons.java;
+        }
         if filename.eq_ignore_ascii_case("flake.nix")
             || filename.eq_ignore_ascii_case("default.nix")
         {
