@@ -321,6 +321,14 @@ pub struct IconThemeTokens {
     pub proto: FileIconThemeTokens,
 }
 
+fn normalize_icon_filename(filename: &str) -> String {
+    let file_name = Path::new(filename)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(filename);
+    file_name.trim().to_ascii_lowercase()
+}
+
 fn special_icon_for_filename(filename: &str) -> Option<&'static str> {
     if let Some(icon) = nestjs_role_icon_for_filename(filename) {
         return Some(icon);
@@ -528,6 +536,66 @@ fn special_icon_for_filename(filename: &str) -> Option<&'static str> {
     }
 
     None
+}
+
+fn built_in_icon_id_for_extension(extension: &str) -> Option<&'static str> {
+    Some(match extension {
+        "rs" => "built_in:rust",
+        "js" | "mjs" | "cjs" => "built_in:node",
+        "ts" | "mts" | "cts" => "built_in:typescript",
+        "tsx" => "built_in:tsx",
+        "jsx" => "built_in:reactjs",
+        "java" => "built_in:java",
+        "kt" | "kts" => "built_in:kotlin",
+        "c" | "h" => "built_in:c",
+        "cc" | "cpp" | "cxx" | "hpp" | "hh" | "hxx" => "built_in:cpp",
+        "cs" => "built_in:csharp",
+        "dart" => "built_in:dart",
+        "swift" => "built_in:swift",
+        "php" => "built_in:php",
+        "rb" => "built_in:ruby",
+        "lua" => "built_in:lua",
+        "zig" => "built_in:zig",
+        "scala" | "sc" => "built_in:scala",
+        "py" | "pyw" => "built_in:python",
+        "go" => "built_in:go",
+        "ini" | "env" => "built_in:conf",
+        "json" | "jsonc" => "built_in:json",
+        "md" | "mdx" | "markdown" => "built_in:markdown",
+        "html" | "htm" => "built_in:html",
+        "css" => "built_in:css",
+        "scss" | "sass" => "built_in:sass",
+        "sh" | "bash" | "zsh" | "fish" => "built_in:shell",
+        "gitignore" | "gitmodules" | "gitattributes" => "built_in:git",
+        "lock" => "built_in:lock",
+        "proto" | "protobuf" => "built_in:proto",
+        "dockerfile" | "containerfile" => "built_in:docker",
+        "sql" => "built_in:sql",
+        "xml" | "xsd" | "xsl" | "xslt" | "plist" => "built_in:xml",
+        "gradle" => "built_in:gradle",
+        "vue" => "built_in:vue",
+        "svelte" => "built_in:svelte",
+        "astro" => "built_in:astro",
+        "elm" => "built_in:elm",
+        "hs" => "built_in:haskell",
+        "ml" | "mli" => "built_in:ocaml",
+        "r" => "built_in:r",
+        "pl" | "pm" => "built_in:perl",
+        "clj" | "cljs" | "cljc" | "edn" => "built_in:clojure",
+        "fs" | "fsi" | "fsx" => "built_in:fsharp",
+        "nim" => "built_in:nim",
+        "sol" => "built_in:sol",
+        "graphql" | "gql" => "built_in:graphql",
+        "toml" => "built_in:toml",
+        "yaml" | "yml" => "built_in:yaml",
+        "mk" | "mak" => "built_in:makefile",
+        "cmake" => "built_in:cmake",
+        "conf" | "nginxconf" => "built_in:nginx",
+        "tf" | "tfvars" | "hcl" => "built_in:terraform",
+        "ansible" => "built_in:ansible",
+        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "ico" => "built_in:image",
+        _ => return None,
+    })
 }
 
 fn nestjs_role_icon_for_filename(filename: &str) -> Option<&'static str> {
@@ -759,24 +827,30 @@ impl ThemeConfig {
             return self.default_folder_icon.as_str();
         }
 
-        if let Some(icon) = self.exact_icons.get(filename) {
-            return icon.as_str();
-        }
-
-        let normalized_filename = filename.to_ascii_lowercase();
+        let normalized_filename = normalize_icon_filename(filename);
         if let Some(icon) = special_icon_for_filename(&normalized_filename) {
             return icon;
         }
 
-        let extension = Path::new(filename)
+        if let Some(icon) = self.exact_icons.get(filename) {
+            return icon.as_str();
+        }
+        if let Some(icon) = self.exact_icons.get(normalized_filename.as_str()) {
+            return icon.as_str();
+        }
+
+        let extension = Path::new(normalized_filename.as_str())
             .extension()
             .and_then(|ext| ext.to_str())
-            .map(|ext| ext.to_ascii_lowercase());
+            .map(str::to_string);
 
-        if let Some(ext) = extension.as_deref()
-            && let Some(icon) = self.extension_icons.get(ext)
-        {
-            return icon.as_str();
+        if let Some(ext) = extension.as_deref() {
+            if let Some(icon) = self.extension_icons.get(ext) {
+                return icon.as_str();
+            }
+            if let Some(icon) = built_in_icon_id_for_extension(ext) {
+                return icon;
+            }
         }
 
         self.default_file_icon.as_str()
@@ -838,13 +912,17 @@ mod tests {
         assert_eq!(theme.get_icon_for_file("jwt.guard.ts", false), "built_in:nestjsguard");
         assert_eq!(theme.get_icon_for_file("user.test.ts", false), "built_in:testts");
         assert_eq!(theme.get_icon_for_file("button.stories.tsx", false), "built_in:storybook");
+        assert_eq!(theme.get_icon_for_file("Dockerfile", false), "built_in:docker");
         assert_eq!(theme.get_icon_for_file("Dockerfile.dev", false), "built_in:docker");
+        assert_eq!(theme.get_icon_for_file("src/Dockerfile", false), "built_in:docker");
         assert_eq!(theme.get_icon_for_file("pnpm-lock.yaml", false), "built_in:pnpmlock");
         assert_eq!(theme.get_icon_for_file("vite.config.ts", false), "built_in:vite");
         assert_eq!(theme.get_icon_for_file(".eslintrc.json", false), "built_in:eslint");
         assert_eq!(theme.get_icon_for_file("schema.prisma", false), "built_in:prisma");
         assert_eq!(theme.get_icon_for_file("README.md", false), "📘");
         assert_eq!(theme.get_icon_for_file("LICENSE", false), "built_in:license");
+        assert_eq!(theme.get_icon_for_file("index.ts", false), "built_in:typescript");
+        assert_eq!(theme.get_icon_for_file("slot-random-service.js", false), "built_in:nestjsservice");
         assert_eq!(theme.get_icon_for_file("notes.md", false), "📝");
         assert_eq!(theme.get_icon_for_file("unknown.bin", false), "built_in:file");
     }

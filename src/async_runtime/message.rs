@@ -412,6 +412,8 @@ pub struct LspDiagnostic {
     pub code: Option<String>,
     pub source: Option<String>,
     pub message: String,
+    /// LSP DiagnosticTag values. `1` = Unnecessary/unused, `2` = Deprecated.
+    pub tags: Vec<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

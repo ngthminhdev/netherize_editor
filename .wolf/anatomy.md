@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-18T11:00:00.400Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-19T05:00:00.674Z
 > Files: 362 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
@@ -179,7 +179,7 @@
 
 ## config/keymaps/
 
-- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5113 tok)
+- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5112 tok)
 
 ## config/themes/
 
@@ -305,13 +305,13 @@
 ## src/app/app_state/
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer + 14 more (~6746 tok)
-- `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag + 17 more (~10684 tok)
-- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new + 12 more (~22049 tok)
+- `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag + 17 more (~10839 tok)
+- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new + 9 more (~22522 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~6797 tok)
 - `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~15379 tok)
-- `palette.rs` — open_command_palette_mode, open_python_env_selector, push_jump, push_jump_entry + 21 more (~15043 tok)
+- `palette.rs` — open_command_palette_mode, open_python_env_selector, push_jump, push_jump_entry + 20 more (~15353 tok)
 - `settings.rs` — [derive(Debug, Clone, PartialEq)] (~1971 tok)
-- `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, preview_file_history_index + 9 more (~11333 tok)
+- `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, preview_file_history_index + 9 more (~11267 tok)
 - `tests.rs` — [cfg(test)] (~17738 tok)
 - `workspace.rs` — attach_workspace, clear_workspace_session_state, workspace_root_path, workspace_nodes + 22 more (~4276 tok)
 
@@ -322,7 +322,7 @@
 - `commands_completion.rs` (~4377 tok)
 - `commands_editor.rs` (~4920 tok)
 - `commands_explorer.rs` (~7674 tok)
-- `commands_lsp.rs` (~9119 tok)
+- `commands_lsp.rs` (~9161 tok)
 - `commands_palette.rs` (~7300 tok)
 - `commands_prompts.rs` (~7215 tok)
 - `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~6809 tok)
@@ -330,7 +330,7 @@
 - `commands_terminal.rs` (~6430 tok)
 - `commands_tests.rs` — [derive(Default)] (~15874 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~8995 tok)
-- `helpers.rs` — Declares BRACKET_PAIRS (~17586 tok)
+- `helpers.rs` — Declares BRACKET_PAIRS (~17646 tok)
 - `mod.rs` — Struct: AppShell (~6429 tok)
 - `setup.rs` — new, new_for_tests (~19098 tok)
 - `welcome.rs` (~611 tok)
@@ -342,7 +342,7 @@
 - `filesystem.rs` (~503 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
-- `lsp.rs` (~8742 tok)
+- `lsp.rs` (~8763 tok)
 - `mod.rs` (~8590 tok)
 - `preview.rs` (~993 tok)
 - `shell.rs` (~112 tok)
@@ -361,7 +361,7 @@
 
 ## src/app/input_map/
 
-- `focus.rs` (~10695 tok)
+- `focus.rs` (~11037 tok)
 - `helpers.rs` (~180 tok)
 - `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette + 8 more (~4975 tok)
 - `tests.rs` (~15121 tok)
@@ -405,13 +405,13 @@
 
 - `builtin.rs` — builtin_dark (~2263 tok)
 - `loader.rs` — ThemeProfileEntry: default_profile, resolved_profile, active_profile, list_available_themes + 5 more (~11810 tok)
-- `model.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5568 tok)
+- `model.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~9106 tok)
 - `raw.rs` — [derive(Debug, Clone, Deserialize)] (~3449 tok)
 
 ## src/core/
 
 - `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~9725 tok)
-- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5438 tok)
+- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5463 tok)
 - `mod.rs` (~35 tok)
 - `mode.rs` — Các mode cốt lõi của editor. (~4008 tok)
 - `text_object.rs` — find_text_object_range (~1753 tok)
@@ -421,9 +421,9 @@
 
 - `common.rs` — Struct: DispatchReport (~1739 tok)
 - `editing.rs` (~10093 tok)
-- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~4482 tok)
+- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~4519 tok)
 - `navigation.rs` (~3234 tok)
-- `palette.rs` (~6812 tok)
+- `palette.rs` (~6849 tok)
 - `session.rs` (~3902 tok)
 - `tests.rs` (~17370 tok)
 
@@ -439,7 +439,7 @@
 - `caret.rs` — [derive(Debug, Clone, Copy)] (~2993 tok)
 - `color_space.rs` — srgb_color_target_state (~236 tok)
 - `glyph_instance.rs` — Vertex tĩnh của một quad đơn vị (0..1). (~844 tok)
-- `icon_pipeline.rs` — [repr(C)] (~5553 tok)
+- `icon_pipeline.rs` — [repr(C)] (~8351 tok)
 - `image_pipeline.rs` — [repr(C)] (~2249 tok)
 - `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
@@ -468,12 +468,12 @@
 
 - `buffers.rs` — clear_editor_overlays, update_references_buffer_content (~5424 tok)
 - `completion.rs` — Declares COMPLETION_KIND_TEXT (~1827 tok)
-- `extensions.rs` — update_extensions_manager_content (~7124 tok)
+- `extensions.rs` — update_extensions_manager_content (~6857 tok)
 - `fuzzy.rs` — update_fuzzy_picker_buffer_content (~7853 tok)
 - `help.rs` — update_help_buffer_content (~4176 tok)
 - `overlays.rs` — update_editor_overlays (~18996 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, multi_cursor_selection_quads (~9713 tok)
-- `settings.rs` — update_settings_buffer_content (~8472 tok)
+- `settings.rs` — update_settings_buffer_content (~10502 tok)
 - `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~6090 tok)
 
 ## src/render/renderer/editor/buffers/
@@ -490,7 +490,7 @@
 
 ## src/render/renderer/palette/
 
-- `file_picker.rs` — Declares to (~3775 tok)
+- `file_picker.rs` — Declares to (~3781 tok)
 - `highlighted_label.rs` — Render a label string with fuzzy-match character highlights. (~833 tok)
 - `leap.rs` — update_editor_leap_labels, clear_leap_labels (~1928 tok)
 - `live_grep.rs` — Declares to (~2602 tok)

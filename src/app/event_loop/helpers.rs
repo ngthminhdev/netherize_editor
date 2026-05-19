@@ -210,11 +210,18 @@ pub(super) fn diagnostic_spans_to_styled(
     ordered
         .into_iter()
         .filter_map(|diagnostic| {
+            const DIAGNOSTIC_TAG_UNNECESSARY: u32 = 1;
+
             let severity = diagnostic.severity.unwrap_or(2);
-            let color = match severity {
-                1 => theme.ui.error.as_u8(),
-                2 => theme.ui.warning.as_u8(),
-                _ => return None,
+            let is_unnecessary = diagnostic.tags.contains(&DIAGNOSTIC_TAG_UNNECESSARY);
+            let color = if is_unnecessary {
+                theme.ui.fg_ghost.as_u8()
+            } else {
+                match severity {
+                    1 => theme.ui.error.as_u8(),
+                    2 => theme.ui.warning.as_u8(),
+                    _ => return None,
+                }
             };
 
             let start_line = diagnostic.range.start.line as usize;
@@ -1514,6 +1521,11 @@ pub(super) fn build_sidebar_rows(
             let arrow = theme.sidebar_arrow(is_dir, entry.is_expanded).to_string();
             let is_hidden_or_ignored = entry.is_hidden || entry.is_ignored;
             let icon_theme = theme.icon_theme_for_path(&entry.path, is_dir, entry.is_expanded);
+            let filename = entry
+                .path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(entry.name.as_str());
             let icon = if is_hidden_or_ignored {
                 if is_dir {
                     "󱞞".to_string()
@@ -1521,7 +1533,7 @@ pub(super) fn build_sidebar_rows(
                     "󰘓".to_string()
                 }
             } else {
-                icon_theme.glyph.clone()
+                theme.get_icon_for_file(filename, is_dir).to_string()
             };
             SidebarRow {
                 path: Some(entry.path.clone()),

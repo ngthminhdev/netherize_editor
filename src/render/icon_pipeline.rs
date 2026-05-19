@@ -527,7 +527,7 @@ fn build_bearded_atlas() -> BuiltAtlas {
     let icon_size = 96u32;
     let padding = 8u32;
     let cell = icon_size + padding * 2;
-    let cols = 8u32;
+    let cols = 16u32;
     let rows = ((ICONS.len() as u32) + cols - 1) / cols;
     let size = (cols.max(rows) * cell).next_power_of_two().max(1024);
     let mut rgba = vec![0u8; (size * size * 4) as usize];

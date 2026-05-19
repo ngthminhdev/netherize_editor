@@ -204,7 +204,7 @@ impl Renderer {
                         .and_then(|name| name.to_str())
                         .unwrap_or(file_path);
                     let file_icon = self.theme.icon_theme_for_filename(filename, false);
-                    let badge = file_icon.glyph.as_str();
+                    let badge = self.theme.get_icon_for_file(filename, false);
                     let badge_color = file_icon.color.as_f32();
                     let badge_size = file_badge_size;
                     let badge_x = text_x;
