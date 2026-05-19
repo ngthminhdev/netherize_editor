@@ -8,7 +8,12 @@
       "file": "src/render/renderer/editor/extensions.rs",
       "root_cause": "Initial update kept the old oversized footer reservation/detail panel, leaving little visible list space and preserving the old bottom-heavy layout. The visible deltas were mostly subtle until pressing Enter/Tab, so the opened tab looked effectively unchanged.",
       "fix": "Reduced footer reservation to a compact help bar, removed the large selected-item footer panel, kept details inline below expanded rows, narrowed row status/tag columns to reduce text collision, and reran cargo check successfully.",
-      "tags": ["ui", "extensions-manager", "layout", "user-reported"],
+      "tags": [
+        "ui",
+        "extensions-manager",
+        "layout",
+        "user-reported"
+      ],
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-18T14:59:27.161473+00:00"
@@ -163,6 +168,38 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-18T10:30:00.000Z"
+    },
+    {
+      "id": "bug-011",
+      "timestamp": "2026-05-19T16:02:52.664Z",
+      "error_message": "Function not marked async",
+      "file": "src/async_runtime/message.rs",
+      "root_cause": "Function uses await but wasn't declared async",
+      "fix": "Added async modifier",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-19T16:02:52.743Z"
+    },
+    {
+      "id": "bug-012",
+      "timestamp": "2026-05-19T16:04:32.636Z",
+      "error_message": "Function not marked async",
+      "file": "src/app/event_loop/commands_explorer.rs",
+      "root_cause": "Function uses await but wasn't declared async",
+      "fix": "Added async modifier",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-19T16:04:32.636Z"
     }
   ]
 }

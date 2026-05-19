@@ -403,19 +403,16 @@ impl AppShell {
                     .to_string();
                 let target_path = next_available_paste_path(&target_dir, &file_name);
 
-                match std::fs::copy(&source_path, &target_path) {
-                    Ok(_) => {
-                        self.show_transient_toast(format!("Pasted: {}", target_path.display()));
-                        let _ = self.app_state.rescan_workspace();
-                        self.submit_workspace_git_status_refresh();
-                        self.mark_explorer_dirty();
-                        Some(true)
-                    }
-                    Err(err) => {
-                        self.show_transient_toast(format!("Paste failed: {err}"));
-                        Some(false)
-                    }
-                }
+                // Submit async file copy request to avoid blocking UI thread
+                self.submit(RequestSpec {
+                    revision_id: 0,
+                    topic: RequestTopic::FileOperation,
+                    payload: WorkerRequestPayload::CopyFile {
+                        source_path,
+                        target_path,
+                    },
+                });
+                Some(true)
             }
             Command::ExplorerMoveUp => {
                 self.ensure_explorer_snapshot();

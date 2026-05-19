@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-19T05:00:00.674Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-19T16:05:30.160Z
 > Files: 362 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
@@ -321,7 +321,7 @@
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~10569 tok)
 - `commands_completion.rs` (~4377 tok)
 - `commands_editor.rs` (~4920 tok)
-- `commands_explorer.rs` (~7674 tok)
+- `commands_explorer.rs` (~7106 tok)
 - `commands_lsp.rs` (~9161 tok)
 - `commands_palette.rs` (~7300 tok)
 - `commands_prompts.rs` (~7215 tok)
@@ -330,7 +330,7 @@
 - `commands_terminal.rs` (~6430 tok)
 - `commands_tests.rs` — [derive(Default)] (~15874 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~8995 tok)
-- `helpers.rs` — Declares BRACKET_PAIRS (~17646 tok)
+- `helpers.rs` — Declares BRACKET_PAIRS (~17724 tok)
 - `mod.rs` — Struct: AppShell (~6429 tok)
 - `setup.rs` — new, new_for_tests (~19098 tok)
 - `welcome.rs` (~611 tok)
@@ -339,11 +339,11 @@
 
 - `ai.rs` (~938 tok)
 - `failure.rs` (~1208 tok)
-- `filesystem.rs` (~503 tok)
+- `filesystem.rs` (~651 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
 - `lsp.rs` (~8763 tok)
-- `mod.rs` (~8590 tok)
+- `mod.rs` (~8070 tok)
 - `preview.rs` (~993 tok)
 - `shell.rs` (~112 tok)
 - `syntax.rs` (~375 tok)
@@ -368,7 +368,7 @@
 
 ## src/async_runtime/
 
-- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~6497 tok)
+- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~6204 tok)
 - `mod.rs` (~16 tok)
 - `python_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~948 tok)
 - `scheduler.rs` — Declares FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD (~2222 tok)
@@ -377,7 +377,7 @@
 
 - `ai_jobs.rs` — Platform install command for opencode: (~3926 tok)
 - `ai.rs` (~1994 tok)
-- `dispatch.rs` (~5523 tok)
+- `dispatch.rs` (~5539 tok)
 - `emit.rs` (~458 tok)
 - `file_watch.rs` (~2469 tok)
 - `fzf.rs` — Declares MAX_FZF_RESULTS (~2481 tok)
@@ -405,7 +405,7 @@
 
 - `builtin.rs` — builtin_dark (~2263 tok)
 - `loader.rs` — ThemeProfileEntry: default_profile, resolved_profile, active_profile, list_available_themes + 5 more (~11810 tok)
-- `model.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~9106 tok)
+- `model.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~9260 tok)
 - `raw.rs` — [derive(Debug, Clone, Deserialize)] (~3449 tok)
 
 ## src/core/
@@ -430,7 +430,7 @@
 ## src/lsp/
 
 - `capabilities.rs` — Bitmask nhỏ gọn của các tính năng mà LSP server khai báo trong `InitializeResult`. (~761 tok)
-- `client.rs` — LspEntry: lsp_entry_for_extension, refresh_patched_env_path, patched_env_path, check_lsp_installed (~13689 tok)
+- `client.rs` — LspEntry: lsp_entry_for_extension, refresh_patched_env_path, patched_env_path, check_lsp_installed (~13784 tok)
 - `mod.rs` (~16 tok)
 - `registry.rs` — LanguageProfile: all_language_profiles, language_profile_for_extension, language_profile_for_path, language_profile_for_language_id + 2 more (~4469 tok)
 

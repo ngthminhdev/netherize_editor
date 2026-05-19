@@ -396,6 +396,41 @@ pub(super) async fn dispatch_loop(
             continue;
         }
 
+        if matches!(request.payload, WorkerRequestPayload::CopyFile { .. }) {
+            let (source_path, target_path) = match request.payload {
+                WorkerRequestPayload::CopyFile {
+                    source_path,
+                    target_path,
+                } => (source_path, target_path),
+                _ => unreachable!(),
+            };
+            let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                let result = tokio::fs::copy(&source_path, &target_path).await;
+                let (success, error_message) = match result {
+                    Ok(_) => (true, None),
+                    Err(err) => (false, Some(err.to_string())),
+                };
+                emit_message_and_wake(
+                    &worker_tx,
+                    &event_proxy,
+                    WorkerMessage::Result(WorkerResult {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        payload: WorkerResultPayload::FileCopyResult {
+                            source_path,
+                            target_path,
+                            success,
+                            error_message,
+                        },
+                    }),
+                );
+            });
+            continue;
+        }
+
         let worker_tx = result_tx.clone();
         let syntax_cache_for_job = syntax_engine_cache.clone();
         let event_proxy = event_proxy.clone();

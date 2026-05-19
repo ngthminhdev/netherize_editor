@@ -27,6 +27,7 @@ impl AsyncResultRouter for AppShell {
             RequestTopic::GitBaseline => self.git_baseline_revision,
             RequestTopic::AiInlineCompletion => self.ai_inline_revision,
             RequestTopic::SystemDepCheck | RequestTopic::SystemDepInstall => 0,
+            RequestTopic::FileOperation => 0,
             _ => 0,
         }
     }
@@ -93,6 +94,9 @@ impl AsyncResultRouter for AppShell {
             | WorkerResultPayload::RuntimeVersionsDetected { .. }
             | WorkerResultPayload::PythonEnvironmentsDiscovered(_) => {
                 system::handle_system_result(self, result.payload);
+            }
+            WorkerResultPayload::FileCopyResult { .. } => {
+                filesystem::handle_file_copy_result(self, result.payload);
             }
             _ => {}
         }

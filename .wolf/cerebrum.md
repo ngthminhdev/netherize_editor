@@ -2,7 +2,7 @@
 
 > OpenWolf's learning memory. Updated automatically as the AI learns from interactions.
 > Do not edit manually unless correcting an error.
-> Last updated: 2026-05-16
+> Last updated: 2026-05-19
 
 ## User Preferences
 
@@ -13,11 +13,14 @@
 - **Project:** netherize_editor
 - **Description:** A GPU-accelerated terminal/text editor written in Rust. Currently in active development (Module 12 / Phase 2–3).
 - **LSP Diagnostics Filtering:** LSP servers send diagnostics for ALL files they analyze, including builtin/stdlib files (node_modules, Go stdlib, Rust stdlib, Python site-packages). Editor must filter these out by path pattern matching to avoid showing errors in dependency code. Filter location: `src/app/event_loop/async_results/lsp.rs` in `LspDiagnostics` handler.
+- **Async I/O Pattern:** All blocking I/O operations (file copy, network, heavy parsing) MUST use `tokio::spawn` with `WorkerRequest`/`WorkerResult` pattern. Never use `std::fs` on the main thread. Pattern: (1) Add request/result to `message.rs`, (2) Handle in `scheduler/dispatch.rs` with `tokio::spawn`, (3) Route result in `async_results/mod.rs`.
 
 ## Do-Not-Repeat
 
 <!-- Mistakes made and corrected. Each entry prevents the same mistake recurring. -->
 <!-- Format: [YYYY-MM-DD] Description of what went wrong and what to do instead. -->
+
+- **[2026-05-19] Blocking File I/O on Main Thread:** `ExplorerPasteFile` used `std::fs::copy()` which blocks the UI thread. This violates the 0-latency architecture rule. **Fix:** Use `tokio::fs::copy()` in `tokio::spawn` with async message passing via `WorkerRequest::CopyFile` → `WorkerResult::FileCopyResult`. All file operations must be async.
 
 ## Decision Log
 

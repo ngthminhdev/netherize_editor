@@ -54,6 +54,8 @@ pub enum RequestTopic {
     SystemDepInstall,
     /// General-purpose system tasks (Python env scan, etc).
     SystemTask,
+    /// File system operations (copy, move, etc).
+    FileOperation,
 }
 
 /// Which search mode the fzf worker is running.
@@ -382,6 +384,11 @@ pub enum WorkerRequestPayload {
         python_binary: Option<PathBuf>,
         workspace_root: PathBuf,
     },
+    /// Copy a file from source to target path (async to avoid blocking UI).
+    CopyFile {
+        source_path: PathBuf,
+        target_path: PathBuf,
+    },
 }
 
 /// Loại location từ LSP — dùng cho definition và references.
@@ -709,6 +716,13 @@ pub enum WorkerResultPayload {
         python_version: Option<String>,
         node_version: Option<String>,
         go_version: Option<String>,
+    },
+    /// Result of async file copy operation.
+    FileCopyResult {
+        source_path: PathBuf,
+        target_path: PathBuf,
+        success: bool,
+        error_message: Option<String>,
     },
 }
 
