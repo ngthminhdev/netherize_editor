@@ -321,6 +321,246 @@ pub struct IconThemeTokens {
     pub proto: FileIconThemeTokens,
 }
 
+fn special_icon_for_filename(filename: &str) -> Option<&'static str> {
+    if let Some(icon) = nestjs_role_icon_for_filename(filename) {
+        return Some(icon);
+    }
+
+    if filename == "dockerfile" || filename.starts_with("dockerfile.") || filename.ends_with(".dockerfile") {
+        return Some("built_in:docker");
+    }
+    if filename == ".dockerignore" {
+        return Some("built_in:dockerignore");
+    }
+    if matches!(filename, "docker-compose.yml" | "docker-compose.yaml" | "compose.yml" | "compose.yaml") {
+        return Some("built_in:docker");
+    }
+
+    if filename == "cargo.lock" {
+        return Some("built_in:cargolock");
+    }
+    if matches!(filename, "package-lock.json" | "npm-shrinkwrap.json") {
+        return Some("built_in:npmlock");
+    }
+    if filename == "pnpm-lock.yaml" {
+        return Some("built_in:pnpmlock");
+    }
+    if filename == "yarn.lock" {
+        return Some("built_in:yarnlock");
+    }
+    if matches!(filename, "bun.lock" | "bun.lockb") {
+        return Some("built_in:bunlock");
+    }
+    if filename == "composer.lock" {
+        return Some("built_in:composerlock");
+    }
+    if filename == "flake.lock" {
+        return Some("built_in:flakelock");
+    }
+    if filename == "pubspec.lock" {
+        return Some("built_in:flutterlock");
+    }
+    if filename == "mix.lock" {
+        return Some("built_in:mixlock");
+    }
+    if filename == "poetry.lock" {
+        return Some("built_in:poetrylock");
+    }
+
+    if filename.starts_with("tsconfig") && filename.ends_with(".json") {
+        return Some("built_in:tsconfig");
+    }
+    if filename.starts_with("next.config.") {
+        return Some("built_in:nextconfig");
+    }
+    if filename.starts_with("svelte.config.") {
+        return Some("built_in:svelteconfig");
+    }
+    if filename.starts_with("vue.config.") {
+        return Some("built_in:vueconfig");
+    }
+    if filename.starts_with("astro.config.") {
+        return Some("built_in:astroconfig");
+    }
+    if filename.starts_with("postcss.config.") {
+        return Some("built_in:postcssconfig");
+    }
+    if filename == ".editorconfig" {
+        return Some("built_in:editorconfig");
+    }
+
+    if filename.starts_with("vitest.config.") {
+        return Some("built_in:vitest");
+    }
+    if filename.starts_with("jest.config.") || filename == ".jestrc" || filename.starts_with(".jestrc.") {
+        return Some("built_in:jest");
+    }
+    if filename.starts_with("cypress.config.ts") {
+        return Some("built_in:cypressts");
+    }
+    if filename.starts_with("cypress.config.js") {
+        return Some("built_in:cypressjs");
+    }
+    if filename.starts_with("playwright.config.") {
+        return Some("built_in:playright");
+    }
+    if filename.contains(".stories.") || filename.contains(".story.") {
+        return Some("built_in:storybook");
+    }
+    if filename.contains(".test.ts") || filename.contains(".spec.ts") {
+        return Some("built_in:testts");
+    }
+    if filename.contains(".test.js") || filename.contains(".spec.js") {
+        return Some("built_in:testjs");
+    }
+
+    if filename == ".eslintignore" {
+        return Some("built_in:eslintignore");
+    }
+    if filename.starts_with("eslint.config.") || filename == ".eslintrc" || filename.starts_with(".eslintrc.") {
+        return Some("built_in:eslint");
+    }
+    if filename == ".prettierignore" {
+        return Some("built_in:prettierignore");
+    }
+    if filename.starts_with("prettier.config.") || filename == ".prettierrc" || filename.starts_with(".prettierrc.") {
+        return Some("built_in:prettier");
+    }
+    if filename.starts_with("babel.config.") || filename == ".babelrc" || filename.starts_with(".babelrc.") {
+        return Some("built_in:babel");
+    }
+    if filename.starts_with("webpack.config.") {
+        return Some("built_in:webpack");
+    }
+    if filename.starts_with("rollup.config.") {
+        return Some("built_in:rollup");
+    }
+    if filename.starts_with("vite.config.") {
+        return Some("built_in:vite");
+    }
+    if filename.starts_with("tailwind.config.") {
+        return Some("built_in:tailwind");
+    }
+    if filename.starts_with("uno.config.") || filename.starts_with("unocss.config.") {
+        return Some("built_in:unocss");
+    }
+    if filename.starts_with("windi.config.") {
+        return Some("built_in:windi");
+    }
+    if matches!(filename, "biome.json" | "biome.jsonc") {
+        return Some("built_in:biome");
+    }
+    if filename == "oxlint.json" {
+        return Some("built_in:oxlint");
+    }
+    if filename.starts_with("commitlint.config.") {
+        return Some("built_in:commitlint");
+    }
+    if matches!(filename, ".browserslistrc" | "browserslist") {
+        return Some("built_in:browserslist");
+    }
+    if filename == "nodemon.json" {
+        return Some("built_in:nodemon");
+    }
+    if filename == ".nvmrc" {
+        return Some("built_in:nvm");
+    }
+    if filename == "nx.json" {
+        return Some("built_in:nx");
+    }
+    if filename == "turbo.json" {
+        return Some("built_in:turbo");
+    }
+
+    if filename.starts_with("nuxt.config.") {
+        return Some("built_in:nuxt");
+    }
+    if filename.starts_with("remix.config.") {
+        return Some("built_in:remix");
+    }
+    if filename == "tauri.conf.json" {
+        return Some("built_in:tauri");
+    }
+    if filename == "vercel.json" {
+        return Some("built_in:vercel");
+    }
+    if filename == "netlify.toml" {
+        return Some("built_in:netlify");
+    }
+
+    if filename == "schema.prisma" {
+        return Some("built_in:prisma");
+    }
+    if filename.starts_with("drizzle.config.") {
+        return Some("built_in:drizzle");
+    }
+    if filename == ".sequelizerc" || filename.starts_with("sequelize.config.") {
+        return Some("built_in:sequelize");
+    }
+    if filename.starts_with("knexfile.") {
+        return Some("built_in:knex");
+    }
+
+    if matches!(filename, ".gitignore" | ".gitattributes" | ".gitmodules") {
+        return Some("built_in:git");
+    }
+    if filename == ".gitlab-ci.yml" || filename == ".gitlab-ci.yaml" {
+        return Some("built_in:gitlab");
+    }
+    if filename == ".pre-commit-config.yaml" || filename == ".pre-commit-config.yml" {
+        return Some("built_in:precommit");
+    }
+    if filename == ".gitkeep" {
+        return Some("built_in:keep");
+    }
+
+    if filename.starts_with("readme") {
+        return Some("built_in:readme");
+    }
+    if filename.starts_with("license") || filename.starts_with("copying") {
+        return Some("built_in:license");
+    }
+    if filename.ends_with(".code-workspace") {
+        return Some("built_in:codeworkspace");
+    }
+    if filename == "manifest.json" || filename == "manifest.webmanifest" {
+        return Some("built_in:manifest");
+    }
+
+    None
+}
+
+fn nestjs_role_icon_for_filename(filename: &str) -> Option<&'static str> {
+    const ROLES: &[(&str, &str)] = &[
+        ("service", "built_in:nestjsservice"),
+        ("controller", "built_in:nestjscontroller"),
+        ("decorator", "built_in:nestjsdecorator"),
+        ("dto", "built_in:nestjsdto"),
+        ("entity", "built_in:nestjsentity"),
+        ("filter", "built_in:nestjsfilter"),
+        ("guard", "built_in:nestjsguard"),
+        ("interceptor", "built_in:nestjsinterceptor"),
+        ("module", "built_in:nestjsmodule"),
+        ("repository", "built_in:nestjsrepository"),
+        ("resolver", "built_in:nestjsresolver"),
+        ("scheduler", "built_in:nestscheduler"),
+    ];
+
+    for (role, icon) in ROLES {
+        let dot_role = format!(".{role}");
+        let dash_role = format!("-{role}");
+        if filename.ends_with(&dot_role)
+            || filename.contains(&format!("{dot_role}."))
+            || filename.ends_with(&dash_role)
+            || filename.contains(&format!("{dash_role}."))
+        {
+            return Some(icon);
+        }
+    }
+
+    None
+}
+
 impl ThemeConfig {
     pub fn sidebar_arrow(&self, is_dir: bool, is_expanded: bool) -> &str {
         if is_dir {
@@ -523,6 +763,11 @@ impl ThemeConfig {
             return icon.as_str();
         }
 
+        let normalized_filename = filename.to_ascii_lowercase();
+        if let Some(icon) = special_icon_for_filename(&normalized_filename) {
+            return icon;
+        }
+
         let extension = Path::new(filename)
             .extension()
             .and_then(|ext| ext.to_str())
@@ -583,6 +828,23 @@ mod tests {
         assert_eq!(theme.get_icon_for_file("Dockerfile", false), "🐳");
         assert_eq!(theme.get_icon_for_file("README.md", false), "📘");
         assert_eq!(theme.get_icon_for_file("schema.SQL", false), "🗄️");
+        assert_eq!(theme.get_icon_for_file("user.service.ts", false), "built_in:nestjsservice");
+        assert_eq!(theme.get_icon_for_file("user-service.ts", false), "built_in:nestjsservice");
+        assert_eq!(theme.get_icon_for_file("auth.service", false), "built_in:nestjsservice");
+        assert_eq!(theme.get_icon_for_file("auth-service", false), "built_in:nestjsservice");
+        assert_eq!(theme.get_icon_for_file("user.controller.ts", false), "built_in:nestjscontroller");
+        assert_eq!(theme.get_icon_for_file("auth-module.ts", false), "built_in:nestjsmodule");
+        assert_eq!(theme.get_icon_for_file("create-user.dto.ts", false), "built_in:nestjsdto");
+        assert_eq!(theme.get_icon_for_file("jwt.guard.ts", false), "built_in:nestjsguard");
+        assert_eq!(theme.get_icon_for_file("user.test.ts", false), "built_in:testts");
+        assert_eq!(theme.get_icon_for_file("button.stories.tsx", false), "built_in:storybook");
+        assert_eq!(theme.get_icon_for_file("Dockerfile.dev", false), "built_in:docker");
+        assert_eq!(theme.get_icon_for_file("pnpm-lock.yaml", false), "built_in:pnpmlock");
+        assert_eq!(theme.get_icon_for_file("vite.config.ts", false), "built_in:vite");
+        assert_eq!(theme.get_icon_for_file(".eslintrc.json", false), "built_in:eslint");
+        assert_eq!(theme.get_icon_for_file("schema.prisma", false), "built_in:prisma");
+        assert_eq!(theme.get_icon_for_file("README.md", false), "📘");
+        assert_eq!(theme.get_icon_for_file("LICENSE", false), "built_in:license");
         assert_eq!(theme.get_icon_for_file("notes.md", false), "📝");
         assert_eq!(theme.get_icon_for_file("unknown.bin", false), "built_in:file");
     }
