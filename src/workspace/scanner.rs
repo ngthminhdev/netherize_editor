@@ -100,12 +100,13 @@ impl WorkspaceScanner {
             };
 
             let is_ignored = self.is_gitignored_path(&path, root_path, gitignore, file_type.is_dir());
-            if self.should_skip_path(is_hidden, is_ignored) {
-                continue;
-            }
 
             if file_type.is_dir() {
                 if self.ignore_rules.should_ignore_dir(&path) {
+                    continue;
+                }
+
+                if self.should_skip_dir(is_hidden, is_ignored) {
                     continue;
                 }
 
@@ -115,6 +116,10 @@ impl WorkspaceScanner {
             }
 
             if file_type.is_file() {
+                if self.should_skip_file(is_hidden) {
+                    continue;
+                }
+
                 self.push_node(&path, WorkspaceNodeType::File, is_hidden, is_ignored, nodes)?;
             }
         }
@@ -167,7 +172,7 @@ impl WorkspaceScanner {
         Ok(())
     }
 
-    fn should_skip_path(&self, is_hidden: bool, is_ignored: bool) -> bool {
+    fn should_skip_dir(&self, is_hidden: bool, is_ignored: bool) -> bool {
         if !self.options.show_hidden && is_hidden {
             return true;
         }
@@ -177,6 +182,10 @@ impl WorkspaceScanner {
         }
 
         false
+    }
+
+    fn should_skip_file(&self, is_hidden: bool) -> bool {
+        !self.options.show_hidden && is_hidden
     }
 
     fn is_gitignored_path(
@@ -359,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    fn scanner_hides_hidden_and_gitignored_entries_by_default() {
+    fn scanner_hides_hidden_and_gitignored_dirs_by_default_but_keeps_ignored_files_visible() {
         let root = unique_temp_dir("hidden_ignored_default");
         fs::create_dir_all(root.join("src")).expect("create src");
         fs::write(root.join(".gitignore"), "ignored.txt\nignored_dir/\n").expect("write gitignore");
@@ -380,11 +389,9 @@ mod tests {
                 .iter()
                 .all(|node| !contains_path_suffix(&node.path, "/.env"))
         );
-        assert!(
-            nodes
-                .iter()
-                .all(|node| !contains_path_suffix(&node.path, "/ignored.txt"))
-        );
+        assert!(nodes.iter().any(|node| {
+            contains_path_suffix(&node.path, "/ignored.txt") && node.is_ignored
+        }));
         assert!(
             nodes
                 .iter()

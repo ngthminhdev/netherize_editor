@@ -7,12 +7,18 @@ pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayl
             let missing_names: Vec<String> = missing.iter().map(|s| s.to_string()).collect();
             if let Some(state) = app.app_state.active_extensions_manager_buffer_mut() {
                 for item in &mut state.items {
-                    if item.category == crate::app::app_state::ExtensionCategory::CliTools {
-                        item.installed = !missing_names.iter().any(|tool| tool == &item.binary);
-                    }
+                    item.installed = !missing_names.iter().any(|tool| tool == &item.binary);
                 }
             }
-            if missing.is_empty() {
+
+            let cli_tools = ["fzf", "lazygit", "lazydocker", "rg", "fd", "bat", "delta"];
+            let critical_missing: Vec<String> = missing_names
+                .iter()
+                .filter(|tool| cli_tools.contains(&tool.as_str()))
+                .cloned()
+                .collect();
+
+            if critical_missing.is_empty() {
                 app.active_system_dep_guide = None;
                 app.editor_needs_layout = true;
                 app.request_redraw();
@@ -24,11 +30,11 @@ pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayl
                 return;
             }
             let install_cmd = if cfg!(target_os = "macos") {
-                format!("brew install {}", missing.join(" "))
+                format!("brew install {}", critical_missing.join(" "))
             } else {
-                format!("sudo apt-get install -y {}", missing.join(" "))
+                format!("sudo apt-get install -y {}", critical_missing.join(" "))
             };
-            let tool_statuses = missing_names
+            let tool_statuses = critical_missing
                 .iter()
                 .map(|t| {
                     (
@@ -39,7 +45,7 @@ pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayl
                 .collect();
             app.active_system_dep_guide = Some(SystemDepGuide {
                 state: SystemDepState::Detected,
-                missing_tools: Some(missing_names),
+                missing_tools: Some(critical_missing),
                 install_command: Some(install_cmd),
                 tool_statuses,
             });

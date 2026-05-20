@@ -760,6 +760,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         SCROLL_HALF_PAGE_DOWN,
     );
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyV), ENTER_VISUAL);
+    km.insert(Some("terminal_normal"), ch('V'), ENTER_VISUAL_LINE);
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyY), YANK_SELECTION);
     km.insert(Some("terminal_normal"), mp(KeyCode::KeyV), TERMINAL_PASTE);
     km.insert(Some("terminal_normal"), mp(KeyCode::KeyT), TERMINAL_TAB_NEW);

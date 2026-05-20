@@ -75,6 +75,30 @@ impl AppShell {
                 }
                 Some(changed)
             }
+            Command::ExtensionsToggleExpanded => {
+                let changed = self.app_state.extensions_toggle_expanded_selected();
+                if changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                }
+                Some(changed)
+            }
+            Command::ExtensionsSwitchTabNext => {
+                let changed = self.app_state.extensions_switch_tab_next();
+                if changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                }
+                Some(changed)
+            }
+            Command::ExtensionsSwitchTabPrev => {
+                let changed = self.app_state.extensions_switch_tab_prev();
+                if changed {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                }
+                Some(changed)
+            }
             Command::ExtensionsStartFilter => {
                 let changed = self.app_state.extensions_set_filter_focused(true);
                 if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::EnterInsert) {
@@ -86,13 +110,20 @@ impl AppShell {
                 }
             }
             Command::ExtensionsCancelFilter => {
+                let mut cmd_changed = false;
+                if let Some(state) = self.app_state.active_extensions_manager_buffer_mut() {
+                    if state.command.is_some() {
+                        state.command = None;
+                        cmd_changed = true;
+                    }
+                }
                 let changed = self.app_state.extensions_set_filter_focused(false);
                 if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::Escape) {
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
-                    Some(changed || result.changed)
+                    Some(cmd_changed || changed || result.changed)
                 } else {
-                    Some(changed)
+                    Some(cmd_changed || changed)
                 }
             }
             Command::ExtensionsInstallSelected => {

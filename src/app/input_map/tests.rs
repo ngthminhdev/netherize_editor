@@ -250,6 +250,20 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::TerminalPaste),
         },
         Case {
+            name: "terminal normal Shift+V -> EnterVisualLine",
+            context: KeybindingContext::with_focus(
+                EditorMode::TerminalNormal,
+                InputFocusContext::Terminal,
+            ),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::KeyV),
+                named_key: None,
+                text: Some("V".to_string()),
+                modifiers: ModifiersState::SHIFT,
+            },
+            expected: Some(Command::EnterVisualLine),
+        },
+        Case {
             name: "normal p -> PasteAfter",
             context: KeybindingContext::for_mode(EditorMode::Normal),
             input: NormalizedInput {

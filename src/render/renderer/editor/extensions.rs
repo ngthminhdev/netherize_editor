@@ -54,20 +54,181 @@ impl Renderer {
 
         let titlebar_h = line_height + 10.0;
         let header_h = titlebar_h + line_height * 4.0 + 72.0;
-        let footer_h = 34.0;
-        let footer_gap = 8.0;
         let content_top = panel_y + header_h;
         let content_bottom = panel_y + panel_h;
-        let rows_bottom = (content_bottom - footer_h - footer_gap).max(content_top + line_height);
+        let rows_bottom = content_bottom.max(content_top + line_height);
         let content_h = (rows_bottom - content_top).max(line_height);
+
+        let inner_x = panel_x + 14.0;
+        let inner_w = (panel_w - 28.0).max(1.0);
+        let text_w = inner_w.max(1.0);
+
+        if let Some(cmd_state) = &state.command {
+            // Render ONLY the base solid panel, title bar, and log popup modal.
+            // Bypassing background rendering completely resolves text-bleed overlay and opacity issues!
+            let mut chrome = vec![
+                RegionDrawInstance::new([panel_x, panel_y, panel_w, panel_h], panel_bg),
+                RegionDrawInstance::new([panel_x, panel_y, panel_w, titlebar_h], panel_bg),
+                RegionDrawInstance::new([panel_x, panel_y + titlebar_h - 1.0, panel_w, 1.0], divider),
+            ];
+            let mut glyphs = Vec::new();
+
+            self.editor_overlay_text_system
+                .set_size(Some(text_w), Some(line_height));
+            glyphs.extend(layout_panel_text(
+                "◇ Extensions / netherize-editor",
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                inner_x,
+                panel_y + 5.0,
+                fg,
+            ));
+
+            let runtime_scale = (font_size / 14.0).max(0.5);
+            let popup_w = ((panel_w * 0.82).max(380.0 * runtime_scale)).min(panel_w - 16.0).max(180.0);
+            let popup_h = ((panel_h * 0.72).max(260.0 * runtime_scale)).min(panel_h - 16.0).max(120.0);
+            let popup_x = panel_x + (panel_w - popup_w) * 0.5;
+            let popup_y = panel_y + (panel_h - popup_h) * 0.5;
+
+            // Make the popup card background COMPLETELY solid (alpha = 1.0) using solid editor bg
+            let mut card_bg = editor_bg;
+            card_bg[3] = 1.0;
+
+            let border_color = if cmd_state.running {
+                accent
+            } else if cmd_state.success == Some(true) {
+                success
+            } else {
+                warning
+            };
+
+            // Draw solid popup border and body card
+            chrome.push(RegionDrawInstance::new([popup_x - 1.5, popup_y - 1.5, popup_w + 3.0, popup_h + 3.0], border_color).with_radius(6.0));
+            chrome.push(RegionDrawInstance::new([popup_x, popup_y, popup_w, popup_h], card_bg).with_radius(5.5));
+
+            let header_divider_h = line_height + 14.0;
+            let mut divider_color = ghost;
+            divider_color[3] = 0.25;
+            chrome.push(RegionDrawInstance::new([popup_x, popup_y + header_divider_h, popup_w, 1.0], divider_color));
+
+            let action_txt = if cmd_state.uninstall { "Uninstalling" } else { "Installing" };
+            let status_label = if cmd_state.running {
+                format!("⚡ {} {}...", action_txt, cmd_state.binary)
+            } else if cmd_state.success == Some(true) {
+                format!("✓ {} complete for {}", action_txt, cmd_state.binary)
+            } else {
+                format!("✗ {} failed for {} (code {:?})", action_txt, cmd_state.binary, cmd_state.exit_code)
+            };
+
+            glyphs.extend(layout_panel_text_bold(
+                &status_label,
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                popup_x + 16.0,
+                popup_y + 8.0,
+                border_color,
+            ));
+
+            let log_box_x = popup_x + 16.0;
+            let log_box_y = popup_y + header_divider_h + 12.0;
+            let log_box_w = popup_w - 32.0;
+            let log_box_h = (popup_h - header_divider_h - line_height - 36.0).max(40.0);
+
+            // Make the logs container box also COMPLETELY solid (alpha = 1.0) using solid panel bg
+            let mut inner_box_bg = panel_bg;
+            inner_box_bg[3] = 1.0;
+            chrome.push(RegionDrawInstance::new([log_box_x, log_box_y, log_box_w, log_box_h], inner_box_bg).with_radius(4.0));
+
+            let log_font_size = (font_size * 0.85).max(11.0);
+            let log_line_h = (line_height * 0.85).max(18.0);
+            self.editor_overlay_text_system.set_metrics(Metrics::new(log_font_size, log_line_h));
+            self.editor_overlay_text_system.set_size(Some(log_box_w - 16.0), Some(log_line_h));
+
+            if cmd_state.logs.is_empty() {
+                glyphs.extend(layout_panel_text(
+                    "Waiting for process output...",
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    log_box_x + 10.0,
+                    log_box_y + 8.0,
+                    ghost,
+                ));
+            } else {
+                let char_width = (log_font_size * 0.6).max(1.0);
+                let max_chars = ((log_box_w - 20.0) / char_width).floor() as usize;
+                let max_chars = max_chars.max(10);
+
+                let mut wrapped_lines = Vec::new();
+                for line in &cmd_state.logs {
+                    let is_err = line.contains("npm error") || line.to_lowercase().contains("error");
+                    let chars: Vec<char> = line.chars().collect();
+                    if chars.is_empty() {
+                        wrapped_lines.push((String::new(), is_err));
+                    } else {
+                        let mut start = 0;
+                        while start < chars.len() {
+                            let end = (start + max_chars).min(chars.len());
+                            let chunk: String = chars[start..end].iter().collect();
+                            wrapped_lines.push((chunk, is_err));
+                            start = end;
+                        }
+                    }
+                }
+
+                let max_lines = ((log_box_h / log_line_h).floor() as usize).max(1);
+                let start_idx = wrapped_lines.len().saturating_sub(max_lines);
+                let mut cur_y = log_box_y + 6.0;
+                for (line_text, is_err) in &wrapped_lines[start_idx..] {
+                    let color = if *is_err { warning } else { dim };
+                    glyphs.extend(layout_panel_text(
+                        line_text,
+                        &mut self.editor_overlay_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        log_box_x + 10.0,
+                        cur_y,
+                        color,
+                    ));
+                    cur_y += log_line_h;
+                }
+            }
+
+            self.editor_overlay_text_system.set_metrics(Metrics::new(font_size, line_height));
+            self.editor_overlay_text_system.set_size(Some(text_w), Some(line_height));
+
+            let helper_text = if cmd_state.running {
+                "Logs are streaming in real-time. Press Esc to hide popup."
+            } else {
+                "Operation finished. Press Esc to dismiss this popup."
+            };
+            glyphs.extend(layout_panel_text(
+                helper_text,
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                popup_x + 16.0,
+                popup_y + popup_h - line_height - 10.0,
+                ghost,
+            ));
+
+            self.editor_overlay_chrome_instances = chrome;
+            self.editor_overlay_glyph_instances = glyphs;
+            self.editor_overlay_text_pipeline.upload_instances(
+                &self.device,
+                &self.queue,
+                &self.editor_overlay_glyph_instances,
+            );
+            return;
+        }
 
         let mut chrome = vec![
             RegionDrawInstance::new([panel_x, panel_y, panel_w, panel_h], panel_bg),
             RegionDrawInstance::new([panel_x, panel_y, panel_w, titlebar_h], panel_bg),
             RegionDrawInstance::new([panel_x, panel_y + titlebar_h - 1.0, panel_w, 1.0], divider),
             RegionDrawInstance::new([panel_x, panel_y + header_h - 1.0, panel_w, 1.0], divider),
-            RegionDrawInstance::new([panel_x, content_bottom - footer_h, panel_w, footer_h], editor_bg),
-            RegionDrawInstance::new([panel_x, content_bottom - footer_h, panel_w, 1.0], divider),
         ];
         let mut glyphs = Vec::new();
 
@@ -363,13 +524,25 @@ impl Renderer {
                         let status = if item.installed { "✓ Installed" } else { "⇩ Not installed" };
                         let compact_row = inner_w < 480.0;
                         let right_pad = 14.0;
-                        let status_w = if compact_row { 90.0 } else { 142.0 };
-                        let tag_w = if compact_row { 0.0 } else { 86.0 };
+                        
+                        // Dynamically scale column widths using screen percentage clamped to optimal premium ranges.
+                        // This prevents columns from expanding excessively and squishing everything on 2K/High-DPI displays.
+                        let status_w = if compact_row {
+                            (inner_w * 0.22).clamp(100.0, 140.0)
+                        } else {
+                            (inner_w * 0.16).clamp(130.0, 180.0)
+                        };
+                        let tag_w = if compact_row {
+                            0.0
+                        } else {
+                            (inner_w * 0.12).clamp(90.0, 140.0)
+                        };
+                        
                         let status_x = inner_x + inner_w - status_w - right_pad;
                         let tag_x = status_x - tag_w - 18.0;
                         let name_right = if compact_row { status_x - 14.0 } else { tag_x - 18.0 };
                         let name_x = inner_x + 36.0;
-                        let name_w = (name_right - name_x).max(36.0);
+                        let name_w = (name_right - name_x).max(40.0);
                         let chevron = if state.expanded_binary.as_deref() == Some(item.binary.as_str()) { "▾" } else { "▸" };
                         glyphs.extend(layout_panel_text_bold(
                             chevron,
@@ -470,21 +643,6 @@ impl Renderer {
                     }
                 }
             }
-        }
-
-        if let Some(item) = state.selected_item() {
-            let footer_y = content_bottom - footer_h + 8.0;
-            let status = if item.installed { "installed" } else { "available" };
-            let help = format!("{} · {} · Enter details · Tab tabs · i install · u uninstall · / search", item.name, status);
-            glyphs.extend(layout_panel_text(
-                &clamp_monospace_text(&help, inner_w - 24.0, font_size),
-                &mut self.editor_overlay_text_system,
-                &mut self.atlas,
-                &self.queue,
-                inner_x + 12.0,
-                footer_y,
-                ghost,
-            ));
         }
 
         self.editor_overlay_chrome_instances = chrome;

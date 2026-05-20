@@ -11,13 +11,21 @@ impl InputMap {
     ) -> Option<KeybindingMatch> {
         use KeyCode::*;
 
+        if input.named_key == Some(NamedKey::Escape) {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsCancelFilter,
+                reason: "extensions: Esc -> leave filter focus / dismiss popup",
+            });
+        }
+
+        if !input.has_command_modifier() && input.named_key == Some(NamedKey::Enter) {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsToggleExpanded,
+                reason: "extensions: Enter -> expand selected",
+            });
+        }
+
         if filter_focused {
-            if input.named_key == Some(NamedKey::Escape) {
-                return Some(KeybindingMatch {
-                    command: Command::ExtensionsCancelFilter,
-                    reason: "extensions: Esc -> leave filter focus",
-                });
-            }
             if input.named_key == Some(NamedKey::Backspace) {
                 return Some(KeybindingMatch {
                     command: Command::FilePickerBackspaceQuery,
@@ -74,13 +82,6 @@ impl InputMap {
             return Some(KeybindingMatch {
                 command: Command::ExtensionsStartFilter,
                 reason: "extensions: / -> focus filter",
-            });
-        }
-
-        if !input.has_command_modifier() && input.named_key == Some(NamedKey::Enter) {
-            return Some(KeybindingMatch {
-                command: Command::ExtensionsToggleExpanded,
-                reason: "extensions: Enter -> expand selected",
             });
         }
 

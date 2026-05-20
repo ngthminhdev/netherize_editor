@@ -232,7 +232,12 @@ pub(super) async fn execute_virtual_job(
         }
         WorkerRequestPayload::CheckSystemDeps => {
             let resolved_path = resolve_system_path();
-            let tools = ["fzf", "lazygit", "lazydocker", "rg", "fd", "bat", "delta"];
+            let tools = [
+                "fzf", "lazygit", "lazydocker", "rg", "fd", "bat", "delta", "opencode",
+                "rust-analyzer", "typescript-language-server", "gopls", "pylsp", "jdtls",
+                "sqls", "yaml-language-server", "docker-langserver",
+                "vscode-json-language-server", "bash-language-server",
+            ];
             let missing: Vec<String> = tools
                 .iter()
                 .filter(|tool| {

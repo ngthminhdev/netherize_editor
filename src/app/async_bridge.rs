@@ -255,6 +255,16 @@ mod tests {
         fn on_ai_install_success(&mut self) {}
         fn on_system_dep_tool_progress(&mut self, _tool: String, _status: InstallStatus) {}
         fn on_system_dep_install_done(&mut self) {}
+        fn on_extension_command_started(&mut self, _binary: String, _uninstall: bool) {}
+        fn on_extension_command_log(&mut self, _binary: String, _line: String) {}
+        fn on_extension_command_finished(
+            &mut self,
+            _binary: String,
+            _uninstall: bool,
+            _success: bool,
+            _exit_code: Option<i32>,
+        ) {
+        }
         fn on_lsp_missing_dependency(&mut self, _language_id: String, _tool_name: String) {}
     }
 

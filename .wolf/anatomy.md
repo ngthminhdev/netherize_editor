@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-19T16:05:30.160Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-20T05:00:00.771Z
 > Files: 362 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
@@ -293,14 +293,14 @@
 
 ## src/app/
 
-- `async_bridge.rs` — BridgePumpStats: new, pump (~4480 tok)
+- `async_bridge.rs` — BridgePumpStats: new, pump (~4589 tok)
 - `clipboard.rs` — SystemClipboard: new (~524 tok)
 - `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~15248 tok)
 - `file_picker.rs` — FilePickerEntry: open, close, append_query, backspace_query + 6 more (~1644 tok)
 - `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~1621 tok)
 - `mod.rs` (~66 tok)
 - `persistence.rs` — AppPersistentState: load, save, push_recent, push_recent_with_icon + 4 more (~1333 tok)
-- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~15238 tok)
+- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~15257 tok)
 
 ## src/app/app_state/
 
@@ -321,12 +321,12 @@
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~10569 tok)
 - `commands_completion.rs` (~4377 tok)
 - `commands_editor.rs` (~4920 tok)
-- `commands_explorer.rs` (~7106 tok)
+- `commands_explorer.rs` (~7613 tok)
 - `commands_lsp.rs` (~9161 tok)
 - `commands_palette.rs` (~7300 tok)
 - `commands_prompts.rs` (~7215 tok)
 - `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~6809 tok)
-- `commands_settings.rs` (~4142 tok)
+- `commands_settings.rs` (~4526 tok)
 - `commands_terminal.rs` (~6430 tok)
 - `commands_tests.rs` — [derive(Default)] (~15874 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~8995 tok)
@@ -339,15 +339,15 @@
 
 - `ai.rs` (~938 tok)
 - `failure.rs` (~1208 tok)
-- `filesystem.rs` (~651 tok)
+- `filesystem.rs` (~698 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
 - `lsp.rs` (~8763 tok)
-- `mod.rs` (~8070 tok)
+- `mod.rs` (~8646 tok)
 - `preview.rs` (~993 tok)
 - `shell.rs` (~112 tok)
 - `syntax.rs` (~375 tok)
-- `system.rs` (~1515 tok)
+- `system.rs` (~1576 tok)
 - `terminal.rs` (~2506 tok)
 
 ## src/app/input/
@@ -361,14 +361,14 @@
 
 ## src/app/input_map/
 
-- `focus.rs` (~11037 tok)
+- `focus.rs` (~11035 tok)
 - `helpers.rs` (~180 tok)
 - `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette + 8 more (~4975 tok)
-- `tests.rs` (~15121 tok)
+- `tests.rs` (~15272 tok)
 
 ## src/async_runtime/
 
-- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~6204 tok)
+- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~6647 tok)
 - `mod.rs` (~16 tok)
 - `python_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~948 tok)
 - `scheduler.rs` — Declares FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD (~2222 tok)
@@ -377,7 +377,7 @@
 
 - `ai_jobs.rs` — Platform install command for opencode: (~3926 tok)
 - `ai.rs` (~1994 tok)
-- `dispatch.rs` (~5539 tok)
+- `dispatch.rs` (~5934 tok)
 - `emit.rs` (~458 tok)
 - `file_watch.rs` (~2469 tok)
 - `fzf.rs` — Declares MAX_FZF_RESULTS (~2481 tok)
@@ -388,7 +388,7 @@
 - `lsp.rs` (~6922 tok)
 - `pty.rs` (~3903 tok)
 - `runtime.rs` — Runtime wrapper duy nhất cho background jobs. (~839 tok)
-- `syntax_jobs.rs` (~6631 tok)
+- `syntax_jobs.rs` (~6709 tok)
 - `tests.rs` (~1600 tok)
 
 ## src/config/
@@ -468,7 +468,7 @@
 
 - `buffers.rs` — clear_editor_overlays, update_references_buffer_content (~5424 tok)
 - `completion.rs` — Declares COMPLETION_KIND_TEXT (~1827 tok)
-- `extensions.rs` — update_extensions_manager_content (~6857 tok)
+- `extensions.rs` — update_extensions_manager_content (~8893 tok)
 - `fuzzy.rs` — update_fuzzy_picker_buffer_content (~7853 tok)
 - `help.rs` — update_help_buffer_content (~4176 tok)
 - `overlays.rs` — update_editor_overlays (~18996 tok)
@@ -633,4 +633,4 @@
 - `fuzzy.rs` — [derive(Debug, Clone, PartialEq, Eq)] (~1466 tok)
 - `mod.rs` (~14 tok)
 - `model.rs` — WorkspaceNode: new, new, should_ignore_dir, should_ignore_path + 31 more (~8110 tok)
-- `scanner.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~4250 tok)
+- `scanner.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~4318 tok)
