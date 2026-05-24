@@ -743,6 +743,9 @@ impl AppShell {
                 FocusTarget::CenterEditor if self.app_state.active_buffer_is_diagnostics() => {
                     InputFocusContext::Diagnostics
                 }
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_markdown_preview() => {
+                    InputFocusContext::MarkdownPreview
+                }
                 FocusTarget::CenterEditor if self.app_state.active_buffer_is_references() => {
                     InputFocusContext::References
                 }

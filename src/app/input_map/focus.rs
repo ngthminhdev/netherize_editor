@@ -548,6 +548,20 @@ impl InputMap {
             });
         }
 
+        if !input.has_command_modifier() && input.physical_key == Some(KeyZ) {
+            return Some(KeybindingMatch {
+                command: Command::CenterCursorLine,
+                reason: "preview: z/zz -> keep preview viewport centered",
+            });
+        }
+
+        if !input.has_command_modifier() && input.physical_key == Some(KeyG) {
+            return Some(KeybindingMatch {
+                command: Command::MarkdownPreviewScrollTop,
+                reason: "preview: g/gg -> scroll top",
+            });
+        }
+
         if input.modifiers.control_key()
             && !input.modifiers.super_key()
             && input.physical_key == Some(KeyD)
@@ -564,6 +578,25 @@ impl InputMap {
             return Some(KeybindingMatch {
                 command: Command::MarkdownPreviewScrollHalfPageUp,
                 reason: "preview: Ctrl+u -> scroll up half page",
+            });
+        }
+
+        if input.modifiers.control_key()
+            && !input.modifiers.super_key()
+            && input.physical_key == Some(KeyH)
+        {
+            return Some(KeybindingMatch {
+                command: Command::BufferPrev,
+                reason: "preview: Ctrl+h -> previous buffer",
+            });
+        }
+        if input.modifiers.control_key()
+            && !input.modifiers.super_key()
+            && input.physical_key == Some(KeyL)
+        {
+            return Some(KeybindingMatch {
+                command: Command::BufferNext,
+                reason: "preview: Ctrl+l -> next buffer",
             });
         }
 

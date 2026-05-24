@@ -2,14 +2,14 @@
   "version": 1,
   "created_at": "2026-05-16T05:48:05.030Z",
   "lifetime": {
-    "total_tokens_estimated": 2379063,
-    "total_reads": 281,
-    "total_writes": 288,
-    "total_sessions": 36,
-    "anatomy_hits": 245,
-    "anatomy_misses": 5,
-    "repeated_reads_blocked": 410,
-    "estimated_savings_vs_bare_cli": 4161839
+    "total_tokens_estimated": 2499392,
+    "total_reads": 295,
+    "total_writes": 295,
+    "total_sessions": 40,
+    "anatomy_hits": 257,
+    "anatomy_misses": 6,
+    "repeated_reads_blocked": 420,
+    "estimated_savings_vs_bare_cli": 4254928
   },
   "sessions": [
     {
@@ -3857,6 +3857,159 @@
         "writes_count": 8,
         "repeated_reads_blocked": 13,
         "anatomy_lookups": 4
+      }
+    },
+    {
+      "id": "session-2026-05-24-1211",
+      "started": "2026-05-24T05:11:19.287Z",
+      "ended": "2026-05-24T05:20:56.720Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/commands_lsp.rs",
+          "tokens_estimated": 9161,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/editor.rs",
+          "tokens_estimated": 10839,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/state.rs",
+          "tokens_estimated": 11267,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/overlays.rs",
+          "tokens_estimated": 15379,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/core/command_dispatch/editing.rs",
+          "tokens_estimated": 10093,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/async_results/lsp.rs",
+          "tokens_estimated": 8763,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/commands_lsp.rs",
+          "tokens_estimated": 316,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 65502,
+        "output_tokens_estimated": 316,
+        "reads_count": 6,
+        "writes_count": 1,
+        "repeated_reads_blocked": 2,
+        "anatomy_lookups": 6
+      }
+    },
+    {
+      "id": "session-2026-05-24-1601",
+      "started": "2026-05-24T09:01:03.879Z",
+      "ended": "2026-05-24T09:06:41.375Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/.claude/image-cache/2cfba278-9aeb-45ef-b142-940af6bb9e0b/2.png",
+          "tokens_estimated": 0,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/.claude/image-cache/2cfba278-9aeb-45ef-b142-940af6bb9e0b/1.png",
+          "tokens_estimated": 0,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/workbench/text_coordinate_map.rs",
+          "tokens_estimated": 1674,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/viewport.rs",
+          "tokens_estimated": 6404,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/selections.rs",
+          "tokens_estimated": 9713,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/mod.rs",
+          "tokens_estimated": 22522,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/text/layout_sync.rs",
+          "tokens_estimated": 4691,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/text/text_system.rs",
+          "tokens_estimated": 5793,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/viewport.rs",
+          "tokens_estimated": 416,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/viewport.rs",
+          "tokens_estimated": 1034,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/viewport.rs",
+          "tokens_estimated": 816,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/viewport.rs",
+          "tokens_estimated": 42,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/viewport.rs",
+          "tokens_estimated": 484,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/viewport.rs",
+          "tokens_estimated": 922,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 50797,
+        "output_tokens_estimated": 3714,
+        "reads_count": 8,
+        "writes_count": 6,
+        "repeated_reads_blocked": 8,
+        "anatomy_lookups": 6
       }
     }
   ],

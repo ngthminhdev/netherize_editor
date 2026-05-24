@@ -627,6 +627,7 @@ fn uninstall_command_for_lsp(binary: &str, install: &str) -> String {
 pub struct MarkdownPreviewState {
     pub visible: bool,
     pub scroll_y: f32,
+    pub source_path: Option<PathBuf>,
     pub source_text: String,
     pub rendered_lines: Vec<MarkdownPreviewLine>,
     pub source_revision: u64,
@@ -658,6 +659,7 @@ impl Default for MarkdownPreviewState {
         Self {
             visible: false,
             scroll_y: 0.0,
+            source_path: None,
             source_text: String::new(),
             rendered_lines: Vec::new(),
             source_revision: 0,
@@ -1754,6 +1756,7 @@ pub enum BufferContent {
     Terminal(PtyState),
     References(ReferencesBufferState),
     Diagnostics(DiagnosticsState),
+    MarkdownPreview(MarkdownPreviewState),
     FuzzyPicker(FuzzyState),
     SettingsTab(SettingsState),
     Help(HelpState),
@@ -1783,6 +1786,13 @@ impl BufferEntry {
             BufferContent::Terminal(state) => state.title.clone(),
             BufferContent::References(state) => state.title.clone(),
             BufferContent::Diagnostics(_) => "[Diagnostics]".to_string(),
+            BufferContent::MarkdownPreview(state) => state
+                .source_path
+                .as_ref()
+                .and_then(|path| path.file_name())
+                .and_then(|name| name.to_str())
+                .map(|name| format!("{name} preview"))
+                .unwrap_or_else(|| "[Markdown Preview]".to_string()),
             BufferContent::FuzzyPicker(_) => "[Fuzzy Finder]".to_string(),
             BufferContent::SettingsTab(_) => "[Settings]".to_string(),
             BufferContent::Help(state) => state.title.clone(),
@@ -1803,6 +1813,7 @@ impl BufferEntry {
             | BufferContent::Terminal(_)
             | BufferContent::References(_)
             | BufferContent::Diagnostics(_)
+            | BufferContent::MarkdownPreview(_)
             | BufferContent::FuzzyPicker(_)
             | BufferContent::SettingsTab(_)
             | BufferContent::Help(_)

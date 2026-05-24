@@ -616,47 +616,31 @@ impl AppShell {
                     .and_then(|p| p.extension())
                     .is_some_and(|ext| ext == "md");
 
-                let preview = &mut self.app_state.markdown_preview;
-                
-                if !preview.visible && !is_markdown {
+                if !is_markdown && !self.app_state.active_buffer_is_markdown_preview() {
                     return Some(false);
                 }
 
-                preview.visible = !preview.visible;
-                if preview.visible {
-                    if !self.panel_state.right.visible {
-                        self.panel_state.right.visible = true;
-                        self.sidebar_needs_layout = true;
-                    }
-                    // Save original width before override so it can be
-                    // restored when the preview is closed.  This prevents the
-                    // 50 % width from leaking into other right-panel tabs
-                    // such as AI chat.
-                    self.pre_markdown_preview_right_width = Some(self.panel_state.right.size_px);
-                    // Auto-set width to 50% of window
-                    let half_width = (self.window_size.width as f32 * 0.5).max(200.0);
-                    self.panel_state.right.size_px = half_width;
-                    self.panel_state
-                        .right
-                        .switch_to_tab(PanelTabId::MarkdownPreview);
-                    self.focus_manager.set(FocusTarget::RightSidebar);
-                    self.input_handler.clear_pending_prefix();
-                    self.update_markdown_preview_content();
+                let source = if self.app_state.active_text_buffer().is_some() {
+                    self.app_state.text_string()
+                } else if let Some(preview) = self.app_state.active_markdown_preview_buffer() {
+                    preview.source_text.clone()
                 } else {
-                    // Restore the original width that was saved when the
-                    // preview was opened, so other tabs keep their
-                    // configured width.
-                    if let Some(original_width) = self.pre_markdown_preview_right_width.take() {
-                        self.panel_state.right.size_px = original_width;
-                    }
-                    if self.panel_state.right.active_tab_id() == Some(PanelTabId::MarkdownPreview) {
-                        self.panel_state.right.visible = false;
-                        self.sidebar_needs_layout = true;
-                    }
-                    if self.focus_manager.current() == FocusTarget::RightSidebar {
-                        self.focus_manager.set(FocusTarget::CenterEditor);
-                    }
-                }
+                    String::new()
+                };
+                let rendered_lines =
+                    crate::app::event_loop::helpers::parse_markdown_preview_blocks(&source, &self.theme);
+
+                self.app_state.markdown_preview.visible = true;
+                self.app_state.markdown_preview.scroll_y = 0.0;
+                self.app_state.markdown_preview.source_path = self.app_state.active_file().map(|path| path.to_path_buf());
+                self.app_state.markdown_preview.source_text = source;
+                self.app_state.markdown_preview.source_revision = self.app_state.revision();
+                self.app_state.markdown_preview.rendered_lines = rendered_lines;
+                let preview = self.app_state.markdown_preview.clone();
+                self.app_state.open_markdown_preview_buffer(preview);
+                self.focus_manager.set(FocusTarget::CenterEditor);
+                self.input_handler.clear_pending_prefix();
+                self.editor_needs_layout = true;
                 Some(true)
             }
             Command::CloseSidebars => {
@@ -696,87 +680,122 @@ impl AppShell {
                 Some(changed)
             }
             Command::FocusMarkdownPreview => {
-                let mut changed = self.release_focus_mode_to_editor();
-                let preview = &mut self.app_state.markdown_preview;
-                if !preview.visible {
-                    preview.visible = true;
-                    changed = true;
-                }
-                if !self.panel_state.right.visible {
-                    self.panel_state.right.visible = true;
-                    self.sidebar_needs_layout = true;
-                    changed = true;
-                }
-                if self.pre_markdown_preview_right_width.is_none() {
-                    self.pre_markdown_preview_right_width = Some(self.panel_state.right.size_px);
-                }
-                let half_width = (self.window_size.width as f32 * 0.5).max(200.0);
-                if (self.panel_state.right.size_px - half_width).abs() > f32::EPSILON {
-                    self.panel_state.right.size_px = half_width;
-                    changed = true;
-                }
-                changed |= self
-                    .panel_state
-                    .right
-                    .switch_to_tab(PanelTabId::MarkdownPreview);
-                let focus_changed = self.focus_manager.set(FocusTarget::RightSidebar);
-                changed |= focus_changed;
-                if focus_changed {
-                    self.input_handler.clear_pending_prefix();
-                }
-                self.update_markdown_preview_content();
-                Some(changed)
+                self.handle_markdown_preview_command(&Command::ToggleMarkdownPreview)
+            }
+            Command::ScrollHalfPageUp if self.app_state.active_buffer_is_markdown_preview() => {
+                self.handle_markdown_preview_command(&Command::MarkdownPreviewScrollHalfPageUp)
+            }
+            Command::ScrollHalfPageDown if self.app_state.active_buffer_is_markdown_preview() => {
+                self.handle_markdown_preview_command(&Command::MarkdownPreviewScrollHalfPageDown)
+            }
+            Command::MoveToFirstLine if self.app_state.active_buffer_is_markdown_preview() => {
+                self.handle_markdown_preview_command(&Command::MarkdownPreviewScrollTop)
+            }
+            Command::MoveToLastLine if self.app_state.active_buffer_is_markdown_preview() => {
+                self.handle_markdown_preview_command(&Command::MarkdownPreviewScrollBottom)
+            }
+            Command::CenterCursorLine if self.app_state.active_buffer_is_markdown_preview() => {
+                self.editor_needs_layout = true;
+                Some(true)
             }
             Command::MarkdownPreviewScrollUp => {
                 let preview = &mut self.app_state.markdown_preview;
                 if !preview.visible {
                     return Some(false);
                 }
+                let previous = preview.scroll_y;
                 preview.scroll_y = (preview.scroll_y - 3.0).max(0.0);
-                Some(true)
+                let changed = (preview.scroll_y - previous).abs() > f32::EPSILON;
+                if changed {
+                    self.editor_needs_layout = true;
+                    let _ = self
+                        .app_state
+                        .sync_markdown_preview_buffer(self.app_state.markdown_preview.clone());
+                }
+                Some(changed)
             }
             Command::MarkdownPreviewScrollDown => {
                 let preview = &mut self.app_state.markdown_preview;
                 if !preview.visible {
                     return Some(false);
                 }
+                let previous = preview.scroll_y;
                 let max_scroll = preview.rendered_lines.len().saturating_sub(1) as f32;
                 preview.scroll_y = (preview.scroll_y + 3.0).min(max_scroll);
-                Some(true)
+                let changed = (preview.scroll_y - previous).abs() > f32::EPSILON;
+                if changed {
+                    self.editor_needs_layout = true;
+                    let _ = self
+                        .app_state
+                        .sync_markdown_preview_buffer(self.app_state.markdown_preview.clone());
+                }
+                Some(changed)
             }
             Command::MarkdownPreviewScrollHalfPageUp => {
                 let preview = &mut self.app_state.markdown_preview;
                 if !preview.visible {
                     return Some(false);
                 }
+                let previous = preview.scroll_y;
                 preview.scroll_y = (preview.scroll_y - 15.0).max(0.0);
-                Some(true)
+                let changed = (preview.scroll_y - previous).abs() > f32::EPSILON;
+                if changed {
+                    self.editor_needs_layout = true;
+                    let _ = self
+                        .app_state
+                        .sync_markdown_preview_buffer(self.app_state.markdown_preview.clone());
+                }
+                Some(changed)
             }
             Command::MarkdownPreviewScrollHalfPageDown => {
                 let preview = &mut self.app_state.markdown_preview;
                 if !preview.visible {
                     return Some(false);
                 }
+                let previous = preview.scroll_y;
                 let max_scroll = preview.rendered_lines.len().saturating_sub(1) as f32;
                 preview.scroll_y = (preview.scroll_y + 15.0).min(max_scroll);
-                Some(true)
+                let changed = (preview.scroll_y - previous).abs() > f32::EPSILON;
+                if changed {
+                    self.editor_needs_layout = true;
+                    let _ = self
+                        .app_state
+                        .sync_markdown_preview_buffer(self.app_state.markdown_preview.clone());
+                }
+                Some(changed)
             }
             Command::MarkdownPreviewScrollTop => {
                 let preview = &mut self.app_state.markdown_preview;
                 if !preview.visible {
                     return Some(false);
                 }
+                let previous = preview.scroll_y;
                 preview.scroll_y = 0.0;
-                Some(true)
+                let changed = (preview.scroll_y - previous).abs() > f32::EPSILON;
+                if changed {
+                    self.editor_needs_layout = true;
+                    let _ = self
+                        .app_state
+                        .sync_markdown_preview_buffer(self.app_state.markdown_preview.clone());
+                }
+                Some(changed)
             }
             Command::MarkdownPreviewScrollBottom => {
                 let preview = &mut self.app_state.markdown_preview;
                 if !preview.visible {
                     return Some(false);
                 }
+                let previous = preview.scroll_y;
                 let max_scroll = preview.rendered_lines.len().saturating_sub(1) as f32;
                 preview.scroll_y = max_scroll;
-                Some(true)
+                let changed = (preview.scroll_y - previous).abs() > f32::EPSILON;
+                if changed {
+                    self.editor_needs_layout = true;
+                    let _ = self
+                        .app_state
+                        .sync_markdown_preview_buffer(self.app_state.markdown_preview.clone());
+                }
+                Some(changed)
             }
             _ => None,
         }
@@ -805,18 +824,27 @@ impl AppShell {
     }
 
     fn update_markdown_preview_content(&mut self) {
-        let source = self.app_state.text_string();
-        let revision = self.app_state.revision();
+        let (source, revision) = if self.app_state.active_text_buffer().is_some() {
+            (self.app_state.text_string(), self.app_state.revision())
+        } else if let Some(preview) = self.app_state.active_markdown_preview_buffer() {
+            (preview.source_text.clone(), preview.source_revision)
+        } else {
+            return;
+        };
+
         let preview = &mut self.app_state.markdown_preview;
 
-        if preview.source_text == source && preview.source_revision == revision {
-            return;
+        if preview.source_text != source || preview.source_revision != revision {
+            preview.source_text = source.clone();
+            preview.source_revision = revision;
+            preview.rendered_lines = crate::app::event_loop::helpers::parse_markdown_preview_blocks(
+                &source,
+                &self.theme,
+            );
         }
 
-        preview.source_text = source.clone();
-        preview.source_revision = revision;
-        preview.rendered_lines =
-            crate::app::event_loop::helpers::parse_markdown_preview_blocks(&source, &self.theme);
+        self.app_state
+            .sync_markdown_preview_buffer(self.app_state.markdown_preview.clone());
     }
 }
 

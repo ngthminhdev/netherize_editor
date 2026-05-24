@@ -58,6 +58,98 @@ fn spans_fingerprint(spans: &[StyledTextSpan]) -> u64 {
     h
 }
 
+/// Truncate auto-folded long lines to 100 chars + "..." before shaping.
+/// This prevents wrapped display of folded lines.
+fn truncate_folded_lines(
+    text: &str,
+    spans: &[StyledTextSpan],
+    app_state: &AppState,
+) -> (String, Vec<StyledTextSpan>) {
+    const FOLD_TRUNCATE_LIMIT: usize = 100;
+
+    let folded_ranges = app_state.folded_ranges();
+    if folded_ranges.is_empty() {
+        return (text.to_string(), spans.to_vec());
+    }
+
+    // Find auto-folded long lines (where start == end)
+    let auto_folded_lines: Vec<usize> = folded_ranges
+        .iter()
+        .filter(|&&(s, e)| s == e)
+        .map(|&(s, _)| s)
+        .collect();
+
+    if auto_folded_lines.is_empty() {
+        return (text.to_string(), spans.to_vec());
+    }
+
+    // Build line-to-byte mapping for original text
+    let mut line_byte_starts = vec![0];
+    for line in text.lines() {
+        let last = *line_byte_starts.last().unwrap();
+        line_byte_starts.push(last + line.len() + 1); // +1 for newline
+    }
+
+    let mut result = String::with_capacity(text.len());
+    let mut new_line_byte_starts = vec![0];
+
+    for (line_idx, line) in text.lines().enumerate() {
+        if auto_folded_lines.contains(&line_idx) {
+            // Truncate this line to 100 chars + "..."
+            let chars: Vec<char> = line.chars().collect();
+            if chars.len() > FOLD_TRUNCATE_LIMIT {
+                let truncated: String = chars.iter().take(FOLD_TRUNCATE_LIMIT).collect();
+                result.push_str(&truncated);
+                result.push_str("...");
+            } else {
+                result.push_str(line);
+            }
+        } else {
+            result.push_str(line);
+        }
+
+        // Add newline if not the last line
+        if line_idx + 1 < text.lines().count() {
+            result.push('\n');
+        }
+
+        new_line_byte_starts.push(result.len() + 1);
+    }
+
+    // Adjust spans based on line-by-line byte offset mapping
+    let mut adjusted_spans = Vec::with_capacity(spans.len());
+    for span in spans {
+        // Find which line the span starts in
+        let start_line = line_byte_starts
+            .iter()
+            .position(|&byte| byte > span.start)
+            .map(|i| i.saturating_sub(1))
+            .unwrap_or(0);
+        let end_line = line_byte_starts
+            .iter()
+            .position(|&byte| byte > span.end)
+            .map(|i| i.saturating_sub(1))
+            .unwrap_or(line_byte_starts.len().saturating_sub(1));
+
+        // Calculate byte offset within the line
+        let start_offset_in_line = span.start.saturating_sub(line_byte_starts[start_line]);
+        let end_offset_in_line = span.end.saturating_sub(line_byte_starts[end_line]);
+
+        let adjusted_start = new_line_byte_starts[start_line] + start_offset_in_line;
+        let adjusted_end = new_line_byte_starts[end_line] + end_offset_in_line;
+
+        if adjusted_start < result.len() && adjusted_end <= result.len() && adjusted_start < adjusted_end {
+            adjusted_spans.push(StyledTextSpan {
+                start: adjusted_start.min(result.len()),
+                end: adjusted_end.min(result.len()),
+                ..*span
+            });
+        }
+    }
+
+    (result, adjusted_spans)
+}
+
 impl Renderer {
     pub(crate) fn set_editor_breadcrumb_segments(
         &mut self,
@@ -197,8 +289,10 @@ impl Renderer {
             || (self.last_shaped_viewport_width - width).abs() > 0.5
             || tab_width_changed;
         if needs_reshape {
+            // Truncate auto-folded long lines to 100 chars + "..." before shaping
+            let (display_text, adjusted_spans) = truncate_folded_lines(text, spans, app_state);
             self.text_system
-                .set_text_with_spans(text, default_color_rgba, spans);
+                .set_text_with_spans(&display_text, default_color_rgba, &adjusted_spans);
             self.last_shaped_revision = current_revision;
             self.last_shaped_spans_fingerprint = spans_fp;
             self.last_shaped_viewport_width = width;

@@ -807,6 +807,7 @@ impl AppShell {
             let active_terminal_session = self.app_state.active_terminal_session_id();
             let references_active = self.app_state.active_buffer_is_references();
             let diagnostics_active = self.app_state.active_buffer_is_diagnostics();
+            let markdown_preview_active = self.app_state.active_buffer_is_markdown_preview();
 
             // ── Invariant guard ───────────────────────────────────────────────
             // Nếu terminal buffer đang chiếm center, đảm bảo editor GPU buffer
@@ -867,6 +868,21 @@ impl AppShell {
                         renderer.clear_editor_content();
                         if let Some(diagnostics) = self.app_state.active_diagnostics_buffer() {
                             renderer.update_diagnostics_buffer_content(diagnostics, center_bounds);
+                        } else {
+                            renderer.clear_editor_overlays();
+                        }
+                    } else if markdown_preview_active {
+                        renderer.set_editor_breadcrumb_segments(Vec::new());
+                        renderer.clear_welcome_logo();
+                        renderer.clear_buffer_terminal();
+                        renderer.clear_editor_content();
+                        if let Some(preview) = self.app_state.active_markdown_preview_buffer() {
+                            renderer.update_markdown_preview_content(
+                                center_bounds,
+                                &preview.rendered_lines,
+                                preview.scroll_y,
+                                self.layout_engine.config.inner_padding,
+                            );
                         } else {
                             renderer.clear_editor_overlays();
                         }
@@ -976,6 +992,20 @@ impl AppShell {
                             self.buffer_terminal_needs_layout = false;
                         }
                     }
+                } else if markdown_preview_active {
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.clear_editor_content();
+                        if let Some(preview) = self.app_state.active_markdown_preview_buffer() {
+                            renderer.update_markdown_preview_content(
+                                center_bounds,
+                                &preview.rendered_lines,
+                                preview.scroll_y,
+                                self.layout_engine.config.inner_padding,
+                            );
+                        } else {
+                            renderer.clear_editor_overlays();
+                        }
+                    }
                 } else if references_active {
                     if let Some(renderer) = self.renderer.as_mut() {
                         renderer.clear_editor_content();
@@ -1065,6 +1095,7 @@ impl AppShell {
             if !show_welcome
                 && active_terminal_session.is_none()
                 && !references_active
+                && !markdown_preview_active
                 && let Some(renderer) = self.renderer.as_ref()
             {
                 if self.app_state.current_mode() != EditorMode::Visual
@@ -1092,7 +1123,11 @@ impl AppShell {
             }
 
             if let Some(renderer) = self.renderer.as_mut() {
-                if active_terminal_session.is_none() && !references_active && !show_welcome {
+                if active_terminal_session.is_none()
+                    && !references_active
+                    && !markdown_preview_active
+                    && !show_welcome
+                {
                     if let Some(leap_state) = &self.leap_state {
                         renderer.update_editor_leap_labels(
                             &leap_state.targets,
@@ -1113,6 +1148,7 @@ impl AppShell {
                     && active_terminal_session.is_none()
                     && !references_active
                     && !diagnostics_active
+                    && !markdown_preview_active
                     && !self.app_state.has_completion()
                     && self.app_state.active_fuzzy_picker_buffer().is_none()
                     && self.app_state.active_settings_buffer().is_none();
@@ -1188,6 +1224,11 @@ impl AppShell {
         let ai_chat_active = self.panel_state.right.visible
             && right_sidebar_bounds.is_some()
             && self.panel_state.right.active_tab_id() == Some(PanelTabId::AiChat);
+        let markdown_preview_uses_ai_chat_pipeline = self.app_state.active_buffer_is_markdown_preview()
+            || (self.panel_state.right.visible
+                && right_sidebar_bounds.is_some()
+                && self.panel_state.right.active_tab_id() == Some(PanelTabId::MarkdownPreview)
+                && self.app_state.markdown_preview.visible);
         if ai_chat_active {
             let history_bounds = visible_region_bounds(&flat_regions, RegionId::AiChatHistory);
             let input_bounds = visible_region_bounds(&flat_regions, RegionId::AiChatInput);
@@ -1218,7 +1259,9 @@ impl AppShell {
                     region_instances.extend(cursor_quads);
                 }
             }
-        } else if let Some(renderer) = self.renderer.as_mut() {
+        } else if !markdown_preview_uses_ai_chat_pipeline
+            && let Some(renderer) = self.renderer.as_mut()
+        {
             renderer.clear_ai_chat();
         }
 
@@ -1310,6 +1353,7 @@ impl AppShell {
                             BufferContent::Terminal(_) => TopbarTabKind::Terminal,
                             BufferContent::References(_) => TopbarTabKind::References,
                             BufferContent::Diagnostics(_) => TopbarTabKind::Diagnostics,
+                            BufferContent::MarkdownPreview(_) => TopbarTabKind::MarkdownPreview,
                             BufferContent::FuzzyPicker(_) => TopbarTabKind::FuzzyPicker,
                             BufferContent::SettingsTab(_) => TopbarTabKind::Settings,
                             BufferContent::Help(_) => TopbarTabKind::Help,

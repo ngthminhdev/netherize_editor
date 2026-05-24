@@ -658,6 +658,11 @@ impl AppState {
             .is_some_and(|buffer| matches!(buffer.content, BufferContent::Diagnostics(_)))
     }
 
+    pub fn active_buffer_is_markdown_preview(&self) -> bool {
+        self.active_buffer()
+            .is_some_and(|buffer| matches!(buffer.content, BufferContent::MarkdownPreview(_)))
+    }
+
     pub fn active_references_buffer(&self) -> Option<&ReferencesBufferState> {
         match self.active_buffer().map(|buffer| &buffer.content) {
             Some(BufferContent::References(state)) => Some(state),
@@ -668,6 +673,13 @@ impl AppState {
     pub fn active_diagnostics_buffer(&self) -> Option<&DiagnosticsState> {
         match self.active_buffer().map(|buffer| &buffer.content) {
             Some(BufferContent::Diagnostics(state)) => Some(state),
+            _ => None,
+        }
+    }
+
+    pub fn active_markdown_preview_buffer(&self) -> Option<&MarkdownPreviewState> {
+        match self.active_buffer().map(|buffer| &buffer.content) {
+            Some(BufferContent::MarkdownPreview(state)) => Some(state),
             _ => None,
         }
     }
@@ -711,6 +723,7 @@ impl AppState {
                 | BufferContent::Image(_)
                 | BufferContent::References(_)
                 | BufferContent::Diagnostics(_)
+                | BufferContent::MarkdownPreview(_)
                 | BufferContent::FuzzyPicker(_)
                 | BufferContent::SettingsTab(_)
                 | BufferContent::Help(_)

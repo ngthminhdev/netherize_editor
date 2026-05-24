@@ -700,7 +700,7 @@ impl AppShell {
             Ok(next) => {
                 if self
                     .app_state
-                    .replace_active_document_text_preserve_cursor(&next)
+                    .replace_active_document_text_preserve_cursor_with_undo(&next)
                 {
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = true;

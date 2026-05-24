@@ -972,6 +972,54 @@ impl AppState {
         index
     }
 
+    pub fn sync_markdown_preview_buffer(&mut self, preview: MarkdownPreviewState) -> bool {
+        let Some(existing_idx) = self
+            .buffers
+            .iter()
+            .position(|buffer| matches!(buffer.content, BufferContent::MarkdownPreview(_)))
+        else {
+            return false;
+        };
+
+        if let Some(BufferEntry {
+            content: BufferContent::MarkdownPreview(state),
+            ..
+        }) = self.buffers.get_mut(existing_idx)
+        {
+            *state = preview;
+            return true;
+        }
+
+        false
+    }
+
+    pub fn open_markdown_preview_buffer(&mut self, preview: MarkdownPreviewState) -> usize {
+        if let Some(existing_idx) = self
+            .buffers
+            .iter()
+            .position(|buffer| matches!(buffer.content, BufferContent::MarkdownPreview(_)))
+        {
+            let _ = self.sync_markdown_preview_buffer(preview);
+            self.reset_text_editor_state();
+            self.active_buffer_index = Some(existing_idx);
+            let _ = self.clear_current_overlays();
+            self.bump_revision();
+            return existing_idx;
+        }
+
+        self.save_current_text_buffer_history();
+        self.is_initial_launch_welcome = false;
+        self.buffers.push(BufferEntry {
+            content: BufferContent::MarkdownPreview(preview),
+        });
+        let index = self.buffers.len().saturating_sub(1);
+        self.reset_text_editor_state();
+        self.active_buffer_index = Some(index);
+        let _ = self.clear_current_overlays();
+        self.bump_revision();
+        index
+    }
+
     pub fn open_references_buffer(
         &mut self,
         title: impl Into<String>,

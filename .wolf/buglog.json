@@ -368,6 +368,22 @@
       "related_bugs": [],
       "occurrences": 2,
       "last_seen": "2026-05-23T11:19:41.985Z"
+    },
+    {
+      "id": "bug-023",
+      "timestamp": "2026-05-24T09:05:21.300Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/render/renderer/editor/viewport.rs",
+      "root_cause": "61 lines replaced/restructured",
+      "fix": "Rewrote 77→4 lines (61 removed) | Also: let mut cumulative_byte_offset = 0isize;; let original_line_bytes = line.len();",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-24T09:06:01.249Z"
     }
   ]
 }

@@ -370,3 +370,34 @@
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
+
+## Session: 2026-05-24 12:10
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-05-24 12:11
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-05-24 12:11
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 12:20 | Edited src/app/event_loop/commands_lsp.rs | replace_active_document_text_preserve_cursor() → replace_active_document_text_preserve_cursor_with_undo() | ~295 |
+| 12:20 | Fixed code action undo bug - changed do_apply_code_action_edits to use _with_undo variant | commands_lsp.rs:703 | ✅ Compiles | ~800 |
+| 12:20 | Session end: 1 writes across 1 files (commands_lsp.rs) | 6 reads | ~65818 tok |
+
+## Session: 2026-05-24 16:01
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 16:04 | Edited src/render/renderer/editor/viewport.rs | 22→24 lines | ~388 |
+| 16:04 | Edited src/render/renderer/editor/viewport.rs | modified truncate_folded_lines() | ~965 |
+| 16:04 | Edited src/render/renderer/editor/viewport.rs | modified spans_fingerprint() | ~762 |
+| 16:05 | Edited src/render/renderer/editor/viewport.rs | removed 77 lines | ~40 |
+| 16:05 | Edited src/render/renderer/editor/viewport.rs | modified enumerate() | ~452 |
+| 16:06 | Edited src/render/renderer/editor/viewport.rs | modified truncate_folded_lines() | ~860 |
+| 16:06 | Fixed folded line wrapping - truncate to 100 chars before shaping | viewport.rs | ✅ Compiles | ~1500 |
+| 16:06 | Session end: 6 writes across 1 files (viewport.rs) | 8 reads | ~54511 tok |

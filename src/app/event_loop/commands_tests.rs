@@ -894,15 +894,28 @@ fn focus_markdown_preview_opens_preview_tab_and_focuses_sidebar() {
     shell.panel_state.right.visible = false;
     shell.app_state.markdown_preview.visible = false;
 
+    let markdown_path = std::env::temp_dir().join(format!(
+        "netherize_markdown_preview_{}.md",
+        std::process::id()
+    ));
+    std::fs::write(&markdown_path, "# Preview title\n\nBody text\n").expect("write markdown");
+    shell
+        .app_state
+        .open_file(markdown_path.clone())
+        .expect("open markdown file");
+
     assert!(shell.handle_command(Command::FocusMarkdownPreview));
 
-    assert!(shell.panel_state.right.visible);
     assert!(shell.app_state.markdown_preview.visible);
-    assert_eq!(
-        shell.panel_state.right.active_tab_id(),
-        Some(PanelTabId::MarkdownPreview)
-    );
-    assert_eq!(shell.focus_manager.current(), FocusTarget::RightSidebar);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    let preview = shell
+        .app_state
+        .active_markdown_preview_buffer()
+        .expect("markdown preview buffer active");
+    assert!(!preview.rendered_lines.is_empty());
+    assert_eq!(preview.rendered_lines[0].text, "Preview title");
+
+    let _ = std::fs::remove_file(markdown_path);
 }
 
 #[test]

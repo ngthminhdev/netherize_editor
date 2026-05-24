@@ -82,6 +82,7 @@ pub enum TopbarTabKind {
     Terminal,
     References,
     Diagnostics,
+    MarkdownPreview,
     FuzzyPicker,
     Settings,
     Help,

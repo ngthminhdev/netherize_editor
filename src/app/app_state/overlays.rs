@@ -146,6 +146,9 @@ impl AppState {
         if self.active_buffer_is_diagnostics() {
             return "Diagnostics";
         }
+        if self.active_buffer_is_markdown_preview() {
+            return "Markdown Preview";
+        }
         if self.active_buffer_is_references() {
             return "References";
         }
@@ -1127,6 +1130,7 @@ impl AppState {
             }
             BufferContent::References(_)
             | BufferContent::Diagnostics(_)
+            | BufferContent::MarkdownPreview(_)
             | BufferContent::FuzzyPicker(_)
             | BufferContent::SettingsTab(_)
             | BufferContent::Help(_)

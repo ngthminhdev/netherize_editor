@@ -55,6 +55,9 @@ impl AppState {
         if self.active_buffer_is_diagnostics() {
             return Err("cannot save diagnostics buffer".to_string());
         }
+        if self.active_buffer_is_markdown_preview() {
+            return Err("cannot save markdown preview buffer".to_string());
+        }
 
         let _ = self.cancel_file_history_preview();
 

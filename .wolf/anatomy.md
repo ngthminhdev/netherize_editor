@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-20T05:00:00.771Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-24T09:06:01.241Z
 > Files: 362 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
@@ -322,7 +322,7 @@
 - `commands_completion.rs` (~4377 tok)
 - `commands_editor.rs` (~4920 tok)
 - `commands_explorer.rs` (~7613 tok)
-- `commands_lsp.rs` (~9161 tok)
+- `commands_lsp.rs` (~8553 tok)
 - `commands_palette.rs` (~7300 tok)
 - `commands_prompts.rs` (~7215 tok)
 - `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~6809 tok)
@@ -474,7 +474,7 @@
 - `overlays.rs` — update_editor_overlays (~18996 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, multi_cursor_selection_quads (~9713 tok)
 - `settings.rs` — update_settings_buffer_content (~10502 tok)
-- `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~6090 tok)
+- `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~6598 tok)
 
 ## src/render/renderer/editor/buffers/
 

@@ -284,10 +284,7 @@ mode = "normal"
 key = "<leader>f m"
 command = "lsp.format_document"
 
-[[bindings]]
-mode = "normal"
-key = "<leader>m f"
-command = "app.focus_markdown_preview"
+
 
 # `r<char>` cần payload ký tự động nên được xử lý trong InputHandler pending state,
 # không khai báo static binding ở đây.
@@ -1044,7 +1041,7 @@ command = "buffer.goto_9"
 
 [[bindings]]
 mode = "normal"
-key = "<leader>m p"
+key = "<leader>p r"
 command = "app.toggle_markdown_preview"
 
 [[bindings]]
