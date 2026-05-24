@@ -347,6 +347,9 @@ fn special_icon_for_filename(filename: &str) -> Option<&'static str> {
     if filename == "cargo.lock" {
         return Some("built_in:cargolock");
     }
+    if filename == "package.json" {
+        return Some("built_in:node");
+    }
     if matches!(filename, "package-lock.json" | "npm-shrinkwrap.json") {
         return Some("built_in:npmlock");
     }
@@ -541,7 +544,7 @@ fn special_icon_for_filename(filename: &str) -> Option<&'static str> {
 fn built_in_icon_id_for_extension(extension: &str) -> Option<&'static str> {
     Some(match extension {
         "rs" => "built_in:rust",
-        "js" | "mjs" | "cjs" => "built_in:node",
+        "js" | "mjs" | "cjs" => "built_in:javascript",
         "ts" | "mts" | "cts" => "built_in:typescript",
         "tsx" => "built_in:tsx",
         "jsx" => "built_in:reactjs",

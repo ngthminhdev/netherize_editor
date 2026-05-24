@@ -184,6 +184,7 @@ impl Renderer {
         chrome_quads.extend(self.search_highlight_quads(app_state, center_bounds));
         chrome_quads.extend(self.multi_cursor_selection_quads(app_state, center_bounds));
         chrome_quads.extend(self.visual_selection_quads(app_state, center_bounds));
+        chrome_quads.extend(self.visual_block_selection_quads(app_state, center_bounds));
         if let Some(quad) = self.current_line_highlight_quad(app_state, center_bounds) {
             chrome_quads.push(quad);
         }

@@ -215,6 +215,7 @@ mod tests {
                     category: HighlightCategory::Keyword,
                 }],
                 covered_byte_range: None,
+                foldable_ranges: Vec::new(),
                 line_count: 1,
                 char_count: 10,
                 byte_count: 10,

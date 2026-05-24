@@ -307,6 +307,7 @@ pub fn editor_mode_str(mode: EditorMode) -> &'static str {
         EditorMode::Insert => "insert",
         EditorMode::Normal => "normal",
         EditorMode::Visual => "visual",
+        EditorMode::VisualBlock => "visual_block",
         EditorMode::PaletteFocus => "palette",
         EditorMode::TerminalFocus => "terminal",
         EditorMode::TerminalNormal => "terminal_normal",
@@ -502,6 +503,7 @@ fn input_to_specs(input: &NormalizedInput) -> Vec<KeySpec> {
                 specs.push(KeySpec::ModShiftPlus(code));
             }
             // CtrlPlus has priority over ModPlus when only Ctrl is held (not Cmd/Super).
+            // Add CtrlPlus FIRST so it gets priority in lookup, but still add ModPlus as fallback.
             if input.modifiers.control_key() && !input.modifiers.super_key() {
                 specs.push(KeySpec::CtrlPlus(code));
             }
@@ -629,7 +631,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("normal"), ph(KeyCode::KeyX), DELETE_CHAR);
     km.insert(Some("normal"), ph(KeyCode::KeyP), PASTE_AFTER);
     km.insert(Some("normal"), ch('P'), PASTE_BEFORE);
-    km.insert(Some("normal"), mp(KeyCode::KeyV), EDITOR_PASTE);
+    km.insert(
+        Some("normal"),
+        KeySpec::CtrlPlus(KeyCode::KeyV),
+        ENTER_VISUAL_BLOCK,
+    );
     km.insert(Some("normal"), ph(KeyCode::KeyU), UNDO);
     km.insert(
         Some("normal"),
@@ -677,6 +683,17 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("visual"), ph(KeyCode::KeyX), DELETE_SELECTION);
     km.insert(Some("visual"), ph(KeyCode::KeyY), YANK_SELECTION);
     km.insert(Some("visual"), mp(KeyCode::KeyV), EDITOR_PASTE);
+
+    // ── Visual Block mode ────────────────────────────────────────────────────
+    km.insert(Some("visual_block"), nk(NamedKey::Escape), ENTER_NORMAL);
+    km.insert(Some("visual_block"), ph(KeyCode::KeyH), MOVE_LEFT);
+    km.insert(Some("visual_block"), ph(KeyCode::KeyJ), MOVE_DOWN);
+    km.insert(Some("visual_block"), ph(KeyCode::KeyK), MOVE_UP);
+    km.insert(Some("visual_block"), ph(KeyCode::KeyL), MOVE_RIGHT);
+    km.insert(Some("visual_block"), ch('I'), INSERT_AT_LINE_START);
+    km.insert(Some("visual_block"), ch('A'), APPEND_AT_LINE_END);
+    km.insert(Some("visual_block"), ph(KeyCode::KeyC), CHANGE_SELECTION);
+    km.insert(Some("visual_block"), ph(KeyCode::KeyD), DELETE_SELECTION);
 
     // ── Palette focus (overlay / command palette / file picker) ─────────────
     km.insert(Some("palette"), nk(NamedKey::Enter), FILE_PICKER_CONFIRM);
@@ -1149,7 +1166,8 @@ mod tests {
     #[test]
     fn parse_character_key() {
         assert_eq!(parse_key_spec(":"), Some(KeySpec::Char(':')));
-        assert_eq!(parse_key_spec("O"), Some(KeySpec::Char('O')));
+        // Uppercase letters are parsed as ShiftPlus, not Char
+        assert_eq!(parse_key_spec("O"), Some(KeySpec::ShiftPlus(KeyCode::KeyO)));
     }
 
     #[test]
@@ -1304,7 +1322,10 @@ mod tests {
         };
 
         assert_eq!(km.lookup(&mod_v, "insert"), Some(command_ids::EDITOR_PASTE));
-        assert_eq!(km.lookup(&mod_v, "normal"), Some(command_ids::EDITOR_PASTE));
+        assert_eq!(
+            km.lookup(&mod_v, "normal"),
+            Some(command_ids::ENTER_VISUAL_BLOCK)
+        );
         assert_eq!(km.lookup(&mod_v, "visual"), Some(command_ids::EDITOR_PASTE));
         assert_eq!(
             km.lookup_mode_only(&mod_v, "palette"),

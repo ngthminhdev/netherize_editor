@@ -261,6 +261,46 @@ fn toggle_terminal_command_closes_bottom_panel_after_second_press() {
 }
 
 #[test]
+fn focus_terminal_focuses_open_panel_from_editor_without_closing_it() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    assert!(shell.handle_command(Command::ToggleBottomDock));
+    assert!(shell.panel_state.bottom.visible);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+
+    assert!(shell.handle_command(Command::FocusTerminal));
+    assert!(shell.panel_state.bottom.visible);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::BottomPanel);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::TerminalFocus);
+}
+
+#[test]
+fn focus_terminal_closes_panel_when_terminal_already_has_focus() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    assert!(shell.handle_command(Command::FocusTerminal));
+    assert!(shell.panel_state.bottom.visible);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::BottomPanel);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::TerminalFocus);
+
+    assert!(shell.handle_command(Command::FocusTerminal));
+    assert!(!shell.panel_state.bottom.visible);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+}
+
+#[test]
+fn focus_terminal_closes_panel_from_terminal_normal() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    assert!(shell.handle_command(Command::FocusTerminal));
+    assert!(shell.handle_command(Command::SwitchMode(ModeEvent::EnterTerminalNormal)));
+    assert_eq!(shell.app_state.current_mode(), EditorMode::TerminalNormal);
+
+    assert!(shell.handle_command(Command::FocusTerminal));
+    assert!(!shell.panel_state.bottom.visible);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+}
+
+#[test]
 fn toggle_bottom_dock_keeps_editor_focus_when_opening() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);

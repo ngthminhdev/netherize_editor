@@ -262,3 +262,111 @@
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
 | 09:48 | Initiated session, read project guidelines & ran cargo check | CLAUDE.md, .wolf/OPENWOLF.md, .wolf/cerebrum.md, .wolf/anatomy.md | Build verified successful | ~40000 tok |
+
+## Session: 2026-05-21 20:48
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 21:04 | Created ../../.claude/plans/t-i-mu-n-l-m-ch-c-dazzling-summit.md | — | ~4923 |
+| 21:05 | Edited src/core/mode.rs | 16→17 lines | ~123 |
+| 21:06 | Edited src/core/mode.rs | modified as_str() | ~148 |
+| 21:06 | Edited src/core/mode.rs | 19→20 lines | ~158 |
+| 21:06 | Edited src/core/mode.rs | expanded (+31 lines) | ~1541 |
+| 21:06 | Edited src/core/mode.rs | 42 → 38 | ~14 |
+| 21:07 | Edited src/core/command_ids.rs | 9→10 lines | ~152 |
+| 21:07 | Edited src/core/command_ids.rs | 5→6 lines | ~119 |
+| 21:07 | Edited src/app/resolved_keymap.rs | modified editor_mode_str() | ~146 |
+| 21:12 | Edited src/render/renderer/helpers.rs | modified mode_display_label() | ~144 |
+| 21:12 | Edited src/render/renderer/helpers.rs | modified mode_pill_color() | ~185 |
+| 21:15 | Edited src/render/renderer/helpers.rs | modified is_mode_block_cursor() | ~40 |
+| 21:15 | Edited src/app/app_state/mod.rs | modified is_supported_image_path() | ~162 |
+| 21:15 | Edited src/app/app_state/mod.rs | 4→6 lines | ~61 |
+| 21:16 | Edited src/app/app_state/mod.rs | 5→7 lines | ~75 |
+| 21:16 | Edited src/app/app_state/buffers.rs | modified begin_visual_block_selection() | ~403 |
+| 21:16 | Edited src/app/app_state/buffers.rs | is_none() → is_some() | ~113 |
+| 21:17 | Implementing Visual Block Mode (Vim Ctrl+v) | mode.rs, command_ids.rs, resolved_keymap.rs, helpers.rs, mod.rs, buffers.rs | Added VisualBlock mode variant, state fields, block selection methods | ~15000 tok |
+| 21:17 | Status: Phase 1-2 complete (mode infrastructure + state management), Phase 3 in progress (multi-cursor generation) | — | Next: Add visual_block_insert_before/append_after in multi_cursor.rs | — |
+| 21:18 | Session end: 17 writes across 7 files (t-i-mu-n-l-m-ch-c-dazzling-summit.md, mode.rs, command_ids.rs, resolved_keymap.rs, helpers.rs) | 19 reads | ~159848 tok |
+| 21:30 | Completed Visual Block Mode implementation | multi_cursor.rs, session.rs, editing.rs, default.toml | Added I/A multi-cursor generation, command dispatch, keybindings. cargo check passed | ~12000 tok |
+| 23:28 | Edited src/app/app_state/multi_cursor.rs | modified visual_block_insert_before() | ~1367 |
+| 23:29 | Edited src/core/command_dispatch/session.rs | modified apply_mode_event() | ~410 |
+| 23:30 | Edited src/core/command_dispatch/editing.rs | modified enter_insert_mode_if_needed() | ~448 |
+| 23:30 | Edited src/core/command_dispatch/editing.rs | modified enter_insert_mode_if_needed() | ~215 |
+| 23:30 | Edited src/core/command_dispatch/editing.rs | 4→6 lines | ~52 |
+| 23:31 | Edited src/core/command_dispatch/editing.rs | 5→3 lines | ~17 |
+| 23:31 | Edited config/keymaps/default.toml | 11→16 lines | ~64 |
+| 23:31 | Edited config/keymaps/default.toml | expanded (+36 lines) | ~195 |
+| 23:33 | Session end: 25 writes across 11 files (t-i-mu-n-l-m-ch-c-dazzling-summit.md, mode.rs, command_ids.rs, resolved_keymap.rs, helpers.rs) | 19 reads | ~166589 tok |
+| 23:43 | Session end: 25 writes across 11 files (t-i-mu-n-l-m-ch-c-dazzling-summit.md, mode.rs, command_ids.rs, resolved_keymap.rs, helpers.rs) | 19 reads | ~166589 tok |
+| 23:47 | Session end: 25 writes across 11 files (t-i-mu-n-l-m-ch-c-dazzling-summit.md, mode.rs, command_ids.rs, resolved_keymap.rs, helpers.rs) | 19 reads | ~166589 tok |
+| 23:48 | Edited config/keymaps/default.toml | 4→4 lines | ~22 |
+| 23:48 | Session end: 26 writes across 11 files (t-i-mu-n-l-m-ch-c-dazzling-summit.md, mode.rs, command_ids.rs, resolved_keymap.rs, helpers.rs) | 19 reads | ~166773 tok |
+| 23:49 | Edited config/keymaps/default.toml | 4→4 lines | ~22 |
+| 23:49 | Session end: 27 writes across 11 files (t-i-mu-n-l-m-ch-c-dazzling-summit.md, mode.rs, command_ids.rs, resolved_keymap.rs, helpers.rs) | 19 reads | ~166796 tok |
+| 23:50 | Edited config/keymaps/default.toml | 4→4 lines | ~22 |
+| 23:50 | Session end: 28 writes across 11 files (t-i-mu-n-l-m-ch-c-dazzling-summit.md, mode.rs, command_ids.rs, resolved_keymap.rs, helpers.rs) | 19 reads | ~166819 tok |
+
+## Session: 2026-05-21 23:51
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 23:53 | Edited src/app/resolved_keymap.rs | modified input_to_specs() | ~192 |
+| 23:54 | Edited src/app/resolved_keymap.rs | modified input_to_specs() | ~191 |
+| 23:55 | Edited config/keymaps/default.toml | 14→12 lines | ~71 |
+| 23:56 | Edited src/app/resolved_keymap.rs | modified parse_character_key() | ~70 |
+| 23:57 | Session end: 4 writes across 2 files (resolved_keymap.rs, default.toml) | 3 reads | ~20521 tok |
+
+## Session: 2026-05-22 10:00
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-05-22 10:09
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-05-22 10:38
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 10:46 | Edited src/app/event_loop/commands_editor.rs | 6→6 lines | ~71 |
+| 10:46 | Edited src/core/command_dispatch/navigation.rs | modified apply_mode_event() | ~286 |
+| 10:48 | Fixed 3 performance issues: removed parse from scroll commands, added push_jump to star search, analyzed highlight delay | commands_editor.rs, navigation.rs, cerebrum.md, buglog.json | All fixes compiled successfully | ~2500 tokens |
+| 10:48 | Session end: 2 writes across 2 files (commands_editor.rs, navigation.rs) | 10 reads | ~90658 tok |
+
+## Session: 2026-05-23 16:24
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 16:32 | Edited src/app/event_loop/helpers.rs | reduced (-8 lines) | ~21 |
+| 16:33 | Edited src/app/event_loop/helpers.rs | 1→3 lines | ~62 |
+| 16:39 | Fixed Python icon rendering in file tree - removed hidden file icon override | src/app/event_loop/helpers.rs | Python files now show correct icon | ~500 |
+| 16:39 | Session end: 2 writes across 1 files (helpers.rs) | 7 reads | ~55139 tok |
+| 16:54 | Edited src/render/icon_pipeline.rs | 3→4 lines | ~43 |
+| 16:54 | Edited src/render/icon_pipeline.rs | 2→3 lines | ~67 |
+| 16:54 | Edited src/config/theme_config/model.rs | 3→3 lines | ~38 |
+| 16:54 | Edited src/config/theme_config/model.rs | 6→9 lines | ~76 |
+| 16:55 | Separated JS and Node icons - .js files now show JavaScript icon, package.json shows Node icon | src/config/theme_config/model.rs, src/render/icon_pipeline.rs | Correct icon differentiation | ~800 |
+| 16:55 | Session end: 6 writes across 3 files (helpers.rs, icon_pipeline.rs, model.rs) | 8 reads | ~54763 tok |
+
+## Session: 2026-05-23 16:57
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 17:52 | Edited src/app/app_state/mod.rs | modified auto_fold_pathological_long_lines() | ~33 |
+| 17:55 | Session end: 1 writes across 1 files (mod.rs) | 4 reads | ~46064 tok |
+| 17:58 | Created BRAND_STRATEGY.md | — | ~2536 |
+| 17:59 | Session end: 2 writes across 2 files (mod.rs, BRAND_STRATEGY.md) | 4 reads | ~48782 tok |
+| 18:19 | Edited src/text/text_system.rs | modified collect_visible_glyphs_with_folds() | ~886 |
+| 18:19 | Edited src/text/text_system.rs | 5→3 lines | ~24 |
+| 18:19 | Edited src/text/text_system.rs | 10→8 lines | ~111 |
+| 18:19 | Edited src/text/text_system.rs | removed 23 lines | ~28 |
+| 18:20 | Edited src/text/text_system.rs | 25→30 lines | ~326 |
+| 18:20 | Edited src/text/text_system.rs | 4→3 lines | ~24 |
+| 18:20 | Session end: 8 writes across 3 files (mod.rs, BRAND_STRATEGY.md, text_system.rs) | 4 reads | ~50280 tok |
+
+## Session: 2026-05-24 11:36
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|

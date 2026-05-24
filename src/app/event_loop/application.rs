@@ -737,7 +737,8 @@ impl AppShell {
                 // When enable_outline is off, hide borders on unfocused panels only —
                 // the focused panel keeps its ring so the user always knows where focus is.
                 let suppress_ring = (!self.ui_config.enable_outline && !is_focused)
-                    || region.id == RegionId::TopBar;
+                    || region.id == RegionId::TopBar
+                    || (show_welcome && region.id == RegionId::Center);
 
                 if region.id == RegionId::RightSidebar {
                     if suppress_ring {

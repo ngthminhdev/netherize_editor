@@ -357,12 +357,25 @@ impl TextSystem {
                 }
             }
 
+            let mut line_visible_bytes = 0usize;
+
             for glyph in run.glyphs {
                 let physical = glyph.physical((origin_x, origin_y + adjusted_line_y), 1.0);
                 let color = glyph
                     .color_opt
                     .map(Self::rgba_f32_from_color)
                     .unwrap_or(fallback_color);
+
+                // Check if this line is folded (truncated)
+                if folded_ranges.contains(&(line_i, line_i)) {
+                    let glyph_bytes = glyph.end.saturating_sub(glyph.start);
+                    if line_visible_bytes + glyph_bytes > 100 {
+                        // Stop adding glyphs after 100 bytes
+                        break;
+                    }
+                    line_visible_bytes += glyph_bytes;
+                }
+
                 glyphs.push(VisibleGlyph {
                     cache_key: physical.cache_key,
                     physical_x: physical.x,

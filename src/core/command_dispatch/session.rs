@@ -205,6 +205,9 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 if result.to == EditorMode::Visual {
                     changed |= ctx.app_state.begin_visual_selection();
                 }
+                if result.to == EditorMode::VisualBlock {
+                    changed |= ctx.app_state.begin_visual_block_selection();
+                }
                 if result.to == EditorMode::TerminalNormal
                     && let Some(grid) = ctx.terminal_grid_mut()
                 {
@@ -218,6 +221,9 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 }
                 if result.from == EditorMode::Visual && result.to != EditorMode::Visual {
                     changed |= ctx.app_state.clear_visual_selection();
+                }
+                if result.from == EditorMode::VisualBlock && result.to != EditorMode::VisualBlock {
+                    changed |= ctx.app_state.clear_visual_block_selection();
                 }
 
                 DispatchReport::success_with_flags(

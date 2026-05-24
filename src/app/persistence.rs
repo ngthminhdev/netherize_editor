@@ -4,8 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::paths::{legacy_app_state_root, user_config_root};
 
-const MAX_RECENT: usize = 10;
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AppPersistentState {
     #[serde(default)]
@@ -88,7 +86,6 @@ impl AppPersistentState {
     pub fn push_recent_with_icon(&mut self, path: PathBuf, icon_source: Option<String>) {
         self.recent_projects.retain(|p| p != &path);
         self.recent_projects.insert(0, path.clone());
-        self.recent_projects.truncate(MAX_RECENT);
         let keep: std::collections::HashSet<_> = self.recent_projects.iter().cloned().collect();
         self.recent_project_meta.retain(|path, _| keep.contains(path));
         let last_opened_unix_secs = SystemTime::now()

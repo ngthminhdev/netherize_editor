@@ -27,6 +27,8 @@ use super::super::helpers::{
 use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
 use crate::text::text_system::StyledTextSpan;
 
+
+
 /// Quick fingerprint để phát hiện thay đổi trong syntax / diagnostic spans.
 /// Không cần hoàn hảo — chỉ cần bắt được phần lớn thay đổi thực tế.
 fn inline_suggestion_virtual_gap(app_state: &AppState, line_height: f32) -> Option<(usize, f32)> {
@@ -167,7 +169,6 @@ impl Renderer {
 
         let geometry = editor_viewport_geometry(self, app_state, center_bounds);
         let width = geometry.viewport_text_width;
-
         self.editor_scissor = rect_to_scissor([
             center_bounds[0],
             geometry.viewport_text_top,

@@ -204,44 +204,52 @@ impl AppShell {
                 Some(changed)
             }
             Command::FocusTerminal => {
-                // Toggle bottom panel visibility (like Cmd-B for left sidebar)
-                let next_visible = !self.panel_state.bottom.visible;
+                let terminal_has_focus = matches!(
+                    self.app_state.current_mode(),
+                    EditorMode::TerminalFocus | EditorMode::TerminalNormal
+                ) || self.focus_manager.current() == FocusTarget::BottomPanel;
                 let mut changed = false;
-
-                if self.panel_state.bottom.visible != next_visible {
-                    self.panel_state.bottom.visible = next_visible;
-                    changed = true;
-                }
-                changed |= self.app_state.set_terminal_panel_open(next_visible);
-                self.terminal_needs_layout = true;
-
                 let mut focus_changed = false;
-                if next_visible {
-                    // Opening: focus into BottomPanel
-                    changed |= self.dismiss_initial_launch_welcome_if_active();
-                    self.ensure_active_terminal_tab_spawned();
-                    focus_changed = self.focus_manager.set(FocusTarget::BottomPanel);
-                    changed |= focus_changed;
 
-                    // Enter terminal focus mode to enable text input
-                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
-                        changed |= result.changed;
+                if terminal_has_focus {
+                    // When F12 is pressed from the terminal itself, hide the panel
+                    // and return to the editor/mode that owned focus before terminal focus.
+                    if self.panel_state.bottom.visible {
+                        self.panel_state.bottom.visible = false;
+                        changed = true;
                     }
-                } else {
-                    // Closing: focus back to CenterEditor if currently in BottomPanel
+                    changed |= self.app_state.set_terminal_panel_open(false);
+                    self.terminal_needs_layout = true;
+
                     if self.focus_manager.current() == FocusTarget::BottomPanel {
                         focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
                         changed |= focus_changed;
                     }
 
-                    // Exit terminal focus mode if active
                     if matches!(
                         self.app_state.current_mode(),
                         EditorMode::TerminalFocus | EditorMode::TerminalNormal
-                    ) {
-                        if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
-                            changed |= result.changed;
-                        }
+                    ) && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus)
+                    {
+                        changed |= result.changed;
+                    }
+                } else {
+                    // From editor/sidebar/etc: ensure the terminal is visible and
+                    // focus it. If it is already visible, keep it open.
+                    if !self.panel_state.bottom.visible {
+                        self.panel_state.bottom.visible = true;
+                        changed = true;
+                    }
+                    changed |= self.app_state.set_terminal_panel_open(true);
+                    self.terminal_needs_layout = true;
+                    changed |= self.dismiss_initial_launch_welcome_if_active();
+                    self.ensure_active_terminal_tab_spawned();
+
+                    focus_changed = self.focus_manager.set(FocusTarget::BottomPanel);
+                    changed |= focus_changed;
+
+                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
+                        changed |= result.changed;
                     }
                 }
 

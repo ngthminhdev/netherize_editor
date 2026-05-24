@@ -21,6 +21,8 @@
 <!-- Format: [YYYY-MM-DD] Description of what went wrong and what to do instead. -->
 
 - **[2026-05-19] Blocking File I/O on Main Thread:** `ExplorerPasteFile` used `std::fs::copy()` which blocks the UI thread. This violates the 0-latency architecture rule. **Fix:** Use `tokio::fs::copy()` in `tokio::spawn` with async message passing via `WorkerRequest::CopyFile` → `WorkerResult::FileCopyResult`. All file operations must be async.
+- **[2026-05-22] Unnecessary Parse on Scroll Commands:** Scroll commands (Ctrl-U/D, gg, G, zz) called `submit_parse_for_active_buffer(true)` even though they don't modify text. This caused severe lag on large files (700+ lines) because tree-sitter re-parsed the entire file on every scroll. **Fix:** Remove parse call from scroll/navigation commands. Only text-modifying commands should trigger re-parse.
+- **[2026-05-22] Star Search Missing Jump Stack Push:** Visual star search (`*` in Normal/Visual mode) didn't call `push_jump()` before jumping to search result, so Ctrl-O couldn't return to original position. **Fix:** Add `ctx.app_state.push_jump()` before `search_word_under_cursor()` in `navigation.rs`, matching LSP goto-definition behavior.
 
 ## Decision Log
 

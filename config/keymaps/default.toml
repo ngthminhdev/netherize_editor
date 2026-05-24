@@ -180,6 +180,11 @@ command = "mode.enter_visual_line"
 
 [[bindings]]
 mode = "normal"
+key = "ctrl+v"
+command = "mode.enter_visual_block"
+
+[[bindings]]
+mode = "normal"
 key = "h"
 command = "editor.move_left"
 
@@ -298,10 +303,8 @@ mode = "normal"
 key = "Ctrl+r"
 command = "editor.redo"
 
-[[bindings]]
-mode = "normal"
-key = "mod+v"
-command = "editor.paste"
+# mod+v removed from normal mode to avoid conflict with ctrl+v (visual block)
+# Paste in normal mode: use 'p' or 'P' (Vim-style)
 
 [[bindings]]
 mode = "normal"
@@ -510,6 +513,52 @@ command = "editor.paste"
 mode = "visual"
 key = "*"
 command = "editor.search_word_under_cursor"
+
+# ───────────────── VISUAL BLOCK ─────────────────
+[[bindings]]
+mode = "visual_block"
+key = "Escape"
+command = "mode.enter_normal"
+
+[[bindings]]
+mode = "visual_block"
+key = "h"
+command = "editor.move_left"
+
+[[bindings]]
+mode = "visual_block"
+key = "j"
+command = "editor.move_down"
+
+[[bindings]]
+mode = "visual_block"
+key = "k"
+command = "editor.move_up"
+
+[[bindings]]
+mode = "visual_block"
+key = "l"
+command = "editor.move_right"
+
+[[bindings]]
+mode = "visual_block"
+key = "I"
+command = "editor.insert_at_line_start"
+
+[[bindings]]
+mode = "visual_block"
+key = "A"
+command = "editor.append_at_line_end"
+
+[[bindings]]
+mode = "visual_block"
+key = "c"
+command = "editor.change_selection"
+
+[[bindings]]
+mode = "visual_block"
+key = "d"
+command = "editor.delete_selection"
 
 # ───────────────── TERMINAL ─────────────────
 [[bindings]]

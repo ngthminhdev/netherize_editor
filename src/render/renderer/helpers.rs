@@ -343,7 +343,7 @@ mod tests {
 }
 
 pub(super) fn is_mode_block_cursor(mode: EditorMode) -> bool {
-    matches!(mode, EditorMode::Normal | EditorMode::Visual)
+    matches!(mode, EditorMode::Normal | EditorMode::Visual | EditorMode::VisualBlock)
 }
 
 pub(super) fn should_draw_block_cursor(mode: EditorMode, cursor_shape: CursorShape) -> bool {
@@ -357,6 +357,7 @@ pub(super) fn mode_display_label(mode: EditorMode) -> &'static str {
         EditorMode::Normal => "NORMAL",
         EditorMode::Insert => "INSERT",
         EditorMode::Visual => "VISUAL",
+        EditorMode::VisualBlock => "V-BLOCK",
         EditorMode::PaletteFocus => "PALETTE",
         EditorMode::TerminalFocus => "TERMINAL",
         EditorMode::TerminalNormal => "T-COPY",
@@ -371,6 +372,7 @@ pub(super) fn mode_pill_color(mode: EditorMode, theme: &ThemeConfig) -> [f32; 4]
         EditorMode::Normal => theme.ui.mode_normal.as_f32(),
         EditorMode::Insert => theme.ui.mode_insert.as_f32(),
         EditorMode::Visual => theme.ui.mode_visual.as_f32(),
+        EditorMode::VisualBlock => theme.ui.mode_visual.as_f32(),
         EditorMode::PaletteFocus => theme.ui.amber.as_f32(),
         EditorMode::TerminalFocus => theme.ui.success.as_f32(),
         EditorMode::TerminalNormal => theme.ui.accent.as_f32(),

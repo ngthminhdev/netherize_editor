@@ -4,6 +4,7 @@ pub enum EditorMode {
     Insert,
     Normal,
     Visual,
+    VisualBlock,
     PaletteFocus,
     TerminalFocus,
     TerminalNormal,
@@ -21,6 +22,7 @@ impl EditorMode {
             Self::Insert => "insert",
             Self::Normal => "normal",
             Self::Visual => "visual",
+            Self::VisualBlock => "visual_block",
             Self::PaletteFocus => "palette_focus",
             Self::TerminalFocus => "terminal_focus",
             Self::TerminalNormal => "terminal_normal",
@@ -38,6 +40,7 @@ pub enum ModeEvent {
     EnterInsert,
     EnterNormal,
     EnterVisual,
+    EnterVisualBlock,
     EnterTerminalNormal,
     OpenPalette,
     FocusTerminal,
@@ -58,7 +61,7 @@ pub struct ModeTransitionRule {
     pub to: EditorMode,
 }
 
-const TRANSITION_RULES: [ModeTransitionRule; 32] = [
+const TRANSITION_RULES: [ModeTransitionRule; 38] = [
     // Core editing transitions
     ModeTransitionRule {
         from: EditorMode::Normal,
@@ -71,12 +74,22 @@ const TRANSITION_RULES: [ModeTransitionRule; 32] = [
         to: EditorMode::Visual,
     },
     ModeTransitionRule {
+        from: EditorMode::Normal,
+        event: ModeEvent::EnterVisualBlock,
+        to: EditorMode::VisualBlock,
+    },
+    ModeTransitionRule {
         from: EditorMode::Insert,
         event: ModeEvent::EnterNormal,
         to: EditorMode::Normal,
     },
     ModeTransitionRule {
         from: EditorMode::Visual,
+        event: ModeEvent::EnterNormal,
+        to: EditorMode::Normal,
+    },
+    ModeTransitionRule {
+        from: EditorMode::VisualBlock,
         event: ModeEvent::EnterNormal,
         to: EditorMode::Normal,
     },
@@ -92,9 +105,20 @@ const TRANSITION_RULES: [ModeTransitionRule; 32] = [
         to: EditorMode::Normal,
     },
     ModeTransitionRule {
+        from: EditorMode::VisualBlock,
+        event: ModeEvent::Escape,
+        to: EditorMode::Normal,
+    },
+    ModeTransitionRule {
         from: EditorMode::Normal,
         event: ModeEvent::Escape,
         to: EditorMode::Normal,
+    },
+    // VisualBlock → MultiInsert (I/A commands)
+    ModeTransitionRule {
+        from: EditorMode::VisualBlock,
+        event: ModeEvent::EnterMultiInsert,
+        to: EditorMode::MultiInsert,
     },
     // Focus modes
     ModeTransitionRule {
@@ -113,6 +137,11 @@ const TRANSITION_RULES: [ModeTransitionRule; 32] = [
         to: EditorMode::PaletteFocus,
     },
     ModeTransitionRule {
+        from: EditorMode::VisualBlock,
+        event: ModeEvent::OpenPalette,
+        to: EditorMode::PaletteFocus,
+    },
+    ModeTransitionRule {
         from: EditorMode::Insert,
         event: ModeEvent::FocusTerminal,
         to: EditorMode::TerminalFocus,
@@ -124,6 +153,11 @@ const TRANSITION_RULES: [ModeTransitionRule; 32] = [
     },
     ModeTransitionRule {
         from: EditorMode::Visual,
+        event: ModeEvent::FocusTerminal,
+        to: EditorMode::TerminalFocus,
+    },
+    ModeTransitionRule {
+        from: EditorMode::VisualBlock,
         event: ModeEvent::FocusTerminal,
         to: EditorMode::TerminalFocus,
     },

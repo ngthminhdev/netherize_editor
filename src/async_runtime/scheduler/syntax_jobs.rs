@@ -108,6 +108,11 @@ pub(super) async fn execute_virtual_job(
                     })
                     .unwrap_or_else(|| generate_highlight_spans_with_cache(tree, &text_snapshot, &mut injection_cache));
 
+                let foldable_ranges = crate::syntax::fold::compute_foldable_ranges(
+                    tree.root_node(),
+                    tree.language_id(),
+                );
+
                 let highlight_time_ms = highlight_started.elapsed().as_millis();
                 let total_time_ms = parse_time_ms + highlight_time_ms;
 
@@ -138,6 +143,7 @@ pub(super) async fn execute_virtual_job(
                     buffer_revision,
                     spans,
                     covered_byte_range,
+                    foldable_ranges,
                     line_count,
                     char_count,
                     byte_count,

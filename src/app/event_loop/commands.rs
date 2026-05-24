@@ -224,6 +224,7 @@ impl AppShell {
                 | Command::ScrollHalfPageDown
                 | Command::CenterCursorLine
                 | Command::YankSelection
+                | Command::EnterVisualLine
                 | Command::SwitchMode(ModeEvent::EnterTerminalNormal)
                 | Command::SwitchMode(ModeEvent::EnterVisual | ModeEvent::FocusTerminal)
         );

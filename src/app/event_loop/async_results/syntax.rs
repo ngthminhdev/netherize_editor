@@ -10,6 +10,7 @@ pub(super) fn handle_syntax_result(app: &mut AppShell, payload: WorkerResultPayl
             spans,
             buffer_revision,
             covered_byte_range,
+            foldable_ranges,
             ..
         } => {
             let active_buffer_id = app.app_state.active_file().map(PathBuf::from);
@@ -32,6 +33,8 @@ pub(super) fn handle_syntax_result(app: &mut AppShell, payload: WorkerResultPayl
                 spans,
                 covered_byte_range,
             );
+            app.app_state.set_foldable_ranges_cache(foldable_ranges);
+            app.app_state.auto_fold_pathological_long_lines();
             app.editor_needs_layout = true;
             app.editor_caret_needs_layout = false;
             app.request_redraw();

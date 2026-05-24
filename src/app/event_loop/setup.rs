@@ -986,10 +986,15 @@ impl AppShell {
             return had_highlighting;
         };
 
-        let text_snapshot = self.app_state.text_string();
-        if !crate::syntax::highlight::should_highlight_inline(&text_snapshot) {
+        if self.app_state.text_len_bytes()
+            > crate::syntax::highlight::INLINE_TREE_SITTER_BYTE_THRESHOLD
+            || self.app_state.total_lines()
+                > crate::syntax::highlight::INLINE_TREE_SITTER_LINE_THRESHOLD
+        {
             return false;
         }
+
+        let text_snapshot = self.app_state.text_string();
 
         // Plaintext dùng regex highlight thay vì tree-sitter.
         if language_id == crate::syntax::syntax_engine::LanguageId::Plaintext {

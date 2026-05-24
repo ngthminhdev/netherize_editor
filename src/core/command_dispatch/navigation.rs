@@ -183,6 +183,10 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             )
         }
         Command::SearchWordUnderCursor => {
+            // Push current position onto jump stack before searching (like gd, gD)
+            // so Ctrl-O can return to the original position
+            ctx.app_state.push_jump();
+
             let changed = ctx.app_state.search_word_under_cursor();
             // nvim behavior: * in visual mode searches selected text, exits to Normal
             if matches!(ctx.app_state.current_mode(), EditorMode::Visual) {

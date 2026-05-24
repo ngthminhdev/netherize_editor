@@ -236,6 +236,94 @@ impl Renderer {
         quads
     }
 
+    /// Returns rectangular per-line selection quads for Visual Block mode.
+    pub fn visual_block_selection_quads(
+        &self,
+        app_state: &AppState,
+        center_bounds: [f32; 4],
+    ) -> Vec<RegionDrawInstance> {
+        if app_state.current_mode() != EditorMode::VisualBlock {
+            return Vec::new();
+        }
+        let Some(block) = app_state.visual_block_range() else {
+            return Vec::new();
+        };
+
+        let geometry = editor_viewport_geometry(self, app_state, center_bounds);
+        let line_height = geometry.line_height;
+        let text_area_x = geometry.viewport_text_left;
+        let text_area_w = geometry.viewport_text_width;
+        let viewport_top = geometry.viewport_text_top;
+        let viewport_bottom = viewport_top + geometry.viewport_text_height.max(1.0);
+        let char_width = (geometry.font_size * 0.6).max(1.0);
+
+        let mut color = self.theme.editor.selection.as_f32();
+        color[3] = (color[3] * 0.45).clamp(0.18, 0.42);
+
+        let scroll_y_px = visual_y_for_logical_scroll_with_folds(
+            &self.text_system,
+            app_state.current_scroll_y,
+            app_state.folded_ranges(),
+        );
+        let origin_y = geometry.viewport_text_top + line_height - scroll_y_px;
+
+        let mut quads = Vec::new();
+        for run in self.text_system.buffer().layout_runs() {
+            if run.line_i < block.start_line || run.line_i > block.end_line {
+                continue;
+            }
+            if app_state.is_line_folded(run.line_i) {
+                continue;
+            }
+
+            let line_top = origin_y + run.line_top
+                - app_state.folded_visual_y_offset_before(run.line_i, run.line_height);
+            let line_height_px = run.line_height.max(1.0);
+            let line_bottom = line_top + line_height_px;
+            if line_bottom <= viewport_top || line_top >= viewport_bottom {
+                continue;
+            }
+
+            let line_start_byte = app_state.line_start_byte_idx(run.line_i);
+            let line_end_byte = app_state.line_content_end_byte_idx(run.line_i);
+            let local_start = app_state
+                .line_char_to_byte_idx(run.line_i, block.start_col)
+                .saturating_sub(line_start_byte);
+            let local_end = app_state
+                .line_char_to_byte_idx(run.line_i, block.end_col.saturating_add(1))
+                .saturating_sub(line_start_byte);
+
+            let run_start = run.glyphs.first().map(|glyph| glyph.start).unwrap_or(0);
+            let run_end = run
+                .glyphs
+                .last()
+                .map(|glyph| glyph.end)
+                .unwrap_or_else(|| line_end_byte.saturating_sub(line_start_byte));
+
+            if local_end <= run_start || local_start >= run_end {
+                continue;
+            }
+
+            let clipped_start = local_start.max(run_start);
+            let clipped_end = local_end.min(run_end);
+            let start_x = run_x_for_byte(text_area_x, &run, clipped_start);
+            let mut end_x = run_x_for_byte(text_area_x, &run, clipped_end);
+            if clipped_start == clipped_end {
+                end_x = start_x + char_width;
+            }
+
+            let left = start_x.min(end_x).max(text_area_x);
+            let right = start_x.max(end_x).min(text_area_x + text_area_w);
+            let width = (right - left).max(1.0);
+            quads.push(RegionDrawInstance::new(
+                [left, line_top, width, line_height_px],
+                color,
+            ));
+        }
+
+        quads
+    }
+
     /// Returns per-match highlight quads for all multi-cursor selections (primary + virtual).
     pub fn multi_cursor_selection_quads(
         &self,
@@ -792,7 +880,12 @@ impl Renderer {
                 let folded_line_count =
                     app_state.folded_line_count_at_marker(abs_line).unwrap_or(0);
                 if folded_line_count > 0 {
-                    format!(" {}", folded_line_count)
+                    // Show "…" for auto-folded long lines
+                    if app_state.is_auto_folded_long_line(abs_line) {
+                        format!("…")
+                    } else {
+                        format!(" {}", folded_line_count)
+                    }
                 } else {
                     format!("")
                 }

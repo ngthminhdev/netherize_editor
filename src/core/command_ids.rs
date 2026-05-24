@@ -68,6 +68,7 @@ pub const ENTER_NORMAL: &str = "mode.enter_normal";
 pub const ENTER_INSERT: &str = "mode.enter_insert";
 pub const ENTER_VISUAL: &str = "mode.enter_visual";
 pub const ENTER_VISUAL_LINE: &str = "mode.enter_visual_line";
+pub const ENTER_VISUAL_BLOCK: &str = "mode.enter_visual_block";
 pub const ENTER_RESIZE: &str = "mode.resize";
 pub const ENTER_TERMINAL_FOCUS: &str = "mode.enter_terminal_focus";
 pub const EXIT_FOCUS: &str = "mode.exit_focus";
@@ -539,6 +540,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         ENTER_INSERT => Some(Command::SwitchMode(ModeEvent::EnterInsert)),
         ENTER_VISUAL => Some(Command::SwitchMode(ModeEvent::EnterVisual)),
         ENTER_VISUAL_LINE => Some(Command::EnterVisualLine),
+        ENTER_VISUAL_BLOCK => Some(Command::SwitchMode(ModeEvent::EnterVisualBlock)),
         ENTER_RESIZE => Some(Command::SwitchMode(ModeEvent::EnterResize)),
         ENTER_TERMINAL_FOCUS => Some(Command::SwitchMode(ModeEvent::FocusTerminal)),
         EXIT_FOCUS => Some(Command::SwitchMode(ModeEvent::ExitFocus)),

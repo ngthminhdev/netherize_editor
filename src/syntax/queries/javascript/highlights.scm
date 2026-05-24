@@ -15,6 +15,20 @@
 
 (escape_sequence) @syntax.string.escape
 
+(template_substitution
+  "$" @syntax.punctuation
+  "{" @syntax.punctuation
+  "}" @syntax.punctuation)
+
+(template_substitution (identifier) @syntax.identifier)
+(template_substitution (member_expression property: (property_identifier) @syntax.field))
+(template_substitution (call_expression function: (identifier) @syntax.function))
+(template_substitution (call_expression function: (member_expression property: (property_identifier) @syntax.function)))
+(template_substitution (number) @syntax.number)
+[(template_substitution (true)) (template_substitution (false))] @syntax.boolean
+(template_substitution (null) @syntax.constant)
+(template_substitution (undefined) @syntax.constant)
+
 ; --- Numbers / booleans / null / undefined ---
 (number) @syntax.number
 [

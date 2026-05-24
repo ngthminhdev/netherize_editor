@@ -147,38 +147,58 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 DispatchReport::failure(format!("Dispatch: insert line above rejected ({err})"))
             }
         },
-        Command::InsertAtLineStart => match ctx.enter_insert_mode_if_needed() {
-            Ok(mode_changed) => {
-                let cursor_changed = ctx.app_state.move_to_line_first_non_blank();
-                let changed = cursor_changed || mode_changed;
-                DispatchReport::success(
-                    if changed {
-                        "Dispatch: moved to first non-blank and entered insert".to_string()
-                    } else {
-                        "Dispatch: insert at line start ignored".to_string()
-                    },
+        Command::InsertAtLineStart => {
+            // Check if in VisualBlock mode first
+            if ctx.app_state.current_mode() == EditorMode::VisualBlock {
+                let changed = ctx.app_state.visual_block_insert_before();
+                return DispatchReport::success(
+                    "Dispatch: visual block insert before",
                     changed,
-                )
+                );
             }
-            Err(err) => {
-                DispatchReport::failure(format!("Dispatch: insert at line start rejected ({err})"))
+            match ctx.enter_insert_mode_if_needed() {
+                Ok(mode_changed) => {
+                    let cursor_changed = ctx.app_state.move_to_line_first_non_blank();
+                    let changed = cursor_changed || mode_changed;
+                    DispatchReport::success(
+                        if changed {
+                            "Dispatch: moved to first non-blank and entered insert".to_string()
+                        } else {
+                            "Dispatch: insert at line start ignored".to_string()
+                        },
+                        changed,
+                    )
+                }
+                Err(err) => {
+                    DispatchReport::failure(format!("Dispatch: insert at line start rejected ({err})"))
+                }
             }
         },
-        Command::AppendAtLineEnd => match ctx.enter_insert_mode_if_needed() {
-            Ok(mode_changed) => {
-                let cursor_changed = ctx.app_state.move_to_line_end();
-                let changed = cursor_changed || mode_changed;
-                DispatchReport::success(
-                    if changed {
-                        "Dispatch: moved to line end and entered insert".to_string()
-                    } else {
-                        "Dispatch: append at line end ignored".to_string()
-                    },
+        Command::AppendAtLineEnd => {
+            // Check if in VisualBlock mode first
+            if ctx.app_state.current_mode() == EditorMode::VisualBlock {
+                let changed = ctx.app_state.visual_block_append_after();
+                return DispatchReport::success(
+                    "Dispatch: visual block append after",
                     changed,
-                )
+                );
             }
-            Err(err) => {
-                DispatchReport::failure(format!("Dispatch: append at line end rejected ({err})"))
+            match ctx.enter_insert_mode_if_needed() {
+                Ok(mode_changed) => {
+                    let cursor_changed = ctx.app_state.move_to_line_end();
+                    let changed = cursor_changed || mode_changed;
+                    DispatchReport::success(
+                        if changed {
+                            "Dispatch: moved to line end and entered insert".to_string()
+                        } else {
+                            "Dispatch: append at line end ignored".to_string()
+                        },
+                        changed,
+                    )
+                }
+                Err(err) => {
+                    DispatchReport::failure(format!("Dispatch: append at line end rejected ({err})"))
+                }
             }
         },
         Command::AppendAfterCursor => match ctx.enter_insert_mode_if_needed() {
@@ -235,6 +255,19 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             )
         }
         Command::DeleteSelection => {
+            if ctx.app_state.current_mode() == EditorMode::VisualBlock {
+                let changed = ctx.app_state.visual_block_delete();
+                ctx.commit_text_transaction(changed);
+                return DispatchReport::success(
+                    if changed {
+                        "Dispatch: deleted visual block selection".to_string()
+                    } else {
+                        "Dispatch: visual block delete ignored".to_string()
+                    },
+                    changed,
+                );
+            }
+
             let clipboard_text = ctx.app_state.visual_selection_text();
             ctx.write_text_to_clipboard_and_remember(clipboard_text, ClipboardRecordKind::Charwise);
 
@@ -361,6 +394,18 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             )
         }
         Command::ChangeSelection => {
+            if ctx.app_state.current_mode() == EditorMode::VisualBlock {
+                let changed = ctx.app_state.visual_block_change();
+                return DispatchReport::success(
+                    if changed {
+                        "Dispatch: changed visual block selection and entered multi-insert".to_string()
+                    } else {
+                        "Dispatch: visual block change ignored".to_string()
+                    },
+                    changed,
+                );
+            }
+
             let clipboard_text = ctx.app_state.visual_selection_text();
             ctx.write_text_to_clipboard_and_remember(clipboard_text, ClipboardRecordKind::Charwise);
 

@@ -391,6 +391,9 @@ impl AppState {
         if !self.folded_ranges.is_empty() {
             self.folded_ranges.clear();
         }
+        if !self.auto_folded_long_lines.is_empty() {
+            self.auto_folded_long_lines.clear();
+        }
     }
 
     pub(super) fn apply_delete_raw(&mut self, index: usize, len_chars: usize) -> Option<String> {
@@ -410,6 +413,9 @@ impl AppState {
         // Clear folded ranges when text is modified to prevent corruption
         if !self.folded_ranges.is_empty() {
             self.folded_ranges.clear();
+        }
+        if !self.auto_folded_long_lines.is_empty() {
+            self.auto_folded_long_lines.clear();
         }
 
         Some(deleted)

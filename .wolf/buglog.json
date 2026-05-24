@@ -200,6 +200,174 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-19T16:04:32.636Z"
+    },
+    {
+      "id": "bug-013",
+      "timestamp": "2026-05-21T14:16:47.953Z",
+      "error_message": "Wrong operator: && should be ||",
+      "file": "src/app/app_state/buffers.rs",
+      "root_cause": "Used \"&&\" instead of \"||\"",
+      "fix": "Changed operator && → ||",
+      "tags": [
+        "auto-detected",
+        "operator-fix",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-21T14:16:47.953Z"
+    },
+    {
+      "id": "bug-014",
+      "timestamp": "2026-05-21T16:30:29.225Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/core/command_dispatch/editing.rs",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 18→37 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-21T16:30:29.225Z"
+    },
+    {
+      "id": "bug-015",
+      "timestamp": "2026-05-22T10:00:00.000Z",
+      "error_message": "Severe lag when scrolling large files (700+ lines) with Ctrl-U/D. Editor freezes for 100-200ms on each scroll.",
+      "file": "src/app/event_loop/commands_editor.rs",
+      "root_cause": "Scroll commands (ScrollHalfPageUp, ScrollHalfPageDown, CenterCursorLine, MoveToFirstLine, MoveToLastLine) called submit_parse_for_active_buffer(true) even though they don't modify text content. This triggered full tree-sitter re-parse on every scroll, causing 100-200ms freeze on 700+ line files.",
+      "fix": "Removed submit_parse_for_active_buffer(true) call from line 118 in commands_editor.rs. Scroll/navigation commands only need editor_needs_layout = true, not re-parsing. Parse should only be triggered by text-modifying commands.",
+      "tags": [
+        "performance",
+        "scroll-lag",
+        "tree-sitter",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-22T10:00:00.000Z"
+    },
+    {
+      "id": "bug-016",
+      "timestamp": "2026-05-22T10:15:00.000Z",
+      "error_message": "After using * (star search) + n to jump through search results, Ctrl-O (jump back) doesn't work - jump stack is empty.",
+      "file": "src/core/command_dispatch/navigation.rs",
+      "root_cause": "SearchWordUnderCursor command handler didn't call push_jump() before executing search_word_under_cursor(), so the original cursor position was never saved to the jump back stack. LSP goto-definition correctly pushes jump, but star search didn't.",
+      "fix": "Added ctx.app_state.push_jump() at line 186 in navigation.rs, before calling search_word_under_cursor(). This matches the behavior of LSP goto-definition (commands_lsp.rs:667) and allows Ctrl-O to return to the position before star search.",
+      "tags": [
+        "jump-list",
+        "star-search",
+        "navigation",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-22T10:15:00.000Z"
+    },
+    {
+      "id": "bug-017",
+      "timestamp": "2026-05-23T00:00:00.000Z",
+      "error_message": "Python files (.py extension) display hidden file icon instead of Python icon in file tree sidebar",
+      "file": "src/app/event_loop/helpers.rs",
+      "root_cause": "Logic at lines 1529-1537 checked if file is hidden/ignored and forced generic hidden file icon ('󰘓') instead of using file-type-specific icon. This meant .py files marked as hidden (e.g., .python-version) or ignored would show generic icon instead of Python icon from assets/bearded-icons/python.svg",
+      "fix": "Removed conditional logic that overrode file-type icons for hidden/ignored files. Now all files use theme.get_icon_for_file() which correctly maps .py extension to 'built_in:python' icon, ensuring Python files always show the Python icon regardless of hidden/ignored status. Color tinting (warning color) still applied to indicate hidden/ignored status.",
+      "tags": [
+        "icon-rendering",
+        "file-tree",
+        "sidebar",
+        "python",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-23T00:00:00.000Z"
+    },
+    {
+      "id": "bug-018",
+      "timestamp": "2026-05-23T09:54:08.115Z",
+      "error_message": "Incorrect value in code",
+      "file": "src/render/icon_pipeline.rs",
+      "root_cause": "Had \"built_in:jest\"",
+      "fix": "Changed to \"built_in:javascript\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-23T09:54:08.115Z"
+    },
+    {
+      "id": "bug-019",
+      "timestamp": "2026-05-23T09:54:23.197Z",
+      "error_message": "Incorrect value in code",
+      "file": "src/config/theme_config/model.rs",
+      "root_cause": "Had \"built_in:node\"",
+      "fix": "Changed to \"built_in:javascript\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-23T09:54:23.197Z"
+    },
+    {
+      "id": "bug-018",
+      "timestamp": "2026-05-23T00:15:00.000Z",
+      "error_message": "JavaScript files (.js) incorrectly display Node.js icon instead of JavaScript icon in file tree",
+      "file": "src/config/theme_config/model.rs, src/render/icon_pipeline.rs",
+      "root_cause": "Extension mapping at line 544 in model.rs mapped all .js/.mjs/.cjs files to 'built_in:node' (Node.js icon). This was incorrect - .js files should show JavaScript icon, only package.json should show Node.js icon.",
+      "fix": "1. Added 'built_in:javascript' to canonical_icon_id mapping in icon_pipeline.rs. 2. Added js.svg to icon atlas. 3. Changed extension mapping from 'built_in:node' to 'built_in:javascript' for .js/.mjs/.cjs extensions. 4. Added special case in special_icon_for_filename() to map package.json specifically to 'built_in:node'. Now: .js files → JavaScript icon, package.json → Node.js icon.",
+      "tags": [
+        "icon-rendering",
+        "file-tree",
+        "javascript",
+        "nodejs",
+        "user-reported"
+      ],
+      "related_bugs": [
+        "bug-017"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-05-23T00:15:00.000Z"
+    },
+    {
+      "id": "bug-021",
+      "timestamp": "2026-05-23T10:52:12.212Z",
+      "error_message": "Wrong reference: 1_000 should be 100",
+      "file": "src/app/app_state/mod.rs",
+      "root_cause": "Used \"1_000\" instead of \"100\"",
+      "fix": "Changed 1_000 → 100",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-23T10:52:12.212Z"
+    },
+    {
+      "id": "bug-022",
+      "timestamp": "2026-05-23T11:19:28.280Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/text/text_system.rs",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 5→3 lines (2 removed) | Also: // Add ellipsis indicator for truncated lines; if truncated {",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-23T11:19:41.985Z"
     }
   ]
 }

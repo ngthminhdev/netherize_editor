@@ -197,6 +197,14 @@ pub struct VirtualCursor {
     pub selection_end: Option<usize>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VisualBlockRange {
+    pub start_line: usize,
+    pub end_line: usize,
+    pub start_col: usize,
+    pub end_col: usize,
+}
+
 pub fn is_supported_image_path(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
@@ -1870,6 +1878,8 @@ pub struct AppState {
     active_file: Option<PathBuf>,
     selection_anchor_char_idx: Option<usize>,
     visual_line_mode: bool,
+    visual_block_anchor_line: Option<usize>,
+    visual_block_anchor_col: Option<usize>,
     buffers: Vec<BufferEntry>,
     /// Session-only cache for closed text buffers. Reopen restores undo/redo and unsaved text.
     closed_text_buffers: HashMap<PathBuf, EditorBuffer>,
@@ -1925,6 +1935,7 @@ pub struct AppState {
     // fold marker; every following line through end is hidden from layout.
     folded_ranges: Vec<(usize, usize)>,
     foldable_ranges_cache: Option<Vec<(usize, usize)>>,
+    auto_folded_long_lines: Vec<usize>,
     // ── Performance: Line start position cache ────────────────────────────────
     /// Cached byte offsets for the start of each line. Invalidated on text edits.
     /// Eliminates O(n) rebuild on every highlight request for large files.
@@ -1944,6 +1955,8 @@ impl AppState {
             active_file: None,
             selection_anchor_char_idx: None,
             visual_line_mode: false,
+            visual_block_anchor_line: None,
+            visual_block_anchor_col: None,
             buffers: Vec::new(),
             closed_text_buffers: HashMap::new(),
             active_buffer_index: None,
@@ -1989,6 +2002,7 @@ impl AppState {
             mc_whole_word: true,
             folded_ranges: Vec::new(),
             foldable_ranges_cache: None,
+            auto_folded_long_lines: Vec::new(),
             cached_line_starts: None,
         }
     }
@@ -2003,6 +2017,8 @@ impl AppState {
             active_file: None,
             selection_anchor_char_idx: None,
             visual_line_mode: false,
+            visual_block_anchor_line: None,
+            visual_block_anchor_col: None,
             buffers: Vec::new(),
             closed_text_buffers: HashMap::new(),
             active_buffer_index: None,
@@ -2048,6 +2064,7 @@ impl AppState {
             mc_whole_word: true,
             folded_ranges: Vec::new(),
             foldable_ranges_cache: None,
+            auto_folded_long_lines: Vec::new(),
             cached_line_starts: None,
         }
     }
@@ -2095,14 +2112,22 @@ impl AppState {
     pub fn is_line_folded(&self, line_idx: usize) -> bool {
         self.folded_ranges
             .iter()
-            .any(|&(s, e)| s < line_idx && line_idx <= e)
+            .any(|&(s, e)| s != e && s < line_idx && line_idx <= e)
     }
 
     pub fn is_fold_marker_line(&self, line_idx: usize) -> bool {
         self.folded_ranges.iter().any(|&(s, _)| s == line_idx)
+            || self.auto_folded_long_lines.contains(&line_idx)
+    }
+
+    pub fn is_auto_folded_long_line(&self, line_idx: usize) -> bool {
+        self.auto_folded_long_lines.contains(&line_idx)
     }
 
     pub fn folded_line_count_at_marker(&self, line_idx: usize) -> Option<usize> {
+        if self.auto_folded_long_lines.contains(&line_idx) {
+            return Some(1);
+        }
         self.folded_ranges
             .iter()
             .find(|&&(s, _)| s == line_idx)
@@ -2165,6 +2190,32 @@ impl AppState {
         self.foldable_ranges_cache.as_deref()
     }
 
+    pub fn auto_fold_pathological_long_lines(&mut self) -> bool {
+        const AUTO_FOLD_LINE_CHAR_THRESHOLD: usize = 100;
+        let mut lines = Vec::new();
+        for line_idx in 0..self.text.len_lines() {
+            let line = self.text.line(line_idx);
+            if line.len_chars() > AUTO_FOLD_LINE_CHAR_THRESHOLD {
+                lines.push(line_idx);
+            }
+        }
+        if lines == self.auto_folded_long_lines {
+            return false;
+        }
+
+        self.folded_ranges
+            .retain(|range| !self.auto_folded_long_lines.contains(&range.0) || range.0 != range.1);
+        self.auto_folded_long_lines = lines;
+        for &line_idx in &self.auto_folded_long_lines {
+            if !self.folded_ranges.contains(&(line_idx, line_idx)) {
+                self.folded_ranges.push((line_idx, line_idx));
+            }
+        }
+        self.folded_ranges.sort_by_key(|&(start, _)| start);
+        self.bump_revision();
+        true
+    }
+
     pub fn visible_line_count(&self) -> usize {
         let total = self.text.len_lines().max(1);
         let last_line = total.saturating_sub(1);
@@ -2212,6 +2263,14 @@ impl AppState {
     }
 
     pub fn toggle_fold_at_line(&mut self, logical_line: usize) -> bool {
+        if let Some(pos) = self.auto_folded_long_lines.iter().position(|&line| line == logical_line)
+        {
+            self.auto_folded_long_lines.remove(pos);
+            self.folded_ranges.retain(|&range| range != (logical_line, logical_line));
+            self.bump_revision();
+            return true;
+        }
+
         if let Some(pos) = self
             .folded_ranges
             .iter()
@@ -2309,16 +2368,36 @@ fn merge_fold_ranges(ranges: &[(usize, usize)]) -> Vec<(usize, usize)> {
     if ranges.is_empty() {
         return Vec::new();
     }
+
+    let mut regular: Vec<(usize, usize)> = ranges
+        .iter()
+        .copied()
+        .filter(|&(s, e)| s != e)
+        .collect();
+    let mut point_folds: Vec<(usize, usize)> = ranges
+        .iter()
+        .copied()
+        .filter(|&(s, e)| s == e)
+        .collect();
+    regular.sort_by_key(|&(s, _)| s);
+    point_folds.sort_by_key(|&(s, _)| s);
+    point_folds.dedup();
+
     let mut merged: Vec<(usize, usize)> = Vec::new();
-    let mut current = ranges[0];
-    for &(s, e) in &ranges[1..] {
-        if s <= current.1 {
-            current.1 = current.1.max(e);
-        } else {
-            merged.push(current);
-            current = (s, e);
+    if let Some(first) = regular.first().copied() {
+        let mut current = first;
+        for &(s, e) in &regular[1..] {
+            if s <= current.1 {
+                current.1 = current.1.max(e);
+            } else {
+                merged.push(current);
+                current = (s, e);
+            }
         }
+        merged.push(current);
     }
-    merged.push(current);
+
+    merged.extend(point_folds);
+    merged.sort_by_key(|&(start, _)| start);
     merged
 }

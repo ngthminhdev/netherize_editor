@@ -151,9 +151,20 @@ impl Renderer {
 
         chrome.push(RegionDrawInstance::new(bounds, bg));
 
-        let full_screen_width = self.surface_state.config.width.max(1) as f32;
-        let two_column = bounds[2] > full_screen_width * 0.55;
-        let left_w = if two_column { bounds[2] * 0.55 } else { bounds[2] };
+        // Decide by the actual content bounds, not by a ratio against the full
+        // window. When the editor pane is the only visible surface, comparing
+        // `bounds[2] > window_width * 0.55` makes the welcome page stay in
+        // two-column mode for almost every window width. Use concrete minimum
+        // column widths instead so narrow windows/panes collapse predictably.
+        let min_left_column_w = sx(500.0);
+        let min_right_column_w = sx(560.0);
+        let two_column = bounds[2] >= min_left_column_w + min_right_column_w
+            && bounds[3] >= sx(520.0);
+        let left_w = if two_column {
+            (bounds[2] * 0.52).clamp(min_left_column_w, bounds[2] - min_right_column_w)
+        } else {
+            bounds[2]
+        };
         let divider_x = bounds[0] + left_w;
         let body_top = bounds[1];
         let body_h = bounds[3];
@@ -261,6 +272,19 @@ impl Renderer {
                     chrome,
                 ));
             }
+        };
+
+        let shortcut_hint_width = |keys: &[&str], size: f32| -> f32 {
+            if keys.is_empty() {
+                return 0.0;
+            }
+
+            let key_gap = (size * 0.32).max(4.0);
+            let key_padding_x = (size * 0.52).max(6.0);
+            keys.iter()
+                .map(|key| text_w(key, size) + key_padding_x * 2.0)
+                .sum::<f32>()
+                + key_gap * keys.len().saturating_sub(1) as f32
         };
 
         let key_hint = |this: &mut Renderer,
@@ -448,8 +472,9 @@ impl Renderer {
             line(self, &mut glyphs, title, card_x + sx(70.0), card_y + sx(14.0), card_title_size, sx(16.0), fg, true);
             line(self, &mut glyphs, sub, card_x + sx(70.0), card_y + sx(33.0), card_sub_size, sx(14.0), fg_ghost, false);
             if card_w >= sx(350.0) {
-                let key_x = card_x + card_w - sx(122.0);
-                key_hint(self, &mut glyphs, &mut chrome, keys, key_x, card_y + sx(17.0), sx(9.5));
+                let key_size = sx(9.5);
+                let key_x = card_x + card_w - sx(18.0) - shortcut_hint_width(keys, key_size);
+                key_hint(self, &mut glyphs, &mut chrome, keys, key_x, card_y + sx(17.0), key_size);
             }
             card_y += card_h + card_gap;
         }
@@ -552,14 +577,20 @@ impl Renderer {
             let tag_size = sx(10.0);
             let tag_x = rx + rw - sx(18.0) - text_w(tag, tag_size);
             let text_x = rx + sx(64.0);
-            let text_right = (tag_x - sx(18.0)).max(text_x);
+            let text_right = (tag_x - sx(24.0)).max(text_x);
             let name_size = sx(13.0);
             let path_size = sx(10.0);
             let name_label = ellipsize(name, name_size, text_right - text_x);
-            let path_label = ellipsize(&path, path_size, text_right - text_x - sx(70.0));
-            let branch_label = welcome_project_git_branch(project)
+            let raw_branch_label = welcome_project_git_branch(project)
                 .map(|branch| format!(" {branch}"))
                 .unwrap_or_else(|| " -".to_string());
+            let branch_max_w = sx(112.0).min((text_right - text_x) * 0.34).max(0.0);
+            let branch_label = ellipsize(&raw_branch_label, path_size, branch_max_w);
+            let branch_w = text_w(&branch_label, path_size);
+            let branch_gap = if branch_label.is_empty() { 0.0 } else { sx(14.0) };
+            let branch_x = (text_right - branch_w).max(text_x);
+            let path_max_w = (branch_x - text_x - branch_gap).max(0.0);
+            let path_label = ellipsize(&path, path_size, path_max_w);
             if active {
                 let mut a = accent;
                 a[3] = 0.20;
@@ -605,17 +636,19 @@ impl Renderer {
                 fg_ghost,
                 false,
             );
-            line(
-                self,
-                &mut glyphs,
-                &branch_label,
-                text_x + text_w(&path_label, path_size) + sx(10.0),
-                y + sx(20.0),
-                path_size,
-                sx(13.0),
-                accent,
-                false,
-            );
+            if !branch_label.is_empty() {
+                line(
+                    self,
+                    &mut glyphs,
+                    &branch_label,
+                    branch_x,
+                    y + sx(20.0),
+                    path_size,
+                    sx(13.0),
+                    accent,
+                    false,
+                );
+            }
             line(
                 self,
                 &mut glyphs,
@@ -673,7 +706,9 @@ impl Renderer {
             line(self, &mut glyphs, title, rx + sx(64.0), y + sx(12.0), sx(12.5), sx(15.0), fg, true);
             line(self, &mut glyphs, sub, rx + sx(64.0), y + sx(31.0), sx(10.0), sx(13.0), fg_ghost, false);
             if rw >= sx(330.0) {
-                key_hint(self, &mut glyphs, &mut chrome, keys, rx + rw - sx(146.0), y + sx(16.0), sx(9.0));
+                let key_size = sx(9.0);
+                let key_x = rx + rw - sx(16.0) - shortcut_hint_width(keys, key_size);
+                key_hint(self, &mut glyphs, &mut chrome, keys, key_x, y + sx(16.0), key_size);
             }
             y += more_card_h + more_gap;
         }

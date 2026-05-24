@@ -245,13 +245,58 @@ impl AppState {
         true
     }
 
-    pub fn clear_visual_selection(&mut self) -> bool {
-        if self.selection_anchor_char_idx.is_none() && !self.visual_line_mode {
+    pub fn begin_visual_block_selection(&mut self) -> bool {
+        let (line_idx, col) = self.cursor_line_col();
+        if self.visual_block_anchor_line == Some(line_idx)
+            && self.visual_block_anchor_col == Some(col) {
             return false;
         }
+        self.visual_block_anchor_line = Some(line_idx);
+        self.visual_block_anchor_col = Some(col);
         self.selection_anchor_char_idx = None;
         self.visual_line_mode = false;
         true
+    }
+
+    pub fn clear_visual_block_selection(&mut self) -> bool {
+        if self.visual_block_anchor_line.is_none() {
+            return false;
+        }
+        self.visual_block_anchor_line = None;
+        self.visual_block_anchor_col = None;
+        true
+    }
+
+    pub fn visual_block_range(&self) -> Option<VisualBlockRange> {
+        if self.current_mode() != EditorMode::VisualBlock {
+            return None;
+        }
+        let anchor_line = self.visual_block_anchor_line?;
+        let anchor_col = self.visual_block_anchor_col?;
+        let (cursor_line, cursor_col) = self.cursor_line_col();
+
+        let start_line = anchor_line.min(cursor_line);
+        let end_line = anchor_line.max(cursor_line);
+        let start_col = anchor_col.min(cursor_col);
+        let end_col = anchor_col.max(cursor_col);
+
+        Some(VisualBlockRange {
+            start_line,
+            end_line,
+            start_col,
+            end_col,
+        })
+    }
+
+    pub fn clear_visual_selection(&mut self) -> bool {
+        let had_selection = self.selection_anchor_char_idx.is_some()
+            || self.visual_line_mode
+            || self.visual_block_anchor_line.is_some();
+        self.selection_anchor_char_idx = None;
+        self.visual_line_mode = false;
+        self.visual_block_anchor_line = None;
+        self.visual_block_anchor_col = None;
+        had_selection
     }
 
     pub fn visual_selection_range(&self) -> Option<VisualSelectionRange> {

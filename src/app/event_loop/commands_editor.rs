@@ -84,6 +84,7 @@ impl AppShell {
             | Command::MoveToFirstLine
             | Command::MoveToLastLine => {
                 let viewport_lines = self.editor_viewport_lines();
+                let prev_scroll = self.app_state.target_scroll_y;
                 match command {
                     Command::ScrollHalfPageUp => {
                         self.app_state
@@ -115,7 +116,12 @@ impl AppShell {
                 }
                 self.editor_needs_layout = true;
                 self.editor_caret_needs_layout = false;
-                self.submit_parse_for_active_buffer(true);
+                // Large buffers use viewport-scoped tree-sitter highlights, so viewport jumps
+                // need a refresh for the newly visible byte window. Debounce it to avoid cloning
+                // and scheduling the whole document on every repeated Ctrl-U/Ctrl-D key event.
+                if (self.app_state.target_scroll_y - prev_scroll).abs() > f32::EPSILON {
+                    self.submit_parse_for_active_buffer(false);
+                }
                 Some(true)
             }
             _ => None,

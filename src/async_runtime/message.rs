@@ -505,6 +505,7 @@ pub enum WorkerResultPayload {
         buffer_revision: u64,
         spans: Vec<HighlightSpan>,
         covered_byte_range: Option<Range<usize>>,
+        foldable_ranges: Vec<(usize, usize)>,
         line_count: usize,
         char_count: usize,
         byte_count: usize,
