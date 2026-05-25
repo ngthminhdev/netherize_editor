@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-24T09:06:01.241Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-25T02:57:26.406Z
 > Files: 362 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
@@ -151,6 +151,11 @@
 ## .gitnexus/
 
 - `meta.json` (~105 tok)
+
+## assets/
+
+- `app_logo_keyboard.png` — PNG export of the minimal keyboard-first Netherize IDE logo (~binary)
+- `app_logo_keyboard.svg` — Minimal keyboard-first Netherize IDE logo source; keycap outline plus N command-path monogram (~170 tok)
 
 ## assets/bearded-icons/
 
@@ -474,7 +479,7 @@
 - `overlays.rs` — update_editor_overlays (~18996 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, multi_cursor_selection_quads (~9713 tok)
 - `settings.rs` — update_settings_buffer_content (~10502 tok)
-- `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~6598 tok)
+- `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~6927 tok)
 
 ## src/render/renderer/editor/buffers/
 

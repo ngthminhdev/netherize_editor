@@ -401,3 +401,19 @@
 | 16:06 | Edited src/render/renderer/editor/viewport.rs | modified truncate_folded_lines() | ~860 |
 | 16:06 | Fixed folded line wrapping - truncate to 100 chars before shaping | viewport.rs | ✅ Compiles | ~1500 |
 | 16:06 | Session end: 6 writes across 1 files (viewport.rs) | 8 reads | ~54511 tok |
+
+## Session: 2026-05-25 09:49
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:49 | Fixed markdown preview close shortcuts | focus.rs, resolved_keymap.rs, default.toml, input tests | cargo check ✅; targeted close tests ✅; GitNexus risk MEDIUM | ~65000 |
+| 09:55 | Updated RTK usage rules after user correction | AGENTS.md, CLAUDE.md, .clinerules, .codex/instructions.md | clarified rtk only for supported simple commands; raw shell fallback for compound find/pipes/pathspec issues | ~12000 |
+| 09:57 | Edited src/render/renderer/editor/viewport.rs | modified truncate_folded_lines() | ~1190 |
+| 09:58 | Fixed tree-sitter highlighting break on folded lines | src/render/renderer/editor/viewport.rs | Rewrote truncate_folded_lines() span adjustment logic with proper byte offset mapping | ~120 tokens |
+| 09:58 | Session end: 7 writes across 1 files (viewport.rs) | 8 reads | ~55786 tok |
+| 10:02 | Designed keyboard-first IDE logo asset | assets/app_logo_keyboard.svg, assets/app_logo_keyboard.png, .wolf/anatomy.md | Added minimal keycap + Netherize N command-path mark; no Rust symbols touched | ~9000 |
+
+## Session: 2026-05-25 10:23
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|

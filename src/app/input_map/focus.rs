@@ -510,8 +510,8 @@ impl InputMap {
         }
         if !input.has_command_modifier() && input.physical_key == Some(KeyQ) {
             return Some(KeybindingMatch {
-                command: Command::CloseSidebars,
-                reason: "preview: q -> CloseSidebars (close preview)",
+                command: Command::BufferCloseCurrent,
+                reason: "preview: q -> BufferCloseCurrent",
             });
         }
         if input.has_command_modifier() && input.physical_key == Some(KeyW) {

@@ -932,6 +932,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         seq(&[ph(KeyCode::KeyG), ph(KeyCode::KeyG)]),
         MARKDOWN_PREVIEW_SCROLL_TOP,
     );
+    km.insert_sequence(
+        Some("preview"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyX)]),
+        BUFFER_CLOSE_CURRENT,
+    );
     km.insert(Some("preview"), ch('G'), MARKDOWN_PREVIEW_SCROLL_BOTTOM);
     // ── Global Zen Mode toggle ─────────────────────────────────────────────
     km.insert_sequence(

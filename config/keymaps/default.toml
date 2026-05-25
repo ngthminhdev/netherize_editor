@@ -995,6 +995,11 @@ key = "<leader>x"
 command = "buffer.close_current"
 
 [[bindings]]
+mode = "preview"
+key = "<leader>x"
+command = "buffer.close_current"
+
+[[bindings]]
 mode = "normal"
 key = "mod+1"
 command = "buffer.goto_1"

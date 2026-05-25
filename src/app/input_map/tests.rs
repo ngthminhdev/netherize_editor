@@ -1361,6 +1361,25 @@ fn fuzzy_picker_normal_q_closes_buffer() {
 }
 
 #[test]
+fn markdown_preview_normal_q_closes_buffer() {
+    let map = make_map();
+    let resolved = map.resolve(
+        &NormalizedInput {
+            physical_key: Some(KeyCode::KeyQ),
+            named_key: None,
+            text: Some("q".to_string()),
+            modifiers: ModifiersState::empty(),
+        },
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::MarkdownPreview),
+    );
+
+    assert_eq!(
+        resolved.map(|matched| matched.command),
+        Some(Command::BufferCloseCurrent)
+    );
+}
+
+#[test]
 fn fuzzy_picker_insert_ctrl_n_selects_next() {
     let map = make_map();
     let resolved = map.resolve(
@@ -1420,6 +1439,68 @@ fn leader_space_x_maps_to_close_current_buffer() {
     let resolved = map
         .resolve_sequence_next(&pending, &follow_x, context)
         .expect("leader+x should resolve");
+    match resolved {
+        SequenceMatch::Dispatch(resolved) => {
+            assert_eq!(resolved.command, Command::BufferCloseCurrent);
+        }
+        other => panic!("expected dispatch for leader x, got {:?}", other),
+    }
+}
+
+#[test]
+fn markdown_preview_leader_space_x_maps_to_close_current_buffer() {
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::MarkdownPreview);
+    let space = input_from_named(NamedKey::Space);
+    let first = map
+        .resolve_sequence_start(&space, context)
+        .expect("space should start markdown preview chord");
+    let pending = match first {
+        SequenceMatch::Pending(pending) => pending,
+        other => panic!("expected pending leader sequence, got {:?}", other),
+    };
+
+    let follow_x = NormalizedInput {
+        physical_key: Some(KeyCode::KeyX),
+        named_key: None,
+        text: Some("x".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let resolved = map
+        .resolve_sequence_next(&pending, &follow_x, context)
+        .expect("markdown preview leader+x should resolve");
+    match resolved {
+        SequenceMatch::Dispatch(resolved) => {
+            assert_eq!(resolved.command, Command::BufferCloseCurrent);
+        }
+        other => panic!("expected dispatch for leader x, got {:?}", other),
+    }
+}
+
+#[test]
+fn default_profile_markdown_preview_leader_space_x_closes_buffer() {
+    let map = make_default_profile_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::MarkdownPreview);
+    let space = input_from_named(NamedKey::Space);
+    let first = map
+        .resolve_sequence_start(&space, context)
+        .expect("space should start markdown preview chord");
+    let pending = match first {
+        SequenceMatch::Pending(pending) => pending,
+        other => panic!("expected pending leader sequence, got {:?}", other),
+    };
+
+    let follow_x = NormalizedInput {
+        physical_key: Some(KeyCode::KeyX),
+        named_key: None,
+        text: Some("x".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let resolved = map
+        .resolve_sequence_next(&pending, &follow_x, context)
+        .expect("markdown preview default profile leader+x should resolve");
     match resolved {
         SequenceMatch::Dispatch(resolved) => {
             assert_eq!(resolved.command, Command::BufferCloseCurrent);

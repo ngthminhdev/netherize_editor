@@ -384,6 +384,56 @@
       "related_bugs": [],
       "occurrences": 2,
       "last_seen": "2026-05-24T09:06:01.249Z"
+    },
+    {
+      "id": "bug-024",
+      "timestamp": "2026-05-25T09:49:49+07:00",
+      "error_message": "Markdown preview buffer tab cannot be closed with q or Space+x like live grep and references tabs.",
+      "file": "src/app/input_map/focus.rs, src/app/resolved_keymap.rs, config/keymaps/default.toml",
+      "root_cause": "Markdown preview focus routed q to CloseSidebars, and leader sequences resolve under the preview mode scope, while buffer.close_current was only bound under normal mode.",
+      "fix": "Route preview q to BufferCloseCurrent and add preview-scoped <leader>x bindings in built-in and default keymaps, with InputMap and InputHandler regression tests.",
+      "tags": [
+        "markdown-preview",
+        "keybinding",
+        "buffer-close",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T09:49:49+07:00"
+    },
+    {
+      "id": "bug-025",
+      "timestamp": "2026-05-25T09:55:20+07:00",
+      "error_message": "RTK rule says to always prefix shell commands, but rtk find does not support compound predicates/actions such as -exec; rtk git diff -- <paths> also failed with bad revision in this session.",
+      "file": "AGENTS.md, CLAUDE.md, .clinerules, .codex/instructions.md",
+      "root_cause": "The project rule over-generalized RTK support and did not document unsupported command shapes or raw-shell fallback behavior.",
+      "fix": "Changed RTK rule wording to prefer rtk only for supported simple commands, document unsupported find/pipeline/shell-feature cases, and instruct agents to retry raw commands when rtk reports unsupported syntax.",
+      "tags": [
+        "rtk",
+        "rules",
+        "shell",
+        "user-correction"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T09:55:20+07:00"
+    },
+    {
+      "id": "bug-026",
+      "timestamp": "2026-05-25T02:57:26.415Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/render/renderer/editor/viewport.rs",
+      "root_cause": "20 lines replaced/restructured",
+      "fix": "Rewrote 91→122 lines (20 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T02:57:26.415Z"
     }
   ]
 }

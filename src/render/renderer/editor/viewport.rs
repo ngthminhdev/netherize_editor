@@ -91,57 +91,88 @@ fn truncate_folded_lines(
     }
 
     let mut result = String::with_capacity(text.len());
-    let mut new_line_byte_starts = vec![0];
+    let mut byte_offset_map: Vec<(usize, usize)> = Vec::new(); // (old_byte, new_byte)
 
     for (line_idx, line) in text.lines().enumerate() {
+        let old_line_start = line_byte_starts[line_idx];
+        let new_line_start = result.len();
+
         if auto_folded_lines.contains(&line_idx) {
             // Truncate this line to 100 chars + "..."
             let chars: Vec<char> = line.chars().collect();
             if chars.len() > FOLD_TRUNCATE_LIMIT {
                 let truncated: String = chars.iter().take(FOLD_TRUNCATE_LIMIT).collect();
+                let truncated_byte_len = truncated.len();
+
+                // Map each byte position in the original line to the new position
+                for old_byte in 0..=truncated_byte_len {
+                    byte_offset_map.push((old_line_start + old_byte, new_line_start + old_byte));
+                }
+                // The truncation point: everything after maps to the end of "..."
+                let ellipsis_end = new_line_start + truncated_byte_len + 3;
+                for old_byte in (truncated_byte_len + 1)..=line.len() {
+                    byte_offset_map.push((old_line_start + old_byte, ellipsis_end));
+                }
+
                 result.push_str(&truncated);
                 result.push_str("...");
             } else {
+                // Line is short enough, no truncation needed
+                for old_byte in 0..=line.len() {
+                    byte_offset_map.push((old_line_start + old_byte, new_line_start + old_byte));
+                }
                 result.push_str(line);
             }
         } else {
+            // Not a folded line, copy as-is
+            for old_byte in 0..=line.len() {
+                byte_offset_map.push((old_line_start + old_byte, new_line_start + old_byte));
+            }
             result.push_str(line);
         }
 
         // Add newline if not the last line
         if line_idx + 1 < text.lines().count() {
             result.push('\n');
+            // Map the newline byte
+            byte_offset_map.push((old_line_start + line.len(), result.len() - 1));
         }
-
-        new_line_byte_starts.push(result.len() + 1);
     }
 
-    // Adjust spans based on line-by-line byte offset mapping
+    // Sort the map for binary search
+    byte_offset_map.sort_unstable_by_key(|&(old, _)| old);
+
+    // Adjust spans using the byte offset map
     let mut adjusted_spans = Vec::with_capacity(spans.len());
     for span in spans {
-        // Find which line the span starts in
-        let start_line = line_byte_starts
-            .iter()
-            .position(|&byte| byte > span.start)
-            .map(|i| i.saturating_sub(1))
-            .unwrap_or(0);
-        let end_line = line_byte_starts
-            .iter()
-            .position(|&byte| byte > span.end)
-            .map(|i| i.saturating_sub(1))
-            .unwrap_or(line_byte_starts.len().saturating_sub(1));
+        // Find new positions for start and end
+        let new_start = byte_offset_map
+            .binary_search_by_key(&span.start, |&(old, _)| old)
+            .map(|idx| byte_offset_map[idx].1)
+            .unwrap_or_else(|idx| {
+                if idx > 0 {
+                    byte_offset_map[idx - 1].1
+                } else {
+                    0
+                }
+            });
 
-        // Calculate byte offset within the line
-        let start_offset_in_line = span.start.saturating_sub(line_byte_starts[start_line]);
-        let end_offset_in_line = span.end.saturating_sub(line_byte_starts[end_line]);
+        let new_end = byte_offset_map
+            .binary_search_by_key(&span.end, |&(old, _)| old)
+            .map(|idx| byte_offset_map[idx].1)
+            .unwrap_or_else(|idx| {
+                if idx > 0 {
+                    byte_offset_map[idx - 1].1
+                } else {
+                    0
+                }
+            });
 
-        let adjusted_start = new_line_byte_starts[start_line] + start_offset_in_line;
-        let adjusted_end = new_line_byte_starts[end_line] + end_offset_in_line;
-
-        if adjusted_start < result.len() && adjusted_end <= result.len() && adjusted_start < adjusted_end {
+        // Only keep spans that have valid ranges in the new text
+        if new_start < new_end && new_end <= result.len() {
             adjusted_spans.push(StyledTextSpan {
-                start: adjusted_start.min(result.len()),
-                end: adjusted_end.min(result.len()),
+                start: new_start,
+                end: new_end,
                 ..*span
             });
         }
