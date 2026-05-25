@@ -40,7 +40,6 @@ mode_normal = "#4FC1FF"
 mode_insert = "#6A9955"
 mode_visual = "#C586C0"
 
-
 top_bar_height = 36.0
 
 [git]
@@ -51,38 +50,38 @@ added_gutter = "#6A9955"
 deleted_gutter = "#F44747"
 status_bar_height = 32.0
 
-
 [syntax]
-keyword = "#569cd6"       # Blue (VS Code identity)
-operator = "#d4d4d4"      # Foreground (VS Code palette)
+keyword = "#569cd6"
+operator = "#d4d4d4"
 punctuation = "#d4d4d4"
 string = "#ce9178"
 number = "#b5cea8"
 boolean = "#569cd6"
 escape = "#d7ba7d"
-identifier = "#d4d4d4"    # Foreground (cho variable references)
-variable = "#9cdcfe"      # Light Blue (khác với identifier #d4d4d4)
+identifier = "#d4d4d4"
+variable = "#9cdcfe"
 function = "#dcdcaa"
 macro = "#569cd6"
-parameter = "#9cdcfe"     # Light Blue (VS Code palette)
+parameter = "#9cdcfe"
 type = "#4ec9b0"
 constructor = "#4ec9b0"
-field = "#4ec9b0"         # Teal (VS Code palette)
-property = "#4ec9b0"      # Teal (đồng bộ với field)
+field = "#4ec9b0"
+property = "#4ec9b0"
 constant = "#4fc1ff"
 comment = "#6a9955"
-attribute = "#569cd6"     # Blue (đồng bộ keyword)
+attribute = "#569cd6"
 namespace = "#4ec9b0"
 lifetime = "#569cd6"
 tag = "#569cd6"
-keyword_control = "#569cd6"       # Blue (VS Code identity)
-keyword_storage = "#569cd6"       # Blue (VS Code identity)
+keyword_control = "#569cd6"
+keyword_storage = "#569cd6"
 string_escape = "#d7ba7d"
 function_builtin = "#dcdcaa"
 comment_doc = "#6a9955"
 type_builtin = "#4ec9b0"
-variable_builtin = "#9cdcfe"      # Light Blue (khác với identifier #d4d4d4)
-markup_strong = "#569cd6"       # Blue (VS Code identity)
+variable_builtin = "#9cdcfe"
+markup_strong = "#569cd6"
 markup_italic = "#6a9955"
 markup_inline_code = "#ce9178"
 markup_link = "#dcdcaa"
+

@@ -130,6 +130,30 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 true,
             )
         }
+        Command::OpenExtensionsManager => {
+            let _ = ctx.app_state.close_command_palette();
+            if ctx.app_state.current_mode() == EditorMode::PaletteFocus {
+                let _ = ctx.app_state.apply_mode_event(ModeEvent::ExitFocus);
+            }
+            let index = ctx.app_state.open_extensions_manager_buffer();
+            DispatchReport::success_with_flags(
+                format!("Dispatch: extensions manager buffer opened at index {index}"),
+                true,
+                true,
+            )
+        }
+        Command::ExtensionsSelectNext
+        | Command::ExtensionsSelectPrev
+        | Command::ExtensionsStartFilter
+        | Command::ExtensionsCancelFilter
+        | Command::ExtensionsToggleExpanded
+        | Command::ExtensionsSwitchTabNext
+        | Command::ExtensionsSwitchTabPrev
+        | Command::ExtensionsInstallSelected
+        | Command::ExtensionsUninstallSelected => DispatchReport::success(
+            "Dispatch: extensions manager command handled by shell".to_string(),
+            false,
+        ),
         Command::FilePickerAppendQuery(text) => match ctx.app_state.file_picker_append_query(&text)
         {
             Ok(changed) => DispatchReport::success(

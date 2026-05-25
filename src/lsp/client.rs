@@ -1119,6 +1119,16 @@ fn parse_diagnostic(value: &Value) -> Option<LspDiagnostic> {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string(),
+        tags: value
+            .get("tags")
+            .and_then(Value::as_array)
+            .map(|tags| {
+                tags.iter()
+                    .filter_map(Value::as_u64)
+                    .filter_map(|value| u32::try_from(value).ok())
+                    .collect()
+            })
+            .unwrap_or_default(),
     })
 }
 

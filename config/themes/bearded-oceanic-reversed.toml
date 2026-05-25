@@ -1,51 +1,29 @@
-# Theme metadata shown after the profile is loaded.
 [theme]
 name = "bearded-oceanic-reversed"
 description = "Bearded Theme Oceanic Reversed palette adapted from JSON/Zed style for Netherize Editor runtime themes"
 
-# Core editor surface: text buffer, caret, selection, and gutter.
 [editor]
-# Main text canvas background for the center editor region.
 bg = "#111c22"
-# Default foreground color for plain text in the editor.
 fg = "#c3d6e0"
-# Caret / cursor color in insert, normal, and visual rendering.
 cursor = "#97c892"
-# Selection fill used by visual mode and selected ranges.
 selection = "#1a2a33"
-# Background behind line numbers.
 gutter = "#111c22"
-# Active line-number color in the gutter.
 gutter_active = "#6698b3"
-# Editor text metrics for cosmic-text layout.
-# Primary font for editor text, overlays, top bar, and status bar.
-# Nerd Font used for explorer/file icons and terminal glyph fallback.
 
-# Shared UI chrome colors and workbench sizing tokens.
 [ui]
-# Window clear color behind every region and palette pill foreground base.
 bg = "#152229"
-# Left/right sidebar region background.
 sidebar_bg = "#111c22"
-# Generic chrome background for top bar, cards, and inspector surfaces.
 panel_bg = "#111c22"
-# Bottom terminal panel and terminal-buffer background.
 terminal_bg = "#111c22"
-# Scrim + modal panel background for command palette and Leap overlay.
 overlay_bg = "#152229D9"
-# Status bar region background.
 status_bar_bg = "#152229"
-# Borders, separators, and subtle region dividers.
 border_color = "#0b1115"
-# Active row / selected tab / focused list item background.
 selection_bg = "#263e4b"
 
-# Shared foreground tokens for labels and chrome text.
 fg = "#c3d6e0"
 fg_dim = "#a2bfce"
 fg_ghost = "#41687c"
 
-# Accent and semantic colors used across overlays, status pills, icons, and diagnostics.
 accent = "#97c892"
 cyan = "#59c6c8"
 magenta = "#d194cd"
@@ -55,14 +33,10 @@ warning = "#DC8255"
 info = "#5fb2df"
 error = "#ee5d75"
 
-# Mode badge colors in the status bar.
 mode_normal = "#97c892"
 mode_insert = "#97c892"
 mode_visual = "#d194cd"
 
-# Sidebar and panel text metrics.
-
-# Theme-driven workbench chrome sizes.
 top_bar_height = 36.0
 
 [git]
@@ -73,61 +47,37 @@ added_gutter = "#97c892"
 deleted_gutter = "#ee5d75"
 status_bar_height = 32.0
 
-# Disclosure markers and file-picker bullet glyph.
-
 [syntax]
-# Keywords like `fn`, `let`, `match`.
-keyword = "#f6cc73"       # Gold (Solarized identity)
-# String literals.
+keyword = "#f6cc73"
 string = "#97c892"
-# Function names and callable symbols.
 function = "#5fb2df"
-# Comments and muted inline docs.
 comment = "#41687c"
-# Type names.
 type = "#978dd6"
-# Numeric literals.
 number = "#B4552D"
-# Plain variable names that do not fall into a richer semantic bucket.
-identifier = "#c3d6e0"    # Foreground (cho variable references)
-# Function and closure parameters.
-parameter = "#d194cd"     # Magenta (Solarized palette)
-# Struct field declarations and member access like `self.name`.
-field = "#c3d6e0"         # Cyan (Solarized palette)
-# Struct literal property labels like `Demo { name: value }`.
-property = "#c3d6e0"      # Cyan (đồng bộ với field)
-# Named constants such as `MAX_SIZE` and boolean literals.
+identifier = "#c3d6e0"
+parameter = "#d194cd"
+field = "#c3d6e0"
+property = "#c3d6e0"
 constant = "#B4552D"
-# Operators such as `=`, `+`, `&&`, `->`.
-operator = "#f6cc73"      # Gold (Solarized palette)
-# Punctuation such as commas, braces, and separators.
+operator = "#f6cc73"
 punctuation = "#c3d6e066"
-# Macro invocation highlight.
 macro = "#5fb2df"
-# Rust lifetime highlight.
 lifetime = "#DC8255"
-# Boolean literals (`true`, `false`).
 boolean = "#B4552D"
-# Escape sequences inside strings/chars.
 escape = "#DC8255"
-# Local variables and bindings.
-variable = "#ee5d75"      # Magenta (khác với identifier #c3e0e9)
-# Constructors, enum variants, and nominal type definitions.
+variable = "#ee5d75"
 constructor = "#A4EF58"
-# Attributes/annotations.
-attribute = "#d194cd"     # Gold (đồng bộ keyword)
-# Module/namespace qualifiers.
+attribute = "#d194cd"
 namespace = "#978dd6"
-# Markup/JSX-style tags.
 tag = "#5fb2df"
-keyword_control = "#f6cc73"       # Gold (Solarized identity)
-keyword_storage = "#59c6c8"       # Gold (Solarized identity)
+keyword_control = "#f6cc73"
+keyword_storage = "#59c6c8"
 string_escape = "#DC8255"
 function_builtin = "#5fb2df"
 comment_doc = "#41687c"
 type_builtin = "#978dd6"
-variable_builtin = "#ee5d75"      # Magenta (khác với identifier #c3e0e9)
-markup_strong = "#ee5d75"       # Gold (Solarized identity)
+variable_builtin = "#ee5d75"
+markup_strong = "#ee5d75"
 markup_italic = "#DC8255"
 markup_inline_code = "#978dd6"
 markup_link = "#5fb2df"

@@ -3,18 +3,22 @@
 use crate::{
     app::{app_state::AppState, command_palette::CommandPaletteRenderModel, input::LeapTarget},
     render::{
-        glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
+        glyph_instance::GlyphInstance, icon_pipeline::IconDrawInstance,
+        region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
 };
 
 use super::{
     palette_footer_content_height, palette_footer_height, render_palette_badge,
-    render_palette_chrome, render_palette_footer, render_palette_selection, PaletteFooterAction,
-    PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD,
+    push_palette_icon_or_badge, render_palette_chrome, render_palette_footer,
+    render_palette_selection, PaletteFooterAction, PALETTE_FOOTER_TOP_PAD,
+    PALETTE_HEADER_BOTTOM_PAD,
 };
-use super::super::helpers::{
-    clamp_monospace_text, estimate_monospace_width, ext_icon_dot, gutter_width_for_editor,
-    layout_panel_text, layout_panel_text_bold, rect_to_scissor,
+use super::super::{
+    components::{layout_prefix_icon_badge, PrefixIconBadge, PrefixIconBadgeChrome},
+    helpers::{
+        clamp_monospace_text, estimate_monospace_width, layout_panel_text, rect_to_scissor,
+    },
 };
 
 impl Renderer {
@@ -28,6 +32,7 @@ impl Renderer {
 
         let mut quads: Vec<RegionDrawInstance> = Vec::new();
         let mut glyphs: Vec<GlyphInstance> = Vec::new();
+        let mut icons: Vec<IconDrawInstance> = Vec::new();
 
         let is_theme_selector =
             model.mode == crate::app::command_palette::CommandPaletteMode::ThemeSelector;
@@ -42,18 +47,16 @@ impl Renderer {
         } else {
             model.line_height.max(18.0)
         };
-        let row_v_pad = if is_theme_selector { 8.0 } else { 4.0 };
-        let row_h = line_h + row_v_pad * 2.0;
+        let row_v_pad = if is_theme_selector { 8.0 } else { 9.0 };
+        let row_h = if is_theme_selector {
+            line_h + row_v_pad * 2.0
+        } else {
+            model.row_height.max(line_h * 2.0 + row_v_pad * 2.0 + 2.0)
+        };
         let text_x = panel_x + model.panel_padding + if is_theme_selector { 16.0 } else { 8.0 };
 
-        // Recent Projects keeps a 2-column table. Theme Selector becomes a richer
-        // browser row: palette preview + theme name + source path + active marker.
-        let name_col_w = if is_theme_selector {
-            (inner_width * 0.68).max(260.0)
-        } else {
-            (inner_width * 0.38).max(120.0)
-        };
-        let path_x = text_x + name_col_w + char_w * 2.0;
+        // Theme Selector keeps the existing rich browser row. Recent Projects uses
+        // the same renderer/chrome pipeline but upgrades to a project launcher row.
 
         // Chrome
         render_palette_chrome(model, &mut quads);
@@ -88,8 +91,10 @@ impl Renderer {
                 model.selected_index.saturating_add(1).min(model.result_labels.len()),
                 model.total_results
             )
-        } else {
+        } else if is_theme_selector {
             format!("{}", model.result_labels.len())
+        } else {
+            format!("{} projects", model.result_labels.len())
         };
         let count_w = count_text.chars().count() as f32 * font_size * 0.60;
         let count_x =
@@ -118,7 +123,7 @@ impl Renderer {
             let mut col_header_color = model.hint_color;
             col_header_color[3] *= 0.7;
             glyphs.extend(layout_panel_text(
-                "NAME",
+                "RECENT PROJECTS",
                 &mut self.palette_text_system,
                 &mut self.atlas,
                 &self.queue,
@@ -126,12 +131,14 @@ impl Renderer {
                 row_top,
                 col_header_color,
             ));
+            let last_opened_header = "LAST OPENED";
+            let last_opened_w = estimate_monospace_width(last_opened_header, font_size);
             glyphs.extend(layout_panel_text(
-                "PATH",
+                last_opened_header,
                 &mut self.palette_text_system,
                 &mut self.atlas,
                 &self.queue,
-                path_x,
+                panel_x + panel_w - model.panel_padding - last_opened_w,
                 row_top,
                 col_header_color,
             ));
@@ -195,10 +202,12 @@ impl Renderer {
             .enumerate()
         {
             let absolute_idx = scroll_offset + visible_idx;
-            let full_path = model
+            let raw_secondary = model
                 .secondary_labels
                 .get(absolute_idx)
                 .unwrap_or(&empty_str);
+            let recent_meta = parse_recent_secondary(raw_secondary);
+            let full_path = recent_meta.path.as_str();
 
             let is_selected = absolute_idx == model.selected_index;
             if is_selected {
@@ -264,11 +273,48 @@ impl Renderer {
                         .with_radius(4.0),
                 );
             } else {
+                let full_path_buf = std::path::Path::new(full_path);
+                let inferred_icon_source = crate::app::persistence::AppPersistentState::infer_project_icon_source(full_path_buf);
+                let icon_source = recent_meta
+                    .icon_source
+                    .as_deref()
+                    .unwrap_or(inferred_icon_source.as_str());
+                let icon_name = std::path::Path::new(icon_source)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or(name);
+                let file_icon = self.theme.icon_theme_for_filename(icon_name, false);
+                let badge = file_icon.glyph.as_str();
+                let badge_color = file_icon.color.as_f32();
+                let badge_w = (row_h * 0.58).clamp(30.0, 42.0);
+                let badge_h = badge_w;
+                let badge_y = row_top + (row_h - badge_h) * 0.5;
+                push_palette_icon_or_badge(
+                    badge,
+                    badge_color,
+                    model.panel_bg,
+                    [text_x, badge_y, badge_w, badge_h],
+                    0.82,
+                    PrefixIconBadgeChrome::None,
+                    &mut self.palette_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    &mut quads,
+                    &mut glyphs,
+                    &mut icons,
+                );
+                self.palette_text_system
+                    .set_metrics(cosmic_text::Metrics::new(font_size, line_h));
+                self.palette_text_system
+                    .set_size(Some(inner_width), Some(line_h));
+
+                let name_x = text_x + badge_w + 14.0;
+                let primary_y = row_top + row_v_pad;
                 Self::render_highlighted_label(
                     name,
                     ranges,
-                    text_x,
-                    label_y,
+                    name_x,
+                    primary_y,
                     font_size,
                     model,
                     &mut self.palette_text_system,
@@ -277,16 +323,32 @@ impl Renderer {
                     &mut glyphs,
                 );
 
-                let available_w =
-                    (panel_x + panel_w - model.panel_padding - 4.0 - path_x).max(0.0);
-                let clamped_path = clamp_monospace_text(full_path, available_w, font_size);
+                let secondary_y = primary_y + line_h + 2.0;
+                let last_opened = recent_meta
+                    .last_opened_unix_secs
+                    .map(relative_last_opened_label)
+                    .unwrap_or_else(|| "recently".to_string());
+                let last_opened_w = estimate_monospace_width(&last_opened, font_size);
+                let last_opened_x = panel_x + panel_w - model.panel_padding - last_opened_w;
+                let path_available = (last_opened_x - name_x - char_w * 2.0).max(0.0);
+                let clamped_path = clamp_monospace_text(full_path, path_available, font_size);
                 glyphs.extend(layout_panel_text(
                     &clamped_path,
                     &mut self.palette_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    path_x,
-                    label_y,
+                    name_x,
+                    secondary_y,
+                    model.hint_color,
+                ));
+
+                glyphs.extend(layout_panel_text(
+                    &last_opened,
+                    &mut self.palette_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    last_opened_x,
+                    primary_y,
                     model.hint_color,
                 ));
             }
@@ -340,9 +402,65 @@ impl Renderer {
         ));
 
         self.palette_chrome_instances = quads;
+        self.palette_icon_instances = icons;
+        self.palette_icon_pipeline.upload_instances(
+            &self.device,
+            &self.palette_icon_instances,
+            [self.surface_state.config.width, self.surface_state.config.height],
+        );
         self.palette_glyph_instances = glyphs;
     }
 }
+
+struct RecentProjectRenderMeta {
+    path: String,
+    icon_source: Option<String>,
+    last_opened_unix_secs: Option<u64>,
+}
+
+fn parse_recent_secondary(raw: &str) -> RecentProjectRenderMeta {
+    let (path, meta) = raw.split_once('\u{1f}').unwrap_or((raw, ""));
+    let mut icon_source = None;
+    let mut last_opened_unix_secs = None;
+    for part in meta.split(';') {
+        if let Some(value) = part.strip_prefix("icon=").filter(|value| !value.is_empty()) {
+            icon_source = Some(value.to_string());
+        } else if let Some(value) = part.strip_prefix("last=") {
+            last_opened_unix_secs = value.parse::<u64>().ok();
+        }
+    }
+    RecentProjectRenderMeta {
+        path: path.to_string(),
+        icon_source,
+        last_opened_unix_secs,
+    }
+}
+
+fn relative_last_opened_label(last_opened_unix_secs: u64) -> String {
+    let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else {
+        return "recently".to_string();
+    };
+    let elapsed = now.as_secs().saturating_sub(last_opened_unix_secs);
+    if elapsed < 60 {
+        "just now".to_string()
+    } else if elapsed < 60 * 60 {
+        format!("{} min ago", elapsed / 60)
+    } else if elapsed < 60 * 60 * 24 {
+        format!("{} hr ago", elapsed / (60 * 60))
+    } else if elapsed < 60 * 60 * 24 * 2 {
+        "yesterday".to_string()
+    } else if elapsed < 60 * 60 * 24 * 7 {
+        format!("{} days ago", elapsed / (60 * 60 * 24))
+    } else {
+        "last week".to_string()
+    }
+}
+
+
+
+
+
+
 
 fn theme_preview_colors(name: &str, model: &CommandPaletteRenderModel) -> [[f32; 4]; 6] {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;

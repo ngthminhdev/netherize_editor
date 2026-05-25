@@ -343,7 +343,7 @@ mod tests {
 }
 
 pub(super) fn is_mode_block_cursor(mode: EditorMode) -> bool {
-    matches!(mode, EditorMode::Normal | EditorMode::Visual)
+    matches!(mode, EditorMode::Normal | EditorMode::Visual | EditorMode::VisualBlock)
 }
 
 pub(super) fn should_draw_block_cursor(mode: EditorMode, cursor_shape: CursorShape) -> bool {
@@ -357,6 +357,7 @@ pub(super) fn mode_display_label(mode: EditorMode) -> &'static str {
         EditorMode::Normal => "NORMAL",
         EditorMode::Insert => "INSERT",
         EditorMode::Visual => "VISUAL",
+        EditorMode::VisualBlock => "V-BLOCK",
         EditorMode::PaletteFocus => "PALETTE",
         EditorMode::TerminalFocus => "TERMINAL",
         EditorMode::TerminalNormal => "T-COPY",
@@ -371,6 +372,7 @@ pub(super) fn mode_pill_color(mode: EditorMode, theme: &ThemeConfig) -> [f32; 4]
         EditorMode::Normal => theme.ui.mode_normal.as_f32(),
         EditorMode::Insert => theme.ui.mode_insert.as_f32(),
         EditorMode::Visual => theme.ui.mode_visual.as_f32(),
+        EditorMode::VisualBlock => theme.ui.mode_visual.as_f32(),
         EditorMode::PaletteFocus => theme.ui.amber.as_f32(),
         EditorMode::TerminalFocus => theme.ui.success.as_f32(),
         EditorMode::TerminalNormal => theme.ui.accent.as_f32(),
@@ -383,43 +385,4 @@ pub(super) fn theme_color_to_wgpu(color: ThemeColor) -> wgpu::Color {
     color.as_linear().to_wgpu()
 }
 
-// ── File picker icon helpers ───────────────────────────────────────────────────
 
-/// (dot_color, ext_label) for `●` icon + short ext text in File Picker.
-pub(super) fn ext_icon_dot(ext: &str, theme: &ThemeConfig) -> ([f32; 4], &'static str) {
-    let icon = theme.file_icon_for_extension(ext);
-    match ext {
-        "rs" => (icon.color.as_f32(), "rs"),
-        "js" | "mjs" | "cjs" => (icon.color.as_f32(), "js"),
-        "ts" => (icon.color.as_f32(), "ts"),
-        "tsx" => (icon.color.as_f32(), "tsx"),
-        "jsx" => (icon.color.as_f32(), "jsx"),
-        "py" | "pyw" => (icon.color.as_f32(), "py"),
-        "go" => (icon.color.as_f32(), "go"),
-        "md" | "mdx" | "markdown" => (icon.color.as_f32(), "md"),
-        "html" | "htm" => (icon.color.as_f32(), "html"),
-        "css" => (icon.color.as_f32(), "css"),
-        "scss" | "sass" => (icon.color.as_f32(), "scss"),
-        "toml" => (icon.color.as_f32(), "toml"),
-        "yaml" | "yml" => (icon.color.as_f32(), "yaml"),
-        "json" | "jsonc" => (icon.color.as_f32(), "json"),
-        "sh" | "bash" | "zsh" | "fish" => (icon.color.as_f32(), "sh"),
-        "lock" => (icon.color.as_f32(), "lock"),
-        "env" => (icon.color.as_f32(), "env"),
-        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "ico" => (icon.color.as_f32(), "img"),
-        "java" => (icon.color.as_f32(), "java"),
-        "kt" | "kts" => (icon.color.as_f32(), "kt"),
-        "swift" => (icon.color.as_f32(), "swift"),
-        "c" | "h" => (icon.color.as_f32(), "c"),
-        "cpp" | "cc" | "cxx" | "hpp" => (icon.color.as_f32(), "cpp"),
-        "cs" => (icon.color.as_f32(), "cs"),
-        "rb" => (icon.color.as_f32(), "rb"),
-        "php" => (icon.color.as_f32(), "php"),
-        "lua" => (icon.color.as_f32(), "lua"),
-        "sql" => (icon.color.as_f32(), "sql"),
-        "xml" => (icon.color.as_f32(), "xml"),
-        "vue" => (icon.color.as_f32(), "vue"),
-        "tf" | "hcl" => (icon.color.as_f32(), "tf"),
-        _ => (icon.color.as_f32(), ""),
-    }
-}

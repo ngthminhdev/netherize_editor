@@ -86,53 +86,26 @@ impl AppShell {
         false
     }
 
-    fn lsp_install_working_dir(&self) -> Option<PathBuf> {
-        self.app_state
-            .workspace_root_path()
-            .map(PathBuf::from)
-            .or_else(|| {
-                self.app_state
-                    .active_file()
-                    .and_then(|path| path.parent())
-                    .map(PathBuf::from)
-            })
-            .or_else(|| std::env::current_dir().ok())
-    }
+
 
     pub(in crate::app::event_loop) fn accept_lsp_install_guide(&mut self) -> bool {
         let Some(guide) = self.active_lsp_guide.take() else {
             return false;
         };
-        let LspInstallGuide {
-            binary,
-            install_cmd,
-        } = guide;
+        let LspInstallGuide { binary, .. } = guide;
 
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_lsp_guide_popup();
         }
 
-        let mut changed = true;
-        if !install_cmd.is_empty() {
-            if let Some(session_id) = self.focused_terminal_session_id() {
-                changed |= self.handle_command(Command::FocusTerminal);
-                self.forward_to_terminal_session(session_id, &format!("{install_cmd}\r"));
-            } else {
-                self.submit(RequestSpec {
-                    revision_id: 0,
-                    topic: RequestTopic::TerminalPty,
-                    payload: WorkerRequestPayload::SpawnDetachedShellCommand {
-                        command: install_cmd,
-                        working_dir: self.lsp_install_working_dir(),
-                    },
-                });
-                self.show_transient_toast(format!("Installing {binary} in background..."));
-            }
-            self.pending_lsp_server = None;
-            self.lsp_retry_at = Some(Instant::now() + Duration::from_secs(15));
-        }
-
-        changed
+        let _ = self.app_state.open_extensions_manager_buffer();
+        let _ = self.sync_focus_mode_for_active_buffer();
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        self.show_transient_toast(format!(
+            "Open Extensions Manager\nSelect {binary} and press i to install with live logs."
+        ));
+        true
     }
 
     pub(super) fn open_lazygit_buffer(&mut self) -> bool {
@@ -547,7 +520,7 @@ impl AppShell {
         let closed = self.close_current_buffer_now();
 
         if let Some((origin_path, origin_line)) = self.app_state.active_references_origin() {
-            self.app_state.push_jump_entry(origin_path, origin_line);
+            self.app_state.push_jump_entry(origin_path, origin_line, 0);
         }
 
         if let Err(err) = self.app_state.open_file(item.path.clone()) {
@@ -648,12 +621,16 @@ impl AppShell {
             .app_state
             .active_file()
             .map(PathBuf::from)
-            .map(|path| (path, self.app_state.cursor_line_col().0));
+            .map(|path| {
+                let (line, col) = self.app_state.cursor_line_col();
+                (path, line, col)
+            });
 
         let _ = self.app_state.close_current_buffer();
 
-        if let Some((active_path, active_line)) = origin {
-            self.app_state.push_jump_entry(active_path, active_line);
+        if let Some((active_path, active_line, active_col)) = origin {
+            self.app_state
+                .push_jump_entry(active_path, active_line, active_col);
         }
 
         if let Err(err) = self.app_state.open_file(item.file_path.clone()) {
@@ -677,14 +654,14 @@ impl AppShell {
     }
 
     pub(super) fn execute_jump_back(&mut self) -> bool {
-        let Some((path, line)) = self.app_state.pop_jump_back() else {
+        let Some((path, line, col)) = self.app_state.pop_jump_back() else {
             return false;
         };
         if let Err(err) = self.app_state.open_file(path.clone()) {
             eprintln!("[AppShell] jump_back open_file failed: {err}");
             return false;
         }
-        self.app_state.jump_to_line(line);
+        self.app_state.jump_to_line_col(line, col);
         let vp = self.editor_viewport_lines();
         self.app_state.auto_scroll_to_cursor(vp);
         self.invalidate_highlights_and_parse_active_buffer();
@@ -695,14 +672,14 @@ impl AppShell {
     }
 
     pub(super) fn execute_jump_forward(&mut self) -> bool {
-        let Some((path, line)) = self.app_state.pop_jump_forward() else {
+        let Some((path, line, col)) = self.app_state.pop_jump_forward() else {
             return false;
         };
         if let Err(err) = self.app_state.open_file(path.clone()) {
             eprintln!("[AppShell] jump_forward open_file failed: {err}");
             return false;
         }
-        self.app_state.jump_to_line(line);
+        self.app_state.jump_to_line_col(line, col);
         let vp = self.editor_viewport_lines();
         self.app_state.auto_scroll_to_cursor(vp);
         self.invalidate_highlights_and_parse_active_buffer();
@@ -723,7 +700,7 @@ impl AppShell {
             Ok(next) => {
                 if self
                     .app_state
-                    .replace_active_document_text_preserve_cursor(&next)
+                    .replace_active_document_text_preserve_cursor_with_undo(&next)
                 {
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = true;

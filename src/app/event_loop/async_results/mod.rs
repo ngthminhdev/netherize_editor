@@ -27,6 +27,7 @@ impl AsyncResultRouter for AppShell {
             RequestTopic::GitBaseline => self.git_baseline_revision,
             RequestTopic::AiInlineCompletion => self.ai_inline_revision,
             RequestTopic::SystemDepCheck | RequestTopic::SystemDepInstall => 0,
+            RequestTopic::FileOperation => 0,
             _ => 0,
         }
     }
@@ -94,6 +95,9 @@ impl AsyncResultRouter for AppShell {
             | WorkerResultPayload::PythonEnvironmentsDiscovered(_) => {
                 system::handle_system_result(self, result.payload);
             }
+            WorkerResultPayload::FileCopyResult { .. } => {
+                filesystem::handle_file_copy_result(self, result.payload);
+            }
             _ => {}
         }
     }
@@ -132,6 +136,24 @@ impl AsyncResultRouter for AppShell {
 
     fn on_system_dep_install_done(&mut self) {
         system::handle_system_dep_install_done(self);
+    }
+
+    fn on_extension_command_started(&mut self, binary: String, uninstall: bool) {
+        system::handle_extension_command_started(self, binary, uninstall);
+    }
+
+    fn on_extension_command_log(&mut self, binary: String, line: String) {
+        system::handle_extension_command_log(self, binary, line);
+    }
+
+    fn on_extension_command_finished(
+        &mut self,
+        binary: String,
+        uninstall: bool,
+        success: bool,
+        exit_code: Option<i32>,
+    ) {
+        system::handle_extension_command_finished(self, binary, uninstall, success, exit_code);
     }
 
     fn on_lsp_missing_dependency(&mut self, _language_id: String, tool_name: String) {
@@ -193,6 +215,7 @@ mod tests {
                     category: HighlightCategory::Keyword,
                 }],
                 covered_byte_range: None,
+                foldable_ranges: Vec::new(),
                 line_count: 1,
                 char_count: 10,
                 byte_count: 10,

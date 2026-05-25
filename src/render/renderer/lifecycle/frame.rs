@@ -167,6 +167,15 @@ impl Renderer {
                 viewport_width,
                 viewport_height,
                 |render_pass| {
+                    self.editor_overlay_icon_pipeline.draw(render_pass);
+                },
+            );
+            draw_text_region(
+                &mut pass,
+                self.editor_overlay_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
                     self.editor_overlay_text_pipeline.draw(render_pass);
                 },
             );
@@ -184,7 +193,7 @@ impl Renderer {
                     },
                 );
             }
-            // Welcome logo PNG: drawn after chrome background, before text.
+            // Welcome logo/icons: drawn after chrome background, before text.
             draw_text_region(
                 &mut pass,
                 self.welcome_image_scissor,
@@ -200,11 +209,29 @@ impl Renderer {
                 viewport_width,
                 viewport_height,
                 |render_pass| {
+                    self.welcome_icon_pipeline.draw(render_pass);
+                },
+            );
+            draw_text_region(
+                &mut pass,
+                self.welcome_logo_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
                     self.welcome_logo_text_pipeline.draw(render_pass);
                 },
             );
 
             // 4. Explorer sidebar.
+            draw_text_region(
+                &mut pass,
+                self.sidebar_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.sidebar_icon_pipeline.draw(render_pass);
+                },
+            );
             draw_text_region(
                 &mut pass,
                 self.sidebar_scissor,
@@ -493,6 +520,15 @@ impl Renderer {
                 viewport_width,
                 viewport_height,
                 |render_pass| {
+                    self.welcome_icon_pipeline.draw(render_pass);
+                },
+            );
+            draw_text_region(
+                &mut pass,
+                self.welcome_logo_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
                     self.welcome_logo_text_pipeline.draw(render_pass);
                 },
             );
@@ -539,7 +575,16 @@ impl Renderer {
                     .draw_range(&mut pass, palette_start, palette_count);
             }
 
-            // 11. Command palette / file picker text (topmost layer).
+            // 11. Command palette / file picker icons + text (topmost layer).
+            draw_text_region(
+                &mut pass,
+                self.palette_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.palette_icon_pipeline.draw(render_pass);
+                },
+            );
             draw_text_region(
                 &mut pass,
                 self.palette_scissor,

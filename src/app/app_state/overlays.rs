@@ -146,6 +146,9 @@ impl AppState {
         if self.active_buffer_is_diagnostics() {
             return "Diagnostics";
         }
+        if self.active_buffer_is_markdown_preview() {
+            return "Markdown Preview";
+        }
         if self.active_buffer_is_references() {
             return "References";
         }
@@ -332,6 +335,7 @@ impl AppState {
 
     pub(super) fn restore_editor_view(&mut self, snapshot: &EditorViewSnapshot) {
         self.text = snapshot.text.clone();
+        self.cached_line_starts = None;
         self.restore_cursor_state(snapshot.cursor);
         self.selection_anchor_char_idx = snapshot.selection_anchor_char_idx;
         self.visual_line_mode = snapshot.visual_line_mode;
@@ -390,6 +394,9 @@ impl AppState {
         if !self.folded_ranges.is_empty() {
             self.folded_ranges.clear();
         }
+        if !self.auto_folded_long_lines.is_empty() {
+            self.auto_folded_long_lines.clear();
+        }
     }
 
     pub(super) fn apply_delete_raw(&mut self, index: usize, len_chars: usize) -> Option<String> {
@@ -409,6 +416,9 @@ impl AppState {
         // Clear folded ranges when text is modified to prevent corruption
         if !self.folded_ranges.is_empty() {
             self.folded_ranges.clear();
+        }
+        if !self.auto_folded_long_lines.is_empty() {
+            self.auto_folded_long_lines.clear();
         }
 
         Some(deleted)
@@ -925,6 +935,7 @@ impl AppState {
         let content = fs::read_to_string(canonical_path)
             .map_err(|err| format!("open file {:?} failed: {err}", canonical_path))?;
         self.text = Rope::from(content.as_str());
+        self.cached_line_starts = None;
         self.cursor_char_idx = 0;
         self.target_col = 0;
         self.target_scroll_y = 0.0;
@@ -946,6 +957,7 @@ impl AppState {
         let old_visual_line_mode = self.visual_line_mode;
 
         self.text = Rope::from(content);
+        self.cached_line_starts = None;
         self.revision += 1;
 
         let max_char_idx = self.text.len_chars();
@@ -968,6 +980,9 @@ impl AppState {
     }
 
     pub(super) fn register_open_text_buffer(&mut self, active_path: PathBuf) {
+        // Save current text buffer before potentially switching to a different buffer
+        self.save_current_text_buffer_history();
+
         let language_id = crate::lsp::registry::language_profile_for_path(&active_path)
             .map(|profile| profile.language_id.to_string());
         if let Some(existing_idx) = self
@@ -1073,6 +1088,7 @@ impl AppState {
                 }
                 if let Some(snapshot) = restored_in_memory_text {
                     self.text = snapshot;
+                    self.cached_line_starts = None;
                     let _ = self.refresh_active_search_highlights();
                 } else {
                     // First open of this buffer in current session: load from disk baseline.
@@ -1114,9 +1130,11 @@ impl AppState {
             }
             BufferContent::References(_)
             | BufferContent::Diagnostics(_)
+            | BufferContent::MarkdownPreview(_)
             | BufferContent::FuzzyPicker(_)
             | BufferContent::SettingsTab(_)
-            | BufferContent::Help(_) => {
+            | BufferContent::Help(_)
+            | BufferContent::ExtensionsManager(_) => {
                 self.save_current_text_buffer_history();
                 self.reset_text_editor_state();
                 self.active_buffer_index = Some(index);
@@ -1136,10 +1154,19 @@ impl AppState {
     pub(super) fn save_current_text_buffer_history(&mut self) {
         let _ = self.commit_transaction();
         if let Some(old_idx) = self.active_buffer_index {
+            // CRITICAL: Validate that old_idx is still in bounds before saving.
+            // This prevents race condition where buffer was removed but active_buffer_index
+            // hasn't been updated yet, which would cause content corruption.
+            if old_idx >= self.buffers.len() {
+                return;
+            }
+
             let saved = std::mem::take(&mut self.history);
             let saved_view_state = self.text_buffer_view_state();
             if let Some(slot) = self.buffers.get_mut(old_idx) {
                 if let BufferContent::Text(ref mut buf) = slot.content {
+                    // Only save if we have actual content or history to preserve.
+                    // This prevents overwriting buffer state with empty data on double-save.
                     buf.history = saved;
                     buf.view_state = saved_view_state;
                     buf.in_memory_text = Some(self.text.clone());
@@ -1151,6 +1178,7 @@ impl AppState {
 
     pub(super) fn reset_text_editor_state(&mut self) {
         self.text = Rope::new();
+        self.cached_line_starts = None;
         self.cursor_char_idx = 0;
         self.target_col = 0;
         self.target_scroll_y = 0.0;

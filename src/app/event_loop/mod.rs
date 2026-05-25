@@ -123,6 +123,8 @@ pub struct AppShell {
     explorer_cursor: usize,
     explorer_snapshot: ExplorerSnapshot,
     explorer_snapshot_dirty: bool,
+    /// Path of the file copied via ExplorerCopyFile command.
+    explorer_clipboard_path: Option<PathBuf>,
     pending_confirmation: Option<PendingConfirmation>,
     workspace_git_branch: Option<String>,
     active_lsp_server: Option<ActiveLspServer>,
@@ -227,6 +229,7 @@ pub struct AppShell {
     git_baseline_revision: u64,
     last_scroll_animation_tick: Instant,
     last_git_branch_refresh_at: Instant,
+    last_workspace_git_status_refresh_at: Instant,
     last_thinking_animation_tick: Instant,
     last_lsp_loading_animation_tick: Instant,
     lsp_loading_frame: u8,
@@ -253,6 +256,7 @@ const COMPLETION_RESOLVE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(100
 const LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(500);
 const FPS_METRICS_UPDATE_INTERVAL: Duration = Duration::from_millis(500);
 const GIT_BRANCH_REFRESH_INTERVAL: Duration = Duration::from_millis(750);
+const GIT_STATUS_REFRESH_INTERVAL: Duration = Duration::from_millis(750);
 const THINKING_ANIMATION_INTERVAL: Duration = Duration::from_millis(400);
 const LSP_LOADING_ANIMATION_INTERVAL: Duration = Duration::from_millis(100);
 
@@ -288,6 +292,7 @@ enum PendingConfirmationAction {
     },
     /// User confirmed or cancelled the opencode auto-install prompt.
     AiChatInstall,
+
 }
 
 #[derive(Debug, Clone)]
@@ -344,10 +349,31 @@ pub enum SystemDepState {
     Complete,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToastKind {
+    Info,
+    Warning,
+    Error,
+    Success,
+}
+
 #[derive(Debug, Clone)]
 struct TransientToast {
     message: String,
+    kind: ToastKind,
+    created_at: Instant,
     expires_at: Instant,
+}
+
+impl TransientToast {
+    fn progress_fraction(&self, now: Instant) -> f32 {
+        let total = self.expires_at.saturating_duration_since(self.created_at);
+        if total.is_zero() {
+            return 0.0;
+        }
+        let remaining = self.expires_at.saturating_duration_since(now);
+        (remaining.as_secs_f32() / total.as_secs_f32()).clamp(0.0, 1.0)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -544,7 +570,9 @@ impl AppShell {
             if focus_changed {
                 self.input_handler.clear_pending_prefix();
             }
-        } else if self.app_state.active_buffer_is_settings() {
+        } else if self.app_state.active_buffer_is_settings()
+            || self.app_state.active_buffer_is_extensions_manager()
+        {
             if matches!(
                 self.app_state.current_mode(),
                 EditorMode::TerminalFocus | EditorMode::TerminalNormal | EditorMode::PaletteFocus

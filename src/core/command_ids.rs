@@ -58,6 +58,7 @@ pub const UNDO: &str = "editor.undo";
 pub const REDO: &str = "editor.redo";
 pub const SAVE_FILE: &str = "editor.save_file";
 pub const OPEN_FILE: &str = "editor.open_file";
+pub const NEW_INSTANCE: &str = "app.new_instance";
 
 // ── Leap / EasyMotion navigation ─────────────────────────────────────────────
 pub const LEAP_START: &str = "editor.leap_start";
@@ -67,6 +68,7 @@ pub const ENTER_NORMAL: &str = "mode.enter_normal";
 pub const ENTER_INSERT: &str = "mode.enter_insert";
 pub const ENTER_VISUAL: &str = "mode.enter_visual";
 pub const ENTER_VISUAL_LINE: &str = "mode.enter_visual_line";
+pub const ENTER_VISUAL_BLOCK: &str = "mode.enter_visual_block";
 pub const ENTER_RESIZE: &str = "mode.resize";
 pub const ENTER_TERMINAL_FOCUS: &str = "mode.enter_terminal_focus";
 pub const EXIT_FOCUS: &str = "mode.exit_focus";
@@ -91,6 +93,7 @@ pub const OPEN_THEME_SELECTOR: &str = "app.open_theme_selector";
 pub const OPEN_FILE_HISTORY: &str = "app.open_file_history";
 pub const OPEN_SETTINGS: &str = "app.open_settings";
 pub const OPEN_HELP: &str = "app.open_help";
+pub const OPEN_EXTENSIONS_MANAGER: &str = "app.open_extensions_manager";
 pub const GIT_OPEN_LAZYGIT: &str = "git.open_lazygit";
 pub const DOCKER_OPEN_LAZYDOCKER: &str = "docker.open_lazydocker";
 pub const GIT_BLAME_LINE: &str = "git.blame_line";
@@ -235,6 +238,8 @@ pub const EXPLORER_MOVE_TO_TOP: &str = "explorer.move_to_top";
 pub const EXPLORER_MOVE_TO_BOTTOM: &str = "explorer.move_to_bottom";
 pub const EXPLORER_RENAME_FULL: &str = "explorer.rename_full";
 pub const EXPLORER_RENAME_BASE: &str = "explorer.rename_base";
+pub const EXPLORER_COPY_FILE: &str = "explorer.copy_file";
+pub const EXPLORER_PASTE_FILE: &str = "explorer.paste_file";
 // Legacy command IDs.
 pub const EXPLORER_EXPAND_COLLAPSE: &str = "explorer.expand_collapse";
 pub const EXPLORER_OPEN_FILE: &str = "explorer.open_file";
@@ -337,6 +342,7 @@ pub const ALL_IDS: &[&str] = &[
     OPEN_THEME_SELECTOR,
     OPEN_FILE_HISTORY,
     OPEN_SETTINGS,
+    OPEN_EXTENSIONS_MANAGER,
     GIT_OPEN_LAZYGIT,
     DOCKER_OPEN_LAZYDOCKER,
     GIT_BLAME_LINE,
@@ -424,6 +430,8 @@ pub const ALL_IDS: &[&str] = &[
     EXPLORER_MOVE_TO_BOTTOM,
     EXPLORER_RENAME_FULL,
     EXPLORER_RENAME_BASE,
+    EXPLORER_COPY_FILE,
+    EXPLORER_PASTE_FILE,
     EXPLORER_EXPAND_COLLAPSE,
     EXPLORER_OPEN_FILE,
     OVERLAY_SELECT_NEXT,
@@ -532,6 +540,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         ENTER_INSERT => Some(Command::SwitchMode(ModeEvent::EnterInsert)),
         ENTER_VISUAL => Some(Command::SwitchMode(ModeEvent::EnterVisual)),
         ENTER_VISUAL_LINE => Some(Command::EnterVisualLine),
+        ENTER_VISUAL_BLOCK => Some(Command::SwitchMode(ModeEvent::EnterVisualBlock)),
         ENTER_RESIZE => Some(Command::SwitchMode(ModeEvent::EnterResize)),
         ENTER_TERMINAL_FOCUS => Some(Command::SwitchMode(ModeEvent::FocusTerminal)),
         EXIT_FOCUS => Some(Command::SwitchMode(ModeEvent::ExitFocus)),
@@ -573,6 +582,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         OPEN_FILE_HISTORY => Some(Command::OpenFileHistory),
         OPEN_SETTINGS => Some(Command::OpenSettings),
         OPEN_HELP => Some(Command::OpenHelp),
+        OPEN_EXTENSIONS_MANAGER => Some(Command::OpenExtensionsManager),
         GIT_OPEN_LAZYGIT => Some(Command::GitOpenLazygit),
         DOCKER_OPEN_LAZYDOCKER => Some(Command::GitOpenLazydocker),
         GIT_BLAME_LINE => Some(Command::GitBlameLine),
@@ -622,6 +632,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         FOCUS_BACK => Some(Command::FocusBack),
         NEXT_PANEL_TAB => Some(Command::NextPanelTab),
         PREV_PANEL_TAB => Some(Command::PrevPanelTab),
+        NEW_INSTANCE => Some(Command::NewInstance),
         BUFFER_NEW => Some(Command::BufferNew),
         BUFFER_NEXT => Some(Command::BufferNext),
         BUFFER_PREV => Some(Command::BufferPrev),
@@ -647,6 +658,8 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         EXPLORER_MOVE_TO_BOTTOM => Some(Command::ExplorerMoveToBottom),
         EXPLORER_RENAME_FULL => Some(Command::ExplorerRenameFull),
         EXPLORER_RENAME_BASE => Some(Command::ExplorerRenameBase),
+        EXPLORER_COPY_FILE => Some(Command::ExplorerCopyFile),
+        EXPLORER_PASTE_FILE => Some(Command::ExplorerPasteFile),
         EXPLORER_EXPAND_COLLAPSE => Some(Command::ExplorerExpandCollapse),
         EXPLORER_OPEN_FILE => Some(Command::ExplorerOpenFile),
         OVERLAY_SELECT_NEXT | FILE_PICKER_SELECT_NEXT => Some(Command::OverlaySelectNext),

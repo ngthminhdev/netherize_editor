@@ -1,3 +1,10 @@
+# OpenWolf
+
+@.wolf/OPENWOLF.md
+
+This project uses OpenWolf for context management. Read and follow .wolf/OPENWOLF.md every session. Check .wolf/cerebrum.md before generating code. Check .wolf/anatomy.md before reading files.
+
+
 ## Project Rules Precedence
 - If this repository/workspace contains `CLAUDE.md`, `.clinerules`, or another agent rule file, agents must read and comply with those rules as project-level instructions.
 - These rules supplement system/developer instructions and must be applied consistently across all tasks in this repository.
@@ -9,7 +16,13 @@
 
 ## Rule
 
-Always prefix shell commands with `rtk` to minimize token consumption.
+Prefer `rtk` for supported, simple shell commands to minimize token consumption.
+Do not force `rtk` onto commands it does not support. If a command uses compound
+`find` predicates/actions (`-exec`, `-not`, grouped predicates), shell pipelines,
+redirection, command substitution, globs that must be expanded by the shell, or
+other advanced shell syntax, run the command directly instead of through `rtk`.
+If `rtk` reports that a command form is unsupported, retry the original command
+without `rtk`.
 
 Examples:
 
@@ -17,9 +30,12 @@ rtk git status
 rtk cargo test
 rtk ls src/
 rtk grep "pattern" src/
-rtk find "*.rs" .
+rtk find "*.rs" .        # simple rtk-supported find form only
 rtk docker ps
 rtk gh pr list
+
+# Unsupported by rtk: use find directly for compound predicates/actions.
+find src -name "*.rs" -exec wc -l {} +
 
 ## Meta Commands
 
@@ -30,7 +46,7 @@ rtk proxy <cmd>       # Run raw (no filtering, for debugging)
 
 ## Why
 
-RTK filters and compresses command output before it reaches the LLM context, saving 60-90% tokens on common operations. Always use `rtk <cmd>` instead of raw commands.
+RTK filters and compresses command output before it reaches the LLM context, saving 60-90% tokens on common operations. Use `rtk <cmd>` when the command shape is supported; use the raw shell command when `rtk` does not support that syntax.
 
 # NETHERIZE EDITOR - CORE ARCHITECTURE & DATA FLOW RULES
 

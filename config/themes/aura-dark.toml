@@ -40,7 +40,6 @@ mode_normal = "#61FFCA"
 mode_insert = "#A277FF"
 mode_visual = "#F694FF"
 
-
 top_bar_height = 36.0
 
 [git]
@@ -51,38 +50,38 @@ added_gutter = "#61FFCA"
 deleted_gutter = "#FF6767"
 status_bar_height = 32.0
 
-
 [syntax]
-keyword = "#a277ff"       # Purple (Aura identity)
-operator = "#a277ff"      # Purple (Aura palette)
+keyword = "#a277ff"
+operator = "#a277ff"
 punctuation = "#a39db8"
 string = "#61ffca"
 number = "#ffca85"
 boolean = "#ffca85"
 escape = "#ff6767"
-identifier = "#edecee"    # Foreground (cho variable references)
-variable = "#f694ff"      # Magenta (khác với identifier #edecee)
+identifier = "#edecee"
+variable = "#f694ff"
 function = "#ffca85"
 macro = "#f694ff"
-parameter = "#f694ff"     # Magenta (Aura palette)
+parameter = "#f694ff"
 type = "#61ffca"
 constructor = "#61ffca"
-field = "#73d0ff"         # Blue (Aura palette)
-property = "#73d0ff"      # Blue (đồng bộ với field)
+field = "#73d0ff"
+property = "#73d0ff"
 constant = "#ffca85"
 comment = "#6d6a7e"
-attribute = "#a277ff"     # Purple (đồng bộ keyword)
+attribute = "#a277ff"
 namespace = "#a277ff"
 lifetime = "#ffca85"
 tag = "#f694ff"
-keyword_control = "#a277ff"       # Purple (Aura identity)
-keyword_storage = "#a277ff"       # Purple (Aura identity)
+keyword_control = "#a277ff"
+keyword_storage = "#a277ff"
 string_escape = "#ff6767"
 function_builtin = "#ffca85"
 comment_doc = "#6d6a7e"
 type_builtin = "#61ffca"
-variable_builtin = "#f694ff"      # Magenta (khác với identifier #edecee)
-markup_strong = "#a277ff"       # Purple (Aura identity)
+variable_builtin = "#f694ff"
+markup_strong = "#a277ff"
 markup_italic = "#6d6a7e"
 markup_inline_code = "#61ffca"
 markup_link = "#ffca85"
+

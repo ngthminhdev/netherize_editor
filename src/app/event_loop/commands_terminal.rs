@@ -76,7 +76,12 @@ impl AppShell {
                 let focus_changed = if is_open {
                     let changed = self.focus_manager.set(FocusTarget::BottomPanel);
                     self.ensure_active_terminal_tab_spawned();
-                    changed
+                    // Enter terminal focus mode to enable text input
+                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
+                        changed || result.changed
+                    } else {
+                        changed
+                    }
                 } else if self.focus_manager.current() == FocusTarget::BottomPanel {
                     self.focus_manager.set(FocusTarget::CenterEditor)
                 } else {
@@ -102,6 +107,10 @@ impl AppShell {
                 if next_visible {
                     changed |= self.dismiss_initial_launch_welcome_if_active();
                     self.ensure_active_terminal_tab_spawned();
+                    // Enter terminal focus mode to enable text input
+                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
+                        changed |= result.changed;
+                    }
                 }
 
                 if !next_visible
@@ -195,38 +204,58 @@ impl AppShell {
                 Some(changed)
             }
             Command::FocusTerminal => {
+                let terminal_has_focus = matches!(
+                    self.app_state.current_mode(),
+                    EditorMode::TerminalFocus | EditorMode::TerminalNormal
+                ) || self.focus_manager.current() == FocusTarget::BottomPanel;
                 let mut changed = false;
+                let mut focus_changed = false;
 
-                if self.app_state.current_mode() == EditorMode::PaletteFocus {
-                    changed |= self.app_state.close_command_palette();
-                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
+                if terminal_has_focus {
+                    // When F12 is pressed from the terminal itself, hide the panel
+                    // and return to the editor/mode that owned focus before terminal focus.
+                    if self.panel_state.bottom.visible {
+                        self.panel_state.bottom.visible = false;
+                        changed = true;
+                    }
+                    changed |= self.app_state.set_terminal_panel_open(false);
+                    self.terminal_needs_layout = true;
+
+                    if self.focus_manager.current() == FocusTarget::BottomPanel {
+                        focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
+                        changed |= focus_changed;
+                    }
+
+                    if matches!(
+                        self.app_state.current_mode(),
+                        EditorMode::TerminalFocus | EditorMode::TerminalNormal
+                    ) && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus)
+                    {
+                        changed |= result.changed;
+                    }
+                } else {
+                    // From editor/sidebar/etc: ensure the terminal is visible and
+                    // focus it. If it is already visible, keep it open.
+                    if !self.panel_state.bottom.visible {
+                        self.panel_state.bottom.visible = true;
+                        changed = true;
+                    }
+                    changed |= self.app_state.set_terminal_panel_open(true);
+                    self.terminal_needs_layout = true;
+                    changed |= self.dismiss_initial_launch_welcome_if_active();
+                    self.ensure_active_terminal_tab_spawned();
+
+                    focus_changed = self.focus_manager.set(FocusTarget::BottomPanel);
+                    changed |= focus_changed;
+
+                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
                         changed |= result.changed;
                     }
                 }
 
-                if self.app_state.set_terminal_panel_open(true) {
-                    changed = true;
-                }
-                if !self.panel_state.bottom.visible {
-                    self.panel_state.bottom.visible = true;
-                    changed = true;
-                }
-                changed |= self.dismiss_initial_launch_welcome_if_active();
-                self.terminal_needs_layout = true;
-
-                if self.app_state.current_mode() != EditorMode::TerminalFocus
-                    && let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal)
-                {
-                    changed |= result.changed;
-                }
-
-                let focus_changed = self.focus_manager.set(FocusTarget::BottomPanel);
-                changed |= focus_changed;
                 if focus_changed {
                     self.input_handler.clear_pending_prefix();
                 }
-
-                self.ensure_active_terminal_tab_spawned();
 
                 Some(changed)
             }

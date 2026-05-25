@@ -148,6 +148,8 @@ pub struct EditorBuffer {
     pub in_memory_text: Option<Rope>,
     /// Dirty flag captured when this buffer lost focus.
     pub dirty: bool,
+    /// True when the backing file is missing on disk (for example after switching git branch).
+    pub missing_on_disk: bool,
     view_state: TextBufferViewState,
 }
 
@@ -161,6 +163,7 @@ impl EditorBuffer {
             history: EditHistory::new(),
             in_memory_text: None,
             dirty: false,
+            missing_on_disk: false,
             view_state: TextBufferViewState::default(),
         }
     }
@@ -192,6 +195,14 @@ pub struct VirtualCursor {
     pub selection_start: Option<usize>,
     /// End of the selected word range (exclusive char index).
     pub selection_end: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VisualBlockRange {
+    pub start_line: usize,
+    pub end_line: usize,
+    pub start_col: usize,
+    pub end_col: usize,
 }
 
 pub fn is_supported_image_path(path: &Path) -> bool {
@@ -280,10 +291,343 @@ pub struct HelpState {
     pub scroll_y: f32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtensionCategory {
+    CliTools,
+    LanguageServers,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtensionsTab {
+    All,
+    Installed,
+    Available,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtensionItem {
+    pub name: String,
+    pub subtitle: String,
+    pub binary: String,
+    pub category: ExtensionCategory,
+    pub tag: String,
+    pub macos_install: String,
+    pub linux_install: String,
+    pub macos_uninstall: String,
+    pub linux_uninstall: String,
+    pub extensions: Vec<String>,
+    pub installed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExtensionsManagerState {
+    pub title: String,
+    pub platform: String,
+    pub filter: String,
+    pub filter_focused: bool,
+    pub selected_index: usize,
+    pub tab: ExtensionsTab,
+    pub expanded_binary: Option<String>,
+    pub items: Vec<ExtensionItem>,
+    pub command: Option<ExtensionCommandState>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExtensionCommandState {
+    pub binary: String,
+    pub uninstall: bool,
+    pub running: bool,
+    pub success: Option<bool>,
+    pub exit_code: Option<i32>,
+    pub logs: Vec<String>,
+} 
+
+impl ExtensionsManagerState {
+    pub fn new() -> Self {
+        Self {
+            title: "Extensions".to_string(),
+            platform: if cfg!(target_os = "macos") {
+                "macOS".to_string()
+            } else {
+                "Linux".to_string()
+            },
+            filter: String::new(),
+            filter_focused: false,
+            selected_index: 0,
+            tab: ExtensionsTab::All,
+            expanded_binary: None,
+            items: default_extension_items(),
+            command: None,
+        }
+    }
+
+    pub fn installed_count(&self) -> usize {
+        self.items.iter().filter(|item| item.installed).count()
+    }
+
+    pub fn available_count(&self) -> usize {
+        self.items.len().saturating_sub(self.installed_count())
+    }
+
+    pub fn category_counts(&self, category: ExtensionCategory) -> (usize, usize) {
+        let total = self
+            .items
+            .iter()
+            .filter(|item| item.category == category)
+            .count();
+        let installed = self
+            .items
+            .iter()
+            .filter(|item| item.category == category && item.installed)
+            .count();
+        (installed, total)
+    }
+
+    pub fn visible_item_indices(&self) -> Vec<usize> {
+        let query = self.filter.trim().to_ascii_lowercase();
+        self.items
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, item)| {
+                let matches_tab = match self.tab {
+                    ExtensionsTab::All => true,
+                    ExtensionsTab::Installed => item.installed,
+                    ExtensionsTab::Available => !item.installed,
+                };
+                let matches_query = query.is_empty()
+                    || item.name.to_ascii_lowercase().contains(&query)
+                    || item.subtitle.to_ascii_lowercase().contains(&query)
+                    || item.binary.to_ascii_lowercase().contains(&query)
+                    || item.tag.to_ascii_lowercase().contains(&query)
+                    || item.extensions.iter().any(|ext| ext.to_ascii_lowercase().contains(&query));
+                if matches_tab && matches_query { Some(idx) } else { None }
+            })
+            .collect()
+    }
+
+    pub fn selected_item_index(&self) -> Option<usize> {
+        let visible = self.visible_item_indices();
+        visible.get(self.selected_index.min(visible.len().saturating_sub(1))).copied()
+    }
+
+    pub fn selected_item(&self) -> Option<&ExtensionItem> {
+        self.selected_item_index().and_then(|idx| self.items.get(idx))
+    }
+
+    pub fn select_next(&mut self) -> bool {
+        let len = self.visible_item_indices().len();
+        if self.selected_index + 1 < len {
+            self.selected_index += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn select_prev(&mut self) -> bool {
+        if self.selected_index > 0 {
+            self.selected_index -= 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn append_filter(&mut self, text: &str) -> bool {
+        if text.is_empty() {
+            return false;
+        }
+        self.filter.push_str(text);
+        self.selected_index = 0;
+        true
+    }
+
+    pub fn backspace_filter(&mut self) -> bool {
+        if self.filter.pop().is_some() {
+            self.selected_index = 0;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn switch_tab_next(&mut self) -> bool {
+        self.tab = match self.tab {
+            ExtensionsTab::All => ExtensionsTab::Installed,
+            ExtensionsTab::Installed => ExtensionsTab::Available,
+            ExtensionsTab::Available => ExtensionsTab::All,
+        };
+        self.selected_index = 0;
+        true
+    }
+
+    pub fn switch_tab_prev(&mut self) -> bool {
+        self.tab = match self.tab {
+            ExtensionsTab::All => ExtensionsTab::Available,
+            ExtensionsTab::Installed => ExtensionsTab::All,
+            ExtensionsTab::Available => ExtensionsTab::Installed,
+        };
+        self.selected_index = 0;
+        true
+    }
+
+    pub fn toggle_expanded_selected(&mut self) -> bool {
+        let Some(item) = self.selected_item() else {
+            return false;
+        };
+        let binary = item.binary.clone();
+        if self.expanded_binary.as_deref() == Some(binary.as_str()) {
+            self.expanded_binary = None;
+        } else {
+            self.expanded_binary = Some(binary);
+        }
+        true
+    }
+
+    pub fn start_command(&mut self, binary: String, uninstall: bool) {
+        self.command = Some(ExtensionCommandState {
+            binary,
+            uninstall,
+            running: true,
+            success: None,
+            exit_code: None,
+            logs: Vec::new(),
+        });
+    }
+
+    pub fn push_command_log(&mut self, binary: &str, line: String) -> bool {
+        let Some(command) = self.command.as_mut() else {
+            return false;
+        };
+        if command.binary != binary {
+            return false;
+        }
+        command.logs.push(line);
+        if command.logs.len() > 200 {
+            let drain_count = command.logs.len().saturating_sub(200);
+            command.logs.drain(0..drain_count);
+        }
+        true
+    }
+
+    pub fn finish_command(
+        &mut self,
+        binary: &str,
+        uninstall: bool,
+        success: bool,
+        exit_code: Option<i32>,
+    ) -> bool {
+        let Some(command) = self.command.as_mut() else {
+            return false;
+        };
+        if command.binary != binary {
+            return false;
+        }
+        command.uninstall = uninstall;
+        command.running = false;
+        command.success = Some(success);
+        command.exit_code = exit_code;
+        true
+    }
+}
+
+fn default_extension_items() -> Vec<ExtensionItem> {
+    let mut items = vec![
+        cli_extension("fzf", "Fuzzy finder for file picker & live grep", "fzf", "SEARCH", "brew install fzf", "sudo apt install fzf", true),
+        cli_extension("ripgrep", "Fast text search for live grep", "rg", "SEARCH", "brew install ripgrep", "sudo apt install ripgrep", true),
+        cli_extension("fd", "Fast file finder (alternative to find)", "fd", "SEARCH", "brew install fd", "sudo apt install fd-find", false),
+        cli_extension("lazygit", "Git TUI integration", "lazygit", "GIT", "brew install lazygit", "sudo apt install lazygit", true),
+        cli_extension("lazydocker", "Docker TUI integration", "lazydocker", "DEVOPS", "brew install lazydocker", "sudo apt install lazydocker", false),
+        cli_extension("bat", "Syntax-highlighted file previews", "bat", "UTILITY", "brew install bat", "sudo apt install bat", false),
+        cli_extension("delta", "Git diff viewer with syntax highlighting", "delta", "GIT", "brew install git-delta", "sudo apt install git-delta", true),
+        cli_extension("opencode", "AI code assistant", "opencode", "AI", "curl -fsSL https://opencode.ai/install | sh", "curl -fsSL https://opencode.ai/install | sh", true),
+    ];
+
+    items.extend([
+        lsp_extension("Rust", "rust-analyzer", "rustup component add rust-analyzer", vec![".rs"], true),
+        lsp_extension("JavaScript", "typescript-language-server", "npm install -g typescript typescript-language-server", vec![".js", ".mjs", ".cjs"], false),
+        lsp_extension("JSX", "typescript-language-server", "npm install -g typescript typescript-language-server", vec![".jsx"], false),
+        lsp_extension("TypeScript", "typescript-language-server", "npm install -g typescript typescript-language-server", vec![".ts"], false),
+        lsp_extension("TSX", "typescript-language-server", "npm install -g typescript typescript-language-server", vec![".tsx"], false),
+        lsp_extension("Go", "gopls", "go install golang.org/x/tools/gopls@latest", vec![".go"], false),
+        lsp_extension("Python", "pylsp", "pip install python-lsp-server", vec![".py"], true),
+        lsp_extension("Java", "jdtls", "brew install jdtls", vec![".java"], false),
+        lsp_extension("SQL", "sqls", "go install github.com/sqls-server/sqls@latest", vec![".sql"], false),
+        lsp_extension("YAML", "yaml-language-server", "npm install -g yaml-language-server", vec![".yaml", ".yml"], true),
+        lsp_extension("Dockerfile", "docker-langserver", "npm install -g dockerfile-language-server-nodejs", vec!["Dockerfile*"], false),
+        lsp_extension("JSON", "vscode-json-language-server", "npm install -g vscode-langservers-extracted", vec![".json"], true),
+        lsp_extension("Bash", "bash-language-server", "npm install -g bash-language-server", vec![".sh"], true),
+    ]);
+    items
+}
+
+fn cli_extension(name: &str, subtitle: &str, binary: &str, tag: &str, macos: &str, linux: &str, installed: bool) -> ExtensionItem {
+    let macos_uninstall = macos
+        .strip_prefix("brew install ")
+        .map(|package| format!("brew uninstall {package}"))
+        .unwrap_or_default();
+    let linux_uninstall = linux
+        .strip_prefix("sudo apt install ")
+        .map(|package| format!("sudo apt remove -y {package}"))
+        .unwrap_or_default();
+    ExtensionItem {
+        name: name.to_string(),
+        subtitle: subtitle.to_string(),
+        binary: binary.to_string(),
+        category: ExtensionCategory::CliTools,
+        tag: tag.to_string(),
+        macos_install: macos.to_string(),
+        linux_install: linux.to_string(),
+        macos_uninstall,
+        linux_uninstall,
+        extensions: Vec::new(),
+        installed,
+    }
+}
+
+fn lsp_extension(language: &str, binary: &str, install: &str, extensions: Vec<&str>, installed: bool) -> ExtensionItem {
+    ExtensionItem {
+        name: format!("({binary})"),
+        subtitle: format!("{language} language server"),
+        binary: binary.to_string(),
+        category: ExtensionCategory::LanguageServers,
+        tag: language.to_uppercase(),
+        macos_install: install.to_string(),
+        linux_install: install.to_string(),
+        macos_uninstall: uninstall_command_for_lsp(binary, install),
+        linux_uninstall: uninstall_command_for_lsp(binary, install),
+        extensions: extensions.into_iter().map(str::to_string).collect(),
+        installed,
+    }
+}
+
+fn uninstall_command_for_lsp(binary: &str, install: &str) -> String {
+    if let Some(package) = install.strip_prefix("brew install ") {
+        return format!("brew uninstall {package}");
+    }
+    if let Some(package) = install.strip_prefix("npm install -g ") {
+        return format!("npm uninstall -g {package}");
+    }
+    if install.starts_with("pip install ") {
+        return "pip uninstall -y python-lsp-server".to_string();
+    }
+    if binary == "rust-analyzer" {
+        return "rustup component remove rust-analyzer".to_string();
+    }
+    if binary == "gopls" {
+        return "rm -f $(go env GOPATH)/bin/gopls".to_string();
+    }
+    if binary == "sqls" {
+        return "rm -f $(go env GOPATH)/bin/sqls".to_string();
+    }
+    String::new()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MarkdownPreviewState {
     pub visible: bool,
     pub scroll_y: f32,
+    pub source_path: Option<PathBuf>,
     pub source_text: String,
     pub rendered_lines: Vec<MarkdownPreviewLine>,
     pub source_revision: u64,
@@ -315,6 +659,7 @@ impl Default for MarkdownPreviewState {
         Self {
             visible: false,
             scroll_y: 0.0,
+            source_path: None,
             source_text: String::new(),
             rendered_lines: Vec::new(),
             source_revision: 0,
@@ -1001,6 +1346,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "editor.save_file" => "Save file",
         "editor.open_folder" => "Open folder / project",
         "editor.open_file" => "Open file",
+        "app.new_instance" => "New instance",
         "app.open_command_palette" => "Command palette",
         "app.open_settings" => "Open settings",
         "app.open_help" => "Open cheat sheet",
@@ -1410,9 +1756,11 @@ pub enum BufferContent {
     Terminal(PtyState),
     References(ReferencesBufferState),
     Diagnostics(DiagnosticsState),
+    MarkdownPreview(MarkdownPreviewState),
     FuzzyPicker(FuzzyState),
     SettingsTab(SettingsState),
     Help(HelpState),
+    ExtensionsManager(ExtensionsManagerState),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1438,9 +1786,17 @@ impl BufferEntry {
             BufferContent::Terminal(state) => state.title.clone(),
             BufferContent::References(state) => state.title.clone(),
             BufferContent::Diagnostics(_) => "[Diagnostics]".to_string(),
+            BufferContent::MarkdownPreview(state) => state
+                .source_path
+                .as_ref()
+                .and_then(|path| path.file_name())
+                .and_then(|name| name.to_str())
+                .map(|name| format!("{name} preview"))
+                .unwrap_or_else(|| "[Markdown Preview]".to_string()),
             BufferContent::FuzzyPicker(_) => "[Fuzzy Finder]".to_string(),
             BufferContent::SettingsTab(_) => "[Settings]".to_string(),
             BufferContent::Help(state) => state.title.clone(),
+            BufferContent::ExtensionsManager(state) => format!("[{}]", state.title),
         }
     }
 
@@ -1457,9 +1813,11 @@ impl BufferEntry {
             | BufferContent::Terminal(_)
             | BufferContent::References(_)
             | BufferContent::Diagnostics(_)
+            | BufferContent::MarkdownPreview(_)
             | BufferContent::FuzzyPicker(_)
             | BufferContent::SettingsTab(_)
-            | BufferContent::Help(_) => false,
+            | BufferContent::Help(_)
+            | BufferContent::ExtensionsManager(_) => false,
         }
     }
 }
@@ -1531,6 +1889,8 @@ pub struct AppState {
     active_file: Option<PathBuf>,
     selection_anchor_char_idx: Option<usize>,
     visual_line_mode: bool,
+    visual_block_anchor_line: Option<usize>,
+    visual_block_anchor_col: Option<usize>,
     buffers: Vec<BufferEntry>,
     /// Session-only cache for closed text buffers. Reopen restores undo/redo and unsaved text.
     closed_text_buffers: HashMap<PathBuf, EditorBuffer>,
@@ -1562,8 +1922,8 @@ pub struct AppState {
     completion: Option<CompletionState>,
     completion_loading: bool,
     inline_suggestion: Option<String>,
-    jump_back_stack: Vec<(PathBuf, usize)>,
-    jump_forward_stack: Vec<(PathBuf, usize)>,
+    jump_back_stack: Vec<(PathBuf, usize, usize)>,
+    jump_forward_stack: Vec<(PathBuf, usize, usize)>,
     diagnostics: HashMap<PathBuf, Vec<LspDiagnostic>>,
     /// Latest `$/progress` snapshot, keyed by `(server, token)` so concurrent
     /// progress streams don't clobber each other. The status bar reads the
@@ -1586,6 +1946,11 @@ pub struct AppState {
     // fold marker; every following line through end is hidden from layout.
     folded_ranges: Vec<(usize, usize)>,
     foldable_ranges_cache: Option<Vec<(usize, usize)>>,
+    auto_folded_long_lines: Vec<usize>,
+    // ── Performance: Line start position cache ────────────────────────────────
+    /// Cached byte offsets for the start of each line. Invalidated on text edits.
+    /// Eliminates O(n) rebuild on every highlight request for large files.
+    cached_line_starts: Option<Vec<usize>>,
 }
 
 impl AppState {
@@ -1601,6 +1966,8 @@ impl AppState {
             active_file: None,
             selection_anchor_char_idx: None,
             visual_line_mode: false,
+            visual_block_anchor_line: None,
+            visual_block_anchor_col: None,
             buffers: Vec::new(),
             closed_text_buffers: HashMap::new(),
             active_buffer_index: None,
@@ -1646,6 +2013,8 @@ impl AppState {
             mc_whole_word: true,
             folded_ranges: Vec::new(),
             foldable_ranges_cache: None,
+            auto_folded_long_lines: Vec::new(),
+            cached_line_starts: None,
         }
     }
 
@@ -1659,6 +2028,8 @@ impl AppState {
             active_file: None,
             selection_anchor_char_idx: None,
             visual_line_mode: false,
+            visual_block_anchor_line: None,
+            visual_block_anchor_col: None,
             buffers: Vec::new(),
             closed_text_buffers: HashMap::new(),
             active_buffer_index: None,
@@ -1704,6 +2075,8 @@ impl AppState {
             mc_whole_word: true,
             folded_ranges: Vec::new(),
             foldable_ranges_cache: None,
+            auto_folded_long_lines: Vec::new(),
+            cached_line_starts: None,
         }
     }
 
@@ -1750,14 +2123,22 @@ impl AppState {
     pub fn is_line_folded(&self, line_idx: usize) -> bool {
         self.folded_ranges
             .iter()
-            .any(|&(s, e)| s < line_idx && line_idx <= e)
+            .any(|&(s, e)| s != e && s < line_idx && line_idx <= e)
     }
 
     pub fn is_fold_marker_line(&self, line_idx: usize) -> bool {
         self.folded_ranges.iter().any(|&(s, _)| s == line_idx)
+            || self.auto_folded_long_lines.contains(&line_idx)
+    }
+
+    pub fn is_auto_folded_long_line(&self, line_idx: usize) -> bool {
+        self.auto_folded_long_lines.contains(&line_idx)
     }
 
     pub fn folded_line_count_at_marker(&self, line_idx: usize) -> Option<usize> {
+        if self.auto_folded_long_lines.contains(&line_idx) {
+            return Some(1);
+        }
         self.folded_ranges
             .iter()
             .find(|&&(s, _)| s == line_idx)
@@ -1820,6 +2201,32 @@ impl AppState {
         self.foldable_ranges_cache.as_deref()
     }
 
+    pub fn auto_fold_pathological_long_lines(&mut self) -> bool {
+        const AUTO_FOLD_LINE_CHAR_THRESHOLD: usize = 100;
+        let mut lines = Vec::new();
+        for line_idx in 0..self.text.len_lines() {
+            let line = self.text.line(line_idx);
+            if line.len_chars() > AUTO_FOLD_LINE_CHAR_THRESHOLD {
+                lines.push(line_idx);
+            }
+        }
+        if lines == self.auto_folded_long_lines {
+            return false;
+        }
+
+        self.folded_ranges
+            .retain(|range| !self.auto_folded_long_lines.contains(&range.0) || range.0 != range.1);
+        self.auto_folded_long_lines = lines;
+        for &line_idx in &self.auto_folded_long_lines {
+            if !self.folded_ranges.contains(&(line_idx, line_idx)) {
+                self.folded_ranges.push((line_idx, line_idx));
+            }
+        }
+        self.folded_ranges.sort_by_key(|&(start, _)| start);
+        self.bump_revision();
+        true
+    }
+
     pub fn visible_line_count(&self) -> usize {
         let total = self.text.len_lines().max(1);
         let last_line = total.saturating_sub(1);
@@ -1867,6 +2274,14 @@ impl AppState {
     }
 
     pub fn toggle_fold_at_line(&mut self, logical_line: usize) -> bool {
+        if let Some(pos) = self.auto_folded_long_lines.iter().position(|&line| line == logical_line)
+        {
+            self.auto_folded_long_lines.remove(pos);
+            self.folded_ranges.retain(|&range| range != (logical_line, logical_line));
+            self.bump_revision();
+            return true;
+        }
+
         if let Some(pos) = self
             .folded_ranges
             .iter()
@@ -1964,16 +2379,36 @@ fn merge_fold_ranges(ranges: &[(usize, usize)]) -> Vec<(usize, usize)> {
     if ranges.is_empty() {
         return Vec::new();
     }
+
+    let mut regular: Vec<(usize, usize)> = ranges
+        .iter()
+        .copied()
+        .filter(|&(s, e)| s != e)
+        .collect();
+    let mut point_folds: Vec<(usize, usize)> = ranges
+        .iter()
+        .copied()
+        .filter(|&(s, e)| s == e)
+        .collect();
+    regular.sort_by_key(|&(s, _)| s);
+    point_folds.sort_by_key(|&(s, _)| s);
+    point_folds.dedup();
+
     let mut merged: Vec<(usize, usize)> = Vec::new();
-    let mut current = ranges[0];
-    for &(s, e) in &ranges[1..] {
-        if s <= current.1 {
-            current.1 = current.1.max(e);
-        } else {
-            merged.push(current);
-            current = (s, e);
+    if let Some(first) = regular.first().copied() {
+        let mut current = first;
+        for &(s, e) in &regular[1..] {
+            if s <= current.1 {
+                current.1 = current.1.max(e);
+            } else {
+                merged.push(current);
+                current = (s, e);
+            }
         }
+        merged.push(current);
     }
-    merged.push(current);
+
+    merged.extend(point_folds);
+    merged.sort_by_key(|&(start, _)| start);
     merged
 }

@@ -1,0 +1,110 @@
+{
+  "last_heartbeat": "2026-05-25T03:23:21.996Z",
+  "engine_status": "running",
+  "execution_log": [
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-17T05:00:00.524Z",
+      "duration_ms": 75
+    },
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-17T11:00:00.333Z",
+      "duration_ms": 77
+    },
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-17T17:00:00.684Z",
+      "duration_ms": 90
+    },
+    {
+      "task_id": "token-audit",
+      "status": "success",
+      "timestamp": "2026-05-17T17:00:00.685Z",
+      "duration_ms": 1
+    },
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-18T05:00:00.228Z",
+      "duration_ms": 121
+    },
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-18T11:00:00.400Z",
+      "duration_ms": 129
+    },
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-19T05:00:00.674Z",
+      "duration_ms": 81
+    },
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-19T11:00:00.733Z",
+      "duration_ms": 144
+    },
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-19T17:00:00.383Z",
+      "duration_ms": 117
+    },
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-20T05:00:00.772Z",
+      "duration_ms": 135
+    },
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-20T11:00:00.421Z",
+      "duration_ms": 131
+    },
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-21T05:00:00.746Z",
+      "duration_ms": 122
+    },
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-21T11:00:00.387Z",
+      "duration_ms": 147
+    },
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-21T17:00:00.879Z",
+      "duration_ms": 112
+    },
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-22T05:00:00.907Z",
+      "duration_ms": 160
+    },
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-22T11:00:00.221Z",
+      "duration_ms": 133
+    },
+    {
+      "task_id": "anatomy-rescan",
+      "status": "success",
+      "timestamp": "2026-05-23T11:00:01.071Z",
+      "duration_ms": 108
+    }
+  ],
+  "dead_letter_queue": [],
+  "upcoming": []
+}

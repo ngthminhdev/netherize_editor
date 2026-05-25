@@ -201,14 +201,28 @@ impl CommandPaletteItem {
     }
 
     pub fn recent_project(path: &std::path::Path) -> Self {
+        Self::recent_project_with_meta(path, None, None)
+    }
+
+    pub fn recent_project_with_meta(
+        path: &std::path::Path,
+        icon_source: Option<&str>,
+        last_opened_unix_secs: Option<u64>,
+    ) -> Self {
         let name = path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
+        let secondary_label = match (icon_source, last_opened_unix_secs) {
+            (Some(icon), Some(secs)) => Some(format!("icon={icon};last={secs}")),
+            (Some(icon), None) => Some(format!("icon={icon}")),
+            (None, Some(secs)) => Some(format!("last={secs}")),
+            (None, None) => None,
+        };
         Self {
             label: name,
-            secondary_label: None,
+            secondary_label,
             action: CommandPaletteAction::OpenFile(path.to_path_buf()),
             tone: CommandPaletteItemTone::Default,
             preview_colors: Vec::new(),
@@ -331,6 +345,7 @@ pub struct CommandPaletteRenderModel {
     pub selected_index: usize,
     pub scroll_offset_rows: usize,
     pub line_height: f32,
+    pub row_height: f32,
     pub panel_padding: f32,
     /// Tiêu đề ngắn ("FIND", "COMMANDS"...) — hiện trong badge header của file picker
     pub title: String,
@@ -776,17 +791,29 @@ impl CommandPalette {
                     min_w.max(660.0_f32.min(available_w))
                 };
                 let px = x + ((width - pw) * 0.5).max(0.0);
-                let body_rows = complex_picker_body_rows(
-                    self.mode,
-                    height,
-                    panel_padding,
-                    line_height,
-                    row_height,
-                    max_items,
-                );
+                let body_rows = if self.mode == CommandPaletteMode::FilePicker
+                    && self.results.is_empty()
+                    && self.query.trim().is_empty()
+                {
+                    0
+                } else {
+                    complex_picker_body_rows(
+                        self.mode,
+                        height,
+                        panel_padding,
+                        line_height,
+                        row_height,
+                        max_items,
+                    )
+                };
+                let min_picker_height = if body_rows == 0 {
+                    complex_picker_reserved_height(self.mode, panel_padding, line_height)
+                } else {
+                    row_height + panel_padding * 2.0
+                };
                 let ph = (complex_picker_reserved_height(self.mode, panel_padding, line_height)
                     + row_height * body_rows as f32)
-                    .min((height - 32.0).max(row_height + panel_padding * 2.0));
+                    .min((height - 32.0).max(min_picker_height));
                 // TRUE CENTER: 50/50
                 let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
                 (pw, px, py, ph, body_rows)
@@ -866,7 +893,12 @@ impl CommandPalette {
                 .iter()
                 .map(|entry| match self.mode {
                     CommandPaletteMode::RecentProjects => match &entry.action {
-                        CommandPaletteAction::OpenFile(path) => path.display().to_string(),
+                        CommandPaletteAction::OpenFile(path) => match &entry.secondary_label {
+                            Some(meta) if !meta.is_empty() => {
+                                format!("{}\u{1f}{}", path.display(), meta)
+                            }
+                            _ => path.display().to_string(),
+                        },
                         CommandPaletteAction::OpenSearchMatch { path, .. } => {
                             path.display().to_string()
                         }
@@ -939,6 +971,7 @@ impl CommandPalette {
             selected_index: self.selected_index,
             scroll_offset_rows,
             line_height,
+            row_height,
             panel_padding,
             title: self.mode.title().to_string(),
             total_results: self.results.len(),
@@ -979,20 +1012,27 @@ fn theme_selector_preview_colors(theme: &ThemeConfig) -> Vec<[f32; 4]> {
 
 fn symbol_icon(kind: &str) -> &'static str {
     match kind {
-        "Function" | "Method" => "fn",
-        "Constructor" => "fn",
-        "Field" => "f",
-        "Variable" | "Constant" => "v",
-        "Class" => "C",
-        "Interface" => "I",
-        "Module" | "Namespace" | "Package" => "m",
-        "Property" => "p",
-        "Enum" | "EnumMember" => "E",
-        "Keyword" => "k",
-        "Operator" => "op",
-        "TypeParameter" => "T",
-        "Struct" => "S",
-        _ => "·",
+        // LSP symbol kinds are semantic, not file types. Bearded file icons don't map well here,
+        // so use Nerd Font/Codicon symbol glyphs for compact, recognizable badges.
+        "Function" => "󰊕",
+        "Method" | "Constructor" => "",
+        "Field" => "",
+        "Property" => "",
+        "Variable" => "",
+        "Constant" | "EnumMember" => "",
+        "Class" => "",
+        "Interface" => "",
+        "Struct" => "",
+        "Enum" => "",
+        "TypeParameter" => "",
+        "Module" | "Namespace" | "Package" => "",
+        "Keyword" => "",
+        "Operator" => "",
+        "Event" => "",
+        "Reference" => "",
+        "File" => "",
+        "Folder" => "",
+        _ => "",
     }
 }
 
@@ -1045,6 +1085,7 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
         ("app.focus_right", "Focus Right"),
         ("app.focus_up", "Focus Up"),
         ("app.focus_down", "Focus Down"),
+        ("app.new_instance", "New Instance"),
         ("buffer.new", "New Buffer"),
         ("buffer.next", "Next Buffer"),
         ("buffer.prev", "Previous Buffer"),
@@ -1121,6 +1162,10 @@ fn palette_row_height(mode: CommandPaletteMode, line_height: f32) -> f32 {
     match mode {
         CommandPaletteMode::LiveGrep => line_height * 2.0 + 16.0,
         CommandPaletteMode::ThemeSelector => line_height * 1.18 + 18.0,
+        CommandPaletteMode::RecentProjects => line_height * 2.0 + 20.0,
+        CommandPaletteMode::DocumentSymbols | CommandPaletteMode::FilePicker => {
+            (line_height + 16.0) * 1.5
+        }
         _ => line_height + 8.0,
     }
 }
@@ -1358,7 +1403,7 @@ mod tests {
         };
 
         let item = CommandPaletteItem::document_symbol(&symbol);
-        assert_eq!(item.label, "[fn] build_picker  Function  Ln 43");
+        assert_eq!(item.label, "[󰊕] build_picker  Function  Ln 43");
         assert_eq!(item.tone, CommandPaletteItemTone::Function);
         assert_eq!(
             item.action,

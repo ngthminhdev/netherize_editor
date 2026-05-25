@@ -122,6 +122,8 @@ pub enum Command {
     // ── File & palette ─────────────────────────────────────────────────────────
     SaveFile,
     OpenFile(PathBuf),
+    /// Launch a separate editor process with its own AppState/window.
+    NewInstance,
     /// Open native OS folder picker and set the workspace root.
     OpenFolder,
     /// Open command palette showing recent projects list.
@@ -137,6 +139,16 @@ pub enum Command {
     OpenFileHistory,
     OpenSettings,
     OpenHelp,
+    OpenExtensionsManager,
+    ExtensionsSelectNext,
+    ExtensionsSelectPrev,
+    ExtensionsStartFilter,
+    ExtensionsCancelFilter,
+    ExtensionsToggleExpanded,
+    ExtensionsSwitchTabNext,
+    ExtensionsSwitchTabPrev,
+    ExtensionsInstallSelected,
+    ExtensionsUninstallSelected,
     FilePickerAppendQuery(String),
     FilePickerBackspaceQuery,
     ToggleLiveGrepCaseSensitive,
@@ -239,6 +251,8 @@ pub enum Command {
     ExplorerMoveToBottom,
     ExplorerRenameFull,
     ExplorerRenameBase,
+    ExplorerCopyFile,
+    ExplorerPasteFile,
     // Legacy aliases (kept for backward compatibility with old keymaps/tests).
     ExplorerExpandCollapse,
     ExplorerOpenFile,
@@ -520,6 +534,8 @@ impl Command {
                 | Self::ReferencesSelectPrev
                 | Self::DiagnosticsSelectNext
                 | Self::DiagnosticsSelectPrev
+                | Self::ExtensionsSelectNext
+                | Self::ExtensionsSelectPrev
                 | Self::ExplorerMoveUp
                 | Self::ExplorerMoveDown
                 | Self::ExplorerCollapseOrParent

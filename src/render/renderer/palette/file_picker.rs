@@ -3,19 +3,24 @@
 use crate::{
     app::{app_state::AppState, command_palette::CommandPaletteRenderModel, input::LeapTarget},
     render::{
-        glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
+        glyph_instance::GlyphInstance, icon_pipeline::IconDrawInstance,
+        region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
 };
 
 use super::{
     palette_footer_content_height, palette_footer_height, render_palette_badge,
-    render_palette_chrome, render_palette_footer, render_palette_selection, PaletteFooterAction,
-    PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD,
+    push_palette_icon_or_badge, render_palette_chrome, render_palette_footer,
+    render_palette_selection, PaletteFooterAction, PALETTE_FOOTER_TOP_PAD,
+    PALETTE_HEADER_BOTTOM_PAD,
 };
 
-use super::super::helpers::{
-    clamp_monospace_text, estimate_monospace_width, ext_icon_dot, gutter_width_for_editor,
-    layout_panel_text, layout_panel_text_bold, rect_to_scissor,
+use super::super::{
+    components::{layout_prefix_icon_badge, PrefixIconBadge, PrefixIconBadgeChrome},
+    helpers::{
+        clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
+        layout_panel_text, rect_to_scissor,
+    },
 };
 
 impl Renderer {
@@ -29,6 +34,7 @@ impl Renderer {
 
         let mut quads: Vec<RegionDrawInstance> = Vec::new();
         let mut glyphs: Vec<GlyphInstance> = Vec::new();
+        let mut icons: Vec<IconDrawInstance> = Vec::new();
 
         let font_size = self.theme.ui.sidebar_font_size;
         let line_h = model.line_height.max(18.0);
@@ -38,19 +44,17 @@ impl Renderer {
             } else {
                 4.0
             };
-        let row_h =
-            if model.mode == crate::app::command_palette::CommandPaletteMode::DocumentSymbols {
-                (line_h + row_v_pad * 2.0).max(34.0)
-            } else {
-                line_h + row_v_pad * 2.0
-            };
+        let is_file_picker = model.mode == crate::app::command_palette::CommandPaletteMode::FilePicker;
+        let row_h = model.row_height.max(1.0);
         let text_x = panel_x + model.panel_padding + 8.0;
 
-        // Icon column: sized to always fit ● + longest ext ("toml", 4 chars)
         let char_w = font_size * 0.62;
-        let dot_char_w = char_w + 2.0;
-        let icon_col_w = dot_char_w + 4.0 + 4.0 * char_w + 24.0;
-        let name_x = text_x + icon_col_w;
+        let file_badge_size = (row_h * 0.58).clamp(30.0, 42.0);
+        let _icon_col_w = if is_file_picker {
+            file_badge_size + 18.0
+        } else {
+            char_w + 2.0 + 4.0 + 4.0 * char_w + 24.0
+        };
 
         // Chrome
         render_palette_chrome(model, &mut quads);
@@ -150,7 +154,6 @@ impl Renderer {
                 ));
             }
 
-            let icon_y = row_top + row_v_pad;
             self.palette_text_system
                 .set_size(Some(inner_width), Some(line_h));
             let tone = model
@@ -165,48 +168,23 @@ impl Renderer {
                 if model.mode == crate::app::command_palette::CommandPaletteMode::DocumentSymbols {
                     let (badge, stripped_label) = split_symbol_badge(label);
                     let badge_color = file_picker_tone_color(tone, model);
-                    let badge_size = (row_h * 0.58).clamp(20.0, 28.0);
+                    let badge_size = (row_h * 0.58).clamp(30.0, 42.0);
                     let badge_x = text_x;
                     let badge_y = row_top + (row_h - badge_size) * 0.5;
-                    quads.push(
-                        RegionDrawInstance::new(
-                            [badge_x, badge_y, badge_size, badge_size],
-                            [badge_color[0], badge_color[1], badge_color[2], 0.90],
-                        )
-                        .with_radius(badge_size * 0.22),
-                    );
-                    quads.push(
-                        RegionDrawInstance::new(
-                            [
-                                badge_x + 0.5,
-                                badge_y + 0.5,
-                                badge_size - 1.0,
-                                badge_size - 1.0,
-                            ],
-                            [badge_color[0], badge_color[1], badge_color[2], 1.0],
-                        )
-                        .with_radius((badge_size * 0.22 - 0.5).max(0.5)),
-                    );
-
-                    let icon_size = if badge.chars().count() > 1 {
-                        (badge_size * 0.42).max(8.0)
-                    } else {
-                        (badge_size * 0.62).max(10.0)
-                    };
-                    let icon_w = estimate_monospace_width(&badge, icon_size);
-                    self.palette_text_system
-                        .set_metrics(cosmic_text::Metrics::new(icon_size, badge_size));
-                    self.palette_text_system
-                        .set_size(Some(badge_size), Some(badge_size));
-                    glyphs.extend(layout_panel_text(
+                    push_palette_icon_or_badge(
                         &badge,
+                        badge_color,
+                        model.panel_bg,
+                        [badge_x, badge_y, badge_size, badge_size],
+                        0.82,
+                        PrefixIconBadgeChrome::None,
                         &mut self.palette_text_system,
                         &mut self.atlas,
                         &self.queue,
-                        badge_x + (badge_size - icon_w) * 0.5,
-                        badge_y,
-                        self.theme.ui.bg.as_f32(),
-                    ));
+                        &mut quads,
+                        &mut glyphs,
+                        &mut icons,
+                    );
                     self.palette_text_system
                         .set_metrics(cosmic_text::Metrics::new(font_size, line_h));
                     self.palette_text_system.set_size(
@@ -216,39 +194,47 @@ impl Renderer {
                     (
                         stripped_label,
                         shift_ranges_after_badge(label, ranges),
-                        text_x + badge_size + 12.0,
+                        text_x + badge_size + 18.0,
                         row_top + (row_h - line_h) * 0.5,
                     )
                 } else {
                     let file_path = label.split(':').next().unwrap_or(label);
-                    let ext = std::path::Path::new(file_path)
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("");
-                    let (dot_color, ext_label) = ext_icon_dot(ext, &self.theme);
-                    let picker_dot = self.theme.icons.file_picker_dot.as_str();
-
-                    glyphs.extend(layout_panel_text(
-                        picker_dot,
+                    let filename = std::path::Path::new(file_path)
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or(file_path);
+                    let file_icon = self.theme.icon_theme_for_filename(filename, false);
+                    let badge = self.theme.get_icon_for_file(filename, false);
+                    let badge_color = file_icon.color.as_f32();
+                    let badge_size = file_badge_size;
+                    let badge_x = text_x;
+                    let badge_y = row_top + (row_h - badge_size) * 0.5;
+                    push_palette_icon_or_badge(
+                        badge,
+                        badge_color,
+                        model.panel_bg,
+                        [badge_x, badge_y, badge_size, badge_size],
+                        0.82,
+                        PrefixIconBadgeChrome::None,
                         &mut self.palette_text_system,
                         &mut self.atlas,
                         &self.queue,
-                        text_x,
-                        icon_y,
-                        dot_color,
-                    ));
-                    let mut ext_color = dot_color;
-                    ext_color[3] *= 0.75;
-                    glyphs.extend(layout_panel_text(
-                        ext_label,
-                        &mut self.palette_text_system,
-                        &mut self.atlas,
-                        &self.queue,
-                        text_x + dot_char_w + 4.0,
-                        icon_y,
-                        ext_color,
-                    ));
-                    (label.clone(), ranges.clone(), name_x, icon_y)
+                        &mut quads,
+                        &mut glyphs,
+                        &mut icons,
+                    );
+                    self.palette_text_system
+                        .set_metrics(cosmic_text::Metrics::new(font_size, line_h));
+                    self.palette_text_system.set_size(
+                        Some((inner_width - badge_size - 18.0).max(1.0)),
+                        Some(line_h),
+                    );
+                    (
+                        label.clone(),
+                        ranges.clone(),
+                        text_x + badge_size + 18.0,
+                        row_top + (row_h - line_h) * 0.5,
+                    )
                 };
 
             Self::render_highlighted_label(
@@ -266,7 +252,9 @@ impl Renderer {
             row_top += row_h;
         }
 
-        if model.result_labels.is_empty() {
+        if model.result_labels.is_empty()
+            && model.mode != crate::app::command_palette::CommandPaletteMode::FilePicker
+        {
             glyphs.extend(layout_panel_text(
                 "  (no results — type to search)",
                 &mut self.palette_text_system,
@@ -311,6 +299,12 @@ impl Renderer {
         ));
 
         self.palette_chrome_instances = quads;
+        self.palette_icon_instances = icons;
+        self.palette_icon_pipeline.upload_instances(
+            &self.device,
+            &self.palette_icon_instances,
+            [self.surface_state.config.width, self.surface_state.config.height],
+        );
         self.palette_glyph_instances = glyphs;
     }
 
@@ -347,6 +341,8 @@ fn shift_ranges_after_badge(label: &str, ranges: &[(usize, usize)]) -> Vec<(usiz
         })
         .collect()
 }
+
+
 
 fn file_picker_tone_color(
     tone: crate::app::command_palette::CommandPaletteItemTone,

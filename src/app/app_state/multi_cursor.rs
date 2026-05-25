@@ -346,6 +346,170 @@ impl AppState {
         true
     }
 
+    /// I in VisualBlock — insert at start of block on each line.
+    pub fn visual_block_insert_before(&mut self) -> bool {
+        if self.current_mode() != EditorMode::VisualBlock {
+            return false;
+        }
+        let Some(block) = self.visual_block_range() else {
+            return false;
+        };
+
+        self.ensure_current_transaction();
+
+        // Generate cursors for each line in block
+        self.virtual_cursors.clear();
+        let mut primary_set = false;
+
+        for line_idx in block.start_line..=block.end_line {
+            if line_idx >= self.text.len_lines() {
+                break;
+            }
+
+            let line_start_char = self.text.line_to_char(line_idx);
+            let line_content = self.text.line(line_idx);
+
+            // Calculate target column position
+            let target_col = block.start_col;
+            let mut char_idx = line_start_char;
+            let mut current_col = 0;
+
+            // Walk to target column or line end
+            for ch in line_content.chars() {
+                if ch == '\n' || current_col >= target_col {
+                    break;
+                }
+                char_idx += 1;
+                current_col += if ch == '\t' { 4 } else { 1 };
+            }
+
+            // If line is shorter, extend with spaces
+            if current_col < target_col {
+                let spaces_needed = target_col - current_col;
+                let spaces = " ".repeat(spaces_needed);
+                self.apply_insert_raw(char_idx, &spaces);
+                char_idx += spaces_needed;
+            }
+
+            // First line becomes primary cursor
+            if !primary_set {
+                self.cursor_char_idx = char_idx.min(self.text.len_chars());
+                primary_set = true;
+            } else {
+                self.virtual_cursors.push(VirtualCursor {
+                    char_idx: char_idx.min(self.text.len_chars()),
+                    selection_start: None,
+                    selection_end: None,
+                });
+            }
+        }
+
+        // Clear block state and transition to MultiInsert
+        self.visual_block_anchor_line = None;
+        self.visual_block_anchor_col = None;
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        let _ = self.mode_state.apply(ModeEvent::EnterMultiInsert);
+        self.bump_revision();
+        true
+    }
+
+    /// A in VisualBlock — append at end of block on each line.
+    pub fn visual_block_append_after(&mut self) -> bool {
+        if self.current_mode() != EditorMode::VisualBlock {
+            return false;
+        }
+        let Some(block) = self.visual_block_range() else {
+            return false;
+        };
+
+        self.ensure_current_transaction();
+
+        // Generate cursors for each line in block
+        self.virtual_cursors.clear();
+        let mut primary_set = false;
+
+        for line_idx in block.start_line..=block.end_line {
+            if line_idx >= self.text.len_lines() {
+                break;
+            }
+
+            let line_start_char = self.text.line_to_char(line_idx);
+            let line_content = self.text.line(line_idx);
+
+            // Calculate target column position (end_col + 1 for append)
+            let target_col = block.end_col + 1;
+            let mut char_idx = line_start_char;
+            let mut current_col = 0;
+
+            // Walk to target column or line end
+            for ch in line_content.chars() {
+                if ch == '\n' {
+                    break;
+                }
+                if current_col >= target_col {
+                    break;
+                }
+                char_idx += 1;
+                current_col += if ch == '\t' { 4 } else { 1 };
+            }
+
+            // If line is shorter, extend with spaces
+            if current_col < target_col {
+                let spaces_needed = target_col - current_col;
+                let spaces = " ".repeat(spaces_needed);
+                self.apply_insert_raw(char_idx, &spaces);
+                char_idx += spaces_needed;
+            }
+
+            // First line becomes primary cursor
+            if !primary_set {
+                self.cursor_char_idx = char_idx.min(self.text.len_chars());
+                primary_set = true;
+            } else {
+                self.virtual_cursors.push(VirtualCursor {
+                    char_idx: char_idx.min(self.text.len_chars()),
+                    selection_start: None,
+                    selection_end: None,
+                });
+            }
+        }
+
+        // Clear block state and transition to MultiInsert
+        self.visual_block_anchor_line = None;
+        self.visual_block_anchor_col = None;
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        let _ = self.mode_state.apply(ModeEvent::EnterMultiInsert);
+        self.bump_revision();
+        true
+    }
+
+    /// c in VisualBlock — delete selected rectangular ranges, enter MultiInsert.
+    pub fn visual_block_change(&mut self) -> bool {
+        if self.current_mode() != EditorMode::VisualBlock {
+            return false;
+        }
+        if !self.delete_visual_block_ranges_and_place_cursors() {
+            return false;
+        }
+        let _ = self.mode_state.apply(ModeEvent::EnterMultiInsert);
+        true
+    }
+
+    /// d in VisualBlock — delete selected rectangular ranges, return to Normal.
+    pub fn visual_block_delete(&mut self) -> bool {
+        if self.current_mode() != EditorMode::VisualBlock {
+            return false;
+        }
+        if !self.delete_visual_block_ranges_and_place_cursors() {
+            return false;
+        }
+        let _ = self.mode_state.apply(ModeEvent::EnterNormal);
+        self.clear_virtual_cursors();
+        true
+    }
+
     /// c — delete all selections, enter MultiInsert.
     pub fn multi_cursor_change(&mut self) -> bool {
         if !self.is_multi_cursor_mode() {
@@ -450,6 +614,87 @@ impl AppState {
             self.mode_state.current(),
             EditorMode::MultiCursor | EditorMode::MultiInsert
         )
+    }
+
+    /// Delete VisualBlock ranges line-by-line and place cursors at each deleted range start.
+    fn delete_visual_block_ranges_and_place_cursors(&mut self) -> bool {
+        let Some(block) = self.visual_block_range() else {
+            return false;
+        };
+
+        self.ensure_current_transaction();
+
+        let mut ranges: Vec<(usize, usize)> = Vec::new();
+        for line_idx in block.start_line..=block.end_line {
+            if line_idx >= self.text.len_lines() {
+                break;
+            }
+
+            let line_start_char = self.text.line_to_char(line_idx);
+            let max_col = self.max_col_for_line(line_idx);
+            let start_col = block.start_col.min(max_col);
+            let end_col = block.end_col.saturating_add(1).min(max_col);
+            if start_col >= end_col {
+                continue;
+            }
+
+            let start = line_start_char + start_col;
+            let end = line_start_char + end_col;
+            if start < end {
+                ranges.push((start, end));
+            }
+        }
+
+        if ranges.is_empty() {
+            return false;
+        }
+
+        for &(start, end) in &ranges {
+            self.record_delete_highlight_edit(start, end - start);
+        }
+
+        ranges.sort_by(|a, b| b.0.cmp(&a.0));
+        for &(start, end) in &ranges {
+            self.apply_delete_raw(start, end - start);
+        }
+
+        fn adjusted_pos(orig: usize, ranges: &[(usize, usize)]) -> usize {
+            let shift: usize = ranges
+                .iter()
+                .filter(|&&(start, _)| start < orig)
+                .map(|&(start, end)| end - start)
+                .sum();
+            orig.saturating_sub(shift)
+        }
+
+        let mut cursor_positions: Vec<usize> = ranges
+            .iter()
+            .map(|&(start, _)| adjusted_pos(start, &ranges))
+            .collect();
+        cursor_positions.sort_unstable();
+        cursor_positions.dedup();
+
+        if let Some(primary) = cursor_positions.first().copied() {
+            self.cursor_char_idx = primary.min(self.text.len_chars());
+            self.virtual_cursors = cursor_positions
+                .iter()
+                .skip(1)
+                .map(|&char_idx| VirtualCursor {
+                    char_idx: char_idx.min(self.text.len_chars()),
+                    selection_start: None,
+                    selection_end: None,
+                })
+                .collect();
+        }
+
+        self.visual_block_anchor_line = None;
+        self.visual_block_anchor_col = None;
+        self.selection_anchor_char_idx = None;
+        let (_, col) = self.cursor_line_col();
+        self.target_col = col;
+        self.dirty = true;
+        self.bump_revision();
+        true
     }
 
     /// Delete all selections (primary + virtual) in reverse order to preserve indices.

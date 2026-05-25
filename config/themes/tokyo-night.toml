@@ -37,7 +37,6 @@ mode_normal = "#7DCFFF"
 mode_insert = "#9ECE6A"
 mode_visual = "#BB9AF7"
 
-
 top_bar_height = 36.0
 
 [git]
@@ -48,38 +47,38 @@ added_gutter = "#9ECE6A"
 deleted_gutter = "#F7768E"
 status_bar_height = 32.0
 
-
 [syntax]
-keyword = "#BB9AF7"       # Purple (Tokyo Night identity)
+keyword = "#BB9AF7"
 string = "#9ECE6A"
 function = "#7AA2F7"
 comment = "#565F89"
 type = "#2AC3DE"
 number = "#FF9E64"
-identifier = "#C0CAF5"    # Foreground color (cho variable references)
-parameter = "#E0AF68"     # Amber (Tokyo Night palette)
-field = "#7DCFFF"         # Cyan (Tokyo Night palette)
-property = "#7DCFFF"      # Cyan (đồng bộ với field)
+identifier = "#C0CAF5"
+parameter = "#E0AF68"
+field = "#7DCFFF"
+property = "#7DCFFF"
 constant = "#BB9AF7"
-operator = "#E0AF68"      # Amber (Tokyo Night palette)
+operator = "#E0AF68"
 punctuation = "#C0CAF5"
 macro = "#7DCFFF"
 lifetime = "#E0AF68"
 boolean = "#FF9E64"
 escape = "#FF9E64"
-variable = "#BB9AF7"      # Purple (khác với identifier #C0CAF5)
+variable = "#BB9AF7"
 constructor = "#BB9AF7"
-attribute = "#BB9AF7"     # Purple (đồng bộ keyword)
+attribute = "#BB9AF7"
 namespace = "#7AA2F7"
 tag = "#7AA2F7"
-keyword_control = "#BB9AF7"       # Purple (Tokyo Night identity)
-keyword_storage = "#BB9AF7"       # Purple (Tokyo Night identity)
+keyword_control = "#BB9AF7"
+keyword_storage = "#BB9AF7"
 string_escape = "#FF9E64"
 function_builtin = "#7AA2F7"
 comment_doc = "#565F89"
 type_builtin = "#2AC3DE"
-variable_builtin = "#BB9AF7"      # Purple (khác với identifier #C0CAF5)
-markup_strong = "#BB9AF7"       # Purple (Tokyo Night identity)
+variable_builtin = "#BB9AF7"
+markup_strong = "#BB9AF7"
 markup_italic = "#565F89"
 markup_inline_code = "#9ECE6A"
 markup_link = "#7AA2F7"
+

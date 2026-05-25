@@ -19,13 +19,15 @@ impl AppShell {
             | Command::SearchInFiles
             | Command::OpenFileHistory
             | Command::OpenThemeSelector
-            | Command::OpenHelp => {
+            | Command::OpenHelp
+            | Command::OpenExtensionsManager => {
                 let opens_center_buffer = matches!(
                     command,
                     Command::OpenFileFinder
                         | Command::SearchInFiles
                         | Command::OpenFileHistory
                         | Command::OpenHelp
+                        | Command::OpenExtensionsManager
                 );
                 let report = dispatch_command(&mut self.app_state, command.clone());
                 let mut request_redraw = report.request_redraw;
@@ -200,6 +202,7 @@ impl AppShell {
                 }
                 Some(report.request_redraw || report.state_changed)
             }
+
             Command::FilePickerAppendQuery(_)
             | Command::FilePickerBackspaceQuery
             | Command::ToggleLiveGrepCaseSensitive
@@ -329,6 +332,8 @@ impl AppShell {
                 {
                     return Some(self.confirm_explorer_prompt());
                 }
+
+
 
                 if matches!(command, Command::FilePickerConfirmSelection)
                     && matches!(

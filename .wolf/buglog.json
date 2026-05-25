@@ -1,0 +1,439 @@
+{
+  "version": 1,
+  "bugs": [
+    {
+      "id": "bug-008",
+      "timestamp": "2026-05-18T14:59:27.161473+00:00",
+      "error_message": "User reports Extensions Manager opened via <leader>m e still looks unchanged, crooked/misaligned after initial UI update.",
+      "file": "src/render/renderer/editor/extensions.rs",
+      "root_cause": "Initial update kept the old oversized footer reservation/detail panel, leaving little visible list space and preserving the old bottom-heavy layout. The visible deltas were mostly subtle until pressing Enter/Tab, so the opened tab looked effectively unchanged.",
+      "fix": "Reduced footer reservation to a compact help bar, removed the large selected-item footer panel, kept details inline below expanded rows, narrowed row status/tag columns to reduce text collision, and reran cargo check successfully.",
+      "tags": [
+        "ui",
+        "extensions-manager",
+        "layout",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-18T14:59:27.161473+00:00"
+    },
+    {
+      "id": "bug-001",
+      "timestamp": "2026-05-16T06:20:38.889Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/app_state/state.rs",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 14→27 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-16T06:20:38.889Z"
+    },
+    {
+      "id": "bug-002",
+      "timestamp": "2026-05-16T06:27:51.013Z",
+      "error_message": "Significant refactor of ",
+      "file": "PERFORMANCE.md",
+      "root_cause": "5 lines replaced/restructured",
+      "fix": "Rewrote 19→43 lines (5 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-16T06:27:51.013Z"
+    },
+    {
+      "id": "bug-003",
+      "timestamp": "2026-05-17T06:30:41.435Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/event_loop/commands_terminal.rs",
+      "root_cause": "9 lines replaced/restructured",
+      "fix": "Rewrote 36→43 lines (9 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-17T06:30:41.435Z"
+    },
+    {
+      "id": "bug-004",
+      "timestamp": "2026-05-17T10:48:02.693Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/render/renderer/palette/leap.rs",
+      "root_cause": "22 lines replaced/restructured",
+      "fix": "Rewrote 45→25 lines (22 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-17T10:48:02.693Z"
+    },
+    {
+      "id": "bug-005",
+      "timestamp": "2026-05-17T12:17:10.938Z",
+      "error_message": "Significant refactor of ",
+      "file": "DEPENDENCIES.md",
+      "root_cause": "9 lines replaced/restructured",
+      "fix": "Rewrote 13→20 lines (9 removed) | Also: When packaging for end users, consider:; 1. **Bundle approach**: Include pre-compiled LSP s",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-17T12:17:11.023Z"
+    },
+    {
+      "id": "bug-006",
+      "timestamp": "2026-05-17T12:30:00.000Z",
+      "error_message": "Race condition: closing buffer causes content from closed buffer to overwrite active buffer content. Symptoms: after closing tab, reopening shows wrong content even after git discard.",
+      "file": "src/app/app_state/buffers.rs, src/app/app_state/overlays.rs",
+      "root_cause": "save_current_text_buffer_history() was called with stale active_buffer_index after buffer removal. The function would save closed buffer's content (still in self.text) into wrong buffer slot. Also, self.text was not reset after clearing active_buffer_index, allowing stale content to persist.",
+      "fix": "1. Added bounds check in save_current_text_buffer_history() to prevent saving when old_idx >= buffers.len(). 2. Reset self.text and cached_line_starts immediately after clearing active_buffer_index in close_current_buffer() to prevent stale content from being saved during next activate_buffer_index() call.",
+      "tags": [
+        "race-condition",
+        "buffer-management",
+        "data-corruption",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-17T12:30:00.000Z"
+    },
+    {
+      "id": "bug-007",
+      "timestamp": "2026-05-18T00:15:00.000Z",
+      "error_message": "Data loss when opening special buffers (Settings, Terminal, Help, References, Diagnostics, Fuzzy Picker): unsaved changes in current text buffer are lost without being saved to buffer history.",
+      "file": "src/app/app_state/palette.rs, src/app/app_state/overlays.rs",
+      "root_cause": "All open_*_buffer() functions (open_settings_buffer, open_terminal_buffer, open_help_buffer, open_references_buffer, open_diagnostics_buffer, open_pending_references_buffer) and register_open_text_buffer() directly set active_buffer_index without calling save_current_text_buffer_history() first. This causes unsaved changes in the current text buffer to be lost when switching to special buffers.",
+      "fix": "Added save_current_text_buffer_history() call at the beginning of: open_diagnostics_buffer(), open_terminal_buffer(), open_help_buffer(), open_references_buffer(), open_pending_references_buffer(), open_settings_buffer(), and register_open_text_buffer(). Note: open_fuzzy_picker_buffer() already had this fix.",
+      "tags": [
+        "data-loss",
+        "buffer-management",
+        "unsaved-changes",
+        "audit-found"
+      ],
+      "related_bugs": [
+        "bug-006"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-05-18T00:15:00.000Z"
+    },
+    {
+      "id": "bug-008",
+      "timestamp": "2026-05-18T08:00:00.000Z",
+      "error_message": "F12 (FocusTerminal), ToggleTerminal, and ToggleBottomDock open terminal panel and focus it, but don't enter TerminalFocus mode, so text input doesn't work.",
+      "file": "src/app/event_loop/commands_terminal.rs",
+      "root_cause": "When opening terminal panel, the commands set focus_manager to BottomPanel and spawn terminal tab, but never call apply_mode_event(ModeEvent::FocusTerminal) to transition from Normal/Insert/Visual mode into TerminalFocus mode. Without the mode transition, keyboard input is not routed to the terminal.",
+      "fix": "Added apply_mode_event(ModeEvent::FocusTerminal) call after opening terminal in all three commands: FocusTerminal (line 218-220), ToggleTerminal (line 78-82), and ToggleBottomDock (line 115-117). This ensures the editor enters TerminalFocus mode when terminal panel opens, enabling text input.",
+      "tags": [
+        "terminal",
+        "mode-transition",
+        "keyboard-input",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-18T08:00:00.000Z"
+    },
+    {
+      "id": "bug-009",
+      "timestamp": "2026-05-18T10:30:00.000Z",
+      "error_message": "Explorer paste conflict prompt (when pasting file with duplicate name) shows command palette to rename, but doesn't accept text input - user cannot type to edit the filename.",
+      "file": "src/app/event_loop/commands_palette.rs",
+      "root_cause": "ExplorerPasteConflict mode handler (lines 205-223) only matched FilePickerAppendQuery and FilePickerBackspaceQuery commands, but did not match the actual typing commands (InsertChar, InsertText, Backspace) that are generated by keyboard input. Other explorer prompts (ExplorerCreateFile, ExplorerRenameFull, etc.) were handled correctly in the next match arm (lines 224-278) which included all typing commands.",
+      "fix": "Added InsertChar, InsertText, and Backspace to the ExplorerPasteConflict pattern match (lines 205-220). Changed the handler to use dispatch_palette_overlay_command() like other explorer prompts, which properly routes typing commands to the palette text buffer.",
+      "tags": [
+        "explorer",
+        "command-palette",
+        "keyboard-input",
+        "paste-conflict",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-18T10:30:00.000Z"
+    },
+    {
+      "id": "bug-011",
+      "timestamp": "2026-05-19T16:02:52.664Z",
+      "error_message": "Function not marked async",
+      "file": "src/async_runtime/message.rs",
+      "root_cause": "Function uses await but wasn't declared async",
+      "fix": "Added async modifier",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-19T16:02:52.743Z"
+    },
+    {
+      "id": "bug-012",
+      "timestamp": "2026-05-19T16:04:32.636Z",
+      "error_message": "Function not marked async",
+      "file": "src/app/event_loop/commands_explorer.rs",
+      "root_cause": "Function uses await but wasn't declared async",
+      "fix": "Added async modifier",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-19T16:04:32.636Z"
+    },
+    {
+      "id": "bug-013",
+      "timestamp": "2026-05-21T14:16:47.953Z",
+      "error_message": "Wrong operator: && should be ||",
+      "file": "src/app/app_state/buffers.rs",
+      "root_cause": "Used \"&&\" instead of \"||\"",
+      "fix": "Changed operator && → ||",
+      "tags": [
+        "auto-detected",
+        "operator-fix",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-21T14:16:47.953Z"
+    },
+    {
+      "id": "bug-014",
+      "timestamp": "2026-05-21T16:30:29.225Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/core/command_dispatch/editing.rs",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 18→37 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-21T16:30:29.225Z"
+    },
+    {
+      "id": "bug-015",
+      "timestamp": "2026-05-22T10:00:00.000Z",
+      "error_message": "Severe lag when scrolling large files (700+ lines) with Ctrl-U/D. Editor freezes for 100-200ms on each scroll.",
+      "file": "src/app/event_loop/commands_editor.rs",
+      "root_cause": "Scroll commands (ScrollHalfPageUp, ScrollHalfPageDown, CenterCursorLine, MoveToFirstLine, MoveToLastLine) called submit_parse_for_active_buffer(true) even though they don't modify text content. This triggered full tree-sitter re-parse on every scroll, causing 100-200ms freeze on 700+ line files.",
+      "fix": "Removed submit_parse_for_active_buffer(true) call from line 118 in commands_editor.rs. Scroll/navigation commands only need editor_needs_layout = true, not re-parsing. Parse should only be triggered by text-modifying commands.",
+      "tags": [
+        "performance",
+        "scroll-lag",
+        "tree-sitter",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-22T10:00:00.000Z"
+    },
+    {
+      "id": "bug-016",
+      "timestamp": "2026-05-22T10:15:00.000Z",
+      "error_message": "After using * (star search) + n to jump through search results, Ctrl-O (jump back) doesn't work - jump stack is empty.",
+      "file": "src/core/command_dispatch/navigation.rs",
+      "root_cause": "SearchWordUnderCursor command handler didn't call push_jump() before executing search_word_under_cursor(), so the original cursor position was never saved to the jump back stack. LSP goto-definition correctly pushes jump, but star search didn't.",
+      "fix": "Added ctx.app_state.push_jump() at line 186 in navigation.rs, before calling search_word_under_cursor(). This matches the behavior of LSP goto-definition (commands_lsp.rs:667) and allows Ctrl-O to return to the position before star search.",
+      "tags": [
+        "jump-list",
+        "star-search",
+        "navigation",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-22T10:15:00.000Z"
+    },
+    {
+      "id": "bug-017",
+      "timestamp": "2026-05-23T00:00:00.000Z",
+      "error_message": "Python files (.py extension) display hidden file icon instead of Python icon in file tree sidebar",
+      "file": "src/app/event_loop/helpers.rs",
+      "root_cause": "Logic at lines 1529-1537 checked if file is hidden/ignored and forced generic hidden file icon ('󰘓') instead of using file-type-specific icon. This meant .py files marked as hidden (e.g., .python-version) or ignored would show generic icon instead of Python icon from assets/bearded-icons/python.svg",
+      "fix": "Removed conditional logic that overrode file-type icons for hidden/ignored files. Now all files use theme.get_icon_for_file() which correctly maps .py extension to 'built_in:python' icon, ensuring Python files always show the Python icon regardless of hidden/ignored status. Color tinting (warning color) still applied to indicate hidden/ignored status.",
+      "tags": [
+        "icon-rendering",
+        "file-tree",
+        "sidebar",
+        "python",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-23T00:00:00.000Z"
+    },
+    {
+      "id": "bug-018",
+      "timestamp": "2026-05-23T09:54:08.115Z",
+      "error_message": "Incorrect value in code",
+      "file": "src/render/icon_pipeline.rs",
+      "root_cause": "Had \"built_in:jest\"",
+      "fix": "Changed to \"built_in:javascript\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-23T09:54:08.115Z"
+    },
+    {
+      "id": "bug-019",
+      "timestamp": "2026-05-23T09:54:23.197Z",
+      "error_message": "Incorrect value in code",
+      "file": "src/config/theme_config/model.rs",
+      "root_cause": "Had \"built_in:node\"",
+      "fix": "Changed to \"built_in:javascript\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-23T09:54:23.197Z"
+    },
+    {
+      "id": "bug-018",
+      "timestamp": "2026-05-23T00:15:00.000Z",
+      "error_message": "JavaScript files (.js) incorrectly display Node.js icon instead of JavaScript icon in file tree",
+      "file": "src/config/theme_config/model.rs, src/render/icon_pipeline.rs",
+      "root_cause": "Extension mapping at line 544 in model.rs mapped all .js/.mjs/.cjs files to 'built_in:node' (Node.js icon). This was incorrect - .js files should show JavaScript icon, only package.json should show Node.js icon.",
+      "fix": "1. Added 'built_in:javascript' to canonical_icon_id mapping in icon_pipeline.rs. 2. Added js.svg to icon atlas. 3. Changed extension mapping from 'built_in:node' to 'built_in:javascript' for .js/.mjs/.cjs extensions. 4. Added special case in special_icon_for_filename() to map package.json specifically to 'built_in:node'. Now: .js files → JavaScript icon, package.json → Node.js icon.",
+      "tags": [
+        "icon-rendering",
+        "file-tree",
+        "javascript",
+        "nodejs",
+        "user-reported"
+      ],
+      "related_bugs": [
+        "bug-017"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-05-23T00:15:00.000Z"
+    },
+    {
+      "id": "bug-021",
+      "timestamp": "2026-05-23T10:52:12.212Z",
+      "error_message": "Wrong reference: 1_000 should be 100",
+      "file": "src/app/app_state/mod.rs",
+      "root_cause": "Used \"1_000\" instead of \"100\"",
+      "fix": "Changed 1_000 → 100",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-23T10:52:12.212Z"
+    },
+    {
+      "id": "bug-022",
+      "timestamp": "2026-05-23T11:19:28.280Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/text/text_system.rs",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 5→3 lines (2 removed) | Also: // Add ellipsis indicator for truncated lines; if truncated {",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-23T11:19:41.985Z"
+    },
+    {
+      "id": "bug-023",
+      "timestamp": "2026-05-24T09:05:21.300Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/render/renderer/editor/viewport.rs",
+      "root_cause": "61 lines replaced/restructured",
+      "fix": "Rewrote 77→4 lines (61 removed) | Also: let mut cumulative_byte_offset = 0isize;; let original_line_bytes = line.len();",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-24T09:06:01.249Z"
+    },
+    {
+      "id": "bug-024",
+      "timestamp": "2026-05-25T09:49:49+07:00",
+      "error_message": "Markdown preview buffer tab cannot be closed with q or Space+x like live grep and references tabs.",
+      "file": "src/app/input_map/focus.rs, src/app/resolved_keymap.rs, config/keymaps/default.toml",
+      "root_cause": "Markdown preview focus routed q to CloseSidebars, and leader sequences resolve under the preview mode scope, while buffer.close_current was only bound under normal mode.",
+      "fix": "Route preview q to BufferCloseCurrent and add preview-scoped <leader>x bindings in built-in and default keymaps, with InputMap and InputHandler regression tests.",
+      "tags": [
+        "markdown-preview",
+        "keybinding",
+        "buffer-close",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T09:49:49+07:00"
+    },
+    {
+      "id": "bug-025",
+      "timestamp": "2026-05-25T09:55:20+07:00",
+      "error_message": "RTK rule says to always prefix shell commands, but rtk find does not support compound predicates/actions such as -exec; rtk git diff -- <paths> also failed with bad revision in this session.",
+      "file": "AGENTS.md, CLAUDE.md, .clinerules, .codex/instructions.md",
+      "root_cause": "The project rule over-generalized RTK support and did not document unsupported command shapes or raw-shell fallback behavior.",
+      "fix": "Changed RTK rule wording to prefer rtk only for supported simple commands, document unsupported find/pipeline/shell-feature cases, and instruct agents to retry raw commands when rtk reports unsupported syntax.",
+      "tags": [
+        "rtk",
+        "rules",
+        "shell",
+        "user-correction"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T09:55:20+07:00"
+    },
+    {
+      "id": "bug-026",
+      "timestamp": "2026-05-25T02:57:26.415Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/render/renderer/editor/viewport.rs",
+      "root_cause": "20 lines replaced/restructured",
+      "fix": "Rewrote 91→122 lines (20 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T02:57:26.415Z"
+    }
+  ]
+}

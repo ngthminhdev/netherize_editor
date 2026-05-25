@@ -24,7 +24,7 @@ use super::{
     fzf::run_fzf_request,
     lsp::run_lsp_request,
     pty::run_pty_request,
-    syntax_jobs::{execute_virtual_job, run_system_dep_install},
+    syntax_jobs::{execute_virtual_job, run_extension_command, run_system_dep_install},
 };
 
 async fn detect_python_version(python_binary: Option<&std::path::Path>) -> Option<String> {
@@ -281,6 +281,35 @@ pub(super) async fn dispatch_loop(
 
         if matches!(
             request.payload,
+            WorkerRequestPayload::RunExtensionCommand { .. }
+        ) {
+            let (binary, command, uninstall, working_dir) = match request.payload {
+                WorkerRequestPayload::RunExtensionCommand {
+                    binary,
+                    command,
+                    uninstall,
+                    working_dir,
+                } => (binary, command, uninstall, working_dir),
+                _ => unreachable!(),
+            };
+            let worker_tx = result_tx.clone();
+            let extension_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                run_extension_command(
+                    binary,
+                    command,
+                    uninstall,
+                    working_dir,
+                    worker_tx,
+                    extension_proxy,
+                )
+                .await;
+            });
+            continue;
+        }
+
+        if matches!(
+            request.payload,
             WorkerRequestPayload::InstallSystemDeps { .. }
         ) {
             let tools = match request.payload {
@@ -360,6 +389,41 @@ pub(super) async fn dispatch_loop(
                             python_version,
                             node_version,
                             go_version,
+                        },
+                    }),
+                );
+            });
+            continue;
+        }
+
+        if matches!(request.payload, WorkerRequestPayload::CopyFile { .. }) {
+            let (source_path, target_path) = match request.payload {
+                WorkerRequestPayload::CopyFile {
+                    source_path,
+                    target_path,
+                } => (source_path, target_path),
+                _ => unreachable!(),
+            };
+            let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                let result = tokio::fs::copy(&source_path, &target_path).await;
+                let (success, error_message) = match result {
+                    Ok(_) => (true, None),
+                    Err(err) => (false, Some(err.to_string())),
+                };
+                emit_message_and_wake(
+                    &worker_tx,
+                    &event_proxy,
+                    WorkerMessage::Result(WorkerResult {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        payload: WorkerResultPayload::FileCopyResult {
+                            source_path,
+                            target_path,
+                            success,
+                            error_message,
                         },
                     }),
                 );

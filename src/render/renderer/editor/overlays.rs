@@ -14,15 +14,19 @@ use crate::{
     render::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
-    text::layout_sync::{compute_caret_layout, compute_cursor_overlay, rebuild_layout_projection},
+    text::layout_sync::{
+            compute_caret_layout, compute_caret_layout_with_folds, compute_cursor_overlay,
+            rebuild_layout_projection,
+        },
 };
 use cosmic_text::Metrics;
 
 use super::super::helpers::{
     caret_rect_for_mode, clamp_monospace_text, clamp_popup_width, estimate_monospace_width,
-    gutter_width_for_editor, layout_panel_rich_text, layout_panel_text, layout_panel_text_italic,
-    rect_to_scissor, should_draw_block_cursor,
+    gutter_width_for_editor, layout_panel_rich_text, layout_panel_text, layout_panel_text_bold,
+    layout_panel_text_italic, rect_to_scissor, should_draw_block_cursor,
 };
+use crate::render::icon_pipeline::{canonical_icon_id, IconDrawInstance};
 use super::completion::{completion_kind_badge, completion_label_spans};
 use super::{EDITOR_BREADCRUMB_GAP_Y, EDITOR_BREADCRUMB_PAD_Y, EDITOR_BREADCRUMB_TOP_INSET};
 
@@ -44,6 +48,7 @@ impl Renderer {
 
         self.editor_overlay_scissor = rect_to_scissor(center_bounds);
         let mut glyphs = Vec::new();
+        let mut icon_instances: Vec<IconDrawInstance> = Vec::new();
         let mut chrome_quads: Vec<RegionDrawInstance> = Vec::new();
 
         let header_h = geometry.viewport_text_top
@@ -179,6 +184,7 @@ impl Renderer {
         chrome_quads.extend(self.search_highlight_quads(app_state, center_bounds));
         chrome_quads.extend(self.multi_cursor_selection_quads(app_state, center_bounds));
         chrome_quads.extend(self.visual_selection_quads(app_state, center_bounds));
+        chrome_quads.extend(self.visual_block_selection_quads(app_state, center_bounds));
         if let Some(quad) = self.current_line_highlight_quad(app_state, center_bounds) {
             chrome_quads.push(quad);
         }
@@ -643,6 +649,7 @@ impl Renderer {
             const DOC_PANEL_W: f32 = 650.0;
             const DOC_PAD: f32 = 35.0;
             const MIN_LIST_W: f32 = 700.0;
+            const MAX_LIST_W_WITH_DOCS: f32 = 1200.0;
 
             let char_w = (geometry.font_size * 0.6).max(1.0);
             // Badge size tracks row height so it never overflows the row
@@ -695,7 +702,7 @@ impl Renderer {
             let label_area_w = max_label_chars as f32 * char_w;
             let desired_list_w = badge_col_w + label_area_w + PAD_X + SCROLLBAR_W;
             let list_w = if has_doc {
-                clamp_popup_width(desired_list_w, MIN_LIST_W, 800.0)
+                clamp_popup_width(desired_list_w, MIN_LIST_W, MAX_LIST_W_WITH_DOCS)
             } else {
                 clamp_popup_width(desired_list_w, MIN_LIST_W, geometry.viewport_text_width)
             };
@@ -712,15 +719,27 @@ impl Renderer {
                 geometry.viewport_text_width
             );
 
-            let anchor_x = geometry.origin_x + completion.prefix_col as f32 * char_w;
+            // Anchor the popup to the currently rendered caret, not to `line * line_height`.
+            // `geometry.origin_y` already includes scroll, but using logical line math here breaks
+            // for long files and for soft-wrapped/folded lines because cosmic-text layout positions
+            // are visual. Reuse the same caret layout path as the cursor renderer so completion
+            // stays attached to the cursor around line 700+ and with wrapped content.
+            let caret_layout = compute_caret_layout_with_folds(
+                &self.text_system,
+                app_state,
+                [geometry.origin_x, geometry.origin_y],
+                app_state.folded_ranges(),
+            );
+            let anchor_x = (caret_layout.x - completion.typed_prefix.chars().count() as f32 * char_w)
+                .max(geometry.viewport_text_left);
             let popup_right = anchor_x + popup_w;
             let anchor_x = if popup_right > viewport_right - 8.0 {
                 (anchor_x - (popup_right - viewport_right + 8.0)).max(center_bounds[0] + 4.0)
             } else {
                 anchor_x.max(center_bounds[0] + 4.0)
             };
-            let anchor_y = geometry.origin_y + completion.anchor_line as f32 * geometry.line_height;
-            let cursor_bottom = anchor_y + geometry.line_height;
+            let anchor_y = caret_layout.top;
+            let cursor_bottom = anchor_y + caret_layout.height;
             let mut popup_y = cursor_bottom + 2.0;
             let popup_bottom = popup_y + popup_h;
             if popup_bottom > viewport_bottom - 12.0 {
@@ -823,56 +842,75 @@ impl Renderer {
                 // --- KIND BADGE ---
                 let kind_badge = completion_kind_badge(item.item.kind, &self.theme);
                 let kind_color = kind_badge.color;
-                // Vivid colored background, dark text = maximum contrast
-                let kind_bg = [kind_color[0], kind_color[1], kind_color[2], 0.90];
-                let kind_border_color = [kind_color[0], kind_color[1], kind_color[2], 1.0];
+                let icon_text_color = blend_rgba(bg, kind_color, 0.78, 1.0);
+                let kind_bg = blend_rgba(bg, kind_color, 0.10, 1.0);
+                let kind_border_color = blend_rgba(bg, kind_color, 0.86, 1.0);
                 let badge_x = popup_x + PAD_X;
                 let badge_y = row_y + (popup_row_h - badge_size) * 0.5;
+                let badge_border_thickness = (badge_size * 0.075).clamp(2.0, 3.0);
 
-                // Badge background fill
+                // Bold kind-colored glyph and outline with a subtle 10% kind-colored fill.
                 chrome_quads.push(
-                    RegionDrawInstance::new([badge_x, badge_y, badge_size, badge_size], kind_bg)
-                        .with_radius(badge_radius),
+                    RegionDrawInstance::new(
+                        [badge_x, badge_y, badge_size, badge_size],
+                        kind_border_color,
+                    )
+                    .with_radius(badge_radius),
                 );
-                // Badge border (inset 0.5px)
                 chrome_quads.push(
                     RegionDrawInstance::new(
                         [
-                            badge_x + 0.5,
-                            badge_y + 0.5,
-                            badge_size - 1.0,
-                            badge_size - 1.0,
+                            badge_x + badge_border_thickness,
+                            badge_y + badge_border_thickness,
+                            (badge_size - badge_border_thickness * 2.0).max(1.0),
+                            (badge_size - badge_border_thickness * 2.0).max(1.0),
                         ],
-                        kind_border_color,
+                        kind_bg,
                     )
-                    .with_radius((badge_radius - 0.5).max(0.5)),
+                    .with_radius((badge_radius - badge_border_thickness).max(2.0)),
                 );
 
-                // Badge icon: scale down for multi-char icons (fn, op) so they fit on one line
-                let icon_char_count = kind_badge.icon.chars().count();
-                let icon_size = if icon_char_count > 1 {
-                    (badge_size * 0.50).max(10.0)
+                if let Some(asset_icon) = canonical_icon_id(kind_badge.icon) {
+                    let icon_size = (badge_size * 0.72).max(12.0);
+                    icon_instances.push(IconDrawInstance {
+                        icon: asset_icon,
+                        rect: [
+                            badge_x + (badge_size - icon_size) * 0.5,
+                            badge_y + (badge_size - icon_size) * 0.5,
+                            icon_size,
+                            icon_size,
+                        ],
+                        tint: [1.0, 1.0, 1.0, 1.0],
+                    });
                 } else {
-                    (badge_size * 0.68).max(12.0)
-                };
-                let icon_w = estimate_monospace_width(kind_badge.icon, icon_size);
-                let icon_x = badge_x + (badge_size - icon_w) * 0.5;
-                self.editor_overlay_text_system
-                    .set_metrics(Metrics::new(icon_size, badge_size));
-                self.editor_overlay_text_system
-                    .set_size(Some(badge_size), Some(badge_size));
-                let icon_glyphs = layout_panel_text(
-                    kind_badge.icon,
-                    &mut self.editor_overlay_text_system,
-                    &mut self.atlas,
-                    &self.queue,
-                    icon_x,
-                    badge_y,
-                    [0.07, 0.07, 0.11, 1.0],
-                );
-                glyphs.extend(icon_glyphs);
-                self.editor_overlay_text_system
-                    .set_metrics(Metrics::new(geometry.font_size, geometry.line_height));
+                    // Legacy fallback for user-configured non-Bearded badge glyphs.
+                    let icon_char_count = kind_badge.icon.chars().count();
+                    let icon_size = if icon_char_count > 1 {
+                        (badge_size * 0.50).max(10.0)
+                    } else {
+                        (badge_size * 0.68).max(12.0)
+                    };
+                    let icon_w = estimate_monospace_width(kind_badge.icon, icon_size);
+                    let icon_x = badge_x + (badge_size - icon_w) * 0.5;
+                    let icon_line_h = icon_size * 1.15;
+                    let icon_y = badge_y + (badge_size - icon_line_h) * 0.5 + icon_size * 0.08;
+                    self.editor_overlay_text_system
+                        .set_metrics(Metrics::new(icon_size, icon_line_h));
+                    self.editor_overlay_text_system
+                        .set_size(Some(badge_size), Some(icon_line_h));
+                    let icon_glyphs = layout_panel_text_bold(
+                        kind_badge.icon,
+                        &mut self.editor_overlay_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        icon_x,
+                        icon_y,
+                        icon_text_color,
+                    );
+                    glyphs.extend(icon_glyphs);
+                    self.editor_overlay_text_system
+                        .set_metrics(Metrics::new(geometry.font_size, geometry.line_height));
+                }
 
                 // --- LABEL ---
                 let label_x = popup_x + badge_col_w;
@@ -1202,6 +1240,12 @@ impl Renderer {
         glyphs.extend(ghost_glyphs);
 
         self.editor_overlay_chrome_instances = chrome_quads;
+        self.editor_overlay_icon_instances = icon_instances;
+        self.editor_overlay_icon_pipeline.upload_instances(
+            &self.device,
+            &self.editor_overlay_icon_instances,
+            [self.surface_state.config.width, self.surface_state.config.height],
+        );
         self.editor_overlay_glyph_instances = glyphs;
         self.editor_overlay_text_pipeline.upload_instances(
             &self.device,

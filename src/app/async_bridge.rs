@@ -44,6 +44,15 @@ pub trait AsyncResultRouter {
     fn on_ai_install_success(&mut self);
     fn on_system_dep_tool_progress(&mut self, tool: String, status: InstallStatus);
     fn on_system_dep_install_done(&mut self);
+    fn on_extension_command_started(&mut self, binary: String, uninstall: bool);
+    fn on_extension_command_log(&mut self, binary: String, line: String);
+    fn on_extension_command_finished(
+        &mut self,
+        binary: String,
+        uninstall: bool,
+        success: bool,
+        exit_code: Option<i32>,
+    );
     fn on_lsp_missing_dependency(&mut self, language_id: String, tool_name: String);
 }
 
@@ -159,6 +168,22 @@ impl AppAsyncBridge {
                             async_trace!("[Bridge] system dep install done");
                             router.on_system_dep_install_done();
                         }
+                        WorkerMessage::ExtensionCommandStarted { binary, uninstall } => {
+                            router.on_extension_command_started(binary, uninstall);
+                        }
+                        WorkerMessage::ExtensionCommandLog { binary, line } => {
+                            router.on_extension_command_log(binary, line);
+                        }
+                        WorkerMessage::ExtensionCommandFinished {
+                            binary,
+                            uninstall,
+                            success,
+                            exit_code,
+                        } => {
+                            router.on_extension_command_finished(
+                                binary, uninstall, success, exit_code,
+                            );
+                        }
                         WorkerMessage::LspMissingDependency {
                             language_id,
                             tool_name,
@@ -230,6 +255,16 @@ mod tests {
         fn on_ai_install_success(&mut self) {}
         fn on_system_dep_tool_progress(&mut self, _tool: String, _status: InstallStatus) {}
         fn on_system_dep_install_done(&mut self) {}
+        fn on_extension_command_started(&mut self, _binary: String, _uninstall: bool) {}
+        fn on_extension_command_log(&mut self, _binary: String, _line: String) {}
+        fn on_extension_command_finished(
+            &mut self,
+            _binary: String,
+            _uninstall: bool,
+            _success: bool,
+            _exit_code: Option<i32>,
+        ) {
+        }
         fn on_lsp_missing_dependency(&mut self, _language_id: String, _tool_name: String) {}
     }
 

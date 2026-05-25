@@ -497,10 +497,7 @@ impl AppState {
             return false;
         }
 
-        let target_line = line_idx.min(self.text.len_lines().saturating_sub(1));
-        let line_start = self.text.line_to_char(target_line);
-        let target_char = line_start + col_idx.min(self.max_col_for_line(target_line));
-        self.move_cursor_to_char_idx(target_char)
+        self.jump_to_line_col(line_idx, col_idx)
     }
 
     pub fn byte_to_char_idx(&self, byte_idx: usize) -> usize {
@@ -559,15 +556,28 @@ impl AppState {
         self.text.to_string()
     }
 
-    pub fn line_start_byte_indices(&self) -> Vec<usize> {
-        let line_count = self.text.len_lines();
-        if line_count == 0 {
-            return Vec::new();
+    pub fn line_start_byte_indices(&mut self) -> &[usize] {
+        // If cache exists and is valid, return it
+        if let Some(ref cached) = self.cached_line_starts {
+            return cached;
         }
 
-        (0..line_count)
-            .map(|line_idx| self.text.line_to_byte(line_idx))
-            .collect()
+        // Otherwise, compute and cache
+        let line_count = self.text.len_lines();
+        let line_starts = if line_count == 0 {
+            Vec::new()
+        } else {
+            (0..line_count)
+                .map(|line_idx| self.text.line_to_byte(line_idx))
+                .collect()
+        };
+
+        self.cached_line_starts = Some(line_starts);
+        self.cached_line_starts.as_ref().unwrap()
+    }
+
+    pub fn invalidate_line_starts_cache(&mut self) {
+        self.cached_line_starts = None;
     }
 
     pub fn line_string(&self, line_idx: usize) -> String {
@@ -613,6 +623,14 @@ impl AppState {
         }
     }
 
+    pub fn active_text_buffer_mut(&mut self) -> Option<&mut EditorBuffer> {
+        let idx = self.active_buffer_index?;
+        match &mut self.buffers.get_mut(idx)?.content {
+            BufferContent::Text(text) => Some(text),
+            _ => None,
+        }
+    }
+
     pub fn active_buffer_git_line_statuses(&self) -> Option<&HashMap<usize, GitLineStatus>> {
         self.active_text_buffer()
             .map(|buffer| &buffer.git_line_statuses)
@@ -640,6 +658,11 @@ impl AppState {
             .is_some_and(|buffer| matches!(buffer.content, BufferContent::Diagnostics(_)))
     }
 
+    pub fn active_buffer_is_markdown_preview(&self) -> bool {
+        self.active_buffer()
+            .is_some_and(|buffer| matches!(buffer.content, BufferContent::MarkdownPreview(_)))
+    }
+
     pub fn active_references_buffer(&self) -> Option<&ReferencesBufferState> {
         match self.active_buffer().map(|buffer| &buffer.content) {
             Some(BufferContent::References(state)) => Some(state),
@@ -650,6 +673,13 @@ impl AppState {
     pub fn active_diagnostics_buffer(&self) -> Option<&DiagnosticsState> {
         match self.active_buffer().map(|buffer| &buffer.content) {
             Some(BufferContent::Diagnostics(state)) => Some(state),
+            _ => None,
+        }
+    }
+
+    pub fn active_markdown_preview_buffer(&self) -> Option<&MarkdownPreviewState> {
+        match self.active_buffer().map(|buffer| &buffer.content) {
+            Some(BufferContent::MarkdownPreview(state)) => Some(state),
             _ => None,
         }
     }
@@ -693,9 +723,11 @@ impl AppState {
                 | BufferContent::Image(_)
                 | BufferContent::References(_)
                 | BufferContent::Diagnostics(_)
+                | BufferContent::MarkdownPreview(_)
                 | BufferContent::FuzzyPicker(_)
                 | BufferContent::SettingsTab(_)
-                | BufferContent::Help(_) => false,
+                | BufferContent::Help(_)
+                | BufferContent::ExtensionsManager(_) => false,
             })
     }
 
@@ -926,6 +958,7 @@ impl AppState {
 
         let (cursor_line, cursor_col) = self.cursor_line_col();
         self.text = Rope::from(text);
+        self.cached_line_starts = None;
 
         let max_line = self.text.len_lines().saturating_sub(1);
         let clamped_line = cursor_line.min(max_line);

@@ -4,6 +4,7 @@ mod buffers;
 mod completion;
 mod fuzzy;
 mod help;
+mod extensions;
 mod overlays;
 mod selections;
 mod settings;
@@ -135,6 +136,64 @@ pub(super) struct EditorViewportGeometry {
     pub(super) viewport_text_height: f32,
     pub(super) origin_x: f32,
     pub(super) origin_y: f32,
+}
+
+pub(super) fn soft_wrap_visual_move_target(
+    renderer: &Renderer,
+    app_state: &AppState,
+    center_bounds: [f32; 4],
+    down: bool,
+) -> Option<usize> {
+    let geometry = editor_viewport_geometry(renderer, app_state, center_bounds);
+    let (cursor_line, _) = app_state.cursor_line_col();
+    let cursor_byte = app_state.cursor_byte_in_line();
+    let caret = crate::text::layout_sync::compute_caret_layout_with_folds(
+        &renderer.text_system,
+        app_state,
+        [geometry.origin_x, geometry.origin_y],
+        app_state.folded_ranges(),
+    );
+    let target_y = if down {
+        caret.top + caret.height * 1.5
+    } else {
+        caret.top - caret.height * 0.5
+    };
+    let target_x = caret.x;
+
+    let mut runs = renderer
+        .text_system
+        .buffer()
+        .layout_runs()
+        .filter(|run| run.line_i == cursor_line)
+        .collect::<Vec<_>>();
+    runs.sort_by(|a, b| a.line_top.total_cmp(&b.line_top));
+
+    let current_run_index = runs.iter().position(|run| {
+        cursor_byte >= run.glyphs.first().map(|g| g.start).unwrap_or(0)
+            && cursor_byte <= run.glyphs.last().map(|g| g.end).unwrap_or(usize::MAX)
+    })?;
+    let target_run_index = runs.iter().position(|run| {
+        let top = geometry.origin_y
+            + run.line_top
+            - app_state.folded_visual_y_offset_before(run.line_i, run.line_height);
+        let bottom = top + run.line_height.max(1.0);
+        target_y >= top && target_y < bottom
+    })?;
+    if current_run_index == target_run_index {
+        return None;
+    }
+
+    let target_run = &runs[target_run_index];
+    let mut target_byte = target_run.glyphs.last().map(|g| g.end).unwrap_or(cursor_byte);
+    for glyph in target_run.glyphs {
+        let glyph_mid = geometry.origin_x + glyph.x + glyph.w * 0.5;
+        if target_x <= glyph_mid {
+            target_byte = glyph.start;
+            break;
+        }
+        target_byte = glyph.end;
+    }
+    Some(app_state.byte_to_char_in_line(cursor_line, target_byte))
 }
 
 pub(super) fn editor_viewport_geometry(

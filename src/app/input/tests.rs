@@ -350,6 +350,56 @@ fn zen_mode_markdown_preview_still_allows_gg_scroll_top() {
 }
 
 #[test]
+fn markdown_preview_q_closes_current_buffer() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::MarkdownPreview);
+    let t0 = std::time::Instant::now();
+
+    let resolved =
+        handler.route_normalized_input(char_input('q', KeyCode::KeyQ), &map, context, t0);
+    match resolved {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::BufferCloseCurrent);
+        }
+        other => panic!(
+            "expected markdown preview q close dispatch, got {:?}",
+            other
+        ),
+    }
+}
+
+#[test]
+fn markdown_preview_leader_x_closes_current_buffer() {
+    let mut handler = InputHandler::new();
+    let map = make_default_profile_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::MarkdownPreview);
+    let t0 = std::time::Instant::now();
+
+    let start = handler.route_normalized_input(
+        named_input(NamedKey::Space, Some(KeyCode::Space)),
+        &map,
+        context,
+        t0,
+    );
+    assert!(matches!(start, Some(InputRouteOutcome::NoDispatch { .. })));
+
+    let resolved =
+        handler.route_normalized_input(char_input('x', KeyCode::KeyX), &map, context, t0);
+    match resolved {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::BufferCloseCurrent);
+        }
+        other => panic!(
+            "expected markdown preview leader x close dispatch, got {:?}",
+            other
+        ),
+    }
+}
+
+#[test]
 fn d_d_maps_to_delete_current_line() {
     let mut handler = InputHandler::new();
     let map = make_map();
@@ -1222,6 +1272,26 @@ fn settings_focus_text_input_routes_to_editing_append() {
 }
 
 #[test]
+#[test]
+fn palette_focus_text_input_routes_to_query_append() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let mut context = KeybindingContext::with_focus(EditorMode::PaletteFocus, InputFocusContext::Editor);
+    context.command_palette_visible = true;
+    let now = std::time::Instant::now();
+
+    let typed = handler.route_normalized_input(char_input('x', KeyCode::KeyX), &map, context, now);
+    match typed {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::FilePickerAppendQuery("x".to_string())
+            );
+        }
+        other => panic!("expected palette text append dispatch, got {:?}", other),
+    }
+}
+
 fn settings_focus_j_and_k_navigate_in_normal_mode() {
     let mut handler = InputHandler::new();
     let map = make_map();

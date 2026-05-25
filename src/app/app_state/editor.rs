@@ -989,19 +989,29 @@ impl AppState {
     /// Nhảy đến `line_idx` (0-indexed). Dùng bởi `:N` vim command.
     /// Trả về true nếu cursor thực sự thay đổi.
     pub fn jump_to_line(&mut self, line_idx: usize) -> bool {
+        self.jump_to_line_col(line_idx, 0)
+    }
+
+    /// Jump to a 0-indexed line and character column, preserving the target column
+    /// for subsequent vertical motions and jump-list restoration.
+    pub fn jump_to_line_col(&mut self, line_idx: usize, col_idx: usize) -> bool {
         let total = self.text.len_lines();
         let target_line = line_idx.min(total.saturating_sub(1));
-        let char_idx = self.text.line_to_char(target_line);
+        let line_start = self.text.line_to_char(target_line);
+        let max_col = self.max_col_for_line(target_line);
+        let target_col = col_idx.min(max_col);
+        let char_idx = line_start + target_col;
         let changed = self.update_cursor_position(char_idx);
-        self.target_col = 0;
+        let target_changed = self.target_col != target_col;
+        self.target_col = target_col;
         // Scroll: đặt target_line vào giữa màn hình nếu scroll_line cần update
-        if changed {
+        if changed || target_changed {
             // Dùng auto_scroll_to_cursor sẽ được gọi bởi renderer
             // Ở đây chỉ reset scroll_line về target_line để viewport thấy dòng đó
             self.target_scroll_y = target_line.saturating_sub(10) as f32;
             self.bump_revision();
         }
-        changed
+        changed || target_changed
     }
 
     pub fn center_cursor_line(&mut self, viewport_lines: usize) {

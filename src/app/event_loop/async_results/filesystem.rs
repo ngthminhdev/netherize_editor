@@ -39,3 +39,23 @@ pub(super) fn handle_filesystem_result(app: &mut AppShell, payload: WorkerResult
         app.editor_caret_needs_layout = false;
     }
 }
+
+pub(super) fn handle_file_copy_result(app: &mut AppShell, payload: WorkerResultPayload) {
+    if let WorkerResultPayload::FileCopyResult {
+        target_path,
+        success,
+        error_message,
+        ..
+    } = payload
+    {
+        if success {
+            app.show_transient_toast(format!("Pasted: {}", target_path.display()));
+            let _ = app.app_state.rescan_workspace();
+            app.submit_workspace_git_status_refresh();
+            app.mark_explorer_dirty();
+        } else {
+            let error = error_message.unwrap_or_else(|| "Unknown error".to_string());
+            app.show_transient_toast(format!("Paste failed: {error}"));
+        }
+    }
+}

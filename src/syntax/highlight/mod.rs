@@ -444,6 +444,29 @@ function greet(name) {
     }
 
     #[test]
+    fn javascript_template_interpolation_highlights_embedded_expression() {
+        let source = "telegramClient.sendMessage(telegramId, `Game: ${listGameService.getServiceName(jackpotHistoryInfo.serviceId)} (${jackpotHistoryInfo.serviceId})\\n`);";
+
+        let mut engine = SyntaxEngine::new(LanguageId::JavaScript).expect("init js parser");
+        let tree = engine.parse_source(source, 1).expect("parse js");
+        let spans = generate_highlight_spans(&tree, source);
+        let interpolation_start = source.find("${").expect("find interpolation");
+        let interpolation_end = source[interpolation_start..]
+            .find('}')
+            .map(|offset| interpolation_start + offset + 1)
+            .expect("find interpolation end");
+
+        assert!(
+            spans.iter().any(|span| {
+                span.range.start >= interpolation_start
+                    && span.range.end <= interpolation_end
+                    && span.category != HighlightCategory::String
+            }),
+            "expected template interpolation to contain non-string syntax spans, got {spans:?}"
+        );
+    }
+
+    #[test]
     fn go_highlight_uses_default_query_captures() {
         let source = r#"
 package main

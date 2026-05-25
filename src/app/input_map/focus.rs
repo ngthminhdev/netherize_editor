@@ -4,6 +4,134 @@ use super::helpers::palette_query_from_text;
 use super::*;
 
 impl InputMap {
+    pub(super) fn resolve_extensions_manager_focus(
+        &self,
+        input: &NormalizedInput,
+        filter_focused: bool,
+    ) -> Option<KeybindingMatch> {
+        use KeyCode::*;
+
+        if input.named_key == Some(NamedKey::Escape) {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsCancelFilter,
+                reason: "extensions: Esc -> leave filter focus / dismiss popup",
+            });
+        }
+
+        if !input.has_command_modifier() && input.named_key == Some(NamedKey::Enter) {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsToggleExpanded,
+                reason: "extensions: Enter -> expand selected",
+            });
+        }
+
+        if filter_focused {
+            if input.named_key == Some(NamedKey::Backspace) {
+                return Some(KeybindingMatch {
+                    command: Command::FilePickerBackspaceQuery,
+                    reason: "extensions: Backspace -> delete filter char",
+                });
+            }
+            if input.named_key == Some(NamedKey::Space) {
+                return Some(KeybindingMatch {
+                    command: Command::FilePickerAppendQuery(" ".to_string()),
+                    reason: "extensions: Space -> append filter char",
+                });
+            }
+            if let Some(command) = palette_query_from_text(&input.text) {
+                return Some(KeybindingMatch {
+                    command,
+                    reason: "extensions: text -> append filter char",
+                });
+            }
+            return None;
+        }
+
+        if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowDown))
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyJ))
+            || (input.modifiers.control_key()
+                && !input.modifiers.super_key()
+                && input.physical_key == Some(KeyN))
+        {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsSelectNext,
+                reason: "extensions: j/down/ctrl+n -> select next",
+            });
+        }
+
+        if (!input.has_command_modifier() && input.named_key == Some(NamedKey::ArrowUp))
+            || (!input.has_command_modifier() && input.physical_key == Some(KeyK))
+            || (input.modifiers.control_key()
+                && !input.modifiers.super_key()
+                && input.physical_key == Some(KeyP))
+        {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsSelectPrev,
+                reason: "extensions: k/up/ctrl+p -> select previous",
+            });
+        }
+
+        if !input.has_command_modifier() && input.physical_key == Some(KeyF) {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsStartFilter,
+                reason: "extensions: f -> focus filter",
+            });
+        }
+
+        if !input.has_command_modifier() && input.physical_key == Some(Slash) {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsStartFilter,
+                reason: "extensions: / -> focus filter",
+            });
+        }
+
+        if !input.has_command_modifier() && input.named_key == Some(NamedKey::Tab) {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsSwitchTabNext,
+                reason: "extensions: Tab -> next tab",
+            });
+        }
+
+        if input.modifiers.shift_key()
+            && !input.modifiers.control_key()
+            && !input.modifiers.super_key()
+            && input.named_key == Some(NamedKey::Tab)
+        {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsSwitchTabPrev,
+                reason: "extensions: Shift+Tab -> previous tab",
+            });
+        }
+
+        if !input.has_command_modifier() && input.physical_key == Some(KeyI) {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsInstallSelected,
+                reason: "extensions: i -> mark installed",
+            });
+        }
+
+        if !input.has_command_modifier() && input.physical_key == Some(KeyU) {
+            return Some(KeybindingMatch {
+                command: Command::ExtensionsUninstallSelected,
+                reason: "extensions: u -> mark uninstalled",
+            });
+        }
+
+        if !input.has_command_modifier() && input.physical_key == Some(KeyQ) {
+            return Some(KeybindingMatch {
+                command: Command::BufferCloseCurrent,
+                reason: "extensions: q -> close tab",
+            });
+        }
+
+        resolved_keymap::resolve_global_command(&self.keymap, input, &self.open_file_path).map(
+            |command| KeybindingMatch {
+                command,
+                reason: "extensions: global binding",
+            },
+        )
+    }
+
     pub(super) fn resolve_settings_focus(
         &self,
         input: &NormalizedInput,
@@ -382,8 +510,8 @@ impl InputMap {
         }
         if !input.has_command_modifier() && input.physical_key == Some(KeyQ) {
             return Some(KeybindingMatch {
-                command: Command::CloseSidebars,
-                reason: "preview: q -> CloseSidebars (close preview)",
+                command: Command::BufferCloseCurrent,
+                reason: "preview: q -> BufferCloseCurrent",
             });
         }
         if input.has_command_modifier() && input.physical_key == Some(KeyW) {
@@ -420,6 +548,20 @@ impl InputMap {
             });
         }
 
+        if !input.has_command_modifier() && input.physical_key == Some(KeyZ) {
+            return Some(KeybindingMatch {
+                command: Command::CenterCursorLine,
+                reason: "preview: z/zz -> keep preview viewport centered",
+            });
+        }
+
+        if !input.has_command_modifier() && input.physical_key == Some(KeyG) {
+            return Some(KeybindingMatch {
+                command: Command::MarkdownPreviewScrollTop,
+                reason: "preview: g/gg -> scroll top",
+            });
+        }
+
         if input.modifiers.control_key()
             && !input.modifiers.super_key()
             && input.physical_key == Some(KeyD)
@@ -436,6 +578,25 @@ impl InputMap {
             return Some(KeybindingMatch {
                 command: Command::MarkdownPreviewScrollHalfPageUp,
                 reason: "preview: Ctrl+u -> scroll up half page",
+            });
+        }
+
+        if input.modifiers.control_key()
+            && !input.modifiers.super_key()
+            && input.physical_key == Some(KeyH)
+        {
+            return Some(KeybindingMatch {
+                command: Command::BufferPrev,
+                reason: "preview: Ctrl+h -> previous buffer",
+            });
+        }
+        if input.modifiers.control_key()
+            && !input.modifiers.super_key()
+            && input.physical_key == Some(KeyL)
+        {
+            return Some(KeybindingMatch {
+                command: Command::BufferNext,
+                reason: "preview: Ctrl+l -> next buffer",
             });
         }
 

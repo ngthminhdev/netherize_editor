@@ -158,6 +158,55 @@ fn dispatch_command_with_clipboard_once(
         auto_commit_text_transactions,
     );
 
+    let is_text_mutation = matches!(
+        &command,
+        Command::InsertChar(_)
+            | Command::InsertText(_)
+            | Command::Newline
+            | Command::InsertTab
+            | Command::AiAcceptInline
+            | Command::AiAcceptInlineWord
+            | Command::Backspace
+            | Command::InsertLineBelow
+            | Command::InsertLineAbove
+            | Command::InsertAtLineStart
+            | Command::AppendAtLineEnd
+            | Command::AppendAfterCursor
+            | Command::SubstituteLine
+            | Command::DeleteChar
+            | Command::DeleteSelection
+            | Command::DeleteCurrentLine
+            | Command::DeleteToLineEnd
+            | Command::ToggleLineComment
+            | Command::ToggleSelectionComment
+            | Command::WrapSelectionWithStar
+            | Command::DeleteWordForward
+            | Command::DeleteWordBackward
+            | Command::ChangeSelection
+            | Command::ChangeWordForward
+            | Command::ChangeWordBackward
+            | Command::ChangeToLineEnd
+            | Command::JoinLines
+            | Command::PasteAfter
+            | Command::PasteBefore
+            | Command::EditorPaste
+            | Command::PasteSystemClipboard
+            | Command::VisualPaste
+            | Command::ReplaceChar(_)
+            | Command::TextObjectAction { .. }
+            | Command::Operate { .. }
+            | Command::MultiCursorInsertBefore
+            | Command::MultiCursorAppendAfter
+            | Command::MultiCursorChange
+            | Command::MultiCursorDelete
+    );
+    if is_text_mutation && ctx.app_state.active_text_buffer_missing_on_disk() {
+        return DispatchReport::success(
+            "Dispatch: active file is missing on disk; edit blocked until file exists again",
+            false,
+        );
+    }
+
     match &command {
         Command::InsertChar(_)
         | Command::InsertText(_)
@@ -243,6 +292,16 @@ fn dispatch_command_with_clipboard_once(
         | Command::OpenFileHistory
         | Command::OpenSettings
         | Command::OpenHelp
+        | Command::OpenExtensionsManager
+        | Command::ExtensionsSelectNext
+        | Command::ExtensionsSelectPrev
+        | Command::ExtensionsStartFilter
+        | Command::ExtensionsCancelFilter
+        | Command::ExtensionsToggleExpanded
+        | Command::ExtensionsSwitchTabNext
+        | Command::ExtensionsSwitchTabPrev
+        | Command::ExtensionsInstallSelected
+        | Command::ExtensionsUninstallSelected
         | Command::GitOpenLazygit
         | Command::GitOpenLazydocker
         | Command::GitBlameLine
@@ -276,6 +335,7 @@ fn dispatch_command_with_clipboard_once(
         ),
         Command::SaveFile
         | Command::OpenFile(_)
+        | Command::NewInstance
         | Command::OpenFolder
         | Command::OpenRecentProjects
         | Command::ToggleTerminal
@@ -319,6 +379,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::ExplorerMoveToBottom
         | Command::ExplorerRenameFull
         | Command::ExplorerRenameBase
+        | Command::ExplorerCopyFile
+        | Command::ExplorerPasteFile
         | Command::ExplorerExpandCollapse
         | Command::ExplorerOpenFile
         | Command::NextPanelTab

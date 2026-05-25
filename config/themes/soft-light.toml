@@ -1,57 +1,32 @@
-# Theme metadata shown after the profile is loaded.
 [theme]
 name = "soft-light"
 description = "Soft Light palette adapted for Netherize Editor runtime themes"
 
-# Core editor surface: text buffer, caret, selection, and gutter.
 [editor]
-# Main text canvas background for the center editor region.
 bg = "#FAFAF7"
-# Default foreground color for plain text in the editor.
 fg = "#2E3440"
-# Caret / cursor color in insert, normal, and visual rendering.
 cursor = "#008E9B"
-# Selection fill used by visual mode and selected ranges.
 selection = "#DCE7F3"
-# Background behind line numbers.
 gutter = "#FAFAF7"
-# Active line-number color in the gutter.
 gutter_active = "#2E3440"
-# Subtle vertical indentation guides in the code area.
 indent_guide = "#D8DEE9"
-# Nested bracket colors used for rainbow-style pair rendering.
 rainbow_brackets = ["#008E9B", "#B83280", "#B7791F", "#2F855A", "#C05621", "#6B46C1"]
-# Editor text metrics for cosmic-text layout.
-# Primary font for editor text, overlays, top bar, and status bar.
-# Nerd Font used for explorer/file icons and terminal glyph fallback.
 
-# Shared UI chrome colors and workbench sizing tokens.
 [ui]
-# Window clear color behind every region and palette pill foreground base.
 bg = "#F3F4F1"
-# Left/right sidebar region background.
 sidebar_bg = "#FAFAF7"
-# Generic chrome background for top bar, cards, and inspector surfaces.
 panel_bg = "#FAFAF7"
-# Bottom terminal panel and terminal-buffer background.
 terminal_bg = "#FAFAF7"
-# Scrim + modal panel background for command palette and Leap overlay.
 overlay_bg = "#F8F8F2E6"
-# Status bar region background.
 status_bar_bg = "#FAFAF7"
-# Borders, separators, and subtle region dividers.
 border_color = "#D8DEE9"
-# Active row / selected tab / focused list item background.
 selection_bg = "#E7EEF7"
-# Unsaved topbar tab marker color.
 dirty_indicator = "#D69E2E"
 
-# Shared foreground tokens for labels and chrome text.
 fg = "#2E3440"
 fg_dim = "#4A5568"
 fg_ghost = "#718096"
 
-# Accent and semantic colors used across overlays, status pills, icons, and diagnostics.
 accent = "#64748B"
 cyan = "#008E9B"
 magenta = "#B83280"
@@ -61,14 +36,10 @@ warning = "#C05621"
 info = "#2B6CB0"
 error = "#C53030"
 
-# Mode badge colors in the status bar.
 mode_normal = "#008E9B"
 mode_insert = "#2F855A"
 mode_visual = "#B83280"
 
-# Sidebar and panel text metrics.
-
-# Theme-driven workbench chrome sizes.
 top_bar_height = 36.0
 
 [git]
@@ -79,70 +50,42 @@ added_gutter = "#38A169"
 deleted_gutter = "#E53E3E"
 status_bar_height = 32.0
 
-# Disclosure markers and file-picker bullet glyph.
-
 [syntax]
-# ── Lõi ngôn ngữ (Core) ──
-# Keywords like `fn`, `let`, `match`.
-keyword = "#b7791f"       # Gold (Soft Light identity)
-# Operators such as `=`, `+`, `&&`, `->`.
-operator = "#b7791f"      # Gold (Soft Light palette)
-# Punctuation such as commas, braces, and separators.
+keyword = "#b7791f"
+operator = "#b7791f"
 punctuation = "#64748b"
 
-# ── Giá trị (Literals) ──
-# String literals.
 string = "#2f855a"
-# Numeric literals.
 number = "#c53030"
-# Boolean literals (true/false).
 boolean = "#c05621"
-# Escape sequences inside strings (e.g., \n, \t).
 escape = "#c53030"
 
-# ── Định danh (Identifiers) ──
-# Plain variable names that do not fall into a richer semantic bucket.
-identifier = "#2e3440"    # Foreground (cho variable references)
-# Local variables.
-variable = "#b83280"      # Magenta (khác với identifier #2e3440)
-# Function names and callable symbols.
+identifier = "#2e3440"
+variable = "#b83280"
 function = "#2b6cb0"
-# Macro invocation highlight.
 macro = "#2b6cb0"
-# Function and closure parameters.
-parameter = "#b83280"     # Magenta (Soft Light palette)
+parameter = "#b83280"
 
-# ── Hướng đối tượng & Cấu trúc (OOP & Structs) ──
-# Type names.
 type = "#6b46c1"
-# Constructor functions (e.g., String::new).
 constructor = "#6b46c1"
-# Struct field declarations and member access like `self.name`.
-field = "#2b6cb0"         # Blue (Soft Light palette)
-# Struct literal property labels like `Demo { name: value }`.
-property = "#2b6cb0"      # Blue (đồng bộ với field)
-# Named constants such as `MAX_SIZE`.
+field = "#2b6cb0"
+property = "#2b6cb0"
 constant = "#c05621"
 
-# ── Đặc tả ngôn ngữ (Language-specific) ──
-# Comments and muted inline docs.
 comment = "#8a94a6"
-# Decorators and attributes like `#[derive(Debug)]` or `@Controller`.
-attribute = "#b7791f"     # Gold (đồng bộ keyword)
-# Module namespaces (e.g., `std::` in Rust).
+attribute = "#b7791f"
 namespace = "#6b46c1"
-# Rust lifetime highlight.
 lifetime = "#c05621"
-# HTML/XML/JSX Tags.
 tag = "#2b6cb0"
-keyword_control = "#b7791f"       # Gold (Soft Light identity)
-keyword_storage = "#b7791f"       # Gold (Soft Light identity)
+keyword_control = "#b7791f"
+keyword_storage = "#b7791f"
 string_escape = "#c53030"
 function_builtin = "#2b6cb0"
 comment_doc = "#8a94a6"
 type_builtin = "#6b46c1"
-variable_builtin = "#b83280"      # Magenta (khác với identifier #2e3440)
-markup_strong = "#b7791f"       # Gold (Soft Light identity)
+variable_builtin = "#b83280"
+markup_strong = "#b7791f"
 markup_italic = "#8a94a6"
 markup_inline_code = "#2f855a"
 markup_link = "#2b6cb0"
+

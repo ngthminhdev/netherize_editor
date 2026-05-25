@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Netherize Keyboard IDE Logo (Fixed)</title>
+  <desc id="desc">A visually balanced keycap carrying the Netherize N monogram with optical correction.</desc>
+  <defs>
+    <linearGradient id="command-path" x1="328" y1="310" x2="696" y2="678" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22ECDB"/>
+      <stop offset="1" stop-color="#69C3FF"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="180" fill="#181F2C"/>
+
+  <rect x="232" y="232" width="560" height="560" rx="90" fill="#1C2433" stroke="#D0D7E4" stroke-width="48"/>
+
+  <path d="M328 678V310" fill="none" stroke="#D0D7E4" stroke-width="78" stroke-linecap="round"/>
+  <path d="M328 310 696 678" fill="none" stroke="url(#command-path)" stroke-width="78" stroke-linecap="round"/>
+  <path d="M696 310V678" fill="none" stroke="#D0D7E4" stroke-width="78" stroke-linecap="round"/>
+</svg>

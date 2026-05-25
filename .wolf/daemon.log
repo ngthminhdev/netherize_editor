@@ -1,0 +1,51 @@
+[2026-05-16T05:48:05.640Z] [INFO] Scheduled task: Full anatomy rescan (0 */6 * * *)
+[2026-05-16T05:48:05.640Z] [INFO] Scheduled task: Consolidate old memory (0 2 * * *)
+[2026-05-16T05:48:05.641Z] [INFO] Scheduled task: Token audit report (0 0 * * 1)
+[2026-05-16T05:48:05.641Z] [INFO] Scheduled task: Cerebrum reflection (0 3 * * 0)
+[2026-05-16T05:48:05.641Z] [INFO] Scheduled task: AI suggestions (0 4 * * 1)
+[2026-05-16T05:48:05.641Z] [INFO] File watcher started on .wolf/
+[2026-05-16T05:48:05.642Z] [INFO] OpenWolf daemon started
+[2026-05-16T05:48:05.642Z] [INFO] Dashboard server listening on port 18791
+[2026-05-16T05:50:09.756Z] [INFO] WebSocket client connected
+[2026-05-16T05:54:36.042Z] [INFO] WebSocket client connected
+[2026-05-16T05:56:14.143Z] [INFO] WebSocket client connected
+[2026-05-16T06:04:50.074Z] [INFO] WebSocket client connected
+[2026-05-16T06:08:37.278Z] [INFO] WebSocket client connected
+[2026-05-16T07:00:47.105Z] [INFO] WebSocket client connected
+[2026-05-16T09:40:07.298Z] [INFO] WebSocket client connected
+[2026-05-16T17:55:39.514Z] [INFO] WebSocket client connected
+[2026-05-16T18:43:48.828Z] [INFO] WebSocket client connected
+[2026-05-17T05:00:00.450Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-17T05:00:00.524Z] [INFO] Task Full anatomy rescan completed in 75ms
+[2026-05-17T11:00:00.256Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-17T11:00:00.333Z] [INFO] Task Full anatomy rescan completed in 77ms
+[2026-05-17T17:00:00.594Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-17T17:00:00.684Z] [INFO] Task Full anatomy rescan completed in 90ms
+[2026-05-17T17:00:00.684Z] [INFO] Executing task: Token audit report
+[2026-05-17T17:00:00.685Z] [INFO] Task Token audit report completed in 1ms
+[2026-05-18T05:00:00.107Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-18T05:00:00.228Z] [INFO] Task Full anatomy rescan completed in 121ms
+[2026-05-18T11:00:00.271Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-18T11:00:00.401Z] [INFO] Task Full anatomy rescan completed in 129ms
+[2026-05-19T05:00:00.593Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-19T05:00:00.674Z] [INFO] Task Full anatomy rescan completed in 81ms
+[2026-05-19T11:00:00.589Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-19T11:00:00.733Z] [INFO] Task Full anatomy rescan completed in 144ms
+[2026-05-19T17:00:00.266Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-19T17:00:00.384Z] [INFO] Task Full anatomy rescan completed in 117ms
+[2026-05-20T05:00:00.637Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-20T05:00:00.772Z] [INFO] Task Full anatomy rescan completed in 135ms
+[2026-05-20T11:00:00.290Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-20T11:00:00.422Z] [INFO] Task Full anatomy rescan completed in 131ms
+[2026-05-21T05:00:00.624Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-21T05:00:00.747Z] [INFO] Task Full anatomy rescan completed in 122ms
+[2026-05-21T11:00:00.240Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-21T11:00:00.387Z] [INFO] Task Full anatomy rescan completed in 147ms
+[2026-05-21T17:00:00.767Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-21T17:00:00.879Z] [INFO] Task Full anatomy rescan completed in 112ms
+[2026-05-22T05:00:00.747Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-22T05:00:00.907Z] [INFO] Task Full anatomy rescan completed in 160ms
+[2026-05-22T11:00:00.089Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-22T11:00:00.221Z] [INFO] Task Full anatomy rescan completed in 133ms
+[2026-05-23T11:00:00.963Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-23T11:00:01.071Z] [INFO] Task Full anatomy rescan completed in 108ms

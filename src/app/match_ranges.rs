@@ -57,9 +57,21 @@ pub fn score_label_match(label: &str, query: &str) -> Option<(i64, Vec<(usize, u
 
     if let Some(start) = label_lower.find(&query_lower) {
         let end = start + query_lower.len();
-        let prefix_bonus = (label_lower.len().saturating_sub(start) as i64).min(64);
         let range = map_lower_range_to_original(&byte_map, start, end)?;
-        return Some((10_000 + prefix_bonus, vec![range]));
+        let exact = label_lower == query_lower;
+        let word_boundary = start == 0
+            || label_lower[..start]
+                .chars()
+                .next_back()
+                .is_none_or(|ch| !ch.is_alphanumeric());
+        let prefix = start == 0;
+        let score = 10_000
+            + if exact { 5_000 } else { 0 }
+            + if prefix { 3_000 } else { 0 }
+            + if word_boundary { 1_000 } else { 0 }
+            - start as i64
+            - label_lower.len() as i64;
+        return Some((score, vec![range]));
     }
 
     let mut ranges = Vec::new();

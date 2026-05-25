@@ -3,18 +3,22 @@
 use crate::{
     app::{app_state::AppState, command_palette::CommandPaletteRenderModel, input::LeapTarget},
     render::{
-        glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
+        glyph_instance::GlyphInstance, icon_pipeline::IconDrawInstance,
+        region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
 };
 
 use super::{
-    palette_footer_content_height, palette_footer_height, render_palette_badge,
-    render_palette_chrome, render_palette_footer, render_palette_selection, PaletteFooterAction,
-    PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD,
+    palette_footer_content_height, palette_footer_height, push_palette_icon_or_badge,
+    render_palette_badge, render_palette_chrome, render_palette_footer, render_palette_selection,
+    PaletteFooterAction, PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD,
 };
-use super::super::helpers::{
-    clamp_monospace_text, estimate_monospace_width, ext_icon_dot, gutter_width_for_editor,
-    layout_panel_text, layout_panel_text_bold, rect_to_scissor,
+use super::super::{
+    components::PrefixIconBadgeChrome,
+    helpers::{
+        clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
+        layout_panel_text, layout_panel_text_bold, rect_to_scissor,
+    },
 };
 
 impl Renderer {
@@ -28,6 +32,7 @@ impl Renderer {
 
         let mut quads: Vec<RegionDrawInstance> = Vec::new();
         let mut glyphs: Vec<GlyphInstance> = Vec::new();
+        let mut icons: Vec<IconDrawInstance> = Vec::new();
 
         let font_size = self.theme.ui.sidebar_font_size;
         let line_h = model.line_height.max(18.0);
@@ -35,10 +40,8 @@ impl Renderer {
         let row_h = line_h * 2.0 + 16.0;
         let text_x = panel_x + model.panel_padding + 8.0;
 
-        let char_w = font_size * 0.62;
-        let dot_char_w = char_w + 2.0;
-        let icon_col_w = dot_char_w + 4.0 + 4.0 * char_w + 24.0;
-        let name_x = text_x + icon_col_w;
+        let file_badge_size = (row_h * 0.58).clamp(30.0, 42.0);
+        let name_x = text_x + file_badge_size + 18.0;
 
         render_palette_chrome(model, &mut quads);
 
@@ -140,36 +143,31 @@ impl Renderer {
             }
 
             let file_path = header.split(':').next().unwrap_or(header);
-            let ext = std::path::Path::new(file_path)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
-            let (dot_color, ext_label) = ext_icon_dot(ext, &self.theme);
-            let picker_dot = self.theme.icons.file_picker_dot.as_str();
+            let filename = std::path::Path::new(file_path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(file_path);
+            let file_icon = self.theme.icon_theme_for_filename(filename, false);
+            let badge = file_icon.glyph.as_str();
+            let badge_color = file_icon.color.as_f32();
 
             let header_y = row_top + row_v_pad;
             let preview_y = header_y + line_h + 2.0;
-
-            glyphs.extend(layout_panel_text(
-                picker_dot,
+            let badge_y = row_top + (row_h - file_badge_size) * 0.5;
+            push_palette_icon_or_badge(
+                badge,
+                badge_color,
+                model.panel_bg,
+                [text_x, badge_y, file_badge_size, file_badge_size],
+                0.82,
+                PrefixIconBadgeChrome::None,
                 &mut self.palette_text_system,
                 &mut self.atlas,
                 &self.queue,
-                text_x,
-                header_y,
-                dot_color,
-            ));
-            let mut ext_color = dot_color;
-            ext_color[3] *= 0.75;
-            glyphs.extend(layout_panel_text(
-                ext_label,
-                &mut self.palette_text_system,
-                &mut self.atlas,
-                &self.queue,
-                text_x + dot_char_w + 4.0,
-                header_y,
-                ext_color,
-            ));
+                &mut quads,
+                &mut glyphs,
+                &mut icons,
+            );
 
             let available_w = (panel_x + panel_w - model.panel_padding - 4.0 - name_x).max(0.0);
             let clamped_header = clamp_monospace_text(header, available_w, font_size);
@@ -251,6 +249,12 @@ impl Renderer {
         ));
 
         self.palette_chrome_instances = quads;
+        self.palette_icon_instances = icons;
+        self.palette_icon_pipeline.upload_instances(
+            &self.device,
+            &self.palette_icon_instances,
+            [self.surface_state.config.width, self.surface_state.config.height],
+        );
         self.palette_glyph_instances = glyphs;
     }
 }

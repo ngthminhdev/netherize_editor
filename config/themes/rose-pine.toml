@@ -1,57 +1,32 @@
-# Theme metadata shown after the profile is loaded.
 [theme]
 name = "rose-pine"
 description = "Rosé Pine palette adapted for Netherize Editor runtime themes"
 
-# Core editor surface: text buffer, caret, selection, and gutter.
 [editor]
-# Main text canvas background for the center editor region.
 bg = "#191724"
-# Default foreground color for plain text in the editor.
 fg = "#e0def4"
-# Caret / cursor color in insert, normal, and visual rendering.
 cursor = "#9ccfd8"
-# Selection fill used by visual mode and selected ranges.
 selection = "#403d52"
-# Background behind line numbers.
 gutter = "#191724"
-# Active line-number color in the gutter.
 gutter_active = "#e0def4"
-# Subtle vertical indentation guides in the code area.
 indent_guide = "#524f6740"
-# Nested bracket colors used for rainbow-style pair rendering.
 rainbow_brackets = ["#9ccfd8", "#eb6f92", "#f6c177", "#31748f", "#ebbcba", "#c4a7e7"]
-# Editor text metrics for cosmic-text layout.
-# Primary font for editor text, overlays, top bar, and status bar.
-# Nerd Font used for explorer/file icons and terminal glyph fallback.
 
-# Shared UI chrome colors and workbench sizing tokens.
 [ui]
-# Window clear color behind every region and palette pill foreground base.
 bg = "#111019"
-# Left/right sidebar region background.
 sidebar_bg = "#191724"
-# Generic chrome background for top bar, cards, and inspector surfaces.
 panel_bg = "#191724"
-# Bottom terminal panel and terminal-buffer background.
 terminal_bg = "#191724"
-# Scrim + modal panel background for command palette and Leap overlay.
 overlay_bg = "#191724D9"
-# Status bar region background.
 status_bar_bg = "#191724"
-# Borders, separators, and subtle region dividers.
 border_color = "#0b0a10"
-# Active row / selected tab / focused list item background.
 selection_bg = "#26233a"
-# Unsaved topbar tab marker color.
 dirty_indicator = "#f6c177"
 
-# Shared foreground tokens for labels and chrome text.
 fg = "#e0def4"
 fg_dim = "#908caa"
 fg_ghost = "#6e6a86"
 
-# Accent and semantic colors used across overlays, status pills, icons, and diagnostics.
 accent = "#908caa"
 cyan = "#9ccfd8"
 magenta = "#eb6f92"
@@ -61,14 +36,10 @@ warning = "#ebbcba"
 info = "#9ccfd8"
 error = "#eb6f92"
 
-# Mode badge colors in the status bar.
 mode_normal = "#9ccfd8"
 mode_insert = "#31748f"
 mode_visual = "#eb6f92"
 
-# Sidebar and panel text metrics.
-
-# Theme-driven workbench chrome sizes.
 top_bar_height = 36.0
 
 [git]
@@ -79,70 +50,42 @@ added_gutter = "#31748f"
 deleted_gutter = "#eb6f92"
 status_bar_height = 32.0
 
-# Disclosure markers and file-picker bullet glyph.
-
 [syntax]
-# ── Lõi ngôn ngữ (Core) ──
-# Keywords like `fn`, `let`, `match`.
-keyword = "#f6c177"       # Gold (Rosé Pine identity)
-# Operators such as `=`, `+`, `&&`, `->`.
-operator = "#f6c177"      # Gold (Rosé Pine palette)
-# Punctuation such as commas, braces, and separators.
+keyword = "#f6c177"
+operator = "#f6c177"
 punctuation = "#908caa"
 
-# ── Giá trị (Literals) ──
-# String literals.
 string = "#31748f"
-# Numeric literals.
 number = "#eb6f92"
-# Boolean literals (true/false).
 boolean = "#ebbcba"
-# Escape sequences inside strings (e.g., \n, \t).
 escape = "#eb6f92"
 
-# ── Định danh (Identifiers) ──
-# Plain variable names that do not fall into a richer semantic bucket.
-identifier = "#e0def4"    # Foreground (cho variable references)
-# Local variables.
-variable = "#c4a7e7"      # Iris (khác với identifier #e0def4)
-# Function names and callable symbols.
+identifier = "#e0def4"
+variable = "#c4a7e7"
 function = "#9ccfd8"
-# Macro invocation highlight.
 macro = "#9ccfd8"
-# Function and closure parameters.
-parameter = "#ebbcba"     # Peach (Rosé Pine palette)
+parameter = "#ebbcba"
 
-# ── Hướng đối tượng & Cấu trúc (OOP & Structs) ──
-# Type names.
 type = "#c4a7e7"
-# Constructor functions (e.g., String::new).
 constructor = "#c4a7e7"
-# Struct field declarations and member access like `self.name`.
-field = "#9ccfd8"         # Foam (Rosé Pine palette)
-# Struct literal property labels like `Demo { name: value }`.
-property = "#9ccfd8"      # Foam (đồng bộ với field)
-# Named constants such as `MAX_SIZE`.
+field = "#9ccfd8"
+property = "#9ccfd8"
 constant = "#ebbcba"
 
-# ── Đặc tả ngôn ngữ (Language-specific) ──
-# Comments and muted inline docs.
 comment = "#6e6a86"
-# Decorators and attributes like `#[derive(Debug)]` or `@Controller`.
-attribute = "#f6c177"     # Gold (đồng bộ keyword)
-# Module namespaces (e.g., `std::` in Rust).
+attribute = "#f6c177"
 namespace = "#c4a7e7"
-# Rust lifetime highlight.
 lifetime = "#ebbcba"
-# HTML/XML/JSX Tags.
 tag = "#9ccfd8"
-keyword_control = "#f6c177"       # Gold (Rosé Pine identity)
-keyword_storage = "#f6c177"       # Gold (Rosé Pine identity)
+keyword_control = "#f6c177"
+keyword_storage = "#f6c177"
 string_escape = "#eb6f92"
 function_builtin = "#9ccfd8"
 comment_doc = "#6e6a86"
 type_builtin = "#c4a7e7"
-variable_builtin = "#c4a7e7"      # Iris (khác với identifier #e0def4)
-markup_strong = "#f6c177"       # Gold (Rosé Pine identity)
+variable_builtin = "#c4a7e7"
+markup_strong = "#f6c177"
 markup_italic = "#6e6a86"
 markup_inline_code = "#31748f"
 markup_link = "#9ccfd8"
+

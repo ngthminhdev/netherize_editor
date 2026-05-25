@@ -54,6 +54,8 @@ pub enum RequestTopic {
     SystemDepInstall,
     /// General-purpose system tasks (Python env scan, etc).
     SystemTask,
+    /// File system operations (copy, move, etc).
+    FileOperation,
 }
 
 /// Which search mode the fzf worker is running.
@@ -316,6 +318,18 @@ pub enum WorkerRequestPayload {
         /// to a different item (race-condition guard).
         completion_revision: u64,
     },
+    /// Fallback docs for completion items that don't provide documentation via
+    /// `completionItem/resolve`: open a short-lived shadow document with the
+    /// selected completion text inserted, then run `textDocument/hover` there.
+    LspCompletionVirtualHoverRequest {
+        language_id: String,
+        uri: String,
+        original_text: String,
+        text: String,
+        hover_line: u32,
+        hover_character: u32,
+        completion_revision: u64,
+    },
     AiInlineCompletionRequest {
         api_url: String,
         api_key: Option<String>,
@@ -352,6 +366,13 @@ pub enum WorkerRequestPayload {
     InstallSystemDeps {
         tools: Vec<String>,
     },
+    /// Run an extension install/uninstall command and stream stdout/stderr lines.
+    RunExtensionCommand {
+        binary: String,
+        command: String,
+        uninstall: bool,
+        working_dir: Option<PathBuf>,
+    },
     StopLspServer,
     ShutdownAllLspServers,
     ScanPythonEnvironments {
@@ -362,6 +383,11 @@ pub enum WorkerRequestPayload {
     DetectRuntimeVersions {
         python_binary: Option<PathBuf>,
         workspace_root: PathBuf,
+    },
+    /// Copy a file from source to target path (async to avoid blocking UI).
+    CopyFile {
+        source_path: PathBuf,
+        target_path: PathBuf,
     },
 }
 
@@ -393,6 +419,8 @@ pub struct LspDiagnostic {
     pub code: Option<String>,
     pub source: Option<String>,
     pub message: String,
+    /// LSP DiagnosticTag values. `1` = Unnecessary/unused, `2` = Deprecated.
+    pub tags: Vec<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -477,6 +505,7 @@ pub enum WorkerResultPayload {
         buffer_revision: u64,
         spans: Vec<HighlightSpan>,
         covered_byte_range: Option<Range<usize>>,
+        foldable_ranges: Vec<(usize, usize)>,
         line_count: usize,
         char_count: usize,
         byte_count: usize,
@@ -689,6 +718,13 @@ pub enum WorkerResultPayload {
         node_version: Option<String>,
         go_version: Option<String>,
     },
+    /// Result of async file copy operation.
+    FileCopyResult {
+        source_path: PathBuf,
+        target_path: PathBuf,
+        success: bool,
+        error_message: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -743,6 +779,20 @@ pub enum WorkerMessage {
     },
     /// All system dep tools have been processed — installation loop is done.
     SystemDepInstallDone,
+    ExtensionCommandStarted {
+        binary: String,
+        uninstall: bool,
+    },
+    ExtensionCommandLog {
+        binary: String,
+        line: String,
+    },
+    ExtensionCommandFinished {
+        binary: String,
+        uninstall: bool,
+        success: bool,
+        exit_code: Option<i32>,
+    },
     /// LSP binary was not found on PATH when attempting to spawn the server.
     LspMissingDependency {
         language_id: String,

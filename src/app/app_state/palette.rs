@@ -42,39 +42,41 @@ impl AppState {
             > 0
     }
 
-    /// Push current file+line onto the jump back stack before a jump (e.g. gd).
+    /// Push current file+line+column onto the jump back stack before a jump (e.g. gd).
     /// Clears the forward stack since jumping starts a new branch.
     pub fn push_jump(&mut self) {
         let Some(path) = self.active_file.clone() else {
             return;
         };
-        let line = self.cursor_line_col().0;
-        self.jump_back_stack.push((path, line));
+        let (line, col) = self.cursor_line_col();
+        self.jump_back_stack.push((path, line, col));
         self.jump_forward_stack.clear();
     }
 
-    /// Push an explicit file+line onto the jump back stack.
+    /// Push an explicit file+line+column onto the jump back stack.
     /// Useful when the current active surface is a non-file buffer.
-    pub fn push_jump_entry(&mut self, path: PathBuf, line: usize) {
-        self.jump_back_stack.push((path, line));
+    pub fn push_jump_entry(&mut self, path: PathBuf, line: usize, col: usize) {
+        self.jump_back_stack.push((path, line, col));
         self.jump_forward_stack.clear();
     }
 
-    /// Pop from the back stack and return (path, line). Pushes current pos onto forward stack.
-    pub fn pop_jump_back(&mut self) -> Option<(PathBuf, usize)> {
+    /// Pop from the back stack and return (path, line, col). Pushes current pos onto forward stack.
+    pub fn pop_jump_back(&mut self) -> Option<(PathBuf, usize, usize)> {
         let entry = self.jump_back_stack.pop()?;
         let current_path = self.active_file.clone().unwrap_or_default();
-        let current_line = self.cursor_line_col().0;
-        self.jump_forward_stack.push((current_path, current_line));
+        let (current_line, current_col) = self.cursor_line_col();
+        self.jump_forward_stack
+            .push((current_path, current_line, current_col));
         Some(entry)
     }
 
-    /// Pop from the forward stack and return (path, line). Pushes current pos onto back stack.
-    pub fn pop_jump_forward(&mut self) -> Option<(PathBuf, usize)> {
+    /// Pop from the forward stack and return (path, line, col). Pushes current pos onto back stack.
+    pub fn pop_jump_forward(&mut self) -> Option<(PathBuf, usize, usize)> {
         let entry = self.jump_forward_stack.pop()?;
         let current_path = self.active_file.clone().unwrap_or_default();
-        let current_line = self.cursor_line_col().0;
-        self.jump_back_stack.push((current_path, current_line));
+        let (current_line, current_col) = self.cursor_line_col();
+        self.jump_back_stack
+            .push((current_path, current_line, current_col));
         Some(entry)
     }
 
@@ -111,12 +113,42 @@ impl AppState {
         Ok(())
     }
 
+    pub fn open_recent_projects_palette_with_meta(
+        &mut self,
+        recent: &[std::path::PathBuf],
+        meta: &std::collections::HashMap<std::path::PathBuf, crate::app::persistence::RecentProjectMeta>,
+    ) -> Result<(), String> {
+        use crate::app::command_palette::CommandPaletteItem;
+        let items = recent
+            .iter()
+            .map(|path| {
+                let item_meta = meta.get(path);
+                // Always refresh the icon source from the current project markers.
+                // Older persisted metadata may contain a stale/generic icon source,
+                // which makes the recent-project picker render a file icon while
+                // the welcome page correctly infers the project language/framework.
+                let inferred_icon_source = crate::app::persistence::AppPersistentState::infer_project_icon_source(path);
+                CommandPaletteItem::recent_project_with_meta(
+                    path,
+                    Some(inferred_icon_source.as_str()),
+                    item_meta.and_then(|meta| meta.last_opened_unix_secs),
+                )
+            })
+            .collect();
+        self.command_palette
+            .open_with_items(CommandPaletteMode::RecentProjects, items);
+        Ok(())
+    }
+
     pub fn sync_welcome_recent_projects(&mut self, recent: &[std::path::PathBuf]) -> bool {
         use crate::app::command_palette::CommandPaletteItem;
         let items: Vec<_> = recent
             .iter()
             .take(WELCOME_RECENT_PROJECT_LIMIT)
-            .map(|path| CommandPaletteItem::recent_project(path))
+            .map(|path| {
+                let icon_source = crate::app::persistence::AppPersistentState::infer_project_icon_source(path);
+                CommandPaletteItem::recent_project_with_meta(path, Some(icon_source.as_str()), None)
+            })
             .collect();
         self.command_palette
             .set_hidden_items(CommandPaletteMode::RecentProjects, items)
@@ -662,6 +694,9 @@ impl AppState {
             return Err("cannot open diagnostics buffer without items".to_string());
         }
 
+        // Save current text buffer before switching to diagnostics buffer
+        self.save_current_text_buffer_history();
+
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::Diagnostics(DiagnosticsState {
@@ -698,6 +733,27 @@ impl AppState {
     pub fn active_buffer_is_help(&self) -> bool {
         self.active_buffer()
             .is_some_and(|buffer| matches!(buffer.content, BufferContent::Help(_)))
+    }
+
+    pub fn active_buffer_is_extensions_manager(&self) -> bool {
+        self.active_buffer()
+            .is_some_and(|buffer| matches!(buffer.content, BufferContent::ExtensionsManager(_)))
+    }
+
+    pub fn active_extensions_manager_buffer(&self) -> Option<&ExtensionsManagerState> {
+        match self.active_buffer().map(|buffer| &buffer.content) {
+            Some(BufferContent::ExtensionsManager(state)) => Some(state),
+            _ => None,
+        }
+    }
+
+    pub fn active_extensions_manager_buffer_mut(&mut self) -> Option<&mut ExtensionsManagerState> {
+        self.active_buffer_index
+            .and_then(|idx| self.buffers.get_mut(idx))
+            .and_then(|buffer| match &mut buffer.content {
+                BufferContent::ExtensionsManager(state) => Some(state),
+                _ => None,
+            })
     }
 
     pub fn active_settings_buffer(&self) -> Option<&SettingsState> {
@@ -830,6 +886,9 @@ impl AppState {
         title: impl Into<String>,
         working_dir: Option<PathBuf>,
     ) -> usize {
+        // Save current text buffer before switching to terminal buffer
+        self.save_current_text_buffer_history();
+
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::Terminal(PtyState {
@@ -870,9 +929,88 @@ impl AppState {
     }
 
     pub fn open_help_buffer(&mut self) -> usize {
+        // Save current text buffer before switching to help buffer
+        self.save_current_text_buffer_history();
+
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::Help(HelpState::new()),
+        });
+        let index = self.buffers.len().saturating_sub(1);
+        self.reset_text_editor_state();
+        self.active_buffer_index = Some(index);
+        let _ = self.clear_current_overlays();
+        self.bump_revision();
+        index
+    }
+
+    pub fn open_extensions_manager_buffer(&mut self) -> usize {
+        self.save_current_text_buffer_history();
+
+        if let Some(existing_idx) = self
+            .buffers
+            .iter()
+            .position(|buffer| matches!(buffer.content, BufferContent::ExtensionsManager(_)))
+        {
+            self.is_initial_launch_welcome = false;
+            self.reset_text_editor_state();
+            self.active_buffer_index = Some(existing_idx);
+            let _ = self.clear_current_overlays();
+            self.bump_revision();
+            return existing_idx;
+        }
+
+        self.is_initial_launch_welcome = false;
+        self.buffers.push(BufferEntry {
+            content: BufferContent::ExtensionsManager(ExtensionsManagerState::new()),
+        });
+        let index = self.buffers.len().saturating_sub(1);
+        self.reset_text_editor_state();
+        self.active_buffer_index = Some(index);
+        let _ = self.clear_current_overlays();
+        self.bump_revision();
+        index
+    }
+
+    pub fn sync_markdown_preview_buffer(&mut self, preview: MarkdownPreviewState) -> bool {
+        let Some(existing_idx) = self
+            .buffers
+            .iter()
+            .position(|buffer| matches!(buffer.content, BufferContent::MarkdownPreview(_)))
+        else {
+            return false;
+        };
+
+        if let Some(BufferEntry {
+            content: BufferContent::MarkdownPreview(state),
+            ..
+        }) = self.buffers.get_mut(existing_idx)
+        {
+            *state = preview;
+            return true;
+        }
+
+        false
+    }
+
+    pub fn open_markdown_preview_buffer(&mut self, preview: MarkdownPreviewState) -> usize {
+        if let Some(existing_idx) = self
+            .buffers
+            .iter()
+            .position(|buffer| matches!(buffer.content, BufferContent::MarkdownPreview(_)))
+        {
+            let _ = self.sync_markdown_preview_buffer(preview);
+            self.reset_text_editor_state();
+            self.active_buffer_index = Some(existing_idx);
+            let _ = self.clear_current_overlays();
+            self.bump_revision();
+            return existing_idx;
+        }
+
+        self.save_current_text_buffer_history();
+        self.is_initial_launch_welcome = false;
+        self.buffers.push(BufferEntry {
+            content: BufferContent::MarkdownPreview(preview),
         });
         let index = self.buffers.len().saturating_sub(1);
         self.reset_text_editor_state();
@@ -892,6 +1030,9 @@ impl AppState {
         if items.is_empty() {
             return Err("cannot open references buffer without items".to_string());
         }
+
+        // Save current text buffer before switching to references buffer
+        self.save_current_text_buffer_history();
 
         let path_counts = reference_path_counts(&items);
 
@@ -928,6 +1069,9 @@ impl AppState {
         origin_line: usize,
         pending_request_id: u64,
     ) -> usize {
+        // Save current text buffer before switching to pending references buffer
+        self.save_current_text_buffer_history();
+
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
             content: BufferContent::References(ReferencesBufferState {
@@ -1063,6 +1207,9 @@ impl AppState {
         enable_outline: bool,
         inline_suggestion_enabled: bool,
     ) -> usize {
+        // Save current text buffer before switching to settings buffer
+        self.save_current_text_buffer_history();
+
         if let Some(existing_idx) = self
             .buffers
             .iter()
@@ -1113,6 +1260,113 @@ impl AppState {
             self.bump_revision();
         }
         changed
+    }
+
+    pub fn extensions_select_next(&mut self) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let changed = state.select_next();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn extensions_select_prev(&mut self) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let changed = state.select_prev();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn extensions_set_filter_focused(&mut self, focused: bool) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        if state.filter_focused == focused {
+            return false;
+        }
+        state.filter_focused = focused;
+        self.bump_revision();
+        true
+    }
+
+    pub fn extensions_append_filter(&mut self, text: &str) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let changed = state.append_filter(text);
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn extensions_backspace_filter(&mut self) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let changed = state.backspace_filter();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn extensions_toggle_expanded_selected(&mut self) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let changed = state.toggle_expanded_selected();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn extensions_switch_tab_next(&mut self) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let changed = state.switch_tab_next();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn extensions_switch_tab_prev(&mut self) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let changed = state.switch_tab_prev();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub fn extensions_toggle_install_selected(&mut self, installed: bool) -> bool {
+        let Some(state) = self.active_extensions_manager_buffer_mut() else {
+            return false;
+        };
+        let Some(idx) = state.selected_item_index() else {
+            return false;
+        };
+        let Some(item) = state.items.get_mut(idx) else {
+            return false;
+        };
+        if item.installed == installed {
+            return false;
+        }
+        item.installed = installed;
+        self.bump_revision();
+        true
     }
 
     pub fn settings_select_prev(&mut self) -> bool {
@@ -1212,6 +1466,10 @@ impl AppState {
             ) || (matches!(event.kind, FileSystemChangeKind::Modify) && !event.path.exists())
         });
 
+        if self.refresh_text_buffer_missing_on_disk_states() {
+            report.workspace_reloaded = true;
+        }
+
         // Chỉ rescan khi tree shape có thể đổi (create/delete/rename).
         // Modify-only thường không đổi cấu trúc workspace, tránh quét cả cây quá nhiều.
         if requires_workspace_rescan && let Some(workspace) = self.workspace_model.as_mut() {
@@ -1270,6 +1528,9 @@ impl AppState {
                         Ok(()) => {
                             self.active_file = Some(active_path.clone());
                             self.register_open_text_buffer(active_path.clone());
+                            if let Some(buffer) = self.active_text_buffer_mut() {
+                                buffer.missing_on_disk = false;
+                            }
                             self.dirty = false;
                             let note = format!(
                                 "auto reloaded active file from disk: {}",
@@ -1281,6 +1542,9 @@ impl AppState {
                             report.notices.push(note);
                         }
                         Err(err) => {
+                            if let Some(buffer) = self.active_text_buffer_mut() {
+                                buffer.missing_on_disk = !active_path.exists();
+                            }
                             let note = format!(
                                 "auto reload skipped for active file {}: {}",
                                 active_path.display(),
@@ -1319,6 +1583,9 @@ impl AppState {
                     }
                 }
                 FileSystemChangeKind::Delete => {
+                    if let Some(buffer) = self.active_text_buffer_mut() {
+                        buffer.missing_on_disk = true;
+                    }
                     let note = format!(
                         "active file deleted externally: {} (buffer kept in memory)",
                         active_path.display()

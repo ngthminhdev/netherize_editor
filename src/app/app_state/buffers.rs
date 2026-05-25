@@ -55,6 +55,9 @@ impl AppState {
         if self.active_buffer_is_diagnostics() {
             return Err("cannot save diagnostics buffer".to_string());
         }
+        if self.active_buffer_is_markdown_preview() {
+            return Err("cannot save markdown preview buffer".to_string());
+        }
 
         let _ = self.cancel_file_history_preview();
 
@@ -155,7 +158,19 @@ impl AppState {
         let Some(current_idx) = self.active_buffer_index else {
             return Ok(false);
         };
+        self.close_buffer_index(current_idx)
+    }
 
+    pub fn close_buffer_for_path(&mut self, path: &Path) -> Result<bool, String> {
+        let Some(index) = self.buffers.iter().position(|entry| {
+            matches!(&entry.content, BufferContent::Text(buffer) if buffer.path == path)
+        }) else {
+            return Ok(false);
+        };
+        self.close_buffer_index(index)
+    }
+
+    fn close_buffer_index(&mut self, current_idx: usize) -> Result<bool, String> {
         self.save_current_text_buffer_history();
         let removed = self.buffers.remove(current_idx);
         if let BufferContent::Text(buffer) = removed.content {
@@ -166,6 +181,13 @@ impl AppState {
         // stale state from being accessed during buffer switch.
         // This fixes git decoration and treesitter highlight corruption when closing buffers.
         self.active_buffer_index = None;
+
+        // CRITICAL: Reset text state to prevent closed buffer content from being
+        // saved into the next activated buffer during the activate_buffer_index() call.
+        // This fixes race condition where rapid close+switch operations would corrupt
+        // buffer content (closed buffer content overwrites newly opened buffer).
+        self.text = Rope::new();
+        self.cached_line_starts = None;
 
         if self.buffers.is_empty() {
             self.reset_text_editor_state();
@@ -226,13 +248,58 @@ impl AppState {
         true
     }
 
-    pub fn clear_visual_selection(&mut self) -> bool {
-        if self.selection_anchor_char_idx.is_none() && !self.visual_line_mode {
+    pub fn begin_visual_block_selection(&mut self) -> bool {
+        let (line_idx, col) = self.cursor_line_col();
+        if self.visual_block_anchor_line == Some(line_idx)
+            && self.visual_block_anchor_col == Some(col) {
             return false;
         }
+        self.visual_block_anchor_line = Some(line_idx);
+        self.visual_block_anchor_col = Some(col);
         self.selection_anchor_char_idx = None;
         self.visual_line_mode = false;
         true
+    }
+
+    pub fn clear_visual_block_selection(&mut self) -> bool {
+        if self.visual_block_anchor_line.is_none() {
+            return false;
+        }
+        self.visual_block_anchor_line = None;
+        self.visual_block_anchor_col = None;
+        true
+    }
+
+    pub fn visual_block_range(&self) -> Option<VisualBlockRange> {
+        if self.current_mode() != EditorMode::VisualBlock {
+            return None;
+        }
+        let anchor_line = self.visual_block_anchor_line?;
+        let anchor_col = self.visual_block_anchor_col?;
+        let (cursor_line, cursor_col) = self.cursor_line_col();
+
+        let start_line = anchor_line.min(cursor_line);
+        let end_line = anchor_line.max(cursor_line);
+        let start_col = anchor_col.min(cursor_col);
+        let end_col = anchor_col.max(cursor_col);
+
+        Some(VisualBlockRange {
+            start_line,
+            end_line,
+            start_col,
+            end_col,
+        })
+    }
+
+    pub fn clear_visual_selection(&mut self) -> bool {
+        let had_selection = self.selection_anchor_char_idx.is_some()
+            || self.visual_line_mode
+            || self.visual_block_anchor_line.is_some();
+        self.selection_anchor_char_idx = None;
+        self.visual_line_mode = false;
+        self.visual_block_anchor_line = None;
+        self.visual_block_anchor_col = None;
+        had_selection
     }
 
     pub fn visual_selection_range(&self) -> Option<VisualSelectionRange> {

@@ -261,6 +261,46 @@ fn toggle_terminal_command_closes_bottom_panel_after_second_press() {
 }
 
 #[test]
+fn focus_terminal_focuses_open_panel_from_editor_without_closing_it() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    assert!(shell.handle_command(Command::ToggleBottomDock));
+    assert!(shell.panel_state.bottom.visible);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+
+    assert!(shell.handle_command(Command::FocusTerminal));
+    assert!(shell.panel_state.bottom.visible);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::BottomPanel);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::TerminalFocus);
+}
+
+#[test]
+fn focus_terminal_closes_panel_when_terminal_already_has_focus() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    assert!(shell.handle_command(Command::FocusTerminal));
+    assert!(shell.panel_state.bottom.visible);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::BottomPanel);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::TerminalFocus);
+
+    assert!(shell.handle_command(Command::FocusTerminal));
+    assert!(!shell.panel_state.bottom.visible);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+}
+
+#[test]
+fn focus_terminal_closes_panel_from_terminal_normal() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    assert!(shell.handle_command(Command::FocusTerminal));
+    assert!(shell.handle_command(Command::SwitchMode(ModeEvent::EnterTerminalNormal)));
+    assert_eq!(shell.app_state.current_mode(), EditorMode::TerminalNormal);
+
+    assert!(shell.handle_command(Command::FocusTerminal));
+    assert!(!shell.panel_state.bottom.visible);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+}
+
+#[test]
 fn toggle_bottom_dock_keeps_editor_focus_when_opening() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
@@ -854,15 +894,28 @@ fn focus_markdown_preview_opens_preview_tab_and_focuses_sidebar() {
     shell.panel_state.right.visible = false;
     shell.app_state.markdown_preview.visible = false;
 
+    let markdown_path = std::env::temp_dir().join(format!(
+        "netherize_markdown_preview_{}.md",
+        std::process::id()
+    ));
+    std::fs::write(&markdown_path, "# Preview title\n\nBody text\n").expect("write markdown");
+    shell
+        .app_state
+        .open_file(markdown_path.clone())
+        .expect("open markdown file");
+
     assert!(shell.handle_command(Command::FocusMarkdownPreview));
 
-    assert!(shell.panel_state.right.visible);
     assert!(shell.app_state.markdown_preview.visible);
-    assert_eq!(
-        shell.panel_state.right.active_tab_id(),
-        Some(PanelTabId::MarkdownPreview)
-    );
-    assert_eq!(shell.focus_manager.current(), FocusTarget::RightSidebar);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    let preview = shell
+        .app_state
+        .active_markdown_preview_buffer()
+        .expect("markdown preview buffer active");
+    assert!(!preview.rendered_lines.is_empty());
+    assert_eq!(preview.rendered_lines[0].text, "Preview title");
+
+    let _ = std::fs::remove_file(markdown_path);
 }
 
 #[test]

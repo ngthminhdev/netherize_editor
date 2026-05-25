@@ -27,6 +27,8 @@ use super::super::helpers::{
 use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
 use crate::text::text_system::StyledTextSpan;
 
+
+
 /// Quick fingerprint để phát hiện thay đổi trong syntax / diagnostic spans.
 /// Không cần hoàn hảo — chỉ cần bắt được phần lớn thay đổi thực tế.
 fn inline_suggestion_virtual_gap(app_state: &AppState, line_height: f32) -> Option<(usize, f32)> {
@@ -54,6 +56,129 @@ fn spans_fingerprint(spans: &[StyledTextSpan]) -> u64 {
         h = h.rotate_left(17).wrapping_add(s.end as u64);
     }
     h
+}
+
+/// Truncate auto-folded long lines to 100 chars + "..." before shaping.
+/// This prevents wrapped display of folded lines.
+fn truncate_folded_lines(
+    text: &str,
+    spans: &[StyledTextSpan],
+    app_state: &AppState,
+) -> (String, Vec<StyledTextSpan>) {
+    const FOLD_TRUNCATE_LIMIT: usize = 100;
+
+    let folded_ranges = app_state.folded_ranges();
+    if folded_ranges.is_empty() {
+        return (text.to_string(), spans.to_vec());
+    }
+
+    // Find auto-folded long lines (where start == end)
+    let auto_folded_lines: Vec<usize> = folded_ranges
+        .iter()
+        .filter(|&&(s, e)| s == e)
+        .map(|&(s, _)| s)
+        .collect();
+
+    if auto_folded_lines.is_empty() {
+        return (text.to_string(), spans.to_vec());
+    }
+
+    // Build line-to-byte mapping for original text
+    let mut line_byte_starts = vec![0];
+    for line in text.lines() {
+        let last = *line_byte_starts.last().unwrap();
+        line_byte_starts.push(last + line.len() + 1); // +1 for newline
+    }
+
+    let mut result = String::with_capacity(text.len());
+    let mut byte_offset_map: Vec<(usize, usize)> = Vec::new(); // (old_byte, new_byte)
+
+    for (line_idx, line) in text.lines().enumerate() {
+        let old_line_start = line_byte_starts[line_idx];
+        let new_line_start = result.len();
+
+        if auto_folded_lines.contains(&line_idx) {
+            // Truncate this line to 100 chars + "..."
+            let chars: Vec<char> = line.chars().collect();
+            if chars.len() > FOLD_TRUNCATE_LIMIT {
+                let truncated: String = chars.iter().take(FOLD_TRUNCATE_LIMIT).collect();
+                let truncated_byte_len = truncated.len();
+
+                // Map each byte position in the original line to the new position
+                for old_byte in 0..=truncated_byte_len {
+                    byte_offset_map.push((old_line_start + old_byte, new_line_start + old_byte));
+                }
+                // The truncation point: everything after maps to the end of "..."
+                let ellipsis_end = new_line_start + truncated_byte_len + 3;
+                for old_byte in (truncated_byte_len + 1)..=line.len() {
+                    byte_offset_map.push((old_line_start + old_byte, ellipsis_end));
+                }
+
+                result.push_str(&truncated);
+                result.push_str("...");
+            } else {
+                // Line is short enough, no truncation needed
+                for old_byte in 0..=line.len() {
+                    byte_offset_map.push((old_line_start + old_byte, new_line_start + old_byte));
+                }
+                result.push_str(line);
+            }
+        } else {
+            // Not a folded line, copy as-is
+            for old_byte in 0..=line.len() {
+                byte_offset_map.push((old_line_start + old_byte, new_line_start + old_byte));
+            }
+            result.push_str(line);
+        }
+
+        // Add newline if not the last line
+        if line_idx + 1 < text.lines().count() {
+            result.push('\n');
+            // Map the newline byte
+            byte_offset_map.push((old_line_start + line.len(), result.len() - 1));
+        }
+    }
+
+    // Sort the map for binary search
+    byte_offset_map.sort_unstable_by_key(|&(old, _)| old);
+
+    // Adjust spans using the byte offset map
+    let mut adjusted_spans = Vec::with_capacity(spans.len());
+    for span in spans {
+        // Find new positions for start and end
+        let new_start = byte_offset_map
+            .binary_search_by_key(&span.start, |&(old, _)| old)
+            .map(|idx| byte_offset_map[idx].1)
+            .unwrap_or_else(|idx| {
+                if idx > 0 {
+                    byte_offset_map[idx - 1].1
+                } else {
+                    0
+                }
+            });
+
+        let new_end = byte_offset_map
+            .binary_search_by_key(&span.end, |&(old, _)| old)
+            .map(|idx| byte_offset_map[idx].1)
+            .unwrap_or_else(|idx| {
+                if idx > 0 {
+                    byte_offset_map[idx - 1].1
+                } else {
+                    0
+                }
+            });
+
+        // Only keep spans that have valid ranges in the new text
+        if new_start < new_end && new_end <= result.len() {
+            adjusted_spans.push(StyledTextSpan {
+                start: new_start,
+                end: new_end,
+                ..*span
+            });
+        }
+    }
+
+    (result, adjusted_spans)
 }
 
 impl Renderer {
@@ -167,7 +292,6 @@ impl Renderer {
 
         let geometry = editor_viewport_geometry(self, app_state, center_bounds);
         let width = geometry.viewport_text_width;
-
         self.editor_scissor = rect_to_scissor([
             center_bounds[0],
             geometry.viewport_text_top,
@@ -196,8 +320,10 @@ impl Renderer {
             || (self.last_shaped_viewport_width - width).abs() > 0.5
             || tab_width_changed;
         if needs_reshape {
+            // Truncate auto-folded long lines to 100 chars + "..." before shaping
+            let (display_text, adjusted_spans) = truncate_folded_lines(text, spans, app_state);
             self.text_system
-                .set_text_with_spans(text, default_color_rgba, spans);
+                .set_text_with_spans(&display_text, default_color_rgba, &adjusted_spans);
             self.last_shaped_revision = current_revision;
             self.last_shaped_spans_fingerprint = spans_fp;
             self.last_shaped_viewport_width = width;

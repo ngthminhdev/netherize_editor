@@ -29,11 +29,26 @@ impl AppShell {
         let cli_args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
 
         // First directory arg becomes workspace root (like `zed .` / `code .`).
+        // If only files are passed, use the first file's parent as the workspace
+        // so a new process opens an isolated project instead of restoring the
+        // globally most-recent project.
         let cli_workspace_dir = cli_args
             .iter()
-            .find_map(|p| p.canonicalize().ok().filter(|cp| cp.is_dir()));
+            .filter_map(|p| p.canonicalize().ok())
+            .find_map(|cp| {
+                if cp.is_dir() {
+                    Some(cp)
+                } else if cp.is_file() {
+                    cp.parent().map(Path::to_path_buf)
+                } else {
+                    None
+                }
+            });
 
-        let cli_files: Vec<PathBuf> = cli_args.iter().filter(|p| p.is_file()).cloned().collect();
+        let cli_files: Vec<PathBuf> = cli_args
+            .iter()
+            .filter_map(|p| p.canonicalize().ok().filter(|cp| cp.is_file()))
+            .collect();
 
         // Load persisted state and restore most recent project if it still exists.
         let mut persistent_state = AppPersistentState::load();
@@ -159,6 +174,7 @@ impl AppShell {
             explorer_cursor: 0,
             explorer_snapshot: ExplorerSnapshot::default(),
             explorer_snapshot_dirty: true,
+            explorer_clipboard_path: None,
             pending_confirmation: None,
             workspace_git_branch,
             active_lsp_server: None,
@@ -233,6 +249,7 @@ impl AppShell {
             git_baseline_revision: 0,
             last_scroll_animation_tick: now,
             last_git_branch_refresh_at: now,
+            last_workspace_git_status_refresh_at: now,
             last_thinking_animation_tick: now,
             last_lsp_loading_animation_tick: now,
             lsp_loading_frame: 0,
@@ -372,12 +389,29 @@ impl AppShell {
         let Some(workspace_root) = self.app_state.workspace_root_path().map(PathBuf::from) else {
             return;
         };
+        self.last_workspace_git_status_refresh_at = Instant::now();
         self.git_status_revision = self.git_status_revision.saturating_add(1);
         self.submit(RequestSpec {
             revision_id: self.git_status_revision,
             topic: RequestTopic::GitStatus,
             payload: WorkerRequestPayload::RefreshWorkspaceGitStatus { workspace_root },
         });
+    }
+
+    pub(super) fn maybe_refresh_workspace_git_status(&mut self) -> bool {
+        if !self.app_state.active_buffer_is_terminal() && self.terminal_buffer_grids.is_empty() {
+            return false;
+        }
+        if self.last_workspace_git_status_refresh_at.elapsed() < GIT_STATUS_REFRESH_INTERVAL {
+            return false;
+        }
+        self.submit_workspace_git_status_refresh();
+        true
+    }
+
+    pub(super) fn next_workspace_git_status_refresh_deadline(&self) -> Option<Instant> {
+        (self.app_state.active_buffer_is_terminal() || !self.terminal_buffer_grids.is_empty())
+            .then_some(self.last_workspace_git_status_refresh_at + GIT_STATUS_REFRESH_INTERVAL)
     }
 
     pub(super) fn submit_active_buffer_git_baseline_refresh(&mut self) {
@@ -709,11 +743,17 @@ impl AppShell {
                 FocusTarget::CenterEditor if self.app_state.active_buffer_is_diagnostics() => {
                     InputFocusContext::Diagnostics
                 }
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_markdown_preview() => {
+                    InputFocusContext::MarkdownPreview
+                }
                 FocusTarget::CenterEditor if self.app_state.active_buffer_is_references() => {
                     InputFocusContext::References
                 }
                 FocusTarget::CenterEditor if self.app_state.active_buffer_is_help() => {
                     InputFocusContext::Help
+                }
+                FocusTarget::CenterEditor if self.app_state.active_buffer_is_extensions_manager() => {
+                    InputFocusContext::ExtensionsManager
                 }
                 _ => InputFocusContext::Editor,
             }
@@ -888,6 +928,7 @@ impl AppShell {
 
             self.pending_parse_after_debounce = false;
             let edit_hint = self.last_syntax_edit_hint.take();
+            let line_starts = self.app_state.line_start_byte_indices().to_vec();
             self.submit(RequestSpec {
                 revision_id: self.active_highlight_request_revision,
                 topic: RequestTopic::ActiveBufferLayout,
@@ -899,7 +940,7 @@ impl AppShell {
                     buffer_revision: self.app_state.revision(),
                     viewport_line_start: self.app_state.scroll_line(),
                     viewport_line_count,
-                    line_starts: self.app_state.line_start_byte_indices(),
+                    line_starts,
                     edit_hint,
                 },
             });
@@ -948,10 +989,15 @@ impl AppShell {
             return had_highlighting;
         };
 
-        let text_snapshot = self.app_state.text_string();
-        if !crate::syntax::highlight::should_highlight_inline(&text_snapshot) {
+        if self.app_state.text_len_bytes()
+            > crate::syntax::highlight::INLINE_TREE_SITTER_BYTE_THRESHOLD
+            || self.app_state.total_lines()
+                > crate::syntax::highlight::INLINE_TREE_SITTER_LINE_THRESHOLD
+        {
             return false;
         }
+
+        let text_snapshot = self.app_state.text_string();
 
         // Plaintext dùng regex highlight thay vì tree-sitter.
         if language_id == crate::syntax::syntax_engine::LanguageId::Plaintext {

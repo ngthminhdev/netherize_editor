@@ -96,7 +96,7 @@ fn symbol_kind_color(kind: &str, theme: &ThemeConfig) -> [f32; 4] {
 }
 
 fn breadcrumb_segment_text(kind: &str, name: &str) -> String {
-    const BREADCRUMB_ICON_PREFIX: &str = "[󰊕]";
+    const BREADCRUMB_ICON_PREFIX: &str = "[sym]";
     let label = symbol_kind_label(kind);
     if kind == "Constructor" && name.eq_ignore_ascii_case("constructor") {
         format!("{BREADCRUMB_ICON_PREFIX} {label}")
@@ -338,6 +338,17 @@ impl ApplicationHandler<AppEvent> for AppShell {
                         }
                     }
                 }
+                if key_event.state == ElementState::Pressed
+                    && !key_event.repeat
+                    && matches!(key_event.physical_key, PhysicalKey::Code(KeyCode::KeyN))
+                    && self.input_handler.current_modifiers().super_key()
+                    && self.input_handler.current_modifiers().shift_key()
+                    && self.handle_command(Command::NewInstance)
+                {
+                    self.request_redraw();
+                    return;
+                }
+
                 if let Some(changed) = self.handle_pending_confirmation_key_event(&key_event) {
                     if changed {
                         self.request_redraw();
@@ -433,6 +444,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.maybe_refresh_workspace_git_branch(false) {
             self.request_redraw();
         }
+        if self.maybe_refresh_workspace_git_status() {
+            self.request_redraw();
+        }
         if self.tick_smooth_scroll_animation() {
             self.request_redraw();
         }
@@ -457,6 +471,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
         }
 
         let mut next_deadline = Some(self.next_git_branch_refresh_deadline());
+        if let Some(git_status_deadline) = self.next_workspace_git_status_refresh_deadline() {
+            next_deadline = Some(next_deadline.unwrap_or(git_status_deadline).min(git_status_deadline));
+        }
         if let Some(lsp_deadline) = self.next_lsp_did_change_flush_deadline() {
             next_deadline = Some(match next_deadline {
                 Some(existing) => existing.min(lsp_deadline),
@@ -720,7 +737,8 @@ impl AppShell {
                 // When enable_outline is off, hide borders on unfocused panels only —
                 // the focused panel keeps its ring so the user always knows where focus is.
                 let suppress_ring = (!self.ui_config.enable_outline && !is_focused)
-                    || region.id == RegionId::TopBar;
+                    || region.id == RegionId::TopBar
+                    || (show_welcome && region.id == RegionId::Center);
 
                 if region.id == RegionId::RightSidebar {
                     if suppress_ring {
@@ -789,6 +807,7 @@ impl AppShell {
             let active_terminal_session = self.app_state.active_terminal_session_id();
             let references_active = self.app_state.active_buffer_is_references();
             let diagnostics_active = self.app_state.active_buffer_is_diagnostics();
+            let markdown_preview_active = self.app_state.active_buffer_is_markdown_preview();
 
             // ── Invariant guard ───────────────────────────────────────────────
             // Nếu terminal buffer đang chiếm center, đảm bảo editor GPU buffer
@@ -852,6 +871,21 @@ impl AppShell {
                         } else {
                             renderer.clear_editor_overlays();
                         }
+                    } else if markdown_preview_active {
+                        renderer.set_editor_breadcrumb_segments(Vec::new());
+                        renderer.clear_welcome_logo();
+                        renderer.clear_buffer_terminal();
+                        renderer.clear_editor_content();
+                        if let Some(preview) = self.app_state.active_markdown_preview_buffer() {
+                            renderer.update_markdown_preview_content(
+                                center_bounds,
+                                &preview.rendered_lines,
+                                preview.scroll_y,
+                                self.layout_engine.config.inner_padding,
+                            );
+                        } else {
+                            renderer.clear_editor_overlays();
+                        }
                     } else if references_active {
                         renderer.set_editor_breadcrumb_segments(Vec::new());
                         renderer.clear_welcome_logo();
@@ -874,6 +908,12 @@ impl AppShell {
                         renderer.clear_buffer_terminal();
                         renderer.clear_editor_content();
                         renderer.update_help_buffer_content(help, center_bounds);
+                    } else if let Some(extensions) = self.app_state.active_extensions_manager_buffer() {
+                        renderer.set_editor_breadcrumb_segments(Vec::new());
+                        renderer.clear_welcome_logo();
+                        renderer.clear_buffer_terminal();
+                        renderer.clear_editor_content();
+                        renderer.update_extensions_manager_content(extensions, center_bounds);
                     } else if let Some(image) = self.app_state.active_image_buffer() {
                         renderer.set_editor_breadcrumb_segments(Vec::new());
                         renderer.update_image_content(image, center_bounds);
@@ -950,6 +990,20 @@ impl AppShell {
                             }
                             self.last_buffer_terminal_bounds = Some(center_bounds);
                             self.buffer_terminal_needs_layout = false;
+                        }
+                    }
+                } else if markdown_preview_active {
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.clear_editor_content();
+                        if let Some(preview) = self.app_state.active_markdown_preview_buffer() {
+                            renderer.update_markdown_preview_content(
+                                center_bounds,
+                                &preview.rendered_lines,
+                                preview.scroll_y,
+                                self.layout_engine.config.inner_padding,
+                            );
+                        } else {
+                            renderer.clear_editor_overlays();
                         }
                     }
                 } else if references_active {
@@ -1041,6 +1095,7 @@ impl AppShell {
             if !show_welcome
                 && active_terminal_session.is_none()
                 && !references_active
+                && !markdown_preview_active
                 && let Some(renderer) = self.renderer.as_ref()
             {
                 if self.app_state.current_mode() != EditorMode::Visual
@@ -1068,7 +1123,11 @@ impl AppShell {
             }
 
             if let Some(renderer) = self.renderer.as_mut() {
-                if active_terminal_session.is_none() && !references_active && !show_welcome {
+                if active_terminal_session.is_none()
+                    && !references_active
+                    && !markdown_preview_active
+                    && !show_welcome
+                {
                     if let Some(leap_state) = &self.leap_state {
                         renderer.update_editor_leap_labels(
                             &leap_state.targets,
@@ -1089,6 +1148,7 @@ impl AppShell {
                     && active_terminal_session.is_none()
                     && !references_active
                     && !diagnostics_active
+                    && !markdown_preview_active
                     && !self.app_state.has_completion()
                     && self.app_state.active_fuzzy_picker_buffer().is_none()
                     && self.app_state.active_settings_buffer().is_none();
@@ -1164,6 +1224,11 @@ impl AppShell {
         let ai_chat_active = self.panel_state.right.visible
             && right_sidebar_bounds.is_some()
             && self.panel_state.right.active_tab_id() == Some(PanelTabId::AiChat);
+        let markdown_preview_uses_ai_chat_pipeline = self.app_state.active_buffer_is_markdown_preview()
+            || (self.panel_state.right.visible
+                && right_sidebar_bounds.is_some()
+                && self.panel_state.right.active_tab_id() == Some(PanelTabId::MarkdownPreview)
+                && self.app_state.markdown_preview.visible);
         if ai_chat_active {
             let history_bounds = visible_region_bounds(&flat_regions, RegionId::AiChatHistory);
             let input_bounds = visible_region_bounds(&flat_regions, RegionId::AiChatInput);
@@ -1194,7 +1259,9 @@ impl AppShell {
                     region_instances.extend(cursor_quads);
                 }
             }
-        } else if let Some(renderer) = self.renderer.as_mut() {
+        } else if !markdown_preview_uses_ai_chat_pipeline
+            && let Some(renderer) = self.renderer.as_mut()
+        {
             renderer.clear_ai_chat();
         }
 
@@ -1257,7 +1324,7 @@ impl AppShell {
                 .iter()
                 .enumerate()
                 .map(|(idx, buffer)| {
-                    let (file_path, git_color) = match &buffer.content {
+                    let (file_path, git_color, missing_on_disk) = match &buffer.content {
                         BufferContent::Text(text) => {
                             let status = self.app_state.workspace_git_status(&text.path);
                             let color = match status {
@@ -1272,9 +1339,9 @@ impl AppShell {
                                 }
                                 None => None,
                             };
-                            (text.path.clone(), color)
+                            (text.path.clone(), color, text.missing_on_disk)
                         }
-                        _ => (PathBuf::new(), None),
+                        _ => (PathBuf::new(), None, false),
                     };
                     TopbarTab {
                         label: buffer.label(),
@@ -1286,15 +1353,18 @@ impl AppShell {
                             BufferContent::Terminal(_) => TopbarTabKind::Terminal,
                             BufferContent::References(_) => TopbarTabKind::References,
                             BufferContent::Diagnostics(_) => TopbarTabKind::Diagnostics,
+                            BufferContent::MarkdownPreview(_) => TopbarTabKind::MarkdownPreview,
                             BufferContent::FuzzyPicker(_) => TopbarTabKind::FuzzyPicker,
                             BufferContent::SettingsTab(_) => TopbarTabKind::Settings,
                             BufferContent::Help(_) => TopbarTabKind::Help,
+                            BufferContent::ExtensionsManager(_) => TopbarTabKind::ExtensionsManager,
                         },
                         is_dirty: buffer.is_dirty(
                             self.app_state.active_buffer_index() == Some(idx),
                             self.app_state.is_dirty(),
                         ),
                         git_color,
+                        missing_on_disk,
                     }
                 })
                 .collect::<Vec<_>>();
@@ -1509,7 +1579,13 @@ impl AppShell {
         {
             let w = self.window_size.width as f32;
             let h = self.window_size.height as f32;
-            renderer.update_toast_popup(&toast.message, w, h);
+            renderer.update_toast_popup(
+                &toast.message,
+                toast.kind,
+                toast.progress_fraction(Instant::now()),
+                w,
+                h,
+            );
         } else if let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_toast_popup();
         }
@@ -1770,9 +1846,9 @@ mod tests {
         assert_eq!(
             labels,
             vec![
-                "[󰊕] class SubscribeLogSync",
-                "[󰊕] method stop",
-                "[󰊕] const intervalId"
+                "[sym] class SubscribeLogSync",
+                "[sym] method stop",
+                "[sym] const intervalId"
             ]
         );
     }
@@ -1848,9 +1924,9 @@ mod tests {
         assert_eq!(
             labels,
             vec![
-                "[󰊕] class KafkaProducer",
-                "[󰊕] constructor",
-                "[󰊕] const kafkaClient"
+                "[sym] class KafkaProducer",
+                "[sym] constructor",
+                "[sym] const kafkaClient"
             ]
         );
     }
@@ -1859,7 +1935,7 @@ mod tests {
     fn breadcrumb_segment_text_dedupes_constructor_label() {
         assert_eq!(
             breadcrumb_segment_text("Constructor", "constructor"),
-            "[󰊕] constructor"
+            "[sym] constructor"
         );
     }
 }

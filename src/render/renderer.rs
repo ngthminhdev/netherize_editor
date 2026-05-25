@@ -23,6 +23,7 @@ use crate::{
     render::{
         caret::CaretPipeline,
         glyph_instance::GlyphInstance,
+        icon_pipeline::{IconDrawInstance, IconPipeline},
         image_pipeline::ImagePipeline,
         region_pipeline::{RegionDrawInstance, RegionPipeline},
         surface::SurfaceState,
@@ -81,9 +82,11 @@ pub enum TopbarTabKind {
     Terminal,
     References,
     Diagnostics,
+    MarkdownPreview,
     FuzzyPicker,
     Settings,
     Help,
+    ExtensionsManager,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -92,6 +95,7 @@ pub struct TopbarTab {
     pub kind: TopbarTabKind,
     pub is_dirty: bool,
     pub git_color: Option<[f32; 4]>,
+    pub missing_on_disk: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -158,6 +162,8 @@ pub struct Renderer {
     pub(super) editor_overlay_text_system: TextSystem,
     pub(super) editor_overlay_text_pipeline: TextPipeline,
     pub(super) editor_overlay_glyph_instances: Vec<GlyphInstance>,
+    pub(super) editor_overlay_icon_pipeline: IconPipeline,
+    pub(super) editor_overlay_icon_instances: Vec<IconDrawInstance>,
     pub(super) editor_overlay_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) editor_overlay_scissor: Option<[u32; 4]>,
     pub(super) temp_string_buffer: String,
@@ -166,6 +172,8 @@ pub struct Renderer {
     pub(super) image_scissor: Option<[u32; 4]>,
     pub(super) welcome_image_pipeline: ImagePipeline,
     pub(super) welcome_image_scissor: Option<[u32; 4]>,
+    pub(super) welcome_icon_pipeline: IconPipeline,
+    pub(super) welcome_icon_instances: Vec<IconDrawInstance>,
 
     // ── Gutter (line numbers) ─────────────────────────────────────────────────
     pub(super) gutter_text_system: TextSystem,
@@ -179,6 +187,8 @@ pub struct Renderer {
     pub(super) sidebar_text_system: TextSystem,
     pub(super) sidebar_text_pipeline: TextPipeline,
     pub(super) sidebar_glyph_instances: Vec<GlyphInstance>,
+    pub(super) sidebar_icon_pipeline: IconPipeline,
+    pub(super) sidebar_icon_instances: Vec<IconDrawInstance>,
     pub(super) sidebar_scissor: Option<[u32; 4]>,
 
     // ── Terminal panel ────────────────────────────────────────────────────────
@@ -232,6 +242,8 @@ pub struct Renderer {
     pub(super) palette_text_pipeline: TextPipeline,
     pub(super) palette_glyph_instances: Vec<GlyphInstance>,
     pub(super) palette_chrome_instances: Vec<RegionDrawInstance>,
+    pub(super) palette_icon_pipeline: IconPipeline,
+    pub(super) palette_icon_instances: Vec<IconDrawInstance>,
     pub(super) palette_scissor: Option<[u32; 4]>,
     pub(super) last_palette_model: Option<CommandPaletteRenderModel>,
 
@@ -319,6 +331,15 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    pub fn soft_wrap_visual_move_target(
+        &self,
+        app_state: &crate::app::app_state::AppState,
+        center_bounds: [f32; 4],
+        down: bool,
+    ) -> Option<usize> {
+        crate::render::renderer::editor::soft_wrap_visual_move_target(self, app_state, center_bounds, down)
+    }
+
     pub fn editor_chrome_instances(&self) -> &[RegionDrawInstance] {
         &self.last_editor_chrome_instances
     }
