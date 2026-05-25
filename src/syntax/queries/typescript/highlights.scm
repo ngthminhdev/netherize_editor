@@ -15,6 +15,11 @@
 
 (escape_sequence) @syntax.string.escape
 
+; Template string backticks only
+(template_string
+  "`" @syntax.string)
+
+; Template substitution - punctuation and content
 (template_substitution
   "$" @syntax.punctuation
   "{" @syntax.punctuation

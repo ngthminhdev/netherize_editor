@@ -4,6 +4,7 @@ pub enum HighlightCategory {
     KeywordControl,      // if, for, while, match, return
     KeywordStorage,      // let, const, static, var
     String,
+    StringTemplate,      // Template string base (lower priority than String)
     StringEscape,        // \n, \t, \x00 inside strings
     Comment,
     CommentDoc,          // /// doc comments
@@ -42,6 +43,7 @@ impl HighlightCategory {
             Self::KeywordControl => "keyword.control",
             Self::KeywordStorage => "keyword.storage",
             Self::String => "string",
+            Self::StringTemplate => "string.template",
             Self::StringEscape => "string.escape",
             Self::Comment => "comment",
             Self::CommentDoc => "comment.doc",
@@ -116,6 +118,7 @@ impl HighlightCategory {
             Self::VariableBuiltin => 45,
             Self::Variable => 42,
             Self::Identifier => 40,
+            Self::StringTemplate => 30,  // Lower than all semantic tokens
             Self::Operator => 20,
             Self::Punctuation => 10,
         }
@@ -221,6 +224,7 @@ impl HighlightPalette {
             HighlightCategory::KeywordControl => self.keyword_control,
             HighlightCategory::KeywordStorage => self.keyword_storage,
             HighlightCategory::String => self.string,
+            HighlightCategory::StringTemplate => self.string,  // Same color as String
             HighlightCategory::StringEscape => self.string_escape,
             HighlightCategory::Comment => self.comment,
             HighlightCategory::CommentDoc => self.comment_doc,

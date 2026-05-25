@@ -253,6 +253,7 @@ pub(crate) fn capture_category(capture_name: &str) -> Option<HighlightCategory> 
         | "keyword.storage.modifier" => {
             Some(HighlightCategory::KeywordStorage)
         }
+        "syntax.string.template" => Some(HighlightCategory::StringTemplate),
         "syntax.string" => Some(HighlightCategory::String),
         "syntax.string.escape" | "string.escape" | "character.escape" | "escape.sequence" => {
             Some(HighlightCategory::StringEscape)

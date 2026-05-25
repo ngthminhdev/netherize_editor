@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-25T08:21:17.180Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-25T08:49:00.117Z
 > Files: 363 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
@@ -334,7 +334,7 @@
 - `commands_terminal.rs` (~6559 tok)
 - `commands_tests.rs` — [derive(Default)] (~16545 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~9474 tok)
-- `helpers.rs` — Declares BRACKET_PAIRS (~17705 tok)
+- `helpers.rs` — Declares BRACKET_PAIRS (~16554 tok)
 - `mod.rs` — Struct: AppShell (~6429 tok)
 - `setup.rs` — new, new_for_tests (~19197 tok)
 - `welcome.rs` (~611 tok)
@@ -530,8 +530,8 @@
 
 ## src/syntax/highlight/
 
-- `categories.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~2759 tok)
-- `engine.rs` (~5032 tok)
+- `categories.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~2654 tok)
+- `engine.rs` (~4717 tok)
 - `mod.rs` — generate_highlight_spans, generate_highlight_spans_with_cache, generate_dotenv_highlight_spans, generate_plaintext_highlight_spans + 3 more (~6758 tok)
 - `normalize_tests.rs` (~646 tok)
 - `queries.rs` — highlight_markdown_inline (~3133 tok)
@@ -556,7 +556,7 @@
 
 ## src/syntax/queries/javascript/
 
-- `highlights.scm` — Declares name (~965 tok)
+- `highlights.scm` — Declares name (~998 tok)
 
 ## src/syntax/queries/json/
 
@@ -593,7 +593,7 @@
 
 ## src/syntax/queries/typescript/
 
-- `highlights.scm` — Declares value (~1172 tok)
+- `highlights.scm` — Declares value (~1205 tok)
 
 ## src/syntax/queries/xml/
 

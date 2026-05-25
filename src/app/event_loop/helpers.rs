@@ -104,6 +104,7 @@ pub(super) fn syntax_spans_to_styled(
                                     theme.syntax.keyword_storage.as_u8()
                                 }
                 crate::syntax::highlight::HighlightCategory::String => theme.syntax.string.as_u8(),
+                crate::syntax::highlight::HighlightCategory::StringTemplate => theme.syntax.string.as_u8(),
                 crate::syntax::highlight::HighlightCategory::StringEscape => {
                                     theme.syntax.string_escape.as_u8()
                                 }

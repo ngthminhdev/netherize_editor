@@ -475,3 +475,25 @@
 | 15:21 | Edited src/app/app_state/palette.rs | modified load_buffer_from_file() | ~257 |
 | 15:22 | Session end: 4 writes across 2 files (commands_editor.rs, palette.rs) | 9 reads | ~88897 tok |
 | 15:32 | Session end: 4 writes across 2 files (commands_editor.rs, palette.rs) | 9 reads | ~88784 tok |
+
+## Session: 2026-05-25 15:33
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 15:36 | Edited src/syntax/queries/javascript/highlights.scm | 13→15 lines | ~74 |
+| 15:36 | Edited src/syntax/queries/typescript/highlights.scm | 13→15 lines | ~74 |
+| 15:37 | Fixed JS/TS template string highlight - added (template_string) @syntax.string query | javascript/highlights.scm, typescript/highlights.scm | Template strings now show string color for backticks and text, with interpolation ${} highlighted separately | ~200 |
+| 15:36 | Session end: 2 writes across 1 files (highlights.scm) | 2 reads | ~1123 tok |
+| 15:39 | Edited src/syntax/queries/javascript/highlights.scm | expanded (+6 lines) | ~270 |
+| 15:39 | Edited src/syntax/queries/typescript/highlights.scm | expanded (+6 lines) | ~270 |
+| 15:39 | Session end: 4 writes across 1 files (highlights.scm) | 2 reads | ~1701 tok |
+| 15:45 | Edited src/syntax/queries/javascript/highlights.scm | delimiters() → overriding() | ~260 |
+| 15:45 | Edited src/syntax/queries/typescript/highlights.scm | delimiters() → overriding() | ~260 |
+| 15:46 | Edited src/syntax/queries/typescript/highlights.scm | overriding() → only() | ~252 |
+| 15:46 | Edited src/syntax/queries/javascript/highlights.scm | overriding() → only() | ~252 |
+| 15:47 | Edited src/syntax/highlight/categories.rs | 36→37 lines | ~245 |
+| 15:47 | Edited src/syntax/highlight/categories.rs | modified as_str() | ~431 |
+| 15:47 | Edited src/syntax/highlight/categories.rs | modified priority() | ~376 |
+| 15:47 | Edited src/syntax/highlight/categories.rs | modified color_for() | ~588 |
+| 15:48 | Edited src/syntax/highlight/engine.rs | modified capture_category() | ~1979 |
+| 15:49 | Edited src/app/event_loop/helpers.rs | 87→88 lines | ~1367 |
