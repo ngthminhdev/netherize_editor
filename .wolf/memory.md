@@ -417,3 +417,61 @@
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
+
+## Session: 2026-05-25 10:42
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 10:51 | Edited src/text/text_system.rs | modified register_bundled_fonts() | ~131 |
+| 10:53 | Session end: 1 writes across 1 files (text_system.rs) | 4 reads | ~7478 tok |
+| 10:53 | Session end: 1 writes across 1 files (text_system.rs) | 4 reads | ~7478 tok |
+| 11:01 | Edited src/text/text_system.rs | modified register_bundled_fonts() | ~136 |
+| 11:02 | Session end: 2 writes across 1 files (text_system.rs) | 4 reads | ~7624 tok |
+| 11:02 | Session end: 2 writes across 1 files (text_system.rs) | 4 reads | ~7624 tok |
+
+## Session: 2026-05-25 11:04
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 11:08 | Edited src/app/event_loop/commands_editor.rs | reduced (-17 lines) | ~394 |
+| 11:08 | Edited src/app/event_loop/commands_editor.rs | 22→24 lines | ~252 |
+| 11:08 | Fixed G (MoveToLastLine) viewport scrolling | src/app/event_loop/commands_editor.rs | Removed special handling, added to is_cursor_move list to use auto_scroll_to_cursor | ~600 |
+| 11:10 | Session end: 2 writes across 1 files (commands_editor.rs) | 3 reads | ~19685 tok |
+| 11:37 | Edited src/app/event_loop/async_results/filesystem.rs | modified handle_filesystem_result() | ~116 |
+| 11:37 | Edited src/app/app_state/palette.rs | modified is_dirty() | ~237 |
+| 11:38 | Edited src/app/app_state/palette.rs | modified should_ignore_self_save_event() | ~155 |
+| 11:15 | Added debug logging for file watcher auto-reload | src/app/event_loop/async_results/filesystem.rs, src/app/app_state/palette.rs | Added eprintln logs to trace file watch events and reload logic | ~400 |
+| 11:39 | Session end: 5 writes across 3 files (commands_editor.rs, filesystem.rs, palette.rs) | 9 reads | ~90964 tok |
+
+## Session: 2026-05-25 13:22
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 13:30 | Edited src/core/command_dispatch/tests.rs | modified visual_mode_star_search_sets_highlights_and_exits_to_normal() | ~437 |
+| 13:31 | Edited src/core/command_dispatch/tests.rs | 7→11 lines | ~147 |
+| 13:31 | Edited src/core/command_dispatch/tests.rs | expanded (+10 lines) | ~168 |
+| 13:32 | Edited config/keymaps/default.toml | 10→5 lines | ~23 |
+| 13:32 | Edited config/keymaps/default.toml | 5→10 lines | ~47 |
+| 13:33 | Edited src/core/command_dispatch/tests.rs | modified visual_mode_star_search_persists_after_mode_exit() | ~540 |
+| 13:33 | Session end: 6 writes across 2 files (tests.rs, default.toml) | 13 reads | ~150628 tok |
+
+## Session: 2026-05-25 14:18
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 14:21 | Edited src/app/event_loop/commands_palette.rs | modified Some() | ~344 |
+| 14:23 | Edited src/app/event_loop/commands_palette.rs | 25→28 lines | ~377 |
+| 14:24 | Edited src/app/event_loop/commands_palette.rs | modified active_buffer_is_fuzzy_picker() | ~406 |
+| 14:25 | Session end: 3 writes across 1 files (commands_palette.rs) | 9 reads | ~94061 tok |
+
+## Session: 2026-05-25 14:32
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 14:35 | Edited src/app/event_loop/commands_editor.rs | modified handle_viewport_navigation_command() | ~807 |
+| 14:35 | Edited src/app/event_loop/commands_editor.rs | 24→22 lines | ~230 |
+| 14:36 | Session end: 2 writes across 1 files (commands_editor.rs) | 5 reads | ~36961 tok |
+| 15:20 | Edited src/app/app_state/palette.rs | modified load_buffer_from_file() | ~240 |
+| 15:21 | Edited src/app/app_state/palette.rs | modified load_buffer_from_file() | ~257 |
+| 15:22 | Session end: 4 writes across 2 files (commands_editor.rs, palette.rs) | 9 reads | ~88897 tok |
+| 15:32 | Session end: 4 writes across 2 files (commands_editor.rs, palette.rs) | 9 reads | ~88784 tok |

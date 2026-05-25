@@ -434,6 +434,71 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-25T02:57:26.415Z"
+    },
+    {
+      "id": "bug-027",
+      "timestamp": "2026-05-25T04:08:41.493Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/event_loop/commands_editor.rs",
+      "root_cause": "15 lines replaced/restructured",
+      "fix": "Rewrote 46→29 lines (15 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T04:08:41.493Z"
+    },
+    {
+      "id": "bug-028",
+      "timestamp": "2026-05-25T11:08:00+07:00",
+      "error_message": "G command (jump to end of file) moves cursor to last line but viewport doesn't scroll down - user must press j/k to trigger viewport adjustment.",
+      "file": "src/app/event_loop/commands_editor.rs",
+      "root_cause": "MoveToLastLine and MoveToFirstLine were handled in special scroll command block (lines 84-114) with manual viewport calculation, but were NOT included in the is_cursor_move list (lines 229-250). This meant they bypassed the auto_scroll_to_cursor() call at line 330 that j/k commands use, so viewport didn't follow cursor movement.",
+      "fix": "1. Removed MoveToFirstLine and MoveToLastLine from the special scroll command block (lines 84-114). 2. Added both commands to the is_cursor_move list (lines 229-250) so they trigger auto_scroll_to_cursor() like other cursor movement commands. Now G and gg properly scroll viewport to keep cursor visible with 3-line margin.",
+      "tags": [
+        "viewport-scrolling",
+        "cursor-movement",
+        "navigation",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T11:08:00+07:00"
+    },
+    {
+      "id": "bug-029",
+      "timestamp": "2026-05-25T06:32:26.329Z",
+      "error_message": "Significant refactor of ",
+      "file": "config/keymaps/default.toml",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 10→5 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "toml"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T06:32:26.329Z"
+    },
+    {
+      "id": "bug-030",
+      "timestamp": "2026-05-25T06:33:04.499Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/core/command_dispatch/tests.rs",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 15→52 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T06:33:04.499Z"
     }
   ]
 }

@@ -372,7 +372,7 @@ command = "editor.search_word_under_cursor"
 
 [[bindings]]
 mode = "normal"
-key = "Escape"
+key = "<leader>h"
 command = "editor.clear_search_highlights"
 
 [[bindings]]

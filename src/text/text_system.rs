@@ -475,6 +475,9 @@ fn apply_family<'a>(attrs: Attrs<'a>, family: Option<&'a str>) -> Attrs<'a> {
 
 fn register_bundled_fonts(font_system: &mut FontSystem) {
     let db = font_system.db_mut();
+    // Load system fonts first to provide fallback for emoji and Unicode characters.
+    // Bundled fonts loaded after will take priority for their supported glyphs.
+    db.load_system_fonts();
     db.load_font_source(fontdb::Source::Binary(Arc::new(
         BUNDLED_GOOGLE_SANS_CODE_FONT.to_vec(),
     )));

@@ -1489,8 +1489,11 @@ impl AppState {
         }
 
         let Some(active_path) = self.active_file.clone() else {
+            eprintln!("[FileWatch] No active file, skipping event processing");
             return Ok(report);
         };
+
+        eprintln!("[FileWatch] Active file: {:?}", active_path);
 
         for event in events {
             let touches_active = path_matches(&event.path, &active_path)
@@ -1498,11 +1501,16 @@ impl AppState {
                     .new_path
                     .as_ref()
                     .is_some_and(|new_path| path_matches(new_path, &active_path));
+
+            eprintln!("[FileWatch] Event {:?} on {:?}, touches_active: {}",
+                event.kind, event.path, touches_active);
+
             if !touches_active {
                 continue;
             }
 
             if self.is_dirty() {
+                eprintln!("[FileWatch] File is dirty, showing conflict warning");
                 let warning = format!(
                     "external {:?} detected on active file while dirty: {}",
                     event.kind,
@@ -1521,15 +1529,22 @@ impl AppState {
                     if matches!(event.kind, FileSystemChangeKind::Modify)
                         && self.should_ignore_self_save_event()
                     {
+                        eprintln!("[FileWatch] Ignoring self-save event (within 2s window)");
                         continue;
                     }
 
+                    eprintln!("[FileWatch] Reloading file from disk: {:?}", active_path);
                     match self.load_buffer_from_file(&active_path) {
                         Ok(()) => {
                             self.active_file = Some(active_path.clone());
-                            self.register_open_text_buffer(active_path.clone());
+                            // Update the buffer entry's in_memory_text to match the reloaded content.
+                            // Don't call register_open_text_buffer here - it would save the old
+                            // working copy over the newly loaded text.
+                            let reloaded_text = self.text.clone();
                             if let Some(buffer) = self.active_text_buffer_mut() {
+                                buffer.in_memory_text = Some(reloaded_text);
                                 buffer.missing_on_disk = false;
+                                buffer.dirty = false;
                             }
                             self.dirty = false;
                             let note = format!(
