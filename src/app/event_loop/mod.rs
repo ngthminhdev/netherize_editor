@@ -185,9 +185,15 @@ pub struct AppShell {
     /// back to the pending docs panel so we can flip "Loading…" to "No docs" when the
     /// server rejects or times out.
     completion_resolve_request_id: Option<u64>,
+    /// Latest in-flight `textDocument/completion` request. Clearing this on Esc
+    /// makes late LSP responses no-ops instead of reopening a stale popup.
+    active_lsp_completion_request_id: Option<u64>,
     /// Request id of the last in-flight hover — used to clear the loading overlay
     /// when the request fails or returns empty (so the overlay doesn't get stuck).
     hover_loading_request_id: Option<u64>,
+    /// Request id of the latest hover request. Stale responses (from old cursor positions)
+    /// are dropped to prevent overlays appearing after the user has moved/edited.
+    latest_hover_request_id: Option<u64>,
     /// Request id of the last in-flight `gd`/`gD` definition request. When a
     /// new request is dispatched, the previous one's result must be dropped on
     /// arrival to avoid a flicker (or a wrong jump) if the server replies out
@@ -207,6 +213,10 @@ pub struct AppShell {
     /// debounced resolve was queued for; used to skip dispatch if the user
     /// has already moved on, but mainly to tag the eventual request payload.
     pending_completion_resolve_revision: u64,
+    /// Set when Enter was pressed on an unresolved LSP completion item. The
+    /// resolve response should merge import edits first, then accept exactly
+    /// this item once.
+    pending_completion_accept_after_resolve: Option<(String, u64)>,
     pending_lsp_completion_after_debounce: bool,
     last_lsp_completion_type_at: Option<Instant>,
     ai_inline_revision: u64,

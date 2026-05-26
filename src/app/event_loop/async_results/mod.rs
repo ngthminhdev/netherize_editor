@@ -257,6 +257,8 @@ mod tests {
                         source_path: Some(PathBuf::from("src/api.ts")),
                         import_path: Some("src/api".to_string()),
                         export_kind: Some("named".to_string()),
+                        callable: Some(true),
+                        has_parameters: Some(false),
                     }],
                 },
             },

@@ -170,6 +170,17 @@ pub(super) fn handle_lsp_result(
                 if completion_revision != current_revision {
                     return;
                 }
+            } else {
+                // Drop stale hover responses (from old cursor positions/edits)
+                if app
+                    .latest_hover_request_id
+                    .is_some_and(|latest| latest != request_id)
+                {
+                    return;
+                }
+                if app.latest_hover_request_id == Some(request_id) {
+                    app.latest_hover_request_id = None;
+                }
             }
             if content.is_empty() {
                 if for_completion {
@@ -583,7 +594,25 @@ pub(super) fn handle_lsp_result(
             prefix_start_col,
             prefix,
         } => {
+            if app.active_lsp_completion_request_id != Some(request_id) {
+                return;
+            }
+            app.active_lsp_completion_request_id = None;
             app.app_state.set_completion_loading(false);
+            if app.app_state.current_mode() != EditorMode::Insert {
+                return;
+            }
+            let (current_line, current_col) = app.app_state.cursor_line_col();
+            let current_prefix = app
+                .app_state
+                .completion_prefix_info_at(current_line, current_col);
+            if current_line != cursor_line
+                || current_col != cursor_col
+                || current_prefix.start_col != prefix_start_col
+                || current_prefix.prefix != prefix
+            {
+                return;
+            }
             // Get language_id from active file for workspace symbol fallback
             let language_id = app.app_state.active_file().and_then(|path| {
                 crate::lsp::registry::language_profile_for_path(std::path::Path::new(path))
@@ -634,6 +663,12 @@ pub(super) fn handle_lsp_result(
                 app.app_state
                     .update_completion_item_detail(&item_label, cleaned_detail);
             }
+            let should_accept_after_resolve = app
+                .pending_completion_accept_after_resolve
+                .as_ref()
+                .is_some_and(|(label, revision)| {
+                    label == &item_label && *revision == completion_revision
+                });
             let Some(completion) = app.app_state.completion() else {
                 return;
             };
@@ -649,6 +684,10 @@ pub(super) fn handle_lsp_result(
             } else {
                 app.app_state.mark_completion_hover_doc_resolved();
                 app.submit_completion_virtual_hover_fallback(item_label, completion_revision);
+            }
+            if should_accept_after_resolve {
+                let _ = app.accept_completion_item();
+                return;
             }
             app.editor_caret_needs_layout = true;
             app.request_redraw();

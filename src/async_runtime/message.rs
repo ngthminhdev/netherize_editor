@@ -443,6 +443,12 @@ pub struct LspCompletionItem {
     pub text_edit_text: Option<String>,
     pub additional_text_edits: Vec<LspTextEdit>,
     pub kind: Option<u32>,
+    /// Whether accepting this item should produce a callable expression. `None`
+    /// means the server/cache did not say either way.
+    pub callable: Option<bool>,
+    /// For callable completions, whether the call signature has parameters.
+    /// `None` means unknown.
+    pub has_parameters: Option<bool>,
     pub documentation: Option<String>,
     /// Raw `data` JSON from LSP. Some servers require it to resolve auto-import
     /// edits later via `completionItem/resolve`.

@@ -138,6 +138,13 @@ fn parse_completion_item(item: &Value) -> Option<LspCompletionItem> {
         .get("kind")
         .and_then(Value::as_u64)
         .map(|kind| kind as u32);
+    let callable = kind.map(completion_kind_is_callable);
+    let has_parameters = infer_completion_has_parameters(
+        &label,
+        kind,
+        detail.as_deref(),
+        text_edit_text.as_deref().or(insert_text.as_deref()),
+    );
     let documentation = item
         .get("documentation")
         .and_then(parse_documentation_field);
@@ -151,6 +158,8 @@ fn parse_completion_item(item: &Value) -> Option<LspCompletionItem> {
         text_edit_text,
         additional_text_edits,
         kind,
+        callable,
+        has_parameters,
         documentation,
         data,
         source_path: None,
@@ -158,6 +167,149 @@ fn parse_completion_item(item: &Value) -> Option<LspCompletionItem> {
         export_kind: None,
         raw_json,
     })
+}
+
+fn completion_kind_is_callable(kind: u32) -> bool {
+    matches!(kind, 2 | 3 | 4)
+}
+
+fn infer_completion_has_parameters(
+    label: &str,
+    kind: Option<u32>,
+    detail: Option<&str>,
+    insert_text: Option<&str>,
+) -> Option<bool> {
+    if let Some(text) = insert_text
+        && let Some(has_parameters) = infer_call_parameters_from_insert_text(text)
+    {
+        return Some(has_parameters);
+    }
+    if let Some(detail) = detail
+        && let Some(has_parameters) = infer_call_parameters_from_signature(label, detail)
+    {
+        return Some(has_parameters);
+    }
+    kind.filter(|kind| completion_kind_is_callable(*kind))
+        .and(Some(true))
+}
+
+fn infer_call_parameters_from_insert_text(text: &str) -> Option<bool> {
+    let open = text.rfind('(')?;
+    let close = find_matching_paren(text, open)?;
+    if text[close + 1..].trim().is_empty() {
+        return Some(!text[open + 1..close].trim().is_empty());
+    }
+    None
+}
+
+fn infer_call_parameters_from_signature(label: &str, signature: &str) -> Option<bool> {
+    let label = label
+        .split('(')
+        .next()
+        .unwrap_or(label)
+        .rsplit('.')
+        .next()
+        .unwrap_or(label)
+        .trim();
+    let mut search_from = 0usize;
+    while let Some(relative_open) = signature[search_from..].find('(') {
+        let open = search_from + relative_open;
+        let Some(close) = find_matching_paren(signature, open) else {
+            break;
+        };
+        if signature[..open].trim().is_empty() {
+            let after = signature[close + 1..].trim_start();
+            if after.is_empty()
+                || after.starts_with("=>")
+                || after.starts_with(':')
+                || after.starts_with("->")
+            {
+                return Some(!signature[open + 1..close].trim().is_empty());
+            }
+        }
+        if signature_parenthesis_looks_like_call(label, &signature[..open]) {
+            return Some(!signature[open + 1..close].trim().is_empty());
+        }
+        search_from = close + 1;
+    }
+    None
+}
+
+fn signature_parenthesis_looks_like_call(label: &str, before_open: &str) -> bool {
+    let before = before_open.trim_end();
+    if before.is_empty() {
+        return false;
+    }
+    if label.is_empty() {
+        return before.ends_with("=>") || before.ends_with(':');
+    }
+    let without_generics = strip_trailing_type_args(before);
+    let token = without_generics
+        .rsplit(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '$' || ch == '.'))
+        .next()
+        .unwrap_or("")
+        .rsplit('.')
+        .next()
+        .unwrap_or("");
+    token == label
+        || before.ends_with(&format!("{label}:"))
+        || before.contains(&format!(" {label}:"))
+}
+
+fn strip_trailing_type_args(text: &str) -> &str {
+    let trimmed = text.trim_end();
+    if !trimmed.ends_with('>') {
+        return trimmed;
+    }
+    let mut depth = 0usize;
+    for (idx, ch) in trimmed.char_indices().rev() {
+        match ch {
+            '>' => depth = depth.saturating_add(1),
+            '<' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return trimmed[..idx].trim_end();
+                }
+            }
+            _ => {}
+        }
+    }
+    trimmed
+}
+
+fn find_matching_paren(text: &str, open: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut quote = None;
+    let mut escape = false;
+    for (idx, ch) in text[open..].char_indices() {
+        let absolute = open + idx;
+        if let Some(quote_char) = quote {
+            if escape {
+                escape = false;
+                continue;
+            }
+            if ch == '\\' {
+                escape = true;
+                continue;
+            }
+            if ch == quote_char {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' | '`' => quote = Some(ch),
+            '(' => depth = depth.saturating_add(1),
+            ')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(absolute);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn parse_completion_text_edit(edit: &Value) -> Option<LspTextEdit> {
@@ -1030,6 +1182,33 @@ mod tests {
     }
 
     #[test]
+    fn parse_completion_infers_callable_parameter_shape() {
+        let response = json!({
+            "items": [
+                {
+                    "label": "wait",
+                    "kind": 3,
+                    "insertText": "wait",
+                    "detail": "function wait(ms: number): Promise<void>"
+                },
+                {
+                    "label": "init",
+                    "kind": 3,
+                    "insertText": "init",
+                    "detail": "function init(): void"
+                }
+            ]
+        });
+
+        let items = parse_completion_items(&response);
+
+        assert_eq!(items[0].callable, Some(true));
+        assert_eq!(items[0].has_parameters, Some(true));
+        assert_eq!(items[1].callable, Some(true));
+        assert_eq!(items[1].has_parameters, Some(false));
+    }
+
+    #[test]
     fn parse_document_symbols_rebuilds_ancestors_for_flat_symbols() {
         let response = json!([
             {
@@ -1291,6 +1470,10 @@ fn parse_workspace_symbol(symbol: &Value) -> Option<crate::lsp::CachedSymbol> {
     let line = start.get("line")?.as_u64()? as u32;
     let character = start.get("character")?.as_u64()? as u32;
 
+    let callable = Some(matches!(
+        kind_str.as_str(),
+        "Function" | "Method" | "Constructor"
+    ));
     Some(crate::lsp::CachedSymbol {
         name,
         kind: kind_str,
@@ -1301,6 +1484,8 @@ fn parse_workspace_symbol(symbol: &Value) -> Option<crate::lsp::CachedSymbol> {
         source_path: None,
         import_path: None,
         export_kind: None,
+        callable,
+        has_parameters: None,
     })
 }
 

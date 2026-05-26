@@ -78,6 +78,33 @@ fn move_to_first_line_uses_viewport_layout_path() {
 }
 
 #[test]
+fn insert_edit_clears_stale_semantic_highlight_spans() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = "bootstrap.NewApp";
+    shell.app_state = AppState::from_text(PathBuf::from("semantic-highlight-edit.ts"), text);
+    assert!(
+        shell
+            .app_state
+            .jump_to_line_and_column(0, text.chars().count())
+    );
+    shell.semantic_highlight_spans = vec![crate::syntax::highlight::HighlightSpan {
+        range: 0.."bootstrap".len(),
+        category: crate::syntax::highlight::HighlightCategory::Variable,
+    }];
+    assert!(shell.app_state.set_semantic_symbol_highlights(vec![
+        (0, "bootstrap".len())
+    ]));
+    shell.editor_needs_layout = false;
+    shell.editor_caret_needs_layout = false;
+
+    assert!(shell.handle_command(Command::Backspace));
+
+    assert!(shell.semantic_highlight_spans.is_empty());
+    assert!(shell.app_state.semantic_symbol_highlights().is_empty());
+    assert!(shell.editor_needs_layout);
+}
+
+#[test]
 fn move_to_last_line_uses_viewport_layout_path() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let text = (0..120)
@@ -1339,12 +1366,14 @@ fn test_completion_item(
 ) -> crate::async_runtime::message::LspCompletionItem {
     crate::async_runtime::message::LspCompletionItem {
         label: label.to_string(),
-        detail: None,
+        detail: Some("()".to_string()),
         insert_text: Some(insert_text.to_string()),
         text_edit: None,
         text_edit_text: None,
         additional_text_edits: Vec::new(),
         kind: Some(3),
+        callable: Some(true),
+        has_parameters: Some(false),
         documentation: None,
         data: None,
         source_path: None,
@@ -1363,6 +1392,27 @@ fn lsp_insert_edit(
         range: crate::async_runtime::message::LspRange {
             start: crate::async_runtime::message::LspPosition { line, character },
             end: crate::async_runtime::message::LspPosition { line, character },
+        },
+        new_text: new_text.to_string(),
+    }
+}
+
+fn lsp_replace_edit(
+    line: u32,
+    start_character: u32,
+    end_character: u32,
+    new_text: &str,
+) -> crate::async_runtime::message::LspTextEdit {
+    crate::async_runtime::message::LspTextEdit {
+        range: crate::async_runtime::message::LspRange {
+            start: crate::async_runtime::message::LspPosition {
+                line,
+                character: start_character,
+            },
+            end: crate::async_runtime::message::LspPosition {
+                line,
+                character: end_character,
+            },
         },
         new_text: new_text.to_string(),
     }
@@ -1404,7 +1454,137 @@ fn cached_ts_export(name: &str, source_path: &std::path::Path) -> crate::lsp::Ca
         source_path: Some(source_path.clone()),
         import_path: Some(source_path.with_extension("").display().to_string()),
         export_kind: Some("named".to_string()),
+        callable: Some(true),
+        has_parameters: Some(false),
     }
+}
+
+fn cached_ts_default_export(name: &str, source_path: &std::path::Path) -> crate::lsp::CachedSymbol {
+    let source_path = source_path.to_path_buf();
+    crate::lsp::CachedSymbol {
+        name: name.to_string(),
+        kind: "Function".to_string(),
+        container_name: None,
+        file_path: source_path.clone(),
+        line: 0,
+        character: 24,
+        source_path: Some(source_path.clone()),
+        import_path: Some(source_path.with_extension("").display().to_string()),
+        export_kind: Some("default".to_string()),
+        callable: Some(true),
+        has_parameters: Some(false),
+    }
+}
+
+fn cached_package_default_export(
+    name: &str,
+    source_path: &std::path::Path,
+    import_path: &str,
+) -> crate::lsp::CachedSymbol {
+    let source_path = source_path.to_path_buf();
+    crate::lsp::CachedSymbol {
+        name: name.to_string(),
+        kind: "Variable".to_string(),
+        container_name: None,
+        file_path: source_path.clone(),
+        line: 0,
+        character: 0,
+        source_path: Some(source_path),
+        import_path: Some(import_path.to_string()),
+        export_kind: Some("default".to_string()),
+        callable: Some(false),
+        has_parameters: None,
+    }
+}
+
+#[test]
+fn completion_close_exits_insert_and_cancels_pending_lsp_completion() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("close_cancels_lsp");
+    let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), "axios.p");
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![test_completion_item("post", "post")],
+        0,
+        "axios.p".chars().count(),
+        "axios.".chars().count(),
+        "p".to_string(),
+        &cache,
+        Some("typescript"),
+    );
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+    assert!(shell.app_state.set_completion(completion));
+    shell.active_lsp_completion_request_id = Some(77);
+    shell.app_state.set_completion_loading(true);
+
+    assert!(shell.handle_command(Command::CompletionClose));
+
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+    assert!(shell.app_state.completion().is_none());
+    assert_eq!(shell.active_lsp_completion_request_id, None);
+    assert!(!shell.app_state.is_completion_loading());
+}
+
+#[test]
+fn stale_lsp_completion_result_after_escape_is_ignored() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("stale_after_escape");
+    let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), "axios.p");
+    shell
+        .app_state
+        .jump_to_line_and_column(0, "axios.p".chars().count());
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+    shell.active_lsp_completion_request_id = Some(91);
+    shell.app_state.set_completion_loading(true);
+
+    assert!(shell.handle_command(Command::SwitchMode(ModeEvent::Escape)));
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+    assert_eq!(shell.active_lsp_completion_request_id, None);
+
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: 91,
+        revision_id: 0,
+        topic: crate::async_runtime::message::RequestTopic::LspRequest,
+        payload: crate::async_runtime::message::WorkerResultPayload::LspCompletionResult {
+            items: vec![test_completion_item("post", "post")],
+            cursor_line: 0,
+            cursor_col: "axios.p".chars().count(),
+            prefix_start_col: "axios.".chars().count(),
+            prefix: "p".to_string(),
+        },
+    });
+
+    assert!(shell.app_state.completion().is_none());
+    assert!(!shell.app_state.is_completion_loading());
+}
+
+#[test]
+fn member_access_completion_debounces_after_one_typed_character() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("member_access_one_char");
+    let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), "axios.p");
+    shell
+        .app_state
+        .jump_to_line_and_column(0, "axios.p".chars().count());
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "typescript-language-server".to_string(),
+        root_path: root,
+    });
+    shell.lsp_completion_trigger_chars = vec!['.'];
+
+    shell.queue_lsp_completion_after_debounce_if_needed();
+
+    assert!(shell.pending_lsp_completion_after_debounce);
 }
 
 #[test]
@@ -1426,6 +1606,8 @@ fn completion_accept_replaces_typed_prefix_instead_of_inserting_after_it() {
             text_edit_text: None,
             additional_text_edits: Vec::new(),
             kind: Some(2),
+            callable: Some(true),
+            has_parameters: Some(false),
             documentation: None,
             data: None,
             source_path: None,
@@ -1456,6 +1638,58 @@ fn completion_accept_replaces_typed_prefix_instead_of_inserting_after_it() {
 }
 
 #[test]
+fn completion_accept_adds_call_parens_and_places_cursor_inside_for_params() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("call_parens_with_params");
+    let _path = open_completion_file(&mut shell, &root.join("call_parens.ts"), "wai");
+    let mut item = test_completion_item("wait", "wait");
+    item.detail = Some("function wait(ms: number): Promise<void>".to_string());
+    item.has_parameters = Some(true);
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![item],
+        0,
+        "wai".chars().count(),
+        0,
+        "wai".to_string(),
+        &cache,
+        None,
+    );
+    assert!(shell.app_state.jump_to_line_and_column(0, "wai".chars().count()));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(shell.app_state.text_string(), "wait()");
+    assert_eq!(shell.app_state.cursor_line_col(), (0, "wait(".chars().count()));
+}
+
+#[test]
+fn completion_accept_adds_call_parens_and_keeps_cursor_after_no_param_call() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("call_parens_no_params");
+    let _path = open_completion_file(&mut shell, &root.join("call_parens.ts"), "ini");
+    let mut item = test_completion_item("init", "init");
+    item.detail = Some("function init(): void".to_string());
+    item.has_parameters = Some(false);
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![item],
+        0,
+        "ini".chars().count(),
+        0,
+        "ini".to_string(),
+        &cache,
+        None,
+    );
+    assert!(shell.app_state.jump_to_line_and_column(0, "ini".chars().count()));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(shell.app_state.text_string(), "init()");
+    assert_eq!(shell.app_state.cursor_line_col(), (0, "init()".chars().count()));
+}
+
+#[test]
 fn completion_accept_deduplicates_trigger_char_in_insert_text() {
     // Scenario: user typed "message." and LSP returns insertText = ".getInstance()"
     // (trigger char included). Without dedup the result would be "message..getInstance()".
@@ -1474,6 +1708,8 @@ fn completion_accept_deduplicates_trigger_char_in_insert_text() {
             text_edit_text: None,
             additional_text_edits: Vec::new(),
             kind: Some(2),
+            callable: Some(true),
+            has_parameters: Some(false),
             documentation: None,
             data: None,
             source_path: None,
@@ -1494,6 +1730,154 @@ fn completion_accept_deduplicates_trigger_char_in_insert_text() {
     assert!(shell.handle_command(Command::CompletionAccept));
     assert_eq!(shell.app_state.text_string(), "message.getInstance()");
     assert!(shell.app_state.completion().is_none());
+}
+
+#[test]
+fn completion_accept_strips_existing_member_receiver_from_full_insert_text() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("strip_member_receiver");
+    let text = "bootstrap.N";
+    let _path = open_completion_file(&mut shell, &root.join("member_receiver.ts"), text);
+    shell.lsp_completion_trigger_chars = vec!['.'];
+    let cursor_col = text.chars().count();
+    let prefix_start = "bootstrap.".chars().count();
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![crate::async_runtime::message::LspCompletionItem {
+            label: "bootstrap.NewAppN".to_string(),
+            detail: None,
+            insert_text: Some("bootstrap.NewAppN".to_string()),
+            text_edit: None,
+            text_edit_text: None,
+            additional_text_edits: Vec::new(),
+            kind: Some(5),
+            callable: Some(false),
+            has_parameters: None,
+            documentation: None,
+            data: None,
+            source_path: None,
+            import_path: None,
+            export_kind: None,
+            raw_json: None,
+        }],
+        0,
+        cursor_col,
+        prefix_start,
+        "N".to_string(),
+        &cache,
+        None,
+    );
+    assert!(shell.app_state.jump_to_line_and_column(0, cursor_col));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(shell.app_state.text_string(), "bootstrap.NewAppN");
+}
+
+#[test]
+fn completion_accept_replaces_member_prefix_when_lsp_edit_is_zero_width() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("zero_width_member_edit");
+    let text = "bootstrap.N";
+    let _path = open_completion_file(&mut shell, &root.join("zero_width_member.ts"), text);
+    shell.lsp_completion_trigger_chars = vec!['.'];
+    let cursor_col = text.chars().count();
+    let prefix_start = "bootstrap.".chars().count();
+    let mut item = test_completion_item("NewAppN", "NewAppN");
+    item.text_edit = Some(lsp_insert_edit(0, cursor_col as u32, "NewAppN"));
+    item.text_edit_text = Some("NewAppN".to_string());
+    item.kind = Some(5);
+    item.callable = Some(false);
+    item.has_parameters = None;
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![item],
+        0,
+        cursor_col,
+        prefix_start,
+        "N".to_string(),
+        &cache,
+        None,
+    );
+    assert!(shell.app_state.jump_to_line_and_column(0, cursor_col));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(shell.app_state.text_string(), "bootstrap.NewAppN");
+}
+
+#[test]
+fn completion_accept_keeps_lsp_edit_that_replaces_full_member_expression() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("full_member_lsp_edit");
+    let text = "bootstrap.N";
+    let _path = open_completion_file(&mut shell, &root.join("full_member.ts"), text);
+    shell.lsp_completion_trigger_chars = vec!['.'];
+    let cursor_col = text.chars().count();
+    let prefix_start = "bootstrap.".chars().count();
+    let mut item = test_completion_item("bootstrap.NewAppN", "bootstrap.NewAppN");
+    item.text_edit = Some(lsp_replace_edit(
+        0,
+        0,
+        cursor_col as u32,
+        "bootstrap.NewAppN",
+    ));
+    item.text_edit_text = Some("bootstrap.NewAppN".to_string());
+    item.kind = Some(5);
+    item.callable = Some(false);
+    item.has_parameters = None;
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![item],
+        0,
+        cursor_col,
+        prefix_start,
+        "N".to_string(),
+        &cache,
+        None,
+    );
+    assert!(shell.app_state.jump_to_line_and_column(0, cursor_col));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(shell.app_state.text_string(), "bootstrap.NewAppN");
+}
+
+#[test]
+fn completion_accept_prefers_lsp_text_edit_text_over_insert_text() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("prefer_text_edit_new_text");
+    let text = "bootstrap.N";
+    let _path = open_completion_file(&mut shell, &root.join("text_edit_new_text.ts"), text);
+    shell.lsp_completion_trigger_chars = vec!['.'];
+    let cursor_col = text.chars().count();
+    let prefix_start = "bootstrap.".chars().count();
+    let mut item = test_completion_item("bootstrap.NewAppN", "bootstrap.NewAppN");
+    item.text_edit = Some(lsp_replace_edit(
+        0,
+        prefix_start as u32,
+        cursor_col as u32,
+        "NewAppN",
+    ));
+    item.text_edit_text = Some("NewAppN".to_string());
+    item.kind = Some(5);
+    item.callable = Some(false);
+    item.has_parameters = None;
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![item],
+        0,
+        cursor_col,
+        prefix_start,
+        "N".to_string(),
+        &cache,
+        None,
+    );
+    assert!(shell.app_state.jump_to_line_and_column(0, cursor_col));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(shell.app_state.text_string(), "bootstrap.NewAppN");
 }
 
 #[test]
@@ -1523,11 +1907,69 @@ fn completion_accept_applies_lsp_additional_import_edits_in_one_undo() {
     assert!(shell.handle_command(Command::CompletionAccept));
     assert_eq!(
         shell.app_state.text_string(),
-        "import { connect } from './api';\nconnect"
+        "import { connect } from './api';\nconnect()"
     );
 
     assert!(shell.handle_command(Command::Undo));
     assert_eq!(shell.app_state.text_string(), "con");
+}
+
+#[test]
+fn completion_accept_waits_for_lsp_resolve_before_inserting_unresolved_item() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("accept_waits_for_resolve");
+    let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), "con");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "typescript-language-server".to_string(),
+        root_path: root.clone(),
+    });
+    let mut item = test_completion_item("connect", "connect");
+    item.raw_json = Some(r#"{"label":"connect","data":{"source":"./api"}}"#.to_string());
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![item],
+        0,
+        "con".chars().count(),
+        0,
+        "con".to_string(),
+        &cache,
+        None,
+    );
+    assert!(shell.app_state.jump_to_line_and_column(0, "con".chars().count()));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(shell.app_state.text_string(), "con");
+    assert_eq!(
+        shell.pending_completion_accept_after_resolve,
+        Some(("connect".to_string(), 0))
+    );
+    assert!(shell.app_state.completion().is_some());
+
+    let request_id = shell
+        .completion_resolve_request_id
+        .expect("resolve request id");
+    let mut resolved = test_completion_item("connect", "connect");
+    resolved.additional_text_edits = vec![lsp_insert_edit(0, 0, "import { connect } from './api';\n")];
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id,
+        revision_id: 0,
+        topic: crate::async_runtime::message::RequestTopic::LspRequest,
+        payload: crate::async_runtime::message::WorkerResultPayload::LspCompletionResolveResult {
+            item_label: "connect".to_string(),
+            detail: None,
+            documentation: None,
+            resolved_item: Some(resolved),
+            completion_revision: 0,
+        },
+    });
+
+    assert_eq!(
+        shell.app_state.text_string(),
+        "import { connect } from './api';\nconnect()"
+    );
+    assert!(shell.pending_completion_accept_after_resolve.is_none());
+    assert!(shell.app_state.completion().is_none());
 }
 
 #[test]
@@ -1559,7 +2001,7 @@ fn workspace_completion_fallback_merges_existing_named_import() {
     assert!(shell.handle_command(Command::CompletionAccept));
     assert_eq!(
         shell.app_state.text_string(),
-        "import { existing, connect } from './utils';\n\nconnect"
+        "import { existing, connect } from './utils';\n\nconnect()"
     );
 }
 
@@ -1584,13 +2026,218 @@ fn workspace_completion_fallback_inserts_new_named_import() {
         Some("typescript"),
     );
     assert!(!completion.filtered_items.is_empty());
+    assert_eq!(
+        completion.filtered_items[0].item.detail.as_deref(),
+        Some("api.ts:1")
+    );
     assert!(shell.app_state.jump_to_line_and_column(0, cursor_col));
     assert!(shell.app_state.set_completion(completion));
 
     assert!(shell.handle_command(Command::CompletionAccept));
     assert_eq!(
         shell.app_state.text_string(),
-        "import { connect } from './api';\nconst value = connect"
+        "import { connect } from './api';\nconst value = connect()"
+    );
+}
+
+#[test]
+fn workspace_completion_fallback_inserts_default_import() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = "const value = wai";
+    let root = completion_temp_root("default_import");
+    let source_path = write_completion_file(&root.join("src/wait.ts"), "export default function wait() {}\n");
+    let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), text);
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols("typescript", vec![cached_ts_default_export("wait", &source_path)]);
+    let cursor_col = text.chars().count();
+    let prefix_start = "const value = ".chars().count();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        Vec::new(),
+        0,
+        cursor_col,
+        prefix_start,
+        "wai".to_string(),
+        &cache,
+        Some("typescript"),
+    );
+    assert!(!completion.filtered_items.is_empty());
+    assert!(shell.app_state.jump_to_line_and_column(0, cursor_col));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(
+        shell.app_state.text_string(),
+        "import wait from './wait';\nconst value = wait()"
+    );
+}
+
+#[test]
+fn workspace_completion_symbols_merge_even_when_lsp_has_many_results() {
+    let root = completion_temp_root("merge_cache_with_lsp");
+    let source_path = write_completion_file(&root.join("src/api.ts"), "export function connect() {}\n");
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols("typescript", vec![cached_ts_export("connect", &source_path)]);
+
+    let lsp_items = vec![
+        test_completion_item("ContentVisibilityAutoStateChangeEvent", "ContentVisibilityAutoStateChangeEvent"),
+        test_completion_item("CanvasGradient", "CanvasGradient"),
+        test_completion_item("CSSPageDescriptors", "CSSPageDescriptors"),
+        test_completion_item("CookieChangeEvent", "CookieChangeEvent"),
+        test_completion_item("CustomEvent", "CustomEvent"),
+    ];
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        lsp_items,
+        0,
+        3,
+        0,
+        "con".to_string(),
+        &cache,
+        Some("typescript"),
+    );
+
+    let imported = completion
+        .filtered_items
+        .iter()
+        .find(|entry| entry.item.label == "connect")
+        .expect("workspace importable symbol should be merged");
+    assert_eq!(
+        imported.source,
+        crate::app::app_state::CompletionItemSource::WorkspaceSymbol
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn workspace_completion_import_metadata_enriches_duplicate_lsp_item() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = "const value = con";
+    let root = completion_temp_root("duplicate_lsp_import_metadata");
+    let source_path = write_completion_file(&root.join("src/api.ts"), "export function connect() {}\n");
+    let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), text);
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols("typescript", vec![cached_ts_export("connect", &source_path)]);
+    let cursor_col = text.chars().count();
+    let prefix_start = "const value = ".chars().count();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![test_completion_item("connect", "connect")],
+        0,
+        cursor_col,
+        prefix_start,
+        "con".to_string(),
+        &cache,
+        Some("typescript"),
+    );
+    let item = &completion.filtered_items[0].item;
+    assert_eq!(item.source_path.as_deref(), Some(source_path.as_path()));
+    assert_eq!(item.export_kind.as_deref(), Some("named"));
+    assert!(shell.app_state.jump_to_line_and_column(0, cursor_col));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(
+        shell.app_state.text_string(),
+        "import { connect } from './api';\nconst value = connect()"
+    );
+}
+
+#[test]
+fn workspace_completion_fallback_inserts_commonjs_named_require() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = "const value = con";
+    let root = completion_temp_root("commonjs_named_require");
+    let source_path = write_completion_file(&root.join("src/api.cjs"), "exports.connect = function() {}\n");
+    let _path = open_completion_file(&mut shell, &root.join("src/app.cjs"), text);
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols("javascript", vec![cached_ts_export("connect", &source_path)]);
+    let cursor_col = text.chars().count();
+    let prefix_start = "const value = ".chars().count();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        Vec::new(),
+        0,
+        cursor_col,
+        prefix_start,
+        "con".to_string(),
+        &cache,
+        Some("javascript"),
+    );
+    assert!(!completion.filtered_items.is_empty());
+    assert!(shell.app_state.jump_to_line_and_column(0, cursor_col));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(
+        shell.app_state.text_string(),
+        "const { connect } = require('./api');\nconst value = connect()"
+    );
+}
+
+#[test]
+fn workspace_completion_fallback_inserts_package_default_import() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = "const client = axi";
+    let root = completion_temp_root("package_default_import");
+    let package_type_path =
+        write_completion_file(&root.join("node_modules/axios/index.d.ts"), "declare const axios: AxiosStatic;\nexport default axios;\n");
+    let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), text);
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols(
+        "typescript",
+        vec![cached_package_default_export("axios", &package_type_path, "axios")],
+    );
+    let cursor_col = text.chars().count();
+    let prefix_start = "const client = ".chars().count();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        Vec::new(),
+        0,
+        cursor_col,
+        prefix_start,
+        "axi".to_string(),
+        &cache,
+        Some("typescript"),
+    );
+    assert!(!completion.filtered_items.is_empty());
+    assert!(shell.app_state.jump_to_line_and_column(0, cursor_col));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(
+        shell.app_state.text_string(),
+        "import axios from 'axios';\nconst client = axios"
+    );
+}
+
+#[test]
+fn workspace_completion_fallback_inserts_package_default_require_for_commonjs() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = "const client = axi";
+    let root = completion_temp_root("package_default_require");
+    let package_type_path =
+        write_completion_file(&root.join("node_modules/axios/index.d.ts"), "declare const axios: AxiosStatic;\nexport = axios;\n");
+    let _path = open_completion_file(&mut shell, &root.join("src/app.cjs"), text);
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols(
+        "javascript",
+        vec![cached_package_default_export("axios", &package_type_path, "axios")],
+    );
+    let cursor_col = text.chars().count();
+    let prefix_start = "const client = ".chars().count();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        Vec::new(),
+        0,
+        cursor_col,
+        prefix_start,
+        "axi".to_string(),
+        &cache,
+        Some("javascript"),
+    );
+    assert!(!completion.filtered_items.is_empty());
+    assert!(shell.app_state.jump_to_line_and_column(0, cursor_col));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(
+        shell.app_state.text_string(),
+        "const axios = require('axios');\nconst client = axios"
     );
 }
 
@@ -1615,7 +2262,7 @@ fn workspace_completion_fallback_same_file_symbol_has_no_import() {
     assert!(shell.app_state.set_completion(completion));
 
     assert!(shell.handle_command(Command::CompletionAccept));
-    assert_eq!(shell.app_state.text_string(), "connect");
+    assert_eq!(shell.app_state.text_string(), "connect()");
 }
 
 #[test]

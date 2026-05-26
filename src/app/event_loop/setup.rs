@@ -218,7 +218,9 @@ impl AppShell {
             semantic_highlight_request_revision: 0,
             references_request_revision: 0,
             completion_resolve_request_id: None,
+            active_lsp_completion_request_id: None,
             hover_loading_request_id: None,
+            latest_hover_request_id: None,
             latest_definition_request_id: None,
             document_symbols_request_revision: 0,
             lsp_rename_request_revision: 0,
@@ -229,6 +231,7 @@ impl AppShell {
             pending_completion_resolve_after_debounce: false,
             last_completion_resolve_select_at: None,
             pending_completion_resolve_revision: 0,
+            pending_completion_accept_after_resolve: None,
             pending_lsp_completion_after_debounce: false,
             last_lsp_completion_type_at: None,
             ai_inline_revision: 0,
@@ -1588,6 +1591,11 @@ impl AppShell {
                 self.app_state
                     .workspace_symbol_cache()
                     .set_indexing_progress(&language_id, 0, 0);
+                eprintln!(
+                    "[AppShell] starting TS/JS workspace symbol index for {} in {}",
+                    language_id,
+                    workspace_root.display()
+                );
                 self.submit(RequestSpec {
                     revision_id: 0,
                     topic: RequestTopic::SystemTask,

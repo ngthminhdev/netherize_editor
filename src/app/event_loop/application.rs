@@ -1432,7 +1432,15 @@ impl AppShell {
                 let lsp_progress_label = self
                     .app_state
                     .lsp_progress()
-                    .map(|entry| entry.status_label());
+                    .map(|entry| entry.status_label())
+                    .or_else(|| {
+                        let active_path = self.app_state.active_file()?;
+                        let profile = crate::lsp::registry::language_profile_for_path(active_path)?;
+                        self.app_state
+                            .workspace_symbol_cache()
+                            .is_indexing(profile.key)
+                            .then(|| "Indexing symbols…".to_string())
+                    });
                 let pill_quads = renderer.update_statusbar_content(
                     mode,
                     &pending_keys,

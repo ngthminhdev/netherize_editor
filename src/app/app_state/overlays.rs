@@ -1256,6 +1256,12 @@ fn merge_completion_item(
     if resolved.kind.is_some() {
         merged.kind = resolved.kind;
     }
+    if resolved.callable.is_some() {
+        merged.callable = resolved.callable;
+    }
+    if resolved.has_parameters.is_some() {
+        merged.has_parameters = resolved.has_parameters;
+    }
     if resolved.documentation.is_some() {
         merged.documentation = resolved.documentation.clone();
     }
@@ -1648,27 +1654,47 @@ pub(super) fn build_completion_display_items_with_cache(
     prefix: &str,
     cache: &crate::lsp::WorkspaceSymbolCache,
     language_id: Option<&str>,
-    min_items: usize,
+    _min_items: usize,
 ) -> Vec<CompletionDisplayItem> {
     let mut lsp_items = build_completion_display_items(items, prefix);
 
-    // If we have enough LSP results, return them
-    if lsp_items.len() >= min_items || prefix.is_empty() {
+    if prefix.is_empty() {
         return lsp_items;
     }
 
-    // Query workspace symbols as fallback
+    // Always blend importable workspace/package symbols into the LSP list. Some
+    // servers return many broad built-ins before auto-import candidates, so a
+    // count-based fallback can hide the entries that are actually useful.
     let workspace_symbols = cache.query_symbols(prefix, language_id);
 
     // Convert workspace symbols to completion items
     let mut workspace_items: Vec<CompletionDisplayItem> = workspace_symbols
         .into_iter()
         .filter_map(|symbol| {
-            // Deduplicate: skip if already in LSP results
-            let already_exists = lsp_items.iter().any(|lsp_item| {
-                lsp_item.item.label == symbol.name
-            });
-            if already_exists {
+            if let Some(existing) = lsp_items
+                .iter_mut()
+                .find(|lsp_item| lsp_item.item.label == symbol.name)
+            {
+                if symbol.export_kind.is_some()
+                    && existing.item.additional_text_edits.is_empty()
+                    && existing.item.source_path.is_none()
+                    && existing.item.export_kind.is_none()
+                {
+                    existing.item.source_path =
+                        symbol.source_path.clone().or_else(|| Some(symbol.file_path.clone()));
+                    existing.item.import_path = symbol.import_path.clone();
+                    existing.item.export_kind = symbol.export_kind.clone();
+                    if existing.item.detail.is_none() {
+                        existing.item.detail = workspace_symbol_completion_detail(&symbol);
+                    }
+                    if existing.item.callable.is_none() {
+                        existing.item.callable = symbol.callable;
+                    }
+                    if existing.item.has_parameters.is_none() {
+                        existing.item.has_parameters = symbol.has_parameters;
+                    }
+                    existing.source = CompletionItemSource::WorkspaceSymbol;
+                }
                 return None;
             }
 
@@ -1676,9 +1702,7 @@ pub(super) fn build_completion_display_items_with_cache(
             let (score, match_ranges) = score_completion_match(&symbol.name, prefix)?;
 
             // Convert to LspCompletionItem
-            let detail = symbol.container_name.clone().or_else(|| {
-                Some(format!("{}:{}", symbol.file_path.display(), symbol.line + 1))
-            });
+            let detail = workspace_symbol_completion_detail(&symbol);
 
             Some(CompletionDisplayItem {
                 item: LspCompletionItem {
@@ -1689,9 +1713,14 @@ pub(super) fn build_completion_display_items_with_cache(
                     text_edit_text: None,
                     additional_text_edits: Vec::new(),
                     kind: Some(symbol_kind_to_lsp_kind(&symbol.kind)),
+                    callable: symbol.callable,
+                    has_parameters: symbol.has_parameters,
                     documentation: None,
                     data: None,
-                    source_path: symbol.source_path.clone().or_else(|| Some(symbol.file_path.clone())),
+                    source_path: symbol
+                        .source_path
+                        .clone()
+                        .or_else(|| Some(symbol.file_path.clone())),
                     import_path: symbol.import_path.clone(),
                     export_kind: symbol.export_kind.clone(),
                     raw_json: None,
@@ -1703,11 +1732,44 @@ pub(super) fn build_completion_display_items_with_cache(
         })
         .collect();
 
-    // Merge and sort by score
     lsp_items.append(&mut workspace_items);
-    lsp_items.sort_by(|a, b| b.score.cmp(&a.score));
+    lsp_items.sort_by(|a, b| {
+        b.score
+            .cmp(&a.score)
+            .then_with(|| {
+                b.item
+                    .export_kind
+                    .is_some()
+                    .cmp(&a.item.export_kind.is_some())
+            })
+            .then_with(|| a.item.label.cmp(&b.item.label))
+    });
 
     lsp_items
+}
+
+fn workspace_symbol_completion_detail(symbol: &crate::lsp::CachedSymbol) -> Option<String> {
+    if let Some(container_name) = symbol.container_name.as_ref() {
+        return Some(container_name.clone());
+    }
+    let file_name = symbol
+        .source_path
+        .as_deref()
+        .unwrap_or(symbol.file_path.as_path())
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_else(|| {
+            symbol
+                .import_path
+                .as_deref()
+                .and_then(|path| path.rsplit('/').next())
+                .unwrap_or("")
+        });
+    if file_name.is_empty() {
+        symbol.import_path.clone()
+    } else {
+        Some(format!("{file_name}:{}", symbol.line + 1))
+    }
 }
 
 /// Convert symbol kind string to LSP completion kind number
