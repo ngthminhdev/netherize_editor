@@ -350,6 +350,13 @@ impl AppShell {
                 changed,
             );
         }
+        if let Some(changed) = self.handle_markdown_preview_command(&command) {
+            return self.finalize_post_command_hooks(
+                &command_for_post_hooks,
+                should_persist_history_after,
+                changed,
+            );
+        }
         if let Some(changed) = self.handle_viewport_navigation_command(&command) {
             return self.finalize_post_command_hooks(
                 &command_for_post_hooks,
@@ -358,13 +365,6 @@ impl AppShell {
             );
         }
         if let Some(changed) = self.handle_leap_command(&command) {
-            return self.finalize_post_command_hooks(
-                &command_for_post_hooks,
-                should_persist_history_after,
-                changed,
-            );
-        }
-        if let Some(changed) = self.handle_markdown_preview_command(&command) {
             return self.finalize_post_command_hooks(
                 &command_for_post_hooks,
                 should_persist_history_after,
@@ -610,6 +610,26 @@ impl AppShell {
     }
 
     fn handle_markdown_preview_command(&mut self, command: &Command) -> Option<bool> {
+        if matches!(
+            command,
+            Command::ScrollHalfPageUp
+                | Command::ScrollHalfPageDown
+                | Command::MoveToFirstLine
+                | Command::MoveToLastLine
+                | Command::CenterCursorLine
+                | Command::MarkdownPreviewScrollUp
+                | Command::MarkdownPreviewScrollDown
+                | Command::MarkdownPreviewScrollTop
+                | Command::MarkdownPreviewScrollBottom
+                | Command::MarkdownPreviewScrollHalfPageUp
+                | Command::MarkdownPreviewScrollHalfPageDown
+        ) && self.app_state.active_buffer_is_markdown_preview()
+            && let Some(preview) = self.app_state.active_markdown_preview_buffer().cloned()
+        {
+            self.app_state.markdown_preview = preview;
+            self.app_state.markdown_preview.visible = true;
+        }
+
         match command {
             Command::ToggleMarkdownPreview => {
                 let is_markdown = self.app_state.active_file()
