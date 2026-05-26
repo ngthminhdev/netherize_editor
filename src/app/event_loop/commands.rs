@@ -271,6 +271,9 @@ impl AppShell {
             let _ = self.app_state.clear_inline_suggestion();
             self.cancel_ai_inline_completion();
         }
+        if matches!(command, Command::SwitchMode(ModeEvent::Escape)) {
+            self.cancel_lsp_completion_pipeline();
+        }
         if matches!(command, Command::TerminalPaste) {
             return self.handle_terminal_paste();
         }
@@ -379,7 +382,38 @@ impl AppShell {
             );
         }
 
+        let mode_before = self.app_state.current_mode();
+        // Check if this is a text-modifying command before moving `command`
+        let is_text_modifying_command = matches!(
+            command,
+            Command::DeleteChar
+                | Command::DeleteSelection
+                | Command::DeleteCurrentLine
+                | Command::DeleteToLineEnd
+                | Command::DeleteWordForward
+                | Command::DeleteWordBackward
+                | Command::ChangeSelection
+                | Command::ChangeWordForward
+                | Command::ChangeWordBackward
+                | Command::ChangeToLineEnd
+                | Command::SubstituteLine
+        );
         let changed = self.handle_generic_editor_command(command, repeat_count);
+        let mode_after = self.app_state.current_mode();
+
+        // Clear overlays when transitioning to Insert mode from editing commands,
+        // or when performing text-modifying operations (delete, change, etc.)
+        let should_clear_overlay = changed
+            && (mode_before != EditorMode::Insert && mode_after == EditorMode::Insert
+                || is_text_modifying_command);
+        if should_clear_overlay {
+            let overlay_cleared = self.app_state.clear_current_overlays();
+            if overlay_cleared {
+                self.editor_needs_layout = true;
+            }
+            // Invalidate pending hover requests so stale responses are dropped
+            self.latest_hover_request_id = None;
+        }
 
         if changed {
             match &command_for_post_hooks {

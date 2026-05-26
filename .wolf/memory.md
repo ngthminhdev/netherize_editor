@@ -570,3 +570,63 @@
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
+
+## Session: 2026-05-26 17:13
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 17:34 | Created assets/bearded-icons/symbol-function.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-method.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-constructor.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-class.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-interface.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-struct.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-enum.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-field.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-property.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-variable.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-constant.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-module.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-namespace.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-keyword.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-operator.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-event.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-type-parameter.svg | — | ~32 |
+| 17:34 | Created assets/bearded-icons/symbol-reference.svg | — | ~32 |
+| 17:34 | Session end: 18 writes across 18 files (symbol-function.svg, symbol-method.svg, symbol-constructor.svg, symbol-class.svg, symbol-interface.svg) | 2 reads | ~24265 tok |
+| 17:47 | Edited src/render/icon_pipeline.rs | expanded (+18 lines) | ~284 |
+| 17:52 | Session end: 19 writes across 19 files (symbol-function.svg, symbol-method.svg, symbol-constructor.svg, symbol-class.svg, symbol-interface.svg) | 3 reads | ~26396 tok |
+| 17:56 | Edited src/render/icon_pipeline.rs | expanded (+18 lines) | ~586 |
+| 17:57 | Session end: 20 writes across 19 files (symbol-function.svg, symbol-method.svg, symbol-constructor.svg, symbol-class.svg, symbol-interface.svg) | 3 reads | ~26651 tok |
+| 18:03 | Session end: 20 writes across 19 files (symbol-function.svg, symbol-method.svg, symbol-constructor.svg, symbol-class.svg, symbol-interface.svg) | 4 reads | ~27786 tok |
+| 20:58 | Edited src/render/renderer/palette.rs | 7→7 lines | ~70 |
+| 20:59 | Edited src/render/renderer/editor/overlays.rs | modified canonical_icon_id() | ~159 |
+| 21:02 | Session end: 22 writes across 21 files (symbol-function.svg, symbol-method.svg, symbol-constructor.svg, symbol-class.svg, symbol-interface.svg) | 7 reads | ~50852 tok |
+
+## Session: 2026-05-26 23:35
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 23:42 | Edited src/app/event_loop/commands.rs | expanded (+10 lines) | ~280 |
+| 23:43 | Edited src/app/event_loop/commands.rs | expanded (+18 lines) | ~348 |
+| 23:44 | Edited src/app/event_loop/commands.rs | 29→30 lines | ~368 |
+| 23:44 | Session end: 3 writes across 1 files (commands.rs) | 9 reads | ~117241 tok |
+| 23:44 | Fixed overlay persistence bug: clear overlays on editing commands (cw, x, d) and mode transitions to Insert | src/app/event_loop/commands.rs | Added is_text_modifying_command check + clear_current_overlays() call | ~400 tokens |
+| 23:45 | Session end: 3 writes across 1 files (commands.rs) | 9 reads | ~117241 tok |
+| 23:50 | Edited src/app/event_loop/mod.rs | 9→12 lines | ~208 |
+| 23:51 | Edited src/app/event_loop/setup.rs | 4→5 lines | ~63 |
+| 23:51 | Edited src/app/event_loop/commands_lsp.rs | map() → Some() | ~155 |
+| 23:51 | Edited src/app/event_loop/async_results/lsp.rs | modified Some() | ~519 |
+| 23:52 | Edited src/app/event_loop/commands.rs | 30→32 lines | ~403 |
+| 23:52 | Session end: 8 writes across 5 files (commands.rs, mod.rs, setup.rs, commands_lsp.rs, lsp.rs) | 12 reads | ~156657 tok |
+| 23:52 | Fixed LSP overlay persistence with 2-layer protection: (1) Clear overlay + invalidate latest_hover_request_id on editing commands, (2) Drop stale hover responses by validating request_id | src/app/event_loop/{commands.rs,mod.rs,setup.rs,commands_lsp.rs,async_results/lsp.rs} | Added latest_hover_request_id tracking + validation logic | ~800 tokens |
+| 23:53 | Session end: 8 writes across 5 files (commands.rs, mod.rs, setup.rs, commands_lsp.rs, lsp.rs) | 12 reads | ~156657 tok |
+| 23:59 | Edited src/app/event_loop/commands_completion.rs | modified refresh_open_completion_after_text_edit() | ~366 |
+| 00:00 | Edited src/render/renderer/editor/overlays.rs | modified completion() | ~68 |
+| 00:01 | Fixed completion popup ghost box: (1) Don't render popup when filtered_items is empty, (2) Cancel pending completion queue when context changes (deleted trigger char) | src/render/renderer/editor/overlays.rs, src/app/event_loop/commands_completion.rs | Added early return + cancel pending flags | ~300 tokens |
+| 00:01 | Session end: 10 writes across 7 files (commands.rs, mod.rs, setup.rs, commands_lsp.rs, lsp.rs) | 14 reads | ~178170 tok |
+| 00:06 | Edited src/app/event_loop/commands_editor.rs | modified handle_insert_edit_command() | ~311 |
+| 00:07 | Edited src/app/event_loop/commands_editor.rs | 6→4 lines | ~47 |
+| 00:07 | Fixed semantic symbol highlights persisting after Backspace: Clear highlights in handle_insert_edit_command before text changes, not after in handle_generic_editor_command | src/app/event_loop/commands_editor.rs | Moved clear_semantic_symbol_highlights() to handle_insert_edit_command | ~200 tokens |
+| 00:07 | Session end: 12 writes across 8 files (commands.rs, mod.rs, setup.rs, commands_lsp.rs, lsp.rs) | 15 reads | ~189617 tok |
+| 00:08 | Session end: 12 writes across 8 files (commands.rs, mod.rs, setup.rs, commands_lsp.rs, lsp.rs) | 15 reads | ~189617 tok |

@@ -563,6 +563,38 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-26T03:33:21.409Z"
+    },
+    {
+      "id": "bug-035",
+      "timestamp": "2026-05-26T10:47:39.098Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/render/icon_pipeline.rs",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 3→21 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-26T10:47:39.098Z"
+    },
+    {
+      "id": "bug-036",
+      "timestamp": "2026-05-26T16:43:55.112Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/event_loop/commands.rs",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 11→29 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-26T16:43:55.112Z"
     }
   ]
 }

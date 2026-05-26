@@ -640,6 +640,11 @@ impl Renderer {
         }
 
         if let Some(completion) = app_state.completion() {
+            // Don't render popup if there are no items to show
+            if completion.filtered_items.is_empty() {
+                return;
+            }
+
             const PAD_X: f32 = 30.0;
             const PAD_Y: f32 = 20.0;
             const MAX_VISIBLE_ROWS: usize = 10;
@@ -880,7 +885,7 @@ impl Renderer {
                             icon_size,
                             icon_size,
                         ],
-                        tint: [1.0, 1.0, 1.0, 1.0],
+                        tint: icon_text_color,
                     });
                 } else {
                     // Legacy fallback for user-configured non-Bearded badge glyphs.

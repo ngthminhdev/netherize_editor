@@ -18,7 +18,7 @@ impl AppShell {
             Command::CompletionNext => Some(self.select_next_completion_item()),
             Command::CompletionPrev => Some(self.select_prev_completion_item()),
             Command::CompletionAccept => Some(self.accept_completion_item()),
-            Command::CompletionClose => Some(self.close_completion_popup()),
+            Command::CompletionClose => Some(self.cancel_completion_and_return_normal()),
             Command::AiAcceptInline => {
                 let report = dispatch_command(&mut self.app_state, command.clone());
                 if report.state_changed {
@@ -238,7 +238,10 @@ impl AppShell {
                 completion_revision: None,
             },
         });
-        self.hover_loading_request_id = request.map(|r| r.request_id);
+        if let Some(req) = request {
+            self.hover_loading_request_id = Some(req.request_id);
+            self.latest_hover_request_id = Some(req.request_id);
+        }
         true
     }
 

@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-26T05:00:00.853Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-26T17:07:06.842Z
 > Files: 364 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
@@ -18,7 +18,7 @@
 ## .claude/
 
 - `settings.json` (~441 tok)
-- `settings.local.json` (~1460 tok)
+- `settings.local.json` (~1612 tok)
 
 ## .claude/rules/
 
@@ -299,9 +299,9 @@
 
 - `async_bridge.rs` — BridgePumpStats: new, pump (~4589 tok)
 - `clipboard.rs` — SystemClipboard: new (~524 tok)
-- `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~15248 tok)
+- `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~15346 tok)
 - `file_picker.rs` — FilePickerEntry: open, close, append_query, backspace_query + 6 more (~1644 tok)
-- `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~1621 tok)
+- `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~2128 tok)
 - `mod.rs` (~66 tok)
 - `persistence.rs` — [derive(Debug, Clone, Default, Serialize, Deserialize)] (~1310 tok)
 - `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~15590 tok)
@@ -312,7 +312,7 @@
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag + 17 more (~10839 tok)
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new + 8 more (~23793 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
-- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~17416 tok)
+- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~17913 tok)
 - `palette.rs` — open_command_palette_mode, open_python_env_selector, push_jump, push_jump_entry + 20 more (~16077 tok)
 - `settings.rs` — [derive(Debug, Clone, PartialEq)] (~1971 tok)
 - `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, preview_file_history_index + 9 more (~11484 tok)
@@ -321,32 +321,32 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — [cfg(target_os = "macos")] (~23542 tok)
+- `application.rs` — [cfg(target_os = "macos")] (~23670 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~10569 tok)
-- `commands_completion.rs` (~8264 tok)
-- `commands_editor.rs` (~5102 tok)
+- `commands_completion.rs` (~13905 tok)
+- `commands_editor.rs` (~4859 tok)
 - `commands_explorer.rs` (~7613 tok)
-- `commands_lsp.rs` (~9164 tok)
+- `commands_lsp.rs` (~9198 tok)
 - `commands_palette.rs` (~7473 tok)
 - `commands_prompts.rs` (~7215 tok)
 - `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~6809 tok)
 - `commands_settings.rs` (~4526 tok)
 - `commands_terminal.rs` (~6559 tok)
-- `commands_tests.rs` — [derive(Default)] (~19202 tok)
-- `commands.rs` — [path = "commands_ai_chat.rs"] (~9725 tok)
+- `commands_tests.rs` — [derive(Default)] (~25269 tok)
+- `commands.rs` — [path = "commands_ai_chat.rs"] (~10171 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~17736 tok)
-- `mod.rs` — Struct: AppShell (~6480 tok)
-- `setup.rs` — new, new_for_tests (~19574 tok)
+- `mod.rs` — Struct: AppShell (~6672 tok)
+- `setup.rs` — new, new_for_tests (~19677 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
 
 - `ai.rs` (~938 tok)
-- `failure.rs` (~1208 tok)
+- `failure.rs` (~1255 tok)
 - `filesystem.rs` (~755 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
-- `lsp.rs` (~9175 tok)
+- `lsp.rs` (~9632 tok)
 - `mod.rs` (~9129 tok)
 - `preview.rs` (~993 tok)
 - `shell.rs` (~112 tok)
@@ -437,14 +437,14 @@
 - `client.rs` — LspEntry: lsp_entry_for_extension, refresh_patched_env_path, patched_env_path, check_lsp_installed (~13784 tok)
 - `mod.rs` (~62 tok)
 - `registry.rs` — LanguageProfile: all_language_profiles, language_profile_for_extension, language_profile_for_path, language_profile_for_language_id + 2 more (~4469 tok)
-- `symbol_cache.rs` — A workspace-wide symbol cache for fast import suggestions. (~5591 tok)
+- `symbol_cache.rs` — A workspace-wide symbol cache for fast import/completion suggestions. (~14957 tok)
 
 ## src/render/
 
 - `caret.rs` — [derive(Debug, Clone, Copy)] (~2993 tok)
 - `color_space.rs` — srgb_color_target_state (~236 tok)
 - `glyph_instance.rs` — Vertex tĩnh của một quad đơn vị (0..1). (~844 tok)
-- `icon_pipeline.rs` — [repr(C)] (~8387 tok)
+- `icon_pipeline.rs` — [repr(C)] (~10401 tok)
 - `image_pipeline.rs` — [repr(C)] (~2249 tok)
 - `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
@@ -459,7 +459,7 @@
 - `editor.rs` — Editor viewport rendering modules. (~2282 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3453 tok)
 - `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~6543 tok)
-- `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~3120 tok)
+- `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~3116 tok)
 - `ui.rs` — Panel UI rendering modules. (~42 tok)
 
 ## src/render/renderer/components/
@@ -472,11 +472,11 @@
 ## src/render/renderer/editor/
 
 - `buffers.rs` — clear_editor_overlays, update_references_buffer_content (~5424 tok)
-- `completion.rs` — Declares COMPLETION_KIND_TEXT (~1827 tok)
+- `completion.rs` — Declares COMPLETION_KIND_TEXT (~1959 tok)
 - `extensions.rs` — update_extensions_manager_content (~8893 tok)
 - `fuzzy.rs` — update_fuzzy_picker_buffer_content (~7853 tok)
 - `help.rs` — update_help_buffer_content (~4176 tok)
-- `overlays.rs` — update_editor_overlays (~19511 tok)
+- `overlays.rs` — update_editor_overlays (~18251 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~10796 tok)
 - `settings.rs` — update_settings_buffer_content (~10502 tok)
 - `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~7422 tok)

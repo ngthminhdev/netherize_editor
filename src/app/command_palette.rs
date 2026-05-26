@@ -1012,27 +1012,27 @@ fn theme_selector_preview_colors(theme: &ThemeConfig) -> Vec<[f32; 4]> {
 
 fn symbol_icon(kind: &str) -> &'static str {
     match kind {
-        // LSP symbol kinds are semantic, not file types. Bearded file icons don't map well here,
-        // so use Nerd Font/Codicon symbol glyphs for compact, recognizable badges.
-        "Function" => "󰊕",
-        "Method" | "Constructor" => "",
-        "Field" => "",
-        "Property" => "",
-        "Variable" => "",
-        "Constant" | "EnumMember" => "",
-        "Class" => "",
-        "Interface" => "",
-        "Struct" => "",
-        "Enum" => "",
-        "TypeParameter" => "",
-        "Module" | "Namespace" | "Package" => "",
-        "Keyword" => "",
-        "Operator" => "",
-        "Event" => "",
-        "Reference" => "",
-        "File" => "",
-        "Folder" => "",
-        _ => "",
+        // LSP symbol kinds mapped to SVG icons in assets/bearded-icons/symbol-*.svg
+        "Function" => "built_in:symbol-function",
+        "Method" => "built_in:symbol-method",
+        "Constructor" => "built_in:symbol-constructor",
+        "Field" => "built_in:symbol-field",
+        "Property" => "built_in:symbol-property",
+        "Variable" => "built_in:symbol-variable",
+        "Constant" | "EnumMember" => "built_in:symbol-constant",
+        "Class" => "built_in:symbol-class",
+        "Interface" => "built_in:symbol-interface",
+        "Struct" => "built_in:symbol-struct",
+        "Enum" => "built_in:symbol-enum",
+        "TypeParameter" => "built_in:symbol-type-parameter",
+        "Module" | "Namespace" | "Package" => "built_in:symbol-module",
+        "Keyword" => "built_in:symbol-keyword",
+        "Operator" => "built_in:symbol-operator",
+        "Event" => "built_in:symbol-event",
+        "Reference" => "built_in:symbol-reference",
+        "File" => "built_in:file",
+        "Folder" => "built_in:folder",
+        _ => "built_in:identifier",
     }
 }
 
