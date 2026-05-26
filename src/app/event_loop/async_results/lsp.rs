@@ -36,6 +36,14 @@ pub(super) fn handle_lsp_result(
             } else {
                 app.submit_lsp_did_open_for_active_file();
             }
+
+            // Trigger workspace symbol indexing for fast import suggestions
+            if let Some(language_id) = app.app_state.active_file().and_then(|path| {
+                crate::lsp::registry::language_profile_for_path(std::path::Path::new(path))
+                    .map(|profile| profile.key.to_string())
+            }) {
+                app.submit_workspace_symbol_indexing(language_id);
+            }
         }
         WorkerResultPayload::LspServerStopped { .. } => {
             if let Some(server) = app.active_lsp_server.take() {
@@ -576,16 +584,20 @@ pub(super) fn handle_lsp_result(
             prefix,
         } => {
             app.app_state.set_completion_loading(false);
-            if items.is_empty() {
-                app.request_redraw();
-                return;
-            }
+            // Get language_id from active file for workspace symbol fallback
+            let language_id = app.app_state.active_file().and_then(|path| {
+                crate::lsp::registry::language_profile_for_path(std::path::Path::new(path))
+                    .map(|profile| profile.key.to_string())
+            });
+
             let completion = crate::app::app_state::CompletionState::from_lsp_items(
                 items,
                 cursor_line,
                 cursor_col,
                 prefix_start_col,
                 prefix,
+                app.app_state.workspace_symbol_cache(),
+                language_id.as_deref(),
             );
             if completion.filtered_items.is_empty() {
                 return;
@@ -601,6 +613,7 @@ pub(super) fn handle_lsp_result(
             item_label,
             detail,
             documentation,
+            resolved_item,
             completion_revision,
         } => {
             if app.completion_resolve_request_id == Some(request_id) {
@@ -611,6 +624,10 @@ pub(super) fn handle_lsp_result(
             };
             if completion.current_revision != completion_revision {
                 return;
+            }
+            if let Some(resolved_item) = resolved_item {
+                app.app_state
+                    .update_completion_item_from_resolve(&item_label, resolved_item);
             }
             let cleaned_detail = detail.filter(|d| !d.trim().is_empty());
             if cleaned_detail.is_some() {
@@ -633,6 +650,21 @@ pub(super) fn handle_lsp_result(
                 app.app_state.mark_completion_hover_doc_resolved();
                 app.submit_completion_virtual_hover_fallback(item_label, completion_revision);
             }
+            app.editor_caret_needs_layout = true;
+            app.request_redraw();
+        }
+        WorkerResultPayload::WorkspaceSymbols {
+            language_id,
+            symbols,
+        } => {
+            let count = symbols.len();
+            app.app_state
+                .workspace_symbol_cache()
+                .insert_symbols(&language_id, symbols);
+            eprintln!(
+                "[AppShell] indexed {} workspace symbols for {}",
+                count, language_id
+            );
             app.editor_caret_needs_layout = true;
             app.request_redraw();
         }

@@ -7,6 +7,79 @@ impl AppShell {
             && self.lsp_completion_trigger_chars.contains(&ch)
     }
 
+    pub(super) fn queue_lsp_completion_after_debounce_if_needed(&mut self) {
+        if self.app_state.current_mode() != EditorMode::Insert || self.active_lsp_server.is_none() {
+            self.pending_lsp_completion_after_debounce = false;
+            self.last_lsp_completion_type_at = None;
+            return;
+        }
+        let Some(active_path) = self.app_state.active_file() else {
+            self.pending_lsp_completion_after_debounce = false;
+            self.last_lsp_completion_type_at = None;
+            return;
+        };
+        let Some(profile) = crate::lsp::registry::language_profile_for_path(active_path) else {
+            self.pending_lsp_completion_after_debounce = false;
+            self.last_lsp_completion_type_at = None;
+            return;
+        };
+        if !is_ts_js_profile_key(profile.key) {
+            self.pending_lsp_completion_after_debounce = false;
+            self.last_lsp_completion_type_at = None;
+            return;
+        }
+        let (cursor_line, cursor_col) = self.app_state.cursor_line_col();
+        let prefix = self
+            .app_state
+            .completion_prefix_info_at(cursor_line, cursor_col)
+            .prefix;
+        if prefix.chars().count() < 2 {
+            self.pending_lsp_completion_after_debounce = false;
+            self.last_lsp_completion_type_at = None;
+            return;
+        }
+        self.pending_lsp_completion_after_debounce = true;
+        self.last_lsp_completion_type_at = Some(std::time::Instant::now());
+    }
+
+    pub(in crate::app::event_loop) fn flush_pending_lsp_completion_after_debounce(&mut self) {
+        if !self.pending_lsp_completion_after_debounce {
+            return;
+        }
+        let Some(last) = self.last_lsp_completion_type_at else {
+            self.pending_lsp_completion_after_debounce = false;
+            return;
+        };
+        if last.elapsed() < LSP_COMPLETION_DEBOUNCE_INTERVAL {
+            return;
+        }
+        self.pending_lsp_completion_after_debounce = false;
+        self.last_lsp_completion_type_at = None;
+        self.refresh_active_ts_js_export_cache();
+        let _ = self.submit_lsp_completion();
+    }
+
+    fn refresh_active_ts_js_export_cache(&mut self) {
+        let Some(active_path) = self.app_state.active_file().map(std::path::PathBuf::from) else {
+            return;
+        };
+        let Some(profile) = crate::lsp::registry::language_profile_for_path(&active_path) else {
+            return;
+        };
+        if !is_ts_js_profile_key(profile.key) {
+            return;
+        }
+        let Some(workspace_root) = self.app_state.workspace_root_path().map(std::path::PathBuf::from)
+        else {
+            return;
+        };
+        let text = self.app_state.text_string();
+        let symbols = crate::lsp::extract_ts_js_exports_from_text(&active_path, &workspace_root, &text);
+        self.app_state
+            .workspace_symbol_cache()
+            .upsert_file_symbols(profile.key, &active_path, symbols);
+    }
+
     pub(super) fn submit_lsp_completion(&mut self) -> bool {
         if self.active_lsp_server.is_none() {
             if self.pending_lsp_server.is_some() {
@@ -295,6 +368,8 @@ impl AppShell {
     }
 
     pub(super) fn close_completion_popup(&mut self) -> bool {
+        self.pending_lsp_completion_after_debounce = false;
+        self.last_lsp_completion_type_at = None;
         self.pending_completion_resolve_after_debounce = false;
         self.last_completion_resolve_select_at = None;
         let changed = self.app_state.clear_completion();
@@ -309,13 +384,14 @@ impl AppShell {
         let Some(completion) = self.app_state.completion().cloned() else {
             return false;
         };
-        let Some(item) = completion
+        let Some(entry) = completion
             .filtered_items
             .get(completion.selected_index)
-            .map(|entry| entry.item.clone())
+            .cloned()
         else {
             return false;
         };
+        let item = entry.item;
         let mut insert_text = item
             .insert_text
             .clone()
@@ -346,11 +422,45 @@ impl AppShell {
         }
 
         let prefix_len = completion.typed_prefix.chars().count();
+        let mut primary_edit = item.text_edit.clone().unwrap_or_else(|| {
+            completion_prefix_text_edit(&completion, prefix_len, insert_text.clone())
+        });
+        primary_edit.new_text = insert_text.clone();
+        let text = self.app_state.text_string();
+        let mut edits = vec![primary_edit.clone()];
+        edits.extend(item.additional_text_edits.clone());
+        if item.export_kind.as_deref() == Some("named")
+            && let Some(source_path) = item.source_path.as_deref()
+        {
+            edits.extend(synthesize_ts_named_import_edits(
+                &text,
+                self.app_state.active_file(),
+                &item.label,
+                source_path,
+            ));
+        }
+        let target_byte = completion_cursor_byte_after_edits(&text, &edits, &primary_edit);
         let popup_closed = self.app_state.clear_completion();
+        self.pending_completion_resolve_after_debounce = false;
+        self.last_completion_resolve_select_at = None;
+        let next = match super::async_results::apply_lsp_text_edits(&text, &edits) {
+            Ok(next) => next,
+            Err(err) => {
+                eprintln!("[AppShell] completion accept failed to apply edits: {err}");
+                return popup_closed;
+            }
+        };
         let changed = self
             .app_state
-            .replace_completion_prefix_at_cursor(prefix_len, &insert_text);
+            .replace_active_document_text_preserve_cursor_with_undo(&next);
         if changed {
+            if let Some(target_byte) = target_byte {
+                let clamped = target_byte.min(next.len());
+                let line = self.app_state.byte_to_line_idx(clamped);
+                let line_start = self.app_state.line_start_byte_idx(line);
+                let col = next[line_start.min(next.len())..clamped].chars().count();
+                let _ = self.app_state.jump_to_line_and_column(line, col);
+            }
             self.reconcile_highlight_spans_with_pending_edits();
             self.editor_needs_layout = true;
             self.editor_caret_needs_layout = true;
@@ -399,4 +509,271 @@ impl AppShell {
         }
         changed
     }
+}
+
+fn is_ts_js_profile_key(key: &str) -> bool {
+    matches!(key, "typescript" | "tsx" | "javascript" | "jsx")
+}
+
+fn completion_prefix_text_edit(
+    completion: &crate::app::app_state::CompletionState,
+    prefix_len: usize,
+    new_text: String,
+) -> crate::async_runtime::message::LspTextEdit {
+    let start_col = completion.prefix_col;
+    let end_col = completion
+        .anchor_col
+        .max(start_col.saturating_add(prefix_len));
+    crate::async_runtime::message::LspTextEdit {
+        range: crate::async_runtime::message::LspRange {
+            start: crate::async_runtime::message::LspPosition {
+                line: completion.trigger_pos.line as u32,
+                character: start_col as u32,
+            },
+            end: crate::async_runtime::message::LspPosition {
+                line: completion.trigger_pos.line as u32,
+                character: end_col as u32,
+            },
+        },
+        new_text,
+    }
+}
+
+fn completion_cursor_byte_after_edits(
+    source: &str,
+    edits: &[crate::async_runtime::message::LspTextEdit],
+    primary: &crate::async_runtime::message::LspTextEdit,
+) -> Option<usize> {
+    let (primary_start, _primary_end) = lsp_text_edit_byte_range(source, primary)?;
+    let mut delta: isize = 0;
+    for edit in edits {
+        let (start, end) = lsp_text_edit_byte_range(source, edit)?;
+        if start < primary_start {
+            delta += edit.new_text.len() as isize - end.saturating_sub(start) as isize;
+        }
+    }
+    let shifted_start = primary_start as isize + delta;
+    (shifted_start >= 0).then_some(shifted_start as usize + primary.new_text.len())
+}
+
+fn lsp_text_edit_byte_range(
+    source: &str,
+    edit: &crate::async_runtime::message::LspTextEdit,
+) -> Option<(usize, usize)> {
+    let start = lsp_position_to_byte_idx(source, edit.range.start.line, edit.range.start.character)?;
+    let end = lsp_position_to_byte_idx(source, edit.range.end.line, edit.range.end.character)?;
+    (start <= end && end <= source.len()).then_some((start, end))
+}
+
+fn lsp_position_to_byte_idx(source: &str, line: u32, character: u32) -> Option<usize> {
+    fn utf16_code_unit_to_byte_idx(text: &str, utf16_units: u32) -> Option<usize> {
+        let target = utf16_units as usize;
+        let mut seen = 0usize;
+        for (byte_idx, ch) in text.char_indices() {
+            if seen == target {
+                return Some(byte_idx);
+            }
+            seen += ch.len_utf16();
+            if seen > target {
+                return None;
+            }
+        }
+        (seen == target).then_some(text.len())
+    }
+
+    let mut lines = source.split_inclusive('\n');
+    let mut byte_offset = 0usize;
+    for _ in 0..line {
+        byte_offset += lines.next()?.len();
+    }
+    let line_text = lines.next().unwrap_or("");
+    let line_without_newline = line_text.strip_suffix('\n').unwrap_or(line_text);
+    let byte_in_line = utf16_code_unit_to_byte_idx(line_without_newline, character)
+        .or_else(|| utf16_code_unit_to_byte_idx(line_text, character))?;
+    Some(byte_offset + byte_in_line)
+}
+
+fn synthesize_ts_named_import_edits(
+    source: &str,
+    active_file: Option<&std::path::Path>,
+    symbol_name: &str,
+    source_path: &std::path::Path,
+) -> Vec<crate::async_runtime::message::LspTextEdit> {
+    let Some(active_file) = active_file else {
+        return Vec::new();
+    };
+    if active_file == source_path {
+        return Vec::new();
+    }
+    let Some(module_specifier) = relative_module_specifier(active_file, source_path) else {
+        return Vec::new();
+    };
+    if let Some(edit) = merge_named_import_edit(source, symbol_name, &module_specifier) {
+        return vec![edit];
+    }
+    vec![new_named_import_edit(source, symbol_name, &module_specifier)]
+}
+
+fn merge_named_import_edit(
+    source: &str,
+    symbol_name: &str,
+    module_specifier: &str,
+) -> Option<crate::async_runtime::message::LspTextEdit> {
+    for (line_idx, line) in source.lines().enumerate() {
+        let trimmed = line.trim_start();
+        if !trimmed.starts_with("import ") {
+            continue;
+        }
+        if !(trimmed.contains(&format!("from '{}'", module_specifier))
+            || trimmed.contains(&format!("from \"{}\"", module_specifier)))
+        {
+            continue;
+        }
+        let Some(open) = line.find('{') else {
+            continue;
+        };
+        let Some(close) = line[open..].find('}').map(|idx| open + idx) else {
+            continue;
+        };
+        if line[open + 1..close]
+            .split(',')
+            .any(|part| part.trim() == symbol_name)
+        {
+            return Some(empty_lsp_text_edit(line_idx, close));
+        }
+        let mut insert_col = close;
+        while insert_col > open + 1 && line.as_bytes()[insert_col.saturating_sub(1)] == b' ' {
+            insert_col = insert_col.saturating_sub(1);
+        }
+        let insert_text = if line[open + 1..close].trim().is_empty() {
+            symbol_name.to_string()
+        } else if insert_col == close {
+            format!(", {symbol_name} ")
+        } else {
+            format!(", {symbol_name}")
+        };
+        return Some(lsp_insert_text_edit(line_idx, insert_col, insert_text));
+    }
+    None
+}
+
+fn new_named_import_edit(
+    source: &str,
+    symbol_name: &str,
+    module_specifier: &str,
+) -> crate::async_runtime::message::LspTextEdit {
+    let insert_line = import_insert_line(source);
+    let new_text = format!("import {{ {symbol_name} }} from '{module_specifier}';\n");
+    crate::async_runtime::message::LspTextEdit {
+        range: crate::async_runtime::message::LspRange {
+            start: crate::async_runtime::message::LspPosition {
+                line: insert_line as u32,
+                character: 0,
+            },
+            end: crate::async_runtime::message::LspPosition {
+                line: insert_line as u32,
+                character: 0,
+            },
+        },
+        new_text,
+    }
+}
+
+fn empty_lsp_text_edit(line_idx: usize, col: usize) -> crate::async_runtime::message::LspTextEdit {
+    lsp_insert_text_edit(line_idx, col, String::new())
+}
+
+fn lsp_insert_text_edit(
+    line_idx: usize,
+    col: usize,
+    new_text: String,
+) -> crate::async_runtime::message::LspTextEdit {
+    crate::async_runtime::message::LspTextEdit {
+        range: crate::async_runtime::message::LspRange {
+            start: crate::async_runtime::message::LspPosition {
+                line: line_idx as u32,
+                character: col as u32,
+            },
+            end: crate::async_runtime::message::LspPosition {
+                line: line_idx as u32,
+                character: col as u32,
+            },
+        },
+        new_text,
+    }
+}
+
+fn import_insert_line(source: &str) -> usize {
+    let mut insert_line = 0usize;
+    for (idx, line) in source.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("import ") {
+            insert_line = idx + 1;
+            continue;
+        }
+        if idx == 0 && trimmed.starts_with("#!") {
+            insert_line = 1;
+            continue;
+        }
+        if idx == insert_line
+            && (trimmed == "'use strict';"
+                || trimmed == "\"use strict\";"
+                || trimmed == "'use client';"
+                || trimmed == "\"use client\";")
+        {
+            insert_line = idx + 1;
+            continue;
+        }
+        if idx > insert_line {
+            break;
+        }
+    }
+    insert_line
+}
+
+fn relative_module_specifier(
+    active_file: &std::path::Path,
+    source_path: &std::path::Path,
+) -> Option<String> {
+    let from_dir = active_file.parent()?;
+    let from_components: Vec<_> = from_dir.components().collect();
+    let to_without_ext = strip_ts_js_extension(source_path);
+    let to_components: Vec<_> = to_without_ext.components().collect();
+    let mut shared = 0usize;
+    while shared < from_components.len()
+        && shared < to_components.len()
+        && from_components[shared] == to_components[shared]
+    {
+        shared += 1;
+    }
+
+    let mut parts = Vec::new();
+    for _ in shared..from_components.len() {
+        parts.push("..".to_string());
+    }
+    for component in &to_components[shared..] {
+        parts.push(component.as_os_str().to_string_lossy().to_string());
+    }
+    if parts.last().is_some_and(|part| part == "index") {
+        parts.pop();
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    let mut value = parts.join("/");
+    if !value.starts_with('.') {
+        value = format!("./{value}");
+    }
+    Some(value)
+}
+
+fn strip_ts_js_extension(path: &std::path::Path) -> std::path::PathBuf {
+    let mut value = path.to_path_buf();
+    if matches!(
+        value.extension().and_then(|ext| ext.to_str()),
+        Some("ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs")
+    ) {
+        value.set_extension("");
+    }
+    value
 }

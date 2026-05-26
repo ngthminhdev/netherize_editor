@@ -315,6 +315,19 @@ pub(super) async fn execute_virtual_job(
             .await
             .map_err(|err| format!("file preview join error: {err}"))
         }
+        WorkerRequestPayload::WorkspaceExportIndexRequest {
+            language_id,
+            workspace_root,
+        } => {
+            let language_id = language_id.clone();
+            let workspace_root = workspace_root.clone();
+            tokio::task::spawn_blocking(move || WorkerResultPayload::WorkspaceSymbols {
+                language_id,
+                symbols: crate::lsp::index_ts_js_workspace_exports(&workspace_root),
+            })
+            .await
+            .map_err(|err| format!("workspace export index join error: {err}"))
+        }
         WorkerRequestPayload::StartFileWatch { .. } => {
             Err("StartFileWatch request should be handled by dedicated watch loop".to_string())
         }
@@ -339,6 +352,7 @@ pub(super) async fn execute_virtual_job(
         | WorkerRequestPayload::LspCompletionRequest { .. }
         | WorkerRequestPayload::LspCompletionResolveRequest { .. }
         | WorkerRequestPayload::LspCodeActionRequest { .. }
+        | WorkerRequestPayload::WorkspaceSymbolRequest { .. }
         | WorkerRequestPayload::StopLspServer
         | WorkerRequestPayload::ShutdownAllLspServers => {
             Err("LSP request should be handled by dedicated LSP runner".to_string())

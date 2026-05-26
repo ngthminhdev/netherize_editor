@@ -540,7 +540,7 @@ impl InputMap {
 
         if !input.has_command_modifier()
             && input.physical_key == Some(KeyG)
-            && input.modifiers.shift_key()
+            && (input.modifiers.shift_key() || input.text.as_deref() == Some("G"))
         {
             return Some(KeybindingMatch {
                 command: Command::MarkdownPreviewScrollBottom,

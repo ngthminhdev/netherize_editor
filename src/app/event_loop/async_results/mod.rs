@@ -83,7 +83,8 @@ impl AsyncResultRouter for AppShell {
             | WorkerResultPayload::LspFormattingResult { .. }
             | WorkerResultPayload::LspCodeActionResult { .. }
             | WorkerResultPayload::LspCompletionResult { .. }
-            | WorkerResultPayload::LspCompletionResolveResult { .. } => {
+            | WorkerResultPayload::LspCompletionResolveResult { .. }
+            | WorkerResultPayload::WorkspaceSymbols { .. } => {
                 lsp::handle_lsp_result(self, result.payload, request_id, revision_id);
             }
             WorkerResultPayload::AiInlineCompletionChunk { .. }
@@ -177,7 +178,7 @@ mod tests {
             WorkerEventKind, WorkerFailure, WorkerFailureKind, WorkerResult, WorkerResultPayload,
         },
         core::commands::Command,
-        lsp::client::path_to_lsp_uri,
+        lsp::{CachedSymbol, client::path_to_lsp_uri},
         syntax::{
             highlight::{HighlightCategory, HighlightSpan},
             syntax_engine::LanguageId,
@@ -232,6 +233,51 @@ mod tests {
             topic: RequestTopic::WorkspaceWatch,
             payload: WorkerResultPayload::FileSystemEvents { root_path, events },
         }
+    }
+
+    #[test]
+    fn workspace_symbols_result_populates_cache_via_normal_router() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 200,
+                revision_id: 0,
+                topic: RequestTopic::SystemTask,
+                payload: WorkerResultPayload::WorkspaceSymbols {
+                    language_id: "typescript".to_string(),
+                    symbols: vec![CachedSymbol {
+                        name: "connect".to_string(),
+                        kind: "Function".to_string(),
+                        container_name: None,
+                        file_path: PathBuf::from("src/api.ts"),
+                        line: 0,
+                        character: 16,
+                        source_path: Some(PathBuf::from("src/api.ts")),
+                        import_path: Some("src/api".to_string()),
+                        export_kind: Some("named".to_string()),
+                    }],
+                },
+            },
+        );
+
+        assert_eq!(
+            shell
+                .app_state
+                .workspace_symbol_cache()
+                .symbol_count("typescript"),
+            1
+        );
+        assert_eq!(
+            shell
+                .app_state
+                .workspace_symbol_cache()
+                .query_symbols("con", Some("typescript"))
+                .first()
+                .map(|symbol| symbol.name.as_str()),
+            Some("connect")
+        );
     }
 
     #[test]

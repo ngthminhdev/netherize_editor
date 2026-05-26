@@ -919,6 +919,49 @@ fn focus_markdown_preview_opens_preview_tab_and_focuses_sidebar() {
 }
 
 #[test]
+fn move_to_last_line_scrolls_active_markdown_preview_buffer_to_bottom() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let markdown_path = std::env::temp_dir().join(format!(
+        "netherize_markdown_preview_scroll_{}.md",
+        std::process::id()
+    ));
+    let markdown = (0..80)
+        .map(|idx| format!("line {idx}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(&markdown_path, markdown).expect("write markdown");
+    shell
+        .app_state
+        .open_file(markdown_path.clone())
+        .expect("open markdown file");
+    assert!(shell.handle_command(Command::FocusMarkdownPreview));
+    shell.app_state.markdown_preview.scroll_y = 0.0;
+    shell.app_state.markdown_preview.rendered_lines = (0..80)
+        .map(|idx| crate::app::app_state::MarkdownPreviewLine {
+            text: format!("line {idx}"),
+            spans: Vec::new(),
+            block_type: crate::app::app_state::MarkdownBlockType::Paragraph,
+            code_language: None,
+        })
+        .collect();
+    let _ = shell
+        .app_state
+        .sync_markdown_preview_buffer(shell.app_state.markdown_preview.clone());
+    shell.app_state.markdown_preview = crate::app::app_state::MarkdownPreviewState::default();
+
+    assert!(shell.handle_command(Command::MoveToLastLine));
+
+    assert!(shell.app_state.markdown_preview.scroll_y > 0.0);
+    let preview = shell
+        .app_state
+        .active_markdown_preview_buffer()
+        .expect("markdown preview buffer active");
+    assert_eq!(preview.scroll_y, shell.app_state.markdown_preview.scroll_y);
+
+    let _ = std::fs::remove_file(markdown_path);
+}
+
+#[test]
 fn open_theme_selector_opens_overlay_with_theme_profiles() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
 
@@ -1290,25 +1333,112 @@ fn startup_keeps_a_workspace_attached_for_global_search() {
     assert!(shell.app_state.workspace_root_path().is_some());
 }
 
+fn test_completion_item(
+    label: &str,
+    insert_text: &str,
+) -> crate::async_runtime::message::LspCompletionItem {
+    crate::async_runtime::message::LspCompletionItem {
+        label: label.to_string(),
+        detail: None,
+        insert_text: Some(insert_text.to_string()),
+        text_edit: None,
+        text_edit_text: None,
+        additional_text_edits: Vec::new(),
+        kind: Some(3),
+        documentation: None,
+        data: None,
+        source_path: None,
+        import_path: None,
+        export_kind: None,
+        raw_json: None,
+    }
+}
+
+fn lsp_insert_edit(
+    line: u32,
+    character: u32,
+    new_text: &str,
+) -> crate::async_runtime::message::LspTextEdit {
+    crate::async_runtime::message::LspTextEdit {
+        range: crate::async_runtime::message::LspRange {
+            start: crate::async_runtime::message::LspPosition { line, character },
+            end: crate::async_runtime::message::LspPosition { line, character },
+        },
+        new_text: new_text.to_string(),
+    }
+}
+
+fn completion_temp_root(suffix: &str) -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "netherize_completion_{suffix}_{}",
+        std::process::id()
+    ))
+}
+
+fn write_completion_file(path: &std::path::Path, text: &str) -> PathBuf {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("create completion test dir");
+    }
+    std::fs::write(path, text).expect("write completion test file");
+    path.canonicalize().expect("canonical completion test file")
+}
+
+fn open_completion_file(shell: &mut AppShell, path: &std::path::Path, text: &str) -> PathBuf {
+    let canonical = write_completion_file(path, text);
+    shell
+        .app_state
+        .open_file(canonical.clone())
+        .expect("open completion test file");
+    canonical
+}
+
+fn cached_ts_export(name: &str, source_path: &std::path::Path) -> crate::lsp::CachedSymbol {
+    let source_path = source_path.to_path_buf();
+    crate::lsp::CachedSymbol {
+        name: name.to_string(),
+        kind: "Function".to_string(),
+        container_name: None,
+        file_path: source_path.clone(),
+        line: 0,
+        character: 16,
+        source_path: Some(source_path.clone()),
+        import_path: Some(source_path.with_extension("").display().to_string()),
+        export_kind: Some("named".to_string()),
+    }
+}
+
 #[test]
 fn completion_accept_replaces_typed_prefix_instead_of_inserting_after_it() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
-    shell.app_state =
-        AppState::from_text(PathBuf::from("completion_accept.ts"), "MessageManager.ge");
+    let root = completion_temp_root("replace_prefix");
+    let _path = open_completion_file(
+        &mut shell,
+        &root.join("completion_accept.ts"),
+        "MessageManager.ge",
+    );
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
     let completion = crate::app::app_state::CompletionState::from_lsp_items(
         vec![crate::async_runtime::message::LspCompletionItem {
             label: "getInstance".to_string(),
             detail: Some("() -> MessageManager".to_string()),
             insert_text: Some("getInstance()".to_string()),
+            text_edit: None,
             text_edit_text: None,
+            additional_text_edits: Vec::new(),
             kind: Some(2),
             documentation: None,
+            data: None,
+            source_path: None,
+            import_path: None,
+            export_kind: None,
             raw_json: None,
         }],
         0,
         "MessageManager.ge".chars().count(),
         "MessageManager.".chars().count(),
         "ge".to_string(),
+        &cache,
+        None,
     );
     assert!(
         shell
@@ -1330,23 +1460,33 @@ fn completion_accept_deduplicates_trigger_char_in_insert_text() {
     // Scenario: user typed "message." and LSP returns insertText = ".getInstance()"
     // (trigger char included). Without dedup the result would be "message..getInstance()".
     let mut shell = AppShell::new_for_tests().expect("create app shell");
-    shell.app_state = AppState::from_text(PathBuf::from("dedup_trigger.ts"), "message.");
+    let root = completion_temp_root("dedup_trigger");
+    let _path = open_completion_file(&mut shell, &root.join("dedup_trigger.ts"), "message.");
     shell.lsp_completion_trigger_chars = vec!['.'];
     let cursor_col = "message.".chars().count();
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
     let completion = crate::app::app_state::CompletionState::from_lsp_items(
         vec![crate::async_runtime::message::LspCompletionItem {
             label: "getInstance".to_string(),
             detail: None,
             insert_text: Some(".getInstance()".to_string()),
+            text_edit: None,
             text_edit_text: None,
+            additional_text_edits: Vec::new(),
             kind: Some(2),
             documentation: None,
+            data: None,
+            source_path: None,
+            import_path: None,
+            export_kind: None,
             raw_json: None,
         }],
         0,
         cursor_col,
         cursor_col,
         String::new(),
+        &cache,
+        None,
     );
     assert!(shell.app_state.jump_to_line_and_column(0, cursor_col));
     assert!(shell.app_state.set_completion(completion));
@@ -1354,6 +1494,128 @@ fn completion_accept_deduplicates_trigger_char_in_insert_text() {
     assert!(shell.handle_command(Command::CompletionAccept));
     assert_eq!(shell.app_state.text_string(), "message.getInstance()");
     assert!(shell.app_state.completion().is_none());
+}
+
+#[test]
+fn completion_accept_applies_lsp_additional_import_edits_in_one_undo() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("lsp_import_edit");
+    let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), "con");
+    let mut item = test_completion_item("connect", "connect");
+    item.additional_text_edits = vec![lsp_insert_edit(
+        0,
+        0,
+        "import { connect } from './api';\n",
+    )];
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![item],
+        0,
+        "con".chars().count(),
+        0,
+        "con".to_string(),
+        &cache,
+        None,
+    );
+    assert!(shell.app_state.jump_to_line_and_column(0, "con".chars().count()));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(
+        shell.app_state.text_string(),
+        "import { connect } from './api';\nconnect"
+    );
+
+    assert!(shell.handle_command(Command::Undo));
+    assert_eq!(shell.app_state.text_string(), "con");
+}
+
+#[test]
+fn workspace_completion_fallback_merges_existing_named_import() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("merge_import");
+    let app_path = root.join("src/app.ts");
+    let source_path = write_completion_file(&root.join("src/utils.ts"), "export function connect() {}\n");
+    let _path = open_completion_file(
+        &mut shell,
+        &app_path,
+        "import { existing } from './utils';\n\ncon",
+    );
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols("typescript", vec![cached_ts_export("connect", &source_path)]);
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        Vec::new(),
+        2,
+        3,
+        0,
+        "con".to_string(),
+        &cache,
+        Some("typescript"),
+    );
+    assert!(!completion.filtered_items.is_empty());
+    assert!(shell.app_state.jump_to_line_and_column(2, 3));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(
+        shell.app_state.text_string(),
+        "import { existing, connect } from './utils';\n\nconnect"
+    );
+}
+
+#[test]
+fn workspace_completion_fallback_inserts_new_named_import() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = "const value = con";
+    let root = completion_temp_root("new_import");
+    let source_path = write_completion_file(&root.join("src/api.ts"), "export function connect() {}\n");
+    let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), text);
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols("typescript", vec![cached_ts_export("connect", &source_path)]);
+    let cursor_col = text.chars().count();
+    let prefix_start = "const value = ".chars().count();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        Vec::new(),
+        0,
+        cursor_col,
+        prefix_start,
+        "con".to_string(),
+        &cache,
+        Some("typescript"),
+    );
+    assert!(!completion.filtered_items.is_empty());
+    assert!(shell.app_state.jump_to_line_and_column(0, cursor_col));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(
+        shell.app_state.text_string(),
+        "import { connect } from './api';\nconst value = connect"
+    );
+}
+
+#[test]
+fn workspace_completion_fallback_same_file_symbol_has_no_import() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("same_file");
+    let active_path = open_completion_file(&mut shell, &root.join("src/app.ts"), "con");
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols("typescript", vec![cached_ts_export("connect", &active_path)]);
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        Vec::new(),
+        0,
+        3,
+        0,
+        "con".to_string(),
+        &cache,
+        Some("typescript"),
+    );
+    assert!(!completion.filtered_items.is_empty());
+    assert!(shell.app_state.jump_to_line_and_column(0, 3));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(shell.app_state.text_string(), "connect");
 }
 
 #[test]

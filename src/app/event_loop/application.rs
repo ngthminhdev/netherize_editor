@@ -437,6 +437,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
         self.flush_pending_git_diff_after_debounce();
         self.flush_pending_ai_inline_completion();
         self.flush_pending_lsp_did_change_after_debounce();
+        self.flush_pending_lsp_completion_after_debounce();
         self.flush_pending_completion_resolve_after_debounce();
         if self.flush_lsp_retry_if_due() {
             self.request_redraw();

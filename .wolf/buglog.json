@@ -499,6 +499,70 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-25T06:33:04.499Z"
+    },
+    {
+      "id": "bug-031",
+      "timestamp": "2026-05-25T09:21:52.024Z",
+      "error_message": "Wrong reference: 100 should be 200",
+      "file": "src/app/app_state/mod.rs",
+      "root_cause": "Used \"100\" instead of \"200\"",
+      "fix": "Changed 100 → 200",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T09:21:52.024Z"
+    },
+    {
+      "id": "bug-032",
+      "timestamp": "2026-05-25T09:22:02.107Z",
+      "error_message": "Wrong reference: 100 should be 200",
+      "file": "src/render/renderer/editor/viewport.rs",
+      "root_cause": "Used \"100\" instead of \"200\"",
+      "fix": "Changed 100 → 200",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T09:22:02.107Z"
+    },
+    {
+      "id": "bug-033",
+      "timestamp": "2026-05-26T03:05:26.726Z",
+      "error_message": "Null/undefined access in ",
+      "file": "src/async_runtime/scheduler/lsp_parse.rs",
+      "root_cause": "Property access on potentially null/undefined value",
+      "fix": "Added null safety (optional chaining or null check)",
+      "tags": [
+        "auto-detected",
+        "null-safety",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-26T03:05:26.726Z"
+    },
+    {
+      "id": "bug-034",
+      "timestamp": "2026-05-26T03:33:21.409Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/lsp/symbol_cache.rs",
+      "root_cause": "50 lines replaced/restructured",
+      "fix": "Rewrote 77→10 lines (50 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-26T03:33:21.409Z"
     }
   ]
 }

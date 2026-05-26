@@ -29,6 +29,44 @@ impl AppState {
                 changed = true;
             }
         }
+        for entry in state.cached_full_items.iter_mut() {
+            if entry.item.label == label && entry.item.detail != detail {
+                entry.item.detail = detail.clone();
+                changed = true;
+            }
+        }
+        if changed {
+            self.revision += 1;
+        }
+    }
+
+    pub fn update_completion_item_from_resolve(
+        &mut self,
+        label: &str,
+        resolved: crate::async_runtime::message::LspCompletionItem,
+    ) {
+        let Some(state) = self.completion.as_mut() else {
+            return;
+        };
+        let mut changed = false;
+        for raw in state.raw_items.iter_mut() {
+            if raw.label == label {
+                *raw = merge_completion_item(raw, &resolved);
+                changed = true;
+            }
+        }
+        for entry in state.filtered_items.iter_mut() {
+            if entry.item.label == label {
+                entry.item = merge_completion_item(&entry.item, &resolved);
+                changed = true;
+            }
+        }
+        for entry in state.cached_full_items.iter_mut() {
+            if entry.item.label == label {
+                entry.item = merge_completion_item(&entry.item, &resolved);
+                changed = true;
+            }
+        }
         if changed {
             self.revision += 1;
         }
@@ -1195,6 +1233,41 @@ impl AppState {
     }
 }
 
+fn merge_completion_item(
+    existing: &crate::async_runtime::message::LspCompletionItem,
+    resolved: &crate::async_runtime::message::LspCompletionItem,
+) -> crate::async_runtime::message::LspCompletionItem {
+    let mut merged = existing.clone();
+    if resolved.detail.is_some() {
+        merged.detail = resolved.detail.clone();
+    }
+    if resolved.insert_text.is_some() {
+        merged.insert_text = resolved.insert_text.clone();
+    }
+    if resolved.text_edit.is_some() {
+        merged.text_edit = resolved.text_edit.clone();
+    }
+    if resolved.text_edit_text.is_some() {
+        merged.text_edit_text = resolved.text_edit_text.clone();
+    }
+    if !resolved.additional_text_edits.is_empty() {
+        merged.additional_text_edits = resolved.additional_text_edits.clone();
+    }
+    if resolved.kind.is_some() {
+        merged.kind = resolved.kind;
+    }
+    if resolved.documentation.is_some() {
+        merged.documentation = resolved.documentation.clone();
+    }
+    if resolved.data.is_some() {
+        merged.data = resolved.data.clone();
+    }
+    if resolved.raw_json.is_some() {
+        merged.raw_json = resolved.raw_json.clone();
+    }
+    merged
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct CommentSyntax {
     line_prefix: &'static str,
@@ -1541,6 +1614,7 @@ pub(super) fn build_completion_display_items(
                 item,
                 match_ranges: Vec::new(),
                 score: 0,
+                source: CompletionItemSource::Lsp,
             })
             .collect();
     }
@@ -1562,9 +1636,135 @@ pub(super) fn build_completion_display_items(
             item,
             match_ranges,
             score,
+            source: CompletionItemSource::Lsp,
         })
         .collect()
 }
+
+/// Build completion display items with workspace symbol fallback.
+/// If LSP returns fewer than `min_items` results, query the workspace symbol cache.
+pub(super) fn build_completion_display_items_with_cache(
+    items: &[LspCompletionItem],
+    prefix: &str,
+    cache: &crate::lsp::WorkspaceSymbolCache,
+    language_id: Option<&str>,
+    min_items: usize,
+) -> Vec<CompletionDisplayItem> {
+    let mut lsp_items = build_completion_display_items(items, prefix);
+
+    // If we have enough LSP results, return them
+    if lsp_items.len() >= min_items || prefix.is_empty() {
+        return lsp_items;
+    }
+
+    // Query workspace symbols as fallback
+    let workspace_symbols = cache.query_symbols(prefix, language_id);
+
+    // Convert workspace symbols to completion items
+    let mut workspace_items: Vec<CompletionDisplayItem> = workspace_symbols
+        .into_iter()
+        .filter_map(|symbol| {
+            // Deduplicate: skip if already in LSP results
+            let already_exists = lsp_items.iter().any(|lsp_item| {
+                lsp_item.item.label == symbol.name
+            });
+            if already_exists {
+                return None;
+            }
+
+            // Score the symbol name against the prefix
+            let (score, match_ranges) = score_completion_match(&symbol.name, prefix)?;
+
+            // Convert to LspCompletionItem
+            let detail = symbol.container_name.clone().or_else(|| {
+                Some(format!("{}:{}", symbol.file_path.display(), symbol.line + 1))
+            });
+
+            Some(CompletionDisplayItem {
+                item: LspCompletionItem {
+                    label: symbol.name.clone(),
+                    detail,
+                    insert_text: Some(symbol.name),
+                    text_edit: None,
+                    text_edit_text: None,
+                    additional_text_edits: Vec::new(),
+                    kind: Some(symbol_kind_to_lsp_kind(&symbol.kind)),
+                    documentation: None,
+                    data: None,
+                    source_path: symbol.source_path.clone().or_else(|| Some(symbol.file_path.clone())),
+                    import_path: symbol.import_path.clone(),
+                    export_kind: symbol.export_kind.clone(),
+                    raw_json: None,
+                },
+                match_ranges,
+                score,
+                source: CompletionItemSource::WorkspaceSymbol,
+            })
+        })
+        .collect();
+
+    // Merge and sort by score
+    lsp_items.append(&mut workspace_items);
+    lsp_items.sort_by(|a, b| b.score.cmp(&a.score));
+
+    lsp_items
+}
+
+/// Convert symbol kind string to LSP completion kind number
+fn symbol_kind_to_lsp_kind(kind: &str) -> u32 {
+    match kind {
+        "Function" => 3,
+        "Method" => 2,
+        "Class" => 7,
+        "Interface" => 8,
+        "Module" => 9,
+        "Variable" => 6,
+        "Constant" => 21,
+        "Struct" => 22,
+        "Enum" => 13,
+        "EnumMember" => 20,
+        "Constructor" => 4,
+        "Field" => 5,
+        "Property" => 10,
+        _ => 1, // Text
+    }
+}
+
+/// Filter cached completion items by a new prefix (client-side incremental filtering).
+/// This is much faster than re-requesting from LSP server.
+pub(super) fn filter_cached_completion_items(
+    cached_items: &[CompletionDisplayItem],
+    prefix: &str,
+) -> Vec<CompletionDisplayItem> {
+    if prefix.is_empty() {
+        return cached_items
+            .iter()
+            .map(|item| CompletionDisplayItem {
+                item: item.item.clone(),
+                match_ranges: Vec::new(),
+                score: 0,
+                source: item.source.clone(),
+            })
+            .collect();
+    }
+
+    let mut scored: Vec<CompletionDisplayItem> = cached_items
+        .iter()
+        .filter_map(|cached_item| {
+            let (score, match_ranges) = score_completion_match(&cached_item.item.label, prefix)?;
+            Some(CompletionDisplayItem {
+                item: cached_item.item.clone(),
+                match_ranges,
+                score,
+                source: cached_item.source.clone(),
+            })
+        })
+        .collect();
+
+    scored.sort_by(|a, b| b.score.cmp(&a.score));
+    scored
+}
+
 
 pub(super) fn score_completion_match(
     label: &str,

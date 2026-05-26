@@ -55,6 +55,9 @@ impl AppShell {
                 } else {
                     false
                 };
+                if report.state_changed && !self.app_state.has_completion() {
+                    self.queue_lsp_completion_after_debounce_if_needed();
+                }
                 if report.request_redraw || report.state_changed || completion_changed {
                     self.request_redraw();
                 }

@@ -1210,9 +1210,47 @@ impl Renderer {
             ));
             let hint_font_size = (geometry.font_size * 0.85).max(11.0);
             let hint_line_h = hint_font_size * 1.4;
+
+            // Count workspace symbol items
+            let workspace_count = completion.filtered_items.iter()
+                .filter(|item| matches!(item.source, crate::app::app_state::CompletionItemSource::WorkspaceSymbol))
+                .count();
+            let total_count = completion.filtered_items.len();
+
+            // Check if indexing is in progress
+            let is_indexing = completion.language_id.as_ref()
+                .map(|lang_id| app_state.workspace_symbol_cache().is_indexing(lang_id))
+                .unwrap_or(false);
+
+            // Status text on the left
+            let status_text = if is_indexing {
+                format!("{} items (indexing…)", total_count)
+            } else if workspace_count > 0 {
+                format!("{} items ({} from workspace)", total_count, workspace_count)
+            } else {
+                format!("{} items", total_count)
+            };
+            let status_w = estimate_monospace_width(&status_text, hint_font_size);
+            let status_x = popup_x + PAD_X;
+            let status_y = footer_y + (FOOTER_H - hint_line_h) * 0.5;
+            self.editor_overlay_text_system
+                .set_metrics(Metrics::new(hint_font_size, hint_line_h));
+            self.editor_overlay_text_system
+                .set_size(Some(status_w + 4.0), Some(hint_line_h));
+            glyphs.extend(layout_panel_text(
+                &status_text,
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                status_x,
+                status_y,
+                if is_indexing { cyan } else { fg_dim },
+            ));
+
+            // Hint text on the right
             let hint_text = "↑↓ | ↩ accept | 󱊷 close";
             let hint_w = estimate_monospace_width(hint_text, hint_font_size);
-            let hint_x = (popup_x + popup_w - hint_w - PAD_X).max(popup_x + PAD_X);
+            let hint_x = (popup_x + popup_w - hint_w - PAD_X).max(popup_x + PAD_X + status_w + 20.0);
             let hint_y = footer_y + (FOOTER_H - hint_line_h) * 0.5;
             self.editor_overlay_text_system
                 .set_metrics(Metrics::new(hint_font_size, hint_line_h));

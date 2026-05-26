@@ -229,6 +229,8 @@ impl AppShell {
             pending_completion_resolve_after_debounce: false,
             last_completion_resolve_select_at: None,
             pending_completion_resolve_revision: 0,
+            pending_lsp_completion_after_debounce: false,
+            last_lsp_completion_type_at: None,
             ai_inline_revision: 0,
             pending_ai_inline_request: None,
             ai_inline_cancel_token: None,
@@ -1573,6 +1575,37 @@ impl AppShell {
             revision_id: 0,
             topic: RequestTopic::LspCheck,
             payload: WorkerRequestPayload::CheckLspForPath { path },
+        });
+    }
+
+    /// Submit workspace/symbol request to pre-index symbols for fast completion.
+    pub(super) fn submit_workspace_symbol_indexing(&self, language_id: String) {
+        if matches!(
+            language_id.as_str(),
+            "typescript" | "tsx" | "javascript" | "jsx"
+        ) {
+            if let Some(workspace_root) = self.app_state.workspace_root_path().map(PathBuf::from) {
+                self.app_state
+                    .workspace_symbol_cache()
+                    .set_indexing_progress(&language_id, 0, 0);
+                self.submit(RequestSpec {
+                    revision_id: 0,
+                    topic: RequestTopic::SystemTask,
+                    payload: WorkerRequestPayload::WorkspaceExportIndexRequest {
+                        language_id,
+                        workspace_root,
+                    },
+                });
+            }
+            return;
+        }
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::WorkspaceSymbolRequest {
+                language_id,
+                query: String::new(), // Empty query returns all symbols
+            },
         });
     }
 

@@ -686,6 +686,18 @@ fn table_driven_keybinding_resolution() {
 }
 
 #[test]
+fn markdown_preview_uppercase_g_text_scrolls_bottom_without_shift_state() {
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::MarkdownPreview);
+    let input = input_from_physical(KeyCode::KeyG, "G");
+
+    let actual = map.resolve(&input, context).map(|matched| matched.command);
+
+    assert_eq!(actual, Some(Command::MarkdownPreviewScrollBottom));
+}
+
+#[test]
 fn default_profile_resize_keys_map_to_requested_directions() {
     let map = make_default_profile_map();
     let context = KeybindingContext::for_mode(EditorMode::Resize);

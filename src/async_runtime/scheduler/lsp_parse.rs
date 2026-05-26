@@ -105,6 +105,70 @@ fn parse_hover_content(result: &Value) -> String {
 
 const MAX_COMPLETION_ITEMS: usize = 200;
 
+fn parse_completion_item(item: &Value) -> Option<LspCompletionItem> {
+    let label = item.get("label")?.as_str()?.to_string();
+    let detail = item
+        .get("detail")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| {
+            item.pointer("/labelDetails/detail")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        });
+    let insert_text = item
+        .get("insertText")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let text_edit = item.get("textEdit").and_then(parse_completion_text_edit);
+    let text_edit_text = text_edit
+        .as_ref()
+        .map(|edit| edit.new_text.clone())
+        .or_else(|| {
+            item.get("textEdit")
+                .and_then(|edit| edit.get("newText"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        });
+    let additional_text_edits = item
+        .get("additionalTextEdits")
+        .map(parse_text_edits)
+        .unwrap_or_default();
+    let kind = item
+        .get("kind")
+        .and_then(Value::as_u64)
+        .map(|kind| kind as u32);
+    let documentation = item
+        .get("documentation")
+        .and_then(parse_documentation_field);
+    let data = item.get("data").and_then(|value| serde_json::to_string(value).ok());
+    let raw_json = serde_json::to_string(item).ok();
+    Some(LspCompletionItem {
+        label,
+        detail,
+        insert_text,
+        text_edit,
+        text_edit_text,
+        additional_text_edits,
+        kind,
+        documentation,
+        data,
+        source_path: None,
+        import_path: None,
+        export_kind: None,
+        raw_json,
+    })
+}
+
+fn parse_completion_text_edit(edit: &Value) -> Option<LspTextEdit> {
+    let new_text = edit.get("newText")?.as_str()?.to_string();
+    let range = edit
+        .get("range")
+        .or_else(|| edit.get("replace"))
+        .or_else(|| edit.get("insert"))?;
+    parse_lsp_text_edit_parts(range, new_text)
+}
+
 fn parse_completion_items(result: &Value) -> Vec<LspCompletionItem> {
     let items = result
         .get("items")
@@ -116,44 +180,7 @@ fn parse_completion_items(result: &Value) -> Vec<LspCompletionItem> {
             items
                 .iter()
                 .take(MAX_COMPLETION_ITEMS)
-                .filter_map(|item| {
-                    let label = item.get("label")?.as_str()?.to_string();
-                    let detail = item
-                        .get("detail")
-                        .and_then(Value::as_str)
-                        .map(str::to_string)
-                        .or_else(|| {
-                            item.pointer("/labelDetails/detail")
-                                .and_then(Value::as_str)
-                                .map(str::to_string)
-                        });
-                    let insert_text = item
-                        .get("insertText")
-                        .and_then(Value::as_str)
-                        .map(str::to_string);
-                    let text_edit_text = item
-                        .get("textEdit")
-                        .and_then(|edit| edit.get("newText"))
-                        .and_then(Value::as_str)
-                        .map(str::to_string);
-                    let kind = item
-                        .get("kind")
-                        .and_then(Value::as_u64)
-                        .map(|kind| kind as u32);
-                    let documentation = item
-                        .get("documentation")
-                        .and_then(parse_documentation_field);
-                    let raw_json = serde_json::to_string(item).ok();
-                    Some(LspCompletionItem {
-                        label,
-                        detail,
-                        insert_text,
-                        text_edit_text,
-                        kind,
-                        documentation,
-                        raw_json,
-                    })
-                })
+                .filter_map(parse_completion_item)
                 .collect()
         })
         .unwrap_or_default()
@@ -236,6 +263,26 @@ fn parse_text_edits(result: &Value) -> Vec<LspTextEdit> {
             })
         })
         .collect()
+}
+
+fn parse_lsp_text_edit_parts(range: &Value, new_text: String) -> Option<LspTextEdit> {
+    let start_line = range.pointer("/start/line")?.as_u64()? as u32;
+    let start_character = range.pointer("/start/character")?.as_u64()? as u32;
+    let end_line = range.pointer("/end/line")?.as_u64()? as u32;
+    let end_character = range.pointer("/end/character")?.as_u64()? as u32;
+    Some(LspTextEdit {
+        range: LspRange {
+            start: LspPosition {
+                line: start_line,
+                character: start_character,
+            },
+            end: LspPosition {
+                line: end_line,
+                character: end_character,
+            },
+        },
+        new_text,
+    })
 }
 
 pub(super) fn handle_lsp_hover(
@@ -492,6 +539,7 @@ pub(super) fn handle_lsp_completion_resolve(
     let documentation = result
         .get("documentation")
         .and_then(parse_documentation_field);
+    let resolved_item = parse_completion_item(result);
 
     // Diagnostic: if the resolve came back but neither detail nor documentation
     // could be extracted, log the raw response so we can spot unsupported shapes.
@@ -510,6 +558,7 @@ pub(super) fn handle_lsp_completion_resolve(
         item_label: item_label.to_string(),
         detail,
         documentation,
+        resolved_item,
         completion_revision,
     })
 }
@@ -924,8 +973,61 @@ fn parse_document_symbols(result: &Value) -> Vec<LspDocumentSymbol> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_document_symbols;
+    use super::{parse_completion_item, parse_completion_items, parse_document_symbols};
     use serde_json::json;
+
+    #[test]
+    fn parse_completion_preserves_text_edits_and_data() {
+        let response = json!({
+            "items": [{
+                "label": "connect",
+                "kind": 3,
+                "insertText": "connect",
+                "textEdit": {
+                    "range": {
+                        "start": { "line": 4, "character": 8 },
+                        "end": { "line": 4, "character": 11 }
+                    },
+                    "newText": "connect"
+                },
+                "additionalTextEdits": [{
+                    "range": {
+                        "start": { "line": 0, "character": 0 },
+                        "end": { "line": 0, "character": 0 }
+                    },
+                    "newText": "import { connect } from './api';\n"
+                }],
+                "data": { "entryNames": ["connect"] }
+            }]
+        });
+
+        let items = parse_completion_items(&response);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].text_edit.as_ref().map(|edit| edit.range.start.line), Some(4));
+        assert_eq!(items[0].additional_text_edits.len(), 1);
+        assert!(items[0].data.as_ref().is_some_and(|data| data.contains("entryNames")));
+    }
+
+    #[test]
+    fn parse_resolved_completion_preserves_import_edits() {
+        let resolved = json!({
+            "label": "connect",
+            "additionalTextEdits": [{
+                "range": {
+                    "start": { "line": 1, "character": 0 },
+                    "end": { "line": 1, "character": 0 }
+                },
+                "newText": "import { connect } from './api';\n"
+            }]
+        });
+
+        let item = parse_completion_item(&resolved).expect("resolved completion item");
+
+        assert_eq!(item.label, "connect");
+        assert_eq!(item.additional_text_edits.len(), 1);
+        assert_eq!(item.additional_text_edits[0].new_text, "import { connect } from './api';\n");
+    }
 
     #[test]
     fn parse_document_symbols_rebuilds_ancestors_for_flat_symbols() {
@@ -1006,13 +1108,11 @@ pub(super) fn handle_lsp_completion(
     let result = response
         .get("result")
         .ok_or_else(|| "completion: no result".to_string())?;
-    if result.is_null() {
-        return Err("completion: no items returned".to_string());
-    }
-    let items = parse_completion_items(result);
-    if items.is_empty() {
-        return Err("completion: empty completion list".to_string());
-    }
+    let items = if result.is_null() {
+        Vec::new()
+    } else {
+        parse_completion_items(result)
+    };
     Ok(WorkerResultPayload::LspCompletionResult {
         items,
         cursor_line,
@@ -1103,26 +1203,111 @@ pub(super) fn handle_lsp_code_action(
     Ok(WorkerResultPayload::LspCodeActionResult { actions })
 }
 
+/// Handle workspace/symbol request — returns all symbols in the workspace.
+pub(super) fn handle_workspace_symbol(
+    session: &Arc<LspClientProcess>,
+    query: &str,
+) -> Result<Vec<crate::lsp::CachedSymbol>, String> {
+    let params = serde_json::json!({
+        "query": query
+    });
+
+    let response = lsp_request_response(
+        session,
+        "workspace/symbol",
+        params,
+        LSP_DOCUMENT_SYMBOLS_TIMEOUT_SECS,
+    )?;
+
+    let result = response
+        .get("result")
+        .ok_or_else(|| "workspace/symbol: no result".to_string())?;
+
+    if result.is_null() {
+        return Ok(Vec::new());
+    }
+
+    let symbols_array = result
+        .as_array()
+        .ok_or_else(|| "workspace/symbol: result is not an array".to_string())?;
+
+    let mut symbols = Vec::new();
+    for symbol in symbols_array {
+        if let Some(cached_symbol) = parse_workspace_symbol(symbol) {
+            symbols.push(cached_symbol);
+        }
+    }
+
+    Ok(symbols)
+}
+
+/// Parse a single workspace symbol from JSON.
+fn parse_workspace_symbol(symbol: &Value) -> Option<crate::lsp::CachedSymbol> {
+    let name = symbol.get("name")?.as_str()?.to_string();
+    let kind = symbol.get("kind")?.as_u64()? as u32;
+    let kind_str = match kind {
+        1 => "File",
+        2 => "Module",
+        3 => "Namespace",
+        4 => "Package",
+        5 => "Class",
+        6 => "Method",
+        7 => "Property",
+        8 => "Field",
+        9 => "Constructor",
+        10 => "Enum",
+        11 => "Interface",
+        12 => "Function",
+        13 => "Variable",
+        14 => "Constant",
+        15 => "String",
+        16 => "Number",
+        17 => "Boolean",
+        18 => "Array",
+        19 => "Object",
+        20 => "Key",
+        21 => "Null",
+        22 => "EnumMember",
+        23 => "Struct",
+        24 => "Event",
+        25 => "Operator",
+        26 => "TypeParameter",
+        _ => "Symbol",
+    }
+    .to_string();
+
+    let container_name = symbol
+        .get("containerName")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    // Parse location
+    let location = symbol.get("location")?;
+    let uri = location.get("uri")?.as_str()?;
+    let file_path = uri.strip_prefix("file://")?.to_string();
+
+    let range = location.get("range")?;
+    let start = range.get("start")?;
+    let line = start.get("line")?.as_u64()? as u32;
+    let character = start.get("character")?.as_u64()? as u32;
+
+    Some(crate::lsp::CachedSymbol {
+        name,
+        kind: kind_str,
+        container_name,
+        file_path: std::path::PathBuf::from(file_path),
+        line,
+        character,
+        source_path: None,
+        import_path: None,
+        export_kind: None,
+    })
+}
+
 /// Parse một raw TextEdit JSON object thành LspTextEdit.
 fn parse_single_text_edit(edit: &Value) -> Option<LspTextEdit> {
-    let start_line = edit.pointer("/range/start/line")?.as_u64()? as u32;
-    let start_char = edit.pointer("/range/start/character")?.as_u64()? as u32;
-    let end_line = edit.pointer("/range/end/line")?.as_u64()? as u32;
-    let end_char = edit.pointer("/range/end/character")?.as_u64()? as u32;
     let new_text = edit.get("newText")?.as_str()?.to_string();
-    Some(LspTextEdit {
-        range: LspRange {
-            start: LspPosition {
-                line: start_line,
-                character: start_char,
-            },
-            end: LspPosition {
-                line: end_line,
-                character: end_char,
-            },
-        },
-        new_text,
-    })
+    parse_lsp_text_edit_parts(edit.get("range")?, new_text)
 }
 
 /// Parse edits từ WorkspaceEdit — hỗ trợ cả format cũ `changes` và format mới `documentChanges`.

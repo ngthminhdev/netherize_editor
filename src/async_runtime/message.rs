@@ -389,6 +389,17 @@ pub enum WorkerRequestPayload {
         source_path: PathBuf,
         target_path: PathBuf,
     },
+    /// workspace/symbol request — index all symbols in the workspace.
+    WorkspaceSymbolRequest {
+        language_id: String,
+        query: String,
+    },
+    /// Local TS/JS export indexing request — scans project files outside the UI
+    /// thread and returns importable workspace symbols.
+    WorkspaceExportIndexRequest {
+        language_id: String,
+        workspace_root: PathBuf,
+    },
 }
 
 /// Loại location từ LSP — dùng cho definition và references.
@@ -428,9 +439,21 @@ pub struct LspCompletionItem {
     pub label: String,
     pub detail: Option<String>,
     pub insert_text: Option<String>,
+    pub text_edit: Option<LspTextEdit>,
     pub text_edit_text: Option<String>,
+    pub additional_text_edits: Vec<LspTextEdit>,
     pub kind: Option<u32>,
     pub documentation: Option<String>,
+    /// Raw `data` JSON from LSP. Some servers require it to resolve auto-import
+    /// edits later via `completionItem/resolve`.
+    pub data: Option<String>,
+    /// Source path for locally indexed workspace exports.
+    pub source_path: Option<PathBuf>,
+    /// Display/debug import path for locally indexed workspace exports.
+    pub import_path: Option<String>,
+    /// Export kind for locally indexed workspace exports. `named` is the only
+    /// custom fallback import kind accepted in v1.
+    pub export_kind: Option<String>,
     /// Original JSON of the item — needed to round-trip through `completionItem/resolve`.
     /// `None` for items synthesized in tests.
     pub raw_json: Option<String>,
@@ -672,6 +695,7 @@ pub enum WorkerResultPayload {
         item_label: String,
         detail: Option<String>,
         documentation: Option<String>,
+        resolved_item: Option<LspCompletionItem>,
         /// Echoed from the request so the main thread can compare against
         /// `CompletionState.current_revision` and drop stale results.
         completion_revision: u64,
@@ -724,6 +748,11 @@ pub enum WorkerResultPayload {
         target_path: PathBuf,
         success: bool,
         error_message: Option<String>,
+    },
+    /// workspace/symbol response — all symbols in the workspace.
+    WorkspaceSymbols {
+        language_id: String,
+        symbols: Vec<crate::lsp::CachedSymbol>,
     },
 }
 

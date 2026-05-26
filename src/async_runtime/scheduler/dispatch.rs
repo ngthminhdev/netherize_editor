@@ -114,7 +114,9 @@ pub(super) async fn dispatch_loop(
                 | WorkerRequestPayload::LspDocumentSymbolsRequest { .. }
                 | WorkerRequestPayload::LspFormattingRequest { .. }
                 | WorkerRequestPayload::LspCompletionRequest { .. }
+                | WorkerRequestPayload::LspCompletionResolveRequest { .. }
                 | WorkerRequestPayload::LspCodeActionRequest { .. }
+                | WorkerRequestPayload::WorkspaceSymbolRequest { .. }
                 | WorkerRequestPayload::StopLspServer
                 | WorkerRequestPayload::ShutdownAllLspServers
         ) {

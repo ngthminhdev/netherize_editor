@@ -497,3 +497,76 @@
 | 15:47 | Edited src/syntax/highlight/categories.rs | modified color_for() | ~588 |
 | 15:48 | Edited src/syntax/highlight/engine.rs | modified capture_category() | ~1979 |
 | 15:49 | Edited src/app/event_loop/helpers.rs | 87→88 lines | ~1367 |
+
+## Session: 2026-05-25 16:17
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 16:21 | Edited src/app/app_state/mod.rs | modified auto_fold_pathological_long_lines() | ~33 |
+| 16:21 | Edited src/render/renderer/editor/viewport.rs | modified truncate_folded_lines() | ~81 |
+| 16:22 | Edited src/render/renderer/editor/viewport.rs | modified contains() | ~44 |
+| 16:24 | Increased auto fold threshold from 100 to 200 chars | src/app/app_state/mod.rs, src/render/renderer/editor/viewport.rs | Build successful | ~200 |
+| 16:24 | Session end: 3 writes across 2 files (mod.rs, viewport.rs) | 2 reads | ~31038 tok |
+
+## Session: 2026-05-26 09:41
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-05-26 09:41
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-05-26 09:52
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:57 | Created ../../.claude/plans/v-sao-ph-n-g-i-radiant-allen.md | — | ~2291 |
+| 10:03 | Created src/lsp/symbol_cache.rs | — | ~2014 |
+| 10:04 | Edited src/lsp/mod.rs | 3→6 lines | ~37 |
+| 10:04 | Edited src/async_runtime/message.rs | 6→11 lines | ~86 |
+| 10:04 | Edited src/async_runtime/message.rs | 8→13 lines | ~99 |
+| 10:05 | Edited src/async_runtime/scheduler/lsp_parse.rs | added optional chaining | ~554 |
+| 10:05 | Edited src/async_runtime/scheduler/lsp.rs | expanded (+16 lines) | ~292 |
+| 10:05 | Edited src/async_runtime/scheduler/lsp.rs | 11→11 lines | ~152 |
+| 10:06 | Edited src/async_runtime/scheduler/lsp_parse.rs | modified parse_workspace_symbol() | ~439 |
+| 10:07 | Edited src/app/app_state/mod.rs | 5→8 lines | ~134 |
+| 10:07 | Edited src/app/app_state/mod.rs | 6→7 lines | ~32 |
+| 10:07 | Edited src/app/app_state/mod.rs | 6→7 lines | ~72 |
+| 10:07 | Edited src/app/event_loop/setup.rs | modified submit_lsp_check_for_path() | ~266 |
+| 10:08 | Edited src/app/event_loop/async_results/lsp.rs | modified Some() | ~230 |
+| 10:08 | Edited src/app/event_loop/async_results/lsp.rs | modified Some() | ~367 |
+| 10:08 | Edited src/app/app_state/state.rs | modified has_completion() | ~57 |
+| 10:08 | Edited src/app/event_loop/async_results/lsp.rs | 13→13 lines | ~124 |
+| 10:09 | Edited src/app/app_state/overlays.rs | modified build_completion_display_items() | ~974 |
+| 10:10 | Edited src/app/app_state/mod.rs | build_completion_display_items() → build_completion_display_items_with_cache() | ~277 |
+| 10:10 | Edited src/app/event_loop/async_results/lsp.rs | modified is_empty() | ~363 |
+| 10:10 | Edited src/app/event_loop/commands_tests.rs | modified completion_accept_replaces_typed_prefix_instead_of_inserting_after_it() | ~285 |
+| 10:11 | Edited src/app/event_loop/commands_tests.rs | modified completion_accept_deduplicates_trigger_char_in_insert_text() | ~291 |
+| 10:11 | Edited src/app/app_state/mod.rs | 7→6 lines | ~59 |
+| 10:11 | Session end: 23 writes across 10 files (v-sao-ph-n-g-i-radiant-allen.md, symbol_cache.rs, mod.rs, message.rs, lsp_parse.rs) | 15 reads | ~161650 tok |
+| 10:27 | Edited src/app/app_state/mod.rs | 21→24 lines | ~332 |
+| 10:27 | Edited src/app/app_state/mod.rs | modified from_lsp_items() | ~286 |
+| 10:27 | Edited src/app/app_state/overlays.rs | modified symbol_kind_to_lsp_kind() | ~403 |
+| 10:27 | Edited src/app/app_state/state.rs | modified refresh_completion_with_prefix() | ~255 |
+| 10:28 | Edited src/app/app_state/state.rs | 4→4 lines | ~27 |
+| 10:29 | Edited src/app/app_state/mod.rs | expanded (+7 lines) | ~84 |
+| 10:29 | Edited src/app/app_state/overlays.rs | 9→10 lines | ~65 |
+| 10:29 | Edited src/app/app_state/overlays.rs | 13→14 lines | ~147 |
+| 10:29 | Edited src/app/app_state/overlays.rs | modified filter_cached_completion_items() | ~301 |
+| 10:30 | Edited src/app/app_state/overlays.rs | modified is_empty() | ~87 |
+| 10:30 | Edited src/render/renderer/editor/overlays.rs | expanded (+31 lines) | ~702 |
+| 10:31 | Edited src/app/app_state/mod.rs | 24→26 lines | ~355 |
+| 10:31 | Edited src/app/app_state/mod.rs | 17→18 lines | ~162 |
+| 10:32 | Edited src/render/renderer/editor/overlays.rs | expanded (+7 lines) | ~799 |
+| 10:32 | Edited src/lsp/symbol_cache.rs | modified test_fuzzy_match() | ~1522 |
+| 10:33 | Edited src/lsp/symbol_cache.rs | removed 77 lines | ~104 |
+| 10:33 | Edited src/lsp/symbol_cache.rs | 18→18 lines | ~190 |
+| 10:33 | Edited src/lsp/symbol_cache.rs | 9→9 lines | ~106 |
+| 10:34 | Session end: 41 writes across 10 files (v-sao-ph-n-g-i-radiant-allen.md, symbol_cache.rs, mod.rs, message.rs, lsp_parse.rs) | 17 reads | ~190661 tok |
+
+## Session: 2026-05-26 13:25
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|

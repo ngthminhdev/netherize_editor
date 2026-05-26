@@ -207,6 +207,8 @@ pub struct AppShell {
     /// debounced resolve was queued for; used to skip dispatch if the user
     /// has already moved on, but mainly to tag the eventual request payload.
     pending_completion_resolve_revision: u64,
+    pending_lsp_completion_after_debounce: bool,
+    last_lsp_completion_type_at: Option<Instant>,
     ai_inline_revision: u64,
     pending_ai_inline_request: Option<PendingAiInlineRequest>,
     ai_inline_cancel_token: Option<CancellationToken>,
@@ -253,6 +255,7 @@ const GIT_DIFF_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(80);
 /// `completionItem/resolve`. Prevents spamming the LSP server while the user
 /// scrolls quickly through items with arrow keys.
 const COMPLETION_RESOLVE_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(100);
+const LSP_COMPLETION_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
 const LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(500);
 const FPS_METRICS_UPDATE_INTERVAL: Duration = Duration::from_millis(500);
 const GIT_BRANCH_REFRESH_INTERVAL: Duration = Duration::from_millis(750);

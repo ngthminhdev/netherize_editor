@@ -25,7 +25,7 @@ use super::{
         handle_lsp_code_action, handle_lsp_completion, handle_lsp_completion_resolve,
         handle_lsp_completion_virtual_hover, handle_lsp_definition, handle_lsp_document_highlight,
         handle_lsp_document_symbols, handle_lsp_formatting, handle_lsp_hover,
-        handle_lsp_references, handle_lsp_rename,
+        handle_lsp_references, handle_lsp_rename, handle_workspace_symbol,
     },
 };
 
@@ -610,6 +610,22 @@ fn execute_lsp_request(
                 .process
                 .update_request_meta(request.request_id, request.revision_id);
             handle_lsp_code_action(&handle.process, uri, *line, *character, diagnostics)
+        }
+        WorkerRequestPayload::WorkspaceSymbolRequest { language_id, query } => {
+            let handle = language_profile_for_language_id(language_id)
+                .map(|profile| profile.lsp_binary)
+                .and_then(|key| lsp_sessions.get_handle(key).ok().flatten());
+            let Some(handle) = handle else {
+                return Err("workspace/symbol rejected: LSP server not running".to_string());
+            };
+            handle
+                .process
+                .update_request_meta(request.request_id, request.revision_id);
+            let symbols = handle_workspace_symbol(&handle.process, query)?;
+            Ok(WorkerResultPayload::WorkspaceSymbols {
+                language_id: language_id.clone(),
+                symbols,
+            })
         }
         _ => Err("execute_lsp_request received non-lsp payload".to_string()),
     }
