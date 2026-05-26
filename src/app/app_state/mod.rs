@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -33,7 +34,6 @@ use crate::editor_core::filetype_label_for_path;
 use crate::syntax::highlight::HighlightEdit;
 use crate::text::text_system::StyledTextSpan;
 use crate::workspace::model::{WorkspaceModel, WorkspaceNodeType};
-use overlays::build_completion_display_items;
 
 mod buffers;
 mod editor;
@@ -1582,10 +1582,17 @@ pub struct CompletionPrefixInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompletionItemSource {
+    Lsp,
+    WorkspaceSymbol,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompletionDisplayItem {
     pub item: LspCompletionItem,
     pub match_ranges: Vec<(usize, usize)>,
     pub score: i64,
+    pub source: CompletionItemSource,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1608,6 +1615,11 @@ pub struct CompletionState {
     /// was issued for; results whose revision != `current_revision` on arrival
     /// are silently dropped so a slow/late doc never lands on a newer item.
     pub current_revision: u64,
+    /// Cached full completion items (LSP + workspace symbols) for client-side incremental filtering.
+    /// When the user types more characters, we filter this cache instead of re-requesting from LSP.
+    pub cached_full_items: Vec<CompletionDisplayItem>,
+    /// Language ID for checking indexing status
+    pub language_id: Option<String>,
 }
 
 impl CompletionState {
@@ -1617,12 +1629,20 @@ impl CompletionState {
         anchor_col: usize,
         prefix_start_col: usize,
         prefix: String,
+        cache: &crate::lsp::WorkspaceSymbolCache,
+        language_id: Option<&str>,
     ) -> Self {
-        let filtered_items = build_completion_display_items(&items, &prefix);
+        let full_items = overlays::build_completion_display_items_with_cache(
+            &items,
+            &prefix,
+            cache,
+            language_id,
+            5, // Minimum items before querying workspace symbols
+        );
 
         Self {
             raw_items: items,
-            filtered_items,
+            filtered_items: full_items.clone(),
             selected_index: 0,
             typed_prefix: prefix,
             trigger_pos: CompletionTriggerPosition {
@@ -1635,6 +1655,8 @@ impl CompletionState {
             hover_doc: None,
             hover_doc_resolved: false,
             current_revision: 0,
+            cached_full_items: full_items,
+            language_id: language_id.map(|s| s.to_string()),
         }
     }
 }
@@ -1951,6 +1973,9 @@ pub struct AppState {
     /// Cached byte offsets for the start of each line. Invalidated on text edits.
     /// Eliminates O(n) rebuild on every highlight request for large files.
     cached_line_starts: Option<Vec<usize>>,
+    // ── Workspace symbol cache ────────────────────────────────────────────────
+    /// Pre-indexed workspace symbols for fast import suggestions.
+    workspace_symbol_cache: Arc<crate::lsp::WorkspaceSymbolCache>,
 }
 
 impl AppState {
@@ -2015,6 +2040,7 @@ impl AppState {
             foldable_ranges_cache: None,
             auto_folded_long_lines: Vec::new(),
             cached_line_starts: None,
+            workspace_symbol_cache: Arc::new(crate::lsp::WorkspaceSymbolCache::new()),
         }
     }
 
@@ -2077,6 +2103,7 @@ impl AppState {
             foldable_ranges_cache: None,
             auto_folded_long_lines: Vec::new(),
             cached_line_starts: None,
+            workspace_symbol_cache: Arc::new(crate::lsp::WorkspaceSymbolCache::new()),
         }
     }
 
@@ -2202,7 +2229,7 @@ impl AppState {
     }
 
     pub fn auto_fold_pathological_long_lines(&mut self) -> bool {
-        const AUTO_FOLD_LINE_CHAR_THRESHOLD: usize = 100;
+        const AUTO_FOLD_LINE_CHAR_THRESHOLD: usize = 200;
         let mut lines = Vec::new();
         for line_idx in 0..self.text.len_lines() {
             let line = self.text.line(line_idx);

@@ -58,14 +58,14 @@ fn spans_fingerprint(spans: &[StyledTextSpan]) -> u64 {
     h
 }
 
-/// Truncate auto-folded long lines to 100 chars + "..." before shaping.
+/// Truncate auto-folded long lines to 200 chars + "..." before shaping.
 /// This prevents wrapped display of folded lines.
 fn truncate_folded_lines(
     text: &str,
     spans: &[StyledTextSpan],
     app_state: &AppState,
 ) -> (String, Vec<StyledTextSpan>) {
-    const FOLD_TRUNCATE_LIMIT: usize = 100;
+    const FOLD_TRUNCATE_LIMIT: usize = 200;
 
     let folded_ranges = app_state.folded_ranges();
     if folded_ranges.is_empty() {
@@ -98,7 +98,7 @@ fn truncate_folded_lines(
         let new_line_start = result.len();
 
         if auto_folded_lines.contains(&line_idx) {
-            // Truncate this line to 100 chars + "..."
+            // Truncate this line to 200 chars + "..."
             let chars: Vec<char> = line.chars().collect();
             if chars.len() > FOLD_TRUNCATE_LIMIT {
                 let truncated: String = chars.iter().take(FOLD_TRUNCATE_LIMIT).collect();
