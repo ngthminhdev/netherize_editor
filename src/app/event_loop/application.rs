@@ -1366,9 +1366,22 @@ impl AppShell {
                 })
                 .collect::<Vec<_>>();
             if let Some(renderer) = self.renderer.as_mut() {
+                let project_name = if show_welcome {
+                    ""
+                } else {
+                    self.app_state
+                        .workspace_root_path()
+                        .and_then(|root| root.file_name().and_then(|name| name.to_str()))
+                        .unwrap_or("")
+                };
+                let center_x = visible_region_bounds(&flat_regions, RegionId::Center)
+                    .map(|b| b[0])
+                    .unwrap_or(0.0);
                 let tab_quads = renderer.update_topbar_content(
                     &tabs,
                     self.app_state.active_buffer_index(),
+                    project_name,
+                    center_x,
                     top_bounds,
                 );
                 region_instances.extend(tab_quads);
@@ -1437,19 +1450,10 @@ impl AppShell {
                             .is_indexing(profile.key)
                             .then(|| "Indexing symbols…".to_string())
                     });
-                let project_name = if show_welcome {
-                    ""
-                } else {
-                    self.app_state
-                        .workspace_root_path()
-                        .and_then(|root| root.file_name().and_then(|name| name.to_str()))
-                        .unwrap_or("")
-                };
                 let pill_quads = renderer.update_statusbar_content(
                     mode,
                     &pending_keys,
                     git_branch,
-                    project_name,
                     is_dirty,
                     &active_file_name,
                     filetype,

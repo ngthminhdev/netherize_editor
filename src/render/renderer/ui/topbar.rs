@@ -28,11 +28,34 @@ const TOPBAR_TAB_SEPARATOR_WIDTH: f32 = 1.0;
 const TOPBAR_ACTIVE_BORDER_HEIGHT: f32 = 2.0;
 const TOPBAR_DIRTY_DOT: &str = "●";
 
+struct BundledLogo {
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+}
+
+fn bundled_logo() -> Option<&'static BundledLogo> {
+    static LOGO: std::sync::OnceLock<Option<BundledLogo>> = std::sync::OnceLock::new();
+    LOGO.get_or_init(|| {
+        let bytes = include_bytes!("../../../../assets/app_logo.png");
+        let decoded = image::load_from_memory(bytes).ok()?;
+        let rgba = decoded.to_rgba8();
+        Some(BundledLogo {
+            width: rgba.width(),
+            height: rgba.height(),
+            rgba: rgba.into_raw(),
+        })
+    })
+    .as_ref()
+}
+
 impl Renderer {
     pub fn update_topbar_content(
         &mut self,
         tabs: &[TopbarTab],
         active_buffer_index: Option<usize>,
+        project_name: &str,
+        center_x: f32,
         bounds: [f32; 4],
     ) -> Vec<RegionDrawInstance> {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
@@ -51,6 +74,8 @@ impl Renderer {
         let layout_key = TopbarLayoutKey {
             tabs: tabs.to_vec(),
             active_buffer_index,
+            project_name: project_name.to_string(),
+            center_x,
             bounds,
         };
         if self.last_topbar_layout_key.as_ref() == Some(&layout_key) {
@@ -82,7 +107,14 @@ impl Renderer {
         let mut glyphs = Vec::new();
         let mut text_batches = Vec::new();
         let mut chrome = Vec::new();
-        let available_right = bounds[0] + bounds[2];
+
+        let item_gap = (font_size * 0.95).max(8.0);
+        let logo_size = (bounds[3] - 8.0).max(12.0);
+        let logo_x = bounds[0] + bounds[2] - logo_size - 12.0;
+        let logo_y = bounds[1] + (bounds[3] - logo_size) * 0.5;
+
+        // Reduce available right by the logo space to avoid tabs rendering over the logo
+        let available_right = logo_x - item_gap;
         let dirty_gap = self.topbar_dirty_gap;
         let topbar_start_x = if cfg!(target_os = "macos") {
             TOPBAR_TRAFFIC_LIGHT_SPACE_MACOS.min(bounds[2])
@@ -90,8 +122,102 @@ impl Renderer {
             0.0
         };
         let mut tab_x = bounds[0] + topbar_start_x;
+
+        // Render project name (current folder) after traffic light space and before tabs
+        let project = project_name.trim();
+        if !project.is_empty() && center_x > topbar_start_x {
+            let start = glyphs.len() as u32;
+
+            let left_pad = 16.0;
+            let icon_text_gap = 12.0;
+            let text_sep_gap = 16.0;
+            let sep_tab_gap = 16.0;
+
+            let sep = "│";
+            let sep_w = estimate_monospace_width(sep, font_size);
+            let folder_icon = "󱁽";
+            let folder_icon_w = estimate_monospace_width(folder_icon, font_size);
+
+            // Compute maximum width available for the text itself
+            let allocated_fixed_w = left_pad + folder_icon_w + icon_text_gap + text_sep_gap + sep_w + sep_tab_gap;
+            let max_text_w = (center_x - topbar_start_x - allocated_fixed_w).max(0.0);
+            let clamped_project = crate::render::renderer::helpers::clamp_monospace_text(project, max_text_w, font_size);
+
+            if !clamped_project.is_empty() {
+                let mut draw_x = tab_x + left_pad;
+
+                // 1. Draw folder icon
+                glyphs.extend(layout_panel_text(
+                    folder_icon,
+                    &mut self.topbar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    draw_x,
+                    origin_y,
+                    accent,
+                ));
+                draw_x += folder_icon_w + icon_text_gap;
+
+                // 2. Draw folder text
+                let label_w = estimate_monospace_width(&clamped_project, font_size);
+                glyphs.extend(layout_panel_text(
+                    &clamped_project,
+                    &mut self.topbar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    draw_x,
+                    origin_y,
+                    accent,
+                ));
+                draw_x += label_w + text_sep_gap;
+
+                // 3. Draw separator
+                glyphs.extend(layout_panel_text(
+                    sep,
+                    &mut self.topbar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    draw_x,
+                    origin_y,
+                    inactive_fg,
+                ));
+                draw_x += sep_w;
+
+                let scissor_w = draw_x - tab_x;
+                let count = glyphs.len() as u32 - start;
+                if count > 0 {
+                    if let Some(scissor) = rect_to_scissor([tab_x, content_y, scissor_w, content_h]) {
+                        text_batches.push(TextScissorBatch {
+                            scissor,
+                            range: InstanceDrawRange { start, count },
+                        });
+                    }
+                }
+            }
+        }
+
+        // Align tab start exactly at the start of the main editor (center_x)
+        tab_x = bounds[0] + center_x.max(topbar_start_x);
+
+        // Render Logo at the far right
         self.topbar_logo_image_pipeline.clear();
         self.topbar_logo_scissor = None;
+        if let Some(logo) = bundled_logo() {
+            let rect = [logo_x, logo_y, logo_size, logo_size];
+            self.topbar_logo_scissor = rect_to_scissor(bounds);
+            self.topbar_logo_image_pipeline.upload_rgba(
+                &self.device,
+                &self.queue,
+                &logo.rgba,
+                logo.width,
+                logo.height,
+                rect,
+                [
+                    self.surface_state.config.width,
+                    self.surface_state.config.height,
+                ],
+            );
+        }
 
         if tabs.is_empty() {
             let start = glyphs.len() as u32;
