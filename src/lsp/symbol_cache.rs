@@ -486,6 +486,7 @@ pub fn extract_ts_js_exports_from_text(
     let mut contexts: Vec<TsJsIndexContext> = Vec::new();
     let mut brace_depth = 0usize;
     let mut in_block_comment = false;
+    let mut accumulating_export: Option<(ExportType, String, usize)> = None;
 
     for (line_idx, raw_line) in text.lines().enumerate() {
         let code_line = strip_ts_js_comments(raw_line, &mut in_block_comment);
@@ -496,7 +497,62 @@ pub fn extract_ts_js_exports_from_text(
         {
             contexts.pop();
         }
+
+        if let Some((export_type, mut acc, start_line_idx)) = accumulating_export.take() {
+            acc.push('\n');
+            acc.push_str(&code_line);
+            if code_line.contains('}') {
+                let names = extract_names_from_braces(&acc);
+                let export_kind = match export_type {
+                    ExportType::ESModule => Some("named"),
+                    ExportType::CommonJS => Some("named"),
+                };
+                for name in names {
+                    let symbol = cached_ts_js_symbol(
+                        name,
+                        "Variable".to_string(),
+                        None,
+                        file_path,
+                        raw_line,
+                        line_idx,
+                        import_path.as_deref(),
+                        export_kind,
+                    );
+                    let key = (
+                        symbol.name.clone(),
+                        symbol.file_path.clone(),
+                        symbol.container_name.clone(),
+                        symbol.line,
+                    );
+                    if seen.insert(key) {
+                        symbols.push(symbol);
+                    }
+                }
+            } else {
+                accumulating_export = Some((export_type, acc, start_line_idx));
+            }
+            brace_depth = brace_depth_after_line(brace_depth, &code_line);
+            continue;
+        }
+
         if trimmed.is_empty() {
+            brace_depth = brace_depth_after_line(brace_depth, &code_line);
+            continue;
+        }
+
+        // Check if the current line starts a multi-line export block
+        let (rest, export_status) = strip_declaration_modifiers(trimmed);
+        if export_status == ExportStatus::Named && rest.starts_with('{') && !rest.contains('}') {
+            accumulating_export = Some((ExportType::ESModule, rest.to_string(), line_idx));
+            brace_depth = brace_depth_after_line(brace_depth, &code_line);
+            continue;
+        }
+
+        let is_cjs_start = (trimmed.starts_with("module.exports") || trimmed.starts_with("exports"))
+            && trimmed.contains('{')
+            && !trimmed.contains('}');
+        if is_cjs_start {
+            accumulating_export = Some((ExportType::CommonJS, trimmed.to_string(), line_idx));
             brace_depth = brace_depth_after_line(brace_depth, &code_line);
             continue;
         }
@@ -554,6 +610,26 @@ pub fn extract_ts_js_exports_from_text(
             symbols.push(symbol);
         }
 
+        // ── CommonJS exports ──────────────────────────────────────────────
+        let cjs_candidates = extract_commonjs_candidates_from_line(
+            trimmed,
+            raw_line,
+            line_idx,
+            file_path,
+            import_path.as_deref(),
+        );
+        for symbol in cjs_candidates {
+            let key = (
+                symbol.name.clone(),
+                symbol.file_path.clone(),
+                symbol.container_name.clone(),
+                symbol.line,
+            );
+            if seen.insert(key) {
+                symbols.push(symbol);
+            }
+        }
+
         let next_brace_depth = brace_depth_after_line(brace_depth, &code_line);
         if let Some(pending_context) = pending_context {
             if next_brace_depth > brace_depth {
@@ -569,6 +645,98 @@ pub fn extract_ts_js_exports_from_text(
 
     symbols
 }
+
+fn extract_commonjs_candidates_from_line(
+    trimmed: &str,
+    raw_line: &str,
+    line_idx: usize,
+    file_path: &Path,
+    import_path: Option<&str>,
+) -> Vec<CachedSymbol> {
+    let mut candidates = Vec::new();
+    
+    // Pattern 1: module.exports = { name1, name2 } or exports = { name1, name2 }
+    if (trimmed.starts_with("module.exports") || trimmed.starts_with("exports"))
+        && trimmed.contains('{')
+    {
+        if let Some(open) = trimmed.find('{') {
+            if let Some(close) = trimmed[open..].find('}').map(|idx| open + idx) {
+                let list = &trimmed[open + 1..close];
+                for part in list.split(',') {
+                    let name = part.trim();
+                    if !name.is_empty() && is_valid_ts_js_identifier(name) {
+                        candidates.push(cached_ts_js_symbol(
+                            name.to_string(),
+                            "Variable".to_string(),
+                            None,
+                            file_path,
+                            raw_line,
+                            line_idx,
+                            import_path,
+                            Some("named"),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    // Pattern 2: exports.foo = ... or module.exports.foo = ...
+    else if trimmed.starts_with("exports.") || trimmed.starts_with("module.exports.") {
+        let rest = if trimmed.starts_with("exports.") {
+            trimmed.strip_prefix("exports.").unwrap()
+        } else {
+            trimmed.strip_prefix("module.exports.").unwrap()
+        };
+        if let Some(eq_idx) = rest.find('=') {
+            let name = rest[..eq_idx].trim();
+            if is_valid_ts_js_identifier(name) {
+                candidates.push(cached_ts_js_symbol(
+                    name.to_string(),
+                    "Variable".to_string(),
+                    None,
+                    file_path,
+                    raw_line,
+                    line_idx,
+                    import_path,
+                    Some("named"),
+                ));
+            }
+        }
+    }
+    // Pattern 3: module.exports = TelegramClient (default assignment)
+    else if let Some(after_exports) = trimmed.strip_prefix("module.exports") {
+        let rest = after_exports.trim_start();
+        if let Some(after_eq) = rest.strip_prefix('=') {
+            let name = after_eq.trim().trim_end_matches(';').trim();
+            if is_valid_ts_js_identifier(name) {
+                candidates.push(cached_ts_js_symbol(
+                    name.to_string(),
+                    "Class".to_string(),
+                    None,
+                    file_path,
+                    raw_line,
+                    line_idx,
+                    import_path,
+                    Some("default"),
+                ));
+            }
+        }
+    }
+    
+    candidates
+}
+
+fn is_valid_ts_js_identifier(s: &str) -> bool {
+    let mut chars = s.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphabetic() && first != '_' && first != '$' {
+        return false;
+    }
+    chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '$')
+}
+
 
 fn collect_ts_js_files(root: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(root) else {
@@ -627,6 +795,12 @@ fn strip_ts_js_extension(path: &Path) -> PathBuf {
         value.set_extension("");
     }
     value
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExportType {
+    ESModule,
+    CommonJS,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1425,6 +1599,33 @@ fn parse_export_list(rest: &str, kind: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+fn extract_names_from_braces(text: &str) -> Vec<String> {
+    let Some(start) = text.find('{') else {
+        return Vec::new();
+    };
+    let Some(end) = text[start..].find('}') else {
+        return Vec::new();
+    };
+    let content = &text[start + 1..start + end];
+    content
+        .split(',')
+        .filter_map(|entry| {
+            let cleaned = entry.trim();
+            if cleaned.is_empty() {
+                return None;
+            }
+            let cleaned = strip_leading_word(cleaned, "type")
+                .map(str::trim_start)
+                .unwrap_or(cleaned);
+            let exported_name = cleaned
+                .split_once(" as ")
+                .map(|(_, alias)| alias.trim())
+                .unwrap_or(cleaned);
+            read_identifier(exported_name)
+        })
+        .collect()
+}
+
 fn read_identifier(input: &str) -> Option<String> {
     read_identifier_with_rest(input).map(|(name, _)| name)
 }
@@ -1664,6 +1865,60 @@ mod tests {
                 .and_then(|symbol| symbol.export_kind.as_deref()),
             Some("default")
         );
+    }
+
+    #[test]
+    fn extracts_commonjs_exports() {
+        let root = PathBuf::from("/repo");
+        let file = root.join("src/utils/math.js");
+        let symbols = extract_ts_js_exports_from_text(
+            &file,
+            &root,
+            "\
+module.exports = { sum, PI };
+exports.foo = bar;
+module.exports.baz = qux;
+module.exports = TelegramClient;
+",
+        );
+
+        let has = |name: &str, kind: &str, export_kind: Option<&str>| {
+            symbols.iter().any(|symbol| {
+                symbol.name == name
+                    && symbol.kind == kind
+                    && symbol.export_kind.as_deref() == export_kind
+            })
+        };
+
+        assert!(has("sum", "Variable", Some("named")));
+        assert!(has("PI", "Variable", Some("named")));
+        assert!(has("foo", "Variable", Some("named")));
+        assert!(has("baz", "Variable", Some("named")));
+        assert!(has("TelegramClient", "Class", Some("default")));
+    }
+
+    #[test]
+    fn extracts_multiline_exports() {
+        let root = PathBuf::from("/repo");
+        let file = root.join("src/utils/math.js");
+        let symbols = extract_ts_js_exports_from_text(
+            &file,
+            &root,
+            "\
+module.exports = {
+  sum,
+  PI,
+  wait
+};
+export {
+  foo,
+  bar as baz
+};
+",
+        );
+
+        let names: Vec<_> = symbols.iter().map(|symbol| symbol.name.as_str()).collect();
+        assert_eq!(names, vec!["sum", "PI", "wait", "foo", "baz"]);
     }
 
     #[test]

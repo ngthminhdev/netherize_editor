@@ -494,26 +494,28 @@ impl AppShell {
         primary_edit.new_text = insert_text.clone();
         let mut edits = vec![primary_edit.clone()];
         edits.extend(item.additional_text_edits.clone());
-        let import_style = ts_js_module_style_for_completion(&text, self.app_state.active_file());
-        if let Some(module_specifier) = completion_module_specifier(
-            self.app_state.active_file(),
-            item.source_path.as_deref(),
-            item.import_path.as_deref(),
-        ) {
-            match item.export_kind.as_deref() {
-                Some("named") => edits.extend(synthesize_ts_named_import_edits(
-                    &text,
-                    &item.label,
-                    &module_specifier,
-                    import_style,
-                )),
-                Some("default") => edits.extend(synthesize_ts_default_import_edits(
-                    &text,
-                    &item.label,
-                    &module_specifier,
-                    import_style,
-                )),
-                _ => {}
+        if item.additional_text_edits.is_empty() {
+            let import_style = ts_js_module_style_for_completion(&text, self.app_state.active_file());
+            if let Some(module_specifier) = completion_module_specifier(
+                self.app_state.active_file(),
+                item.source_path.as_deref(),
+                item.import_path.as_deref(),
+            ) {
+                match item.export_kind.as_deref() {
+                    Some("named") => edits.extend(synthesize_ts_named_import_edits(
+                        &text,
+                        &item.label,
+                        &module_specifier,
+                        import_style,
+                    )),
+                    Some("default") => edits.extend(synthesize_ts_default_import_edits(
+                        &text,
+                        &item.label,
+                        &module_specifier,
+                        import_style,
+                    )),
+                    _ => {}
+                }
             }
         }
         let target_byte =
@@ -533,6 +535,7 @@ impl AppShell {
             .app_state
             .replace_active_document_text_preserve_cursor_with_undo(&next);
         if changed {
+            let scroll_line_before_cursor_restore = self.app_state.scroll_line();
             if let Some(target_byte) = target_byte {
                 let clamped = target_byte.min(next.len());
                 let line = self.app_state.byte_to_line_idx(clamped);
@@ -540,10 +543,10 @@ impl AppShell {
                 let col = next[line_start.min(next.len())..clamped].chars().count();
                 let _ = self.app_state.jump_to_line_and_column(line, col);
             }
+            self.app_state
+                .set_target_scroll_line(scroll_line_before_cursor_restore);
             self.editor_needs_layout = true;
             self.editor_caret_needs_layout = true;
-            let viewport_lines = self.editor_viewport_lines();
-            self.app_state.auto_scroll_to_cursor(viewport_lines);
             self.invalidate_highlights_and_parse_active_buffer();
             self.editor_caret_needs_layout = true;
             self.force_flush_lsp_did_change_for_active_file();

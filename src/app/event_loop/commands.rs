@@ -638,6 +638,7 @@ impl AppShell {
             self.submit_parse_for_active_buffer(true);
             self.submit_lsp_did_open_for_active_file();
             let _ = self.sync_focus_mode_for_active_buffer();
+            self.submit_active_buffer_git_baseline_refresh();
         }
 
         report.request_redraw || report.state_changed

@@ -912,6 +912,38 @@ fn file_picker_confirm_submits_git_baseline_refresh_for_opened_file() {
 
     assert!(shell.git_baseline_revision > revision_before);
 
+}
+
+#[test]
+fn close_buffer_submits_git_baseline_refresh_for_next_active_file() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!(
+        "netherize_close_git_baseline_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("create workspace");
+    let a = root.join("a.rs");
+    let b = root.join("b.rs");
+    std::fs::write(&a, "fn a() {}\n").expect("write a");
+    std::fs::write(&b, "fn b() {}\n").expect("write b");
+
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+
+    // Open first file, then second file
+    assert!(shell.handle_command(Command::OpenFile(a)));
+    assert!(shell.handle_command(Command::OpenFile(b)));
+
+    let revision_before = shell.git_baseline_revision;
+
+    // Close current file (b.rs), which will activate a.rs
+    assert!(shell.close_current_buffer_now());
+
+    // Verify git baseline refresh was requested for the newly active file (a.rs)
+    assert!(shell.git_baseline_revision > revision_before);
+
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -1713,6 +1745,54 @@ fn completion_accept_reuses_existing_call_parens_after_prefix() {
     assert!(shell.handle_command(Command::CompletionAccept));
     assert_eq!(shell.app_state.text_string(), "wait(500)");
     assert_eq!(shell.app_state.cursor_line_col(), (0, "wait".chars().count()));
+}
+
+#[test]
+fn completion_accept_preserves_viewport_scroll_line() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("preserve_completion_scroll");
+    let lines = (0..80)
+        .map(|idx| {
+            if idx == 40 {
+                "wai".to_string()
+            } else {
+                format!("line {idx}")
+            }
+        })
+        .collect::<Vec<_>>();
+    let _path = open_completion_file(
+        &mut shell,
+        &root.join("completion-scroll.ts"),
+        &lines.join("\n"),
+    );
+    assert!(shell.app_state.jump_to_line_and_column(40, "wai".chars().count()));
+    shell.app_state.set_target_scroll_line(35);
+    let mut item = test_completion_item("wait", "wait");
+    item.detail = Some("function wait(): void".to_string());
+    item.has_parameters = Some(false);
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![item],
+        40,
+        "wai".chars().count(),
+        0,
+        "wai".to_string(),
+        &cache,
+        None,
+    );
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+
+    assert_eq!(shell.app_state.scroll_line(), 35);
+    assert_eq!(
+        shell
+            .app_state
+            .text_string()
+            .lines()
+            .nth(40),
+        Some("wait()")
+    );
 }
 
 #[test]

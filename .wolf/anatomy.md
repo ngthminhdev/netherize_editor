@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-26T17:07:06.842Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-27T03:35:43.928Z
 > Files: 364 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
@@ -313,7 +313,7 @@
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new + 8 more (~23793 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
 - `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~17913 tok)
-- `palette.rs` — open_command_palette_mode, open_python_env_selector, push_jump, push_jump_entry + 20 more (~16077 tok)
+- `palette.rs` — open_command_palette_mode, open_python_env_selector, push_jump, push_jump_entry, pop_jump_back (~15360 tok)
 - `settings.rs` — [derive(Debug, Clone, PartialEq)] (~1971 tok)
 - `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, preview_file_history_index + 9 more (~11484 tok)
 - `tests.rs` — [cfg(test)] (~17738 tok)
