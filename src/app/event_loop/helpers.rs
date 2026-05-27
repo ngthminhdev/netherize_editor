@@ -214,7 +214,12 @@ pub(super) fn diagnostic_spans_to_styled(
             const DIAGNOSTIC_TAG_UNNECESSARY: u32 = 1;
 
             let severity = diagnostic.severity.unwrap_or(2);
-            let is_unnecessary = diagnostic.tags.contains(&DIAGNOSTIC_TAG_UNNECESSARY);
+            let msg_lower = diagnostic.message.to_lowercase();
+            let is_unnecessary = diagnostic.tags.contains(&DIAGNOSTIC_TAG_UNNECESSARY)
+                || msg_lower.contains("never read")
+                || msg_lower.contains("never used")
+                || msg_lower.contains("unused")
+                || msg_lower.contains("not used");
             let color = if is_unnecessary {
                 theme.ui.fg_ghost.as_u8()
             } else {

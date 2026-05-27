@@ -59,3 +59,7 @@
 [2026-05-26T11:00:00.969Z] [INFO] Task Full anatomy rescan completed in 99ms
 [2026-05-26T17:00:00.061Z] [INFO] Executing task: Full anatomy rescan
 [2026-05-26T17:00:00.131Z] [INFO] Task Full anatomy rescan completed in 70ms
+[2026-05-27T05:00:00.142Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-27T05:00:00.246Z] [INFO] Task Full anatomy rescan completed in 105ms
+[2026-05-27T11:00:00.490Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-27T11:00:00.647Z] [INFO] Task Full anatomy rescan completed in 158ms

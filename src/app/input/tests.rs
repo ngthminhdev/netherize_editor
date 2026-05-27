@@ -1272,7 +1272,6 @@ fn settings_focus_text_input_routes_to_editing_append() {
 }
 
 #[test]
-#[test]
 fn palette_focus_text_input_routes_to_query_append() {
     let mut handler = InputHandler::new();
     let map = make_map();
@@ -1292,6 +1291,7 @@ fn palette_focus_text_input_routes_to_query_append() {
     }
 }
 
+#[test]
 fn settings_focus_j_and_k_navigate_in_normal_mode() {
     let mut handler = InputHandler::new();
     let map = make_map();

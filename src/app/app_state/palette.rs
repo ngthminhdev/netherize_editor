@@ -1539,16 +1539,8 @@ impl AppState {
                             if matches!(event.kind, FileSystemChangeKind::Modify)
                                 && self.should_ignore_self_save_event()
                             {
-                                // Read file content to verify it actually matches our in-memory text
-                                if let Ok(disk_content) = std::fs::read_to_string(&current_active_path) {
-                                    let memory_content = self.text.to_string();
-                                    if disk_content == memory_content {
-                                        eprintln!("[FileWatch] Ignoring self-save event (content matches)");
-                                        continue;
-                                    } else {
-                                        eprintln!("[FileWatch] Content differs from memory, reloading despite recent save");
-                                    }
-                                }
+                                eprintln!("[FileWatch] Ignoring self-save event");
+                                continue;
                             }
 
                             eprintln!("[FileWatch] Reloading active file from disk: {:?}", current_active_path);

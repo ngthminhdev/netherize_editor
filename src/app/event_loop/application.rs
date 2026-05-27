@@ -539,8 +539,10 @@ impl AppShell {
         if (target - current).abs() > f32::EPSILON {
             self.app_state.current_scroll_y = target;
             self.editor_needs_layout = true;
+            true
+        } else {
+            false
         }
-        false
     }
 
     fn tick_lsp_loading_animation(&mut self) -> bool {
@@ -1194,14 +1196,8 @@ impl AppShell {
                 let bounds_changed = self.last_sidebar_bounds != Some(bounds);
                 let focus_changed = self.last_sidebar_focused != Some(sidebar_focused);
                 if self.sidebar_needs_layout || bounds_changed || focus_changed {
-                    let root_name = self
-                        .app_state
-                        .workspace_root_path()
-                        .and_then(|root| root.file_name().and_then(|name| name.to_str()))
-                        .unwrap_or("workspace");
-                    let header = format!("[ {root_name} ]");
                     self.sidebar_selection_quads = renderer.update_sidebar_content(
-                        Some(&header),
+                        None,
                         &sidebar_rows,
                         bounds,
                         sidebar_focused,
@@ -1441,10 +1437,19 @@ impl AppShell {
                             .is_indexing(profile.key)
                             .then(|| "Indexing symbols…".to_string())
                     });
+                let project_name = if show_welcome {
+                    ""
+                } else {
+                    self.app_state
+                        .workspace_root_path()
+                        .and_then(|root| root.file_name().and_then(|name| name.to_str()))
+                        .unwrap_or("")
+                };
                 let pill_quads = renderer.update_statusbar_content(
                     mode,
                     &pending_keys,
                     git_branch,
+                    project_name,
                     is_dirty,
                     &active_file_name,
                     filetype,

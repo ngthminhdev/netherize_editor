@@ -10,7 +10,10 @@ use crate::{
     config::theme_config::ThemeConfig,
     core::mode::EditorMode,
     render::{
-        glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
+        glyph_instance::GlyphInstance,
+        region_pipeline::RegionDrawInstance,
+        renderer::Renderer,
+        icon_pipeline::{IconDrawInstance, canonical_icon_id},
     },
     text::layout_sync::{compute_caret_layout, compute_cursor_overlay, rebuild_layout_projection},
 };
@@ -71,6 +74,7 @@ impl Renderer {
         let selection_bg = self.theme.ui.selection_bg.as_f32();
 
         let mut glyphs = Vec::new();
+        let mut icons = Vec::new();
         let mut chrome = vec![
             RegionDrawInstance::new([left_x, panel_y, left_w, panel_h], panel_bg),
             RegionDrawInstance::new([right_x, panel_y, right_w, panel_h], editor_bg),
@@ -82,10 +86,10 @@ impl Renderer {
         let header_y = panel_y + 6.0;
         let error_count = diagnostics.results.iter().filter(|item| item.severity == Some(1)).count();
         let warning_count = diagnostics.results.iter().filter(|item| item.severity == Some(2)).count();
-        let info_count = diagnostics
-            .results
-            .len()
-            .saturating_sub(error_count + warning_count);
+        let info_count = diagnostics.results.iter().filter(|item| item.severity == Some(3)).count();
+        let hint_count = diagnostics.results.iter().filter(|item| item.severity == Some(4)).count();
+        let none_count = diagnostics.results.iter().filter(|item| item.severity.is_none()).count();
+
         let unique_file_count = count_diagnostic_files(&diagnostics.results);
         let count_label = format!(
             "{} problems · {} files",
@@ -179,8 +183,8 @@ impl Renderer {
         let footer_y = panel_y + panel_h - footer_h;
         chrome.push(RegionDrawInstance::new([left_x, footer_y, left_w, 1.0], divider));
         let footer_text = format!(
-            "↑↓ navigate  |  Enter open diagnostic  |  Esc/Q close   • ×{}   ▲{}   i{}",
-            error_count, warning_count, info_count
+            "↑↓ navigate  |  Enter open diagnostic  |  Esc/Q close   • ×{}  ▲{}  i{}  •{}  ?{}",
+            error_count, warning_count, info_count, hint_count, none_count
         );
         self.editor_overlay_text_system
             .set_size(Some((left_w - 20.0).max(1.0)), Some(line_height));
@@ -271,23 +275,39 @@ impl Renderer {
                 ));
             }
 
-            let severity_color = match item.severity {
-                Some(1) => error,
-                Some(2) => warning,
-                _ => fg_dim,
+            let (severity_color, severity_icon_name) = match item.severity {
+                Some(1) => (error, "built_in:error"),
+                Some(2) => (warning, "built_in:warning"),
+                Some(3) => (fg_dim, "built_in:info"),
+                Some(4) => (fg_ghost, "built_in:info"),
+                _ => (fg_dim, "built_in:info"),
             };
+
+            // Draw severity icon
+            if let Some(icon_id) = canonical_icon_id(severity_icon_name) {
+                let icon_size = font_size;
+                let icon_x = left_x + 16.0;
+                let icon_y = row_y + (row_h - icon_size) * 0.5;
+                icons.push(IconDrawInstance {
+                    icon: icon_id,
+                    rect: [icon_x, icon_y, icon_size, icon_size],
+                    tint: severity_color,
+                });
+            }
+
             let line_label = format!("{}", item.line + 1);
             let line_w = estimate_monospace_width("9999", font_size).max(34.0);
+            let line_x = left_x + 48.0;
             glyphs.extend(layout_panel_text(
                 &line_label,
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
-                left_x + 22.0,
+                line_x,
                 row_y + 4.0,
                 severity_color,
             ));
-            let message_x = left_x + 22.0 + line_w;
+            let message_x = line_x + line_w;
             let message_w = (left_x + left_w - message_x - 10.0).max(1.0);
             glyphs.extend(layout_panel_text(
                 &clamp_monospace_text(&item.message, message_w, font_size),
@@ -416,6 +436,12 @@ impl Renderer {
 
         self.editor_overlay_chrome_instances = chrome;
         self.editor_overlay_glyph_instances = glyphs;
+        self.editor_overlay_icon_instances = icons;
+        self.editor_overlay_icon_pipeline.upload_instances(
+            &self.device,
+            &self.editor_overlay_icon_instances,
+            [self.surface_state.config.width, self.surface_state.config.height],
+        );
         self.editor_overlay_text_pipeline.upload_instances(
             &self.device,
             &self.queue,

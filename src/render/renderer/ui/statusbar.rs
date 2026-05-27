@@ -28,6 +28,7 @@ impl Renderer {
         mode: EditorMode,
         pending_keys: &str,
         git_branch: &str,
+        project_name: &str,
         is_dirty: bool,
         active_file_name: &str,
         filetype: &str,
@@ -59,6 +60,7 @@ impl Renderer {
             mode,
             pending_keys: pending_keys.to_string(),
             git_branch: git_branch.to_string(),
+            project_name: project_name.to_string(),
             is_dirty,
             active_file_name: active_file_name.to_string(),
             filetype: filetype.to_string(),
@@ -177,33 +179,55 @@ impl Renderer {
         // ══════════════════════════════════════════════════════════════════════════
         let mut left_x = pill_x + pill_width + item_gap;
 
-        // ── Git branch ────────────────────────────────────────────────────────────
+        // ── Project name & Git branch ─────────────────────────────────────────────
+        let project = project_name.trim();
         let branch = git_branch.trim();
-        if !branch.is_empty() {
-            let branch_name = branch.strip_prefix("git: ").unwrap_or(branch);
-            let icon = "⎇ ";
-            let icon_w = estimate_monospace_width(icon, font_size);
-            let name_w = estimate_monospace_width(branch_name, font_size);
-            glyphs.extend(layout_panel_text(
-                icon,
-                &mut self.statusbar_text_system,
-                &mut self.atlas,
-                &self.queue,
-                left_x,
-                origin_y,
-                fg_ghost,
-            ));
-            left_x += icon_w;
-            glyphs.extend(layout_panel_text(
-                branch_name,
-                &mut self.statusbar_text_system,
-                &mut self.atlas,
-                &self.queue,
-                left_x,
-                origin_y,
-                fg_dim,
-            ));
-            left_x += name_w + item_gap;
+        if !project.is_empty() || !branch.is_empty() {
+            if !project.is_empty() {
+                let proj_w = estimate_monospace_width(project, font_size);
+                glyphs.extend(layout_panel_text(
+                    project,
+                    &mut self.statusbar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    left_x,
+                    origin_y,
+                    fg_dim,
+                ));
+                left_x += proj_w;
+
+                if !branch.is_empty() {
+                    left_x += estimate_monospace_width(" ", font_size);
+                }
+            }
+
+            if !branch.is_empty() {
+                let branch_name = branch.strip_prefix("git: ").unwrap_or(branch);
+                let icon = "⎇ ";
+                let icon_w = estimate_monospace_width(icon, font_size);
+                let name_w = estimate_monospace_width(branch_name, font_size);
+                glyphs.extend(layout_panel_text(
+                    icon,
+                    &mut self.statusbar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    left_x,
+                    origin_y,
+                    fg_ghost,
+                ));
+                left_x += icon_w;
+                glyphs.extend(layout_panel_text(
+                    branch_name,
+                    &mut self.statusbar_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    left_x,
+                    origin_y,
+                    fg_dim,
+                ));
+                left_x += name_w;
+            }
+            left_x += item_gap;
         }
 
         // ── Dirty dot ─────────────────────────────────────────────────────────────

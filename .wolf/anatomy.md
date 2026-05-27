@@ -1,16 +1,18 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-27T03:35:43.928Z
-> Files: 364 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-27T11:00:00.645Z
+> Files: 369 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
 
 - `.clinerules` — # Project Rules Precedence (~894 tok)
 - `.DS_Store` (~1640 tok)
 - `.gitignore` — Git ignore rules (~32 tok)
-- `AGENTS.md` — Project Rules Precedence (~1938 tok)
+- `AGENTS.md` — Project Rules Precedence (~1490 tok)
+- `BUILD.md` — Build Instructions (~915 tok)
 - `Cargo.toml` — Rust package manifest (~652 tok)
-- `CLAUDE.md` — OpenWolf (~1991 tok)
+- `CLAUDE.md` — OpenWolf (~1543 tok)
+- `Cross.toml` (~73 tok)
 - `DEPENDENCIES.md` — Netherize Editor - Runtime Dependencies (~1867 tok)
 - `README.md` — Project documentation (~6733 tok)
 - `update_themes.sh` — Script to update all theme files with vibrant syntax colors (~410 tok)
@@ -18,7 +20,7 @@
 ## .claude/
 
 - `settings.json` (~441 tok)
-- `settings.local.json` (~1612 tok)
+- `settings.local.json` (~1620 tok)
 
 ## .claude/rules/
 
@@ -150,7 +152,15 @@
 
 ## .commandcode/taste/
 
-- `taste.md` — Taste (Continuously Learned by [CommandCode][cmd]) (~174 tok)
+- `taste.md` — Taste (Continuously Learned by [CommandCode][cmd]) (~584 tok)
+
+## .commandcode/taste/editor-behavior/
+
+- `taste.md` — editor-behavior (~249 tok)
+
+## .commandcode/taste/ui/
+
+- `taste.md` — ui (~179 tok)
 
 ## .gitnexus/
 
@@ -282,6 +292,7 @@
 
 ## scripts/
 
+- `bundle_linux.sh` (~2227 tok)
 - `bundle_macos.sh` (~1328 tok)
 - `bundle_windows.sh` (~528 tok)
 - `generate_bench_samples.sh` (~324 tok)
@@ -299,7 +310,7 @@
 
 - `async_bridge.rs` — BridgePumpStats: new, pump (~4589 tok)
 - `clipboard.rs` — SystemClipboard: new (~524 tok)
-- `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~15346 tok)
+- `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~15399 tok)
 - `file_picker.rs` — FilePickerEntry: open, close, append_query, backspace_query + 6 more (~1644 tok)
 - `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~2128 tok)
 - `mod.rs` (~66 tok)
@@ -312,29 +323,29 @@
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag + 17 more (~10839 tok)
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new + 8 more (~23793 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
-- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~17913 tok)
-- `palette.rs` — open_command_palette_mode, open_python_env_selector, push_jump, push_jump_entry, pop_jump_back (~15360 tok)
+- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~18182 tok)
+- `palette.rs` — open_command_palette_mode, open_python_env_selector, push_jump, push_jump_entry + 20 more (~17994 tok)
 - `settings.rs` — [derive(Debug, Clone, PartialEq)] (~1971 tok)
 - `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, preview_file_history_index + 9 more (~11484 tok)
-- `tests.rs` — [cfg(test)] (~17738 tok)
+- `tests.rs` — [cfg(test)] (~18808 tok)
 - `workspace.rs` — attach_workspace, clear_workspace_session_state, workspace_root_path, workspace_nodes + 22 more (~4276 tok)
 
 ## src/app/event_loop/
 
-- `application.rs` — [cfg(target_os = "macos")] (~23670 tok)
+- `application.rs` — [cfg(target_os = "macos")] (~23681 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~10569 tok)
-- `commands_completion.rs` (~13905 tok)
-- `commands_editor.rs` (~4859 tok)
+- `commands_completion.rs` (~16090 tok)
+- `commands_editor.rs` (~5441 tok)
 - `commands_explorer.rs` (~7613 tok)
 - `commands_lsp.rs` (~9198 tok)
 - `commands_palette.rs` (~7473 tok)
 - `commands_prompts.rs` (~7215 tok)
 - `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~6809 tok)
 - `commands_settings.rs` (~4526 tok)
-- `commands_terminal.rs` (~6559 tok)
-- `commands_tests.rs` — [derive(Default)] (~25269 tok)
-- `commands.rs` — [path = "commands_ai_chat.rs"] (~10171 tok)
-- `helpers.rs` — Declares BRACKET_PAIRS (~17736 tok)
+- `commands_terminal.rs` (~6489 tok)
+- `commands_tests.rs` — [derive(Default)] (~28079 tok)
+- `commands.rs` — [path = "commands_ai_chat.rs"] (~10189 tok)
+- `helpers.rs` — Declares BRACKET_PAIRS (~17812 tok)
 - `mod.rs` — Struct: AppShell (~6672 tok)
 - `setup.rs` — new, new_for_tests (~19677 tok)
 - `welcome.rs` (~611 tok)
@@ -347,7 +358,7 @@
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
 - `lsp.rs` (~9632 tok)
-- `mod.rs` (~9129 tok)
+- `mod.rs` (~9157 tok)
 - `preview.rs` (~993 tok)
 - `shell.rs` (~112 tok)
 - `syntax.rs` (~421 tok)
@@ -365,14 +376,14 @@
 
 ## src/app/input_map/
 
-- `focus.rs` (~11380 tok)
+- `focus.rs` (~11317 tok)
 - `helpers.rs` (~180 tok)
 - `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette + 8 more (~4975 tok)
-- `tests.rs` (~16209 tok)
+- `tests.rs` (~16222 tok)
 
 ## src/async_runtime/
 
-- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~7017 tok)
+- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~7106 tok)
 - `mod.rs` (~16 tok)
 - `python_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~948 tok)
 - `scheduler.rs` — Declares FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD (~2222 tok)
@@ -388,7 +399,7 @@
 - `git.rs` (~1560 tok)
 - `local_history.rs` — Local history (disk persistence) has been removed. (~42 tok)
 - `lsp_io.rs` (~2423 tok)
-- `lsp_parse.rs` — Declares MAX_COMPLETION_ITEMS (~12915 tok)
+- `lsp_parse.rs` — Declares MAX_COMPLETION_ITEMS (~14817 tok)
 - `lsp.rs` (~7154 tok)
 - `pty.rs` (~3903 tok)
 - `runtime.rs` — Runtime wrapper duy nhất cho background jobs. (~839 tok)
@@ -409,7 +420,7 @@
 
 - `builtin.rs` — builtin_dark (~2263 tok)
 - `loader.rs` — ThemeProfileEntry: default_profile, resolved_profile, active_profile, list_available_themes + 5 more (~11810 tok)
-- `model.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~9284 tok)
+- `model.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~9281 tok)
 - `raw.rs` — [derive(Debug, Clone, Deserialize)] (~3449 tok)
 
 ## src/core/
@@ -434,17 +445,17 @@
 ## src/lsp/
 
 - `capabilities.rs` — Bitmask nhỏ gọn của các tính năng mà LSP server khai báo trong `InitializeResult`. (~761 tok)
-- `client.rs` — LspEntry: lsp_entry_for_extension, refresh_patched_env_path, patched_env_path, check_lsp_installed (~13784 tok)
+- `client.rs` — LspEntry: lsp_entry_for_extension, refresh_patched_env_path, patched_env_path, check_lsp_installed (~14054 tok)
 - `mod.rs` (~62 tok)
 - `registry.rs` — LanguageProfile: all_language_profiles, language_profile_for_extension, language_profile_for_path, language_profile_for_language_id + 2 more (~4469 tok)
-- `symbol_cache.rs` — A workspace-wide symbol cache for fast import/completion suggestions. (~14957 tok)
+- `symbol_cache.rs` — A workspace-wide symbol cache for fast import/completion suggestions. (~19246 tok)
 
 ## src/render/
 
 - `caret.rs` — [derive(Debug, Clone, Copy)] (~2993 tok)
 - `color_space.rs` — srgb_color_target_state (~236 tok)
 - `glyph_instance.rs` — Vertex tĩnh của một quad đơn vị (0..1). (~844 tok)
-- `icon_pipeline.rs` — [repr(C)] (~10401 tok)
+- `icon_pipeline.rs` — [repr(C)] (~10472 tok)
 - `image_pipeline.rs` — [repr(C)] (~2249 tok)
 - `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
@@ -476,14 +487,14 @@
 - `extensions.rs` — update_extensions_manager_content (~8893 tok)
 - `fuzzy.rs` — update_fuzzy_picker_buffer_content (~7853 tok)
 - `help.rs` — update_help_buffer_content (~4176 tok)
-- `overlays.rs` — update_editor_overlays (~18251 tok)
-- `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~10796 tok)
+- `overlays.rs` — update_editor_overlays (~19555 tok)
+- `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11054 tok)
 - `settings.rs` — update_settings_buffer_content (~10502 tok)
 - `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~7422 tok)
 
 ## src/render/renderer/editor/buffers/
 
-- `diagnostics.rs` — update_diagnostics_buffer_content (~5482 tok)
+- `diagnostics.rs` — update_diagnostics_buffer_content (~5853 tok)
 
 ## src/render/renderer/editor/overlays/
 
@@ -532,8 +543,8 @@
 ## src/syntax/highlight/
 
 - `categories.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~2844 tok)
-- `engine.rs` (~5054 tok)
-- `mod.rs` — generate_highlight_spans, generate_highlight_spans_with_cache, generate_dotenv_highlight_spans, generate_plaintext_highlight_spans + 3 more (~6758 tok)
+- `engine.rs` (~5247 tok)
+- `mod.rs` — generate_highlight_spans, generate_highlight_spans_with_cache, generate_dotenv_highlight_spans, generate_plaintext_highlight_spans + 3 more (~6806 tok)
 - `normalize_tests.rs` (~646 tok)
 - `queries.rs` — highlight_markdown_inline (~3133 tok)
 - `spans.rs` — [derive(Debug, Clone, PartialEq, Eq)] (~1642 tok)

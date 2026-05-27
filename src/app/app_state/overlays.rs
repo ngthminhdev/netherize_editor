@@ -1018,6 +1018,13 @@ impl AppState {
     }
 
     pub(super) fn register_open_text_buffer(&mut self, active_path: PathBuf) {
+        if let Some(active_idx) = self.active_buffer_index
+            && let Some(slot) = self.buffers.get(active_idx)
+            && matches!(&slot.content, BufferContent::Text(buffer) if buffer.path == active_path)
+        {
+            return;
+        }
+
         // Save current text buffer before potentially switching to a different buffer
         self.save_current_text_buffer_history();
 

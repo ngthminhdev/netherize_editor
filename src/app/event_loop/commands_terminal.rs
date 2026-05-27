@@ -107,10 +107,6 @@ impl AppShell {
                 if next_visible {
                     changed |= self.dismiss_initial_launch_welcome_if_active();
                     self.ensure_active_terminal_tab_spawned();
-                    // Enter terminal focus mode to enable text input
-                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
-                        changed |= result.changed;
-                    }
                 }
 
                 if !next_visible

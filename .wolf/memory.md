@@ -642,3 +642,56 @@
 | 10:35 | Edited src/app/app_state/palette.rs | modified should_ignore_self_save_event() | ~305 |
 | 10:36 | Fixed lazygit discard reload bug | src/app/app_state/palette.rs | Compare file content instead of blind time-based ignore | ~400 tokens |
 | 10:36 | Session end: 3 writes across 1 files (palette.rs) | 12 reads | ~137671 tok |
+
+## Session: 2026-05-27 14:13
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 14:17 | Edited src/render/renderer/editor/selections.rs | modified semantic_symbol_highlight_quads() | ~88 |
+| 14:17 | Session end: 1 writes across 1 files (selections.rs) | 2 reads | ~34683 tok |
+
+## Session: 2026-05-27 15:01
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 15:46 | Edited src/render/renderer/editor/buffers/diagnostics.rs | expanded (+19 lines) | ~356 |
+| 15:47 | Edited src/render/renderer/editor/buffers/diagnostics.rs | 11→11 lines | ~135 |
+| 15:47 | Enhanced diagnostics buffer with severity icons and colored backgrounds | src/render/renderer/editor/buffers/diagnostics.rs | Added × (error/red), ▲ (warning/yellow), i (info) icons with background highlights | ~1200 |
+| 15:47 | Session end: 2 writes across 1 files (diagnostics.rs) | 3 reads | ~47976 tok |
+| 15:54 | Edited src/render/renderer/editor/buffers/diagnostics.rs | added 1 import(s) | ~104 |
+| 15:54 | Edited src/render/renderer/editor/buffers/diagnostics.rs | 35→40 lines | ~423 |
+| 15:54 | Edited src/render/renderer/editor/buffers/diagnostics.rs | 11→11 lines | ~129 |
+| 15:54 | Edited src/render/renderer/editor/buffers/diagnostics.rs | 40→40 lines | ~424 |
+| 15:55 | Edited src/render/renderer/editor/buffers/diagnostics.rs | modified is_empty() | ~305 |
+| 15:55 | Edited src/render/renderer/editor/buffers/diagnostics.rs | 6→6 lines | ~96 |
+| 15:56 | Refactored diagnostics buffer with PrefixIconBadge outline style + debug severity | src/render/renderer/editor/buffers/diagnostics.rs | Added outline badges, severity debug logging, footer counts | ~1500 |
+| 15:56 | Session end: 8 writes across 1 files (diagnostics.rs) | 9 reads | ~88950 tok |
+| 16:10 | Edited src/render/renderer/editor/buffers/diagnostics.rs | 14→17 lines | ~175 |
+| 16:10 | Edited src/render/renderer/editor/buffers/diagnostics.rs | 7→6 lines | ~76 |
+| 16:10 | Edited src/render/renderer/editor/buffers/diagnostics.rs | modified update_diagnostics_buffer_content() | ~696 |
+| 16:11 | Edited src/render/renderer/editor/buffers/diagnostics.rs | modified canonical_icon_id() | ~357 |
+| 16:11 | Edited src/render/renderer/editor/buffers/diagnostics.rs | 8→9 lines | ~91 |
+| 16:12 | Edited src/render/icon_pipeline.rs | 8→10 lines | ~168 |
+| 16:12 | Edited src/render/icon_pipeline.rs | 3→4 lines | ~93 |
+| 16:13 | Edited src/render/icon_pipeline.rs | 3→4 lines | ~93 |
+| 16:13 | Added error/warning SVG icons to diagnostics buffer | src/render/renderer/editor/buffers/diagnostics.rs, src/render/icon_pipeline.rs | Use IconDrawInstance with built_in:error, built_in:warning, built_in:info icons | ~1800 |
+| 16:13 | Session end: 16 writes across 2 files (diagnostics.rs, icon_pipeline.rs) | 9 reads | ~90302 tok |
+
+## Session: 2026-05-27 17:16
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 17:18 | Created scripts/bundle_linux.sh | — | ~1795 |
+| 17:18 | Session end: 1 writes across 1 files (bundle_linux.sh) | 3 reads | ~3904 tok |
+| 17:19 | Edited scripts/bundle_linux.sh | expanded (+30 lines) | ~423 |
+| 17:19 | Edited scripts/bundle_linux.sh | 2→7 lines | ~74 |
+| 17:19 | Session end: 3 writes across 1 files (bundle_linux.sh) | 3 reads | ~4437 tok |
+| 17:23 | Created Cross.toml | — | ~64 |
+| 17:24 | Edited Cross.toml | 8→8 lines | ~68 |
+| 17:25 | Created BUILD.md | — | ~976 |
+| 17:25 | Session end: 6 writes across 3 files (bundle_linux.sh, Cross.toml, BUILD.md) | 3 reads | ~5623 tok |
+
+## Session: 2026-05-27 19:58
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
