@@ -175,7 +175,7 @@ fn completion_kind_is_callable(kind: u32) -> bool {
 
 fn infer_completion_has_parameters(
     label: &str,
-    kind: Option<u32>,
+    _kind: Option<u32>,
     detail: Option<&str>,
     insert_text: Option<&str>,
 ) -> Option<bool> {
@@ -189,8 +189,7 @@ fn infer_completion_has_parameters(
     {
         return Some(has_parameters);
     }
-    kind.filter(|kind| completion_kind_is_callable(*kind))
-        .and(Some(true))
+    None
 }
 
 fn infer_call_parameters_from_insert_text(text: &str) -> Option<bool> {
@@ -227,12 +226,28 @@ fn infer_call_parameters_from_signature(label: &str, signature: &str) -> Option<
                 return Some(!signature[open + 1..close].trim().is_empty());
             }
         }
+        if go_func_signature_parenthesis_looks_like_params(&signature[..open], &signature[close + 1..])
+        {
+            return Some(!signature[open + 1..close].trim().is_empty());
+        }
         if signature_parenthesis_looks_like_call(label, &signature[..open]) {
             return Some(!signature[open + 1..close].trim().is_empty());
         }
         search_from = close + 1;
     }
     None
+}
+
+fn go_func_signature_parenthesis_looks_like_params(before_open: &str, after_close: &str) -> bool {
+    let before = before_open.trim_end();
+    if before != "func" {
+        return false;
+    }
+    let after = after_close.trim_start();
+    !after
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_' || ch == '$')
 }
 
 fn signature_parenthesis_looks_like_call(label: &str, before_open: &str) -> bool {
@@ -1196,6 +1211,18 @@ mod tests {
                     "kind": 3,
                     "insertText": "init",
                     "detail": "function init(): void"
+                },
+                {
+                    "label": "NewApp",
+                    "kind": 3,
+                    "insertText": "NewApp()",
+                    "detail": "func() *bootstrap.App"
+                },
+                {
+                    "label": "NewAppWithContext",
+                    "kind": 3,
+                    "insertText": "NewAppWithContext",
+                    "detail": "func(ctx context.Context) *bootstrap.App"
                 }
             ]
         });
@@ -1206,6 +1233,10 @@ mod tests {
         assert_eq!(items[0].has_parameters, Some(true));
         assert_eq!(items[1].callable, Some(true));
         assert_eq!(items[1].has_parameters, Some(false));
+        assert_eq!(items[2].callable, Some(true));
+        assert_eq!(items[2].has_parameters, Some(false));
+        assert_eq!(items[3].callable, Some(true));
+        assert_eq!(items[3].has_parameters, Some(true));
     }
 
     #[test]

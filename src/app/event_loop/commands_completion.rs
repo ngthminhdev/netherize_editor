@@ -794,7 +794,7 @@ fn completion_accept_text_and_cursor_offset(
                 .as_deref()
                 .and_then(|detail| completion_detail_has_parameters(&item.label, detail))
         })
-        .unwrap_or(true);
+        .unwrap_or(false);
 
     if let Some((open, close)) = completion_insert_text_call_parens(&insert_text) {
         cursor_offset = if has_parameters && insert_text[open + 1..close].trim().is_empty() {
@@ -890,12 +890,27 @@ fn completion_detail_has_parameters(label: &str, detail: &str) -> Option<bool> {
                 return Some(!detail[open + 1..close].trim().is_empty());
             }
         }
+        if completion_go_func_parens_look_like_params(&detail[..open], &detail[close + 1..]) {
+            return Some(!detail[open + 1..close].trim().is_empty());
+        }
         if completion_signature_parens_look_like_call(label, &detail[..open]) {
             return Some(!detail[open + 1..close].trim().is_empty());
         }
         search_from = close + 1;
     }
     None
+}
+
+fn completion_go_func_parens_look_like_params(before_open: &str, after_close: &str) -> bool {
+    let before = before_open.trim_end();
+    if before != "func" {
+        return false;
+    }
+    let after = after_close.trim_start();
+    !after
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_' || ch == '$')
 }
 
 fn completion_signature_parens_look_like_call(label: &str, before_open: &str) -> bool {
