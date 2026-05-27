@@ -487,8 +487,10 @@ impl AppShell {
         if insert_text.is_empty() {
             return self.close_completion_popup();
         }
+        let has_existing_call_parens =
+            completion_source_has_call_parens_after_edit(&text, &primary_edit);
         let (insert_text, primary_cursor_offset) =
-            completion_accept_text_and_cursor_offset(&item, insert_text);
+            completion_accept_text_and_cursor_offset(&item, insert_text, has_existing_call_parens);
         primary_edit.new_text = insert_text.clone();
         let mut edits = vec![primary_edit.clone()];
         edits.extend(item.additional_text_edits.clone());
@@ -780,9 +782,18 @@ fn should_resolve_lsp_completion_before_accept(
 fn completion_accept_text_and_cursor_offset(
     item: &crate::async_runtime::message::LspCompletionItem,
     mut insert_text: String,
+    has_existing_call_parens: bool,
 ) -> (String, usize) {
     let mut cursor_offset = insert_text.len();
     if !completion_item_is_callable(item) {
+        return (insert_text, cursor_offset);
+    }
+
+    if has_existing_call_parens {
+        if let Some((open, _close)) = completion_insert_text_call_parens(&insert_text) {
+            insert_text = insert_text[..open].trim_end().to_string();
+        }
+        cursor_offset = insert_text.len();
         return (insert_text, cursor_offset);
     }
 
@@ -815,6 +826,18 @@ fn completion_accept_text_and_cursor_offset(
     }
 
     (insert_text, cursor_offset)
+}
+
+fn completion_source_has_call_parens_after_edit(
+    source: &str,
+    primary_edit: &crate::async_runtime::message::LspTextEdit,
+) -> bool {
+    let Some((_start, end)) = lsp_text_edit_byte_range(source, primary_edit) else {
+        return false;
+    };
+    source
+        .get(end..)
+        .is_some_and(|suffix| suffix.trim_start().starts_with('('))
 }
 
 fn completion_item_is_callable(item: &crate::async_runtime::message::LspCompletionItem) -> bool {

@@ -1690,6 +1690,58 @@ fn completion_accept_adds_call_parens_and_keeps_cursor_after_no_param_call() {
 }
 
 #[test]
+fn completion_accept_reuses_existing_call_parens_after_prefix() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("existing_call_parens");
+    let _path = open_completion_file(&mut shell, &root.join("call_parens.ts"), "wai(500)");
+    let mut item = test_completion_item("wait", "wait");
+    item.detail = Some("function wait(ms: number): Promise<void>".to_string());
+    item.has_parameters = Some(true);
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![item],
+        0,
+        "wai".chars().count(),
+        0,
+        "wai".to_string(),
+        &cache,
+        None,
+    );
+    assert!(shell.app_state.jump_to_line_and_column(0, "wai".chars().count()));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(shell.app_state.text_string(), "wait(500)");
+    assert_eq!(shell.app_state.cursor_line_col(), (0, "wait".chars().count()));
+}
+
+#[test]
+fn completion_accept_strips_lsp_empty_call_parens_when_source_already_has_call() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("existing_call_parens_lsp");
+    let _path = open_completion_file(&mut shell, &root.join("call_parens.ts"), "wai(500)");
+    let mut item = test_completion_item("wait", "wait()");
+    item.detail = Some("function wait(ms: number): Promise<void>".to_string());
+    item.has_parameters = Some(true);
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![item],
+        0,
+        "wai".chars().count(),
+        0,
+        "wai".to_string(),
+        &cache,
+        None,
+    );
+    assert!(shell.app_state.jump_to_line_and_column(0, "wai".chars().count()));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(shell.app_state.text_string(), "wait(500)");
+    assert_eq!(shell.app_state.cursor_line_col(), (0, "wait".chars().count()));
+}
+
+#[test]
 fn completion_accept_keeps_cursor_after_go_no_param_call_signature() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let root = completion_temp_root("go_no_param_call");
