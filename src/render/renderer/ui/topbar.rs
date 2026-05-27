@@ -22,6 +22,32 @@ fn topbar_tab_text_scissor(bounds: [f32; 4]) -> Option<[u32; 4]> {
     inset_scissor_rect(bounds, 4.0, 2.0)
 }
 
+fn clamp_project_name(text: &str, max_width: f32, font_size: f32) -> String {
+    if text.is_empty() || max_width <= 0.0 {
+        return String::new();
+    }
+    if estimate_monospace_width(text, font_size) <= max_width {
+        return text.to_string();
+    }
+    let char_width = (font_size * 0.6).max(1.0);
+    let max_chars = (max_width / char_width).floor() as usize;
+    if max_chars == 0 {
+        return String::new();
+    }
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    if max_chars <= 3 {
+        let count = text.chars().count();
+        return text.chars().skip(count - max_chars).collect();
+    }
+    let count = text.chars().count();
+    let mut shortened = String::from("...");
+    let suffix: String = text.chars().skip(count - (max_chars - 3)).collect();
+    shortened.push_str(&suffix);
+    shortened
+}
+
 const TOPBAR_TRAFFIC_LIGHT_SPACE_MACOS: f32 = 150.0;
 const TOPBAR_TAB_PADDING_X: f32 = 12.0;
 const TOPBAR_TAB_SEPARATOR_WIDTH: f32 = 1.0;
@@ -133,15 +159,16 @@ impl Renderer {
             let text_sep_gap = 16.0;
             let sep_tab_gap = 16.0;
 
-            let sep = "│";
+            // let sep = "│";
+            let sep = "";
             let sep_w = estimate_monospace_width(sep, font_size);
-            let folder_icon = "󱁽";
+            let folder_icon = "󱁽 ";
             let folder_icon_w = estimate_monospace_width(folder_icon, font_size);
 
             // Compute maximum width available for the text itself
             let allocated_fixed_w = left_pad + folder_icon_w + icon_text_gap + text_sep_gap + sep_w + sep_tab_gap;
             let max_text_w = (center_x - topbar_start_x - allocated_fixed_w).max(0.0);
-            let clamped_project = crate::render::renderer::helpers::clamp_monospace_text(project, max_text_w, font_size);
+            let clamped_project = clamp_project_name(project, max_text_w, font_size);
 
             if !clamped_project.is_empty() {
                 let mut draw_x = tab_x + left_pad;
