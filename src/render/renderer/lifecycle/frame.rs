@@ -103,6 +103,10 @@ impl Renderer {
             all_instances.extend_from_slice(&self.terminal_cursor_instances);
             all_instances.extend_from_slice(&self.buffer_terminal_cursor_instances);
         }
+        all_instances.extend_from_slice(&self.right_terminal_cell_background_instances);
+        if self.caret_blink_visible {
+            all_instances.extend_from_slice(&self.right_terminal_cursor_instances);
+        }
         all_instances.extend_from_slice(&self.ai_chat_history_chrome_instances);
         all_instances.extend_from_slice(&self.ai_chat_suggestion_chrome_instances);
         all_instances.extend_from_slice(&self.palette_chrome_instances);
@@ -110,10 +114,6 @@ impl Renderer {
         all_instances.extend_from_slice(&self.system_dep_chrome_instances);
         all_instances.extend_from_slice(&self.toast_chrome_instances);
         all_instances.extend_from_slice(&self.diagnostic_hover_chrome_instances);
-        all_instances.extend_from_slice(&self.right_terminal_cell_background_instances);
-        if self.caret_blink_visible {
-            all_instances.extend_from_slice(&self.right_terminal_cursor_instances);
-        }
 
         // Single upload — all borrows above are released.
         self.region_pipeline
