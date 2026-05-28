@@ -60,7 +60,7 @@ tab_width = 4
 insert_spaces = true
 
 [welcome]
-version = "v1.0.3-alpha"
+version = "v1.0.4-alpha"
 card_max_width = 560.0
 card_padding_x = 42.0
 card_padding_y = 34.0
