@@ -37,11 +37,25 @@ impl Renderer {
         let leap_bg_start = welcome_start + welcome_count;
         let leap_bg_count = self.leap_label_bg_instances.len() as u32;
 
-        let term_cursor_start = leap_bg_start + leap_bg_count;
-        let term_cursor_count = self.terminal_cursor_instances.len() as u32;
+        let term_cell_bg_start = leap_bg_start + leap_bg_count;
+        let term_cell_bg_count = self.terminal_cell_background_instances.len() as u32;
+
+        let buf_term_cell_bg_start = term_cell_bg_start + term_cell_bg_count;
+        let buf_term_cell_bg_count = self.buffer_terminal_cell_background_instances.len() as u32;
+
+        let term_cursor_start = buf_term_cell_bg_start + buf_term_cell_bg_count;
+        let term_cursor_count = if self.caret_blink_visible {
+            self.terminal_cursor_instances.len() as u32
+        } else {
+            0
+        };
 
         let buf_term_cursor_start = term_cursor_start + term_cursor_count;
-        let buf_term_cursor_count = self.buffer_terminal_cursor_instances.len() as u32;
+        let buf_term_cursor_count = if self.caret_blink_visible {
+            self.buffer_terminal_cursor_instances.len() as u32
+        } else {
+            0
+        };
 
         let ai_chat_history_chrome_start = buf_term_cursor_start + buf_term_cursor_count;
         let ai_chat_history_chrome_count = self.ai_chat_history_chrome_instances.len() as u32;
@@ -73,8 +87,12 @@ impl Renderer {
         all_instances.extend_from_slice(&self.editor_overlay_chrome_instances);
         all_instances.extend_from_slice(&self.welcome_logo_chrome_instances);
         all_instances.extend_from_slice(&self.leap_label_bg_instances);
-        all_instances.extend_from_slice(&self.terminal_cursor_instances);
-        all_instances.extend_from_slice(&self.buffer_terminal_cursor_instances);
+        all_instances.extend_from_slice(&self.terminal_cell_background_instances);
+        all_instances.extend_from_slice(&self.buffer_terminal_cell_background_instances);
+        if self.caret_blink_visible {
+            all_instances.extend_from_slice(&self.terminal_cursor_instances);
+            all_instances.extend_from_slice(&self.buffer_terminal_cursor_instances);
+        }
         all_instances.extend_from_slice(&self.ai_chat_history_chrome_instances);
         all_instances.extend_from_slice(&self.ai_chat_suggestion_chrome_instances);
         all_instances.extend_from_slice(&self.palette_chrome_instances);
@@ -379,6 +397,21 @@ impl Renderer {
             }
 
             // 6. Terminal panel.
+            if term_cell_bg_count > 0 {
+                draw_text_region(
+                    &mut pass,
+                    self.terminal_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline.draw_range(
+                            render_pass,
+                            term_cell_bg_start,
+                            term_cell_bg_count,
+                        );
+                    },
+                );
+            }
             if let Some(body_batch) = self.terminal_body_batch {
                 draw_text_region(
                     &mut pass,
@@ -429,6 +462,21 @@ impl Renderer {
                 );
             }
 
+            if buf_term_cell_bg_count > 0 {
+                draw_text_region(
+                    &mut pass,
+                    self.buffer_terminal_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline.draw_range(
+                            render_pass,
+                            buf_term_cell_bg_start,
+                            buf_term_cell_bg_count,
+                        );
+                    },
+                );
+            }
             if let Some(header_batch) = self.buffer_terminal_header_batch {
                 let total_count = self.buffer_terminal_glyph_instances.len() as u32;
                 let body_start = header_batch

@@ -219,6 +219,7 @@ impl Renderer {
             terminal_text_pipeline,
             terminal_view_renderer: TerminalViewRenderer::default_monospace(),
             terminal_glyph_instances: Vec::new(),
+            terminal_cell_background_instances: Vec::new(),
             terminal_cursor_instances: Vec::new(),
             terminal_scissor: None,
             terminal_body_batch: None,
@@ -227,6 +228,7 @@ impl Renderer {
             buffer_terminal_text_pipeline,
             buffer_terminal_view_renderer: TerminalViewRenderer::default_monospace(),
             buffer_terminal_glyph_instances: Vec::new(),
+            buffer_terminal_cell_background_instances: Vec::new(),
             buffer_terminal_cursor_instances: Vec::new(),
             buffer_terminal_scissor: None,
             buffer_terminal_header_batch: None,
@@ -323,6 +325,7 @@ impl Renderer {
             last_shaped_revision: u64::MAX,
             last_shaped_spans_fingerprint: u64::MAX,
             last_shaped_viewport_width: 0.0,
+            caret_blink_visible: true,
         })
     }
 

@@ -260,6 +260,7 @@ impl AppShell {
             lsp_loading_frame: 0,
             caret_blink_visible: true,
             caret_blink_dirty: false,
+            last_caret_blink_tick: now,
             pre_markdown_preview_right_width: None,
             pending_code_actions: Vec::new(),
             selected_python_env: None,

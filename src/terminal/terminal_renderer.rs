@@ -20,9 +20,10 @@
 //! 4. Tính UV coords bằng `atlas.uv_min_max()`.
 //! 5. Tạo `GlyphInstance` với màu lấy từ `CellStyle.fg.to_rgba_f32(true)`.
 //!
-//! Background cells không render ở phase này (future: QuadPipeline).
+//! ANSI background cells are emitted as `RegionDrawInstance` quads so full-cell
+//! TUI panels do not depend on font glyph coverage.
 use crate::{
-    render::glyph_instance::GlyphInstance,
+    render::{glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance},
     terminal::grid::TerminalGrid,
     text::{atlas::GlyphAtlas, raster::rasterize_glyph_alpha, text_system::TextSystem},
 };
@@ -66,6 +67,62 @@ impl TerminalViewRenderer {
         Self::new(8.4, 17.0, 0.0, 0.0, 14.0)
     }
 
+    /// Build background quads từ ANSI background-colored cells.
+    ///
+    /// Native terminals render cell backgrounds as rectangles. Do the same here
+    /// instead of rasterizing a block glyph, otherwise TUIs show visible row/column
+    /// seams whenever they paint full-screen panels.
+    pub fn build_background_instances(
+        &self,
+        grid: &TerminalGrid,
+        default_fg: [f32; 4],
+        default_bg: [f32; 4],
+        clip_width: f32,
+    ) -> Vec<RegionDrawInstance> {
+        let mut instances = Vec::new();
+        let clip_right = self.origin_x + clip_width;
+        let mut run: Option<(usize, f32, f32, f32, [f32; 4])> = None;
+
+        for (row, col, cell) in grid.iter_visible_cells() {
+            let screen_x = self.origin_x + col as f32 * self.cell_width;
+            let screen_y = self.origin_y + row as f32 * self.cell_height;
+
+            if screen_x >= clip_right
+                || cell.style.bg == crate::terminal::ansi_parser::AnsiColor::Default
+            {
+                flush_background_run(&mut instances, &mut run, self.cell_height);
+                continue;
+            }
+
+            let bg_rgba = cell
+                .style
+                .bg
+                .to_rgba_f32_with_defaults(default_fg, default_bg, false);
+            let cell_w = self.cell_width.min((clip_right - screen_x).max(0.0));
+            if cell_w <= 0.0 {
+                flush_background_run(&mut instances, &mut run, self.cell_height);
+                continue;
+            }
+
+            match run.as_mut() {
+                Some((run_row, _run_x, run_y, run_w, run_color))
+                    if *run_row == row
+                        && (*run_y - screen_y).abs() < f32::EPSILON
+                        && *run_color == bg_rgba =>
+                {
+                    *run_w += cell_w;
+                }
+                _ => {
+                    flush_background_run(&mut instances, &mut run, self.cell_height);
+                    run = Some((row, screen_x, screen_y, cell_w, bg_rgba));
+                }
+            }
+        }
+
+        flush_background_run(&mut instances, &mut run, self.cell_height);
+        instances
+    }
+
     /// Build danh sách `GlyphInstance` từ grid.
     ///
     /// - Bỏ qua cells có `ch == ' '` (blank).
@@ -92,11 +149,12 @@ impl TerminalViewRenderer {
         let clip_right = self.origin_x + clip_width;
 
         for (row, col, cell) in grid.iter_visible_cells() {
-            let has_background = cell.style.bg != crate::terminal::ansi_parser::AnsiColor::Default;
             let has_foreground_glyph = cell.ch != ' ' && cell.ch != '\0';
 
-            // Bỏ qua ô hoàn toàn trống, nhưng vẫn giữ các ô có background ANSI.
-            if !has_background && !has_foreground_glyph {
+            // Backgrounds are rendered by `build_background_instances()` as real
+            // quads. Keep this text path foreground-only so spaces remain cells,
+            // not block glyphs.
+            if !has_foreground_glyph {
                 continue;
             }
 
@@ -105,57 +163,6 @@ impl TerminalViewRenderer {
 
             // Skip cells that start beyond the clipping boundary.
             if screen_x >= clip_right {
-                continue;
-            }
-
-            if has_background {
-                let bg_rgba = cell
-                    .style
-                    .bg
-                    .to_rgba_f32_with_defaults(default_fg, default_bg, false);
-
-                // Dùng full block glyph để giả lập background cell màu.
-                text_system.set_size(Some(self.cell_width), Some(self.cell_height));
-                text_system.set_text("█");
-                let bg_glyphs = text_system.collect_visible_glyphs(0.0, 0.0, bg_rgba, None);
-
-                for vg in bg_glyphs {
-                    let atlas_entry = if let Some(existing) = atlas.get(vg.cache_key) {
-                        existing
-                    } else {
-                        match rasterize_glyph_alpha(text_system, vg.cache_key) {
-                            Some(rasterized) => {
-                                match atlas.get_or_reserve(vg.cache_key, &rasterized) {
-                                    Ok(entry) => entry,
-                                    Err(err) => {
-                                        eprintln!("[TerminalRenderer] atlas insert failed: {err}");
-                                        continue;
-                                    }
-                                }
-                            }
-                            None => continue,
-                        }
-                    };
-
-                    let (uv_min, uv_max) = atlas.uv_min_max(atlas_entry.region);
-                    let glyph_w = atlas_entry.region.width as f32;
-                    let glyph_h = atlas_entry.region.height as f32;
-                    let glyph_x =
-                        screen_x + vg.physical_x as f32 + atlas_entry.placement_left as f32;
-                    let glyph_y =
-                        screen_y + vg.physical_y as f32 - atlas_entry.placement_top as f32;
-
-                    instances.push(GlyphInstance::new(
-                        [glyph_x, glyph_y],
-                        [glyph_w, glyph_h],
-                        uv_min,
-                        uv_max,
-                        bg_rgba,
-                    ));
-                }
-            }
-
-            if !has_foreground_glyph {
                 continue;
             }
 
@@ -170,7 +177,11 @@ impl TerminalViewRenderer {
             let ch_str = cell.ch.to_string();
             // Dùng set_text để shape qua TextSystem API.
             // Màu sẽ được override bởi fg_rgba khi tạo GlyphInstance.
-            text_system.set_text(&ch_str);
+            if cell.style.bold {
+                text_system.set_text_bold_color(&ch_str, [255, 255, 255, 255]);
+            } else {
+                text_system.set_text(&ch_str);
+            }
 
             // Thu thập glyph từ layout (origin 0,0 — ta tính thêm screen offset sau).
             let visible_glyphs = text_system.collect_visible_glyphs(0.0, 0.0, fg_rgba, None);
@@ -234,6 +245,21 @@ impl TerminalViewRenderer {
     }
 }
 
+fn flush_background_run(
+    instances: &mut Vec<RegionDrawInstance>,
+    run: &mut Option<(usize, f32, f32, f32, [f32; 4])>,
+    cell_height: f32,
+) {
+    if let Some((_row, x, y, w, color)) = run.take()
+        && w > 0.0
+    {
+        instances.push(RegionDrawInstance::new(
+            [x, y, w, cell_height.max(1.0)],
+            color,
+        ));
+    }
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -258,5 +284,22 @@ mod tests {
         assert!(renderer.cell_width > 0.0);
         assert!(renderer.cell_height > 0.0);
         assert!(renderer.font_size > 0.0);
+    }
+
+    #[test]
+    fn background_instances_merge_adjacent_cells() {
+        let mut grid = TerminalGrid::new(6, 2);
+        grid.feed_chunk("\x1b[44m  \x1b[0mA");
+
+        let renderer = TerminalViewRenderer::new(10.0, 20.0, 5.0, 7.0, 14.0);
+        let instances = renderer.build_background_instances(
+            &grid,
+            [1.0, 1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0, 1.0],
+            100.0,
+        );
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].rect, [5.0, 7.0, 20.0, 20.0]);
     }
 }

@@ -514,6 +514,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     self.terminal_needs_layout = true;
                     self.buffer_terminal_needs_layout = true;
                 }
+                self.caret_blink_visible = true;
+                self.caret_blink_dirty = true;
+                self.last_caret_blink_tick = Instant::now();
                 self.request_redraw();
             }
             AppEvent::AiInlineReady => {
@@ -578,6 +581,13 @@ impl AppShell {
     /// KHÔNG set editor_needs_layout hay editor_caret_needs_layout.
     /// Nhờ đó toàn bộ text pipeline không bị trigger reshape chỉ vì con trỏ nháy.
     fn tick_caret_blink(&mut self) -> bool {
+        let now = Instant::now();
+        if now.duration_since(self.last_caret_blink_tick) >= Duration::from_millis(500) {
+            self.last_caret_blink_tick = now;
+            self.caret_blink_visible = !self.caret_blink_visible;
+            self.caret_blink_dirty = true;
+            return true;
+        }
         false
     }
 
@@ -968,7 +978,8 @@ impl AppShell {
                 self.buffer_terminal_needs_layout = false;
                 // Cursor đã được render đúng vị trí → reset blink về visible.
                 self.caret_blink_visible = true;
-                self.caret_blink_dirty = false;
+                self.caret_blink_dirty = true;
+                self.last_caret_blink_tick = Instant::now();
                 refresh_highlights_for_viewport =
                     bounds_changed && !show_welcome && active_terminal_session.is_none();
             } else if self.editor_caret_needs_layout {
@@ -1076,7 +1087,8 @@ impl AppShell {
                 self.editor_caret_needs_layout = false;
                 // Cursor đã được re-projected → reset blink về visible.
                 self.caret_blink_visible = true;
-                self.caret_blink_dirty = false;
+                self.caret_blink_dirty = true;
+                self.last_caret_blink_tick = Instant::now();
             } else if let Some(session_id) = active_terminal_session {
                 let grid_changed = self.sync_terminal_buffer_layout(session_id, center_bounds);
                 if (self.buffer_terminal_needs_layout || bounds_changed || grid_changed)

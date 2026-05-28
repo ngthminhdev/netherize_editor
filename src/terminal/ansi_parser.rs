@@ -14,6 +14,8 @@
 //!   - `ESC[?...h/l`     (private mode: alt-screen, mouse, etc.)
 //!   - `ESC]...` (OSC)   (title, color set, etc.)
 
+use crate::config::theme_config::srgb_rgba_to_linear_f32;
+
 // ─── Màu sắc ────────────────────────────────────────────────────────────────
 
 /// Đại diện màu trong ANSI terminal.
@@ -54,9 +56,11 @@ impl AnsiColor {
             }
             AnsiColor::Index(idx) => {
                 let (r, g, b) = xterm256_to_rgb(idx);
-                [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
+                srgb_rgba_to_linear_f32([r, g, b, 255])
             }
-            AnsiColor::Rgb(r, g, b) => [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0],
+            AnsiColor::Rgb(r, g, b) => {
+                srgb_rgba_to_linear_f32([r, g, b, 255])
+            }
         }
     }
 }
@@ -279,8 +283,9 @@ impl AnsiParser {
                 };
                 let final_char = byte as char;
                 self.state = ParseState::Normal;
-                let event = parse_csi(&buf, final_char);
-                emit(event);
+                for event in parse_csi(&buf, final_char) {
+                    emit(event);
+                }
             }
             _ => {
                 // Byte không hợp lệ — abandon CSI.
@@ -354,7 +359,7 @@ impl Default for AnsiParser {
 // ─── CSI parser ─────────────────────────────────────────────────────────────
 
 /// Parse một CSI sequence đã tích lũy đủ (buf = param bytes, final_char = lệnh).
-fn parse_csi(buf: &[u8], final_char: char) -> AnsiEvent {
+fn parse_csi(buf: &[u8], final_char: char) -> Vec<AnsiEvent> {
     let param_str = std::str::from_utf8(buf)
         .unwrap_or("")
         .trim_start_matches('[');
@@ -366,31 +371,31 @@ fn parse_csi(buf: &[u8], final_char: char) -> AnsiEvent {
         // Cursor Up / Down / Forward / Back
         'A' => {
             let n = parse_first_param(param_str, 1) as i32;
-            AnsiEvent::CursorMove {
+            vec![AnsiEvent::CursorMove {
                 row_delta: -n,
                 col_delta: 0,
-            }
+            }]
         }
         'B' => {
             let n = parse_first_param(param_str, 1) as i32;
-            AnsiEvent::CursorMove {
+            vec![AnsiEvent::CursorMove {
                 row_delta: n,
                 col_delta: 0,
-            }
+            }]
         }
         'C' => {
             let n = parse_first_param(param_str, 1) as i32;
-            AnsiEvent::CursorMove {
+            vec![AnsiEvent::CursorMove {
                 row_delta: 0,
                 col_delta: n,
-            }
+            }]
         }
         'D' => {
             let n = parse_first_param(param_str, 1) as i32;
-            AnsiEvent::CursorMove {
+            vec![AnsiEvent::CursorMove {
                 row_delta: 0,
                 col_delta: -n,
-            }
+            }]
         }
 
         // Cursor Position (1-based → 0-based)
@@ -406,27 +411,27 @@ fn parse_csi(buf: &[u8], final_char: char) -> AnsiEvent {
                 .and_then(|s| s.parse::<usize>().ok())
                 .unwrap_or(1)
                 .saturating_sub(1);
-            AnsiEvent::CursorGoto { row, col }
+            vec![AnsiEvent::CursorGoto { row, col }]
         }
 
         // Erase Display
-        'J' => AnsiEvent::EraseDisplay(parse_first_param(param_str, 0) as u8),
+        'J' => vec![AnsiEvent::EraseDisplay(parse_first_param(param_str, 0) as u8)],
 
         // Erase Line
-        'K' => AnsiEvent::EraseLine(parse_first_param(param_str, 0) as u8),
+        'K' => vec![AnsiEvent::EraseLine(parse_first_param(param_str, 0) as u8)],
 
         // Private mode (ESC[?...h/l) — bỏ qua
-        'h' | 'l' => AnsiEvent::Unknown,
+        'h' | 'l' => vec![AnsiEvent::Unknown],
 
-        _ => AnsiEvent::Unknown,
+        _ => vec![AnsiEvent::Unknown],
     }
 }
 
 /// Parse SGR (ESC[...m) — có thể nhiều params phân cách bởi `;`.
-fn parse_sgr(param_str: &str) -> AnsiEvent {
+fn parse_sgr(param_str: &str) -> Vec<AnsiEvent> {
     // Nếu rỗng hoặc "0" → ResetStyle
     if param_str.is_empty() || param_str == "0" {
-        return AnsiEvent::ResetStyle;
+        return vec![AnsiEvent::ResetStyle];
     }
 
     let params: Vec<u32> = param_str
@@ -434,54 +439,60 @@ fn parse_sgr(param_str: &str) -> AnsiEvent {
         .filter_map(|s| s.parse::<u32>().ok())
         .collect();
 
+    let mut events = Vec::new();
     let mut i = 0;
-    // Chỉ xử lý param đầu tiên có ý nghĩa (đơn giản hóa — grid layer sẽ gọi feed nhiều lần
-    // nếu chunk phức tạp; với terminal output thực tế mỗi ESC[...m thường 1-2 attrs).
-    // Để đúng hơn, ta emit event đầu tiên gặp được.
     while i < params.len() {
         match params[i] {
-            0 => return AnsiEvent::ResetStyle,
-            1 => return AnsiEvent::SetBold(true),
-            22 => return AnsiEvent::SetBold(false),
+            0 => events.push(AnsiEvent::ResetStyle),
+            1 => events.push(AnsiEvent::SetBold(true)),
+            22 => events.push(AnsiEvent::SetBold(false)),
             // Foreground standard (30-37) & bright (90-97)
-            n @ 30..=37 => return AnsiEvent::SetFg(AnsiColor::Index((n - 30) as u8)),
+            n @ 30..=37 => events.push(AnsiEvent::SetFg(AnsiColor::Index((n - 30) as u8))),
             38 => {
                 // 256-color: 38;5;n hoặc truecolor: 38;2;r;g;b
                 if i + 2 < params.len() && params[i + 1] == 5 {
-                    return AnsiEvent::SetFg(AnsiColor::Index(params[i + 2] as u8));
+                    events.push(AnsiEvent::SetFg(AnsiColor::Index(params[i + 2] as u8)));
+                    i += 2;
                 } else if i + 4 < params.len() && params[i + 1] == 2 {
-                    return AnsiEvent::SetFg(AnsiColor::Rgb(
+                    events.push(AnsiEvent::SetFg(AnsiColor::Rgb(
                         params[i + 2] as u8,
                         params[i + 3] as u8,
                         params[i + 4] as u8,
-                    ));
+                    )));
+                    i += 4;
                 }
             }
-            39 => return AnsiEvent::SetFg(AnsiColor::Default),
+            39 => events.push(AnsiEvent::SetFg(AnsiColor::Default)),
             // Background standard (40-47) & bright (100-107)
-            n @ 40..=47 => return AnsiEvent::SetBg(AnsiColor::Index((n - 40) as u8)),
+            n @ 40..=47 => events.push(AnsiEvent::SetBg(AnsiColor::Index((n - 40) as u8))),
             48 => {
                 if i + 2 < params.len() && params[i + 1] == 5 {
-                    return AnsiEvent::SetBg(AnsiColor::Index(params[i + 2] as u8));
+                    events.push(AnsiEvent::SetBg(AnsiColor::Index(params[i + 2] as u8)));
+                    i += 2;
                 } else if i + 4 < params.len() && params[i + 1] == 2 {
-                    return AnsiEvent::SetBg(AnsiColor::Rgb(
+                    events.push(AnsiEvent::SetBg(AnsiColor::Rgb(
                         params[i + 2] as u8,
                         params[i + 3] as u8,
                         params[i + 4] as u8,
-                    ));
+                    )));
+                    i += 4;
                 }
             }
-            49 => return AnsiEvent::SetBg(AnsiColor::Default),
+            49 => events.push(AnsiEvent::SetBg(AnsiColor::Default)),
             // Bright foreground (90-97)
-            n @ 90..=97 => return AnsiEvent::SetFg(AnsiColor::Index((n - 90 + 8) as u8)),
+            n @ 90..=97 => events.push(AnsiEvent::SetFg(AnsiColor::Index((n - 90 + 8) as u8))),
             // Bright background (100-107)
-            n @ 100..=107 => return AnsiEvent::SetBg(AnsiColor::Index((n - 100 + 8) as u8)),
+            n @ 100..=107 => events.push(AnsiEvent::SetBg(AnsiColor::Index((n - 100 + 8) as u8))),
             _ => {}
         }
         i += 1;
     }
 
-    AnsiEvent::Unknown
+    if events.is_empty() {
+        vec![AnsiEvent::Unknown]
+    } else {
+        events
+    }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -682,6 +693,20 @@ mod tests {
     }
 
     #[test]
+    fn sgr_multiple_params_emit_all_styles() {
+        let events = collect_events("\x1b[0;1;38;5;196;48;2;1;2;3m");
+        assert_eq!(
+            events,
+            vec![
+                AnsiEvent::ResetStyle,
+                AnsiEvent::SetBold(true),
+                AnsiEvent::SetFg(AnsiColor::Index(196)),
+                AnsiEvent::SetBg(AnsiColor::Rgb(1, 2, 3)),
+            ]
+        );
+    }
+
+    #[test]
     fn cursor_move_up() {
         let events = collect_events("\x1b[3A");
         assert_eq!(
@@ -784,5 +809,19 @@ mod tests {
         assert_eq!(xterm256_to_rgb(15), (255, 255, 255));
         // Grayscale: index 232 → level 8
         assert_eq!(xterm256_to_rgb(232), (8, 8, 8));
+    }
+
+    #[test]
+    fn ansi_colors_are_linear_for_srgb_render_target() {
+        let color = AnsiColor::Rgb(128, 64, 32).to_rgba_f32_with_defaults(
+            [1.0, 1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0, 1.0],
+            true,
+        );
+
+        assert!((color[0] - 0.215_860_53).abs() < 0.000_01);
+        assert!((color[1] - 0.051_269_46).abs() < 0.000_01);
+        assert!((color[2] - 0.014_443_84).abs() < 0.000_01);
+        assert_eq!(color[3], 1.0);
     }
 }

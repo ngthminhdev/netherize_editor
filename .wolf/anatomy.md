@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-27T11:00:00.645Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-28T05:00:00.821Z
 > Files: 369 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
@@ -283,7 +283,7 @@
 
 ## config/ui/
 
-- `default.toml` (~336 tok)
+- `default.toml` (~377 tok)
 
 ## docs/
 
@@ -332,9 +332,9 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — [cfg(target_os = "macos")] (~23681 tok)
+- `application.rs` — [cfg(target_os = "macos")] (~23913 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~10569 tok)
-- `commands_completion.rs` (~16090 tok)
+- `commands_completion.rs` (~16231 tok)
 - `commands_editor.rs` (~5441 tok)
 - `commands_explorer.rs` (~7613 tok)
 - `commands_lsp.rs` (~9198 tok)
@@ -342,12 +342,12 @@
 - `commands_prompts.rs` (~7215 tok)
 - `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~6809 tok)
 - `commands_settings.rs` (~4526 tok)
-- `commands_terminal.rs` (~6489 tok)
-- `commands_tests.rs` — [derive(Default)] (~28079 tok)
+- `commands_terminal.rs` (~6537 tok)
+- `commands_tests.rs` — [derive(Default)] (~28761 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~10189 tok)
-- `helpers.rs` — Declares BRACKET_PAIRS (~17812 tok)
-- `mod.rs` — Struct: AppShell (~6672 tok)
-- `setup.rs` — new, new_for_tests (~19677 tok)
+- `helpers.rs` — Declares BRACKET_PAIRS (~17841 tok)
+- `mod.rs` — Struct: AppShell (~6682 tok)
+- `setup.rs` — new, new_for_tests (~19736 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
@@ -414,7 +414,7 @@
 - `mod.rs` (~35 tok)
 - `paths.rs` — user_config_root, legacy_app_state_root (~205 tok)
 - `theme_config.rs` — Theme configuration entrypoint. (~182 tok)
-- `ui_config.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~8516 tok)
+- `ui_config.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~9192 tok)
 
 ## src/config/theme_config/
 
@@ -455,12 +455,12 @@
 - `caret.rs` — [derive(Debug, Clone, Copy)] (~2993 tok)
 - `color_space.rs` — srgb_color_target_state (~236 tok)
 - `glyph_instance.rs` — Vertex tĩnh của một quad đơn vị (0..1). (~844 tok)
-- `icon_pipeline.rs` — [repr(C)] (~10472 tok)
+- `icon_pipeline.rs` — [repr(C)] (~10500 tok)
 - `image_pipeline.rs` — [repr(C)] (~2249 tok)
 - `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
 - `region_pipeline.rs` — RegionDrawInstance: new, with_radius, new, update_screen_size + 3 more (~3035 tok)
-- `renderer.rs` — Core renderer types and module layout. (~4218 tok)
+- `renderer.rs` — Core renderer types and module layout. (~4339 tok)
 - `surface.rs` — SurfaceState giữ toàn bộ thông tin liên quan đến swapchain/surface. (~797 tok)
 - `text_pipeline.rs` — TextPipeline: new, update_screen_size, upload_instances, draw + 1 more (~2779 tok)
 
@@ -469,7 +469,7 @@
 - `components.rs` (~124 tok)
 - `editor.rs` — Editor viewport rendering modules. (~2282 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3453 tok)
-- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~6543 tok)
+- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~6723 tok)
 - `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~3116 tok)
 - `ui.rs` — Panel UI rendering modules. (~42 tok)
 
@@ -490,7 +490,7 @@
 - `overlays.rs` — update_editor_overlays (~19555 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11054 tok)
 - `settings.rs` — update_settings_buffer_content (~10502 tok)
-- `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~7422 tok)
+- `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~7446 tok)
 
 ## src/render/renderer/editor/buffers/
 
@@ -502,7 +502,7 @@
 
 ## src/render/renderer/lifecycle/
 
-- `frame.rs` — render (~8014 tok)
+- `frame.rs` — render (~8629 tok)
 
 ## src/render/renderer/palette/
 
@@ -519,8 +519,8 @@
 - `popups.rs` — update_lsp_guide_popup, clear_lsp_guide_popup, update_system_dep_popup (~6724 tok)
 - `sidebar.rs` — update_sidebar_content, clear_sidebar (~3076 tok)
 - `statusbar.rs` — Render the three-zone status bar. (~5546 tok)
-- `terminal.rs` — update_terminal_content, update_buffer_terminal_content (~6326 tok)
-- `topbar.rs` — update_topbar_content (~2827 tok)
+- `terminal.rs` — update_terminal_content, update_buffer_terminal_content (~6594 tok)
+- `topbar.rs` — update_topbar_content (~4592 tok)
 - `utils.rs` — Declares BORDER (~2418 tok)
 - `welcome.rs` — update_welcome_screen_content (~8855 tok)
 
@@ -544,7 +544,7 @@
 
 - `categories.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~2844 tok)
 - `engine.rs` (~5247 tok)
-- `mod.rs` — generate_highlight_spans, generate_highlight_spans_with_cache, generate_dotenv_highlight_spans, generate_plaintext_highlight_spans + 3 more (~6806 tok)
+- `mod.rs` — generate_highlight_spans, generate_highlight_spans_with_cache, generate_dotenv_highlight_spans, generate_plaintext_highlight_spans + 3 more (~7528 tok)
 - `normalize_tests.rs` (~646 tok)
 - `queries.rs` — highlight_markdown_inline (~3133 tok)
 - `spans.rs` — [derive(Debug, Clone, PartialEq, Eq)] (~1642 tok)
@@ -622,7 +622,7 @@
 - `highlighter.rs` — Terminal output highlighter — pre-compiled regex patterns for syntax coloring. (~787 tok)
 - `mod.rs` (~28 tok)
 - `pty.rs` — Wrapper cấp project quanh crate `portable-pty`. (~1812 tok)
-- `terminal_renderer.rs` — Terminal View Renderer — Phase 9b. (~2904 tok)
+- `terminal_renderer.rs` — Terminal View Renderer — Phase 9b. (~3178 tok)
 
 ## src/text/
 

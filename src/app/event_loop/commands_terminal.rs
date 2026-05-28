@@ -262,6 +262,9 @@ impl AppShell {
             Command::TerminalWriteInput(input) => {
                 self.track_terminal_tab_input(input);
                 self.forward_to_pty(input);
+                self.caret_blink_visible = true;
+                self.caret_blink_dirty = true;
+                self.last_caret_blink_tick = std::time::Instant::now();
                 Some(false)
             }
             Command::TerminalPaste => Some(self.handle_terminal_paste()),

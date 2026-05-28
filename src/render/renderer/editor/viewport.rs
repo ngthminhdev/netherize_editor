@@ -283,6 +283,7 @@ impl Renderer {
         center_bounds: [f32; 4],
         spans: &[StyledTextSpan],
     ) {
+        self.caret_blink_visible = true;
         // Text/scratch/no-tab surfaces share the center viewport with image buffers.
         // Always drop any previously uploaded image texture/quad before rebuilding
         // text content; otherwise closing the last image tab can leave the final
@@ -435,6 +436,7 @@ impl Renderer {
     /// Must honor the same mode → shape mapping as `update_editor_content`, otherwise
     /// h/j/k/l in Normal mode would collapse the block caret back to a thin bar.
     pub fn update_editor_caret(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {
+        self.caret_blink_visible = true;
         self.image_pipeline.clear();
         self.image_scissor = None;
 

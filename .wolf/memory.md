@@ -7,7 +7,6 @@
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
-
 ## Session: 2026-05-16 12:54
 
 | Time | Action | File(s) | Outcome | ~Tokens |
@@ -695,3 +694,10 @@
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
+
+## Session: 2026-05-28 11:47
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 11:47 | Fixed terminal ANSI background rendering | src/terminal/terminal_renderer.rs, src/render/renderer/ui/terminal.rs, src/render/renderer/lifecycle/frame.rs | Cell backgrounds now render as quads under text instead of block glyphs; cargo check and full test suite passed | ~1800 |
+| 12:33 | Fixed terminal ANSI color fidelity | src/terminal/ansi_parser.rs, src/terminal/terminal_renderer.rs, src/app/event_loop/async_results/terminal.rs | ANSI colors now use linear render colors, combined SGR emits all style changes, bold cells shape with bold weight, and PTY output no longer gets regex color overrides; cargo check and full test suite passed | ~1800 |

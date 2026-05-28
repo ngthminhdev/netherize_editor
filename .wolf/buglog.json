@@ -643,6 +643,43 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-27T10:19:18.864Z"
+    },
+    {
+      "id": "bug-040",
+      "timestamp": "2026-05-28T04:47:08Z",
+      "error_message": "Embedded terminal TUI looks broken with striped rows and blocky spacing compared to native terminal",
+      "file": "src/terminal/terminal_renderer.rs",
+      "root_cause": "ANSI background cells were rendered by rasterizing a full-block glyph, which does not fill terminal cells exactly and creates visible row and column seams in full-screen TUIs.",
+      "fix": "Render ANSI cell backgrounds as batched RegionDrawInstance quads under terminal text, and keep the terminal glyph path foreground-only.",
+      "tags": [
+        "terminal",
+        "renderer",
+        "ansi-background",
+        "ui"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-28T04:47:08Z"
+    },
+    {
+      "id": "bug-041",
+      "timestamp": "2026-05-28T05:33:36Z",
+      "error_message": "Embedded terminal colors look washed out and differ from native terminal applications",
+      "file": "src/terminal/ansi_parser.rs",
+      "root_cause": "ANSI RGB/xterm colors were uploaded as sRGB values even though the wgpu render target expects linear color input, combined SGR sequences emitted only the first style event, bold SGR state was parsed but not used for glyph shaping, and PTY output was post-processed by regex highlighting that overwrote application-provided ANSI colors.",
+      "fix": "Convert ANSI colors through the shared sRGB-to-linear path, emit all style events from multi-parameter SGR sequences, shape bold terminal cells with bold font weight, and stop applying regex foreground overrides to interactive PTY grids.",
+      "tags": [
+        "terminal",
+        "ansi",
+        "color-space",
+        "pty",
+        "ui"
+      ],
+      "related_bugs": [
+        "bug-040"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-05-28T05:33:36Z"
     }
   ]
 }

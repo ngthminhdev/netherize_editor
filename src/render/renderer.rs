@@ -198,6 +198,7 @@ pub struct Renderer {
     pub(super) terminal_text_pipeline: TextPipeline,
     pub(super) terminal_view_renderer: TerminalViewRenderer,
     pub(super) terminal_glyph_instances: Vec<GlyphInstance>,
+    pub(super) terminal_cell_background_instances: Vec<RegionDrawInstance>,
     pub(super) terminal_cursor_instances: Vec<RegionDrawInstance>,
     pub(super) terminal_scissor: Option<[u32; 4]>,
     pub(super) terminal_body_batch: Option<TextScissorBatch>,
@@ -208,6 +209,7 @@ pub struct Renderer {
     pub(super) buffer_terminal_text_pipeline: TextPipeline,
     pub(super) buffer_terminal_view_renderer: TerminalViewRenderer,
     pub(super) buffer_terminal_glyph_instances: Vec<GlyphInstance>,
+    pub(super) buffer_terminal_cell_background_instances: Vec<RegionDrawInstance>,
     pub(super) buffer_terminal_cursor_instances: Vec<RegionDrawInstance>,
     pub(super) buffer_terminal_scissor: Option<[u32; 4]>,
 
@@ -332,6 +334,7 @@ pub struct Renderer {
     pub(super) last_shaped_spans_fingerprint: u64,
     /// Viewport width lần cuối reshape — phát hiện khi word-wrap boundary thay đổi.
     pub(super) last_shaped_viewport_width: f32,
+    pub(super) caret_blink_visible: bool,
 }
 
 impl Renderer {
@@ -352,5 +355,6 @@ impl Renderer {
     /// trigger bất kỳ text layout hay glyph rebuild nào.
     pub fn update_caret_visibility(&mut self, visible: bool) {
         self.caret_pipeline.set_caret_visible(&self.queue, visible);
+        self.caret_blink_visible = visible;
     }
 }
