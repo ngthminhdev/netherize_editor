@@ -74,6 +74,10 @@ key = "mod+f"
 command = "app.focus_explorer"
 
 [[bindings]]
+key = "mod+r"
+command = "app.focus_inspector"
+
+[[bindings]]
 key = "F12"
 command = "app.focus_terminal"
 

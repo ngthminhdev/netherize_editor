@@ -194,6 +194,12 @@ impl AppShell {
                 }
                 let focus_changed = self.focus_manager.set(FocusTarget::RightSidebar);
                 changed |= focus_changed;
+                if self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal) {
+                    self.ensure_right_opencode_terminal();
+                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
+                        changed |= result.changed;
+                    }
+                }
                 if focus_changed {
                     self.input_handler.clear_pending_prefix();
                 }
