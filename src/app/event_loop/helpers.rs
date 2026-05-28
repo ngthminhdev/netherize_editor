@@ -630,29 +630,57 @@ fn render_markdown_node(
         }
         "list_item" | "task_list_item" => {
             let indent = "  ".repeat(markdown_list_item_depth(node));
-            let marker = format!("{indent}{}", list_marker_text(node, source));
+            let marker_str = list_marker_text(node, source);
+            let is_checked = marker_str.contains('☑');
+            let marker = format!("{indent}{}", marker_str);
             let marker_len = marker.len();
             let content = list_item_content(node, source);
-            let (rendered_content, inline_spans) = render_markdown_inline_text(&content, theme);
+            let (rendered_content, mut inline_spans) = render_markdown_inline_text(&content, theme);
             let full_text = format!("{marker}{rendered_content}");
             let mut spans = Vec::new();
-            spans.push(StyledTextSpan::new(
-                0,
-                marker_len,
-                theme.syntax.operator.as_u8(),
-            ));
+            if is_checked {
+                spans.push(StyledTextSpan::new(
+                    0,
+                    marker_len,
+                    theme.syntax.string.as_u8(),
+                ));
+            } else {
+                spans.push(StyledTextSpan::new(
+                    0,
+                    marker_len,
+                    theme.syntax.operator.as_u8(),
+                ));
+            }
             if rendered_content.len() > 0 {
-                spans.extend(
-                    inline_spans
-                        .into_iter()
-                        .map(|span| offset_styled_span(span, marker_len)),
-                );
-                if spans.len() == 1 {
-                    spans.push(StyledTextSpan::new(
-                        marker_len,
-                        full_text.len(),
-                        theme.syntax.identifier.as_u8(),
-                    ));
+                if is_checked {
+                    inline_spans.iter_mut().for_each(|span| {
+                        span.color_rgba = theme.syntax.comment.as_u8();
+                    });
+                    spans.extend(
+                        inline_spans
+                            .into_iter()
+                            .map(|span| offset_styled_span(span, marker_len)),
+                    );
+                    if spans.len() == 1 {
+                        spans.push(StyledTextSpan::new(
+                            marker_len,
+                            full_text.len(),
+                            theme.syntax.comment.as_u8(),
+                        ));
+                    }
+                } else {
+                    spans.extend(
+                        inline_spans
+                            .into_iter()
+                            .map(|span| offset_styled_span(span, marker_len)),
+                    );
+                    if spans.len() == 1 {
+                        spans.push(StyledTextSpan::new(
+                            marker_len,
+                            full_text.len(),
+                            theme.syntax.identifier.as_u8(),
+                        ));
+                    }
                 }
             }
             out.push(MarkdownPreviewLine {

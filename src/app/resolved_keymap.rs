@@ -571,6 +571,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert(None, mp(KeyCode::KeyB), TOGGLE_LEFT_DOCK);
     km.insert(None, mp(KeyCode::KeyF), FOCUS_EXPLORER);
+    km.insert(None, mp(KeyCode::KeyR), FOCUS_INSPECTOR);
     km.insert(None, nk(NamedKey::F12), FOCUS_TERMINAL);
     km.insert(None, mp(KeyCode::Backslash), TOGGLE_BOTTOM_DOCK);
 
@@ -651,7 +652,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("normal"), ch('}'), MOVE_PARAGRAPH_DOWN);
     km.insert(Some("normal"), mp(KeyCode::KeyH), BUFFER_PREV);
     km.insert(Some("normal"), mp(KeyCode::KeyL), BUFFER_NEXT);
-    km.insert(Some("normal"), mp(KeyCode::KeyR), REDO);
+    km.insert(Some("normal"), KeySpec::CtrlPlus(KeyCode::KeyR), REDO);
     km.insert(Some("normal"), ch('n'), SEARCH_NEXT);
     km.insert(Some("normal"), ch('N'), SEARCH_PREV);
     km.insert(Some("normal"), ch('*'), SEARCH_WORD_UNDER_CURSOR);
@@ -720,6 +721,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         TERMINAL_ENTER_NORMAL_MODE,
     );
     km.insert(Some("terminal"), nk(NamedKey::F12), FOCUS_TERMINAL);
+    km.insert(Some("terminal"), mp(KeyCode::KeyR), FOCUS_INSPECTOR);
     km.insert(Some("terminal"), mp(KeyCode::KeyV), TERMINAL_PASTE);
     km.insert(Some("terminal"), mp(KeyCode::KeyT), TERMINAL_TAB_NEW);
     km.insert(Some("terminal"), mp(KeyCode::KeyW), TERMINAL_TAB_CLOSE);
@@ -739,6 +741,8 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         nk(NamedKey::Escape),
         ENTER_TERMINAL_FOCUS,
     );
+    km.insert(Some("terminal_normal"), nk(NamedKey::F12), FOCUS_TERMINAL);
+    km.insert(Some("terminal_normal"), mp(KeyCode::KeyR), FOCUS_INSPECTOR);
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyH), MOVE_LEFT);
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyJ), MOVE_DOWN);
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyK), MOVE_UP);

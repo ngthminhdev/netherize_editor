@@ -1700,3 +1700,45 @@ fn ai_chat_text_input_keeps_full_unicode_payload() {
         other => panic!("expected ai chat unicode dispatch, got {:?}", other),
     }
 }
+
+#[test]
+fn buffer_terminal_f12_maps_to_focus_terminal() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::BufferTerminal);
+    let now = std::time::Instant::now();
+
+    let mapped =
+        handler.route_normalized_input(named_input(NamedKey::F12, None), &map, context, now);
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::FocusTerminal);
+        }
+        other => panic!("expected F12 dispatch in buffer terminal focus, got {:?}", other),
+    }
+}
+
+#[test]
+fn buffer_terminal_cmd_r_maps_to_focus_inspector() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::BufferTerminal);
+    let now = std::time::Instant::now();
+
+    let input = NormalizedInput {
+        physical_key: Some(KeyCode::KeyR),
+        named_key: None,
+        text: None,
+        modifiers: ModifiersState::SUPER,
+    };
+
+    let mapped = handler.route_normalized_input(input, &map, context, now);
+    match mapped {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::FocusInspector);
+        }
+        other => panic!("expected Cmd-R dispatch in buffer terminal focus, got {:?}", other),
+    }
+}

@@ -1109,39 +1109,46 @@ impl InputHandler {
         // BufferTerminal (lazygit, v.v.): bypass keymap hoàn toàn.
         // Mọi input kể cả ESC được forward thẳng vào PTY.
         // Chỉ modifier-only keys (Shift, Ctrl...) bị bỏ qua.
+        // NHƯNG: Cmd-R (FocusInspector) và F12 (FocusTerminal) được phép lọt qua để toggle layout / focus.
         if context.focus == InputFocusContext::BufferTerminal {
-            if normalized.has_command_modifier() && normalized.physical_key == Some(KeyCode::KeyV) {
-                self.clear_pending_counts();
-                return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
-                    input_debug,
-                    format!(
-                        "mode={} focus={} -> buffer terminal paste",
-                        context.mode.as_str(),
-                        context.focus.as_str()
-                    ),
-                    Command::TerminalPaste,
-                    1,
-                    false,
-                )));
-            }
+            let is_global_layout_toggle = (normalized.has_command_modifier()
+                && normalized.physical_key == Some(KeyCode::KeyR))
+                || normalized.named_key == Some(NamedKey::F12);
 
-            if !is_modifier_only_key(&normalized) {
-                if let Some(payload) = terminal_input_payload(&normalized) {
+            if !is_global_layout_toggle {
+                if normalized.has_command_modifier() && normalized.physical_key == Some(KeyCode::KeyV) {
                     self.clear_pending_counts();
                     return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                         input_debug,
                         format!(
-                            "mode={} focus={} -> buffer terminal raw input",
+                            "mode={} focus={} -> buffer terminal paste",
                             context.mode.as_str(),
                             context.focus.as_str()
                         ),
-                        Command::TerminalWriteInput(payload),
+                        Command::TerminalPaste,
                         1,
                         false,
                     )));
                 }
+
+                if !is_modifier_only_key(&normalized) {
+                    if let Some(payload) = terminal_input_payload(&normalized) {
+                        self.clear_pending_counts();
+                        return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                            input_debug,
+                            format!(
+                                "mode={} focus={} -> buffer terminal raw input",
+                                context.mode.as_str(),
+                                context.focus.as_str()
+                            ),
+                            Command::TerminalWriteInput(payload),
+                            1,
+                            false,
+                        )));
+                    }
+                }
+                return None;
             }
-            return None;
         }
 
         if context.focus == InputFocusContext::Editor

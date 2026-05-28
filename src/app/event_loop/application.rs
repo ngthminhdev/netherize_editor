@@ -890,12 +890,21 @@ impl AppShell {
                         renderer.clear_buffer_terminal();
                         renderer.clear_editor_content();
                         if let Some(preview) = self.app_state.active_markdown_preview_buffer() {
-                            renderer.update_markdown_preview_content(
+                            let scroll_y = preview.scroll_y;
+                            let rendered_lines = preview.rendered_lines.clone();
+                            let inner_padding = self.layout_engine.config.inner_padding;
+                            let max_scroll = renderer.update_markdown_preview_content(
                                 center_bounds,
-                                &preview.rendered_lines,
-                                preview.scroll_y,
-                                self.layout_engine.config.inner_padding,
+                                &rendered_lines,
+                                scroll_y,
+                                inner_padding,
                             );
+                            self.app_state.markdown_preview.max_scroll = max_scroll;
+                            if self.app_state.markdown_preview.scroll_y > max_scroll {
+                                self.app_state.markdown_preview.scroll_y = max_scroll;
+                            }
+                            let preview_cloned = self.app_state.markdown_preview.clone();
+                            self.app_state.sync_markdown_preview_buffer(preview_cloned);
                         } else {
                             renderer.clear_editor_overlays();
                         }
@@ -1010,12 +1019,21 @@ impl AppShell {
                     if let Some(renderer) = self.renderer.as_mut() {
                         renderer.clear_editor_content();
                         if let Some(preview) = self.app_state.active_markdown_preview_buffer() {
-                            renderer.update_markdown_preview_content(
+                            let scroll_y = preview.scroll_y;
+                            let rendered_lines = preview.rendered_lines.clone();
+                            let inner_padding = self.layout_engine.config.inner_padding;
+                            let max_scroll = renderer.update_markdown_preview_content(
                                 center_bounds,
-                                &preview.rendered_lines,
-                                preview.scroll_y,
-                                self.layout_engine.config.inner_padding,
+                                &rendered_lines,
+                                scroll_y,
+                                inner_padding,
                             );
+                            self.app_state.markdown_preview.max_scroll = max_scroll;
+                            if self.app_state.markdown_preview.scroll_y > max_scroll {
+                                self.app_state.markdown_preview.scroll_y = max_scroll;
+                            }
+                            let preview_cloned = self.app_state.markdown_preview.clone();
+                            self.app_state.sync_markdown_preview_buffer(preview_cloned);
                         } else {
                             renderer.clear_editor_overlays();
                         }
@@ -1309,13 +1327,21 @@ impl AppShell {
             if let Some(bounds) = right_sidebar_bounds {
                 let preview = &self.app_state.markdown_preview;
                 let inner_padding = self.layout_engine.config.inner_padding;
+                let scroll_y = preview.scroll_y;
+                let rendered_lines = preview.rendered_lines.clone();
                 if let Some(renderer) = self.renderer.as_mut() {
-                    renderer.update_markdown_preview_content(
+                    let max_scroll = renderer.update_markdown_preview_content(
                         bounds,
-                        &preview.rendered_lines,
-                        preview.scroll_y,
+                        &rendered_lines,
+                        scroll_y,
                         inner_padding,
                     );
+                    self.app_state.markdown_preview.max_scroll = max_scroll;
+                    if self.app_state.markdown_preview.scroll_y > max_scroll {
+                        self.app_state.markdown_preview.scroll_y = max_scroll;
+                    }
+                    let preview_cloned = self.app_state.markdown_preview.clone();
+                    self.app_state.sync_markdown_preview_buffer(preview_cloned);
                 }
             }
         } else if md_preview_active {

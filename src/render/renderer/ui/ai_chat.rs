@@ -1413,18 +1413,20 @@ impl Renderer {
 
     /// Render markdown preview content into the right sidebar area.
     /// Reuses the AI chat text pipeline since they're mutually exclusive tabs.
+    /// Render markdown preview content into the right sidebar area.
+    /// Reuses the AI chat text pipeline since they're mutually exclusive tabs.
     pub fn update_markdown_preview_content(
         &mut self,
         bounds: [f32; 4],
         lines: &[crate::app::app_state::MarkdownPreviewLine],
         scroll_y: f32,
         inner_padding: f32,
-    ) {
+    ) -> f32 {
         use crate::app::app_state::MarkdownBlockType;
 
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
             self.clear_ai_chat();
-            return;
+            return 0.0;
         }
 
         self.ai_chat_header_image_pipeline.clear();
@@ -1451,13 +1453,18 @@ impl Renderer {
 
         let mut all_glyphs: Vec<GlyphInstance> = Vec::new();
         let mut chrome_instances: Vec<RegionDrawInstance> = Vec::new();
-        let start_y = clip[1] - (scroll_y * line_h);
-        let visible_bottom = clip[1] + clip[3];
+        
         let code_bg = blend_rgb(
             self.theme.ui.panel_bg.as_f32(),
             self.theme.ui.selection_bg.as_f32(),
             0.35,
             0.92,
+        );
+        let table_header_bg = blend_rgb(
+            self.theme.ui.panel_bg.as_f32(),
+            self.theme.ui.selection_bg.as_f32(),
+            0.20,
+            0.95,
         );
         let code_border = self.theme.ui.border_color.as_f32();
         let code_inset_x = 6.0;
@@ -1469,28 +1476,141 @@ impl Renderer {
             / estimated_char_w)
             .floor()
             .max(8.0) as usize;
-        let mut visual_row = 0usize;
 
-        for preview_line in lines {
-            let is_code_block = matches!(preview_line.block_type, MarkdownBlockType::CodeBlock);
-            let wrapped_lines = if is_code_block {
+        // Step 1: Lay out all wrapped lines and flag code block boundaries
+        struct LayoutedLine {
+            block_type: MarkdownBlockType,
+            text: String,
+            spans: Vec<StyledTextSpan>,
+            y_offset: f32,
+            is_code_block: bool,
+            is_code_block_start: bool,
+            is_code_block_end: bool,
+        }
+
+        let mut layouted_lines: Vec<LayoutedLine> = Vec::new();
+        
+        for (line_idx, preview_line) in lines.iter().enumerate() {
+            let is_code = matches!(preview_line.block_type, MarkdownBlockType::CodeBlock);
+            let is_table = matches!(preview_line.block_type, MarkdownBlockType::TableHeader | MarkdownBlockType::TableRow);
+            let wrapped_lines = if is_code {
                 word_wrap_with_ranges(&preview_line.text, code_max_chars)
+            } else if is_table {
+                vec![(preview_line.text.clone(), 0..preview_line.text.len())]
             } else {
                 word_wrap_with_ranges(&preview_line.text, prose_max_chars)
             };
 
-            for (wrapped_text, byte_range) in wrapped_lines {
-                let y = start_y + visual_row as f32 * line_h;
-                visual_row = visual_row.saturating_add(1);
-                if y + line_h < clip[1] {
-                    continue;
-                }
-                if y > visible_bottom {
-                    break;
-                }
+            let num_wrapped = wrapped_lines.len();
+            for (w_idx, (wrapped_text, byte_range)) in wrapped_lines.into_iter().enumerate() {
+                let wrapped_spans: Vec<StyledTextSpan> = preview_line
+                    .spans
+                    .iter()
+                    .filter_map(|span| clip_styled_span_to_range(*span, &byte_range))
+                    .collect();
+                
+                let is_code_block_start = is_code 
+                    && (line_idx == 0 || !matches!(lines[line_idx - 1].block_type, MarkdownBlockType::CodeBlock)) 
+                    && w_idx == 0;
+                let is_code_block_end = is_code 
+                    && (line_idx + 1 == lines.len() || !matches!(lines[line_idx + 1].block_type, MarkdownBlockType::CodeBlock)) 
+                    && w_idx + 1 == num_wrapped;
+                
+                layouted_lines.push(LayoutedLine {
+                    block_type: preview_line.block_type,
+                    text: wrapped_text,
+                    spans: wrapped_spans,
+                    y_offset: 0.0,
+                    is_code_block: is_code,
+                    is_code_block_start,
+                    is_code_block_end,
+                });
+            }
+        }
 
-                if is_code_block {
-                    let rect = [clip[0], y + 1.0, clip[2], (line_h + 2.0).max(1.0)];
+        // Step 2: Compute running vertical positions with margin/padding rules
+        let spacing_heading_large = 14.0;
+        let spacing_heading_small = 8.0;
+        let spacing_heading_bottom = 4.0;
+        let spacing_paragraph = 6.0;
+        let spacing_list_item = 3.0;
+        let spacing_code_block_margin = 8.0;
+        let spacing_code_block_padding = 6.0;
+
+        let mut current_y = 0.0;
+        
+        for i in 0..layouted_lines.len() {
+            let is_code_block_start = layouted_lines[i].is_code_block_start;
+            let is_code_block_end = layouted_lines[i].is_code_block_end;
+            let is_code_block = layouted_lines[i].is_code_block;
+            let block_type = layouted_lines[i].block_type;
+            
+            if i > 0 {
+                let prev_block_type = layouted_lines[i - 1].block_type;
+                let prev_is_code = layouted_lines[i - 1].is_code_block;
+                
+                if is_code_block_start {
+                    current_y += spacing_code_block_margin;
+                } else if matches!(block_type, MarkdownBlockType::Heading(_)) {
+                    if let MarkdownBlockType::Heading(level) = block_type {
+                        if level <= 2 {
+                            current_y += spacing_heading_large;
+                        } else {
+                            current_y += spacing_heading_small;
+                        }
+                    }
+                } else if !is_code_block && prev_is_code {
+                    current_y += spacing_code_block_margin;
+                } else if !is_code_block {
+                    match prev_block_type {
+                        MarkdownBlockType::Heading(_) => current_y += spacing_heading_bottom,
+                        MarkdownBlockType::Paragraph => current_y += spacing_paragraph,
+                        MarkdownBlockType::ListItem => current_y += spacing_list_item,
+                        MarkdownBlockType::BlockQuote => current_y += spacing_paragraph,
+                        _ => {}
+                    }
+                }
+            }
+            
+            if is_code_block_start {
+                current_y += spacing_code_block_padding;
+            }
+            
+            layouted_lines[i].y_offset = current_y;
+            current_y += line_h;
+            
+            if is_code_block_end {
+                current_y += spacing_code_block_padding;
+            }
+        }
+        let total_doc_height = current_y;
+
+        let max_scroll = (total_doc_height - clip[3]).max(0.0) / line_h;
+        let clamped_scroll_y = scroll_y.min(max_scroll);
+        let scroll_offset_y = clamped_scroll_y * line_h;
+
+        // Step 3: Draw code block backgrounds (unified per block) and table header highlights
+        let mut current_code_block_start: Option<usize> = None;
+        let start_y = clip[1];
+        
+        for i in 0..layouted_lines.len() {
+            let line = &layouted_lines[i];
+            if line.is_code_block_start {
+                current_code_block_start = Some(i);
+            }
+            if line.is_code_block_end {
+                if let Some(start_idx) = current_code_block_start.take() {
+                    let y_start = layouted_lines[start_idx].y_offset - spacing_code_block_padding;
+                    let y_end = line.y_offset + line_h + spacing_code_block_padding;
+                    
+                    let screen_y_start = start_y + y_start - scroll_offset_y;
+                    let screen_y_end = start_y + y_end - scroll_offset_y;
+                    let height = screen_y_end - screen_y_start;
+                    
+                    let box_x = clip[0] + code_inset_x;
+                    let box_w = (clip[2] - code_inset_x * 2.0).max(1.0);
+                    let rect = [box_x, screen_y_start, box_w, height.max(1.0)];
+                    
                     chrome_instances.push(
                         RegionDrawInstance::new(rect, code_border)
                             .with_radius(self.panel_corner_radius.min(6.0)),
@@ -1508,47 +1628,65 @@ impl Renderer {
                         .with_radius((self.panel_corner_radius.min(6.0) - 1.0).max(0.0)),
                     );
                 }
+            }
+            
+            if matches!(line.block_type, MarkdownBlockType::TableHeader) {
+                let y = start_y + line.y_offset - scroll_offset_y;
+                let rect = [clip[0] + code_inset_x, y, (clip[2] - code_inset_x * 2.0).max(1.0), line_h];
+                chrome_instances.push(
+                    RegionDrawInstance::new(rect, table_header_bg)
+                        .with_radius(self.panel_corner_radius.min(4.0)),
+                );
+            }
+        }
 
-                if wrapped_text.is_empty() {
-                    continue;
-                }
+        // Step 4: Draw all text lines
+        let visible_bottom = clip[1] + clip[3];
+        
+        for line in &layouted_lines {
+            let y = start_y + line.y_offset - scroll_offset_y;
+            
+            if y + line_h < clip[1] {
+                continue;
+            }
+            if y > visible_bottom {
+                break;
+            }
 
-                let text_x = if is_code_block { code_text_x } else { clip[0] };
-                let wrapped_spans: Vec<StyledTextSpan> = preview_line
-                    .spans
-                    .iter()
-                    .filter_map(|span| clip_styled_span_to_range(*span, &byte_range))
-                    .collect();
+            if line.text.is_empty() {
+                continue;
+            }
 
-                let default_color = match preview_line.block_type {
-                    MarkdownBlockType::Heading(_) => fg,
-                    MarkdownBlockType::CodeBlock => fg_dim,
-                    MarkdownBlockType::BlockQuote => fg_dim,
-                    _ => fg,
-                };
+            let text_x = if line.is_code_block { code_text_x } else { clip[0] };
+            
+            let default_color = match line.block_type {
+                MarkdownBlockType::Heading(_) => fg,
+                MarkdownBlockType::CodeBlock => fg_dim,
+                MarkdownBlockType::BlockQuote => fg_dim,
+                _ => fg,
+            };
 
-                if wrapped_spans.is_empty() {
-                    all_glyphs.extend(layout_panel_text(
-                        &wrapped_text,
-                        &mut self.ai_chat_text_system,
-                        &mut self.atlas,
-                        &self.queue,
-                        text_x,
-                        y,
-                        default_color,
-                    ));
-                } else {
-                    all_glyphs.extend(layout_panel_rich_text(
-                        &wrapped_text,
-                        &wrapped_spans,
-                        default_color,
-                        &mut self.ai_chat_text_system,
-                        &mut self.atlas,
-                        &self.queue,
-                        text_x,
-                        y,
-                    ));
-                }
+            if line.spans.is_empty() {
+                all_glyphs.extend(layout_panel_text(
+                    &line.text,
+                    &mut self.ai_chat_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    text_x,
+                    y,
+                    default_color,
+                ));
+            } else {
+                all_glyphs.extend(layout_panel_rich_text(
+                    &line.text,
+                    &line.spans,
+                    default_color,
+                    &mut self.ai_chat_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    text_x,
+                    y,
+                ));
             }
         }
 
@@ -1559,5 +1697,7 @@ impl Renderer {
             &self.queue,
             &self.ai_chat_glyph_instances,
         );
+
+        max_scroll
     }
 }

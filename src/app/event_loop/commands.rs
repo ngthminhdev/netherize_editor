@@ -775,7 +775,11 @@ impl AppShell {
                     return Some(false);
                 }
                 let previous = preview.scroll_y;
-                let max_scroll = preview.rendered_lines.len().saturating_sub(1) as f32;
+                let max_scroll = if preview.max_scroll > 0.0 {
+                    preview.max_scroll
+                } else {
+                    preview.rendered_lines.len().saturating_sub(1) as f32
+                };
                 preview.scroll_y = (preview.scroll_y + 3.0).min(max_scroll);
                 let changed = (preview.scroll_y - previous).abs() > f32::EPSILON;
                 if changed {
@@ -808,7 +812,11 @@ impl AppShell {
                     return Some(false);
                 }
                 let previous = preview.scroll_y;
-                let max_scroll = preview.rendered_lines.len().saturating_sub(1) as f32;
+                let max_scroll = if preview.max_scroll > 0.0 {
+                    preview.max_scroll
+                } else {
+                    preview.rendered_lines.len().saturating_sub(1) as f32
+                };
                 preview.scroll_y = (preview.scroll_y + 15.0).min(max_scroll);
                 let changed = (preview.scroll_y - previous).abs() > f32::EPSILON;
                 if changed {
@@ -841,7 +849,11 @@ impl AppShell {
                     return Some(false);
                 }
                 let previous = preview.scroll_y;
-                let max_scroll = preview.rendered_lines.len().saturating_sub(1) as f32;
+                let max_scroll = if preview.max_scroll > 0.0 {
+                    preview.max_scroll
+                } else {
+                    preview.rendered_lines.len().saturating_sub(1) as f32
+                };
                 preview.scroll_y = max_scroll;
                 let changed = (preview.scroll_y - previous).abs() > f32::EPSILON;
                 if changed {

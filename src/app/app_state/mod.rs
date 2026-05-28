@@ -627,6 +627,7 @@ fn uninstall_command_for_lsp(binary: &str, install: &str) -> String {
 pub struct MarkdownPreviewState {
     pub visible: bool,
     pub scroll_y: f32,
+    pub max_scroll: f32,
     pub source_path: Option<PathBuf>,
     pub source_text: String,
     pub rendered_lines: Vec<MarkdownPreviewLine>,
@@ -659,6 +660,7 @@ impl Default for MarkdownPreviewState {
         Self {
             visible: false,
             scroll_y: 0.0,
+            max_scroll: 0.0,
             source_path: None,
             source_text: String::new(),
             rendered_lines: Vec::new(),

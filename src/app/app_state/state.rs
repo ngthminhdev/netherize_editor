@@ -684,6 +684,14 @@ impl AppState {
         }
     }
 
+    pub fn active_markdown_preview_buffer_mut(&mut self) -> Option<&mut MarkdownPreviewState> {
+        let idx = self.active_buffer_index?;
+        match &mut self.buffers.get_mut(idx)?.content {
+            BufferContent::MarkdownPreview(state) => Some(state),
+            _ => None,
+        }
+    }
+
     pub fn active_references_origin(&self) -> Option<(PathBuf, usize)> {
         let state = self.active_references_buffer()?;
         Some((state.origin_path.clone()?, state.origin_line))

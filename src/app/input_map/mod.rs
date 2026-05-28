@@ -228,8 +228,14 @@ impl InputMap {
 
         // BufferTerminal (lazygit, v.v.): bypass keymap hoàn toàn,
         // mọi input sẽ được forward thẳng vào PTY trong handler.rs.
+        // NHƯNG: Cho phép Cmd-R và F12 đi qua để resolve bình thường.
         if context.focus == InputFocusContext::BufferTerminal {
-            return None;
+            let is_global_layout_toggle = (input.has_command_modifier()
+                && input.physical_key == Some(KeyCode::KeyR))
+                || input.named_key == Some(NamedKey::F12);
+            if !is_global_layout_toggle {
+                return None;
+            }
         }
 
         // AI Chat: bypass keymap — all input handled by handler.rs.

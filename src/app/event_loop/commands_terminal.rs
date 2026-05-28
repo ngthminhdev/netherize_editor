@@ -186,22 +186,36 @@ impl AppShell {
                 Some(changed)
             }
             Command::FocusInspector => {
-                let mut changed = self.release_focus_mode_to_editor();
-                if !self.panel_state.right.visible {
-                    self.panel_state.right.visible = true;
-                    changed = true;
-                    self.sidebar_needs_layout = true;
-                }
-                let focus_changed = self.focus_manager.set(FocusTarget::RightSidebar);
-                changed |= focus_changed;
-                if self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal) {
-                    self.ensure_right_opencode_terminal();
-                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
-                        changed |= result.changed;
+                let right_has_focus = self.focus_manager.current() == FocusTarget::RightSidebar;
+                let mut changed = false;
+
+                if right_has_focus {
+                    if self.panel_state.right.visible {
+                        self.panel_state.right.visible = false;
+                        changed = true;
+                        self.sidebar_needs_layout = true;
                     }
-                }
-                if focus_changed {
-                    self.input_handler.clear_pending_prefix();
+                    if self.focus_manager.current() == FocusTarget::RightSidebar {
+                        changed |= self.focus_manager.set(FocusTarget::CenterEditor);
+                    }
+                } else {
+                    changed |= self.release_focus_mode_to_editor();
+                    if !self.panel_state.right.visible {
+                        self.panel_state.right.visible = true;
+                        changed = true;
+                        self.sidebar_needs_layout = true;
+                    }
+                    let focus_changed = self.focus_manager.set(FocusTarget::RightSidebar);
+                    changed |= focus_changed;
+                    if self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal) {
+                        self.ensure_right_opencode_terminal();
+                        if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
+                            changed |= result.changed;
+                        }
+                    }
+                    if focus_changed {
+                        self.input_handler.clear_pending_prefix();
+                    }
                 }
                 Some(changed)
             }
