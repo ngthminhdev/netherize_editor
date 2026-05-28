@@ -6,6 +6,8 @@ startup_mode = "windowed"
 auto_scale = true
 min_content_scale = 1.0
 max_content_scale = 2.0
+# Force a specific scale factor / DPI override globally (e.g. 1.0 on a Full HD monitor to avoid excessive scaling)
+scale_factor_override = 1.0
 
 [layout]
 outer_gap = 14.0
