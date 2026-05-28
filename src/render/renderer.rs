@@ -223,6 +223,8 @@ pub struct Renderer {
     pub(super) topbar_text_system: TextSystem,
     pub(super) topbar_text_pipeline: TextPipeline,
     pub(super) topbar_glyph_instances: Vec<GlyphInstance>,
+    pub(super) topbar_icon_pipeline: IconPipeline,
+    pub(super) topbar_icon_instances: Vec<IconDrawInstance>,
     pub(super) topbar_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) topbar_scissor: Option<[u32; 4]>,
     pub(super) topbar_text_batches: Vec<TextScissorBatch>,

@@ -1855,6 +1855,72 @@ fn completion_accept_keeps_cursor_after_go_no_param_call_signature() {
 }
 
 #[test]
+fn completion_accept_places_cursor_inside_go_with_param_call_signature() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("go_with_param_call");
+    let _path = open_completion_file(&mut shell, &root.join("main.go"), "bootstrap.New");
+    let mut item = test_completion_item("NewApp", "NewApp()");
+    item.detail = Some("func(x int, y string) *bootstrap.App".to_string());
+    item.has_parameters = None;
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![item],
+        0,
+        "bootstrap.New".chars().count(),
+        "bootstrap.".chars().count(),
+        "New".to_string(),
+        &cache,
+        None,
+    );
+    assert!(
+        shell
+            .app_state
+            .jump_to_line_and_column(0, "bootstrap.New".chars().count())
+    );
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(shell.app_state.text_string(), "bootstrap.NewApp()");
+    assert_eq!(
+        shell.app_state.cursor_line_col(),
+        (0, "bootstrap.NewApp(".chars().count())
+    );
+}
+
+#[test]
+fn completion_accept_places_cursor_inside_rust_with_param_call_signature() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("rust_with_param_call");
+    let _path = open_completion_file(&mut shell, &root.join("main.rs"), "foo.ba");
+    let mut item = test_completion_item("bar", "bar()");
+    item.detail = Some("pub fn bar(x: i32) -> bool".to_string());
+    item.has_parameters = None;
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![item],
+        0,
+        "foo.ba".chars().count(),
+        "foo.".chars().count(),
+        "ba".to_string(),
+        &cache,
+        None,
+    );
+    assert!(
+        shell
+            .app_state
+            .jump_to_line_and_column(0, "foo.ba".chars().count())
+    );
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(shell.app_state.text_string(), "foo.bar()");
+    assert_eq!(
+        shell.app_state.cursor_line_col(),
+        (0, "foo.bar(".chars().count())
+    );
+}
+
+#[test]
 fn completion_accept_deduplicates_trigger_char_in_insert_text() {
     // Scenario: user typed "message." and LSP returns insertText = ".getInstance()"
     // (trigger char included). Without dedup the result would be "message..getInstance()".

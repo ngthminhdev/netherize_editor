@@ -443,6 +443,7 @@ fn build_bearded_atlas() -> BuiltAtlas {
         ("built_in:flutterlock", include_bytes!("../../assets/bearded-icons/flutterlock.svg")),
         ("built_in:folder", include_bytes!("../../assets/bearded-icons/folder.svg")),
         ("built_in:folder_open", include_bytes!("../../assets/bearded-icons/folder_open.svg")),
+        ("built_in:root_folder", include_bytes!("../../assets/bearded-icons/root_folder.svg")),
         ("built_in:fsharp", include_bytes!("../../assets/bearded-icons/fsharp.svg")),
         ("built_in:git", include_bytes!("../../assets/bearded-icons/git.svg")),
         ("built_in:go", include_bytes!("../../assets/bearded-icons/go.svg")),

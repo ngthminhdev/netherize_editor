@@ -93,6 +93,8 @@ impl Renderer {
             crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
         let sidebar_icon_pipeline =
             crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
+        let topbar_icon_pipeline =
+            crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
         let palette_icon_pipeline =
             crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
         let ai_chat_header_image_pipeline =
@@ -237,6 +239,8 @@ impl Renderer {
             topbar_text_system,
             topbar_text_pipeline,
             topbar_glyph_instances: Vec::new(),
+            topbar_icon_pipeline,
+            topbar_icon_instances: Vec::new(),
             topbar_chrome_instances: Vec::new(),
             topbar_scissor: None,
             topbar_text_batches: Vec::new(),
@@ -395,6 +399,12 @@ impl Renderer {
         self.theme = theme;
         self.topbar_scissor = None;
         self.topbar_glyph_instances.clear();
+        self.topbar_icon_instances.clear();
+        self.topbar_icon_pipeline.upload_instances(
+            &self.device,
+            &self.topbar_icon_instances,
+            [self.surface_state.config.width, self.surface_state.config.height],
+        );
         self.topbar_chrome_instances.clear();
         self.topbar_text_batches.clear();
         self.topbar_logo_image_pipeline.clear();

@@ -1,6 +1,7 @@
 use cosmic_text::Metrics;
 
 use crate::render::{
+    icon_pipeline::IconDrawInstance,
     region_pipeline::RegionDrawInstance,
     renderer::{Renderer, TextScissorBatch, TopbarLayoutKey, TopbarTab},
     text_pipeline::InstanceDrawRange,
@@ -87,6 +88,12 @@ impl Renderer {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
             self.topbar_scissor = None;
             self.topbar_glyph_instances.clear();
+            self.topbar_icon_instances.clear();
+            self.topbar_icon_pipeline.upload_instances(
+                &self.device,
+                &self.topbar_icon_instances,
+                [self.surface_state.config.width, self.surface_state.config.height],
+            );
             self.topbar_chrome_instances.clear();
             self.topbar_text_batches.clear();
             self.last_topbar_layout_key = None;
@@ -131,6 +138,7 @@ impl Renderer {
         let font_family = self.theme.editor.font_family.as_deref();
 
         let mut glyphs = Vec::new();
+        self.topbar_icon_instances.clear();
         let mut text_batches = Vec::new();
         let mut chrome = Vec::new();
 
@@ -162,8 +170,8 @@ impl Renderer {
             // let sep = "│";
             let sep = "";
             let sep_w = estimate_monospace_width(sep, font_size);
-            let folder_icon = "󱁽 ";
-            let folder_icon_w = estimate_monospace_width(folder_icon, font_size);
+            let folder_icon_size = (content_h * 0.72).min(font_size * 1.2);
+            let folder_icon_w = folder_icon_size;
 
             // Compute maximum width available for the text itself
             let allocated_fixed_w = left_pad + folder_icon_w + icon_text_gap + text_sep_gap + sep_w + sep_tab_gap;
@@ -173,16 +181,17 @@ impl Renderer {
             if !clamped_project.is_empty() {
                 let mut draw_x = tab_x + left_pad;
 
-                // 1. Draw folder icon
-                glyphs.extend(layout_panel_text(
-                    folder_icon,
-                    &mut self.topbar_text_system,
-                    &mut self.atlas,
-                    &self.queue,
-                    draw_x,
-                    origin_y,
-                    accent,
-                ));
+                // 1. Draw root folder icon
+                self.topbar_icon_instances.push(IconDrawInstance {
+                    icon: "built_in:root_folder",
+                    rect: [
+                        draw_x,
+                        content_y + (content_h - folder_icon_size) * 0.5,
+                        folder_icon_size,
+                        folder_icon_size,
+                    ],
+                    tint: [1.0, 1.0, 1.0, 1.0],
+                });
                 draw_x += folder_icon_w + icon_text_gap;
 
                 // 2. Draw folder text
@@ -394,6 +403,11 @@ impl Renderer {
             }
         }
 
+        self.topbar_icon_pipeline.upload_instances(
+            &self.device,
+            &self.topbar_icon_instances,
+            [self.surface_state.config.width, self.surface_state.config.height],
+        );
         self.topbar_glyph_instances = glyphs;
         self.topbar_text_pipeline.upload_instances(
             &self.device,

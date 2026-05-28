@@ -1534,7 +1534,11 @@ pub(super) fn build_sidebar_rows(
                 .unwrap_or(entry.name.as_str());
             // Always use file-type icon, even for hidden/ignored files.
             // This ensures .py files show Python icon, not generic hidden icon.
-            let icon = theme.get_icon_for_file(filename, is_dir).to_string();
+            let icon = if is_dir {
+                icon_theme.glyph.clone()
+            } else {
+                theme.get_icon_for_file(filename, is_dir).to_string()
+            };
             SidebarRow {
                 path: Some(entry.path.clone()),
                 depth: entry.depth,

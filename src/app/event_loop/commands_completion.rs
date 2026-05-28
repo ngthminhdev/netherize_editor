@@ -855,7 +855,12 @@ fn completion_kind_is_callable(kind: u32) -> bool {
 
 fn completion_insert_text_has_parameters(text: &str) -> Option<bool> {
     let (open, close) = completion_insert_text_call_parens(text)?;
-    Some(!text[open + 1..close].trim().is_empty())
+    let has_params = !text[open + 1..close].trim().is_empty();
+    if has_params {
+        Some(true)
+    } else {
+        None
+    }
 }
 
 fn completion_insert_text_call_parens(text: &str) -> Option<(usize, usize)> {
@@ -919,6 +924,9 @@ fn completion_detail_has_parameters(label: &str, detail: &str) -> Option<bool> {
         if completion_go_func_parens_look_like_params(&detail[..open], &detail[close + 1..]) {
             return Some(!detail[open + 1..close].trim().is_empty());
         }
+        if completion_rust_fn_parens_look_like_params(&detail[..open]) {
+            return Some(!detail[open + 1..close].trim().is_empty());
+        }
         if completion_signature_parens_look_like_call(label, &detail[..open]) {
             return Some(!detail[open + 1..close].trim().is_empty());
         }
@@ -933,10 +941,18 @@ fn completion_go_func_parens_look_like_params(before_open: &str, after_close: &s
         return false;
     }
     let after = after_close.trim_start();
-    !after
-        .chars()
-        .next()
-        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_' || ch == '$')
+    if let Some((_, rest)) = read_ts_js_identifier_with_rest(after) {
+        let rest = rest.trim_start();
+        if rest.starts_with('(') || rest.starts_with('[') {
+            return false;
+        }
+    }
+    true
+}
+
+fn completion_rust_fn_parens_look_like_params(before_open: &str) -> bool {
+    let before = before_open.trim();
+    before == "fn" || before.ends_with(" fn")
 }
 
 fn completion_signature_parens_look_like_call(label: &str, before_open: &str) -> bool {

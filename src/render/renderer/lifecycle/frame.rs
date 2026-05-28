@@ -547,7 +547,18 @@ impl Renderer {
                 );
             }
 
-            // 8b. TopBar logo.
+            // 8b. TopBar icons.
+            draw_text_region(
+                &mut pass,
+                self.topbar_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.topbar_icon_pipeline.draw(render_pass);
+                },
+            );
+
+            // 8c. TopBar logo.
             draw_text_region(
                 &mut pass,
                 self.topbar_logo_scissor,
