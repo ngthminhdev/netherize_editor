@@ -582,7 +582,7 @@ impl AppShell {
     /// Nhờ đó toàn bộ text pipeline không bị trigger reshape chỉ vì con trỏ nháy.
     fn tick_caret_blink(&mut self) -> bool {
         let now = Instant::now();
-        if now.duration_since(self.last_caret_blink_tick) >= Duration::from_millis(500) {
+        if now.duration_since(self.last_caret_blink_tick) >= Duration::from_millis(1000) {
             self.last_caret_blink_tick = now;
             self.caret_blink_visible = !self.caret_blink_visible;
             self.caret_blink_dirty = true;
@@ -1285,7 +1285,7 @@ impl AppShell {
                 if (self.right_terminal_needs_layout || bounds_changed || grid_changed)
                     && let Some(renderer) = self.renderer.as_mut()
                 {
-                    renderer.update_terminal_content(
+                    renderer.update_right_terminal_content(
                         &self.right_terminal_grid,
                         rb,
                         self.app_state.current_mode(),
@@ -1296,6 +1296,9 @@ impl AppShell {
             }
         } else if self.last_right_terminal_bounds.is_some() {
             self.last_right_terminal_bounds = None;
+            if let Some(renderer) = self.renderer.as_mut() {
+                renderer.clear_right_terminal();
+            }
         }
 
         // ── Markdown Preview (right sidebar) ──────────────────────────────

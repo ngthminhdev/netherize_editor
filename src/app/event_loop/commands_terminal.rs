@@ -1,7 +1,7 @@
 use super::*;
 
 impl AppShell {
-    fn default_terminal_working_dir(&self) -> Option<PathBuf> {
+    pub(super) fn default_terminal_working_dir(&self) -> Option<PathBuf> {
         self.app_state
             .workspace_root_path()
             .map(PathBuf::from)

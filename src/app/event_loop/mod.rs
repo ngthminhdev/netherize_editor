@@ -98,6 +98,9 @@ pub struct AppShell {
     right_terminal_needs_layout: bool,
     last_right_terminal_bounds: Option<[f32; 4]>,
     pending_right_pty_spawn: bool,
+    /// When `Some`, this command string will be written into the right PTY
+    /// immediately after `PtySpawned` is received for the right terminal.
+    right_pty_startup_command: Option<String>,
     terminal_buffer_grids: HashMap<u64, TerminalGrid>,
     pending_lazygit_buffer_index: Option<usize>,
     pending_lazydocker_buffer_index: Option<usize>,

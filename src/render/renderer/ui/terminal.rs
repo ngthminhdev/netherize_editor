@@ -60,6 +60,56 @@ impl Renderer {
         self.terminal_tab_bar_batch = None;
     }
 
+    /// Render the right-dock terminal (opencode) into the right sidebar area.
+    /// Uses a dedicated pipeline separate from the bottom-panel terminal.
+    pub fn update_right_terminal_content(
+        &mut self,
+        grid: &TerminalGrid,
+        bounds: [f32; 4],
+        terminal_mode: EditorMode,
+    ) {
+        self.caret_blink_visible = true;
+        Self::render_terminal_region(
+            &self.theme,
+            self.panel_padding,
+            self.cursor_shape,
+            self.cursor_beam_width,
+            self.cursor_underline_height,
+            &mut self.right_terminal_text_system,
+            &mut self.right_terminal_view_renderer,
+            &mut self.right_terminal_glyph_instances,
+            &mut self.right_terminal_cell_background_instances,
+            &mut self.right_terminal_cursor_instances,
+            &mut self.atlas,
+            &self.device,
+            &self.queue,
+            &mut self.right_terminal_text_pipeline,
+            &mut self.right_terminal_scissor,
+            grid,
+            bounds,
+            terminal_mode,
+        );
+        self.right_terminal_body_batch =
+            self.right_terminal_scissor.map(|scissor| TextScissorBatch {
+                scissor,
+                range: InstanceDrawRange {
+                    start: 0,
+                    count: self.right_terminal_glyph_instances.len() as u32,
+                },
+            });
+    }
+
+    /// Clear right-dock terminal — called when the right panel is hidden.
+    pub fn clear_right_terminal(&mut self) {
+        self.right_terminal_scissor = None;
+        self.right_terminal_body_batch = None;
+        self.right_terminal_glyph_instances.clear();
+        self.right_terminal_cell_background_instances.clear();
+        self.right_terminal_cursor_instances.clear();
+        self.right_terminal_text_pipeline
+            .upload_instances(&self.device, &self.queue, &[]);
+    }
+
     /// Render PTY grid của buffer terminal (lazygit, v.v.) vào center editor area.
     ///
     /// Trả về `RegionDrawInstance` là solid background quad màu `terminal_bg`

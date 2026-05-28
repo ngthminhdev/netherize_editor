@@ -151,6 +151,8 @@ impl Renderer {
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let terminal_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
+        let right_terminal_text_pipeline =
+            make_text_pipeline(&device, &atlas, surface_format, width, height);
         let buffer_terminal_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let welcome_logo_text_pipeline =
@@ -224,6 +226,14 @@ impl Renderer {
             terminal_scissor: None,
             terminal_body_batch: None,
             terminal_tab_bar_batch: None,
+            right_terminal_text_system: make_text_system(panel_metrics, font_family.as_deref()),
+            right_terminal_text_pipeline,
+            right_terminal_view_renderer: TerminalViewRenderer::default_monospace(),
+            right_terminal_glyph_instances: Vec::new(),
+            right_terminal_cell_background_instances: Vec::new(),
+            right_terminal_cursor_instances: Vec::new(),
+            right_terminal_scissor: None,
+            right_terminal_body_batch: None,
             buffer_terminal_text_system: make_text_system(panel_metrics, font_family.as_deref()),
             buffer_terminal_text_pipeline,
             buffer_terminal_view_renderer: TerminalViewRenderer::default_monospace(),
@@ -344,6 +354,10 @@ impl Renderer {
             theme.ui.panel_font_size,
             theme.ui.panel_line_height,
         ));
+        self.right_terminal_text_system.set_metrics(Metrics::new(
+            theme.ui.panel_font_size,
+            theme.ui.panel_line_height,
+        ));
         self.buffer_terminal_text_system.set_metrics(Metrics::new(
             theme.ui.panel_font_size,
             theme.ui.panel_line_height,
@@ -385,6 +399,7 @@ impl Renderer {
         self.editor_overlay_text_system.set_font_family(family);
         self.sidebar_text_system.set_font_family(nerd_family);
         self.terminal_text_system.set_font_family(nerd_family);
+        self.right_terminal_text_system.set_font_family(nerd_family);
         self.buffer_terminal_text_system
             .set_font_family(nerd_family);
         self.welcome_logo_text_system.set_font_family(family);
@@ -487,6 +502,7 @@ impl Renderer {
             &mut self.gutter_text_pipeline,
             &mut self.sidebar_text_pipeline,
             &mut self.terminal_text_pipeline,
+            &mut self.right_terminal_text_pipeline,
             &mut self.buffer_terminal_text_pipeline,
             &mut self.welcome_logo_text_pipeline,
             &mut self.topbar_text_pipeline,

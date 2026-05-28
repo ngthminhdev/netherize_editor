@@ -57,7 +57,17 @@ impl Renderer {
             0
         };
 
-        let ai_chat_history_chrome_start = buf_term_cursor_start + buf_term_cursor_count;
+        let right_term_cell_bg_start = buf_term_cursor_start + buf_term_cursor_count;
+        let right_term_cell_bg_count = self.right_terminal_cell_background_instances.len() as u32;
+
+        let right_term_cursor_start = right_term_cell_bg_start + right_term_cell_bg_count;
+        let right_term_cursor_count = if self.caret_blink_visible {
+            self.right_terminal_cursor_instances.len() as u32
+        } else {
+            0
+        };
+
+        let ai_chat_history_chrome_start = right_term_cursor_start + right_term_cursor_count;
         let ai_chat_history_chrome_count = self.ai_chat_history_chrome_instances.len() as u32;
 
         // Suggestion popup chrome is a separate range drawn *after* bubble text.
@@ -100,6 +110,10 @@ impl Renderer {
         all_instances.extend_from_slice(&self.system_dep_chrome_instances);
         all_instances.extend_from_slice(&self.toast_chrome_instances);
         all_instances.extend_from_slice(&self.diagnostic_hover_chrome_instances);
+        all_instances.extend_from_slice(&self.right_terminal_cell_background_instances);
+        if self.caret_blink_visible {
+            all_instances.extend_from_slice(&self.right_terminal_cursor_instances);
+        }
 
         // Single upload — all borrows above are released.
         self.region_pipeline
@@ -533,6 +547,60 @@ impl Renderer {
                             render_pass,
                             buf_term_cursor_start,
                             buf_term_cursor_count,
+                        );
+                    },
+                );
+            }
+
+            // 6b. Right-dock terminal (opencode) — dedicated pipeline.
+            if right_term_cell_bg_count > 0 {
+                draw_text_region(
+                    &mut pass,
+                    self.right_terminal_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline.draw_range(
+                            render_pass,
+                            right_term_cell_bg_start,
+                            right_term_cell_bg_count,
+                        );
+                    },
+                );
+            }
+            if let Some(body_batch) = self.right_terminal_body_batch {
+                draw_text_region(
+                    &mut pass,
+                    Some(body_batch.scissor),
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.right_terminal_text_pipeline
+                            .draw_range(render_pass, body_batch.range);
+                    },
+                );
+            } else {
+                draw_text_region(
+                    &mut pass,
+                    self.right_terminal_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.right_terminal_text_pipeline.draw(render_pass);
+                    },
+                );
+            }
+            if right_term_cursor_count > 0 {
+                draw_text_region(
+                    &mut pass,
+                    self.right_terminal_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline.draw_range(
+                            render_pass,
+                            right_term_cursor_start,
+                            right_term_cursor_count,
                         );
                     },
                 );

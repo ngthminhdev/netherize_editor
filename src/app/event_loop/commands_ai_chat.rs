@@ -427,12 +427,26 @@ impl AppShell {
                 self.panel_state.toggle_right();
                 let is_now_visible = self.panel_state.right.visible;
 
-                // Switch the right sidebar to the AI Chat tab.
-                self.panel_state.right.switch_to_tab(PanelTabId::AiChat);
+                // Switch the right sidebar to the Terminal tab (runs opencode).
+                self.panel_state.right.switch_to_tab(PanelTabId::Terminal);
 
                 let focus_changed = if is_now_visible {
-                    self.focus_manager.set(FocusTarget::RightSidebar)
+                    // Ensure opencode is running whenever we open the right dock.
+                    self.ensure_right_opencode_terminal();
+                    let changed = self.focus_manager.set(FocusTarget::RightSidebar);
+                    // Enter terminal focus mode so keystrokes go to opencode.
+                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
+                        let _ = result;
+                    }
+                    changed
                 } else {
+                    // Closing: exit terminal focus mode.
+                    if matches!(
+                        self.app_state.current_mode(),
+                        EditorMode::TerminalFocus | EditorMode::TerminalNormal
+                    ) {
+                        let _ = self.app_state.apply_mode_event(ModeEvent::ExitFocus);
+                    }
                     self.focus_manager.set(FocusTarget::CenterEditor)
                 };
 
@@ -441,6 +455,7 @@ impl AppShell {
                 }
 
                 self.sidebar_needs_layout = true;
+                self.right_terminal_needs_layout = true;
                 Some(true)
             }
             Command::AiChatPromptInstall => Some(self.begin_ai_chat_install_confirmation()),
@@ -728,11 +743,15 @@ impl AppShell {
                     self.panel_state.right.visible = true;
                     self.sidebar_needs_layout = true;
                 }
-                self.panel_state.right.switch_to_tab(PanelTabId::AiChat);
+                self.panel_state.right.switch_to_tab(PanelTabId::Terminal);
+                self.ensure_right_opencode_terminal();
                 let focus_changed = self.focus_manager.set(FocusTarget::RightSidebar);
                 if focus_changed {
                     self.input_handler.clear_pending_prefix();
+                    // Enter terminal focus so keystrokes reach opencode.
+                    let _ = self.app_state.apply_mode_event(ModeEvent::FocusTerminal);
                 }
+                self.right_terminal_needs_layout = true;
                 Some(true)
             }
             Command::AiChatInputChar(ch) => {
@@ -844,6 +863,71 @@ impl AppShell {
                 Some(true)
             }
             _ => None,
+        }
+    }
+
+    /// Ensure the right-dock terminal is running `opencode`.
+    ///
+    /// * If the right PTY is already alive, does nothing (opencode is already running).
+    /// * If no right PTY exists yet, spawns `opencode` **directly** as a PTY process
+    ///   (not via a shell) so that when opencode exits the PTY closes cleanly with no
+    ///   leftover shell prompt showing in the right dock.
+    pub(super) fn ensure_right_opencode_terminal(&mut self) {
+        if self.right_pty_session_id.is_some() || self.pending_right_pty_spawn {
+            // Already running — nothing to do.
+            return;
+        }
+
+        // Resolve the opencode binary (same logic as opencode_available but returns path).
+        let binary: Option<std::path::PathBuf> = (|| {
+            if let Some(path_var) = std::env::var_os("PATH") {
+                for dir in std::env::split_paths(&path_var) {
+                    let candidate = dir.join("opencode");
+                    if candidate.is_file() {
+                        return Some(candidate);
+                    }
+                }
+            }
+            if let Some(home) = std::env::var_os("HOME") {
+                let candidate = std::path::PathBuf::from(home)
+                    .join(".opencode")
+                    .join("bin")
+                    .join("opencode");
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+            None
+        })();
+
+        let working_dir = self.default_terminal_working_dir();
+        self.pending_right_pty_spawn = true;
+        // No startup command needed — opencode IS the process.
+        self.right_pty_startup_command = None;
+
+        if let Some(bin) = binary {
+            // Spawn opencode directly as the PTY process.
+            self.submit(RequestSpec {
+                revision_id: 0,
+                topic: RequestTopic::TerminalPty,
+                payload: WorkerRequestPayload::SpawnPtyCommand {
+                    program: bin.to_string_lossy().into_owned(),
+                    args: Vec::new(),
+                    working_dir,
+                },
+            });
+        } else {
+            // opencode not found — fall back to spawning a shell that tells the user.
+            self.right_pty_startup_command =
+                Some("echo 'opencode not found. Run: curl -fsSL https://opencode.ai/install | sh'\\r".to_string());
+            self.submit(RequestSpec {
+                revision_id: 0,
+                topic: RequestTopic::TerminalPty,
+                payload: WorkerRequestPayload::SpawnPtyShell {
+                    shell: None,
+                    working_dir,
+                },
+            });
         }
     }
 }

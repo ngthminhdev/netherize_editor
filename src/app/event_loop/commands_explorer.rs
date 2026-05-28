@@ -58,6 +58,7 @@ impl AppShell {
         self.pending_lazydocker_buffer_index = None;
         self.right_pty_session_id = None;
         self.pending_right_pty_spawn = false;
+        self.right_pty_startup_command = None;
         self.right_terminal_grid = TerminalGrid::new(120, 40);
         self.right_terminal_grid.highlight_colors = HighlightColors::from_theme(&self.theme);
         self.right_terminal_needs_layout = true;
@@ -75,6 +76,7 @@ impl AppShell {
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_terminal();
             renderer.clear_buffer_terminal();
+            renderer.clear_right_terminal();
         }
     }
 

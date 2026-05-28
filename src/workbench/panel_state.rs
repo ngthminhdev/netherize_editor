@@ -193,6 +193,7 @@ impl Default for WorkbenchPanelState {
                 false,
                 650.0,
                 vec![
+                    PanelTabId::Terminal,
                     PanelTabId::AiChat,
                     PanelTabId::MarkdownPreview,
                     PanelTabId::Inspector,

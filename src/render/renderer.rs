@@ -193,7 +193,7 @@ pub struct Renderer {
     pub(super) sidebar_icon_instances: Vec<IconDrawInstance>,
     pub(super) sidebar_scissor: Option<[u32; 4]>,
 
-    // ── Terminal panel ────────────────────────────────────────────────────────
+    // ── Terminal panel (bottom dock) ──────────────────────────────────────────
     pub(super) terminal_text_system: TextSystem,
     pub(super) terminal_text_pipeline: TextPipeline,
     pub(super) terminal_view_renderer: TerminalViewRenderer,
@@ -203,6 +203,16 @@ pub struct Renderer {
     pub(super) terminal_scissor: Option<[u32; 4]>,
     pub(super) terminal_body_batch: Option<TextScissorBatch>,
     pub(super) terminal_tab_bar_batch: Option<TextScissorBatch>,
+
+    // ── Right-dock terminal (opencode) ────────────────────────────────────────
+    pub(super) right_terminal_text_system: TextSystem,
+    pub(super) right_terminal_text_pipeline: TextPipeline,
+    pub(super) right_terminal_view_renderer: TerminalViewRenderer,
+    pub(super) right_terminal_glyph_instances: Vec<GlyphInstance>,
+    pub(super) right_terminal_cell_background_instances: Vec<RegionDrawInstance>,
+    pub(super) right_terminal_cursor_instances: Vec<RegionDrawInstance>,
+    pub(super) right_terminal_scissor: Option<[u32; 4]>,
+    pub(super) right_terminal_body_batch: Option<TextScissorBatch>,
 
     // ── Full-screen terminal buffer tabs ─────────────────────────────────────
     pub(super) buffer_terminal_text_system: TextSystem,

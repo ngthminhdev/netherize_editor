@@ -154,6 +154,7 @@ impl AppShell {
             right_terminal_needs_layout: true,
             last_right_terminal_bounds: None,
             pending_right_pty_spawn: false,
+            right_pty_startup_command: None,
             terminal_buffer_grids: HashMap::new(),
             pending_lazygit_buffer_index: None,
             pending_lazydocker_buffer_index: None,
