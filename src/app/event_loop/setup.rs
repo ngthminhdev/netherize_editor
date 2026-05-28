@@ -561,6 +561,16 @@ impl AppShell {
         if let Some(font_family) = scaled_ui.editor.font_family.clone() {
             self.theme.editor.font_family = Some(font_family);
         }
+
+        // Update terminal highlight colors when theme changes
+        self.right_terminal_grid.highlight_colors = HighlightColors::from_theme(&self.theme);
+        for tab in &mut self.terminal_tabs {
+            tab.grid.highlight_colors = HighlightColors::from_theme(&self.theme);
+        }
+        for grid in self.terminal_buffer_grids.values_mut() {
+            grid.highlight_colors = HighlightColors::from_theme(&self.theme);
+        }
+
         self.layout_engine.config =
             crate::workbench::layout_engine::WorkbenchLayoutConfig::from_ui_theme(&scaled_theme.ui);
         self.layout_engine.config.outer_gap = scaled_ui.layout.outer_gap;
