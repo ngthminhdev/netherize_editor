@@ -97,6 +97,11 @@ impl Renderer {
                     count: self.right_terminal_glyph_instances.len() as u32,
                 },
             });
+        self.right_terminal_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.right_terminal_glyph_instances,
+        );
     }
 
     /// Clear right-dock terminal — called when the right panel is hidden.

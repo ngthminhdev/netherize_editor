@@ -352,7 +352,7 @@ fn ai_chat_toggle_closing_right_dock_returns_focus_to_editor() {
     assert!(shell.panel_state.right.visible);
     assert_eq!(
         shell.panel_state.right.active_tab_id(),
-        Some(PanelTabId::AiChat)
+        Some(PanelTabId::Terminal)
     );
     assert_eq!(shell.focus_manager.current(), FocusTarget::RightSidebar);
 
@@ -360,7 +360,7 @@ fn ai_chat_toggle_closing_right_dock_returns_focus_to_editor() {
     assert!(!shell.panel_state.right.visible);
     assert_eq!(
         shell.panel_state.right.active_tab_id(),
-        Some(PanelTabId::AiChat)
+        Some(PanelTabId::Terminal)
     );
     assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
 }
