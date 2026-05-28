@@ -1,6 +1,7 @@
 use regex::Regex;
 use std::ops::Range;
 use tree_sitter::Node;
+use once_cell::sync::Lazy;
 
 use crate::config::theme_config::ThemeConfig;
 use crate::syntax::{
@@ -158,52 +159,131 @@ pub fn generate_dotenv_highlight_spans(source: &str) -> Vec<HighlightSpan> {
     spans
 }
 
-pub fn generate_plaintext_highlight_spans(source: &str) -> Vec<HighlightSpan> {
-    use crate::terminal::highlighter::{
-        RE_BOOL, RE_KEYWORD, RE_NULL, RE_NUMBER, RE_STRING, RE_TIME,
-    };
+static RE_PT_STRING: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"#).unwrap()
+});
 
+static RE_PT_HASH: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\b[0-9a-fA-F]{8,}\b").unwrap()
+});
+
+static RE_PT_PATH: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)\b[a-z0-9_.-]+(?:/[a-z0-9_.-]+)+\b|/(?:[a-z0-9_.-]+/)+[a-z0-9_.-]+\b|\b[a-z0-9_.-]+\.(?:js|ts|jsx|tsx|rs|go|py|c|cpp|h|html|css|json|yaml|yml|toml|md|txt|sh|bash|xml|proto|rs)\b").unwrap()
+});
+
+static RE_PT_URL: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\bhttps?://[a-zA-Z0-9_.-]+(?::\d+)?(?:/[a-zA-Z0-9_.-]+)*\b").unwrap()
+});
+
+static RE_PT_COMMENT: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)(?:^\s*#|^\s*//|^\s*;|(?:\s+#|\s+//|\s+;)).*$").unwrap()
+});
+
+static RE_PT_KEY_VALUE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[a-zA-Z0-9_.-]+\s*[:=]").unwrap()
+});
+
+static RE_PT_STATUS: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\b(?:ERROR|WARN|WARNING|INFO|DEBUG|TRACE|FATAL|OK|SUCCESS|FAIL|FAILED|TODO|FIXME)\b").unwrap()
+});
+
+static RE_PT_DATE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\b\d{4}-\d{2}-\d{2}\b").unwrap()
+});
+
+static RE_PT_TIME: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\b\d{2}:\d{2}:\d{2}(?:\.\d+)?\b").unwrap()
+});
+
+static RE_PT_NUMBER: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\b\d+(?:\.\d+)?\b").unwrap()
+});
+
+static RE_PT_BOOL: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\b(?:true|false|null|nil)\b").unwrap()
+});
+
+pub fn generate_plaintext_highlight_spans(source: &str) -> Vec<HighlightSpan> {
     let mut raw = Vec::new();
 
-    for m in RE_STRING.find_iter(source) {
+    for m in RE_PT_STRING.find_iter(source) {
         raw.push(HighlightSpan {
             range: m.start()..m.end(),
             category: HighlightCategory::String,
         });
     }
 
-    for m in RE_NUMBER.find_iter(source) {
+    for m in RE_PT_URL.find_iter(source) {
+        raw.push(HighlightSpan {
+            range: m.start()..m.end(),
+            category: HighlightCategory::Function,
+        });
+    }
+
+    for m in RE_PT_PATH.find_iter(source) {
+        raw.push(HighlightSpan {
+            range: m.start()..m.end(),
+            category: HighlightCategory::Function,
+        });
+    }
+
+    for m in RE_PT_HASH.find_iter(source) {
+        raw.push(HighlightSpan {
+            range: m.start()..m.end(),
+            category: HighlightCategory::Constant,
+        });
+    }
+
+    for m in RE_PT_COMMENT.find_iter(source) {
+        raw.push(HighlightSpan {
+            range: m.start()..m.end(),
+            category: HighlightCategory::Comment,
+        });
+    }
+
+    for m in RE_PT_KEY_VALUE.find_iter(source) {
+        let text = m.as_str();
+        if let Some(pos) = text.find(':').or_else(|| text.find('=')) {
+            let key_len = text[..pos].trim_end().len();
+            raw.push(HighlightSpan {
+                range: m.start()..(m.start() + key_len),
+                category: HighlightCategory::Type,
+            });
+        }
+    }
+
+    for m in RE_PT_STATUS.find_iter(source) {
+        raw.push(HighlightSpan {
+            range: m.start()..m.end(),
+            category: HighlightCategory::KeywordControl,
+        });
+    }
+
+    for m in RE_PT_DATE.find_iter(source) {
         raw.push(HighlightSpan {
             range: m.start()..m.end(),
             category: HighlightCategory::Number,
         });
     }
 
-    for m in RE_TIME.find_iter(source) {
+    for m in RE_PT_TIME.find_iter(source) {
         raw.push(HighlightSpan {
             range: m.start()..m.end(),
             category: HighlightCategory::Number,
         });
     }
 
-    for m in RE_BOOL.find_iter(source) {
+    for m in RE_PT_NUMBER.find_iter(source) {
         raw.push(HighlightSpan {
             range: m.start()..m.end(),
-            category: HighlightCategory::Boolean,
+            category: HighlightCategory::Number,
         });
     }
 
-    for m in RE_NULL.find_iter(source) {
+    for m in RE_PT_BOOL.find_iter(source) {
         raw.push(HighlightSpan {
             range: m.start()..m.end(),
             category: HighlightCategory::Boolean,
-        });
-    }
-
-    for m in RE_KEYWORD.find_iter(source) {
-        raw.push(HighlightSpan {
-            range: m.start()..m.end(),
-            category: HighlightCategory::Keyword,
         });
     }
 
@@ -410,6 +490,7 @@ fn render<'a>(label: &'a str, count: usize) -> Demo<'a> {
     fn javascript_highlight_uses_default_query_captures() {
         let source = r#"
 const answer = 42;
+const label = "hello";
 function greet(name) {
     console.log(`hello ${name}`);
     return answer;
@@ -440,6 +521,11 @@ function greet(name) {
             spans
                 .iter()
                 .any(|s| s.category == HighlightCategory::String)
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::StringTemplate)
         );
     }
 

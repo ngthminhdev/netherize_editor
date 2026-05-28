@@ -104,6 +104,7 @@ pub(super) fn syntax_spans_to_styled(
                                     theme.syntax.keyword_storage.as_u8()
                                 }
                 crate::syntax::highlight::HighlightCategory::String => theme.syntax.string.as_u8(),
+                crate::syntax::highlight::HighlightCategory::StringTemplate => theme.syntax.string.as_u8(),
                 crate::syntax::highlight::HighlightCategory::StringEscape => {
                                     theme.syntax.string_escape.as_u8()
                                 }
@@ -213,7 +214,12 @@ pub(super) fn diagnostic_spans_to_styled(
             const DIAGNOSTIC_TAG_UNNECESSARY: u32 = 1;
 
             let severity = diagnostic.severity.unwrap_or(2);
-            let is_unnecessary = diagnostic.tags.contains(&DIAGNOSTIC_TAG_UNNECESSARY);
+            let msg_lower = diagnostic.message.to_lowercase();
+            let is_unnecessary = diagnostic.tags.contains(&DIAGNOSTIC_TAG_UNNECESSARY)
+                || msg_lower.contains("never read")
+                || msg_lower.contains("never used")
+                || msg_lower.contains("unused")
+                || msg_lower.contains("not used");
             let color = if is_unnecessary {
                 theme.ui.fg_ghost.as_u8()
             } else {
@@ -1528,7 +1534,11 @@ pub(super) fn build_sidebar_rows(
                 .unwrap_or(entry.name.as_str());
             // Always use file-type icon, even for hidden/ignored files.
             // This ensures .py files show Python icon, not generic hidden icon.
-            let icon = theme.get_icon_for_file(filename, is_dir).to_string();
+            let icon = if is_dir {
+                icon_theme.glyph.clone()
+            } else {
+                theme.get_icon_for_file(filename, is_dir).to_string()
+            };
             SidebarRow {
                 path: Some(entry.path.clone()),
                 depth: entry.depth,

@@ -54,9 +54,13 @@ pub(crate) fn generate_query_highlight_spans(
             }
 
             let capture_name = query.capture_names()[capture.index as usize];
-            let Some(category) = capture_category(capture_name) else {
+            let Some(mut category) = capture_category(capture_name) else {
                 continue;
             };
+
+            if category == HighlightCategory::String && node.kind() == "template_string" {
+                category = HighlightCategory::StringTemplate;
+            }
 
             raw_spans.push(HighlightSpan {
                 range: start..end,
@@ -201,9 +205,19 @@ pub(crate) fn generate_query_highlight_spans_for_node(
             }
 
             let capture_name = query.capture_names()[capture.index as usize];
-            let Some(category) = capture_category(capture_name) else {
+            let Some(mut category) = capture_category(capture_name) else {
                 continue;
             };
+
+            // Template literals in JavaScript/TypeScript are captured as
+            // `@string` (priority 100) which masks nested interpolation
+            // expressions (Variable priority 42, Function priority 85).
+            // Override to StringTemplate (priority 30) so inner tokens win.
+            if category == HighlightCategory::String
+                && node.kind() == "template_string"
+            {
+                category = HighlightCategory::StringTemplate;
+            }
 
             raw_spans.push(HighlightSpan {
                 range: start..end,
@@ -253,6 +267,7 @@ pub(crate) fn capture_category(capture_name: &str) -> Option<HighlightCategory> 
         | "keyword.storage.modifier" => {
             Some(HighlightCategory::KeywordStorage)
         }
+        "syntax.string.template" => Some(HighlightCategory::StringTemplate),
         "syntax.string" => Some(HighlightCategory::String),
         "syntax.string.escape" | "string.escape" | "character.escape" | "escape.sequence" => {
             Some(HighlightCategory::StringEscape)
@@ -315,7 +330,7 @@ pub(crate) fn capture_category(capture_name: &str) -> Option<HighlightCategory> 
         _ if capture_name.starts_with("escape") || capture_name.ends_with(".escape") => {
             Some(HighlightCategory::StringEscape)
         }
-        _ if capture_name.starts_with("embedded") => Some(HighlightCategory::String),
+        _ if capture_name.starts_with("embedded") => Some(HighlightCategory::StringTemplate),
         _ if capture_name.starts_with("type.builtin") => Some(HighlightCategory::TypeBuiltin),
         _ if capture_name.starts_with("type") => Some(HighlightCategory::Type),
         _ if capture_name.starts_with("constructor") => Some(HighlightCategory::Constructor),
@@ -475,4 +490,3 @@ pub(crate) fn sanitize_byte_range(source: &str, range: Range<usize>) -> Option<(
 
     (start < end).then_some((start, end))
 }
-

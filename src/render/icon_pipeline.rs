@@ -70,9 +70,29 @@ pub fn canonical_icon_id(icon: &str) -> Option<&'static str> {
         "haskell" => "built_in:haskell",
         "hash" => "built_in:hash",
         "html" => "built_in:html",
-        "identifier" | "symbol" | "function" | "method" | "property" | "field" | "variable" | "constant" | "class" | "interface" | "struct" | "enum" | "reference" | "event" | "operator" | "type_parameter" => "built_in:identifier",
+        "identifier" | "symbol" => "built_in:identifier",
+        "function" | "symbol-function" => "built_in:symbol-function",
+        "method" | "symbol-method" => "built_in:symbol-method",
+        "constructor" | "symbol-constructor" => "built_in:symbol-constructor",
+        "property" | "symbol-property" => "built_in:symbol-property",
+        "field" | "symbol-field" => "built_in:symbol-field",
+        "variable" | "symbol-variable" => "built_in:symbol-variable",
+        "constant" | "symbol-constant" => "built_in:symbol-constant",
+        "class" | "symbol-class" => "built_in:symbol-class",
+        "interface" | "symbol-interface" => "built_in:symbol-interface",
+        "struct" | "symbol-struct" => "built_in:symbol-struct",
+        "enum" | "symbol-enum" => "built_in:symbol-enum",
+        "reference" | "symbol-reference" => "built_in:symbol-reference",
+        "event" | "symbol-event" => "built_in:symbol-event",
+        "operator" | "symbol-operator" => "built_in:symbol-operator",
+        "type_parameter" | "symbol-type-parameter" => "built_in:symbol-type-parameter",
+        "module" | "symbol-module" => "built_in:symbol-module",
+        "namespace" | "symbol-namespace" => "built_in:symbol-namespace",
         "image" => "built_in:image",
-        "info" | "keyword" | "text" | "unit" | "value" | "color" | "snippet" => "built_in:info",
+        "error" => "built_in:error",
+        "warning" => "built_in:warning",
+        "info" | "text" | "unit" | "value" | "color" | "snippet" => "built_in:info",
+        "keyword" | "symbol-keyword" => "built_in:symbol-keyword",
         "java" => "built_in:java",
         "javascript" | "js" => "built_in:javascript",
         "node" => "built_in:node",
@@ -415,6 +435,7 @@ fn build_bearded_atlas() -> BuiltAtlas {
         ("built_in:drizzle", include_bytes!("../../assets/bearded-icons/drizzle.svg")),
         ("built_in:editorconfig", include_bytes!("../../assets/bearded-icons/editorconfig.svg")),
         ("built_in:elm", include_bytes!("../../assets/bearded-icons/elm.svg")),
+        ("built_in:error", include_bytes!("../../assets/bearded-icons/error.svg")),
         ("built_in:eslint", include_bytes!("../../assets/bearded-icons/eslint.svg")),
         ("built_in:eslintignore", include_bytes!("../../assets/bearded-icons/eslintignore.svg")),
         ("built_in:file", include_bytes!("../../assets/bearded-icons/file.svg")),
@@ -422,6 +443,7 @@ fn build_bearded_atlas() -> BuiltAtlas {
         ("built_in:flutterlock", include_bytes!("../../assets/bearded-icons/flutterlock.svg")),
         ("built_in:folder", include_bytes!("../../assets/bearded-icons/folder.svg")),
         ("built_in:folder_open", include_bytes!("../../assets/bearded-icons/folder_open.svg")),
+        ("built_in:root_folder", include_bytes!("../../assets/bearded-icons/root_folder.svg")),
         ("built_in:fsharp", include_bytes!("../../assets/bearded-icons/fsharp.svg")),
         ("built_in:git", include_bytes!("../../assets/bearded-icons/git.svg")),
         ("built_in:go", include_bytes!("../../assets/bearded-icons/go.svg")),
@@ -434,6 +456,24 @@ fn build_bearded_atlas() -> BuiltAtlas {
         ("built_in:identifier", include_bytes!("../../assets/bearded-icons/identifier.svg")),
         ("built_in:image", include_bytes!("../../assets/bearded-icons/image.svg")),
         ("built_in:info", include_bytes!("../../assets/bearded-icons/info.svg")),
+        ("built_in:symbol-class", include_bytes!("../../assets/bearded-icons/symbol-class.svg")),
+        ("built_in:symbol-constant", include_bytes!("../../assets/bearded-icons/symbol-constant.svg")),
+        ("built_in:symbol-constructor", include_bytes!("../../assets/bearded-icons/symbol-constructor.svg")),
+        ("built_in:symbol-enum", include_bytes!("../../assets/bearded-icons/symbol-enum.svg")),
+        ("built_in:symbol-event", include_bytes!("../../assets/bearded-icons/symbol-event.svg")),
+        ("built_in:symbol-field", include_bytes!("../../assets/bearded-icons/symbol-field.svg")),
+        ("built_in:symbol-function", include_bytes!("../../assets/bearded-icons/symbol-function.svg")),
+        ("built_in:symbol-interface", include_bytes!("../../assets/bearded-icons/symbol-interface.svg")),
+        ("built_in:symbol-keyword", include_bytes!("../../assets/bearded-icons/symbol-keyword.svg")),
+        ("built_in:symbol-method", include_bytes!("../../assets/bearded-icons/symbol-method.svg")),
+        ("built_in:symbol-module", include_bytes!("../../assets/bearded-icons/symbol-module.svg")),
+        ("built_in:symbol-namespace", include_bytes!("../../assets/bearded-icons/symbol-namespace.svg")),
+        ("built_in:symbol-operator", include_bytes!("../../assets/bearded-icons/symbol-operator.svg")),
+        ("built_in:symbol-property", include_bytes!("../../assets/bearded-icons/symbol-property.svg")),
+        ("built_in:symbol-reference", include_bytes!("../../assets/bearded-icons/symbol-reference.svg")),
+        ("built_in:symbol-struct", include_bytes!("../../assets/bearded-icons/symbol-struct.svg")),
+        ("built_in:symbol-type-parameter", include_bytes!("../../assets/bearded-icons/symbol-type-parameter.svg")),
+        ("built_in:symbol-variable", include_bytes!("../../assets/bearded-icons/symbol-variable.svg")),
         ("built_in:java", include_bytes!("../../assets/bearded-icons/java.svg")),
         ("built_in:javascript", include_bytes!("../../assets/bearded-icons/js.svg")),
         ("built_in:jest", include_bytes!("../../assets/bearded-icons/jest.svg")),
@@ -519,6 +559,7 @@ fn build_bearded_atlas() -> BuiltAtlas {
         ("built_in:vitest", include_bytes!("../../assets/bearded-icons/vitest.svg")),
         ("built_in:vue", include_bytes!("../../assets/bearded-icons/vue.svg")),
         ("built_in:vueconfig", include_bytes!("../../assets/bearded-icons/vueconfig.svg")),
+        ("built_in:warning", include_bytes!("../../assets/bearded-icons/warning.svg")),
         ("built_in:webpack", include_bytes!("../../assets/bearded-icons/webpack.svg")),
         ("built_in:windi", include_bytes!("../../assets/bearded-icons/windi.svg")),
         ("built_in:xml", include_bytes!("../../assets/bearded-icons/xml.svg")),
@@ -568,6 +609,128 @@ fn blit_rgba(dst: &mut [u8], dst_size: u32, x: u32, y: u32, w: u32, h: u32, src:
         let len = (w * 4) as usize;
         if dst_start + len <= dst.len() && src_start + len <= src.len() {
             dst[dst_start..dst_start + len].copy_from_slice(&src[src_start..src_start + len]);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{canonical_icon_id, rasterize_svg};
+
+    #[test]
+    fn canonical_icon_id_accepts_direct_symbol_asset_ids() {
+        let symbol_ids = [
+            "built_in:symbol-class",
+            "built_in:symbol-constant",
+            "built_in:symbol-constructor",
+            "built_in:symbol-enum",
+            "built_in:symbol-event",
+            "built_in:symbol-field",
+            "built_in:symbol-function",
+            "built_in:symbol-interface",
+            "built_in:symbol-keyword",
+            "built_in:symbol-method",
+            "built_in:symbol-module",
+            "built_in:symbol-namespace",
+            "built_in:symbol-operator",
+            "built_in:symbol-property",
+            "built_in:symbol-reference",
+            "built_in:symbol-struct",
+            "built_in:symbol-type-parameter",
+            "built_in:symbol-variable",
+        ];
+
+        for icon in symbol_ids {
+            assert_eq!(canonical_icon_id(icon), Some(icon));
+        }
+    }
+
+    #[test]
+    fn symbol_svg_assets_rasterize_to_non_empty_pixmaps() {
+        let symbols: &[(&str, &[u8])] = &[
+            (
+                "symbol-class",
+                include_bytes!("../../assets/bearded-icons/symbol-class.svg"),
+            ),
+            (
+                "symbol-constant",
+                include_bytes!("../../assets/bearded-icons/symbol-constant.svg"),
+            ),
+            (
+                "symbol-constructor",
+                include_bytes!("../../assets/bearded-icons/symbol-constructor.svg"),
+            ),
+            (
+                "symbol-enum",
+                include_bytes!("../../assets/bearded-icons/symbol-enum.svg"),
+            ),
+            (
+                "symbol-event",
+                include_bytes!("../../assets/bearded-icons/symbol-event.svg"),
+            ),
+            (
+                "symbol-field",
+                include_bytes!("../../assets/bearded-icons/symbol-field.svg"),
+            ),
+            (
+                "symbol-function",
+                include_bytes!("../../assets/bearded-icons/symbol-function.svg"),
+            ),
+            (
+                "symbol-interface",
+                include_bytes!("../../assets/bearded-icons/symbol-interface.svg"),
+            ),
+            (
+                "symbol-keyword",
+                include_bytes!("../../assets/bearded-icons/symbol-keyword.svg"),
+            ),
+            (
+                "symbol-method",
+                include_bytes!("../../assets/bearded-icons/symbol-method.svg"),
+            ),
+            (
+                "symbol-module",
+                include_bytes!("../../assets/bearded-icons/symbol-module.svg"),
+            ),
+            (
+                "symbol-namespace",
+                include_bytes!("../../assets/bearded-icons/symbol-namespace.svg"),
+            ),
+            (
+                "symbol-operator",
+                include_bytes!("../../assets/bearded-icons/symbol-operator.svg"),
+            ),
+            (
+                "symbol-property",
+                include_bytes!("../../assets/bearded-icons/symbol-property.svg"),
+            ),
+            (
+                "symbol-reference",
+                include_bytes!("../../assets/bearded-icons/symbol-reference.svg"),
+            ),
+            (
+                "symbol-struct",
+                include_bytes!("../../assets/bearded-icons/symbol-struct.svg"),
+            ),
+            (
+                "symbol-type-parameter",
+                include_bytes!("../../assets/bearded-icons/symbol-type-parameter.svg"),
+            ),
+            (
+                "symbol-variable",
+                include_bytes!("../../assets/bearded-icons/symbol-variable.svg"),
+            ),
+        ];
+
+        for (name, svg) in symbols {
+            let pixmap = rasterize_svg(svg, 96, 96);
+            assert!(pixmap.is_some(), "{name} should parse and rasterize");
+
+            let rgba = pixmap.unwrap_or_default();
+            assert!(
+                rgba.chunks_exact(4).any(|pixel| pixel[3] > 0),
+                "{name} should contain visible pixels"
+            );
         }
     }
 }

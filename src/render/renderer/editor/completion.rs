@@ -78,63 +78,63 @@ pub(super) fn completion_kind_badge<'a>(
 ) -> CompletionKindBadge<'a> {
     match kind {
         Some(COMPLETION_KIND_TEXT) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:info",
             color: theme.ui.fg_dim.as_f32(),
         },
         Some(COMPLETION_KIND_METHOD) | Some(COMPLETION_KIND_FUNCTION) => CompletionKindBadge {
-            icon: "󰊕",
+            icon: "built_in:symbol-function",
             color: theme.syntax.function.as_f32(),
         },
         Some(COMPLETION_KIND_CONSTRUCTOR) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-constructor",
             color: theme.syntax.constructor.as_f32(),
         },
         Some(COMPLETION_KIND_FIELD) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-field",
             color: theme.syntax.field.as_f32(),
         },
         Some(COMPLETION_KIND_VARIABLE) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-variable",
             color: theme.syntax.variable.as_f32(),
         },
         Some(COMPLETION_KIND_CLASS) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-class",
             color: theme.syntax.r#type.as_f32(),
         },
         Some(COMPLETION_KIND_INTERFACE) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-interface",
             color: theme.syntax.r#type.as_f32(),
         },
         Some(COMPLETION_KIND_MODULE) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-module",
             color: theme.syntax.namespace.as_f32(),
         },
         Some(COMPLETION_KIND_PROPERTY) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-property",
             color: theme.syntax.property.as_f32(),
         },
         Some(COMPLETION_KIND_UNIT) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:info",
             color: theme.ui.fg_dim.as_f32(),
         },
         Some(COMPLETION_KIND_VALUE) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:info",
             color: theme.syntax.constant.as_f32(),
         },
         Some(COMPLETION_KIND_ENUM) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-enum",
             color: theme.syntax.r#type.as_f32(),
         },
         Some(COMPLETION_KIND_KEYWORD) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-keyword",
             color: theme.syntax.keyword.as_f32(),
         },
         Some(COMPLETION_KIND_SNIPPET) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:info",
             color: theme.ui.amber.as_f32(),
         },
         Some(COMPLETION_KIND_COLOR) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:info",
             color: theme.ui.magenta.as_f32(),
         },
         Some(COMPLETION_KIND_FILE) => CompletionKindBadge {
@@ -142,7 +142,7 @@ pub(super) fn completion_kind_badge<'a>(
             color: theme.ui.fg_dim.as_f32(),
         },
         Some(COMPLETION_KIND_REFERENCE) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-reference",
             color: theme.ui.fg_dim.as_f32(),
         },
         Some(COMPLETION_KIND_FOLDER) => CompletionKindBadge {
@@ -150,31 +150,31 @@ pub(super) fn completion_kind_badge<'a>(
             color: theme.ui.amber.as_f32(),
         },
         Some(COMPLETION_KIND_ENUM_MEMBER) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-constant",
             color: theme.syntax.constant.as_f32(),
         },
         Some(COMPLETION_KIND_CONSTANT) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-constant",
             color: theme.syntax.constant.as_f32(),
         },
         Some(COMPLETION_KIND_STRUCT) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-struct",
             color: theme.syntax.r#type.as_f32(),
         },
         Some(COMPLETION_KIND_EVENT) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-event",
             color: theme.ui.warning.as_f32(),
         },
         Some(COMPLETION_KIND_OPERATOR) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-operator",
             color: theme.syntax.operator.as_f32(),
         },
         Some(COMPLETION_KIND_TYPE_PARAMETER) => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:symbol-type-parameter",
             color: theme.ui.cyan.as_f32(),
         },
         _ => CompletionKindBadge {
-            icon: "",
+            icon: "built_in:identifier",
             color: theme.ui.fg_ghost.as_f32(),
         },
     }

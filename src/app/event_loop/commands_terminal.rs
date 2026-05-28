@@ -1,7 +1,7 @@
 use super::*;
 
 impl AppShell {
-    fn default_terminal_working_dir(&self) -> Option<PathBuf> {
+    pub(super) fn default_terminal_working_dir(&self) -> Option<PathBuf> {
         self.app_state
             .workspace_root_path()
             .map(PathBuf::from)
@@ -107,10 +107,6 @@ impl AppShell {
                 if next_visible {
                     changed |= self.dismiss_initial_launch_welcome_if_active();
                     self.ensure_active_terminal_tab_spawned();
-                    // Enter terminal focus mode to enable text input
-                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
-                        changed |= result.changed;
-                    }
                 }
 
                 if !next_visible
@@ -266,6 +262,9 @@ impl AppShell {
             Command::TerminalWriteInput(input) => {
                 self.track_terminal_tab_input(input);
                 self.forward_to_pty(input);
+                self.caret_blink_visible = true;
+                self.caret_blink_dirty = true;
+                self.last_caret_blink_tick = std::time::Instant::now();
                 Some(false)
             }
             Command::TerminalPaste => Some(self.handle_terminal_paste()),

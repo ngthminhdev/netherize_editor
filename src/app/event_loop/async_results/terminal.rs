@@ -30,6 +30,18 @@ pub(super) fn handle_terminal_result(
                         rows: app.right_terminal_grid.rows.min(u16::MAX as usize) as u16,
                     },
                 });
+                // If a startup command was queued (e.g. "opencode\r"), write it
+                // into the fresh shell after a brief moment so the prompt is ready.
+                if let Some(cmd) = app.right_pty_startup_command.take() {
+                    app.submit(RequestSpec {
+                        revision_id: 0,
+                        topic: RequestTopic::TerminalPty,
+                        payload: WorkerRequestPayload::WritePtyInput {
+                            session_id,
+                            input: cmd,
+                        },
+                    });
+                }
             } else if let Some(buffer_index) = app
                 .pending_lazygit_buffer_index
                 .take()
@@ -106,7 +118,6 @@ pub(super) fn handle_terminal_result(
             for tab in &mut app.terminal_tabs {
                 if tab.session_id == Some(session_id) {
                     let scrolled_rows = tab.grid.feed_bytes(&chunk);
-                    tab.grid.apply_regex_highlights();
                     if preserve_viewport {
                         tab.grid.view_scroll_up(scrolled_rows);
                     } else {
@@ -119,7 +130,6 @@ pub(super) fn handle_terminal_result(
             }
             if app.right_pty_session_id == Some(session_id) {
                 let scrolled_rows = app.right_terminal_grid.feed_bytes(&chunk);
-                app.right_terminal_grid.apply_regex_highlights();
                 if preserve_viewport {
                     app.right_terminal_grid.view_scroll_up(scrolled_rows);
                 } else {
@@ -131,7 +141,6 @@ pub(super) fn handle_terminal_result(
             let is_terminal_buffer = app.terminal_buffer_grids.contains_key(&session_id);
             if let Some(grid) = app.terminal_buffer_grids.get_mut(&session_id) {
                 let scrolled_rows = grid.feed_bytes(&chunk);
-                grid.apply_regex_highlights();
                 if preserve_viewport {
                     grid.view_scroll_up(scrolled_rows);
                 } else {
@@ -187,6 +196,23 @@ pub(super) fn handle_terminal_result(
             if app.right_pty_session_id == Some(session_id) {
                 eprintln!("[AppShell] right PTY {session_id} closed: {reason}");
                 app.right_pty_session_id = None;
+                // Clear the terminal grid so stale opencode output is not shown.
+                app.right_terminal_grid = crate::terminal::grid::TerminalGrid::new(120, 40);
+                app.right_terminal_grid.highlight_colors =
+                    crate::terminal::grid::HighlightColors::from_theme(&app.theme);
+                app.right_terminal_needs_layout = true;
+                app.last_right_terminal_bounds = None;
+                // Exit TerminalFocus mode so the editor is not stuck in terminal input mode.
+                if matches!(
+                    app.app_state.current_mode(),
+                    crate::core::mode::EditorMode::TerminalFocus
+                        | crate::core::mode::EditorMode::TerminalNormal
+                ) {
+                    let _ = app
+                        .app_state
+                        .apply_mode_event(crate::core::mode::ModeEvent::ExitFocus);
+                }
+                app.request_redraw();
             }
             if app.terminal_buffer_grids.contains_key(&session_id) {
                 eprintln!("[AppShell] terminal buffer PTY {session_id} closed: {reason}");

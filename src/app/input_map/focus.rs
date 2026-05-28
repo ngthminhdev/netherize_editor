@@ -540,7 +540,7 @@ impl InputMap {
 
         if !input.has_command_modifier()
             && input.physical_key == Some(KeyG)
-            && input.modifiers.shift_key()
+            && (input.modifiers.shift_key() || input.text.as_deref() == Some("G"))
         {
             return Some(KeybindingMatch {
                 command: Command::MarkdownPreviewScrollBottom,
@@ -555,12 +555,6 @@ impl InputMap {
             });
         }
 
-        if !input.has_command_modifier() && input.physical_key == Some(KeyG) {
-            return Some(KeybindingMatch {
-                command: Command::MarkdownPreviewScrollTop,
-                reason: "preview: g/gg -> scroll top",
-            });
-        }
 
         if input.modifiers.control_key()
             && !input.modifiers.super_key()
@@ -840,7 +834,9 @@ impl InputMap {
             }
         }
 
-        if palette_mode == Some(CommandPaletteMode::RecentProjects) && !input.has_command_modifier()
+        if palette_mode == Some(CommandPaletteMode::RecentProjects)
+            && welcome_visible
+            && !input.has_command_modifier()
         {
             use KeyCode::*;
             match input.physical_key {

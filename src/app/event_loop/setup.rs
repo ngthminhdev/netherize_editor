@@ -154,6 +154,7 @@ impl AppShell {
             right_terminal_needs_layout: true,
             last_right_terminal_bounds: None,
             pending_right_pty_spawn: false,
+            right_pty_startup_command: None,
             terminal_buffer_grids: HashMap::new(),
             pending_lazygit_buffer_index: None,
             pending_lazydocker_buffer_index: None,
@@ -218,7 +219,9 @@ impl AppShell {
             semantic_highlight_request_revision: 0,
             references_request_revision: 0,
             completion_resolve_request_id: None,
+            active_lsp_completion_request_id: None,
             hover_loading_request_id: None,
+            latest_hover_request_id: None,
             latest_definition_request_id: None,
             document_symbols_request_revision: 0,
             lsp_rename_request_revision: 0,
@@ -229,6 +232,9 @@ impl AppShell {
             pending_completion_resolve_after_debounce: false,
             last_completion_resolve_select_at: None,
             pending_completion_resolve_revision: 0,
+            pending_completion_accept_after_resolve: None,
+            pending_lsp_completion_after_debounce: false,
+            last_lsp_completion_type_at: None,
             ai_inline_revision: 0,
             pending_ai_inline_request: None,
             ai_inline_cancel_token: None,
@@ -255,6 +261,7 @@ impl AppShell {
             lsp_loading_frame: 0,
             caret_blink_visible: true,
             caret_blink_dirty: false,
+            last_caret_blink_tick: now,
             pre_markdown_preview_right_width: None,
             pending_code_actions: Vec::new(),
             selected_python_env: None,
@@ -496,7 +503,12 @@ impl AppShell {
     }
 
     pub(super) fn update_runtime_scaling_for_window(&mut self, scale_factor: f64) {
-        let dpi_scale = (scale_factor as f32).max(0.25);
+        let raw_scale = if let Some(over) = self.ui_config.window.scale_factor_override {
+            over as f64
+        } else {
+            scale_factor
+        };
+        let dpi_scale = (raw_scale as f32).max(0.25);
         let logical_width = self.window_size.width as f32 / dpi_scale;
         let logical_height = self.window_size.height as f32 / dpi_scale;
 
@@ -1573,6 +1585,42 @@ impl AppShell {
             revision_id: 0,
             topic: RequestTopic::LspCheck,
             payload: WorkerRequestPayload::CheckLspForPath { path },
+        });
+    }
+
+    /// Submit workspace/symbol request to pre-index symbols for fast completion.
+    pub(super) fn submit_workspace_symbol_indexing(&self, language_id: String) {
+        if matches!(
+            language_id.as_str(),
+            "typescript" | "tsx" | "javascript" | "jsx"
+        ) {
+            if let Some(workspace_root) = self.app_state.workspace_root_path().map(PathBuf::from) {
+                self.app_state
+                    .workspace_symbol_cache()
+                    .set_indexing_progress(&language_id, 0, 0);
+                eprintln!(
+                    "[AppShell] starting TS/JS workspace symbol index for {} in {}",
+                    language_id,
+                    workspace_root.display()
+                );
+                self.submit(RequestSpec {
+                    revision_id: 0,
+                    topic: RequestTopic::SystemTask,
+                    payload: WorkerRequestPayload::WorkspaceExportIndexRequest {
+                        language_id,
+                        workspace_root,
+                    },
+                });
+            }
+            return;
+        }
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::LspRequest,
+            payload: WorkerRequestPayload::WorkspaceSymbolRequest {
+                language_id,
+                query: String::new(), // Empty query returns all symbols
+            },
         });
     }
 

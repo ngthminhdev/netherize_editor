@@ -27,6 +27,21 @@ impl AppShell {
             | Command::InsertText(_)
             | Command::Backspace
             | Command::Newline => {
+                // Clear semantic highlights and increment revision when typing/deleting
+                self.semantic_highlight_request_revision = self
+                    .semantic_highlight_request_revision
+                    .saturating_add(1);
+                let semantic_symbols_cleared = self.app_state.clear_semantic_symbol_highlights();
+                let semantic_spans_cleared = !self.semantic_highlight_spans.is_empty();
+                if semantic_spans_cleared {
+                    self.semantic_highlight_spans.clear();
+                }
+                let highlights_cleared = semantic_symbols_cleared || semantic_spans_cleared;
+                if highlights_cleared {
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                }
+
                 let report = {
                     let (app_state, clipboard) = (&mut self.app_state, &mut self.clipboard);
                     dispatch_command_with_clipboard_count(
@@ -37,7 +52,10 @@ impl AppShell {
                     )
                 };
                 if !report.success {
-                    return Some(report.request_redraw);
+                    if highlights_cleared {
+                        self.request_redraw();
+                    }
+                    return Some(report.request_redraw || highlights_cleared);
                 }
                 if report.state_changed {
                     self.reconcile_highlight_spans_with_pending_edits();
@@ -55,10 +73,22 @@ impl AppShell {
                 } else {
                     false
                 };
-                if report.request_redraw || report.state_changed || completion_changed {
+                if report.state_changed && !self.app_state.has_completion() {
+                    self.queue_lsp_completion_after_debounce_if_needed();
+                }
+                if report.request_redraw
+                    || report.state_changed
+                    || completion_changed
+                    || highlights_cleared
+                {
                     self.request_redraw();
                 }
-                Some(report.request_redraw || report.state_changed || completion_changed)
+                Some(
+                    report.request_redraw
+                        || report.state_changed
+                        || completion_changed
+                        || highlights_cleared,
+                )
             }
             _ => None,
         }

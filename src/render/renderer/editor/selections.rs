@@ -29,6 +29,8 @@ use crate::text::text_system::StyledTextSpan;
 
 const DIAGNOSTIC_SEVERITY_ERROR: u32 = 1;
 const DIAGNOSTIC_SEVERITY_WARNING: u32 = 2;
+const DIAGNOSTIC_SEVERITY_INFO: u32 = 3;
+const DIAGNOSTIC_SEVERITY_HINT: u32 = 4;
 const GUTTER_BG_RIGHT_TRIM: f32 = 10.0;
 const GIT_GUTTER_MARKER_LEFT_INSET: f32 = -10.0;
 const GIT_GUTTER_MARKER_WIDTH: f32 = 6.0;
@@ -506,7 +508,7 @@ impl Renderer {
     ) -> Vec<RegionDrawInstance> {
         // Use fg (white-ish) for the background tint so it stays visible on dark themes.
         let mut bg_color = self.theme.ui.fg.as_f32();
-        bg_color[3] = 0.12;
+        bg_color[3] = 0.05;
         let mut quads = self.byte_range_highlight_quads(
             app_state,
             center_bounds,
@@ -572,13 +574,19 @@ impl Renderer {
         let mut quads = Vec::new();
         for diagnostic in diagnostics {
             let severity = diagnostic.severity.unwrap_or(DIAGNOSTIC_SEVERITY_WARNING);
-            if severity != DIAGNOSTIC_SEVERITY_ERROR && severity != DIAGNOSTIC_SEVERITY_WARNING {
+            if severity < 1 || severity > 4 {
                 continue;
             }
-            let color = if severity == DIAGNOSTIC_SEVERITY_ERROR {
-                self.theme.ui.error.as_f32()
-            } else {
-                self.theme.ui.warning.as_f32()
+            let color = match severity {
+                DIAGNOSTIC_SEVERITY_ERROR => self.theme.ui.error.as_f32(),
+                DIAGNOSTIC_SEVERITY_WARNING => self.theme.ui.warning.as_f32(),
+                DIAGNOSTIC_SEVERITY_INFO => self.theme.ui.info.as_f32(),
+                DIAGNOSTIC_SEVERITY_HINT => {
+                    let mut hint_c = self.theme.ui.fg_ghost.as_f32();
+                    hint_c[3] = 0.48; // Very subtle for hints/unused
+                    hint_c
+                }
+                _ => self.theme.ui.fg_ghost.as_f32(),
             };
 
             let start_line = diagnostic.range.start.line as usize;
@@ -639,7 +647,7 @@ impl Renderer {
                         [left, underline_y, width, underline_h],
                         color,
                     ));
-                } else {
+                } else if severity == DIAGNOSTIC_SEVERITY_WARNING {
                     let mut warning_color = color;
                     warning_color[3] = warning_color[3].clamp(0.9, 1.0);
                     let underline_h = 3.0;
@@ -647,6 +655,15 @@ impl Renderer {
                     quads.push(RegionDrawInstance::new(
                         [left, underline_y, width, underline_h],
                         warning_color,
+                    ));
+                } else {
+                    let mut info_color = color;
+                    info_color[3] = info_color[3].clamp(0.35, 0.65);
+                    let underline_h = 1.5;
+                    let underline_y = line_top + (line_height_px - underline_h).max(0.0);
+                    quads.push(RegionDrawInstance::new(
+                        [left, underline_y, width, underline_h],
+                        info_color,
                     ));
                 }
             }

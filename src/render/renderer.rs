@@ -102,6 +102,8 @@ pub struct TopbarTab {
 pub(super) struct TopbarLayoutKey {
     pub(super) tabs: Vec<TopbarTab>,
     pub(super) active_buffer_index: Option<usize>,
+    pub(super) project_name: String,
+    pub(super) center_x: f32,
     pub(super) bounds: [f32; 4],
 }
 
@@ -191,21 +193,33 @@ pub struct Renderer {
     pub(super) sidebar_icon_instances: Vec<IconDrawInstance>,
     pub(super) sidebar_scissor: Option<[u32; 4]>,
 
-    // ── Terminal panel ────────────────────────────────────────────────────────
+    // ── Terminal panel (bottom dock) ──────────────────────────────────────────
     pub(super) terminal_text_system: TextSystem,
     pub(super) terminal_text_pipeline: TextPipeline,
     pub(super) terminal_view_renderer: TerminalViewRenderer,
     pub(super) terminal_glyph_instances: Vec<GlyphInstance>,
+    pub(super) terminal_cell_background_instances: Vec<RegionDrawInstance>,
     pub(super) terminal_cursor_instances: Vec<RegionDrawInstance>,
     pub(super) terminal_scissor: Option<[u32; 4]>,
     pub(super) terminal_body_batch: Option<TextScissorBatch>,
     pub(super) terminal_tab_bar_batch: Option<TextScissorBatch>,
+
+    // ── Right-dock terminal (opencode) ────────────────────────────────────────
+    pub(super) right_terminal_text_system: TextSystem,
+    pub(super) right_terminal_text_pipeline: TextPipeline,
+    pub(super) right_terminal_view_renderer: TerminalViewRenderer,
+    pub(super) right_terminal_glyph_instances: Vec<GlyphInstance>,
+    pub(super) right_terminal_cell_background_instances: Vec<RegionDrawInstance>,
+    pub(super) right_terminal_cursor_instances: Vec<RegionDrawInstance>,
+    pub(super) right_terminal_scissor: Option<[u32; 4]>,
+    pub(super) right_terminal_body_batch: Option<TextScissorBatch>,
 
     // ── Full-screen terminal buffer tabs ─────────────────────────────────────
     pub(super) buffer_terminal_text_system: TextSystem,
     pub(super) buffer_terminal_text_pipeline: TextPipeline,
     pub(super) buffer_terminal_view_renderer: TerminalViewRenderer,
     pub(super) buffer_terminal_glyph_instances: Vec<GlyphInstance>,
+    pub(super) buffer_terminal_cell_background_instances: Vec<RegionDrawInstance>,
     pub(super) buffer_terminal_cursor_instances: Vec<RegionDrawInstance>,
     pub(super) buffer_terminal_scissor: Option<[u32; 4]>,
 
@@ -221,6 +235,8 @@ pub struct Renderer {
     pub(super) topbar_text_system: TextSystem,
     pub(super) topbar_text_pipeline: TextPipeline,
     pub(super) topbar_glyph_instances: Vec<GlyphInstance>,
+    pub(super) topbar_icon_pipeline: IconPipeline,
+    pub(super) topbar_icon_instances: Vec<IconDrawInstance>,
     pub(super) topbar_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) topbar_scissor: Option<[u32; 4]>,
     pub(super) topbar_text_batches: Vec<TextScissorBatch>,
@@ -328,6 +344,7 @@ pub struct Renderer {
     pub(super) last_shaped_spans_fingerprint: u64,
     /// Viewport width lần cuối reshape — phát hiện khi word-wrap boundary thay đổi.
     pub(super) last_shaped_viewport_width: f32,
+    pub(super) caret_blink_visible: bool,
 }
 
 impl Renderer {
@@ -348,5 +365,6 @@ impl Renderer {
     /// trigger bất kỳ text layout hay glyph rebuild nào.
     pub fn update_caret_visibility(&mut self, visible: bool) {
         self.caret_pipeline.set_caret_visible(&self.queue, visible);
+        self.caret_blink_visible = visible;
     }
 }

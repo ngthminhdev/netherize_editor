@@ -1,5 +1,5 @@
 use super::overlays::{
-    build_completion_display_items, collect_search_highlights, is_completion_identifier_char,
+    collect_search_highlights, is_completion_identifier_char,
 };
 use super::*;
 
@@ -847,6 +847,10 @@ impl AppState {
         self.completion.is_some()
     }
 
+    pub fn workspace_symbol_cache(&self) -> &Arc<crate::lsp::WorkspaceSymbolCache> {
+        &self.workspace_symbol_cache
+    }
+
     pub fn set_completion(&mut self, completion: CompletionState) -> bool {
         if self.completion.as_ref() == Some(&completion) {
             return false;
@@ -1037,7 +1041,11 @@ impl AppState {
             return false;
         };
 
-        let mut filtered_items = build_completion_display_items(&state.raw_items, prefix);
+        // Use cached items for incremental filtering (much faster than re-requesting from LSP)
+        let mut filtered_items = super::overlays::filter_cached_completion_items(
+            &state.cached_full_items,
+            prefix,
+        );
 
         let next_selected = if filtered_items.is_empty() { 0 } else { 0 };
         let changed = state.filtered_items != filtered_items

@@ -1488,110 +1488,214 @@ impl AppState {
             }
         }
 
-        let Some(active_path) = self.active_file.clone() else {
-            return Ok(report);
-        };
-
         for event in events {
-            let touches_active = path_matches(&event.path, &active_path)
-                || event
-                    .new_path
-                    .as_ref()
-                    .is_some_and(|new_path| path_matches(new_path, &active_path));
-            if !touches_active {
-                continue;
+            // Find all buffer indices matching this event path or new_path (if rename)
+            let mut touched_indices = Vec::new();
+            for (idx, entry) in self.buffers.iter().enumerate() {
+                if let BufferContent::Text(ref buffer) = entry.content {
+                    let touches_buf = path_matches(&event.path, &buffer.path)
+                        || event
+                            .new_path
+                            .as_ref()
+                            .is_some_and(|new_path| path_matches(new_path, &buffer.path));
+                    if touches_buf {
+                        touched_indices.push(idx);
+                    }
+                }
             }
 
-            if self.is_dirty() {
-                let warning = format!(
-                    "external {:?} detected on active file while dirty: {}",
-                    event.kind,
-                    active_path.display()
-                );
-                self.external_conflict = Some(warning.clone());
-                self.external_notice = Some(warning.clone());
-                report.conflict_detected = true;
-                report.conflict_path = Some(active_path.clone());
-                report.notices.push(warning);
-                continue;
-            }
+            for idx in touched_indices {
+                let is_active = self.active_buffer_index == Some(idx);
+                if is_active {
+                    // This is the active buffer!
+                    if self.is_dirty() {
+                        eprintln!("[FileWatch] Active file is dirty, showing conflict warning");
+                        let warning = format!(
+                            "external {:?} detected on active file while dirty: {}",
+                            event.kind,
+                            event.path.display()
+                        );
+                        self.external_conflict = Some(warning.clone());
+                        self.external_notice = Some(warning.clone());
+                        report.conflict_detected = true;
+                        report.conflict_path = Some(event.path.clone());
+                        report.notices.push(warning);
 
-            match event.kind {
-                FileSystemChangeKind::Modify | FileSystemChangeKind::Create => {
-                    if matches!(event.kind, FileSystemChangeKind::Modify)
-                        && self.should_ignore_self_save_event()
-                    {
+                        // Clear in_memory_text so that if the user closes and reopens the file,
+                        // it will reload from disk (showing the external changes) rather than
+                        // restoring the stale in-memory buffer.
+                        if let Some(slot) = self.buffers.get_mut(idx) {
+                            if let BufferContent::Text(ref mut buffer) = slot.content {
+                                buffer.in_memory_text = None;
+                            }
+                        }
                         continue;
                     }
 
-                    match self.load_buffer_from_file(&active_path) {
-                        Ok(()) => {
-                            self.active_file = Some(active_path.clone());
-                            self.register_open_text_buffer(active_path.clone());
-                            if let Some(buffer) = self.active_text_buffer_mut() {
-                                buffer.missing_on_disk = false;
+                    match event.kind {
+                        FileSystemChangeKind::Modify | FileSystemChangeKind::Create => {
+                            // Check if this is a self-save event by comparing file content
+                            let current_active_path = event.path.clone();
+                            if matches!(event.kind, FileSystemChangeKind::Modify)
+                                && self.should_ignore_self_save_event()
+                            {
+                                eprintln!("[FileWatch] Ignoring self-save event");
+                                continue;
                             }
-                            self.dirty = false;
+
+                            eprintln!("[FileWatch] Reloading active file from disk: {:?}", current_active_path);
+                            eprintln!("[FileWatch] Text before reload: {} chars", self.text.len_chars());
+                            match self.load_buffer_from_file(&current_active_path) {
+                                Ok(()) => {
+                                    eprintln!("[FileWatch] Text after reload: {} chars", self.text.len_chars());
+                                    self.active_file = Some(current_active_path.clone());
+                                    let reloaded_text = self.text.clone();
+                                    eprintln!("[FileWatch] Updating active buffer.in_memory_text with {} chars", reloaded_text.len_chars());
+                                    if let Some(slot) = self.buffers.get_mut(idx) {
+                                        if let BufferContent::Text(ref mut buffer) = slot.content {
+                                            buffer.in_memory_text = Some(reloaded_text);
+                                            buffer.missing_on_disk = false;
+                                            buffer.dirty = false;
+                                        }
+                                    }
+                                    self.dirty = false;
+                                    let note = format!(
+                                        "auto reloaded active file from disk: {}",
+                                        current_active_path.display()
+                                    );
+                                    self.external_notice = Some(note.clone());
+                                    self.external_conflict = None;
+                                    report.active_file_reloaded = true;
+                                    report.notices.push(note);
+                                }
+                                Err(err) => {
+                                    if let Some(slot) = self.buffers.get_mut(idx) {
+                                        if let BufferContent::Text(ref mut buffer) = slot.content {
+                                            buffer.missing_on_disk = !current_active_path.exists();
+                                        }
+                                    }
+                                    let note = format!(
+                                        "auto reload skipped for active file {}: {}",
+                                        current_active_path.display(),
+                                        err
+                                    );
+                                    self.external_notice = Some(note.clone());
+                                    report.notices.push(note);
+                                }
+                            }
+                        }
+                        FileSystemChangeKind::Rename => {
+                            if let Some(new_path) = &event.new_path {
+                                match self.open_file(new_path.clone()) {
+                                    Ok(()) => {
+                                        let note = format!(
+                                            "active file renamed externally, reloaded: {} -> {}",
+                                            event.path.display(),
+                                            new_path.display()
+                                        );
+                                        self.external_notice = Some(note.clone());
+                                        self.external_conflict = None;
+                                        report.active_file_reloaded = true;
+                                        report.notices.push(note);
+                                    }
+                                    Err(err) => {
+                                        let note = format!(
+                                            "active file rename detected but reload failed {} -> {}: {}",
+                                            event.path.display(),
+                                            new_path.display(),
+                                            err
+                                        );
+                                        self.external_notice = Some(note.clone());
+                                        report.notices.push(note);
+                                    }
+                                }
+                            }
+                        }
+                        FileSystemChangeKind::Delete => {
+                            if let Some(slot) = self.buffers.get_mut(idx) {
+                                if let BufferContent::Text(ref mut buffer) = slot.content {
+                                    buffer.missing_on_disk = true;
+                                }
+                            }
                             let note = format!(
-                                "auto reloaded active file from disk: {}",
-                                active_path.display()
+                                "active file deleted externally: {} (buffer kept in memory)",
+                                event.path.display()
                             );
                             self.external_notice = Some(note.clone());
-                            self.external_conflict = None;
-                            report.active_file_reloaded = true;
-                            report.notices.push(note);
-                        }
-                        Err(err) => {
-                            if let Some(buffer) = self.active_text_buffer_mut() {
-                                buffer.missing_on_disk = !active_path.exists();
-                            }
-                            let note = format!(
-                                "auto reload skipped for active file {}: {}",
-                                active_path.display(),
-                                err
-                            );
-                            self.external_notice = Some(note.clone());
                             report.notices.push(note);
                         }
                     }
-                }
-                FileSystemChangeKind::Rename => {
-                    if let Some(new_path) = &event.new_path {
-                        match self.open_file(new_path.clone()) {
-                            Ok(()) => {
-                                let note = format!(
-                                    "active file renamed externally, reloaded: {} -> {}",
-                                    active_path.display(),
-                                    new_path.display()
-                                );
-                                self.external_notice = Some(note.clone());
-                                self.external_conflict = None;
-                                report.active_file_reloaded = true;
-                                report.notices.push(note);
+                } else {
+                    // This is an inactive buffer!
+                    let slot = &mut self.buffers[idx];
+                    if let BufferContent::Text(buffer) = &mut slot.content {
+                        match event.kind {
+                            FileSystemChangeKind::Modify | FileSystemChangeKind::Create => {
+                                if buffer.dirty {
+                                    eprintln!("[FileWatch] Inactive file {:?} is dirty, ignoring auto-reload to prevent data loss", buffer.path);
+                                    buffer.missing_on_disk = false;
+                                } else {
+                                    eprintln!("[FileWatch] Reloading inactive file from disk: {:?}", buffer.path);
+                                    match std::fs::read_to_string(&buffer.path) {
+                                        Ok(content) => {
+                                            let reloaded_text = Rope::from_str(&content);
+                                            buffer.in_memory_text = Some(reloaded_text);
+                                            buffer.missing_on_disk = false;
+                                            buffer.dirty = false;
+                                            let note = format!(
+                                                "auto reloaded inactive file from disk: {}",
+                                                buffer.path.display()
+                                            );
+                                            report.notices.push(note);
+                                            report.workspace_reloaded = true;
+                                        }
+                                        Err(err) => {
+                                            buffer.missing_on_disk = !buffer.path.exists();
+                                            let note = format!(
+                                                "auto reload skipped for inactive file {}: {}",
+                                                buffer.path.display(),
+                                                err
+                                            );
+                                            report.notices.push(note);
+                                        }
+                                    }
+                                }
                             }
-                            Err(err) => {
+                            FileSystemChangeKind::Rename => {
+                                if let Some(new_path) = &event.new_path {
+                                    let old_path = buffer.path.clone();
+                                    buffer.path = new_path.clone();
+                                    buffer.language_id = crate::lsp::registry::language_profile_for_path(new_path)
+                                        .map(|profile| profile.language_id.to_string());
+                                    
+                                    if !buffer.dirty {
+                                        if let Ok(content) = std::fs::read_to_string(new_path) {
+                                            buffer.in_memory_text = Some(Rope::from_str(&content));
+                                            buffer.missing_on_disk = false;
+                                        } else {
+                                            buffer.missing_on_disk = !new_path.exists();
+                                        }
+                                    }
+                                    let note = format!(
+                                        "inactive file renamed externally: {} -> {}",
+                                        old_path.display(),
+                                        new_path.display()
+                                    );
+                                    report.notices.push(note);
+                                    report.workspace_reloaded = true;
+                                }
+                            }
+                            FileSystemChangeKind::Delete => {
+                                buffer.missing_on_disk = true;
                                 let note = format!(
-                                    "active file rename detected but reload failed {} -> {}: {}",
-                                    active_path.display(),
-                                    new_path.display(),
-                                    err
+                                    "inactive file deleted externally: {}",
+                                    buffer.path.display()
                                 );
-                                self.external_notice = Some(note.clone());
                                 report.notices.push(note);
+                                report.workspace_reloaded = true;
                             }
                         }
                     }
-                }
-                FileSystemChangeKind::Delete => {
-                    if let Some(buffer) = self.active_text_buffer_mut() {
-                        buffer.missing_on_disk = true;
-                    }
-                    let note = format!(
-                        "active file deleted externally: {} (buffer kept in memory)",
-                        active_path.display()
-                    );
-                    self.external_notice = Some(note.clone());
-                    report.notices.push(note);
                 }
             }
         }

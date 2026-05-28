@@ -808,6 +808,92 @@ mod tests {
     }
 
     #[test]
+    fn test_inactive_buffer_reloads_when_clean_externally_modified() {
+        let save_path = unique_temp_path("external_inactive_modify");
+        let mut state = AppState::new(save_path);
+        let root = unique_temp_dir("external_inactive_modify");
+        fs::create_dir_all(root.join("src")).expect("create src");
+        let inactive = fs::canonicalize(root.join("src")).expect("canonicalize src").join("inactive.rs");
+        let active = fs::canonicalize(root.join("src")).expect("canonicalize src").join("active.rs");
+        fs::write(&inactive, "fn inactive() {}\n").expect("write inactive");
+        fs::write(&active, "fn active() {}\n").expect("write active");
+
+        state
+            .attach_workspace(root.clone())
+            .expect("attach workspace");
+        state.open_file(inactive.clone()).expect("open inactive");
+        state.open_file(active.clone()).expect("open active");
+
+        fs::write(&inactive, "fn inactive() { println!(\"reload\"); }\n").expect("write modified inactive");
+        let report = state
+            .apply_external_file_events(&[FileSystemEvent {
+                kind: FileSystemChangeKind::Modify,
+                path: inactive.clone(),
+                new_path: None,
+            }])
+            .expect("apply external inactive modify");
+
+        assert!(report.workspace_reloaded);
+        assert!(!report.active_file_reloaded);
+
+        let inactive_entry = state.buffers().iter().find(|b| {
+            matches!(&b.content, BufferContent::Text(t) if t.path == inactive)
+        }).unwrap();
+        if let BufferContent::Text(ref text_buf) = inactive_entry.content {
+            assert_eq!(
+                text_buf.in_memory_text.as_ref().unwrap().to_string(),
+                "fn inactive() { println!(\"reload\"); }\n"
+            );
+            assert!(!text_buf.missing_on_disk);
+            assert!(!text_buf.dirty);
+        } else {
+            panic!("expected text buffer");
+        }
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_inactive_buffer_marked_missing_when_externally_deleted() {
+        let save_path = unique_temp_path("external_inactive_delete");
+        let mut state = AppState::new(save_path);
+        let root = unique_temp_dir("external_inactive_delete");
+        fs::create_dir_all(root.join("src")).expect("create src");
+        let inactive = fs::canonicalize(root.join("src")).expect("canonicalize src").join("inactive.rs");
+        let active = fs::canonicalize(root.join("src")).expect("canonicalize src").join("active.rs");
+        fs::write(&inactive, "fn inactive() {}\n").expect("write inactive");
+        fs::write(&active, "fn active() {}\n").expect("write active");
+
+        state
+            .attach_workspace(root.clone())
+            .expect("attach workspace");
+        state.open_file(inactive.clone()).expect("open inactive");
+        state.open_file(active.clone()).expect("open active");
+
+        fs::remove_file(&inactive).expect("remove inactive file");
+        let report = state
+            .apply_external_file_events(&[FileSystemEvent {
+                kind: FileSystemChangeKind::Delete,
+                path: inactive.clone(),
+                new_path: None,
+            }])
+            .expect("apply external inactive delete");
+
+        assert!(report.workspace_reloaded);
+
+        let inactive_entry = state.buffers().iter().find(|b| {
+            matches!(&b.content, BufferContent::Text(t) if t.path == inactive)
+        }).unwrap();
+        if let BufferContent::Text(ref text_buf) = inactive_entry.content {
+            assert!(text_buf.missing_on_disk);
+        } else {
+            panic!("expected text buffer");
+        }
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn save_file_preserves_cursor_and_selection_state() {
         let root = unique_temp_dir("save_preserve_cursor");
         fs::create_dir_all(&root).expect("create temp dir");

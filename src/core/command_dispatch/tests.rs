@@ -1667,3 +1667,89 @@ fn undo_after_select_all_delete_restores_unicode_content() {
         "undo must restore exact unicode content including emoji"
     );
 }
+
+#[test]
+fn visual_mode_star_search_sets_highlights_and_exits_to_normal() {
+    let mut app_state = AppState::from_text(
+        unique_temp_path("visual_star_search"),
+        "alpha beta alpha gamma alpha",
+    );
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    // Move to first "alpha" and select it in visual mode
+    let _ = dispatch_command(&mut app_state, Command::MoveToLineStart);
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterVisual));
+    // Move to end of word (not forward, which includes space)
+    for _ in 0..4 {
+        let _ = dispatch_command(&mut app_state, Command::MoveRight);
+    }
+
+    assert_eq!(app_state.current_mode(), EditorMode::Visual);
+    let selection = app_state.visual_selection_text();
+    assert_eq!(selection, Some("alpha".to_string()));
+
+    // Press * to search for selected text
+    let star = dispatch_command(&mut app_state, Command::SearchWordUnderCursor);
+    assert!(star.success);
+
+    // Should exit to Normal mode
+    assert_eq!(app_state.current_mode(), EditorMode::Normal);
+
+    // Search query should be set
+    assert_eq!(app_state.last_search_query(), "alpha");
+
+    // Search highlights should be present (3 occurrences of "alpha")
+    assert_eq!(app_state.search_highlights().len(), 3);
+
+    // n should work to go to next match
+    let next = dispatch_command(&mut app_state, Command::SearchNext);
+    assert!(next.success);
+    assert!(next.state_changed);
+
+    // Manually clearing search highlights should clear them
+    let clear = dispatch_command(&mut app_state, Command::ClearSearchHighlights);
+    assert!(clear.success);
+    assert_eq!(app_state.search_highlights().len(), 0);
+    assert_eq!(app_state.last_search_query(), "");
+
+    // After clearing, n should not work
+    let next_after_clear = dispatch_command(&mut app_state, Command::SearchNext);
+    assert!(!next_after_clear.state_changed);
+}
+
+#[test]
+fn visual_mode_star_search_persists_after_mode_exit() {
+    let mut app_state = AppState::from_text(
+        unique_temp_path("visual_star_persist"),
+        "foo bar foo baz foo",
+    );
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    // Select "foo" in visual mode
+    let _ = dispatch_command(&mut app_state, Command::MoveToLineStart);
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterVisual));
+    for _ in 0..2 {
+        let _ = dispatch_command(&mut app_state, Command::MoveRight);
+    }
+
+    // Press * to search
+    let star = dispatch_command(&mut app_state, Command::SearchWordUnderCursor);
+    assert!(star.success);
+    assert_eq!(app_state.current_mode(), EditorMode::Normal);
+
+    // Search should persist
+    assert_eq!(app_state.last_search_query(), "foo");
+    assert_eq!(app_state.search_highlights().len(), 3);
+
+    // n should work multiple times
+    let n1 = dispatch_command(&mut app_state, Command::SearchNext);
+    assert!(n1.state_changed);
+    let n2 = dispatch_command(&mut app_state, Command::SearchNext);
+    assert!(n2.state_changed);
+    let n3 = dispatch_command(&mut app_state, Command::SearchNext);
+    assert!(n3.state_changed);
+
+    // Search should still be active
+    assert_eq!(app_state.last_search_query(), "foo");
+    assert_eq!(app_state.search_highlights().len(), 3);
+}

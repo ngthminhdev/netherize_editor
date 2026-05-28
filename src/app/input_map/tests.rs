@@ -176,7 +176,7 @@ fn table_driven_keybinding_resolution() {
             expected: None,
         },
         Case {
-            name: "terminal focus ctrl+w -> None (global focus_back blocked)",
+            name: "terminal focus ctrl+w -> TerminalTabClose",
             context: KeybindingContext::with_focus(
                 EditorMode::TerminalFocus,
                 InputFocusContext::Terminal,
@@ -187,7 +187,7 @@ fn table_driven_keybinding_resolution() {
                 text: Some("w".to_string()),
                 modifiers: ModifiersState::CONTROL,
             },
-            expected: None,
+            expected: Some(Command::TerminalTabClose),
         },
         Case {
             name: "terminal focus escape -> FocusBack",
@@ -275,7 +275,7 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::PasteAfter),
         },
         Case {
-            name: "normal cmd+v -> EditorPaste",
+            name: "normal ctrl+v -> EnterVisualBlock",
             context: KeybindingContext::for_mode(EditorMode::Normal),
             input: NormalizedInput {
                 physical_key: Some(KeyCode::KeyV),
@@ -283,7 +283,7 @@ fn table_driven_keybinding_resolution() {
                 text: Some("v".to_string()),
                 modifiers: ModifiersState::CONTROL,
             },
-            expected: Some(Command::EditorPaste),
+            expected: Some(Command::SwitchMode(ModeEvent::EnterVisualBlock)),
         },
         Case {
             name: "normal a -> AppendAfterCursor",
@@ -683,6 +683,18 @@ fn table_driven_keybinding_resolution() {
             .map(|matched| matched.command);
         assert_eq!(actual, case.expected, "case={}", case.name);
     }
+}
+
+#[test]
+fn markdown_preview_uppercase_g_text_scrolls_bottom_without_shift_state() {
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::MarkdownPreview);
+    let input = input_from_physical(KeyCode::KeyG, "G");
+
+    let actual = map.resolve(&input, context).map(|matched| matched.command);
+
+    assert_eq!(actual, Some(Command::MarkdownPreviewScrollBottom));
 }
 
 #[test]

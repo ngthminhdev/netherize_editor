@@ -1012,27 +1012,27 @@ fn theme_selector_preview_colors(theme: &ThemeConfig) -> Vec<[f32; 4]> {
 
 fn symbol_icon(kind: &str) -> &'static str {
     match kind {
-        // LSP symbol kinds are semantic, not file types. Bearded file icons don't map well here,
-        // so use Nerd Font/Codicon symbol glyphs for compact, recognizable badges.
-        "Function" => "󰊕",
-        "Method" | "Constructor" => "",
-        "Field" => "",
-        "Property" => "",
-        "Variable" => "",
-        "Constant" | "EnumMember" => "",
-        "Class" => "",
-        "Interface" => "",
-        "Struct" => "",
-        "Enum" => "",
-        "TypeParameter" => "",
-        "Module" | "Namespace" | "Package" => "",
-        "Keyword" => "",
-        "Operator" => "",
-        "Event" => "",
-        "Reference" => "",
-        "File" => "",
-        "Folder" => "",
-        _ => "",
+        // LSP symbol kinds mapped to SVG icons in assets/bearded-icons/symbol-*.svg
+        "Function" => "built_in:symbol-function",
+        "Method" => "built_in:symbol-method",
+        "Constructor" => "built_in:symbol-constructor",
+        "Field" => "built_in:symbol-field",
+        "Property" => "built_in:symbol-property",
+        "Variable" => "built_in:symbol-variable",
+        "Constant" | "EnumMember" => "built_in:symbol-constant",
+        "Class" => "built_in:symbol-class",
+        "Interface" => "built_in:symbol-interface",
+        "Struct" => "built_in:symbol-struct",
+        "Enum" => "built_in:symbol-enum",
+        "TypeParameter" => "built_in:symbol-type-parameter",
+        "Module" | "Namespace" | "Package" => "built_in:symbol-module",
+        "Keyword" => "built_in:symbol-keyword",
+        "Operator" => "built_in:symbol-operator",
+        "Event" => "built_in:symbol-event",
+        "Reference" => "built_in:symbol-reference",
+        "File" => "built_in:file",
+        "Folder" => "built_in:folder",
+        _ => "built_in:identifier",
     }
 }
 
@@ -1272,7 +1272,7 @@ mod tests {
             .expect("render model");
 
         assert_eq!(model.selected_index, 15);
-        assert_eq!(model.scroll_offset_rows, 4);
+        assert_eq!(model.scroll_offset_rows, 6);
         assert!(model.selected_index < model.scroll_offset_rows + 12);
     }
 
@@ -1295,7 +1295,8 @@ mod tests {
             .render(&ThemeConfig::builtin_dark(), [0.0, 0.0, 1200.0, 800.0])
             .expect("populated render model");
 
-        assert_eq!(empty_model.panel_bounds, populated_model.panel_bounds);
+        assert_eq!(empty_model.panel_bounds, [240.0, 325.0, 720.0, 150.0]);
+        assert_eq!(populated_model.panel_bounds, [240.0, 40.0, 720.0, 720.0]);
         assert_eq!(
             empty_model.scroll_offset_rows,
             populated_model.scroll_offset_rows
@@ -1305,7 +1306,7 @@ mod tests {
     #[test]
     fn render_uses_opaque_panel_background_separate_from_scrim() {
         let palette = CommandPalette {
-            mode: CommandPaletteMode::ThemeSelector,
+            mode: CommandPaletteMode::FilePicker,
             is_visible: true,
             results: vec![make_item("default-dark")],
             ..CommandPalette::default()
@@ -1381,7 +1382,10 @@ mod tests {
 
         palette.set_query("state", None);
         assert_eq!(palette.results.len(), 1);
-        assert_eq!(palette.results[0].label, "[S] AppState  Struct  Ln 21");
+        assert_eq!(
+            palette.results[0].label,
+            "[built_in:symbol-struct] AppState  Struct  Ln 21"
+        );
     }
 
     #[test]
@@ -1403,7 +1407,10 @@ mod tests {
         };
 
         let item = CommandPaletteItem::document_symbol(&symbol);
-        assert_eq!(item.label, "[󰊕] build_picker  Function  Ln 43");
+        assert_eq!(
+            item.label,
+            "[built_in:symbol-function] build_picker  Function  Ln 43"
+        );
         assert_eq!(item.tone, CommandPaletteItemTone::Function);
         assert_eq!(
             item.action,

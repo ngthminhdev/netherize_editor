@@ -153,7 +153,7 @@ pub(super) fn push_palette_icon_or_badge(
         icons.push(IconDrawInstance {
             icon: asset_icon,
             rect: [x + (w - size) * 0.5, y + (h - size) * 0.5, size, size],
-            tint: [1.0, 1.0, 1.0, 1.0],
+            tint: color,
         });
     } else {
         glyphs.extend(super::components::layout_prefix_icon_badge(

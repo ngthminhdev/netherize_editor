@@ -3,6 +3,10 @@ use crate::async_runtime::message::WorkerResultPayload;
 
 pub(super) fn handle_filesystem_result(app: &mut AppShell, payload: WorkerResultPayload) {
     if let WorkerResultPayload::FileSystemEvents { events, .. } = payload {
+        eprintln!("[FileWatch] Received {} file system events", events.len());
+        for event in events.iter() {
+            eprintln!("[FileWatch]   {:?}: {:?}", event.kind, event.path);
+        }
         match app.app_state.apply_external_file_events(&events) {
             Ok(report) => {
                 if report.workspace_reloaded

@@ -29,6 +29,7 @@ impl Renderer {
         bounds: [f32; 4],
         terminal_mode: EditorMode,
     ) {
+        self.caret_blink_visible = true;
         Self::render_terminal_region(
             &self.theme,
             self.panel_padding,
@@ -38,6 +39,7 @@ impl Renderer {
             &mut self.terminal_text_system,
             &mut self.terminal_view_renderer,
             &mut self.terminal_glyph_instances,
+            &mut self.terminal_cell_background_instances,
             &mut self.terminal_cursor_instances,
             &mut self.atlas,
             &self.device,
@@ -58,6 +60,61 @@ impl Renderer {
         self.terminal_tab_bar_batch = None;
     }
 
+    /// Render the right-dock terminal (opencode) into the right sidebar area.
+    /// Uses a dedicated pipeline separate from the bottom-panel terminal.
+    pub fn update_right_terminal_content(
+        &mut self,
+        grid: &TerminalGrid,
+        bounds: [f32; 4],
+        terminal_mode: EditorMode,
+    ) {
+        self.caret_blink_visible = true;
+        Self::render_terminal_region(
+            &self.theme,
+            self.panel_padding,
+            self.cursor_shape,
+            self.cursor_beam_width,
+            self.cursor_underline_height,
+            &mut self.right_terminal_text_system,
+            &mut self.right_terminal_view_renderer,
+            &mut self.right_terminal_glyph_instances,
+            &mut self.right_terminal_cell_background_instances,
+            &mut self.right_terminal_cursor_instances,
+            &mut self.atlas,
+            &self.device,
+            &self.queue,
+            &mut self.right_terminal_text_pipeline,
+            &mut self.right_terminal_scissor,
+            grid,
+            bounds,
+            terminal_mode,
+        );
+        self.right_terminal_body_batch =
+            self.right_terminal_scissor.map(|scissor| TextScissorBatch {
+                scissor,
+                range: InstanceDrawRange {
+                    start: 0,
+                    count: self.right_terminal_glyph_instances.len() as u32,
+                },
+            });
+        self.right_terminal_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.right_terminal_glyph_instances,
+        );
+    }
+
+    /// Clear right-dock terminal — called when the right panel is hidden.
+    pub fn clear_right_terminal(&mut self) {
+        self.right_terminal_scissor = None;
+        self.right_terminal_body_batch = None;
+        self.right_terminal_glyph_instances.clear();
+        self.right_terminal_cell_background_instances.clear();
+        self.right_terminal_cursor_instances.clear();
+        self.right_terminal_text_pipeline
+            .upload_instances(&self.device, &self.queue, &[]);
+    }
+
     /// Render PTY grid của buffer terminal (lazygit, v.v.) vào center editor area.
     ///
     /// Trả về `RegionDrawInstance` là solid background quad màu `terminal_bg`
@@ -69,6 +126,7 @@ impl Renderer {
         bounds: [f32; 4],
         terminal_mode: EditorMode,
     ) -> Option<crate::render::region_pipeline::RegionDrawInstance> {
+        self.caret_blink_visible = true;
         // Buffer terminal (lazygit, v.v.) chiếm toàn bộ center editor area.
         // Không có panel header → dùng editor padding thay vì panel_line_height.
         let panel_padding = self.panel_padding;
@@ -79,6 +137,7 @@ impl Renderer {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
             self.buffer_terminal_scissor = None;
             self.buffer_terminal_header_batch = None;
+            self.buffer_terminal_cell_background_instances.clear();
             self.buffer_terminal_cursor_instances.clear();
             self.buffer_terminal_text_pipeline
                 .upload_instances(&self.device, &self.queue, &[]);
@@ -103,6 +162,7 @@ impl Renderer {
         self.buffer_terminal_header_batch = None;
 
         if grid.is_empty() {
+            self.buffer_terminal_cell_background_instances.clear();
             self.buffer_terminal_text_system
                 .set_size(Some(width), Some(bounds[3]));
             self.buffer_terminal_glyph_instances = layout_panel_text(
@@ -123,6 +183,13 @@ impl Renderer {
             self.buffer_terminal_view_renderer.cell_height = line_h;
             self.buffer_terminal_view_renderer.font_size = font_size;
 
+            self.buffer_terminal_cell_background_instances =
+                self.buffer_terminal_view_renderer.build_background_instances(
+                    grid,
+                    default_fg,
+                    default_bg,
+                    width,
+                );
             self.buffer_terminal_glyph_instances =
                 self.buffer_terminal_view_renderer.build_instances(
                     grid,
@@ -166,6 +233,7 @@ impl Renderer {
         text_system: &mut crate::text::text_system::TextSystem,
         view_renderer: &mut crate::terminal::terminal_renderer::TerminalViewRenderer,
         glyph_instances: &mut Vec<crate::render::glyph_instance::GlyphInstance>,
+        background_instances: &mut Vec<RegionDrawInstance>,
         cursor_instances: &mut Vec<RegionDrawInstance>,
         atlas: &mut crate::text::atlas::GlyphAtlas,
         device: &wgpu::Device,
@@ -178,6 +246,7 @@ impl Renderer {
     ) {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
             *scissor = None;
+            background_instances.clear();
             cursor_instances.clear();
             return;
         }
@@ -192,6 +261,7 @@ impl Renderer {
         let default_bg = theme.ui.terminal_bg.as_f32();
 
         if grid.is_empty() {
+            background_instances.clear();
             text_system.set_size(Some(width), Some(height));
             *glyph_instances = layout_panel_text(
                 EMPTY_TERMINAL_HINT,
@@ -211,6 +281,8 @@ impl Renderer {
             view_renderer.cell_height = line_h;
             view_renderer.font_size = font_size;
 
+            *background_instances =
+                view_renderer.build_background_instances(grid, default_fg, default_bg, width);
             *glyph_instances = view_renderer.build_instances(
                 grid,
                 atlas,
@@ -329,9 +401,9 @@ impl Renderer {
                         crate::config::ui_config::CursorShape::Block => (
                             cell_x,
                             cell_y,
-                            cursor_beam_width.max(1.0),
+                            cell_w.max(1.0),
                             cell_h.max(1.0),
-                            1.0,
+                            0.45,
                         ),
                     };
                     cursor_instances.push(RegionDrawInstance::new(
@@ -350,6 +422,7 @@ impl Renderer {
         self.terminal_body_batch = None;
         self.terminal_tab_bar_batch = None;
         self.terminal_glyph_instances.clear();
+        self.terminal_cell_background_instances.clear();
         self.terminal_cursor_instances.clear();
         self.terminal_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);
@@ -359,6 +432,7 @@ impl Renderer {
         self.buffer_terminal_scissor = None;
         self.buffer_terminal_header_batch = None;
         self.buffer_terminal_glyph_instances.clear();
+        self.buffer_terminal_cell_background_instances.clear();
         self.buffer_terminal_cursor_instances.clear();
         self.buffer_terminal_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);

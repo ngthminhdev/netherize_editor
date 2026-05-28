@@ -447,6 +447,19 @@ impl AppShell {
                 };
                 self.reconcile_highlight_spans_with_pending_edits();
 
+                // Close fuzzy picker buffer for LiveGrep and FilePicker after opening the file,
+                // similar to how ReferencesOpenSelection works.
+                if report.success
+                    && confirmed_from_fuzzy_picker
+                    && matches!(
+                        palette_mode_before,
+                        Some(CommandPaletteMode::LiveGrep | CommandPaletteMode::FilePicker)
+                    )
+                    && self.app_state.active_buffer_is_fuzzy_picker()
+                {
+                    let _ = self.close_current_buffer_now();
+                }
+
                 // Command palette can open PythonEnvSelector without closing the overlay.
                 // Keep palette focus and kick off the async environment scan.
                 if self.app_state.command_palette_mode()

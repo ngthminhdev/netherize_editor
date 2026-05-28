@@ -24,6 +24,10 @@ pub(super) fn handle_worker_failure(app: &mut AppShell, event: WorkerEvent) {
         if app.completion_resolve_request_id == Some(request_id) {
             app.completion_resolve_request_id = None;
             app.app_state.mark_completion_hover_doc_resolved();
+            if app.pending_completion_accept_after_resolve.is_some() {
+                let _ = app.accept_completion_item();
+                return;
+            }
             app.editor_caret_needs_layout = true;
             app.request_redraw();
         }

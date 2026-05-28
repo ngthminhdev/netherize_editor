@@ -105,6 +105,237 @@ fn parse_hover_content(result: &Value) -> String {
 
 const MAX_COMPLETION_ITEMS: usize = 200;
 
+fn parse_completion_item(item: &Value) -> Option<LspCompletionItem> {
+    let label = item.get("label")?.as_str()?.to_string();
+    let detail = item
+        .get("detail")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| {
+            item.pointer("/labelDetails/detail")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        });
+    let insert_text = item
+        .get("insertText")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let text_edit = item.get("textEdit").and_then(parse_completion_text_edit);
+    let text_edit_text = text_edit
+        .as_ref()
+        .map(|edit| edit.new_text.clone())
+        .or_else(|| {
+            item.get("textEdit")
+                .and_then(|edit| edit.get("newText"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        });
+    let additional_text_edits = item
+        .get("additionalTextEdits")
+        .map(parse_text_edits)
+        .unwrap_or_default();
+    let kind = item
+        .get("kind")
+        .and_then(Value::as_u64)
+        .map(|kind| kind as u32);
+    let callable = kind.map(completion_kind_is_callable);
+    let has_parameters = infer_completion_has_parameters(
+        &label,
+        kind,
+        detail.as_deref(),
+        text_edit_text.as_deref().or(insert_text.as_deref()),
+    );
+    let documentation = item
+        .get("documentation")
+        .and_then(parse_documentation_field);
+    let data = item.get("data").and_then(|value| serde_json::to_string(value).ok());
+    let raw_json = serde_json::to_string(item).ok();
+    Some(LspCompletionItem {
+        label,
+        detail,
+        insert_text,
+        text_edit,
+        text_edit_text,
+        additional_text_edits,
+        kind,
+        callable,
+        has_parameters,
+        documentation,
+        data,
+        source_path: None,
+        import_path: None,
+        export_kind: None,
+        raw_json,
+    })
+}
+
+fn completion_kind_is_callable(kind: u32) -> bool {
+    matches!(kind, 2 | 3 | 4)
+}
+
+fn infer_completion_has_parameters(
+    label: &str,
+    _kind: Option<u32>,
+    detail: Option<&str>,
+    insert_text: Option<&str>,
+) -> Option<bool> {
+    if let Some(text) = insert_text
+        && let Some(has_parameters) = infer_call_parameters_from_insert_text(text)
+    {
+        return Some(has_parameters);
+    }
+    if let Some(detail) = detail
+        && let Some(has_parameters) = infer_call_parameters_from_signature(label, detail)
+    {
+        return Some(has_parameters);
+    }
+    None
+}
+
+fn infer_call_parameters_from_insert_text(text: &str) -> Option<bool> {
+    let open = text.rfind('(')?;
+    let close = find_matching_paren(text, open)?;
+    if text[close + 1..].trim().is_empty() {
+        return Some(!text[open + 1..close].trim().is_empty());
+    }
+    None
+}
+
+fn infer_call_parameters_from_signature(label: &str, signature: &str) -> Option<bool> {
+    let label = label
+        .split('(')
+        .next()
+        .unwrap_or(label)
+        .rsplit('.')
+        .next()
+        .unwrap_or(label)
+        .trim();
+    let mut search_from = 0usize;
+    while let Some(relative_open) = signature[search_from..].find('(') {
+        let open = search_from + relative_open;
+        let Some(close) = find_matching_paren(signature, open) else {
+            break;
+        };
+        if signature[..open].trim().is_empty() {
+            let after = signature[close + 1..].trim_start();
+            if after.is_empty()
+                || after.starts_with("=>")
+                || after.starts_with(':')
+                || after.starts_with("->")
+            {
+                return Some(!signature[open + 1..close].trim().is_empty());
+            }
+        }
+        if go_func_signature_parenthesis_looks_like_params(&signature[..open], &signature[close + 1..])
+        {
+            return Some(!signature[open + 1..close].trim().is_empty());
+        }
+        if signature_parenthesis_looks_like_call(label, &signature[..open]) {
+            return Some(!signature[open + 1..close].trim().is_empty());
+        }
+        search_from = close + 1;
+    }
+    None
+}
+
+fn go_func_signature_parenthesis_looks_like_params(before_open: &str, after_close: &str) -> bool {
+    let before = before_open.trim_end();
+    if before != "func" {
+        return false;
+    }
+    let after = after_close.trim_start();
+    !after
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_' || ch == '$')
+}
+
+fn signature_parenthesis_looks_like_call(label: &str, before_open: &str) -> bool {
+    let before = before_open.trim_end();
+    if before.is_empty() {
+        return false;
+    }
+    if label.is_empty() {
+        return before.ends_with("=>") || before.ends_with(':');
+    }
+    let without_generics = strip_trailing_type_args(before);
+    let token = without_generics
+        .rsplit(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '$' || ch == '.'))
+        .next()
+        .unwrap_or("")
+        .rsplit('.')
+        .next()
+        .unwrap_or("");
+    token == label
+        || before.ends_with(&format!("{label}:"))
+        || before.contains(&format!(" {label}:"))
+}
+
+fn strip_trailing_type_args(text: &str) -> &str {
+    let trimmed = text.trim_end();
+    if !trimmed.ends_with('>') {
+        return trimmed;
+    }
+    let mut depth = 0usize;
+    for (idx, ch) in trimmed.char_indices().rev() {
+        match ch {
+            '>' => depth = depth.saturating_add(1),
+            '<' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return trimmed[..idx].trim_end();
+                }
+            }
+            _ => {}
+        }
+    }
+    trimmed
+}
+
+fn find_matching_paren(text: &str, open: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut quote = None;
+    let mut escape = false;
+    for (idx, ch) in text[open..].char_indices() {
+        let absolute = open + idx;
+        if let Some(quote_char) = quote {
+            if escape {
+                escape = false;
+                continue;
+            }
+            if ch == '\\' {
+                escape = true;
+                continue;
+            }
+            if ch == quote_char {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' | '`' => quote = Some(ch),
+            '(' => depth = depth.saturating_add(1),
+            ')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(absolute);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn parse_completion_text_edit(edit: &Value) -> Option<LspTextEdit> {
+    let new_text = edit.get("newText")?.as_str()?.to_string();
+    let range = edit
+        .get("range")
+        .or_else(|| edit.get("replace"))
+        .or_else(|| edit.get("insert"))?;
+    parse_lsp_text_edit_parts(range, new_text)
+}
+
 fn parse_completion_items(result: &Value) -> Vec<LspCompletionItem> {
     let items = result
         .get("items")
@@ -116,44 +347,7 @@ fn parse_completion_items(result: &Value) -> Vec<LspCompletionItem> {
             items
                 .iter()
                 .take(MAX_COMPLETION_ITEMS)
-                .filter_map(|item| {
-                    let label = item.get("label")?.as_str()?.to_string();
-                    let detail = item
-                        .get("detail")
-                        .and_then(Value::as_str)
-                        .map(str::to_string)
-                        .or_else(|| {
-                            item.pointer("/labelDetails/detail")
-                                .and_then(Value::as_str)
-                                .map(str::to_string)
-                        });
-                    let insert_text = item
-                        .get("insertText")
-                        .and_then(Value::as_str)
-                        .map(str::to_string);
-                    let text_edit_text = item
-                        .get("textEdit")
-                        .and_then(|edit| edit.get("newText"))
-                        .and_then(Value::as_str)
-                        .map(str::to_string);
-                    let kind = item
-                        .get("kind")
-                        .and_then(Value::as_u64)
-                        .map(|kind| kind as u32);
-                    let documentation = item
-                        .get("documentation")
-                        .and_then(parse_documentation_field);
-                    let raw_json = serde_json::to_string(item).ok();
-                    Some(LspCompletionItem {
-                        label,
-                        detail,
-                        insert_text,
-                        text_edit_text,
-                        kind,
-                        documentation,
-                        raw_json,
-                    })
-                })
+                .filter_map(parse_completion_item)
                 .collect()
         })
         .unwrap_or_default()
@@ -236,6 +430,26 @@ fn parse_text_edits(result: &Value) -> Vec<LspTextEdit> {
             })
         })
         .collect()
+}
+
+fn parse_lsp_text_edit_parts(range: &Value, new_text: String) -> Option<LspTextEdit> {
+    let start_line = range.pointer("/start/line")?.as_u64()? as u32;
+    let start_character = range.pointer("/start/character")?.as_u64()? as u32;
+    let end_line = range.pointer("/end/line")?.as_u64()? as u32;
+    let end_character = range.pointer("/end/character")?.as_u64()? as u32;
+    Some(LspTextEdit {
+        range: LspRange {
+            start: LspPosition {
+                line: start_line,
+                character: start_character,
+            },
+            end: LspPosition {
+                line: end_line,
+                character: end_character,
+            },
+        },
+        new_text,
+    })
 }
 
 pub(super) fn handle_lsp_hover(
@@ -492,6 +706,7 @@ pub(super) fn handle_lsp_completion_resolve(
     let documentation = result
         .get("documentation")
         .and_then(parse_documentation_field);
+    let resolved_item = parse_completion_item(result);
 
     // Diagnostic: if the resolve came back but neither detail nor documentation
     // could be extracted, log the raw response so we can spot unsupported shapes.
@@ -510,6 +725,7 @@ pub(super) fn handle_lsp_completion_resolve(
         item_label: item_label.to_string(),
         detail,
         documentation,
+        resolved_item,
         completion_revision,
     })
 }
@@ -924,8 +1140,104 @@ fn parse_document_symbols(result: &Value) -> Vec<LspDocumentSymbol> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_document_symbols;
+    use super::{parse_completion_item, parse_completion_items, parse_document_symbols};
     use serde_json::json;
+
+    #[test]
+    fn parse_completion_preserves_text_edits_and_data() {
+        let response = json!({
+            "items": [{
+                "label": "connect",
+                "kind": 3,
+                "insertText": "connect",
+                "textEdit": {
+                    "range": {
+                        "start": { "line": 4, "character": 8 },
+                        "end": { "line": 4, "character": 11 }
+                    },
+                    "newText": "connect"
+                },
+                "additionalTextEdits": [{
+                    "range": {
+                        "start": { "line": 0, "character": 0 },
+                        "end": { "line": 0, "character": 0 }
+                    },
+                    "newText": "import { connect } from './api';\n"
+                }],
+                "data": { "entryNames": ["connect"] }
+            }]
+        });
+
+        let items = parse_completion_items(&response);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].text_edit.as_ref().map(|edit| edit.range.start.line), Some(4));
+        assert_eq!(items[0].additional_text_edits.len(), 1);
+        assert!(items[0].data.as_ref().is_some_and(|data| data.contains("entryNames")));
+    }
+
+    #[test]
+    fn parse_resolved_completion_preserves_import_edits() {
+        let resolved = json!({
+            "label": "connect",
+            "additionalTextEdits": [{
+                "range": {
+                    "start": { "line": 1, "character": 0 },
+                    "end": { "line": 1, "character": 0 }
+                },
+                "newText": "import { connect } from './api';\n"
+            }]
+        });
+
+        let item = parse_completion_item(&resolved).expect("resolved completion item");
+
+        assert_eq!(item.label, "connect");
+        assert_eq!(item.additional_text_edits.len(), 1);
+        assert_eq!(item.additional_text_edits[0].new_text, "import { connect } from './api';\n");
+    }
+
+    #[test]
+    fn parse_completion_infers_callable_parameter_shape() {
+        let response = json!({
+            "items": [
+                {
+                    "label": "wait",
+                    "kind": 3,
+                    "insertText": "wait",
+                    "detail": "function wait(ms: number): Promise<void>"
+                },
+                {
+                    "label": "init",
+                    "kind": 3,
+                    "insertText": "init",
+                    "detail": "function init(): void"
+                },
+                {
+                    "label": "NewApp",
+                    "kind": 3,
+                    "insertText": "NewApp()",
+                    "detail": "func() *bootstrap.App"
+                },
+                {
+                    "label": "NewAppWithContext",
+                    "kind": 3,
+                    "insertText": "NewAppWithContext",
+                    "detail": "func(ctx context.Context) *bootstrap.App"
+                }
+            ]
+        });
+
+        let items = parse_completion_items(&response);
+
+        assert_eq!(items[0].callable, Some(true));
+        assert_eq!(items[0].has_parameters, Some(true));
+        assert_eq!(items[1].callable, Some(true));
+        assert_eq!(items[1].has_parameters, Some(false));
+        assert_eq!(items[2].callable, Some(true));
+        assert_eq!(items[2].has_parameters, Some(false));
+        assert_eq!(items[3].callable, Some(true));
+        assert_eq!(items[3].has_parameters, Some(true));
+    }
 
     #[test]
     fn parse_document_symbols_rebuilds_ancestors_for_flat_symbols() {
@@ -1006,13 +1318,11 @@ pub(super) fn handle_lsp_completion(
     let result = response
         .get("result")
         .ok_or_else(|| "completion: no result".to_string())?;
-    if result.is_null() {
-        return Err("completion: no items returned".to_string());
-    }
-    let items = parse_completion_items(result);
-    if items.is_empty() {
-        return Err("completion: empty completion list".to_string());
-    }
+    let items = if result.is_null() {
+        Vec::new()
+    } else {
+        parse_completion_items(result)
+    };
     Ok(WorkerResultPayload::LspCompletionResult {
         items,
         cursor_line,
@@ -1103,26 +1413,117 @@ pub(super) fn handle_lsp_code_action(
     Ok(WorkerResultPayload::LspCodeActionResult { actions })
 }
 
+/// Handle workspace/symbol request — returns all symbols in the workspace.
+pub(super) fn handle_workspace_symbol(
+    session: &Arc<LspClientProcess>,
+    query: &str,
+) -> Result<Vec<crate::lsp::CachedSymbol>, String> {
+    let params = serde_json::json!({
+        "query": query
+    });
+
+    let response = lsp_request_response(
+        session,
+        "workspace/symbol",
+        params,
+        LSP_DOCUMENT_SYMBOLS_TIMEOUT_SECS,
+    )?;
+
+    let result = response
+        .get("result")
+        .ok_or_else(|| "workspace/symbol: no result".to_string())?;
+
+    if result.is_null() {
+        return Ok(Vec::new());
+    }
+
+    let symbols_array = result
+        .as_array()
+        .ok_or_else(|| "workspace/symbol: result is not an array".to_string())?;
+
+    let mut symbols = Vec::new();
+    for symbol in symbols_array {
+        if let Some(cached_symbol) = parse_workspace_symbol(symbol) {
+            symbols.push(cached_symbol);
+        }
+    }
+
+    Ok(symbols)
+}
+
+/// Parse a single workspace symbol from JSON.
+fn parse_workspace_symbol(symbol: &Value) -> Option<crate::lsp::CachedSymbol> {
+    let name = symbol.get("name")?.as_str()?.to_string();
+    let kind = symbol.get("kind")?.as_u64()? as u32;
+    let kind_str = match kind {
+        1 => "File",
+        2 => "Module",
+        3 => "Namespace",
+        4 => "Package",
+        5 => "Class",
+        6 => "Method",
+        7 => "Property",
+        8 => "Field",
+        9 => "Constructor",
+        10 => "Enum",
+        11 => "Interface",
+        12 => "Function",
+        13 => "Variable",
+        14 => "Constant",
+        15 => "String",
+        16 => "Number",
+        17 => "Boolean",
+        18 => "Array",
+        19 => "Object",
+        20 => "Key",
+        21 => "Null",
+        22 => "EnumMember",
+        23 => "Struct",
+        24 => "Event",
+        25 => "Operator",
+        26 => "TypeParameter",
+        _ => "Symbol",
+    }
+    .to_string();
+
+    let container_name = symbol
+        .get("containerName")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    // Parse location
+    let location = symbol.get("location")?;
+    let uri = location.get("uri")?.as_str()?;
+    let file_path = uri.strip_prefix("file://")?.to_string();
+
+    let range = location.get("range")?;
+    let start = range.get("start")?;
+    let line = start.get("line")?.as_u64()? as u32;
+    let character = start.get("character")?.as_u64()? as u32;
+
+    let callable = Some(matches!(
+        kind_str.as_str(),
+        "Function" | "Method" | "Constructor"
+    ));
+    Some(crate::lsp::CachedSymbol {
+        name,
+        kind: kind_str,
+        container_name,
+        file_path: std::path::PathBuf::from(file_path),
+        line,
+        character,
+        source_path: None,
+        import_path: None,
+        export_kind: None,
+        callable,
+        has_parameters: None,
+    })
+}
+
 /// Parse một raw TextEdit JSON object thành LspTextEdit.
 fn parse_single_text_edit(edit: &Value) -> Option<LspTextEdit> {
-    let start_line = edit.pointer("/range/start/line")?.as_u64()? as u32;
-    let start_char = edit.pointer("/range/start/character")?.as_u64()? as u32;
-    let end_line = edit.pointer("/range/end/line")?.as_u64()? as u32;
-    let end_char = edit.pointer("/range/end/character")?.as_u64()? as u32;
     let new_text = edit.get("newText")?.as_str()?.to_string();
-    Some(LspTextEdit {
-        range: LspRange {
-            start: LspPosition {
-                line: start_line,
-                character: start_char,
-            },
-            end: LspPosition {
-                line: end_line,
-                character: end_char,
-            },
-        },
-        new_text,
-    })
+    parse_lsp_text_edit_parts(edit.get("range")?, new_text)
 }
 
 /// Parse edits từ WorkspaceEdit — hỗ trợ cả format cũ `changes` và format mới `documentChanges`.

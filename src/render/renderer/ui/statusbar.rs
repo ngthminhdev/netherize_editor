@@ -181,7 +181,7 @@ impl Renderer {
         let branch = git_branch.trim();
         if !branch.is_empty() {
             let branch_name = branch.strip_prefix("git: ").unwrap_or(branch);
-            let icon = "⎇ ";
+            let icon = "󰘬 ";
             let icon_w = estimate_monospace_width(icon, font_size);
             let name_w = estimate_monospace_width(branch_name, font_size);
             glyphs.extend(layout_panel_text(

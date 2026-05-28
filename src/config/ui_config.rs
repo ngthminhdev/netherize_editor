@@ -39,6 +39,14 @@ impl WindowStartupMode {
             _ => None,
         }
     }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Windowed => "windowed",
+            Self::Maximized => "maximized",
+            Self::Fullscreen => "fullscreen",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +58,7 @@ pub struct WindowUiConfig {
     pub auto_scale: bool,
     pub min_content_scale: f32,
     pub max_content_scale: f32,
+    pub scale_factor_override: Option<f32>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -185,6 +194,7 @@ impl UiConfig {
                 auto_scale: true,
                 min_content_scale: 1.0,
                 max_content_scale: 1.0,
+                scale_factor_override: None,
             },
             layout: WorkbenchLayoutConfig {
                 outer_gap: 14.0,
@@ -294,6 +304,11 @@ impl UiConfig {
                         .max_content_scale
                         .unwrap_or(fallback.window.max_content_scale),
                 )?,
+                scale_factor_override: if let Some(val) = raw.window.scale_factor_override {
+                    Some(parse_positive_f32("window", "scale_factor_override", val)?)
+                } else {
+                    None
+                },
             },
             layout: WorkbenchLayoutConfig {
                 outer_gap: parse_non_negative_f32(
@@ -614,6 +629,32 @@ impl UiConfig {
         if raw.editor.font_family.is_some() {
             self.editor.font_family = raw.editor.font_family.clone();
         }
+        if let Some(over) = raw.window.scale_factor_override {
+            self.window.scale_factor_override = Some(over.max(0.1));
+        }
+        if let Some(auto) = raw.window.auto_scale {
+            self.window.auto_scale = auto;
+        }
+        if let Some(min) = raw.window.min_content_scale {
+            self.window.min_content_scale = min;
+        }
+        if let Some(max) = raw.window.max_content_scale {
+            self.window.max_content_scale = max;
+        }
+        if let Some(w) = raw.window.width {
+            self.window.width = w;
+        }
+        if let Some(h) = raw.window.height {
+            self.window.height = h;
+        }
+        if let Some(ref title) = raw.window.title {
+            self.window.title = title.clone();
+        }
+        if let Some(ref mode) = raw.window.startup_mode {
+            if let Some(parsed) = WindowStartupMode::parse(mode) {
+                self.window.startup_mode = parsed;
+            }
+        }
         if let Ok(override_config) = Self::from_raw(raw) {
             self.docks = override_config.docks;
             self.indent = override_config.indent;
@@ -749,6 +790,7 @@ struct RawWindow {
     auto_scale: Option<bool>,
     min_content_scale: Option<f32>,
     max_content_scale: Option<f32>,
+    scale_factor_override: Option<f32>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -830,11 +872,24 @@ struct RawWelcome {
 
 #[derive(Debug, Serialize)]
 struct UserUiConfigFile {
+    window: UserUiWindow,
     docks: UserUiDocks,
     editor: UserUiEditor,
     indent: UserUiIndent,
     border_radius_px: f32,
     enable_outline: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct UserUiWindow {
+    width: u32,
+    height: u32,
+    title: String,
+    startup_mode: String,
+    auto_scale: bool,
+    min_content_scale: f32,
+    max_content_scale: f32,
+    scale_factor_override: Option<f32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -865,6 +920,16 @@ struct UserUiEditor {
 impl From<&UiConfig> for UserUiConfigFile {
     fn from(value: &UiConfig) -> Self {
         Self {
+            window: UserUiWindow {
+                width: value.window.width,
+                height: value.window.height,
+                title: value.window.title.clone(),
+                startup_mode: value.window.startup_mode.as_str().to_string(),
+                auto_scale: value.window.auto_scale,
+                min_content_scale: value.window.min_content_scale,
+                max_content_scale: value.window.max_content_scale,
+                scale_factor_override: value.window.scale_factor_override,
+            },
             docks: UserUiDocks {
                 left_visible: value.docks.left.visible,
                 left_size_px: value.docks.left.size_px,

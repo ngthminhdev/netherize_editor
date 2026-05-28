@@ -831,15 +831,16 @@ impl ThemeConfig {
         }
 
         let normalized_filename = normalize_icon_filename(filename);
-        if let Some(icon) = special_icon_for_filename(&normalized_filename) {
-            return icon;
-        }
 
         if let Some(icon) = self.exact_icons.get(filename) {
             return icon.as_str();
         }
         if let Some(icon) = self.exact_icons.get(normalized_filename.as_str()) {
             return icon.as_str();
+        }
+
+        if let Some(icon) = special_icon_for_filename(&normalized_filename) {
+            return icon;
         }
 
         let extension = Path::new(normalized_filename.as_str())
@@ -915,7 +916,7 @@ mod tests {
         assert_eq!(theme.get_icon_for_file("jwt.guard.ts", false), "built_in:nestjsguard");
         assert_eq!(theme.get_icon_for_file("user.test.ts", false), "built_in:testts");
         assert_eq!(theme.get_icon_for_file("button.stories.tsx", false), "built_in:storybook");
-        assert_eq!(theme.get_icon_for_file("Dockerfile", false), "built_in:docker");
+        assert_eq!(theme.get_icon_for_file("Dockerfile", false), "🐳");
         assert_eq!(theme.get_icon_for_file("Dockerfile.dev", false), "built_in:docker");
         assert_eq!(theme.get_icon_for_file("src/Dockerfile", false), "built_in:docker");
         assert_eq!(theme.get_icon_for_file("pnpm-lock.yaml", false), "built_in:pnpmlock");

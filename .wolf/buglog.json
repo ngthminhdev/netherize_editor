@@ -434,6 +434,252 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-25T02:57:26.415Z"
+    },
+    {
+      "id": "bug-027",
+      "timestamp": "2026-05-25T04:08:41.493Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/event_loop/commands_editor.rs",
+      "root_cause": "15 lines replaced/restructured",
+      "fix": "Rewrote 46→29 lines (15 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T04:08:41.493Z"
+    },
+    {
+      "id": "bug-028",
+      "timestamp": "2026-05-25T11:08:00+07:00",
+      "error_message": "G command (jump to end of file) moves cursor to last line but viewport doesn't scroll down - user must press j/k to trigger viewport adjustment.",
+      "file": "src/app/event_loop/commands_editor.rs",
+      "root_cause": "MoveToLastLine and MoveToFirstLine were handled in special scroll command block (lines 84-114) with manual viewport calculation, but were NOT included in the is_cursor_move list (lines 229-250). This meant they bypassed the auto_scroll_to_cursor() call at line 330 that j/k commands use, so viewport didn't follow cursor movement.",
+      "fix": "1. Removed MoveToFirstLine and MoveToLastLine from the special scroll command block (lines 84-114). 2. Added both commands to the is_cursor_move list (lines 229-250) so they trigger auto_scroll_to_cursor() like other cursor movement commands. Now G and gg properly scroll viewport to keep cursor visible with 3-line margin.",
+      "tags": [
+        "viewport-scrolling",
+        "cursor-movement",
+        "navigation",
+        "user-reported"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T11:08:00+07:00"
+    },
+    {
+      "id": "bug-029",
+      "timestamp": "2026-05-25T06:32:26.329Z",
+      "error_message": "Significant refactor of ",
+      "file": "config/keymaps/default.toml",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 10→5 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "toml"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T06:32:26.329Z"
+    },
+    {
+      "id": "bug-030",
+      "timestamp": "2026-05-25T06:33:04.499Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/core/command_dispatch/tests.rs",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 15→52 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T06:33:04.499Z"
+    },
+    {
+      "id": "bug-031",
+      "timestamp": "2026-05-25T09:21:52.024Z",
+      "error_message": "Wrong reference: 100 should be 200",
+      "file": "src/app/app_state/mod.rs",
+      "root_cause": "Used \"100\" instead of \"200\"",
+      "fix": "Changed 100 → 200",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T09:21:52.024Z"
+    },
+    {
+      "id": "bug-032",
+      "timestamp": "2026-05-25T09:22:02.107Z",
+      "error_message": "Wrong reference: 100 should be 200",
+      "file": "src/render/renderer/editor/viewport.rs",
+      "root_cause": "Used \"100\" instead of \"200\"",
+      "fix": "Changed 100 → 200",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-25T09:22:02.107Z"
+    },
+    {
+      "id": "bug-033",
+      "timestamp": "2026-05-26T03:05:26.726Z",
+      "error_message": "Null/undefined access in ",
+      "file": "src/async_runtime/scheduler/lsp_parse.rs",
+      "root_cause": "Property access on potentially null/undefined value",
+      "fix": "Added null safety (optional chaining or null check)",
+      "tags": [
+        "auto-detected",
+        "null-safety",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-26T03:05:26.726Z"
+    },
+    {
+      "id": "bug-034",
+      "timestamp": "2026-05-26T03:33:21.409Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/lsp/symbol_cache.rs",
+      "root_cause": "50 lines replaced/restructured",
+      "fix": "Rewrote 77→10 lines (50 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-26T03:33:21.409Z"
+    },
+    {
+      "id": "bug-035",
+      "timestamp": "2026-05-26T10:47:39.098Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/render/icon_pipeline.rs",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 3→21 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-26T10:47:39.098Z"
+    },
+    {
+      "id": "bug-036",
+      "timestamp": "2026-05-26T16:43:55.112Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/event_loop/commands.rs",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 11→29 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-26T16:43:55.112Z"
+    },
+    {
+      "id": "bug-037",
+      "timestamp": "2026-05-27T08:46:55.046Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/render/renderer/editor/buffers/diagnostics.rs",
+      "root_cause": "5 lines replaced/restructured",
+      "fix": "Rewrote 16→35 lines (5 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-27T08:46:55.046Z"
+    },
+    {
+      "id": "bug-038",
+      "timestamp": "2026-05-27T08:55:36.137Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/render/renderer/editor/buffers/diagnostics.rs",
+      "root_cause": "4 lines replaced/restructured",
+      "fix": "Rewrote 8→17 lines (4 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-27T08:55:36.137Z"
+    },
+    {
+      "id": "bug-039",
+      "timestamp": "2026-05-27T10:19:18.864Z",
+      "error_message": "Significant refactor of ",
+      "file": "scripts/bundle_linux.sh",
+      "root_cause": "4 lines replaced/restructured",
+      "fix": "Rewrote 21→51 lines (4 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "sh"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-27T10:19:18.864Z"
+    },
+    {
+      "id": "bug-040",
+      "timestamp": "2026-05-28T04:47:08Z",
+      "error_message": "Embedded terminal TUI looks broken with striped rows and blocky spacing compared to native terminal",
+      "file": "src/terminal/terminal_renderer.rs",
+      "root_cause": "ANSI background cells were rendered by rasterizing a full-block glyph, which does not fill terminal cells exactly and creates visible row and column seams in full-screen TUIs.",
+      "fix": "Render ANSI cell backgrounds as batched RegionDrawInstance quads under terminal text, and keep the terminal glyph path foreground-only.",
+      "tags": [
+        "terminal",
+        "renderer",
+        "ansi-background",
+        "ui"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-28T04:47:08Z"
+    },
+    {
+      "id": "bug-041",
+      "timestamp": "2026-05-28T05:33:36Z",
+      "error_message": "Embedded terminal colors look washed out and differ from native terminal applications",
+      "file": "src/terminal/ansi_parser.rs",
+      "root_cause": "ANSI RGB/xterm colors were uploaded as sRGB values even though the wgpu render target expects linear color input, combined SGR sequences emitted only the first style event, bold SGR state was parsed but not used for glyph shaping, and PTY output was post-processed by regex highlighting that overwrote application-provided ANSI colors.",
+      "fix": "Convert ANSI colors through the shared sRGB-to-linear path, emit all style events from multi-parameter SGR sequences, shape bold terminal cells with bold font weight, and stop applying regex foreground overrides to interactive PTY grids.",
+      "tags": [
+        "terminal",
+        "ansi",
+        "color-space",
+        "pty",
+        "ui"
+      ],
+      "related_bugs": [
+        "bug-040"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-05-28T05:33:36Z"
     }
   ]
 }

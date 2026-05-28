@@ -437,6 +437,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
         self.flush_pending_git_diff_after_debounce();
         self.flush_pending_ai_inline_completion();
         self.flush_pending_lsp_did_change_after_debounce();
+        self.flush_pending_lsp_completion_after_debounce();
         self.flush_pending_completion_resolve_after_debounce();
         if self.flush_lsp_retry_if_due() {
             self.request_redraw();
@@ -513,6 +514,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     self.terminal_needs_layout = true;
                     self.buffer_terminal_needs_layout = true;
                 }
+                self.caret_blink_visible = true;
+                self.caret_blink_dirty = true;
+                self.last_caret_blink_tick = Instant::now();
                 self.request_redraw();
             }
             AppEvent::AiInlineReady => {
@@ -538,8 +542,10 @@ impl AppShell {
         if (target - current).abs() > f32::EPSILON {
             self.app_state.current_scroll_y = target;
             self.editor_needs_layout = true;
+            true
+        } else {
+            false
         }
-        false
     }
 
     fn tick_lsp_loading_animation(&mut self) -> bool {
@@ -575,6 +581,13 @@ impl AppShell {
     /// KHÔNG set editor_needs_layout hay editor_caret_needs_layout.
     /// Nhờ đó toàn bộ text pipeline không bị trigger reshape chỉ vì con trỏ nháy.
     fn tick_caret_blink(&mut self) -> bool {
+        let now = Instant::now();
+        if now.duration_since(self.last_caret_blink_tick) >= Duration::from_millis(1000) {
+            self.last_caret_blink_tick = now;
+            self.caret_blink_visible = !self.caret_blink_visible;
+            self.caret_blink_dirty = true;
+            return true;
+        }
         false
     }
 
@@ -965,7 +978,8 @@ impl AppShell {
                 self.buffer_terminal_needs_layout = false;
                 // Cursor đã được render đúng vị trí → reset blink về visible.
                 self.caret_blink_visible = true;
-                self.caret_blink_dirty = false;
+                self.caret_blink_dirty = true;
+                self.last_caret_blink_tick = Instant::now();
                 refresh_highlights_for_viewport =
                     bounds_changed && !show_welcome && active_terminal_session.is_none();
             } else if self.editor_caret_needs_layout {
@@ -1073,7 +1087,8 @@ impl AppShell {
                 self.editor_caret_needs_layout = false;
                 // Cursor đã được re-projected → reset blink về visible.
                 self.caret_blink_visible = true;
-                self.caret_blink_dirty = false;
+                self.caret_blink_dirty = true;
+                self.last_caret_blink_tick = Instant::now();
             } else if let Some(session_id) = active_terminal_session {
                 let grid_changed = self.sync_terminal_buffer_layout(session_id, center_bounds);
                 if (self.buffer_terminal_needs_layout || bounds_changed || grid_changed)
@@ -1193,14 +1208,8 @@ impl AppShell {
                 let bounds_changed = self.last_sidebar_bounds != Some(bounds);
                 let focus_changed = self.last_sidebar_focused != Some(sidebar_focused);
                 if self.sidebar_needs_layout || bounds_changed || focus_changed {
-                    let root_name = self
-                        .app_state
-                        .workspace_root_path()
-                        .and_then(|root| root.file_name().and_then(|name| name.to_str()))
-                        .unwrap_or("workspace");
-                    let header = format!("[ {root_name} ]");
                     self.sidebar_selection_quads = renderer.update_sidebar_content(
-                        Some(&header),
+                        None,
                         &sidebar_rows,
                         bounds,
                         sidebar_focused,
@@ -1276,7 +1285,7 @@ impl AppShell {
                 if (self.right_terminal_needs_layout || bounds_changed || grid_changed)
                     && let Some(renderer) = self.renderer.as_mut()
                 {
-                    renderer.update_terminal_content(
+                    renderer.update_right_terminal_content(
                         &self.right_terminal_grid,
                         rb,
                         self.app_state.current_mode(),
@@ -1287,6 +1296,9 @@ impl AppShell {
             }
         } else if self.last_right_terminal_bounds.is_some() {
             self.last_right_terminal_bounds = None;
+            if let Some(renderer) = self.renderer.as_mut() {
+                renderer.clear_right_terminal();
+            }
         }
 
         // ── Markdown Preview (right sidebar) ──────────────────────────────
@@ -1369,9 +1381,22 @@ impl AppShell {
                 })
                 .collect::<Vec<_>>();
             if let Some(renderer) = self.renderer.as_mut() {
+                let project_name = if show_welcome {
+                    ""
+                } else {
+                    self.app_state
+                        .workspace_root_path()
+                        .and_then(|root| root.file_name().and_then(|name| name.to_str()))
+                        .unwrap_or("")
+                };
+                let center_x = visible_region_bounds(&flat_regions, RegionId::Center)
+                    .map(|b| b[0])
+                    .unwrap_or(0.0);
                 let tab_quads = renderer.update_topbar_content(
                     &tabs,
                     self.app_state.active_buffer_index(),
+                    project_name,
+                    center_x,
                     top_bounds,
                 );
                 region_instances.extend(tab_quads);
@@ -1431,7 +1456,15 @@ impl AppShell {
                 let lsp_progress_label = self
                     .app_state
                     .lsp_progress()
-                    .map(|entry| entry.status_label());
+                    .map(|entry| entry.status_label())
+                    .or_else(|| {
+                        let active_path = self.app_state.active_file()?;
+                        let profile = crate::lsp::registry::language_profile_for_path(active_path)?;
+                        self.app_state
+                            .workspace_symbol_cache()
+                            .is_indexing(profile.key)
+                            .then(|| "Indexing symbols…".to_string())
+                    });
                 let pill_quads = renderer.update_statusbar_content(
                     mode,
                     &pending_keys,
