@@ -466,10 +466,6 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     self.invalidate_highlights_and_parse_active_buffer();
                     self.force_flush_lsp_did_change_for_active_file();
                 }
-                for path in reloaded_paths {
-                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file").to_string();
-                    self.show_transient_toast(format!("Auto reloaded external changes: {name}"));
-                }
                 self.request_redraw();
             }
         }
