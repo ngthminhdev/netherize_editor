@@ -6,6 +6,18 @@ pub(super) fn handle_filesystem_result(app: &mut AppShell, payload: WorkerResult
         eprintln!("[FileWatch] Received {} file system events", events.len());
         for event in events.iter() {
             eprintln!("[FileWatch]   {:?}: {:?}", event.kind, event.path);
+            if let Ok(metadata) = std::fs::metadata(&event.path) {
+                if let Ok(modified_time) = metadata.modified() {
+                    app.last_external_file_check_times.insert(event.path.clone(), modified_time);
+                }
+            }
+            if let Some(ref new_path) = event.new_path {
+                if let Ok(metadata) = std::fs::metadata(new_path) {
+                    if let Ok(modified_time) = metadata.modified() {
+                        app.last_external_file_check_times.insert(new_path.clone(), modified_time);
+                    }
+                }
+            }
         }
         match app.app_state.apply_external_file_events(&events) {
             Ok(report) => {

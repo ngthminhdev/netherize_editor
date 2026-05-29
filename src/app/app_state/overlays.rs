@@ -961,8 +961,17 @@ impl AppState {
     pub(super) fn load_buffer_from_file(&mut self, canonical_path: &Path) -> Result<(), String> {
         let content = fs::read_to_string(canonical_path)
             .map_err(|err| format!("open file {:?} failed: {err}", canonical_path))?;
+        let modified_time = std::fs::metadata(canonical_path)
+            .and_then(|m| m.modified())
+            .ok();
         self.replace_text_buffer_preserving_view(content.as_str());
         let _ = self.refresh_active_search_highlights();
+        if let Some(active_idx) = self.active_buffer_index
+            && let Some(slot) = self.buffers.get_mut(active_idx)
+            && let BufferContent::Text(ref mut buffer) = slot.content
+        {
+            buffer.last_known_modified_time = modified_time;
+        }
         Ok(())
     }
 
@@ -972,6 +981,9 @@ impl AppState {
     ) -> Result<(), String> {
         let content = fs::read_to_string(canonical_path)
             .map_err(|err| format!("open file {:?} failed: {err}", canonical_path))?;
+        let modified_time = std::fs::metadata(canonical_path)
+            .and_then(|m| m.modified())
+            .ok();
         self.text = Rope::from(content.as_str());
         self.cached_line_starts = None;
         self.cursor_char_idx = 0;
@@ -983,6 +995,12 @@ impl AppState {
         self.visual_line_mode = false;
         self.clear_history();
         let _ = self.refresh_active_search_highlights();
+        if let Some(active_idx) = self.active_buffer_index
+            && let Some(slot) = self.buffers.get_mut(active_idx)
+            && let BufferContent::Text(ref mut buffer) = slot.content
+        {
+            buffer.last_known_modified_time = modified_time;
+        }
         Ok(())
     }
 

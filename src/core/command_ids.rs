@@ -234,6 +234,7 @@ pub const EXPLORER_START_FILTER: &str = "explorer.start_filter";
 pub const EXPLORER_CLEAR_FILTER: &str = "explorer.clear_filter";
 pub const EXPLORER_TOGGLE_HIDDEN: &str = "explorer.toggle_hidden";
 pub const EXPLORER_TOGGLE_IGNORED: &str = "explorer.toggle_ignored";
+pub const EXPLORER_TOGGLE_GIT_CHANGES_ONLY: &str = "explorer.toggle_git_changes_only";
 pub const EXPLORER_MOVE_TO_TOP: &str = "explorer.move_to_top";
 pub const EXPLORER_MOVE_TO_BOTTOM: &str = "explorer.move_to_bottom";
 pub const EXPLORER_RENAME_FULL: &str = "explorer.rename_full";
@@ -426,6 +427,7 @@ pub const ALL_IDS: &[&str] = &[
     EXPLORER_CLEAR_FILTER,
     EXPLORER_TOGGLE_HIDDEN,
     EXPLORER_TOGGLE_IGNORED,
+    EXPLORER_TOGGLE_GIT_CHANGES_ONLY,
     EXPLORER_MOVE_TO_TOP,
     EXPLORER_MOVE_TO_BOTTOM,
     EXPLORER_RENAME_FULL,
@@ -654,6 +656,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         EXPLORER_CLEAR_FILTER => Some(Command::ExplorerClearFilter),
         EXPLORER_TOGGLE_HIDDEN => Some(Command::ExplorerToggleHidden),
         EXPLORER_TOGGLE_IGNORED => Some(Command::ExplorerToggleIgnored),
+        EXPLORER_TOGGLE_GIT_CHANGES_ONLY => Some(Command::ExplorerToggleGitChangesOnly),
         EXPLORER_MOVE_TO_TOP => Some(Command::ExplorerMoveToTop),
         EXPLORER_MOVE_TO_BOTTOM => Some(Command::ExplorerMoveToBottom),
         EXPLORER_RENAME_FULL => Some(Command::ExplorerRenameFull),

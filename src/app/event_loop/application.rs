@@ -457,6 +457,22 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.tick_lsp_loading_animation() {
             self.request_redraw();
         }
+        let now = Instant::now();
+        if now.duration_since(self.last_external_file_check) >= Duration::from_secs(1) {
+            self.last_external_file_check = now;
+            let (reloaded_paths, active_reloaded) = self.app_state.check_and_reload_external_changes(&mut self.last_external_file_check_times);
+            if !reloaded_paths.is_empty() {
+                if active_reloaded {
+                    self.invalidate_highlights_and_parse_active_buffer();
+                    self.force_flush_lsp_did_change_for_active_file();
+                }
+                for path in reloaded_paths {
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file").to_string();
+                    self.show_transient_toast(format!("Auto reloaded external changes: {name}"));
+                }
+                self.request_redraw();
+            }
+        }
         if self.tick_caret_blink() {
             self.request_redraw();
         }
@@ -472,6 +488,11 @@ impl ApplicationHandler<AppEvent> for AppShell {
         }
 
         let mut next_deadline = Some(self.next_git_branch_refresh_deadline());
+        let external_check_deadline = self.last_external_file_check + Duration::from_secs(1);
+        next_deadline = Some(match next_deadline {
+            Some(existing) => existing.min(external_check_deadline),
+            None => external_check_deadline,
+        });
         if let Some(git_status_deadline) = self.next_workspace_git_status_refresh_deadline() {
             next_deadline = Some(next_deadline.unwrap_or(git_status_deadline).min(git_status_deadline));
         }

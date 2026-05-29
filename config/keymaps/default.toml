@@ -86,10 +86,6 @@ key = "mod+backslash"
 command = "app.toggle_bottom_dock"
 
 [[bindings]]
-key = "mod+w"
-command = "app.focus_back"
-
-[[bindings]]
 mode = "normal"
 key = "mod+,"
 command = "app.open_settings"
@@ -316,16 +312,6 @@ command = "buffer.prev"
 mode = "normal"
 key = "Ctrl+l"
 command = "buffer.next"
-
-[[bindings]]
-mode = "normal"
-key = "mod+h"
-command = "app.prev_panel_tab"
-
-[[bindings]]
-mode = "normal"
-key = "mod+l"
-command = "app.next_panel_tab"
 
 # scroll
 [[bindings]]
@@ -862,13 +848,13 @@ command = "explorer.rename_base"
 
 [[bindings]]
 mode = "explorer"
-key = "mod+h"
-command = "app.prev_panel_tab"
+key = "ctrl+r"
+command = "workspace.reload"
 
 [[bindings]]
 mode = "explorer"
-key = "mod+l"
-command = "app.next_panel_tab"
+key = "s"
+command = "explorer.toggle_git_changes_only"
 
 # ───────────────── JUMP LIST ─────────────────
 [[bindings]]

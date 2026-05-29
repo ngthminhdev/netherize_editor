@@ -121,6 +121,7 @@ pub struct WorkspaceModel {
     pub ignore_rules: WorkspaceIgnoreRules,
     show_hidden: bool,
     show_ignored: bool,
+    show_git_changes_only: bool,
     expanded_paths: BTreeSet<PathBuf>,
     selected_path: Option<PathBuf>,
     scroll_offset: f32,
@@ -150,6 +151,7 @@ impl WorkspaceModel {
             ignore_rules,
             show_hidden: scan_options.show_hidden,
             show_ignored: scan_options.show_ignored,
+            show_git_changes_only: false,
             expanded_paths: BTreeSet::new(),
             selected_path: None,
             scroll_offset: 0.0,
@@ -177,6 +179,10 @@ impl WorkspaceModel {
         self.show_ignored
     }
 
+    pub fn show_git_changes_only(&self) -> bool {
+        self.show_git_changes_only
+    }
+
     pub fn set_show_hidden(&mut self, show_hidden: bool) -> bool {
         if self.show_hidden == show_hidden {
             return false;
@@ -200,6 +206,11 @@ impl WorkspaceModel {
 
     pub fn toggle_show_ignored(&mut self) -> bool {
         self.show_ignored = !self.show_ignored;
+        true
+    }
+
+    pub fn toggle_show_git_changes_only(&mut self) -> bool {
+        self.show_git_changes_only = !self.show_git_changes_only;
         true
     }
 
@@ -841,6 +852,22 @@ mod tests {
         assert!(workspace.clear_filter());
         assert_eq!(workspace.filter_query(), "");
         assert!(!workspace.is_inputting_filter());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn toggle_show_git_changes_only_updates_flag() {
+        let root = std::env::temp_dir().join(format!(
+            "netherize_workspace_git_toggle_{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("src")).expect("create dirs");
+
+        let mut workspace = WorkspaceModel::load(root.clone()).expect("load workspace");
+        assert!(!workspace.show_git_changes_only());
+        assert!(workspace.toggle_show_git_changes_only());
+        assert!(workspace.show_git_changes_only());
 
         let _ = fs::remove_dir_all(root);
     }

@@ -1642,6 +1642,9 @@ impl AppState {
                                             buffer.in_memory_text = Some(reloaded_text);
                                             buffer.missing_on_disk = false;
                                             buffer.dirty = false;
+                                            buffer.last_known_modified_time = std::fs::metadata(&buffer.path)
+                                                .and_then(|m| m.modified())
+                                                .ok();
                                             let note = format!(
                                                 "auto reloaded inactive file from disk: {}",
                                                 buffer.path.display()

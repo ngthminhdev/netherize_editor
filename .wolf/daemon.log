@@ -65,3 +65,9 @@
 [2026-05-27T11:00:00.647Z] [INFO] Task Full anatomy rescan completed in 158ms
 [2026-05-28T05:00:00.699Z] [INFO] Executing task: Full anatomy rescan
 [2026-05-28T05:00:00.822Z] [INFO] Task Full anatomy rescan completed in 122ms
+[2026-05-28T11:00:00.474Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-28T11:00:00.612Z] [INFO] Task Full anatomy rescan completed in 139ms
+[2026-05-28T19:00:00.959Z] [INFO] Executing task: Consolidate old memory
+[2026-05-28T19:00:00.978Z] [INFO] Task Consolidate old memory completed in 17ms
+[2026-05-29T05:00:00.890Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-29T05:00:01.017Z] [INFO] Task Full anatomy rescan completed in 127ms

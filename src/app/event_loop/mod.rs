@@ -251,6 +251,8 @@ pub struct AppShell {
     caret_blink_visible: bool,
     caret_blink_dirty: bool,
     last_caret_blink_tick: Instant,
+    last_external_file_check: Instant,
+    last_external_file_check_times: std::collections::HashMap<std::path::PathBuf, std::time::SystemTime>,
     pre_markdown_preview_right_width: Option<f32>,
     /// Code actions từ lần request gần nhất, dùng để apply khi user chọn trong picker.
     pending_code_actions: Vec<crate::async_runtime::message::LspCodeAction>,

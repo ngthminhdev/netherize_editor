@@ -85,7 +85,8 @@ fn truncate_folded_lines(
 
     // Build line-to-byte mapping for original text
     let mut line_byte_starts = vec![0];
-    for line in text.lines() {
+    let split_lines: Vec<&str> = text.split('\n').collect();
+    for line in &split_lines {
         let last = *line_byte_starts.last().unwrap();
         line_byte_starts.push(last + line.len() + 1); // +1 for newline
     }
@@ -93,7 +94,7 @@ fn truncate_folded_lines(
     let mut result = String::with_capacity(text.len());
     let mut byte_offset_map: Vec<(usize, usize)> = Vec::new(); // (old_byte, new_byte)
 
-    for (line_idx, line) in text.lines().enumerate() {
+    for (line_idx, line) in split_lines.iter().enumerate() {
         let old_line_start = line_byte_starts[line_idx];
         let new_line_start = result.len();
 
@@ -132,7 +133,7 @@ fn truncate_folded_lines(
         }
 
         // Add newline if not the last line
-        if line_idx + 1 < text.lines().count() {
+        if line_idx + 1 < split_lines.len() {
             result.push('\n');
             // Map the newline byte
             byte_offset_map.push((old_line_start + line.len(), result.len() - 1));

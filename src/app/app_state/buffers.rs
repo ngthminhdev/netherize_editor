@@ -76,6 +76,10 @@ impl AppState {
             .canonicalize()
             .map_err(|err| format!("canonicalize saved file {:?} failed: {err}", path))?;
 
+        let modified_time = std::fs::metadata(&canonical_path)
+            .and_then(|m| m.modified())
+            .ok();
+
         self.active_file = Some(canonical_path.clone());
         self.register_open_text_buffer(canonical_path.clone());
         if let Some(active_idx) = self.active_buffer_index
@@ -85,6 +89,7 @@ impl AppState {
             buffer.in_memory_text = Some(self.text.clone());
             buffer.dirty = false;
             buffer.history = self.history.clone();
+            buffer.last_known_modified_time = modified_time;
         }
         let _ = self.workspace_expand_to_path(&canonical_path);
         self.dirty = false;
@@ -684,6 +689,99 @@ impl AppState {
         self.history.undo_stack.push(transaction);
         self.history.redo_stack.clear();
         true
+    }
+
+    pub fn check_and_reload_external_changes(
+        &mut self,
+        last_checked_times: &mut HashMap<PathBuf, std::time::SystemTime>,
+    ) -> (Vec<PathBuf>, bool) {
+        let mut reloaded_paths = Vec::new();
+        let mut active_reloaded = false;
+
+        let candidates: Vec<(usize, PathBuf, bool)> = self
+            .buffers
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, entry)| {
+                if let BufferContent::Text(ref buffer) = entry.content {
+                    let is_active = self.active_buffer_index == Some(idx);
+                    let is_dirty = buffer.dirty || (is_active && self.dirty);
+                    if !is_dirty {
+                        Some((idx, buffer.path.clone(), is_active))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for (idx, path, is_active) in candidates {
+            if let Ok(metadata) = std::fs::metadata(&path) {
+                if let Ok(modified_time) = metadata.modified() {
+                    let needs_reload = if let Some(slot) = self.buffers.get(idx)
+                        && let BufferContent::Text(ref buffer) = slot.content
+                    {
+                        match buffer.last_known_modified_time {
+                            Some(last_checked) => modified_time > last_checked,
+                            None => true,
+                        }
+                    } else {
+                        false
+                    };
+
+                    if needs_reload {
+                        if is_active && self.should_ignore_self_save_event() {
+                            if let Some(slot) = self.buffers.get_mut(idx)
+                                && let BufferContent::Text(ref mut buffer) = slot.content
+                            {
+                                buffer.last_known_modified_time = Some(modified_time);
+                            }
+                            last_checked_times.insert(path, modified_time);
+                            continue;
+                        }
+
+                        if is_active {
+                            eprintln!("[FilePoll] Reloading active file from disk: {:?}", path);
+                            if let Ok(()) = self.load_buffer_from_file(&path) {
+                                self.active_file = Some(path.clone());
+                                let reloaded_text = self.text.clone();
+                                if let Some(slot) = self.buffers.get_mut(idx) {
+                                    if let BufferContent::Text(ref mut buffer) = slot.content {
+                                        buffer.in_memory_text = Some(reloaded_text);
+                                        buffer.missing_on_disk = false;
+                                        buffer.dirty = false;
+                                        buffer.last_known_modified_time = Some(modified_time);
+                                    }
+                                }
+                                self.dirty = false;
+                                active_reloaded = true;
+                                reloaded_paths.push(path.clone());
+                            }
+                        } else {
+                            eprintln!("[FilePoll] Reloading background file from disk: {:?}", path);
+                            if let Ok(content) = std::fs::read_to_string(&path) {
+                                if let Some(slot) = self.buffers.get_mut(idx) {
+                                    if let BufferContent::Text(ref mut buffer) = slot.content {
+                                        buffer.in_memory_text = Some(Rope::from(content));
+                                        buffer.missing_on_disk = false;
+                                        buffer.dirty = false;
+                                        buffer.last_known_modified_time = Some(modified_time);
+                                    }
+                                }
+                                reloaded_paths.push(path.clone());
+                            }
+                        }
+                        last_checked_times.insert(path, modified_time);
+                    } else {
+                        last_checked_times.insert(path, modified_time);
+                    }
+                }
+            }
+        }
+
+        (reloaded_paths, active_reloaded)
     }
 }
 

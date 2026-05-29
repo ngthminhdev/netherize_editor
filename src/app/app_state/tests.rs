@@ -1716,4 +1716,72 @@ mod tests {
         );
         assert_eq!(state_a.current_mode(), EditorMode::MultiInsert);
     }
+
+    #[test]
+    fn check_and_reload_external_changes_reloads_modified_files() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "netherize_external_reload_{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&temp_dir).expect("create temp dir");
+        let file_path = temp_dir.join("test.txt");
+        fs::write(&file_path, "original content").expect("write test file");
+        let file_path = file_path.canonicalize().expect("canonicalize file_path");
+
+        let mut state = AppState::new(file_path.clone());
+        state.open_file(file_path.clone()).expect("open file");
+        
+        let mut last_checked = HashMap::new();
+        // First check: populates the check time registry
+        let (reloaded, active_reloaded) = state.check_and_reload_external_changes(&mut last_checked);
+        assert!(reloaded.is_empty());
+        assert!(!active_reloaded);
+        assert!(last_checked.contains_key(&file_path));
+
+        // Sleep briefly to ensure time difference is detectable if filesystem timestamps are coarse
+        std::thread::sleep(Duration::from_millis(100));
+
+        // Modify file externally on disk
+        fs::write(&file_path, "updated content").expect("write update");
+
+        // Second check: should detect modify and reload
+        let (reloaded, active_reloaded) = state.check_and_reload_external_changes(&mut last_checked);
+        assert_eq!(reloaded.len(), 1);
+        assert_eq!(reloaded[0], file_path);
+        assert!(active_reloaded);
+        assert_eq!(state.text_string(), "updated content");
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn check_and_reload_external_changes_reloads_even_before_first_tick() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "netherize_external_reload_first_tick_{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&temp_dir).expect("create temp dir");
+        let file_path = temp_dir.join("test.txt");
+        fs::write(&file_path, "original content").expect("write test file");
+        let file_path = file_path.canonicalize().expect("canonicalize file_path");
+
+        let mut state = AppState::new(file_path.clone());
+        state.open_file(file_path.clone()).expect("open file");
+
+        // Sleep briefly to ensure time difference is detectable
+        std::thread::sleep(Duration::from_millis(100));
+
+        // Modify file externally BEFORE any check/tick runs
+        fs::write(&file_path, "modified before tick").expect("write update");
+
+        let mut last_checked = HashMap::new();
+        // First check: should detect the modify against last_known_modified_time and reload
+        let (reloaded, active_reloaded) = state.check_and_reload_external_changes(&mut last_checked);
+        assert_eq!(reloaded.len(), 1);
+        assert_eq!(reloaded[0], file_path);
+        assert!(active_reloaded);
+        assert_eq!(state.text_string(), "modified before tick");
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
 }

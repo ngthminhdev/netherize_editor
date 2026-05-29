@@ -151,10 +151,14 @@ pub struct EditorBuffer {
     /// True when the backing file is missing on disk (for example after switching git branch).
     pub missing_on_disk: bool,
     view_state: TextBufferViewState,
+    pub last_known_modified_time: Option<std::time::SystemTime>,
 }
 
 impl EditorBuffer {
     pub fn new(path: PathBuf, language_id: Option<String>) -> Self {
+        let last_known_modified_time = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .ok();
         Self {
             path,
             language_id,
@@ -165,6 +169,7 @@ impl EditorBuffer {
             dirty: false,
             missing_on_disk: false,
             view_state: TextBufferViewState::default(),
+            last_known_modified_time,
         }
     }
 }

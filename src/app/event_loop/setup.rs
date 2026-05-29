@@ -262,6 +262,8 @@ impl AppShell {
             caret_blink_visible: true,
             caret_blink_dirty: false,
             last_caret_blink_tick: now,
+            last_external_file_check: now,
+            last_external_file_check_times: std::collections::HashMap::new(),
             pre_markdown_preview_right_width: None,
             pending_code_actions: Vec::new(),
             selected_python_env: None,
@@ -503,12 +505,13 @@ impl AppShell {
     }
 
     pub(super) fn update_runtime_scaling_for_window(&mut self, scale_factor: f64) {
-        let raw_scale = if let Some(over) = self.ui_config.window.scale_factor_override {
-            over as f64
-        } else {
-            scale_factor
-        };
-        let dpi_scale = (raw_scale as f32).max(0.25);
+        // let raw_scale = if let Some(over) = self.ui_config.window.scale_factor_override {
+        //     over as f64
+        // } else {
+        //     scale_factor
+        // };
+        // let dpi_scale = (raw_scale as f32).max(0.25);
+        let dpi_scale = (scale_factor as f32).max(0.25);
         let logical_width = self.window_size.width as f32 / dpi_scale;
         let logical_height = self.window_size.height as f32 / dpi_scale;
 

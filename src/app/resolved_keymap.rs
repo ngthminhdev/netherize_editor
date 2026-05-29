@@ -650,8 +650,8 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert(Some("normal"), ch('{'), MOVE_PARAGRAPH_UP);
     km.insert(Some("normal"), ch('}'), MOVE_PARAGRAPH_DOWN);
-    km.insert(Some("normal"), mp(KeyCode::KeyH), BUFFER_PREV);
-    km.insert(Some("normal"), mp(KeyCode::KeyL), BUFFER_NEXT);
+    km.insert(Some("normal"), KeySpec::CtrlPlus(KeyCode::KeyH), BUFFER_PREV);
+    km.insert(Some("normal"), KeySpec::CtrlPlus(KeyCode::KeyL), BUFFER_NEXT);
     km.insert(Some("normal"), KeySpec::CtrlPlus(KeyCode::KeyR), REDO);
     km.insert(Some("normal"), ch('n'), SEARCH_NEXT);
     km.insert(Some("normal"), ch('N'), SEARCH_PREV);
@@ -911,9 +911,16 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("explorer"), ch('G'), EXPLORER_MOVE_TO_BOTTOM);
     km.insert(Some("explorer"), ph(KeyCode::KeyR), EXPLORER_RENAME_FULL);
     km.insert(Some("explorer"), ch('R'), EXPLORER_RENAME_BASE);
-
-    // ── Global Ctrl+W → focus back to editor ─────────────────────────────────
-    km.insert(None, mp(KeyCode::KeyW), FOCUS_BACK);
+    km.insert(
+        Some("explorer"),
+        KeySpec::CtrlPlus(KeyCode::KeyR),
+        RELOAD_WORKSPACE,
+    );
+    km.insert(
+        Some("explorer"),
+        ph(KeyCode::KeyS),
+        EXPLORER_TOGGLE_GIT_CHANGES_ONLY,
+    );
 
     // ── Chord bindings (multi-step sequences) ─────────────────────────────────
     km.insert_sequence(
@@ -985,11 +992,6 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         Some("normal"),
         seq(&[KeySpec::Leader, ph(KeyCode::KeyR), ph(KeyCode::KeyR)]),
         ENTER_RESIZE,
-    );
-    km.insert_sequence(
-        None,
-        seq(&[KeySpec::Leader, ph(KeyCode::KeyE)]),
-        FOCUS_EXPLORER,
     );
     km.insert_sequence(
         None,

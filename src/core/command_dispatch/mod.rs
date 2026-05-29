@@ -375,6 +375,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::ExplorerClearFilter
         | Command::ExplorerToggleHidden
         | Command::ExplorerToggleIgnored
+        | Command::ExplorerToggleGitChangesOnly
         | Command::ExplorerMoveToTop
         | Command::ExplorerMoveToBottom
         | Command::ExplorerRenameFull

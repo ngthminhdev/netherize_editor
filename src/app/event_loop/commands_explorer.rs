@@ -340,6 +340,14 @@ impl AppShell {
                     Some(false)
                 }
             }
+            Command::ExplorerToggleGitChangesOnly => {
+                let changed = self.app_state.workspace_toggle_show_git_changes_only();
+                if changed {
+                    self.submit_workspace_git_status_refresh();
+                    self.mark_explorer_dirty();
+                }
+                Some(changed)
+            }
             Command::ExplorerMoveToTop => {
                 self.ensure_explorer_snapshot();
                 if self.explorer_snapshot.entries.is_empty() {

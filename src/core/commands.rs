@@ -247,6 +247,7 @@ pub enum Command {
     ExplorerClearFilter,
     ExplorerToggleHidden,
     ExplorerToggleIgnored,
+    ExplorerToggleGitChangesOnly,
     ExplorerMoveToTop,
     ExplorerMoveToBottom,
     ExplorerRenameFull,
