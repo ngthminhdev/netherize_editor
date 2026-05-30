@@ -680,6 +680,22 @@
       ],
       "occurrences": 1,
       "last_seen": "2026-05-28T05:33:36Z"
+    },
+    {
+      "id": "bug-042",
+      "timestamp": "2026-05-30T04:06:03.305Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/resolved_keymap.rs",
+      "root_cause": "10 lines replaced/restructured",
+      "fix": "Rewrote 17→4 lines (10 removed) | Also: let normalized = normalize_modifier_alias(token);; if normalized == \"<leader>\" { | Also: fn normalize_modifier_alias(token: &str) -> String; // Just lowercase - no more mod aliasing",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 3,
+      "last_seen": "2026-05-30T04:10:28.116Z"
     }
   ]
 }

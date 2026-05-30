@@ -25,6 +25,7 @@ pub(crate) fn highlight_query(language_id: LanguageId) -> Option<&'static Query>
         LanguageId::Css => css_highlight_query(),
         LanguageId::Protobuf => protobuf_highlight_query(),
         LanguageId::Xml => xml_highlight_query(),
+        LanguageId::Dart => dart_highlight_query(),
         LanguageId::Plaintext => None,
     }
 }
@@ -287,6 +288,19 @@ pub(crate) fn xml_highlight_query() -> Option<&'static Query> {
                 LanguageId::Xml,
                 include_str!("../queries/xml/highlights.scm"),
                 "xml",
+            )
+        })
+        .as_ref()
+}
+
+pub(crate) fn dart_highlight_query() -> Option<&'static Query> {
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
+    QUERY
+        .get_or_init(|| {
+            build_highlight_query(
+                LanguageId::Dart,
+                include_str!("../queries/dart/highlights.scm"),
+                "dart",
             )
         })
         .as_ref()

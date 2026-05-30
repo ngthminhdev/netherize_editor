@@ -765,8 +765,8 @@ fn build_help_sections(bindings: &[crate::config::keymap_config::KeyBinding]) ->
                 label: "= Space — prefix for custom shortcuts".into(),
             },
             HelpEntry {
-                keys: vec!["mod".into()],
-                label: "= ⌘ macOS / Ctrl Linux — app shortcuts".into(),
+                keys: vec!["cmd".into()],
+                label: "= ⌘ on macOS — app shortcuts".into(),
             },
             HelpEntry {
                 keys: vec!["count".into()],

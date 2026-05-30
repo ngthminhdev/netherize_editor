@@ -26,6 +26,7 @@ pub enum LanguageId {
     Css,
     Protobuf,
     Xml,
+    Dart,
     Plaintext,
 }
 
@@ -51,6 +52,7 @@ impl LanguageId {
             Self::Css => "css",
             Self::Protobuf => "protobuf",
             Self::Xml => "xml",
+            Self::Dart => "dart",
             Self::Plaintext => "plaintext",
         }
     }

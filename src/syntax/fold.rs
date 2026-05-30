@@ -130,6 +130,10 @@ fn foldable_node_kinds(
         Sql => set! {
             "statement", "cte", "subquery"
         },
+        Dart => set! {
+            "block", "class_body", "interface_body", "enum_body",
+            "if_statement", "for_statement", "while_statement", "try_statement"
+        },
         Dotenv | Protobuf | Dockerfile | Plaintext => {
             static EMPTY: std::sync::LazyLock<std::collections::HashSet<&'static str>> =
                 std::sync::LazyLock::new(std::collections::HashSet::new);

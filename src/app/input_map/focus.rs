@@ -791,6 +791,9 @@ impl InputMap {
             return None;
         }
 
+        // In-file search: Ctrl+A toggles case sensitivity.
+        // Must be checked BEFORE the keymap lookup so it isn't swallowed
+        // when there's no palette-mode binding for ctrl+a.
         if palette_mode == Some(CommandPaletteMode::InFileSearch)
             && input.modifiers.control_key()
             && !input.modifiers.alt_key()

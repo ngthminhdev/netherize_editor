@@ -98,7 +98,7 @@ fn table_driven_keybinding_resolution() {
                 physical_key: Some(KeyCode::KeyV),
                 named_key: None,
                 text: Some("v".to_string()),
-                modifiers: ModifiersState::CONTROL,
+                modifiers: ModifiersState::SUPER,
             },
             expected: Some(Command::EditorPaste),
         },
@@ -109,13 +109,13 @@ fn table_driven_keybinding_resolution() {
             expected: Some(Command::ClearSearchHighlights),
         },
         Case {
-            name: "cmd/ctrl p -> OpenFilePicker",
+            name: "cmd p -> OpenFilePicker",
             context: KeybindingContext::for_mode(EditorMode::Insert),
             input: NormalizedInput {
                 physical_key: Some(KeyCode::KeyP),
                 named_key: None,
                 text: Some("p".to_string()),
-                modifiers: ModifiersState::CONTROL,
+                modifiers: ModifiersState::SUPER,
             },
             expected: Some(Command::OpenFilePicker),
         },
@@ -157,7 +157,7 @@ fn table_driven_keybinding_resolution() {
                 physical_key: Some(KeyCode::KeyV),
                 named_key: None,
                 text: Some("v".to_string()),
-                modifiers: ModifiersState::CONTROL,
+                modifiers: ModifiersState::SUPER,
             },
             expected: Some(Command::TerminalPaste),
         },
@@ -176,7 +176,7 @@ fn table_driven_keybinding_resolution() {
             expected: None,
         },
         Case {
-            name: "terminal focus ctrl+w -> TerminalTabClose",
+            name: "terminal focus cmd+w -> TerminalTabClose",
             context: KeybindingContext::with_focus(
                 EditorMode::TerminalFocus,
                 InputFocusContext::Terminal,
@@ -185,7 +185,7 @@ fn table_driven_keybinding_resolution() {
                 physical_key: Some(KeyCode::KeyW),
                 named_key: None,
                 text: Some("w".to_string()),
-                modifiers: ModifiersState::CONTROL,
+                modifiers: ModifiersState::SUPER,
             },
             expected: Some(Command::TerminalTabClose),
         },
@@ -245,7 +245,7 @@ fn table_driven_keybinding_resolution() {
                 physical_key: Some(KeyCode::KeyV),
                 named_key: None,
                 text: Some("v".to_string()),
-                modifiers: ModifiersState::CONTROL,
+                modifiers: ModifiersState::SUPER,
             },
             expected: Some(Command::TerminalPaste),
         },
@@ -364,7 +364,7 @@ fn table_driven_keybinding_resolution() {
                 physical_key: Some(KeyCode::Backslash),
                 named_key: None,
                 text: Some("\\".to_string()),
-                modifiers: ModifiersState::CONTROL,
+                modifiers: ModifiersState::SUPER,
             },
             expected: Some(Command::ToggleBottomDock),
         },
@@ -589,7 +589,7 @@ fn table_driven_keybinding_resolution() {
                 physical_key: Some(KeyCode::KeyV),
                 named_key: None,
                 text: Some("v".to_string()),
-                modifiers: ModifiersState::CONTROL,
+                modifiers: ModifiersState::SUPER,
             },
             expected: Some(Command::EditorPaste),
         },
@@ -600,7 +600,7 @@ fn table_driven_keybinding_resolution() {
                 physical_key: Some(KeyCode::KeyV),
                 named_key: None,
                 text: Some("v".to_string()),
-                modifiers: ModifiersState::CONTROL,
+                modifiers: ModifiersState::SUPER,
             },
             expected: Some(Command::EditorPaste),
         },
@@ -614,7 +614,7 @@ fn table_driven_keybinding_resolution() {
                 physical_key: Some(KeyCode::KeyV),
                 named_key: None,
                 text: Some("v".to_string()),
-                modifiers: ModifiersState::CONTROL,
+                modifiers: ModifiersState::SUPER,
             },
             expected: Some(Command::EditorPaste),
         },
@@ -865,13 +865,13 @@ fn default_profile_leader_m_f_routes_to_focus_markdown_preview() {
 }
 
 #[test]
-fn ctrl_s_maps_to_save_file() {
+fn cmd_s_maps_to_save_file() {
     let map = make_map();
     let input = NormalizedInput {
         physical_key: Some(KeyCode::KeyS),
         named_key: None,
         text: Some("s".to_string()),
-        modifiers: ModifiersState::CONTROL,
+        modifiers: ModifiersState::SUPER,
     };
     assert_eq!(
         map.translate(&input, KeybindingContext::for_mode(EditorMode::Insert)),

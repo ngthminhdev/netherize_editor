@@ -46,6 +46,15 @@ fn ctrl_input(ch: char, key: KeyCode) -> NormalizedInput {
     }
 }
 
+fn cmd_input(ch: char, key: KeyCode) -> NormalizedInput {
+    NormalizedInput {
+        physical_key: Some(key),
+        named_key: None,
+        text: Some(ch.to_string()),
+        modifiers: ModifiersState::SUPER,
+    }
+}
+
 fn named_input(named: NamedKey, physical: Option<KeyCode>) -> NormalizedInput {
     NormalizedInput {
         physical_key: physical,
@@ -1427,14 +1436,14 @@ fn terminal_focus_ctrl_q_enters_terminal_normal_mode() {
 }
 
 #[test]
-fn terminal_focus_mod_v_routes_terminal_paste() {
+fn terminal_focus_cmd_v_routes_terminal_paste() {
     let mut handler = InputHandler::new();
     let map = make_map();
     let context =
         KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal);
     let now = std::time::Instant::now();
 
-    let mapped = handler.route_normalized_input(ctrl_input('v', KeyCode::KeyV), &map, context, now);
+    let mapped = handler.route_normalized_input(cmd_input('v', KeyCode::KeyV), &map, context, now);
     match mapped {
         Some(InputRouteOutcome::Dispatch(translated)) => {
             assert_eq!(translated.command, Command::TerminalPaste);
@@ -1444,14 +1453,14 @@ fn terminal_focus_mod_v_routes_terminal_paste() {
 }
 
 #[test]
-fn buffer_terminal_mod_v_routes_terminal_paste() {
+fn buffer_terminal_cmd_v_routes_terminal_paste() {
     let mut handler = InputHandler::new();
     let map = make_map();
     let context =
         KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::BufferTerminal);
     let now = std::time::Instant::now();
 
-    let mapped = handler.route_normalized_input(ctrl_input('v', KeyCode::KeyV), &map, context, now);
+    let mapped = handler.route_normalized_input(cmd_input('v', KeyCode::KeyV), &map, context, now);
     match mapped {
         Some(InputRouteOutcome::Dispatch(translated)) => {
             assert_eq!(translated.command, Command::TerminalPaste);

@@ -50,31 +50,31 @@ command = "mode.escape"
 
 # ───────────────── GLOBAL ─────────────────
 [[bindings]]
-key = "mod+shift+n"
+key = "cmd+shift+n"
 command = "app.new_instance"
 
 [[bindings]]
-key = "mod+s"
+key = "cmd+s"
 command = "editor.save_file"
 
 [[bindings]]
-key = "mod+o"
+key = "cmd+o"
 command = "editor.open_folder"
 
 [[bindings]]
-key = "mod+p"
+key = "cmd+p"
 command = "app.open_command_palette"
 
 [[bindings]]
-key = "mod+b"
+key = "cmd+b"
 command = "app.toggle_left_dock"
 
 [[bindings]]
-key = "mod+f"
+key = "cmd+f"
 command = "app.focus_explorer"
 
 [[bindings]]
-key = "mod+r"
+key = "cmd+r"
 command = "app.focus_inspector"
 
 [[bindings]]
@@ -82,12 +82,12 @@ key = "F12"
 command = "app.focus_terminal"
 
 [[bindings]]
-key = "mod+backslash"
+key = "cmd+backslash"
 command = "app.toggle_bottom_dock"
 
 [[bindings]]
 mode = "normal"
-key = "mod+,"
+key = "cmd+,"
 command = "app.open_settings"
 
 # [[bindings]]
@@ -149,7 +149,7 @@ command = "editor.move_down"
 
 [[bindings]]
 mode = "insert"
-key = "mod+v"
+key = "cmd+v"
 command = "editor.paste"
 
 [[bindings]]
@@ -493,7 +493,7 @@ command = "editor.visual_paste"
 
 [[bindings]]
 mode = "visual"
-key = "mod+v"
+key = "cmd+v"
 command = "editor.paste"
 
 [[bindings]]
@@ -565,7 +565,7 @@ command = "app.focus_terminal"
 
 [[bindings]]
 mode = "terminal"
-key = "mod+v"
+key = "cmd+v"
 command = "terminal.paste"
 
 # ───────────────── TERMINAL NORMAL ─────────────────
@@ -656,7 +656,7 @@ command = "editor.yank_selection"
 
 [[bindings]]
 mode = "terminal_normal"
-key = "mod+v"
+key = "cmd+v"
 command = "terminal.paste"
 
 [[bindings]]
@@ -694,50 +694,50 @@ mode = "terminal_normal"
 key = "<leader>x"
 command = "terminal.tab_close"
 
-# ── Terminal tab switching (mod+1..9) ──
+# ── Terminal tab switching (cmd+1..9) ──
 [[bindings]]
 mode = "terminal"
-key = "mod+1"
+key = "cmd+1"
 command = "terminal.tab_switch_1"
 
 [[bindings]]
 mode = "terminal"
-key = "mod+2"
+key = "cmd+2"
 command = "terminal.tab_switch_2"
 
 [[bindings]]
 mode = "terminal"
-key = "mod+3"
+key = "cmd+3"
 command = "terminal.tab_switch_3"
 
 [[bindings]]
 mode = "terminal"
-key = "mod+4"
+key = "cmd+4"
 command = "terminal.tab_switch_4"
 
 [[bindings]]
 mode = "terminal"
-key = "mod+5"
+key = "cmd+5"
 command = "terminal.tab_switch_5"
 
 [[bindings]]
 mode = "terminal"
-key = "mod+6"
+key = "cmd+6"
 command = "terminal.tab_switch_6"
 
 [[bindings]]
 mode = "terminal"
-key = "mod+7"
+key = "cmd+7"
 command = "terminal.tab_switch_7"
 
 [[bindings]]
 mode = "terminal"
-key = "mod+8"
+key = "cmd+8"
 command = "terminal.tab_switch_8"
 
 [[bindings]]
 mode = "terminal"
-key = "mod+9"
+key = "cmd+9"
 command = "terminal.tab_switch_9"
 
 # ───────────────── EXPLORER ─────────────────
@@ -898,11 +898,6 @@ mode = "insert"
 key = "ctrl+space"
 command = "lsp.trigger_completion"
 
-[[bindings]]
-mode = "insert"
-key = "mod+space"
-command = "lsp.trigger_completion"
-
 # ───────────────── LEADER ─────────────────
 [[bindings]]
 mode = "normal"
@@ -991,47 +986,47 @@ command = "buffer.close_current"
 
 [[bindings]]
 mode = "normal"
-key = "mod+1"
+key = "cmd+1"
 command = "buffer.goto_1"
 
 [[bindings]]
 mode = "normal"
-key = "mod+2"
+key = "cmd+2"
 command = "buffer.goto_2"
 
 [[bindings]]
 mode = "normal"
-key = "mod+3"
+key = "cmd+3"
 command = "buffer.goto_3"
 
 [[bindings]]
 mode = "normal"
-key = "mod+4"
+key = "cmd+4"
 command = "buffer.goto_4"
 
 [[bindings]]
 mode = "normal"
-key = "mod+5"
+key = "cmd+5"
 command = "buffer.goto_5"
 
 [[bindings]]
 mode = "normal"
-key = "mod+6"
+key = "cmd+6"
 command = "buffer.goto_6"
 
 [[bindings]]
 mode = "normal"
-key = "mod+7"
+key = "cmd+7"
 command = "buffer.goto_7"
 
 [[bindings]]
 mode = "normal"
-key = "mod+8"
+key = "cmd+8"
 command = "buffer.goto_8"
 
 [[bindings]]
 mode = "normal"
-key = "mod+9"
+key = "cmd+9"
 command = "buffer.goto_9"
 
 [[bindings]]
@@ -1067,7 +1062,7 @@ command = "overlay.select_next"
 
 [[bindings]]
 mode = "palette"
-key = "mod+v"
+key = "cmd+v"
 command = "editor.paste"
 
 [[bindings]]

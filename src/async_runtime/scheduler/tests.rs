@@ -9,6 +9,7 @@ use crate::async_runtime::{
         fzf::{build_file_preview_lines, build_fzf_find_file_script, build_fzf_live_grep_script},
         git::parse_git_blame_summary,
         runtime::build_worker_runtime,
+        session_name_matches_binary,
     },
 };
 
@@ -84,6 +85,22 @@ fn worker_runtime_enables_io_for_tokio_process() {
 
     assert!(output.status.success());
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok");
+}
+
+#[test]
+fn lsp_session_lookup_matches_absolute_binary_path() {
+    assert!(session_name_matches_binary(
+        "/Users/dev/project/.fvm/flutter_sdk/bin/cache/dart-sdk/bin/dart",
+        "dart"
+    ));
+    assert!(session_name_matches_binary(
+        "dart",
+        "/Users/dev/project/.fvm/flutter_sdk/bin/cache/dart-sdk/bin/dart"
+    ));
+    assert!(!session_name_matches_binary(
+        "/Users/dev/project/.fvm/flutter_sdk/bin/cache/dart-sdk/bin/dart",
+        "rust-analyzer"
+    ));
 }
 
 #[test]

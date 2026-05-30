@@ -314,6 +314,7 @@ pub enum Command {
     /// <leader>ca: Gửi textDocument/codeAction, hiển thị quickfix/refactor menu.
     CodeAction,
     LspSelectPythonEnv,
+    LspSelectDartEnv,
     ReloadWorkspace,
     /// Completion popup: chọn item kế tiếp.
     CompletionNext,

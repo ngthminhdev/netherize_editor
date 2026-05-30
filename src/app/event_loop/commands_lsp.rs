@@ -15,6 +15,7 @@ impl AppShell {
             Command::TriggerCompletion => Some(self.submit_lsp_completion()),
             Command::CodeAction => Some(self.submit_lsp_code_action()),
             Command::LspSelectPythonEnv => Some(self.handle_lsp_select_python_env()),
+            Command::LspSelectDartEnv => Some(self.handle_lsp_select_dart_env()),
             Command::CompletionNext => Some(self.select_next_completion_item()),
             Command::CompletionPrev => Some(self.select_prev_completion_item()),
             Command::CompletionAccept => Some(self.accept_completion_item()),
@@ -808,6 +809,8 @@ impl AppShell {
 
         // Store selected env and re-detect versions against the chosen interpreter.
         self.selected_python_env = Some(selected_path.clone());
+        self.sync_lsp_server_for_workspace();
+
         let workspace_root = self
             .app_state
             .workspace_root_path()
@@ -823,6 +826,50 @@ impl AppShell {
         });
 
         self.show_transient_toast(format!("Python env selected: {}", selected_path.display()));
+        true
+    }
+
+    pub(super) fn handle_lsp_select_dart_env(&mut self) -> bool {
+        let Some(workspace_root) = self
+            .app_state
+            .workspace_root_path()
+            .map(|p| p.to_path_buf())
+        else {
+            self.show_transient_toast("Dart Env: no workspace open".to_string());
+            return false;
+        };
+
+        self.app_state.open_dart_env_selector();
+        self.request_redraw();
+
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::SystemTask,
+            payload: WorkerRequestPayload::ScanDartEnvironments { workspace_root },
+        });
+        true
+    }
+
+    pub(super) fn confirm_dart_env_selection(&mut self) -> bool {
+        let selected_path = match self.app_state.command_palette_selected_action() {
+            Some(CommandPaletteAction::SelectDartEnv(path)) => path,
+            _ => return false,
+        };
+
+        let _ = self.app_state.close_command_palette();
+        if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
+            if result.changed {
+                self.editor_needs_layout = true;
+            }
+        }
+        self.focus_manager.set(FocusTarget::CenterEditor);
+        self.input_handler.clear_pending_prefix();
+
+        // Store selected env and restart LSP
+        self.selected_dart_env = Some(selected_path.clone());
+        self.sync_lsp_server_for_workspace();
+
+        self.show_transient_toast(format!("Dart SDK selected: {}", selected_path.display()));
         true
     }
 }

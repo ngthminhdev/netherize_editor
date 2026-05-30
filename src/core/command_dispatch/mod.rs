@@ -456,5 +456,13 @@ fn dispatch_command_with_clipboard_once(
                 changed,
             )
         }
+        Command::LspSelectDartEnv => {
+            let changed = ctx.app_state.open_dart_env_selector();
+            DispatchReport::success_with_flags(
+                "Dispatch: dart env selector opened".to_string(),
+                changed,
+                changed,
+            )
+        }
     }
 }

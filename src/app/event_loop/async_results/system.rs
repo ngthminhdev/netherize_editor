@@ -63,8 +63,33 @@ pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayl
         }
         WorkerResultPayload::PythonEnvironmentsDiscovered(envs) => {
             eprintln!("[AppShell] python environments discovered: {}", envs.len());
-            // Logic handled in command palette / config if needed, but here we just store if there was a field.
-            // AppShell doesn't seem to store the full list of envs, just the selected one.
+            let items: Vec<crate::app::command_palette::CommandPaletteItem> = envs
+                .into_iter()
+                .map(|env| crate::app::command_palette::CommandPaletteItem {
+                    label: env.display_name,
+                    secondary_label: Some(env.executable.display().to_string()),
+                    action: crate::app::command_palette::CommandPaletteAction::SelectPythonEnv(env.executable),
+                    tone: crate::app::command_palette::CommandPaletteItemTone::Default,
+                    preview_colors: Vec::new(),
+                })
+                .collect();
+            app.app_state.open_python_env_selector_with_items(items);
+            app.request_redraw();
+        }
+        WorkerResultPayload::DartEnvironmentsDiscovered(envs) => {
+            eprintln!("[AppShell] dart environments discovered: {}", envs.len());
+            let items: Vec<crate::app::command_palette::CommandPaletteItem> = envs
+                .into_iter()
+                .map(|env| crate::app::command_palette::CommandPaletteItem {
+                    label: env.display_name,
+                    secondary_label: Some(env.executable.display().to_string()),
+                    action: crate::app::command_palette::CommandPaletteAction::SelectDartEnv(env.executable),
+                    tone: crate::app::command_palette::CommandPaletteItemTone::Default,
+                    preview_colors: Vec::new(),
+                })
+                .collect();
+            app.app_state.open_dart_env_selector_with_items(items);
+            app.request_redraw();
         }
         _ => {}
     }

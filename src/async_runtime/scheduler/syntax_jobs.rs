@@ -18,8 +18,9 @@ use crate::{
 };
 
 use super::{
-    FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD, FULL_BUFFER_HIGHLIGHT_LINE_THRESHOLD, SyntaxEngineCacheHandle,
-    VIEWPORT_HIGHLIGHT_MIN_OVERSCAN_LINES, VIEWPORT_HIGHLIGHT_OVERSCAN_MULTIPLIER, async_trace,
+    FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD, FULL_BUFFER_HIGHLIGHT_LINE_THRESHOLD,
+    SyntaxEngineCacheHandle, VIEWPORT_HIGHLIGHT_MIN_OVERSCAN_LINES,
+    VIEWPORT_HIGHLIGHT_OVERSCAN_MULTIPLIER, async_trace,
 };
 
 pub(super) async fn execute_virtual_job(
@@ -239,10 +240,24 @@ pub(super) async fn execute_virtual_job(
         WorkerRequestPayload::CheckSystemDeps => {
             let resolved_path = resolve_system_path();
             let tools = [
-                "fzf", "lazygit", "lazydocker", "rg", "fd", "bat", "delta", "opencode",
-                "rust-analyzer", "typescript-language-server", "gopls", "pylsp", "jdtls",
-                "sqls", "yaml-language-server", "docker-langserver",
-                "vscode-json-language-server", "bash-language-server",
+                "fzf",
+                "lazygit",
+                "lazydocker",
+                "rg",
+                "fd",
+                "bat",
+                "delta",
+                "opencode",
+                "rust-analyzer",
+                "typescript-language-server",
+                "gopls",
+                "pylsp",
+                "jdtls",
+                "sqls",
+                "yaml-language-server",
+                "docker-langserver",
+                "vscode-json-language-server",
+                "bash-language-server",
             ];
             let missing: Vec<String> = tools
                 .iter()
@@ -370,6 +385,7 @@ pub(super) async fn execute_virtual_job(
             Err("AI install request should be handled by dedicated AI runner".to_string())
         }
         WorkerRequestPayload::ScanPythonEnvironments { .. }
+        | WorkerRequestPayload::ScanDartEnvironments { .. }
         | WorkerRequestPayload::DetectRuntimeVersions { .. } => {
             Err("request should be handled by dedicated runner".to_string())
         }

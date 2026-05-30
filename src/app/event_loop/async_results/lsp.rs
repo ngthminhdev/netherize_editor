@@ -1,9 +1,6 @@
 use super::super::*;
-use crate::{
-    app::app_state::FloatingBoxScrollState,
-    async_runtime::message::WorkerResultPayload,
-};
-use std::path::PathBuf;
+use crate::{app::app_state::FloatingBoxScrollState, async_runtime::message::WorkerResultPayload};
+use std::path::{Path, PathBuf};
 
 pub(super) fn handle_lsp_result(
     app: &mut AppShell,
@@ -60,40 +57,18 @@ pub(super) fn handle_lsp_result(
         WorkerResultPayload::LspDiagnostics {
             uri, diagnostics, ..
         } => {
-            if !diagnostics.is_empty() {
-                eprintln!(
-                    "[AppShell] LSP diagnostics: {} issue(s) in {uri}",
-                    diagnostics.len()
-                );
-            }
-
             if let Some(path) =
                 lsp_uri_to_path(&uri).and_then(|path| path.canonicalize().ok().or(Some(path)))
             {
-                // Filter out diagnostics from builtin/dependency files.
-                // Common patterns: node_modules, Go stdlib, Rust stdlib, Python site-packages, etc.
-                let path_str = path.to_string_lossy();
-                let is_builtin = path_str.contains("/node_modules/")
-                    || path_str.contains("\\node_modules\\")
-                    || path_str.contains("/go/src/")
-                    || path_str.contains("\\go\\src\\")
-                    || path_str.contains("/.rustup/")
-                    || path_str.contains("\\.rustup\\")
-                    || path_str.contains("/site-packages/")
-                    || path_str.contains("\\site-packages\\")
-                    || path_str.contains("/dist-packages/")
-                    || path_str.contains("\\dist-packages\\")
-                    || path_str.contains("/lib/python")
-                    || path_str.contains("\\lib\\python")
-                    || path_str.contains("/vendor/")
-                    || path_str.contains("\\vendor\\");
-
-                if is_builtin {
-                    eprintln!(
-                        "[AppShell] LSP diagnostics ignored for builtin/dependency file: {}",
-                        path.display()
-                    );
+                if is_dependency_diagnostic_path(&path) {
                     return;
+                }
+
+                if !diagnostics.is_empty() {
+                    eprintln!(
+                        "[AppShell] LSP diagnostics: {} issue(s) in {uri}",
+                        diagnostics.len()
+                    );
                 }
 
                 let is_active_file = app
@@ -711,6 +686,24 @@ pub(super) fn handle_lsp_result(
     }
 }
 
+fn is_dependency_diagnostic_path(path: &Path) -> bool {
+    let path = path.to_string_lossy().replace('\\', "/");
+    let in_fvm_version = path.contains("/fvm/versions/") || path.contains("/.fvm/versions/");
+    path.contains("/node_modules/")
+        || path.contains("/go/src/")
+        || path.contains("/.rustup/")
+        || path.contains("/site-packages/")
+        || path.contains("/dist-packages/")
+        || path.contains("/lib/python")
+        || path.contains("/vendor/")
+        || path.contains("/.pub-cache/")
+        || path.contains("/.dart_tool/")
+        || path.contains("/.fvm/flutter_sdk/")
+        || path.contains("/flutter/bin/cache/dart-sdk/")
+        || (in_fvm_version
+            && (path.contains("/packages/flutter/") || path.contains("/bin/cache/dart-sdk/")))
+}
+
 pub(super) fn handle_stale_result(app: &mut AppShell, stale: WorkerResult) {
     match stale.payload {
         WorkerResultPayload::LspReferencesResult { .. } => {
@@ -829,4 +822,33 @@ pub(crate) fn apply_lsp_text_edits(
         result.replace_range(start..end, replacement);
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::is_dependency_diagnostic_path;
+
+    #[test]
+    fn dependency_diagnostic_filter_ignores_flutter_sdk_paths() {
+        assert!(is_dependency_diagnostic_path(Path::new(
+            "/Users/qc-bright/fvm/versions/3.35.3/packages/flutter/lib/src/material/button.dart"
+        )));
+        assert!(is_dependency_diagnostic_path(Path::new(
+            "/Users/qc-bright/.fvm/versions/3.35.3/bin/cache/dart-sdk/lib/core/core.dart"
+        )));
+        assert!(is_dependency_diagnostic_path(Path::new(
+            "/workspace/.fvm/flutter_sdk/packages/flutter/lib/src/material/card.dart"
+        )));
+        assert!(is_dependency_diagnostic_path(Path::new(
+            "/workspace/.fvm/flutter_sdk/bin/cache/dart-sdk/lib/core/core.dart"
+        )));
+        assert!(is_dependency_diagnostic_path(Path::new(
+            "/Users/qc-bright/.pub-cache/hosted/pub.dev/provider-6.1.0/lib/provider.dart"
+        )));
+        assert!(!is_dependency_diagnostic_path(Path::new(
+            "/workspace/lib/src/material/button.dart"
+        )));
+    }
 }

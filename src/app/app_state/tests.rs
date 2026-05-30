@@ -112,7 +112,7 @@ mod tests {
     fn help_buffer_uses_config_driven_keymap_content() {
         let bindings = vec![
             KeyBinding {
-                key: "mod+p".to_string(),
+                key: "cmd+p".to_string(),
                 mode: Some("normal".to_string()),
                 command: "app.open_file_picker".to_string(),
             },
@@ -136,12 +136,12 @@ mod tests {
                 && section
                     .entries
                     .iter()
-                    .any(|entry| entry.keys == vec!["mod+p"] && entry.label == "Open file picker")
+                    .any(|entry| entry.keys == vec!["cmd+p"] && entry.label == "Open file picker")
         }));
         assert!(
             help.lines
                 .iter()
-                .any(|line| line.contains("mod+p") && line.contains("Open file picker"))
+                .any(|line| line.contains("cmd+p") && line.contains("Open file picker"))
         );
         assert!(
             help.lines

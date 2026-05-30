@@ -370,7 +370,8 @@ pub fn lsp_entry_and_status_for_path(path: &Path) -> Option<(LspEntry, bool)> {
                 if let Ok(entries) = std::fs::read_dir(&versions_dir) {
                     for entry_item in entries.flatten() {
                         if entry_item.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                            let dart_bin = entry_item.path()
+                            let dart_bin = entry_item
+                                .path()
                                 .join("bin")
                                 .join("cache")
                                 .join("dart-sdk")
@@ -388,7 +389,9 @@ pub fn lsp_entry_and_status_for_path(path: &Path) -> Option<(LspEntry, bool)> {
                 }
             }
         }
-        local_fvm.try_exists().unwrap_or(false) || global_fvm_exists || check_lsp_installed(entry.binary)
+        local_fvm.try_exists().unwrap_or(false)
+            || global_fvm_exists
+            || check_lsp_installed(entry.binary)
     } else if profile.key == "python" {
         let root_path = find_project_root(path, profile.root_markers);
         let mut venv_pylsp_exists = false;
@@ -825,6 +828,9 @@ pub async fn spawn_lsp_server(
                 "rootUri": root_uri,
                 "capabilities": {
                     "workspace": {
+                        "workspaceEdit": {
+                            "documentChanges": true
+                        },
                         "symbol": {
                             "dynamicRegistration": true,
                             "symbolKind": {
@@ -850,6 +856,29 @@ pub async fn spawn_lsp_server(
                                 "valueSet": [
                                     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26
                                 ]
+                            }
+                        },
+                        "codeAction": {
+                            "dynamicRegistration": true,
+                            "isPreferredSupport": true,
+                            "disabledSupport": true,
+                            "dataSupport": true,
+                            "resolveSupport": {
+                                "properties": ["edit"]
+                            },
+                            "codeActionLiteralSupport": {
+                                "codeActionKind": {
+                                    "valueSet": [
+                                        "quickfix",
+                                        "refactor",
+                                        "refactor.extract",
+                                        "refactor.inline",
+                                        "refactor.rewrite",
+                                        "source",
+                                        "source.organizeImports",
+                                        "source.fixAll"
+                                    ]
+                                }
                             }
                         }
                     },
@@ -912,7 +941,10 @@ pub async fn spawn_lsp_server(
             use tokio::io::AsyncReadExt;
             let _ = err_reader.read_to_string(&mut err_str).await;
         }
-        return Err(format!("lsp initialize error: {}. Stderr: {}", error, err_str));
+        return Err(format!(
+            "lsp initialize error: {}. Stderr: {}",
+            error, err_str
+        ));
     }
 
     let caps_value = initialize_response
@@ -1624,5 +1656,4 @@ mod tests {
 
         let _ = fs::remove_dir_all(gvm_root);
     }
-
 }

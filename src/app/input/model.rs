@@ -41,7 +41,14 @@ impl NormalizedInput {
     }
 
     pub fn has_command_modifier(&self) -> bool {
-        self.modifiers.super_key() || self.modifiers.control_key()
+        #[cfg(target_os = "macos")]
+        {
+            self.modifiers.super_key()
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            self.modifiers.control_key()
+        }
     }
 
     pub fn debug_label(&self) -> String {

@@ -267,6 +267,7 @@ impl AppShell {
             pre_markdown_preview_right_width: None,
             pending_code_actions: Vec::new(),
             selected_python_env: None,
+            selected_dart_env: None,
             runtime_versions: RuntimeVersionInfo::default(),
             lsp_retry_at: None,
         })
@@ -1409,6 +1410,26 @@ impl AppShell {
             return false;
         }
 
+        let custom_bin_path = if desired.server_name.contains('/') {
+            Path::new(&desired.server_name).parent().map(Path::to_path_buf)
+        } else {
+            if let Some(path) = self.app_state.active_file() {
+                if let Some(profile) = crate::lsp::registry::language_profile_for_path(path) {
+                    if profile.key == "python" {
+                        self.selected_python_env.as_ref().and_then(|p| p.parent()).map(Path::to_path_buf)
+                    } else if profile.key == "dart" {
+                        self.selected_dart_env.as_ref().and_then(|p| p.parent()).map(Path::to_path_buf)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
         self.pending_lsp_server = Some(desired.clone());
         self.submit(RequestSpec {
             revision_id: 0,
@@ -1416,6 +1437,7 @@ impl AppShell {
             payload: WorkerRequestPayload::StartLspServer {
                 root_path: desired.root_path,
                 server_command: Some(desired.server_name),
+                custom_bin_path,
             },
         });
         true
@@ -1447,8 +1469,77 @@ impl AppShell {
         if profile.lsp_binary.is_empty() {
             return None;
         }
-        let server_name = profile.lsp_binary.to_string();
+        let mut server_name = profile.lsp_binary.to_string();
         let root_path = crate::lsp::registry::find_project_root(path, profile.root_markers);
+
+        if profile.key == "python" && let Some(python_path) = &self.selected_python_env {
+            let local_pylsp = python_path.parent().map(|p| p.join("pylsp"));
+            if let Some(local_pylsp) = local_pylsp && local_pylsp.try_exists().unwrap_or(false) {
+                server_name = local_pylsp.to_string_lossy().to_string();
+            }
+        } else if profile.key == "dart" {
+            let mut resolved_dart_path = self.selected_dart_env.clone();
+            if resolved_dart_path.is_none() {
+                // 1. Auto-detect local FVM SDK inside the repo folder
+                let local_fvm = root_path
+                    .join(".fvm")
+                    .join("flutter_sdk")
+                    .join("bin")
+                    .join("cache")
+                    .join("dart-sdk")
+                    .join("bin")
+                    .join("dart");
+                if local_fvm.try_exists().unwrap_or(false) {
+                    resolved_dart_path = Some(local_fvm);
+                }
+            }
+            if resolved_dart_path.is_none() {
+                // 2. Auto-detect global FVM SDKs (both ~/fvm/versions/ and ~/.fvm/versions/)
+                if let Ok(home) = std::env::var("HOME") {
+                    let mut found = Vec::new();
+                    for dir_name in &[".fvm", "fvm"] {
+                        let versions_dir = PathBuf::from(&home).join(dir_name).join("versions");
+                        if let Ok(entries) = std::fs::read_dir(&versions_dir) {
+                            for entry in entries.flatten() {
+                                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                                    let dart_bin = entry.path()
+                                        .join("bin")
+                                        .join("cache")
+                                        .join("dart-sdk")
+                                        .join("bin")
+                                        .join("dart");
+                                    if dart_bin.try_exists().unwrap_or(false) {
+                                        found.push((entry.file_name().to_string_lossy().to_string(), dart_bin));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Sort newer versions first
+                    found.sort_by(|a, b| b.0.cmp(&a.0));
+                    if let Some((_, bin)) = found.into_iter().next() {
+                        resolved_dart_path = Some(bin);
+                    }
+                }
+            }
+            if resolved_dart_path.is_none() {
+                // 3. Fallback to system PATH dart binary if found
+                if let Ok(output) = std::process::Command::new("which").arg("dart").output() {
+                    if output.status.success() {
+                        let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                        if !path_str.is_empty() {
+                            let path = PathBuf::from(path_str);
+                            if path.try_exists().unwrap_or(false) {
+                                resolved_dart_path = Some(path);
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(dart_path) = resolved_dart_path {
+                server_name = dart_path.to_string_lossy().to_string();
+            }
+        }
 
         Some(ActiveLspServer {
             server_name,

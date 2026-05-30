@@ -330,6 +330,7 @@ impl InputHandler {
                 && !text.is_empty()
                 && !text.chars().any(char::is_control)
                 && !normalized.has_command_modifier()
+                && !normalized.modifiers.control_key()
                 && !normalized.modifiers.alt_key()
             {
                 self.clear_pending_counts();
@@ -662,6 +663,33 @@ impl InputHandler {
 
                 PendingState::PendingOperator { op } => {
                     let op = *op;
+                    if normalized.has_command_modifier() || normalized.modifiers.control_key() {
+                        self.reset_prefix();
+                        if let Some(resolved) = input_map.resolve(&normalized, context) {
+                            let (repeat_count, count_ignored) =
+                                self.consume_repeat_count_for_command(&resolved.command, None);
+                            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                                input_debug,
+                                format!(
+                                    "mode={} focus={} -> pending operator interrupted by modifier, fallback -> {}",
+                                    context.mode.as_str(),
+                                    context.focus.as_str(),
+                                    resolved.reason
+                                ),
+                                resolved.command,
+                                repeat_count,
+                                count_ignored,
+                            )));
+                        }
+                        return Some(InputRouteOutcome::NoDispatch {
+                            input_debug,
+                            route_debug: format!(
+                                "mode={} focus={} -> pending operator interrupted by modifier, no fallback",
+                                context.mode.as_str(),
+                                context.focus.as_str()
+                            ),
+                        });
+                    }
                     if let Some(find_kind) = find_motion_prefix_from_input(&normalized) {
                         self.pending_input = Some(PendingInput {
                             sequence: None,
@@ -989,6 +1017,7 @@ impl InputHandler {
 
         if context.focus == InputFocusContext::Editor && context.mode == EditorMode::Normal {
             let op = if !normalized.has_command_modifier()
+                && !normalized.modifiers.control_key()
                 && !normalized.modifiers.alt_key()
                 && !normalized.modifiers.shift_key()
                 && (normalized.physical_key == Some(KeyCode::KeyD)
@@ -996,6 +1025,7 @@ impl InputHandler {
             {
                 Some(Operator::Delete)
             } else if !normalized.has_command_modifier()
+                && !normalized.modifiers.control_key()
                 && !normalized.modifiers.alt_key()
                 && !normalized.modifiers.shift_key()
                 && (normalized.physical_key == Some(KeyCode::KeyC)

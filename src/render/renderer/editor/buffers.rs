@@ -185,7 +185,7 @@ impl Renderer {
             let row_h = line_height + 8.0;
             let group_header_h = line_height + 7.0;
             let visible_rows = ((content_h / row_h).floor() as usize).max(1);
-            let mut start_idx = (references.selected_index / visible_rows) * visible_rows;
+            let mut start_idx = references.selected_index.saturating_sub(visible_rows / 2);
             if start_idx + visible_rows > references.items.len() {
                 start_idx = references.items.len().saturating_sub(visible_rows);
             }

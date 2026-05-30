@@ -7,7 +7,7 @@ use crate::{
         LspCodeAction, LspCompletionItem, LspDiagnostic, LspDocumentHighlight, LspDocumentSymbol,
         LspLocation, LspPosition, LspRange, LspTextEdit, WorkerResultPayload,
     },
-    lsp::client::{build_did_change_notification, LspClientProcess},
+    lsp::client::{LspClientProcess, build_did_change_notification},
 };
 
 use super::{
@@ -148,7 +148,9 @@ fn parse_completion_item(item: &Value) -> Option<LspCompletionItem> {
     let documentation = item
         .get("documentation")
         .and_then(parse_documentation_field);
-    let data = item.get("data").and_then(|value| serde_json::to_string(value).ok());
+    let data = item
+        .get("data")
+        .and_then(|value| serde_json::to_string(value).ok());
     let raw_json = serde_json::to_string(item).ok();
     Some(LspCompletionItem {
         label,
@@ -226,8 +228,10 @@ fn infer_call_parameters_from_signature(label: &str, signature: &str) -> Option<
                 return Some(!signature[open + 1..close].trim().is_empty());
             }
         }
-        if go_func_signature_parenthesis_looks_like_params(&signature[..open], &signature[close + 1..])
-        {
+        if go_func_signature_parenthesis_looks_like_params(
+            &signature[..open],
+            &signature[close + 1..],
+        ) {
             return Some(!signature[open + 1..close].trim().is_empty());
         }
         if signature_parenthesis_looks_like_call(label, &signature[..open]) {
@@ -813,6 +817,11 @@ pub(super) fn handle_lsp_references(
         params,
         LSP_REFERENCES_TIMEOUT_SECS,
     )?;
+    if let Some(error) = response.get("error") {
+        let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("unknown error");
+        let code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
+        return Err(format!("references: LSP error {code}: {msg}"));
+    }
     let result = response
         .get("result")
         .ok_or_else(|| "references: no result".to_string())?;
@@ -1171,9 +1180,20 @@ mod tests {
         let items = parse_completion_items(&response);
 
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].text_edit.as_ref().map(|edit| edit.range.start.line), Some(4));
+        assert_eq!(
+            items[0]
+                .text_edit
+                .as_ref()
+                .map(|edit| edit.range.start.line),
+            Some(4)
+        );
         assert_eq!(items[0].additional_text_edits.len(), 1);
-        assert!(items[0].data.as_ref().is_some_and(|data| data.contains("entryNames")));
+        assert!(
+            items[0]
+                .data
+                .as_ref()
+                .is_some_and(|data| data.contains("entryNames"))
+        );
     }
 
     #[test]
@@ -1193,7 +1213,10 @@ mod tests {
 
         assert_eq!(item.label, "connect");
         assert_eq!(item.additional_text_edits.len(), 1);
-        assert_eq!(item.additional_text_edits[0].new_text, "import { connect } from './api';\n");
+        assert_eq!(
+            item.additional_text_edits[0].new_text,
+            "import { connect } from './api';\n"
+        );
     }
 
     #[test]
@@ -1428,6 +1451,12 @@ pub(super) fn handle_workspace_symbol(
         params,
         LSP_DOCUMENT_SYMBOLS_TIMEOUT_SECS,
     )?;
+
+    if let Some(error) = response.get("error") {
+        let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("unknown error");
+        let code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
+        return Err(format!("workspace/symbol: LSP error {code}: {msg}"));
+    }
 
     let result = response
         .get("result")

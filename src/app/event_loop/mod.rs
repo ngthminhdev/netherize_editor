@@ -258,6 +258,7 @@ pub struct AppShell {
     pending_code_actions: Vec<crate::async_runtime::message::LspCodeAction>,
     /// Python interpreter path selected by the user from the command palette.
     selected_python_env: Option<std::path::PathBuf>,
+    selected_dart_env: Option<std::path::PathBuf>,
     /// Cached runtime version strings for the statusbar right zone.
     runtime_versions: RuntimeVersionInfo,
     /// Scheduled instant to auto-retry LSP server start after user accepted an install guide.

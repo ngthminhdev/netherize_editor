@@ -42,6 +42,29 @@ impl AppState {
             > 0
     }
 
+    pub fn open_python_env_selector_with_items(
+        &mut self,
+        items: Vec<crate::app::command_palette::CommandPaletteItem>,
+    ) {
+        self.command_palette
+            .open_with_items(CommandPaletteMode::PythonEnvSelector, items);
+    }
+
+    pub fn open_dart_env_selector(&mut self) -> bool {
+        let workspace = self.workspace_model.as_ref();
+        self.command_palette
+            .open(CommandPaletteMode::DartEnvSelector, workspace)
+            > 0
+    }
+
+    pub fn open_dart_env_selector_with_items(
+        &mut self,
+        items: Vec<crate::app::command_palette::CommandPaletteItem>,
+    ) {
+        self.command_palette
+            .open_with_items(CommandPaletteMode::DartEnvSelector, items);
+    }
+
     /// Push current file+line+column onto the jump back stack before a jump (e.g. gd).
     /// Clears the forward stack since jumping starts a new branch.
     pub fn push_jump(&mut self) {

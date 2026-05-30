@@ -8,6 +8,7 @@ const GO_ROOT_MARKERS: &[&str] = &["go.mod", ".git"];
 const JAVA_ROOT_MARKERS: &[&str] = &["pom.xml", "build.gradle", "build.gradle.kts", ".git"];
 const PYTHON_ROOT_MARKERS: &[&str] = &["pyproject.toml", "setup.py", "setup.cfg", ".git"];
 const SQL_ROOT_MARKERS: &[&str] = &[".sqls.json", "docker-compose.yml", ".git"];
+const DART_ROOT_MARKERS: &[&str] = &["pubspec.yaml", "analysis_options.yaml", ".git"];
 const NO_ROOT_MARKERS: &[&str] = &[];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -230,6 +231,18 @@ static LANGUAGE_REGISTRY: &[LanguageProfile] = &[
         filenames: &[],
     },
     LanguageProfile {
+        key: "dart",
+        language_label: "Dart",
+        language_id: "dart",
+        syntax_language_id: Some(LanguageId::Dart),
+        lsp_binary: "dart",
+        launch_args: &["language-server"],
+        install_command: "brew tap dart-lang/dart && brew install dart",
+        root_markers: DART_ROOT_MARKERS,
+        extensions: &["dart"],
+        filenames: &[],
+    },
+    LanguageProfile {
         key: "plaintext",
         language_label: "Plain Text",
         language_id: "plaintext",
@@ -284,9 +297,16 @@ pub fn language_profile_for_language_id(language_id: &str) -> Option<&'static La
 }
 
 pub fn language_profile_for_binary(binary: &str) -> Option<&'static LanguageProfile> {
+    let path = Path::new(binary);
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(binary);
+    let file_name = path.file_name().and_then(|f| f.to_str()).unwrap_or(binary);
     LANGUAGE_REGISTRY
         .iter()
-        .find(|profile| profile.lsp_binary == binary)
+        .find(|profile| {
+            profile.lsp_binary == binary
+                || profile.lsp_binary == stem
+                || profile.lsp_binary == file_name
+        })
 }
 
 pub fn find_project_root(file_path: &Path, markers: &[&str]) -> PathBuf {

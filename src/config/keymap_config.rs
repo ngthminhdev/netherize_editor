@@ -22,8 +22,7 @@ pub struct KeyBinding {
     ///   "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"
     /// - Physical keys: "h", "j", "k", "l", "i", "v"
     ///   Special names: "backtick", "backslash"
-    /// - Modifier combo: "mod+s" (Cmd on macOS, Ctrl elsewhere)
-    ///   Aliases: "Ctrl+e", "Cmd+Shift+P"
+    /// - Modifier combo: "Ctrl+e", "Cmd+s", "Cmd+Shift+P"
     /// - Chord sequence: "d d", "<leader>f f", "<leader>f w"
     pub key: String,
 

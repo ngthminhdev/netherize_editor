@@ -93,7 +93,8 @@ impl AsyncResultRouter for AppShell {
             }
             WorkerResultPayload::SystemDepCheckResult { .. }
             | WorkerResultPayload::RuntimeVersionsDetected { .. }
-            | WorkerResultPayload::PythonEnvironmentsDiscovered(_) => {
+            | WorkerResultPayload::PythonEnvironmentsDiscovered(_)
+            | WorkerResultPayload::DartEnvironmentsDiscovered(_) => {
                 system::handle_system_result(self, result.payload);
             }
             WorkerResultPayload::FileCopyResult { .. } => {

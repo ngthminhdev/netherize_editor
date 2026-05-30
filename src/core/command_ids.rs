@@ -133,6 +133,7 @@ pub const LSP_FORMAT_DOCUMENT: &str = "lsp.format_document";
 pub const LSP_TRIGGER_COMPLETION: &str = "lsp.trigger_completion";
 pub const LSP_CODE_ACTION: &str = "lsp.code_action";
 pub const LSP_SELECT_PYTHON_ENV: &str = "lsp.select_python_env";
+pub const LSP_SELECT_DART_ENV: &str = "lsp.select_dart_env";
 pub const RELOAD_WORKSPACE: &str = "workspace.reload";
 pub const RESIZE_DECREASE_WIDTH: &str = "resize.decrease_width";
 pub const RESIZE_INCREASE_WIDTH: &str = "resize.increase_width";
@@ -379,6 +380,7 @@ pub const ALL_IDS: &[&str] = &[
     LSP_TRIGGER_COMPLETION,
     LSP_CODE_ACTION,
     LSP_SELECT_PYTHON_ENV,
+    LSP_SELECT_DART_ENV,
     RELOAD_WORKSPACE,
     COMPLETION_NEXT,
     COMPLETION_PREV,
@@ -597,6 +599,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         LSP_TRIGGER_COMPLETION => Some(Command::TriggerCompletion),
         LSP_CODE_ACTION => Some(Command::CodeAction),
         LSP_SELECT_PYTHON_ENV => Some(Command::LspSelectPythonEnv),
+        LSP_SELECT_DART_ENV => Some(Command::LspSelectDartEnv),
         RELOAD_WORKSPACE => Some(Command::ReloadWorkspace),
         RESIZE_DECREASE_WIDTH => Some(Command::ResizeDecreaseWidth),
         RESIZE_INCREASE_WIDTH => Some(Command::ResizeIncreaseWidth),

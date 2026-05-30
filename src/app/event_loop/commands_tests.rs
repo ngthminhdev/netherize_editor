@@ -826,7 +826,7 @@ fn colon_help_vim_command_opens_help_buffer() {
     assert!(
         help.lines
             .iter()
-            .any(|line| { line.contains("mod+p") && line.contains("Open command palette") })
+            .any(|line| { line.contains("cmd+p") && line.contains("Open command palette") })
     );
     assert_eq!(
         shell.app_state.buffers().last().unwrap().label(),

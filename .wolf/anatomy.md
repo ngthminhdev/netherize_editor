@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-30T02:59:48.264Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-30T05:33:23.456Z
 > Files: 374 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
@@ -138,7 +138,7 @@
 ## .codegraph/
 
 - `.gitignore` — Git ignore rules (~47 tok)
-- `codegraph.db-shm` (~8738 tok)
+- `codegraph.db-shm` (~8739 tok)
 
 ## .codex/
 
@@ -194,7 +194,7 @@
 
 ## config/keymaps/
 
-- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5332 tok)
+- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5308 tok)
 
 ## config/themes/
 
@@ -317,13 +317,13 @@
 - `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~2128 tok)
 - `mod.rs` (~66 tok)
 - `persistence.rs` — [derive(Debug, Clone, Default, Serialize, Deserialize)] (~1310 tok)
-- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~15675 tok)
+- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~15785 tok)
 
 ## src/app/app_state/
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer + 12 more (~8570 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag + 17 more (~10839 tok)
-- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new + 7 more (~23873 tok)
+- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new + 7 more (~23870 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
 - `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~18409 tok)
 - `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_dart_env_selector + 23 more (~18273 tok)
@@ -359,7 +359,7 @@
 - `filesystem.rs` (~929 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
-- `lsp.rs` (~9632 tok)
+- `lsp.rs` (~9836 tok)
 - `mod.rs` (~9176 tok)
 - `preview.rs` (~993 tok)
 - `shell.rs` (~112 tok)
@@ -372,16 +372,16 @@
 - `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix + 3 more (~18617 tok)
 - `helpers.rs` — Trả về true nếu đây là event modifier-only (ShiftLeft, ShiftRight, ControlLeft...). (~4349 tok)
 - `mod.rs` (~69 tok)
-- `model.rs` — Dữ liệu key đã chuẩn hóa để tách phần "đọc winit event" (~726 tok)
+- `model.rs` — Dữ liệu key đã chuẩn hóa để tách phần "đọc winit event" (~764 tok)
 - `pending.rs` — [derive(Debug, Clone, PartialEq, Eq)] (~2421 tok)
-- `tests.rs` (~17102 tok)
+- `tests.rs` (~17166 tok)
 
 ## src/app/input_map/
 
 - `focus.rs` (~11317 tok)
 - `helpers.rs` (~180 tok)
 - `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette + 8 more (~5068 tok)
-- `tests.rs` (~16222 tok)
+- `tests.rs` (~16214 tok)
 
 ## src/async_runtime/
 
@@ -389,30 +389,30 @@
 - `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~7171 tok)
 - `mod.rs` (~22 tok)
 - `python_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~948 tok)
-- `scheduler.rs` — Declares FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD (~2222 tok)
+- `scheduler.rs` — Declares FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD (~2480 tok)
 
 ## src/async_runtime/scheduler/
 
 - `ai_jobs.rs` — Platform install command for opencode: (~3926 tok)
 - `ai.rs` (~1994 tok)
-- `dispatch.rs` (~6300 tok)
+- `dispatch.rs` (~6293 tok)
 - `emit.rs` (~458 tok)
 - `file_watch.rs` (~2469 tok)
-- `fzf.rs` — Declares MAX_FZF_RESULTS (~2481 tok)
+- `fzf.rs` — Declares MAX_FZF_RESULTS (~2494 tok)
 - `git.rs` (~1560 tok)
 - `local_history.rs` — Local history (disk persistence) has been removed. (~42 tok)
 - `lsp_io.rs` (~2423 tok)
-- `lsp_parse.rs` — Declares MAX_COMPLETION_ITEMS (~14817 tok)
-- `lsp.rs` (~7175 tok)
+- `lsp_parse.rs` — Declares MAX_COMPLETION_ITEMS (~14884 tok)
+- `lsp.rs` (~7248 tok)
 - `pty.rs` (~3903 tok)
 - `runtime.rs` — Runtime wrapper duy nhất cho background jobs. (~839 tok)
-- `syntax_jobs.rs` (~6967 tok)
-- `tests.rs` (~1600 tok)
+- `syntax_jobs.rs` (~7032 tok)
+- `tests.rs` (~1752 tok)
 
 ## src/config/
 
 - `ai_config.rs` — [derive(Debug, Clone, Deserialize, Serialize, Default)] (~1206 tok)
-- `keymap_config.rs` — Root structure of a `.toml` keymap profile file. (~364 tok)
+- `keymap_config.rs` — Root structure of a `.toml` keymap profile file. (~327 tok)
 - `keymap_loader.rs` — Load and layer keymap profiles, returning a flat list of validated bindings. (~1675 tok)
 - `mod.rs` (~35 tok)
 - `paths.rs` — user_config_root, legacy_app_state_root (~205 tok)
@@ -448,7 +448,7 @@
 ## src/lsp/
 
 - `capabilities.rs` — Bitmask nhỏ gọn của các tính năng mà LSP server khai báo trong `InitializeResult`. (~761 tok)
-- `client.rs` — LspEntry: lsp_entry_for_extension, refresh_patched_env_path, patched_env_path, check_lsp_installed (~15984 tok)
+- `client.rs` — LspEntry: lsp_entry_for_extension, refresh_patched_env_path, patched_env_path, check_lsp_installed (~16369 tok)
 - `mod.rs` (~62 tok)
 - `registry.rs` — LanguageProfile: all_language_profiles, language_profile_for_extension, language_profile_for_path, language_profile_for_language_id + 2 more (~4698 tok)
 - `symbol_cache.rs` — A workspace-wide symbol cache for fast import/completion suggestions. (~19246 tok)
@@ -478,7 +478,7 @@
 
 ## src/render/renderer/components/
 
-- `help_keycaps.rs` — HelpKeycapPalette: help_keycap_palette, layout_help_keycaps, estimate_help_keycaps_width (~2002 tok)
+- `help_keycaps.rs` — HelpKeycapPalette: help_keycap_palette, layout_help_keycaps, estimate_help_keycaps_width (~2000 tok)
 - `highlight_chip.rs` — [derive(Clone, Copy)] (~298 tok)
 - `prefix_icon_badge.rs` — PrefixIconBadge: layout_prefix_icon_badge (~736 tok)
 - `shortcut_hint.rs` — Enum: ShortcutHintSegment (61 variants) (~1644 tok)

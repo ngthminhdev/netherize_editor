@@ -496,3 +496,81 @@
 | 10:56 | Edited src/config/ui_config.rs | 11→11 lines | ~67 |
 | 10:56 | Edited src/config/ui_config.rs | 10→10 lines | ~142 |
 | 10:57 | Session end: 8 writes across 2 files (setup.rs, ui_config.rs) | 2 reads | ~29248 tok |
+
+## Session: 2026-05-29 22:41
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 22:48 | Edited src/lsp/client.rs | modified resolve_lsp_server_command() | ~134 |
+| 22:49 | Edited src/lsp/client.rs | modified detect_fvm_dart_binary() | ~703 |
+| 00:22 | Created test_fvm_detection.sh | — | ~290 |
+| 00:23 | Created tests/lsp_fvm_detection.rs | — | ~329 |
+| 00:23 | Created docs/FVM_LSP_FIX.md | — | ~861 |
+| 10:00 | Session end: 5 writes across 4 files (client.rs, test_fvm_detection.sh, lsp_fvm_detection.rs, FVM_LSP_FIX.md) | 4 reads | ~26471 tok |
+
+## Session: 2026-05-30 10:48
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 10:57 | Edited config/keymaps/default.toml | 41→41 lines | ~179 |
+| 10:57 | Edited config/keymaps/default.toml | 14→14 lines | ~59 |
+| 10:58 | Edited config/keymaps/default.toml | 9→9 lines | ~44 |
+| 10:58 | Edited config/keymaps/default.toml | 4→4 lines | ~18 |
+| 10:58 | Edited config/keymaps/default.toml | 6→6 lines | ~34 |
+| 10:58 | Edited config/keymaps/default.toml | 4→4 lines | ~21 |
+| 10:58 | Edited config/keymaps/default.toml | 45→45 lines | ~203 |
+| 10:58 | Edited config/keymaps/default.toml | 44→44 lines | ~168 |
+| 10:58 | Edited config/keymaps/default.toml | 4→4 lines | ~19 |
+| 10:58 | Session end: 9 writes across 1 files (default.toml) | 1 reads | ~6132 tok |
+| 11:03 | Session end: 9 writes across 1 files (default.toml) | 3 reads | ~23482 tok |
+| 11:05 | Edited src/app/resolved_keymap.rs | modified code() | ~234 |
+| 11:05 | Edited src/app/resolved_keymap.rs | modified matches() | ~491 |
+| 11:05 | Edited src/app/resolved_keymap.rs | modified display_token() | ~200 |
+| 11:05 | Edited src/app/resolved_keymap.rs | modified parse_non_leader_key() | ~479 |
+| 11:06 | Edited src/app/resolved_keymap.rs | modified normalize_modifier_alias() | ~36 |
+| 11:06 | Edited src/app/resolved_keymap.rs | modified input_to_specs() | ~427 |
+| 11:06 | Edited src/app/resolved_keymap.rs | modified builtin_defaults() | ~318 |
+| 11:06 | Edited src/app/resolved_keymap.rs | 13→13 lines | ~213 |
+| 11:07 | Edited src/app/resolved_keymap.rs | 64→64 lines | ~908 |
+| 11:07 | Edited src/app/resolved_keymap.rs | 55→55 lines | ~407 |
+| 11:08 | Edited src/app/resolved_keymap.rs | modified parse_modifier_key() | ~144 |
+| 11:08 | Edited src/app/resolved_keymap.rs | ModShiftPlus() → CtrlShiftPlus() | ~75 |
+| 11:08 | Edited src/app/app_state/mod.rs | 4→4 lines | ~38 |
+| 11:08 | Edited src/render/renderer/components/help_keycaps.rs | 20→20 lines | ~148 |
+| 11:09 | Edited src/app/resolved_keymap.rs | to_string() → to_ascii_lowercase() | ~35 |
+| 11:09 | Edited src/app/resolved_keymap.rs | modified builtin_defaults_map_cmd_v_to_editor_paste() | ~279 |
+| 11:09 | Edited src/app/resolved_keymap.rs | modified builtin_defaults_map_cmd_b_to_toggle_left_dock() | ~264 |
+| 11:10 | Edited src/app/resolved_keymap.rs | modified parse_key_token() | ~207 |
+| 11:10 | Edited src/app/resolved_keymap.rs | 9→4 lines | ~34 |
+| 11:13 | Edited src/app/input_map/tests.rs | ctrl_s_maps_to_save_file() → cmd_s_maps_to_save_file() | ~104 |
+| 11:13 | Edited src/app/input_map/tests.rs | 28→28 lines | ~299 |
+| 11:13 | Edited src/app/input_map/tests.rs | 42→42 lines | ~417 |
+| 11:16 | Edited src/app/event_loop/commands_tests.rs | 5→5 lines | ~41 |
+| 11:17 | Edited src/app/app_state/tests.rs | modified help_buffer_uses_config_driven_keymap_content() | ~441 |
+| 11:17 | Edited src/app/input/tests.rs | modified ctrl_input() | ~142 |
+| 11:17 | Edited src/app/input/tests.rs | modified terminal_focus_cmd_v_routes_terminal_paste() | ~335 |
+| 11:22 | Edited src/app/input_map/tests.rs | 14→14 lines | ~140 |
+| 11:24 | Edited src/app/input_map/tests.rs | 11→11 lines | ~120 |
+| 11:33 | Edited src/app/input_map/tests.rs | 18→18 lines | ~200 |
+| 11:33 | Edited src/app/input_map/tests.rs | 7→7 lines | ~68 |
+| 11:37 | Session end: 39 writes across 6 files (default.toml, resolved_keymap.rs, mod.rs, help_keycaps.rs, tests.rs) | 14 reads | ~136808 tok |
+| 11:46 | Edited src/app/input/model.rs | modified has_command_modifier() | ~67 |
+| 11:47 | Session end: 40 writes across 7 files (default.toml, resolved_keymap.rs, mod.rs, help_keycaps.rs, tests.rs) | 18 reads | ~160641 tok |
+
+## Session: 2026-05-30 12:29
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 12:33 | Edited src/config/keymap_config.rs | 8→7 lines | ~102 |
+| 12:33 | Session end: 1 writes across 1 files (keymap_config.rs) | 3 reads | ~17022 tok |
+| 12:38 | Session end: 1 writes across 1 files (keymap_config.rs) | 3 reads | ~17022 tok |
+
+## Session: 2026-05-30 12:39
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-05-30 13:06
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
