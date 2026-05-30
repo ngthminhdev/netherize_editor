@@ -25,8 +25,8 @@ use crate::{
     lsp::{
         capabilities::ServerCapabilities,
         registry::{
-            all_language_profiles, language_profile_for_binary, language_profile_for_extension,
-            language_profile_for_path,
+            all_language_profiles, find_project_root, language_profile_for_binary,
+            language_profile_for_extension, language_profile_for_path,
         },
     },
 };
@@ -351,7 +351,60 @@ pub fn lsp_entry_and_status_for_path(path: &Path) -> Option<(LspEntry, bool)> {
         language_label: profile.language_label,
         install_cmd: profile.install_command,
     };
-    Some((entry.clone(), check_lsp_installed(entry.binary)))
+
+    let is_installed = if profile.key == "dart" {
+        let root_path = find_project_root(path, profile.root_markers);
+        let local_fvm = root_path
+            .join(".fvm")
+            .join("flutter_sdk")
+            .join("bin")
+            .join("cache")
+            .join("dart-sdk")
+            .join("bin")
+            .join("dart");
+
+        let mut global_fvm_exists = false;
+        if let Ok(home) = std::env::var("HOME") {
+            for dir_name in &[".fvm", "fvm"] {
+                let versions_dir = Path::new(&home).join(dir_name).join("versions");
+                if let Ok(entries) = std::fs::read_dir(&versions_dir) {
+                    for entry_item in entries.flatten() {
+                        if entry_item.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                            let dart_bin = entry_item.path()
+                                .join("bin")
+                                .join("cache")
+                                .join("dart-sdk")
+                                .join("bin")
+                                .join("dart");
+                            if dart_bin.try_exists().unwrap_or(false) {
+                                global_fvm_exists = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if global_fvm_exists {
+                    break;
+                }
+            }
+        }
+        local_fvm.try_exists().unwrap_or(false) || global_fvm_exists || check_lsp_installed(entry.binary)
+    } else if profile.key == "python" {
+        let root_path = find_project_root(path, profile.root_markers);
+        let mut venv_pylsp_exists = false;
+        for venv_dir in &[".venv", "venv", "env"] {
+            let pylsp_path = root_path.join(venv_dir).join("bin").join("pylsp");
+            if pylsp_path.try_exists().unwrap_or(false) {
+                venv_pylsp_exists = true;
+                break;
+            }
+        }
+        venv_pylsp_exists || check_lsp_installed(entry.binary)
+    } else {
+        check_lsp_installed(entry.binary)
+    };
+
+    Some((entry, is_installed))
 }
 
 pub struct LspClientProcess {
@@ -716,6 +769,7 @@ pub fn parse_server_request(message: &Value) -> Option<ParsedServerRequest> {
 pub async fn spawn_lsp_server(
     requested_command: Option<&str>,
     root_path: &Path,
+    custom_bin_path: Option<&Path>,
     request_id: u64,
     revision_id: u64,
 ) -> Result<SpawnedLspServer, String> {
@@ -725,7 +779,12 @@ pub async fn spawn_lsp_server(
     if let Some(profile) = language_profile_for_binary(&server_name) {
         command.args(profile.launch_args);
     }
-    command.env("PATH", patched_env_path());
+    let path_env = if let Some(bin_path) = custom_bin_path {
+        format!("{}:{}", bin_path.display(), patched_env_path())
+    } else {
+        patched_env_path()
+    };
+    command.env("PATH", path_env);
     command.current_dir(root_path);
     command.stdin(Stdio::piped());
     command.stdout(Stdio::piped());
@@ -747,7 +806,7 @@ pub async fn spawn_lsp_server(
         .stdout
         .take()
         .ok_or_else(|| "lsp child stdout unavailable".to_string())?;
-    let stderr = child.stderr.take().map(BufReader::new);
+    let mut stderr = child.stderr.take().map(BufReader::new);
 
     let process = Arc::new(LspClientProcess::new(child, stdin));
     process.update_request_meta(request_id, revision_id);
@@ -816,18 +875,44 @@ pub async fn spawn_lsp_server(
     )
     .await
     {
-        Ok(response) => response?,
+        Ok(Ok(Some(response))) => response,
+        Ok(Ok(None)) => {
+            let mut err_str = String::new();
+            if let Some(ref mut err_reader) = stderr {
+                use tokio::io::AsyncReadExt;
+                let _ = err_reader.read_to_string(&mut err_str).await;
+            }
+            return Err(format!("lsp initialize returned EOF. Stderr: {}", err_str));
+        }
+        Ok(Err(e)) => {
+            let mut err_str = String::new();
+            if let Some(ref mut err_reader) = stderr {
+                use tokio::io::AsyncReadExt;
+                let _ = err_reader.read_to_string(&mut err_str).await;
+            }
+            return Err(format!("lsp initialize failed: {}. Stderr: {}", e, err_str));
+        }
         Err(_) => {
+            let mut err_str = String::new();
+            if let Some(ref mut err_reader) = stderr {
+                use tokio::io::AsyncReadExt;
+                let _ = err_reader.read_to_string(&mut err_str).await;
+            }
             return Err(format!(
-                "lsp initialize timed out after {}s",
-                LSP_INITIALIZE_TIMEOUT.as_secs()
+                "lsp initialize timed out after {}s. Stderr: {}",
+                LSP_INITIALIZE_TIMEOUT.as_secs(),
+                err_str
             ));
         }
-    }
-    .ok_or_else(|| "lsp initialize returned EOF".to_string())?;
+    };
 
     if let Some(error) = initialize_response.get("error") {
-        return Err(format!("lsp initialize error: {}", error));
+        let mut err_str = String::new();
+        if let Some(ref mut err_reader) = stderr {
+            use tokio::io::AsyncReadExt;
+            let _ = err_reader.read_to_string(&mut err_str).await;
+        }
+        return Err(format!("lsp initialize error: {}. Stderr: {}", error, err_str));
     }
 
     let caps_value = initialize_response
@@ -869,11 +954,17 @@ where
         }
 
         if is_header_separator(&line) {
-            break;
+            if headers.contains_key("content-length") {
+                break;
+            } else {
+                continue;
+            }
         }
 
         if let Some((name, value)) = parse_header_line(&line) {
-            headers.insert(name, value);
+            if name == "content-length" || name == "content-type" {
+                headers.insert(name, value);
+            }
         }
     }
 
@@ -900,11 +991,17 @@ pub fn read_json_rpc_message(reader: &mut dyn BufRead) -> Result<Option<Value>, 
         }
 
         if is_header_separator(&line) {
-            break;
+            if headers.contains_key("content-length") {
+                break;
+            } else {
+                continue;
+            }
         }
 
         if let Some((name, value)) = parse_header_line(&line) {
-            headers.insert(name, value);
+            if name == "content-length" || name == "content-type" {
+                headers.insert(name, value);
+            }
         }
     }
 
@@ -1084,7 +1181,68 @@ pub fn resolve_lsp_server_command(
             return Some(command.to_string());
         }
     }
+
+    // Special handling for Dart: prioritize FVM
+    if let Some(dart_binary) = detect_fvm_dart_binary(root_path) {
+        return Some(dart_binary);
+    }
+
     detect_lsp_server_for_workspace(root_path)
+}
+
+/// Detects FVM-managed Dart binary in workspace.
+/// Priority: .fvm/flutter_sdk (local) > ~/.fvm/versions/* (global) > system dart
+fn detect_fvm_dart_binary(root_path: &Path) -> Option<String> {
+    // Check if this is a Dart/Flutter workspace
+    let has_pubspec = root_path.join("pubspec.yaml").exists();
+    if !has_pubspec {
+        return None;
+    }
+
+    // 1. Local FVM: .fvm/flutter_sdk/bin/cache/dart-sdk/bin/dart
+    let local_fvm_dart = root_path
+        .join(".fvm")
+        .join("flutter_sdk")
+        .join("bin")
+        .join("cache")
+        .join("dart-sdk")
+        .join("bin")
+        .join("dart");
+    if local_fvm_dart.try_exists().unwrap_or(false) {
+        return Some(local_fvm_dart.to_string_lossy().to_string());
+    }
+
+    // 2. Global FVM: check ~/.fvm/versions/* and ~/fvm/versions/*
+    if let Ok(home) = std::env::var("HOME") {
+        for dir_name in &[".fvm", "fvm"] {
+            let global_fvm_dir = PathBuf::from(&home).join(dir_name).join("versions");
+            if let Ok(entries) = fs::read_dir(&global_fvm_dir) {
+                // Collect all versions and sort (newest first)
+                let mut versions: Vec<_> = entries
+                    .filter_map(Result::ok)
+                    .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+                    .collect();
+                versions.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+
+                // Return the first valid dart binary found
+                for entry in versions {
+                    let dart_bin = entry
+                        .path()
+                        .join("bin")
+                        .join("cache")
+                        .join("dart-sdk")
+                        .join("bin")
+                        .join("dart");
+                    if dart_bin.try_exists().unwrap_or(false) {
+                        return Some(dart_bin.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Fallback to system dart (will be resolved via PATH)
+    None
 }
 
 pub fn detect_lsp_server_for_workspace(root_path: &Path) -> Option<String> {
@@ -1239,6 +1397,26 @@ mod tests {
         let body = "{\"jsonrpc\":\"2.0\"}";
         let raw = format!(
             "Content-Length: {}\r\nContent-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n{}",
+            body.len(),
+            body
+        )
+        .into_bytes();
+        let mut reader = Cursor::new(raw);
+        let decoded = read_json_rpc_message(&mut reader)
+            .expect("read frame")
+            .expect("frame should exist");
+
+        assert_eq!(decoded["jsonrpc"], "2.0");
+    }
+
+    #[test]
+    fn json_rpc_frame_skips_startup_noise() {
+        let body = "{\"jsonrpc\":\"2.0\"}";
+        let raw = format!(
+            "FVM warning: update available\r\n\
+             Some other CLI startup log message\r\n\
+             Content-Length: {}\r\n\
+             Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n{}",
             body.len(),
             body
         )
@@ -1418,7 +1596,6 @@ mod tests {
     #[test]
     fn resolve_gvm_paths_scans_all_installed_versions() {
         use super::resolve_gvm_paths;
-
         let gvm_root = temp_dir("gvm_root");
         // Simulate two installed versions; only go1.25.4 has gopls in its pkgset.
         for v in ["go1.24.11", "go1.25.4"] {
@@ -1447,4 +1624,5 @@ mod tests {
 
         let _ = fs::remove_dir_all(gvm_root);
     }
+
 }

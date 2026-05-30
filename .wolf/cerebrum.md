@@ -2,7 +2,7 @@
 
 > OpenWolf's learning memory. Updated automatically as the AI learns from interactions.
 > Do not edit manually unless correcting an error.
-> Last updated: 2026-05-19
+> Last updated: 2026-05-30
 
 ## User Preferences
 
@@ -21,6 +21,7 @@
 - **RTK Limitations:** `rtk find` does not support compound predicates/actions such as `-exec`; `rtk git diff -- <paths>` may also mis-handle pathspec-style commands. Fall back to the raw command instead of trying to force the proxy.
 - **Terminal Cell Backgrounds:** ANSI background-colored terminal cells must render as `RegionDrawInstance` quads underneath text, not as `"█"` glyphs in `TerminalViewRenderer::build_instances()`. Full-block glyphs leave font-metric seams and make full-screen TUIs look striped/broken.
 - **Terminal ANSI Color Fidelity:** ANSI colors are specified in sRGB but the renderer's sRGB target expects linear inputs. Convert ANSI RGB/xterm colors through `srgb_rgba_to_linear_f32`, emit every style event in combined SGR sequences like `0;38;5;...;48;2;...m`, shape cells with `CellStyle.bold` using bold font weight, and do not run regex foreground highlighting on interactive PTY output because it overwrites application-provided terminal colors.
+- **Dart/Flutter LSP with FVM:** Dart LSP server must use FVM-managed dart binary when available, not system dart. Priority: `.fvm/flutter_sdk/bin/cache/dart-sdk/bin/dart` (workspace-local) > `~/.fvm/versions/*/bin/cache/dart-sdk/bin/dart` (global FVM cache, newest first) > system `dart` from PATH. Detection logic in `src/lsp/client.rs::detect_fvm_dart_binary()` checks for `pubspec.yaml` first, then resolves the correct dart binary path. This ensures LSP uses the same Flutter/Dart version as the project.
 
 ## Do-Not-Repeat
 
