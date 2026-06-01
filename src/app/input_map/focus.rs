@@ -488,6 +488,20 @@ impl InputMap {
             });
         }
 
+        if !input.has_command_modifier() && input.named_key == Some(NamedKey::Enter) {
+            return Some(KeybindingMatch {
+                command: Command::DebugGotoFrame,
+                reason: "inspector: Enter -> DebugGotoFrame (jump to call stack frame)",
+            });
+        }
+
+        if let Some(command) = resolved_keymap::resolve_command(&self.keymap, input, "normal", &self.open_file_path) {
+            return Some(KeybindingMatch {
+                command,
+                reason: "inspector: keymap binding",
+            });
+        }
+
         resolved_keymap::resolve_global_command(&self.keymap, input, &self.open_file_path).map(
             |command| KeybindingMatch {
                 command,
@@ -1043,6 +1057,43 @@ impl InputMap {
                 command,
                 reason: "terminal focus: terminal-mode keymap binding",
             });
+        }
+
+        if let Some(command) = resolved_keymap::resolve_global_command(
+            &self.keymap,
+            input,
+            &self.open_file_path,
+        ) {
+            let is_allowed = match &command {
+                Command::FocusTerminal
+                | Command::ToggleBottomDock
+                | Command::FocusDap
+                | Command::FocusExplorer
+                | Command::FocusInspector
+                | Command::SwitchTerminalTab(_)
+                | Command::SaveFile
+                | Command::OpenFile(_)
+                | Command::OpenFilePicker
+                | Command::OpenCommandPalette
+                | Command::ToggleLeftDock
+                | Command::DebugStart
+                | Command::FlutterHotRestart
+                | Command::DebugStop
+                | Command::DebugStepOver
+                | Command::DebugStepInto
+                | Command::DebugStepOut => true,
+                Command::DebugToggleBreakpoint => {
+                    // Only allow if NOT Shift+B
+                    !(input.modifiers.shift_key() && !input.modifiers.control_key() && !input.modifiers.super_key() && !input.modifiers.alt_key())
+                }
+                _ => false,
+            };
+            if is_allowed {
+                return Some(KeybindingMatch {
+                    command,
+                    reason: "terminal focus: global keymap bypass",
+                });
+            }
         }
 
         if mode == EditorMode::TerminalFocus && input.named_key == Some(NamedKey::Escape) {

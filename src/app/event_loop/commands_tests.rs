@@ -2769,3 +2769,388 @@ fn resize_panel_and_ui_config_stay_in_sync() {
         shell.ui_config.docks.bottom.size_px
     );
 }
+
+// ── DAP / Debugger command tests ────────────────────────────────────────────
+
+#[test]
+fn focus_dap_opens_left_sidebar_inspector_tab() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.left.visible = false;
+
+    let changed = shell.handle_command(Command::FocusDap);
+
+    assert!(changed);
+    assert!(shell.panel_state.left.visible);
+    assert_eq!(
+        shell.panel_state.left.active_tab_id(),
+        Some(PanelTabId::Inspector)
+    );
+}
+
+#[test]
+fn focus_dap_sets_focus_to_left_sidebar() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+    shell.handle_command(Command::FocusDap);
+
+    assert_eq!(shell.focus_manager.current(), FocusTarget::LeftSidebar);
+}
+
+#[test]
+fn focus_dap_idempotent_when_already_focused() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.handle_command(Command::FocusDap);
+    let changed = shell.handle_command(Command::FocusDap);
+    // Should still report no change since already focused
+    assert!(!changed);
+}
+
+#[test]
+fn debug_start_without_session_returns_none_via_handler() {
+    let shell = AppShell::new_for_tests().expect("create app shell");
+    // No DAP session — handler tries to launch but panics without tokio runtime.
+    // Test the handler directly: when there's no session, it enters the launch branch.
+    // We can't fully test launch without a tokio runtime, so verify the session is None.
+    assert!(shell.dap_session.is_none());
+}
+
+#[test]
+fn debug_stop_without_session_returns_none() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let result = shell.handle_dap_command(&Command::DebugStop);
+    assert!(result.is_none());
+}
+
+#[test]
+fn debug_continue_without_session_returns_none() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let result = shell.handle_dap_command(&Command::DebugContinue);
+    assert!(result.is_none());
+}
+
+#[test]
+fn debug_step_over_without_session_returns_none() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let result = shell.handle_dap_command(&Command::DebugStepOver);
+    assert!(result.is_none());
+}
+
+#[test]
+fn debug_step_into_without_session_returns_none() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let result = shell.handle_dap_command(&Command::DebugStepInto);
+    assert!(result.is_none());
+}
+
+#[test]
+fn debug_step_out_without_session_returns_none() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let result = shell.handle_dap_command(&Command::DebugStepOut);
+    assert!(result.is_none());
+}
+
+#[test]
+fn debug_toggle_breakpoint_without_session_returns_none() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let result = shell.handle_dap_command(&Command::DebugToggleBreakpoint);
+    assert!(result.is_none());
+}
+
+#[test]
+fn debug_watch_add_without_session_returns_none() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let result = shell.handle_dap_command(&Command::DebugWatchAdd);
+    assert!(result.is_none());
+}
+
+#[test]
+fn debug_watch_remove_without_session_returns_none() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let result = shell.handle_dap_command(&Command::DebugWatchRemove);
+    assert!(result.is_none());
+}
+
+#[test]
+fn debug_goto_frame_without_session_returns_none() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let result = shell.handle_dap_command(&Command::DebugGotoFrame);
+    assert!(result.is_none());
+}
+
+#[test]
+fn dap_toggle_expand_works_on_inspector_panel() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.handle_command(Command::FocusDap);
+
+    // Variables section is expanded by default
+    let was_expanded = shell.dap_panel_state.sections[0].expanded;
+    let changed = shell.handle_command(Command::DapToggleExpand);
+    assert!(changed);
+    assert_eq!(shell.dap_panel_state.sections[0].expanded, !was_expanded);
+}
+
+#[test]
+fn dap_toggle_expand_noop_when_not_on_inspector() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    // Focus editor, not DAP panel
+    shell.handle_command(Command::FocusEditor);
+
+    // DapToggleExpand returns None when not on inspector (falls through)
+    let result = shell.handle_dap_command(&Command::DapToggleExpand);
+    assert!(result.is_none());
+}
+
+#[test]
+fn flutter_hot_reload_without_session_returns_none() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    // No DAP session — handler returns None
+    let result = shell.handle_dap_command(&Command::FlutterHotReload);
+    assert!(result.is_none());
+}
+
+#[test]
+fn flutter_hot_restart_without_session_returns_none() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let result = shell.handle_dap_command(&Command::FlutterHotRestart);
+    assert!(result.is_none());
+}
+
+#[test]
+fn debug_toggle_breakpoint_noop_without_active_file() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    // No active file — toggle should return None
+    let result = shell.handle_dap_command(&Command::DebugToggleBreakpoint);
+    assert!(result.is_none());
+}
+
+#[test]
+fn flutter_devices_in_command_palette() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    // Open command palette
+    shell.handle_command(Command::OpenCommandPalette);
+    assert!(shell.app_state.is_command_palette_visible());
+
+    // Verify flutter.devices is a valid command ID
+    use crate::core::command_ids;
+    assert!(command_ids::is_valid("flutter.devices"));
+    assert!(command_ids::is_valid("flutter.hot_reload"));
+    assert!(command_ids::is_valid("flutter.hot_restart"));
+
+    // Verify command parsing works
+    assert!(command_ids::parse("flutter.devices", None).is_some());
+    assert!(command_ids::parse("flutter.hot_reload", None).is_some());
+    assert!(command_ids::parse("flutter.hot_restart", None).is_some());
+}
+
+struct TestTempDir {
+    path: PathBuf,
+}
+
+impl TestTempDir {
+    fn new(prefix: &str) -> Self {
+        let path = std::env::temp_dir().join(format!("{}_{}", prefix, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros()));
+        std::fs::create_dir_all(&path).unwrap();
+        Self { path }
+    }
+}
+
+impl Drop for TestTempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+struct PathGuard {
+    old_path: String,
+}
+
+impl Drop for PathGuard {
+    fn drop(&mut self) {
+        unsafe {
+            std::env::set_var("PATH", &self.old_path);
+        }
+    }
+}
+static ENV_LOCK: once_cell::sync::Lazy<std::sync::Mutex<()>> = once_cell::sync::Lazy::new(|| std::sync::Mutex::new(()));
+
+fn setup_dummy_executable(name: &str) -> (TestTempDir, PathGuard) {
+    let temp = TestTempDir::new(name);
+    let bin_path = temp.path.join(name);
+    std::fs::write(&bin_path, "#!/bin/sh\nexit 0\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&bin_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&bin_path, perms).unwrap();
+    }
+    let old_path = std::env::var("PATH").unwrap_or_default();
+    let new_path = format!("{}:{}", temp.path.display(), old_path);
+    unsafe {
+        std::env::set_var("PATH", new_path);
+    }
+    (temp, PathGuard { old_path })
+}
+
+#[test]
+fn debug_start_fallback_to_flutter_defaults() {
+    let _lock = ENV_LOCK.lock().unwrap();
+    let _temp_exe = setup_dummy_executable("flutter");
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let temp_workspace = TestTempDir::new("workspace");
+    shell.app_state.attach_workspace(temp_workspace.path.clone()).unwrap();
+    
+    // Create an active file that is a .dart file
+    let main_dart = temp_workspace.path.join("lib").join("main.dart");
+    std::fs::create_dir_all(main_dart.parent().unwrap()).unwrap();
+    std::fs::write(&main_dart, "void main() {}").unwrap();
+    shell.app_state.open_file(main_dart).unwrap();
+
+    let result = shell.handle_command(Command::DebugStart);
+    assert!(result);
+    assert!(shell.dap_session.is_some());
+}
+
+#[test]
+fn debug_start_reads_launch_json() {
+    let _lock = ENV_LOCK.lock().unwrap();
+    let _temp_exe = setup_dummy_executable("custom_type");
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let temp_workspace = TestTempDir::new("workspace_launch_json");
+    shell.app_state.attach_workspace(temp_workspace.path.clone()).unwrap();
+
+    let vscode_dir = temp_workspace.path.join(".vscode");
+    std::fs::create_dir_all(&vscode_dir).unwrap();
+    let launch_json_path = vscode_dir.join("launch.json");
+    let launch_json_content = r#"{
+        "version": "0.2.0",
+        "configurations": [
+            {
+                "name": "My Custom Debug",
+                "type": "custom_type",
+                "request": "launch",
+                "program": "bin/debug_target"
+            }
+        ]
+    }"#;
+    std::fs::write(&launch_json_path, launch_json_content).unwrap();
+
+    let result = shell.handle_command(Command::DebugStart);
+    assert!(result);
+    assert!(shell.dap_session.is_some());
+}
+
+#[test]
+fn debug_start_no_workspace_returns_false() {
+    let _lock = ENV_LOCK.lock().unwrap();
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.app_state.detach_workspace();
+    // Explicitly make sure there is no active file or workspace root
+    assert!(shell.app_state.workspace_root_path().is_none());
+    assert!(shell.app_state.active_file().is_none());
+
+    let result = shell.handle_command(Command::DebugStart);
+    assert!(!result); // Returns false
+    assert!(shell.transient_toast.is_some());
+    let toast = shell.transient_toast.as_ref().unwrap();
+    assert_eq!(toast.kind, crate::app::event_loop::ToastKind::Error);
+    assert!(toast.message.contains("No active workspace or file parent folder"));
+}
+
+#[test]
+fn debug_adapter_binary_not_found() {
+    let _lock = ENV_LOCK.lock().unwrap();
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let temp_workspace = TestTempDir::new("workspace_binary_not_found");
+    shell.app_state.attach_workspace(temp_workspace.path.clone()).unwrap();
+
+    let vscode_dir = temp_workspace.path.join(".vscode");
+    std::fs::create_dir_all(&vscode_dir).unwrap();
+    let launch_json_path = vscode_dir.join("launch.json");
+    let launch_json_content = r#"{
+        "version": "0.2.0",
+        "configurations": [
+            {
+                "name": "My Bad Custom Debug",
+                "type": "non_existent_adapter_binary",
+                "request": "launch",
+                "program": "bin/debug_target"
+            }
+        ]
+    }"#;
+    std::fs::write(&launch_json_path, launch_json_content).unwrap();
+
+    let result = shell.handle_command(Command::DebugStart);
+    assert!(!result);
+    assert!(shell.transient_toast.is_some());
+    let toast = shell.transient_toast.as_ref().unwrap();
+    assert_eq!(toast.kind, crate::app::event_loop::ToastKind::Error);
+    assert!(toast.message.contains("Binary 'non_existent_adapter_binary' not found"));
+}
+
+#[test]
+fn breakpoint_toggle_persists_across_session() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let temp_workspace = TestTempDir::new("workspace_breakpoints_persist");
+    shell.app_state.attach_workspace(temp_workspace.path.clone()).unwrap();
+
+    let main_dart = temp_workspace.path.join("lib").join("main.dart");
+    std::fs::create_dir_all(main_dart.parent().unwrap()).unwrap();
+    std::fs::write(&main_dart, "void main() {\n  print('hello');\n}").unwrap();
+    let main_dart = main_dart.canonicalize().unwrap();
+    shell.app_state.open_file(main_dart.clone()).unwrap();
+
+    // Toggle breakpoint on line 1
+    shell.app_state.jump_to_line_and_column(1, 0);
+    let result = shell.handle_command(Command::DebugToggleBreakpoint);
+    assert!(result);
+    assert_eq!(shell.breakpoints.get(&main_dart), Some(&vec![1]));
+
+    // Now verify the file exists on disk
+    let bp_file = temp_workspace.path.join(".vscode").join("breakpoints.json");
+    assert!(bp_file.exists());
+
+    // Create a new AppShell (simulating restart) and attach the same workspace
+    let mut new_shell = AppShell::new_for_tests().expect("create app shell");
+    new_shell.app_state.attach_workspace(temp_workspace.path.clone()).unwrap();
+    new_shell.load_breakpoints();
+
+    // Verify breakpoints are loaded
+    assert_eq!(new_shell.breakpoints.get(&main_dart), Some(&vec![1]));
+}
+
+#[test]
+fn test_breakpoint_and_cursor_movement() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let temp_workspace = TestTempDir::new("workspace_breakpoints_movement");
+    shell.app_state.attach_workspace(temp_workspace.path.clone()).unwrap();
+
+    let main_dart = temp_workspace.path.join("lib").join("main.dart");
+    std::fs::create_dir_all(main_dart.parent().unwrap()).unwrap();
+    std::fs::write(&main_dart, "void main() {\n  print('hello');\n  print('world');\n}").unwrap();
+    let main_dart = main_dart.canonicalize().unwrap();
+    shell.app_state.open_file(main_dart.clone()).unwrap();
+
+    // Toggle breakpoint on line 1
+    shell.app_state.jump_to_line_and_column(1, 0);
+    let result = shell.handle_command(Command::DebugToggleBreakpoint);
+    assert!(result);
+
+    // Verify breakpoint exists
+    let active_file = shell.app_state.active_file().unwrap();
+    assert_eq!(active_file, main_dart);
+    let breakpoint_lines = shell.breakpoints.get(active_file).cloned().unwrap_or_default();
+    assert_eq!(breakpoint_lines, vec![1]);
+
+    // Move cursor down
+    let moved = shell.handle_command(Command::MoveDown);
+    assert!(moved);
+
+    // Verify breakpoint STILL exists for the active file
+    let active_file_after = shell.app_state.active_file().unwrap();
+    assert_eq!(active_file_after, main_dart);
+    let breakpoint_lines_after = shell.breakpoints.get(active_file_after).cloned().unwrap_or_default();
+    assert_eq!(breakpoint_lines_after, vec![1]);
+}
+
+

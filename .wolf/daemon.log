@@ -77,3 +77,7 @@
 [2026-05-29T17:00:00.630Z] [INFO] Task Full anatomy rescan completed in 141ms
 [2026-05-30T05:00:00.235Z] [INFO] Executing task: Full anatomy rescan
 [2026-05-30T05:00:00.317Z] [INFO] Task Full anatomy rescan completed in 81ms
+[2026-05-30T11:00:00.666Z] [INFO] Executing task: Full anatomy rescan
+[2026-05-30T11:00:00.790Z] [INFO] Task Full anatomy rescan completed in 124ms
+[2026-05-30T12:25:21.340Z] [INFO] Daemon shutting down...
+[2026-05-30T12:25:21.341Z] [INFO] Daemon stopped

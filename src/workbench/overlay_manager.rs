@@ -197,7 +197,8 @@ fn clamp_to_bounds(rect: RegionBounds, bounds: RegionBounds) -> RegionBounds {
 #[cfg(test)]
 mod tests {
     use crate::workbench::{
-        debug_state::DebugSharedState, region_model::RegionBounds,
+        debug_state::{DebugSharedState, InlineValue, SourceLocation},
+        region_model::RegionBounds,
         text_coordinate_map::TextCoordinateMapper,
     };
 
@@ -208,7 +209,14 @@ mod tests {
         let mut manager = OverlayManager::default();
         manager.command_palette_open = true;
         manager.command_palette_query = "src/main".to_string();
-        let debug_state = DebugSharedState::default();
+        let mut debug_state = DebugSharedState::default();
+        debug_state.execution_location = Some(SourceLocation { line: 2, column: 4 });
+        debug_state.paused = true;
+        debug_state.inline_values = vec![InlineValue {
+            location: SourceLocation { line: 2, column: 10 },
+            text: "x = 42".to_string(),
+        }];
+        debug_state.toggle_breakpoint_at_line(&std::path::PathBuf::from("main.dart"), 0);
         let mapper = TextCoordinateMapper::from_text(
             "a\nb\nc\nd\ne\nf\ng\nh",
             RegionBounds::new(40.0, 120.0, 700.0, 420.0),

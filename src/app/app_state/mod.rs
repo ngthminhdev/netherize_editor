@@ -1983,6 +1983,7 @@ pub struct AppState {
     // ── Workspace symbol cache ────────────────────────────────────────────────
     /// Pre-indexed workspace symbols for fast import suggestions.
     workspace_symbol_cache: Arc<crate::lsp::WorkspaceSymbolCache>,
+    active_dart_device_id: Option<String>,
 }
 
 impl AppState {
@@ -2048,7 +2049,16 @@ impl AppState {
             auto_folded_long_lines: Vec::new(),
             cached_line_starts: None,
             workspace_symbol_cache: Arc::new(crate::lsp::WorkspaceSymbolCache::new()),
+            active_dart_device_id: None,
         }
+    }
+
+    pub fn active_dart_device_id(&self) -> Option<&str> {
+        self.active_dart_device_id.as_deref()
+    }
+
+    pub fn set_active_dart_device_id(&mut self, device_id: Option<String>) {
+        self.active_dart_device_id = device_id;
     }
 
     pub fn from_text(default_save_path: PathBuf, text: &str) -> Self {
@@ -2111,6 +2121,7 @@ impl AppState {
             auto_folded_long_lines: Vec::new(),
             cached_line_starts: None,
             workspace_symbol_cache: Arc::new(crate::lsp::WorkspaceSymbolCache::new()),
+            active_dart_device_id: None,
         }
     }
 

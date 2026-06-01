@@ -209,7 +209,7 @@ pub(super) fn editor_viewport_geometry(
     let gutter_width = gutter_width_for_editor(gutter_digits, font_size, line_height);
     let scroll_x = app_state.scroll_column as f32 * (font_size * 0.6).max(1.0);
     let top_inset = EDITOR_BREADCRUMB_TOP_INSET;
-    let breadcrumb_height = if renderer.editor_breadcrumb_segments.is_empty() {
+    let breadcrumb_height = if renderer.editor_breadcrumb_segments.is_empty() && !renderer.dap_is_active {
         0.0
     } else {
         line_height + EDITOR_BREADCRUMB_PAD_Y * 2.0 + EDITOR_BREADCRUMB_GAP_Y

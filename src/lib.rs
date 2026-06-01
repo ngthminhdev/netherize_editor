@@ -2,6 +2,7 @@ pub mod app;
 pub mod async_runtime;
 pub mod config;
 pub mod core;
+pub mod dap;
 pub mod editor_core;
 pub mod lsp;
 pub mod render;

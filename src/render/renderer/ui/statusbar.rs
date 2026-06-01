@@ -43,6 +43,7 @@ impl Renderer {
         python_version: Option<&str>,
         node_version: Option<&str>,
         go_version: Option<&str>,
+        active_device: Option<&str>,
         bounds: [f32; 4],
     ) -> Vec<RegionDrawInstance> {
         if bounds[2] < 1.0 || bounds[3] < 1.0 {
@@ -75,6 +76,7 @@ impl Renderer {
             python_version: python_version.map(str::to_string),
             node_version: node_version.map(str::to_string),
             go_version: go_version.map(str::to_string),
+            active_device: active_device.map(str::to_string),
         };
         if self.last_statusbar_layout_key.as_ref() == Some(&layout_key) {
             return self.statusbar_chrome_instances.clone();
@@ -176,6 +178,37 @@ impl Renderer {
         // LEFT ZONE  (fixed items — mode-pill already placed above)
         // ══════════════════════════════════════════════════════════════════════════
         let mut left_x = pill_x + pill_width + item_gap;
+
+        // ── DAP Debug status badge ────────────────────────────────────────────────
+        if self.dap_is_active {
+            let dbg_text = " DEBUG ";
+            let dbg_w = estimate_monospace_width(dbg_text, font_size);
+            let badge_bg = if self.dap_is_paused {
+                warning_fg
+            } else {
+                success_fg
+            };
+            let badge_fg = [0.0, 0.0, 0.0, 1.0];
+
+            chrome.push(
+                RegionDrawInstance::new(
+                    [left_x, pill_y, dbg_w, pill_height],
+                    badge_bg,
+                )
+                .with_radius(pill_radius),
+            );
+
+            glyphs.extend(layout_panel_text_bold(
+                dbg_text,
+                &mut self.statusbar_text_system,
+                &mut self.atlas,
+                &self.queue,
+                left_x,
+                origin_y,
+                badge_fg,
+            ));
+            left_x += dbg_w + item_gap;
+        }
 
         // ── Git branch ────────────────────────────────────────────────────────────
         let branch = git_branch.trim();
@@ -296,6 +329,13 @@ impl Renderer {
         if is_go {
             if let Some(ver) = go_version.filter(|s| !s.is_empty()) {
                 right_items.push((format!("go {ver}"), fg_ghost));
+            }
+        }
+
+        if let Some(device) = active_device {
+            let trimmed = device.trim();
+            if !trimmed.is_empty() {
+                right_items.push((format!("📱 {trimmed}"), success_fg));
             }
         }
 

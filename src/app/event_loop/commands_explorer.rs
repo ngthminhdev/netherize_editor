@@ -425,6 +425,13 @@ impl AppShell {
                 Some(true)
             }
             Command::ExplorerMoveUp => {
+                if self.panel_state.left.active_tab_id() == Some(PanelTabId::Inspector) {
+                    let changed = self.dap_panel_state.move_selection_prev();
+                    if changed {
+                        self.sidebar_needs_layout = true;
+                    }
+                    return Some(changed);
+                }
                 self.ensure_explorer_snapshot();
                 let entries_len = self.explorer_snapshot.entries.len();
                 if entries_len == 0 {
@@ -444,6 +451,13 @@ impl AppShell {
                 }
             }
             Command::ExplorerMoveDown => {
+                if self.panel_state.left.active_tab_id() == Some(PanelTabId::Inspector) {
+                    let changed = self.dap_panel_state.move_selection_next();
+                    if changed {
+                        self.sidebar_needs_layout = true;
+                    }
+                    return Some(changed);
+                }
                 self.ensure_explorer_snapshot();
                 let entries_len = self.explorer_snapshot.entries.len();
                 if entries_len == 0 {
@@ -612,6 +626,89 @@ impl AppShell {
             Command::ExplorerToggleOrOpen
             | Command::ExplorerExpandCollapse
             | Command::ExplorerOpenFile => {
+                if self.panel_state.left.active_tab_id() == Some(PanelTabId::Inspector) {
+                    let rows = self.dap_panel_state.visible_rows();
+                    if let Some(row) = rows.get(self.dap_panel_state.selected_row) {
+                        if row.section_index == 2 {
+                            if let Some(path) = &row.node_path {
+                                if !path.is_empty() {
+                                    let frame_idx = path[0];
+                                    let jump_target = self.dap_session.as_ref().and_then(|session| {
+                                        if let Ok(debug_guard) = session.state.try_lock() {
+                                            debug_guard.call_stack.get(frame_idx).and_then(|frame| {
+                                                if frame.path.exists() {
+                                                    Some((frame.path.clone(), frame.location.line))
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                        } else {
+                                            None
+                                        }
+                                    });
+                                    if let Some((target_path, target_line)) = jump_target {
+                                        let report = dispatch_command(
+                                            &mut self.app_state,
+                                            Command::OpenFile(target_path),
+                                        );
+                                        if report.success {
+                                            self.app_state.jump_to_line_and_column(target_line, 0);
+                                            self.clear_highlight_layers();
+                                            self.submit_active_buffer_git_baseline_refresh();
+                                            self.submit_parse_for_active_buffer(true);
+                                            self.submit_lsp_did_open_for_active_file();
+                                            self.editor_needs_layout = true;
+                                            self.editor_caret_needs_layout = true;
+                                            let _ = self.focus_manager.set(FocusTarget::CenterEditor);
+                                            return Some(true);
+                                        }
+                                    }
+                                }
+                            }
+                        } else if row.section_index == 3 {
+                            if let Some(path) = &row.node_path {
+                                if !path.is_empty() {
+                                    let bp_idx = path[0];
+                                    let jump_target = self.dap_session.as_ref().and_then(|session| {
+                                        if let Ok(debug_guard) = session.state.try_lock() {
+                                            debug_guard.breakpoints.get(bp_idx).and_then(|bp| {
+                                                if bp.path.exists() {
+                                                    Some((bp.path.clone(), bp.location.line))
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                        } else {
+                                            None
+                                        }
+                                    });
+                                    if let Some((target_path, target_line)) = jump_target {
+                                        let report = dispatch_command(
+                                            &mut self.app_state,
+                                            Command::OpenFile(target_path),
+                                        );
+                                        if report.success {
+                                            self.app_state.jump_to_line_and_column(target_line, 0);
+                                            self.clear_highlight_layers();
+                                            self.submit_active_buffer_git_baseline_refresh();
+                                            self.submit_parse_for_active_buffer(true);
+                                            self.submit_lsp_did_open_for_active_file();
+                                            self.editor_needs_layout = true;
+                                            self.editor_caret_needs_layout = true;
+                                            let _ = self.focus_manager.set(FocusTarget::CenterEditor);
+                                            return Some(true);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    let changed = self.dap_panel_state.toggle_selected_expand();
+                    if changed {
+                        self.sidebar_needs_layout = true;
+                    }
+                    return Some(changed);
+                }
                 self.ensure_explorer_snapshot();
                 if self.explorer_snapshot.entries.is_empty() {
                     self.explorer_cursor = 0;

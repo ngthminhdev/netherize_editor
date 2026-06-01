@@ -119,6 +119,23 @@ pub enum Command {
     SearchWordUnderCursor,
     ClearSearchHighlights,
 
+    // ── Debugger (DAP) & Flutter ───────────────────────────────────────────────
+    DebugStart,
+    DebugStop,
+    DebugContinue,
+    DebugStepOver,
+    DebugStepInto,
+    DebugStepOut,
+    DebugToggleBreakpoint,
+    DebugWatchAdd,
+    DebugWatchRemove,
+    DebugGotoFrame,
+    FocusDap,
+    DapToggleExpand,
+    FlutterDevices,
+    FlutterHotReload,
+    FlutterHotRestart,
+
     // ── File & palette ─────────────────────────────────────────────────────────
     SaveFile,
     OpenFile(PathBuf),

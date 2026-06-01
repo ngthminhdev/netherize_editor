@@ -382,6 +382,58 @@ pub(super) async fn dispatch_loop(
 
         if matches!(
             request.payload,
+            WorkerRequestPayload::ScanFlutterDevices { .. }
+        ) {
+            let flutter_path = match request.payload {
+                WorkerRequestPayload::ScanFlutterDevices { flutter_path } => flutter_path,
+                _ => unreachable!(),
+            };
+            let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                let devices = crate::async_runtime::flutter_device::scan_flutter_devices(flutter_path).await;
+                emit_message_and_wake(
+                    &worker_tx,
+                    &event_proxy,
+                    WorkerMessage::Result(WorkerResult {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        payload: WorkerResultPayload::FlutterDevicesDiscovered(devices),
+                    }),
+                );
+            });
+            continue;
+        }
+
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::LaunchFlutterEmulator { .. }
+        ) {
+            let (flutter_path, emulator_id) = match request.payload {
+                WorkerRequestPayload::LaunchFlutterEmulator { flutter_path, emulator_id } => (flutter_path, emulator_id),
+                _ => unreachable!(),
+            };
+            let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                let _ = crate::async_runtime::flutter_device::launch_flutter_emulator(flutter_path, &emulator_id).await;
+                emit_message_and_wake(
+                    &worker_tx,
+                    &event_proxy,
+                    WorkerMessage::Result(WorkerResult {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        payload: WorkerResultPayload::FlutterEmulatorLaunched,
+                    }),
+                );
+            });
+            continue;
+        }
+
+        if matches!(
+            request.payload,
             WorkerRequestPayload::DetectRuntimeVersions { .. }
         ) {
             let (python_binary, _workspace_root) = match request.payload {

@@ -81,6 +81,21 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         }
         Command::ToggleTerminal => toggle_terminal(ctx),
         Command::ToggleBottomDock
+        | Command::DebugStart
+        | Command::DebugStop
+        | Command::DebugContinue
+        | Command::DebugStepOver
+        | Command::DebugStepInto
+        | Command::DebugStepOut
+        | Command::DebugToggleBreakpoint
+        | Command::DebugWatchAdd
+        | Command::DebugWatchRemove
+        | Command::DebugGotoFrame
+        | Command::FocusDap
+        | Command::DapToggleExpand
+        | Command::FlutterDevices
+        | Command::FlutterHotReload
+        | Command::FlutterHotRestart
         | Command::ToggleLeftDock
         | Command::GitOpenLazygit
         | Command::GitOpenLazydocker

@@ -91,6 +91,43 @@ pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayl
             app.app_state.open_dart_env_selector_with_items(items);
             app.request_redraw();
         }
+        WorkerResultPayload::FlutterDevicesDiscovered(devices) => {
+            eprintln!("[AppShell] flutter devices discovered: {}", devices.len());
+            let items: Vec<crate::app::command_palette::CommandPaletteItem> = devices
+                .into_iter()
+                .map(|dev| {
+                    let secondary = if dev.is_active {
+                        Some(format!("active ({})", dev.platform))
+                    } else {
+                        Some(format!("emulator offline ({})", dev.platform))
+                    };
+                    crate::app::command_palette::CommandPaletteItem {
+                        label: dev.name,
+                        secondary_label: secondary,
+                        action: crate::app::command_palette::CommandPaletteAction::SelectFlutterDevice {
+                            device_id: dev.id,
+                            is_emulator: dev.emulator,
+                            is_active: dev.is_active,
+                        },
+                        tone: crate::app::command_palette::CommandPaletteItemTone::Default,
+                        preview_colors: Vec::new(),
+                    }
+                })
+                .collect();
+            app.app_state.open_flutter_device_selector_with_items(items);
+            app.request_redraw();
+        }
+        WorkerResultPayload::FlutterEmulatorLaunched => {
+            app.show_transient_toast("Flutter emulator launched successfully.".to_string());
+            let flutter_path = app.current_flutter_path();
+            app.submit(crate::async_runtime::message::RequestSpec {
+                revision_id: 0,
+                topic: crate::async_runtime::message::RequestTopic::SystemTask,
+                payload: crate::async_runtime::message::WorkerRequestPayload::ScanFlutterDevices {
+                    flutter_path: Some(flutter_path),
+                },
+            });
+        }
         _ => {}
     }
 }

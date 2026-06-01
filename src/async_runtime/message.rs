@@ -382,6 +382,13 @@ pub enum WorkerRequestPayload {
     ScanDartEnvironments {
         workspace_root: PathBuf,
     },
+    ScanFlutterDevices {
+        flutter_path: Option<PathBuf>,
+    },
+    LaunchFlutterEmulator {
+        flutter_path: Option<PathBuf>,
+        emulator_id: String,
+    },
     /// Detect Python / Node / Go runtime versions for statusbar display.
     /// `python_binary` is the interpreter path from the selected venv (or system).
     DetectRuntimeVersions {
@@ -748,6 +755,8 @@ pub enum WorkerResultPayload {
     PythonEnvironmentsDiscovered(Vec<crate::async_runtime::python_env::PythonEnv>),
     /// Kết quả scan Dart environments.
     DartEnvironmentsDiscovered(Vec<crate::async_runtime::dart_env::DartEnv>),
+    FlutterDevicesDiscovered(Vec<crate::async_runtime::flutter_device::FlutterDevice>),
+    FlutterEmulatorLaunched,
     /// Runtime version strings for statusbar display.
     RuntimeVersionsDetected {
         python_version: Option<String>,

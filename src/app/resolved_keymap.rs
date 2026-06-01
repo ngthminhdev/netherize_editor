@@ -225,6 +225,17 @@ fn parse_non_leader_key(token: &str) -> Option<KeySpec> {
         "arrowleft" => Some(NamedKey::ArrowLeft),
         "arrowright" => Some(NamedKey::ArrowRight),
         "tab" => Some(NamedKey::Tab),
+        "f1" => Some(NamedKey::F1),
+        "f2" => Some(NamedKey::F2),
+        "f3" => Some(NamedKey::F3),
+        "f4" => Some(NamedKey::F4),
+        "f5" => Some(NamedKey::F5),
+        "f6" => Some(NamedKey::F6),
+        "f7" => Some(NamedKey::F7),
+        "f8" => Some(NamedKey::F8),
+        "f9" => Some(NamedKey::F9),
+        "f10" => Some(NamedKey::F10),
+        "f11" => Some(NamedKey::F11),
         "f12" => Some(NamedKey::F12),
         _ => None,
     };
@@ -584,9 +595,31 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert(None, cmd(KeyCode::KeyB), TOGGLE_LEFT_DOCK);
     km.insert(None, KeySpec::CtrlPlus(KeyCode::KeyF), FOCUS_EXPLORER);
+    km.insert(None, KeySpec::CtrlPlus(KeyCode::KeyB), FOCUS_DAP);
     km.insert(None, cmd(KeyCode::KeyR), FOCUS_INSPECTOR);
     km.insert(None, nk(NamedKey::F12), FOCUS_TERMINAL);
     km.insert(None, cmd(KeyCode::Backslash), TOGGLE_BOTTOM_DOCK);
+
+    // ── Global Tab switching ──────────────────────────────────────────────────
+    km.insert(None, cmd(KeyCode::Digit1), TERMINAL_TAB_SWITCH_1);
+    km.insert(None, cmd(KeyCode::Digit2), TERMINAL_TAB_SWITCH_2);
+    km.insert(None, cmd(KeyCode::Digit3), TERMINAL_TAB_SWITCH_3);
+    km.insert(None, cmd(KeyCode::Digit4), TERMINAL_TAB_SWITCH_4);
+    km.insert(None, cmd(KeyCode::Digit5), TERMINAL_TAB_SWITCH_5);
+    km.insert(None, cmd(KeyCode::Digit6), TERMINAL_TAB_SWITCH_6);
+    km.insert(None, cmd(KeyCode::Digit7), TERMINAL_TAB_SWITCH_7);
+    km.insert(None, cmd(KeyCode::Digit8), TERMINAL_TAB_SWITCH_8);
+    km.insert(None, cmd(KeyCode::Digit9), TERMINAL_TAB_SWITCH_9);
+
+    // ── Debugger (DAP) function keys ─────────────────────────────────────────
+    km.insert(None, nk(NamedKey::F5), DEBUG_START);
+    km.insert(None, nk(NamedKey::F6), FLUTTER_HOT_RESTART);
+    km.insert(None, KeySpec::ShiftPlus(KeyCode::F5), DEBUG_STOP);
+    km.insert(None, nk(NamedKey::F10), DEBUG_STEP_OVER);
+    km.insert(None, nk(NamedKey::F11), DEBUG_STEP_INTO);
+    km.insert(None, KeySpec::ShiftPlus(KeyCode::F11), DEBUG_STEP_OUT);
+    km.insert(None, nk(NamedKey::F9), DEBUG_TOGGLE_BREAKPOINT);
+    km.insert(None, KeySpec::ShiftPlus(KeyCode::KeyB), DEBUG_TOGGLE_BREAKPOINT);
 
     // ── Insert mode ───────────────────────────────────────────────────────────
     km.insert(Some("insert"), nk(NamedKey::Escape), ENTER_NORMAL);
@@ -738,15 +771,6 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("terminal"), cmd(KeyCode::KeyV), TERMINAL_PASTE);
     km.insert(Some("terminal"), cmd(KeyCode::KeyT), TERMINAL_TAB_NEW);
     km.insert(Some("terminal"), cmd(KeyCode::KeyW), TERMINAL_TAB_CLOSE);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit1), TERMINAL_TAB_SWITCH_1);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit2), TERMINAL_TAB_SWITCH_2);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit3), TERMINAL_TAB_SWITCH_3);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit4), TERMINAL_TAB_SWITCH_4);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit5), TERMINAL_TAB_SWITCH_5);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit6), TERMINAL_TAB_SWITCH_6);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit7), TERMINAL_TAB_SWITCH_7);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit8), TERMINAL_TAB_SWITCH_8);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit9), TERMINAL_TAB_SWITCH_9);
 
     // ── Terminal normal mode bindings (copy mode / virtual cursor) ──────────
     km.insert(
@@ -802,51 +826,6 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         Some("terminal_normal"),
         cmd(KeyCode::KeyW),
         TERMINAL_TAB_CLOSE,
-    );
-    km.insert(
-        Some("terminal_normal"),
-        cmd(KeyCode::Digit1),
-        TERMINAL_TAB_SWITCH_1,
-    );
-    km.insert(
-        Some("terminal_normal"),
-        cmd(KeyCode::Digit2),
-        TERMINAL_TAB_SWITCH_2,
-    );
-    km.insert(
-        Some("terminal_normal"),
-        cmd(KeyCode::Digit3),
-        TERMINAL_TAB_SWITCH_3,
-    );
-    km.insert(
-        Some("terminal_normal"),
-        cmd(KeyCode::Digit4),
-        TERMINAL_TAB_SWITCH_4,
-    );
-    km.insert(
-        Some("terminal_normal"),
-        cmd(KeyCode::Digit5),
-        TERMINAL_TAB_SWITCH_5,
-    );
-    km.insert(
-        Some("terminal_normal"),
-        cmd(KeyCode::Digit6),
-        TERMINAL_TAB_SWITCH_6,
-    );
-    km.insert(
-        Some("terminal_normal"),
-        cmd(KeyCode::Digit7),
-        TERMINAL_TAB_SWITCH_7,
-    );
-    km.insert(
-        Some("terminal_normal"),
-        cmd(KeyCode::Digit8),
-        TERMINAL_TAB_SWITCH_8,
-    );
-    km.insert(
-        Some("terminal_normal"),
-        cmd(KeyCode::Digit9),
-        TERMINAL_TAB_SWITCH_9,
     );
     km.insert(Some("terminal_normal"), ch('/'), TERMINAL_SEARCH_OPEN);
     km.insert(Some("terminal_normal"), ch('n'), SEARCH_NEXT);
@@ -1010,6 +989,36 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         None,
         seq(&[KeySpec::Leader, ph(KeyCode::KeyI)]),
         FOCUS_INSPECTOR,
+    );
+    km.insert_sequence(
+        None,
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyD), ph(KeyCode::KeyB)]),
+        FOCUS_DAP,
+    );
+    km.insert_sequence(
+        Some("normal"),
+        seq(&[ph(KeyCode::KeyZ), ph(KeyCode::KeyA)]),
+        DAP_TOGGLE_EXPAND,
+    );
+    km.insert_sequence(
+        None,
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyF), ph(KeyCode::KeyD)]),
+        FLUTTER_DEVICES,
+    );
+    km.insert_sequence(
+        None,
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyF), ph(KeyCode::KeyH)]),
+        FLUTTER_HOT_RELOAD,
+    );
+    km.insert_sequence(
+        None,
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyF), ph(KeyCode::KeyR)]),
+        FLUTTER_HOT_RESTART,
+    );
+    km.insert_sequence(
+        None,
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyF), ph(KeyCode::KeyQ)]),
+        DEBUG_STOP,
     );
     km.insert_sequence(
         None,

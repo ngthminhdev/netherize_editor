@@ -446,16 +446,46 @@ impl AppShell {
     }
 
     fn handle_switch_terminal_tab(&mut self, idx: usize) -> bool {
-        if idx >= self.terminal_tabs.len() {
+        if idx >= self.panel_state.bottom.tabs.len() {
             return false;
         }
-        if self.active_terminal_tab == idx {
-            return false;
+
+        let mut changed = false;
+        if self.panel_state.bottom.active_tab != idx {
+            self.panel_state.bottom.active_tab = idx;
+            changed = true;
         }
-        self.active_terminal_tab = idx;
+
+        if !self.panel_state.bottom.visible {
+            self.panel_state.bottom.visible = true;
+            changed = true;
+        }
+
+        // Focus the bottom panel
+        let focus_changed = self.focus_manager.set(FocusTarget::BottomPanel);
+        changed |= focus_changed;
+
+        // If the switched tab is Terminal, apply ModeEvent::FocusTerminal.
+        // If the switched tab is DebugConsole, we should exit terminal focus mode (transition back to Normal).
+        if self.panel_state.bottom.tabs[idx] == PanelTabId::Terminal {
+            self.ensure_active_terminal_tab_spawned();
+            if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
+                changed |= result.changed;
+            }
+        } else {
+            // Switch away from terminal mode to Normal (exit terminal focus)
+            if matches!(
+                self.app_state.current_mode(),
+                EditorMode::TerminalFocus | EditorMode::TerminalNormal
+            ) {
+                if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::ExitFocus) {
+                    changed |= result.changed;
+                }
+            }
+        }
+
         self.terminal_needs_layout = true;
-        self.ensure_active_terminal_tab_spawned();
-        true
+        changed
     }
 
     /// Handle search commands when in Terminal Normal Mode.

@@ -18,6 +18,8 @@ mod commands_settings;
 mod commands_settings_helpers;
 #[path = "commands_terminal.rs"]
 mod commands_terminal;
+#[path = "commands_dap.rs"]
+mod commands_dap;
 #[cfg(test)]
 #[path = "commands_tests.rs"]
 mod tests;
@@ -100,6 +102,12 @@ impl AppShell {
                 Command::SaveFile => {
                     self.submit_workspace_git_status_refresh();
                     self.submit_active_buffer_git_baseline_refresh();
+                    if let Some(session) = &self.dap_session {
+                        let session_clone = session.clone();
+                        tokio::spawn(async move {
+                            let _ = session_clone.hot_reload().await;
+                        });
+                    }
                 }
                 _ => {}
             }
@@ -324,6 +332,19 @@ impl AppShell {
             );
         }
         if let Some(changed) = self.handle_lsp_and_diagnostics_command(&command) {
+            return self.finalize_post_command_hooks(
+                &command_for_post_hooks,
+                should_persist_history_after,
+                changed,
+            );
+        }
+        if let Command::DebugStart = &command {
+            eprintln!("[DAP LOG] [F5 Commands] handle_command_with_count: Routing Command::DebugStart to handle_dap_command");
+        }
+        if let Some(changed) = self.handle_dap_command(&command) {
+            if let Command::DebugStart = &command {
+                eprintln!("[DAP LOG] [F5 Commands] handle_command_with_count: handle_dap_command returned: {:?}", changed);
+            }
             return self.finalize_post_command_hooks(
                 &command_for_post_hooks,
                 should_persist_history_after,
