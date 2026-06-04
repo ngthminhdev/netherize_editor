@@ -284,6 +284,50 @@ mod tests {
     }
 
     #[test]
+    fn go_workspace_symbols_result_populates_cache_via_normal_router() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+        AsyncResultRouter::on_worker_result(
+            &mut shell,
+            WorkerResult {
+                request_id: 201,
+                revision_id: 0,
+                topic: RequestTopic::LspRequest,
+                payload: WorkerResultPayload::WorkspaceSymbols {
+                    language_id: "go".to_string(),
+                    symbols: vec![CachedSymbol {
+                        name: "Connect".to_string(),
+                        kind: "Function".to_string(),
+                        container_name: Some("main".to_string()),
+                        file_path: PathBuf::from("api.go"),
+                        line: 2,
+                        character: 5,
+                        source_path: None,
+                        import_path: None,
+                        export_kind: None,
+                        callable: Some(true),
+                        has_parameters: Some(false),
+                    }],
+                },
+            },
+        );
+
+        assert_eq!(
+            shell.app_state.workspace_symbol_cache().symbol_count("go"),
+            1
+        );
+        assert_eq!(
+            shell
+                .app_state
+                .workspace_symbol_cache()
+                .query_symbols("Con", Some("go"))
+                .first()
+                .map(|symbol| symbol.name.as_str()),
+            Some("Connect")
+        );
+    }
+
+    #[test]
     fn parse_highlight_result_for_inactive_buffer_is_rejected() {
         let mut shell = AppShell::new_for_tests().expect("create app shell");
         let old_file = write_temp_file("old_highlight.rs", "fn old() {}\n");

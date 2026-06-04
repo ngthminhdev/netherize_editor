@@ -479,7 +479,30 @@ pub(super) fn resolve_system_path() -> String {
         "/sbin",
     ];
 
-    let home_extras = [format!("{home}/.cargo/bin"), format!("{home}/.local/bin")];
+    let mut home_extras = Vec::new();
+    push_unique_path(&mut home_extras, format!("{home}/.cargo/bin"));
+    let gvm_root = std::env::var("GVM_ROOT").unwrap_or_else(|_| format!("{home}/.gvm"));
+    for path in crate::lsp::client::resolve_gvm_paths(&gvm_root) {
+        push_unique_path(&mut home_extras, path);
+    }
+    push_unique_path(&mut home_extras, format!("{home}/go/bin"));
+    push_unique_path(
+        &mut home_extras,
+        format!("{home}/.nvm/versions/node/current/bin"),
+    );
+    push_unique_path(&mut home_extras, format!("{home}/.npm-global/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/.jenv/shims"));
+    push_unique_path(&mut home_extras, format!("{home}/.jenv/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/.pyenv/shims"));
+    push_unique_path(&mut home_extras, format!("{home}/.pyenv/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/.rbenv/shims"));
+    push_unique_path(&mut home_extras, format!("{home}/.rbenv/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/.volta/bin"));
+    push_unique_path(
+        &mut home_extras,
+        format!("{home}/.local/share/netherize/bin"),
+    );
+    push_unique_path(&mut home_extras, format!("{home}/.local/bin"));
 
     let mut dirs: Vec<&str> = current.split(':').filter(|s| !s.is_empty()).collect();
     for extra in extras {
@@ -493,6 +516,13 @@ pub(super) fn resolve_system_path() -> String {
         }
     }
     dirs.join(":")
+}
+
+fn push_unique_path(paths: &mut Vec<String>, path: String) {
+    if path.is_empty() || paths.iter().any(|existing| existing == &path) {
+        return;
+    }
+    paths.push(path);
 }
 
 /// Cài đặt từng tool một, gửi progress message về main thread sau mỗi bước.

@@ -1508,6 +1508,22 @@ fn cached_ts_default_export(name: &str, source_path: &std::path::Path) -> crate:
     }
 }
 
+fn cached_go_symbol(name: &str, source_path: &std::path::Path) -> crate::lsp::CachedSymbol {
+    crate::lsp::CachedSymbol {
+        name: name.to_string(),
+        kind: "Function".to_string(),
+        container_name: None,
+        file_path: source_path.to_path_buf(),
+        line: 0,
+        character: 5,
+        source_path: None,
+        import_path: None,
+        export_kind: None,
+        callable: Some(true),
+        has_parameters: Some(false),
+    }
+}
+
 fn cached_package_default_export(
     name: &str,
     source_path: &std::path::Path,
@@ -1610,6 +1626,50 @@ fn member_access_completion_debounces_after_one_typed_character() {
         .expect("enter insert");
     shell.active_lsp_server = Some(ActiveLspServer {
         server_name: "typescript-language-server".to_string(),
+        root_path: root,
+    });
+    shell.lsp_completion_trigger_chars = vec!['.'];
+
+    shell.queue_lsp_completion_after_debounce_if_needed();
+
+    assert!(shell.pending_lsp_completion_after_debounce);
+}
+
+#[test]
+fn go_completion_debounces_after_two_typed_characters() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("go_prefix_completion");
+    let _path = open_completion_file(&mut shell, &root.join("main.go"), "Co");
+    let _ = shell.app_state.jump_to_line_and_column(0, 2);
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "gopls".to_string(),
+        root_path: root,
+    });
+    shell.lsp_completion_trigger_chars = vec!['.'];
+
+    shell.queue_lsp_completion_after_debounce_if_needed();
+
+    assert!(shell.pending_lsp_completion_after_debounce);
+}
+
+#[test]
+fn go_member_access_completion_debounces_after_one_typed_character() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("go_member_completion");
+    let _path = open_completion_file(&mut shell, &root.join("main.go"), "client.G");
+    let _ = shell
+        .app_state
+        .jump_to_line_and_column(0, "client.G".chars().count());
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "gopls".to_string(),
         root_path: root,
     });
     shell.lsp_completion_trigger_chars = vec!['.'];
@@ -2339,6 +2399,38 @@ fn workspace_completion_symbols_merge_even_when_lsp_has_many_results() {
 }
 
 #[test]
+fn go_workspace_completion_symbols_merge_with_lsp_results() {
+    let root = completion_temp_root("go_merge_cache_with_lsp");
+    let source_path =
+        write_completion_file(&root.join("api.go"), "package main\n\nfunc Connect() {}\n");
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols("go", vec![cached_go_symbol("Connect", &source_path)]);
+
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![test_completion_item("Context", "Context")],
+        0,
+        3,
+        0,
+        "Con".to_string(),
+        &cache,
+        Some("go"),
+    );
+
+    let imported = completion
+        .filtered_items
+        .iter()
+        .find(|entry| entry.item.label == "Connect")
+        .expect("go workspace symbol should be merged");
+    assert_eq!(
+        imported.source,
+        crate::app::app_state::CompletionItemSource::WorkspaceSymbol
+    );
+    assert_eq!(imported.item.export_kind, None);
+    assert_eq!(imported.item.import_path, None);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn workspace_completion_import_metadata_enriches_duplicate_lsp_item() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let text = "const value = con";
@@ -2494,6 +2586,38 @@ fn workspace_completion_fallback_same_file_symbol_has_no_import() {
 
     assert!(shell.handle_command(Command::CompletionAccept));
     assert_eq!(shell.app_state.text_string(), "connect()");
+}
+
+#[test]
+fn go_workspace_completion_accept_does_not_synthesize_imports() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("go_no_synthetic_import");
+    let source_path =
+        write_completion_file(&root.join("api.go"), "package main\n\nfunc Connect() {}\n");
+    let text = "package main\n\nfunc main() {\n\tCon\n}\n";
+    let _active_path = open_completion_file(&mut shell, &root.join("main.go"), text);
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols("go", vec![cached_go_symbol("Connect", &source_path)]);
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        Vec::new(),
+        3,
+        "\tCon".chars().count(),
+        "\t".chars().count(),
+        "Con".to_string(),
+        &cache,
+        Some("go"),
+    );
+    assert!(!completion.filtered_items.is_empty());
+    assert!(shell
+        .app_state
+        .jump_to_line_and_column(3, "\tCon".chars().count()));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(
+        shell.app_state.text_string(),
+        "package main\n\nfunc main() {\n\tConnect()\n}\n"
+    );
 }
 
 #[test]

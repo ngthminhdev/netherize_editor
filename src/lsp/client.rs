@@ -120,12 +120,12 @@ fn parse_go_version(name: &str) -> (u32, u32, u32) {
 /// installed `gopls@latest` (in the newest pkgset) takes priority over an
 /// older version installed in an older pkgset.
 /// The caller resolves `gvm_root` from `$GVM_ROOT` or the `~/.gvm` fallback.
-fn resolve_gvm_paths(gvm_root: &str) -> Vec<String> {
+pub(crate) fn resolve_gvm_paths(gvm_root: &str) -> Vec<String> {
     if !std::path::Path::new(gvm_root).exists() {
         return vec![];
     }
 
-    let mut paths = vec![format!("{gvm_root}/bin")];
+    let mut paths = Vec::new();
 
     // Collect and sort Go version names (newest first) so that the latest
     // pkgset bin — where `gopls@latest` lives — appears first in PATH.
@@ -150,7 +150,7 @@ fn resolve_gvm_paths(gvm_root: &str) -> Vec<String> {
     for ver in sorted_versions("pkgsets") {
         let bin = format!("{gvm_root}/pkgsets/{ver}/global/bin");
         if std::path::Path::new(&bin).is_dir() {
-            paths.push(bin);
+            push_unique_path(&mut paths, bin);
         }
     }
 
@@ -158,11 +158,22 @@ fn resolve_gvm_paths(gvm_root: &str) -> Vec<String> {
     for ver in sorted_versions("gos") {
         let bin = format!("{gvm_root}/gos/{ver}/bin");
         if std::path::Path::new(&bin).is_dir() {
-            paths.push(bin);
+            push_unique_path(&mut paths, bin);
         }
     }
 
+    // gvm's own command wrappers. Keep this after concrete pkgset/gos bins so
+    // a directly installed `gopls` wins over the generic gvm shim directory.
+    push_unique_path(&mut paths, format!("{gvm_root}/bin"));
+
     paths
+}
+
+fn push_unique_path(paths: &mut Vec<String>, path: String) {
+    if path.is_empty() || paths.iter().any(|existing| existing == &path) {
+        return;
+    }
+    paths.push(path);
 }
 
 /// Probes the user's login shell **once per process** and caches the result.
@@ -256,14 +267,23 @@ pub fn patched_env_path() -> String {
 
     // Primary: one-shot login-shell extraction (nvm, gvm, cargo, etc. all active).
     if let Some(live_path) = extract_path_from_login_shell() {
+        // Even when the login shell returns a PATH, version-manager directories
+        // (gvm, nvm, pyenv, jenv, …) may still be missing if the user's shell
+        // init files guard them behind interactive-only conditions that don't
+        // execute under `-ilc`.  Merge the static fallback paths so that
+        // binaries installed via version managers are always discoverable.
+        let static_fallback = static_patched_env_path();
+        let mut merged = live_path;
+        for seg in static_fallback.split(':') {
+            if !seg.is_empty() && !merged.split(':').any(|existing| existing == seg) {
+                merged = format!("{merged}:{seg}");
+            }
+        }
         // Inject Netherize-managed LSP binaries at front — not present in the user shell.
-        return if live_path
-            .split(':')
-            .any(|seg| seg == netherize_bin.as_str())
-        {
-            live_path
+        return if merged.split(':').any(|seg| seg == netherize_bin.as_str()) {
+            merged
         } else {
-            format!("{netherize_bin}:{live_path}")
+            format!("{netherize_bin}:{merged}")
         };
     }
 
@@ -285,38 +305,44 @@ fn static_patched_env_path() -> String {
     let mut candidates: Vec<String> = vec![];
 
     // Cargo — rust-analyzer and other Rust tools.
-    candidates.push(format!("{home}/.cargo/bin"));
+    push_unique_path(&mut candidates, format!("{home}/.cargo/bin"));
 
     // gvm — newest pkgset/gos bin first (gopls@latest lives in pkgset).
     let gvm_root = std::env::var("GVM_ROOT").unwrap_or_else(|_| format!("{home}/.gvm"));
-    candidates.extend(resolve_gvm_paths(&gvm_root));
-    // gvm bare bin directory (shell wrappers: go, gofmt, gvm itself).
-    candidates.push(format!("{home}/.gvm/bin"));
+    for path in resolve_gvm_paths(&gvm_root) {
+        push_unique_path(&mut candidates, path);
+    }
 
     // Plain ~/go/bin fallback for Go installs without gvm.
-    candidates.push(format!("{home}/go/bin"));
+    push_unique_path(&mut candidates, format!("{home}/go/bin"));
 
     // nvm — smart alias resolution first, then belt-and-suspenders current symlink.
     if let Some(nvm_bin) = resolve_nvm_bin(&home) {
-        candidates.push(nvm_bin);
+        push_unique_path(&mut candidates, nvm_bin);
     }
-    candidates.push(format!("{home}/.nvm/versions/node/current/bin"));
+    push_unique_path(
+        &mut candidates,
+        format!("{home}/.nvm/versions/node/current/bin"),
+    );
 
     // npm global with custom prefix.
-    candidates.push(format!("{home}/.npm-global/bin"));
+    push_unique_path(&mut candidates, format!("{home}/.npm-global/bin"));
 
     // jenv — Java version manager (shims for java, javac, jdtls, etc.).
-    candidates.push(format!("{home}/.jenv/shims"));
-    candidates.push(format!("{home}/.jenv/bin"));
+    push_unique_path(&mut candidates, format!("{home}/.jenv/shims"));
+    push_unique_path(&mut candidates, format!("{home}/.jenv/bin"));
 
     // Homebrew (system fallback — lower priority than user-managed tools).
-    candidates.push("/opt/homebrew/bin".to_string());
-    candidates.push("/opt/homebrew/sbin".to_string());
-    candidates.push("/usr/local/bin".to_string());
-    candidates.push("/usr/local/sbin".to_string());
+    push_unique_path(&mut candidates, "/opt/homebrew/bin".to_string());
+    push_unique_path(&mut candidates, "/opt/homebrew/sbin".to_string());
+    push_unique_path(&mut candidates, "/usr/local/bin".to_string());
+    push_unique_path(&mut candidates, "/usr/local/sbin".to_string());
 
     // Netherize-managed LSP binaries.
-    candidates.push(format!("{home}/.local/share/netherize/bin"));
+    push_unique_path(
+        &mut candidates,
+        format!("{home}/.local/share/netherize/bin"),
+    );
 
     let mut extra: Vec<String> = candidates
         .into_iter()
@@ -1639,6 +1665,32 @@ mod tests {
 
         let paths = resolve_gvm_paths(&gvm_root.to_string_lossy());
 
+        let newest_pkgset = paths
+            .iter()
+            .position(|p| p.contains("pkgsets/go1.25.4/global/bin"))
+            .expect("newest pkgset path");
+        let older_pkgset = paths
+            .iter()
+            .position(|p| p.contains("pkgsets/go1.24.11/global/bin"))
+            .expect("older pkgset path");
+        let newest_go = paths
+            .iter()
+            .position(|p| p.contains("gos/go1.25.4/bin"))
+            .expect("newest go path");
+        let older_go = paths
+            .iter()
+            .position(|p| p.contains("gos/go1.24.11/bin"))
+            .expect("older go path");
+        let gvm_bin_path = gvm_root.join("bin").to_string_lossy().to_string();
+        let gvm_bin = paths
+            .iter()
+            .position(|p| p == &gvm_bin_path)
+            .expect("gvm bin path");
+
+        assert!(newest_pkgset < older_pkgset, "{paths:?}");
+        assert!(older_pkgset < newest_go, "{paths:?}");
+        assert!(newest_go < older_go, "{paths:?}");
+        assert!(older_go < gvm_bin, "{paths:?}");
         assert!(
             paths.iter().any(|p| p.contains("go1.24.11/bin")),
             "{paths:?}"
