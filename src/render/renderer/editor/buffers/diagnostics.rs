@@ -201,7 +201,7 @@ impl Renderer {
         let row_h = line_height + 8.0;
         let group_header_h = line_height + 7.0;
         let visible_rows = ((content_h / row_h).floor() as usize).max(1);
-        let mut start = (diagnostics.selected_index / visible_rows) * visible_rows;
+        let mut start = diagnostics.selected_index.saturating_sub(visible_rows / 2);
         if start + visible_rows > diagnostics.results.len() {
             start = diagnostics.results.len().saturating_sub(visible_rows);
         }

@@ -42,6 +42,29 @@ impl AppState {
             > 0
     }
 
+    pub fn open_python_env_selector_with_items(
+        &mut self,
+        items: Vec<crate::app::command_palette::CommandPaletteItem>,
+    ) {
+        self.command_palette
+            .open_with_items(CommandPaletteMode::PythonEnvSelector, items);
+    }
+
+    pub fn open_dart_env_selector(&mut self) -> bool {
+        let workspace = self.workspace_model.as_ref();
+        self.command_palette
+            .open(CommandPaletteMode::DartEnvSelector, workspace)
+            > 0
+    }
+
+    pub fn open_dart_env_selector_with_items(
+        &mut self,
+        items: Vec<crate::app::command_palette::CommandPaletteItem>,
+    ) {
+        self.command_palette
+            .open_with_items(CommandPaletteMode::DartEnvSelector, items);
+    }
+
     /// Push current file+line+column onto the jump back stack before a jump (e.g. gd).
     /// Clears the forward stack since jumping starts a new branch.
     pub fn push_jump(&mut self) {
@@ -1509,7 +1532,6 @@ impl AppState {
                 if is_active {
                     // This is the active buffer!
                     if self.is_dirty() {
-                        eprintln!("[FileWatch] Active file is dirty, showing conflict warning");
                         let warning = format!(
                             "external {:?} detected on active file while dirty: {}",
                             event.kind,
@@ -1536,21 +1558,19 @@ impl AppState {
                         FileSystemChangeKind::Modify | FileSystemChangeKind::Create => {
                             // Check if this is a self-save event by comparing file content
                             let current_active_path = event.path.clone();
+                            // #3: chỉ bỏ qua khi đĩa == bộ nhớ (echo của lần tự save),
+                            // không nuốt external edit thật xảy ra ngay sau khi save.
                             if matches!(event.kind, FileSystemChangeKind::Modify)
                                 && self.should_ignore_self_save_event()
+                                && self.active_disk_content_matches_memory(&current_active_path)
                             {
-                                eprintln!("[FileWatch] Ignoring self-save event");
                                 continue;
                             }
 
-                            eprintln!("[FileWatch] Reloading active file from disk: {:?}", current_active_path);
-                            eprintln!("[FileWatch] Text before reload: {} chars", self.text.len_chars());
                             match self.load_buffer_from_file(&current_active_path) {
                                 Ok(()) => {
-                                    eprintln!("[FileWatch] Text after reload: {} chars", self.text.len_chars());
                                     self.active_file = Some(current_active_path.clone());
                                     let reloaded_text = self.text.clone();
-                                    eprintln!("[FileWatch] Updating active buffer.in_memory_text with {} chars", reloaded_text.len_chars());
                                     if let Some(slot) = self.buffers.get_mut(idx) {
                                         if let BufferContent::Text(ref mut buffer) = slot.content {
                                             buffer.in_memory_text = Some(reloaded_text);
@@ -1632,16 +1652,18 @@ impl AppState {
                         match event.kind {
                             FileSystemChangeKind::Modify | FileSystemChangeKind::Create => {
                                 if buffer.dirty {
-                                    eprintln!("[FileWatch] Inactive file {:?} is dirty, ignoring auto-reload to prevent data loss", buffer.path);
+                                    // Inactive buffer dirty: giữ thay đổi chưa lưu, không auto-reload.
                                     buffer.missing_on_disk = false;
                                 } else {
-                                    eprintln!("[FileWatch] Reloading inactive file from disk: {:?}", buffer.path);
                                     match std::fs::read_to_string(&buffer.path) {
                                         Ok(content) => {
                                             let reloaded_text = Rope::from_str(&content);
                                             buffer.in_memory_text = Some(reloaded_text);
                                             buffer.missing_on_disk = false;
                                             buffer.dirty = false;
+                                            buffer.last_known_modified_time = std::fs::metadata(&buffer.path)
+                                                .and_then(|m| m.modified())
+                                                .ok();
                                             let note = format!(
                                                 "auto reloaded inactive file from disk: {}",
                                                 buffer.path.display()

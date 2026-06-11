@@ -444,6 +444,18 @@ impl AppState {
             .is_some_and(WorkspaceModel::toggle_show_ignored)
     }
 
+    pub fn workspace_show_git_changes_only(&self) -> bool {
+        self.workspace_model
+            .as_ref()
+            .is_some_and(WorkspaceModel::show_git_changes_only)
+    }
+
+    pub fn workspace_toggle_show_git_changes_only(&mut self) -> bool {
+        self.workspace_model
+            .as_mut()
+            .is_some_and(WorkspaceModel::toggle_show_git_changes_only)
+    }
+
     pub fn workspace_file_count(&self) -> usize {
         self.workspace_model
             .as_ref()

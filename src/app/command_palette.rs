@@ -51,6 +51,8 @@ pub enum CommandPaletteMode {
     CodeAction,
     /// Python environment selector — opened from the command palette.
     PythonEnvSelector,
+    /// Dart environment selector — opened from the command palette.
+    DartEnvSelector,
 }
 
 impl CommandPaletteMode {
@@ -76,6 +78,7 @@ impl CommandPaletteMode {
             Self::AiChatInstallConfirm => "install> ",
             Self::CodeAction => "action> ",
             Self::PythonEnvSelector => "python> ",
+            Self::DartEnvSelector => "dart> ",
         }
     }
 
@@ -101,6 +104,7 @@ impl CommandPaletteMode {
             Self::AiChatInstallConfirm => "Install opencode CLI? (y/n)",
             Self::CodeAction => "no code actions available",
             Self::PythonEnvSelector => "scanning Python environments...",
+            Self::DartEnvSelector => "scanning Dart environments...",
         }
     }
 
@@ -126,6 +130,7 @@ impl CommandPaletteMode {
             Self::AiChatInstallConfirm => "INSTALL",
             Self::CodeAction => "ACTIONS",
             Self::PythonEnvSelector => "PYTHON ENV",
+            Self::DartEnvSelector => "DART ENV",
         }
     }
 
@@ -166,6 +171,8 @@ pub enum CommandPaletteAction {
     ApplyCodeAction(usize),
     /// Chọn Python environment path để restart LSP.
     SelectPythonEnv(PathBuf),
+    /// Chọn Dart/Flutter SDK path để restart LSP.
+    SelectDartEnv(PathBuf),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -574,6 +581,7 @@ impl CommandPalette {
                 | CommandPaletteMode::FileHistory
                 | CommandPaletteMode::CodeAction
                 | CommandPaletteMode::PythonEnvSelector
+                | CommandPaletteMode::DartEnvSelector
         ) {
             self.results = self.static_items.clone();
             if self.results.is_empty() {
@@ -645,6 +653,7 @@ impl CommandPalette {
             CommandPaletteMode::FileHistory => unreachable!("handled above"),
             CommandPaletteMode::CodeAction => unreachable!("handled above"),
             CommandPaletteMode::PythonEnvSelector => Vec::new(),
+            CommandPaletteMode::DartEnvSelector => Vec::new(),
         };
 
         if self.results.is_empty() {
@@ -1071,6 +1080,7 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
         ("app.open_document_symbols", "Find Symbol in File"),
         ("lsp.rename", "Rename Symbol"),
         ("lsp.select_python_env", "Change Python Venv"),
+        ("lsp.select_dart_env", "Change Dart/Flutter SDK"),
         ("workspace.reload", "Reload Workspace"),
         ("app.open_vim_command", "Open Vim Command"),
         ("app.open_help", "Open Cheat Sheet"),

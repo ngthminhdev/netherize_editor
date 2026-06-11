@@ -18,8 +18,9 @@ use crate::{
 };
 
 use super::{
-    FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD, FULL_BUFFER_HIGHLIGHT_LINE_THRESHOLD, SyntaxEngineCacheHandle,
-    VIEWPORT_HIGHLIGHT_MIN_OVERSCAN_LINES, VIEWPORT_HIGHLIGHT_OVERSCAN_MULTIPLIER, async_trace,
+    FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD, FULL_BUFFER_HIGHLIGHT_LINE_THRESHOLD,
+    SyntaxEngineCacheHandle, VIEWPORT_HIGHLIGHT_MIN_OVERSCAN_LINES,
+    VIEWPORT_HIGHLIGHT_OVERSCAN_MULTIPLIER, async_trace,
 };
 
 pub(super) async fn execute_virtual_job(
@@ -239,10 +240,24 @@ pub(super) async fn execute_virtual_job(
         WorkerRequestPayload::CheckSystemDeps => {
             let resolved_path = resolve_system_path();
             let tools = [
-                "fzf", "lazygit", "lazydocker", "rg", "fd", "bat", "delta", "opencode",
-                "rust-analyzer", "typescript-language-server", "gopls", "pylsp", "jdtls",
-                "sqls", "yaml-language-server", "docker-langserver",
-                "vscode-json-language-server", "bash-language-server",
+                "fzf",
+                "lazygit",
+                "lazydocker",
+                "rg",
+                "fd",
+                "bat",
+                "delta",
+                "opencode",
+                "rust-analyzer",
+                "typescript-language-server",
+                "gopls",
+                "pylsp",
+                "jdtls",
+                "sqls",
+                "yaml-language-server",
+                "docker-langserver",
+                "vscode-json-language-server",
+                "bash-language-server",
             ];
             let missing: Vec<String> = tools
                 .iter()
@@ -370,6 +385,7 @@ pub(super) async fn execute_virtual_job(
             Err("AI install request should be handled by dedicated AI runner".to_string())
         }
         WorkerRequestPayload::ScanPythonEnvironments { .. }
+        | WorkerRequestPayload::ScanDartEnvironments { .. }
         | WorkerRequestPayload::DetectRuntimeVersions { .. } => {
             Err("request should be handled by dedicated runner".to_string())
         }
@@ -463,7 +479,30 @@ pub(super) fn resolve_system_path() -> String {
         "/sbin",
     ];
 
-    let home_extras = [format!("{home}/.cargo/bin"), format!("{home}/.local/bin")];
+    let mut home_extras = Vec::new();
+    push_unique_path(&mut home_extras, format!("{home}/.cargo/bin"));
+    let gvm_root = std::env::var("GVM_ROOT").unwrap_or_else(|_| format!("{home}/.gvm"));
+    for path in crate::lsp::client::resolve_gvm_paths(&gvm_root) {
+        push_unique_path(&mut home_extras, path);
+    }
+    push_unique_path(&mut home_extras, format!("{home}/go/bin"));
+    push_unique_path(
+        &mut home_extras,
+        format!("{home}/.nvm/versions/node/current/bin"),
+    );
+    push_unique_path(&mut home_extras, format!("{home}/.npm-global/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/.jenv/shims"));
+    push_unique_path(&mut home_extras, format!("{home}/.jenv/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/.pyenv/shims"));
+    push_unique_path(&mut home_extras, format!("{home}/.pyenv/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/.rbenv/shims"));
+    push_unique_path(&mut home_extras, format!("{home}/.rbenv/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/.volta/bin"));
+    push_unique_path(
+        &mut home_extras,
+        format!("{home}/.local/share/netherize/bin"),
+    );
+    push_unique_path(&mut home_extras, format!("{home}/.local/bin"));
 
     let mut dirs: Vec<&str> = current.split(':').filter(|s| !s.is_empty()).collect();
     for extra in extras {
@@ -477,6 +516,13 @@ pub(super) fn resolve_system_path() -> String {
         }
     }
     dirs.join(":")
+}
+
+fn push_unique_path(paths: &mut Vec<String>, path: String) {
+    if path.is_empty() || paths.iter().any(|existing| existing == &path) {
+        return;
+    }
+    paths.push(path);
 }
 
 /// Cài đặt từng tool một, gửi progress message về main thread sau mỗi bước.

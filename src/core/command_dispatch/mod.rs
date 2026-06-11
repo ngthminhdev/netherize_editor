@@ -345,6 +345,8 @@ fn dispatch_command_with_clipboard_once(
         | Command::TerminalPaste
         | Command::TerminalScrollUp
         | Command::TerminalScrollDown
+        | Command::TerminalScrollHalfPageUp
+        | Command::TerminalScrollHalfPageDown
         | Command::TerminalTabNew
         | Command::TerminalTabClose
         | Command::CloseSidebars
@@ -375,6 +377,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::ExplorerClearFilter
         | Command::ExplorerToggleHidden
         | Command::ExplorerToggleIgnored
+        | Command::ExplorerToggleGitChangesOnly
         | Command::ExplorerMoveToTop
         | Command::ExplorerMoveToBottom
         | Command::ExplorerRenameFull
@@ -451,6 +454,14 @@ fn dispatch_command_with_clipboard_once(
             let changed = ctx.app_state.open_python_env_selector();
             DispatchReport::success_with_flags(
                 "Dispatch: python env selector opened".to_string(),
+                changed,
+                changed,
+            )
+        }
+        Command::LspSelectDartEnv => {
+            let changed = ctx.app_state.open_dart_env_selector();
+            DispatchReport::success_with_flags(
+                "Dispatch: dart env selector opened".to_string(),
                 changed,
                 changed,
             )

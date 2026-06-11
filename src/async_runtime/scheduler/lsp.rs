@@ -1,4 +1,7 @@
-use std::sync::{Arc, mpsc as std_mpsc};
+use std::{
+    path::PathBuf,
+    sync::{Arc, mpsc as std_mpsc},
+};
 
 use winit::event_loop::EventLoopProxy;
 
@@ -13,6 +16,7 @@ use crate::{
             build_did_change_notification, build_did_close_notification,
             build_did_open_notification, spawn_lsp_server,
         },
+        registry::language_profile_for_path,
         registry::{language_profile_for_binary, language_profile_for_language_id},
     },
 };
@@ -157,12 +161,14 @@ fn execute_lsp_request(
         WorkerRequestPayload::StartLspServer {
             root_path,
             server_command,
+            custom_bin_path,
         } => {
             let handle = tokio::runtime::Handle::try_current()
                 .map_err(|_| "tokio runtime unavailable while starting lsp server".to_string())?;
             let spawned = handle.block_on(spawn_lsp_server(
                 server_command.as_deref(),
                 root_path,
+                custom_bin_path.as_deref(),
                 request.request_id,
                 request.revision_id,
             ))?;
@@ -478,20 +484,10 @@ fn execute_lsp_request(
             handle_lsp_document_highlight(&handle.process, uri, *line, *character)
         }
         WorkerRequestPayload::LspDocumentSymbolsRequest { language_id, uri } => {
-            let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
-                language_profile_for_language_id(language_id)
-                    .map(|profile| profile.lsp_binary)
-                    .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
-            });
+            let handle = lsp_handle_for_uri_or_profile(lsp_sessions, uri, Some(language_id))?;
             let Some(handle) = handle else {
                 return Err("document symbols rejected: LSP server not running".to_string());
             };
-            if !handle.capabilities.document_symbols {
-                return Err(format!(
-                    "document symbols rejected: {} does not advertise documentSymbolProvider",
-                    handle.server_name
-                ));
-            }
             handle
                 .process
                 .update_request_meta(request.request_id, request.revision_id);
@@ -597,15 +593,9 @@ fn execute_lsp_request(
             character,
             diagnostics,
         } => {
-            let Some(handle) = lsp_sessions.get_handle_by_uri(uri)? else {
+            let Some(handle) = lsp_handle_for_uri_or_profile(lsp_sessions, uri, None)? else {
                 return Err("codeAction rejected: LSP server not running".to_string());
             };
-            if !handle.capabilities.code_action {
-                return Err(format!(
-                    "codeAction rejected: {} does not advertise codeActionProvider",
-                    handle.server_name
-                ));
-            }
             handle
                 .process
                 .update_request_meta(request.request_id, request.revision_id);
@@ -629,4 +619,34 @@ fn execute_lsp_request(
         }
         _ => Err("execute_lsp_request received non-lsp payload".to_string()),
     }
+}
+
+fn lsp_handle_for_uri_or_profile(
+    lsp_sessions: &Arc<LspSessionRegistry>,
+    uri: &str,
+    language_id: Option<&str>,
+) -> Result<Option<LspSessionHandle>, String> {
+    if let Some(handle) = lsp_sessions.get_handle_by_uri(uri)? {
+        return Ok(Some(handle));
+    }
+
+    if let Some(handle) = language_id
+        .and_then(language_profile_for_language_id)
+        .map(|profile| profile.lsp_binary)
+        .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
+    {
+        return Ok(Some(handle));
+    }
+
+    let Some(path) = path_from_lsp_uri(uri) else {
+        return Ok(None);
+    };
+    let Some(profile) = language_profile_for_path(&path) else {
+        return Ok(None);
+    };
+    lsp_sessions.get_handle(profile.lsp_binary)
+}
+
+fn path_from_lsp_uri(uri: &str) -> Option<PathBuf> {
+    url::Url::parse(uri).ok()?.to_file_path().ok()
 }

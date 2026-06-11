@@ -568,6 +568,7 @@ pub fn filetype_label_for_path(path: &Path) -> &'static str {
         Some("css") => "CSS",
         Some("java") => "Java",
         Some("proto") | Some("protobuf") => "Protobuf",
+        Some("dart") => "Dart",
         _ => "Plain Text",
     }
 }

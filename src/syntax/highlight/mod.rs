@@ -845,6 +845,7 @@ WHERE id = 42 AND email = 'hi@example.com';
             LanguageId::Go,
             LanguageId::Json,
             LanguageId::Protobuf,
+            LanguageId::Dart,
         ] {
             let q = highlight_query(lang);
             assert!(

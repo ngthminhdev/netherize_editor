@@ -1,6 +1,4 @@
-use std::{
-    sync::{Arc, Mutex, mpsc as std_mpsc},
-};
+use std::sync::{Arc, Mutex, mpsc as std_mpsc};
 
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -62,7 +60,8 @@ pub(super) async fn dispatch_loop(
 ) {
     let pty_sessions = Arc::new(PtySessionRegistry::default());
     let lsp_sessions = Arc::new(LspSessionRegistry::default());
-    let syntax_engine_cache: Arc<SyntaxEngineCacheHandle> = Arc::new(Mutex::new(SyntaxEngineCache::default()));
+    let syntax_engine_cache: Arc<SyntaxEngineCacheHandle> =
+        Arc::new(Mutex::new(SyntaxEngineCache::default()));
     let mut active_fzf_search: Option<tokio::task::JoinHandle<()>> = None;
     let mut active_ai_chat_cancel: Option<CancellationToken> = None;
 
@@ -76,8 +75,9 @@ pub(super) async fn dispatch_loop(
 
         if matches!(request.payload, WorkerRequestPayload::StartFileWatch { .. }) {
             let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
             tokio::spawn(async move {
-                run_file_watch_request(request, worker_tx).await;
+                run_file_watch_request(request, worker_tx, event_proxy).await;
             });
             continue;
         }
@@ -348,6 +348,33 @@ pub(super) async fn dispatch_loop(
                         revision_id: request.revision_id,
                         topic: request.topic,
                         payload: WorkerResultPayload::PythonEnvironmentsDiscovered(environments),
+                    }),
+                );
+            });
+            continue;
+        }
+
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::ScanDartEnvironments { .. }
+        ) {
+            let workspace_root = match request.payload {
+                WorkerRequestPayload::ScanDartEnvironments { workspace_root } => workspace_root,
+                _ => unreachable!(),
+            };
+            let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                let environments =
+                    crate::async_runtime::dart_env::scan_dart_environments(&workspace_root).await;
+                emit_message_and_wake(
+                    &worker_tx,
+                    &event_proxy,
+                    WorkerMessage::Result(WorkerResult {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        payload: WorkerResultPayload::DartEnvironmentsDiscovered(environments),
                     }),
                 );
             });

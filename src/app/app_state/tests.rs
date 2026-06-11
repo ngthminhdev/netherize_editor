@@ -112,7 +112,7 @@ mod tests {
     fn help_buffer_uses_config_driven_keymap_content() {
         let bindings = vec![
             KeyBinding {
-                key: "mod+p".to_string(),
+                key: "cmd+p".to_string(),
                 mode: Some("normal".to_string()),
                 command: "app.open_file_picker".to_string(),
             },
@@ -136,12 +136,12 @@ mod tests {
                 && section
                     .entries
                     .iter()
-                    .any(|entry| entry.keys == vec!["mod+p"] && entry.label == "Open file picker")
+                    .any(|entry| entry.keys == vec!["cmd+p"] && entry.label == "Open file picker")
         }));
         assert!(
             help.lines
                 .iter()
-                .any(|line| line.contains("mod+p") && line.contains("Open file picker"))
+                .any(|line| line.contains("cmd+p") && line.contains("Open file picker"))
         );
         assert!(
             help.lines
@@ -937,12 +937,8 @@ mod tests {
 
         state.save_file().expect("save file");
 
-        fs::write(
-            &file_path,
-            "changed externally but should be ignored in debounce window\n",
-        )
-        .expect("rewrite file quickly");
-
+        // Self-save THẬT: đĩa == bộ nhớ (chính nội dung vừa lưu). Modify echo do OS
+        // bắn ra phải bị bỏ qua, không reload, không nhảy con trỏ.
         let report = state
             .apply_external_file_events(&[FileSystemEvent {
                 kind: FileSystemChangeKind::Modify,
@@ -953,7 +949,36 @@ mod tests {
 
         assert!(!report.active_file_reloaded);
         assert_eq!(state.cursor_char_idx(), cursor_before);
-        assert!(!state.preview(128).contains("changed externally"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn external_edit_within_self_save_window_still_reloads() {
+        // #3: edit NGOÀI thật xảy ra ngay sau khi save (trong cửa sổ debounce) KHÔNG
+        // được nuốt — vì nội dung đĩa khác bộ nhớ thì đó là thay đổi thật, phải reload.
+        let root = unique_temp_dir("external_edit_in_window");
+        fs::create_dir_all(&root).expect("create temp dir");
+        let file_path = root.join("main.rs");
+        fs::write(&file_path, "one\ntwo\nthree\n").expect("write initial");
+
+        let mut state = AppState::new(unique_temp_path("external_edit_in_window_fallback"));
+        state.open_file(file_path.clone()).expect("open file");
+        state.save_file().expect("save file");
+
+        // Ghi nội dung khác ngay lập tức (vẫn trong SELF_SAVE_IGNORE_WINDOW).
+        fs::write(&file_path, "external content arrived\n").expect("rewrite file quickly");
+
+        let report = state
+            .apply_external_file_events(&[FileSystemEvent {
+                kind: FileSystemChangeKind::Modify,
+                path: file_path.clone(),
+                new_path: None,
+            }])
+            .expect("apply modify event");
+
+        assert!(report.active_file_reloaded);
+        assert!(state.preview(64).contains("external content"));
 
         let _ = fs::remove_dir_all(root);
     }
@@ -1715,5 +1740,73 @@ mod tests {
             "A: vc at its sel end"
         );
         assert_eq!(state_a.current_mode(), EditorMode::MultiInsert);
+    }
+
+    #[test]
+    fn check_and_reload_external_changes_reloads_modified_files() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "netherize_external_reload_{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&temp_dir).expect("create temp dir");
+        let file_path = temp_dir.join("test.txt");
+        fs::write(&file_path, "original content").expect("write test file");
+        let file_path = file_path.canonicalize().expect("canonicalize file_path");
+
+        let mut state = AppState::new(file_path.clone());
+        state.open_file(file_path.clone()).expect("open file");
+        
+        let mut last_checked = HashMap::new();
+        // First check: populates the check time registry
+        let (reloaded, active_reloaded) = state.check_and_reload_external_changes(&mut last_checked);
+        assert!(reloaded.is_empty());
+        assert!(!active_reloaded);
+        assert!(last_checked.contains_key(&file_path));
+
+        // Sleep briefly to ensure time difference is detectable if filesystem timestamps are coarse
+        std::thread::sleep(Duration::from_millis(100));
+
+        // Modify file externally on disk
+        fs::write(&file_path, "updated content").expect("write update");
+
+        // Second check: should detect modify and reload
+        let (reloaded, active_reloaded) = state.check_and_reload_external_changes(&mut last_checked);
+        assert_eq!(reloaded.len(), 1);
+        assert_eq!(reloaded[0], file_path);
+        assert!(active_reloaded);
+        assert_eq!(state.text_string(), "updated content");
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn check_and_reload_external_changes_reloads_even_before_first_tick() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "netherize_external_reload_first_tick_{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&temp_dir).expect("create temp dir");
+        let file_path = temp_dir.join("test.txt");
+        fs::write(&file_path, "original content").expect("write test file");
+        let file_path = file_path.canonicalize().expect("canonicalize file_path");
+
+        let mut state = AppState::new(file_path.clone());
+        state.open_file(file_path.clone()).expect("open file");
+
+        // Sleep briefly to ensure time difference is detectable
+        std::thread::sleep(Duration::from_millis(100));
+
+        // Modify file externally BEFORE any check/tick runs
+        fs::write(&file_path, "modified before tick").expect("write update");
+
+        let mut last_checked = HashMap::new();
+        // First check: should detect the modify against last_known_modified_time and reload
+        let (reloaded, active_reloaded) = state.check_and_reload_external_changes(&mut last_checked);
+        assert_eq!(reloaded.len(), 1);
+        assert_eq!(reloaded[0], file_path);
+        assert!(active_reloaded);
+        assert_eq!(state.text_string(), "modified before tick");
+
+        let _ = fs::remove_dir_all(temp_dir);
     }
 }

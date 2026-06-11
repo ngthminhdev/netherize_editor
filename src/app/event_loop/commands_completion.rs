@@ -23,7 +23,7 @@ impl AppShell {
             self.last_lsp_completion_type_at = None;
             return;
         };
-        if !is_ts_js_profile_key(profile.key) {
+        if !supports_debounced_lsp_completion(profile.key) {
             self.pending_lsp_completion_after_debounce = false;
             self.last_lsp_completion_type_at = None;
             return;
@@ -600,6 +600,10 @@ impl AppShell {
 
 fn is_ts_js_profile_key(key: &str) -> bool {
     matches!(key, "typescript" | "tsx" | "javascript" | "jsx")
+}
+
+fn supports_debounced_lsp_completion(key: &str) -> bool {
+    is_ts_js_profile_key(key) || key == "go"
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

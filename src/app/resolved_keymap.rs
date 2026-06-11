@@ -19,12 +19,14 @@ pub enum KeySpec {
     Physical(KeyCode),
     /// Shift + physical key: "H", "L", etc.
     ShiftPlus(KeyCode),
-    /// Command/Ctrl modifier + physical key: "mod+s"
-    ModPlus(KeyCode),
-    /// Command/Ctrl + Shift + physical key: "mod+shift+p"
-    ModShiftPlus(KeyCode),
-    /// Ctrl-only modifier (not Cmd/Super): "ctrl+o" — distinct from ModPlus on macOS
+    /// Command/Super modifier + physical key: "cmd+s" (macOS ⌘)
+    CmdPlus(KeyCode),
+    /// Command/Super + Shift + physical key: "cmd+shift+p"
+    CmdShiftPlus(KeyCode),
+    /// Ctrl modifier + physical key: "ctrl+o"
     CtrlPlus(KeyCode),
+    /// Ctrl + Shift + physical key: "ctrl+shift+o"
+    CtrlShiftPlus(KeyCode),
     /// Printable character key (layout-aware), e.g. ":".
     Char(char),
     /// Leader token (Space) used as the first step of a chord sequence.
@@ -46,17 +48,24 @@ impl KeySpec {
                     && input.modifiers.shift_key()
                     && input.physical_key == Some(*code)
             }
-            Self::ModPlus(code) => {
-                input.has_command_modifier() && input.physical_key == Some(*code)
+            Self::CmdPlus(code) => {
+                input.modifiers.super_key()
+                    && !input.modifiers.shift_key()
+                    && input.physical_key == Some(*code)
             }
-            Self::ModShiftPlus(code) => {
-                input.has_command_modifier()
+            Self::CmdShiftPlus(code) => {
+                input.modifiers.super_key()
                     && input.modifiers.shift_key()
                     && input.physical_key == Some(*code)
             }
             Self::CtrlPlus(code) => {
                 input.modifiers.control_key()
-                    && !input.modifiers.super_key()
+                    && !input.modifiers.shift_key()
+                    && input.physical_key == Some(*code)
+            }
+            Self::CtrlShiftPlus(code) => {
+                input.modifiers.control_key()
+                    && input.modifiers.shift_key()
                     && input.physical_key == Some(*code)
             }
             Self::Char(ch) => {
@@ -75,9 +84,10 @@ impl KeySpec {
             Self::Named(named) => named_key_display(*named),
             Self::Physical(code) => physical_key_display(*code),
             Self::ShiftPlus(code) => physical_key_display(*code).to_ascii_uppercase(),
-            Self::ModPlus(code) => format!("mod+{}", physical_key_display(*code)),
-            Self::ModShiftPlus(code) => format!("mod+shift+{}", physical_key_display(*code)),
+            Self::CmdPlus(code) => format!("cmd+{}", physical_key_display(*code)),
+            Self::CmdShiftPlus(code) => format!("cmd+shift+{}", physical_key_display(*code)),
             Self::CtrlPlus(code) => format!("ctrl+{}", physical_key_display(*code)),
+            Self::CtrlShiftPlus(code) => format!("ctrl+shift+{}", physical_key_display(*code)),
             Self::Char(ch) => ch.to_string(),
             Self::Leader => "<Space>".to_string(),
         }
@@ -168,27 +178,38 @@ pub fn parse_key_spec(s: &str) -> Option<KeySpec> {
 }
 
 fn parse_key_token(token: &str) -> Option<Vec<KeySpec>> {
-    let normalized = normalize_modifier_alias(token);
-
-    if normalized == "<leader>" {
+    // Check for <leader> prefix first (case-insensitive)
+    let lower = token.to_ascii_lowercase();
+    if lower == "<leader>" {
         return Some(vec![KeySpec::Leader]);
     }
-    if let Some(rest) = normalized.strip_prefix("<leader>") {
+    if let Some(rest) = lower.strip_prefix("<leader>") {
         if rest.is_empty() {
             return Some(vec![KeySpec::Leader]);
         }
         return parse_non_leader_key(rest).map(|spec| vec![KeySpec::Leader, spec]);
     }
 
+    // For modifier keys, normalize to lowercase
+    // For single characters, preserve case
+    let normalized = if token.contains('+') || token.len() > 1 {
+        token.to_ascii_lowercase()
+    } else {
+        token.to_string()
+    };
+
     parse_non_leader_key(&normalized).map(|spec| vec![spec])
 }
 
 fn parse_non_leader_key(token: &str) -> Option<KeySpec> {
-    if let Some(rest) = token.strip_prefix("mod+shift+") {
-        return char_key_to_code(rest).map(KeySpec::ModShiftPlus);
+    if let Some(rest) = token.strip_prefix("cmd+shift+") {
+        return char_key_to_code(rest).map(KeySpec::CmdShiftPlus);
     }
-    if let Some(rest) = token.strip_prefix("mod+") {
-        return char_key_to_code(rest).map(KeySpec::ModPlus);
+    if let Some(rest) = token.strip_prefix("cmd+") {
+        return char_key_to_code(rest).map(KeySpec::CmdPlus);
+    }
+    if let Some(rest) = token.strip_prefix("ctrl+shift+") {
+        return char_key_to_code(rest).map(KeySpec::CtrlShiftPlus);
     }
     if let Some(rest) = token.strip_prefix("ctrl+") {
         return char_key_to_code(rest).map(KeySpec::CtrlPlus);
@@ -227,24 +248,6 @@ fn parse_non_leader_key(token: &str) -> Option<KeySpec> {
     }
 
     char_key_to_code(token).map(KeySpec::Physical)
-}
-
-fn normalize_modifier_alias(token: &str) -> String {
-    let lower = token.to_ascii_lowercase();
-    if let Some(rest) = lower.strip_prefix("ctrl+shift+") {
-        return format!("mod+shift+{rest}");
-    }
-    if let Some(rest) = lower.strip_prefix("cmd+shift+") {
-        return format!("mod+shift+{rest}");
-    }
-    // ctrl+ stays as ctrl+ (handled as CtrlPlus, distinct from mod+/cmd+)
-    if let Some(rest) = lower.strip_prefix("ctrl+") {
-        return format!("ctrl+{rest}");
-    }
-    if let Some(rest) = lower.strip_prefix("cmd+") {
-        return format!("mod+{rest}");
-    }
-    token.to_string()
 }
 
 /// Map a single-char string (a-z, 0-9) or special name to a `KeyCode`.
@@ -497,19 +500,29 @@ impl ResolvedKeymap {
 
 fn input_to_specs(input: &NormalizedInput) -> Vec<KeySpec> {
     let mut specs = Vec::with_capacity(4);
-    if input.has_command_modifier() {
+
+    // Check for Cmd/Super modifier
+    if input.modifiers.super_key() {
         if let Some(code) = input.physical_key {
             if input.modifiers.shift_key() {
-                specs.push(KeySpec::ModShiftPlus(code));
+                specs.push(KeySpec::CmdShiftPlus(code));
+            } else {
+                specs.push(KeySpec::CmdPlus(code));
             }
-            // CtrlPlus has priority over ModPlus when only Ctrl is held (not Cmd/Super).
-            // Add CtrlPlus FIRST so it gets priority in lookup, but still add ModPlus as fallback.
-            if input.modifiers.control_key() && !input.modifiers.super_key() {
+        }
+    }
+    // Check for Ctrl modifier (independent of Cmd)
+    else if input.modifiers.control_key() {
+        if let Some(code) = input.physical_key {
+            if input.modifiers.shift_key() {
+                specs.push(KeySpec::CtrlShiftPlus(code));
+            } else {
                 specs.push(KeySpec::CtrlPlus(code));
             }
-            specs.push(KeySpec::ModPlus(code));
         }
-    } else {
+    }
+    // No command modifiers
+    else {
         if let Some(named) = input.named_key {
             specs.push(KeySpec::Named(named));
         }
@@ -554,26 +567,26 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     // Aliases to avoid glob-import ambiguity between KeyCode and NamedKey
     let nk = |n: NamedKey| KeySpec::Named(n);
     let ph = |c: KeyCode| KeySpec::Physical(c);
-    let mp = |c: KeyCode| KeySpec::ModPlus(c);
+    let cmd = |c: KeyCode| KeySpec::CmdPlus(c);
     let ch = |c: char| KeySpec::Char(c);
     let seq = |steps: &[KeySpec]| steps.to_vec();
 
     let mut km = ResolvedKeymap::new();
 
-    // ── Global (mod+key) shortcuts — apply across all modes ──────────────────
-    km.insert(None, mp(KeyCode::KeyS), SAVE_FILE);
-    km.insert(None, mp(KeyCode::KeyO), OPEN_FILE);
-    km.insert(None, mp(KeyCode::KeyP), OPEN_FILE_PICKER);
+    // ── Global (cmd+key) shortcuts — apply across all modes ──────────────────
+    km.insert(None, cmd(KeyCode::KeyS), SAVE_FILE);
+    km.insert(None, cmd(KeyCode::KeyO), OPEN_FILE);
+    km.insert(None, cmd(KeyCode::KeyP), OPEN_FILE_PICKER);
     km.insert(
         None,
-        KeySpec::ModShiftPlus(KeyCode::KeyP),
+        KeySpec::CmdShiftPlus(KeyCode::KeyP),
         OPEN_COMMAND_PALETTE,
     );
-    km.insert(None, mp(KeyCode::KeyB), TOGGLE_LEFT_DOCK);
-    km.insert(None, mp(KeyCode::KeyF), FOCUS_EXPLORER);
-    km.insert(None, mp(KeyCode::KeyR), FOCUS_INSPECTOR);
+    km.insert(None, cmd(KeyCode::KeyB), TOGGLE_LEFT_DOCK);
+    km.insert(None, KeySpec::CtrlPlus(KeyCode::KeyF), FOCUS_EXPLORER);
+    km.insert(None, cmd(KeyCode::KeyR), FOCUS_INSPECTOR);
     km.insert(None, nk(NamedKey::F12), FOCUS_TERMINAL);
-    km.insert(None, mp(KeyCode::Backslash), TOGGLE_BOTTOM_DOCK);
+    km.insert(None, cmd(KeyCode::Backslash), TOGGLE_BOTTOM_DOCK);
 
     // ── Insert mode ───────────────────────────────────────────────────────────
     km.insert(Some("insert"), nk(NamedKey::Escape), ENTER_NORMAL);
@@ -584,7 +597,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("insert"), nk(NamedKey::ArrowRight), MOVE_RIGHT);
     km.insert(Some("insert"), nk(NamedKey::ArrowUp), MOVE_UP);
     km.insert(Some("insert"), nk(NamedKey::ArrowDown), MOVE_DOWN);
-    km.insert(Some("insert"), mp(KeyCode::KeyV), EDITOR_PASTE);
+    km.insert(Some("insert"), cmd(KeyCode::KeyV), EDITOR_PASTE);
     km.insert(
         Some("insert"),
         KeySpec::CtrlPlus(KeyCode::KeyJ),
@@ -650,8 +663,8 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert(Some("normal"), ch('{'), MOVE_PARAGRAPH_UP);
     km.insert(Some("normal"), ch('}'), MOVE_PARAGRAPH_DOWN);
-    km.insert(Some("normal"), mp(KeyCode::KeyH), BUFFER_PREV);
-    km.insert(Some("normal"), mp(KeyCode::KeyL), BUFFER_NEXT);
+    km.insert(Some("normal"), KeySpec::CtrlPlus(KeyCode::KeyH), BUFFER_PREV);
+    km.insert(Some("normal"), KeySpec::CtrlPlus(KeyCode::KeyL), BUFFER_NEXT);
     km.insert(Some("normal"), KeySpec::CtrlPlus(KeyCode::KeyR), REDO);
     km.insert(Some("normal"), ch('n'), SEARCH_NEXT);
     km.insert(Some("normal"), ch('N'), SEARCH_PREV);
@@ -683,7 +696,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("visual"), ph(KeyCode::KeyC), CHANGE_SELECTION);
     km.insert(Some("visual"), ph(KeyCode::KeyX), DELETE_SELECTION);
     km.insert(Some("visual"), ph(KeyCode::KeyY), YANK_SELECTION);
-    km.insert(Some("visual"), mp(KeyCode::KeyV), EDITOR_PASTE);
+    km.insert(Some("visual"), cmd(KeyCode::KeyV), EDITOR_PASTE);
 
     // ── Visual Block mode ────────────────────────────────────────────────────
     km.insert(Some("visual_block"), nk(NamedKey::Escape), ENTER_NORMAL);
@@ -704,14 +717,14 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         nk(NamedKey::ArrowDown),
         OVERLAY_SELECT_NEXT,
     );
-    km.insert(Some("palette"), mp(KeyCode::KeyP), OVERLAY_SELECT_PREV);
-    km.insert(Some("palette"), mp(KeyCode::KeyN), OVERLAY_SELECT_NEXT);
+    km.insert(Some("palette"), KeySpec::CtrlPlus(KeyCode::KeyP), OVERLAY_SELECT_PREV);
+    km.insert(Some("palette"), KeySpec::CtrlPlus(KeyCode::KeyN), OVERLAY_SELECT_NEXT);
     km.insert(
         Some("palette"),
         nk(NamedKey::Backspace),
         FILE_PICKER_BACKSPACE,
     );
-    km.insert(Some("palette"), mp(KeyCode::KeyV), EDITOR_PASTE);
+    km.insert(Some("palette"), cmd(KeyCode::KeyV), EDITOR_PASTE);
 
     // ── Terminal focus mode bindings (mode-only lookup in InputMap) ──────────
     km.insert(Some("terminal"), nk(NamedKey::Escape), FOCUS_BACK);
@@ -721,19 +734,19 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         TERMINAL_ENTER_NORMAL_MODE,
     );
     km.insert(Some("terminal"), nk(NamedKey::F12), FOCUS_TERMINAL);
-    km.insert(Some("terminal"), mp(KeyCode::KeyR), FOCUS_INSPECTOR);
-    km.insert(Some("terminal"), mp(KeyCode::KeyV), TERMINAL_PASTE);
-    km.insert(Some("terminal"), mp(KeyCode::KeyT), TERMINAL_TAB_NEW);
-    km.insert(Some("terminal"), mp(KeyCode::KeyW), TERMINAL_TAB_CLOSE);
-    km.insert(Some("terminal"), mp(KeyCode::Digit1), TERMINAL_TAB_SWITCH_1);
-    km.insert(Some("terminal"), mp(KeyCode::Digit2), TERMINAL_TAB_SWITCH_2);
-    km.insert(Some("terminal"), mp(KeyCode::Digit3), TERMINAL_TAB_SWITCH_3);
-    km.insert(Some("terminal"), mp(KeyCode::Digit4), TERMINAL_TAB_SWITCH_4);
-    km.insert(Some("terminal"), mp(KeyCode::Digit5), TERMINAL_TAB_SWITCH_5);
-    km.insert(Some("terminal"), mp(KeyCode::Digit6), TERMINAL_TAB_SWITCH_6);
-    km.insert(Some("terminal"), mp(KeyCode::Digit7), TERMINAL_TAB_SWITCH_7);
-    km.insert(Some("terminal"), mp(KeyCode::Digit8), TERMINAL_TAB_SWITCH_8);
-    km.insert(Some("terminal"), mp(KeyCode::Digit9), TERMINAL_TAB_SWITCH_9);
+    km.insert(Some("terminal"), cmd(KeyCode::KeyR), FOCUS_INSPECTOR);
+    km.insert(Some("terminal"), cmd(KeyCode::KeyV), TERMINAL_PASTE);
+    km.insert(Some("terminal"), cmd(KeyCode::KeyT), TERMINAL_TAB_NEW);
+    km.insert(Some("terminal"), cmd(KeyCode::KeyW), TERMINAL_TAB_CLOSE);
+    km.insert(Some("terminal"), cmd(KeyCode::Digit1), TERMINAL_TAB_SWITCH_1);
+    km.insert(Some("terminal"), cmd(KeyCode::Digit2), TERMINAL_TAB_SWITCH_2);
+    km.insert(Some("terminal"), cmd(KeyCode::Digit3), TERMINAL_TAB_SWITCH_3);
+    km.insert(Some("terminal"), cmd(KeyCode::Digit4), TERMINAL_TAB_SWITCH_4);
+    km.insert(Some("terminal"), cmd(KeyCode::Digit5), TERMINAL_TAB_SWITCH_5);
+    km.insert(Some("terminal"), cmd(KeyCode::Digit6), TERMINAL_TAB_SWITCH_6);
+    km.insert(Some("terminal"), cmd(KeyCode::Digit7), TERMINAL_TAB_SWITCH_7);
+    km.insert(Some("terminal"), cmd(KeyCode::Digit8), TERMINAL_TAB_SWITCH_8);
+    km.insert(Some("terminal"), cmd(KeyCode::Digit9), TERMINAL_TAB_SWITCH_9);
 
     // ── Terminal normal mode bindings (copy mode / virtual cursor) ──────────
     km.insert(
@@ -742,7 +755,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         ENTER_TERMINAL_FOCUS,
     );
     km.insert(Some("terminal_normal"), nk(NamedKey::F12), FOCUS_TERMINAL);
-    km.insert(Some("terminal_normal"), mp(KeyCode::KeyR), FOCUS_INSPECTOR);
+    km.insert(Some("terminal_normal"), cmd(KeyCode::KeyR), FOCUS_INSPECTOR);
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyH), MOVE_LEFT);
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyJ), MOVE_DOWN);
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyK), MOVE_UP);
@@ -783,56 +796,56 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyV), ENTER_VISUAL);
     km.insert(Some("terminal_normal"), ch('V'), ENTER_VISUAL_LINE);
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyY), YANK_SELECTION);
-    km.insert(Some("terminal_normal"), mp(KeyCode::KeyV), TERMINAL_PASTE);
-    km.insert(Some("terminal_normal"), mp(KeyCode::KeyT), TERMINAL_TAB_NEW);
+    km.insert(Some("terminal_normal"), cmd(KeyCode::KeyV), TERMINAL_PASTE);
+    km.insert(Some("terminal_normal"), cmd(KeyCode::KeyT), TERMINAL_TAB_NEW);
     km.insert(
         Some("terminal_normal"),
-        mp(KeyCode::KeyW),
+        cmd(KeyCode::KeyW),
         TERMINAL_TAB_CLOSE,
     );
     km.insert(
         Some("terminal_normal"),
-        mp(KeyCode::Digit1),
+        cmd(KeyCode::Digit1),
         TERMINAL_TAB_SWITCH_1,
     );
     km.insert(
         Some("terminal_normal"),
-        mp(KeyCode::Digit2),
+        cmd(KeyCode::Digit2),
         TERMINAL_TAB_SWITCH_2,
     );
     km.insert(
         Some("terminal_normal"),
-        mp(KeyCode::Digit3),
+        cmd(KeyCode::Digit3),
         TERMINAL_TAB_SWITCH_3,
     );
     km.insert(
         Some("terminal_normal"),
-        mp(KeyCode::Digit4),
+        cmd(KeyCode::Digit4),
         TERMINAL_TAB_SWITCH_4,
     );
     km.insert(
         Some("terminal_normal"),
-        mp(KeyCode::Digit5),
+        cmd(KeyCode::Digit5),
         TERMINAL_TAB_SWITCH_5,
     );
     km.insert(
         Some("terminal_normal"),
-        mp(KeyCode::Digit6),
+        cmd(KeyCode::Digit6),
         TERMINAL_TAB_SWITCH_6,
     );
     km.insert(
         Some("terminal_normal"),
-        mp(KeyCode::Digit7),
+        cmd(KeyCode::Digit7),
         TERMINAL_TAB_SWITCH_7,
     );
     km.insert(
         Some("terminal_normal"),
-        mp(KeyCode::Digit8),
+        cmd(KeyCode::Digit8),
         TERMINAL_TAB_SWITCH_8,
     );
     km.insert(
         Some("terminal_normal"),
-        mp(KeyCode::Digit9),
+        cmd(KeyCode::Digit9),
         TERMINAL_TAB_SWITCH_9,
     );
     km.insert(Some("terminal_normal"), ch('/'), TERMINAL_SEARCH_OPEN);
@@ -911,9 +924,16 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("explorer"), ch('G'), EXPLORER_MOVE_TO_BOTTOM);
     km.insert(Some("explorer"), ph(KeyCode::KeyR), EXPLORER_RENAME_FULL);
     km.insert(Some("explorer"), ch('R'), EXPLORER_RENAME_BASE);
-
-    // ── Global Ctrl+W → focus back to editor ─────────────────────────────────
-    km.insert(None, mp(KeyCode::KeyW), FOCUS_BACK);
+    km.insert(
+        Some("explorer"),
+        KeySpec::CtrlPlus(KeyCode::KeyR),
+        RELOAD_WORKSPACE,
+    );
+    km.insert(
+        Some("explorer"),
+        ph(KeyCode::KeyS),
+        EXPLORER_TOGGLE_GIT_CHANGES_ONLY,
+    );
 
     // ── Chord bindings (multi-step sequences) ─────────────────────────────────
     km.insert_sequence(
@@ -985,11 +1005,6 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         Some("normal"),
         seq(&[KeySpec::Leader, ph(KeyCode::KeyR), ph(KeyCode::KeyR)]),
         ENTER_RESIZE,
-    );
-    km.insert_sequence(
-        None,
-        seq(&[KeySpec::Leader, ph(KeyCode::KeyE)]),
-        FOCUS_EXPLORER,
     );
     km.insert_sequence(
         None,
@@ -1142,20 +1157,20 @@ mod tests {
     #[test]
     fn parse_modifier_key() {
         assert_eq!(
-            parse_key_spec("mod+s"),
-            Some(KeySpec::ModPlus(KeyCode::KeyS))
+            parse_key_spec("cmd+s"),
+            Some(KeySpec::CmdPlus(KeyCode::KeyS))
         );
         assert_eq!(
-            parse_key_spec("mod+shift+p"),
-            Some(KeySpec::ModShiftPlus(KeyCode::KeyP))
+            parse_key_spec("cmd+shift+p"),
+            Some(KeySpec::CmdShiftPlus(KeyCode::KeyP))
         );
         assert_eq!(
             parse_key_spec("ctrl+space"),
             Some(KeySpec::CtrlPlus(KeyCode::Space))
         );
         assert_eq!(
-            parse_key_spec("mod+space"),
-            Some(KeySpec::ModPlus(KeyCode::Space))
+            parse_key_spec("ctrl+shift+o"),
+            Some(KeySpec::CtrlShiftPlus(KeyCode::KeyO))
         );
     }
 
@@ -1208,10 +1223,10 @@ mod tests {
             parse_key_spec("ctrl+o"),
             Some(KeySpec::CtrlPlus(KeyCode::KeyO))
         );
-        // ctrl+shift+ still maps to ModShiftPlus (same as cmd+shift+)
+        // ctrl+shift+ maps to CtrlShiftPlus
         assert_eq!(
             parse_key_spec("Ctrl+Shift+p"),
-            Some(KeySpec::ModShiftPlus(KeyCode::KeyP))
+            Some(KeySpec::CtrlShiftPlus(KeyCode::KeyP))
         );
     }
 
@@ -1320,32 +1335,30 @@ mod tests {
     }
 
     #[test]
-    fn builtin_defaults_map_mod_v_to_editor_paste() {
+    fn builtin_defaults_map_cmd_v_to_editor_paste() {
         use winit::keyboard::ModifiersState;
         let km = builtin_defaults();
-        let mod_v = NormalizedInput {
+        let cmd_v = NormalizedInput {
             physical_key: Some(KeyCode::KeyV),
             named_key: None,
             text: Some("v".into()),
-            modifiers: ModifiersState::CONTROL,
+            modifiers: ModifiersState::SUPER,
         };
 
-        assert_eq!(km.lookup(&mod_v, "insert"), Some(command_ids::EDITOR_PASTE));
+        assert_eq!(km.lookup(&cmd_v, "insert"), Some(command_ids::EDITOR_PASTE));
+        // In normal mode, cmd+v is not bound (ctrl+v is visual block)
+        assert_eq!(km.lookup(&cmd_v, "normal"), None);
+        assert_eq!(km.lookup(&cmd_v, "visual"), Some(command_ids::EDITOR_PASTE));
         assert_eq!(
-            km.lookup(&mod_v, "normal"),
-            Some(command_ids::ENTER_VISUAL_BLOCK)
-        );
-        assert_eq!(km.lookup(&mod_v, "visual"), Some(command_ids::EDITOR_PASTE));
-        assert_eq!(
-            km.lookup_mode_only(&mod_v, "palette"),
+            km.lookup_mode_only(&cmd_v, "palette"),
             Some(command_ids::EDITOR_PASTE)
         );
         assert_eq!(
-            km.lookup_mode_only(&mod_v, "terminal"),
+            km.lookup_mode_only(&cmd_v, "terminal"),
             Some(command_ids::TERMINAL_PASTE)
         );
         assert_eq!(
-            km.lookup_mode_only(&mod_v, "terminal_normal"),
+            km.lookup_mode_only(&cmd_v, "terminal_normal"),
             Some(command_ids::TERMINAL_PASTE)
         );
     }
@@ -1440,14 +1453,14 @@ mod tests {
     }
 
     #[test]
-    fn builtin_defaults_map_mod_b_to_toggle_left_dock() {
+    fn builtin_defaults_map_cmd_b_to_toggle_left_dock() {
         use winit::keyboard::ModifiersState;
         let km = builtin_defaults();
         let input = NormalizedInput {
             physical_key: Some(KeyCode::KeyB),
             named_key: None,
             text: Some("b".into()),
-            modifiers: ModifiersState::CONTROL,
+            modifiers: ModifiersState::SUPER,
         };
 
         assert_eq!(
@@ -1457,14 +1470,14 @@ mod tests {
     }
 
     #[test]
-    fn builtin_defaults_map_mod_backslash_to_toggle_bottom_dock() {
+    fn builtin_defaults_map_cmd_backslash_to_toggle_bottom_dock() {
         use winit::keyboard::ModifiersState;
         let km = builtin_defaults();
         let input = NormalizedInput {
             physical_key: Some(KeyCode::Backslash),
             named_key: None,
             text: Some("\\".into()),
-            modifiers: ModifiersState::CONTROL,
+            modifiers: ModifiersState::SUPER,
         };
 
         assert_eq!(

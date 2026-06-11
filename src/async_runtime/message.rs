@@ -161,6 +161,9 @@ pub enum WorkerRequestPayload {
     },
     StartFileWatch {
         root_path: PathBuf,
+        /// `true` cho workspace root (quét cả cây), `false` cho file mở ngoài root
+        /// (chỉ watch thư mục cha — tránh dựng recursive watcher nặng trên /tmp, /etc…).
+        recursive: bool,
     },
     SpawnPtyShell {
         shell: Option<String>,
@@ -190,6 +193,7 @@ pub enum WorkerRequestPayload {
     StartLspServer {
         root_path: PathBuf,
         server_command: Option<String>,
+        custom_bin_path: Option<PathBuf>,
     },
     FzfSearch {
         query: String,
@@ -376,6 +380,9 @@ pub enum WorkerRequestPayload {
     StopLspServer,
     ShutdownAllLspServers,
     ScanPythonEnvironments {
+        workspace_root: PathBuf,
+    },
+    ScanDartEnvironments {
         workspace_root: PathBuf,
     },
     /// Detect Python / Node / Go runtime versions for statusbar display.
@@ -742,6 +749,8 @@ pub enum WorkerResultPayload {
     },
     /// Kết quả scan Python environments.
     PythonEnvironmentsDiscovered(Vec<crate::async_runtime::python_env::PythonEnv>),
+    /// Kết quả scan Dart environments.
+    DartEnvironmentsDiscovered(Vec<crate::async_runtime::dart_env::DartEnv>),
     /// Runtime version strings for statusbar display.
     RuntimeVersionsDetected {
         python_version: Option<String>,

@@ -261,11 +261,7 @@ impl Renderer {
         };
         let group_header_h = if is_live_grep { line_height + 7.0 } else { 0.0 };
         let visible_rows = ((content_h / row_h).floor() as usize).max(1);
-        let mut start_idx = if is_live_grep {
-            (fuzzy_state.selected_index / visible_rows) * visible_rows
-        } else {
-            fuzzy_state.selected_index.saturating_sub(visible_rows / 2)
-        };
+        let mut start_idx = fuzzy_state.selected_index.saturating_sub(visible_rows / 2);
         if start_idx + visible_rows > fuzzy_state.results.len() {
             start_idx = fuzzy_state.results.len().saturating_sub(visible_rows);
         }

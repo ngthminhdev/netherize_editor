@@ -1,5 +1,7 @@
 use super::*;
 use crate::app::clipboard::ClipboardProvider;
+use crate::app::input::{InputRouteOutcome, NormalizedInput};
+use winit::keyboard::{KeyCode, ModifiersState};
 
 #[derive(Default)]
 struct MockClipboard {
@@ -236,6 +238,109 @@ fn settings_commit_ui_rounding_edit_clamps_to_24() {
 }
 
 #[test]
+fn settings_text_edit_works_after_opening_from_right_terminal_focus() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.switch_to_tab(PanelTabId::Terminal);
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+    let _ = shell.app_state.apply_mode_event(ModeEvent::FocusTerminal);
+
+    assert!(shell.handle_command(Command::OpenSettings));
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+
+    let settings = shell
+        .app_state
+        .active_settings_buffer_mut()
+        .expect("settings buffer");
+    settings.selected_index = settings
+        .items
+        .iter()
+        .position(|item| {
+            matches!(
+                item,
+                crate::app::app_state::SettingItem::RightSidebarWidth { .. }
+            )
+        })
+        .expect("right sidebar width setting");
+
+    assert!(shell.handle_command(Command::SettingsActivate));
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Insert);
+    let context = shell.build_context();
+    assert_eq!(context.focus, InputFocusContext::SettingsTab);
+
+    let routed = shell.input_handler.route_normalized_input(
+        NormalizedInput {
+            physical_key: Some(KeyCode::Digit7),
+            named_key: None,
+            text: Some("7".to_string()),
+            modifiers: ModifiersState::empty(),
+        },
+        &shell.input_map,
+        context,
+        std::time::Instant::now(),
+    );
+    match routed {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::FilePickerAppendQuery("7".to_string())
+            );
+            assert!(shell.handle_command(translated.command));
+        }
+        other => panic!("expected settings text append route, got {:?}", other),
+    }
+
+    let settings = shell
+        .app_state
+        .active_settings_buffer()
+        .expect("settings buffer");
+    let editing = settings.editing.as_ref().expect("editing state");
+    assert!(editing.draft.ends_with('7'));
+}
+
+#[test]
+fn right_terminal_focus_cmd_comma_routes_to_settings() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.app_state = AppState::from_text(PathBuf::from("main.rs"), "fn main() {}\n");
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.switch_to_tab(PanelTabId::Terminal);
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::FocusTerminal)
+        .expect("focus terminal mode");
+    let context = shell.build_context();
+    assert_eq!(context.focus, InputFocusContext::Terminal);
+    assert_eq!(context.mode, EditorMode::TerminalFocus);
+    assert!(context.right_sidebar_terminal);
+
+    let routed = shell.input_handler.route_normalized_input(
+        NormalizedInput {
+            physical_key: Some(KeyCode::Comma),
+            named_key: None,
+            text: Some(",".to_string()),
+            modifiers: ModifiersState::SUPER,
+        },
+        &shell.input_map,
+        context,
+        std::time::Instant::now(),
+    );
+
+    match routed {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::OpenSettings);
+            assert!(shell.handle_command(translated.command));
+        }
+        other => panic!("expected settings route from right terminal, got {:?}", other),
+    }
+
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+    assert!(shell.app_state.active_settings_buffer().is_some());
+}
+
+#[test]
 fn scroll_half_page_down_uses_viewport_layout_path() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let text = (0..100)
@@ -363,6 +468,37 @@ fn ai_chat_toggle_closing_right_dock_returns_focus_to_editor() {
         Some(PanelTabId::Terminal)
     );
     assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+}
+
+#[test]
+fn right_terminal_output_preserves_manual_scrollback_view() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.switch_to_tab(PanelTabId::Terminal);
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+    let _ = shell.app_state.apply_mode_event(ModeEvent::FocusTerminal);
+    shell.right_pty_session_id = Some(7);
+    shell.right_terminal_grid = TerminalGrid::new(5, 2);
+    shell
+        .right_terminal_grid
+        .feed_chunk("11111\r\n22222\r\n33333\r\n44444\r\n");
+    shell.right_terminal_grid.view_scroll_up(1);
+    assert!(shell.right_terminal_grid.scroll_offset > 0);
+
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: 1,
+        revision_id: 0,
+        topic: crate::async_runtime::message::RequestTopic::TerminalPty,
+        payload: crate::async_runtime::message::WorkerResultPayload::PtyOutput {
+            session_id: 7,
+            chunk: b"55555\r\n".to_vec(),
+        },
+    });
+
+    assert!(
+        shell.right_terminal_grid.scroll_offset > 0,
+        "right terminal output should not jump to bottom while user is viewing scrollback"
+    );
 }
 
 #[test]
@@ -826,7 +962,7 @@ fn colon_help_vim_command_opens_help_buffer() {
     assert!(
         help.lines
             .iter()
-            .any(|line| { line.contains("mod+p") && line.contains("Open command palette") })
+            .any(|line| { line.contains("cmd+p") && line.contains("Open command palette") })
     );
     assert_eq!(
         shell.app_state.buffers().last().unwrap().label(),
@@ -1508,6 +1644,22 @@ fn cached_ts_default_export(name: &str, source_path: &std::path::Path) -> crate:
     }
 }
 
+fn cached_go_symbol(name: &str, source_path: &std::path::Path) -> crate::lsp::CachedSymbol {
+    crate::lsp::CachedSymbol {
+        name: name.to_string(),
+        kind: "Function".to_string(),
+        container_name: None,
+        file_path: source_path.to_path_buf(),
+        line: 0,
+        character: 5,
+        source_path: None,
+        import_path: None,
+        export_kind: None,
+        callable: Some(true),
+        has_parameters: Some(false),
+    }
+}
+
 fn cached_package_default_export(
     name: &str,
     source_path: &std::path::Path,
@@ -1610,6 +1762,50 @@ fn member_access_completion_debounces_after_one_typed_character() {
         .expect("enter insert");
     shell.active_lsp_server = Some(ActiveLspServer {
         server_name: "typescript-language-server".to_string(),
+        root_path: root,
+    });
+    shell.lsp_completion_trigger_chars = vec!['.'];
+
+    shell.queue_lsp_completion_after_debounce_if_needed();
+
+    assert!(shell.pending_lsp_completion_after_debounce);
+}
+
+#[test]
+fn go_completion_debounces_after_two_typed_characters() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("go_prefix_completion");
+    let _path = open_completion_file(&mut shell, &root.join("main.go"), "Co");
+    let _ = shell.app_state.jump_to_line_and_column(0, 2);
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "gopls".to_string(),
+        root_path: root,
+    });
+    shell.lsp_completion_trigger_chars = vec!['.'];
+
+    shell.queue_lsp_completion_after_debounce_if_needed();
+
+    assert!(shell.pending_lsp_completion_after_debounce);
+}
+
+#[test]
+fn go_member_access_completion_debounces_after_one_typed_character() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("go_member_completion");
+    let _path = open_completion_file(&mut shell, &root.join("main.go"), "client.G");
+    let _ = shell
+        .app_state
+        .jump_to_line_and_column(0, "client.G".chars().count());
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "gopls".to_string(),
         root_path: root,
     });
     shell.lsp_completion_trigger_chars = vec!['.'];
@@ -2339,6 +2535,38 @@ fn workspace_completion_symbols_merge_even_when_lsp_has_many_results() {
 }
 
 #[test]
+fn go_workspace_completion_symbols_merge_with_lsp_results() {
+    let root = completion_temp_root("go_merge_cache_with_lsp");
+    let source_path =
+        write_completion_file(&root.join("api.go"), "package main\n\nfunc Connect() {}\n");
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols("go", vec![cached_go_symbol("Connect", &source_path)]);
+
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![test_completion_item("Context", "Context")],
+        0,
+        3,
+        0,
+        "Con".to_string(),
+        &cache,
+        Some("go"),
+    );
+
+    let imported = completion
+        .filtered_items
+        .iter()
+        .find(|entry| entry.item.label == "Connect")
+        .expect("go workspace symbol should be merged");
+    assert_eq!(
+        imported.source,
+        crate::app::app_state::CompletionItemSource::WorkspaceSymbol
+    );
+    assert_eq!(imported.item.export_kind, None);
+    assert_eq!(imported.item.import_path, None);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn workspace_completion_import_metadata_enriches_duplicate_lsp_item() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let text = "const value = con";
@@ -2494,6 +2722,38 @@ fn workspace_completion_fallback_same_file_symbol_has_no_import() {
 
     assert!(shell.handle_command(Command::CompletionAccept));
     assert_eq!(shell.app_state.text_string(), "connect()");
+}
+
+#[test]
+fn go_workspace_completion_accept_does_not_synthesize_imports() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("go_no_synthetic_import");
+    let source_path =
+        write_completion_file(&root.join("api.go"), "package main\n\nfunc Connect() {}\n");
+    let text = "package main\n\nfunc main() {\n\tCon\n}\n";
+    let _active_path = open_completion_file(&mut shell, &root.join("main.go"), text);
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols("go", vec![cached_go_symbol("Connect", &source_path)]);
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        Vec::new(),
+        3,
+        "\tCon".chars().count(),
+        "\t".chars().count(),
+        "Con".to_string(),
+        &cache,
+        Some("go"),
+    );
+    assert!(!completion.filtered_items.is_empty());
+    assert!(shell
+        .app_state
+        .jump_to_line_and_column(3, "\tCon".chars().count()));
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(
+        shell.app_state.text_string(),
+        "package main\n\nfunc main() {\n\tConnect()\n}\n"
+    );
 }
 
 #[test]

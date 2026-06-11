@@ -195,6 +195,29 @@ impl InputHandler {
         self.route_normalized_input(normalized, input_map, context, Instant::now())
     }
 
+    /// In the right-sidebar opencode chat, Ctrl+U/Ctrl+D scroll the chat history
+    /// (half a page) instead of being forwarded as raw control bytes to the PTY.
+    /// Scoped to the right sidebar so the bottom-panel shell keeps ^U/^D intact.
+    fn right_chat_scroll_command(
+        normalized: &NormalizedInput,
+        context: KeybindingContext,
+    ) -> Option<Command> {
+        if !(context.right_sidebar_terminal
+            && context.focus == InputFocusContext::Terminal
+            && context.mode == EditorMode::TerminalFocus
+            && normalized.modifiers.control_key()
+            && !normalized.modifiers.alt_key()
+            && !normalized.modifiers.super_key())
+        {
+            return None;
+        }
+        match normalized.physical_key {
+            Some(KeyCode::KeyU) => Some(Command::TerminalScrollHalfPageUp),
+            Some(KeyCode::KeyD) => Some(Command::TerminalScrollHalfPageDown),
+            _ => None,
+        }
+    }
+
     pub(crate) fn route_repeated_normalized_input(
         &mut self,
         normalized: NormalizedInput,
@@ -216,6 +239,21 @@ impl InputHandler {
         // holding Backspace or any character key works as expected.
         if context.focus == InputFocusContext::AiChat {
             return self.route_ai_chat_input(normalized, input_debug, context);
+        }
+
+        if let Some(scroll) = Self::right_chat_scroll_command(&normalized, context) {
+            self.clear_pending_counts();
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> right chat scroll (held Ctrl+U/D)",
+                    context.mode.as_str(),
+                    context.focus.as_str()
+                ),
+                scroll,
+                1,
+                false,
+            )));
         }
 
         if matches!(
@@ -330,6 +368,7 @@ impl InputHandler {
                 && !text.is_empty()
                 && !text.chars().any(char::is_control)
                 && !normalized.has_command_modifier()
+                && !normalized.modifiers.control_key()
                 && !normalized.modifiers.alt_key()
             {
                 self.clear_pending_counts();
@@ -377,6 +416,46 @@ impl InputHandler {
                 resolved.command,
                 repeat_count,
                 count_ignored,
+            )));
+        }
+
+        // Right-sidebar opencode chat: Ctrl+U/Ctrl+D scroll the chat history
+        // instead of being sent to the PTY as raw control bytes.
+        if let Some(scroll) = Self::right_chat_scroll_command(&normalized, context) {
+            self.clear_pending_counts();
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> right chat scroll (Ctrl+U/D)",
+                    context.mode.as_str(),
+                    context.focus.as_str()
+                ),
+                scroll,
+                1,
+                false,
+            )));
+        }
+
+        // Zen Mode: Esc must reach the terminal app (Vim, etc.) as a raw ESC
+        // instead of leaving terminal focus. In Zen Mode the editor is hidden, so
+        // dropping terminal focus would strand the user — they'd have to press F12
+        // to resume typing. Forwarding ESC keeps the typing flow intact.
+        if context.zen_mode_active
+            && context.focus == InputFocusContext::Terminal
+            && context.mode == EditorMode::TerminalFocus
+            && normalized.named_key == Some(NamedKey::Escape)
+        {
+            self.clear_pending_counts();
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> zen terminal raw Esc",
+                    context.mode.as_str(),
+                    context.focus.as_str()
+                ),
+                Command::TerminalWriteInput("\u{1b}".to_string()),
+                1,
+                false,
             )));
         }
 
@@ -662,6 +741,33 @@ impl InputHandler {
 
                 PendingState::PendingOperator { op } => {
                     let op = *op;
+                    if normalized.has_command_modifier() || normalized.modifiers.control_key() {
+                        self.reset_prefix();
+                        if let Some(resolved) = input_map.resolve(&normalized, context) {
+                            let (repeat_count, count_ignored) =
+                                self.consume_repeat_count_for_command(&resolved.command, None);
+                            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                                input_debug,
+                                format!(
+                                    "mode={} focus={} -> pending operator interrupted by modifier, fallback -> {}",
+                                    context.mode.as_str(),
+                                    context.focus.as_str(),
+                                    resolved.reason
+                                ),
+                                resolved.command,
+                                repeat_count,
+                                count_ignored,
+                            )));
+                        }
+                        return Some(InputRouteOutcome::NoDispatch {
+                            input_debug,
+                            route_debug: format!(
+                                "mode={} focus={} -> pending operator interrupted by modifier, no fallback",
+                                context.mode.as_str(),
+                                context.focus.as_str()
+                            ),
+                        });
+                    }
                     if let Some(find_kind) = find_motion_prefix_from_input(&normalized) {
                         self.pending_input = Some(PendingInput {
                             sequence: None,
@@ -989,6 +1095,7 @@ impl InputHandler {
 
         if context.focus == InputFocusContext::Editor && context.mode == EditorMode::Normal {
             let op = if !normalized.has_command_modifier()
+                && !normalized.modifiers.control_key()
                 && !normalized.modifiers.alt_key()
                 && !normalized.modifiers.shift_key()
                 && (normalized.physical_key == Some(KeyCode::KeyD)
@@ -996,6 +1103,7 @@ impl InputHandler {
             {
                 Some(Operator::Delete)
             } else if !normalized.has_command_modifier()
+                && !normalized.modifiers.control_key()
                 && !normalized.modifiers.alt_key()
                 && !normalized.modifiers.shift_key()
                 && (normalized.physical_key == Some(KeyCode::KeyC)
@@ -1116,7 +1224,9 @@ impl InputHandler {
                 || normalized.named_key == Some(NamedKey::F12);
 
             if !is_global_layout_toggle {
-                if normalized.has_command_modifier() && normalized.physical_key == Some(KeyCode::KeyV) {
+                if normalized.has_command_modifier()
+                    && normalized.physical_key == Some(KeyCode::KeyV)
+                {
                     self.clear_pending_counts();
                     return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                         input_debug,
@@ -1406,8 +1516,12 @@ impl InputHandler {
         input_debug: String,
         context: KeybindingContext,
     ) -> Option<InputRouteOutcome> {
-        // Ctrl+N / Ctrl+P → cycle suggestion popup; Ctrl+U/D → scroll history; Ctrl+C → clear input
-        if normalized.has_command_modifier() {
+        // Ctrl+N / Ctrl+P → cycle suggestion popup; Ctrl+U/D → scroll history; Ctrl+C → clear input.
+        // On macOS, `has_command_modifier()` means Cmd, so check Control explicitly here.
+        let control_shortcut = normalized.modifiers.control_key()
+            && !normalized.modifiers.alt_key()
+            && !normalized.modifiers.super_key();
+        if control_shortcut {
             match normalized.physical_key {
                 Some(KeyCode::KeyC) => {
                     return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(

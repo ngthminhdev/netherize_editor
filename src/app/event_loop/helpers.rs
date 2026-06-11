@@ -1329,6 +1329,33 @@ fn scale_metric(value: f32, scale: f32, min: f32) -> f32 {
     (value * scale).max(min)
 }
 
+fn compute_git_change_matches(
+    app_state: &AppState,
+    path: &Path,
+    node_types: &HashMap<PathBuf, WorkspaceNodeType>,
+    children_map: &HashMap<PathBuf, Vec<PathBuf>>,
+    out: &mut HashMap<PathBuf, bool>,
+) -> bool {
+    let file_type = node_types.get(path).copied().unwrap_or(WorkspaceNodeType::File);
+    let is_dirty_path = app_state.is_dirty()
+        && app_state
+            .active_file()
+            .is_some_and(|active| active.starts_with(path));
+    let has_status = is_dirty_path || app_state.workspace_git_status(path).is_some();
+
+    let self_match = file_type == WorkspaceNodeType::File && has_status;
+    let mut subtree_match = self_match;
+
+    if let Some(children) = children_map.get(path) {
+        for child in children {
+            subtree_match |= compute_git_change_matches(app_state, child, node_types, children_map, out);
+        }
+    }
+
+    out.insert(path.to_path_buf(), subtree_match);
+    subtree_match
+}
+
 pub(super) fn collect_explorer_entries(app_state: &AppState) -> Vec<ExplorerEntry> {
     let Some(nodes) = app_state.workspace_nodes() else {
         return Vec::new();
@@ -1399,6 +1426,12 @@ pub(super) fn collect_explorer_entries(app_state: &AppState) -> Vec<ExplorerEntr
         compute_filter_matches(&root, &children_map, query, &mut subtree_matches);
     }
 
+    let git_changes_only = app_state.workspace_show_git_changes_only();
+    let mut git_change_matches: HashMap<PathBuf, bool> = HashMap::new();
+    if git_changes_only {
+        compute_git_change_matches(app_state, &root, &node_types, &children_map, &mut git_change_matches);
+    }
+
     let mut entries = Vec::new();
     collect_visible_explorer_entries(
         app_state,
@@ -1410,6 +1443,7 @@ pub(super) fn collect_explorer_entries(app_state: &AppState) -> Vec<ExplorerEntr
         &children_map,
         filter_query.as_deref(),
         &subtree_matches,
+        if git_changes_only { Some(&git_change_matches) } else { None },
         &mut entries,
     );
     entries
@@ -1447,6 +1481,7 @@ fn collect_visible_explorer_entries(
     children_map: &HashMap<PathBuf, Vec<PathBuf>>,
     filter_query: Option<&str>,
     subtree_matches: &HashMap<PathBuf, bool>,
+    git_change_matches: Option<&HashMap<PathBuf, bool>>,
     out: &mut Vec<ExplorerEntry>,
 ) {
     let Some(children) = children_map.get(parent) else {
@@ -1462,9 +1497,16 @@ fn collect_visible_explorer_entries(
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("?");
+        
         let subtree_match =
             filter_query.is_none_or(|_| subtree_matches.get(child).copied().unwrap_or(false));
         if !subtree_match {
+            continue;
+        }
+
+        let git_match =
+            git_change_matches.is_none() || git_change_matches.unwrap().get(child).copied().unwrap_or(false);
+        if !git_match {
             continue;
         }
 
@@ -1475,6 +1517,7 @@ fn collect_visible_explorer_entries(
                     .iter()
                     .any(|nested| subtree_matches.get(nested).copied().unwrap_or(false))
             });
+        
         let is_expanded = file_type == WorkspaceNodeType::Folder
             && (app_state.workspace_is_expanded(child) || has_matching_descendant);
 
@@ -1511,6 +1554,7 @@ fn collect_visible_explorer_entries(
                 children_map,
                 filter_query,
                 subtree_matches,
+                git_change_matches,
                 out,
             );
         }

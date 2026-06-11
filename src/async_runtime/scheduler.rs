@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex, OnceLock,
         atomic::{AtomicU64, Ordering},
@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::lsp::client::LspClientProcess;
-use crate::syntax::syntax_engine::{SyntaxEngine, LanguageId};
+use crate::syntax::syntax_engine::{LanguageId, SyntaxEngine};
 use crate::terminal::pty::PtyProcess;
 
 mod ai;
@@ -144,7 +144,7 @@ impl LspSessionRegistry {
             .map_err(|_| "lsp session lock poisoned".to_string())?;
         Ok(guard
             .values()
-            .find(|session| session.server_name == binary)
+            .find(|session| session_name_matches_binary(&session.server_name, binary))
             .map(|session| session.process.clone()))
     }
 
@@ -155,7 +155,7 @@ impl LspSessionRegistry {
             .map_err(|_| "lsp session lock poisoned".to_string())?;
         Ok(guard
             .values()
-            .find(|session| session.server_name == binary)
+            .find(|session| session_name_matches_binary(&session.server_name, binary))
             .cloned())
     }
 
@@ -205,6 +205,29 @@ impl LspSessionRegistry {
             .map_err(|_| "lsp session lock poisoned".to_string())?;
         Ok(std::mem::take(&mut *guard).into_values().collect())
     }
+}
+
+fn session_name_matches_binary(session_name: &str, binary: &str) -> bool {
+    if session_name == binary {
+        return true;
+    }
+
+    let session_path = Path::new(session_name);
+    let binary_path = Path::new(binary);
+    let session_file = session_path.file_name().and_then(|value| value.to_str());
+    let session_stem = session_path.file_stem().and_then(|value| value.to_str());
+    let binary_file = binary_path.file_name().and_then(|value| value.to_str());
+    let binary_stem = binary_path.file_stem().and_then(|value| value.to_str());
+
+    [session_file, session_stem]
+        .into_iter()
+        .flatten()
+        .any(|session_part| {
+            [Some(binary), binary_file, binary_stem]
+                .into_iter()
+                .flatten()
+                .any(|binary_part| session_part == binary_part)
+        })
 }
 
 impl PtySessionRegistry {

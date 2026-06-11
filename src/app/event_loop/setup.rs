@@ -262,9 +262,13 @@ impl AppShell {
             caret_blink_visible: true,
             caret_blink_dirty: false,
             last_caret_blink_tick: now,
+            last_external_file_check: now,
+            last_external_file_check_times: std::collections::HashMap::new(),
+            externally_watched_dirs: std::collections::HashSet::new(),
             pre_markdown_preview_right_width: None,
             pending_code_actions: Vec::new(),
             selected_python_env: None,
+            selected_dart_env: None,
             runtime_versions: RuntimeVersionInfo::default(),
             lsp_retry_at: None,
         })
@@ -283,6 +287,7 @@ impl AppShell {
             topic: RequestTopic::WorkspaceWatch,
             payload: WorkerRequestPayload::StartFileWatch {
                 root_path: workspace_root.clone(),
+                recursive: true,
             },
         });
 
@@ -503,12 +508,13 @@ impl AppShell {
     }
 
     pub(super) fn update_runtime_scaling_for_window(&mut self, scale_factor: f64) {
-        let raw_scale = if let Some(over) = self.ui_config.window.scale_factor_override {
-            over as f64
-        } else {
-            scale_factor
-        };
-        let dpi_scale = (raw_scale as f32).max(0.25);
+        // let raw_scale = if let Some(over) = self.ui_config.window.scale_factor_override {
+        //     over as f64
+        // } else {
+        //     scale_factor
+        // };
+        // let dpi_scale = (raw_scale as f32).max(0.25);
+        let dpi_scale = (scale_factor as f32).max(0.25);
         let logical_width = self.window_size.width as f32 / dpi_scale;
         let logical_height = self.window_size.height as f32 / dpi_scale;
 
@@ -561,6 +567,16 @@ impl AppShell {
         if let Some(font_family) = scaled_ui.editor.font_family.clone() {
             self.theme.editor.font_family = Some(font_family);
         }
+
+        // Update terminal highlight colors when theme changes
+        self.right_terminal_grid.highlight_colors = HighlightColors::from_theme(&self.theme);
+        for tab in &mut self.terminal_tabs {
+            tab.grid.highlight_colors = HighlightColors::from_theme(&self.theme);
+        }
+        for grid in self.terminal_buffer_grids.values_mut() {
+            grid.highlight_colors = HighlightColors::from_theme(&self.theme);
+        }
+
         self.layout_engine.config =
             crate::workbench::layout_engine::WorkbenchLayoutConfig::from_ui_theme(&scaled_theme.ui);
         self.layout_engine.config.outer_gap = scaled_ui.layout.outer_gap;
@@ -764,7 +780,9 @@ impl AppShell {
                 FocusTarget::CenterEditor if self.app_state.active_buffer_is_help() => {
                     InputFocusContext::Help
                 }
-                FocusTarget::CenterEditor if self.app_state.active_buffer_is_extensions_manager() => {
+                FocusTarget::CenterEditor
+                    if self.app_state.active_buffer_is_extensions_manager() =>
+                {
                     InputFocusContext::ExtensionsManager
                 }
                 _ => InputFocusContext::Editor,
@@ -779,6 +797,8 @@ impl AppShell {
             completion_visible: self.app_state.has_completion(),
             hover_overlay_visible: self.app_state.has_scrollable_floating_overlay(),
             zen_mode_active: self.panel_state.maximized_region.is_some(),
+            right_sidebar_terminal: self.focus_manager.current() == FocusTarget::RightSidebar
+                && self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal),
         }
     }
 
@@ -1066,7 +1086,9 @@ impl AppShell {
             Ok(tree) if tree.root_node().end_byte() <= text_snapshot.len() => Ok(tree),
             Ok(_) => engine.parse_source(&text_snapshot, buffer_revision),
             Err(err) => {
-                eprintln!("[AppShell] incremental tree-sitter parse failed: {err}; retrying full parse");
+                eprintln!(
+                    "[AppShell] incremental tree-sitter parse failed: {err}; retrying full parse"
+                );
                 engine.parse_source(&text_snapshot, buffer_revision)
             }
         };
@@ -1396,6 +1418,34 @@ impl AppShell {
             return false;
         }
 
+        let custom_bin_path = if desired.server_name.contains('/') {
+            Path::new(&desired.server_name)
+                .parent()
+                .map(Path::to_path_buf)
+        } else {
+            if let Some(path) = self.app_state.active_file() {
+                if let Some(profile) = crate::lsp::registry::language_profile_for_path(path) {
+                    if profile.key == "python" {
+                        self.selected_python_env
+                            .as_ref()
+                            .and_then(|p| p.parent())
+                            .map(Path::to_path_buf)
+                    } else if profile.key == "dart" {
+                        self.selected_dart_env
+                            .as_ref()
+                            .and_then(|p| p.parent())
+                            .map(Path::to_path_buf)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
         self.pending_lsp_server = Some(desired.clone());
         self.submit(RequestSpec {
             revision_id: 0,
@@ -1403,6 +1453,7 @@ impl AppShell {
             payload: WorkerRequestPayload::StartLspServer {
                 root_path: desired.root_path,
                 server_command: Some(desired.server_name),
+                custom_bin_path,
             },
         });
         true
@@ -1434,8 +1485,85 @@ impl AppShell {
         if profile.lsp_binary.is_empty() {
             return None;
         }
-        let server_name = profile.lsp_binary.to_string();
+        let mut server_name = profile.lsp_binary.to_string();
         let root_path = crate::lsp::registry::find_project_root(path, profile.root_markers);
+
+        if profile.key == "python"
+            && let Some(python_path) = &self.selected_python_env
+        {
+            let local_pylsp = python_path.parent().map(|p| p.join("pylsp"));
+            if let Some(local_pylsp) = local_pylsp
+                && local_pylsp.try_exists().unwrap_or(false)
+            {
+                server_name = local_pylsp.to_string_lossy().to_string();
+            }
+        } else if profile.key == "dart" {
+            let mut resolved_dart_path = self.selected_dart_env.clone();
+            if resolved_dart_path.is_none() {
+                // 1. Auto-detect local FVM SDK inside the repo folder
+                let local_fvm = root_path
+                    .join(".fvm")
+                    .join("flutter_sdk")
+                    .join("bin")
+                    .join("cache")
+                    .join("dart-sdk")
+                    .join("bin")
+                    .join("dart");
+                if local_fvm.try_exists().unwrap_or(false) {
+                    resolved_dart_path = Some(local_fvm);
+                }
+            }
+            if resolved_dart_path.is_none() {
+                // 2. Auto-detect global FVM SDKs (both ~/fvm/versions/ and ~/.fvm/versions/)
+                if let Ok(home) = std::env::var("HOME") {
+                    let mut found = Vec::new();
+                    for dir_name in &[".fvm", "fvm"] {
+                        let versions_dir = PathBuf::from(&home).join(dir_name).join("versions");
+                        if let Ok(entries) = std::fs::read_dir(&versions_dir) {
+                            for entry in entries.flatten() {
+                                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                                    let dart_bin = entry
+                                        .path()
+                                        .join("bin")
+                                        .join("cache")
+                                        .join("dart-sdk")
+                                        .join("bin")
+                                        .join("dart");
+                                    if dart_bin.try_exists().unwrap_or(false) {
+                                        found.push((
+                                            entry.file_name().to_string_lossy().to_string(),
+                                            dart_bin,
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Sort newer versions first
+                    found.sort_by(|a, b| b.0.cmp(&a.0));
+                    if let Some((_, bin)) = found.into_iter().next() {
+                        resolved_dart_path = Some(bin);
+                    }
+                }
+            }
+            if resolved_dart_path.is_none() {
+                // 3. Fallback to system PATH dart binary if found
+                if let Ok(output) = std::process::Command::new("which").arg("dart").output() {
+                    if output.status.success() {
+                        let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                        if !path_str.is_empty() {
+                            let path = PathBuf::from(path_str);
+                            if path.try_exists().unwrap_or(false) {
+                                resolved_dart_path = Some(path);
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(dart_path) = resolved_dart_path {
+                server_name = dart_path.to_string_lossy().to_string();
+            }
+        }
 
         Some(ActiveLspServer {
             server_name,
@@ -1443,7 +1571,36 @@ impl AppShell {
         })
     }
 
+    /// #5: file mở NGOÀI workspace root không được recursive watcher của root bao phủ.
+    /// Gắn thêm một watcher non-recursive cho thư mục cha của nó (có dedup) để
+    /// vẫn nhận update tức thì thay vì chỉ dựa vào polling 1s.
+    pub(super) fn ensure_external_file_watch_for_active(&mut self) {
+        let Some(path) = self.app_state.active_file().map(PathBuf::from) else {
+            return;
+        };
+        if let Some(root) = self.app_state.workspace_root_path().map(PathBuf::from)
+            && path.starts_with(&root)
+        {
+            return;
+        }
+        let Some(parent) = path.parent().map(|p| p.to_path_buf()) else {
+            return;
+        };
+        if !self.externally_watched_dirs.insert(parent.clone()) {
+            return;
+        }
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::WorkspaceWatch,
+            payload: WorkerRequestPayload::StartFileWatch {
+                root_path: parent,
+                recursive: false,
+            },
+        });
+    }
+
     pub(super) fn submit_lsp_did_open_for_active_file(&mut self) {
+        self.ensure_external_file_watch_for_active();
         self.pending_lsp_document_sync = None;
         let Some(path) = self.app_state.active_file() else {
             return;

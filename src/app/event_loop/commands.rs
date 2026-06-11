@@ -190,6 +190,8 @@ impl AppShell {
             && self.focus_manager.current() == FocusTarget::CenterEditor
         {
             self.buffer_terminal_needs_layout = true;
+        } else if self.focus_manager.current() == FocusTarget::RightSidebar {
+            self.right_terminal_needs_layout = true;
         } else {
             self.terminal_needs_layout = true;
         }
@@ -667,7 +669,9 @@ impl AppShell {
 
         match command {
             Command::ToggleMarkdownPreview => {
-                let is_markdown = self.app_state.active_file()
+                let is_markdown = self
+                    .app_state
+                    .active_file()
                     .and_then(|p| p.extension())
                     .is_some_and(|ext| ext == "md");
 
@@ -682,12 +686,15 @@ impl AppShell {
                 } else {
                     String::new()
                 };
-                let rendered_lines =
-                    crate::app::event_loop::helpers::parse_markdown_preview_blocks(&source, &self.theme);
+                let rendered_lines = crate::app::event_loop::helpers::parse_markdown_preview_blocks(
+                    &source,
+                    &self.theme,
+                );
 
                 self.app_state.markdown_preview.visible = true;
                 self.app_state.markdown_preview.scroll_y = 0.0;
-                self.app_state.markdown_preview.source_path = self.app_state.active_file().map(|path| path.to_path_buf());
+                self.app_state.markdown_preview.source_path =
+                    self.app_state.active_file().map(|path| path.to_path_buf());
                 self.app_state.markdown_preview.source_text = source;
                 self.app_state.markdown_preview.source_revision = self.app_state.revision();
                 self.app_state.markdown_preview.rendered_lines = rendered_lines;

@@ -281,6 +281,24 @@ impl TextSystem {
             Shaping::Advanced,
             None,
         );
+
+        // Fix trailing newline empty line missing in set_rich_text
+        if self
+            .buffer
+            .lines
+            .last()
+            .map(|line| line.ending())
+            .unwrap_or(cosmic_text::LineEnding::None)
+            != cosmic_text::LineEnding::None
+        {
+            self.buffer.lines.push(cosmic_text::BufferLine::new(
+                "",
+                cosmic_text::LineEnding::None,
+                cosmic_text::AttrsList::new(&default_attrs),
+                Shaping::Advanced,
+            ));
+        }
+
         self.buffer.shape_until_scroll(&mut self.font_system, false);
     }
 
@@ -626,5 +644,19 @@ mod tests {
             width_with_four < width_with_eight,
             "tab width should shrink shaped tab advance: four={width_with_four}, eight={width_with_eight}"
         );
+    }
+
+    #[test]
+    fn test_trailing_newline_layout_runs() {
+        let mut system = TextSystem::new(Metrics::new(16.0, 22.0), Some(900.0), None);
+        system.set_text_with_spans(
+            "abc\n",
+            [0xF0, 0xF0, 0xF0, 0xFF],
+            &[StyledTextSpan::new(0, 3, [0x22, 0x88, 0xFF, 0xFF])],
+        );
+        let runs: Vec<_> = system.buffer().layout_runs().collect();
+        assert_eq!(runs.len(), 2);
+        assert!(!runs[0].glyphs.is_empty());
+        assert!(runs[1].glyphs.is_empty());
     }
 }

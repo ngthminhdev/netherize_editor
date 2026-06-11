@@ -374,6 +374,15 @@ impl AppShell {
                 if matches!(command, Command::FilePickerConfirmSelection)
                     && matches!(
                         self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::DartEnvSelector)
+                    )
+                {
+                    return Some(self.confirm_dart_env_selection());
+                }
+
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
                         Some(CommandPaletteMode::LspRename)
                     )
                 {
@@ -474,6 +483,29 @@ impl AppShell {
                             revision_id: 0,
                             topic: RequestTopic::SystemTask,
                             payload: WorkerRequestPayload::ScanPythonEnvironments {
+                                workspace_root,
+                            },
+                        });
+                    }
+                    self.arm_palette_ime_commit_suppression();
+                    self.focus_manager.set(FocusTarget::OverlayLayer);
+                    return Some(true);
+                }
+
+                // Command palette can open DartEnvSelector without closing the overlay.
+                // Keep palette focus and kick off the async environment scan.
+                if self.app_state.command_palette_mode()
+                    == Some(CommandPaletteMode::DartEnvSelector)
+                {
+                    if let Some(workspace_root) = self
+                        .app_state
+                        .workspace_root_path()
+                        .map(|p| p.to_path_buf())
+                    {
+                        self.submit(RequestSpec {
+                            revision_id: 0,
+                            topic: RequestTopic::SystemTask,
+                            payload: WorkerRequestPayload::ScanDartEnvironments {
                                 workspace_root,
                             },
                         });

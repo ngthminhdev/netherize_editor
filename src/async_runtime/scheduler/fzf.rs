@@ -200,9 +200,13 @@ pub(super) fn build_fzf_live_grep_script(case_sensitive: bool) -> String {
     };
     let fzf_case_arg = if case_sensitive { "+i" } else { "-i" };
     if glob_args.is_empty() {
-        format!("rg --line-number --column --hidden --fixed-strings {rg_case_arg} -- \"$1\" . | fzf {fzf_case_arg} -f \"$1\"")
+        format!(
+            "rg --line-number --column --hidden --fixed-strings {rg_case_arg} -- \"$1\" . | fzf {fzf_case_arg} -f \"$1\""
+        )
     } else {
-        format!("rg --line-number --column --hidden --fixed-strings {rg_case_arg} {glob_args} -- \"$1\" . | fzf {fzf_case_arg} -f \"$1\"")
+        format!(
+            "rg --line-number --column --hidden --fixed-strings {rg_case_arg} {glob_args} -- \"$1\" . | fzf {fzf_case_arg} -f \"$1\""
+        )
     }
 }
 

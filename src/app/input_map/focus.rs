@@ -791,6 +791,9 @@ impl InputMap {
             return None;
         }
 
+        // In-file search: Ctrl+A toggles case sensitivity.
+        // Must be checked BEFORE the keymap lookup so it isn't swallowed
+        // when there's no palette-mode binding for ctrl+a.
         if palette_mode == Some(CommandPaletteMode::InFileSearch)
             && input.modifiers.control_key()
             && !input.modifiers.alt_key()
@@ -1026,8 +1029,9 @@ impl InputMap {
     pub(super) fn resolve_terminal_focus(
         &self,
         input: &NormalizedInput,
-        mode: EditorMode,
+        context: KeybindingContext,
     ) -> Option<KeybindingMatch> {
+        let mode = context.mode;
         // Strict terminal mode: only consult terminal-mode bindings here.
         // Unmapped keys must fall through as raw PTY input instead of triggering globals.
         if let Some(command) = resolved_keymap::resolve_command_mode_only(
@@ -1039,6 +1043,17 @@ impl InputMap {
             return Some(KeybindingMatch {
                 command,
                 reason: "terminal focus: terminal-mode keymap binding",
+            });
+        }
+
+        if context.right_sidebar_terminal
+            && input.modifiers.super_key()
+            && !input.modifiers.shift_key()
+            && input.physical_key == Some(KeyCode::Comma)
+        {
+            return Some(KeybindingMatch {
+                command: Command::OpenSettings,
+                reason: "right terminal focus: Cmd+, -> OpenSettings",
             });
         }
 

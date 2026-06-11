@@ -200,6 +200,10 @@ pub enum Command {
     TerminalScrollUp,
     /// Scroll terminal viewport down (towards live output).
     TerminalScrollDown,
+    /// Scroll terminal viewport up half a page (Ctrl+U in the right chat).
+    TerminalScrollHalfPageUp,
+    /// Scroll terminal viewport down half a page (Ctrl+D in the right chat).
+    TerminalScrollHalfPageDown,
     /// Create a new terminal tab in the bottom panel.
     TerminalTabNew,
     /// Close the current terminal tab in the bottom panel.
@@ -247,6 +251,7 @@ pub enum Command {
     ExplorerClearFilter,
     ExplorerToggleHidden,
     ExplorerToggleIgnored,
+    ExplorerToggleGitChangesOnly,
     ExplorerMoveToTop,
     ExplorerMoveToBottom,
     ExplorerRenameFull,
@@ -313,6 +318,7 @@ pub enum Command {
     /// <leader>ca: Gửi textDocument/codeAction, hiển thị quickfix/refactor menu.
     CodeAction,
     LspSelectPythonEnv,
+    LspSelectDartEnv,
     ReloadWorkspace,
     /// Completion popup: chọn item kế tiếp.
     CompletionNext,
@@ -542,6 +548,8 @@ impl Command {
                 | Self::ExplorerExpandOrChild
                 | Self::TerminalScrollUp
                 | Self::TerminalScrollDown
+                | Self::TerminalScrollHalfPageUp
+                | Self::TerminalScrollHalfPageDown
                 | Self::MarkdownPreviewScrollUp
                 | Self::MarkdownPreviewScrollDown
                 | Self::MarkdownPreviewScrollHalfPageUp

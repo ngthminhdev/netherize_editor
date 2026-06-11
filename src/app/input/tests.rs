@@ -46,6 +46,15 @@ fn ctrl_input(ch: char, key: KeyCode) -> NormalizedInput {
     }
 }
 
+fn cmd_input(ch: char, key: KeyCode) -> NormalizedInput {
+    NormalizedInput {
+        physical_key: Some(key),
+        named_key: None,
+        text: Some(ch.to_string()),
+        modifiers: ModifiersState::SUPER,
+    }
+}
+
 fn named_input(named: NamedKey, physical: Option<KeyCode>) -> NormalizedInput {
     NormalizedInput {
         physical_key: physical,
@@ -264,6 +273,104 @@ fn zen_mode_active_routes_space_to_terminal_focus_input() {
             );
         }
         other => panic!("expected terminal space dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn zen_mode_active_forwards_escape_to_terminal_pty() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal);
+    context.zen_mode_active = true;
+    let t0 = std::time::Instant::now();
+
+    let resolved = handler.route_normalized_input(
+        named_input(NamedKey::Escape, Some(KeyCode::Escape)),
+        &map,
+        context,
+        t0,
+    );
+    match resolved {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::TerminalWriteInput("\u{1b}".to_string())
+            );
+        }
+        other => panic!("expected raw Esc dispatch in zen terminal, got {:?}", other),
+    }
+}
+
+#[test]
+fn non_zen_terminal_escape_does_not_forward_raw_pty() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal);
+    let t0 = std::time::Instant::now();
+
+    let resolved = handler.route_normalized_input(
+        named_input(NamedKey::Escape, Some(KeyCode::Escape)),
+        &map,
+        context,
+        t0,
+    );
+    // Outside Zen Mode, Esc keeps its focus-leaving semantics (FocusBack), never a
+    // raw ESC into the PTY.
+    if let Some(InputRouteOutcome::Dispatch(translated)) = resolved {
+        assert_ne!(
+            translated.command,
+            Command::TerminalWriteInput("\u{1b}".to_string())
+        );
+    }
+}
+
+#[test]
+fn right_sidebar_terminal_ctrl_u_d_scroll_half_page() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal);
+    context.right_sidebar_terminal = true;
+    let t0 = std::time::Instant::now();
+
+    let up = handler.route_normalized_input(ctrl_input('u', KeyCode::KeyU), &map, context, t0);
+    match up {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::TerminalScrollHalfPageUp);
+        }
+        other => panic!("expected scroll up dispatch, got {:?}", other),
+    }
+
+    let down = handler.route_normalized_input(ctrl_input('d', KeyCode::KeyD), &map, context, t0);
+    match down {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::TerminalScrollHalfPageDown);
+        }
+        other => panic!("expected scroll down dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn bottom_terminal_ctrl_u_d_still_forward_raw_to_pty() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    // right_sidebar_terminal defaults to false -> bottom-panel shell keeps ^U/^D.
+    let context =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal);
+    let t0 = std::time::Instant::now();
+
+    let up = handler.route_normalized_input(ctrl_input('u', KeyCode::KeyU), &map, context, t0);
+    match up {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert!(
+                matches!(translated.command, Command::TerminalWriteInput(_)),
+                "bottom terminal Ctrl+U should forward raw, got {:?}",
+                translated.command
+            );
+        }
+        other => panic!("expected raw write dispatch, got {:?}", other),
     }
 }
 
@@ -1275,7 +1382,8 @@ fn settings_focus_text_input_routes_to_editing_append() {
 fn palette_focus_text_input_routes_to_query_append() {
     let mut handler = InputHandler::new();
     let map = make_map();
-    let mut context = KeybindingContext::with_focus(EditorMode::PaletteFocus, InputFocusContext::Editor);
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::PaletteFocus, InputFocusContext::Editor);
     context.command_palette_visible = true;
     let now = std::time::Instant::now();
 
@@ -1427,14 +1535,14 @@ fn terminal_focus_ctrl_q_enters_terminal_normal_mode() {
 }
 
 #[test]
-fn terminal_focus_mod_v_routes_terminal_paste() {
+fn terminal_focus_cmd_v_routes_terminal_paste() {
     let mut handler = InputHandler::new();
     let map = make_map();
     let context =
         KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal);
     let now = std::time::Instant::now();
 
-    let mapped = handler.route_normalized_input(ctrl_input('v', KeyCode::KeyV), &map, context, now);
+    let mapped = handler.route_normalized_input(cmd_input('v', KeyCode::KeyV), &map, context, now);
     match mapped {
         Some(InputRouteOutcome::Dispatch(translated)) => {
             assert_eq!(translated.command, Command::TerminalPaste);
@@ -1444,14 +1552,14 @@ fn terminal_focus_mod_v_routes_terminal_paste() {
 }
 
 #[test]
-fn buffer_terminal_mod_v_routes_terminal_paste() {
+fn buffer_terminal_cmd_v_routes_terminal_paste() {
     let mut handler = InputHandler::new();
     let map = make_map();
     let context =
         KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::BufferTerminal);
     let now = std::time::Instant::now();
 
-    let mapped = handler.route_normalized_input(ctrl_input('v', KeyCode::KeyV), &map, context, now);
+    let mapped = handler.route_normalized_input(cmd_input('v', KeyCode::KeyV), &map, context, now);
     match mapped {
         Some(InputRouteOutcome::Dispatch(translated)) => {
             assert_eq!(translated.command, Command::TerminalPaste);
@@ -1702,6 +1810,30 @@ fn ai_chat_text_input_keeps_full_unicode_payload() {
 }
 
 #[test]
+fn ai_chat_ctrl_u_d_scroll_history() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::AiChat);
+    let now = std::time::Instant::now();
+
+    let up = handler.route_normalized_input(ctrl_input('u', KeyCode::KeyU), &map, context, now);
+    match up {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::AiChatScrollHalfPageUp);
+        }
+        other => panic!("expected ai chat scroll up dispatch, got {:?}", other),
+    }
+
+    let down = handler.route_normalized_input(ctrl_input('d', KeyCode::KeyD), &map, context, now);
+    match down {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::AiChatScrollHalfPageDown);
+        }
+        other => panic!("expected ai chat scroll down dispatch, got {:?}", other),
+    }
+}
+
+#[test]
 fn buffer_terminal_f12_maps_to_focus_terminal() {
     let mut handler = InputHandler::new();
     let map = make_map();
@@ -1715,7 +1847,10 @@ fn buffer_terminal_f12_maps_to_focus_terminal() {
         Some(InputRouteOutcome::Dispatch(translated)) => {
             assert_eq!(translated.command, Command::FocusTerminal);
         }
-        other => panic!("expected F12 dispatch in buffer terminal focus, got {:?}", other),
+        other => panic!(
+            "expected F12 dispatch in buffer terminal focus, got {:?}",
+            other
+        ),
     }
 }
 
@@ -1739,6 +1874,9 @@ fn buffer_terminal_cmd_r_maps_to_focus_inspector() {
         Some(InputRouteOutcome::Dispatch(translated)) => {
             assert_eq!(translated.command, Command::FocusInspector);
         }
-        other => panic!("expected Cmd-R dispatch in buffer terminal focus, got {:?}", other),
+        other => panic!(
+            "expected Cmd-R dispatch in buffer terminal focus, got {:?}",
+            other
+        ),
     }
 }

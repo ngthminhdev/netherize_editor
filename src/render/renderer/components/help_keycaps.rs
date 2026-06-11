@@ -48,7 +48,7 @@ pub fn help_keycap_palette(
 
     let (tone, text) = if matches!(
         normalized.as_str(),
-        "cmd" | "⌘" | "mod" | "option" | "opt" | "alt"
+        "cmd" | "⌘" | "option" | "opt" | "alt"
     ) {
         (accent, fg)
     } else if matches!(normalized.as_str(), "spc" | "space" | "leader") {

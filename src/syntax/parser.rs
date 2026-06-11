@@ -36,6 +36,7 @@ pub fn language_id_for_extension(extension: &str) -> Option<LanguageId> {
         "css" => Some(LanguageId::Css),
         "proto" | "protobuf" => Some(LanguageId::Protobuf),
         "xml" => Some(LanguageId::Xml),
+        "dart" => Some(LanguageId::Dart),
         "txt" => Some(LanguageId::Plaintext),
         _ => None,
     }
@@ -65,6 +66,7 @@ pub fn tree_sitter_language(language_id: LanguageId) -> Option<Language> {
         LanguageId::Css => Some(tree_sitter_css::LANGUAGE.into()),
         LanguageId::Protobuf => Some(tree_sitter_proto::LANGUAGE.into()),
         LanguageId::Xml => Some(tree_sitter_xml::LANGUAGE_XML.into()),
+        LanguageId::Dart => Some(tree_sitter_dart::LANGUAGE.into()),
         LanguageId::Plaintext => None,
     }
 }

@@ -14,6 +14,8 @@
 //! // cell.ch == 'H', cell.style.fg == Index(2) (green)
 //! ```
 
+use unicode_normalization::UnicodeNormalization;
+
 use crate::terminal::ansi_parser::{AnsiColor, AnsiEvent, AnsiParser};
 
 // ─── Kiểu dữ liệu ────────────────────────────────────────────────────────────
@@ -374,6 +376,14 @@ impl TerminalGrid {
 
     /// In một ký tự tại vị trí cursor, advance cursor.
     fn print_char_at_cursor(&mut self, ch: char) -> usize {
+        // Combining marks (e.g. Vietnamese tone marks U+0300–U+036F) are zero-width:
+        // they must attach to the preceding cell's base character instead of consuming
+        // a new cell, otherwise the base letter renders without its mark ("cụ" → "cu").
+        if unicode_normalization::char::is_combining_mark(ch) {
+            self.compose_combining_into_prev(ch);
+            return 0;
+        }
+
         let mut scrolled = 0usize;
         if self.cursor_col >= self.cols {
             // Wrap: xuống dòng mới.
@@ -394,6 +404,39 @@ impl TerminalGrid {
         };
         self.cursor_col += 1;
         scrolled
+    }
+
+    /// Fold a combining mark into the base character of the previous cell using
+    /// NFC composition (e.g. 'ô' + U+0323 → 'ộ'). If no precomposed form exists,
+    /// or there is no base cell, the mark is dropped rather than misaligning the
+    /// grid. The cursor is not advanced — combining marks are zero-width.
+    fn compose_combining_into_prev(&mut self, mark: char) {
+        let (row, col) = if self.cursor_col > 0 {
+            (self.cursor_row, self.cursor_col - 1)
+        } else if self.cursor_row > 0 {
+            (self.cursor_row - 1, self.cols.saturating_sub(1))
+        } else {
+            return;
+        };
+        let idx = row * self.cols + col;
+        if let Some(cell) = self.cells.get_mut(idx) {
+            // NFC-normalize the base + mark together. This reorders the marks
+            // canonically first, so it composes even when the stream sends the
+            // marks out of canonical order (e.g. precomposed 'ô' followed by a
+            // combining dot-below — pairwise composition alone would miss this).
+            let mut grapheme = String::with_capacity(8);
+            grapheme.push(cell.ch);
+            grapheme.push(mark);
+            let mut nfc = grapheme.nfc();
+            if let Some(first) = nfc.next()
+                && nfc.next().is_none()
+            {
+                // Only adopt the result when it collapses to a single precomposed
+                // scalar; otherwise keep the base and drop the mark rather than
+                // misaligning the fixed-width grid.
+                cell.ch = first;
+            }
+        }
     }
 
     /// Scroll lên 1 dòng: push dòng đầu vào scrollback, thêm dòng trống dưới.
@@ -1485,6 +1528,65 @@ mod tests {
         let mut grid = TerminalGrid::new(10, 5);
         grid.feed_chunk("abc\n");
         assert_eq!(grid.cursor_row, 1);
+    }
+
+    #[test]
+    fn combining_marks_fold_into_base_cell() {
+        let mut grid = TerminalGrid::new(10, 2);
+        // "cụ" written decomposed: 'c', 'u', then combining dot-below (U+0323).
+        grid.feed_chunk("cu\u{0323}");
+        assert_eq!(grid.cell_at(0, 0).ch, 'c');
+        // 'u' + U+0323 composes to 'ụ' (U+1EE5) in the same cell.
+        assert_eq!(grid.cell_at(0, 1).ch, 'ụ');
+        // The mark is zero-width: cursor only advanced for 'c' and 'u'.
+        assert_eq!(grid.cursor_col, 2);
+    }
+
+    #[test]
+    fn stacked_combining_marks_compose_incrementally() {
+        let mut grid = TerminalGrid::new(10, 2);
+        // "ộ" decomposed: 'o' + circumflex (U+0302) + dot-below (U+0323).
+        grid.feed_chunk("o\u{0302}\u{0323}");
+        assert_eq!(grid.cell_at(0, 0).ch, 'ộ');
+        assert_eq!(grid.cursor_col, 1);
+    }
+
+    #[test]
+    fn precomposed_vietnamese_passes_through() {
+        let mut grid = TerminalGrid::new(10, 2);
+        grid.feed_chunk("ộ");
+        assert_eq!(grid.cell_at(0, 0).ch, 'ộ');
+        assert_eq!(grid.cursor_col, 1);
+    }
+
+    #[test]
+    fn vietnamese_phrase_keeps_precomposed_letters() {
+        let mut grid = TerminalGrid::new(40, 2);
+        grid.feed_chunk("Tôi không đổi tiếng Việt");
+        let rendered: String = (0..24).map(|col| grid.cell_at(0, col).ch).collect();
+        assert!(rendered.starts_with("Tôi không đổi tiếng Việt"));
+    }
+
+    #[test]
+    fn vietnamese_utf8_split_across_chunks_is_preserved() {
+        let mut grid = TerminalGrid::new(10, 2);
+        let bytes = "đổi".as_bytes();
+        grid.feed_bytes(&bytes[..1]);
+        grid.feed_bytes(&bytes[1..3]);
+        grid.feed_bytes(&bytes[3..]);
+        assert_eq!(grid.cell_at(0, 0).ch, 'đ');
+        assert_eq!(grid.cell_at(0, 1).ch, 'ổ');
+        assert_eq!(grid.cell_at(0, 2).ch, 'i');
+        assert_eq!(grid.cursor_col, 3);
+    }
+
+    #[test]
+    fn leading_combining_mark_is_dropped_not_misaligned() {
+        let mut grid = TerminalGrid::new(10, 2);
+        // A combining mark with no preceding base must not consume a cell.
+        grid.feed_chunk("\u{0323}a");
+        assert_eq!(grid.cell_at(0, 0).ch, 'a');
+        assert_eq!(grid.cursor_col, 1);
     }
 
     #[test]
