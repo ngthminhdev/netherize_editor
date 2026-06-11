@@ -101,6 +101,10 @@ pub struct KeybindingContext {
     pub completion_visible: bool,
     pub hover_overlay_visible: bool,
     pub zen_mode_active: bool,
+    /// True when the focused terminal is the right-sidebar opencode chat. Lets
+    /// the input layer rebind Ctrl+U/Ctrl+D to scroll instead of forwarding them
+    /// as raw control bytes, without affecting the bottom-panel shell.
+    pub right_sidebar_terminal: bool,
 }
 
 impl KeybindingContext {
@@ -118,6 +122,7 @@ impl KeybindingContext {
             completion_visible: false,
             hover_overlay_visible: false,
             zen_mode_active: false,
+            right_sidebar_terminal: false,
         }
     }
 
@@ -141,6 +146,7 @@ impl KeybindingContext {
             completion_visible: false,
             hover_overlay_visible: false,
             zen_mode_active: false,
+            right_sidebar_terminal: false,
         }
     }
 }
@@ -256,7 +262,7 @@ impl InputMap {
             return self.resolve_settings_focus(input, context);
         }
         if context.focus == InputFocusContext::Terminal {
-            return self.resolve_terminal_focus(input, context.mode);
+            return self.resolve_terminal_focus(input, context);
         }
         if context.focus == InputFocusContext::Explorer {
             return self.resolve_explorer_focus(input, context.welcome_visible);
@@ -271,7 +277,8 @@ impl InputMap {
             return self.resolve_help_focus(input);
         }
         if context.focus == InputFocusContext::ExtensionsManager {
-            return self.resolve_extensions_manager_focus(input, context.mode == EditorMode::Insert);
+            return self
+                .resolve_extensions_manager_focus(input, context.mode == EditorMode::Insert);
         }
         if context.focus == InputFocusContext::BottomPanel {
             return self.resolve_bottom_panel_focus(input);

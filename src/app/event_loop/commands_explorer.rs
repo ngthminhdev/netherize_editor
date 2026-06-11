@@ -125,6 +125,7 @@ impl AppShell {
             topic: RequestTopic::WorkspaceWatch,
             payload: WorkerRequestPayload::StartFileWatch {
                 root_path: root_path.clone(),
+                recursive: true,
             },
         });
         self.submit_workspace_git_status_refresh();
@@ -179,6 +180,7 @@ impl AppShell {
             topic: RequestTopic::WorkspaceWatch,
             payload: WorkerRequestPayload::StartFileWatch {
                 root_path: root_path.clone(),
+                recursive: true,
             },
         });
 

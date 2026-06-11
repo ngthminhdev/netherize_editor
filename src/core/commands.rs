@@ -200,6 +200,10 @@ pub enum Command {
     TerminalScrollUp,
     /// Scroll terminal viewport down (towards live output).
     TerminalScrollDown,
+    /// Scroll terminal viewport up half a page (Ctrl+U in the right chat).
+    TerminalScrollHalfPageUp,
+    /// Scroll terminal viewport down half a page (Ctrl+D in the right chat).
+    TerminalScrollHalfPageDown,
     /// Create a new terminal tab in the bottom panel.
     TerminalTabNew,
     /// Close the current terminal tab in the bottom panel.
@@ -544,6 +548,8 @@ impl Command {
                 | Self::ExplorerExpandOrChild
                 | Self::TerminalScrollUp
                 | Self::TerminalScrollDown
+                | Self::TerminalScrollHalfPageUp
+                | Self::TerminalScrollHalfPageDown
                 | Self::MarkdownPreviewScrollUp
                 | Self::MarkdownPreviewScrollDown
                 | Self::MarkdownPreviewScrollHalfPageUp

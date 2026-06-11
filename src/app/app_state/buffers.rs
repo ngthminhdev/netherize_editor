@@ -723,8 +723,10 @@ impl AppState {
                     let needs_reload = if let Some(slot) = self.buffers.get(idx)
                         && let BufferContent::Text(ref buffer) = slot.content
                     {
+                        // #2: dùng `!=` thay vì `>` — git checkout/stash có thể khôi
+                        // phục mtime CŨ HƠN, mà `>` sẽ bỏ sót hoàn toàn.
                         match buffer.last_known_modified_time {
-                            Some(last_checked) => modified_time > last_checked,
+                            Some(last_checked) => modified_time != last_checked,
                             None => true,
                         }
                     } else {
@@ -732,7 +734,12 @@ impl AppState {
                     };
 
                     if needs_reload {
-                        if is_active && self.should_ignore_self_save_event() {
+                        // #3: chỉ bỏ qua nếu đây thực sự là echo của lần save vừa rồi
+                        // (đĩa == bộ nhớ). External edit thật trong cửa sổ 2s vẫn reload.
+                        if is_active
+                            && self.should_ignore_self_save_event()
+                            && self.active_disk_content_matches_memory(&path)
+                        {
                             if let Some(slot) = self.buffers.get_mut(idx)
                                 && let BufferContent::Text(ref mut buffer) = slot.content
                             {
@@ -743,7 +750,6 @@ impl AppState {
                         }
 
                         if is_active {
-                            eprintln!("[FilePoll] Reloading active file from disk: {:?}", path);
                             if let Ok(()) = self.load_buffer_from_file(&path) {
                                 self.active_file = Some(path.clone());
                                 let reloaded_text = self.text.clone();
@@ -760,7 +766,6 @@ impl AppState {
                                 reloaded_paths.push(path.clone());
                             }
                         } else {
-                            eprintln!("[FilePoll] Reloading background file from disk: {:?}", path);
                             if let Ok(content) = std::fs::read_to_string(&path) {
                                 if let Some(slot) = self.buffers.get_mut(idx) {
                                     if let BufferContent::Text(ref mut buffer) = slot.content {

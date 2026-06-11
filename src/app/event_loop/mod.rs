@@ -252,7 +252,11 @@ pub struct AppShell {
     caret_blink_dirty: bool,
     last_caret_blink_tick: Instant,
     last_external_file_check: Instant,
-    last_external_file_check_times: std::collections::HashMap<std::path::PathBuf, std::time::SystemTime>,
+    last_external_file_check_times:
+        std::collections::HashMap<std::path::PathBuf, std::time::SystemTime>,
+    /// #5: thư mục cha của các file mở NGOÀI workspace root đã được gắn watcher
+    /// (non-recursive). Dùng để dedup, tránh spawn watcher trùng cho cùng một dir.
+    externally_watched_dirs: std::collections::HashSet<std::path::PathBuf>,
     pre_markdown_preview_right_width: Option<f32>,
     /// Code actions từ lần request gần nhất, dùng để apply khi user chọn trong picker.
     pending_code_actions: Vec<crate::async_runtime::message::LspCodeAction>,
@@ -312,7 +316,6 @@ enum PendingConfirmationAction {
     },
     /// User confirmed or cancelled the opencode auto-install prompt.
     AiChatInstall,
-
 }
 
 #[derive(Debug, Clone)]
@@ -539,6 +542,11 @@ impl AppShell {
         }
         if self.focus_manager.current() == FocusTarget::BottomPanel {
             return self.active_terminal_tab_mut().map(|tab| &mut tab.grid);
+        }
+        if self.focus_manager.current() == FocusTarget::RightSidebar
+            && self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal)
+        {
+            return Some(&mut self.right_terminal_grid);
         }
         None
     }

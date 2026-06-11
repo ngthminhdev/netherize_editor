@@ -458,7 +458,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
             self.request_redraw();
         }
         let now = Instant::now();
-        if now.duration_since(self.last_external_file_check) >= Duration::from_secs(1) {
+        // #6: notify watcher giờ đã wake loop & realtime nên poll chỉ còn là safety-net
+        // (file ngoài tầm watcher, watcher chết, mtime cùng giây…). 3s đủ, đỡ wake CPU.
+        if now.duration_since(self.last_external_file_check) >= Duration::from_secs(3) {
             self.last_external_file_check = now;
             let (reloaded_paths, active_reloaded) = self.app_state.check_and_reload_external_changes(&mut self.last_external_file_check_times);
             if !reloaded_paths.is_empty() {
@@ -484,7 +486,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
         }
 
         let mut next_deadline = Some(self.next_git_branch_refresh_deadline());
-        let external_check_deadline = self.last_external_file_check + Duration::from_secs(1);
+        let external_check_deadline = self.last_external_file_check + Duration::from_secs(3);
         next_deadline = Some(match next_deadline {
             Some(existing) => existing.min(external_check_deadline),
             None => external_check_deadline,

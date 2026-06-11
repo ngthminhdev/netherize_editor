@@ -1,12 +1,257 @@
 {
-  "session_id": "session-2026-05-30-1306",
-  "started": "2026-05-30T06:06:18.190Z",
-  "files_read": {},
-  "files_written": [],
-  "edit_counts": {},
-  "anatomy_hits": 0,
+  "session_id": "session-2026-06-11-1317",
+  "started": "2026-06-11T06:17:00.425Z",
+  "files_read": {
+    "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/file_watch.rs": {
+      "count": 1,
+      "tokens": 2469,
+      "first_read": "2026-06-11T06:18:39.050Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/async_results/filesystem.rs": {
+      "count": 1,
+      "tokens": 929,
+      "first_read": "2026-06-11T06:18:44.342Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/setup.rs": {
+      "count": 2,
+      "tokens": 19972,
+      "first_read": "2026-06-11T06:18:52.986Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/app_state/buffers.rs": {
+      "count": 3,
+      "tokens": 8124,
+      "first_read": "2026-06-11T06:18:58.752Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/app_state/palette.rs": {
+      "count": 4,
+      "tokens": 16953,
+      "first_read": "2026-06-11T06:19:02.541Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/app_state/overlays.rs": {
+      "count": 2,
+      "tokens": 18409,
+      "first_read": "2026-06-11T06:19:27.498Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/async_results/mod.rs": {
+      "count": 1,
+      "tokens": 9176,
+      "first_read": "2026-06-11T06:19:33.812Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/mod.rs": {
+      "count": 3,
+      "tokens": 6403,
+      "first_read": "2026-06-11T06:19:51.410Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/application.rs": {
+      "count": 3,
+      "tokens": 24745,
+      "first_read": "2026-06-11T06:20:12.856Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/emit.rs": {
+      "count": 1,
+      "tokens": 458,
+      "first_read": "2026-06-11T06:20:31.808Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/dispatch.rs": {
+      "count": 3,
+      "tokens": 6293,
+      "first_read": "2026-06-11T06:20:43.815Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/pty.rs": {
+      "count": 1,
+      "tokens": 3903,
+      "first_read": "2026-06-11T06:26:21.239Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/commands_explorer.rs": {
+      "count": 1,
+      "tokens": 7738,
+      "first_read": "2026-06-11T06:27:29.127Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/async_runtime/message.rs": {
+      "count": 1,
+      "tokens": 7171,
+      "first_read": "2026-06-11T06:27:36.962Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/Cargo.toml": {
+      "count": 1,
+      "tokens": 624,
+      "first_read": "2026-06-11T06:31:56.499Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/app/app_state/tests.rs": {
+      "count": 1,
+      "tokens": 19670,
+      "first_read": "2026-06-11T06:34:54.421Z"
+    }
+  },
+  "files_written": [
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/dispatch.rs",
+      "action": "edit",
+      "tokens": 99,
+      "at": "2026-06-11T06:26:32.800Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/file_watch.rs",
+      "action": "edit",
+      "tokens": 1408,
+      "at": "2026-06-11T06:27:06.640Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/file_watch.rs",
+      "action": "edit",
+      "tokens": 50,
+      "at": "2026-06-11T06:27:13.882Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/file_watch.rs",
+      "action": "edit",
+      "tokens": 267,
+      "at": "2026-06-11T06:27:21.915Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/message.rs",
+      "action": "edit",
+      "tokens": 73,
+      "at": "2026-06-11T06:27:42.285Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/file_watch.rs",
+      "action": "edit",
+      "tokens": 236,
+      "at": "2026-06-11T06:27:54.354Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/setup.rs",
+      "action": "edit",
+      "tokens": 46,
+      "at": "2026-06-11T06:27:58.835Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/commands_explorer.rs",
+      "action": "edit",
+      "tokens": 99,
+      "at": "2026-06-11T06:28:04.244Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/commands_explorer.rs",
+      "action": "edit",
+      "tokens": 93,
+      "at": "2026-06-11T06:28:09.998Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/mod.rs",
+      "action": "edit",
+      "tokens": 116,
+      "at": "2026-06-11T06:29:03.170Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/setup.rs",
+      "action": "edit",
+      "tokens": 70,
+      "at": "2026-06-11T06:29:09.046Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/setup.rs",
+      "action": "edit",
+      "tokens": 374,
+      "at": "2026-06-11T06:29:25.579Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/buffers.rs",
+      "action": "edit",
+      "tokens": 107,
+      "at": "2026-06-11T06:30:04.813Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/overlays.rs",
+      "action": "edit",
+      "tokens": 226,
+      "at": "2026-06-11T06:30:13.491Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/buffers.rs",
+      "action": "edit",
+      "tokens": 122,
+      "at": "2026-06-11T06:30:21.773Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/palette.rs",
+      "action": "edit",
+      "tokens": 151,
+      "at": "2026-06-11T06:30:27.226Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/application.rs",
+      "action": "edit",
+      "tokens": 141,
+      "at": "2026-06-11T06:30:40.502Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/application.rs",
+      "action": "edit",
+      "tokens": 27,
+      "at": "2026-06-11T06:30:43.962Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/event_loop/async_results/filesystem.rs",
+      "action": "edit",
+      "tokens": 52,
+      "at": "2026-06-11T06:30:51.231Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/palette.rs",
+      "action": "edit",
+      "tokens": 25,
+      "at": "2026-06-11T06:31:03.566Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/palette.rs",
+      "action": "edit",
+      "tokens": 108,
+      "at": "2026-06-11T06:31:09.794Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/palette.rs",
+      "action": "edit",
+      "tokens": 99,
+      "at": "2026-06-11T06:31:27.327Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/buffers.rs",
+      "action": "edit",
+      "tokens": 34,
+      "at": "2026-06-11T06:31:36.214Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/buffers.rs",
+      "action": "edit",
+      "tokens": 33,
+      "at": "2026-06-11T06:31:40.241Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/app/app_state/tests.rs",
+      "action": "edit",
+      "tokens": 553,
+      "at": "2026-06-11T06:35:28.680Z"
+    }
+  ],
+  "edit_counts": {
+    "src/async_runtime/scheduler/dispatch.rs": 1,
+    "src/async_runtime/scheduler/file_watch.rs": 4,
+    "src/async_runtime/message.rs": 1,
+    "src/app/event_loop/setup.rs": 3,
+    "src/app/event_loop/commands_explorer.rs": 2,
+    "src/app/event_loop/mod.rs": 1,
+    "src/app/app_state/buffers.rs": 4,
+    "src/app/app_state/overlays.rs": 1,
+    "src/app/app_state/palette.rs": 4,
+    "src/app/event_loop/application.rs": 2,
+    "src/app/event_loop/async_results/filesystem.rs": 1,
+    "src/app/app_state/tests.rs": 1
+  },
+  "anatomy_hits": 16,
   "anatomy_misses": 0,
-  "repeated_reads_warned": 0,
+  "repeated_reads_warned": 13,
   "cerebrum_warnings": 0,
-  "stop_count": 0
+  "stop_count": 1
 }

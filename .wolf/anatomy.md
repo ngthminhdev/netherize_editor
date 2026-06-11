@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-30T05:33:23.456Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-11T06:35:28.672Z
 > Files: 374 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
@@ -10,7 +10,7 @@
 - `.gitignore` — Git ignore rules (~32 tok)
 - `AGENTS.md` — Project Rules Precedence (~1490 tok)
 - `BUILD.md` — Build Instructions (~915 tok)
-- `Cargo.toml` — Rust package manifest (~660 tok)
+- `Cargo.toml` — Rust package manifest (~624 tok)
 - `CLAUDE.md` — OpenWolf (~1543 tok)
 - `Cross.toml` (~73 tok)
 - `DEPENDENCIES.md` — Netherize Editor - Runtime Dependencies (~1867 tok)
@@ -321,42 +321,42 @@
 
 ## src/app/app_state/
 
-- `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer + 12 more (~8570 tok)
+- `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer, buffer_next (~8071 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag + 17 more (~10839 tok)
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new + 7 more (~23870 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
-- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~18409 tok)
-- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_dart_env_selector + 23 more (~18273 tok)
+- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~17332 tok)
+- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_dart_ (~16911 tok)
 - `settings.rs` — [derive(Debug, Clone, PartialEq)] (~1971 tok)
 - `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, preview_file_history_index + 9 more (~11571 tok)
-- `tests.rs` — [cfg(test)] (~19670 tok)
+- `tests.rs` — [cfg(test)] (~18684 tok)
 - `workspace.rs` — attach_workspace, clear_workspace_session_state, workspace_root_path, workspace_nodes + 22 more (~4385 tok)
 
 ## src/app/event_loop/
 
-- `application.rs` — [cfg(target_os = "macos")] (~24745 tok)
-- `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~11667 tok)
+- `application.rs` — [cfg(target_os = "macos")] (~23143 tok)
+- `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~10982 tok)
 - `commands_completion.rs` (~16231 tok)
 - `commands_editor.rs` (~5441 tok)
-- `commands_explorer.rs` (~7738 tok)
+- `commands_explorer.rs` (~7240 tok)
 - `commands_lsp.rs` (~9672 tok)
 - `commands_palette.rs` (~7884 tok)
 - `commands_prompts.rs` (~7215 tok)
 - `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~6809 tok)
 - `commands_settings.rs` (~4526 tok)
-- `commands_terminal.rs` (~6841 tok)
+- `commands_terminal.rs` (~6441 tok)
 - `commands_tests.rs` — [derive(Default)] (~28762 tok)
-- `commands.rs` — [path = "commands_ai_chat.rs"] (~10302 tok)
+- `commands.rs` — [path = "commands_ai_chat.rs"] (~9650 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18627 tok)
-- `mod.rs` — Struct: AppShell (~6794 tok)
-- `setup.rs` — new, new_for_tests (~21193 tok)
+- `mod.rs` — Struct: AppShell (~6469 tok)
+- `setup.rs` — new, new_for_tests (~20285 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
 
 - `ai.rs` (~938 tok)
 - `failure.rs` (~1255 tok)
-- `filesystem.rs` (~929 tok)
+- `filesystem.rs` (~826 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
 - `lsp.rs` (~9836 tok)
@@ -369,24 +369,24 @@
 
 ## src/app/input/
 
-- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix + 3 more (~18617 tok)
+- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix (~18687 tok)
 - `helpers.rs` — Trả về true nếu đây là event modifier-only (ShiftLeft, ShiftRight, ControlLeft...). (~4349 tok)
 - `mod.rs` (~69 tok)
 - `model.rs` — Dữ liệu key đã chuẩn hóa để tách phần "đọc winit event" (~764 tok)
 - `pending.rs` — [derive(Debug, Clone, PartialEq, Eq)] (~2421 tok)
-- `tests.rs` (~17166 tok)
+- `tests.rs` (~16944 tok)
 
 ## src/app/input_map/
 
 - `focus.rs` (~11317 tok)
 - `helpers.rs` (~180 tok)
-- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette + 8 more (~5068 tok)
+- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette (~4826 tok)
 - `tests.rs` (~16214 tok)
 
 ## src/async_runtime/
 
 - `dart_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~1022 tok)
-- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~7171 tok)
+- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~6746 tok)
 - `mod.rs` (~22 tok)
 - `python_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~948 tok)
 - `scheduler.rs` — Declares FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD (~2480 tok)
@@ -395,9 +395,9 @@
 
 - `ai_jobs.rs` — Platform install command for opencode: (~3926 tok)
 - `ai.rs` (~1994 tok)
-- `dispatch.rs` (~6293 tok)
+- `dispatch.rs` (~5890 tok)
 - `emit.rs` (~458 tok)
-- `file_watch.rs` (~2469 tok)
+- `file_watch.rs` — Declares FILE_WATCH_MAX_RESTARTS (~2860 tok)
 - `fzf.rs` — Declares MAX_FZF_RESULTS (~2494 tok)
 - `git.rs` (~1560 tok)
 - `local_history.rs` — Local history (disk persistence) has been removed. (~42 tok)
@@ -429,7 +429,7 @@
 ## src/core/
 
 - `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~9872 tok)
-- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5479 tok)
+- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5198 tok)
 - `mod.rs` (~35 tok)
 - `mode.rs` — Các mode cốt lõi của editor. (~4298 tok)
 - `text_object.rs` — find_text_object_range (~1753 tok)
@@ -439,10 +439,10 @@
 
 - `common.rs` — Struct: DispatchReport (~1739 tok)
 - `editing.rs` (~10656 tok)
-- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~4616 tok)
+- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~4332 tok)
 - `navigation.rs` (~3287 tok)
 - `palette.rs` (~6910 tok)
-- `session.rs` (~4001 tok)
+- `session.rs` (~3758 tok)
 - `tests.rs` (~18328 tok)
 
 ## src/lsp/
@@ -625,7 +625,7 @@
 ## src/terminal/
 
 - `ansi_parser.rs` — ANSI escape sequence parser — Phase 9b. (~7473 tok)
-- `grid.rs` — Terminal Grid — Phase 9b. (~16817 tok)
+- `grid.rs` — Terminal Grid — Phase 9b. (~16620 tok)
 - `highlighter.rs` — Terminal output highlighter — pre-compiled regex patterns for syntax coloring. (~787 tok)
 - `mod.rs` (~28 tok)
 - `pty.rs` — Wrapper cấp project quanh crate `portable-pty`. (~1812 tok)

@@ -574,3 +574,76 @@
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
+
+## Session: 2026-06-11 10:25
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-11 10:30
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 10:53 | Edited src/app/event_loop/commands_ai_chat.rs | modified is_some() | ~218 |
+| 10:53 | Edited src/app/input/handler.rs | modified Some() | ~400 |
+| 10:54 | Edited src/app/input/tests.rs | modified zen_mode_active_forwards_escape_to_terminal_pty() | ~466 |
+| 10:57 | Zen Esc UX fix: raw ESC->PTY in zen terminal; AiChatUnfocus no-op in zen | handler.rs, commands_ai_chat.rs, input/tests.rs | 662 tests pass | ~9k |
+| 11:05 | Edited src/app/input_map/mod.rs | 5→9 lines | ~109 |
+| 11:05 | Edited src/app/input_map/mod.rs | modified for_mode_with_palette() | ~82 |
+| 11:05 | Edited src/app/input_map/mod.rs | modified with_focus() | ~113 |
+| 11:05 | Edited src/app/event_loop/setup.rs | 4→6 lines | ~96 |
+| 11:05 | Edited src/core/commands.rs | 4→8 lines | ~104 |
+| 11:06 | Edited src/core/commands.rs | 3→5 lines | ~62 |
+| 11:06 | Edited src/core/command_dispatch/session.rs | 6→8 lines | ~81 |
+| 11:06 | Edited src/core/command_dispatch/mod.rs | 7→9 lines | ~91 |
+| 11:07 | Edited src/app/event_loop/mod.rs | modified focused_terminal_session_id() | ~124 |
+| 11:07 | Edited src/app/event_loop/commands_terminal.rs | reduced (-20 lines) | ~110 |
+| 11:08 | Edited src/app/event_loop/commands_terminal.rs | modified scroll_focused_terminal() | ~420 |
+| 11:09 | Edited src/app/event_loop/commands.rs | modified mark_focused_terminal_layout_dirty() | ~125 |
+| 11:09 | Edited src/app/event_loop/commands_terminal.rs | modified handle_terminal_and_focus_command() | ~56 |
+| 11:09 | Edited src/app/input/handler.rs | modified right_chat_scroll_command() | ~314 |
+| 11:09 | Edited src/app/input/handler.rs | modified right_chat_scroll_command() | ~288 |
+| 11:09 | Edited src/app/input/handler.rs | modified right_chat_scroll_command() | ~265 |
+| 11:10 | Edited src/app/input/tests.rs | modified right_sidebar_terminal_ctrl_u_d_scroll_half_page() | ~520 |
+| 11:13 | Right opencode chat scroll: Ctrl+U/D half-page (TerminalScrollHalfPage cmds), fix focused_terminal_grid_mut for RightSidebar | mod.rs, handler.rs, commands_terminal.rs, commands.rs, core/commands.rs | 664 tests pass | ~30k |
+| 11:21 | Edited Cargo.toml | 2→3 lines | ~19 |
+| 11:21 | Edited src/terminal/grid.rs | modified print_char_at_cursor() | ~138 |
+| 11:22 | Edited src/terminal/grid.rs | modified compose_combining_into_prev() | ~268 |
+| 11:22 | Edited src/terminal/grid.rs | modified is_combining_mark() | ~39 |
+| 11:22 | Edited src/terminal/grid.rs | modified newline_advances_row() | ~422 |
+| 11:23 | Edited src/terminal/grid.rs | added 1 import(s) | ~32 |
+| 11:23 | Edited src/terminal/grid.rs | modified get_mut() | ~257 |
+| 11:26 | Fix VN tone marks lost in terminal: fold combining marks into base cell via NFC (not line-height) | terminal/grid.rs, Cargo.toml | 668 tests pass | ~25k |
+| 11:27 | Session end: 27 writes across 10 files (commands_ai_chat.rs, handler.rs, tests.rs, mod.rs, setup.rs) | 21 reads | ~197767 tok |
+
+## Session: 2026-06-11 13:17
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 13:26 | Edited src/async_runtime/scheduler/dispatch.rs | 7→8 lines | ~93 |
+| 13:27 | Edited src/async_runtime/scheduler/file_watch.rs | modified run_file_watch_request() | ~1315 |
+| 13:27 | Edited src/async_runtime/scheduler/file_watch.rs | modified execute_file_watch_loop() | ~47 |
+| 13:27 | Edited src/async_runtime/scheduler/file_watch.rs | emit_message() → emit_message_and_wake() | ~249 |
+| 13:27 | Edited src/async_runtime/message.rs | 3→6 lines | ~68 |
+| 13:27 | Edited src/async_runtime/scheduler/file_watch.rs | expanded (+9 lines) | ~221 |
+| 13:27 | Edited src/app/event_loop/setup.rs | 3→4 lines | ~43 |
+| 13:28 | Edited src/app/event_loop/commands_explorer.rs | 8→9 lines | ~92 |
+| 13:28 | Edited src/app/event_loop/commands_explorer.rs | 9→10 lines | ~87 |
+| 13:29 | Edited src/app/event_loop/mod.rs | 3→6 lines | ~108 |
+| 13:29 | Edited src/app/event_loop/setup.rs | 3→4 lines | ~65 |
+| 13:29 | Edited src/app/event_loop/setup.rs | modified ensure_external_file_watch_for_active() | ~349 |
+| 13:30 | Edited src/app/app_state/buffers.rs | 4→6 lines | ~100 |
+| 13:30 | Edited src/app/app_state/overlays.rs | modified should_ignore_self_save_event() | ~211 |
+| 13:30 | Edited src/app/app_state/buffers.rs | modified active_disk_content_matches_memory() | ~114 |
+| 13:30 | Edited src/app/app_state/palette.rs | modified active_disk_content_matches_memory() | ~141 |
+| 13:30 | Edited src/app/event_loop/application.rs | modified from_secs() | ~132 |
+| 13:30 | Edited src/app/event_loop/application.rs | 1 → 3 | ~25 |
+| 13:30 | Edited src/app/event_loop/async_results/filesystem.rs | modified iter() | ~48 |
+| 13:31 | Edited src/app/app_state/palette.rs | modified is_dirty() | ~24 |
+| 13:31 | Edited src/app/app_state/palette.rs | modified load_buffer_from_file() | ~101 |
+| 13:31 | Edited src/app/app_state/palette.rs | modified read_to_string() | ~92 |
+| 13:31 | Edited src/app/app_state/buffers.rs | modified load_buffer_from_file() | ~32 |
+| 13:31 | Edited src/app/app_state/buffers.rs | modified read_to_string() | ~31 |
+| 13:35 | Edited src/app/app_state/tests.rs | modified external_edit_within_self_save_window_still_reloads() | ~516 |
+| 13:45 | Fixed file watcher not waking event loop (#1-#8) | file_watch.rs, dispatch.rs, emit-path, message.rs, application.rs, palette.rs, buffers.rs, overlays.rs, mod.rs, setup.rs | notify path now wakes winit loop via emit_message_and_wake; +watcher restart, +out-of-root watch, !=mtime, content-based self-save, 3s poll, removed eprintln; 676 tests pass | ~4200 |
+| 13:39 | Session end: 25 writes across 12 files (dispatch.rs, file_watch.rs, message.rs, setup.rs, commands_explorer.rs) | 16 reads | ~157646 tok |

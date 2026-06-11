@@ -132,7 +132,9 @@ pub(super) fn handle_terminal_result(
             if app.right_pty_session_id == Some(session_id) {
                 let scrolled_rows = app.right_terminal_grid.feed_bytes(&chunk);
                 app.right_terminal_grid.apply_regex_highlights();
-                if preserve_viewport {
+                let preserve_right_viewport =
+                    preserve_viewport || app.right_terminal_grid.scroll_offset > 0;
+                if preserve_right_viewport {
                     app.right_terminal_grid.view_scroll_up(scrolled_rows);
                 } else {
                     app.right_terminal_grid.view_scroll_to_bottom();

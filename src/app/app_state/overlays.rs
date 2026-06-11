@@ -958,6 +958,17 @@ impl AppState {
         })
     }
 
+    /// #3: nội dung file trên đĩa có TRÙNG khít với buffer đang mở không.
+    /// Dùng để phân biệt "echo của chính lần save vừa rồi" (disk == memory) với
+    /// một external edit thật (disk != memory) — thay cho việc nuốt mù mọi thay đổi
+    /// trong cửa sổ thời gian `SELF_SAVE_IGNORE_WINDOW`.
+    pub(super) fn active_disk_content_matches_memory(&self, path: &Path) -> bool {
+        match fs::read_to_string(path) {
+            Ok(disk) => self.text.len_bytes() == disk.len() && self.text.to_string() == disk,
+            Err(_) => false,
+        }
+    }
+
     pub(super) fn load_buffer_from_file(&mut self, canonical_path: &Path) -> Result<(), String> {
         let content = fs::read_to_string(canonical_path)
             .map_err(|err| format!("open file {:?} failed: {err}", canonical_path))?;

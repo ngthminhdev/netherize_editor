@@ -161,6 +161,9 @@ pub enum WorkerRequestPayload {
     },
     StartFileWatch {
         root_path: PathBuf,
+        /// `true` cho workspace root (quét cả cây), `false` cho file mở ngoài root
+        /// (chỉ watch thư mục cha — tránh dựng recursive watcher nặng trên /tmp, /etc…).
+        recursive: bool,
     },
     SpawnPtyShell {
         shell: Option<String>,

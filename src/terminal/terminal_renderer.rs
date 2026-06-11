@@ -265,6 +265,9 @@ fn flush_background_run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cosmic_text::Metrics;
+
+    use crate::text::text_system::TextSystem;
 
     #[test]
     fn cell_rect_calculation() {
@@ -301,5 +304,26 @@ mod tests {
 
         assert_eq!(instances.len(), 1);
         assert_eq!(instances[0].rect, [5.0, 7.0, 20.0, 20.0]);
+    }
+
+    #[test]
+    fn vietnamese_cells_shape_to_visible_glyphs() {
+        let mut text_system = TextSystem::new(
+            Metrics::new(14.0, 20.0),
+            Some(14.0 * 0.6),
+            Some(20.0),
+        );
+
+        for ch in ['đ', 'ổ', 'ệ'] {
+            text_system.set_size(Some(14.0 * 0.6), Some(20.0));
+            text_system.set_text(&ch.to_string());
+            let glyphs = text_system.collect_visible_glyphs(
+                0.0,
+                0.0,
+                [1.0, 1.0, 1.0, 1.0],
+                None,
+            );
+            assert!(!glyphs.is_empty(), "expected visible glyph for {ch}");
+        }
     }
 }

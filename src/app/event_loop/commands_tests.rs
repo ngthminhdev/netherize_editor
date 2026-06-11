@@ -1,5 +1,7 @@
 use super::*;
 use crate::app::clipboard::ClipboardProvider;
+use crate::app::input::{InputRouteOutcome, NormalizedInput};
+use winit::keyboard::{KeyCode, ModifiersState};
 
 #[derive(Default)]
 struct MockClipboard {
@@ -236,6 +238,109 @@ fn settings_commit_ui_rounding_edit_clamps_to_24() {
 }
 
 #[test]
+fn settings_text_edit_works_after_opening_from_right_terminal_focus() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.switch_to_tab(PanelTabId::Terminal);
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+    let _ = shell.app_state.apply_mode_event(ModeEvent::FocusTerminal);
+
+    assert!(shell.handle_command(Command::OpenSettings));
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+
+    let settings = shell
+        .app_state
+        .active_settings_buffer_mut()
+        .expect("settings buffer");
+    settings.selected_index = settings
+        .items
+        .iter()
+        .position(|item| {
+            matches!(
+                item,
+                crate::app::app_state::SettingItem::RightSidebarWidth { .. }
+            )
+        })
+        .expect("right sidebar width setting");
+
+    assert!(shell.handle_command(Command::SettingsActivate));
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Insert);
+    let context = shell.build_context();
+    assert_eq!(context.focus, InputFocusContext::SettingsTab);
+
+    let routed = shell.input_handler.route_normalized_input(
+        NormalizedInput {
+            physical_key: Some(KeyCode::Digit7),
+            named_key: None,
+            text: Some("7".to_string()),
+            modifiers: ModifiersState::empty(),
+        },
+        &shell.input_map,
+        context,
+        std::time::Instant::now(),
+    );
+    match routed {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::FilePickerAppendQuery("7".to_string())
+            );
+            assert!(shell.handle_command(translated.command));
+        }
+        other => panic!("expected settings text append route, got {:?}", other),
+    }
+
+    let settings = shell
+        .app_state
+        .active_settings_buffer()
+        .expect("settings buffer");
+    let editing = settings.editing.as_ref().expect("editing state");
+    assert!(editing.draft.ends_with('7'));
+}
+
+#[test]
+fn right_terminal_focus_cmd_comma_routes_to_settings() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.app_state = AppState::from_text(PathBuf::from("main.rs"), "fn main() {}\n");
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.switch_to_tab(PanelTabId::Terminal);
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::FocusTerminal)
+        .expect("focus terminal mode");
+    let context = shell.build_context();
+    assert_eq!(context.focus, InputFocusContext::Terminal);
+    assert_eq!(context.mode, EditorMode::TerminalFocus);
+    assert!(context.right_sidebar_terminal);
+
+    let routed = shell.input_handler.route_normalized_input(
+        NormalizedInput {
+            physical_key: Some(KeyCode::Comma),
+            named_key: None,
+            text: Some(",".to_string()),
+            modifiers: ModifiersState::SUPER,
+        },
+        &shell.input_map,
+        context,
+        std::time::Instant::now(),
+    );
+
+    match routed {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::OpenSettings);
+            assert!(shell.handle_command(translated.command));
+        }
+        other => panic!("expected settings route from right terminal, got {:?}", other),
+    }
+
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+    assert!(shell.app_state.active_settings_buffer().is_some());
+}
+
+#[test]
 fn scroll_half_page_down_uses_viewport_layout_path() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let text = (0..100)
@@ -363,6 +468,37 @@ fn ai_chat_toggle_closing_right_dock_returns_focus_to_editor() {
         Some(PanelTabId::Terminal)
     );
     assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+}
+
+#[test]
+fn right_terminal_output_preserves_manual_scrollback_view() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.switch_to_tab(PanelTabId::Terminal);
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+    let _ = shell.app_state.apply_mode_event(ModeEvent::FocusTerminal);
+    shell.right_pty_session_id = Some(7);
+    shell.right_terminal_grid = TerminalGrid::new(5, 2);
+    shell
+        .right_terminal_grid
+        .feed_chunk("11111\r\n22222\r\n33333\r\n44444\r\n");
+    shell.right_terminal_grid.view_scroll_up(1);
+    assert!(shell.right_terminal_grid.scroll_offset > 0);
+
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: 1,
+        revision_id: 0,
+        topic: crate::async_runtime::message::RequestTopic::TerminalPty,
+        payload: crate::async_runtime::message::WorkerResultPayload::PtyOutput {
+            session_id: 7,
+            chunk: b"55555\r\n".to_vec(),
+        },
+    });
+
+    assert!(
+        shell.right_terminal_grid.scroll_offset > 0,
+        "right terminal output should not jump to bottom while user is viewing scrollback"
+    );
 }
 
 #[test]

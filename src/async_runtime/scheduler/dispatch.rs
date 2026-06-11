@@ -75,8 +75,9 @@ pub(super) async fn dispatch_loop(
 
         if matches!(request.payload, WorkerRequestPayload::StartFileWatch { .. }) {
             let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
             tokio::spawn(async move {
-                run_file_watch_request(request, worker_tx).await;
+                run_file_watch_request(request, worker_tx, event_proxy).await;
             });
             continue;
         }

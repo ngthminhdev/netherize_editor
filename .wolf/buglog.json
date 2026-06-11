@@ -696,6 +696,178 @@
       "related_bugs": [],
       "occurrences": 3,
       "last_seen": "2026-05-30T04:10:28.116Z"
+    },
+    {
+      "id": "bug-043",
+      "timestamp": "2026-06-11T00:00:00Z",
+      "error_message": "In Zen Mode, pressing Esc on a maximized non-editor panel jumped focus back to the (hidden) main editor: AI chat tab lost focus, and terminal stopped accepting input until F12 was pressed again.",
+      "file": "src/app/input/handler.rs, src/app/event_loop/commands_ai_chat.rs",
+      "root_cause": "Esc routing was not Zen-aware. AiChat focus -> route_ai_chat_input mapped Esc unconditionally to Command::AiChatUnfocus, whose dispatch always set focus to CenterEditor. Terminal focus: terminal_input_payload returns None for Esc, so Esc fell through to the terminal resolver -> FocusBack -> release_focus_mode_to_editor() ExitFocus, leaving terminal focus. In Zen Mode the editor is hidden, so leaving panel focus strands the user.",
+      "fix": "1) handler.rs route_normalized_input: in Zen Mode, when focus==Terminal && mode==TerminalFocus && key==Escape, dispatch Command::TerminalWriteInput(\"\\u{1b}\") so raw ESC reaches the PTY (Vim etc.) and focus is preserved. 2) commands_ai_chat.rs AiChatUnfocus arm: if panel_state.maximized_region.is_some() return Some(false) (no-op) instead of moving focus to CenterEditor. Added tests zen_mode_active_forwards_escape_to_terminal_pty and non_zen_terminal_escape_does_not_forward_raw_pty.",
+      "tags": [
+        "zen-mode",
+        "focus",
+        "terminal",
+        "ai-chat",
+        "escape",
+        "ux",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T00:00:00Z"
+    },
+    {
+      "id": "bug-044",
+      "timestamp": "2026-06-11T04:07:43.393Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/event_loop/commands_terminal.rs",
+      "root_cause": "20 lines replaced/restructured",
+      "fix": "Rewrote 26→6 lines (20 removed) | Also: /// Flag the layout of whichever terminal surface ; /// new scroll position is re-rendered on the next",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-06-11T04:09:09.996Z"
+    },
+    {
+      "id": "bug-045",
+      "timestamp": "2026-06-11T00:00:00Z",
+      "error_message": "Can't scroll up/down in the right-sidebar opencode chat (PanelTabId::Terminal). User asked to bind Ctrl+U/Ctrl+D to scroll the chat there.",
+      "file": "src/app/event_loop/mod.rs, src/app/input/handler.rs, src/app/event_loop/commands_terminal.rs, src/app/event_loop/commands.rs, src/core/commands.rs",
+      "root_cause": "focused_terminal_grid_mut() only handled CenterEditor and BottomPanel, not RightSidebar, so TerminalScrollUp/Down returned None for the right opencode terminal (mark_focused_terminal_layout_dirty also lacked the RightSidebar branch). Additionally, in TerminalFocus the input handler forwards Ctrl+U/D as raw control bytes to the PTY, so they never reached a scroll command.",
+      "fix": "1) focused_terminal_grid_mut() + mark_focused_terminal_layout_dirty() now handle FocusTarget::RightSidebar -> right_terminal_grid / right_terminal_needs_layout. 2) Added commands TerminalScrollHalfPageUp/Down (routed in command_dispatch session.rs & mod.rs, repeatable via supports_press_and_hold_repeat) executed by scroll_focused_terminal(up, half_page). 3) New KeybindingContext field right_sidebar_terminal (set in build_context) scopes a new input interception (InputHandler::right_chat_scroll_command) that maps Ctrl+U/D -> half-page scroll only for the right chat, in both route_normalized_input and route_repeated_normalized_input. Bottom-panel shell keeps raw ^U/^D. Tests: right_sidebar_terminal_ctrl_u_d_scroll_half_page, bottom_terminal_ctrl_u_d_still_forward_raw_to_pty.",
+      "tags": [
+        "terminal",
+        "scroll",
+        "right-sidebar",
+        "opencode",
+        "ai-chat",
+        "keybinding",
+        "ux",
+        "rs"
+      ],
+      "related_bugs": [
+        "bug-043"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T00:00:00Z"
+    },
+    {
+      "id": "bug-046",
+      "timestamp": "2026-06-11T04:23:57.320Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/terminal/grid.rs",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 7→20 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T04:23:57.320Z"
+    },
+    {
+      "id": "bug-047",
+      "timestamp": "2026-06-11T00:00:00Z",
+      "error_message": "Vietnamese tone marks dropped when rendering opencode output in the terminal. Base vowels with circumflex (ô ê â) showed, but tone marks were lost: 'bạn'->'ban', 'cụ thể'->'cu thê', 'kiểu'->'kiêu'. User suspected line-height clipping.",
+      "file": "src/terminal/grid.rs, Cargo.toml",
+      "root_cause": "NOT a line-height issue (panel_line_height 22 vs panel_font_size 14 is generous). The terminal grid stores one Unicode scalar per cell: print_char_at_cursor always wrote the char and advanced the cursor, with no handling for zero-width combining marks. The ANSI parser emits each codepoint as a separate PrintChar with no normalization. So a combining tone mark (e.g. precomposed 'ô' U+00F4 followed by combining dot-below U+0323) landed in its own cell, advancing the cursor; the lone mark shaped in isolation rendered clipped/invisible and the base lost its tone.",
+      "fix": "Added unicode-normalization dep. In print_char_at_cursor, detect combining marks via unicode_normalization::char::is_combining_mark; instead of consuming a cell, fold the mark into the previous cell's base char by NFC-normalizing base+mark (grapheme.nfc()). NFC reorders marks canonically first, so it composes even when the stream sends marks out of canonical order (pairwise char::compose alone misses 'ô'+U+0323 -> 'ộ' because ộ decomposes to ọ+circumflex). Only adopt the result if it collapses to a single scalar; otherwise keep base and drop mark to avoid misaligning the fixed-width grid. Cursor not advanced (zero-width). Tests: combining_marks_fold_into_base_cell, stacked_combining_marks_compose_incrementally, precomposed_vietnamese_passes_through, leading_combining_mark_is_dropped_not_misaligned.",
+      "tags": [
+        "terminal",
+        "unicode",
+        "vietnamese",
+        "combining-marks",
+        "nfc",
+        "rendering",
+        "user-reported",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T00:00:00Z"
+    },
+    {
+      "id": "bug-048",
+      "timestamp": "2026-06-11T06:27:06.641Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/async_runtime/scheduler/file_watch.rs",
+      "root_cause": "7 lines replaced/restructured",
+      "fix": "Rewrote 100→130 lines (7 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T06:27:06.641Z"
+    },
+    {
+      "id": "bug-049",
+      "timestamp": "2026-06-11T06:30:51.232Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/event_loop/async_results/filesystem.rs",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 5→3 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T06:30:51.232Z"
+    },
+    {
+      "id": "bug-050",
+      "timestamp": "2026-06-11T06:31:09.795Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/app_state/palette.rs",
+      "root_cause": "4 lines replaced/restructured",
+      "fix": "Rewrote 9→5 lines (4 removed) | Also: eprintln!(\"[FileWatch] Inactive file {:?} is dirty; eprintln!(\"[FileWatch] Reloading inactive file fro",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-06-11T06:31:27.328Z"
+    },
+    {
+      "id": "bug-051",
+      "timestamp": "2026-06-11T06:35:28.681Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/app_state/tests.rs",
+      "root_cause": "6 lines replaced/restructured",
+      "fix": "Rewrote 22→47 lines (6 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T06:35:28.681Z"
+    },
+    {
+      "id": "bug-052",
+      "timestamp": "2026-06-11T00:00:00.000Z",
+      "error_message": "External file changes (create/delete/rename + content edits) do not update the IDE: open file, edit it elsewhere, IDE does not refresh at all",
+      "file": "src/async_runtime/scheduler/file_watch.rs",
+      "root_cause": "The notify file-watch worker emitted FileSystemEvents via emit_message (no wake) and dispatch.rs never passed event_proxy into run_file_watch_request. With ControlFlow::Wait the winit loop stayed asleep, so FileSystemEvents sat unconsumed in the mpsc channel until an unrelated event (keypress/mouse/terminal/1s poll tick) woke it. The whole notify path (workspace rescan, file-picker refresh, conflict detection, rename/delete handling) was effectively dead; only the 1s mtime poll over OPEN buffers worked, so tree-level changes never appeared.",
+      "fix": "Passed event_proxy into run_file_watch_request and switched the FileSystemEvents emit to emit_message_and_wake (#1). Also: auto-restart watcher with backoff on failure (#4); non-recursive watch for files opened outside workspace root with dedup set (#5, added recursive flag to StartFileWatch payload); poll mtime compare > -> != to catch git checkout restoring older mtime (#2); self-save ignore now content-based via active_disk_content_matches_memory so genuine external edits within the 2s window still reload (#3); reduced safety-net poll 1s -> 3s (#6); removed debug eprintln noise (#7).",
+      "tags": ["file-watcher", "notify", "event-loop", "winit", "wake", "external-reload", "rust"],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T00:00:00.000Z"
     }
   ]
 }

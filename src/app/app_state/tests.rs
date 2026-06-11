@@ -937,12 +937,8 @@ mod tests {
 
         state.save_file().expect("save file");
 
-        fs::write(
-            &file_path,
-            "changed externally but should be ignored in debounce window\n",
-        )
-        .expect("rewrite file quickly");
-
+        // Self-save THẬT: đĩa == bộ nhớ (chính nội dung vừa lưu). Modify echo do OS
+        // bắn ra phải bị bỏ qua, không reload, không nhảy con trỏ.
         let report = state
             .apply_external_file_events(&[FileSystemEvent {
                 kind: FileSystemChangeKind::Modify,
@@ -953,7 +949,36 @@ mod tests {
 
         assert!(!report.active_file_reloaded);
         assert_eq!(state.cursor_char_idx(), cursor_before);
-        assert!(!state.preview(128).contains("changed externally"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn external_edit_within_self_save_window_still_reloads() {
+        // #3: edit NGOÀI thật xảy ra ngay sau khi save (trong cửa sổ debounce) KHÔNG
+        // được nuốt — vì nội dung đĩa khác bộ nhớ thì đó là thay đổi thật, phải reload.
+        let root = unique_temp_dir("external_edit_in_window");
+        fs::create_dir_all(&root).expect("create temp dir");
+        let file_path = root.join("main.rs");
+        fs::write(&file_path, "one\ntwo\nthree\n").expect("write initial");
+
+        let mut state = AppState::new(unique_temp_path("external_edit_in_window_fallback"));
+        state.open_file(file_path.clone()).expect("open file");
+        state.save_file().expect("save file");
+
+        // Ghi nội dung khác ngay lập tức (vẫn trong SELF_SAVE_IGNORE_WINDOW).
+        fs::write(&file_path, "external content arrived\n").expect("rewrite file quickly");
+
+        let report = state
+            .apply_external_file_events(&[FileSystemEvent {
+                kind: FileSystemChangeKind::Modify,
+                path: file_path.clone(),
+                new_path: None,
+            }])
+            .expect("apply modify event");
+
+        assert!(report.active_file_reloaded);
+        assert!(state.preview(64).contains("external content"));
 
         let _ = fs::remove_dir_all(root);
     }
