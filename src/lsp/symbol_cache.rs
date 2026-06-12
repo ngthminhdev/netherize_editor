@@ -233,16 +233,17 @@ fn index_ts_js_package_exports(workspace_root: &Path) -> Vec<CachedSymbol> {
             continue;
         };
 
-        let mut package_symbols = extract_ts_js_exports_from_text(&type_entry_path, &package_dir, &text)
-            .into_iter()
-            .filter(|symbol| symbol.export_kind.is_some())
-            .map(|mut symbol| {
-                symbol.source_path = Some(type_entry_path.clone());
-                symbol.file_path = type_entry_path.clone();
-                symbol.import_path = Some(package_name.clone());
-                symbol
-            })
-            .collect::<Vec<_>>();
+        let mut package_symbols =
+            extract_ts_js_exports_from_text(&type_entry_path, &package_dir, &text)
+                .into_iter()
+                .filter(|symbol| symbol.export_kind.is_some())
+                .map(|mut symbol| {
+                    symbol.source_path = Some(type_entry_path.clone());
+                    symbol.file_path = type_entry_path.clone();
+                    symbol.import_path = Some(package_name.clone());
+                    symbol
+                })
+                .collect::<Vec<_>>();
 
         if !package_symbols
             .iter()
@@ -424,8 +425,8 @@ fn package_default_export_name(text: &str) -> Option<String> {
                 return Some(name);
             }
         }
-        if let Some(rest) =
-            strip_leading_word(trimmed, "export").and_then(|rest| rest.trim_start().strip_prefix('='))
+        if let Some(rest) = strip_leading_word(trimmed, "export")
+            .and_then(|rest| rest.trim_start().strip_prefix('='))
         {
             if let Some(name) = read_identifier(rest.trim_start()) {
                 return Some(name);
@@ -548,7 +549,8 @@ pub fn extract_ts_js_exports_from_text(
             continue;
         }
 
-        let is_cjs_start = (trimmed.starts_with("module.exports") || trimmed.starts_with("exports"))
+        let is_cjs_start = (trimmed.starts_with("module.exports")
+            || trimmed.starts_with("exports"))
             && trimmed.contains('{')
             && !trimmed.contains('}');
         if is_cjs_start {
@@ -654,7 +656,7 @@ fn extract_commonjs_candidates_from_line(
     import_path: Option<&str>,
 ) -> Vec<CachedSymbol> {
     let mut candidates = Vec::new();
-    
+
     // Pattern 1: module.exports = { name1, name2 } or exports = { name1, name2 }
     if (trimmed.starts_with("module.exports") || trimmed.starts_with("exports"))
         && trimmed.contains('{')
@@ -722,7 +724,7 @@ fn extract_commonjs_candidates_from_line(
             }
         }
     }
-    
+
     candidates
 }
 
@@ -736,7 +738,6 @@ fn is_valid_ts_js_identifier(s: &str) -> bool {
     }
     chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '$')
 }
-
 
 fn collect_ts_js_files(root: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(root) else {
@@ -1196,7 +1197,9 @@ fn ts_js_parameters_after_named_call(raw_text: &str, name: &str) -> Option<bool>
             .or_else(|| rest.strip_prefix('!'))
             .unwrap_or(rest)
             .trim_start();
-        rest = strip_leading_type_arguments(rest).unwrap_or(rest).trim_start();
+        rest = strip_leading_type_arguments(rest)
+            .unwrap_or(rest)
+            .trim_start();
         if let Some(content) = parenthesized_prefix_content(rest) {
             return Some(!content.trim().is_empty());
         }
@@ -1271,7 +1274,12 @@ fn parenthesized_prefix_content(text: &str) -> Option<&str> {
     Some(&trimmed[1..close])
 }
 
-fn find_matching_delimiter(text: &str, open: usize, open_ch: char, close_ch: char) -> Option<usize> {
+fn find_matching_delimiter(
+    text: &str,
+    open: usize,
+    open_ch: char,
+    close_ch: char,
+) -> Option<usize> {
     let mut depth = 0usize;
     let mut quote = None;
     let mut escape = false;
@@ -1981,8 +1989,14 @@ enum Role {
         assert!(has("Role", "Enum", None));
         assert!(has("Admin", "EnumMember", Some("Role")));
         assert!(has("User", "EnumMember", Some("Role")));
-        assert_eq!(call_shape("localHelper", None), Some((Some(true), Some(false))));
-        assert_eq!(call_shape("calculate", None), Some((Some(true), Some(false))));
+        assert_eq!(
+            call_shape("localHelper", None),
+            Some((Some(true), Some(false)))
+        );
+        assert_eq!(
+            call_shape("calculate", None),
+            Some((Some(true), Some(false)))
+        );
         assert_eq!(
             call_shape("constructor", Some("UserService")),
             Some((Some(true), Some(true)))

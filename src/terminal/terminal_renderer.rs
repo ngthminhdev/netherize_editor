@@ -24,6 +24,7 @@
 //! TUI panels do not depend on font glyph coverage.
 use crate::{
     render::{glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance},
+    terminal::cell_shapes::solid_cell_rects,
     terminal::grid::TerminalGrid,
     text::{atlas::GlyphAtlas, raster::rasterize_glyph_alpha, text_system::TextSystem},
 };
@@ -172,6 +173,32 @@ impl TerminalViewRenderer {
                     .to_rgba_f32_with_defaults(default_fg, default_bg, true)
             });
 
+            // Block elements / box drawing: vẽ quad solid phủ kín cell thay vì
+            // glyph font (glyph chỉ phủ line-box của font, nhỏ hơn cell height
+            // panel_line_height → border/logo bị hở khe "đứt nét").
+            if let Some(rects) = solid_cell_rects(cell.ch, self.cell_width, self.cell_height) {
+                if let Some(solid) = atlas.solid_entry() {
+                    let (uv_min, uv_max) = atlas.uv_min_max(solid.region);
+                    for rect in rects {
+                        let x = screen_x + rect.x;
+                        let w = rect.w.min((clip_right - x).max(0.0));
+                        if w <= 0.0 {
+                            continue;
+                        }
+                        let mut color = fg_rgba;
+                        color[3] *= rect.alpha;
+                        instances.push(GlyphInstance::new(
+                            [x, screen_y + rect.y],
+                            [w, rect.h],
+                            uv_min,
+                            uv_max,
+                            color,
+                        ));
+                    }
+                    continue;
+                }
+            }
+
             // Cấu hình text system để shape 1 ký tự.
             text_system.set_size(Some(self.cell_width), Some(self.cell_height));
             let ch_str = cell.ch.to_string();
@@ -265,6 +292,9 @@ fn flush_background_run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cosmic_text::Metrics;
+
+    use crate::text::text_system::TextSystem;
 
     #[test]
     fn cell_rect_calculation() {
@@ -301,5 +331,18 @@ mod tests {
 
         assert_eq!(instances.len(), 1);
         assert_eq!(instances[0].rect, [5.0, 7.0, 20.0, 20.0]);
+    }
+
+    #[test]
+    fn vietnamese_cells_shape_to_visible_glyphs() {
+        let mut text_system =
+            TextSystem::new(Metrics::new(14.0, 20.0), Some(14.0 * 0.6), Some(20.0));
+
+        for ch in ['đ', 'ổ', 'ệ'] {
+            text_system.set_size(Some(14.0 * 0.6), Some(20.0));
+            text_system.set_text(&ch.to_string());
+            let glyphs = text_system.collect_visible_glyphs(0.0, 0.0, [1.0, 1.0, 1.0, 1.0], None);
+            assert!(!glyphs.is_empty(), "expected visible glyph for {ch}");
+        }
     }
 }

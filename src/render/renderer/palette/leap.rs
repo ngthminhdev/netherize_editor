@@ -8,13 +8,11 @@ use crate::{
     text::layout_sync::visual_y_for_logical_scroll_with_folds,
 };
 
-use super::super::components::{
-    layout_prefix_icon_badge, PrefixIconBadge, PrefixIconBadgeChrome,
-};
+use super::super::components::{PrefixIconBadge, PrefixIconBadgeChrome, layout_prefix_icon_badge};
 use super::super::editor::editor_viewport_geometry;
 use super::super::helpers::{
-    clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
-    layout_panel_text, layout_panel_text_bold, rect_to_scissor,
+    clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor, layout_panel_text,
+    layout_panel_text_bold, rect_to_scissor,
 };
 
 impl Renderer {
@@ -128,7 +126,11 @@ impl Renderer {
                     color: label_color,
                     panel_bg,
                     bounds: [badge_x, badge_y, badge_w, badge_h],
-                    icon_scale: if visible_label.chars().count() > 1 { 0.50 } else { 0.68 },
+                    icon_scale: if visible_label.chars().count() > 1 {
+                        0.50
+                    } else {
+                        0.68
+                    },
                     y_nudge_scale: 0.08,
                     chrome: PrefixIconBadgeChrome::Outline,
                 };

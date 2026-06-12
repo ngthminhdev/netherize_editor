@@ -35,6 +35,7 @@ const GUTTER_BG_RIGHT_TRIM: f32 = 10.0;
 const GIT_GUTTER_MARKER_LEFT_INSET: f32 = -10.0;
 const GIT_GUTTER_MARKER_WIDTH: f32 = 6.0;
 const GIT_GUTTER_DELETED_MARKER_HEIGHT: f32 = 2.0;
+const FOLD_ICON_LEFT_INSET: f32 = -18.0;
 
 fn leading_indent_info(app_state: &AppState, line_idx: usize, tab_width: usize) -> (usize, bool) {
     let text = app_state.line_string(line_idx);
@@ -893,19 +894,37 @@ impl Renderer {
                 }
             }
 
-            let num_str = if has_folds && is_fold_marker {
-                // Tìm số dòng bị fold
+            // ── Fold icon 󰡍 ───────────────────────────────────────────────────
+            if has_folds && is_fold_marker {
                 let folded_line_count =
                     app_state.folded_line_count_at_marker(abs_line).unwrap_or(0);
                 if folded_line_count > 0 {
-                    // Show "…" for auto-folded long lines
+                    let icon_x = gutter_x + FOLD_ICON_LEFT_INSET;
+                    let mut icon_color = gutter_text_color;
+                    icon_color[3] = icon_color[3] * 0.6;
+                    gutter_glyphs.extend(layout_panel_text(
+                        "󰡍",
+                        &mut self.gutter_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        icon_x,
+                        line_top_y,
+                        icon_color,
+                    ));
+                }
+            }
+
+            let num_str = if has_folds && is_fold_marker {
+                let folded_line_count =
+                    app_state.folded_line_count_at_marker(abs_line).unwrap_or(0);
+                if folded_line_count > 0 {
                     if app_state.is_auto_folded_long_line(abs_line) {
                         format!("…")
                     } else {
-                        format!(" {}", folded_line_count)
+                        format!("...{}", folded_line_count)
                     }
                 } else {
-                    format!("")
+                    format!("")
                 }
             } else if self.relative_numbers {
                 let dist = abs_line.abs_diff(cursor_line);
@@ -934,11 +953,8 @@ impl Renderer {
                 let dot_y = line_top_y + (run.line_height - dot_size) * 0.5;
                 let dot_color = self.theme.ui.error.as_f32();
                 quads.push(
-                    RegionDrawInstance::new(
-                        [dot_x, dot_y, dot_size, dot_size],
-                        dot_color,
-                    )
-                    .with_radius(dot_size * 0.5),
+                    RegionDrawInstance::new([dot_x, dot_y, dot_size, dot_size], dot_color)
+                        .with_radius(dot_size * 0.5),
                 );
             }
 

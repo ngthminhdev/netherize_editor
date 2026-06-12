@@ -73,7 +73,9 @@ impl AppShell {
                         self.begin_theme_picker_preview_session();
                         request_redraw |= self.preview_selected_theme_from_picker();
                     }
-                    if self.app_state.command_palette_mode() == Some(CommandPaletteMode::ThemeSelector) {
+                    if self.app_state.command_palette_mode()
+                        == Some(CommandPaletteMode::ThemeSelector)
+                    {
                         self.begin_theme_picker_preview_session();
                         request_redraw |= self.preview_selected_theme_from_picker();
                     }
@@ -153,7 +155,9 @@ impl AppShell {
                             );
                         }
                     }
-                } else if self.app_state.command_palette_mode() == Some(CommandPaletteMode::ThemeSelector) {
+                } else if self.app_state.command_palette_mode()
+                    == Some(CommandPaletteMode::ThemeSelector)
+                {
                     self.preview_selected_theme_from_picker();
                 } else {
                     self.submit_active_palette_fzf_search();
@@ -179,7 +183,8 @@ impl AppShell {
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
                 }
-                if self.app_state.command_palette_mode() == Some(CommandPaletteMode::ThemeSelector) {
+                if self.app_state.command_palette_mode() == Some(CommandPaletteMode::ThemeSelector)
+                {
                     self.preview_selected_theme_from_picker();
                 }
                 self.submit_active_palette_fzf_search();
@@ -196,7 +201,8 @@ impl AppShell {
             {
                 let report = dispatch_command(&mut self.app_state, command.clone());
                 if report.success
-                    && self.app_state.command_palette_mode() == Some(CommandPaletteMode::ThemeSelector)
+                    && self.app_state.command_palette_mode()
+                        == Some(CommandPaletteMode::ThemeSelector)
                 {
                     self.preview_selected_theme_from_picker();
                 }
@@ -333,8 +339,6 @@ impl AppShell {
                     return Some(self.confirm_explorer_prompt());
                 }
 
-
-
                 if matches!(command, Command::FilePickerConfirmSelection)
                     && matches!(
                         self.app_state.command_palette_mode(),
@@ -406,7 +410,11 @@ impl AppShell {
                         Some(CommandPaletteMode::DebugWatchInput)
                     )
                 {
-                    let expr = self.app_state.command_palette_query_text().trim().to_string();
+                    let expr = self
+                        .app_state
+                        .command_palette_query_text()
+                        .trim()
+                        .to_string();
                     let _ = dispatch_command(&mut self.app_state, Command::CloseFilePicker);
                     if !expr.is_empty() {
                         if let Some(session) = &self.dap_session {
@@ -557,9 +565,7 @@ impl AppShell {
                         self.submit(RequestSpec {
                             revision_id: 0,
                             topic: RequestTopic::SystemTask,
-                            payload: WorkerRequestPayload::ScanDartEnvironments {
-                                workspace_root,
-                            },
+                            payload: WorkerRequestPayload::ScanDartEnvironments { workspace_root },
                         });
                     }
                     self.arm_palette_ime_commit_suppression();

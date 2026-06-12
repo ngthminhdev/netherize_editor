@@ -273,10 +273,19 @@ impl InspectorPanelState {
         let mut current_y = sidebar_bounds.y;
 
         for section in &self.sections {
-            let section_h = if section.expanded { expanded_h } else { collapsed_h };
+            let section_h = if section.expanded {
+                expanded_h
+            } else {
+                collapsed_h
+            };
             surfaces.push(InspectorSectionSurface {
                 kind: section.kind,
-                bounds: RegionBounds::new(sidebar_bounds.x, current_y, sidebar_bounds.width, section_h),
+                bounds: RegionBounds::new(
+                    sidebar_bounds.x,
+                    current_y,
+                    sidebar_bounds.width,
+                    section_h,
+                ),
                 selected: selected_section.is_some_and(|kind| kind == section.kind),
             });
             current_y += section_h + header_gap;
@@ -432,7 +441,10 @@ mod tests {
             },
             StackFrame {
                 function: "build".to_string(),
-                location: SourceLocation { line: 41, column: 8 },
+                location: SourceLocation {
+                    line: 41,
+                    column: 8,
+                },
                 path: std::path::PathBuf::from("widget.dart"),
             },
         ];
@@ -597,7 +609,10 @@ mod tests {
 
         // Find the leaf node row
         let rows = state.visible_rows();
-        let leaf_idx = rows.iter().position(|r| r.label.contains("x = 42")).unwrap();
+        let leaf_idx = rows
+            .iter()
+            .position(|r| r.label.contains("x = 42"))
+            .unwrap();
         state.selected_row = leaf_idx;
 
         // Toggle on leaf should return false (no children)

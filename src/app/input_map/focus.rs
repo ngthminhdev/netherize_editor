@@ -495,7 +495,9 @@ impl InputMap {
             });
         }
 
-        if let Some(command) = resolved_keymap::resolve_command(&self.keymap, input, "normal", &self.open_file_path) {
+        if let Some(command) =
+            resolved_keymap::resolve_command(&self.keymap, input, "normal", &self.open_file_path)
+        {
             return Some(KeybindingMatch {
                 command,
                 reason: "inspector: keymap binding",
@@ -568,7 +570,6 @@ impl InputMap {
                 reason: "preview: z/zz -> keep preview viewport centered",
             });
         }
-
 
         if input.modifiers.control_key()
             && !input.modifiers.super_key()
@@ -1043,8 +1044,9 @@ impl InputMap {
     pub(super) fn resolve_terminal_focus(
         &self,
         input: &NormalizedInput,
-        mode: EditorMode,
+        context: KeybindingContext,
     ) -> Option<KeybindingMatch> {
+        let mode = context.mode;
         // Strict terminal mode: only consult terminal-mode bindings here.
         // Unmapped keys must fall through as raw PTY input instead of triggering globals.
         if let Some(command) = resolved_keymap::resolve_command_mode_only(
@@ -1059,11 +1061,20 @@ impl InputMap {
             });
         }
 
-        if let Some(command) = resolved_keymap::resolve_global_command(
-            &self.keymap,
-            input,
-            &self.open_file_path,
-        ) {
+        if context.right_sidebar_terminal
+            && input.modifiers.super_key()
+            && !input.modifiers.shift_key()
+            && input.physical_key == Some(KeyCode::Comma)
+        {
+            return Some(KeybindingMatch {
+                command: Command::OpenSettings,
+                reason: "right terminal focus: Cmd+, -> OpenSettings",
+            });
+        }
+
+        if let Some(command) =
+            resolved_keymap::resolve_global_command(&self.keymap, input, &self.open_file_path)
+        {
             let is_allowed = match &command {
                 Command::FocusTerminal
                 | Command::ToggleBottomDock
@@ -1083,8 +1094,10 @@ impl InputMap {
                 | Command::DebugStepInto
                 | Command::DebugStepOut => true,
                 Command::DebugToggleBreakpoint => {
-                    // Only allow if NOT Shift+B
-                    !(input.modifiers.shift_key() && !input.modifiers.control_key() && !input.modifiers.super_key() && !input.modifiers.alt_key())
+                    !(input.modifiers.shift_key()
+                        && !input.modifiers.control_key()
+                        && !input.modifiers.super_key()
+                        && !input.modifiers.alt_key())
                 }
                 _ => false,
             };

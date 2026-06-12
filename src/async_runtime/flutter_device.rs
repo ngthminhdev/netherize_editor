@@ -1,5 +1,5 @@
-use std::process::Stdio;
 use serde::{Deserialize, Serialize};
+use std::process::Stdio;
 use tokio::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -25,7 +25,10 @@ fn resolve_sdk_dir() -> Option<std::path::PathBuf> {
         }
     }
     if let Ok(home) = std::env::var("HOME") {
-        let p = std::path::Path::new(&home).join("Library").join("Android").join("sdk");
+        let p = std::path::Path::new(&home)
+            .join("Library")
+            .join("Android")
+            .join("sdk");
         if p.exists() {
             return Some(p);
         }
@@ -40,7 +43,11 @@ fn resolve_adb_path() -> String {
             return p.to_string_lossy().to_string();
         }
     }
-    for p in &["/opt/homebrew/bin/adb", "/usr/local/bin/adb", "/usr/bin/adb"] {
+    for p in &[
+        "/opt/homebrew/bin/adb",
+        "/usr/local/bin/adb",
+        "/usr/bin/adb",
+    ] {
         if std::path::Path::new(p).exists() {
             return p.to_string().to_string();
         }
@@ -55,7 +62,11 @@ fn resolve_emulator_path() -> String {
             return p.to_string_lossy().to_string();
         }
     }
-    for p in &["/opt/homebrew/bin/emulator", "/usr/local/bin/emulator", "/usr/bin/emulator"] {
+    for p in &[
+        "/opt/homebrew/bin/emulator",
+        "/usr/local/bin/emulator",
+        "/usr/bin/emulator",
+    ] {
         if std::path::Path::new(p).exists() {
             return p.to_string().to_string();
         }
@@ -117,17 +128,25 @@ pub async fn scan_flutter_devices(flutter_path: Option<std::path::PathBuf>) -> V
     let handle_flutter_devices = tokio::spawn(async move {
         let mut list = Vec::new();
         eprintln!("[scan_flutter_devices] Spawning 'flutter devices --machine'...");
-        let res = tokio::time::timeout(timeout_duration, make_flutter_command(&f1_cmd)
-            .args(&["devices", "--machine"])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-        ).await;
+        let res = tokio::time::timeout(
+            timeout_duration,
+            make_flutter_command(&f1_cmd)
+                .args(&["devices", "--machine"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .output(),
+        )
+        .await;
         match res {
             Ok(Ok(output)) if output.status.success() => {
-                if let Ok(raw_devices) = serde_json::from_slice::<Vec<RawFlutterDevice>>(&output.stdout) {
-                    eprintln!("[scan_flutter_devices] 'flutter devices' returned {} devices", raw_devices.len());
+                if let Ok(raw_devices) =
+                    serde_json::from_slice::<Vec<RawFlutterDevice>>(&output.stdout)
+                {
+                    eprintln!(
+                        "[scan_flutter_devices] 'flutter devices' returned {} devices",
+                        raw_devices.len()
+                    );
                     for dev in raw_devices {
                         list.push(FlutterDevice {
                             id: dev.id,
@@ -142,10 +161,16 @@ pub async fn scan_flutter_devices(flutter_path: Option<std::path::PathBuf>) -> V
                 }
             }
             Ok(Ok(output)) => {
-                eprintln!("[scan_flutter_devices] 'flutter devices' failed with status: {:?}", output.status);
+                eprintln!(
+                    "[scan_flutter_devices] 'flutter devices' failed with status: {:?}",
+                    output.status
+                );
             }
             Ok(Err(e)) => {
-                eprintln!("[scan_flutter_devices] Failed to run 'flutter devices': {:?}", e);
+                eprintln!(
+                    "[scan_flutter_devices] Failed to run 'flutter devices': {:?}",
+                    e
+                );
             }
             Err(_) => {
                 eprintln!("[scan_flutter_devices] 'flutter devices' timed out after 5s");
@@ -159,17 +184,25 @@ pub async fn scan_flutter_devices(flutter_path: Option<std::path::PathBuf>) -> V
     let handle_flutter_emulators = tokio::spawn(async move {
         let mut list = Vec::new();
         eprintln!("[scan_flutter_devices] Spawning 'flutter emulators --machine'...");
-        let res = tokio::time::timeout(timeout_duration, make_flutter_command(&f2_cmd)
-            .args(&["emulators", "--machine"])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-        ).await;
+        let res = tokio::time::timeout(
+            timeout_duration,
+            make_flutter_command(&f2_cmd)
+                .args(&["emulators", "--machine"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .output(),
+        )
+        .await;
         match res {
             Ok(Ok(output)) if output.status.success() => {
-                if let Ok(raw_emulators) = serde_json::from_slice::<Vec<RawFlutterEmulator>>(&output.stdout) {
-                    eprintln!("[scan_flutter_devices] 'flutter emulators' returned {} emulators", raw_emulators.len());
+                if let Ok(raw_emulators) =
+                    serde_json::from_slice::<Vec<RawFlutterEmulator>>(&output.stdout)
+                {
+                    eprintln!(
+                        "[scan_flutter_devices] 'flutter emulators' returned {} emulators",
+                        raw_emulators.len()
+                    );
                     for emu in raw_emulators {
                         list.push(FlutterDevice {
                             id: emu.id,
@@ -184,10 +217,16 @@ pub async fn scan_flutter_devices(flutter_path: Option<std::path::PathBuf>) -> V
                 }
             }
             Ok(Ok(output)) => {
-                eprintln!("[scan_flutter_devices] 'flutter emulators' failed with status: {:?}", output.status);
+                eprintln!(
+                    "[scan_flutter_devices] 'flutter emulators' failed with status: {:?}",
+                    output.status
+                );
             }
             Ok(Err(e)) => {
-                eprintln!("[scan_flutter_devices] Failed to run 'flutter emulators': {:?}", e);
+                eprintln!(
+                    "[scan_flutter_devices] Failed to run 'flutter emulators': {:?}",
+                    e
+                );
             }
             Err(_) => {
                 eprintln!("[scan_flutter_devices] 'flutter emulators' timed out after 5s");
@@ -200,13 +239,16 @@ pub async fn scan_flutter_devices(flutter_path: Option<std::path::PathBuf>) -> V
     let handle_simctl = tokio::spawn(async move {
         let mut list = Vec::new();
         eprintln!("[scan_flutter_devices] Spawning 'xcrun simctl list devices --json'...");
-        let res = tokio::time::timeout(timeout_duration, Command::new("xcrun")
-            .args(&["simctl", "list", "devices", "--json"])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-        ).await;
+        let res = tokio::time::timeout(
+            timeout_duration,
+            Command::new("xcrun")
+                .args(&["simctl", "list", "devices", "--json"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .output(),
+        )
+        .await;
         match res {
             Ok(Ok(output)) if output.status.success() => {
                 if let Ok(simctl_data) = serde_json::from_slice::<SimctlOutput>(&output.stdout) {
@@ -215,7 +257,9 @@ pub async fn scan_flutter_devices(flutter_path: Option<std::path::PathBuf>) -> V
                         for dev in devs {
                             let is_avail = match &dev.is_available {
                                 serde_json::Value::Bool(b) => *b,
-                                serde_json::Value::String(s) => s.to_lowercase() == "yes" || s.to_lowercase() == "true",
+                                serde_json::Value::String(s) => {
+                                    s.to_lowercase() == "yes" || s.to_lowercase() == "true"
+                                }
                                 _ => true,
                             };
                             if is_avail {
@@ -231,16 +275,25 @@ pub async fn scan_flutter_devices(flutter_path: Option<std::path::PathBuf>) -> V
                             }
                         }
                     }
-                    eprintln!("[scan_flutter_devices] 'xcrun simctl' returned {} available simulators", count);
+                    eprintln!(
+                        "[scan_flutter_devices] 'xcrun simctl' returned {} available simulators",
+                        count
+                    );
                 } else {
                     eprintln!("[scan_flutter_devices] Failed to parse 'xcrun simctl' JSON");
                 }
             }
             Ok(Ok(output)) => {
-                eprintln!("[scan_flutter_devices] 'xcrun simctl' failed with status: {:?}", output.status);
+                eprintln!(
+                    "[scan_flutter_devices] 'xcrun simctl' failed with status: {:?}",
+                    output.status
+                );
             }
             Ok(Err(e)) => {
-                eprintln!("[scan_flutter_devices] Failed to run 'xcrun simctl': {:?}", e);
+                eprintln!(
+                    "[scan_flutter_devices] Failed to run 'xcrun simctl': {:?}",
+                    e
+                );
             }
             Err(_) => {
                 eprintln!("[scan_flutter_devices] 'xcrun simctl' timed out after 5s");
@@ -257,13 +310,16 @@ pub async fn scan_flutter_devices(flutter_path: Option<std::path::PathBuf>) -> V
     let handle_emulator = tokio::spawn(async move {
         let mut list = Vec::new();
         eprintln!("[scan_flutter_devices] Spawning '{} -list-avds'...", e_cmd);
-        let res = tokio::time::timeout(timeout_duration, Command::new(&e_cmd)
-            .arg("-list-avds")
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-        ).await;
+        let res = tokio::time::timeout(
+            timeout_duration,
+            Command::new(&e_cmd)
+                .arg("-list-avds")
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .output(),
+        )
+        .await;
         match res {
             Ok(Ok(output)) if output.status.success() => {
                 let stdout_str = String::from_utf8_lossy(&output.stdout);
@@ -281,13 +337,22 @@ pub async fn scan_flutter_devices(flutter_path: Option<std::path::PathBuf>) -> V
                         });
                     }
                 }
-                eprintln!("[scan_flutter_devices] Android emulator list returned {} AVDs", count);
+                eprintln!(
+                    "[scan_flutter_devices] Android emulator list returned {} AVDs",
+                    count
+                );
             }
             Ok(Ok(output)) => {
-                eprintln!("[scan_flutter_devices] Android emulator list failed with status: {:?}", output.status);
+                eprintln!(
+                    "[scan_flutter_devices] Android emulator list failed with status: {:?}",
+                    output.status
+                );
             }
             Ok(Err(e)) => {
-                eprintln!("[scan_flutter_devices] Failed to run Android emulator list: {:?}", e);
+                eprintln!(
+                    "[scan_flutter_devices] Failed to run Android emulator list: {:?}",
+                    e
+                );
             }
             Err(_) => {
                 eprintln!("[scan_flutter_devices] Android emulator list timed out after 5s");
@@ -301,13 +366,16 @@ pub async fn scan_flutter_devices(flutter_path: Option<std::path::PathBuf>) -> V
     let handle_adb = tokio::spawn(async move {
         let mut list = Vec::new();
         eprintln!("[scan_flutter_devices] Spawning '{} devices'...", a_cmd);
-        let res = tokio::time::timeout(timeout_duration, Command::new(&a_cmd)
-            .arg("devices")
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-        ).await;
+        let res = tokio::time::timeout(
+            timeout_duration,
+            Command::new(&a_cmd)
+                .arg("devices")
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .output(),
+        )
+        .await;
         match res {
             Ok(Ok(output)) if output.status.success() => {
                 let stdout_str = String::from_utf8_lossy(&output.stdout);
@@ -326,10 +394,16 @@ pub async fn scan_flutter_devices(flutter_path: Option<std::path::PathBuf>) -> V
                         });
                     }
                 }
-                eprintln!("[scan_flutter_devices] adb devices returned {} active devices", count);
+                eprintln!(
+                    "[scan_flutter_devices] adb devices returned {} active devices",
+                    count
+                );
             }
             Ok(Ok(output)) => {
-                eprintln!("[scan_flutter_devices] adb devices failed with status: {:?}", output.status);
+                eprintln!(
+                    "[scan_flutter_devices] adb devices failed with status: {:?}",
+                    output.status
+                );
             }
             Ok(Err(e)) => {
                 eprintln!("[scan_flutter_devices] Failed to run adb devices: {:?}", e);
@@ -352,26 +426,38 @@ pub async fn scan_flutter_devices(flutter_path: Option<std::path::PathBuf>) -> V
 
     // Populate flutter devices and emulators
     for d in flutter_devs {
-        if !devices.iter().any(|existing: &FlutterDevice| existing.id == d.id) {
+        if !devices
+            .iter()
+            .any(|existing: &FlutterDevice| existing.id == d.id)
+        {
             devices.push(d);
         }
     }
     for d in flutter_emus {
-        if !devices.iter().any(|existing: &FlutterDevice| existing.id == d.id) {
+        if !devices
+            .iter()
+            .any(|existing: &FlutterDevice| existing.id == d.id)
+        {
             devices.push(d);
         }
     }
 
     // Populate iOS simulators
     for d in simctl_devs {
-        if !devices.iter().any(|existing: &FlutterDevice| existing.id == d.id) {
+        if !devices
+            .iter()
+            .any(|existing: &FlutterDevice| existing.id == d.id)
+        {
             devices.push(d);
         }
     }
 
     // Populate Android AVDs
     for d in avd_emus {
-        if !devices.iter().any(|existing: &FlutterDevice| existing.id == d.id) {
+        if !devices
+            .iter()
+            .any(|existing: &FlutterDevice| existing.id == d.id)
+        {
             devices.push(d);
         }
     }
@@ -380,7 +466,9 @@ pub async fn scan_flutter_devices(flutter_path: Option<std::path::PathBuf>) -> V
     for d in adb_devs {
         let mut found = false;
         for existing in &mut devices {
-            if existing.id == d.id || (d.id.starts_with("emulator-") && existing.platform == "android") {
+            if existing.id == d.id
+                || (d.id.starts_with("emulator-") && existing.platform == "android")
+            {
                 existing.is_active = true;
                 found = true;
             }
@@ -390,7 +478,10 @@ pub async fn scan_flutter_devices(flutter_path: Option<std::path::PathBuf>) -> V
         }
     }
 
-    eprintln!("[scan_flutter_devices] Scan completed. Found {} total devices", devices.len());
+    eprintln!(
+        "[scan_flutter_devices] Scan completed. Found {} total devices",
+        devices.len()
+    );
     devices
 }
 
@@ -401,7 +492,10 @@ pub async fn launch_flutter_emulator(
     // 1. iOS Simulator boot via xcrun simctl
     let is_ios = emulator_id.contains('-') && emulator_id.len() >= 36;
     if is_ios {
-        eprintln!("[launch_flutter_emulator] Booting iOS Simulator: {}", emulator_id);
+        eprintln!(
+            "[launch_flutter_emulator] Booting iOS Simulator: {}",
+            emulator_id
+        );
         let status = Command::new("xcrun")
             .args(&["simctl", "boot", emulator_id])
             .stdin(Stdio::null())
@@ -463,7 +557,10 @@ pub async fn launch_flutter_emulator(
                 }
             }
 
-            eprintln!("[launch_flutter_emulator] Falling back to native: {} -avd {}", emulator_cmd, emulator_id);
+            eprintln!(
+                "[launch_flutter_emulator] Falling back to native: {} -avd {}",
+                emulator_cmd, emulator_id
+            );
             let spawn_result = Command::new(&emulator_cmd)
                 .args(&["-avd", emulator_id])
                 .stdin(Stdio::null())
@@ -477,7 +574,10 @@ pub async fn launch_flutter_emulator(
                     Ok(())
                 }
                 Err(e) => {
-                    eprintln!("[launch_flutter_emulator] Fallback emulator spawn failed: {:?}", e);
+                    eprintln!(
+                        "[launch_flutter_emulator] Fallback emulator spawn failed: {:?}",
+                        e
+                    );
                     Err(format!(
                         "Both flutter emulator launch and fallback emulator launch failed. Fallback error: {}",
                         e

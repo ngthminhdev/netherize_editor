@@ -148,6 +148,15 @@ fn table_driven_keybinding_resolution() {
             expected: None,
         },
         Case {
+            name: "terminal focus F5 -> DebugStart",
+            context: KeybindingContext::with_focus(
+                EditorMode::TerminalFocus,
+                InputFocusContext::Terminal,
+            ),
+            input: input_from_named(NamedKey::F5),
+            expected: Some(Command::DebugStart),
+        },
+        Case {
             name: "terminal focus cmd+v -> TerminalPaste",
             context: KeybindingContext::with_focus(
                 EditorMode::TerminalFocus,
@@ -248,6 +257,20 @@ fn table_driven_keybinding_resolution() {
                 modifiers: ModifiersState::SUPER,
             },
             expected: Some(Command::TerminalPaste),
+        },
+        Case {
+            name: "terminal normal cmd+3 -> SwitchTerminalTab",
+            context: KeybindingContext::with_focus(
+                EditorMode::TerminalNormal,
+                InputFocusContext::Terminal,
+            ),
+            input: NormalizedInput {
+                physical_key: Some(KeyCode::Digit3),
+                named_key: None,
+                text: Some("3".to_string()),
+                modifiers: ModifiersState::SUPER,
+            },
+            expected: Some(Command::SwitchTerminalTab(2)),
         },
         Case {
             name: "terminal normal Shift+V -> EnterVisualLine",
@@ -356,6 +379,12 @@ fn table_driven_keybinding_resolution() {
             context: KeybindingContext::for_mode(EditorMode::Normal),
             input: input_from_named(NamedKey::F12),
             expected: Some(Command::FocusTerminal),
+        },
+        Case {
+            name: "global F9 -> DebugToggleBreakpoint",
+            context: KeybindingContext::for_mode(EditorMode::Normal),
+            input: input_from_named(NamedKey::F9),
+            expected: Some(Command::DebugToggleBreakpoint),
         },
         Case {
             name: "global cmd+backslash -> ToggleBottomDock",

@@ -153,6 +153,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn default_keymap_has_no_unknown_commands() {
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("config/keymaps/default.toml");
+        let content = std::fs::read_to_string(&path).expect("read default keymap");
+        let file: KeymapFile = toml::from_str(&content).expect("parse default keymap");
+        let unknown: Vec<String> = file
+            .bindings
+            .iter()
+            .filter(|b| !command_ids::is_valid(&b.command))
+            .map(|b| format!("{} (key='{}')", b.command, b.key))
+            .collect();
+        assert!(
+            unknown.is_empty(),
+            "default.toml references unknown command ids (their keys are silently dead): {unknown:?}"
+        );
+    }
+
+    #[test]
     fn invalid_toml_returns_none() {
         let dir = std::env::temp_dir();
         let path = dir.join("netherize_bad_keymap_test.toml");

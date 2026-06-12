@@ -251,6 +251,7 @@ pub(super) async fn execute_virtual_job(
                 "rust-analyzer",
                 "typescript-language-server",
                 "gopls",
+                "dart",
                 "pylsp",
                 "jdtls",
                 "sqls",
@@ -465,7 +466,7 @@ fn cpu_burn_checksum(busy_millis: u64) -> u64 {
 }
 
 /// Xây dựng $PATH đầy đủ cho GUI bundle — bổ sung các thư mục mà app GUI thường thiếu.
-pub(super) fn resolve_system_path() -> String {
+pub(crate) fn resolve_system_path() -> String {
     let current = std::env::var("PATH").unwrap_or_default();
     let home = std::env::var("HOME").unwrap_or_default();
 
@@ -479,7 +480,38 @@ pub(super) fn resolve_system_path() -> String {
         "/sbin",
     ];
 
-    let home_extras = [format!("{home}/.cargo/bin"), format!("{home}/.local/bin")];
+    let mut home_extras = Vec::new();
+    push_unique_path(&mut home_extras, format!("{home}/.cargo/bin"));
+    let gvm_root = std::env::var("GVM_ROOT").unwrap_or_else(|_| format!("{home}/.gvm"));
+    for path in crate::lsp::client::resolve_gvm_paths(&gvm_root) {
+        push_unique_path(&mut home_extras, path);
+    }
+    push_unique_path(&mut home_extras, format!("{home}/go/bin"));
+    // nvm has no "current" symlink by default — scan installed versions and add
+    // the newest ones so node-based language servers are detected.
+    for path in resolve_nvm_bin_paths(&home) {
+        push_unique_path(&mut home_extras, path);
+    }
+    push_unique_path(&mut home_extras, format!("{home}/.npm-global/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/.jenv/shims"));
+    push_unique_path(&mut home_extras, format!("{home}/.jenv/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/.pyenv/shims"));
+    push_unique_path(&mut home_extras, format!("{home}/.pyenv/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/.rbenv/shims"));
+    push_unique_path(&mut home_extras, format!("{home}/.rbenv/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/.volta/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/.asdf/shims"));
+    push_unique_path(&mut home_extras, format!("{home}/.bun/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/.deno/bin"));
+    // Dart/Flutter: pub global executables + FVM-managed SDK
+    push_unique_path(&mut home_extras, format!("{home}/.pub-cache/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/fvm/default/bin"));
+    push_unique_path(&mut home_extras, format!("{home}/.fvm/default/bin"));
+    push_unique_path(
+        &mut home_extras,
+        format!("{home}/.local/share/netherize/bin"),
+    );
+    push_unique_path(&mut home_extras, format!("{home}/.local/bin"));
 
     let mut dirs: Vec<&str> = current.split(':').filter(|s| !s.is_empty()).collect();
     for extra in extras {
@@ -493,6 +525,48 @@ pub(super) fn resolve_system_path() -> String {
         }
     }
     dirs.join(":")
+}
+
+/// Collect bin dirs of installed nvm node versions, newest first (capped to 3).
+/// Standard nvm has no stable "current" symlink, so enumerate ~/.nvm/versions/node/*.
+fn resolve_nvm_bin_paths(home: &str) -> Vec<String> {
+    let versions_root = std::path::Path::new(home).join(".nvm/versions/node");
+    let Ok(entries) = std::fs::read_dir(&versions_root) else {
+        return Vec::new();
+    };
+    let mut versions: Vec<String> = entries
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.path().join("bin").is_dir())
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect();
+    // Sort semver-ish descending: v20.11.1 > v18.19.0
+    versions.sort_by(|a, b| {
+        let parse = |v: &str| -> Vec<u64> {
+            v.trim_start_matches('v')
+                .split('.')
+                .filter_map(|part| part.parse::<u64>().ok())
+                .collect()
+        };
+        parse(b).cmp(&parse(a))
+    });
+    versions
+        .into_iter()
+        .take(3)
+        .map(|version| {
+            versions_root
+                .join(version)
+                .join("bin")
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect()
+}
+
+fn push_unique_path(paths: &mut Vec<String>, path: String) {
+    if path.is_empty() || paths.iter().any(|existing| existing == &path) {
+        return;
+    }
+    paths.push(path);
 }
 
 /// Cài đặt từng tool một, gửi progress message về main thread sau mỗi bước.

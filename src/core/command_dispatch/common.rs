@@ -73,13 +73,28 @@ impl<'state, 'clipboard, 'terminal> DispatchCtx<'state, 'clipboard, 'terminal> {
     }
 
     pub(super) fn open_file(&mut self, path: PathBuf) -> DispatchReport {
+        // Mở sang file khác là một jump (vim :e semantics) -> ghi lại vị trí
+        // xuất phát để Ctrl+O quay về được. Mở lại chính file đang active thì bỏ qua.
+        let origin = self
+            .app_state
+            .active_file()
+            .filter(|active| *active != path.as_path())
+            .map(|active| {
+                let (line, col) = self.app_state.cursor_line_col();
+                (active.to_path_buf(), line, col)
+            });
         match self.app_state.open_file(path.clone()) {
-            Ok(()) => DispatchReport {
-                message: format!("Dispatch: open trigger succeeded -> {}", path.display()),
-                request_redraw: true,
-                success: true,
-                state_changed: true,
-            },
+            Ok(()) => {
+                if let Some((origin_path, line, col)) = origin {
+                    self.app_state.push_jump_entry(origin_path, line, col);
+                }
+                DispatchReport {
+                    message: format!("Dispatch: open trigger succeeded -> {}", path.display()),
+                    request_redraw: true,
+                    success: true,
+                    state_changed: true,
+                }
+            }
             Err(err) => DispatchReport::failure(format!("Dispatch: open trigger failed -> {err}")),
         }
     }

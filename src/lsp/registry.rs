@@ -300,13 +300,11 @@ pub fn language_profile_for_binary(binary: &str) -> Option<&'static LanguageProf
     let path = Path::new(binary);
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(binary);
     let file_name = path.file_name().and_then(|f| f.to_str()).unwrap_or(binary);
-    LANGUAGE_REGISTRY
-        .iter()
-        .find(|profile| {
-            profile.lsp_binary == binary
-                || profile.lsp_binary == stem
-                || profile.lsp_binary == file_name
-        })
+    LANGUAGE_REGISTRY.iter().find(|profile| {
+        profile.lsp_binary == binary
+            || profile.lsp_binary == stem
+            || profile.lsp_binary == file_name
+    })
 }
 
 pub fn find_project_root(file_path: &Path, markers: &[&str]) -> PathBuf {

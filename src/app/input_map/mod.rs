@@ -99,8 +99,15 @@ pub struct KeybindingContext {
     pub command_palette_mode: Option<CommandPaletteMode>,
     pub welcome_visible: bool,
     pub completion_visible: bool,
+    /// True when AI ghost text is showing at the caret. Lets the input layer
+    /// route Tab to accept the suggestion (completion menu still wins).
+    pub inline_suggestion_visible: bool,
     pub hover_overlay_visible: bool,
     pub zen_mode_active: bool,
+    /// True when the focused terminal is the right-sidebar opencode chat. Lets
+    /// the input layer rebind Ctrl+U/Ctrl+D to scroll instead of forwarding them
+    /// as raw control bytes, without affecting the bottom-panel shell.
+    pub right_sidebar_terminal: bool,
 }
 
 impl KeybindingContext {
@@ -116,8 +123,10 @@ impl KeybindingContext {
             command_palette_mode: None,
             welcome_visible: false,
             completion_visible: false,
+            inline_suggestion_visible: false,
             hover_overlay_visible: false,
             zen_mode_active: false,
+            right_sidebar_terminal: false,
         }
     }
 
@@ -139,8 +148,10 @@ impl KeybindingContext {
             command_palette_mode: None,
             welcome_visible: false,
             completion_visible: false,
+            inline_suggestion_visible: false,
             hover_overlay_visible: false,
             zen_mode_active: false,
+            right_sidebar_terminal: false,
         }
     }
 }
@@ -160,6 +171,28 @@ pub struct PendingSequence {
 pub enum SequenceMatch {
     Dispatch(KeybindingMatch),
     Pending(PendingSequence),
+}
+
+/// One row of the which-key overlay: the next key of a pending chord plus a
+/// human-readable description of what it does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WhichKeyEntry {
+    /// Display token (e.g. "f", "<Space>").
+    pub key: String,
+    /// Humanized command label, or "+more" for a deeper chord group.
+    pub label: String,
+    pub is_group: bool,
+}
+
+/// "editor.move_word_forward" -> "Move word forward".
+fn humanize_command_id(id: &str) -> String {
+    let tail = id.rsplit('.').next().unwrap_or(id);
+    let label = tail.replace('_', " ");
+    let mut chars = label.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => label,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -256,7 +289,7 @@ impl InputMap {
             return self.resolve_settings_focus(input, context);
         }
         if context.focus == InputFocusContext::Terminal {
-            return self.resolve_terminal_focus(input, context.mode);
+            return self.resolve_terminal_focus(input, context);
         }
         if context.focus == InputFocusContext::Explorer {
             return self.resolve_explorer_focus(input, context.welcome_visible);
@@ -271,7 +304,8 @@ impl InputMap {
             return self.resolve_help_focus(input);
         }
         if context.focus == InputFocusContext::ExtensionsManager {
-            return self.resolve_extensions_manager_focus(input, context.mode == EditorMode::Insert);
+            return self
+                .resolve_extensions_manager_focus(input, context.mode == EditorMode::Insert);
         }
         if context.focus == InputFocusContext::BottomPanel {
             return self.resolve_bottom_panel_focus(input);
@@ -470,6 +504,36 @@ impl InputMap {
             return matches!(context.mode, EditorMode::Normal | EditorMode::Visual);
         }
         true
+    }
+
+    /// Continuations of a pending chord, ready for the which-key overlay.
+    /// Entries whose command id cannot resolve to a real command are hidden,
+    /// mirroring dispatch behavior.
+    pub fn whichkey_entries(
+        &self,
+        pending: &PendingSequence,
+        context: KeybindingContext,
+    ) -> Vec<WhichKeyEntry> {
+        let mode_str = self.sequence_mode_str(context);
+        self.keymap
+            .sequence_continuations(&pending.steps, mode_str)
+            .into_iter()
+            .filter_map(|cont| match cont.command_id {
+                Some(id) => {
+                    command_ids::parse(&id, Some(&self.open_file_path))?;
+                    Some(WhichKeyEntry {
+                        key: cont.key,
+                        label: humanize_command_id(&id),
+                        is_group: false,
+                    })
+                }
+                None => Some(WhichKeyEntry {
+                    key: cont.key,
+                    label: "+more".to_string(),
+                    is_group: true,
+                }),
+            })
+            .collect()
     }
 
     fn sequence_mode_str(&self, context: KeybindingContext) -> &'static str {

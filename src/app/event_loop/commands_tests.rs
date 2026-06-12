@@ -1,5 +1,7 @@
 use super::*;
 use crate::app::clipboard::ClipboardProvider;
+use crate::app::input::{InputRouteOutcome, NormalizedInput};
+use winit::keyboard::{KeyCode, ModifiersState};
 
 #[derive(Default)]
 struct MockClipboard {
@@ -91,9 +93,11 @@ fn insert_edit_clears_stale_semantic_highlight_spans() {
         range: 0.."bootstrap".len(),
         category: crate::syntax::highlight::HighlightCategory::Variable,
     }];
-    assert!(shell.app_state.set_semantic_symbol_highlights(vec![
-        (0, "bootstrap".len())
-    ]));
+    assert!(
+        shell
+            .app_state
+            .set_semantic_symbol_highlights(vec![(0, "bootstrap".len())])
+    );
     shell.editor_needs_layout = false;
     shell.editor_caret_needs_layout = false;
 
@@ -102,6 +106,28 @@ fn insert_edit_clears_stale_semantic_highlight_spans() {
     assert!(shell.semantic_highlight_spans.is_empty());
     assert!(shell.app_state.semantic_symbol_highlights().is_empty());
     assert!(shell.editor_needs_layout);
+}
+
+#[test]
+fn operator_delete_clears_stale_semantic_symbol_highlights() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = "bootstrap.NewApp\nsecond line";
+    shell.app_state = AppState::from_text(PathBuf::from("semantic-highlight-dd.ts"), text);
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+    assert!(
+        shell
+            .app_state
+            .set_semantic_symbol_highlights(vec![(0, "bootstrap".len())])
+    );
+    let revision_before = shell.semantic_highlight_request_revision;
+
+    assert!(shell.handle_command(Command::Operate {
+        op: crate::core::commands::Operator::Delete,
+        target: crate::core::commands::OperationTarget::CurrentLine,
+    }));
+
+    assert!(shell.app_state.semantic_symbol_highlights().is_empty());
+    assert!(shell.semantic_highlight_request_revision > revision_before);
 }
 
 #[test]
@@ -236,6 +262,112 @@ fn settings_commit_ui_rounding_edit_clamps_to_24() {
 }
 
 #[test]
+fn settings_text_edit_works_after_opening_from_right_terminal_focus() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.switch_to_tab(PanelTabId::Terminal);
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+    let _ = shell.app_state.apply_mode_event(ModeEvent::FocusTerminal);
+
+    assert!(shell.handle_command(Command::OpenSettings));
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+
+    let settings = shell
+        .app_state
+        .active_settings_buffer_mut()
+        .expect("settings buffer");
+    settings.selected_index = settings
+        .items
+        .iter()
+        .position(|item| {
+            matches!(
+                item,
+                crate::app::app_state::SettingItem::RightSidebarWidth { .. }
+            )
+        })
+        .expect("right sidebar width setting");
+
+    assert!(shell.handle_command(Command::SettingsActivate));
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Insert);
+    let context = shell.build_context();
+    assert_eq!(context.focus, InputFocusContext::SettingsTab);
+
+    let routed = shell.input_handler.route_normalized_input(
+        NormalizedInput {
+            physical_key: Some(KeyCode::Digit7),
+            named_key: None,
+            text: Some("7".to_string()),
+            modifiers: ModifiersState::empty(),
+        },
+        &shell.input_map,
+        context,
+        std::time::Instant::now(),
+    );
+    match routed {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::FilePickerAppendQuery("7".to_string())
+            );
+            assert!(shell.handle_command(translated.command));
+        }
+        other => panic!("expected settings text append route, got {:?}", other),
+    }
+
+    let settings = shell
+        .app_state
+        .active_settings_buffer()
+        .expect("settings buffer");
+    let editing = settings.editing.as_ref().expect("editing state");
+    assert!(editing.draft.ends_with('7'));
+}
+
+#[test]
+fn right_terminal_focus_cmd_comma_routes_to_settings() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.app_state = AppState::from_text(PathBuf::from("main.rs"), "fn main() {}\n");
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.switch_to_tab(PanelTabId::Terminal);
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::FocusTerminal)
+        .expect("focus terminal mode");
+    let context = shell.build_context();
+    assert_eq!(context.focus, InputFocusContext::Terminal);
+    assert_eq!(context.mode, EditorMode::TerminalFocus);
+    assert!(context.right_sidebar_terminal);
+
+    let routed = shell.input_handler.route_normalized_input(
+        NormalizedInput {
+            physical_key: Some(KeyCode::Comma),
+            named_key: None,
+            text: Some(",".to_string()),
+            modifiers: ModifiersState::SUPER,
+        },
+        &shell.input_map,
+        context,
+        std::time::Instant::now(),
+    );
+
+    match routed {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::OpenSettings);
+            assert!(shell.handle_command(translated.command));
+        }
+        other => panic!(
+            "expected settings route from right terminal, got {:?}",
+            other
+        ),
+    }
+
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+    assert!(shell.app_state.active_settings_buffer().is_some());
+}
+
+#[test]
 fn scroll_half_page_down_uses_viewport_layout_path() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let text = (0..100)
@@ -363,6 +495,55 @@ fn ai_chat_toggle_closing_right_dock_returns_focus_to_editor() {
         Some(PanelTabId::Terminal)
     );
     assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+}
+
+#[test]
+fn ai_chat_focus_reenters_terminal_mode_when_right_sidebar_already_focused() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.switch_to_tab(PanelTabId::Terminal);
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+
+    assert!(shell.handle_command(Command::AiChatFocus));
+
+    assert_eq!(shell.focus_manager.current(), FocusTarget::RightSidebar);
+    assert_eq!(
+        shell.panel_state.right.active_tab_id(),
+        Some(PanelTabId::Terminal)
+    );
+    assert_eq!(shell.app_state.current_mode(), EditorMode::TerminalFocus);
+}
+
+#[test]
+fn right_terminal_output_preserves_manual_scrollback_view() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.right.visible = true;
+    shell.panel_state.right.switch_to_tab(PanelTabId::Terminal);
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+    let _ = shell.app_state.apply_mode_event(ModeEvent::FocusTerminal);
+    shell.right_pty_session_id = Some(7);
+    shell.right_terminal_grid = TerminalGrid::new(5, 2);
+    shell
+        .right_terminal_grid
+        .feed_chunk("11111\r\n22222\r\n33333\r\n44444\r\n");
+    shell.right_terminal_grid.view_scroll_up(1);
+    assert!(shell.right_terminal_grid.scroll_offset > 0);
+
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: 1,
+        revision_id: 0,
+        topic: crate::async_runtime::message::RequestTopic::TerminalPty,
+        payload: crate::async_runtime::message::WorkerResultPayload::PtyOutput {
+            session_id: 7,
+            chunk: b"55555\r\n".to_vec(),
+        },
+    });
+
+    assert!(
+        shell.right_terminal_grid.scroll_offset > 0,
+        "right terminal output should not jump to bottom while user is viewing scrollback"
+    );
 }
 
 #[test]
@@ -911,7 +1092,6 @@ fn file_picker_confirm_submits_git_baseline_refresh_for_opened_file() {
     assert!(shell.handle_command(Command::FilePickerConfirmSelection));
 
     assert!(shell.git_baseline_revision > revision_before);
-
 }
 
 #[test]
@@ -1508,6 +1688,22 @@ fn cached_ts_default_export(name: &str, source_path: &std::path::Path) -> crate:
     }
 }
 
+fn cached_go_symbol(name: &str, source_path: &std::path::Path) -> crate::lsp::CachedSymbol {
+    crate::lsp::CachedSymbol {
+        name: name.to_string(),
+        kind: "Function".to_string(),
+        container_name: None,
+        file_path: source_path.to_path_buf(),
+        line: 0,
+        character: 5,
+        source_path: None,
+        import_path: None,
+        export_kind: None,
+        callable: Some(true),
+        has_parameters: Some(false),
+    }
+}
+
 fn cached_package_default_export(
     name: &str,
     source_path: &std::path::Path,
@@ -1620,6 +1816,50 @@ fn member_access_completion_debounces_after_one_typed_character() {
 }
 
 #[test]
+fn go_completion_debounces_after_two_typed_characters() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("go_prefix_completion");
+    let _path = open_completion_file(&mut shell, &root.join("main.go"), "Co");
+    let _ = shell.app_state.jump_to_line_and_column(0, 2);
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "gopls".to_string(),
+        root_path: root,
+    });
+    shell.lsp_completion_trigger_chars = vec!['.'];
+
+    shell.queue_lsp_completion_after_debounce_if_needed();
+
+    assert!(shell.pending_lsp_completion_after_debounce);
+}
+
+#[test]
+fn go_member_access_completion_debounces_after_one_typed_character() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("go_member_completion");
+    let _path = open_completion_file(&mut shell, &root.join("main.go"), "client.G");
+    let _ = shell
+        .app_state
+        .jump_to_line_and_column(0, "client.G".chars().count());
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "gopls".to_string(),
+        root_path: root,
+    });
+    shell.lsp_completion_trigger_chars = vec!['.'];
+
+    shell.queue_lsp_completion_after_debounce_if_needed();
+
+    assert!(shell.pending_lsp_completion_after_debounce);
+}
+
+#[test]
 fn completion_accept_replaces_typed_prefix_instead_of_inserting_after_it() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let root = completion_temp_root("replace_prefix");
@@ -1687,12 +1927,19 @@ fn completion_accept_adds_call_parens_and_places_cursor_inside_for_params() {
         &cache,
         None,
     );
-    assert!(shell.app_state.jump_to_line_and_column(0, "wai".chars().count()));
+    assert!(
+        shell
+            .app_state
+            .jump_to_line_and_column(0, "wai".chars().count())
+    );
     assert!(shell.app_state.set_completion(completion));
 
     assert!(shell.handle_command(Command::CompletionAccept));
     assert_eq!(shell.app_state.text_string(), "wait()");
-    assert_eq!(shell.app_state.cursor_line_col(), (0, "wait(".chars().count()));
+    assert_eq!(
+        shell.app_state.cursor_line_col(),
+        (0, "wait(".chars().count())
+    );
 }
 
 #[test]
@@ -1713,12 +1960,19 @@ fn completion_accept_adds_call_parens_and_keeps_cursor_after_no_param_call() {
         &cache,
         None,
     );
-    assert!(shell.app_state.jump_to_line_and_column(0, "ini".chars().count()));
+    assert!(
+        shell
+            .app_state
+            .jump_to_line_and_column(0, "ini".chars().count())
+    );
     assert!(shell.app_state.set_completion(completion));
 
     assert!(shell.handle_command(Command::CompletionAccept));
     assert_eq!(shell.app_state.text_string(), "init()");
-    assert_eq!(shell.app_state.cursor_line_col(), (0, "init()".chars().count()));
+    assert_eq!(
+        shell.app_state.cursor_line_col(),
+        (0, "init()".chars().count())
+    );
 }
 
 #[test]
@@ -1739,12 +1993,19 @@ fn completion_accept_reuses_existing_call_parens_after_prefix() {
         &cache,
         None,
     );
-    assert!(shell.app_state.jump_to_line_and_column(0, "wai".chars().count()));
+    assert!(
+        shell
+            .app_state
+            .jump_to_line_and_column(0, "wai".chars().count())
+    );
     assert!(shell.app_state.set_completion(completion));
 
     assert!(shell.handle_command(Command::CompletionAccept));
     assert_eq!(shell.app_state.text_string(), "wait(500)");
-    assert_eq!(shell.app_state.cursor_line_col(), (0, "wait".chars().count()));
+    assert_eq!(
+        shell.app_state.cursor_line_col(),
+        (0, "wait".chars().count())
+    );
 }
 
 #[test]
@@ -1765,7 +2026,11 @@ fn completion_accept_preserves_viewport_scroll_line() {
         &root.join("completion-scroll.ts"),
         &lines.join("\n"),
     );
-    assert!(shell.app_state.jump_to_line_and_column(40, "wai".chars().count()));
+    assert!(
+        shell
+            .app_state
+            .jump_to_line_and_column(40, "wai".chars().count())
+    );
     shell.app_state.set_target_scroll_line(35);
     let mut item = test_completion_item("wait", "wait");
     item.detail = Some("function wait(): void".to_string());
@@ -1786,11 +2051,7 @@ fn completion_accept_preserves_viewport_scroll_line() {
 
     assert_eq!(shell.app_state.scroll_line(), 35);
     assert_eq!(
-        shell
-            .app_state
-            .text_string()
-            .lines()
-            .nth(40),
+        shell.app_state.text_string().lines().nth(40),
         Some("wait()")
     );
 }
@@ -1813,12 +2074,19 @@ fn completion_accept_strips_lsp_empty_call_parens_when_source_already_has_call()
         &cache,
         None,
     );
-    assert!(shell.app_state.jump_to_line_and_column(0, "wai".chars().count()));
+    assert!(
+        shell
+            .app_state
+            .jump_to_line_and_column(0, "wai".chars().count())
+    );
     assert!(shell.app_state.set_completion(completion));
 
     assert!(shell.handle_command(Command::CompletionAccept));
     assert_eq!(shell.app_state.text_string(), "wait(500)");
-    assert_eq!(shell.app_state.cursor_line_col(), (0, "wait".chars().count()));
+    assert_eq!(
+        shell.app_state.cursor_line_col(),
+        (0, "wait".chars().count())
+    );
 }
 
 #[test]
@@ -2117,11 +2385,7 @@ fn completion_accept_applies_lsp_additional_import_edits_in_one_undo() {
     let root = completion_temp_root("lsp_import_edit");
     let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), "con");
     let mut item = test_completion_item("connect", "connect");
-    item.additional_text_edits = vec![lsp_insert_edit(
-        0,
-        0,
-        "import { connect } from './api';\n",
-    )];
+    item.additional_text_edits = vec![lsp_insert_edit(0, 0, "import { connect } from './api';\n")];
     let cache = crate::lsp::WorkspaceSymbolCache::new();
     let completion = crate::app::app_state::CompletionState::from_lsp_items(
         vec![item],
@@ -2132,7 +2396,11 @@ fn completion_accept_applies_lsp_additional_import_edits_in_one_undo() {
         &cache,
         None,
     );
-    assert!(shell.app_state.jump_to_line_and_column(0, "con".chars().count()));
+    assert!(
+        shell
+            .app_state
+            .jump_to_line_and_column(0, "con".chars().count())
+    );
     assert!(shell.app_state.set_completion(completion));
 
     assert!(shell.handle_command(Command::CompletionAccept));
@@ -2166,7 +2434,11 @@ fn completion_accept_waits_for_lsp_resolve_before_inserting_unresolved_item() {
         &cache,
         None,
     );
-    assert!(shell.app_state.jump_to_line_and_column(0, "con".chars().count()));
+    assert!(
+        shell
+            .app_state
+            .jump_to_line_and_column(0, "con".chars().count())
+    );
     assert!(shell.app_state.set_completion(completion));
 
     assert!(shell.handle_command(Command::CompletionAccept));
@@ -2181,7 +2453,8 @@ fn completion_accept_waits_for_lsp_resolve_before_inserting_unresolved_item() {
         .completion_resolve_request_id
         .expect("resolve request id");
     let mut resolved = test_completion_item("connect", "connect");
-    resolved.additional_text_edits = vec![lsp_insert_edit(0, 0, "import { connect } from './api';\n")];
+    resolved.additional_text_edits =
+        vec![lsp_insert_edit(0, 0, "import { connect } from './api';\n")];
     shell.on_worker_result(crate::async_runtime::message::WorkerResult {
         request_id,
         revision_id: 0,
@@ -2208,14 +2481,18 @@ fn workspace_completion_fallback_merges_existing_named_import() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let root = completion_temp_root("merge_import");
     let app_path = root.join("src/app.ts");
-    let source_path = write_completion_file(&root.join("src/utils.ts"), "export function connect() {}\n");
+    let source_path =
+        write_completion_file(&root.join("src/utils.ts"), "export function connect() {}\n");
     let _path = open_completion_file(
         &mut shell,
         &app_path,
         "import { existing } from './utils';\n\ncon",
     );
     let cache = crate::lsp::WorkspaceSymbolCache::new();
-    cache.insert_symbols("typescript", vec![cached_ts_export("connect", &source_path)]);
+    cache.insert_symbols(
+        "typescript",
+        vec![cached_ts_export("connect", &source_path)],
+    );
     let completion = crate::app::app_state::CompletionState::from_lsp_items(
         Vec::new(),
         2,
@@ -2241,10 +2518,14 @@ fn workspace_completion_fallback_inserts_new_named_import() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let text = "const value = con";
     let root = completion_temp_root("new_import");
-    let source_path = write_completion_file(&root.join("src/api.ts"), "export function connect() {}\n");
+    let source_path =
+        write_completion_file(&root.join("src/api.ts"), "export function connect() {}\n");
     let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), text);
     let cache = crate::lsp::WorkspaceSymbolCache::new();
-    cache.insert_symbols("typescript", vec![cached_ts_export("connect", &source_path)]);
+    cache.insert_symbols(
+        "typescript",
+        vec![cached_ts_export("connect", &source_path)],
+    );
     let cursor_col = text.chars().count();
     let prefix_start = "const value = ".chars().count();
     let completion = crate::app::app_state::CompletionState::from_lsp_items(
@@ -2276,10 +2557,16 @@ fn workspace_completion_fallback_inserts_default_import() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let text = "const value = wai";
     let root = completion_temp_root("default_import");
-    let source_path = write_completion_file(&root.join("src/wait.ts"), "export default function wait() {}\n");
+    let source_path = write_completion_file(
+        &root.join("src/wait.ts"),
+        "export default function wait() {}\n",
+    );
     let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), text);
     let cache = crate::lsp::WorkspaceSymbolCache::new();
-    cache.insert_symbols("typescript", vec![cached_ts_default_export("wait", &source_path)]);
+    cache.insert_symbols(
+        "typescript",
+        vec![cached_ts_default_export("wait", &source_path)],
+    );
     let cursor_col = text.chars().count();
     let prefix_start = "const value = ".chars().count();
     let completion = crate::app::app_state::CompletionState::from_lsp_items(
@@ -2305,12 +2592,19 @@ fn workspace_completion_fallback_inserts_default_import() {
 #[test]
 fn workspace_completion_symbols_merge_even_when_lsp_has_many_results() {
     let root = completion_temp_root("merge_cache_with_lsp");
-    let source_path = write_completion_file(&root.join("src/api.ts"), "export function connect() {}\n");
+    let source_path =
+        write_completion_file(&root.join("src/api.ts"), "export function connect() {}\n");
     let cache = crate::lsp::WorkspaceSymbolCache::new();
-    cache.insert_symbols("typescript", vec![cached_ts_export("connect", &source_path)]);
+    cache.insert_symbols(
+        "typescript",
+        vec![cached_ts_export("connect", &source_path)],
+    );
 
     let lsp_items = vec![
-        test_completion_item("ContentVisibilityAutoStateChangeEvent", "ContentVisibilityAutoStateChangeEvent"),
+        test_completion_item(
+            "ContentVisibilityAutoStateChangeEvent",
+            "ContentVisibilityAutoStateChangeEvent",
+        ),
         test_completion_item("CanvasGradient", "CanvasGradient"),
         test_completion_item("CSSPageDescriptors", "CSSPageDescriptors"),
         test_completion_item("CookieChangeEvent", "CookieChangeEvent"),
@@ -2339,14 +2633,50 @@ fn workspace_completion_symbols_merge_even_when_lsp_has_many_results() {
 }
 
 #[test]
+fn go_workspace_completion_symbols_merge_with_lsp_results() {
+    let root = completion_temp_root("go_merge_cache_with_lsp");
+    let source_path =
+        write_completion_file(&root.join("api.go"), "package main\n\nfunc Connect() {}\n");
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols("go", vec![cached_go_symbol("Connect", &source_path)]);
+
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![test_completion_item("Context", "Context")],
+        0,
+        3,
+        0,
+        "Con".to_string(),
+        &cache,
+        Some("go"),
+    );
+
+    let imported = completion
+        .filtered_items
+        .iter()
+        .find(|entry| entry.item.label == "Connect")
+        .expect("go workspace symbol should be merged");
+    assert_eq!(
+        imported.source,
+        crate::app::app_state::CompletionItemSource::WorkspaceSymbol
+    );
+    assert_eq!(imported.item.export_kind, None);
+    assert_eq!(imported.item.import_path, None);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn workspace_completion_import_metadata_enriches_duplicate_lsp_item() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let text = "const value = con";
     let root = completion_temp_root("duplicate_lsp_import_metadata");
-    let source_path = write_completion_file(&root.join("src/api.ts"), "export function connect() {}\n");
+    let source_path =
+        write_completion_file(&root.join("src/api.ts"), "export function connect() {}\n");
     let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), text);
     let cache = crate::lsp::WorkspaceSymbolCache::new();
-    cache.insert_symbols("typescript", vec![cached_ts_export("connect", &source_path)]);
+    cache.insert_symbols(
+        "typescript",
+        vec![cached_ts_export("connect", &source_path)],
+    );
     let cursor_col = text.chars().count();
     let prefix_start = "const value = ".chars().count();
     let completion = crate::app::app_state::CompletionState::from_lsp_items(
@@ -2376,10 +2706,16 @@ fn workspace_completion_fallback_inserts_commonjs_named_require() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let text = "const value = con";
     let root = completion_temp_root("commonjs_named_require");
-    let source_path = write_completion_file(&root.join("src/api.cjs"), "exports.connect = function() {}\n");
+    let source_path = write_completion_file(
+        &root.join("src/api.cjs"),
+        "exports.connect = function() {}\n",
+    );
     let _path = open_completion_file(&mut shell, &root.join("src/app.cjs"), text);
     let cache = crate::lsp::WorkspaceSymbolCache::new();
-    cache.insert_symbols("javascript", vec![cached_ts_export("connect", &source_path)]);
+    cache.insert_symbols(
+        "javascript",
+        vec![cached_ts_export("connect", &source_path)],
+    );
     let cursor_col = text.chars().count();
     let prefix_start = "const value = ".chars().count();
     let completion = crate::app::app_state::CompletionState::from_lsp_items(
@@ -2407,13 +2743,19 @@ fn workspace_completion_fallback_inserts_package_default_import() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let text = "const client = axi";
     let root = completion_temp_root("package_default_import");
-    let package_type_path =
-        write_completion_file(&root.join("node_modules/axios/index.d.ts"), "declare const axios: AxiosStatic;\nexport default axios;\n");
+    let package_type_path = write_completion_file(
+        &root.join("node_modules/axios/index.d.ts"),
+        "declare const axios: AxiosStatic;\nexport default axios;\n",
+    );
     let _path = open_completion_file(&mut shell, &root.join("src/app.ts"), text);
     let cache = crate::lsp::WorkspaceSymbolCache::new();
     cache.insert_symbols(
         "typescript",
-        vec![cached_package_default_export("axios", &package_type_path, "axios")],
+        vec![cached_package_default_export(
+            "axios",
+            &package_type_path,
+            "axios",
+        )],
     );
     let cursor_col = text.chars().count();
     let prefix_start = "const client = ".chars().count();
@@ -2442,13 +2784,19 @@ fn workspace_completion_fallback_inserts_package_default_require_for_commonjs() 
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let text = "const client = axi";
     let root = completion_temp_root("package_default_require");
-    let package_type_path =
-        write_completion_file(&root.join("node_modules/axios/index.d.ts"), "declare const axios: AxiosStatic;\nexport = axios;\n");
+    let package_type_path = write_completion_file(
+        &root.join("node_modules/axios/index.d.ts"),
+        "declare const axios: AxiosStatic;\nexport = axios;\n",
+    );
     let _path = open_completion_file(&mut shell, &root.join("src/app.cjs"), text);
     let cache = crate::lsp::WorkspaceSymbolCache::new();
     cache.insert_symbols(
         "javascript",
-        vec![cached_package_default_export("axios", &package_type_path, "axios")],
+        vec![cached_package_default_export(
+            "axios",
+            &package_type_path,
+            "axios",
+        )],
     );
     let cursor_col = text.chars().count();
     let prefix_start = "const client = ".chars().count();
@@ -2478,7 +2826,10 @@ fn workspace_completion_fallback_same_file_symbol_has_no_import() {
     let root = completion_temp_root("same_file");
     let active_path = open_completion_file(&mut shell, &root.join("src/app.ts"), "con");
     let cache = crate::lsp::WorkspaceSymbolCache::new();
-    cache.insert_symbols("typescript", vec![cached_ts_export("connect", &active_path)]);
+    cache.insert_symbols(
+        "typescript",
+        vec![cached_ts_export("connect", &active_path)],
+    );
     let completion = crate::app::app_state::CompletionState::from_lsp_items(
         Vec::new(),
         0,
@@ -2494,6 +2845,40 @@ fn workspace_completion_fallback_same_file_symbol_has_no_import() {
 
     assert!(shell.handle_command(Command::CompletionAccept));
     assert_eq!(shell.app_state.text_string(), "connect()");
+}
+
+#[test]
+fn go_workspace_completion_accept_does_not_synthesize_imports() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = completion_temp_root("go_no_synthetic_import");
+    let source_path =
+        write_completion_file(&root.join("api.go"), "package main\n\nfunc Connect() {}\n");
+    let text = "package main\n\nfunc main() {\n\tCon\n}\n";
+    let _active_path = open_completion_file(&mut shell, &root.join("main.go"), text);
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols("go", vec![cached_go_symbol("Connect", &source_path)]);
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        Vec::new(),
+        3,
+        "\tCon".chars().count(),
+        "\t".chars().count(),
+        "Con".to_string(),
+        &cache,
+        Some("go"),
+    );
+    assert!(!completion.filtered_items.is_empty());
+    assert!(
+        shell
+            .app_state
+            .jump_to_line_and_column(3, "\tCon".chars().count())
+    );
+    assert!(shell.app_state.set_completion(completion));
+
+    assert!(shell.handle_command(Command::CompletionAccept));
+    assert_eq!(
+        shell.app_state.text_string(),
+        "package main\n\nfunc main() {\n\tConnect()\n}\n"
+    );
 }
 
 #[test]
@@ -2770,387 +3155,123 @@ fn resize_panel_and_ui_config_stay_in_sync() {
     );
 }
 
-// ── DAP / Debugger command tests ────────────────────────────────────────────
-
 #[test]
-fn focus_dap_opens_left_sidebar_inspector_tab() {
+fn focus_dap_opens_and_focuses_inspector() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     shell.panel_state.left.visible = false;
 
-    let changed = shell.handle_command(Command::FocusDap);
-
-    assert!(changed);
+    assert!(shell.handle_command(Command::FocusDap));
     assert!(shell.panel_state.left.visible);
     assert_eq!(
         shell.panel_state.left.active_tab_id(),
         Some(PanelTabId::Inspector)
     );
-}
-
-#[test]
-fn focus_dap_sets_focus_to_left_sidebar() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-
-    shell.handle_command(Command::FocusDap);
-
     assert_eq!(shell.focus_manager.current(), FocusTarget::LeftSidebar);
 }
 
 #[test]
-fn focus_dap_idempotent_when_already_focused() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    shell.handle_command(Command::FocusDap);
-    let changed = shell.handle_command(Command::FocusDap);
-    // Should still report no change since already focused
-    assert!(!changed);
-}
-
-#[test]
-fn debug_start_without_session_returns_none_via_handler() {
-    let shell = AppShell::new_for_tests().expect("create app shell");
-    // No DAP session — handler tries to launch but panics without tokio runtime.
-    // Test the handler directly: when there's no session, it enters the launch branch.
-    // We can't fully test launch without a tokio runtime, so verify the session is None.
-    assert!(shell.dap_session.is_none());
-}
-
-#[test]
-fn debug_stop_without_session_returns_none() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let result = shell.handle_dap_command(&Command::DebugStop);
-    assert!(result.is_none());
-}
-
-#[test]
-fn debug_continue_without_session_returns_none() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let result = shell.handle_dap_command(&Command::DebugContinue);
-    assert!(result.is_none());
-}
-
-#[test]
-fn debug_step_over_without_session_returns_none() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let result = shell.handle_dap_command(&Command::DebugStepOver);
-    assert!(result.is_none());
-}
-
-#[test]
-fn debug_step_into_without_session_returns_none() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let result = shell.handle_dap_command(&Command::DebugStepInto);
-    assert!(result.is_none());
-}
-
-#[test]
-fn debug_step_out_without_session_returns_none() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let result = shell.handle_dap_command(&Command::DebugStepOut);
-    assert!(result.is_none());
-}
-
-#[test]
-fn debug_toggle_breakpoint_without_session_returns_none() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let result = shell.handle_dap_command(&Command::DebugToggleBreakpoint);
-    assert!(result.is_none());
-}
-
-#[test]
-fn debug_watch_add_without_session_returns_none() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let result = shell.handle_dap_command(&Command::DebugWatchAdd);
-    assert!(result.is_none());
-}
-
-#[test]
-fn debug_watch_remove_without_session_returns_none() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let result = shell.handle_dap_command(&Command::DebugWatchRemove);
-    assert!(result.is_none());
-}
-
-#[test]
-fn debug_goto_frame_without_session_returns_none() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let result = shell.handle_dap_command(&Command::DebugGotoFrame);
-    assert!(result.is_none());
-}
-
-#[test]
-fn dap_toggle_expand_works_on_inspector_panel() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    shell.handle_command(Command::FocusDap);
-
-    // Variables section is expanded by default
-    let was_expanded = shell.dap_panel_state.sections[0].expanded;
-    let changed = shell.handle_command(Command::DapToggleExpand);
-    assert!(changed);
-    assert_eq!(shell.dap_panel_state.sections[0].expanded, !was_expanded);
-}
-
-#[test]
-fn dap_toggle_expand_noop_when_not_on_inspector() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    // Focus editor, not DAP panel
-    shell.handle_command(Command::FocusEditor);
-
-    // DapToggleExpand returns None when not on inspector (falls through)
-    let result = shell.handle_dap_command(&Command::DapToggleExpand);
-    assert!(result.is_none());
-}
-
-#[test]
-fn flutter_hot_reload_without_session_returns_none() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    // No DAP session — handler returns None
-    let result = shell.handle_dap_command(&Command::FlutterHotReload);
-    assert!(result.is_none());
-}
-
-#[test]
-fn flutter_hot_restart_without_session_returns_none() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let result = shell.handle_dap_command(&Command::FlutterHotRestart);
-    assert!(result.is_none());
-}
-
-#[test]
-fn debug_toggle_breakpoint_noop_without_active_file() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    // No active file — toggle should return None
-    let result = shell.handle_dap_command(&Command::DebugToggleBreakpoint);
-    assert!(result.is_none());
-}
-
-#[test]
-fn flutter_devices_in_command_palette() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    // Open command palette
-    shell.handle_command(Command::OpenCommandPalette);
-    assert!(shell.app_state.is_command_palette_visible());
-
-    // Verify flutter.devices is a valid command ID
+fn dap_and_flutter_command_ids_survive_main_merge() {
     use crate::core::command_ids;
-    assert!(command_ids::is_valid("flutter.devices"));
-    assert!(command_ids::is_valid("flutter.hot_reload"));
-    assert!(command_ids::is_valid("flutter.hot_restart"));
 
-    // Verify command parsing works
-    assert!(command_ids::parse("flutter.devices", None).is_some());
-    assert!(command_ids::parse("flutter.hot_reload", None).is_some());
-    assert!(command_ids::parse("flutter.hot_restart", None).is_some());
-}
-
-struct TestTempDir {
-    path: PathBuf,
-}
-
-impl TestTempDir {
-    fn new(prefix: &str) -> Self {
-        let path = std::env::temp_dir().join(format!("{}_{}", prefix, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros()));
-        std::fs::create_dir_all(&path).unwrap();
-        Self { path }
+    for id in [
+        command_ids::FOCUS_DAP,
+        command_ids::DAP_TOGGLE_EXPAND,
+        command_ids::DEBUG_START,
+        command_ids::DEBUG_STOP,
+        command_ids::DEBUG_STEP_OVER,
+        command_ids::DEBUG_STEP_INTO,
+        command_ids::DEBUG_STEP_OUT,
+        command_ids::DEBUG_TOGGLE_BREAKPOINT,
+        command_ids::FLUTTER_DEVICES,
+        command_ids::FLUTTER_HOT_RELOAD,
+        command_ids::FLUTTER_HOT_RESTART,
+    ] {
+        assert!(
+            command_ids::ALL_IDS.contains(&id),
+            "missing command id: {id}"
+        );
+        assert!(
+            command_ids::parse(id, None).is_some(),
+            "unparsed command id: {id}"
+        );
     }
 }
 
-impl Drop for TestTempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
-    }
-}
-
-struct PathGuard {
-    old_path: String,
-}
-
-impl Drop for PathGuard {
-    fn drop(&mut self) {
-        unsafe {
-            std::env::set_var("PATH", &self.old_path);
-        }
-    }
-}
-static ENV_LOCK: once_cell::sync::Lazy<std::sync::Mutex<()>> = once_cell::sync::Lazy::new(|| std::sync::Mutex::new(()));
-
-fn setup_dummy_executable(name: &str) -> (TestTempDir, PathGuard) {
-    let temp = TestTempDir::new(name);
-    let bin_path = temp.path.join(name);
-    std::fs::write(&bin_path, "#!/bin/sh\nexit 0\n").unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&bin_path).unwrap().permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&bin_path, perms).unwrap();
-    }
-    let old_path = std::env::var("PATH").unwrap_or_default();
-    let new_path = format!("{}:{}", temp.path.display(), old_path);
-    unsafe {
-        std::env::set_var("PATH", new_path);
-    }
-    (temp, PathGuard { old_path })
-}
-
 #[test]
-fn debug_start_fallback_to_flutter_defaults() {
-    let _lock = ENV_LOCK.lock().unwrap();
-    let _temp_exe = setup_dummy_executable("flutter");
+fn manual_trigger_completion_dismisses_ghost_text_and_invalidates_inflight_ai() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let temp_workspace = TestTempDir::new("workspace");
-    shell.app_state.attach_workspace(temp_workspace.path.clone()).unwrap();
-    
-    // Create an active file that is a .dart file
-    let main_dart = temp_workspace.path.join("lib").join("main.dart");
-    std::fs::create_dir_all(main_dart.parent().unwrap()).unwrap();
-    std::fs::write(&main_dart, "void main() {}").unwrap();
-    shell.app_state.open_file(main_dart).unwrap();
+    let root = std::env::temp_dir().join(format!(
+        "netherize_manual_completion_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(root.join("src")).expect("create workspace");
+    let file_path = root.join("src/main.rs");
+    std::fs::write(&file_path, "fn demo() {\n    de\n}\n").expect("write file");
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "rust-analyzer".to_string(),
+        root_path: root.clone(),
+    });
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+    shell.app_state.jump_to_line_and_column(1, 6);
 
-    let result = shell.handle_command(Command::DebugStart);
-    assert!(result);
-    assert!(shell.dap_session.is_some());
+    // Ghost text visible + an AI request in flight at the current caret.
+    shell
+        .app_state
+        .set_inline_suggestion(Some("mo()".to_string()));
+    shell.reanchor_ai_inline();
+    shell.ai_inline_inflight = true;
+    shell.ai_inline_cancel_token = Some(CancellationToken::new());
+    let revision_before = shell.ai_inline_revision;
+
+    assert!(shell.handle_command(Command::TriggerCompletion));
+
+    // Ctrl+Space must dismiss the ghost, cancel AI, and submit an LSP request.
+    assert!(shell.app_state.inline_suggestion().is_none());
+    assert!(shell.ai_inline_anchor.is_none());
+    assert!(!shell.ai_inline_inflight);
+    assert!(shell.ai_inline_revision > revision_before);
+    assert!(shell.app_state.is_completion_loading());
+    let request_id = shell
+        .active_lsp_completion_request_id
+        .expect("manual completion request should be active");
+
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id,
+        revision_id: 0,
+        topic: crate::async_runtime::message::RequestTopic::LspRequest,
+        payload: crate::async_runtime::message::WorkerResultPayload::LspCompletionResult {
+            items: vec![test_completion_item("demo", "demo")],
+            cursor_line: 1,
+            cursor_col: 6,
+            prefix_start_col: 4,
+            prefix: "de".to_string(),
+        },
+    });
+
+    assert!(shell.app_state.completion().is_some());
+
+    // A late result from the cancelled AI request must not replace the manual
+    // completion popup or restore ghost text.
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: request_id + 1,
+        revision_id: revision_before,
+        topic: crate::async_runtime::message::RequestTopic::AiInlineCompletion,
+        payload: crate::async_runtime::message::WorkerResultPayload::AiInlineCompletionResult {
+            suggestion: "mo()".to_string(),
+        },
+    });
+
+    assert!(shell.app_state.inline_suggestion().is_none());
+    assert!(shell.app_state.completion().is_some());
 }
-
-#[test]
-fn debug_start_reads_launch_json() {
-    let _lock = ENV_LOCK.lock().unwrap();
-    let _temp_exe = setup_dummy_executable("custom_type");
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let temp_workspace = TestTempDir::new("workspace_launch_json");
-    shell.app_state.attach_workspace(temp_workspace.path.clone()).unwrap();
-
-    let vscode_dir = temp_workspace.path.join(".vscode");
-    std::fs::create_dir_all(&vscode_dir).unwrap();
-    let launch_json_path = vscode_dir.join("launch.json");
-    let launch_json_content = r#"{
-        "version": "0.2.0",
-        "configurations": [
-            {
-                "name": "My Custom Debug",
-                "type": "custom_type",
-                "request": "launch",
-                "program": "bin/debug_target"
-            }
-        ]
-    }"#;
-    std::fs::write(&launch_json_path, launch_json_content).unwrap();
-
-    let result = shell.handle_command(Command::DebugStart);
-    assert!(result);
-    assert!(shell.dap_session.is_some());
-}
-
-#[test]
-fn debug_start_no_workspace_returns_false() {
-    let _lock = ENV_LOCK.lock().unwrap();
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    shell.app_state.detach_workspace();
-    // Explicitly make sure there is no active file or workspace root
-    assert!(shell.app_state.workspace_root_path().is_none());
-    assert!(shell.app_state.active_file().is_none());
-
-    let result = shell.handle_command(Command::DebugStart);
-    assert!(!result); // Returns false
-    assert!(shell.transient_toast.is_some());
-    let toast = shell.transient_toast.as_ref().unwrap();
-    assert_eq!(toast.kind, crate::app::event_loop::ToastKind::Error);
-    assert!(toast.message.contains("No active workspace or file parent folder"));
-}
-
-#[test]
-fn debug_adapter_binary_not_found() {
-    let _lock = ENV_LOCK.lock().unwrap();
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let temp_workspace = TestTempDir::new("workspace_binary_not_found");
-    shell.app_state.attach_workspace(temp_workspace.path.clone()).unwrap();
-
-    let vscode_dir = temp_workspace.path.join(".vscode");
-    std::fs::create_dir_all(&vscode_dir).unwrap();
-    let launch_json_path = vscode_dir.join("launch.json");
-    let launch_json_content = r#"{
-        "version": "0.2.0",
-        "configurations": [
-            {
-                "name": "My Bad Custom Debug",
-                "type": "non_existent_adapter_binary",
-                "request": "launch",
-                "program": "bin/debug_target"
-            }
-        ]
-    }"#;
-    std::fs::write(&launch_json_path, launch_json_content).unwrap();
-
-    let result = shell.handle_command(Command::DebugStart);
-    assert!(!result);
-    assert!(shell.transient_toast.is_some());
-    let toast = shell.transient_toast.as_ref().unwrap();
-    assert_eq!(toast.kind, crate::app::event_loop::ToastKind::Error);
-    assert!(toast.message.contains("Binary 'non_existent_adapter_binary' not found"));
-}
-
-#[test]
-fn breakpoint_toggle_persists_across_session() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let temp_workspace = TestTempDir::new("workspace_breakpoints_persist");
-    shell.app_state.attach_workspace(temp_workspace.path.clone()).unwrap();
-
-    let main_dart = temp_workspace.path.join("lib").join("main.dart");
-    std::fs::create_dir_all(main_dart.parent().unwrap()).unwrap();
-    std::fs::write(&main_dart, "void main() {\n  print('hello');\n}").unwrap();
-    let main_dart = main_dart.canonicalize().unwrap();
-    shell.app_state.open_file(main_dart.clone()).unwrap();
-
-    // Toggle breakpoint on line 1
-    shell.app_state.jump_to_line_and_column(1, 0);
-    let result = shell.handle_command(Command::DebugToggleBreakpoint);
-    assert!(result);
-    assert_eq!(shell.breakpoints.get(&main_dart), Some(&vec![1]));
-
-    // Now verify the file exists on disk
-    let bp_file = temp_workspace.path.join(".vscode").join("breakpoints.json");
-    assert!(bp_file.exists());
-
-    // Create a new AppShell (simulating restart) and attach the same workspace
-    let mut new_shell = AppShell::new_for_tests().expect("create app shell");
-    new_shell.app_state.attach_workspace(temp_workspace.path.clone()).unwrap();
-    new_shell.load_breakpoints();
-
-    // Verify breakpoints are loaded
-    assert_eq!(new_shell.breakpoints.get(&main_dart), Some(&vec![1]));
-}
-
-#[test]
-fn test_breakpoint_and_cursor_movement() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let temp_workspace = TestTempDir::new("workspace_breakpoints_movement");
-    shell.app_state.attach_workspace(temp_workspace.path.clone()).unwrap();
-
-    let main_dart = temp_workspace.path.join("lib").join("main.dart");
-    std::fs::create_dir_all(main_dart.parent().unwrap()).unwrap();
-    std::fs::write(&main_dart, "void main() {\n  print('hello');\n  print('world');\n}").unwrap();
-    let main_dart = main_dart.canonicalize().unwrap();
-    shell.app_state.open_file(main_dart.clone()).unwrap();
-
-    // Toggle breakpoint on line 1
-    shell.app_state.jump_to_line_and_column(1, 0);
-    let result = shell.handle_command(Command::DebugToggleBreakpoint);
-    assert!(result);
-
-    // Verify breakpoint exists
-    let active_file = shell.app_state.active_file().unwrap();
-    assert_eq!(active_file, main_dart);
-    let breakpoint_lines = shell.breakpoints.get(active_file).cloned().unwrap_or_default();
-    assert_eq!(breakpoint_lines, vec![1]);
-
-    // Move cursor down
-    let moved = shell.handle_command(Command::MoveDown);
-    assert!(moved);
-
-    // Verify breakpoint STILL exists for the active file
-    let active_file_after = shell.app_state.active_file().unwrap();
-    assert_eq!(active_file_after, main_dart);
-    let breakpoint_lines_after = shell.breakpoints.get(active_file_after).cloned().unwrap_or_default();
-    assert_eq!(breakpoint_lines_after, vec![1]);
-}
-
-

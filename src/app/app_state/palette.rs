@@ -1,5 +1,6 @@
 use super::overlays::path_matches;
 use super::*;
+use crate::async_runtime::message::ExternalFileRead;
 
 const WELCOME_RECENT_PROJECT_LIMIT: usize = 5;
 
@@ -87,14 +88,26 @@ impl AppState {
             return;
         };
         let (line, col) = self.cursor_line_col();
-        self.jump_back_stack.push((path, line, col));
-        self.jump_forward_stack.clear();
+        self.push_jump_entry(path, line, col);
     }
 
     /// Push an explicit file+line+column onto the jump back stack.
     /// Useful when the current active surface is a non-file buffer.
+    /// Vim-style: dedup khi đỉnh stack đã là cùng (file, line); cap 100 entry.
     pub fn push_jump_entry(&mut self, path: PathBuf, line: usize, col: usize) {
+        const JUMP_STACK_LIMIT: usize = 100;
+        if let Some(top) = self.jump_back_stack.last_mut()
+            && top.0 == path
+            && top.1 == line
+        {
+            top.2 = col;
+            self.jump_forward_stack.clear();
+            return;
+        }
         self.jump_back_stack.push((path, line, col));
+        if self.jump_back_stack.len() > JUMP_STACK_LIMIT {
+            self.jump_back_stack.remove(0);
+        }
         self.jump_forward_stack.clear();
     }
 
@@ -154,7 +167,10 @@ impl AppState {
     pub fn open_recent_projects_palette_with_meta(
         &mut self,
         recent: &[std::path::PathBuf],
-        meta: &std::collections::HashMap<std::path::PathBuf, crate::app::persistence::RecentProjectMeta>,
+        meta: &std::collections::HashMap<
+            std::path::PathBuf,
+            crate::app::persistence::RecentProjectMeta,
+        >,
     ) -> Result<(), String> {
         use crate::app::command_palette::CommandPaletteItem;
         let items = recent
@@ -165,7 +181,8 @@ impl AppState {
                 // Older persisted metadata may contain a stale/generic icon source,
                 // which makes the recent-project picker render a file icon while
                 // the welcome page correctly infers the project language/framework.
-                let inferred_icon_source = crate::app::persistence::AppPersistentState::infer_project_icon_source(path);
+                let inferred_icon_source =
+                    crate::app::persistence::AppPersistentState::infer_project_icon_source(path);
                 CommandPaletteItem::recent_project_with_meta(
                     path,
                     Some(inferred_icon_source.as_str()),
@@ -184,7 +201,8 @@ impl AppState {
             .iter()
             .take(WELCOME_RECENT_PROJECT_LIMIT)
             .map(|path| {
-                let icon_source = crate::app::persistence::AppPersistentState::infer_project_icon_source(path);
+                let icon_source =
+                    crate::app::persistence::AppPersistentState::infer_project_icon_source(path);
                 CommandPaletteItem::recent_project_with_meta(path, Some(icon_source.as_str()), None)
             })
             .collect();
@@ -793,6 +811,17 @@ impl AppState {
             })
     }
 
+    /// Extensions manager buffer regardless of which buffer is active — async
+    /// detection/install results must land even when the user switched away.
+    pub fn any_extensions_manager_buffer_mut(&mut self) -> Option<&mut ExtensionsManagerState> {
+        self.buffers
+            .iter_mut()
+            .find_map(|buffer| match &mut buffer.content {
+                BufferContent::ExtensionsManager(state) => Some(state),
+                _ => None,
+            })
+    }
+
     pub fn active_settings_buffer(&self) -> Option<&SettingsState> {
         match self.active_buffer().map(|buffer| &buffer.content) {
             Some(BufferContent::SettingsTab(state)) => Some(state),
@@ -1243,6 +1272,7 @@ impl AppState {
         border_radius_px: f32,
         enable_outline: bool,
         inline_suggestion_enabled: bool,
+        ui_scale_override: Option<f32>,
     ) -> usize {
         // Save current text buffer before switching to settings buffer
         self.save_current_text_buffer_history();
@@ -1274,6 +1304,7 @@ impl AppState {
             border_radius_px,
             enable_outline,
             inline_suggestion_enabled,
+            ui_scale_override,
         );
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {
@@ -1503,26 +1534,37 @@ impl AppState {
             ) || (matches!(event.kind, FileSystemChangeKind::Modify) && !event.path.exists())
         });
 
+        // macOS FSEvents thường tách một rename thành HAI event riêng lẻ, mỗi cái
+        // một path và new_path = None. Atomic save (ghi temp rồi rename đè) của
+        // editor/agent khác vì vậy đến đây dưới dạng Rename{new_path: None} trên
+        // chính file thật — nếu bỏ qua thì buffer chỉ được poll 3s cứu. Path còn
+        // tồn tại trên đĩa nghĩa là nội dung mới vừa đáp xuống: đối xử như Modify
+        // để reload ngay. (Rescan đã được quyết định ở trên, trước bước này.)
+        let events: Vec<FileSystemEvent> = events
+            .iter()
+            .map(|event| {
+                let mut event = event.clone();
+                if matches!(event.kind, FileSystemChangeKind::Rename)
+                    && event.new_path.is_none()
+                    && event.path.exists()
+                {
+                    event.kind = FileSystemChangeKind::Modify;
+                }
+                event
+            })
+            .collect();
+
         if self.refresh_text_buffer_missing_on_disk_states() {
             report.workspace_reloaded = true;
         }
 
         // Chỉ rescan khi tree shape có thể đổi (create/delete/rename).
         // Modify-only thường không đổi cấu trúc workspace, tránh quét cả cây quá nhiều.
-        if requires_workspace_rescan && let Some(workspace) = self.workspace_model.as_mut() {
-            workspace.rescan()?;
-            report.workspace_reloaded = true;
-        }
-
-        if report.workspace_reloaded && self.is_file_picker_open() {
-            if self.refresh_file_picker_results_if_open()? {
-                let note = format!(
-                    "file picker refreshed ({} results)",
-                    self.file_picker_results().len()
-                );
-                self.external_notice = Some(note.clone());
-                report.notices.push(note);
-            }
+        // #4: rescan là full tree walk — KHÔNG chạy trên main thread. Chỉ đánh
+        // dấu; shell submit RescanWorkspace cho worker và áp nodes mới về sau
+        // qua apply_workspace_rescan.
+        if requires_workspace_rescan && self.workspace_model.is_some() {
+            report.workspace_rescan_needed = true;
         }
 
         for event in events {
@@ -1546,7 +1588,6 @@ impl AppState {
                 if is_active {
                     // This is the active buffer!
                     if self.is_dirty() {
-                        eprintln!("[FileWatch] Active file is dirty, showing conflict warning");
                         let warning = format!(
                             "external {:?} detected on active file while dirty: {}",
                             event.kind,
@@ -1571,55 +1612,12 @@ impl AppState {
 
                     match event.kind {
                         FileSystemChangeKind::Modify | FileSystemChangeKind::Create => {
-                            // Check if this is a self-save event by comparing file content
-                            let current_active_path = event.path.clone();
-                            if matches!(event.kind, FileSystemChangeKind::Modify)
-                                && self.should_ignore_self_save_event()
-                            {
-                                eprintln!("[FileWatch] Ignoring self-save event");
-                                continue;
-                            }
-
-                            eprintln!("[FileWatch] Reloading active file from disk: {:?}", current_active_path);
-                            eprintln!("[FileWatch] Text before reload: {} chars", self.text.len_chars());
-                            match self.load_buffer_from_file(&current_active_path) {
-                                Ok(()) => {
-                                    eprintln!("[FileWatch] Text after reload: {} chars", self.text.len_chars());
-                                    self.active_file = Some(current_active_path.clone());
-                                    let reloaded_text = self.text.clone();
-                                    eprintln!("[FileWatch] Updating active buffer.in_memory_text with {} chars", reloaded_text.len_chars());
-                                    if let Some(slot) = self.buffers.get_mut(idx) {
-                                        if let BufferContent::Text(ref mut buffer) = slot.content {
-                                            buffer.in_memory_text = Some(reloaded_text);
-                                            buffer.missing_on_disk = false;
-                                            buffer.dirty = false;
-                                        }
-                                    }
-                                    self.dirty = false;
-                                    let note = format!(
-                                        "auto reloaded active file from disk: {}",
-                                        current_active_path.display()
-                                    );
-                                    self.external_notice = Some(note.clone());
-                                    self.external_conflict = None;
-                                    report.active_file_reloaded = true;
-                                    report.notices.push(note);
-                                }
-                                Err(err) => {
-                                    if let Some(slot) = self.buffers.get_mut(idx) {
-                                        if let BufferContent::Text(ref mut buffer) = slot.content {
-                                            buffer.missing_on_disk = !current_active_path.exists();
-                                        }
-                                    }
-                                    let note = format!(
-                                        "auto reload skipped for active file {}: {}",
-                                        current_active_path.display(),
-                                        err
-                                    );
-                                    self.external_notice = Some(note.clone());
-                                    report.notices.push(note);
-                                }
-                            }
+                            // #4: không đọc file trên main thread. Chỉ ghi nhận
+                            // path; worker đọc nội dung, apply_external_file_contents
+                            // áp vào sau. Echo check (self-save) cũng dời sang apply
+                            // phase — so sánh content fetch được với memory thay vì
+                            // đọc đĩa đồng bộ ở đây.
+                            report.pending_reload_paths.push(event.path.clone());
                         }
                         FileSystemChangeKind::Rename => {
                             if let Some(new_path) = &event.new_path {
@@ -1669,52 +1667,24 @@ impl AppState {
                         match event.kind {
                             FileSystemChangeKind::Modify | FileSystemChangeKind::Create => {
                                 if buffer.dirty {
-                                    eprintln!("[FileWatch] Inactive file {:?} is dirty, ignoring auto-reload to prevent data loss", buffer.path);
+                                    // Inactive buffer dirty: giữ thay đổi chưa lưu, không auto-reload.
                                     buffer.missing_on_disk = false;
                                 } else {
-                                    eprintln!("[FileWatch] Reloading inactive file from disk: {:?}", buffer.path);
-                                    match std::fs::read_to_string(&buffer.path) {
-                                        Ok(content) => {
-                                            let reloaded_text = Rope::from_str(&content);
-                                            buffer.in_memory_text = Some(reloaded_text);
-                                            buffer.missing_on_disk = false;
-                                            buffer.dirty = false;
-                                            buffer.last_known_modified_time = std::fs::metadata(&buffer.path)
-                                                .and_then(|m| m.modified())
-                                                .ok();
-                                            let note = format!(
-                                                "auto reloaded inactive file from disk: {}",
-                                                buffer.path.display()
-                                            );
-                                            report.notices.push(note);
-                                            report.workspace_reloaded = true;
-                                        }
-                                        Err(err) => {
-                                            buffer.missing_on_disk = !buffer.path.exists();
-                                            let note = format!(
-                                                "auto reload skipped for inactive file {}: {}",
-                                                buffer.path.display(),
-                                                err
-                                            );
-                                            report.notices.push(note);
-                                        }
-                                    }
+                                    // #4: worker đọc nội dung, không đọc ở đây.
+                                    report.pending_reload_paths.push(buffer.path.clone());
                                 }
                             }
                             FileSystemChangeKind::Rename => {
                                 if let Some(new_path) = &event.new_path {
                                     let old_path = buffer.path.clone();
                                     buffer.path = new_path.clone();
-                                    buffer.language_id = crate::lsp::registry::language_profile_for_path(new_path)
-                                        .map(|profile| profile.language_id.to_string());
-                                    
+                                    buffer.language_id =
+                                        crate::lsp::registry::language_profile_for_path(new_path)
+                                            .map(|profile| profile.language_id.to_string());
+
                                     if !buffer.dirty {
-                                        if let Ok(content) = std::fs::read_to_string(new_path) {
-                                            buffer.in_memory_text = Some(Rope::from_str(&content));
-                                            buffer.missing_on_disk = false;
-                                        } else {
-                                            buffer.missing_on_disk = !new_path.exists();
-                                        }
+                                        // #4: worker đọc nội dung tại path mới.
+                                        report.pending_reload_paths.push(new_path.clone());
                                     }
                                     let note = format!(
                                         "inactive file renamed externally: {} -> {}",
@@ -1740,6 +1710,162 @@ impl AppState {
             }
         }
 
+        report.pending_reload_paths.sort();
+        report.pending_reload_paths.dedup();
         Ok(report)
+    }
+
+    /// Phase 2 of the external-change pipeline: apply file contents the worker
+    /// read off the UI thread. Re-validates buffer state at apply time — the
+    /// user may have typed while the read was in flight, in which case the
+    /// reload becomes a conflict instead of silently overwriting their edits.
+    pub fn apply_external_file_contents(
+        &mut self,
+        files: &[ExternalFileRead],
+    ) -> ExternalChangeReport {
+        let mut report = ExternalChangeReport::default();
+
+        for file in files {
+            let Some(idx) = self.buffers.iter().position(|entry| {
+                matches!(&entry.content, BufferContent::Text(buffer)
+                    if path_matches(&buffer.path, &file.path))
+            }) else {
+                continue;
+            };
+            let is_active = self.active_buffer_index == Some(idx);
+
+            let Some(content) = file.content.as_deref() else {
+                if let Some(slot) = self.buffers.get_mut(idx)
+                    && let BufferContent::Text(ref mut buffer) = slot.content
+                {
+                    buffer.missing_on_disk = !file.path.exists();
+                }
+                continue;
+            };
+
+            if is_active {
+                if self.is_dirty() {
+                    let warning = format!(
+                        "external change conflicts with unsaved edits: {}",
+                        file.path.display()
+                    );
+                    self.external_conflict = Some(warning.clone());
+                    self.external_notice = Some(warning.clone());
+                    report.conflict_detected = true;
+                    report.conflict_path = Some(file.path.clone());
+                    report.notices.push(warning);
+                    if let Some(slot) = self.buffers.get_mut(idx)
+                        && let BufferContent::Text(ref mut buffer) = slot.content
+                    {
+                        buffer.in_memory_text = None;
+                    }
+                    continue;
+                }
+
+                // Self-save echo hoặc nội dung không đổi: chỉ cập nhật mtime.
+                if self.text_string() == content {
+                    if let Some(slot) = self.buffers.get_mut(idx)
+                        && let BufferContent::Text(ref mut buffer) = slot.content
+                    {
+                        buffer.last_known_modified_time = file.modified_time;
+                    }
+                    continue;
+                }
+
+                self.replace_text_buffer_preserving_view(content);
+                let _ = self.refresh_active_search_highlights();
+                let reloaded_text = self.text.clone();
+                if let Some(slot) = self.buffers.get_mut(idx)
+                    && let BufferContent::Text(ref mut buffer) = slot.content
+                {
+                    buffer.in_memory_text = Some(reloaded_text);
+                    buffer.missing_on_disk = false;
+                    buffer.dirty = false;
+                    buffer.last_known_modified_time = file.modified_time;
+                }
+                self.dirty = false;
+                let note = format!(
+                    "auto reloaded active file from disk: {}",
+                    file.path.display()
+                );
+                self.external_notice = Some(note.clone());
+                self.external_conflict = None;
+                report.active_file_reloaded = true;
+                report.notices.push(note);
+            } else {
+                let Some(slot) = self.buffers.get_mut(idx) else {
+                    continue;
+                };
+                let BufferContent::Text(ref mut buffer) = slot.content else {
+                    continue;
+                };
+                if buffer.dirty {
+                    // Người dùng sửa buffer trong lúc đọc — giữ bản chưa lưu.
+                    continue;
+                }
+                let unchanged = buffer
+                    .in_memory_text
+                    .as_ref()
+                    .is_some_and(|rope| rope == content);
+                buffer.missing_on_disk = false;
+                buffer.last_known_modified_time = file.modified_time;
+                if unchanged {
+                    continue;
+                }
+                buffer.in_memory_text = Some(Rope::from_str(content));
+                buffer.dirty = false;
+                let note = format!(
+                    "auto reloaded inactive file from disk: {}",
+                    buffer.path.display()
+                );
+                report.notices.push(note);
+                report.inactive_reloaded_paths.push(buffer.path.clone());
+            }
+        }
+
+        report
+    }
+
+    /// Parameters the shell needs to submit an async `RescanWorkspace` request.
+    pub fn workspace_rescan_request_params(
+        &self,
+    ) -> Option<(
+        PathBuf,
+        crate::workspace::model::WorkspaceIgnoreRules,
+        crate::workspace::scanner::WorkspaceScanOptions,
+    )> {
+        self.workspace_model
+            .as_ref()
+            .map(|workspace| workspace.rescan_request_params())
+    }
+
+    /// Apply a fresh workspace tree produced by the async `RescanWorkspace`
+    /// worker, then refresh everything that mirrors the tree (missing-on-disk
+    /// flags, open file picker). Returns whether anything user-visible changed.
+    pub fn apply_workspace_rescan(
+        &mut self,
+        root_path: &Path,
+        nodes: Vec<crate::workspace::model::WorkspaceNode>,
+    ) -> Result<bool, String> {
+        let Some(workspace) = self.workspace_model.as_mut() else {
+            return Ok(false);
+        };
+        if workspace.root_path != root_path {
+            // Stale result from a previous workspace — drop it.
+            return Ok(false);
+        }
+        workspace.apply_rescanned_nodes(nodes);
+        let mut changed = true;
+        if self.refresh_text_buffer_missing_on_disk_states() {
+            changed = true;
+        }
+        if self.is_file_picker_open() && self.refresh_file_picker_results_if_open()? {
+            let note = format!(
+                "file picker refreshed ({} results)",
+                self.file_picker_results().len()
+            );
+            self.external_notice = Some(note);
+        }
+        Ok(changed)
     }
 }

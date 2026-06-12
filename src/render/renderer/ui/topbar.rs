@@ -92,7 +92,10 @@ impl Renderer {
             self.topbar_icon_pipeline.upload_instances(
                 &self.device,
                 &self.topbar_icon_instances,
-                [self.surface_state.config.width, self.surface_state.config.height],
+                [
+                    self.surface_state.config.width,
+                    self.surface_state.config.height,
+                ],
             );
             self.topbar_chrome_instances.clear();
             self.topbar_text_batches.clear();
@@ -174,7 +177,8 @@ impl Renderer {
             let folder_icon_w = folder_icon_size;
 
             // Compute maximum width available for the text itself
-            let allocated_fixed_w = left_pad + folder_icon_w + icon_text_gap + text_sep_gap + sep_w + sep_tab_gap;
+            let allocated_fixed_w =
+                left_pad + folder_icon_w + icon_text_gap + text_sep_gap + sep_w + sep_tab_gap;
             let max_text_w = (center_x - topbar_start_x - allocated_fixed_w).max(0.0);
             let clamped_project = clamp_project_name(project, max_text_w, font_size);
 
@@ -222,7 +226,8 @@ impl Renderer {
                 let scissor_w = draw_x - tab_x;
                 let count = glyphs.len() as u32 - start;
                 if count > 0 {
-                    if let Some(scissor) = rect_to_scissor([tab_x, content_y, scissor_w, content_h]) {
+                    if let Some(scissor) = rect_to_scissor([tab_x, content_y, scissor_w, content_h])
+                    {
                         text_batches.push(TextScissorBatch {
                             scissor,
                             range: InstanceDrawRange { start, count },
@@ -406,7 +411,10 @@ impl Renderer {
         self.topbar_icon_pipeline.upload_instances(
             &self.device,
             &self.topbar_icon_instances,
-            [self.surface_state.config.width, self.surface_state.config.height],
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
         );
         self.topbar_glyph_instances = glyphs;
         self.topbar_text_pipeline.upload_instances(

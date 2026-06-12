@@ -5,10 +5,13 @@ pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayl
     match payload {
         WorkerResultPayload::SystemDepCheckResult { missing } => {
             let missing_names: Vec<String> = missing.iter().map(|s| s.to_string()).collect();
-            if let Some(state) = app.app_state.active_extensions_manager_buffer_mut() {
+            // Apply to the extensions buffer even when it is not the active one —
+            // otherwise results arriving after a buffer switch left stale states.
+            if let Some(state) = app.app_state.any_extensions_manager_buffer_mut() {
                 for item in &mut state.items {
                     item.installed = !missing_names.iter().any(|tool| tool == &item.binary);
                 }
+                state.deps_checked = true;
             }
 
             let cli_tools = ["fzf", "lazygit", "lazydocker", "rg", "fd", "bat", "delta"];
@@ -68,7 +71,9 @@ pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayl
                 .map(|env| crate::app::command_palette::CommandPaletteItem {
                     label: env.display_name,
                     secondary_label: Some(env.executable.display().to_string()),
-                    action: crate::app::command_palette::CommandPaletteAction::SelectPythonEnv(env.executable),
+                    action: crate::app::command_palette::CommandPaletteAction::SelectPythonEnv(
+                        env.executable,
+                    ),
                     tone: crate::app::command_palette::CommandPaletteItemTone::Default,
                     preview_colors: Vec::new(),
                 })
@@ -83,7 +88,9 @@ pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayl
                 .map(|env| crate::app::command_palette::CommandPaletteItem {
                     label: env.display_name,
                     secondary_label: Some(env.executable.display().to_string()),
-                    action: crate::app::command_palette::CommandPaletteAction::SelectDartEnv(env.executable),
+                    action: crate::app::command_palette::CommandPaletteAction::SelectDartEnv(
+                        env.executable,
+                    ),
                     tone: crate::app::command_palette::CommandPaletteItemTone::Default,
                     preview_colors: Vec::new(),
                 })
@@ -104,11 +111,12 @@ pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayl
                     crate::app::command_palette::CommandPaletteItem {
                         label: dev.name,
                         secondary_label: secondary,
-                        action: crate::app::command_palette::CommandPaletteAction::SelectFlutterDevice {
-                            device_id: dev.id,
-                            is_emulator: dev.emulator,
-                            is_active: dev.is_active,
-                        },
+                        action:
+                            crate::app::command_palette::CommandPaletteAction::SelectFlutterDevice {
+                                device_id: dev.id,
+                                is_emulator: dev.emulator,
+                                is_active: dev.is_active,
+                            },
                         tone: crate::app::command_palette::CommandPaletteItemTone::Default,
                         preview_colors: Vec::new(),
                     }
@@ -160,7 +168,7 @@ pub(super) fn handle_extension_command_started(
     binary: String,
     uninstall: bool,
 ) {
-    if let Some(state) = app.app_state.active_extensions_manager_buffer_mut() {
+    if let Some(state) = app.app_state.any_extensions_manager_buffer_mut() {
         state.start_command(binary, uninstall);
     }
     app.editor_needs_layout = true;
@@ -168,7 +176,7 @@ pub(super) fn handle_extension_command_started(
 }
 
 pub(super) fn handle_extension_command_log(app: &mut AppShell, binary: String, line: String) {
-    if let Some(state) = app.app_state.active_extensions_manager_buffer_mut() {
+    if let Some(state) = app.app_state.any_extensions_manager_buffer_mut() {
         let _ = state.push_command_log(&binary, line);
     }
     app.editor_needs_layout = true;
@@ -182,7 +190,7 @@ pub(super) fn handle_extension_command_finished(
     success: bool,
     exit_code: Option<i32>,
 ) {
-    if let Some(state) = app.app_state.active_extensions_manager_buffer_mut() {
+    if let Some(state) = app.app_state.any_extensions_manager_buffer_mut() {
         let _ = state.finish_command(&binary, uninstall, success, exit_code);
         if success {
             for item in &mut state.items {

@@ -213,7 +213,10 @@ mod tests {
         debug_state.execution_location = Some(SourceLocation { line: 2, column: 4 });
         debug_state.paused = true;
         debug_state.inline_values = vec![InlineValue {
-            location: SourceLocation { line: 2, column: 10 },
+            location: SourceLocation {
+                line: 2,
+                column: 10,
+            },
             text: "x = 42".to_string(),
         }];
         debug_state.toggle_breakpoint_at_line(&std::path::PathBuf::from("main.dart"), 0);

@@ -57,6 +57,27 @@ impl AppShell {
         }
     }
 
+    /// Scroll the terminal grid that currently owns focus (bottom panel, right
+    /// sidebar opencode chat, or center buffer terminal). `half_page` scrolls by
+    /// half the visible rows (Ctrl+U/Ctrl+D); otherwise it scrolls 3 lines.
+    fn scroll_focused_terminal(&mut self, up: bool, half_page: bool) -> bool {
+        let scrolled = if let Some(grid) = self.focused_terminal_grid_mut() {
+            let lines = if half_page { (grid.rows / 2).max(1) } else { 3 };
+            if up {
+                grid.view_scroll_up(lines);
+            } else {
+                grid.view_scroll_down(lines);
+            }
+            true
+        } else {
+            false
+        };
+        if scrolled {
+            self.mark_focused_terminal_layout_dirty();
+        }
+        scrolled
+    }
+
     pub(super) fn handle_terminal_and_focus_command(&mut self, command: &Command) -> Option<bool> {
         match command {
             Command::ToggleTerminal => {
@@ -209,7 +230,9 @@ impl AppShell {
                     changed |= focus_changed;
                     if self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal) {
                         self.ensure_right_opencode_terminal();
-                        if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
+                        if let Ok(result) =
+                            self.app_state.apply_mode_event(ModeEvent::FocusTerminal)
+                        {
                             changed |= result.changed;
                         }
                     }
@@ -223,7 +246,8 @@ impl AppShell {
                 let terminal_has_focus = matches!(
                     self.app_state.current_mode(),
                     EditorMode::TerminalFocus | EditorMode::TerminalNormal
-                ) || self.focus_manager.current() == FocusTarget::BottomPanel;
+                ) || self.focus_manager.current()
+                    == FocusTarget::BottomPanel;
                 let mut changed = false;
                 let mut focus_changed = false;
 
@@ -288,32 +312,10 @@ impl AppShell {
                 Some(false)
             }
             Command::TerminalPaste => Some(self.handle_terminal_paste()),
-            Command::TerminalScrollUp => {
-                if let Some(grid) = self.focused_terminal_grid_mut() {
-                    grid.view_scroll_up(3);
-                    if self.app_state.active_buffer_is_terminal() {
-                        self.buffer_terminal_needs_layout = true;
-                    } else {
-                        self.terminal_needs_layout = true;
-                    }
-                    Some(true)
-                } else {
-                    Some(false)
-                }
-            }
-            Command::TerminalScrollDown => {
-                if let Some(grid) = self.focused_terminal_grid_mut() {
-                    grid.view_scroll_down(3);
-                    if self.app_state.active_buffer_is_terminal() {
-                        self.buffer_terminal_needs_layout = true;
-                    } else {
-                        self.terminal_needs_layout = true;
-                    }
-                    Some(true)
-                } else {
-                    Some(false)
-                }
-            }
+            Command::TerminalScrollUp => Some(self.scroll_focused_terminal(true, false)),
+            Command::TerminalScrollDown => Some(self.scroll_focused_terminal(false, false)),
+            Command::TerminalScrollHalfPageUp => Some(self.scroll_focused_terminal(true, true)),
+            Command::TerminalScrollHalfPageDown => Some(self.scroll_focused_terminal(false, true)),
             Command::TerminalSearchOpen => {
                 let report = dispatch_command(&mut self.app_state, Command::OpenInFileSearch);
                 if report.success {

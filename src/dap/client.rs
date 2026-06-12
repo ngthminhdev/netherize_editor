@@ -7,7 +7,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::dap::types::{Request, Response, Event};
+use crate::dap::types::{Event, Request, Response};
 
 pub struct DapClient {
     _child: Child,
@@ -33,7 +33,10 @@ impl DapClient {
         event_tx: mpsc::UnboundedSender<Event>,
         env_vars: Option<std::collections::HashMap<String, String>>,
     ) -> Result<Arc<Self>, std::io::Error> {
-        eprintln!("[DAP LOG] [DAP Client] DapClient::launch called for program: {}, args: {:?}", program, args);
+        eprintln!(
+            "[DAP LOG] [DAP Client] DapClient::launch called for program: {}, args: {:?}",
+            program, args
+        );
         let path_buf = std::path::Path::new(program);
         let exists = if path_buf.is_absolute() || path_buf.components().count() > 1 {
             path_buf.exists()
@@ -41,7 +44,12 @@ impl DapClient {
             let mut found = false;
             for dir in std::env::split_paths(&path) {
                 let joined = dir.join(program);
-                eprintln!("[DAP LOG] exists check: program={}, checking joined={:?}, exists={}", program, joined, joined.exists());
+                eprintln!(
+                    "[DAP LOG] exists check: program={}, checking joined={:?}, exists={}",
+                    program,
+                    joined,
+                    joined.exists()
+                );
                 if joined.exists() {
                     found = true;
                     break;
@@ -54,7 +62,10 @@ impl DapClient {
         if !exists {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("Binary '{}' not found in PATH or at specified path", program),
+                format!(
+                    "Binary '{}' not found in PATH or at specified path",
+                    program
+                ),
             ));
         }
 
@@ -83,7 +94,8 @@ impl DapClient {
             std::io::Error::new(std::io::ErrorKind::Other, "Failed to capture stdout")
         })?;
 
-        let pending_requests: Arc<Mutex<HashMap<u64, oneshot::Sender<Response>>>> = Arc::new(Mutex::new(HashMap::new()));
+        let pending_requests: Arc<Mutex<HashMap<u64, oneshot::Sender<Response>>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         let pending_requests_clone = pending_requests.clone();
 
         // Spawn background stdout reader thread
@@ -225,7 +237,10 @@ async fn read_message<R: AsyncRead + Unpin>(
     reader.read_exact(buffer).await?;
 
     let json_str = String::from_utf8(buffer.clone()).map_err(|e| {
-        std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Invalid UTF-8: {}", e))
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Invalid UTF-8: {}", e),
+        )
     })?;
 
     Ok(Some(json_str))
@@ -279,17 +294,24 @@ mod tests {
     #[tokio::test]
     async fn read_message_parses_multiple_frames_sequentially() {
         let json1 = r#"{"seq":1,"type":"event","event":"initialized"}"#;
-        let json2 = r#"{"seq":2,"type":"response","request_seq":0,"success":true,"command":"initialize"}"#;
+        let json2 =
+            r#"{"seq":2,"type":"response","request_seq":0,"success":true,"command":"initialize"}"#;
         let mut data = make_dap_message(json1);
         data.extend_from_slice(&make_dap_message(json2));
 
         let mut reader = BufReader::new(&data[..]);
         let mut buffer = Vec::new();
 
-        let r1 = read_message(&mut reader, &mut buffer).await.unwrap().unwrap();
+        let r1 = read_message(&mut reader, &mut buffer)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(r1, json1);
 
-        let r2 = read_message(&mut reader, &mut buffer).await.unwrap().unwrap();
+        let r2 = read_message(&mut reader, &mut buffer)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(r2, json2);
     }
 
@@ -318,17 +340,24 @@ mod tests {
     #[tokio::test]
     async fn read_message_reuses_buffer_across_calls() {
         let json1 = r#"{"short":true}"#;
-        let json2 = r#"{"a_much_longer_field_name":"with a longer value that exceeds the first buffer"}"#;
+        let json2 =
+            r#"{"a_much_longer_field_name":"with a longer value that exceeds the first buffer"}"#;
         let mut data = make_dap_message(json1);
         data.extend_from_slice(&make_dap_message(json2));
 
         let mut reader = BufReader::new(&data[..]);
         let mut buffer = Vec::new();
 
-        let r1 = read_message(&mut reader, &mut buffer).await.unwrap().unwrap();
+        let r1 = read_message(&mut reader, &mut buffer)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(r1, json1);
 
-        let r2 = read_message(&mut reader, &mut buffer).await.unwrap().unwrap();
+        let r2 = read_message(&mut reader, &mut buffer)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(r2, json2);
         // Buffer should have been resized for the larger message
         assert!(buffer.len() >= json2.len());

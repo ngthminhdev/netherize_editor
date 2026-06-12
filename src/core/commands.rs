@@ -111,6 +111,9 @@ pub enum Command {
     MoveToLastLine,
     MoveParagraphUp,
     MoveParagraphDown,
+    /// Vim f/F/t/T motion: nhảy tới ký tự trên dòng hiện tại, đồng thời set
+    /// search highlight cho ký tự đó để n/N nhảy tiếp giữa các match.
+    MoveFindChar(FindMotionKind, char),
     ScrollHalfPageUp,
     ScrollHalfPageDown,
     CenterCursorLine,
@@ -217,6 +220,10 @@ pub enum Command {
     TerminalScrollUp,
     /// Scroll terminal viewport down (towards live output).
     TerminalScrollDown,
+    /// Scroll terminal viewport up half a page (Ctrl+U in the right chat).
+    TerminalScrollHalfPageUp,
+    /// Scroll terminal viewport down half a page (Ctrl+D in the right chat).
+    TerminalScrollHalfPageDown,
     /// Create a new terminal tab in the bottom panel.
     TerminalTabNew,
     /// Close the current terminal tab in the bottom panel.
@@ -486,6 +493,7 @@ impl Command {
                 | Self::MoveToLastLine
                 | Self::MoveParagraphUp
                 | Self::MoveParagraphDown
+                | Self::MoveFindChar(..)
                 | Self::ScrollHalfPageUp
                 | Self::ScrollHalfPageDown
                 | Self::CenterCursorLine
@@ -561,6 +569,8 @@ impl Command {
                 | Self::ExplorerExpandOrChild
                 | Self::TerminalScrollUp
                 | Self::TerminalScrollDown
+                | Self::TerminalScrollHalfPageUp
+                | Self::TerminalScrollHalfPageDown
                 | Self::MarkdownPreviewScrollUp
                 | Self::MarkdownPreviewScrollDown
                 | Self::MarkdownPreviewScrollHalfPageUp

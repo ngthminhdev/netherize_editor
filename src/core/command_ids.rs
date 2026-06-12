@@ -48,6 +48,7 @@ pub const CHANGE_SELECTION: &str = "editor.change_selection";
 pub const CHANGE_WORD_FORWARD: &str = "editor.change_word_forward";
 pub const CHANGE_WORD_BACKWARD: &str = "editor.change_word_backward";
 pub const CHANGE_TO_LINE_END: &str = "editor.change_to_line_end";
+pub const YANK_TO_LINE_END: &str = "editor.yank_to_line_end";
 pub const JOIN_LINES: &str = "editor.join_lines";
 pub const PASTE_AFTER: &str = "editor.paste_after";
 pub const PASTE_BEFORE: &str = "editor.paste_before";
@@ -488,6 +489,18 @@ pub const ALL_IDS: &[&str] = &[
     TOGGLE_MAXIMIZE_FOCUS,
     TOGGLE_FOLD,
     TOGGLE_FOLD_ALL,
+    NEW_INSTANCE,
+    ENTER_VISUAL_BLOCK,
+    CHANGE_TO_LINE_END,
+    DELETE_TO_LINE_END,
+    YANK_TO_LINE_END,
+    JOIN_LINES,
+    MOVE_PARAGRAPH_UP,
+    MOVE_PARAGRAPH_DOWN,
+    AI_CHAT_STOP,
+    OPEN_HELP,
+    MARKDOWN_PREVIEW_SCROLL_TOP,
+    MARKDOWN_PREVIEW_SCROLL_BOTTOM,
     FOCUS_DAP,
     DAP_TOGGLE_EXPAND,
     DEBUG_START,
@@ -504,8 +517,12 @@ pub const ALL_IDS: &[&str] = &[
     FLUTTER_HOT_RESTART,
 ];
 
+/// A command id is valid if it is registered in ALL_IDS or resolvable by
+/// `parse` — the fallback keeps keymap validation in sync with the dispatcher
+/// so an id added to `parse` but forgotten here no longer silently disables
+/// its keybinding.
 pub fn is_valid(id: &str) -> bool {
-    ALL_IDS.contains(&id)
+    ALL_IDS.contains(&id) || parse(id, None).is_some()
 }
 
 pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Command> {
@@ -555,6 +572,12 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         CHANGE_WORD_FORWARD => Some(Command::ChangeWordForward),
         CHANGE_WORD_BACKWARD => Some(Command::ChangeWordBackward),
         CHANGE_TO_LINE_END => Some(Command::ChangeToLineEnd),
+        YANK_TO_LINE_END => Some(Command::Operate {
+            op: crate::core::commands::Operator::Yank,
+            target: crate::core::commands::OperationTarget::Motion(
+                crate::core::commands::Motion::LineEnd,
+            ),
+        }),
         JOIN_LINES => Some(Command::JoinLines),
         PASTE_AFTER => Some(Command::PasteAfter),
         PASTE_BEFORE => Some(Command::PasteBefore),

@@ -2,6 +2,8 @@
 mod commands_ai_chat;
 #[path = "commands_completion.rs"]
 mod commands_completion;
+#[path = "commands_dap.rs"]
+mod commands_dap;
 #[path = "commands_editor.rs"]
 mod commands_editor;
 #[path = "commands_explorer.rs"]
@@ -18,8 +20,6 @@ mod commands_settings;
 mod commands_settings_helpers;
 #[path = "commands_terminal.rs"]
 mod commands_terminal;
-#[path = "commands_dap.rs"]
-mod commands_dap;
 #[cfg(test)]
 #[path = "commands_tests.rs"]
 mod tests;
@@ -198,6 +198,8 @@ impl AppShell {
             && self.focus_manager.current() == FocusTarget::CenterEditor
         {
             self.buffer_terminal_needs_layout = true;
+        } else if self.focus_manager.current() == FocusTarget::RightSidebar {
+            self.right_terminal_needs_layout = true;
         } else {
             self.terminal_needs_layout = true;
         }
@@ -275,8 +277,32 @@ impl AppShell {
                 | Command::Newline
                 | Command::InsertTab
         ) && self.app_state.current_mode() == EditorMode::Insert;
+        self.ai_inline_suggestion_retained = false;
         if is_insert_typing {
-            let _ = self.app_state.clear_inline_suggestion();
+            let retained = repeat_count == 1
+                && match &command {
+                    // Auto-pairing chars insert a closing char the suggestion
+                    // doesn't know about — never retain across those.
+                    Command::InsertChar(ch)
+                        if !matches!(ch, '(' | '[' | '{' | '"' | '\'' | '`') =>
+                    {
+                        let mut buf = [0u8; 4];
+                        self.app_state
+                            .retain_inline_suggestion_for_typed_text(ch.encode_utf8(&mut buf))
+                    }
+                    Command::InsertText(text) => {
+                        self.app_state.retain_inline_suggestion_for_typed_text(text)
+                    }
+                    _ => false,
+                };
+            if retained {
+                // In-flight results no longer match the retained remainder;
+                // bump the revision so they get dropped as stale.
+                self.ai_inline_revision = self.ai_inline_revision.saturating_add(1);
+                self.ai_inline_suggestion_retained = true;
+            } else {
+                let _ = self.app_state.clear_inline_suggestion();
+            }
             self.cancel_ai_inline_completion();
         }
         if matches!(command, Command::SwitchMode(ModeEvent::Escape)) {
@@ -339,11 +365,16 @@ impl AppShell {
             );
         }
         if let Command::DebugStart = &command {
-            eprintln!("[DAP LOG] [F5 Commands] handle_command_with_count: Routing Command::DebugStart to handle_dap_command");
+            eprintln!(
+                "[DAP LOG] [F5 Commands] handle_command_with_count: Routing Command::DebugStart to handle_dap_command"
+            );
         }
         if let Some(changed) = self.handle_dap_command(&command) {
             if let Command::DebugStart = &command {
-                eprintln!("[DAP LOG] [F5 Commands] handle_command_with_count: handle_dap_command returned: {:?}", changed);
+                eprintln!(
+                    "[DAP LOG] [F5 Commands] handle_command_with_count: handle_dap_command returned: {:?}",
+                    changed
+                );
             }
             return self.finalize_post_command_hooks(
                 &command_for_post_hooks,
@@ -418,6 +449,11 @@ impl AppShell {
                 | Command::ChangeWordBackward
                 | Command::ChangeToLineEnd
                 | Command::SubstituteLine
+                | Command::Operate {
+                    op: crate::core::commands::Operator::Delete
+                        | crate::core::commands::Operator::Change,
+                    ..
+                }
         );
         let changed = self.handle_generic_editor_command(command, repeat_count);
         let mode_after = self.app_state.current_mode();
@@ -619,6 +655,25 @@ impl AppShell {
         });
     }
 
+    /// One-time onboarding toast for brand-new installs: the three keys a new
+    /// user needs before anything else. Marks persistent state so it never
+    /// shows again.
+    pub(super) fn show_first_run_tour_if_needed(&mut self) {
+        if self.persistent_state.first_run_tour_shown {
+            return;
+        }
+        self.persistent_state.first_run_tour_shown = true;
+        self.persistent_state.save();
+
+        let now = Instant::now();
+        self.transient_toast = Some(TransientToast {
+            message: "Welcome to Netherize\nPress i to type, Esc to go back to Normal mode, and Space ? (or F1) to see every keybinding.".to_string(),
+            kind: ToastKind::Info,
+            created_at: now,
+            expires_at: now + Duration::from_secs(12),
+        });
+    }
+
     pub(super) fn clear_expired_transient_toast(&mut self) -> bool {
         let expired = self
             .transient_toast
@@ -688,7 +743,9 @@ impl AppShell {
 
         match command {
             Command::ToggleMarkdownPreview => {
-                let is_markdown = self.app_state.active_file()
+                let is_markdown = self
+                    .app_state
+                    .active_file()
                     .and_then(|p| p.extension())
                     .is_some_and(|ext| ext == "md");
 
@@ -703,12 +760,15 @@ impl AppShell {
                 } else {
                     String::new()
                 };
-                let rendered_lines =
-                    crate::app::event_loop::helpers::parse_markdown_preview_blocks(&source, &self.theme);
+                let rendered_lines = crate::app::event_loop::helpers::parse_markdown_preview_blocks(
+                    &source,
+                    &self.theme,
+                );
 
                 self.app_state.markdown_preview.visible = true;
                 self.app_state.markdown_preview.scroll_y = 0.0;
-                self.app_state.markdown_preview.source_path = self.app_state.active_file().map(|path| path.to_path_buf());
+                self.app_state.markdown_preview.source_path =
+                    self.app_state.active_file().map(|path| path.to_path_buf());
                 self.app_state.markdown_preview.source_text = source;
                 self.app_state.markdown_preview.source_revision = self.app_state.revision();
                 self.app_state.markdown_preview.rendered_lines = rendered_lines;

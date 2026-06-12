@@ -171,6 +171,23 @@ impl WorkspaceModel {
         Ok(())
     }
 
+    /// Everything an async `RescanWorkspace` worker request needs: the worker
+    /// walks the tree off the UI thread and the result is applied back via
+    /// [`Self::apply_rescanned_nodes`].
+    pub fn rescan_request_params(&self) -> (PathBuf, WorkspaceIgnoreRules, WorkspaceScanOptions) {
+        (
+            self.root_path.clone(),
+            self.ignore_rules.clone(),
+            self.scan_options(),
+        )
+    }
+
+    /// Swap in a fresh tree produced by an async rescan.
+    pub fn apply_rescanned_nodes(&mut self, nodes: Vec<WorkspaceNode>) {
+        self.nodes = nodes;
+        self.prune_explorer_state();
+    }
+
     pub fn show_hidden(&self) -> bool {
         self.show_hidden
     }

@@ -1,9 +1,12 @@
+use serde_json::json;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use serde_json::json;
 
 use crate::dap::client::DapClient;
-use crate::dap::types::{Breakpoint as DapBreakpoint, StackFrame as DapStackFrame, Variable as DapVariable, Scope as DapScope, SourceBreakpoint};
+use crate::dap::types::{
+    Breakpoint as DapBreakpoint, Scope as DapScope, SourceBreakpoint, StackFrame as DapStackFrame,
+    Variable as DapVariable,
+};
 use crate::workbench::debug_state::{
     Breakpoint as EditorBreakpoint, DebugSharedState, DebugVariable, SourceLocation,
     StackFrame as EditorStackFrame,
@@ -49,11 +52,13 @@ impl DapSession {
         self.client.send_request("launch", Some(args)).await?;
         // Standard configurationDone to let the adapter know initialization is finished
         self.client.send_request("configurationDone", None).await?;
-        
+
         let mut state_guard = self.state.lock().await;
         state_guard.paused = false;
-        state_guard.console_messages.push("Flutter application launching...".to_string());
-        
+        state_guard
+            .console_messages
+            .push("Flutter application launching...".to_string());
+
         Ok(())
     }
 
@@ -75,10 +80,15 @@ impl DapSession {
             "breakpoints": breakpoints
         });
 
-        let resp = self.client.send_request("setBreakpoints", Some(args)).await?;
+        let resp = self
+            .client
+            .send_request("setBreakpoints", Some(args))
+            .await?;
         if resp.success {
             if let Some(body) = resp.body {
-                if let Ok(dap_bps) = serde_json::from_value::<Vec<DapBreakpoint>>(body["breakpoints"].clone()) {
+                if let Ok(dap_bps) =
+                    serde_json::from_value::<Vec<DapBreakpoint>>(body["breakpoints"].clone())
+                {
                     let mut state_guard = self.state.lock().await;
                     state_guard.breakpoints.clear();
                     for (i, dap_bp) in dap_bps.into_iter().enumerate() {
@@ -91,7 +101,9 @@ impl DapSession {
                                         column: 0,
                                     },
                                     enabled: true,
-                                    path: path.canonicalize().unwrap_or_else(|_| path.to_path_buf()),
+                                    path: path
+                                        .canonicalize()
+                                        .unwrap_or_else(|_| path.to_path_buf()),
                                 });
                             }
                         }
@@ -146,7 +158,9 @@ impl DapSession {
         let mut state_guard = self.state.lock().await;
         state_guard.paused = true;
         state_guard.execution_location = None;
-        state_guard.console_messages.push("Debugger session stopped.".to_string());
+        state_guard
+            .console_messages
+            .push("Debugger session stopped.".to_string());
         Ok(())
     }
 
@@ -154,9 +168,13 @@ impl DapSession {
         let args = json!({
             "request": "hotReload"
         });
-        self.client.send_request("customRequest", Some(args)).await?;
+        self.client
+            .send_request("customRequest", Some(args))
+            .await?;
         let mut state_guard = self.state.lock().await;
-        state_guard.console_messages.push("⚡ Hot Reload triggered...".to_string());
+        state_guard
+            .console_messages
+            .push("⚡ Hot Reload triggered...".to_string());
         Ok(())
     }
 
@@ -164,16 +182,24 @@ impl DapSession {
         let args = json!({
             "request": "hotRestart"
         });
-        self.client.send_request("customRequest", Some(args)).await?;
+        self.client
+            .send_request("customRequest", Some(args))
+            .await?;
         let mut state_guard = self.state.lock().await;
-        state_guard.console_messages.push("↻ Hot Restart triggered...".to_string());
+        state_guard
+            .console_messages
+            .push("↻ Hot Restart triggered...".to_string());
         Ok(())
     }
 
     pub async fn evaluate_watch_expressions(&self) -> Result<(), String> {
         let expressions: Vec<String> = {
             let state_guard = self.state.lock().await;
-            state_guard.watch.iter().map(|w| w.expression.clone()).collect()
+            state_guard
+                .watch
+                .iter()
+                .map(|w| w.expression.clone())
+                .collect()
         };
 
         let mut results = Vec::new();
@@ -185,7 +211,8 @@ impl DapSession {
             if let Ok(resp) = self.client.send_request("evaluate", Some(args)).await {
                 if resp.success {
                     if let Some(body) = resp.body {
-                        let value = body.get("result")
+                        let value = body
+                            .get("result")
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
@@ -217,8 +244,12 @@ impl DapSession {
         let mut current_loc = None;
         let mut top_frame_id = None;
 
-        if resp.success && let Some(body) = resp.body {
-            if let Ok(frames) = serde_json::from_value::<Vec<DapStackFrame>>(body["stackFrames"].clone()) {
+        if resp.success
+            && let Some(body) = resp.body
+        {
+            if let Ok(frames) =
+                serde_json::from_value::<Vec<DapStackFrame>>(body["stackFrames"].clone())
+            {
                 for (idx, frame) in frames.into_iter().enumerate() {
                     let line = (frame.line - 1).max(0) as usize; // 1-indexed to 0-indexed
                     let col = (frame.column - 1).max(0) as usize;
@@ -258,15 +289,26 @@ impl DapSession {
         if let Some(frame_id) = top_frame_id {
             let args = json!({ "frameId": frame_id });
             let resp = self.client.send_request("scopes", Some(args)).await?;
-            if resp.success && let Some(body) = resp.body {
-                if let Ok(scopes) = serde_json::from_value::<Vec<DapScope>>(body["scopes"].clone()) {
+            if resp.success
+                && let Some(body) = resp.body
+            {
+                if let Ok(scopes) = serde_json::from_value::<Vec<DapScope>>(body["scopes"].clone())
+                {
                     // Iterate scopes (usually Local, Global)
                     for scope in scopes {
                         if scope.variables_reference > 0 {
-                            let var_args = json!({ "variablesReference": scope.variables_reference });
-                            let var_resp = self.client.send_request("variables", Some(var_args)).await?;
-                            if var_resp.success && let Some(var_body) = var_resp.body {
-                                if let Ok(dap_vars) = serde_json::from_value::<Vec<DapVariable>>(var_body["variables"].clone()) {
+                            let var_args =
+                                json!({ "variablesReference": scope.variables_reference });
+                            let var_resp = self
+                                .client
+                                .send_request("variables", Some(var_args))
+                                .await?;
+                            if var_resp.success
+                                && let Some(var_body) = var_resp.body
+                            {
+                                if let Ok(dap_vars) = serde_json::from_value::<Vec<DapVariable>>(
+                                    var_body["variables"].clone(),
+                                ) {
                                     for d_var in dap_vars {
                                         variables.push(self.fetch_variable_tree(d_var).await);
                                     }
@@ -296,8 +338,12 @@ impl DapSession {
         if var.variables_reference > 0 {
             let args = json!({ "variablesReference": var.variables_reference });
             if let Ok(resp) = self.client.send_request("variables", Some(args)).await {
-                if resp.success && let Some(body) = resp.body {
-                    if let Ok(dap_vars) = serde_json::from_value::<Vec<DapVariable>>(body["variables"].clone()) {
+                if resp.success
+                    && let Some(body) = resp.body
+                {
+                    if let Ok(dap_vars) =
+                        serde_json::from_value::<Vec<DapVariable>>(body["variables"].clone())
+                    {
                         for d_var in dap_vars {
                             // Don't recursively fetch indefinitely (fetch 1 level down)
                             children.push(DebugVariable {

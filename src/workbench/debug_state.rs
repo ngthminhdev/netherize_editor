@@ -222,7 +222,10 @@ mod tests {
     #[test]
     fn toggle_breakpoint_on_execution_line() {
         let mut state = DebugSharedState::default();
-        state.execution_location = Some(SourceLocation { line: 42, column: 0 });
+        state.execution_location = Some(SourceLocation {
+            line: 42,
+            column: 0,
+        });
         let path = std::path::PathBuf::from("main.dart");
 
         assert!(state.toggle_breakpoint_on_execution_line(&path));
@@ -310,9 +313,7 @@ mod tests {
         let mut state = DebugSharedState::default();
         state.add_watch_expression("x".to_string());
 
-        state.update_watch_values(vec![
-            ("unknown".to_string(), "999".to_string()),
-        ]);
+        state.update_watch_values(vec![("unknown".to_string(), "999".to_string())]);
 
         assert!(state.watch[0].value.is_empty());
     }
@@ -390,7 +391,10 @@ mod tests {
     fn breakpoint_defaults_are_correct() {
         let bp = Breakpoint {
             id: 42,
-            location: SourceLocation { line: 10, column: 5 },
+            location: SourceLocation {
+                line: 10,
+                column: 5,
+            },
             enabled: true,
             path: std::path::PathBuf::from("main.dart"),
         };
@@ -403,7 +407,10 @@ mod tests {
     fn stack_frame_stores_location_and_path() {
         let frame = StackFrame {
             function: "main".to_string(),
-            location: SourceLocation { line: 42, column: 2 },
+            location: SourceLocation {
+                line: 42,
+                column: 2,
+            },
             path: std::path::PathBuf::from("/lib/main.dart"),
         };
         assert_eq!(frame.function, "main");

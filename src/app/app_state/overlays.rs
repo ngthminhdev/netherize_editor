@@ -135,7 +135,9 @@ impl AppState {
             };
 
             let next = if delta_lines.is_negative() {
-                scroll.offset_lines.saturating_sub(delta_lines.unsigned_abs())
+                scroll
+                    .offset_lines
+                    .saturating_sub(delta_lines.unsigned_abs())
             } else {
                 scroll.offset_lines.saturating_add(delta_lines as usize)
             };
@@ -952,12 +954,6 @@ impl AppState {
         self.revision += 1;
     }
 
-    pub(super) fn should_ignore_self_save_event(&self) -> bool {
-        self.last_saved_at.is_some_and(|saved_at| {
-            Instant::now().saturating_duration_since(saved_at) < Self::SELF_SAVE_IGNORE_WINDOW
-        })
-    }
-
     pub(super) fn load_buffer_from_file(&mut self, canonical_path: &Path) -> Result<(), String> {
         let content = fs::read_to_string(canonical_path)
             .map_err(|err| format!("open file {:?} failed: {err}", canonical_path))?;
@@ -1705,8 +1701,10 @@ pub(super) fn build_completion_display_items_with_cache(
                     && existing.item.source_path.is_none()
                     && existing.item.export_kind.is_none()
                 {
-                    existing.item.source_path =
-                        symbol.source_path.clone().or_else(|| Some(symbol.file_path.clone()));
+                    existing.item.source_path = symbol
+                        .source_path
+                        .clone()
+                        .or_else(|| Some(symbol.file_path.clone()));
                     existing.item.import_path = symbol.import_path.clone();
                     existing.item.export_kind = symbol.export_kind.clone();
                     if existing.item.detail.is_none() {
@@ -1851,7 +1849,6 @@ pub(super) fn filter_cached_completion_items(
     scored.sort_by(|a, b| b.score.cmp(&a.score));
     scored
 }
-
 
 pub(super) fn score_completion_match(
     label: &str,

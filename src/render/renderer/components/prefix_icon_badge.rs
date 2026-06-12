@@ -62,7 +62,15 @@ pub fn layout_prefix_icon_badge(
     let icon_y = y + (h - icon_line_h) * 0.5 + icon_size * badge.y_nudge_scale;
     text_system.set_metrics(cosmic_text::Metrics::new(icon_size, icon_line_h));
     text_system.set_size(Some(w), Some(icon_line_h));
-    layout_panel_text_bold(badge.icon, text_system, atlas, queue, icon_x, icon_y, icon_color)
+    layout_panel_text_bold(
+        badge.icon,
+        text_system,
+        atlas,
+        queue,
+        icon_x,
+        icon_y,
+        icon_color,
+    )
 }
 
 fn blend_icon_badge_color(base: [f32; 4], tint: [f32; 4], amount: f32) -> [f32; 4] {
@@ -74,4 +82,3 @@ fn blend_icon_badge_color(base: [f32; 4], tint: [f32; 4], amount: f32) -> [f32; 
         1.0,
     ]
 }
-

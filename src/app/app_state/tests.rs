@@ -6,11 +6,13 @@ mod tests {
     use std::{
         fs,
         path::PathBuf,
-        time::{Instant, SystemTime, UNIX_EPOCH},
+        time::{Duration, SystemTime, UNIX_EPOCH},
     };
 
     use crate::app::command_palette::{CommandPaletteItem, CommandPaletteMode};
-    use crate::async_runtime::message::{FilePreviewLine, FileSystemChangeKind, FileSystemEvent};
+    use crate::async_runtime::message::{
+        ExternalFileRead, FilePreviewLine, FileSystemChangeKind, FileSystemEvent,
+    };
     use crate::config::keymap_config::KeyBinding;
     use crate::core::commands::{TextObjectKind, TextObjectModifier};
     use crate::core::mode::{EditorMode, ModeEvent};
@@ -23,6 +25,52 @@ mod tests {
             .as_nanos();
         std::env::temp_dir().join(format!("netherize_phase4_{suffix}_{nanos}.txt"))
     }
+    fn read_external_files(paths: &[PathBuf]) -> Vec<ExternalFileRead> {
+        paths
+            .iter()
+            .map(|path| ExternalFileRead {
+                path: path.clone(),
+                content: fs::read_to_string(path).ok(),
+                modified_time: fs::metadata(path).and_then(|m| m.modified()).ok(),
+            })
+            .collect()
+    }
+
+    impl AppState {
+        /// Test driver for the async external-change pipeline: runs phase 1
+        /// (event triage), a synchronous stand-in for the worker (file reads +
+        /// workspace rescan), then phase 2 (content apply) — and merges the
+        /// reports so existing assertions keep working.
+        fn apply_external_file_events_for_test(
+            &mut self,
+            events: &[FileSystemEvent],
+        ) -> Result<ExternalChangeReport, String> {
+            let mut report = self.apply_external_file_events(events)?;
+            if report.workspace_rescan_needed
+                && let Some((root, rules, options)) = self.workspace_rescan_request_params()
+            {
+                let scanner = crate::workspace::scanner::WorkspaceScanner::new(rules, options);
+                if let Ok(nodes) = scanner.scan(&root) {
+                    let _ = self.apply_workspace_rescan(&root, nodes)?;
+                    report.workspace_reloaded = true;
+                }
+            }
+            let files = read_external_files(&report.pending_reload_paths);
+            let applied = self.apply_external_file_contents(&files);
+            report.active_file_reloaded |= applied.active_file_reloaded;
+            report.conflict_detected |= applied.conflict_detected;
+            if report.conflict_path.is_none() {
+                report.conflict_path = applied.conflict_path;
+            }
+            report.workspace_reloaded |= !applied.inactive_reloaded_paths.is_empty();
+            report
+                .inactive_reloaded_paths
+                .extend(applied.inactive_reloaded_paths);
+            report.notices.extend(applied.notices);
+            Ok(report)
+        }
+    }
+
     fn unique_temp_dir(suffix: &str) -> std::path::PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -731,7 +779,7 @@ mod tests {
         let created_path = root.join("src/new_file.rs");
         fs::write(&created_path, "pub fn new_file() {}\n").expect("write new file");
         let report = state
-            .apply_external_file_events(&[FileSystemEvent {
+            .apply_external_file_events_for_test(&[FileSystemEvent {
                 kind: FileSystemChangeKind::Create,
                 path: created_path,
                 new_path: None,
@@ -762,6 +810,84 @@ mod tests {
     }
 
     #[test]
+    fn external_rename_without_new_path_on_existing_file_reloads_like_modify() {
+        // macOS FSEvents splits a rename into two events with one path each
+        // (new_path = None). Atomic saves (write temp + rename over the real
+        // file) arrive as Rename{new_path: None} on a path that still exists —
+        // that must reload immediately, not wait for the 3s poll.
+        let save_path = unique_temp_path("external_rename_modify");
+        let mut state = AppState::new(save_path);
+        let root = unique_temp_dir("external_rename_modify");
+        fs::create_dir_all(root.join("src")).expect("create src");
+        let active = root.join("src/main.rs");
+        fs::write(&active, "fn main() {}\n").expect("write initial");
+
+        state
+            .attach_workspace(root.clone())
+            .expect("attach workspace should succeed");
+        state.open_file(active.clone()).expect("open active file");
+
+        fs::write(&active, "fn main() { println!(\"atomic save\"); }\n")
+            .expect("write replacement content");
+        let report = state
+            .apply_external_file_events_for_test(&[FileSystemEvent {
+                kind: FileSystemChangeKind::Rename,
+                path: active.clone(),
+                new_path: None,
+            }])
+            .expect("apply external rename");
+
+        assert!(report.active_file_reloaded);
+        assert!(state.preview(64).contains("atomic save"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn external_modify_of_inactive_buffer_is_reported_for_lsp_sync() {
+        let save_path = unique_temp_path("external_inactive_lsp");
+        let mut state = AppState::new(save_path);
+        let root = unique_temp_dir("external_inactive_lsp");
+        fs::create_dir_all(root.join("src")).expect("create src");
+        let first = root.join("src/lib.rs");
+        let second = root.join("src/main.rs");
+        fs::write(&first, "pub fn lib() {}\n").expect("write first");
+        fs::write(&second, "fn main() {}\n").expect("write second");
+
+        state
+            .attach_workspace(root.clone())
+            .expect("attach workspace should succeed");
+        state.open_file(first.clone()).expect("open first file");
+        state.open_file(second.clone()).expect("open second file");
+
+        fs::write(&first, "pub fn lib() { /* edited externally */ }\n")
+            .expect("rewrite inactive file");
+        let report = state
+            .apply_external_file_events_for_test(&[FileSystemEvent {
+                kind: FileSystemChangeKind::Modify,
+                path: first.clone(),
+                new_path: None,
+            }])
+            .expect("apply external modify on inactive buffer");
+
+        assert!(!report.active_file_reloaded);
+        assert!(
+            report
+                .inactive_reloaded_paths
+                .iter()
+                .any(|path| path.ends_with("src/lib.rs")),
+            "inactive reload must be reported so the shell can re-sync the LSP overlay"
+        );
+        assert!(
+            state
+                .buffer_text_for_path(&first)
+                .is_some_and(|text| text.contains("edited externally"))
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn external_modify_reloads_when_clean_and_warns_when_dirty() {
         let save_path = unique_temp_path("external");
         let mut state = AppState::new(save_path);
@@ -777,7 +903,7 @@ mod tests {
 
         fs::write(&active, "fn main() { println!(\"reload\"); }\n").expect("write modified");
         let report = state
-            .apply_external_file_events(&[FileSystemEvent {
+            .apply_external_file_events_for_test(&[FileSystemEvent {
                 kind: FileSystemChangeKind::Modify,
                 path: active.clone(),
                 new_path: None,
@@ -789,7 +915,7 @@ mod tests {
 
         state.insert_char('x');
         let dirty_report = state
-            .apply_external_file_events(&[FileSystemEvent {
+            .apply_external_file_events_for_test(&[FileSystemEvent {
                 kind: FileSystemChangeKind::Modify,
                 path: active.clone(),
                 new_path: None,
@@ -813,8 +939,12 @@ mod tests {
         let mut state = AppState::new(save_path);
         let root = unique_temp_dir("external_inactive_modify");
         fs::create_dir_all(root.join("src")).expect("create src");
-        let inactive = fs::canonicalize(root.join("src")).expect("canonicalize src").join("inactive.rs");
-        let active = fs::canonicalize(root.join("src")).expect("canonicalize src").join("active.rs");
+        let inactive = fs::canonicalize(root.join("src"))
+            .expect("canonicalize src")
+            .join("inactive.rs");
+        let active = fs::canonicalize(root.join("src"))
+            .expect("canonicalize src")
+            .join("active.rs");
         fs::write(&inactive, "fn inactive() {}\n").expect("write inactive");
         fs::write(&active, "fn active() {}\n").expect("write active");
 
@@ -824,9 +954,10 @@ mod tests {
         state.open_file(inactive.clone()).expect("open inactive");
         state.open_file(active.clone()).expect("open active");
 
-        fs::write(&inactive, "fn inactive() { println!(\"reload\"); }\n").expect("write modified inactive");
+        fs::write(&inactive, "fn inactive() { println!(\"reload\"); }\n")
+            .expect("write modified inactive");
         let report = state
-            .apply_external_file_events(&[FileSystemEvent {
+            .apply_external_file_events_for_test(&[FileSystemEvent {
                 kind: FileSystemChangeKind::Modify,
                 path: inactive.clone(),
                 new_path: None,
@@ -836,9 +967,11 @@ mod tests {
         assert!(report.workspace_reloaded);
         assert!(!report.active_file_reloaded);
 
-        let inactive_entry = state.buffers().iter().find(|b| {
-            matches!(&b.content, BufferContent::Text(t) if t.path == inactive)
-        }).unwrap();
+        let inactive_entry = state
+            .buffers()
+            .iter()
+            .find(|b| matches!(&b.content, BufferContent::Text(t) if t.path == inactive))
+            .unwrap();
         if let BufferContent::Text(ref text_buf) = inactive_entry.content {
             assert_eq!(
                 text_buf.in_memory_text.as_ref().unwrap().to_string(),
@@ -859,8 +992,12 @@ mod tests {
         let mut state = AppState::new(save_path);
         let root = unique_temp_dir("external_inactive_delete");
         fs::create_dir_all(root.join("src")).expect("create src");
-        let inactive = fs::canonicalize(root.join("src")).expect("canonicalize src").join("inactive.rs");
-        let active = fs::canonicalize(root.join("src")).expect("canonicalize src").join("active.rs");
+        let inactive = fs::canonicalize(root.join("src"))
+            .expect("canonicalize src")
+            .join("inactive.rs");
+        let active = fs::canonicalize(root.join("src"))
+            .expect("canonicalize src")
+            .join("active.rs");
         fs::write(&inactive, "fn inactive() {}\n").expect("write inactive");
         fs::write(&active, "fn active() {}\n").expect("write active");
 
@@ -872,7 +1009,7 @@ mod tests {
 
         fs::remove_file(&inactive).expect("remove inactive file");
         let report = state
-            .apply_external_file_events(&[FileSystemEvent {
+            .apply_external_file_events_for_test(&[FileSystemEvent {
                 kind: FileSystemChangeKind::Delete,
                 path: inactive.clone(),
                 new_path: None,
@@ -881,9 +1018,11 @@ mod tests {
 
         assert!(report.workspace_reloaded);
 
-        let inactive_entry = state.buffers().iter().find(|b| {
-            matches!(&b.content, BufferContent::Text(t) if t.path == inactive)
-        }).unwrap();
+        let inactive_entry = state
+            .buffers()
+            .iter()
+            .find(|b| matches!(&b.content, BufferContent::Text(t) if t.path == inactive))
+            .unwrap();
         if let BufferContent::Text(ref text_buf) = inactive_entry.content {
             assert!(text_buf.missing_on_disk);
         } else {
@@ -937,14 +1076,10 @@ mod tests {
 
         state.save_file().expect("save file");
 
-        fs::write(
-            &file_path,
-            "changed externally but should be ignored in debounce window\n",
-        )
-        .expect("rewrite file quickly");
-
+        // Self-save THẬT: đĩa == bộ nhớ (chính nội dung vừa lưu). Modify echo do OS
+        // bắn ra phải bị bỏ qua, không reload, không nhảy con trỏ.
         let report = state
-            .apply_external_file_events(&[FileSystemEvent {
+            .apply_external_file_events_for_test(&[FileSystemEvent {
                 kind: FileSystemChangeKind::Modify,
                 path: file_path.clone(),
                 new_path: None,
@@ -953,7 +1088,36 @@ mod tests {
 
         assert!(!report.active_file_reloaded);
         assert_eq!(state.cursor_char_idx(), cursor_before);
-        assert!(!state.preview(128).contains("changed externally"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn external_edit_within_self_save_window_still_reloads() {
+        // #3: edit NGOÀI thật xảy ra ngay sau khi save (trong cửa sổ debounce) KHÔNG
+        // được nuốt — vì nội dung đĩa khác bộ nhớ thì đó là thay đổi thật, phải reload.
+        let root = unique_temp_dir("external_edit_in_window");
+        fs::create_dir_all(&root).expect("create temp dir");
+        let file_path = root.join("main.rs");
+        fs::write(&file_path, "one\ntwo\nthree\n").expect("write initial");
+
+        let mut state = AppState::new(unique_temp_path("external_edit_in_window_fallback"));
+        state.open_file(file_path.clone()).expect("open file");
+        state.save_file().expect("save file");
+
+        // Ghi nội dung khác ngay lập tức (vẫn trong SELF_SAVE_IGNORE_WINDOW).
+        fs::write(&file_path, "external content arrived\n").expect("rewrite file quickly");
+
+        let report = state
+            .apply_external_file_events_for_test(&[FileSystemEvent {
+                kind: FileSystemChangeKind::Modify,
+                path: file_path.clone(),
+                new_path: None,
+            }])
+            .expect("apply modify event");
+
+        assert!(report.active_file_reloaded);
+        assert!(state.preview(64).contains("external content"));
 
         let _ = fs::remove_dir_all(root);
     }
@@ -976,10 +1140,9 @@ mod tests {
         state.move_up();
 
         fs::write(&file_path, "x\n").expect("write shorter file");
-        state.last_saved_at = Some(Instant::now() - AppState::SELF_SAVE_IGNORE_WINDOW);
 
         let report = state
-            .apply_external_file_events(&[FileSystemEvent {
+            .apply_external_file_events_for_test(&[FileSystemEvent {
                 kind: FileSystemChangeKind::Modify,
                 path: file_path.clone(),
                 new_path: None,
@@ -1022,7 +1185,7 @@ mod tests {
         let created_path = root.join("src/created_after_delete.rs");
         fs::write(&created_path, "pub fn created() {}\n").expect("write created file");
         let report = state
-            .apply_external_file_events(&[
+            .apply_external_file_events_for_test(&[
                 FileSystemEvent {
                     kind: FileSystemChangeKind::Modify,
                     path: active.clone(),
@@ -1088,7 +1251,7 @@ mod tests {
 
         fs::rename(&old_path, &new_path).expect("rename file");
         let report = state
-            .apply_external_file_events(&[FileSystemEvent {
+            .apply_external_file_events_for_test(&[FileSystemEvent {
                 kind: FileSystemChangeKind::Modify,
                 path: old_path.clone(),
                 new_path: None,
@@ -1719,10 +1882,8 @@ mod tests {
 
     #[test]
     fn check_and_reload_external_changes_reloads_modified_files() {
-        let temp_dir = std::env::temp_dir().join(format!(
-            "netherize_external_reload_{}",
-            std::process::id()
-        ));
+        let temp_dir =
+            std::env::temp_dir().join(format!("netherize_external_reload_{}", std::process::id()));
         fs::create_dir_all(&temp_dir).expect("create temp dir");
         let file_path = temp_dir.join("test.txt");
         fs::write(&file_path, "original content").expect("write test file");
@@ -1730,12 +1891,11 @@ mod tests {
 
         let mut state = AppState::new(file_path.clone());
         state.open_file(file_path.clone()).expect("open file");
-        
+
         let mut last_checked = HashMap::new();
         // First check: populates the check time registry
-        let (reloaded, active_reloaded) = state.check_and_reload_external_changes(&mut last_checked);
-        assert!(reloaded.is_empty());
-        assert!(!active_reloaded);
+        let changed = state.collect_externally_modified_open_buffers(&mut last_checked);
+        assert!(changed.is_empty());
         assert!(last_checked.contains_key(&file_path));
 
         // Sleep briefly to ensure time difference is detectable if filesystem timestamps are coarse
@@ -1744,11 +1904,12 @@ mod tests {
         // Modify file externally on disk
         fs::write(&file_path, "updated content").expect("write update");
 
-        // Second check: should detect modify and reload
-        let (reloaded, active_reloaded) = state.check_and_reload_external_changes(&mut last_checked);
-        assert_eq!(reloaded.len(), 1);
-        assert_eq!(reloaded[0], file_path);
-        assert!(active_reloaded);
+        // Second check: should detect the modify; contents are applied via the
+        // (worker-simulated) read + apply phase.
+        let changed = state.collect_externally_modified_open_buffers(&mut last_checked);
+        assert_eq!(changed, vec![file_path.clone()]);
+        let applied = state.apply_external_file_contents(&read_external_files(&changed));
+        assert!(applied.active_file_reloaded);
         assert_eq!(state.text_string(), "updated content");
 
         let _ = fs::remove_dir_all(temp_dir);
@@ -1775,11 +1936,11 @@ mod tests {
         fs::write(&file_path, "modified before tick").expect("write update");
 
         let mut last_checked = HashMap::new();
-        // First check: should detect the modify against last_known_modified_time and reload
-        let (reloaded, active_reloaded) = state.check_and_reload_external_changes(&mut last_checked);
-        assert_eq!(reloaded.len(), 1);
-        assert_eq!(reloaded[0], file_path);
-        assert!(active_reloaded);
+        // First check: should detect the modify against last_known_modified_time
+        let changed = state.collect_externally_modified_open_buffers(&mut last_checked);
+        assert_eq!(changed, vec![file_path.clone()]);
+        let applied = state.apply_external_file_contents(&read_external_files(&changed));
+        assert!(applied.active_file_reloaded);
         assert_eq!(state.text_string(), "modified before tick");
 
         let _ = fs::remove_dir_all(temp_dir);

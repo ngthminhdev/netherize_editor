@@ -56,7 +56,8 @@ mod lsp_fvm_detection_tests {
             &["debug_adapter".to_string()],
             Some(PathBuf::from("/Users/qc-bright/Project/mine_wallet")),
             event_tx,
-        ).expect("launch flutter debug adapter");
+        )
+        .expect("launch flutter debug adapter");
 
         // Send initialize request
         let init_args = serde_json::json!({
@@ -67,9 +68,14 @@ mod lsp_fvm_detection_tests {
             "pathFormat": "path"
         });
 
-        let init_resp = client.send_request("initialize", Some(init_args)).await
+        let init_resp = client
+            .send_request("initialize", Some(init_args))
+            .await
             .expect("send initialize request");
         assert!(init_resp.success, "initialize request should be successful");
-        assert!(init_resp.body.is_some(), "initialize response should have capabilities");
+        assert!(
+            init_resp.body.is_some(),
+            "initialize response should have capabilities"
+        );
     }
 }

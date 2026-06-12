@@ -89,7 +89,7 @@ pub struct FilePreviewLine {
     pub is_target: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FileSystemChangeKind {
     Create,
     Delete,
@@ -97,11 +97,19 @@ pub enum FileSystemChangeKind {
     Rename,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FileSystemEvent {
     pub kind: FileSystemChangeKind,
     pub path: PathBuf,
     pub new_path: Option<PathBuf>,
+}
+
+/// One externally changed file fetched by the worker for the UI to apply.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalFileRead {
+    pub path: PathBuf,
+    pub content: Option<String>,
+    pub modified_time: Option<std::time::SystemTime>,
 }
 
 /// Request từ UI/main thread sang worker.
@@ -161,6 +169,9 @@ pub enum WorkerRequestPayload {
     },
     StartFileWatch {
         root_path: PathBuf,
+        /// `true` cho workspace root (quét cả cây), `false` cho file mở ngoài root
+        /// (chỉ watch thư mục cha — tránh dựng recursive watcher nặng trên /tmp, /etc…).
+        recursive: bool,
     },
     SpawnPtyShell {
         shell: Option<String>,
@@ -336,6 +347,7 @@ pub enum WorkerRequestPayload {
         api_key: Option<String>,
         model: String,
         endpoint_kind: Option<String>,
+        reasoning_effort: Option<String>,
         prefix: String,
         suffix: String,
         language_id: Option<String>,
@@ -399,6 +411,19 @@ pub enum WorkerRequestPayload {
     CopyFile {
         source_path: PathBuf,
         target_path: PathBuf,
+    },
+    /// Read contents of externally changed files off the UI thread.
+    /// Phase 2 of the external-change pipeline: the main thread only decides
+    /// WHICH paths need reloading; the worker does the actual disk reads.
+    ReadExternalFiles {
+        paths: Vec<PathBuf>,
+    },
+    /// Re-scan the workspace tree off the UI thread (external create/delete/
+    /// rename). The worker walks the tree and returns fresh nodes to swap in.
+    RescanWorkspace {
+        root_path: PathBuf,
+        ignore_rules: crate::workspace::model::WorkspaceIgnoreRules,
+        options: crate::workspace::scanner::WorkspaceScanOptions,
     },
     /// workspace/symbol request — index all symbols in the workspace.
     WorkspaceSymbolRequest {
@@ -769,6 +794,16 @@ pub enum WorkerResultPayload {
         target_path: PathBuf,
         success: bool,
         error_message: Option<String>,
+    },
+    /// Contents of externally changed files, read off the UI thread.
+    /// `content: None` means the read failed (deleted/permission/binary).
+    ExternalFilesRead {
+        files: Vec<ExternalFileRead>,
+    },
+    /// Fresh workspace tree from an async rescan.
+    WorkspaceRescanned {
+        root_path: PathBuf,
+        nodes: Vec<crate::workspace::model::WorkspaceNode>,
     },
     /// workspace/symbol response — all symbols in the workspace.
     WorkspaceSymbols {

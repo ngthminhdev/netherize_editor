@@ -334,13 +334,19 @@ fn special_icon_for_filename(filename: &str) -> Option<&'static str> {
         return Some(icon);
     }
 
-    if filename == "dockerfile" || filename.starts_with("dockerfile.") || filename.ends_with(".dockerfile") {
+    if filename == "dockerfile"
+        || filename.starts_with("dockerfile.")
+        || filename.ends_with(".dockerfile")
+    {
         return Some("built_in:docker");
     }
     if filename == ".dockerignore" {
         return Some("built_in:dockerignore");
     }
-    if matches!(filename, "docker-compose.yml" | "docker-compose.yaml" | "compose.yml" | "compose.yaml") {
+    if matches!(
+        filename,
+        "docker-compose.yml" | "docker-compose.yaml" | "compose.yml" | "compose.yaml"
+    ) {
         return Some("built_in:docker");
     }
 
@@ -403,7 +409,10 @@ fn special_icon_for_filename(filename: &str) -> Option<&'static str> {
     if filename.starts_with("vitest.config.") {
         return Some("built_in:vitest");
     }
-    if filename.starts_with("jest.config.") || filename == ".jestrc" || filename.starts_with(".jestrc.") {
+    if filename.starts_with("jest.config.")
+        || filename == ".jestrc"
+        || filename.starts_with(".jestrc.")
+    {
         return Some("built_in:jest");
     }
     if filename.starts_with("cypress.config.ts") {
@@ -428,16 +437,25 @@ fn special_icon_for_filename(filename: &str) -> Option<&'static str> {
     if filename == ".eslintignore" {
         return Some("built_in:eslintignore");
     }
-    if filename.starts_with("eslint.config.") || filename == ".eslintrc" || filename.starts_with(".eslintrc.") {
+    if filename.starts_with("eslint.config.")
+        || filename == ".eslintrc"
+        || filename.starts_with(".eslintrc.")
+    {
         return Some("built_in:eslint");
     }
     if filename == ".prettierignore" {
         return Some("built_in:prettierignore");
     }
-    if filename.starts_with("prettier.config.") || filename == ".prettierrc" || filename.starts_with(".prettierrc.") {
+    if filename.starts_with("prettier.config.")
+        || filename == ".prettierrc"
+        || filename.starts_with(".prettierrc.")
+    {
         return Some("built_in:prettier");
     }
-    if filename.starts_with("babel.config.") || filename == ".babelrc" || filename.starts_with(".babelrc.") {
+    if filename.starts_with("babel.config.")
+        || filename == ".babelrc"
+        || filename.starts_with(".babelrc.")
+    {
         return Some("built_in:babel");
     }
     if filename.starts_with("webpack.config.") {
@@ -906,28 +924,88 @@ mod tests {
         assert_eq!(theme.get_icon_for_file("Dockerfile", false), "🐳");
         assert_eq!(theme.get_icon_for_file("README.md", false), "📘");
         assert_eq!(theme.get_icon_for_file("schema.SQL", false), "🗄️");
-        assert_eq!(theme.get_icon_for_file("user.service.ts", false), "built_in:nestjsservice");
-        assert_eq!(theme.get_icon_for_file("user-service.ts", false), "built_in:nestjsservice");
-        assert_eq!(theme.get_icon_for_file("auth.service", false), "built_in:nestjsservice");
-        assert_eq!(theme.get_icon_for_file("auth-service", false), "built_in:nestjsservice");
-        assert_eq!(theme.get_icon_for_file("user.controller.ts", false), "built_in:nestjscontroller");
-        assert_eq!(theme.get_icon_for_file("auth-module.ts", false), "built_in:nestjsmodule");
-        assert_eq!(theme.get_icon_for_file("create-user.dto.ts", false), "built_in:nestjsdto");
-        assert_eq!(theme.get_icon_for_file("jwt.guard.ts", false), "built_in:nestjsguard");
-        assert_eq!(theme.get_icon_for_file("user.test.ts", false), "built_in:testts");
-        assert_eq!(theme.get_icon_for_file("button.stories.tsx", false), "built_in:storybook");
+        assert_eq!(
+            theme.get_icon_for_file("user.service.ts", false),
+            "built_in:nestjsservice"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("user-service.ts", false),
+            "built_in:nestjsservice"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("auth.service", false),
+            "built_in:nestjsservice"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("auth-service", false),
+            "built_in:nestjsservice"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("user.controller.ts", false),
+            "built_in:nestjscontroller"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("auth-module.ts", false),
+            "built_in:nestjsmodule"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("create-user.dto.ts", false),
+            "built_in:nestjsdto"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("jwt.guard.ts", false),
+            "built_in:nestjsguard"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("user.test.ts", false),
+            "built_in:testts"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("button.stories.tsx", false),
+            "built_in:storybook"
+        );
         assert_eq!(theme.get_icon_for_file("Dockerfile", false), "🐳");
-        assert_eq!(theme.get_icon_for_file("Dockerfile.dev", false), "built_in:docker");
-        assert_eq!(theme.get_icon_for_file("src/Dockerfile", false), "built_in:docker");
-        assert_eq!(theme.get_icon_for_file("pnpm-lock.yaml", false), "built_in:pnpmlock");
-        assert_eq!(theme.get_icon_for_file("vite.config.ts", false), "built_in:vite");
-        assert_eq!(theme.get_icon_for_file(".eslintrc.json", false), "built_in:eslint");
-        assert_eq!(theme.get_icon_for_file("schema.prisma", false), "built_in:prisma");
+        assert_eq!(
+            theme.get_icon_for_file("Dockerfile.dev", false),
+            "built_in:docker"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("src/Dockerfile", false),
+            "built_in:docker"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("pnpm-lock.yaml", false),
+            "built_in:pnpmlock"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("vite.config.ts", false),
+            "built_in:vite"
+        );
+        assert_eq!(
+            theme.get_icon_for_file(".eslintrc.json", false),
+            "built_in:eslint"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("schema.prisma", false),
+            "built_in:prisma"
+        );
         assert_eq!(theme.get_icon_for_file("README.md", false), "📘");
-        assert_eq!(theme.get_icon_for_file("LICENSE", false), "built_in:license");
-        assert_eq!(theme.get_icon_for_file("index.ts", false), "built_in:typescript");
-        assert_eq!(theme.get_icon_for_file("slot-random-service.js", false), "built_in:nestjsservice");
+        assert_eq!(
+            theme.get_icon_for_file("LICENSE", false),
+            "built_in:license"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("index.ts", false),
+            "built_in:typescript"
+        );
+        assert_eq!(
+            theme.get_icon_for_file("slot-random-service.js", false),
+            "built_in:nestjsservice"
+        );
         assert_eq!(theme.get_icon_for_file("notes.md", false), "📝");
-        assert_eq!(theme.get_icon_for_file("unknown.bin", false), "built_in:file");
+        assert_eq!(
+            theme.get_icon_for_file("unknown.bin", false),
+            "built_in:file"
+        );
     }
 }

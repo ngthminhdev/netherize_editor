@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use serde::Deserialize;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,7 +54,11 @@ impl LaunchConfiguration {
         let program = self.program.clone().unwrap_or_default();
         let cwd = self.cwd.as_ref().map(|c| {
             let p = PathBuf::from(c);
-            if p.is_absolute() { p } else { workspace_root.join(p) }
+            if p.is_absolute() {
+                p
+            } else {
+                workspace_root.join(p)
+            }
         });
         ResolvedLaunchConfig {
             name: self.name.clone(),

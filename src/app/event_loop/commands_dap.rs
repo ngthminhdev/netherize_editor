@@ -1,9 +1,9 @@
 use super::*;
+use crate::core::commands::Command;
+use crate::workbench::focus_manager::FocusTarget;
+use crate::workbench::panel_state::PanelTabId;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use crate::core::commands::Command;
-use crate::workbench::panel_state::PanelTabId;
-use crate::workbench::focus_manager::FocusTarget;
 
 fn resolve_flutter_path(dart_path: &Path) -> PathBuf {
     let dart_str = dart_path.to_string_lossy();
@@ -70,14 +70,21 @@ impl AppShell {
                 }
             }
             Command::DebugStart => {
-                eprintln!("[DAP LOG] [F5 Commands DAP] handle_dap_command: entered Command::DebugStart");
+                eprintln!(
+                    "[DAP LOG] [F5 Commands DAP] handle_dap_command: entered Command::DebugStart"
+                );
                 let mut should_clear = false;
                 if let Some(session) = &self.dap_session {
                     let (paused, terminated) = {
                         let state = session.state.try_lock();
-                        state.map(|s| (s.paused, s.terminated)).unwrap_or((false, false))
+                        state
+                            .map(|s| (s.paused, s.terminated))
+                            .unwrap_or((false, false))
                     };
-                    eprintln!("[DAP LOG] [F5 Commands DAP] DebugStart with existing session, paused={}, terminated={}", paused, terminated);
+                    eprintln!(
+                        "[DAP LOG] [F5 Commands DAP] DebugStart with existing session, paused={}, terminated={}",
+                        paused, terminated
+                    );
                     if terminated {
                         should_clear = true;
                     } else {
@@ -101,18 +108,29 @@ impl AppShell {
                 }
 
                 // Launch new session — try launch.json first, then fallback to Flutter defaults
-                let workspace_root = self.app_state.workspace_root_path()
+                let workspace_root = self
+                    .app_state
+                    .workspace_root_path()
                     .map(PathBuf::from)
                     .or_else(|| {
-                        self.app_state.active_file()
+                        self.app_state
+                            .active_file()
                             .and_then(|file| file.parent().map(PathBuf::from))
                     })
                     .unwrap_or_default();
-                eprintln!("[DAP LOG] [F5 Commands DAP] workspace_root: {:?}", workspace_root);
+                eprintln!(
+                    "[DAP LOG] [F5 Commands DAP] workspace_root: {:?}",
+                    workspace_root
+                );
 
                 if workspace_root.as_os_str().is_empty() {
-                    eprintln!("[DAP LOG] [F5 Commands DAP] No workspace_root found, returning false");
-                    self.show_transient_toast_kind("No active workspace or file parent folder", ToastKind::Error);
+                    eprintln!(
+                        "[DAP LOG] [F5 Commands DAP] No workspace_root found, returning false"
+                    );
+                    self.show_transient_toast_kind(
+                        "No active workspace or file parent folder",
+                        ToastKind::Error,
+                    );
                     return Some(false);
                 }
 
@@ -121,7 +139,10 @@ impl AppShell {
                 // Try to load launch.json (.vscode/launch.json or .zed/debug.json)
                 let launch_config = crate::dap::launch_config::load_launch_json(&workspace_root)
                     .and_then(|cfg| {
-                        eprintln!("[DebugStart] Found launch.json with {} configurations", cfg.configurations.len());
+                        eprintln!(
+                            "[DebugStart] Found launch.json with {} configurations",
+                            cfg.configurations.len()
+                        );
                         cfg.configurations.into_iter().next()
                     });
 
@@ -129,10 +150,16 @@ impl AppShell {
                     eprintln!("[DebugStart] No launch.json found, using Flutter defaults");
                 }
 
-                let (program, adapter_cmd, adapter_args, adapter_id) = if let Some(ref config) = launch_config {
+                let (program, adapter_cmd, adapter_args, adapter_id) = if let Some(ref config) =
+                    launch_config
+                {
                     let resolved = config.resolve(&workspace_root);
                     let program = if resolved.program.is_empty() {
-                        workspace_root.join("lib").join("main.dart").to_string_lossy().to_string()
+                        workspace_root
+                            .join("lib")
+                            .join("main.dart")
+                            .to_string_lossy()
+                            .to_string()
                     } else {
                         resolved.program.clone()
                     };
@@ -140,8 +167,9 @@ impl AppShell {
                         "dart" | "flutter" => {
                             // Check if FVM is available - prefer fvm flutter over direct flutter
                             let fvm_path = Self::resolve_fvm_path();
-                            let has_local_fvm = workspace_root.join(".fvm").join("flutter_sdk").exists();
-                            
+                            let has_local_fvm =
+                                workspace_root.join(".fvm").join("flutter_sdk").exists();
+
                             let (adapter_cmd, adapter_args) = if has_local_fvm {
                                 // Use FVM wrapper for local FVM projects
                                 if let Some(ref fvm) = fvm_path {
@@ -153,12 +181,22 @@ impl AppShell {
                                 } else {
                                     // FVM not found in PATH, fallback to direct flutter
                                     let dart_bin = self.selected_dart_env.clone().or_else(|| {
-                                        let local_fvm = workspace_root.join(".fvm").join("flutter_sdk")
-                                            .join("bin").join("cache").join("dart-sdk")
-                                            .join("bin").join("dart");
-                                        if local_fvm.try_exists().unwrap_or(false) { Some(local_fvm) } else { None }
+                                        let local_fvm = workspace_root
+                                            .join(".fvm")
+                                            .join("flutter_sdk")
+                                            .join("bin")
+                                            .join("cache")
+                                            .join("dart-sdk")
+                                            .join("bin")
+                                            .join("dart");
+                                        if local_fvm.try_exists().unwrap_or(false) {
+                                            Some(local_fvm)
+                                        } else {
+                                            None
+                                        }
                                     });
-                                    let flutter_path = dart_bin.as_ref()
+                                    let flutter_path = dart_bin
+                                        .as_ref()
                                         .map(|d| resolve_flutter_path(d))
                                         .unwrap_or_else(|| PathBuf::from("flutter"));
                                     (
@@ -169,12 +207,22 @@ impl AppShell {
                             } else {
                                 // No local FVM, use direct flutter
                                 let dart_bin = self.selected_dart_env.clone().or_else(|| {
-                                    let local_fvm = workspace_root.join(".fvm").join("flutter_sdk")
-                                        .join("bin").join("cache").join("dart-sdk")
-                                        .join("bin").join("dart");
-                                    if local_fvm.try_exists().unwrap_or(false) { Some(local_fvm) } else { None }
+                                    let local_fvm = workspace_root
+                                        .join(".fvm")
+                                        .join("flutter_sdk")
+                                        .join("bin")
+                                        .join("cache")
+                                        .join("dart-sdk")
+                                        .join("bin")
+                                        .join("dart");
+                                    if local_fvm.try_exists().unwrap_or(false) {
+                                        Some(local_fvm)
+                                    } else {
+                                        None
+                                    }
                                 });
-                                let flutter_path = dart_bin.as_ref()
+                                let flutter_path = dart_bin
+                                    .as_ref()
                                     .map(|d| resolve_flutter_path(d))
                                     .unwrap_or_else(|| PathBuf::from("flutter"));
                                 (
@@ -182,30 +230,22 @@ impl AppShell {
                                     vec!["debug_adapter".to_string()],
                                 )
                             };
-                            
-                            (
-                                program,
-                                adapter_cmd,
-                                adapter_args,
-                                "flutter".to_string(),
-                            )
+
+                            (program, adapter_cmd, adapter_args, "flutter".to_string())
                         }
                         "lldb" | "codelldb" => {
-                            (
-                                program,
-                                "codelldb".to_string(),
-                                vec![],
-                                "lldb".to_string(),
-                            )
+                            (program, "codelldb".to_string(), vec![], "lldb".to_string())
                         }
-                        "python" | "debugpy" => {
-                            (
-                                program,
-                                "python".to_string(),
-                                vec!["-m".to_string(), "debugpy".to_string(), "--adapter".to_string()],
+                        "python" | "debugpy" => (
+                            program,
+                            "python".to_string(),
+                            vec![
+                                "-m".to_string(),
                                 "debugpy".to_string(),
-                            )
-                        }
+                                "--adapter".to_string(),
+                            ],
+                            "debugpy".to_string(),
+                        ),
                         _ => {
                             // Generic adapter — use config type as adapter ID
                             (
@@ -220,7 +260,7 @@ impl AppShell {
                     // No launch.json — fallback to Flutter defaults with FVM support
                     let fvm_path = Self::resolve_fvm_path();
                     let has_local_fvm = workspace_root.join(".fvm").join("flutter_sdk").exists();
-                    
+
                     let (adapter_cmd, adapter_args) = if has_local_fvm {
                         // Use FVM wrapper for local FVM projects
                         if let Some(ref fvm) = fvm_path {
@@ -232,12 +272,22 @@ impl AppShell {
                         } else {
                             // FVM not found in PATH, fallback to direct flutter
                             let dart_bin = self.selected_dart_env.clone().or_else(|| {
-                                let local_fvm = workspace_root.join(".fvm").join("flutter_sdk")
-                                    .join("bin").join("cache").join("dart-sdk")
-                                    .join("bin").join("dart");
-                                if local_fvm.try_exists().unwrap_or(false) { Some(local_fvm) } else { None }
+                                let local_fvm = workspace_root
+                                    .join(".fvm")
+                                    .join("flutter_sdk")
+                                    .join("bin")
+                                    .join("cache")
+                                    .join("dart-sdk")
+                                    .join("bin")
+                                    .join("dart");
+                                if local_fvm.try_exists().unwrap_or(false) {
+                                    Some(local_fvm)
+                                } else {
+                                    None
+                                }
                             });
-                            let flutter_path = dart_bin.as_ref()
+                            let flutter_path = dart_bin
+                                .as_ref()
                                 .map(|d| resolve_flutter_path(d))
                                 .unwrap_or_else(|| PathBuf::from("flutter"));
                             (
@@ -248,12 +298,22 @@ impl AppShell {
                     } else {
                         // No local FVM, use direct flutter
                         let dart_bin = self.selected_dart_env.clone().or_else(|| {
-                            let local_fvm = workspace_root.join(".fvm").join("flutter_sdk")
-                                .join("bin").join("cache").join("dart-sdk")
-                                .join("bin").join("dart");
-                            if local_fvm.try_exists().unwrap_or(false) { Some(local_fvm) } else { None }
+                            let local_fvm = workspace_root
+                                .join(".fvm")
+                                .join("flutter_sdk")
+                                .join("bin")
+                                .join("cache")
+                                .join("dart-sdk")
+                                .join("bin")
+                                .join("dart");
+                            if local_fvm.try_exists().unwrap_or(false) {
+                                Some(local_fvm)
+                            } else {
+                                None
+                            }
                         });
-                        let flutter_path = dart_bin.as_ref()
+                        let flutter_path = dart_bin
+                            .as_ref()
                             .map(|d| resolve_flutter_path(d))
                             .unwrap_or_else(|| PathBuf::from("flutter"));
                         (
@@ -261,8 +321,10 @@ impl AppShell {
                             vec!["debug_adapter".to_string()],
                         )
                     };
-                    
-                    let program = self.app_state.active_file()
+
+                    let program = self
+                        .app_state
+                        .active_file()
                         .and_then(|id| {
                             if id.extension().map(|ext| ext == "dart").unwrap_or(false) {
                                 Some(id.to_string_lossy().to_string())
@@ -278,30 +340,37 @@ impl AppShell {
                                 "lib/main.dart".to_string()
                             }
                         });
-                    (
-                        program,
-                        adapter_cmd,
-                        adapter_args,
-                        "flutter".to_string(),
-                    )
+                    (program, adapter_cmd, adapter_args, "flutter".to_string())
                 };
 
-                eprintln!("[DebugStart] adapter_cmd={}, adapter_args={:?}, adapter_id={}, program={}", adapter_cmd, adapter_args, adapter_id, program);
+                eprintln!(
+                    "[DebugStart] adapter_cmd={}, adapter_args={:?}, adapter_id={}, program={}",
+                    adapter_cmd, adapter_args, adapter_id, program
+                );
 
                 // Build FVM environment variables if using FVM
-                let fvm_env = if adapter_args.len() >= 2 && adapter_args[0] == "flutter" && adapter_args[1] == "debug_adapter" {
+                let fvm_env = if adapter_args.len() >= 2
+                    && adapter_args[0] == "flutter"
+                    && adapter_args[1] == "debug_adapter"
+                {
                     // Using FVM wrapper - set FLUTTER_ROOT to the local SDK
                     let flutter_sdk = workspace_root.join(".fvm").join("flutter_sdk");
                     if flutter_sdk.exists() {
                         let mut env = std::collections::HashMap::new();
-                        env.insert("FLUTTER_ROOT".to_string(), flutter_sdk.to_string_lossy().to_string());
+                        env.insert(
+                            "FLUTTER_ROOT".to_string(),
+                            flutter_sdk.to_string_lossy().to_string(),
+                        );
                         // Also add flutter/bin to PATH
                         let flutter_bin = flutter_sdk.join("bin");
                         if let Ok(path) = std::env::var("PATH") {
                             let new_path = format!("{}:{}", flutter_bin.display(), path);
                             env.insert("PATH".to_string(), new_path);
                         }
-                        eprintln!("[DebugStart] Setting FVM env: FLUTTER_ROOT={}", flutter_sdk.display());
+                        eprintln!(
+                            "[DebugStart] Setting FVM env: FLUTTER_ROOT={}",
+                            flutter_sdk.display()
+                        );
                         Some(env)
                     } else {
                         None
@@ -325,8 +394,10 @@ impl AppShell {
 
                         // Open Debug Console tab in bottom dock and focus it
                         self.panel_state.bottom.visible = true;
-                        self.panel_state.bottom.switch_to_tab(PanelTabId::DebugConsole);
-                        
+                        self.panel_state
+                            .bottom
+                            .switch_to_tab(PanelTabId::DebugConsole);
+
                         // Open Left Sidebar and switch to DAP (Inspector)
                         if !self.panel_state.left.visible {
                             self.panel_state.left.visible = true;
@@ -376,8 +447,15 @@ impl AppShell {
                             eprintln!("[DebugStart] Using launch.json config: {:?}", config.name);
                             args
                         } else {
-                            let device_id = self.app_state.active_dart_device_id().unwrap_or("chrome").to_string();
-                            eprintln!("[DebugStart] Using Flutter defaults: program={}, device={}", program, device_id);
+                            let device_id = self
+                                .app_state
+                                .active_dart_device_id()
+                                .unwrap_or("chrome")
+                                .to_string();
+                            eprintln!(
+                                "[DebugStart] Using Flutter defaults: program={}, device={}",
+                                program, device_id
+                            );
                             serde_json::json!({
                                 "request": "launch",
                                 "program": program,
@@ -395,15 +473,24 @@ impl AppShell {
                                 eprintln!("DAP Init error: {}", e);
                                 return;
                             }
-                            if let Err(e) = session_clone.client.send_request("launch", Some(launch_args)).await {
+                            if let Err(e) = session_clone
+                                .client
+                                .send_request("launch", Some(launch_args))
+                                .await
+                            {
                                 eprintln!("DAP Launch error: {}", e);
                                 return;
                             }
-                            let _ = session_clone.client.send_request("configurationDone", None).await;
+                            let _ = session_clone
+                                .client
+                                .send_request("configurationDone", None)
+                                .await;
                             {
                                 let mut state = session_clone.state.lock().await;
                                 state.paused = false;
-                                state.console_messages.push("Debug session started.".to_string());
+                                state
+                                    .console_messages
+                                    .push("Debug session started.".to_string());
                             }
                             if let Some(w) = &window_clone {
                                 w.request_redraw();
@@ -426,28 +513,40 @@ impl AppShell {
                             while let Some(event) = event_rx.recv().await {
                                 match event.event.as_str() {
                                     "stopped" => {
-                                        let thread_id = event.body.as_ref()
+                                        let thread_id = event
+                                            .body
+                                            .as_ref()
                                             .and_then(|b| b.get("threadId"))
                                             .and_then(|t| t.as_i64())
                                             .unwrap_or(1);
-                                        let _ = session_event_clone.update_suspended_state(thread_id).await;
-                                        let _ = session_event_clone.evaluate_watch_expressions().await;
+                                        let _ = session_event_clone
+                                            .update_suspended_state(thread_id)
+                                            .await;
+                                        let _ =
+                                            session_event_clone.evaluate_watch_expressions().await;
                                     }
                                     "continued" => {
-                                        let mut state_guard = session_event_clone.state.lock().await;
+                                        let mut state_guard =
+                                            session_event_clone.state.lock().await;
                                         state_guard.paused = false;
                                         state_guard.execution_location = None;
                                     }
                                     "output" => {
                                         if let Some(body) = event.body {
-                                            if let Some(output) = body.get("output").and_then(|v| v.as_str()) {
-                                                let mut state_guard = session_event_clone.state.lock().await;
-                                                state_guard.console_messages.push(output.to_string());
+                                            if let Some(output) =
+                                                body.get("output").and_then(|v| v.as_str())
+                                            {
+                                                let mut state_guard =
+                                                    session_event_clone.state.lock().await;
+                                                state_guard
+                                                    .console_messages
+                                                    .push(output.to_string());
                                             }
                                         }
                                     }
                                     "terminated" => {
-                                        let mut state_guard = session_event_clone.state.lock().await;
+                                        let mut state_guard =
+                                            session_event_clone.state.lock().await;
                                         state_guard.terminated = true;
                                         state_guard.paused = true;
                                         state_guard.execution_location = None;
@@ -464,7 +563,10 @@ impl AppShell {
                     }
                     Err(err) => {
                         eprintln!("Failed to launch debug adapter: {}", err);
-                        self.show_transient_toast_kind(format!("Failed to launch debug adapter: {}", err), ToastKind::Error);
+                        self.show_transient_toast_kind(
+                            format!("Failed to launch debug adapter: {}", err),
+                            ToastKind::Error,
+                        );
                         Some(false)
                     }
                 }
@@ -553,7 +655,9 @@ impl AppShell {
             Command::DebugToggleBreakpoint => {
                 if let Some(active_file) = self.app_state.active_file() {
                     let (line, _) = self.app_state.cursor_line_col();
-                    let path = active_file.canonicalize().unwrap_or_else(|_| active_file.to_path_buf());
+                    let path = active_file
+                        .canonicalize()
+                        .unwrap_or_else(|_| active_file.to_path_buf());
                     // Toggle in our local breakpoints map
                     let is_empty = {
                         let lines = self.breakpoints.entry(path.clone()).or_default();
@@ -637,7 +741,8 @@ impl AppShell {
                                         if state.remove_watch_expression(*node_index) {
                                             drop(state);
                                             if let Ok(state_guard) = session.state.try_lock() {
-                                                self.dap_panel_state.sync_from_debug_state(&state_guard);
+                                                self.dap_panel_state
+                                                    .sync_from_debug_state(&state_guard);
                                             }
                                             self.sidebar_needs_layout = true;
                                             return Some(true);
@@ -687,9 +792,10 @@ impl AppShell {
                 self.submit(crate::async_runtime::message::RequestSpec {
                     revision_id: 0,
                     topic: crate::async_runtime::message::RequestTopic::SystemTask,
-                    payload: crate::async_runtime::message::WorkerRequestPayload::ScanFlutterDevices {
-                        flutter_path: Some(flutter_path),
-                    },
+                    payload:
+                        crate::async_runtime::message::WorkerRequestPayload::ScanFlutterDevices {
+                            flutter_path: Some(flutter_path),
+                        },
                 });
                 Some(true)
             }
@@ -699,20 +805,25 @@ impl AppShell {
 
     pub(super) fn confirm_flutter_device_selection(&mut self) -> bool {
         use crate::app::command_palette::CommandPaletteAction;
-        if let Some(CommandPaletteAction::SelectFlutterDevice { device_id, is_emulator, is_active }) =
-            self.app_state.command_palette_selected_action()
+        if let Some(CommandPaletteAction::SelectFlutterDevice {
+            device_id,
+            is_emulator,
+            is_active,
+        }) = self.app_state.command_palette_selected_action()
         {
-            self.app_state.set_active_dart_device_id(Some(device_id.clone()));
+            self.app_state
+                .set_active_dart_device_id(Some(device_id.clone()));
             if is_emulator && !is_active {
                 let flutter_path = self.current_flutter_path();
                 self.show_transient_toast(format!("Launching emulator {}...", device_id));
                 self.submit(crate::async_runtime::message::RequestSpec {
                     revision_id: 0,
                     topic: crate::async_runtime::message::RequestTopic::SystemTask,
-                    payload: crate::async_runtime::message::WorkerRequestPayload::LaunchFlutterEmulator {
-                        flutter_path: Some(flutter_path),
-                        emulator_id: device_id.clone(),
-                    },
+                    payload:
+                        crate::async_runtime::message::WorkerRequestPayload::LaunchFlutterEmulator {
+                            flutter_path: Some(flutter_path),
+                            emulator_id: device_id.clone(),
+                        },
                 });
             }
             true
@@ -723,18 +834,18 @@ impl AppShell {
 
     fn resolve_fvm_path() -> Option<PathBuf> {
         if let Ok(home) = std::env::var("HOME") {
-            for relative in &[
-                "fvm/bin/fvm",
-                ".fvm/bin/fvm",
-                ".pub-cache/bin/fvm",
-            ] {
+            for relative in &["fvm/bin/fvm", ".fvm/bin/fvm", ".pub-cache/bin/fvm"] {
                 let p = PathBuf::from(&home).join(relative);
                 if p.exists() {
                     return Some(p);
                 }
             }
         }
-        for p in &["/opt/homebrew/bin/fvm", "/usr/local/bin/fvm", "/usr/bin/fvm"] {
+        for p in &[
+            "/opt/homebrew/bin/fvm",
+            "/usr/local/bin/fvm",
+            "/usr/bin/fvm",
+        ] {
             let p_path = PathBuf::from(p);
             if p_path.exists() {
                 return Some(p_path);
@@ -744,23 +855,26 @@ impl AppShell {
     }
 
     pub fn current_flutter_path(&self) -> PathBuf {
-        let workspace_root = self.app_state.workspace_root_path().map(PathBuf::from).unwrap_or_default();
-        let dart_bin = self.selected_dart_env.clone()
-            .or_else(|| {
-                let local_fvm = workspace_root
-                    .join(".fvm")
-                    .join("flutter_sdk")
-                    .join("bin")
-                    .join("cache")
-                    .join("dart-sdk")
-                    .join("bin")
-                    .join("dart");
-                if local_fvm.try_exists().unwrap_or(false) {
-                    Some(local_fvm)
-                } else {
-                    None
-                }
-            });
+        let workspace_root = self
+            .app_state
+            .workspace_root_path()
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        let dart_bin = self.selected_dart_env.clone().or_else(|| {
+            let local_fvm = workspace_root
+                .join(".fvm")
+                .join("flutter_sdk")
+                .join("bin")
+                .join("cache")
+                .join("dart-sdk")
+                .join("bin")
+                .join("dart");
+            if local_fvm.try_exists().unwrap_or(false) {
+                Some(local_fvm)
+            } else {
+                None
+            }
+        });
 
         if let Some(d) = dart_bin.as_ref() {
             resolve_flutter_path(d)
@@ -772,21 +886,31 @@ impl AppShell {
     }
 
     pub fn load_breakpoints(&mut self) {
-        let workspace_root = self.app_state.workspace_root_path()
+        let workspace_root = self
+            .app_state
+            .workspace_root_path()
             .map(PathBuf::from)
             .or_else(|| {
-                self.app_state.active_file()
+                self.app_state
+                    .active_file()
                     .and_then(|file| file.parent().map(PathBuf::from))
             });
         if let Some(root) = workspace_root {
             let bp_path = root.join(".vscode").join("breakpoints.json");
             if bp_path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&bp_path) {
-                    if let Ok(bps) = serde_json::from_str::<std::collections::HashMap<PathBuf, Vec<usize>>>(&content) {
-                        self.breakpoints = bps.into_iter().map(|(p, l)| {
-                            (p.canonicalize().unwrap_or(p), l)
-                        }).collect();
-                        eprintln!("[DAP LOG] [Breakpoint Persist] Loaded breakpoints: {:?}", self.breakpoints);
+                    if let Ok(bps) = serde_json::from_str::<
+                        std::collections::HashMap<PathBuf, Vec<usize>>,
+                    >(&content)
+                    {
+                        self.breakpoints = bps
+                            .into_iter()
+                            .map(|(p, l)| (p.canonicalize().unwrap_or(p), l))
+                            .collect();
+                        eprintln!(
+                            "[DAP LOG] [Breakpoint Persist] Loaded breakpoints: {:?}",
+                            self.breakpoints
+                        );
                     }
                 }
             }
@@ -794,10 +918,13 @@ impl AppShell {
     }
 
     pub fn save_breakpoints(&self) {
-        let workspace_root = self.app_state.workspace_root_path()
+        let workspace_root = self
+            .app_state
+            .workspace_root_path()
             .map(PathBuf::from)
             .or_else(|| {
-                self.app_state.active_file()
+                self.app_state
+                    .active_file()
                     .and_then(|file| file.parent().map(PathBuf::from))
             });
         if let Some(root) = workspace_root {

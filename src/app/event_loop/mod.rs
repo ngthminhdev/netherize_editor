@@ -97,6 +97,7 @@ pub struct AppShell {
     right_terminal_grid: TerminalGrid,
     right_terminal_needs_layout: bool,
     last_right_terminal_bounds: Option<[f32; 4]>,
+    last_cursor_position: Option<(f32, f32)>,
     pending_right_pty_spawn: bool,
     /// When `Some`, this command string will be written into the right PTY
     /// immediately after `PtySpawned` is received for the right terminal.
@@ -148,6 +149,9 @@ pub struct AppShell {
     dismissed_system_deps: bool,
     /// Toast window-relative ngắn hạn cho các action nền.
     transient_toast: Option<TransientToast>,
+    /// True once the which-key redraw for the current pending chord was
+    /// scheduled; resets when the chord resolves or is abandoned.
+    whichkey_redraw_fired: bool,
     theme_picker_original_theme: Option<ThemeConfig>,
     theme_picker_preview_profile: Option<String>,
     base_theme: ThemeConfig,
@@ -230,8 +234,24 @@ pub struct AppShell {
     ai_inline_revision: u64,
     pending_ai_inline_request: Option<PendingAiInlineRequest>,
     ai_inline_cancel_token: Option<CancellationToken>,
-    last_ai_inline_queue_at: Option<Instant>,
     last_ai_inline_submit_at: Option<Instant>,
+    /// Set when the current typing command consumed the head of the visible
+    /// ghost text (prefix match) — the post-edit hook must keep the retained
+    /// suggestion instead of queueing a new request.
+    ai_inline_suggestion_retained: bool,
+    /// True between submitting an inline request and its result/failure;
+    /// drives the status-bar AI indicator.
+    ai_inline_inflight: bool,
+    /// Consecutive non-cancelled inline failures; at the toast threshold the
+    /// feature cools down instead of failing silently forever.
+    ai_inline_failure_streak: u32,
+    ai_inline_cooldown_until: Option<Instant>,
+    /// (buffer, caret) the inline pipeline — pending debounce, in-flight
+    /// request, or visible ghost text — is valid for. When the caret leaves
+    /// this position other than by consuming the suggestion, the pipeline is
+    /// cancelled and the ghost cleared so a late result can't appear at (and
+    /// follow) the new caret position.
+    ai_inline_anchor: Option<(Option<PathBuf>, usize)>,
     pending_lsp_document_sync: Option<PendingLspDocumentSync>,
     last_editor_bounds: Option<[f32; 4]>,
     last_show_welcome: Option<bool>,
@@ -257,7 +277,11 @@ pub struct AppShell {
     caret_blink_dirty: bool,
     last_caret_blink_tick: Instant,
     last_external_file_check: Instant,
-    last_external_file_check_times: std::collections::HashMap<std::path::PathBuf, std::time::SystemTime>,
+    last_external_file_check_times:
+        std::collections::HashMap<std::path::PathBuf, std::time::SystemTime>,
+    /// #5: thư mục cha của các file mở NGOÀI workspace root đã được gắn watcher
+    /// (non-recursive). Dùng để dedup, tránh spawn watcher trùng cho cùng một dir.
+    externally_watched_dirs: std::collections::HashSet<std::path::PathBuf>,
     pre_markdown_preview_right_width: Option<f32>,
     /// Code actions từ lần request gần nhất, dùng để apply khi user chọn trong picker.
     pending_code_actions: Vec<crate::async_runtime::message::LspCodeAction>,
@@ -317,7 +341,6 @@ enum PendingConfirmationAction {
     },
     /// User confirmed or cancelled the opencode auto-install prompt.
     AiChatInstall,
-
 }
 
 #[derive(Debug, Clone)]
@@ -544,6 +567,11 @@ impl AppShell {
         }
         if self.focus_manager.current() == FocusTarget::BottomPanel {
             return self.active_terminal_tab_mut().map(|tab| &mut tab.grid);
+        }
+        if self.focus_manager.current() == FocusTarget::RightSidebar
+            && self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal)
+        {
+            return Some(&mut self.right_terminal_grid);
         }
         None
     }

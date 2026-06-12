@@ -52,7 +52,13 @@ impl WorkspaceScanner {
             .map_err(|err| format!("build gitignore matcher for {:?} failed: {err}", root_path))?;
 
         let mut nodes = Vec::new();
-        self.push_node(&root_path, WorkspaceNodeType::Folder, false, false, &mut nodes)?;
+        self.push_node(
+            &root_path,
+            WorkspaceNodeType::Folder,
+            false,
+            false,
+            &mut nodes,
+        )?;
         self.scan_dir_recursive(&root_path, &root_path, &gitignore, &mut nodes)?;
 
         // Sort path để output ổn định cho test/debug.
@@ -99,7 +105,8 @@ impl WorkspaceScanner {
                 Err(err) => return Err(format!("file_type {:?} failed: {err}", path)),
             };
 
-            let is_ignored = self.is_gitignored_path(&path, root_path, gitignore, file_type.is_dir());
+            let is_ignored =
+                self.is_gitignored_path(&path, root_path, gitignore, file_type.is_dir());
 
             if file_type.is_dir() {
                 if self.ignore_rules.should_ignore_dir(&path) {
@@ -110,7 +117,13 @@ impl WorkspaceScanner {
                     continue;
                 }
 
-                self.push_node(&path, WorkspaceNodeType::Folder, is_hidden, is_ignored, nodes)?;
+                self.push_node(
+                    &path,
+                    WorkspaceNodeType::Folder,
+                    is_hidden,
+                    is_ignored,
+                    nodes,
+                )?;
                 self.scan_dir_recursive(&path, root_path, gitignore, nodes)?;
                 continue;
             }
@@ -389,9 +402,11 @@ mod tests {
                 .iter()
                 .all(|node| !contains_path_suffix(&node.path, "/.env"))
         );
-        assert!(nodes.iter().any(|node| {
-            contains_path_suffix(&node.path, "/ignored.txt") && node.is_ignored
-        }));
+        assert!(
+            nodes.iter().any(|node| {
+                contains_path_suffix(&node.path, "/ignored.txt") && node.is_ignored
+            })
+        );
         assert!(
             nodes
                 .iter()

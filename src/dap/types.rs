@@ -277,7 +277,10 @@ mod tests {
         assert_eq!(deserialized.id, 100);
         assert_eq!(deserialized.line, 42);
         assert_eq!(deserialized.column, 8);
-        assert_eq!(deserialized.source.as_ref().unwrap().name.as_deref(), Some("main.dart"));
+        assert_eq!(
+            deserialized.source.as_ref().unwrap().name.as_deref(),
+            Some("main.dart")
+        );
     }
 
     #[test]
@@ -384,8 +387,14 @@ mod tests {
                 path: Some("/lib/main.dart".to_string()),
             },
             breakpoints: vec![
-                SourceBreakpoint { line: 10, column: None },
-                SourceBreakpoint { line: 20, column: Some(5) },
+                SourceBreakpoint {
+                    line: 10,
+                    column: None,
+                },
+                SourceBreakpoint {
+                    line: 20,
+                    column: Some(5),
+                },
             ],
         };
         let json = serde_json::to_string(&args).unwrap();

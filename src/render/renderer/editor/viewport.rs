@@ -27,8 +27,6 @@ use super::super::helpers::{
 use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
 use crate::text::text_system::StyledTextSpan;
 
-
-
 /// Quick fingerprint để phát hiện thay đổi trong syntax / diagnostic spans.
 /// Không cần hoàn hảo — chỉ cần bắt được phần lớn thay đổi thực tế.
 fn inline_suggestion_virtual_gap(app_state: &AppState, line_height: f32) -> Option<(usize, f32)> {
@@ -72,14 +70,20 @@ fn truncate_folded_lines(
         return (text.to_string(), spans.to_vec());
     }
 
-    // Find auto-folded long lines (where start == end)
+    // Find auto-folded long lines and scope folds
     let auto_folded_lines: Vec<usize> = folded_ranges
         .iter()
         .filter(|&&(s, e)| s == e)
         .map(|&(s, _)| s)
         .collect();
 
-    if auto_folded_lines.is_empty() {
+    let scope_fold_markers: Vec<(usize, usize)> = folded_ranges
+        .iter()
+        .filter(|&&(s, e)| s != e)
+        .copied()
+        .collect();
+
+    if auto_folded_lines.is_empty() && scope_fold_markers.is_empty() {
         return (text.to_string(), spans.to_vec());
     }
 
@@ -97,6 +101,16 @@ fn truncate_folded_lines(
     for (line_idx, line) in split_lines.iter().enumerate() {
         let old_line_start = line_byte_starts[line_idx];
         let new_line_start = result.len();
+
+        let is_scope_fold_marker = scope_fold_markers.iter().any(|&(s, _)| s == line_idx);
+        let scope_fold_count = if is_scope_fold_marker {
+            scope_fold_markers
+                .iter()
+                .find(|&&(s, _)| s == line_idx)
+                .map(|&(s, e)| e - s)
+        } else {
+            None
+        };
 
         if auto_folded_lines.contains(&line_idx) {
             // Truncate this line to 200 chars + "..."
@@ -123,6 +137,23 @@ fn truncate_folded_lines(
                     byte_offset_map.push((old_line_start + old_byte, new_line_start + old_byte));
                 }
                 result.push_str(line);
+            }
+        } else if let Some(count) = scope_fold_count {
+            // Scope fold marker: append ...N lines  placeholder
+            for old_byte in 0..=line.len() {
+                byte_offset_map.push((old_line_start + old_byte, new_line_start + old_byte));
+            }
+            result.push_str(line);
+            let placeholder = if count == 1 {
+                " ...1 line }".to_string()
+            } else {
+                format!(" ...{} lines }}", count)
+            };
+            let placeholder_start = result.len();
+            result.push_str(&placeholder);
+            // Map placeholder bytes to end of original line
+            for _ in 0..placeholder.len() {
+                byte_offset_map.push((old_line_start + line.len(), placeholder_start));
             }
         } else {
             // Not a folded line, copy as-is
@@ -325,8 +356,11 @@ impl Renderer {
         if needs_reshape {
             // Truncate auto-folded long lines to 100 chars + "..." before shaping
             let (display_text, adjusted_spans) = truncate_folded_lines(text, spans, app_state);
-            self.text_system
-                .set_text_with_spans(&display_text, default_color_rgba, &adjusted_spans);
+            self.text_system.set_text_with_spans(
+                &display_text,
+                default_color_rgba,
+                &adjusted_spans,
+            );
             self.last_shaped_revision = current_revision;
             self.last_shaped_spans_fingerprint = spans_fp;
             self.last_shaped_viewport_width = width;
@@ -438,7 +472,12 @@ impl Renderer {
     ///
     /// Must honor the same mode → shape mapping as `update_editor_content`, otherwise
     /// h/j/k/l in Normal mode would collapse the block caret back to a thin bar.
-    pub fn update_editor_caret(&mut self, app_state: &AppState, center_bounds: [f32; 4], breakpoint_lines: &[usize]) {
+    pub fn update_editor_caret(
+        &mut self,
+        app_state: &AppState,
+        center_bounds: [f32; 4],
+        breakpoint_lines: &[usize],
+    ) {
         self.caret_blink_visible = true;
         self.image_pipeline.clear();
         self.image_scissor = None;

@@ -64,6 +64,17 @@ impl InputHandler {
         self.modifiers
     }
 
+    /// Pending chord sequence (for the which-key overlay) and when it started.
+    /// `None` while no multi-step chord is in flight (operator/leap pendings
+    /// have no sequence and are excluded on purpose).
+    pub fn pending_chord_sequence(
+        &self,
+    ) -> Option<(&crate::app::input_map::PendingSequence, Instant)> {
+        let pending = self.pending_input.as_ref()?;
+        let sequence = pending.sequence.as_ref()?;
+        Some((sequence, pending.started_at))
+    }
+
     pub fn get_pending_keys(&self) -> String {
         let pending_state = self.pending_input.as_ref().map(|pending| &pending.state);
         let sequence = self
@@ -191,16 +202,48 @@ impl InputHandler {
         let normalized = NormalizedInput::from_key_event(key_event, self.modifiers);
         let is_f5 = normalized.named_key == Some(NamedKey::F5);
         if is_f5 {
-            eprintln!("[DAP LOG] [F5 Input Handler] translate_key_event: normalized F5 key_event, modifiers: {:?}", self.modifiers);
+            eprintln!(
+                "[DAP LOG] [F5 Input Handler] translate_key_event: normalized F5 key_event, modifiers: {:?}",
+                self.modifiers
+            );
         }
         if key_event.repeat {
             return self.route_repeated_normalized_input(normalized, input_map, context);
         }
         let outcome = self.route_normalized_input(normalized, input_map, context, Instant::now());
         if is_f5 {
-            eprintln!("[DAP LOG] [F5 Input Handler] translate_key_event F5 outcome: {:?}", outcome);
+            eprintln!(
+                "[DAP LOG] [F5 Input Handler] translate_key_event F5 outcome: {:?}",
+                outcome
+            );
         }
         outcome
+    }
+
+    /// In the right-sidebar opencode chat, Ctrl+U/Ctrl+D scroll the chat history
+    /// half a page. opencode is a full-screen TUI that keeps its history inside
+    /// its own viewport — nothing ever reaches our scrollback — so local grid
+    /// scrolling can never reveal it. Instead, forward opencode's own default
+    /// half-page keybinds (`ctrl+alt+u` / `ctrl+alt+d`, encoded as ESC + ^U/^D)
+    /// so opencode scrolls its message list itself.
+    /// Scoped by `right_sidebar_terminal`, so the bottom-panel shell keeps ^U/^D
+    /// intact even if the right dock's editor mode has drifted out of TerminalFocus.
+    fn right_chat_scroll_command(
+        normalized: &NormalizedInput,
+        context: KeybindingContext,
+    ) -> Option<Command> {
+        if !(context.right_sidebar_terminal
+            && normalized.modifiers.control_key()
+            && !normalized.modifiers.alt_key()
+            && !normalized.modifiers.super_key())
+        {
+            return None;
+        }
+        match normalized.physical_key {
+            Some(KeyCode::KeyU) => Some(Command::TerminalWriteInput("\u{1b}\u{15}".to_string())),
+            Some(KeyCode::KeyD) => Some(Command::TerminalWriteInput("\u{1b}\u{4}".to_string())),
+            _ => None,
+        }
     }
 
     pub(crate) fn route_repeated_normalized_input(
@@ -224,6 +267,21 @@ impl InputHandler {
         // holding Backspace or any character key works as expected.
         if context.focus == InputFocusContext::AiChat {
             return self.route_ai_chat_input(normalized, input_debug, context);
+        }
+
+        if let Some(scroll) = Self::right_chat_scroll_command(&normalized, context) {
+            self.clear_pending_counts();
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> right chat scroll (held Ctrl+U/D)",
+                    context.mode.as_str(),
+                    context.focus.as_str()
+                ),
+                scroll,
+                1,
+                false,
+            )));
         }
 
         if matches!(
@@ -386,6 +444,46 @@ impl InputHandler {
                 resolved.command,
                 repeat_count,
                 count_ignored,
+            )));
+        }
+
+        // Right-sidebar opencode chat: Ctrl+U/Ctrl+D scroll the chat history
+        // instead of being sent to the PTY as raw control bytes.
+        if let Some(scroll) = Self::right_chat_scroll_command(&normalized, context) {
+            self.clear_pending_counts();
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> right chat scroll (Ctrl+U/D)",
+                    context.mode.as_str(),
+                    context.focus.as_str()
+                ),
+                scroll,
+                1,
+                false,
+            )));
+        }
+
+        // Zen Mode: Esc must reach the terminal app (Vim, etc.) as a raw ESC
+        // instead of leaving terminal focus. In Zen Mode the editor is hidden, so
+        // dropping terminal focus would strand the user — they'd have to press F12
+        // to resume typing. Forwarding ESC keeps the typing flow intact.
+        if context.zen_mode_active
+            && context.focus == InputFocusContext::Terminal
+            && context.mode == EditorMode::TerminalFocus
+            && normalized.named_key == Some(NamedKey::Escape)
+        {
+            self.clear_pending_counts();
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "mode={} focus={} -> zen terminal raw Esc",
+                    context.mode.as_str(),
+                    context.focus.as_str()
+                ),
+                Command::TerminalWriteInput("\u{1b}".to_string()),
+                1,
+                false,
             )));
         }
 
@@ -856,6 +954,36 @@ impl InputHandler {
                     });
                 }
 
+                PendingState::FindCharMotion { kind } => {
+                    let kind = *kind;
+                    if let Some(ch) = replace_char_from_input(&normalized) {
+                        let command = Command::MoveFindChar(kind, ch);
+                        self.clear_pending_input();
+                        let (repeat_count, count_ignored) =
+                            self.consume_repeat_count_for_command(&command, Some(&pending.state));
+                        return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                            input_debug,
+                            format!(
+                                "mode={} focus={} -> find-char motion resolved ({ch:?})",
+                                context.mode.as_str(),
+                                context.focus.as_str()
+                            ),
+                            command,
+                            repeat_count,
+                            count_ignored,
+                        )));
+                    }
+                    self.reset_prefix();
+                    return Some(InputRouteOutcome::NoDispatch {
+                        input_debug,
+                        route_debug: format!(
+                            "mode={} focus={} -> find-char motion reset (not a printable char)",
+                            context.mode.as_str(),
+                            context.focus.as_str()
+                        ),
+                    });
+                }
+
                 PendingState::OperatorFindChar { op, kind } => {
                     if let Some(ch) = replace_char_from_input(&normalized) {
                         let command = Command::Operate {
@@ -905,6 +1033,25 @@ impl InputHandler {
                 });
             };
 
+            // Esc cancels the pending chord outright (closing the which-key
+            // overlay) instead of falling through to a mode-level escape.
+            if normalized.named_key == Some(NamedKey::Escape) {
+                self.reset_prefix();
+                return Some(InputRouteOutcome::NoDispatch {
+                    input_debug,
+                    route_debug: format!(
+                        "mode={} focus={} -> chord cancelled by Esc",
+                        context.mode.as_str(),
+                        context.focus.as_str(),
+                    ),
+                });
+            }
+
+            // The chord keeps its original start time across steps so the
+            // which-key overlay (delay measured from the first key) stays
+            // visible instead of re-arming its delay on every step.
+            let chord_started_at = pending.started_at;
+
             if let Some(matched) = input_map.resolve_sequence_next(sequence, &normalized, context) {
                 match matched {
                     SequenceMatch::Dispatch(resolved) => {
@@ -933,7 +1080,7 @@ impl InputHandler {
                         self.pending_input = Some(PendingInput {
                             state: next_state.clone(),
                             sequence: Some(next_sequence),
-                            started_at: now,
+                            started_at: chord_started_at,
                         });
                         return Some(InputRouteOutcome::NoDispatch {
                             input_debug,
@@ -1065,6 +1212,34 @@ impl InputHandler {
             }
         }
 
+        // Bare f/F/t/T motion trong Normal/Visual mode -> chờ target char.
+        // Phải đứng trước resolve_sequence_start để không bị keymap chord nuốt.
+        if context.focus == InputFocusContext::Editor
+            && matches!(context.mode, EditorMode::Normal | EditorMode::Visual)
+            && !normalized.has_command_modifier()
+            && !normalized.modifiers.control_key()
+            && !normalized.modifiers.alt_key()
+        {
+            if let Some(kind) = find_motion_prefix_from_input(&normalized) {
+                if self.operator_count.is_none() {
+                    self.operator_count = self.pending_count.take();
+                }
+                self.pending_input = Some(PendingInput {
+                    sequence: None,
+                    state: PendingState::FindCharMotion { kind },
+                    started_at: now,
+                });
+                return Some(InputRouteOutcome::NoDispatch {
+                    input_debug,
+                    route_debug: format!(
+                        "mode={} focus={} -> find-char motion start ({kind:?}), waiting target char",
+                        context.mode.as_str(),
+                        context.focus.as_str(),
+                    ),
+                });
+            }
+        }
+
         if context.focus == InputFocusContext::Editor && context.mode == EditorMode::Visual {
             if let Some(modifier) = inner_or_around_from_input(&normalized) {
                 self.pending_input = Some(PendingInput {
@@ -1154,7 +1329,9 @@ impl InputHandler {
                 || normalized.named_key == Some(NamedKey::F12);
 
             if !is_global_layout_toggle {
-                if normalized.has_command_modifier() && normalized.physical_key == Some(KeyCode::KeyV) {
+                if normalized.has_command_modifier()
+                    && normalized.physical_key == Some(KeyCode::KeyV)
+                {
                     self.clear_pending_counts();
                     return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
                         input_debug,
@@ -1306,6 +1483,10 @@ impl InputHandler {
             }
         }
 
+        // Ghost text is accepted only via Ctrl+J / Ctrl+L (see resolved_keymap +
+        // config keymap). Tab is intentionally NOT an accept key — it inserts
+        // indentation — so there is no Tab/accept ambiguity here.
+
         if let Some(resolved) = input_map.resolve(&normalized, context) {
             let (repeat_count, count_ignored) =
                 self.consume_repeat_count_for_command(&resolved.command, None);
@@ -1403,6 +1584,13 @@ impl InputHandler {
             ) {
                 return;
             }
+            // Chord sequences never expire: their state is visible (statusbar
+            // pending keys + which-key overlay), so a silent reset would make
+            // the next key fire a surprise normal-mode command (e.g. paste)
+            // while the overlay still invites a continuation. Esc cancels.
+            if pending.sequence.is_some() {
+                return;
+            }
             if now.duration_since(pending.started_at) > self.prefix_timeout {
                 self.reset_prefix();
             }
@@ -1444,8 +1632,12 @@ impl InputHandler {
         input_debug: String,
         context: KeybindingContext,
     ) -> Option<InputRouteOutcome> {
-        // Ctrl+N / Ctrl+P → cycle suggestion popup; Ctrl+U/D → scroll history; Ctrl+C → clear input
-        if normalized.has_command_modifier() {
+        // Ctrl+N / Ctrl+P → cycle suggestion popup; Ctrl+U/D → scroll history; Ctrl+C → clear input.
+        // On macOS, `has_command_modifier()` means Cmd, so check Control explicitly here.
+        let control_shortcut = normalized.modifiers.control_key()
+            && !normalized.modifiers.alt_key()
+            && !normalized.modifiers.super_key();
+        if control_shortcut {
             match normalized.physical_key {
                 Some(KeyCode::KeyC) => {
                     return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(

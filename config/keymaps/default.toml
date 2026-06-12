@@ -157,6 +157,11 @@ mode = "insert"
 key = "Ctrl+j"
 command = "ai.accept_inline"
 
+[[bindings]]
+mode = "insert"
+key = "Ctrl+l"
+command = "ai.accept_inline_word"
+
 # [[bindings]]
 # mode = "insert"
 # key = "Ctrl+k"
@@ -250,6 +255,42 @@ command = "editor.append_at_line_end"
 mode = "normal"
 key = "C"
 command = "editor.change_to_line_end"
+
+[[bindings]]
+mode = "normal"
+key = "D"
+command = "editor.delete_to_line_end"
+
+[[bindings]]
+mode = "normal"
+key = "Y"
+command = "editor.yank_to_line_end"
+
+[[bindings]]
+mode = "normal"
+key = "S"
+command = "editor.substitute_line"
+
+[[bindings]]
+mode = "normal"
+key = "J"
+command = "editor.join_lines"
+
+[[bindings]]
+mode = "normal"
+key = "p"
+command = "editor.paste_after"
+
+[[bindings]]
+mode = "normal"
+key = "P"
+command = "editor.paste_before"
+
+# X = xoá ký tự trước con trỏ (Vim X ≈ backspace trong normal mode)
+[[bindings]]
+mode = "normal"
+key = "X"
+command = "editor.backspace"
 
 [[bindings]]
 mode = "normal"
@@ -1039,6 +1080,17 @@ mode = "normal"
 key = "<leader>m e"
 command = "app.open_extensions_manager"
 
+# Cheatsheet / keybinding help (also available via :help)
+[[bindings]]
+mode = "normal"
+key = "<leader>?"
+command = "app.open_help"
+
+# F1 opens the cheat sheet from any mode (new-user friendly).
+[[bindings]]
+key = "F1"
+command = "app.open_help"
+
 # ───────────────── PALETTE ─────────────────
 [[bindings]]
 mode = "palette"
@@ -1133,4 +1185,4 @@ command = "editor.backspace"
 [[bindings]]
 mode = "multiinsert"
 key = "Enter"
-command = "editor.insert_newline"
+command = "editor.newline"

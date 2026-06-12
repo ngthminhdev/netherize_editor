@@ -125,6 +125,7 @@ impl AppShell {
             topic: RequestTopic::WorkspaceWatch,
             payload: WorkerRequestPayload::StartFileWatch {
                 root_path: root_path.clone(),
+                recursive: true,
             },
         });
         self.submit_workspace_git_status_refresh();
@@ -161,9 +162,8 @@ impl AppShell {
         self.explorer_snapshot_dirty = true;
         self.explorer_cursor = 0;
 
-        let icon_source = crate::app::persistence::AppPersistentState::infer_project_icon_source(
-            &root_path,
-        );
+        let icon_source =
+            crate::app::persistence::AppPersistentState::infer_project_icon_source(&root_path);
         self.persistent_state
             .push_recent_with_icon(root_path.clone(), Some(icon_source));
         self.persistent_state.save();
@@ -179,6 +179,7 @@ impl AppShell {
             topic: RequestTopic::WorkspaceWatch,
             payload: WorkerRequestPayload::StartFileWatch {
                 root_path: root_path.clone(),
+                recursive: true,
             },
         });
 
@@ -402,12 +403,20 @@ impl AppShell {
                 let target_dir = if selected_entry.file_type == WorkspaceNodeType::Folder {
                     selected_entry.path.clone()
                 } else {
-                    selected_entry.path.parent().map(PathBuf::from).unwrap_or_else(|| {
-                        self.app_state.workspace_root_path().map(PathBuf::from).unwrap_or_default()
-                    })
+                    selected_entry
+                        .path
+                        .parent()
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| {
+                            self.app_state
+                                .workspace_root_path()
+                                .map(PathBuf::from)
+                                .unwrap_or_default()
+                        })
                 };
 
-                let file_name = source_path.file_name()
+                let file_name = source_path
+                    .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("file")
                     .to_string();
@@ -633,19 +642,25 @@ impl AppShell {
                             if let Some(path) = &row.node_path {
                                 if !path.is_empty() {
                                     let frame_idx = path[0];
-                                    let jump_target = self.dap_session.as_ref().and_then(|session| {
-                                        if let Ok(debug_guard) = session.state.try_lock() {
-                                            debug_guard.call_stack.get(frame_idx).and_then(|frame| {
-                                                if frame.path.exists() {
-                                                    Some((frame.path.clone(), frame.location.line))
-                                                } else {
-                                                    None
-                                                }
-                                            })
-                                        } else {
-                                            None
-                                        }
-                                    });
+                                    let jump_target =
+                                        self.dap_session.as_ref().and_then(|session| {
+                                            if let Ok(debug_guard) = session.state.try_lock() {
+                                                debug_guard.call_stack.get(frame_idx).and_then(
+                                                    |frame| {
+                                                        if frame.path.exists() {
+                                                            Some((
+                                                                frame.path.clone(),
+                                                                frame.location.line,
+                                                            ))
+                                                        } else {
+                                                            None
+                                                        }
+                                                    },
+                                                )
+                                            } else {
+                                                None
+                                            }
+                                        });
                                     if let Some((target_path, target_line)) = jump_target {
                                         let report = dispatch_command(
                                             &mut self.app_state,
@@ -659,7 +674,8 @@ impl AppShell {
                                             self.submit_lsp_did_open_for_active_file();
                                             self.editor_needs_layout = true;
                                             self.editor_caret_needs_layout = true;
-                                            let _ = self.focus_manager.set(FocusTarget::CenterEditor);
+                                            let _ =
+                                                self.focus_manager.set(FocusTarget::CenterEditor);
                                             return Some(true);
                                         }
                                     }
@@ -669,19 +685,20 @@ impl AppShell {
                             if let Some(path) = &row.node_path {
                                 if !path.is_empty() {
                                     let bp_idx = path[0];
-                                    let jump_target = self.dap_session.as_ref().and_then(|session| {
-                                        if let Ok(debug_guard) = session.state.try_lock() {
-                                            debug_guard.breakpoints.get(bp_idx).and_then(|bp| {
-                                                if bp.path.exists() {
-                                                    Some((bp.path.clone(), bp.location.line))
-                                                } else {
-                                                    None
-                                                }
-                                            })
-                                        } else {
-                                            None
-                                        }
-                                    });
+                                    let jump_target =
+                                        self.dap_session.as_ref().and_then(|session| {
+                                            if let Ok(debug_guard) = session.state.try_lock() {
+                                                debug_guard.breakpoints.get(bp_idx).and_then(|bp| {
+                                                    if bp.path.exists() {
+                                                        Some((bp.path.clone(), bp.location.line))
+                                                    } else {
+                                                        None
+                                                    }
+                                                })
+                                            } else {
+                                                None
+                                            }
+                                        });
                                     if let Some((target_path, target_line)) = jump_target {
                                         let report = dispatch_command(
                                             &mut self.app_state,
@@ -695,7 +712,8 @@ impl AppShell {
                                             self.submit_lsp_did_open_for_active_file();
                                             self.editor_needs_layout = true;
                                             self.editor_caret_needs_layout = true;
-                                            let _ = self.focus_manager.set(FocusTarget::CenterEditor);
+                                            let _ =
+                                                self.focus_manager.set(FocusTarget::CenterEditor);
                                             return Some(true);
                                         }
                                     }

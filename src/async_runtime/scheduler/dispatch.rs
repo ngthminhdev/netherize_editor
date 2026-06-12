@@ -75,8 +75,9 @@ pub(super) async fn dispatch_loop(
 
         if matches!(request.payload, WorkerRequestPayload::StartFileWatch { .. }) {
             let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
             tokio::spawn(async move {
-                run_file_watch_request(request, worker_tx).await;
+                run_file_watch_request(request, worker_tx, event_proxy).await;
             });
             continue;
         }
@@ -114,6 +115,7 @@ pub(super) async fn dispatch_loop(
                 | WorkerRequestPayload::LspFormattingRequest { .. }
                 | WorkerRequestPayload::LspCompletionRequest { .. }
                 | WorkerRequestPayload::LspCompletionResolveRequest { .. }
+                | WorkerRequestPayload::LspCompletionVirtualHoverRequest { .. }
                 | WorkerRequestPayload::LspCodeActionRequest { .. }
                 | WorkerRequestPayload::WorkspaceSymbolRequest { .. }
                 | WorkerRequestPayload::StopLspServer
@@ -391,7 +393,8 @@ pub(super) async fn dispatch_loop(
             let worker_tx = result_tx.clone();
             let event_proxy = event_proxy.clone();
             tokio::spawn(async move {
-                let devices = crate::async_runtime::flutter_device::scan_flutter_devices(flutter_path).await;
+                let devices =
+                    crate::async_runtime::flutter_device::scan_flutter_devices(flutter_path).await;
                 emit_message_and_wake(
                     &worker_tx,
                     &event_proxy,
@@ -411,13 +414,20 @@ pub(super) async fn dispatch_loop(
             WorkerRequestPayload::LaunchFlutterEmulator { .. }
         ) {
             let (flutter_path, emulator_id) = match request.payload {
-                WorkerRequestPayload::LaunchFlutterEmulator { flutter_path, emulator_id } => (flutter_path, emulator_id),
+                WorkerRequestPayload::LaunchFlutterEmulator {
+                    flutter_path,
+                    emulator_id,
+                } => (flutter_path, emulator_id),
                 _ => unreachable!(),
             };
             let worker_tx = result_tx.clone();
             let event_proxy = event_proxy.clone();
             tokio::spawn(async move {
-                let _ = crate::async_runtime::flutter_device::launch_flutter_emulator(flutter_path, &emulator_id).await;
+                let _ = crate::async_runtime::flutter_device::launch_flutter_emulator(
+                    flutter_path,
+                    &emulator_id,
+                )
+                .await;
                 emit_message_and_wake(
                     &worker_tx,
                     &event_proxy,
@@ -470,6 +480,80 @@ pub(super) async fn dispatch_loop(
                             node_version,
                             go_version,
                         },
+                    }),
+                );
+            });
+            continue;
+        }
+
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::ReadExternalFiles { .. }
+        ) {
+            let WorkerRequestPayload::ReadExternalFiles { paths } = request.payload else {
+                unreachable!()
+            };
+            let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                let mut files = Vec::with_capacity(paths.len());
+                for path in paths {
+                    let content = tokio::fs::read_to_string(&path).await.ok();
+                    let modified_time = tokio::fs::metadata(&path)
+                        .await
+                        .ok()
+                        .and_then(|metadata| metadata.modified().ok());
+                    files.push(crate::async_runtime::message::ExternalFileRead {
+                        path,
+                        content,
+                        modified_time,
+                    });
+                }
+                emit_message_and_wake(
+                    &worker_tx,
+                    &event_proxy,
+                    WorkerMessage::Result(WorkerResult {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        payload: WorkerResultPayload::ExternalFilesRead { files },
+                    }),
+                );
+            });
+            continue;
+        }
+
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::RescanWorkspace { .. }
+        ) {
+            let WorkerRequestPayload::RescanWorkspace {
+                root_path,
+                ignore_rules,
+                options,
+            } = request.payload
+            else {
+                unreachable!()
+            };
+            let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
+            // Tree walk là blocking I/O thuần — spawn_blocking thay vì async task.
+            tokio::task::spawn_blocking(move || {
+                let scanner =
+                    crate::workspace::scanner::WorkspaceScanner::new(ignore_rules, options);
+                // Lỗi scan (root tạm mất, permission) -> bỏ qua kết quả thay vì
+                // swap cây rỗng vào và xoá sạch explorer.
+                let Ok(nodes) = scanner.scan(&root_path) else {
+                    return;
+                };
+                emit_message_and_wake(
+                    &worker_tx,
+                    &event_proxy,
+                    WorkerMessage::Result(WorkerResult {
+                        request_id: request.request_id,
+                        revision_id: request.revision_id,
+                        topic: request.topic,
+                        payload: WorkerResultPayload::WorkspaceRescanned { root_path, nodes },
                     }),
                 );
             });

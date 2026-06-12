@@ -1,6 +1,4 @@
-use super::overlays::{
-    collect_search_highlights, is_completion_identifier_char,
-};
+use super::overlays::{collect_search_highlights, is_completion_identifier_char};
 use super::*;
 
 fn inline_suggestion_accept_prefix_byte_len(suggestion: &str) -> usize {
@@ -492,6 +490,19 @@ impl AppState {
         self.set_search_query_internal("", false)
     }
 
+    /// Vim f/F/t/T motion + highlight: di chuyển cursor tới ký tự trên dòng hiện
+    /// tại VÀ set search query thành ký tự đó (như `*`) để mọi occurrence được
+    /// highlight và n/N nhảy tới/lui giữa các match toàn file.
+    pub fn find_char_motion_and_highlight(
+        &mut self,
+        kind: crate::core::commands::FindMotionKind,
+        target: char,
+    ) -> bool {
+        let moved = self.move_find_char(kind, target);
+        let highlighted = self.set_search_query_internal(&target.to_string(), false);
+        moved || highlighted
+    }
+
     pub fn jump_to_line_and_column(&mut self, line_idx: usize, col_idx: usize) -> bool {
         if self.text.len_lines() == 0 {
             return false;
@@ -915,6 +926,42 @@ impl AppState {
         true
     }
 
+    /// Prefix-matching retention: when the user types exactly the head of the
+    /// visible ghost text, consume that head and keep showing the rest instead
+    /// of clearing and re-requesting. Returns true only when a non-empty
+    /// remainder stays visible.
+    pub fn retain_inline_suggestion_for_typed_text(&mut self, typed: &str) -> bool {
+        let Some(suggestion) = self.inline_suggestion.as_ref() else {
+            return false;
+        };
+        if typed.is_empty() || typed.len() >= suggestion.len() || !suggestion.starts_with(typed) {
+            return false;
+        }
+        let remaining = suggestion[typed.len()..].to_string();
+        self.inline_suggestion = Some(remaining);
+        self.bump_revision();
+        true
+    }
+
+    /// Context around the caret for sanitizing model output: the current line
+    /// up to the caret, and up to `suffix_take` chars after the caret.
+    pub fn inline_suggestion_context(&self, suffix_take: usize) -> (String, String) {
+        let total = self.text.len_chars();
+        let cursor = self.cursor_char_idx.min(total);
+        let (line, _) = self.cursor_line_col();
+        let line_start = self
+            .text
+            .line_to_char(line.min(self.text.len_lines().saturating_sub(1)));
+        let line_prefix = if line_start <= cursor {
+            self.text.slice(line_start..cursor).to_string()
+        } else {
+            String::new()
+        };
+        let suffix_end = cursor.saturating_add(suffix_take).min(total);
+        let suffix = self.text.slice(cursor..suffix_end).to_string();
+        (line_prefix, suffix)
+    }
+
     pub fn accept_inline_suggestion(&mut self) -> bool {
         let Some(suggestion) = self.inline_suggestion.clone() else {
             return false;
@@ -1050,10 +1097,8 @@ impl AppState {
         };
 
         // Use cached items for incremental filtering (much faster than re-requesting from LSP)
-        let mut filtered_items = super::overlays::filter_cached_completion_items(
-            &state.cached_full_items,
-            prefix,
-        );
+        let mut filtered_items =
+            super::overlays::filter_cached_completion_items(&state.cached_full_items, prefix);
 
         let next_selected = if filtered_items.is_empty() { 0 } else { 0 };
         let changed = state.filtered_items != filtered_items
@@ -1250,4 +1295,96 @@ fn range_matches_rope(
         return false;
     }
     text.slice(start_char_idx..end_char_idx).to_string() == expected
+}
+
+#[cfg(test)]
+mod inline_suggestion_tests {
+    use super::AppState;
+
+    fn state_with_text(text: &str) -> AppState {
+        AppState::from_text(std::path::PathBuf::from("inline_suggestion_test.rs"), text)
+    }
+
+    #[test]
+    fn retain_consumes_matching_typed_char() {
+        let mut state = state_with_text("");
+        assert!(state.set_inline_suggestion(Some("println".to_string())));
+        assert!(state.retain_inline_suggestion_for_typed_text("p"));
+        assert_eq!(state.inline_suggestion(), Some("rintln"));
+    }
+
+    #[test]
+    fn retain_rejects_mismatch_and_keeps_suggestion_for_caller_to_clear() {
+        let mut state = state_with_text("");
+        assert!(state.set_inline_suggestion(Some("println".to_string())));
+        assert!(!state.retain_inline_suggestion_for_typed_text("x"));
+        assert_eq!(state.inline_suggestion(), Some("println"));
+    }
+
+    #[test]
+    fn retain_rejects_when_typed_text_exhausts_suggestion() {
+        let mut state = state_with_text("");
+        assert!(state.set_inline_suggestion(Some("ok".to_string())));
+        assert!(!state.retain_inline_suggestion_for_typed_text("ok"));
+    }
+
+    #[test]
+    fn retain_handles_multichar_typed_text() {
+        let mut state = state_with_text("");
+        assert!(state.set_inline_suggestion(Some("hello world".to_string())));
+        assert!(state.retain_inline_suggestion_for_typed_text("hello"));
+        assert_eq!(state.inline_suggestion(), Some(" world"));
+    }
+
+    #[test]
+    fn accept_full_inserts_at_cursor_and_clears() {
+        let mut state = state_with_text("");
+        assert!(state.set_inline_suggestion(Some("fn main() {}".to_string())));
+        assert!(state.accept_inline_suggestion());
+        assert_eq!(state.text_string(), "fn main() {}");
+        assert_eq!(state.inline_suggestion(), None);
+    }
+
+    #[test]
+    fn accept_multiline_preserves_text_and_cursor_at_end() {
+        // Caret sits after one tab of indentation on an empty body line.
+        let initial = "func Sum() int {\n\ttotal := 0\n\t";
+        let mut state = state_with_text(initial);
+        for _ in 0..initial.chars().count() {
+            state.move_right();
+        }
+        // Model continuation with absolute indentation for lines 2+.
+        let suggestion = "for _, num := range nums {\n\t\ttotal += num\n\t}\n\treturn total";
+        assert!(state.set_inline_suggestion(Some(suggestion.to_string())));
+        assert!(state.accept_inline_suggestion());
+
+        let expected = format!("{initial}{suggestion}");
+        assert_eq!(state.text_string(), expected);
+        // Cursor must land at the very end of the inserted text.
+        assert_eq!(state.cursor_char_idx(), expected.chars().count());
+        let (line, col) = state.cursor_line_col();
+        assert_eq!((line, col), (5, "\treturn total".chars().count()));
+        assert_eq!(state.inline_suggestion(), None);
+    }
+
+    #[test]
+    fn accept_word_inserts_first_token_and_keeps_rest() {
+        let mut state = state_with_text("");
+        assert!(state.set_inline_suggestion(Some("hello world".to_string())));
+        assert!(state.accept_inline_suggestion_word());
+        assert_eq!(state.text_string(), "hello");
+        assert_eq!(state.inline_suggestion(), Some(" world"));
+    }
+
+    #[test]
+    fn context_returns_line_prefix_and_suffix() {
+        let mut state = state_with_text("foo(\nbar");
+        // Place caret after "foo(" on the first line.
+        for _ in 0..4 {
+            state.move_right();
+        }
+        let (line_prefix, suffix) = state.inline_suggestion_context(200);
+        assert_eq!(line_prefix, "foo(");
+        assert_eq!(suffix, "\nbar");
+    }
 }

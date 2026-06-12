@@ -131,6 +131,8 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::PrevPanelTab
         | Command::TerminalScrollUp
         | Command::TerminalScrollDown
+        | Command::TerminalScrollHalfPageUp
+        | Command::TerminalScrollHalfPageDown
         | Command::TerminalTabNew
         | Command::TerminalTabClose
         | Command::SwitchTerminalTab(_)

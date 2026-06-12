@@ -7,12 +7,12 @@ use crate::{
     },
 };
 
-use super::{render_palette_chrome, render_palette_selection};
 use super::super::components::{estimate_help_keycaps_width, layout_help_keycaps};
 use super::super::helpers::{
-    clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
-    layout_panel_text, layout_panel_text_bold, rect_to_scissor,
+    clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor, layout_panel_text,
+    layout_panel_text_bold, rect_to_scissor,
 };
+use super::{render_palette_chrome, render_palette_selection};
 
 impl Renderer {
     // ── Minimalist palette (Command / Symbol / VimCommand) ─────────────────────
@@ -318,17 +318,23 @@ impl Renderer {
             model.hint_color,
         ));
         let aa_text = "Aa";
-        let aa_text_w = crate::render::renderer::helpers::estimate_monospace_width(aa_text, font_size);
-        let option_w = if model.mode == crate::app::command_palette::CommandPaletteMode::InFileSearch {
-            aa_text_w + 22.0
-        } else {
-            0.0
-        };
+        let aa_text_w =
+            crate::render::renderer::helpers::estimate_monospace_width(aa_text, font_size);
+        let option_w =
+            if model.mode == crate::app::command_palette::CommandPaletteMode::InFileSearch {
+                aa_text_w + 22.0
+            } else {
+                0.0
+            };
         let query_w = (inner_width - prefix_w - option_w - 18.0).max(1.0);
         self.palette_text_system
             .set_size(Some(query_w), Some(model.line_height));
         glyphs.extend(layout_panel_text(
-            &crate::render::renderer::helpers::clamp_monospace_text(&model.prompt_query, query_w, font_size),
+            &crate::render::renderer::helpers::clamp_monospace_text(
+                &model.prompt_query,
+                query_w,
+                font_size,
+            ),
             &mut self.palette_text_system,
             &mut self.atlas,
             &self.queue,
@@ -355,7 +361,11 @@ impl Renderer {
                 &self.queue,
                 aa_box_x + ((option_w - aa_text_w) * 0.5).max(0.0),
                 aa_box_y + ((aa_box_h - model.line_height) * 0.5).max(0.0),
-                if model.search_case_sensitive { model.text_color } else { model.hint_color },
+                if model.search_case_sensitive {
+                    model.text_color
+                } else {
+                    model.hint_color
+                },
             ));
         }
         row_top += prompt_h;

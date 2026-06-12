@@ -8,17 +8,14 @@ use crate::{
     },
 };
 
-use super::{
-    palette_footer_content_height, palette_footer_height, render_palette_badge,
-    push_palette_icon_or_badge, render_palette_chrome, render_palette_footer,
-    render_palette_selection, PaletteFooterAction, PALETTE_FOOTER_TOP_PAD,
-    PALETTE_HEADER_BOTTOM_PAD,
-};
 use super::super::{
-    components::{layout_prefix_icon_badge, PrefixIconBadge, PrefixIconBadgeChrome},
-    helpers::{
-        clamp_monospace_text, estimate_monospace_width, layout_panel_text, rect_to_scissor,
-    },
+    components::{PrefixIconBadge, PrefixIconBadgeChrome, layout_prefix_icon_badge},
+    helpers::{clamp_monospace_text, estimate_monospace_width, layout_panel_text, rect_to_scissor},
+};
+use super::{
+    PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD, PaletteFooterAction,
+    palette_footer_content_height, palette_footer_height, push_palette_icon_or_badge,
+    render_palette_badge, render_palette_chrome, render_palette_footer, render_palette_selection,
 };
 
 impl Renderer {
@@ -88,7 +85,10 @@ impl Renderer {
         let count_text = if is_theme_selector && !model.result_labels.is_empty() {
             format!(
                 "{}/{}",
-                model.selected_index.saturating_add(1).min(model.result_labels.len()),
+                model
+                    .selected_index
+                    .saturating_add(1)
+                    .min(model.result_labels.len()),
                 model.total_results
             )
         } else if is_theme_selector {
@@ -155,7 +155,11 @@ impl Renderer {
 
         // ── Body rows ──────────────────────────────────────────────────────────
         let footer_h = palette_footer_height(line_h);
-        let row_h = if is_theme_selector { line_h + 18.0 } else { row_h };
+        let row_h = if is_theme_selector {
+            line_h + 18.0
+        } else {
+            row_h
+        };
         let body_h = (panel_h - (row_top - panel_y) - footer_h - model.panel_padding).max(0.0);
         let max_visible = ((body_h / row_h).floor() as usize).max(1);
         if is_theme_selector && body_h > 1.0 {
@@ -274,7 +278,10 @@ impl Renderer {
                 );
             } else {
                 let full_path_buf = std::path::Path::new(full_path);
-                let inferred_icon_source = crate::app::persistence::AppPersistentState::infer_project_icon_source(full_path_buf);
+                let inferred_icon_source =
+                    crate::app::persistence::AppPersistentState::infer_project_icon_source(
+                        full_path_buf,
+                    );
                 let icon_source = recent_meta
                     .icon_source
                     .as_deref()
@@ -374,7 +381,11 @@ impl Renderer {
             [panel_x, footer_y, panel_w, 1.0],
             model.border_color,
         ));
-        let enter_label = if is_theme_selector { "apply theme" } else { "open" };
+        let enter_label = if is_theme_selector {
+            "apply theme"
+        } else {
+            "open"
+        };
         glyphs.extend(render_palette_footer(
             model,
             &mut self.palette_text_system,
@@ -406,7 +417,10 @@ impl Renderer {
         self.palette_icon_pipeline.upload_instances(
             &self.device,
             &self.palette_icon_instances,
-            [self.surface_state.config.width, self.surface_state.config.height],
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
         );
         self.palette_glyph_instances = glyphs;
     }
@@ -455,12 +469,6 @@ fn relative_last_opened_label(last_opened_unix_secs: u64) -> String {
         "last week".to_string()
     }
 }
-
-
-
-
-
-
 
 fn theme_preview_colors(name: &str, model: &CommandPaletteRenderModel) -> [[f32; 4]; 6] {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;

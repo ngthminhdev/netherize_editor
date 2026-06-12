@@ -188,7 +188,11 @@ pub struct WorkbenchPanelState {
 impl Default for WorkbenchPanelState {
     fn default() -> Self {
         Self {
-            left: PanelState::new(true, 240.0, vec![PanelTabId::Explorer, PanelTabId::Inspector]),
+            left: PanelState::new(
+                true,
+                240.0,
+                vec![PanelTabId::Explorer, PanelTabId::Inspector],
+            ),
             right: PanelState::new(
                 false,
                 650.0,
@@ -203,10 +207,7 @@ impl Default for WorkbenchPanelState {
             bottom: PanelState::new(
                 false,
                 420.0,
-                vec![
-                    PanelTabId::Terminal,
-                    PanelTabId::DebugConsole,
-                ],
+                vec![PanelTabId::Terminal, PanelTabId::DebugConsole],
             ),
             overlay_visible: false,
             ai_chat: AiChatState::default(),

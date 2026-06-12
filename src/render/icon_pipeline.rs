@@ -124,7 +124,9 @@ pub fn canonical_icon_id(icon: &str) -> Option<&'static str> {
         "nestjsentity" | "nestjs_entity" | "nest_entity" => "built_in:nestjsentity",
         "nestjsfilter" | "nestjs_filter" | "nest_filter" => "built_in:nestjsfilter",
         "nestjsguard" | "nestjs_guard" | "nest_guard" => "built_in:nestjsguard",
-        "nestjsinterceptor" | "nestjs_interceptor" | "nest_interceptor" => "built_in:nestjsinterceptor",
+        "nestjsinterceptor" | "nestjs_interceptor" | "nest_interceptor" => {
+            "built_in:nestjsinterceptor"
+        }
         "nestjsmodule" | "nestjs_module" | "nest_module" => "built_in:nestjsmodule",
         "nestjsrepository" | "nestjs_repository" | "nest_repository" => "built_in:nestjsrepository",
         "nestjsresolver" | "nestjs_resolver" | "nest_resolver" => "built_in:nestjsresolver",
@@ -215,7 +217,11 @@ pub struct IconPipeline {
 }
 
 impl IconPipeline {
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, surface_format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        surface_format: wgpu::TextureFormat,
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Netherize Icon Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/icon.wgsl").into()),
@@ -359,10 +365,26 @@ impl IconPipeline {
             let v1 = (entry.y + entry.h) as f32 / s;
             let base = vertices.len() as u32;
             vertices.extend_from_slice(&[
-                IconVertex { position: [x0, y0], uv: [u0, v1], color: instance.tint },
-                IconVertex { position: [x1, y0], uv: [u1, v1], color: instance.tint },
-                IconVertex { position: [x1, y1], uv: [u1, v0], color: instance.tint },
-                IconVertex { position: [x0, y1], uv: [u0, v0], color: instance.tint },
+                IconVertex {
+                    position: [x0, y0],
+                    uv: [u0, v1],
+                    color: instance.tint,
+                },
+                IconVertex {
+                    position: [x1, y0],
+                    uv: [u1, v1],
+                    color: instance.tint,
+                },
+                IconVertex {
+                    position: [x1, y1],
+                    uv: [u1, v0],
+                    color: instance.tint,
+                },
+                IconVertex {
+                    position: [x0, y1],
+                    uv: [u0, v0],
+                    color: instance.tint,
+                },
             ]);
             indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
         }
@@ -374,16 +396,20 @@ impl IconPipeline {
             return;
         }
 
-        self.vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Netherize Icon Vertex Buffer"),
-            contents: bytemuck::cast_slice(&vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        }));
-        self.index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Netherize Icon Index Buffer"),
-            contents: bytemuck::cast_slice(&indices),
-            usage: wgpu::BufferUsages::INDEX,
-        }));
+        self.vertex_buffer = Some(
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Netherize Icon Vertex Buffer"),
+                contents: bytemuck::cast_slice(&vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            }),
+        );
+        self.index_buffer = Some(
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Netherize Icon Index Buffer"),
+                contents: bytemuck::cast_slice(&indices),
+                usage: wgpu::BufferUsages::INDEX,
+            }),
+        );
         self.index_count = indices.len() as u32;
     }
 
@@ -391,7 +417,9 @@ impl IconPipeline {
         if self.index_count == 0 {
             return;
         }
-        let (Some(vb), Some(ib), Some(bg)) = (&self.vertex_buffer, &self.index_buffer, &self.bind_group) else {
+        let (Some(vb), Some(ib), Some(bg)) =
+            (&self.vertex_buffer, &self.index_buffer, &self.bind_group)
+        else {
             return;
         };
         pass.set_pipeline(&self.render_pipeline);
@@ -410,162 +438,630 @@ struct BuiltAtlas {
 
 fn build_bearded_atlas() -> BuiltAtlas {
     const ICONS: &[(&str, &[u8])] = &[
-        ("built_in:ansible", include_bytes!("../../assets/bearded-icons/conf.svg")),
-        ("built_in:astro", include_bytes!("../../assets/bearded-icons/astro.svg")),
-        ("built_in:astroconfig", include_bytes!("../../assets/bearded-icons/astroconfig.svg")),
-        ("built_in:babel", include_bytes!("../../assets/bearded-icons/babel.svg")),
-        ("built_in:biome", include_bytes!("../../assets/bearded-icons/biome.svg")),
-        ("built_in:browserslist", include_bytes!("../../assets/bearded-icons/browserslist.svg")),
-        ("built_in:bunlock", include_bytes!("../../assets/bearded-icons/bunlock.svg")),
-        ("built_in:c", include_bytes!("../../assets/bearded-icons/c.svg")),
-        ("built_in:cargo", include_bytes!("../../assets/bearded-icons/cargo.svg")),
-        ("built_in:cargolock", include_bytes!("../../assets/bearded-icons/cargolock.svg")),
-        ("built_in:clojure", include_bytes!("../../assets/bearded-icons/clojure.svg")),
-        ("built_in:cmake", include_bytes!("../../assets/bearded-icons/cmake.svg")),
-        ("built_in:codeworkspace", include_bytes!("../../assets/bearded-icons/codeworkspace.svg")),
-        ("built_in:commitlint", include_bytes!("../../assets/bearded-icons/commitlint.svg")),
-        ("built_in:composerlock", include_bytes!("../../assets/bearded-icons/composerlock.svg")),
-        ("built_in:conf", include_bytes!("../../assets/bearded-icons/conf.svg")),
-        ("built_in:cpp", include_bytes!("../../assets/bearded-icons/cpp.svg")),
-        ("built_in:csharp", include_bytes!("../../assets/bearded-icons/csharp.svg")),
-        ("built_in:css", include_bytes!("../../assets/bearded-icons/css.svg")),
-        ("built_in:dart", include_bytes!("../../assets/bearded-icons/dartlang.svg")),
-        ("built_in:docker", include_bytes!("../../assets/bearded-icons/docker.svg")),
-        ("built_in:dockerignore", include_bytes!("../../assets/bearded-icons/dockerignore.svg")),
-        ("built_in:drizzle", include_bytes!("../../assets/bearded-icons/drizzle.svg")),
-        ("built_in:editorconfig", include_bytes!("../../assets/bearded-icons/editorconfig.svg")),
-        ("built_in:elm", include_bytes!("../../assets/bearded-icons/elm.svg")),
-        ("built_in:error", include_bytes!("../../assets/bearded-icons/error.svg")),
-        ("built_in:eslint", include_bytes!("../../assets/bearded-icons/eslint.svg")),
-        ("built_in:eslintignore", include_bytes!("../../assets/bearded-icons/eslintignore.svg")),
-        ("built_in:file", include_bytes!("../../assets/bearded-icons/file.svg")),
-        ("built_in:flakelock", include_bytes!("../../assets/bearded-icons/flakelock.svg")),
-        ("built_in:flutterlock", include_bytes!("../../assets/bearded-icons/flutterlock.svg")),
-        ("built_in:folder", include_bytes!("../../assets/bearded-icons/folder.svg")),
-        ("built_in:folder_open", include_bytes!("../../assets/bearded-icons/folder_open.svg")),
-        ("built_in:root_folder", include_bytes!("../../assets/bearded-icons/root_folder.svg")),
-        ("built_in:fsharp", include_bytes!("../../assets/bearded-icons/fsharp.svg")),
-        ("built_in:git", include_bytes!("../../assets/bearded-icons/git.svg")),
-        ("built_in:go", include_bytes!("../../assets/bearded-icons/go.svg")),
-        ("built_in:gitlab", include_bytes!("../../assets/bearded-icons/gitlab.svg")),
-        ("built_in:gradle", include_bytes!("../../assets/bearded-icons/gradle.svg")),
-        ("built_in:graphql", include_bytes!("../../assets/bearded-icons/graphql.svg")),
-        ("built_in:haskell", include_bytes!("../../assets/bearded-icons/haskell.svg")),
-        ("built_in:hash", include_bytes!("../../assets/bearded-icons/hash.svg")),
-        ("built_in:html", include_bytes!("../../assets/bearded-icons/html.svg")),
-        ("built_in:identifier", include_bytes!("../../assets/bearded-icons/identifier.svg")),
-        ("built_in:image", include_bytes!("../../assets/bearded-icons/image.svg")),
-        ("built_in:info", include_bytes!("../../assets/bearded-icons/info.svg")),
-        ("built_in:symbol-class", include_bytes!("../../assets/bearded-icons/symbol-class.svg")),
-        ("built_in:symbol-constant", include_bytes!("../../assets/bearded-icons/symbol-constant.svg")),
-        ("built_in:symbol-constructor", include_bytes!("../../assets/bearded-icons/symbol-constructor.svg")),
-        ("built_in:symbol-enum", include_bytes!("../../assets/bearded-icons/symbol-enum.svg")),
-        ("built_in:symbol-event", include_bytes!("../../assets/bearded-icons/symbol-event.svg")),
-        ("built_in:symbol-field", include_bytes!("../../assets/bearded-icons/symbol-field.svg")),
-        ("built_in:symbol-function", include_bytes!("../../assets/bearded-icons/symbol-function.svg")),
-        ("built_in:symbol-interface", include_bytes!("../../assets/bearded-icons/symbol-interface.svg")),
-        ("built_in:symbol-keyword", include_bytes!("../../assets/bearded-icons/symbol-keyword.svg")),
-        ("built_in:symbol-method", include_bytes!("../../assets/bearded-icons/symbol-method.svg")),
-        ("built_in:symbol-module", include_bytes!("../../assets/bearded-icons/symbol-module.svg")),
-        ("built_in:symbol-namespace", include_bytes!("../../assets/bearded-icons/symbol-namespace.svg")),
-        ("built_in:symbol-operator", include_bytes!("../../assets/bearded-icons/symbol-operator.svg")),
-        ("built_in:symbol-property", include_bytes!("../../assets/bearded-icons/symbol-property.svg")),
-        ("built_in:symbol-reference", include_bytes!("../../assets/bearded-icons/symbol-reference.svg")),
-        ("built_in:symbol-struct", include_bytes!("../../assets/bearded-icons/symbol-struct.svg")),
-        ("built_in:symbol-type-parameter", include_bytes!("../../assets/bearded-icons/symbol-type-parameter.svg")),
-        ("built_in:symbol-variable", include_bytes!("../../assets/bearded-icons/symbol-variable.svg")),
-        ("built_in:java", include_bytes!("../../assets/bearded-icons/java.svg")),
-        ("built_in:javascript", include_bytes!("../../assets/bearded-icons/js.svg")),
-        ("built_in:jest", include_bytes!("../../assets/bearded-icons/jest.svg")),
-        ("built_in:keep", include_bytes!("../../assets/bearded-icons/keep.svg")),
-        ("built_in:knex", include_bytes!("../../assets/bearded-icons/knex.svg")),
-        ("built_in:license", include_bytes!("../../assets/bearded-icons/license.svg")),
-        ("built_in:node", include_bytes!("../../assets/bearded-icons/node.svg")),
-        ("built_in:json", include_bytes!("../../assets/bearded-icons/json.svg")),
-        ("built_in:key", include_bytes!("../../assets/bearded-icons/key.svg")),
-        ("built_in:kotlin", include_bytes!("../../assets/bearded-icons/kotlin.svg")),
-        ("built_in:lock", include_bytes!("../../assets/bearded-icons/lock.svg")),
-        ("built_in:lua", include_bytes!("../../assets/bearded-icons/lua.svg")),
-        ("built_in:makefile", include_bytes!("../../assets/bearded-icons/makefile.svg")),
-        ("built_in:manifest", include_bytes!("../../assets/bearded-icons/manifest.svg")),
-        ("built_in:markdown", include_bytes!("../../assets/bearded-icons/markdown.svg")),
-        ("built_in:mixlock", include_bytes!("../../assets/bearded-icons/mixlock.svg")),
-        ("built_in:netlify", include_bytes!("../../assets/bearded-icons/netlify.svg")),
-        ("built_in:nextconfig", include_bytes!("../../assets/bearded-icons/nextconfig.svg")),
-        ("built_in:nestjs", include_bytes!("../../assets/bearded-icons/nestjs.svg")),
-        ("built_in:nestjscontroller", include_bytes!("../../assets/bearded-icons/nestjscontroller.svg")),
-        ("built_in:nestjsdecorator", include_bytes!("../../assets/bearded-icons/nestjsdecorator.svg")),
-        ("built_in:nestjsdto", include_bytes!("../../assets/bearded-icons/nestjsdto.svg")),
-        ("built_in:nestjsentity", include_bytes!("../../assets/bearded-icons/nestjsentity.svg")),
-        ("built_in:nestjsfilter", include_bytes!("../../assets/bearded-icons/nestjsfilter.svg")),
-        ("built_in:nestjsguard", include_bytes!("../../assets/bearded-icons/nestjsguard.svg")),
-        ("built_in:nestjsinterceptor", include_bytes!("../../assets/bearded-icons/nestjsinterceptor.svg")),
-        ("built_in:nestjsmodule", include_bytes!("../../assets/bearded-icons/nestjsmodule.svg")),
-        ("built_in:nestjsrepository", include_bytes!("../../assets/bearded-icons/nestjsrepository.svg")),
-        ("built_in:nestjsresolver", include_bytes!("../../assets/bearded-icons/nestjsresolver.svg")),
-        ("built_in:nestjsservice", include_bytes!("../../assets/bearded-icons/nestjsservice.svg")),
-        ("built_in:nestscheduler", include_bytes!("../../assets/bearded-icons/nestscheduler.svg")),
-        ("built_in:nginx", include_bytes!("../../assets/bearded-icons/nginx.svg")),
-        ("built_in:nodemon", include_bytes!("../../assets/bearded-icons/nodemon.svg")),
-        ("built_in:npmlock", include_bytes!("../../assets/bearded-icons/npmlock.svg")),
-        ("built_in:nvm", include_bytes!("../../assets/bearded-icons/nvm.svg")),
-        ("built_in:nx", include_bytes!("../../assets/bearded-icons/nx.svg")),
-        ("built_in:nuxt", include_bytes!("../../assets/bearded-icons/nuxt.svg")),
-        ("built_in:nim", include_bytes!("../../assets/bearded-icons/nim.svg")),
-        ("built_in:npm", include_bytes!("../../assets/bearded-icons/npm.svg")),
-        ("built_in:ocaml", include_bytes!("../../assets/bearded-icons/ocaml.svg")),
-        ("built_in:perl", include_bytes!("../../assets/bearded-icons/perl.svg")),
-        ("built_in:php", include_bytes!("../../assets/bearded-icons/php.svg")),
-        ("built_in:playright", include_bytes!("../../assets/bearded-icons/playright.svg")),
-        ("built_in:pnpmlock", include_bytes!("../../assets/bearded-icons/pnpmlock.svg")),
-        ("built_in:poetrylock", include_bytes!("../../assets/bearded-icons/poetrylock.svg")),
-        ("built_in:postcssconfig", include_bytes!("../../assets/bearded-icons/postcssconfig.svg")),
-        ("built_in:precommit", include_bytes!("../../assets/bearded-icons/precommit.svg")),
-        ("built_in:prettier", include_bytes!("../../assets/bearded-icons/prettier.svg")),
-        ("built_in:prettierignore", include_bytes!("../../assets/bearded-icons/prettierignore.svg")),
-        ("built_in:prisma", include_bytes!("../../assets/bearded-icons/prisma.svg")),
-        ("built_in:proto", include_bytes!("../../assets/bearded-icons/proto.svg")),
-        ("built_in:python", include_bytes!("../../assets/bearded-icons/python.svg")),
-        ("built_in:r", include_bytes!("../../assets/bearded-icons/r.svg")),
-        ("built_in:reactjs", include_bytes!("../../assets/bearded-icons/reactjs.svg")),
-        ("built_in:readme", include_bytes!("../../assets/bearded-icons/readme.svg")),
-        ("built_in:remix", include_bytes!("../../assets/bearded-icons/remix.svg")),
-        ("built_in:ruby", include_bytes!("../../assets/bearded-icons/ruby.svg")),
-        ("built_in:rust", include_bytes!("../../assets/bearded-icons/rust.svg")),
-        ("built_in:sass", include_bytes!("../../assets/bearded-icons/sass.svg")),
-        ("built_in:scala", include_bytes!("../../assets/bearded-icons/scala.svg")),
-        ("built_in:sequelize", include_bytes!("../../assets/bearded-icons/sequelize.svg")),
-        ("built_in:shell", include_bytes!("../../assets/bearded-icons/shell.svg")),
-        ("built_in:sol", include_bytes!("../../assets/bearded-icons/sol.svg")),
-        ("built_in:sql", include_bytes!("../../assets/bearded-icons/sql.svg")),
-        ("built_in:storybook", include_bytes!("../../assets/bearded-icons/storybook.svg")),
-        ("built_in:svelte", include_bytes!("../../assets/bearded-icons/svelte.svg")),
-        ("built_in:svelteconfig", include_bytes!("../../assets/bearded-icons/svelteconfig.svg")),
-        ("built_in:swift", include_bytes!("../../assets/bearded-icons/swift.svg")),
-        ("built_in:tailwind", include_bytes!("../../assets/bearded-icons/tailwind.svg")),
-        ("built_in:tauri", include_bytes!("../../assets/bearded-icons/tauri.svg")),
-        ("built_in:terraform", include_bytes!("../../assets/bearded-icons/terraform.svg")),
-        ("built_in:testjs", include_bytes!("../../assets/bearded-icons/testjs.svg")),
-        ("built_in:testts", include_bytes!("../../assets/bearded-icons/testts.svg")),
-        ("built_in:todo", include_bytes!("../../assets/bearded-icons/todo.svg")),
-        ("built_in:toml", include_bytes!("../../assets/bearded-icons/toml.svg")),
-        ("built_in:tsconfig", include_bytes!("../../assets/bearded-icons/tsconfig.svg")),
-        ("built_in:tsx", include_bytes!("../../assets/bearded-icons/tsx.svg")),
-        ("built_in:turbo", include_bytes!("../../assets/bearded-icons/turbo.svg")),
-        ("built_in:typescript", include_bytes!("../../assets/bearded-icons/typescript.svg")),
-        ("built_in:unocss", include_bytes!("../../assets/bearded-icons/unocss.svg")),
-        ("built_in:vercel", include_bytes!("../../assets/bearded-icons/vercel.svg")),
-        ("built_in:vite", include_bytes!("../../assets/bearded-icons/vite.svg")),
-        ("built_in:vitest", include_bytes!("../../assets/bearded-icons/vitest.svg")),
-        ("built_in:vue", include_bytes!("../../assets/bearded-icons/vue.svg")),
-        ("built_in:vueconfig", include_bytes!("../../assets/bearded-icons/vueconfig.svg")),
-        ("built_in:warning", include_bytes!("../../assets/bearded-icons/warning.svg")),
-        ("built_in:webpack", include_bytes!("../../assets/bearded-icons/webpack.svg")),
-        ("built_in:windi", include_bytes!("../../assets/bearded-icons/windi.svg")),
-        ("built_in:xml", include_bytes!("../../assets/bearded-icons/xml.svg")),
-        ("built_in:yaml", include_bytes!("../../assets/bearded-icons/yaml.svg")),
-        ("built_in:yarnlock", include_bytes!("../../assets/bearded-icons/yarnlock.svg")),
-        ("built_in:zig", include_bytes!("../../assets/bearded-icons/zig.svg")), 
+        (
+            "built_in:ansible",
+            include_bytes!("../../assets/bearded-icons/conf.svg"),
+        ),
+        (
+            "built_in:astro",
+            include_bytes!("../../assets/bearded-icons/astro.svg"),
+        ),
+        (
+            "built_in:astroconfig",
+            include_bytes!("../../assets/bearded-icons/astroconfig.svg"),
+        ),
+        (
+            "built_in:babel",
+            include_bytes!("../../assets/bearded-icons/babel.svg"),
+        ),
+        (
+            "built_in:biome",
+            include_bytes!("../../assets/bearded-icons/biome.svg"),
+        ),
+        (
+            "built_in:browserslist",
+            include_bytes!("../../assets/bearded-icons/browserslist.svg"),
+        ),
+        (
+            "built_in:bunlock",
+            include_bytes!("../../assets/bearded-icons/bunlock.svg"),
+        ),
+        (
+            "built_in:c",
+            include_bytes!("../../assets/bearded-icons/c.svg"),
+        ),
+        (
+            "built_in:cargo",
+            include_bytes!("../../assets/bearded-icons/cargo.svg"),
+        ),
+        (
+            "built_in:cargolock",
+            include_bytes!("../../assets/bearded-icons/cargolock.svg"),
+        ),
+        (
+            "built_in:clojure",
+            include_bytes!("../../assets/bearded-icons/clojure.svg"),
+        ),
+        (
+            "built_in:cmake",
+            include_bytes!("../../assets/bearded-icons/cmake.svg"),
+        ),
+        (
+            "built_in:codeworkspace",
+            include_bytes!("../../assets/bearded-icons/codeworkspace.svg"),
+        ),
+        (
+            "built_in:commitlint",
+            include_bytes!("../../assets/bearded-icons/commitlint.svg"),
+        ),
+        (
+            "built_in:composerlock",
+            include_bytes!("../../assets/bearded-icons/composerlock.svg"),
+        ),
+        (
+            "built_in:conf",
+            include_bytes!("../../assets/bearded-icons/conf.svg"),
+        ),
+        (
+            "built_in:cpp",
+            include_bytes!("../../assets/bearded-icons/cpp.svg"),
+        ),
+        (
+            "built_in:csharp",
+            include_bytes!("../../assets/bearded-icons/csharp.svg"),
+        ),
+        (
+            "built_in:css",
+            include_bytes!("../../assets/bearded-icons/css.svg"),
+        ),
+        (
+            "built_in:dart",
+            include_bytes!("../../assets/bearded-icons/dartlang.svg"),
+        ),
+        (
+            "built_in:docker",
+            include_bytes!("../../assets/bearded-icons/docker.svg"),
+        ),
+        (
+            "built_in:dockerignore",
+            include_bytes!("../../assets/bearded-icons/dockerignore.svg"),
+        ),
+        (
+            "built_in:drizzle",
+            include_bytes!("../../assets/bearded-icons/drizzle.svg"),
+        ),
+        (
+            "built_in:editorconfig",
+            include_bytes!("../../assets/bearded-icons/editorconfig.svg"),
+        ),
+        (
+            "built_in:elm",
+            include_bytes!("../../assets/bearded-icons/elm.svg"),
+        ),
+        (
+            "built_in:error",
+            include_bytes!("../../assets/bearded-icons/error.svg"),
+        ),
+        (
+            "built_in:eslint",
+            include_bytes!("../../assets/bearded-icons/eslint.svg"),
+        ),
+        (
+            "built_in:eslintignore",
+            include_bytes!("../../assets/bearded-icons/eslintignore.svg"),
+        ),
+        (
+            "built_in:file",
+            include_bytes!("../../assets/bearded-icons/file.svg"),
+        ),
+        (
+            "built_in:flakelock",
+            include_bytes!("../../assets/bearded-icons/flakelock.svg"),
+        ),
+        (
+            "built_in:flutterlock",
+            include_bytes!("../../assets/bearded-icons/flutterlock.svg"),
+        ),
+        (
+            "built_in:folder",
+            include_bytes!("../../assets/bearded-icons/folder.svg"),
+        ),
+        (
+            "built_in:folder_open",
+            include_bytes!("../../assets/bearded-icons/folder_open.svg"),
+        ),
+        (
+            "built_in:root_folder",
+            include_bytes!("../../assets/bearded-icons/root_folder.svg"),
+        ),
+        (
+            "built_in:fsharp",
+            include_bytes!("../../assets/bearded-icons/fsharp.svg"),
+        ),
+        (
+            "built_in:git",
+            include_bytes!("../../assets/bearded-icons/git.svg"),
+        ),
+        (
+            "built_in:go",
+            include_bytes!("../../assets/bearded-icons/go.svg"),
+        ),
+        (
+            "built_in:gitlab",
+            include_bytes!("../../assets/bearded-icons/gitlab.svg"),
+        ),
+        (
+            "built_in:gradle",
+            include_bytes!("../../assets/bearded-icons/gradle.svg"),
+        ),
+        (
+            "built_in:graphql",
+            include_bytes!("../../assets/bearded-icons/graphql.svg"),
+        ),
+        (
+            "built_in:haskell",
+            include_bytes!("../../assets/bearded-icons/haskell.svg"),
+        ),
+        (
+            "built_in:hash",
+            include_bytes!("../../assets/bearded-icons/hash.svg"),
+        ),
+        (
+            "built_in:html",
+            include_bytes!("../../assets/bearded-icons/html.svg"),
+        ),
+        (
+            "built_in:identifier",
+            include_bytes!("../../assets/bearded-icons/identifier.svg"),
+        ),
+        (
+            "built_in:image",
+            include_bytes!("../../assets/bearded-icons/image.svg"),
+        ),
+        (
+            "built_in:info",
+            include_bytes!("../../assets/bearded-icons/info.svg"),
+        ),
+        (
+            "built_in:symbol-class",
+            include_bytes!("../../assets/bearded-icons/symbol-class.svg"),
+        ),
+        (
+            "built_in:symbol-constant",
+            include_bytes!("../../assets/bearded-icons/symbol-constant.svg"),
+        ),
+        (
+            "built_in:symbol-constructor",
+            include_bytes!("../../assets/bearded-icons/symbol-constructor.svg"),
+        ),
+        (
+            "built_in:symbol-enum",
+            include_bytes!("../../assets/bearded-icons/symbol-enum.svg"),
+        ),
+        (
+            "built_in:symbol-event",
+            include_bytes!("../../assets/bearded-icons/symbol-event.svg"),
+        ),
+        (
+            "built_in:symbol-field",
+            include_bytes!("../../assets/bearded-icons/symbol-field.svg"),
+        ),
+        (
+            "built_in:symbol-function",
+            include_bytes!("../../assets/bearded-icons/symbol-function.svg"),
+        ),
+        (
+            "built_in:symbol-interface",
+            include_bytes!("../../assets/bearded-icons/symbol-interface.svg"),
+        ),
+        (
+            "built_in:symbol-keyword",
+            include_bytes!("../../assets/bearded-icons/symbol-keyword.svg"),
+        ),
+        (
+            "built_in:symbol-method",
+            include_bytes!("../../assets/bearded-icons/symbol-method.svg"),
+        ),
+        (
+            "built_in:symbol-module",
+            include_bytes!("../../assets/bearded-icons/symbol-module.svg"),
+        ),
+        (
+            "built_in:symbol-namespace",
+            include_bytes!("../../assets/bearded-icons/symbol-namespace.svg"),
+        ),
+        (
+            "built_in:symbol-operator",
+            include_bytes!("../../assets/bearded-icons/symbol-operator.svg"),
+        ),
+        (
+            "built_in:symbol-property",
+            include_bytes!("../../assets/bearded-icons/symbol-property.svg"),
+        ),
+        (
+            "built_in:symbol-reference",
+            include_bytes!("../../assets/bearded-icons/symbol-reference.svg"),
+        ),
+        (
+            "built_in:symbol-struct",
+            include_bytes!("../../assets/bearded-icons/symbol-struct.svg"),
+        ),
+        (
+            "built_in:symbol-type-parameter",
+            include_bytes!("../../assets/bearded-icons/symbol-type-parameter.svg"),
+        ),
+        (
+            "built_in:symbol-variable",
+            include_bytes!("../../assets/bearded-icons/symbol-variable.svg"),
+        ),
+        (
+            "built_in:java",
+            include_bytes!("../../assets/bearded-icons/java.svg"),
+        ),
+        (
+            "built_in:javascript",
+            include_bytes!("../../assets/bearded-icons/js.svg"),
+        ),
+        (
+            "built_in:jest",
+            include_bytes!("../../assets/bearded-icons/jest.svg"),
+        ),
+        (
+            "built_in:keep",
+            include_bytes!("../../assets/bearded-icons/keep.svg"),
+        ),
+        (
+            "built_in:knex",
+            include_bytes!("../../assets/bearded-icons/knex.svg"),
+        ),
+        (
+            "built_in:license",
+            include_bytes!("../../assets/bearded-icons/license.svg"),
+        ),
+        (
+            "built_in:node",
+            include_bytes!("../../assets/bearded-icons/node.svg"),
+        ),
+        (
+            "built_in:json",
+            include_bytes!("../../assets/bearded-icons/json.svg"),
+        ),
+        (
+            "built_in:key",
+            include_bytes!("../../assets/bearded-icons/key.svg"),
+        ),
+        (
+            "built_in:kotlin",
+            include_bytes!("../../assets/bearded-icons/kotlin.svg"),
+        ),
+        (
+            "built_in:lock",
+            include_bytes!("../../assets/bearded-icons/lock.svg"),
+        ),
+        (
+            "built_in:lua",
+            include_bytes!("../../assets/bearded-icons/lua.svg"),
+        ),
+        (
+            "built_in:makefile",
+            include_bytes!("../../assets/bearded-icons/makefile.svg"),
+        ),
+        (
+            "built_in:manifest",
+            include_bytes!("../../assets/bearded-icons/manifest.svg"),
+        ),
+        (
+            "built_in:markdown",
+            include_bytes!("../../assets/bearded-icons/markdown.svg"),
+        ),
+        (
+            "built_in:mixlock",
+            include_bytes!("../../assets/bearded-icons/mixlock.svg"),
+        ),
+        (
+            "built_in:netlify",
+            include_bytes!("../../assets/bearded-icons/netlify.svg"),
+        ),
+        (
+            "built_in:nextconfig",
+            include_bytes!("../../assets/bearded-icons/nextconfig.svg"),
+        ),
+        (
+            "built_in:nestjs",
+            include_bytes!("../../assets/bearded-icons/nestjs.svg"),
+        ),
+        (
+            "built_in:nestjscontroller",
+            include_bytes!("../../assets/bearded-icons/nestjscontroller.svg"),
+        ),
+        (
+            "built_in:nestjsdecorator",
+            include_bytes!("../../assets/bearded-icons/nestjsdecorator.svg"),
+        ),
+        (
+            "built_in:nestjsdto",
+            include_bytes!("../../assets/bearded-icons/nestjsdto.svg"),
+        ),
+        (
+            "built_in:nestjsentity",
+            include_bytes!("../../assets/bearded-icons/nestjsentity.svg"),
+        ),
+        (
+            "built_in:nestjsfilter",
+            include_bytes!("../../assets/bearded-icons/nestjsfilter.svg"),
+        ),
+        (
+            "built_in:nestjsguard",
+            include_bytes!("../../assets/bearded-icons/nestjsguard.svg"),
+        ),
+        (
+            "built_in:nestjsinterceptor",
+            include_bytes!("../../assets/bearded-icons/nestjsinterceptor.svg"),
+        ),
+        (
+            "built_in:nestjsmodule",
+            include_bytes!("../../assets/bearded-icons/nestjsmodule.svg"),
+        ),
+        (
+            "built_in:nestjsrepository",
+            include_bytes!("../../assets/bearded-icons/nestjsrepository.svg"),
+        ),
+        (
+            "built_in:nestjsresolver",
+            include_bytes!("../../assets/bearded-icons/nestjsresolver.svg"),
+        ),
+        (
+            "built_in:nestjsservice",
+            include_bytes!("../../assets/bearded-icons/nestjsservice.svg"),
+        ),
+        (
+            "built_in:nestscheduler",
+            include_bytes!("../../assets/bearded-icons/nestscheduler.svg"),
+        ),
+        (
+            "built_in:nginx",
+            include_bytes!("../../assets/bearded-icons/nginx.svg"),
+        ),
+        (
+            "built_in:nodemon",
+            include_bytes!("../../assets/bearded-icons/nodemon.svg"),
+        ),
+        (
+            "built_in:npmlock",
+            include_bytes!("../../assets/bearded-icons/npmlock.svg"),
+        ),
+        (
+            "built_in:nvm",
+            include_bytes!("../../assets/bearded-icons/nvm.svg"),
+        ),
+        (
+            "built_in:nx",
+            include_bytes!("../../assets/bearded-icons/nx.svg"),
+        ),
+        (
+            "built_in:nuxt",
+            include_bytes!("../../assets/bearded-icons/nuxt.svg"),
+        ),
+        (
+            "built_in:nim",
+            include_bytes!("../../assets/bearded-icons/nim.svg"),
+        ),
+        (
+            "built_in:npm",
+            include_bytes!("../../assets/bearded-icons/npm.svg"),
+        ),
+        (
+            "built_in:ocaml",
+            include_bytes!("../../assets/bearded-icons/ocaml.svg"),
+        ),
+        (
+            "built_in:perl",
+            include_bytes!("../../assets/bearded-icons/perl.svg"),
+        ),
+        (
+            "built_in:php",
+            include_bytes!("../../assets/bearded-icons/php.svg"),
+        ),
+        (
+            "built_in:playright",
+            include_bytes!("../../assets/bearded-icons/playright.svg"),
+        ),
+        (
+            "built_in:pnpmlock",
+            include_bytes!("../../assets/bearded-icons/pnpmlock.svg"),
+        ),
+        (
+            "built_in:poetrylock",
+            include_bytes!("../../assets/bearded-icons/poetrylock.svg"),
+        ),
+        (
+            "built_in:postcssconfig",
+            include_bytes!("../../assets/bearded-icons/postcssconfig.svg"),
+        ),
+        (
+            "built_in:precommit",
+            include_bytes!("../../assets/bearded-icons/precommit.svg"),
+        ),
+        (
+            "built_in:prettier",
+            include_bytes!("../../assets/bearded-icons/prettier.svg"),
+        ),
+        (
+            "built_in:prettierignore",
+            include_bytes!("../../assets/bearded-icons/prettierignore.svg"),
+        ),
+        (
+            "built_in:prisma",
+            include_bytes!("../../assets/bearded-icons/prisma.svg"),
+        ),
+        (
+            "built_in:proto",
+            include_bytes!("../../assets/bearded-icons/proto.svg"),
+        ),
+        (
+            "built_in:python",
+            include_bytes!("../../assets/bearded-icons/python.svg"),
+        ),
+        (
+            "built_in:r",
+            include_bytes!("../../assets/bearded-icons/r.svg"),
+        ),
+        (
+            "built_in:reactjs",
+            include_bytes!("../../assets/bearded-icons/reactjs.svg"),
+        ),
+        (
+            "built_in:readme",
+            include_bytes!("../../assets/bearded-icons/readme.svg"),
+        ),
+        (
+            "built_in:remix",
+            include_bytes!("../../assets/bearded-icons/remix.svg"),
+        ),
+        (
+            "built_in:ruby",
+            include_bytes!("../../assets/bearded-icons/ruby.svg"),
+        ),
+        (
+            "built_in:rust",
+            include_bytes!("../../assets/bearded-icons/rust.svg"),
+        ),
+        (
+            "built_in:sass",
+            include_bytes!("../../assets/bearded-icons/sass.svg"),
+        ),
+        (
+            "built_in:scala",
+            include_bytes!("../../assets/bearded-icons/scala.svg"),
+        ),
+        (
+            "built_in:sequelize",
+            include_bytes!("../../assets/bearded-icons/sequelize.svg"),
+        ),
+        (
+            "built_in:shell",
+            include_bytes!("../../assets/bearded-icons/shell.svg"),
+        ),
+        (
+            "built_in:sol",
+            include_bytes!("../../assets/bearded-icons/sol.svg"),
+        ),
+        (
+            "built_in:sql",
+            include_bytes!("../../assets/bearded-icons/sql.svg"),
+        ),
+        (
+            "built_in:storybook",
+            include_bytes!("../../assets/bearded-icons/storybook.svg"),
+        ),
+        (
+            "built_in:svelte",
+            include_bytes!("../../assets/bearded-icons/svelte.svg"),
+        ),
+        (
+            "built_in:svelteconfig",
+            include_bytes!("../../assets/bearded-icons/svelteconfig.svg"),
+        ),
+        (
+            "built_in:swift",
+            include_bytes!("../../assets/bearded-icons/swift.svg"),
+        ),
+        (
+            "built_in:tailwind",
+            include_bytes!("../../assets/bearded-icons/tailwind.svg"),
+        ),
+        (
+            "built_in:tauri",
+            include_bytes!("../../assets/bearded-icons/tauri.svg"),
+        ),
+        (
+            "built_in:terraform",
+            include_bytes!("../../assets/bearded-icons/terraform.svg"),
+        ),
+        (
+            "built_in:testjs",
+            include_bytes!("../../assets/bearded-icons/testjs.svg"),
+        ),
+        (
+            "built_in:testts",
+            include_bytes!("../../assets/bearded-icons/testts.svg"),
+        ),
+        (
+            "built_in:todo",
+            include_bytes!("../../assets/bearded-icons/todo.svg"),
+        ),
+        (
+            "built_in:toml",
+            include_bytes!("../../assets/bearded-icons/toml.svg"),
+        ),
+        (
+            "built_in:tsconfig",
+            include_bytes!("../../assets/bearded-icons/tsconfig.svg"),
+        ),
+        (
+            "built_in:tsx",
+            include_bytes!("../../assets/bearded-icons/tsx.svg"),
+        ),
+        (
+            "built_in:turbo",
+            include_bytes!("../../assets/bearded-icons/turbo.svg"),
+        ),
+        (
+            "built_in:typescript",
+            include_bytes!("../../assets/bearded-icons/typescript.svg"),
+        ),
+        (
+            "built_in:unocss",
+            include_bytes!("../../assets/bearded-icons/unocss.svg"),
+        ),
+        (
+            "built_in:vercel",
+            include_bytes!("../../assets/bearded-icons/vercel.svg"),
+        ),
+        (
+            "built_in:vite",
+            include_bytes!("../../assets/bearded-icons/vite.svg"),
+        ),
+        (
+            "built_in:vitest",
+            include_bytes!("../../assets/bearded-icons/vitest.svg"),
+        ),
+        (
+            "built_in:vue",
+            include_bytes!("../../assets/bearded-icons/vue.svg"),
+        ),
+        (
+            "built_in:vueconfig",
+            include_bytes!("../../assets/bearded-icons/vueconfig.svg"),
+        ),
+        (
+            "built_in:warning",
+            include_bytes!("../../assets/bearded-icons/warning.svg"),
+        ),
+        (
+            "built_in:webpack",
+            include_bytes!("../../assets/bearded-icons/webpack.svg"),
+        ),
+        (
+            "built_in:windi",
+            include_bytes!("../../assets/bearded-icons/windi.svg"),
+        ),
+        (
+            "built_in:xml",
+            include_bytes!("../../assets/bearded-icons/xml.svg"),
+        ),
+        (
+            "built_in:yaml",
+            include_bytes!("../../assets/bearded-icons/yaml.svg"),
+        ),
+        (
+            "built_in:yarnlock",
+            include_bytes!("../../assets/bearded-icons/yarnlock.svg"),
+        ),
+        (
+            "built_in:zig",
+            include_bytes!("../../assets/bearded-icons/zig.svg"),
+        ),
     ];
     let icon_size = 96u32;
     let padding = 8u32;
@@ -581,12 +1077,25 @@ fn build_bearded_atlas() -> BuiltAtlas {
         let row = idx as u32 / cols;
         let x = col * cell + padding;
         let y = row * cell + padding;
-        let icon = rasterize_svg(svg, icon_size, icon_size).unwrap_or_else(|| vec![0; (icon_size * icon_size * 4) as usize]);
+        let icon = rasterize_svg(svg, icon_size, icon_size)
+            .unwrap_or_else(|| vec![0; (icon_size * icon_size * 4) as usize]);
         blit_rgba(&mut rgba, size, x, y, icon_size, icon_size, &icon);
-        entries.insert(*id, AtlasEntry { x, y, w: icon_size, h: icon_size });
+        entries.insert(
+            *id,
+            AtlasEntry {
+                x,
+                y,
+                w: icon_size,
+                h: icon_size,
+            },
+        );
     }
 
-    BuiltAtlas { size, rgba, entries }
+    BuiltAtlas {
+        size,
+        rgba,
+        entries,
+    }
 }
 
 fn rasterize_svg(svg: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {

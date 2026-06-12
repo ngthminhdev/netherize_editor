@@ -37,9 +37,10 @@ impl SettingsSection {
 impl SettingItem {
     fn section(&self) -> SettingsSection {
         match self {
-            Self::ThemeSelector { .. } | Self::UiRounding { .. } | Self::EnableOutline { .. } => {
-                SettingsSection::Appearance
-            }
+            Self::ThemeSelector { .. }
+            | Self::UiRounding { .. }
+            | Self::EnableOutline { .. }
+            | Self::UiScale { .. } => SettingsSection::Appearance,
             Self::FontFamily { .. } | Self::FontSize { .. } | Self::LineHeight { .. } => {
                 SettingsSection::Typography
             }
@@ -89,6 +90,9 @@ impl SettingItem {
             Self::EnableOutline { .. } => {
                 "Show borders on all panels. Off = only unfocused panels keep their accent border."
             }
+            Self::UiScale { .. } => {
+                "Force a fixed UI scale (0.5–3.0). Auto follows the display DPI. Use h/l for ±0.05 or Enter to type a value or 'auto'."
+            }
         }
     }
 
@@ -119,6 +123,9 @@ impl SettingItem {
                     "0".to_string()
                 }
             }
+            Self::UiScale { current } => current
+                .map(|v| format!("{v:.2}"))
+                .unwrap_or_else(|| "\"auto\"".to_string()),
         }
     }
 
@@ -151,6 +158,9 @@ impl SettingItem {
                     "Off".to_string()
                 }
             }
+            Self::UiScale { current } => current
+                .map(|v| format!("{v:.2}×"))
+                .unwrap_or_else(|| "Auto (display)".to_string()),
         }
     }
 }
@@ -166,7 +176,11 @@ fn setting_value_ratio(item: &SettingItem) -> Option<f32> {
         SettingItem::LineHeight { current } => (*current - 10.0) / (64.0 - 10.0),
         SettingItem::IndentTabWidth { current } => (*current as f32 - 1.0) / (8.0 - 1.0),
         SettingItem::UiRounding { enabled, radius_px } => {
-            if *enabled { *radius_px / 24.0 } else { 0.0 }
+            if *enabled {
+                *radius_px / 24.0
+            } else {
+                0.0
+            }
         }
         SettingItem::SidebarWidth { current } => (*current as f32 - 160.0) / (1280.0 - 160.0),
         SettingItem::RightSidebarWidth { current } => (*current as f32 - 180.0) / (1440.0 - 180.0),
@@ -203,7 +217,8 @@ fn current_row_value(settings: &SettingsState, item: &SettingItem, is_selected: 
         | (SettingsEditingKind::UiRounding, SettingItem::UiRounding { .. })
         | (SettingsEditingKind::SidebarWidth, SettingItem::SidebarWidth { .. })
         | (SettingsEditingKind::RightSidebarWidth, SettingItem::RightSidebarWidth { .. })
-        | (SettingsEditingKind::BottomPanelHeight, SettingItem::BottomPanelHeight { .. }) => {
+        | (SettingsEditingKind::BottomPanelHeight, SettingItem::BottomPanelHeight { .. })
+        | (SettingsEditingKind::UiScale, SettingItem::UiScale { .. }) => {
             format!("{}_", editing.draft)
         }
         _ => item.display_value(),
@@ -269,6 +284,13 @@ fn settings_preview_lines(settings: &SettingsState) -> Vec<String> {
         }
     }
 
+    lines.extend(["".to_string(), "[window]".to_string()]);
+    for item in &settings.items {
+        if let SettingItem::UiScale { .. } = item {
+            lines.push(format!("scale_factor_override = {}", item.preview_value()));
+        }
+    }
+
     lines.extend(["".to_string(), "[dock.left]".to_string()]);
     for item in &settings.items {
         if let SettingItem::SidebarWidth { .. } = item {
@@ -304,32 +326,43 @@ impl Renderer {
             return;
         }
 
+        // Uniform UI scale so hardcoded chrome px track the scaled text metrics.
+        let s = self.ui_scale.max(0.5);
         let font_size = self.theme.editor.font_size;
-        let line_height = self.theme.editor.line_height.max(font_size + 4.0);
+        let line_height = self.theme.editor.line_height.max(font_size + 4.0 * s);
         self.editor_overlay_text_system
             .set_metrics(Metrics::new(font_size, line_height));
         self.editor_overlay_scissor = rect_to_scissor(center_bounds);
 
-        let pad_x = self.editor_padding_x.max(18.0);
-        let pad_y = self.editor_padding_y.max(18.0);
+        let pad_x = self.editor_padding_x.max(18.0 * s);
+        let pad_y = self.editor_padding_y.max(18.0 * s);
         let panel_x = center_bounds[0] + pad_x;
         let panel_y = center_bounds[1] + pad_y;
         let panel_w = (center_bounds[2] - pad_x * 2.0).max(1.0);
         let panel_h = (center_bounds[3] - pad_y * 2.0).max(1.0);
-        let gap = 20.0;
 
-        let left_w = (panel_w * 0.70).max(1.0);
-        let right_w = (panel_w - left_w - gap).max(280.0);
+        // Hide the config-preview pane when the panel is too narrow for two columns.
+        let show_preview = panel_w >= 760.0 * s;
+        let gap = if show_preview { 20.0 * s } else { 0.0 };
+        let left_w = if show_preview {
+            (panel_w * 0.70).max(1.0)
+        } else {
+            panel_w
+        };
+        let right_w = if show_preview {
+            (panel_w - left_w - gap).max(280.0 * s)
+        } else {
+            0.0
+        };
         let left_x = panel_x;
         let right_x = left_x + left_w + gap;
 
-        let titlebar_h = line_height + 10.0;
-        let header_h = line_height * 2.0 + 46.0 + titlebar_h;
-        let footer_h = line_height + 12.0;
+        let titlebar_h = line_height + 10.0 * s;
+        let header_h = line_height * 2.0 + 46.0 * s + titlebar_h;
+        let footer_h = line_height + 12.0 * s;
         let content_top = panel_y + header_h;
         let content_bottom = panel_y + panel_h;
         let rows_bottom = (content_bottom - footer_h).max(content_top + line_height);
-
 
         let panel_bg = self.theme.ui.panel_bg.as_f32();
         let editor_bg = self.theme.editor.bg.as_f32();
@@ -347,24 +380,31 @@ impl Renderer {
 
         let mut chrome = vec![
             RegionDrawInstance::new([left_x, panel_y, left_w, panel_h], panel_bg),
-            RegionDrawInstance::new([right_x, panel_y, right_w, panel_h], editor_bg),
             RegionDrawInstance::new([left_x, panel_y, left_w, titlebar_h], titlebar_bg),
-            RegionDrawInstance::new([right_x, panel_y, right_w, titlebar_h], titlebar_bg),
-            RegionDrawInstance::new([right_x - gap * 0.5, panel_y, 1.0, panel_h], divider),
             RegionDrawInstance::new([left_x, panel_y + titlebar_h - 1.0, left_w, 1.0], divider),
-            RegionDrawInstance::new([right_x, panel_y + titlebar_h - 1.0, right_w, 1.0], divider),
             RegionDrawInstance::new([left_x, panel_y + header_h - 1.0, left_w, 1.0], divider),
-            RegionDrawInstance::new([right_x, panel_y + header_h - 1.0, right_w, 1.0], divider),
             RegionDrawInstance::new(
                 [left_x, content_bottom - footer_h, left_w, footer_h],
                 status_bg,
             ),
             RegionDrawInstance::new([left_x, content_bottom - footer_h, left_w, 1.0], divider),
         ];
+        if show_preview {
+            chrome.extend([
+                RegionDrawInstance::new([right_x, panel_y, right_w, panel_h], editor_bg),
+                RegionDrawInstance::new([right_x, panel_y, right_w, titlebar_h], titlebar_bg),
+                RegionDrawInstance::new([right_x - gap * 0.5, panel_y, 1.0, panel_h], divider),
+                RegionDrawInstance::new(
+                    [right_x, panel_y + titlebar_h - 1.0, right_w, 1.0],
+                    divider,
+                ),
+                RegionDrawInstance::new([right_x, panel_y + header_h - 1.0, right_w, 1.0], divider),
+            ]);
+        }
         let mut glyphs = Vec::new();
 
-        let left_text_width = (left_w - 40.0).max(1.0);
-        let right_text_width = (right_w - 24.0).max(1.0);
+        let left_text_width = (left_w - 40.0 * s).max(1.0);
+        let right_text_width = (right_w - 24.0 * s).max(1.0);
 
         self.editor_overlay_text_system
             .set_size(Some(left_text_width), Some(line_height));
@@ -373,8 +413,8 @@ impl Renderer {
             &mut self.editor_overlay_text_system,
             &mut self.atlas,
             &self.queue,
-            left_x + 12.0,
-            panel_y + 4.0,
+            left_x + 12.0 * s,
+            panel_y + 4.0 * s,
             fg_ghost,
         ));
         glyphs.extend(layout_panel_text(
@@ -382,22 +422,24 @@ impl Renderer {
             &mut self.editor_overlay_text_system,
             &mut self.atlas,
             &self.queue,
-            left_x + 54.0,
-            panel_y + 4.0,
+            left_x + 54.0 * s,
+            panel_y + 4.0 * s,
             fg,
         ));
 
-        self.editor_overlay_text_system
-            .set_size(Some(right_text_width), Some(line_height));
-        glyphs.extend(layout_panel_text(
-            "settings.toml preview",
-            &mut self.editor_overlay_text_system,
-            &mut self.atlas,
-            &self.queue,
-            right_x + 10.0,
-            panel_y + 4.0,
-            fg_dim,
-        ));
+        if show_preview {
+            self.editor_overlay_text_system
+                .set_size(Some(right_text_width), Some(line_height));
+            glyphs.extend(layout_panel_text(
+                "settings.toml preview",
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                right_x + 10.0 * s,
+                panel_y + 4.0 * s,
+                fg_dim,
+            ));
+        }
 
         self.editor_overlay_text_system
             .set_size(Some(left_text_width), Some(line_height));
@@ -406,31 +448,33 @@ impl Renderer {
             &mut self.editor_overlay_text_system,
             &mut self.atlas,
             &self.queue,
-            left_x + 14.0,
-            panel_y + titlebar_h + 8.0,
+            left_x + 14.0 * s,
+            panel_y + titlebar_h + 8.0 * s,
             fg,
         ));
 
-        self.editor_overlay_text_system
-            .set_size(Some(right_text_width), Some(line_height));
-        glyphs.extend(layout_panel_text(
-            "CONFIG PREVIEW",
-            &mut self.editor_overlay_text_system,
-            &mut self.atlas,
-            &self.queue,
-            right_x + 10.0,
-            panel_y + titlebar_h + 8.0,
-            fg_ghost,
-        ));
-        glyphs.extend(layout_panel_text(
-            "LIVE",
-            &mut self.editor_overlay_text_system,
-            &mut self.atlas,
-            &self.queue,
-            right_x + right_w - estimate_monospace_width("LIVE", font_size) - 12.0,
-            panel_y + titlebar_h + 8.0,
-            accent,
-        ));
+        if show_preview {
+            self.editor_overlay_text_system
+                .set_size(Some(right_text_width), Some(line_height));
+            glyphs.extend(layout_panel_text(
+                "CONFIG PREVIEW",
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                right_x + 10.0 * s,
+                panel_y + titlebar_h + 8.0 * s,
+                fg_ghost,
+            ));
+            glyphs.extend(layout_panel_text(
+                "LIVE",
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                right_x + right_w - estimate_monospace_width("LIVE", font_size) - 12.0 * s,
+                panel_y + titlebar_h + 8.0 * s,
+                accent,
+            ));
+        }
 
         let selected_item = settings.selected_item();
         let item_count_label = format!("{} SETTINGS", settings.items.len());
@@ -442,28 +486,30 @@ impl Renderer {
             &mut self.editor_overlay_text_system,
             &mut self.atlas,
             &self.queue,
-            left_x + left_w - estimate_monospace_width(&item_count_label, font_size) - 14.0,
-            panel_y + titlebar_h + 8.0,
+            left_x + left_w - estimate_monospace_width(&item_count_label, font_size) - 14.0 * s,
+            panel_y + titlebar_h + 8.0 * s,
             fg_ghost,
         ));
 
         if let Some(item) = selected_item {
-            let shortcuts_y = panel_y + titlebar_h + 14.0 + line_height * 2.0;
-            let shortcut_font = (font_size * 0.72).max(10.0);
-            let shortcut_line_h = (line_height * 0.72).max(14.0);
-            let key_h = (line_height * 0.82).max(shortcut_line_h + 7.0).max(16.0);
+            let shortcuts_y = panel_y + titlebar_h + 14.0 * s + line_height * 2.0;
+            let shortcut_font = (font_size * 0.72).max(10.0 * s);
+            let shortcut_line_h = (line_height * 0.72).max(14.0 * s);
+            let key_h = (line_height * 0.82)
+                .max(shortcut_line_h + 7.0 * s)
+                .max(16.0 * s);
             self.editor_overlay_text_system
                 .set_metrics(Metrics::new(shortcut_font, shortcut_line_h));
             self.editor_overlay_text_system
                 .set_size(None, Some(shortcut_line_h));
-            let mut shortcut_x = left_x + 14.0;
-            let key_text_gap = 10.0;
-            let group_gap = 22.0;
-            let key_pad_x = 7.0;
+            let mut shortcut_x = left_x + 14.0 * s;
+            let key_text_gap = 10.0 * s;
+            let group_gap = 22.0 * s;
+            let key_pad_x = 7.0 * s;
             for (key, label) in setting_control_hint(item) {
                 let key_w = estimate_monospace_width(key, shortcut_font) + key_pad_x * 2.0;
                 let label_w = estimate_monospace_width(label, shortcut_font);
-                if shortcut_x + key_w + key_text_gap + label_w > left_x + left_w - 14.0 {
+                if shortcut_x + key_w + key_text_gap + label_w > left_x + left_w - 14.0 * s {
                     break;
                 }
                 let mut key_outline = accent;
@@ -471,15 +517,23 @@ impl Renderer {
                 let mut key_fill = editor_bg;
                 key_fill[3] = key_fill[3].max(0.92);
                 chrome.push(
-                    RegionDrawInstance::new([shortcut_x, shortcuts_y - 1.0, key_w, key_h], key_outline)
-                        .with_radius(4.0),
+                    RegionDrawInstance::new(
+                        [shortcut_x, shortcuts_y - 1.0, key_w, key_h],
+                        key_outline,
+                    )
+                    .with_radius(4.0 * s),
                 );
                 chrome.push(
                     RegionDrawInstance::new(
-                        [shortcut_x + 1.5, shortcuts_y + 0.5, key_w - 3.0, key_h - 3.0],
+                        [
+                            shortcut_x + 1.5 * s,
+                            shortcuts_y + 0.5 * s,
+                            key_w - 3.0 * s,
+                            key_h - 3.0 * s,
+                        ],
                         key_fill,
                     )
-                    .with_radius(3.0),
+                    .with_radius(3.0 * s),
                 );
                 glyphs.extend(layout_panel_text_bold(
                     key,
@@ -507,11 +561,13 @@ impl Renderer {
                 .set_size(Some(left_text_width), Some(line_height));
         }
 
-        let key_col_w = 400.0;
-        let value_col_w = 300.0;
-        let desc_x_offset = 410.0;
-        let section_gap = 14.0;
-        let row_h = line_height * 2.0 + 20.0;
+        // Proportional columns: absolute widths (400/410/300) overlapped on narrow
+        // windows and collapsed to half-size on 2x displays.
+        let key_col_w = (left_w * 0.32).clamp(160.0 * s, 420.0 * s);
+        let value_col_w = (left_w * 0.26).clamp(140.0 * s, 320.0 * s);
+        let desc_x_offset = key_col_w + 18.0 * s;
+        let section_gap = 14.0 * s;
+        let row_h = line_height * 2.0 + 20.0 * s;
 
         // ── Virtual layout pre-pass ───────────────────────────────────────────
         // Compute each item's virtual Y (relative to content_top + 8.0 at scroll=0)
@@ -533,7 +589,7 @@ impl Renderer {
                         vy += section_gap;
                     }
                     let y = vy;
-                    vy += line_height + 4.0;
+                    vy += line_height + 4.0 * s;
                     last_sec = Some(sec);
                     (Some(sec), y)
                 } else {
@@ -544,40 +600,40 @@ impl Renderer {
                     sec_y,
                     item_y: vy,
                 });
-                vy += row_h + 4.0;
+                vy += row_h + 4.0 * s;
             }
             total_virt_h = vy;
         }
 
         // Compute scroll_y: enough to keep selected item fully visible at the bottom.
-        let vis_h = (rows_bottom - content_top - 8.0).max(1.0);
+        let vis_h = (rows_bottom - content_top - 8.0 * s).max(1.0);
         let sel_virt_y = layouts
             .get(settings.selected_index)
             .map(|l| l.item_y)
             .unwrap_or(0.0);
-        let scroll_y = (sel_virt_y + row_h - vis_h + 8.0).max(0.0);
-        let base_y = content_top + 8.0 - scroll_y;
+        let scroll_y = (sel_virt_y + row_h - vis_h + 8.0 * s).max(0.0);
+        let base_y = content_top + 8.0 * s - scroll_y;
 
         // Scrollbar (shown only when content overflows)
         if total_virt_h > vis_h {
-            let track_x = left_x + left_w - 7.0;
-            let track_top = content_top + 4.0;
-            let track_h = (rows_bottom - footer_h - track_top - 4.0).max(8.0);
-            let thumb_h = (vis_h / total_virt_h * track_h).max(18.0).min(track_h);
+            let track_x = left_x + left_w - 7.0 * s;
+            let track_top = content_top + 4.0 * s;
+            let track_h = (rows_bottom - footer_h - track_top - 4.0 * s).max(8.0 * s);
+            let thumb_h = (vis_h / total_virt_h * track_h).max(18.0 * s).min(track_h);
             let thumb_y = track_top + (scroll_y / total_virt_h * track_h).min(track_h - thumb_h);
             chrome.push(
                 RegionDrawInstance::new(
-                    [track_x, track_top, 3.0, track_h],
+                    [track_x, track_top, 3.0 * s, track_h],
                     with_alpha(fg_ghost, 0.12),
                 )
-                .with_radius(1.5),
+                .with_radius(1.5 * s),
             );
             chrome.push(
                 RegionDrawInstance::new(
-                    [track_x, thumb_y, 3.0, thumb_h],
+                    [track_x, thumb_y, 3.0 * s, thumb_h],
                     with_alpha(fg_ghost, 0.45),
                 )
-                .with_radius(1.5),
+                .with_radius(1.5 * s),
             );
         }
 
@@ -588,7 +644,7 @@ impl Renderer {
             // Render section header if this item starts a new section and header is visible.
             if let Some(sec) = layout.sec_header {
                 let sec_abs_y = base_y + layout.sec_y;
-                if sec_abs_y + line_height > content_top && sec_abs_y < rows_bottom - 8.0 {
+                if sec_abs_y + line_height > content_top && sec_abs_y < rows_bottom - 8.0 * s {
                     self.editor_overlay_text_system
                         .set_size(Some(key_col_w), Some(line_height));
                     glyphs.extend(layout_panel_text(
@@ -596,15 +652,15 @@ impl Renderer {
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,
-                        left_x + 14.0,
+                        left_x + 14.0 * s,
                         sec_abs_y,
                         fg_ghost,
                     ));
                     chrome.push(RegionDrawInstance::new(
                         [
-                            left_x + 14.0 + key_col_w,
-                            sec_abs_y + 7.0,
-                            (left_w - (key_col_w + 36.0)).max(1.0),
+                            left_x + 14.0 * s + key_col_w,
+                            sec_abs_y + 7.0 * s,
+                            (left_w - (key_col_w + 36.0 * s)).max(1.0),
                             1.0,
                         ],
                         divider,
@@ -613,7 +669,7 @@ impl Renderer {
             }
 
             // Skip items that are entirely outside the viewport.
-            if item_abs_y + row_h <= content_top || item_abs_y >= rows_bottom - 8.0 {
+            if item_abs_y + row_h <= content_top || item_abs_y >= rows_bottom - 8.0 * s {
                 continue;
             }
 
@@ -621,26 +677,37 @@ impl Renderer {
             if is_selected {
                 chrome.push(
                     RegionDrawInstance::new(
-                        [left_x + 6.0, item_abs_y, (left_w - 18.0).max(1.0), row_h],
+                        [
+                            left_x + 6.0 * s,
+                            item_abs_y,
+                            (left_w - 18.0 * s).max(1.0),
+                            row_h,
+                        ],
                         selection_bg,
                     )
-                    .with_radius(8.0),
+                    .with_radius(8.0 * s),
                 );
                 chrome.push(
                     RegionDrawInstance::new(
-                        [left_x + 6.0, item_abs_y + 4.0, 3.0, row_h - 8.0],
+                        [
+                            left_x + 6.0 * s,
+                            item_abs_y + 4.0 * s,
+                            3.0 * s,
+                            row_h - 8.0 * s,
+                        ],
                         accent,
                     )
-                    .with_radius(2.0),
+                    .with_radius(2.0 * s),
                 );
             }
 
-            let key_x = left_x + 18.0;
-            let key_y = item_abs_y + 6.0;
+            let key_x = left_x + 18.0 * s;
+            let key_y = item_abs_y + 6.0 * s;
             let desc_x = left_x + desc_x_offset;
-            let desc_y = item_abs_y + line_height + 8.0;
-            let value_x = left_x + left_w - value_col_w - 18.0;
-            let desc_w = (value_x - desc_x - 18.0).max(220.0);
+            let desc_y = item_abs_y + line_height + 8.0 * s;
+            let value_x = left_x + left_w - value_col_w - 18.0 * s;
+            let desc_w = value_x - desc_x - 18.0 * s;
+            let show_desc = desc_w >= 120.0 * s;
 
             self.editor_overlay_text_system
                 .set_size(Some(key_col_w), Some(line_height));
@@ -654,25 +721,27 @@ impl Renderer {
                 if is_selected { fg } else { fg_dim },
             ));
 
-            self.editor_overlay_text_system
-                .set_size(Some(desc_w), Some(line_height));
-            glyphs.extend(layout_panel_text(
-                &clamp_monospace_text(item.description(), desc_w, font_size),
-                &mut self.editor_overlay_text_system,
-                &mut self.atlas,
-                &self.queue,
-                desc_x,
-                desc_y,
-                fg_ghost,
-            ));
+            if show_desc {
+                self.editor_overlay_text_system
+                    .set_size(Some(desc_w), Some(line_height));
+                glyphs.extend(layout_panel_text(
+                    &clamp_monospace_text(item.description(), desc_w, font_size),
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    desc_x,
+                    desc_y,
+                    fg_ghost,
+                ));
+            }
 
             match item {
                 SettingItem::EnableOutline { enabled }
                 | SettingItem::IndentInsertSpaces { enabled }
                 | SettingItem::InlineSuggestion { enabled } => {
-                    let toggle_w = 40.0;
-                    let toggle_h = 20.0;
-                    let toggle_x = left_x + left_w - toggle_w - 22.0;
+                    let toggle_w = 40.0 * s;
+                    let toggle_h = 20.0 * s;
+                    let toggle_x = left_x + left_w - toggle_w - 22.0 * s;
                     let toggle_y = item_abs_y + (row_h - toggle_h) * 0.5;
                     chrome.push(
                         RegionDrawInstance::new(
@@ -683,23 +752,23 @@ impl Renderer {
                                 with_alpha(fg_ghost, 0.28)
                             },
                         )
-                        .with_radius(10.0),
+                        .with_radius(10.0 * s),
                     );
                     chrome.push(
                         RegionDrawInstance::new(
                             [
                                 if *enabled {
-                                    toggle_x + toggle_w - 16.0
+                                    toggle_x + toggle_w - 16.0 * s
                                 } else {
-                                    toggle_x + 2.0
+                                    toggle_x + 2.0 * s
                                 },
-                                toggle_y + 2.0,
-                                16.0,
-                                16.0,
+                                toggle_y + 2.0 * s,
+                                16.0 * s,
+                                16.0 * s,
                             ],
                             if *enabled { editor_bg } else { fg_dim },
                         )
-                        .with_radius(8.0),
+                        .with_radius(8.0 * s),
                     );
                     let badge_label = match item {
                         SettingItem::IndentInsertSpaces { enabled } => {
@@ -709,14 +778,20 @@ impl Renderer {
                                 "TAB"
                             }
                         }
-                        SettingItem::InlineSuggestion { .. } => "OFF",
+                        SettingItem::InlineSuggestion { enabled } => {
+                            if *enabled {
+                                "ON"
+                            } else {
+                                "OFF"
+                            }
+                        }
                         _ => "",
                     };
                     if !badge_label.is_empty() {
                         let badge_x =
-                            toggle_x - estimate_monospace_width(badge_label, font_size) - 10.0;
+                            toggle_x - estimate_monospace_width(badge_label, font_size) - 10.0 * s;
                         self.editor_overlay_text_system
-                            .set_size(Some(80.0), Some(line_height));
+                            .set_size(Some(80.0 * s), Some(line_height));
                         glyphs.extend(layout_panel_text(
                             badge_label,
                             &mut self.editor_overlay_text_system,
@@ -731,151 +806,170 @@ impl Renderer {
                 _ => {
                     chrome.push(
                         RegionDrawInstance::new(
-                            [value_x, item_abs_y + 6.0, value_col_w, line_height + 12.0],
+                            [
+                                value_x,
+                                item_abs_y + 6.0 * s,
+                                value_col_w,
+                                line_height + 12.0 * s,
+                            ],
                             if is_selected {
                                 accent_soft
                             } else {
                                 with_alpha(panel_bg, 0.72)
                             },
                         )
-                        .with_radius(5.0),
+                        .with_radius(5.0 * s),
                     );
                     chrome.push(RegionDrawInstance::new(
-                        [value_x, item_abs_y + 6.0, value_col_w, 1.0],
+                        [value_x, item_abs_y + 6.0 * s, value_col_w, 1.0],
                         if is_selected { accent_border } else { divider },
                     ));
                     self.editor_overlay_text_system
-                        .set_size(Some((value_col_w - 16.0).max(1.0)), Some(line_height));
+                        .set_size(Some((value_col_w - 16.0 * s).max(1.0)), Some(line_height));
                     glyphs.extend(layout_panel_text(
                         &clamp_monospace_text(
                             &current_row_value(settings, item, is_selected),
-                            (value_col_w - 16.0).max(1.0),
+                            (value_col_w - 16.0 * s).max(1.0),
                             font_size,
                         ),
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,
-                        value_x + 12.0,
-                        item_abs_y + 12.0,
+                        value_x + 12.0 * s,
+                        item_abs_y + 12.0 * s,
                         if is_selected { accent } else { fg_dim },
                     ));
                 }
             }
 
             if let Some(ratio) = setting_value_ratio(item) {
-                let meter_w = 96.0;
-                let meter_h = 3.0;
-                let meter_x = value_x + value_col_w - meter_w - 8.0;
-                let meter_y = item_abs_y + row_h - 10.0;
+                let meter_w = 96.0 * s;
+                let meter_h = 3.0 * s;
+                let meter_x = value_x + value_col_w - meter_w - 8.0 * s;
+                let meter_y = item_abs_y + row_h - 10.0 * s;
                 chrome.push(
                     RegionDrawInstance::new(
                         [meter_x, meter_y, meter_w, meter_h],
                         with_alpha(fg_ghost, 0.18),
                     )
-                    .with_radius(1.5),
+                    .with_radius(1.5 * s),
                 );
                 chrome.push(
                     RegionDrawInstance::new(
                         [meter_x, meter_y, meter_w * ratio, meter_h],
-                        if is_selected { accent } else { with_alpha(accent, 0.48) },
+                        if is_selected {
+                            accent
+                        } else {
+                            with_alpha(accent, 0.48)
+                        },
                     )
-                    .with_radius(1.5),
+                    .with_radius(1.5 * s),
                 );
             }
 
             chrome.push(RegionDrawInstance::new(
                 [
-                    left_x + 14.0,
+                    left_x + 14.0 * s,
                     item_abs_y + row_h - 2.0,
-                    (left_w - 28.0).max(1.0),
+                    (left_w - 28.0 * s).max(1.0),
                     1.0,
                 ],
                 divider,
             ));
         }
 
-        let mut preview_start_y = content_top + 8.0;
-        if let Some(item) = selected_item {
-            let detail_top = content_top + 8.0;
-            let detail_h = line_height * 3.0 + 22.0;
-            preview_start_y = detail_top + detail_h + 12.0;
-            chrome.push(
-                RegionDrawInstance::new(
-                    [right_x + 10.0, detail_top, right_w - 20.0, detail_h],
-                    with_alpha(panel_bg, 0.55),
-                )
-                .with_radius(8.0),
-            );
-            chrome.push(
-                RegionDrawInstance::new(
-                    [right_x + 10.0, detail_top, 3.0, detail_h],
+        if show_preview {
+            let mut preview_start_y = content_top + 8.0 * s;
+            if let Some(item) = selected_item {
+                let detail_top = content_top + 8.0 * s;
+                let detail_h = line_height * 3.0 + 22.0 * s;
+                preview_start_y = detail_top + detail_h + 12.0 * s;
+                chrome.push(
+                    RegionDrawInstance::new(
+                        [right_x + 10.0 * s, detail_top, right_w - 20.0 * s, detail_h],
+                        with_alpha(panel_bg, 0.55),
+                    )
+                    .with_radius(8.0 * s),
+                );
+                chrome.push(
+                    RegionDrawInstance::new(
+                        [right_x + 10.0 * s, detail_top, 3.0 * s, detail_h],
+                        accent,
+                    )
+                    .with_radius(2.0 * s),
+                );
+                self.editor_overlay_text_system
+                    .set_size(Some(right_text_width - 20.0 * s), Some(line_height));
+                glyphs.extend(layout_panel_text(
+                    &clamp_monospace_text(item.title(), right_text_width - 20.0 * s, font_size),
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    right_x + 22.0 * s,
+                    detail_top + 8.0 * s,
+                    fg,
+                ));
+                glyphs.extend(layout_panel_text(
+                    &clamp_monospace_text(
+                        &item.display_value(),
+                        right_text_width - 20.0 * s,
+                        font_size,
+                    ),
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    right_x + 22.0 * s,
+                    detail_top + 8.0 * s + line_height,
                     accent,
-                )
-                .with_radius(2.0),
-            );
-            self.editor_overlay_text_system
-                .set_size(Some(right_text_width - 20.0), Some(line_height));
-            glyphs.extend(layout_panel_text(
-                &clamp_monospace_text(item.title(), right_text_width - 20.0, font_size),
-                &mut self.editor_overlay_text_system,
-                &mut self.atlas,
-                &self.queue,
-                right_x + 22.0,
-                detail_top + 8.0,
-                fg,
-            ));
-            glyphs.extend(layout_panel_text(
-                &clamp_monospace_text(&item.display_value(), right_text_width - 20.0, font_size),
-                &mut self.editor_overlay_text_system,
-                &mut self.atlas,
-                &self.queue,
-                right_x + 22.0,
-                detail_top + 8.0 + line_height,
-                accent,
-            ));
-            glyphs.extend(layout_panel_text(
-                &clamp_monospace_text(item.description(), right_text_width - 24.0, font_size),
-                &mut self.editor_overlay_text_system,
-                &mut self.atlas,
-                &self.queue,
-                right_x + 22.0,
-                detail_top + 8.0 + line_height * 2.0,
-                fg_ghost,
-            ));
-        }
+                ));
+                glyphs.extend(layout_panel_text(
+                    &clamp_monospace_text(
+                        item.description(),
+                        right_text_width - 24.0 * s,
+                        font_size,
+                    ),
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    right_x + 22.0 * s,
+                    detail_top + 8.0 * s + line_height * 2.0,
+                    fg_ghost,
+                ));
+            }
 
-        let preview_lines = settings_preview_lines(settings);
-        let preview_h = (rows_bottom - preview_start_y - 8.0).max(line_height);
-        let preview_rows = (preview_h / line_height).floor() as usize;
-        self.editor_overlay_text_system
-            .set_size(Some(right_text_width), Some(line_height));
-        for (idx, line) in preview_lines
-            .into_iter()
-            .take(preview_rows.max(1))
-            .enumerate()
-        {
-            let y = preview_start_y + idx as f32 * line_height;
-            let color = if line.starts_with('#') {
-                fg_ghost
-            } else if line.starts_with('[') {
-                accent
-            } else {
-                fg_dim
-            };
-            glyphs.extend(layout_panel_text(
-                &clamp_monospace_text(&line, right_text_width, font_size),
-                &mut self.editor_overlay_text_system,
-                &mut self.atlas,
-                &self.queue,
-                right_x + 10.0,
-                y,
-                color,
-            ));
+            let preview_lines = settings_preview_lines(settings);
+            let preview_h = (rows_bottom - preview_start_y - 8.0 * s).max(line_height);
+            let preview_rows = (preview_h / line_height).floor() as usize;
+            self.editor_overlay_text_system
+                .set_size(Some(right_text_width), Some(line_height));
+            for (idx, line) in preview_lines
+                .into_iter()
+                .take(preview_rows.max(1))
+                .enumerate()
+            {
+                let y = preview_start_y + idx as f32 * line_height;
+                let color = if line.starts_with('#') {
+                    fg_ghost
+                } else if line.starts_with('[') {
+                    accent
+                } else {
+                    fg_dim
+                };
+                glyphs.extend(layout_panel_text(
+                    &clamp_monospace_text(&line, right_text_width, font_size),
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    right_x + 10.0 * s,
+                    y,
+                    color,
+                ));
+            }
         }
 
         self.editor_overlay_text_system
             .set_size(Some(left_text_width), Some(line_height));
-        let footer_y = content_bottom - footer_h + 4.0;
+        let footer_y = content_bottom - footer_h + 4.0 * s;
         let left_status = if settings.editing.is_some() {
             [
                 ShortcutHintSegment::Keys(&["EDIT"]),
@@ -901,7 +995,7 @@ impl Renderer {
             &mut self.atlas,
             &self.queue,
             &mut chrome,
-            left_x + 10.0,
+            left_x + 10.0 * s,
             footer_y,
             font_size,
             line_height,

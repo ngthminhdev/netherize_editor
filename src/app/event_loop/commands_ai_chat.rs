@@ -728,7 +728,12 @@ impl AppShell {
                 Some(changed)
             }
             Command::AiChatUnfocus => {
-                if self.focus_manager.current() == FocusTarget::RightSidebar {
+                // In Zen Mode the editor is hidden, so unfocusing back to it would
+                // strand the user on a blank surface. Keep focus on the maximized
+                // chat panel instead — Esc should not leave the zen window.
+                if self.panel_state.maximized_region.is_some() {
+                    Some(false)
+                } else if self.focus_manager.current() == FocusTarget::RightSidebar {
                     let focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
                     if focus_changed {
                         self.input_handler.clear_pending_prefix();
@@ -748,8 +753,11 @@ impl AppShell {
                 let focus_changed = self.focus_manager.set(FocusTarget::RightSidebar);
                 if focus_changed {
                     self.input_handler.clear_pending_prefix();
-                    // Enter terminal focus so keystrokes reach opencode.
-                    let _ = self.app_state.apply_mode_event(ModeEvent::FocusTerminal);
+                }
+                // Enter terminal focus so keystrokes reach opencode even when
+                // the right sidebar already owns focus but mode drifted away.
+                if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
+                    let _ = result;
                 }
                 self.right_terminal_needs_layout = true;
                 Some(true)
@@ -918,8 +926,10 @@ impl AppShell {
             });
         } else {
             // opencode not found — fall back to spawning a shell that tells the user.
-            self.right_pty_startup_command =
-                Some("echo 'opencode not found. Run: curl -fsSL https://opencode.ai/install | sh'\\r".to_string());
+            self.right_pty_startup_command = Some(
+                "echo 'opencode not found. Run: curl -fsSL https://opencode.ai/install | sh'\\r"
+                    .to_string(),
+            );
             self.submit(RequestSpec {
                 revision_id: 0,
                 topic: RequestTopic::TerminalPty,
