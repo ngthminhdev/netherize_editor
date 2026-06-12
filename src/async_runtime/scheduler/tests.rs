@@ -5,7 +5,7 @@ use notify::{Event as NotifyEvent, EventKind as NotifyEventKind, event::ModifyKi
 use crate::async_runtime::{
     message::{FileSystemChangeKind, FileSystemEvent},
     scheduler::{
-        file_watch::{extend_unique_file_events, normalize_notify_event},
+        file_watch::{extend_unique_file_events, file_watch_restart_backoff, normalize_notify_event},
         fzf::{build_file_preview_lines, build_fzf_find_file_script, build_fzf_live_grep_script},
         git::parse_git_blame_summary,
         runtime::build_worker_runtime,
@@ -69,6 +69,18 @@ fn extend_unique_file_events_deduplicates_burst_entries() {
     extend_unique_file_events(&mut target, [event.clone(), event.clone()]);
 
     assert_eq!(target, vec![event]);
+}
+
+#[test]
+fn file_watch_restart_backoff_grows_exponentially_and_caps_at_30s() {
+    use std::time::Duration;
+
+    assert_eq!(file_watch_restart_backoff(1), Duration::from_secs(2));
+    assert_eq!(file_watch_restart_backoff(2), Duration::from_secs(4));
+    assert_eq!(file_watch_restart_backoff(3), Duration::from_secs(8));
+    assert_eq!(file_watch_restart_backoff(4), Duration::from_secs(16));
+    assert_eq!(file_watch_restart_backoff(5), Duration::from_secs(30));
+    assert_eq!(file_watch_restart_backoff(100), Duration::from_secs(30));
 }
 
 #[test]

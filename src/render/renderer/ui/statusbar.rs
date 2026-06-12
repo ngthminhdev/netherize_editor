@@ -2,7 +2,7 @@ use crate::{
     core::mode::EditorMode,
     render::{
         region_pipeline::RegionDrawInstance,
-        renderer::{Renderer, StatusbarLayoutKey},
+        renderer::{AiInlineStatus, LspStatusIndicator, Renderer, StatusbarLayoutKey},
     },
 };
 
@@ -39,6 +39,8 @@ impl Renderer {
         lsp_loading: bool,
         lsp_loading_frame: u8,
         lsp_progress: Option<&str>,
+        lsp_indicator: &LspStatusIndicator,
+        ai_status: Option<AiInlineStatus>,
         venv_name: Option<&str>,
         python_version: Option<&str>,
         node_version: Option<&str>,
@@ -70,6 +72,8 @@ impl Renderer {
             lsp_loading,
             lsp_loading_frame,
             lsp_progress: lsp_progress.map(str::to_string),
+            lsp_indicator: lsp_indicator.clone(),
+            ai_status,
             bounds,
             venv_name: venv_name.map(str::to_string),
             python_version: python_version.map(str::to_string),
@@ -250,6 +254,8 @@ impl Renderer {
             .map(|(c, t)| format!("{c}/{t}"))
             .unwrap_or_default();
 
+        let show_lsp_dot = !matches!(lsp_indicator, LspStatusIndicator::NotApplicable);
+
         // Right zone items in display order (left → right as rendered).
         let mut right_items: Vec<(String, [f32; 4])> = Vec::new();
         // LSP progress label (leftmost in right zone, most prominent).
@@ -271,6 +277,23 @@ impl Renderer {
         let lang_str = filetype.trim();
         if !lang_str.is_empty() {
             right_items.push((lang_str.to_string(), fg_ghost));
+        }
+
+        // ── LSP server chip (name colored by state, dot rendered far right) ───
+        match lsp_indicator {
+            LspStatusIndicator::NotApplicable => {}
+            LspStatusIndicator::Inactive => {
+                right_items.push(("No LSP".to_string(), fg_ghost));
+            }
+            LspStatusIndicator::Starting(name) => {
+                right_items.push((format!("{name}…"), amber));
+            }
+            LspStatusIndicator::Running(name) => {
+                right_items.push((name.clone(), fg_ghost));
+            }
+            LspStatusIndicator::Missing(name) => {
+                right_items.push((format!("{name} missing"), error_fg));
+            }
         }
 
         // ── Runtime version badges — only shown when filetype matches ────────
@@ -299,13 +322,27 @@ impl Renderer {
             }
         }
 
+        // ── AI inline completion chip ─────────────────────────────────────────
+        if let Some(status) = ai_status {
+            let (label, color) = match status {
+                AiInlineStatus::Ready => ("AI", fg_ghost),
+                AiInlineStatus::Loading => ("AI…", amber),
+                AiInlineStatus::Error => ("AI!", error_fg),
+            };
+            right_items.push((label.to_string(), color));
+        }
+
         let right_text_w: f32 = right_items
             .iter()
             .map(|(t, _)| estimate_monospace_width(t, font_size))
             .sum::<f32>()
             + item_gap * right_items.len().saturating_sub(1) as f32;
         // LSP dot/spinner sits at the far right, separated by one item_gap.
-        let lsp_zone_w = lsp_dot_size + item_gap;
+        let lsp_zone_w = if show_lsp_dot || lsp_loading {
+            lsp_dot_size + item_gap
+        } else {
+            0.0
+        };
         let total_right_w = right_text_w + lsp_zone_w;
         let right_start =
             (bounds[0] + bounds[2] - right_pad - total_right_w).max(left_zone_end + item_gap);
@@ -470,13 +507,21 @@ impl Renderer {
                 origin_y,
                 amber,
             ));
-        } else {
-            let lsp_color = if lsp_progress.is_some() {
-                amber
-            } else if diagnostics_errors > 0 {
-                error_fg
-            } else {
-                success_fg
+        } else if show_lsp_dot {
+            let lsp_color = match lsp_indicator {
+                LspStatusIndicator::NotApplicable => fg_ghost,
+                LspStatusIndicator::Inactive => fg_ghost,
+                LspStatusIndicator::Starting(_) => amber,
+                LspStatusIndicator::Missing(_) => error_fg,
+                LspStatusIndicator::Running(_) => {
+                    if lsp_progress.is_some() {
+                        amber
+                    } else if diagnostics_errors > 0 {
+                        error_fg
+                    } else {
+                        success_fg
+                    }
+                }
             };
             chrome.push(
                 RegionDrawInstance::new([lsp_x, lsp_y, lsp_dot_size, lsp_dot_size], lsp_color)

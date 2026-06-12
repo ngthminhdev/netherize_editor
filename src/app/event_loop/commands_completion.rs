@@ -73,15 +73,38 @@ impl AppShell {
         if !is_ts_js_profile_key(profile.key) {
             return;
         }
-        let Some(workspace_root) = self.app_state.workspace_root_path().map(std::path::PathBuf::from)
+        let Some(workspace_root) = self
+            .app_state
+            .workspace_root_path()
+            .map(std::path::PathBuf::from)
         else {
             return;
         };
         let text = self.app_state.text_string();
-        let symbols = crate::lsp::extract_ts_js_exports_from_text(&active_path, &workspace_root, &text);
-        self.app_state
-            .workspace_symbol_cache()
-            .upsert_file_symbols(profile.key, &active_path, symbols);
+        let symbols =
+            crate::lsp::extract_ts_js_exports_from_text(&active_path, &workspace_root, &text);
+        self.app_state.workspace_symbol_cache().upsert_file_symbols(
+            profile.key,
+            &active_path,
+            symbols,
+        );
+    }
+
+    /// Explicit completion request (Ctrl+Space). Unlike the automatic typing
+    /// trigger, the user's intent wins over AI ghost text: dismiss the
+    /// suggestion and invalidate any in-flight AI request (so its late result
+    /// can't pop the menu back off the screen), then request the LSP menu.
+    pub(super) fn submit_lsp_completion_manual(&mut self) -> bool {
+        self.ai_inline_anchor = None;
+        self.ai_inline_revision = self.ai_inline_revision.saturating_add(1);
+        self.cancel_ai_inline_completion();
+        let mut changed = self.app_state.clear_inline_suggestion();
+        if changed {
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+        }
+        changed |= self.submit_lsp_completion();
+        changed
     }
 
     pub(super) fn submit_lsp_completion(&mut self) -> bool {
@@ -252,10 +275,8 @@ impl AppShell {
     /// for either inline docs or "No docs available".
     pub(in crate::app::event_loop) fn submit_completion_resolve(&mut self) -> bool {
         self.completion_resolve_request_id = None;
-        let Some((item_json, item_label, completion_revision, documentation)) = self
-            .app_state
-            .completion()
-            .and_then(|completion| {
+        let Some((item_json, item_label, completion_revision, documentation)) =
+            self.app_state.completion().and_then(|completion| {
                 completion
                     .filtered_items
                     .get(completion.selected_index)
@@ -379,8 +400,8 @@ impl AppShell {
         }
         text.replace_range(start_byte..end_byte, &insert_text);
 
-        let hover_character = completion.trigger_pos.col
-            + insert_text.chars().count().saturating_sub(1);
+        let hover_character =
+            completion.trigger_pos.col + insert_text.chars().count().saturating_sub(1);
         self.submit(RequestSpec {
             revision_id: 0,
             topic: RequestTopic::LspRequest,
@@ -495,7 +516,8 @@ impl AppShell {
         let mut edits = vec![primary_edit.clone()];
         edits.extend(item.additional_text_edits.clone());
         if item.additional_text_edits.is_empty() {
-            let import_style = ts_js_module_style_for_completion(&text, self.app_state.active_file());
+            let import_style =
+                ts_js_module_style_for_completion(&text, self.app_state.active_file());
             if let Some(module_specifier) = completion_module_specifier(
                 self.app_state.active_file(),
                 item.source_path.as_deref(),
@@ -860,11 +882,7 @@ fn completion_kind_is_callable(kind: u32) -> bool {
 fn completion_insert_text_has_parameters(text: &str) -> Option<bool> {
     let (open, close) = completion_insert_text_call_parens(text)?;
     let has_params = !text[open + 1..close].trim().is_empty();
-    if has_params {
-        Some(true)
-    } else {
-        None
-    }
+    if has_params { Some(true) } else { None }
 }
 
 fn completion_insert_text_call_parens(text: &str) -> Option<(usize, usize)> {
@@ -1055,7 +1073,8 @@ fn lsp_text_edit_byte_range(
     source: &str,
     edit: &crate::async_runtime::message::LspTextEdit,
 ) -> Option<(usize, usize)> {
-    let start = lsp_position_to_byte_idx(source, edit.range.start.line, edit.range.start.character)?;
+    let start =
+        lsp_position_to_byte_idx(source, edit.range.start.line, edit.range.start.character)?;
     let end = lsp_position_to_byte_idx(source, edit.range.end.line, edit.range.end.character)?;
     (start <= end && end <= source.len()).then_some((start, end))
 }
@@ -1105,7 +1124,11 @@ fn synthesize_ts_named_import_edits(
             if let Some(edit) = merge_named_require_edit(source, symbol_name, module_specifier) {
                 return vec![edit];
             }
-            vec![new_named_require_edit(source, symbol_name, module_specifier)]
+            vec![new_named_require_edit(
+                source,
+                symbol_name,
+                module_specifier,
+            )]
         }
     }
 }
@@ -1121,13 +1144,21 @@ fn synthesize_ts_default_import_edits(
             if let Some(edit) = merge_default_import_edit(source, symbol_name, module_specifier) {
                 return vec![edit];
             }
-            vec![new_default_import_edit(source, symbol_name, module_specifier)]
+            vec![new_default_import_edit(
+                source,
+                symbol_name,
+                module_specifier,
+            )]
         }
         TsJsModuleStyle::CommonJs => {
             if let Some(edit) = merge_default_require_edit(source, symbol_name, module_specifier) {
                 return vec![edit];
             }
-            vec![new_default_require_edit(source, symbol_name, module_specifier)]
+            vec![new_default_require_edit(
+                source,
+                symbol_name,
+                module_specifier,
+            )]
         }
     }
 }
@@ -1267,7 +1298,8 @@ fn merge_default_require_edit(
         let Some(after_keyword) = strip_commonjs_declaration_keyword(trimmed) else {
             continue;
         };
-        let Some((name, _rest)) = read_ts_js_identifier_with_rest(after_keyword.trim_start()) else {
+        let Some((name, _rest)) = read_ts_js_identifier_with_rest(after_keyword.trim_start())
+        else {
             continue;
         };
         if name == symbol_name {
@@ -1525,8 +1557,7 @@ fn source_uses_commonjs(source: &str) -> bool {
 
 fn is_commonjs_require_line(trimmed: &str) -> bool {
     trimmed.starts_with("require(")
-        || strip_commonjs_declaration_keyword(trimmed)
-            .is_some_and(|rest| rest.contains("require("))
+        || strip_commonjs_declaration_keyword(trimmed).is_some_and(|rest| rest.contains("require("))
 }
 
 fn line_requires_module(line: &str, module_specifier: &str) -> bool {

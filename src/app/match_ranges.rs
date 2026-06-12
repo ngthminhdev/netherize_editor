@@ -219,7 +219,9 @@ mod tests {
     #[test]
     fn score_prefers_tight_prefix_completion_matches() {
         let put = score_label_match("put", "p").expect("put should match").0;
-        let patch = score_label_match("patch", "p").expect("patch should match").0;
+        let patch = score_label_match("patch", "p")
+            .expect("patch should match")
+            .0;
         let page = score_label_match("CSSPageDescriptors", "p")
             .expect("camel boundary should match")
             .0;

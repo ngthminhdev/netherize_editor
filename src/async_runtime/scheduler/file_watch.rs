@@ -1,4 +1,9 @@
-use std::{path::PathBuf, sync::mpsc as std_mpsc, time::Duration};
+use std::{
+    collections::HashSet,
+    path::PathBuf,
+    sync::mpsc as std_mpsc,
+    time::{Duration, Instant},
+};
 
 use notify::{
     Event as NotifyEvent, EventKind as NotifyEventKind, RecursiveMode, Watcher, event::ModifyKind,
@@ -18,10 +23,17 @@ use super::{
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
 };
 
-/// Số lần thử dựng lại watcher trước khi bỏ cuộc (chỉ còn polling fallback).
-const FILE_WATCH_MAX_RESTARTS: u32 = 5;
-/// Backoff giữa các lần restart watcher.
-const FILE_WATCH_RESTART_BACKOFF: Duration = Duration::from_secs(2);
+/// Sau số lần restart này, báo cho UI biết watcher đang degraded (toast).
+/// Watcher KHÔNG bỏ cuộc — mất live-update tree-level là mất vĩnh viễn khả năng
+/// thấy file mới do agent/IDE khác tạo, trong khi poll 3s chỉ cứu buffer đang mở.
+const FILE_WATCH_DEGRADED_THRESHOLD: u32 = 5;
+/// Backoff giữa các lần restart watcher: 2s, 4s, 8s, 16s, rồi cap 30s.
+pub(super) fn file_watch_restart_backoff(restarts: u32) -> Duration {
+    Duration::from_secs((1u64 << restarts.min(5)).clamp(2, 30))
+}
+/// Watcher chạy ổn định ít nhất chừng này thì coi như lần chết kế tiếp là sự cố
+/// mới, reset backoff về đầu thay vì leo tiếp lên cap.
+const FILE_WATCH_STABLE_RUN: Duration = Duration::from_secs(60);
 
 pub(super) async fn run_file_watch_request(
     request: WorkerRequest,
@@ -44,17 +56,20 @@ pub(super) async fn run_file_watch_request(
     );
 
     // #4: Watcher có thể chết giữa chừng (channel disconnect, FSEvents reset).
-    // Tự dựng lại với backoff thay vì mất live-update vĩnh viễn.
+    // Tự dựng lại với backoff lũy tiến, KHÔNG bao giờ bỏ cuộc; qua ngưỡng degraded
+    // thì emit Failed một lần duy nhất để UI toast cho user biết.
     let mut restarts = 0u32;
+    let mut degraded_notified = false;
     loop {
         let watcher_request = request.clone();
         let watcher_tx = worker_tx.clone();
         let watcher_proxy = event_proxy.clone();
+        let run_started = Instant::now();
         let worker_handle = tokio::task::spawn_blocking(move || {
             execute_file_watch_loop(&watcher_request, &watcher_tx, &watcher_proxy)
         });
 
-        match worker_handle.await {
+        let failure = match worker_handle.await {
             Ok(Ok(())) => {
                 emit_message(
                     &worker_tx,
@@ -79,25 +94,9 @@ pub(super) async fn run_file_watch_request(
                     restarts,
                     message
                 );
-                if restarts >= FILE_WATCH_MAX_RESTARTS {
-                    emit_message_and_wake(
-                        &worker_tx,
-                        &event_proxy,
-                        WorkerMessage::Event(WorkerEvent {
-                            request_id: request.request_id,
-                            revision_id: request.revision_id,
-                            topic: request.topic,
-                            kind: WorkerEventKind::Failed {
-                                error: WorkerFailure {
-                                    kind: WorkerFailureKind::Execution,
-                                    message: format!(
-                                        "file watcher gave up after {restarts} restarts: {message}"
-                                    ),
-                                },
-                            },
-                        }),
-                    );
-                    return;
+                WorkerFailure {
+                    kind: WorkerFailureKind::Execution,
+                    message: format!("file watcher degraded (restart #{restarts}): {message}"),
                 }
             }
             Err(join_error) => {
@@ -106,26 +105,30 @@ pub(super) async fn run_file_watch_request(
                     request.request_id,
                     restarts
                 );
-                if restarts >= FILE_WATCH_MAX_RESTARTS {
-                    emit_message_and_wake(
-                        &worker_tx,
-                        &event_proxy,
-                        WorkerMessage::Event(WorkerEvent {
-                            request_id: request.request_id,
-                            revision_id: request.revision_id,
-                            topic: request.topic,
-                            kind: WorkerEventKind::Failed {
-                                error: failure_from_join_error(join_error),
-                            },
-                        }),
-                    );
-                    return;
-                }
+                failure_from_join_error(join_error)
             }
+        };
+
+        if run_started.elapsed() >= FILE_WATCH_STABLE_RUN {
+            restarts = 0;
+        }
+        restarts += 1;
+
+        if restarts >= FILE_WATCH_DEGRADED_THRESHOLD && !degraded_notified {
+            degraded_notified = true;
+            emit_message_and_wake(
+                &worker_tx,
+                &event_proxy,
+                WorkerMessage::Event(WorkerEvent {
+                    request_id: request.request_id,
+                    revision_id: request.revision_id,
+                    topic: request.topic,
+                    kind: WorkerEventKind::Failed { error: failure },
+                }),
+            );
         }
 
-        restarts += 1;
-        tokio::time::sleep(FILE_WATCH_RESTART_BACKOFF).await;
+        tokio::time::sleep(file_watch_restart_backoff(restarts)).await;
     }
 }
 
@@ -170,8 +173,12 @@ fn execute_file_watch_loop(
         match notify_rx.recv() {
             Ok(Ok(event)) => {
                 let mut events = Vec::new();
-                extend_unique_file_events(
+                // HashSet dedup: một đợt git checkout/agent sửa hàng loạt có thể
+                // dồn hàng nghìn event vào một batch — Vec::contains là O(n²).
+                let mut seen = HashSet::new();
+                extend_unique_file_events_with_seen(
                     &mut events,
+                    &mut seen,
                     filter_file_watch_events(event, &ignore_rules),
                 );
 
@@ -179,8 +186,9 @@ fn execute_file_watch_loop(
                 loop {
                     match notify_rx.recv_timeout(FILE_WATCH_BATCH_WINDOW) {
                         Ok(Ok(event)) => {
-                            extend_unique_file_events(
+                            extend_unique_file_events_with_seen(
                                 &mut events,
+                                &mut seen,
                                 filter_file_watch_events(event, &ignore_rules),
                             );
                         }
@@ -238,12 +246,22 @@ fn filter_file_watch_events(
         .collect()
 }
 
+#[cfg(test)]
 pub(super) fn extend_unique_file_events(
     target: &mut Vec<FileSystemEvent>,
     incoming: impl IntoIterator<Item = FileSystemEvent>,
 ) {
+    let mut seen: HashSet<FileSystemEvent> = target.iter().cloned().collect();
+    extend_unique_file_events_with_seen(target, &mut seen, incoming);
+}
+
+fn extend_unique_file_events_with_seen(
+    target: &mut Vec<FileSystemEvent>,
+    seen: &mut HashSet<FileSystemEvent>,
+    incoming: impl IntoIterator<Item = FileSystemEvent>,
+) {
     for event in incoming {
-        if !target.contains(&event) {
+        if seen.insert(event.clone()) {
             target.push(event);
         }
     }

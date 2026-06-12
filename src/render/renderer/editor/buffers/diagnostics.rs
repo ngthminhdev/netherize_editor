@@ -11,9 +11,9 @@ use crate::{
     core::mode::EditorMode,
     render::{
         glyph_instance::GlyphInstance,
+        icon_pipeline::{IconDrawInstance, canonical_icon_id},
         region_pipeline::RegionDrawInstance,
         renderer::Renderer,
-        icon_pipeline::{IconDrawInstance, canonical_icon_id},
     },
     text::layout_sync::{compute_caret_layout, compute_cursor_overlay, rebuild_layout_projection},
 };
@@ -22,8 +22,7 @@ use cosmic_text::Metrics;
 use super::super::super::helpers::{
     caret_rect_for_mode, clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
     layout_panel_rich_text, layout_panel_text, layout_panel_text_bold, layout_panel_text_italic,
-    rect_to_scissor,
-    should_draw_block_cursor,
+    rect_to_scissor, should_draw_block_cursor,
 };
 use super::super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
 use crate::text::text_system::StyledTextSpan;
@@ -84,11 +83,31 @@ impl Renderer {
         ];
 
         let header_y = panel_y + 6.0;
-        let error_count = diagnostics.results.iter().filter(|item| item.severity == Some(1)).count();
-        let warning_count = diagnostics.results.iter().filter(|item| item.severity == Some(2)).count();
-        let info_count = diagnostics.results.iter().filter(|item| item.severity == Some(3)).count();
-        let hint_count = diagnostics.results.iter().filter(|item| item.severity == Some(4)).count();
-        let none_count = diagnostics.results.iter().filter(|item| item.severity.is_none()).count();
+        let error_count = diagnostics
+            .results
+            .iter()
+            .filter(|item| item.severity == Some(1))
+            .count();
+        let warning_count = diagnostics
+            .results
+            .iter()
+            .filter(|item| item.severity == Some(2))
+            .count();
+        let info_count = diagnostics
+            .results
+            .iter()
+            .filter(|item| item.severity == Some(3))
+            .count();
+        let hint_count = diagnostics
+            .results
+            .iter()
+            .filter(|item| item.severity == Some(4))
+            .count();
+        let none_count = diagnostics
+            .results
+            .iter()
+            .filter(|item| item.severity.is_none())
+            .count();
 
         let unique_file_count = count_diagnostic_files(&diagnostics.results);
         let count_label = format!(
@@ -96,7 +115,8 @@ impl Renderer {
             diagnostics.results.len(),
             unique_file_count
         );
-        let header_count_w = estimate_monospace_width(" 999 problems · 999 files", font_size).min(left_w * 0.58);
+        let header_count_w =
+            estimate_monospace_width(" 999 problems · 999 files", font_size).min(left_w * 0.58);
         self.editor_overlay_text_system
             .set_size(Some((left_w - 20.0).max(1.0)), Some(line_height));
         glyphs.extend(layout_panel_text_bold(
@@ -181,7 +201,10 @@ impl Renderer {
         }
 
         let footer_y = panel_y + panel_h - footer_h;
-        chrome.push(RegionDrawInstance::new([left_x, footer_y, left_w, 1.0], divider));
+        chrome.push(RegionDrawInstance::new(
+            [left_x, footer_y, left_w, 1.0],
+            divider,
+        ));
         let footer_text = format!(
             "↑↓ navigate  |  Enter open diagnostic  |  Esc/Q close   • ×{}  ▲{}  i{}  •{}  ?{}",
             error_count, warning_count, info_count, hint_count, none_count
@@ -224,14 +247,26 @@ impl Renderer {
                 let mut group_bg = self.theme.ui.overlay_bg.as_f32();
                 group_bg[3] = (group_bg[3] * 0.85).clamp(0.18, 0.45);
                 chrome.push(RegionDrawInstance::new(
-                    [left_x + 8.0, draw_y + 2.0, (left_w - 16.0).max(1.0), (line_height + 3.0).max(12.0)],
+                    [
+                        left_x + 8.0,
+                        draw_y + 2.0,
+                        (left_w - 16.0).max(1.0),
+                        (line_height + 3.0).max(12.0),
+                    ],
                     group_bg,
                 ));
-                let group_count = count_diagnostics_for_path(&diagnostics.results, &item.file_path.display().to_string());
+                let group_count = count_diagnostics_for_path(
+                    &diagnostics.results,
+                    &item.file_path.display().to_string(),
+                );
                 let count_label = format!("{}", group_count);
                 let count_w = estimate_monospace_width(&count_label, font_size).max(16.0);
                 glyphs.extend(layout_panel_text_bold(
-                    &clamp_monospace_text(&format!("▾ {}", file_name), left_text_width * 0.50, font_size),
+                    &clamp_monospace_text(
+                        &format!("▾ {}", file_name),
+                        left_text_width * 0.50,
+                        font_size,
+                    ),
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
@@ -241,7 +276,11 @@ impl Renderer {
                 ));
                 let folder_x = left_x + left_w * 0.54;
                 glyphs.extend(layout_panel_text(
-                    &clamp_monospace_text(&folder_label, (left_x + left_w - folder_x - count_w - 26.0).max(1.0), font_size),
+                    &clamp_monospace_text(
+                        &folder_label,
+                        (left_x + left_w - folder_x - count_w - 26.0).max(1.0),
+                        font_size,
+                    ),
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
@@ -440,7 +479,10 @@ impl Renderer {
         self.editor_overlay_icon_pipeline.upload_instances(
             &self.device,
             &self.editor_overlay_icon_instances,
-            [self.surface_state.config.width, self.surface_state.config.height],
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
         );
         self.editor_overlay_text_pipeline.upload_instances(
             &self.device,

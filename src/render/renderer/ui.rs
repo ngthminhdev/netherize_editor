@@ -8,3 +8,4 @@ mod terminal;
 mod topbar;
 pub(super) mod utils;
 mod welcome;
+mod whichkey;

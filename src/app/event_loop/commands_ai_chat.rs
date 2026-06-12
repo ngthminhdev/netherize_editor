@@ -753,8 +753,11 @@ impl AppShell {
                 let focus_changed = self.focus_manager.set(FocusTarget::RightSidebar);
                 if focus_changed {
                     self.input_handler.clear_pending_prefix();
-                    // Enter terminal focus so keystrokes reach opencode.
-                    let _ = self.app_state.apply_mode_event(ModeEvent::FocusTerminal);
+                }
+                // Enter terminal focus so keystrokes reach opencode even when
+                // the right sidebar already owns focus but mode drifted away.
+                if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
+                    let _ = result;
                 }
                 self.right_terminal_needs_layout = true;
                 Some(true)

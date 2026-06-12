@@ -343,7 +343,10 @@ mod tests {
 }
 
 pub(super) fn is_mode_block_cursor(mode: EditorMode) -> bool {
-    matches!(mode, EditorMode::Normal | EditorMode::Visual | EditorMode::VisualBlock)
+    matches!(
+        mode,
+        EditorMode::Normal | EditorMode::Visual | EditorMode::VisualBlock
+    )
 }
 
 pub(super) fn should_draw_block_cursor(mode: EditorMode, cursor_shape: CursorShape) -> bool {
@@ -384,5 +387,3 @@ pub(super) fn mode_pill_color(mode: EditorMode, theme: &ThemeConfig) -> [f32; 4]
 pub(super) fn theme_color_to_wgpu(color: ThemeColor) -> wgpu::Color {
     color.as_linear().to_wgpu()
 }
-
-

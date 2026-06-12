@@ -100,6 +100,12 @@ impl AsyncResultRouter for AppShell {
             WorkerResultPayload::FileCopyResult { .. } => {
                 filesystem::handle_file_copy_result(self, result.payload);
             }
+            WorkerResultPayload::ExternalFilesRead { .. } => {
+                filesystem::handle_external_files_read(self, result.payload);
+            }
+            WorkerResultPayload::WorkspaceRescanned { .. } => {
+                filesystem::handle_workspace_rescanned(self, result.payload);
+            }
             _ => {}
         }
     }

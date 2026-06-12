@@ -826,6 +826,40 @@ impl AppState {
         }
     }
 
+    /// Vim f/F/t/T: tìm `target` trên dòng hiện tại và di chuyển cursor tới đó
+    /// (f/F đứng trên ký tự, t/T đứng cạnh ký tự). Trả về true nếu cursor di chuyển.
+    pub fn move_find_char(&mut self, kind: FindMotionKind, target: char) -> bool {
+        if self.text.len_chars() == 0 {
+            return false;
+        }
+        let cursor = self
+            .cursor_char_idx
+            .min(self.text.len_chars().saturating_sub(1));
+        let line = self.text.char_to_line(cursor);
+        let line_start = self.text.line_to_char(line);
+        let line_end = self.line_content_end_char_idx(line);
+        let dest = match kind {
+            FindMotionKind::ForwardTo => ((cursor + 1).min(line_end)..line_end)
+                .find(|&i| self.text.char(i) == target),
+            FindMotionKind::ForwardTill => ((cursor + 1).min(line_end)..line_end)
+                .find(|&i| self.text.char(i) == target)
+                .map(|hit| hit.saturating_sub(1))
+                .filter(|&pos| pos > cursor),
+            FindMotionKind::BackwardTo => (line_start..cursor)
+                .rev()
+                .find(|&i| self.text.char(i) == target),
+            FindMotionKind::BackwardTill => (line_start..cursor)
+                .rev()
+                .find(|&i| self.text.char(i) == target)
+                .map(|hit| hit + 1)
+                .filter(|&pos| pos < cursor),
+        };
+        let Some(dest) = dest else {
+            return false;
+        };
+        self.move_cursor_to_char_idx(dest)
+    }
+
     pub fn move_left(&mut self) {
         let (line_idx, col) = self.cursor_line_col();
         let previous_cursor = self.cursor_char_idx;

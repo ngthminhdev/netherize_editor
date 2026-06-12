@@ -30,6 +30,11 @@ pub struct AiProviderConfig {
     pub model: String,
     pub api_key: Option<String>,
     pub endpoint_kind: Option<String>,
+    /// Sent as `reasoning_effort` in the request body when present. Reasoning
+    /// models burn the token budget on thinking and return empty content for
+    /// inline completion; "low" keeps them usable when no non-reasoning model
+    /// is available.
+    pub reasoning_effort: Option<String>,
 }
 
 impl AiConfig {
@@ -137,6 +142,7 @@ fn candidate_paths() -> Vec<PathBuf> {
     if let Ok(cwd) = std::env::current_dir() {
         paths.push(cwd.join("config").join("ai.toml"));
     }
+    paths.push(user_config_root().join("config").join("ai.toml"));
     paths.push(user_config_root().join("ai.toml"));
     paths
 }

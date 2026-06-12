@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DartEnvKind {
@@ -45,7 +45,8 @@ pub async fn scan_dart_environments(workspace_root: &Path) -> Vec<DartEnv> {
                 while let Some(Ok(entry)) = entries.next() {
                     if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                         let version_name = entry.file_name().to_string_lossy().to_string();
-                        let dart_bin = entry.path()
+                        let dart_bin = entry
+                            .path()
                             .join("bin")
                             .join("cache")
                             .join("dart-sdk")

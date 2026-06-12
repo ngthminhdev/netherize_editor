@@ -11,14 +11,14 @@ use crate::{
     app::command_palette::CommandPaletteRenderModel,
     render::{
         glyph_instance::GlyphInstance,
-        icon_pipeline::{canonical_icon_id, IconDrawInstance},
+        icon_pipeline::{IconDrawInstance, canonical_icon_id},
         region_pipeline::RegionDrawInstance,
         renderer::Renderer,
     },
 };
 
-use super::helpers::{estimate_monospace_width, layout_panel_text, layout_panel_text_bold};
 use super::components::{estimate_help_keycaps_width, layout_help_keycaps};
+use super::helpers::{estimate_monospace_width, layout_panel_text, layout_panel_text_bold};
 
 pub(super) const PALETTE_FRAME_RADIUS: f32 = 16.0;
 pub(super) const PALETTE_PANEL_RADIUS: f32 = 15.0;
@@ -59,7 +59,10 @@ pub(super) fn render_palette_chrome(
         )
         .with_radius(PALETTE_FRAME_RADIUS),
     );
-    chrome.push(RegionDrawInstance::new(model.panel_bounds, model.panel_bg).with_radius(PALETTE_PANEL_RADIUS));
+    chrome.push(
+        RegionDrawInstance::new(model.panel_bounds, model.panel_bg)
+            .with_radius(PALETTE_PANEL_RADIUS),
+    );
 }
 
 pub(super) fn render_palette_badge(
@@ -86,8 +89,7 @@ pub(super) fn render_palette_badge(
     let badge_text_color = blend_palette_badge_color(text_color, fill, 0.78);
 
     chrome.push(
-        RegionDrawInstance::new([x, y, badge_w, badge_h], badge_border)
-            .with_radius(badge_radius),
+        RegionDrawInstance::new([x, y, badge_w, badge_h], badge_border).with_radius(badge_radius),
     );
     chrome.push(
         RegionDrawInstance::new(
@@ -128,7 +130,10 @@ pub(super) fn push_palette_icon_or_badge(
     icons: &mut Vec<IconDrawInstance>,
 ) {
     if let Some(asset_icon) = canonical_icon_id(icon) {
-        if matches!(chrome_style, super::components::PrefixIconBadgeChrome::Outline) {
+        if matches!(
+            chrome_style,
+            super::components::PrefixIconBadgeChrome::Outline
+        ) {
             let [x, y, w, h] = bounds;
             let radius = h * 0.22;
             let border = (h * 0.075).clamp(2.0, 3.0);
@@ -295,7 +300,10 @@ impl Renderer {
             self.palette_icon_pipeline.upload_instances(
                 &self.device,
                 &self.palette_icon_instances,
-                [self.surface_state.config.width, self.surface_state.config.height],
+                [
+                    self.surface_state.config.width,
+                    self.surface_state.config.height,
+                ],
             );
         }
         self.palette_text_pipeline.upload_instances(
@@ -315,7 +323,10 @@ impl Renderer {
         self.palette_icon_pipeline.upload_instances(
             &self.device,
             &self.palette_icon_instances,
-            [self.surface_state.config.width, self.surface_state.config.height],
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
         );
         self.palette_text_pipeline
             .upload_instances(&self.device, &self.queue, &[]);

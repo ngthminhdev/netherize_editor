@@ -15,9 +15,9 @@ use crate::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
     text::layout_sync::{
-            compute_caret_layout, compute_caret_layout_with_folds, compute_cursor_overlay,
-            rebuild_layout_projection,
-        },
+        compute_caret_layout, compute_caret_layout_with_folds, compute_cursor_overlay,
+        rebuild_layout_projection,
+    },
 };
 use cosmic_text::Metrics;
 
@@ -26,9 +26,9 @@ use super::super::helpers::{
     gutter_width_for_editor, layout_panel_rich_text, layout_panel_text, layout_panel_text_bold,
     layout_panel_text_italic, rect_to_scissor, should_draw_block_cursor,
 };
-use crate::render::icon_pipeline::{canonical_icon_id, IconDrawInstance};
 use super::completion::{completion_kind_badge, completion_label_spans};
 use super::{EDITOR_BREADCRUMB_GAP_Y, EDITOR_BREADCRUMB_PAD_Y, EDITOR_BREADCRUMB_TOP_INSET};
+use crate::render::icon_pipeline::{IconDrawInstance, canonical_icon_id};
 
 const DIAGNOSTIC_SEVERITY_ERROR: u32 = 1;
 const DIAGNOSTIC_SEVERITY_WARNING: u32 = 2;
@@ -42,6 +42,9 @@ impl Renderer {
             .active_file()
             .and_then(|path| app_state.diagnostics_for_path(path));
         let geometry = editor_viewport_geometry(self, app_state, center_bounds);
+        // Scale hardcoded popup/chrome px so they track runtime-scaled text
+        // metrics across monitors (same pattern as extensions.rs).
+        let ui_s = self.ui_scale.max(0.5);
         let viewport_top = geometry.viewport_text_top;
         let viewport_bottom = viewport_top + geometry.viewport_text_height.max(1.0);
         let viewport_right = center_bounds[0] + center_bounds[2] - self.editor_padding_x;
@@ -248,25 +251,32 @@ impl Renderer {
                     style,
                     scroll,
                 } => {
-                    const PAD_X: f32 = 14.0;
-                    const PAD_Y: f32 = 10.0;
-                    const BORDER: f32 = 1.0;
-                    const CODE_PAD_X: f32 = 12.0;
-                    const CODE_PAD_Y: f32 = 8.0;
-                    const CONTENT_INSET_X: f32 = 14.0;
-                    const CONTENT_INSET_Y: f32 = 12.0;
+                    #[allow(non_snake_case)]
+                    let PAD_X: f32 = 14.0 * ui_s;
+                    #[allow(non_snake_case)]
+                    let PAD_Y: f32 = 10.0 * ui_s;
+                    #[allow(non_snake_case)]
+                    let BORDER: f32 = 1.0;
+                    #[allow(non_snake_case)]
+                    let CODE_PAD_X: f32 = 12.0 * ui_s;
+                    #[allow(non_snake_case)]
+                    let CODE_PAD_Y: f32 = 8.0 * ui_s;
+                    #[allow(non_snake_case)]
+                    let CONTENT_INSET_X: f32 = 14.0 * ui_s;
+                    #[allow(non_snake_case)]
+                    let CONTENT_INSET_Y: f32 = 12.0 * ui_s;
                     let char_w = (geometry.font_size * 0.6).max(1.0);
                     let is_doc_hover = matches!(style, FloatingBoxStyle::DocHover);
                     let header_h = if is_doc_hover {
-                        geometry.line_height + 14.0
+                        geometry.line_height + 14.0 * ui_s
                     } else {
                         0.0
                     };
-                    let block_gap = if is_doc_hover { 10.0 } else { 0.0 };
+                    let block_gap = if is_doc_hover { 10.0 * ui_s } else { 0.0 };
 
                     // ── Hover card size caps ─────────────────────────────────────
                     let max_popup_w = (center_bounds[2] * 0.58)
-                        .max(260.0)
+                        .max(260.0 * ui_s)
                         .min(geometry.viewport_text_width);
                     let max_popup_h = (center_bounds[3] * 0.58).max(geometry.line_height * 3.0);
                     let wrap_cols = ((max_popup_w - PAD_X * 2.0) / char_w).floor() as usize;
@@ -300,18 +310,19 @@ impl Renderer {
                         .map(|(_, lines, _)| lines.len().max(1))
                         .sum();
                     let content_block_extra_h: f32 = if is_doc_hover {
-                        rendered
-                            .iter()
-                            .filter(|(is_code, _, _)| *is_code)
-                            .count() as f32
+                        rendered.iter().filter(|(is_code, _, _)| *is_code).count() as f32
                             * (CODE_PAD_Y * 2.0 + block_gap)
                     } else {
                         0.0
                     };
-                    let content_inner_pad_y = if is_doc_hover { CONTENT_INSET_Y * 2.0 } else { 0.0 };
+                    let content_inner_pad_y = if is_doc_hover {
+                        CONTENT_INSET_Y * 2.0
+                    } else {
+                        0.0
+                    };
 
                     let desired_popup_w = max_len as f32 * char_w + PAD_X * 2.0;
-                    let popup_w = clamp_popup_width(desired_popup_w, 260.0, max_popup_w);
+                    let popup_w = clamp_popup_width(desired_popup_w, 260.0 * ui_s, max_popup_w);
                     debug_assert!(
                         popup_w.is_finite() && popup_w >= 1.0,
                         "floating overlay popup width must stay finite: desired={desired_popup_w}, max_popup_w={max_popup_w}"
@@ -376,11 +387,15 @@ impl Renderer {
                     );
 
                     if is_doc_hover {
-                        let header_bg = blend_rgba(panel_bg, self.theme.ui.status_bar_bg.as_f32(), 0.5, 1.0);
+                        let header_bg =
+                            blend_rgba(panel_bg, self.theme.ui.status_bar_bg.as_f32(), 0.5, 1.0);
                         let header_divider = blend_rgba(header_bg, border_color, 0.55, 1.0);
                         chrome_quads.push(
-                            RegionDrawInstance::new([popup_x, popup_y, popup_w, header_h], header_bg)
-                                .with_radius(self.panel_corner_radius + 2.0),
+                            RegionDrawInstance::new(
+                                [popup_x, popup_y, popup_w, header_h],
+                                header_bg,
+                            )
+                            .with_radius(self.panel_corner_radius + 2.0),
                         );
                         chrome_quads.push(RegionDrawInstance::new(
                             [popup_x, popup_y + header_h - 1.0, popup_w, 1.0],
@@ -426,35 +441,54 @@ impl Renderer {
                         ));
                     }
 
-                    let content_left = popup_x + PAD_X + if is_doc_hover { CONTENT_INSET_X } else { 0.0 };
-                    let content_top = popup_y + PAD_Y + header_h + if is_doc_hover { CONTENT_INSET_Y } else { 0.0 };
-                    let content_bottom = popup_y + popup_h - PAD_Y - if is_doc_hover { CONTENT_INSET_Y } else { 0.0 };
-                    let needs_scrollbar = is_doc_hover && header_h + total_content_h + PAD_Y * 2.0 > popup_h;
+                    let content_left =
+                        popup_x + PAD_X + if is_doc_hover { CONTENT_INSET_X } else { 0.0 };
+                    let content_top = popup_y
+                        + PAD_Y
+                        + header_h
+                        + if is_doc_hover { CONTENT_INSET_Y } else { 0.0 };
+                    let content_bottom = popup_y + popup_h
+                        - PAD_Y
+                        - if is_doc_hover { CONTENT_INSET_Y } else { 0.0 };
+                    let needs_scrollbar =
+                        is_doc_hover && header_h + total_content_h + PAD_Y * 2.0 > popup_h;
                     let scrollbar_w = if needs_scrollbar { 4.0 } else { 0.0 };
                     let line_w = (popup_w
                         - PAD_X * 2.0
-                        - if is_doc_hover { CONTENT_INSET_X * 2.0 } else { 0.0 }
+                        - if is_doc_hover {
+                            CONTENT_INSET_X * 2.0
+                        } else {
+                            0.0
+                        }
                         - scrollbar_w
                         - 10.0)
                         .max(1.0);
                     let content_view_h = (content_bottom - content_top).max(geometry.line_height);
-                    let max_scroll_lines = ((total_content_h - content_inner_pad_y - content_view_h).max(0.0)
-                        / geometry.line_height)
-                        .ceil() as usize;
+                    let max_scroll_lines =
+                        ((total_content_h - content_inner_pad_y - content_view_h).max(0.0)
+                            / geometry.line_height)
+                            .ceil() as usize;
                     let effective_scroll_lines = scroll.offset_lines.min(max_scroll_lines);
-                    let mut content_y = content_top - effective_scroll_lines as f32 * geometry.line_height;
+                    let mut content_y =
+                        content_top - effective_scroll_lines as f32 * geometry.line_height;
 
                     if needs_scrollbar {
                         let track_x = popup_x + popup_w - PAD_X - 4.0;
                         let track_y = content_top;
                         let track_h = content_view_h;
-                        let scrollbar_track = blend_rgba(panel_bg, self.theme.ui.border_color.as_f32(), 0.28, 1.0);
-                        let scrollbar_thumb = blend_rgba(scrollbar_track, self.theme.ui.accent.as_f32(), 0.62, 1.0);
+                        let scrollbar_track =
+                            blend_rgba(panel_bg, self.theme.ui.border_color.as_f32(), 0.28, 1.0);
+                        let scrollbar_thumb =
+                            blend_rgba(scrollbar_track, self.theme.ui.accent.as_f32(), 0.62, 1.0);
                         chrome_quads.push(
-                            RegionDrawInstance::new([track_x, track_y, scrollbar_w, track_h], scrollbar_track)
-                                .with_radius(2.0),
+                            RegionDrawInstance::new(
+                                [track_x, track_y, scrollbar_w, track_h],
+                                scrollbar_track,
+                            )
+                            .with_radius(2.0),
                         );
-                        let visible_ratio = (content_view_h / total_content_h.max(1.0)).clamp(0.08, 1.0);
+                        let visible_ratio =
+                            (content_view_h / total_content_h.max(1.0)).clamp(0.08, 1.0);
                         let thumb_h = (track_h * visible_ratio).max(18.0).min(track_h);
                         let scroll_ratio = if max_scroll_lines == 0 {
                             0.0
@@ -463,8 +497,11 @@ impl Renderer {
                         };
                         let thumb_y = track_y + (track_h - thumb_h) * scroll_ratio;
                         chrome_quads.push(
-                            RegionDrawInstance::new([track_x, thumb_y, scrollbar_w, thumb_h], scrollbar_thumb)
-                                .with_radius(2.0),
+                            RegionDrawInstance::new(
+                                [track_x, thumb_y, scrollbar_w, thumb_h],
+                                scrollbar_thumb,
+                            )
+                            .with_radius(2.0),
                         );
                     }
 
@@ -486,13 +523,29 @@ impl Renderer {
                                 && content_y < content_bottom
                                 && content_y + code_block_h > content_top
                             {
-                                let code_bg = blend_rgba(panel_bg, self.theme.ui.status_bar_bg.as_f32(), 0.35, 1.0);
-                                let code_border = blend_rgba(code_bg, self.theme.ui.border_color.as_f32(), 0.7, 1.0);
+                                let code_bg = blend_rgba(
+                                    panel_bg,
+                                    self.theme.ui.status_bar_bg.as_f32(),
+                                    0.35,
+                                    1.0,
+                                );
+                                let code_border = blend_rgba(
+                                    code_bg,
+                                    self.theme.ui.border_color.as_f32(),
+                                    0.7,
+                                    1.0,
+                                );
                                 let clipped_code_y = content_y.max(content_top);
-                                let clipped_code_h = (content_y + code_block_h).min(content_bottom) - clipped_code_y;
+                                let clipped_code_h =
+                                    (content_y + code_block_h).min(content_bottom) - clipped_code_y;
                                 chrome_quads.push(
                                     RegionDrawInstance::new(
-                                        [content_left, clipped_code_y, line_w, clipped_code_h.max(0.0)],
+                                        [
+                                            content_left,
+                                            clipped_code_y,
+                                            line_w,
+                                            clipped_code_h.max(0.0),
+                                        ],
                                         code_border,
                                     )
                                     .with_radius(8.0),
@@ -542,11 +595,7 @@ impl Renderer {
                                 self.editor_overlay_text_system.set_size(
                                     Some(
                                         (line_w
-                                            - if is_doc_hover {
-                                                CODE_PAD_X * 2.0
-                                            } else {
-                                                0.0
-                                            })
+                                            - if is_doc_hover { CODE_PAD_X * 2.0 } else { 0.0 })
                                         .max(1.0),
                                     ),
                                     Some(geometry.line_height),
@@ -586,7 +635,8 @@ impl Renderer {
                                     self.theme.ui.fg_dim.as_f32(),
                                 ));
                             }
-                            content_y += lines.len().max(1) as f32 * geometry.line_height + block_gap;
+                            content_y +=
+                                lines.len().max(1) as f32 * geometry.line_height + block_gap;
                         }
                     }
                 }
@@ -602,8 +652,10 @@ impl Renderer {
                 + geometry.line_height
                 + 2.0;
             let line_h = geometry.line_height;
-            const PAD_X: f32 = 14.0;
-            const PAD_Y: f32 = 4.0;
+            #[allow(non_snake_case)]
+            let PAD_X: f32 = 14.0 * ui_s;
+            #[allow(non_snake_case)]
+            let PAD_Y: f32 = 4.0 * ui_s;
             const TEXT: &str = "⟳  Loading…";
             let spinner_w = TEXT.chars().count() as f32 * char_w + PAD_X * 2.0;
             let spinner_h = line_h + PAD_Y * 2.0;
@@ -645,26 +697,35 @@ impl Renderer {
                 return;
             }
 
-            const PAD_X: f32 = 30.0;
-            const PAD_Y: f32 = 20.0;
             const MAX_VISIBLE_ROWS: usize = 10;
-            const BADGE_GAP: f32 = 25.0;
-            const SCROLLBAR_W: f32 = 7.5;
-            const FOOTER_H: f32 = 65.0;
-            const DOC_PANEL_W: f32 = 650.0;
-            const DOC_PAD: f32 = 35.0;
-            const MIN_LIST_W: f32 = 700.0;
-            const MAX_LIST_W_WITH_DOCS: f32 = 1200.0;
+            #[allow(non_snake_case)]
+            let PAD_X: f32 = 30.0 * ui_s;
+            #[allow(non_snake_case)]
+            let PAD_Y: f32 = 20.0 * ui_s;
+            #[allow(non_snake_case)]
+            let BADGE_GAP: f32 = 25.0 * ui_s;
+            #[allow(non_snake_case)]
+            let SCROLLBAR_W: f32 = 7.5 * ui_s;
+            #[allow(non_snake_case)]
+            let FOOTER_H: f32 = 65.0 * ui_s;
+            #[allow(non_snake_case)]
+            let DOC_PANEL_W: f32 = 650.0 * ui_s;
+            #[allow(non_snake_case)]
+            let DOC_PAD: f32 = 35.0 * ui_s;
+            #[allow(non_snake_case)]
+            let MIN_LIST_W: f32 = 700.0 * ui_s;
+            #[allow(non_snake_case)]
+            let MAX_LIST_W_WITH_DOCS: f32 = 1200.0 * ui_s;
 
             let char_w = (geometry.font_size * 0.6).max(1.0);
             // Badge size tracks row height so it never overflows the row
             // Row height slightly taller than natural line height
-            let popup_row_h = (geometry.line_height * 1.4).max(28.0);
+            let popup_row_h = (geometry.line_height * 1.4).max(28.0 * ui_s);
             // Text uses editor's actual font metrics — no size cap
             let popup_label_line_h = geometry.line_height;
             // Offset so the text block sits centered inside the taller row
             let text_v_center = (popup_row_h - popup_label_line_h) * 0.5;
-            let badge_size = (popup_row_h * 0.82).clamp(28.0, 44.0);
+            let badge_size = (popup_row_h * 0.82).clamp(28.0 * ui_s, 44.0 * ui_s);
             let badge_radius = badge_size * 0.22;
             let badge_col_w = PAD_X + badge_size + BADGE_GAP;
 
@@ -735,7 +796,8 @@ impl Renderer {
                 [geometry.origin_x, geometry.origin_y],
                 app_state.folded_ranges(),
             );
-            let anchor_x = (caret_layout.x - completion.typed_prefix.chars().count() as f32 * char_w)
+            let anchor_x = (caret_layout.x
+                - completion.typed_prefix.chars().count() as f32 * char_w)
                 .max(geometry.viewport_text_left);
             let popup_right = anchor_x + popup_w;
             let anchor_x = if popup_right > viewport_right - 8.0 {
@@ -766,8 +828,8 @@ impl Renderer {
             let doc_bg = blend_rgba(bg, fg, 0.02, 1.0);
             // Drop shadow: black at 45% alpha, offset +2x/+4y, oversized
             let shadow_color: [f32; 4] = [0.0, 0.0, 0.0, 0.45];
-            let shadow_offset_x = 2.0;
-            let shadow_offset_y = 4.0;
+            let shadow_offset_x = 2.0 * ui_s;
+            let shadow_offset_y = 4.0 * ui_s;
 
             // --- Drop shadow ---
             chrome_quads.push(RegionDrawInstance::new(
@@ -1217,13 +1279,22 @@ impl Renderer {
             let hint_line_h = hint_font_size * 1.4;
 
             // Count workspace symbol items
-            let workspace_count = completion.filtered_items.iter()
-                .filter(|item| matches!(item.source, crate::app::app_state::CompletionItemSource::WorkspaceSymbol))
+            let workspace_count = completion
+                .filtered_items
+                .iter()
+                .filter(|item| {
+                    matches!(
+                        item.source,
+                        crate::app::app_state::CompletionItemSource::WorkspaceSymbol
+                    )
+                })
                 .count();
             let total_count = completion.filtered_items.len();
 
             // Check if indexing is in progress
-            let is_indexing = completion.language_id.as_ref()
+            let is_indexing = completion
+                .language_id
+                .as_ref()
                 .map(|lang_id| app_state.workspace_symbol_cache().is_indexing(lang_id))
                 .unwrap_or(false);
 
@@ -1255,7 +1326,8 @@ impl Renderer {
             // Hint text on the right
             let hint_text = "↑↓ | ↩ accept | 󱊷 close";
             let hint_w = estimate_monospace_width(hint_text, hint_font_size);
-            let hint_x = (popup_x + popup_w - hint_w - PAD_X).max(popup_x + PAD_X + status_w + 20.0);
+            let hint_x =
+                (popup_x + popup_w - hint_w - PAD_X).max(popup_x + PAD_X + status_w + 20.0);
             let hint_y = footer_y + (FOOTER_H - hint_line_h) * 0.5;
             self.editor_overlay_text_system
                 .set_metrics(Metrics::new(hint_font_size, hint_line_h));
@@ -1287,7 +1359,10 @@ impl Renderer {
         self.editor_overlay_icon_pipeline.upload_instances(
             &self.device,
             &self.editor_overlay_icon_instances,
-            [self.surface_state.config.width, self.surface_state.config.height],
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
         );
         self.editor_overlay_glyph_instances = glyphs;
         self.editor_overlay_text_pipeline.upload_instances(

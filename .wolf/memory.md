@@ -647,3 +647,552 @@
 | 13:35 | Edited src/app/app_state/tests.rs | modified external_edit_within_self_save_window_still_reloads() | ~516 |
 | 13:45 | Fixed file watcher not waking event loop (#1-#8) | file_watch.rs, dispatch.rs, emit-path, message.rs, application.rs, palette.rs, buffers.rs, overlays.rs, mod.rs, setup.rs | notify path now wakes winit loop via emit_message_and_wake; +watcher restart, +out-of-root watch, !=mtime, content-based self-save, 3s poll, removed eprintln; 676 tests pass | ~4200 |
 | 13:39 | Session end: 25 writes across 12 files (dispatch.rs, file_watch.rs, message.rs, setup.rs, commands_explorer.rs) | 16 reads | ~157646 tok |
+
+## Session: 2026-06-11 21:39
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 23:37 | Fixed right-dock opencode scroll/mouse routing | input/handler.rs, event_loop/application.rs, commands_ai_chat.rs, tests | Ctrl-U/D now survives mode drift; right dock gets scoped wheel scroll + SGR click forwarding; focused tests/check pass | ~52000 |
+
+## Session: 2026-06-11 23:40
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 00:00 | Edited src/terminal/grid.rs | 6→10 lines | ~126 |
+| 00:00 | Edited src/terminal/grid.rs | 7→8 lines | ~42 |
+| 00:00 | Edited src/terminal/grid.rs | 9→10 lines | ~61 |
+| 00:00 | Edited src/terminal/grid.rs | 18→23 lines | ~232 |
+| 00:01 | Edited src/terminal/grid.rs | modified apply_regex_highlights() | ~1294 |
+| 00:01 | Edited src/terminal/grid.rs | inline fix | ~21 |
+| 00:01 | Edited src/terminal/grid.rs | modified apply_regex_highlights_string_spanning_soft_wrap_keeps_color_on_continuation() | ~437 |
+| 00:03 | terminal highlight lost on soft-wrap: track wrap_continued + highlight per logical line | src/terminal/grid.rs | fixed, 28 grid tests pass | ~9k |
+| 00:04 | Session end: 7 writes across 1 files (grid.rs) | 4 reads | ~67261 tok |
+
+## Session: 2026-06-11 00:15
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 00:26 | Created tests/vietnamese_terminal_render.rs | — | ~1065 |
+| 00:29 | Edited tests/vietnamese_terminal_render.rs | added 2 import(s) | ~83 |
+| 00:29 | Edited tests/vietnamese_terminal_render.rs | modified dock_build_instances_emits_glyph_per_vietnamese_cell() | ~591 |
+| 00:34 | Edited tests/vietnamese_terminal_render.rs | modified nerd_font_family_still_shapes_vietnamese_via_fallback() | ~384 |
+
+## Session: 2026-06-11 00:43
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 00:46 | Edited src/text/atlas.rs | 6→9 lines | ~129 |
+| 00:46 | Edited src/text/atlas.rs | 4→5 lines | ~30 |
+| 00:46 | Edited src/text/atlas.rs | modified solid_entry() | ~265 |
+| 00:47 | Created src/terminal/cell_shapes.rs | — | ~2945 |
+| 00:48 | Edited src/terminal/terminal_renderer.rs | 5→6 lines | ~71 |
+| 00:48 | Edited src/terminal/terminal_renderer.rs | modified solid_cell_rects() | ~387 |
+| 00:49 | Session end: 6 writes across 3 files (atlas.rs, cell_shapes.rs, terminal_renderer.rs) | 1 reads | ~7321 tok |
+| 00:52 | Edited src/terminal/mod.rs | 2→3 lines | ~15 |
+| 00:50 | Diagnosed right-dock "đứt nét": cell h=22 vs font glyph ~17px → gaps in ▀▄█/┃. Captured real opencode PTY stream, replayed through grid — Vietnamese NFC intact (bug-047 fix works) | src/terminal/cell_shapes.rs (new), terminal_renderer.rs, src/text/atlas.rs | procedural block/box-drawing quads fill cells exactly; 704 tests pass | ~60k |
+| 00:52 | Added regression tests: NFC/NFD Vietnamese through grid+shaping+headless wgpu dock path | tests/vietnamese_terminal_render.rs (new) | 9 tests pass | ~8k |
+| 00:57 | Session end: 7 writes across 4 files (atlas.rs, cell_shapes.rs, terminal_renderer.rs, mod.rs) | 2 reads | ~7365 tok |
+
+## Session: 2026-06-11 00:58
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-11 01:00
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 01:07 | Edited src/app/input/handler.rs | modified right_chat_scroll_command() | ~338 |
+| 01:07 | Edited src/app/event_loop/application.rs | modified sgr_mouse_sequence() | ~119 |
+| 01:07 | Edited src/app/event_loop/application.rs | modified min() | ~244 |
+| 01:07 | Edited src/app/input/tests.rs | expanded (+9 lines) | ~269 |
+| 01:07 | Edited src/app/input/tests.rs | 8→11 lines | ~113 |
+| 01:08 | Edited src/app/input/tests.rs | expanded (+6 lines) | ~174 |
+| 01:08 | Edited src/app/event_loop/application.rs | modified sgr_wheel_sequence_is_press_only_with_wheel_button_codes() | ~100 |
+| 01:08 | Edited src/app/event_loop/application.rs | 1→2 lines | ~31 |
+| 01:12 | Fix right-dock opencode scroll: forward ctrl+alt+u/d + SGR wheel into PTY instead of local scrollback (bug-057) | src/app/input/handler.rs, src/app/event_loop/application.rs, src/app/input/tests.rs | 705 tests pass | ~30k |
+| 01:12 | Session end: 8 writes across 3 files (handler.rs, application.rs, tests.rs) | 5 reads | ~82863 tok |
+| 01:19 | Session end: 8 writes across 3 files (handler.rs, application.rs, tests.rs) | 11 reads | ~134371 tok |
+| 01:23 | Edited src/async_runtime/scheduler/file_watch.rs | 1→6 lines | ~32 |
+| 01:23 | Edited src/async_runtime/scheduler/file_watch.rs | modified file_watch_restart_backoff() | ~183 |
+| 01:23 | Edited src/async_runtime/scheduler/file_watch.rs | modified degraded() | ~768 |
+| 01:23 | Edited src/async_runtime/scheduler/file_watch.rs | extend_unique_file_events() → extend_unique_file_events_with_seen() | ~260 |
+| 01:24 | Edited src/async_runtime/scheduler/file_watch.rs | modified extend_unique_file_events() | ~158 |
+| 01:24 | Edited src/app/event_loop/async_results/failure.rs | expanded (+8 lines) | ~147 |
+| 01:24 | Edited src/async_runtime/scheduler/file_watch.rs | modified extend_unique_file_events() | ~82 |
+| 01:24 | Edited src/app/app_state/palette.rs | modified exists() | ~354 |
+| 01:25 | Edited src/app/app_state/palette.rs | 6→8 lines | ~153 |
+| 01:25 | Edited src/app/app_state/palette.rs | modified read_to_string() | ~153 |
+| 01:25 | Edited src/app/app_state/buffers.rs | modified buffer_text_for_path() | ~215 |
+| 01:25 | Edited src/app/event_loop/setup.rs | modified submit_lsp_sync_for_externally_reloaded_path() | ~563 |
+| 01:26 | Edited src/app/event_loop/async_results/filesystem.rs | 4→7 lines | ~100 |
+| 01:26 | Edited src/app/event_loop/async_results/filesystem.rs | 3→3 lines | ~42 |
+| 01:26 | Edited src/app/event_loop/application.rs | modified is_empty() | ~254 |
+| 01:26 | Edited src/app/app_state/tests.rs | modified external_rename_without_new_path_on_existing_file_reloads_like_modify() | ~883 |
+| 01:27 | Edited src/async_runtime/scheduler/file_watch.rs | modified file_watch_restart_backoff() | ~38 |
+| 01:27 | Edited src/async_runtime/scheduler/tests.rs | inline fix | ~27 |
+| 01:27 | Edited src/async_runtime/scheduler/tests.rs | modified file_watch_restart_backoff_grows_exponentially_and_caps_at_30s() | ~176 |
+| 01:30 | File-watcher audit fixes: rename-as-modify normalization, LSP sync for inactive reloads, watcher never gives up + degraded toast, HashSet dedup (bug-058) | palette.rs, setup.rs, file_watch.rs, filesystem.rs, failure.rs, application.rs, buffers.rs, mod.rs | 708 tests pass | ~35k |
+| 01:30 | Session end: 27 writes across 9 files (handler.rs, application.rs, tests.rs, file_watch.rs, failure.rs) | 16 reads | ~188508 tok |
+| 02:29 | Edited src/async_runtime/scheduler/dispatch.rs | expanded (+64 lines) | ~746 |
+| 02:29 | Edited src/async_runtime/scheduler/dispatch.rs | 13→17 lines | ~223 |
+| 02:31 | Edited src/app/app_state/palette.rs | modified is_some() | ~132 |
+| 02:31 | Edited src/app/app_state/palette.rs | removed 50 lines | ~168 |
+| 02:31 | Edited src/app/app_state/palette.rs | reduced (-27 lines) | ~158 |
+| 02:32 | Edited src/app/app_state/palette.rs | reduced (-7 lines) | ~71 |
+| 02:32 | Edited src/app/app_state/palette.rs | modified apply_external_file_contents() | ~1618 |
+| 02:32 | Edited src/app/app_state/palette.rs | added 1 import(s) | ~27 |
+| 02:32 | Edited src/app/app_state/palette.rs | 4→4 lines | ~40 |
+| 02:33 | Edited src/app/app_state/buffers.rs | modified collect_externally_modified_open_buffers() | ~671 |
+| 02:34 | Edited src/app/app_state/buffers.rs | 3→3 lines | ~8 |
+| 02:34 | Edited src/app/event_loop/application.rs | modified is_empty() | ~180 |
+| 02:34 | Edited src/app/event_loop/async_results/filesystem.rs | modified apply_external_file_events() | ~418 |
+| 02:35 | Edited src/app/event_loop/async_results/mod.rs | expanded (+6 lines) | ~123 |
+| 02:35 | Edited src/app/event_loop/async_results/filesystem.rs | modified handle_external_files_read() | ~707 |
+| 02:36 | Edited src/app/event_loop/setup.rs | modified submit_workspace_rescan() | ~192 |
+| 02:36 | Edited src/app/app_state/palette.rs | modified workspace_rescan_request_params() | ~175 |
+| 02:39 | Edited src/terminal/grid.rs | modified apply_regex_highlights() | ~381 |
+| 02:39 | Edited src/terminal/grid.rs | 3→3 lines | ~36 |
+| 02:40 | Edited src/terminal/grid.rs | modified apply_regex_highlights_incremental_covers_rows_scrolled_into_scrollback() | ~559 |
+| 02:41 | Edited src/terminal/grid.rs | scrollback() → len() | ~142 |
+| 02:45 | #4 async I/O: two-phase external-change pipeline (ReadExternalFiles + RescanWorkspace workers) + incremental terminal regex highlight (bug-059) | palette.rs, buffers.rs, message.rs, dispatch.rs, filesystem.rs, setup.rs, application.rs, grid.rs, model.rs | 710 tests pass | ~45k |
+| 02:45 | Session end: 48 writes across 12 files (handler.rs, application.rs, tests.rs, file_watch.rs, failure.rs) | 18 reads | ~211360 tok |
+
+## Session: 2026-06-12 09:57
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-12 10:00
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 10:15 | Terminal cursor no-blink: removed caret_blink_visible gate for all 3 terminal cursors | src/render/renderer/lifecycle/frame.rs | cargo check ✅ | ~800 |
+| 11:01 | Edited src/render/renderer/lifecycle/frame.rs | reduced (-12 lines) | ~184 |
+| 11:02 | Edited src/render/renderer/lifecycle/frame.rs | 9→5 lines | ~111 |
+| 11:02 | Session end: 2 writes across 1 files (frame.rs) | 2 reads | ~14245 tok |
+
+## Session: 2026-06-12 11:06
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 11:23 | Rewrote AI inline completion status report in full English and recorded report-language preference | AI_INLINE_COMPLETION_STATUS_REPORT.md, .wolf/cerebrum.md | report language fixed | ~6000 |
+
+## Session: 2026-06-12 11:38
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 2026-06-12 | Re-audit AI inline completion: report stale on keybindings (no Tab/Ctrl+l accept, only Ctrl+j; AiAcceptInlineWord unbound), model is xmtp/mimo-v2.5-pro, no prefix-retention | AI_INLINE_COMPLETION_STATUS_REPORT.md, setup.rs, ai.rs, default.toml | verified | ~8k |
+| 12:07 | Edited src/app/input_map/mod.rs | 2→5 lines | ~70 |
+| 12:07 | Edited src/app/input_map/mod.rs | modified for_mode_with_palette() | ~116 |
+| 12:07 | Edited src/app/input_map/mod.rs | 10→11 lines | ~92 |
+| 12:07 | Edited src/app/event_loop/setup.rs | 1→2 lines | ~40 |
+| 12:07 | Edited src/app/input/handler.rs | modified Some() | ~441 |
+| 12:08 | Edited src/app/event_loop/commands_lsp.rs | 2→2 lines | ~42 |
+| 12:08 | Edited config/keymaps/default.toml | 4→9 lines | ~41 |
+| 12:08 | Edited src/app/app_state/mod.rs | expanded (+6 lines) | ~83 |
+| 12:08 | Edited src/app/app_state/mod.rs | 1→2 lines | ~32 |
+| 12:08 | Edited src/app/event_loop/mod.rs | expanded (+11 lines) | ~230 |
+| 12:08 | Edited src/app/event_loop/setup.rs | 5→9 lines | ~102 |
+| 12:09 | Edited src/app/app_state/state.rs | modified retain_inline_suggestion_for_typed_text() | ~438 |
+| 12:09 | Edited src/app/event_loop/commands.rs | expanded (+20 lines) | ~294 |
+| 12:09 | Edited src/app/event_loop/commands_editor.rs | 4→6 lines | ~91 |
+| 12:10 | Edited src/app/event_loop/async_results/ai.rs | modified sanitize_inline_suggestion() | ~1193 |
+| 12:10 | Edited src/app/event_loop/async_results/failure.rs | modified handle_worker_failure() | ~111 |
+| 12:10 | Edited src/app/event_loop/async_results/failure.rs | modified contains() | ~260 |
+| 12:10 | Edited src/app/event_loop/setup.rs | expanded (+7 lines) | ~112 |
+| 12:10 | Edited src/app/event_loop/setup.rs | 3→5 lines | ~67 |
+| 12:11 | Edited src/app/event_loop/setup.rs | modified cancel_ai_inline_completion() | ~70 |
+| 12:11 | Edited src/render/renderer.rs | expanded (+11 lines) | ~133 |
+| 12:11 | Edited src/render/renderer.rs | 3→4 lines | ~45 |
+| 12:11 | Edited src/render/renderer/ui/statusbar.rs | 7→7 lines | ~47 |
+| 12:11 | Edited src/render/renderer/ui/statusbar.rs | 2→3 lines | ~30 |
+| 12:11 | Edited src/render/renderer/ui/statusbar.rs | 2→3 lines | ~28 |
+| 12:11 | Edited src/render/renderer/ui/statusbar.rs | expanded (+10 lines) | ~164 |
+| 12:11 | Edited src/app/event_loop/application.rs | expanded (+17 lines) | ~400 |
+| 12:14 | Edited src/app/app_state/state.rs | modified state_with_text() | ~758 |
+| 12:14 | Edited config/ai.toml | 3→3 lines | ~14 |
+| 12:18 | Edited src/app/event_loop/setup.rs | 5→6 lines | ~88 |
+| 12:18 | Edited src/app/event_loop/setup.rs | 6→7 lines | ~62 |
+| 12:18 | Edited src/async_runtime/scheduler/ai.rs | 6→7 lines | ~46 |
+| 12:18 | Edited src/async_runtime/scheduler/ai.rs | 11→14 lines | ~151 |
+| 12:18 | Edited src/config/ai_config.rs | 7→12 lines | ~134 |
+| 12:18 | Edited src/async_runtime/message.rs | 6→7 lines | ~58 |
+| 12:19 | Edited config/ai.toml | expanded (+6 lines) | ~174 |
+| 12:22 | Edited src/app/event_loop/commands.rs | 7→11 lines | ~155 |
+| 2026-06-12 | Implemented inline-completion improvements: smart Tab accept, Ctrl+l word-accept + sync fix, prefix retention, output sanitizer, AI statusbar chip + circuit breaker, reasoning_effort config; 723 tests pass | commands.rs setup.rs state.rs ai.rs failure.rs statusbar.rs ai.toml default.toml | done | ~60k |
+| 12:24 | Session end: 37 writes across 16 files (mod.rs, setup.rs, handler.rs, commands_lsp.rs, default.toml) | 26 reads | ~257638 tok |
+| 12:26 | Session end: 37 writes across 16 files (mod.rs, setup.rs, handler.rs, commands_lsp.rs, default.toml) | 26 reads | ~257638 tok |
+| 12:35 | Edited src/app/event_loop/setup.rs | modified should_queue_ai_inline_completion() | ~427 |
+| 12:35 | Edited src/app/event_loop/setup.rs | expanded (+7 lines) | ~134 |
+| 12:35 | Edited src/app/event_loop/setup.rs | modified next_ai_inline_flush_deadline() | ~167 |
+| 12:36 | Edited src/app/event_loop/mod.rs | 3→2 lines | ~27 |
+| 12:36 | Edited src/app/event_loop/setup.rs | 3→2 lines | ~23 |
+| 12:45 | Fixed user-reported bug: typing never triggered AI inline request (trigger-char/idle gating); now every keystroke queues + debounce coalesces | setup.rs, mod.rs | 723 tests pass | ~8k |
+| 12:39 | Session end: 42 writes across 16 files (mod.rs, setup.rs, handler.rs, commands_lsp.rs, default.toml) | 26 reads | ~256866 tok |
+
+## Session: 2026-06-12 14:07
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 14:56 | Edited config/ai.toml | modified tiny() | ~177 |
+| 14:30 | Diagnosed empty AI inline completion + picked working model | config/ai.toml | mimo/deepseek/qwen reasoning-only or blocked; switched to mistral/mistral-tiny (non-reasoning, ~0.5s, streams clean) | ~9k |
+| 14:57 | Session end: 1 writes across 1 files (ai.toml) | 5 reads | ~26372 tok |
+| 15:06 | Edited config/ai.toml | tiny() → repeat() | ~90 |
+| 14:45 | Verified devstral-2512 > mistral-tiny for inline completion | config/ai.toml | devstral clean on string+code, ~0.6s, streams; set as model | ~3k |
+| 15:07 | Session end: 2 writes across 1 files (ai.toml) | 5 reads | ~26468 tok |
+| 15:17 | Edited src/app/resolved_keymap.rs | 1→4 lines | ~73 |
+| 15:17 | Edited src/app/input/handler.rs | modified resolve() | ~81 |
+| 15:17 | Edited src/app/event_loop/async_results/ai.rs | modified append_inline_suggestion_chunk() | ~366 |
+| 15:18 | Edited src/app/event_loop/async_results/lsp.rs | modified is_empty() | ~146 |
+| 15:18 | Edited src/app/event_loop/async_results/ai.rs | modified dismiss_completion_for_ghost_text() | ~136 |
+| 15:15 | Ghost text UX: removed Tab accept (Ctrl+j only), ghost text suppresses LSP popup | handler.rs, resolved_keymap.rs, async_results/ai.rs, async_results/lsp.rs | build+tests green (80 input, 6 ai) | ~22k |
+| 15:23 | Session end: 7 writes across 5 files (ai.toml, resolved_keymap.rs, handler.rs, ai.rs, lsp.rs) | 14 reads | ~138552 tok |
+| 15:27 | Edited config/ai.toml | repeat() → works() | ~112 |
+| 15:25 | Switched inline model to codestral-2508 (FIM autocomplete, ~0.5s) | config/ai.toml | clean, non-reasoning, streams; best-fit for inline | ~2k |
+| 15:28 | Session end: 8 writes across 5 files (ai.toml, resolved_keymap.rs, handler.rs, ai.rs, lsp.rs) | 14 reads | ~138672 tok |
+| 15:29 | Created ../../../../tmp/codestral_ctx_test.py | — | ~1020 |
+| 15:30 | Created ../../../../tmp/sanitize_check.py | — | ~490 |
+| 15:31 | Edited src/app/event_loop/async_results/ai.rs | modified is_empty() | ~153 |
+| 15:31 | Edited src/app/event_loop/async_results/ai.rs | modified trims_overlap_with_suffix() | ~238 |
+| 15:40 | Verified codestral context (6/6 correct); fixed multi-line suffix overlap in sanitizer | async_results/ai.rs | 7 sanitize tests green | ~12k |
+| 15:34 | Session end: 12 writes across 7 files (ai.toml, resolved_keymap.rs, handler.rs, ai.rs, lsp.rs) | 14 reads | ~140601 tok |
+| 16:31 | Created ../../../../tmp/multiline_test.py | — | ~588 |
+| 16:33 | Edited src/app/app_state/state.rs | modified accept_multiline_preserves_text_and_cursor_at_end() | ~303 |
+| 16:35 | Edited src/app/event_loop/async_results/ai.rs | modified is_empty() | ~231 |
+| 16:35 | Edited src/app/event_loop/async_results/ai.rs | modified strips_echoed_indentation_on_fresh_line() | ~349 |
+| 16:10 | Fixed multi-line ghost text double-indent (echoed whitespace prefix not stripped) | async_results/ai.rs, state.rs | 9 sanitize + 20 accept tests green | ~30k |
+| 16:39 | Session end: 16 writes across 9 files (ai.toml, resolved_keymap.rs, handler.rs, ai.rs, lsp.rs) | 16 reads | ~159410 tok |
+
+## Session: 2026-06-12 16:48
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 17:01 | Diagnosed UI scale issue on Full HD monitor (stale window_size in ScaleFactorChanged + DPI-blind content_scale) | application.rs, setup.rs, helpers.rs, welcome.rs | diagnosed, not fixed | ~8k |
+| 17:40 | Edited src/config/ui_config.rs | 4→4 lines | ~30 |
+| 17:40 | Edited src/config/ui_config.rs | 4→4 lines | ~38 |
+| 17:40 | Edited src/config/ui_config.rs | 6→6 lines | ~70 |
+| 17:40 | Edited src/config/ui_config.rs | 3→3 lines | ~38 |
+| 17:40 | Edited src/config/ui_config.rs | 4→4 lines | ~31 |
+| 17:40 | Edited src/config/ui_config.rs | 4→5 lines | ~41 |
+| 17:40 | Edited src/config/ui_config.rs | 4→4 lines | ~60 |
+| 17:40 | Edited src/app/event_loop/setup.rs | modified update_runtime_scaling_for_window() | ~82 |
+| 17:40 | Edited src/app/event_loop/application.rs | modified as_ref() | ~154 |
+| 17:40 | Edited src/config/ui_config.rs | modified current_dir() | ~102 |
+| 17:41 | Fixed UI scale: re-enabled scale_factor_override, stale window_size fix, user config/ui path | ui_config.rs, setup.rs, application.rs | cargo check pass | ~6k |
+| 17:42 | Session end: 10 writes across 3 files (ui_config.rs, setup.rs, application.rs) | 6 reads | ~85494 tok |
+| 17:42 | Session end: 10 writes across 3 files (ui_config.rs, setup.rs, application.rs) | 6 reads | ~85494 tok |
+| 17:52 | Session end: 10 writes across 3 files (ui_config.rs, setup.rs, application.rs) | 6 reads | ~85494 tok |
+| 18:00 | Edited src/render/renderer/ui/welcome.rs | max() → scale() | ~92 |
+| 18:01 | Edited config/ui/default.toml | 6→8 lines | ~102 |
+| 18:01 | Edited ../../.config/netherize/ui.toml | inline fix | ~5 |
+| 18:02 | Fixed welcome rs^2 double-scale + disabled auto_scale by default | welcome.rs, config/ui/default.toml, ~/.config/netherize/ui.toml | release build pass | ~5k |
+| 18:03 | Session end: 13 writes across 6 files (ui_config.rs, setup.rs, application.rs, welcome.rs, default.toml) | 9 reads | ~95878 tok |
+| 18:14 | Audited extensions manager (Space M E): detection, install popup, UI scale | app_state/mod.rs, syntax_jobs.rs, commands_settings.rs, focus.rs, extensions.rs | diagnosed | ~12k |
+| 18:15 | Session end: 13 writes across 6 files (ui_config.rs, setup.rs, application.rs, welcome.rs, default.toml) | 19 reads | ~198778 tok |
+| 19:35 | Edited src/render/renderer.rs | 2→5 lines | ~71 |
+| 19:35 | Edited src/render/renderer/lifecycle.rs | 2→3 lines | ~26 |
+| 19:35 | Edited src/render/renderer/lifecycle.rs | modified set_ui_scale() | ~41 |
+| 19:35 | Edited src/app/event_loop/setup.rs | modified as_mut() | ~59 |
+| 19:36 | Edited src/render/renderer/editor/extensions.rs | expanded (+8 lines) | ~188 |
+| 19:36 | Edited src/render/renderer/editor/extensions.rs | 2→2 lines | ~31 |
+| 19:36 | Edited src/render/renderer/editor/extensions.rs | 5→5 lines | ~50 |
+| 19:36 | Edited src/render/renderer/editor/extensions.rs | 7→6 lines | ~70 |
+| 19:36 | Edited src/render/renderer/editor/extensions.rs | 13→18 lines | ~165 |
+| 19:36 | Edited src/render/renderer/editor/extensions.rs | 9→9 lines | ~101 |
+| 19:36 | Edited src/render/renderer/editor/extensions.rs | 10→10 lines | ~139 |
+| 19:36 | Edited src/render/renderer/editor/extensions.rs | 7→7 lines | ~81 |
+| 19:36 | Edited src/render/renderer/editor/extensions.rs | 2→2 lines | ~35 |
+| 19:36 | Edited src/render/renderer/editor/extensions.rs | 4→4 lines | ~35 |
+| 19:36 | Edited src/render/renderer/editor/extensions.rs | 4→4 lines | ~36 |
+| 19:36 | Edited src/render/renderer/editor/extensions.rs | 27→27 lines | ~260 |
+| 19:36 | Edited src/render/renderer/editor/extensions.rs | inline fix | ~18 |
+| 19:37 | Edited src/render/renderer/editor/extensions.rs | 9→9 lines | ~136 |
+| 19:37 | Edited src/render/renderer/editor/extensions.rs | 4→4 lines | ~49 |
+| 19:37 | Edited src/render/renderer/editor/extensions.rs | 10→10 lines | ~86 |
+| 19:37 | Edited src/render/renderer/editor/extensions.rs | 2→2 lines | ~27 |
+| 19:37 | Edited src/render/renderer/editor/extensions.rs | 16→19 lines | ~207 |
+| 19:37 | Edited src/render/renderer/editor/extensions.rs | 4→4 lines | ~30 |
+| 19:37 | Edited src/render/renderer/editor/extensions.rs | 4→4 lines | ~30 |
+| 19:37 | Edited src/render/renderer/editor/extensions.rs | 5→5 lines | ~54 |
+| 19:37 | Edited src/render/renderer/editor/extensions.rs | 6→6 lines | ~60 |
+| 19:37 | Edited src/render/renderer/editor/extensions.rs | 10→11 lines | ~158 |
+| 19:37 | Edited src/render/renderer/editor/extensions.rs | 6→7 lines | ~59 |
+| 19:37 | Edited src/render/renderer/editor/extensions.rs | 4→4 lines | ~27 |
+| 19:37 | Edited src/render/renderer/editor/extensions.rs | inline fix | ~16 |
+| 19:38 | Edited src/render/renderer/editor/extensions.rs | 14→14 lines | ~134 |
+| 19:38 | Edited src/render/renderer/editor/extensions.rs | modified is_empty() | ~161 |
+| 19:38 | Edited src/render/renderer/editor/extensions.rs | 2→2 lines | ~34 |
+| 19:38 | Edited src/render/renderer/editor/extensions.rs | 20→23 lines | ~252 |
+| 19:38 | Edited src/render/renderer/editor/extensions.rs | inline fix | ~16 |
+| 19:38 | Edited src/render/renderer/editor/extensions.rs | 4→4 lines | ~39 |
+| 19:38 | Edited src/render/renderer/editor/extensions.rs | 4→4 lines | ~55 |
+| 19:38 | Edited src/render/renderer/editor/extensions.rs | 10→10 lines | ~139 |
+| 19:38 | Edited src/render/renderer/editor/extensions.rs | 25→25 lines | ~354 |
+| 19:38 | Edited src/render/renderer/editor/extensions.rs | 4→4 lines | ~52 |
+| 19:38 | Edited src/render/renderer/editor/extensions.rs | 4→4 lines | ~47 |
+| 19:38 | Edited src/render/renderer/editor/extensions.rs | 4→4 lines | ~42 |
+| 19:38 | Edited src/render/renderer/editor/extensions.rs | 4→4 lines | ~48 |
+| 19:38 | Edited src/render/renderer/editor/extensions.rs | 4→4 lines | ~47 |
+| 19:39 | Edited src/render/renderer/editor/extensions.rs | 14→19 lines | ~229 |
+| 19:39 | Edited src/render/renderer/editor/extensions.rs | 11→11 lines | ~134 |
+| 19:39 | Edited src/render/renderer/editor/extensions.rs | 11→11 lines | ~142 |
+| 19:39 | Edited src/render/renderer/editor/extensions.rs | 11→11 lines | ~149 |
+| 19:39 | Edited src/render/renderer/editor/extensions.rs | 11→11 lines | ~163 |
+| 19:39 | Edited src/app/event_loop/commands_settings.rs | modified active_extensions_manager_buffer_mut() | ~208 |
+| 19:39 | Edited src/app/event_loop/commands_settings.rs | modified filter() | ~235 |
+| 19:40 | Edited src/app/event_loop/commands_settings.rs | modified filter() | ~273 |
+| 19:40 | Edited src/render/renderer/editor/extensions.rs | 5→5 lines | ~68 |
+| 19:40 | Edited src/async_runtime/scheduler/syntax_jobs.rs | modified resolve_nvm_bin_paths() | ~105 |
+| 19:40 | Edited src/async_runtime/scheduler/syntax_jobs.rs | expanded (+7 lines) | ~180 |
+| 19:40 | Edited src/async_runtime/scheduler/syntax_jobs.rs | modified resolve_nvm_bin_paths() | ~342 |
+| 19:41 | Edited src/app/app_state/palette.rs | modified active_extensions_manager_buffer_mut() | ~226 |
+| 19:41 | Edited src/app/event_loop/async_results/system.rs | active_extensions_manager_buffer_mut() → any_extensions_manager_buffer_mut() | ~167 |
+| 19:41 | Edited src/app/event_loop/async_results/system.rs | active_extensions_manager_buffer_mut() → any_extensions_manager_buffer_mut() | ~35 |
+| 19:42 | Edited src/app/event_loop/async_results/system.rs | active_extensions_manager_buffer_mut() → any_extensions_manager_buffer_mut() | ~37 |
+| 19:42 | Edited src/app/event_loop/async_results/system.rs | active_extensions_manager_buffer_mut() → any_extensions_manager_buffer_mut() | ~42 |
+| 19:42 | Edited src/app/app_state/mod.rs | 11→14 lines | ~136 |
+| 19:42 | Edited src/app/app_state/mod.rs | 5→6 lines | ~42 |
+| 19:42 | Edited src/app/app_state/mod.rs | 3→3 lines | ~23 |
+| 19:42 | Edited src/app/app_state/mod.rs | 3→3 lines | ~26 |
+| 19:42 | Edited src/app/app_state/mod.rs | 3→3 lines | ~26 |
+| 19:42 | Edited src/app/app_state/mod.rs | 3→3 lines | ~27 |
+| 19:42 | Edited src/app/app_state/mod.rs | 3→3 lines | ~37 |
+| 19:42 | Edited src/app/app_state/mod.rs | 3→3 lines | ~25 |
+| 19:42 | Edited src/app/app_state/mod.rs | 3→3 lines | ~24 |
+| 19:42 | Edited src/app/app_state/mod.rs | 3→3 lines | ~28 |
+| 19:42 | Edited src/app/app_state/mod.rs | 3→3 lines | ~28 |
+| 19:42 | Edited src/app/app_state/mod.rs | 3→3 lines | ~26 |
+| 19:42 | Edited src/render/renderer/editor/extensions.rs | expanded (+8 lines) | ~157 |
+| 19:43 | Edited src/app/app_state/mod.rs | expanded (+9 lines) | ~140 |
+| 19:43 | Edited src/async_runtime/scheduler/syntax_jobs.rs | 3→4 lines | ~34 |
+| 19:43 | Edited config/keymaps/default.toml | expanded (+11 lines) | ~79 |
+| 19:44 | Edited config/keymaps/default.toml | 10→5 lines | ~35 |
+| 19:47 | Fixed ext-manager scale/Esc/guard/PATH/installed-detection + Dart LSP + Space-? cheatsheet binding; 727 tests pass | extensions.rs, commands_settings.rs, syntax_jobs.rs, app_state/mod.rs, palette.rs, system.rs, default.toml | done | ~20k |
+| 19:48 | Session end: 91 writes across 14 files (ui_config.rs, setup.rs, application.rs, welcome.rs, default.toml) | 29 reads | ~274595 tok |
+| 19:49 | Session end: 91 writes across 14 files (ui_config.rs, setup.rs, application.rs, welcome.rs, default.toml) | 29 reads | ~274595 tok |
+| 19:55 | Edited src/core/command_ids.rs | modified is_valid() | ~178 |
+| 19:55 | Edited config/keymaps/default.toml | 4→4 lines | ~20 |
+| 19:55 | Edited src/config/keymap_loader.rs | modified default_keymap_has_no_unknown_commands() | ~214 |
+| 19:56 | Fixed keymap registry drift: 11 ids missing from ALL_IDS killed bindings silently (incl. Space ? help, C, {, }, ctrl+v); is_valid now falls back to parse(); regression test added | command_ids.rs, keymap_loader.rs, default.toml | keymap tests pass | ~6k |
+| 19:57 | Session end: 94 writes across 16 files (ui_config.rs, setup.rs, application.rs, welcome.rs, default.toml) | 30 reads | ~276747 tok |
+| 19:59 | Session end: 94 writes across 16 files (ui_config.rs, setup.rs, application.rs, welcome.rs, default.toml) | 30 reads | ~276747 tok |
+| 20:11 | Edited src/render/renderer/editor/settings.rs | expanded (+12 lines) | ~392 |
+| 20:11 | Edited src/render/renderer/editor/settings.rs | expanded (+7 lines) | ~383 |
+| 20:11 | Edited src/render/renderer/editor/settings.rs | 58→62 lines | ~543 |
+| 20:11 | Edited src/render/renderer/editor/settings.rs | modified setting_control_hint() | ~353 |
+| 20:11 | Edited src/render/renderer/editor/settings.rs | 19→19 lines | ~187 |
+| 20:12 | Edited src/render/renderer/editor/settings.rs | 5→7 lines | ~113 |
+| 20:12 | Edited src/render/renderer/editor/settings.rs | modified Some() | ~161 |
+| 20:12 | Edited src/render/renderer/editor/settings.rs | 30→30 lines | ~346 |
+| 20:12 | Edited src/render/renderer/editor/settings.rs | expanded (+11 lines) | ~712 |
+| 20:12 | Edited src/render/renderer/editor/settings.rs | 11→13 lines | ~138 |
+| 20:12 | Edited src/render/renderer/editor/settings.rs | 4→4 lines | ~64 |
+| 20:12 | Edited src/render/renderer/editor/settings.rs | 19→19 lines | ~210 |
+| 20:13 | Edited src/render/renderer/editor/settings.rs | 4→4 lines | ~72 |
+| 20:13 | Edited src/render/renderer/editor/settings.rs | modified setting_value_ratio() | ~797 |
+| 20:13 | Edited src/render/renderer/editor/settings.rs | modified enumerate() | ~1017 |
+| 20:14 | Edited src/render/renderer/editor/settings.rs | 3→3 lines | ~44 |
+| 20:14 | Edited src/render/renderer/editor/settings.rs | 3→3 lines | ~21 |
+| 20:14 | Edited src/app/app_state/settings.rs | 15→17 lines | ~169 |
+| 20:14 | Edited src/app/app_state/settings.rs | 5→6 lines | ~48 |
+| 20:14 | Edited src/app/app_state/settings.rs | 11→12 lines | ~61 |
+| 20:15 | Edited src/app/app_state/settings.rs | 19→23 lines | ~212 |
+| 20:15 | Edited src/app/app_state/settings.rs | expanded (+6 lines) | ~146 |
+| 20:15 | Edited src/render/renderer/editor/settings.rs | 3→4 lines | ~50 |
+| 20:15 | Edited src/render/renderer/editor/settings.rs | 5→8 lines | ~97 |
+| 20:15 | Edited src/render/renderer/editor/settings.rs | modified display_value() | ~122 |
+| 20:15 | Edited src/render/renderer/editor/settings.rs | 10→13 lines | ~115 |
+| 20:15 | Edited src/app/app_state/palette.rs | 7→8 lines | ~84 |
+| 20:16 | Edited src/app/app_state/palette.rs | 9→10 lines | ~88 |
+| 20:16 | Edited src/app/event_loop/commands_settings.rs | 5→6 lines | ~83 |
+| 20:16 | Edited src/app/event_loop/commands_settings_helpers.rs | 7→12 lines | ~168 |
+| 20:16 | Edited src/app/event_loop/commands_settings_helpers.rs | modified refresh_runtime_scale_from_window() | ~363 |
+| 20:16 | Edited src/app/event_loop/commands_settings_helpers.rs | 8→9 lines | ~168 |
+| 20:16 | Edited src/app/event_loop/commands_settings_helpers.rs | modified selected_item_mut() | ~463 |
+| 20:17 | Edited src/render/renderer/editor/settings.rs | 10→11 lines | ~205 |
+| 20:17 | Edited src/render/renderer/editor/settings.rs | expanded (+7 lines) | ~83 |
+| 20:17 | Settings tab: scaled chrome, proportional columns, responsive preview pane, new UI Scale setting (scale_factor_override) | settings.rs (renderer+state), palette.rs, commands_settings*.rs | compile clean | ~15k |
+| 20:18 | Session end: 129 writes across 18 files (ui_config.rs, setup.rs, application.rs, welcome.rs, default.toml) | 33 reads | ~303959 tok |
+| 20:20 | Session end: 129 writes across 18 files (ui_config.rs, setup.rs, application.rs, welcome.rs, default.toml) | 33 reads | ~303959 tok |
+| 20:22 | Created ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/onboarding-roadmap.md | — | ~345 |
+| 20:23 | Session end: 130 writes across 19 files (ui_config.rs, setup.rs, application.rs, welcome.rs, default.toml) | 33 reads | ~304329 tok |
+
+## Session: 2026-06-12 20:26
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 20:35 | Edited src/core/commands.rs | 3→6 lines | ~68 |
+| 20:35 | Edited src/core/commands.rs | 6→7 lines | ~76 |
+| 20:35 | Edited src/core/command_ids.rs | 2→3 lines | ~48 |
+| 20:35 | Edited src/core/command_ids.rs | 3→4 lines | ~23 |
+| 20:36 | Edited src/core/command_ids.rs | expanded (+6 lines) | ~98 |
+| 20:36 | Edited src/app/app_state/editor.rs | modified move_find_char() | ~413 |
+| 20:36 | Edited src/app/app_state/state.rs | modified clear_search_highlights() | ~178 |
+| 20:36 | Edited src/core/command_dispatch/mod.rs | 3→4 lines | ~39 |
+| 20:36 | Edited src/core/command_dispatch/navigation.rs | expanded (+13 lines) | ~138 |
+| 20:36 | Edited src/app/input/pending.rs | 5→9 lines | ~78 |
+| 20:36 | Edited src/app/input/pending.rs | 4→5 lines | ~60 |
+| 20:36 | Edited src/app/input/pending.rs | expanded (+6 lines) | ~116 |
+| 20:36 | Edited src/core/command_dispatch/navigation.rs | inline fix | ~17 |
+| 20:37 | Edited src/app/input/handler.rs | modified replace_char_from_input() | ~414 |
+| 20:37 | Edited src/app/input/handler.rs | modified alt_key() | ~387 |
+| 20:37 | Edited config/keymaps/default.toml | expanded (+36 lines) | ~175 |
+| 20:38 | Edited src/app/app_state/mod.rs | expanded (+6 lines) | ~58 |
+| 20:38 | Edited src/app/app_state/mod.rs | 7→10 lines | ~117 |
+| 20:38 | Edited src/app/app_state/mod.rs | 2→3 lines | ~43 |
+| 20:40 | Edited src/core/command_dispatch/tests.rs | modified move_find_char_jumps_to_char_and_highlights_all_matches() | ~807 |
+| 20:43 | Edited src/app/input/tests.rs | 8→9 lines | ~85 |
+| 20:43 | Edited src/app/input/tests.rs | 3→4 lines | ~63 |
+| 20:43 | Edited src/app/input/tests.rs | modified bare_find_char_motion_waits_then_dispatches_move_find_char() | ~495 |
+| 23:30 | Vim core key audit: bound D/Y/S/J/p/P/X in normal mode (p/P were dead despite comment claiming otherwise); new id editor.yank_to_line_end | config/keymaps/default.toml, src/core/command_ids.rs | ok | ~9k |
+| 23:35 | Bare f/F/t/T motion implemented: PendingState::FindCharMotion + Command::MoveFindChar; motion is line-scoped (vim) but also sets search query to the char -> all occurrences highlighted, n/N jump file-wide | src/app/input/{handler,pending}.rs, src/core/{commands.rs,command_dispatch/{mod,navigation}.rs}, src/app/app_state/{editor,state}.rs | ok | ~12k |
+| 23:40 | Cheatsheet: added Y entry + f/t/n tip lines; palette label for yank_to_line_end | src/app/app_state/mod.rs | ok | ~1k |
+| 23:45 | Tests: 6 new (4 dispatch find-char, 2 input pending); fixed 2 input tests that relied on 'f' being unmapped (swapped to 'q'); full suite 735 pass | src/core/command_dispatch/tests.rs, src/app/input/tests.rs | ok | ~5k |
+| 20:47 | Session end: 23 writes across 10 files (commands.rs, command_ids.rs, editor.rs, state.rs, mod.rs) | 15 reads | ~159632 tok |
+| 20:55 | Edited src/app/app_state/palette.rs | modified push_jump() | ~311 |
+| 20:56 | Edited src/core/command_dispatch/common.rs | modified open_file() | ~311 |
+| 20:56 | Edited src/core/command_dispatch/palette.rs | expanded (+10 lines) | ~295 |
+| 20:56 | Edited src/core/command_dispatch/palette.rs | expanded (+7 lines) | ~150 |
+| 20:56 | Edited src/core/command_dispatch/navigation.rs | modified jump_origin() | ~219 |
+| 20:56 | Edited src/core/command_dispatch/navigation.rs | expanded (+8 lines) | ~305 |
+| 20:57 | Edited src/core/command_dispatch/navigation.rs | 22→26 lines | ~251 |
+| 20:57 | Edited src/app/event_loop/commands_editor.rs | 2→4 lines | ~70 |
+| 20:57 | Edited src/core/command_dispatch/tests.rs | modified move_to_last_line_pushes_jump_origin() | ~617 |
+| 20:58 | Edited src/core/command_dispatch/tests.rs | modified move_to_last_line_pushes_jump_origin() | ~423 |
+| 20:59 | Edited src/core/command_dispatch/tests.rs | 9→10 lines | ~135 |
+| 20:59 | Edited src/core/command_dispatch/tests.rs | 13→14 lines | ~200 |
+| 00:20 | Jump list coverage: DispatchCtx::open_file pushes origin on file switch (picker/grep/explorer); OpenSearchMatch + / confirm + n/N + gg/G + {} + leap push; stack dedup + cap 100 | command_dispatch/{common,palette,navigation}.rs, commands_editor.rs, app_state/palette.rs | ok | ~8k |
+| 00:25 | Tests: 3 new jump tests (origin on G, origin on n, dedup/cap); open_file canonicalizes paths on macOS (/var -> /private/var) — tests must compare active_file() not raw temp path | command_dispatch/tests.rs | ok | ~3k |
+| 21:03 | Session end: 35 writes across 13 files (commands.rs, command_ids.rs, editor.rs, state.rs, mod.rs) | 22 reads | ~211796 tok |
+
+## Session: 2026-06-12 21:05
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 21:10 | Edited src/app/event_loop/commands_editor.rs | 3→8 lines | ~92 |
+| 21:10 | Edited src/app/event_loop/commands_editor.rs | 3→5 lines | ~59 |
+| 21:10 | Edited src/app/event_loop/commands.rs | 3→8 lines | ~82 |
+| 21:11 | Edited src/app/event_loop/commands_tests.rs | modified operator_delete_clears_stale_semantic_symbol_highlights() | ~252 |
+| 2026-06-12 | Fix symbol highlight jumping after dd/dw: added Operate{Delete|Change} + DeleteToLineEnd/ChangeToLineEnd to should_reparse & is_text_modifying_command; new test | commands_editor.rs, commands.rs, commands_tests.rs | 739 tests pass | ~30k |
+| 21:14 | Session end: 4 writes across 3 files (commands_editor.rs, commands.rs, commands_tests.rs) | 6 reads | ~78906 tok |
+
+## Session: 2026-06-12 21:16
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 21:24 | Edited src/app/event_loop/mod.rs | expanded (+6 lines) | ~167 |
+| 21:24 | Edited src/app/event_loop/setup.rs | 2→3 lines | ~32 |
+| 21:24 | Edited src/app/event_loop/setup.rs | modified cancel_ai_inline_completion() | ~581 |
+| 21:24 | Edited src/app/event_loop/setup.rs | 6→7 lines | ~74 |
+| 21:24 | Edited src/app/event_loop/setup.rs | modified ai_inline_anchor_is_current() | ~168 |
+| 21:24 | Edited src/app/event_loop/application.rs | 3→4 lines | ~53 |
+| 21:25 | Edited src/app/event_loop/commands_editor.rs | 3→8 lines | ~120 |
+| 21:25 | Edited src/app/event_loop/commands_lsp.rs | modified is_some() | ~323 |
+| 21:25 | Edited src/app/event_loop/async_results/ai.rs | modified ai_inline_anchor_is_current() | ~127 |
+| 21:25 | Edited src/app/event_loop/async_results/ai.rs | modified ai_inline_anchor_is_current() | ~114 |
+| 2026-06-12 | Fix AI inline ghost text appearing late at moved caret + following cursor: added ai_inline_anchor watchdog (cancel pending/in-flight + clear ghost on caret/mode/buffer change), re-anchor on retained typing & word accept | setup.rs, application.rs, commands_editor.rs, commands_lsp.rs, async_results/ai.rs, mod.rs | 739 tests pass | ~35k |
+| 21:28 | Session end: 10 writes across 6 files (mod.rs, setup.rs, application.rs, commands_editor.rs, commands_lsp.rs) | 11 reads | ~116460 tok |
+
+## Session: 2026-06-12 21:30
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 21:40 | Edited src/app/resolved_keymap.rs | modified sequence_continuations() | ~535 |
+| 21:40 | Edited src/app/resolved_keymap.rs | expanded (+10 lines) | ~122 |
+| 21:41 | Edited src/app/input_map/mod.rs | modified humanize_command_id() | ~232 |
+| 21:41 | Edited src/app/input_map/mod.rs | modified whichkey_entries() | ~316 |
+| 21:41 | Edited src/app/input/handler.rs | modified pending_chord_sequence() | ~143 |
+| 21:41 | Edited src/render/renderer.rs | expanded (+7 lines) | ~190 |
+| 21:41 | Edited src/render/renderer/ui.rs | 2→3 lines | ~13 |
+| 21:42 | Created src/render/renderer/ui/whichkey.rs | — | ~1932 |
+| 21:42 | Edited src/render/renderer/lifecycle.rs | 1→2 lines | ~47 |
+| 21:42 | Edited src/render/renderer/lifecycle.rs | 2→4 lines | ~62 |
+| 21:42 | Edited src/render/renderer/lifecycle.rs | 5→10 lines | ~107 |
+| 21:42 | Edited src/render/renderer/lifecycle.rs | 2→3 lines | ~46 |
+| 21:42 | Edited src/render/renderer/lifecycle.rs | 2→3 lines | ~47 |
+| 21:42 | Edited src/render/renderer/lifecycle.rs | 3→4 lines | ~66 |
+| 21:42 | Edited src/render/renderer/lifecycle.rs | 2→3 lines | ~37 |
+| 21:42 | Edited src/render/renderer/lifecycle/frame.rs | 4→7 lines | ~87 |
+| 21:42 | Edited src/render/renderer/lifecycle/frame.rs | 2→3 lines | ~59 |
+| 21:42 | Edited src/render/renderer/lifecycle/frame.rs | expanded (+25 lines) | ~255 |
+| 21:43 | Edited src/app/event_loop/application.rs | 2→5 lines | ~78 |
+| 21:43 | Edited src/app/event_loop/application.rs | modified as_mut() | ~364 |
+| 21:44 | Edited src/app/event_loop/application.rs | modified clear_expired_transient_toast() | ~48 |
+| 21:44 | Edited src/app/event_loop/application.rs | modified next_lsp_retry_deadline() | ~189 |
+| 21:44 | Edited src/app/event_loop/application.rs | modified tick_whichkey_delay() | ~200 |
+| 21:44 | Edited src/app/event_loop/mod.rs | 2→5 lines | ~74 |
+| 21:44 | Edited src/app/event_loop/setup.rs | 2→3 lines | ~33 |
+| 21:45 | Edited src/app/resolved_keymap.rs | modified parse_unknown_key_returns_none() | ~511 |
+| 21:47 | Edited src/app/resolved_keymap.rs | 2→3 lines | ~34 |
+| 21:47 | Edited src/app/resolved_keymap.rs | 2→3 lines | ~30 |
+| 21:47 | Edited config/keymaps/default.toml | 5→10 lines | ~65 |
+| 21:47 | Edited src/render/renderer/ui/welcome.rs | expanded (+8 lines) | ~135 |
+| 21:47 | Edited src/render/renderer/ui/welcome.rs | "Press Space P J for Recen" → "Press Space ? or F1 for a" | ~32 |
+| 21:49 | Edited src/app/persistence.rs | 3→6 lines | ~51 |
+| 21:49 | Edited src/app/event_loop/application.rs | 4→5 lines | ~41 |
+| 21:49 | Edited src/app/event_loop/commands.rs | modified show_first_run_tour_if_needed() | ~231 |
+| 21:50 | Edited src/render/renderer.rs | expanded (+15 lines) | ~182 |
+| 21:50 | Edited src/render/renderer.rs | 2→3 lines | ~39 |
+| 21:50 | Edited src/render/renderer/ui/statusbar.rs | inline fix | ~23 |
+| 21:50 | Edited src/render/renderer/ui/statusbar.rs | 4→5 lines | ~48 |
+| 21:50 | Edited src/render/renderer/ui/statusbar.rs | 2→3 lines | ~36 |
+| 21:51 | Edited src/render/renderer/ui/statusbar.rs | modified is_empty() | ~225 |
+| 21:51 | Edited src/render/renderer/ui/statusbar.rs | 2→4 lines | ~61 |
+| 21:51 | Edited src/render/renderer/ui/statusbar.rs | 2→6 lines | ~58 |
+| 21:51 | Edited src/render/renderer/ui/statusbar.rs | modified is_some() | ~229 |
+| 21:51 | Edited src/app/event_loop/application.rs | modified is_some() | ~336 |
+| 21:51 | Edited src/app/event_loop/application.rs | 4→5 lines | ~58 |
+| 21:52 | Edited src/app/event_loop/application.rs | modified filter() | ~396 |
+| 21:55 | Edited src/async_runtime/scheduler.rs | 1→2 lines | ~22 |
+| 21:55 | Edited src/async_runtime/scheduler/syntax_jobs.rs | inline fix | ~13 |
+| 21:55 | Edited src/app/event_loop/commands_settings.rs | modified is_empty() | ~276 |
+| 21:56 | Edited src/render/renderer/editor/fuzzy.rs | 31→36 lines | ~418 |
+| 21:56 | Edited src/render/renderer/editor/fuzzy.rs | 5→5 lines | ~35 |
+| 21:56 | Edited src/render/renderer/editor/fuzzy.rs | 14→14 lines | ~149 |
+| 21:57 | Edited src/render/renderer/editor/fuzzy.rs | 21→21 lines | ~210 |
+| 21:57 | Edited src/render/renderer/editor/fuzzy.rs | 14→14 lines | ~157 |
+| 21:57 | Edited src/render/renderer/editor/fuzzy.rs | 12→12 lines | ~139 |
+| 21:57 | Edited src/render/renderer/editor/fuzzy.rs | 2→2 lines | ~41 |
+| 21:57 | Edited src/render/renderer/editor/fuzzy.rs | 11→11 lines | ~117 |
+| 21:57 | Edited src/render/renderer/editor/fuzzy.rs | 19→23 lines | ~211 |
+| 21:57 | Edited src/render/renderer/editor/fuzzy.rs | inline fix | ~16 |
+| 21:57 | Edited src/render/renderer/editor/fuzzy.rs | 13→13 lines | ~181 |
+| 21:57 | Edited src/render/renderer/editor/fuzzy.rs | 27→27 lines | ~316 |
+| 21:57 | Edited src/render/renderer/editor/fuzzy.rs | 10→15 lines | ~143 |
+| 21:58 | Edited src/render/renderer/editor/fuzzy.rs | modified is_empty() | ~286 |
+| 21:58 | Edited src/render/renderer/editor/fuzzy.rs | 12→12 lines | ~135 |
+| 21:58 | Edited src/render/renderer/editor/fuzzy.rs | 3→3 lines | ~38 |
+| 21:58 | Edited src/render/renderer/editor/fuzzy.rs | expanded (+10 lines) | ~279 |
+| 21:58 | Edited src/render/renderer/editor/fuzzy.rs | 9→9 lines | ~104 |
+| 21:58 | Edited src/render/renderer/editor/fuzzy.rs | 3→3 lines | ~29 |
+| 21:58 | Edited src/render/renderer/editor/fuzzy.rs | 11→11 lines | ~116 |
+| 21:59 | Edited src/render/renderer/editor/help.rs | 4→7 lines | ~121 |
+| 21:59 | Edited src/render/renderer/editor/help.rs | 2→2 lines | ~31 |
+| 21:59 | Edited src/render/renderer/editor/help.rs | 36→36 lines | ~374 |
+| 21:59 | Edited src/render/renderer/editor/help.rs | 8→8 lines | ~58 |
+| 21:59 | Edited src/render/renderer/editor/help.rs | inline fix | ~21 |
+| 21:59 | Edited src/render/renderer/editor/help.rs | inline fix | ~13 |
+| 21:59 | Edited src/render/renderer/editor/help.rs | inline fix | ~23 |
+| 21:59 | Edited src/render/renderer/editor/help.rs | 2→2 lines | ~31 |
+| 21:59 | Edited src/render/renderer/editor/help.rs | 2→2 lines | ~31 |
+| 2026-06-12 | Which-key overlay: sequence_continuations + whichkey_entries + new render surface, 300ms delay via about_to_wait deadline | resolved_keymap.rs, input_map/mod.rs, input/handler.rs, renderer.rs, ui/whichkey.rs, lifecycle.rs, frame.rs, application.rs, mod.rs, setup.rs | done, test added | ~8k |
+| 2026-06-12 | F1 -> app.open_help (parser + display_token + default.toml), welcome screen Cheat Sheet card + footer hint | resolved_keymap.rs, default.toml, ui/welcome.rs | done | ~1.5k |
+| 2026-06-12 | First-run tour: persistent flag first_run_tour_shown + 12s onboarding toast in resumed() | persistence.rs, commands.rs, application.rs | done | ~1k |
+| 2026-06-12 | LSP status indicator: LspStatusIndicator enum (NotApplicable/Inactive/Starting/Running/Missing), chip + state-aware dot in statusbar | renderer.rs, ui/statusbar.rs, application.rs | done | ~2k |
+| 2026-06-12 | Extensions pre-check: missing_install_prerequisite gates brew/npm/go/cargo/pip/gem/dotnet before RunExtensionCommand, resolve_system_path now pub(crate) | commands_settings.rs, scheduler.rs, syntax_jobs.rs | done | ~1.5k |
+| 2026-06-12 | ui_scale sweep: fuzzy.rs, help.rs, buffers.rs, overlays.rs (popup const blocks -> scaled lets) | render/renderer/editor/* | done, 728 tests pass | ~6k |
+| 22:05 | Created ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/onboarding-roadmap.md | — | ~509 |
+| 22:06 | Session end: 79 writes across 21 files (resolved_keymap.rs, mod.rs, handler.rs, renderer.rs, ui.rs) | 31 reads | ~259804 tok |
+| 22:28 | Edited src/app/input/handler.rs | modified reset_prefix_if_timed_out() | ~220 |
+| 22:29 | Edited src/app/input/handler.rs | modified Some() | ~315 |
+| 22:29 | Edited src/app/input/handler.rs | modified resolve_sequence_next() | ~109 |
+| 22:29 | Edited src/app/input/handler.rs | 8→8 lines | ~127 |
+| 22:29 | Edited src/app/event_loop/application.rs | modified handle_command_with_count() | ~210 |
+| 22:30 | Edited src/app/input/tests.rs | modified pending_chord_survives_timeout_window() | ~675 |
+| 2026-06-12 | Fix which-key: chord khong expire khi overlay hien, Esc cancel chord, started_at giu qua cac buoc, NoDispatch request_redraw | input/handler.rs, application.rs, input/tests.rs | done, 729 tests pass | ~2k |
+| 22:33 | Session end: 85 writes across 22 files (resolved_keymap.rs, mod.rs, handler.rs, renderer.rs, ui.rs) | 32 reads | ~279684 tok |
+| 22:38 | Edited src/app/event_loop/commands_completion.rs | modified submit_lsp_completion_manual() | ~230 |
+| 22:38 | Edited src/app/event_loop/commands_lsp.rs | inline fix | ~23 |
+| 23:06 | Completed Ctrl+Space-over-ghost-text fix and strengthened regression coverage through LSP result plus late AI result | commands_completion.rs, commands_lsp.rs, commands_tests.rs | cargo check + 46 completion tests + 9 AI tests pass | ~8k |
+| 23:10 | Final verification for manual Ctrl+Space completion override | commands_completion.rs, commands_lsp.rs, commands_tests.rs | rustfmt/diff/JSON clean; full lib suite 730 passed | ~2k |

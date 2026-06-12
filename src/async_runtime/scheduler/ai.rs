@@ -18,6 +18,7 @@ pub(super) async fn execute_ai_inline_request(
         api_key,
         model,
         endpoint_kind,
+        reasoning_effort,
         prefix,
         suffix,
         language_id,
@@ -56,7 +57,7 @@ pub(super) async fn execute_ai_inline_request(
     );
 
     let stream_response = worker_tx.is_some() && endpoint_kind.as_deref() != Some("responses");
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "model": model,
         "messages": [
             {"role": "system", "content": system},
@@ -66,6 +67,9 @@ pub(super) async fn execute_ai_inline_request(
         "max_tokens": max_tokens,
         "stream": stream_response
     });
+    if let Some(effort) = reasoning_effort.as_ref().filter(|effort| !effort.is_empty()) {
+        body["reasoning_effort"] = serde_json::Value::String(effort.clone());
+    }
 
     let mut req = client.post(endpoint).json(&body);
     if let Some(key) = api_key.as_ref().filter(|key| !key.is_empty()) {

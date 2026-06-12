@@ -3,7 +3,6 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::Arc,
-    time::{Duration, Instant},
 };
 
 use ropey::Rope;
@@ -55,6 +54,17 @@ pub struct ExternalChangeReport {
     pub active_file_reloaded: bool,
     pub conflict_detected: bool,
     pub conflict_path: Option<PathBuf>,
+    /// Inactive buffers whose content was reloaded from disk. The shell must
+    /// re-sync these with the LSP server: a stale didOpen overlay would keep
+    /// shadowing the new on-disk content for cross-file diagnostics.
+    pub inactive_reloaded_paths: Vec<PathBuf>,
+    /// Buffers whose content must be re-read from disk. The shell submits a
+    /// `ReadExternalFiles` worker request for these and applies the results
+    /// via `apply_external_file_contents` — the UI thread never reads files.
+    pub pending_reload_paths: Vec<PathBuf>,
+    /// The workspace tree shape may have changed; the shell submits an async
+    /// `RescanWorkspace` and applies fresh nodes via `apply_workspace_rescan`.
+    pub workspace_rescan_needed: bool,
     pub notices: Vec<String>,
 }
 
@@ -156,9 +166,7 @@ pub struct EditorBuffer {
 
 impl EditorBuffer {
     pub fn new(path: PathBuf, language_id: Option<String>) -> Self {
-        let last_known_modified_time = std::fs::metadata(&path)
-            .and_then(|m| m.modified())
-            .ok();
+        let last_known_modified_time = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
         Self {
             path,
             language_id,
@@ -335,6 +343,9 @@ pub struct ExtensionsManagerState {
     pub expanded_binary: Option<String>,
     pub items: Vec<ExtensionItem>,
     pub command: Option<ExtensionCommandState>,
+    /// False until the first async `which` sweep returns — installed states are
+    /// unknown before that and must render as "checking", not as a guess.
+    pub deps_checked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -345,7 +356,7 @@ pub struct ExtensionCommandState {
     pub success: Option<bool>,
     pub exit_code: Option<i32>,
     pub logs: Vec<String>,
-} 
+}
 
 impl ExtensionsManagerState {
     pub fn new() -> Self {
@@ -363,6 +374,7 @@ impl ExtensionsManagerState {
             expanded_binary: None,
             items: default_extension_items(),
             command: None,
+            deps_checked: false,
         }
     }
 
@@ -404,19 +416,29 @@ impl ExtensionsManagerState {
                     || item.subtitle.to_ascii_lowercase().contains(&query)
                     || item.binary.to_ascii_lowercase().contains(&query)
                     || item.tag.to_ascii_lowercase().contains(&query)
-                    || item.extensions.iter().any(|ext| ext.to_ascii_lowercase().contains(&query));
-                if matches_tab && matches_query { Some(idx) } else { None }
+                    || item
+                        .extensions
+                        .iter()
+                        .any(|ext| ext.to_ascii_lowercase().contains(&query));
+                if matches_tab && matches_query {
+                    Some(idx)
+                } else {
+                    None
+                }
             })
             .collect()
     }
 
     pub fn selected_item_index(&self) -> Option<usize> {
         let visible = self.visible_item_indices();
-        visible.get(self.selected_index.min(visible.len().saturating_sub(1))).copied()
+        visible
+            .get(self.selected_index.min(visible.len().saturating_sub(1)))
+            .copied()
     }
 
     pub fn selected_item(&self) -> Option<&ExtensionItem> {
-        self.selected_item_index().and_then(|idx| self.items.get(idx))
+        self.selected_item_index()
+            .and_then(|idx| self.items.get(idx))
     }
 
     pub fn select_next(&mut self) -> bool {
@@ -538,35 +560,188 @@ impl ExtensionsManagerState {
 
 fn default_extension_items() -> Vec<ExtensionItem> {
     let mut items = vec![
-        cli_extension("fzf", "Fuzzy finder for file picker & live grep", "fzf", "SEARCH", "brew install fzf", "sudo apt install fzf", true),
-        cli_extension("ripgrep", "Fast text search for live grep", "rg", "SEARCH", "brew install ripgrep", "sudo apt install ripgrep", true),
-        cli_extension("fd", "Fast file finder (alternative to find)", "fd", "SEARCH", "brew install fd", "sudo apt install fd-find", false),
-        cli_extension("lazygit", "Git TUI integration", "lazygit", "GIT", "brew install lazygit", "sudo apt install lazygit", true),
-        cli_extension("lazydocker", "Docker TUI integration", "lazydocker", "DEVOPS", "brew install lazydocker", "sudo apt install lazydocker", false),
-        cli_extension("bat", "Syntax-highlighted file previews", "bat", "UTILITY", "brew install bat", "sudo apt install bat", false),
-        cli_extension("delta", "Git diff viewer with syntax highlighting", "delta", "GIT", "brew install git-delta", "sudo apt install git-delta", true),
-        cli_extension("opencode", "AI code assistant", "opencode", "AI", "curl -fsSL https://opencode.ai/install | sh", "curl -fsSL https://opencode.ai/install | sh", true),
+        cli_extension(
+            "fzf",
+            "Fuzzy finder for file picker & live grep",
+            "fzf",
+            "SEARCH",
+            "brew install fzf",
+            "sudo apt install fzf",
+            false,
+        ),
+        cli_extension(
+            "ripgrep",
+            "Fast text search for live grep",
+            "rg",
+            "SEARCH",
+            "brew install ripgrep",
+            "sudo apt install ripgrep",
+            false,
+        ),
+        cli_extension(
+            "fd",
+            "Fast file finder (alternative to find)",
+            "fd",
+            "SEARCH",
+            "brew install fd",
+            "sudo apt install fd-find",
+            false,
+        ),
+        cli_extension(
+            "lazygit",
+            "Git TUI integration",
+            "lazygit",
+            "GIT",
+            "brew install lazygit",
+            "sudo apt install lazygit",
+            false,
+        ),
+        cli_extension(
+            "lazydocker",
+            "Docker TUI integration",
+            "lazydocker",
+            "DEVOPS",
+            "brew install lazydocker",
+            "sudo apt install lazydocker",
+            false,
+        ),
+        cli_extension(
+            "bat",
+            "Syntax-highlighted file previews",
+            "bat",
+            "UTILITY",
+            "brew install bat",
+            "sudo apt install bat",
+            false,
+        ),
+        cli_extension(
+            "delta",
+            "Git diff viewer with syntax highlighting",
+            "delta",
+            "GIT",
+            "brew install git-delta",
+            "sudo apt install git-delta",
+            false,
+        ),
+        cli_extension(
+            "opencode",
+            "AI code assistant",
+            "opencode",
+            "AI",
+            "curl -fsSL https://opencode.ai/install | sh",
+            "curl -fsSL https://opencode.ai/install | sh",
+            false,
+        ),
     ];
 
     items.extend([
-        lsp_extension("Rust", "rust-analyzer", "rustup component add rust-analyzer", vec![".rs"], true),
-        lsp_extension("JavaScript", "typescript-language-server", "npm install -g typescript typescript-language-server", vec![".js", ".mjs", ".cjs"], false),
-        lsp_extension("JSX", "typescript-language-server", "npm install -g typescript typescript-language-server", vec![".jsx"], false),
-        lsp_extension("TypeScript", "typescript-language-server", "npm install -g typescript typescript-language-server", vec![".ts"], false),
-        lsp_extension("TSX", "typescript-language-server", "npm install -g typescript typescript-language-server", vec![".tsx"], false),
-        lsp_extension("Go", "gopls", "go install golang.org/x/tools/gopls@latest", vec![".go"], false),
-        lsp_extension("Python", "pylsp", "pip install python-lsp-server", vec![".py"], true),
+        lsp_extension(
+            "Rust",
+            "rust-analyzer",
+            "rustup component add rust-analyzer",
+            vec![".rs"],
+            false,
+        ),
+        lsp_extension(
+            "JavaScript",
+            "typescript-language-server",
+            "npm install -g typescript typescript-language-server",
+            vec![".js", ".mjs", ".cjs"],
+            false,
+        ),
+        lsp_extension(
+            "JSX",
+            "typescript-language-server",
+            "npm install -g typescript typescript-language-server",
+            vec![".jsx"],
+            false,
+        ),
+        lsp_extension(
+            "TypeScript",
+            "typescript-language-server",
+            "npm install -g typescript typescript-language-server",
+            vec![".ts"],
+            false,
+        ),
+        lsp_extension(
+            "TSX",
+            "typescript-language-server",
+            "npm install -g typescript typescript-language-server",
+            vec![".tsx"],
+            false,
+        ),
+        lsp_extension(
+            "Go",
+            "gopls",
+            "go install golang.org/x/tools/gopls@latest",
+            vec![".go"],
+            false,
+        ),
+        // Dart's language server ships inside the SDK (`dart language-server`),
+        // so detection checks the `dart` binary itself (Flutter/FVM also provide it).
+        lsp_extension(
+            "Dart",
+            "dart",
+            "brew tap dart-lang/dart && brew install dart",
+            vec![".dart"],
+            false,
+        ),
+        lsp_extension(
+            "Python",
+            "pylsp",
+            "pip install python-lsp-server",
+            vec![".py"],
+            false,
+        ),
         lsp_extension("Java", "jdtls", "brew install jdtls", vec![".java"], false),
-        lsp_extension("SQL", "sqls", "go install github.com/sqls-server/sqls@latest", vec![".sql"], false),
-        lsp_extension("YAML", "yaml-language-server", "npm install -g yaml-language-server", vec![".yaml", ".yml"], true),
-        lsp_extension("Dockerfile", "docker-langserver", "npm install -g dockerfile-language-server-nodejs", vec!["Dockerfile*"], false),
-        lsp_extension("JSON", "vscode-json-language-server", "npm install -g vscode-langservers-extracted", vec![".json"], true),
-        lsp_extension("Bash", "bash-language-server", "npm install -g bash-language-server", vec![".sh"], true),
+        lsp_extension(
+            "SQL",
+            "sqls",
+            "go install github.com/sqls-server/sqls@latest",
+            vec![".sql"],
+            false,
+        ),
+        lsp_extension(
+            "YAML",
+            "yaml-language-server",
+            "npm install -g yaml-language-server",
+            vec![".yaml", ".yml"],
+            false,
+        ),
+        lsp_extension(
+            "Dockerfile",
+            "docker-langserver",
+            "npm install -g dockerfile-language-server-nodejs",
+            vec!["Dockerfile*"],
+            false,
+        ),
+        lsp_extension(
+            "JSON",
+            "vscode-json-language-server",
+            "npm install -g vscode-langservers-extracted",
+            vec![".json"],
+            false,
+        ),
+        lsp_extension(
+            "Bash",
+            "bash-language-server",
+            "npm install -g bash-language-server",
+            vec![".sh"],
+            false,
+        ),
     ]);
     items
 }
 
-fn cli_extension(name: &str, subtitle: &str, binary: &str, tag: &str, macos: &str, linux: &str, installed: bool) -> ExtensionItem {
+fn cli_extension(
+    name: &str,
+    subtitle: &str,
+    binary: &str,
+    tag: &str,
+    macos: &str,
+    linux: &str,
+    installed: bool,
+) -> ExtensionItem {
     let macos_uninstall = macos
         .strip_prefix("brew install ")
         .map(|package| format!("brew uninstall {package}"))
@@ -590,7 +765,13 @@ fn cli_extension(name: &str, subtitle: &str, binary: &str, tag: &str, macos: &st
     }
 }
 
-fn lsp_extension(language: &str, binary: &str, install: &str, extensions: Vec<&str>, installed: bool) -> ExtensionItem {
+fn lsp_extension(
+    language: &str,
+    binary: &str,
+    install: &str,
+    extensions: Vec<&str>,
+    installed: bool,
+) -> ExtensionItem {
     ExtensionItem {
         name: format!("({binary})"),
         subtitle: format!("{language} language server"),
@@ -1045,6 +1226,9 @@ fn build_help_lines(
         "editor.center_cursor_line",
         "Center cursor",
     );
+    lines.push("  f/F <char>            Find char on line (→/←), highlights all matches".to_string());
+    lines.push("  t/T <char>            Till char on line (→/←)".to_string());
+    lines.push("  n / N                 Repeat find-char or search jump (→/←)".to_string());
     lines.push("".to_string());
 
     // ── Editing ─────────────────────────────────────────────────────────────
@@ -1127,6 +1311,12 @@ fn build_help_lines(
         bindings,
         "editor.change_to_line_end",
         "Change to line end",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.yank_to_line_end",
+        "Yank to line end",
     );
     append_help_binding(&mut lines, bindings, "editor.join_lines", "Join lines");
     append_help_binding(
@@ -1305,6 +1495,12 @@ fn build_help_lines(
         "ai.accept_inline",
         "Accept inline suggestion",
     );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "ai.accept_inline_word",
+        "Accept inline suggestion word",
+    );
     lines.push("".to_string());
 
     // ── Tools ───────────────────────────────────────────────────────────────
@@ -1428,6 +1624,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "editor.substitute_line" => "Substitute line",
         "editor.yank_selection" => "Yank selection",
         "editor.yank_current_line" => "Yank line",
+        "editor.yank_to_line_end" => "Yank to line end",
         "editor.toggle_line_comment" => "Toggle line comment",
         "editor.toggle_selection_comment" => "Toggle comment",
         "editor.wrap_selection_with_star" => "Wrap with *",
@@ -1520,6 +1717,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "diagnostics.open_picker" => "Diagnostics picker",
         // ── AI ────────────────────────────────────────────────────────────
         "ai.accept_inline" => "Accept AI suggestion",
+        "ai.accept_inline_word" => "Accept AI suggestion word",
         "ai.chat_toggle" => "Toggle AI chat",
         "ai.chat_send" => "Send AI message",
         "ai.chat_stop" => "Stop AI chat generation",
@@ -1941,7 +2139,6 @@ pub struct AppState {
     terminal_panel_open: bool,
     external_conflict: Option<String>,
     external_notice: Option<String>,
-    last_saved_at: Option<Instant>,
     clipboard_record: Option<ClipboardRecord>,
     history: EditHistory,
     current_transaction: Option<PendingTransaction>,
@@ -1986,8 +2183,6 @@ pub struct AppState {
 }
 
 impl AppState {
-    const SELF_SAVE_IGNORE_WINDOW: Duration = Duration::from_secs(2);
-
     pub fn new(default_save_path: PathBuf) -> Self {
         Self {
             text: Rope::new(),
@@ -2019,7 +2214,6 @@ impl AppState {
             terminal_panel_open: false,
             external_conflict: None,
             external_notice: None,
-            last_saved_at: None,
             clipboard_record: None,
             history: EditHistory::new(),
             current_transaction: None,
@@ -2082,7 +2276,6 @@ impl AppState {
             terminal_panel_open: false,
             external_conflict: None,
             external_notice: None,
-            last_saved_at: None,
             clipboard_record: None,
             history: EditHistory::new(),
             current_transaction: None,
@@ -2308,10 +2501,14 @@ impl AppState {
     }
 
     pub fn toggle_fold_at_line(&mut self, logical_line: usize) -> bool {
-        if let Some(pos) = self.auto_folded_long_lines.iter().position(|&line| line == logical_line)
+        if let Some(pos) = self
+            .auto_folded_long_lines
+            .iter()
+            .position(|&line| line == logical_line)
         {
             self.auto_folded_long_lines.remove(pos);
-            self.folded_ranges.retain(|&range| range != (logical_line, logical_line));
+            self.folded_ranges
+                .retain(|&range| range != (logical_line, logical_line));
             self.bump_revision();
             return true;
         }
@@ -2414,16 +2611,10 @@ fn merge_fold_ranges(ranges: &[(usize, usize)]) -> Vec<(usize, usize)> {
         return Vec::new();
     }
 
-    let mut regular: Vec<(usize, usize)> = ranges
-        .iter()
-        .copied()
-        .filter(|&(s, e)| s != e)
-        .collect();
-    let mut point_folds: Vec<(usize, usize)> = ranges
-        .iter()
-        .copied()
-        .filter(|&(s, e)| s == e)
-        .collect();
+    let mut regular: Vec<(usize, usize)> =
+        ranges.iter().copied().filter(|&(s, e)| s != e).collect();
+    let mut point_folds: Vec<(usize, usize)> =
+        ranges.iter().copied().filter(|&(s, e)| s == e).collect();
     regular.sort_by_key(|&(s, _)| s);
     point_folds.sort_by_key(|&(s, _)| s);
     point_folds.dedup();

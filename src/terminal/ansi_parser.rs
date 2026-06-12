@@ -58,9 +58,7 @@ impl AnsiColor {
                 let (r, g, b) = xterm256_to_rgb(idx);
                 srgb_rgba_to_linear_f32([r, g, b, 255])
             }
-            AnsiColor::Rgb(r, g, b) => {
-                srgb_rgba_to_linear_f32([r, g, b, 255])
-            }
+            AnsiColor::Rgb(r, g, b) => srgb_rgba_to_linear_f32([r, g, b, 255]),
         }
     }
 }
@@ -415,7 +413,9 @@ fn parse_csi(buf: &[u8], final_char: char) -> Vec<AnsiEvent> {
         }
 
         // Erase Display
-        'J' => vec![AnsiEvent::EraseDisplay(parse_first_param(param_str, 0) as u8)],
+        'J' => vec![AnsiEvent::EraseDisplay(
+            parse_first_param(param_str, 0) as u8
+        )],
 
         // Erase Line
         'K' => vec![AnsiEvent::EraseLine(parse_first_param(param_str, 0) as u8)],

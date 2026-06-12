@@ -5,8 +5,8 @@ mod diagnostics;
 use crate::{
     app::app_state::{
         AppState, CompletionDisplayItem, DiagnosticsState, EditorOverlay, FloatingBoxBlock,
-        FloatingBoxStyle, HelpState, OverlayColorToken, ReferencesBufferItem, ReferencesBufferState,
-        SettingItem, SettingsState,
+        FloatingBoxStyle, HelpState, OverlayColorToken, ReferencesBufferItem,
+        ReferencesBufferState, SettingItem, SettingsState,
     },
     async_runtime::message::LspDiagnostic,
     config::theme_config::ThemeConfig,
@@ -45,25 +45,30 @@ impl Renderer {
             return;
         }
 
+        // Scale hardcoded chrome px so paddings/offsets track the runtime-scaled
+        // text metrics across monitors (same pattern as extensions.rs).
+        let s = self.ui_scale.max(0.5);
         let font_size = self.theme.editor.font_size;
-        let line_height = self.theme.editor.line_height.max(font_size + 4.0);
+        let line_height = self.theme.editor.line_height.max(font_size + 4.0 * s);
         self.editor_overlay_text_system
             .set_metrics(Metrics::new(font_size, line_height));
         self.editor_overlay_scissor = rect_to_scissor(center_bounds);
 
-        let pad_x = self.editor_padding_x.max(14.0);
-        let pad_y = self.editor_padding_y.max(14.0);
+        let pad_x = self.editor_padding_x.max(14.0 * s);
+        let pad_y = self.editor_padding_y.max(14.0 * s);
         let panel_x = center_bounds[0] + pad_x;
         let panel_y = center_bounds[1] + pad_y;
         let panel_w = (center_bounds[2] - pad_x * 2.0).max(1.0);
         let panel_h = (center_bounds[3] - pad_y * 2.0).max(1.0);
         let gap = 0.0;
-        let left_w = (panel_w * 0.56).clamp(420.0, 720.0).min(panel_w * 0.62);
+        let left_w = (panel_w * 0.56)
+            .clamp(420.0 * s, 720.0 * s)
+            .min(panel_w * 0.62);
         let right_w = (panel_w - left_w - gap).max(1.0);
         let left_x = panel_x;
         let right_x = left_x + left_w + gap;
-        let header_h = line_height + 14.0;
-        let footer_h = line_height + 10.0;
+        let header_h = line_height + 14.0 * s;
+        let footer_h = line_height + 10.0 * s;
         let content_top = panel_y + header_h;
         let content_bottom = (panel_y + panel_h - footer_h).max(content_top + line_height);
         let content_h = (content_bottom - content_top).max(line_height);
@@ -88,9 +93,13 @@ impl Renderer {
             RegionDrawInstance::new([right_x, panel_y + header_h - 1.0, right_w, 1.0], divider),
         ];
 
-        let header_y = panel_y + 6.0;
+        let header_y = panel_y + 6.0 * s;
         let unique_file_count = references.path_counts.len();
-        let left_title = if references.loading { "References · loading..." } else { "References" };
+        let left_title = if references.loading {
+            "References · loading..."
+        } else {
+            "References"
+        };
         let count_label = &mut self.temp_string_buffer;
         count_label.clear();
         let _ = write!(
@@ -99,15 +108,16 @@ impl Renderer {
             references.items.len(),
             unique_file_count
         );
-        let header_count_w = estimate_monospace_width(" 999 refs · 999 files", font_size).min(left_w * 0.55);
+        let header_count_w =
+            estimate_monospace_width(" 999 refs · 999 files", font_size).min(left_w * 0.55);
         self.editor_overlay_text_system
-            .set_size(Some((left_w - 20.0).max(1.0)), Some(line_height));
+            .set_size(Some((left_w - 20.0 * s).max(1.0)), Some(line_height));
         glyphs.extend(layout_panel_text_bold(
             left_title,
             &mut self.editor_overlay_text_system,
             &mut self.atlas,
             &self.queue,
-            left_x + 10.0,
+            left_x + 10.0 * s,
             header_y,
             fg,
         ));
@@ -116,7 +126,7 @@ impl Renderer {
             &mut self.editor_overlay_text_system,
             &mut self.atlas,
             &self.queue,
-            (left_x + left_w - header_count_w - 10.0).max(left_x + 100.0),
+            (left_x + left_w - header_count_w - 10.0 * s).max(left_x + 100.0 * s),
             header_y,
             fg_dim,
         ));
@@ -140,31 +150,31 @@ impl Renderer {
                 .unwrap_or("No reference selected")
         };
         self.editor_overlay_text_system
-            .set_size(Some((right_w - 20.0).max(1.0)), Some(line_height));
+            .set_size(Some((right_w - 20.0 * s).max(1.0)), Some(line_height));
         glyphs.extend(layout_panel_text(
-            &clamp_monospace_text(&right_header, (right_w - 20.0).max(1.0), font_size),
+            &clamp_monospace_text(&right_header, (right_w - 20.0 * s).max(1.0), font_size),
             &mut self.editor_overlay_text_system,
             &mut self.atlas,
             &self.queue,
-            right_x + 10.0,
+            right_x + 10.0 * s,
             header_y,
             fg,
         ));
 
         let help_text = "J/K / Ctrl+N/P / Up/Down to navigate  |  Enter to open  |  Esc/Q to close";
         self.editor_overlay_text_system
-            .set_size(Some((panel_w - 20.0).max(1.0)), Some(line_height));
+            .set_size(Some((panel_w - 20.0 * s).max(1.0)), Some(line_height));
         glyphs.extend(layout_panel_text(
-            &clamp_monospace_text(help_text, (panel_w - 20.0).max(1.0), font_size),
+            &clamp_monospace_text(help_text, (panel_w - 20.0 * s).max(1.0), font_size),
             &mut self.editor_overlay_text_system,
             &mut self.atlas,
             &self.queue,
-            panel_x + 10.0,
-            panel_y + panel_h - footer_h + 4.0,
+            panel_x + 10.0 * s,
+            panel_y + panel_h - footer_h + 4.0 * s,
             fg_ghost,
         ));
 
-        let left_text_width = (left_w - 20.0).max(1.0);
+        let left_text_width = (left_w - 20.0 * s).max(1.0);
         if references.items.is_empty() {
             let status = references
                 .status_message
@@ -177,13 +187,13 @@ impl Renderer {
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
-                left_x + 14.0,
-                content_top + 4.0,
+                left_x + 14.0 * s,
+                content_top + 4.0 * s,
                 fg_ghost,
             ));
         } else {
-            let row_h = line_height + 8.0;
-            let group_header_h = line_height + 7.0;
+            let row_h = line_height + 8.0 * s;
+            let group_header_h = line_height + 7.0 * s;
             let visible_rows = ((content_h / row_h).floor() as usize).max(1);
             let mut start_idx = references.selected_index.saturating_sub(visible_rows / 2);
             if start_idx + visible_rows > references.items.len() {
@@ -206,32 +216,49 @@ impl Renderer {
                     let mut group_bg = self.theme.ui.overlay_bg.as_f32();
                     group_bg[3] = (group_bg[3] * 0.85).clamp(0.18, 0.45);
                     chrome.push(RegionDrawInstance::new(
-                        [left_x + 8.0, draw_y + 2.0, (left_w - 16.0).max(1.0), (line_height + 3.0).max(12.0)],
+                        [
+                            left_x + 8.0 * s,
+                            draw_y + 2.0 * s,
+                            (left_w - 16.0 * s).max(1.0),
+                            (line_height + 3.0 * s).max(12.0 * s),
+                        ],
                         group_bg,
                     ));
-                    let group_count = references.path_counts.get(&item.relative_path).copied().unwrap_or(0);
+                    let group_count = references
+                        .path_counts
+                        .get(&item.relative_path)
+                        .copied()
+                        .unwrap_or(0);
                     count_label.clear();
                     let _ = write!(count_label, "{}", group_count);
-                    let count_w = estimate_monospace_width(count_label, font_size).max(16.0);
+                    let count_w = estimate_monospace_width(count_label, font_size).max(16.0 * s);
                     right_header_buffer.clear();
                     let _ = write!(right_header_buffer, "▾ {}", file_name);
                     glyphs.extend(layout_panel_text_bold(
-                        &clamp_monospace_text(right_header_buffer, left_text_width * 0.50, font_size),
+                        &clamp_monospace_text(
+                            right_header_buffer,
+                            left_text_width * 0.50,
+                            font_size,
+                        ),
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,
-                        left_x + 16.0,
-                        draw_y + 4.0,
+                        left_x + 16.0 * s,
+                        draw_y + 4.0 * s,
                         self.theme.ui.accent.as_f32(),
                     ));
                     let folder_x = left_x + left_w * 0.54;
                     glyphs.extend(layout_panel_text(
-                        &clamp_monospace_text(&folder_label, (left_x + left_w - folder_x - count_w - 26.0).max(1.0), font_size),
+                        &clamp_monospace_text(
+                            &folder_label,
+                            (left_x + left_w - folder_x - count_w - 26.0 * s).max(1.0),
+                            font_size,
+                        ),
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,
                         folder_x,
-                        draw_y + 4.0,
+                        draw_y + 4.0 * s,
                         fg_ghost,
                     ));
                     glyphs.extend(layout_panel_text_bold(
@@ -239,8 +266,8 @@ impl Renderer {
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,
-                        left_x + left_w - count_w - 18.0,
-                        draw_y + 4.0,
+                        left_x + left_w - count_w - 18.0 * s,
+                        draw_y + 4.0 * s,
                         fg,
                     ));
                     draw_y += group_header_h;
@@ -251,29 +278,34 @@ impl Renderer {
                 let is_selected = item_idx == references.selected_index;
                 if is_selected {
                     chrome.push(RegionDrawInstance::new(
-                        [left_x + 6.0, row_y, (left_w - 12.0).max(1.0), row_h - 4.0],
+                        [
+                            left_x + 6.0 * s,
+                            row_y,
+                            (left_w - 12.0 * s).max(1.0),
+                            row_h - 4.0 * s,
+                        ],
                         selection_bg,
                     ));
                     chrome.push(RegionDrawInstance::new(
-                        [left_x + 6.0, row_y, 3.0, row_h - 4.0],
+                        [left_x + 6.0 * s, row_y, 3.0 * s, row_h - 4.0 * s],
                         accent,
                     ));
                 }
 
                 count_label.clear();
                 let _ = write!(count_label, "{}", item.line + 1);
-                let line_w = estimate_monospace_width("9999", font_size).max(34.0);
+                let line_w = estimate_monospace_width("9999", font_size).max(34.0 * s);
                 glyphs.extend(layout_panel_text(
                     count_label,
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    left_x + 22.0,
-                    row_y + 4.0,
+                    left_x + 22.0 * s,
+                    row_y + 4.0 * s,
                     if is_selected { fg } else { fg_ghost },
                 ));
-                let snippet_x = left_x + 22.0 + line_w;
-                let snippet_w = (left_x + left_w - snippet_x - 10.0).max(1.0);
+                let snippet_x = left_x + 22.0 * s + line_w;
+                let snippet_w = (left_x + left_w - snippet_x - 10.0 * s).max(1.0);
                 let snippet = reference_row_summary(item, right_header_buffer);
                 glyphs.extend(layout_panel_text(
                     &clamp_monospace_text(snippet, snippet_w, font_size),
@@ -281,7 +313,7 @@ impl Renderer {
                     &mut self.atlas,
                     &self.queue,
                     snippet_x,
-                    row_y + 4.0,
+                    row_y + 4.0 * s,
                     if is_selected { fg } else { fg_dim },
                 ));
 
@@ -301,8 +333,8 @@ impl Renderer {
                     .map(|line| line.line_number)
                     .unwrap_or(1)
             );
-            let line_number_width = estimate_monospace_width(count_label, font_size) + 14.0;
-            let preview_text_width = (right_w - 20.0 - line_number_width).max(1.0);
+            let line_number_width = estimate_monospace_width(count_label, font_size) + 14.0 * s;
+            let preview_text_width = (right_w - 20.0 * s - line_number_width).max(1.0);
             let preview_rows = ((content_h / line_height).floor() as usize).max(1);
             let mut preview_start = 0usize;
             if let Some(target_idx) = references
@@ -326,11 +358,16 @@ impl Renderer {
                 let row_y = content_top + slot as f32 * line_height;
                 if line.is_target {
                     chrome.push(RegionDrawInstance::new(
-                        [right_x + 6.0, row_y, (right_w - 12.0).max(1.0), line_height],
+                        [
+                            right_x + 6.0 * s,
+                            row_y,
+                            (right_w - 12.0 * s).max(1.0),
+                            line_height,
+                        ],
                         selection_bg,
                     ));
                     chrome.push(RegionDrawInstance::new(
-                        [right_x + 6.0, row_y, 3.0, line_height],
+                        [right_x + 6.0 * s, row_y, 3.0 * s, line_height],
                         accent,
                     ));
                 }
@@ -344,7 +381,7 @@ impl Renderer {
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    right_x + 10.0,
+                    right_x + 10.0 * s,
                     row_y,
                     if line.is_target { warning } else { fg_ghost },
                 ));
@@ -381,7 +418,7 @@ impl Renderer {
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    right_x + 10.0 + line_number_width,
+                    right_x + 10.0 * s + line_number_width,
                     row_y,
                 ));
             }
@@ -397,14 +434,14 @@ impl Renderer {
                 "Loading preview..."
             };
             self.editor_overlay_text_system
-                .set_size(Some((right_w - 20.0).max(1.0)), Some(line_height));
+                .set_size(Some((right_w - 20.0 * s).max(1.0)), Some(line_height));
             glyphs.extend(layout_panel_text(
                 empty_message,
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
-                right_x + 10.0,
-                content_top + 4.0,
+                right_x + 10.0 * s,
+                content_top + 4.0 * s,
                 fg_ghost,
             ));
         }
@@ -440,10 +477,6 @@ fn compact_reference_path(path: &str) -> String {
         path.to_string()
     }
 }
-
-
-
-
 
 fn reference_row_summary<'a>(item: &'a ReferencesBufferItem, buffer: &'a mut String) -> &'a str {
     let summary = item.summary.trim();

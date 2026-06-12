@@ -58,7 +58,7 @@ pub struct WindowUiConfig {
     pub auto_scale: bool,
     pub min_content_scale: f32,
     pub max_content_scale: f32,
-    // pub scale_factor_override: Option<f32>,
+    pub scale_factor_override: Option<f32>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -194,7 +194,7 @@ impl UiConfig {
                 auto_scale: true,
                 min_content_scale: 1.0,
                 max_content_scale: 1.0,
-                // scale_factor_override: None,
+                scale_factor_override: None,
             },
             layout: WorkbenchLayoutConfig {
                 outer_gap: 14.0,
@@ -304,11 +304,11 @@ impl UiConfig {
                         .max_content_scale
                         .unwrap_or(fallback.window.max_content_scale),
                 )?,
-                // scale_factor_override: if let Some(val) = raw.window.scale_factor_override {
-                //     Some(parse_positive_f32("window", "scale_factor_override", val)?)
-                // } else {
-                //     None
-                // },
+                scale_factor_override: if let Some(val) = raw.window.scale_factor_override {
+                    Some(parse_positive_f32("window", "scale_factor_override", val)?)
+                } else {
+                    None
+                },
             },
             layout: WorkbenchLayoutConfig {
                 outer_gap: parse_non_negative_f32(
@@ -629,9 +629,9 @@ impl UiConfig {
         if raw.editor.font_family.is_some() {
             self.editor.font_family = raw.editor.font_family.clone();
         }
-        // if let Some(over) = raw.window.scale_factor_override {
-        //     self.window.scale_factor_override = Some(over.max(0.1));
-        // }
+        if let Some(over) = raw.window.scale_factor_override {
+            self.window.scale_factor_override = Some(over.max(0.1));
+        }
         if let Some(auto) = raw.window.auto_scale {
             self.window.auto_scale = auto;
         }
@@ -745,6 +745,11 @@ fn find_profile_path(name: &str) -> Option<PathBuf> {
         }
     }
 
+    let user_path = user_config_root().join("config").join("ui").join(&filename);
+    if user_path.exists() {
+        return Some(user_path);
+    }
+
     if let Ok(exe) = std::env::current_exe()
         && let Some(parent) = exe.parent()
     {
@@ -790,7 +795,7 @@ struct RawWindow {
     auto_scale: Option<bool>,
     min_content_scale: Option<f32>,
     max_content_scale: Option<f32>,
-    // scale_factor_override: Option<f32>,
+    scale_factor_override: Option<f32>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -889,7 +894,8 @@ struct UserUiWindow {
     auto_scale: bool,
     min_content_scale: f32,
     max_content_scale: f32,
-    // scale_factor_override: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scale_factor_override: Option<f32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -928,7 +934,7 @@ impl From<&UiConfig> for UserUiConfigFile {
                 auto_scale: value.window.auto_scale,
                 min_content_scale: value.window.min_content_scale,
                 max_content_scale: value.window.max_content_scale,
-                // scale_factor_override: value.window.scale_factor_override,
+                scale_factor_override: value.window.scale_factor_override,
             },
             docks: UserUiDocks {
                 left_visible: value.docks.left.visible,

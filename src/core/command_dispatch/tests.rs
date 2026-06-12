@@ -646,6 +646,154 @@ fn operate_delete_find_forward_includes_target_char() {
 }
 
 #[test]
+fn move_find_char_jumps_to_char_and_highlights_all_matches() {
+    let mut app_state = AppState::from_text(unique_temp_path("move_find_char"), "abc abc\nabc");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    let report = dispatch_command(
+        &mut app_state,
+        Command::MoveFindChar(FindMotionKind::ForwardTo, 'b'),
+    );
+
+    assert!(report.success);
+    assert_eq!(app_state.cursor_line_col(), (0, 1));
+    assert_eq!(app_state.last_search_query(), "b");
+    assert_eq!(app_state.search_highlights().len(), 3);
+
+    // n (SearchNext) nhảy tới match kế tiếp — kể cả ở dòng khác.
+    let _ = dispatch_command(&mut app_state, Command::SearchNext);
+    assert_eq!(app_state.cursor_line_col(), (0, 5));
+    let _ = dispatch_command(&mut app_state, Command::SearchNext);
+    assert_eq!(app_state.cursor_line_col(), (1, 1));
+}
+
+#[test]
+fn move_find_char_till_stops_before_target() {
+    let mut app_state = AppState::from_text(unique_temp_path("move_till_char"), "abc def");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    let report = dispatch_command(
+        &mut app_state,
+        Command::MoveFindChar(FindMotionKind::ForwardTill, 'd'),
+    );
+
+    assert!(report.success);
+    assert_eq!(app_state.cursor_line_col(), (0, 3));
+}
+
+#[test]
+fn move_find_char_backward_jumps_to_previous_occurrence() {
+    let mut app_state = AppState::from_text(unique_temp_path("move_find_back"), "abc abc");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let _ = dispatch_command(&mut app_state, Command::MoveToLineEnd);
+
+    let report = dispatch_command(
+        &mut app_state,
+        Command::MoveFindChar(FindMotionKind::BackwardTo, 'a'),
+    );
+
+    assert!(report.success);
+    assert_eq!(app_state.cursor_line_col(), (0, 4));
+}
+
+#[test]
+fn move_find_char_missing_target_keeps_cursor_but_still_highlights() {
+    let mut app_state = AppState::from_text(unique_temp_path("move_find_miss"), "abc\nxyz");
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    // 'x' không có trên dòng 1 -> cursor đứng yên (Vim), nhưng highlight vẫn set
+    // để n nhảy tới occurrence ở dòng khác.
+    let _ = dispatch_command(
+        &mut app_state,
+        Command::MoveFindChar(FindMotionKind::ForwardTo, 'x'),
+    );
+    assert_eq!(app_state.cursor_line_col(), (0, 0));
+    assert_eq!(app_state.search_highlights().len(), 1);
+
+    let _ = dispatch_command(&mut app_state, Command::SearchNext);
+    assert_eq!(app_state.cursor_line_col(), (1, 0));
+}
+
+#[test]
+fn yank_to_line_end_id_parses_to_yank_operate() {
+    let command = crate::core::command_ids::parse("editor.yank_to_line_end", None);
+    assert_eq!(
+        command,
+        Some(Command::Operate {
+            op: Operator::Yank,
+            target: OperationTarget::Motion(Motion::LineEnd),
+        })
+    );
+}
+
+#[test]
+fn move_to_last_line_pushes_jump_origin() {
+    let path = unique_temp_path("jump_origin_g");
+    std::fs::write(&path, "one\ntwo\nthree").expect("write temp file");
+    let mut app_state = AppState::from_text(path.clone(), "");
+    let _ = dispatch_command(&mut app_state, Command::OpenFile(path.clone()));
+    let canonical = app_state.active_file().expect("file opened").to_path_buf();
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    let _ = dispatch_command(&mut app_state, Command::MoveToLastLine);
+    assert_eq!(app_state.cursor_line_col(), (2, 0));
+
+    let back = app_state.pop_jump_back();
+    assert_eq!(back, Some((canonical, 0, 0)));
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn search_next_pushes_jump_origin_for_ctrl_o() {
+    let path = unique_temp_path("jump_origin_n");
+    std::fs::write(&path, "alpha\nbeta\nalpha").expect("write temp file");
+    let mut app_state = AppState::from_text(path.clone(), "");
+    let _ = dispatch_command(&mut app_state, Command::OpenFile(path.clone()));
+    let canonical = app_state.active_file().expect("file opened").to_path_buf();
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));
+
+    // * đặt query + nhảy tới match kế tiếp (đã push origin từ trước).
+    let _ = dispatch_command(&mut app_state, Command::SearchWordUnderCursor);
+    let after_star = app_state.cursor_line_col();
+    assert_eq!(after_star, (2, 0));
+
+    // n tiếp tục: phải push origin (line 2) để Ctrl+O quay về.
+    let _ = dispatch_command(&mut app_state, Command::SearchNext);
+    let back = app_state.pop_jump_back();
+    assert_eq!(back, Some((canonical, 2, 0)));
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn jump_stack_dedups_same_line_and_caps_at_100() {
+    let path = unique_temp_path("jump_stack_cap");
+    let mut app_state = AppState::from_text(path.clone(), "x");
+
+    // Dedup: cùng (file, line) chỉ giữ một entry, cột được cập nhật.
+    app_state.push_jump_entry(path.clone(), 5, 1);
+    app_state.push_jump_entry(path.clone(), 5, 9);
+    assert_eq!(app_state.pop_jump_back(), Some((path.clone(), 5, 9)));
+    assert!(app_state.pop_jump_back().is_none());
+
+    // Cap: 150 entry khác nhau -> chỉ giữ 100 entry mới nhất.
+    for line in 0..150 {
+        app_state.push_jump_entry(path.clone(), line, 0);
+    }
+    let mut count = 0;
+    let mut last = None;
+    while let Some(entry) = app_state.pop_jump_back() {
+        last = Some(entry);
+        count += 1;
+        // pop_jump_back đẩy current pos sang forward stack, không ảnh hưởng back stack.
+        if count > 200 {
+            panic!("jump stack not capped");
+        }
+    }
+    assert_eq!(count, 100);
+    assert_eq!(last, Some((path, 50, 0)));
+}
+
+#[test]
 fn change_to_line_end_alias_enters_insert_and_removes_suffix() {
     let mut app_state = AppState::from_text(unique_temp_path("change_to_eol"), "alpha beta");
     let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterNormal));

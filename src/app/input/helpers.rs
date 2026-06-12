@@ -109,7 +109,11 @@ pub(super) fn should_start_replace_pending(
     if context.focus != InputFocusContext::Editor || context.mode != EditorMode::Normal {
         return false;
     }
-    if input.has_command_modifier() || input.modifiers.control_key() || input.modifiers.alt_key() || input.modifiers.shift_key() {
+    if input.has_command_modifier()
+        || input.modifiers.control_key()
+        || input.modifiers.alt_key()
+        || input.modifiers.shift_key()
+    {
         return false;
     }
     input.physical_key == Some(KeyCode::KeyR) || input.text.as_deref() == Some("r")

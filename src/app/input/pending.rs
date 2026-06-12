@@ -77,6 +77,10 @@ pub(super) enum PendingState {
         op: Operator,
         kind: FindMotionKind,
     },
+    /// Bare f/F/t/T motion (không có operator) -> chờ target char.
+    FindCharMotion {
+        kind: FindMotionKind,
+    },
     ReplaceChar,
     Leader,
     Sequence,
@@ -121,6 +125,7 @@ impl PendingState {
             Self::PendingOperator { .. }
                 | Self::OperatorG { .. }
                 | Self::OperatorFindChar { .. }
+                | Self::FindCharMotion { .. }
                 | Self::OperatorWithObject { .. }
         )
     }
@@ -165,6 +170,12 @@ impl PendingState {
                 (Operator::Yank, FindMotionKind::BackwardTo) => "pending yank find-char backward",
                 (Operator::Yank, FindMotionKind::BackwardTill) => "pending yank till-char backward",
                 (Operator::Visual, _) => "pending visual find-char",
+            },
+            Self::FindCharMotion { kind } => match kind {
+                FindMotionKind::ForwardTo => "pending find-char forward",
+                FindMotionKind::ForwardTill => "pending till-char forward",
+                FindMotionKind::BackwardTo => "pending find-char backward",
+                FindMotionKind::BackwardTill => "pending till-char backward",
             },
             Self::ReplaceChar => "pending replace char",
             Self::Leader => "pending leader",

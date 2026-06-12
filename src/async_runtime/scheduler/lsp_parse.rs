@@ -818,7 +818,10 @@ pub(super) fn handle_lsp_references(
         LSP_REFERENCES_TIMEOUT_SECS,
     )?;
     if let Some(error) = response.get("error") {
-        let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("unknown error");
+        let msg = error
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("unknown error");
         let code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
         return Err(format!("references: LSP error {code}: {msg}"));
     }
@@ -1453,7 +1456,10 @@ pub(super) fn handle_workspace_symbol(
     )?;
 
     if let Some(error) = response.get("error") {
-        let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("unknown error");
+        let msg = error
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("unknown error");
         let code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
         return Err(format!("workspace/symbol: LSP error {code}: {msg}"));
     }

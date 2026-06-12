@@ -1,22 +1,22 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HighlightCategory {
     Keyword,
-    KeywordControl,      // if, for, while, match, return
-    KeywordStorage,      // let, const, static, var
+    KeywordControl, // if, for, while, match, return
+    KeywordStorage, // let, const, static, var
     String,
-    StringTemplate,      // Template string base (lower priority than String)
-    StringEscape,        // \n, \t, \x00 inside strings
+    StringTemplate, // Template string base (lower priority than String)
+    StringEscape,   // \n, \t, \x00 inside strings
     Comment,
-    CommentDoc,          // /// doc comments
+    CommentDoc, // /// doc comments
     Type,
-    TypeBuiltin,         // i32, String, bool (primitive types)
+    TypeBuiltin, // i32, String, bool (primitive types)
     Function,
-    FunctionBuiltin,     // println!, len, push (built-in functions)
+    FunctionBuiltin, // println!, len, push (built-in functions)
     Number,
     Boolean,
     Identifier,
     Variable,
-    VariableBuiltin,     // self, this, super
+    VariableBuiltin, // self, this, super
     Parameter,
     Field,
     Property,
@@ -77,11 +77,17 @@ impl HighlightCategory {
     }
 
     pub fn is_bold(self) -> bool {
-        matches!(self, Self::Macro | Self::MarkupStrong | Self::KeywordControl)
+        matches!(
+            self,
+            Self::Macro | Self::MarkupStrong | Self::KeywordControl
+        )
     }
 
     pub fn is_italic(self) -> bool {
-        matches!(self, Self::Comment | Self::CommentDoc | Self::MarkupItalic | Self::MarkupLink)
+        matches!(
+            self,
+            Self::Comment | Self::CommentDoc | Self::MarkupItalic | Self::MarkupLink
+        )
     }
 
     pub(crate) fn priority(self) -> u8 {
@@ -118,7 +124,7 @@ impl HighlightCategory {
             Self::VariableBuiltin => 45,
             Self::Variable => 42,
             Self::Identifier => 40,
-            Self::StringTemplate => 30,  // Lower than all semantic tokens
+            Self::StringTemplate => 30, // Lower than all semantic tokens
             Self::Operator => 20,
             Self::Punctuation => 10,
         }
@@ -162,29 +168,29 @@ impl Default for HighlightPalette {
     fn default() -> Self {
         Self {
             // Keywords - warm yellow/orange tones
-            keyword: [234, 205, 97, 255],           // Warm yellow
-            keyword_control: [255, 120, 117, 255],  // Coral red (if, for, while, return)
-            keyword_storage: [255, 180, 84, 255],   // Orange (let, const, var)
+            keyword: [234, 205, 97, 255],          // Warm yellow
+            keyword_control: [255, 120, 117, 255], // Coral red (if, for, while, return)
+            keyword_storage: [255, 180, 84, 255],  // Orange (let, const, var)
 
             // Strings - green tones
-            string: [60, 236, 133, 255],            // Bright green
-            string_escape: [255, 200, 87, 255],     // Golden yellow for escapes
+            string: [60, 236, 133, 255],        // Bright green
+            string_escape: [255, 200, 87, 255], // Golden yellow for escapes
 
             // Comments - muted blue/gray
-            comment: [74, 94, 132, 255],            // Muted blue-gray
-            comment_doc: [95, 135, 175, 255],       // Brighter blue for doc comments
+            comment: [74, 94, 132, 255],      // Muted blue-gray
+            comment_doc: [95, 135, 175, 255], // Brighter blue for doc comments
 
             // Types - purple tones
-            ty: [183, 138, 255, 255],               // Purple
-            type_builtin: [220, 160, 255, 255],     // Lighter purple (i32, String)
+            ty: [183, 138, 255, 255],           // Purple
+            type_builtin: [220, 160, 255, 255], // Lighter purple (i32, String)
 
             // Functions - cyan/blue tones
             function: [105, 195, 255, 255],         // Cyan
             function_builtin: [130, 220, 255, 255], // Brighter cyan (println!, len)
 
             // Numbers and booleans - orange/red tones
-            number: [227, 85, 53, 255],             // Red-orange
-            boolean: [255, 149, 92, 255],           // Orange
+            number: [227, 85, 53, 255],   // Red-orange
+            boolean: [255, 149, 92, 255], // Orange
 
             // Variables - neutral tones
             identifier: [208, 215, 228, 255],       // Light gray
@@ -192,27 +198,27 @@ impl Default for HighlightPalette {
             variable_builtin: [255, 203, 107, 255], // Golden (self, this, super)
 
             // Properties and fields - cyan tones
-            parameter: [34, 236, 219, 255],         // Bright cyan
-            field: [105, 195, 255, 255],            // Cyan
-            property: [208, 215, 228, 255],         // Light gray
+            parameter: [34, 236, 219, 255], // Bright cyan
+            field: [105, 195, 255, 255],    // Cyan
+            property: [208, 215, 228, 255], // Light gray
 
             // Constants - orange
-            constant: [255, 149, 92, 255],          // Orange
+            constant: [255, 149, 92, 255], // Orange
 
             // Operators and punctuation - muted tones
-            operator: [175, 187, 210, 255],         // Light blue-gray
-            punctuation: [129, 150, 181, 255],      // Muted blue-gray
+            operator: [175, 187, 210, 255],    // Light blue-gray
+            punctuation: [129, 150, 181, 255], // Muted blue-gray
 
             // Special - orange/yellow
-            escape: [255, 149, 92, 255],            // Orange
-            macro_name: [105, 195, 255, 255],       // Cyan
-            lifetime: [255, 149, 92, 255],          // Orange
+            escape: [255, 149, 92, 255],      // Orange
+            macro_name: [105, 195, 255, 255], // Cyan
+            lifetime: [255, 149, 92, 255],    // Orange
 
             // Structural - purple
-            constructor: [183, 138, 255, 255],      // Purple
-            attribute: [234, 205, 97, 255],         // Yellow
-            namespace: [183, 138, 255, 255],        // Purple
-            tag: [183, 138, 255, 255],              // Purple
+            constructor: [183, 138, 255, 255], // Purple
+            attribute: [234, 205, 97, 255],    // Yellow
+            namespace: [183, 138, 255, 255],   // Purple
+            tag: [183, 138, 255, 255],         // Purple
         }
     }
 }
@@ -224,7 +230,7 @@ impl HighlightPalette {
             HighlightCategory::KeywordControl => self.keyword_control,
             HighlightCategory::KeywordStorage => self.keyword_storage,
             HighlightCategory::String => self.string,
-            HighlightCategory::StringTemplate => self.string,  // Same color as String
+            HighlightCategory::StringTemplate => self.string, // Same color as String
             HighlightCategory::StringEscape => self.string_escape,
             HighlightCategory::Comment => self.comment,
             HighlightCategory::CommentDoc => self.comment_doc,

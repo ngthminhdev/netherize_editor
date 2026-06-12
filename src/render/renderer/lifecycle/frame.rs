@@ -44,28 +44,16 @@ impl Renderer {
         let buf_term_cell_bg_count = self.buffer_terminal_cell_background_instances.len() as u32;
 
         let term_cursor_start = buf_term_cell_bg_start + buf_term_cell_bg_count;
-        let term_cursor_count = if self.caret_blink_visible {
-            self.terminal_cursor_instances.len() as u32
-        } else {
-            0
-        };
+        let term_cursor_count = self.terminal_cursor_instances.len() as u32;
 
         let buf_term_cursor_start = term_cursor_start + term_cursor_count;
-        let buf_term_cursor_count = if self.caret_blink_visible {
-            self.buffer_terminal_cursor_instances.len() as u32
-        } else {
-            0
-        };
+        let buf_term_cursor_count = self.buffer_terminal_cursor_instances.len() as u32;
 
         let right_term_cell_bg_start = buf_term_cursor_start + buf_term_cursor_count;
         let right_term_cell_bg_count = self.right_terminal_cell_background_instances.len() as u32;
 
         let right_term_cursor_start = right_term_cell_bg_start + right_term_cell_bg_count;
-        let right_term_cursor_count = if self.caret_blink_visible {
-            self.right_terminal_cursor_instances.len() as u32
-        } else {
-            0
-        };
+        let right_term_cursor_count = self.right_terminal_cursor_instances.len() as u32;
 
         let ai_chat_history_chrome_start = right_term_cursor_start + right_term_cursor_count;
         let ai_chat_history_chrome_count = self.ai_chat_history_chrome_instances.len() as u32;
@@ -84,7 +72,10 @@ impl Renderer {
         let system_dep_start = lsp_guide_start + lsp_guide_count;
         let system_dep_count = self.system_dep_chrome_instances.len() as u32;
 
-        let toast_start = system_dep_start + system_dep_count;
+        let whichkey_start = system_dep_start + system_dep_count;
+        let whichkey_count = self.whichkey_chrome_instances.len() as u32;
+
+        let toast_start = whichkey_start + whichkey_count;
         let toast_count = self.toast_chrome_instances.len() as u32;
 
         let diag_hover_start = toast_start + toast_count;
@@ -99,19 +90,16 @@ impl Renderer {
         all_instances.extend_from_slice(&self.leap_label_bg_instances);
         all_instances.extend_from_slice(&self.terminal_cell_background_instances);
         all_instances.extend_from_slice(&self.buffer_terminal_cell_background_instances);
-        if self.caret_blink_visible {
-            all_instances.extend_from_slice(&self.terminal_cursor_instances);
-            all_instances.extend_from_slice(&self.buffer_terminal_cursor_instances);
-        }
+        all_instances.extend_from_slice(&self.terminal_cursor_instances);
+        all_instances.extend_from_slice(&self.buffer_terminal_cursor_instances);
         all_instances.extend_from_slice(&self.right_terminal_cell_background_instances);
-        if self.caret_blink_visible {
-            all_instances.extend_from_slice(&self.right_terminal_cursor_instances);
-        }
+        all_instances.extend_from_slice(&self.right_terminal_cursor_instances);
         all_instances.extend_from_slice(&self.ai_chat_history_chrome_instances);
         all_instances.extend_from_slice(&self.ai_chat_suggestion_chrome_instances);
         all_instances.extend_from_slice(&self.palette_chrome_instances);
         all_instances.extend_from_slice(&self.lsp_guide_chrome_instances);
         all_instances.extend_from_slice(&self.system_dep_chrome_instances);
+        all_instances.extend_from_slice(&self.whichkey_chrome_instances);
         all_instances.extend_from_slice(&self.toast_chrome_instances);
         all_instances.extend_from_slice(&self.diagnostic_hover_chrome_instances);
 
@@ -769,6 +757,31 @@ impl Renderer {
                 viewport_height,
                 |render_pass| {
                     self.system_dep_text_pipeline.draw(render_pass);
+                },
+            );
+
+            if whichkey_count > 0 {
+                draw_text_region(
+                    &mut pass,
+                    self.whichkey_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline.draw_range(
+                            render_pass,
+                            whichkey_start,
+                            whichkey_count,
+                        );
+                    },
+                );
+            }
+            draw_text_region(
+                &mut pass,
+                self.whichkey_scissor,
+                viewport_width,
+                viewport_height,
+                |render_pass| {
+                    self.whichkey_text_pipeline.draw(render_pass);
                 },
             );
 

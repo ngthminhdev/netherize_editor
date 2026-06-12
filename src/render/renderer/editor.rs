@@ -2,9 +2,9 @@
 
 mod buffers;
 mod completion;
+mod extensions;
 mod fuzzy;
 mod help;
-mod extensions;
 mod overlays;
 mod selections;
 mod settings;
@@ -173,8 +173,7 @@ pub(super) fn soft_wrap_visual_move_target(
             && cursor_byte <= run.glyphs.last().map(|g| g.end).unwrap_or(usize::MAX)
     })?;
     let target_run_index = runs.iter().position(|run| {
-        let top = geometry.origin_y
-            + run.line_top
+        let top = geometry.origin_y + run.line_top
             - app_state.folded_visual_y_offset_before(run.line_i, run.line_height);
         let bottom = top + run.line_height.max(1.0);
         target_y >= top && target_y < bottom
@@ -184,7 +183,11 @@ pub(super) fn soft_wrap_visual_move_target(
     }
 
     let target_run = &runs[target_run_index];
-    let mut target_byte = target_run.glyphs.last().map(|g| g.end).unwrap_or(cursor_byte);
+    let mut target_byte = target_run
+        .glyphs
+        .last()
+        .map(|g| g.end)
+        .unwrap_or(cursor_byte);
     for glyph in target_run.glyphs {
         let glyph_mid = geometry.origin_x + glyph.x + glyph.w * 0.5;
         if target_x <= glyph_mid {

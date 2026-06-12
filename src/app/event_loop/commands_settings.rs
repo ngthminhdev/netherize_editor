@@ -30,6 +30,7 @@ impl AppShell {
                     self.ui_config.border_radius_px,
                     self.ui_config.enable_outline,
                     self.ai_config.inline_completion_enabled(),
+                    self.ui_config.window.scale_factor_override,
                 );
                 let _ = self.sync_focus_mode_for_active_buffer();
                 self.editor_needs_layout = true;
@@ -112,9 +113,16 @@ impl AppShell {
             Command::ExtensionsCancelFilter => {
                 let mut cmd_changed = false;
                 if let Some(state) = self.app_state.active_extensions_manager_buffer_mut() {
-                    if state.command.is_some() {
-                        state.command = None;
-                        cmd_changed = true;
+                    // Only dismiss the install/uninstall popup once the process has
+                    // finished. Clearing it mid-run dropped the live logs and made the
+                    // running install invisible ("popup does nothing" bug).
+                    match state.command.as_ref() {
+                        Some(cmd) if cmd.running => {}
+                        Some(_) => {
+                            state.command = None;
+                            cmd_changed = true;
+                        }
+                        None => {}
                     }
                 }
                 let changed = self.app_state.extensions_set_filter_focused(false);
@@ -127,16 +135,34 @@ impl AppShell {
                 }
             }
             Command::ExtensionsInstallSelected => {
-                let selected = self.app_state.active_extensions_manager_buffer().and_then(|state| {
-                    state.selected_item().map(|item| {
-                        let install = if state.platform == "macOS" {
-                            item.macos_install.clone()
-                        } else {
-                            item.linux_install.clone()
-                        };
-                        (item.name.clone(), item.binary.clone(), install)
-                    })
-                });
+                if let Some(running) = self
+                    .app_state
+                    .active_extensions_manager_buffer()
+                    .and_then(|state| state.command.as_ref())
+                    .filter(|cmd| cmd.running)
+                {
+                    self.show_transient_toast_kind(
+                        format!(
+                            "Another operation is in progress ({})\nWait for it to finish before starting a new one.",
+                            running.binary
+                        ),
+                        ToastKind::Warning,
+                    );
+                    return Some(false);
+                }
+                let selected =
+                    self.app_state
+                        .active_extensions_manager_buffer()
+                        .and_then(|state| {
+                            state.selected_item().map(|item| {
+                                let install = if state.platform == "macOS" {
+                                    item.macos_install.clone()
+                                } else {
+                                    item.linux_install.clone()
+                                };
+                                (item.name.clone(), item.binary.clone(), install)
+                            })
+                        });
 
                 let Some((name, binary, install_cmd)) = selected else {
                     return Some(false);
@@ -144,6 +170,17 @@ impl AppShell {
                 if install_cmd.trim().is_empty() {
                     self.show_transient_toast_kind(
                         format!("Install unavailable\nNo install command configured for {name}"),
+                        ToastKind::Warning,
+                    );
+                    return Some(false);
+                }
+
+                // Pre-check: the package manager this install command relies on
+                // must itself be installed, otherwise the command dies with a
+                // cryptic "command not found" in the logs.
+                if let Some((manager, hint)) = missing_install_prerequisite(&install_cmd) {
+                    self.show_transient_toast_kind(
+                        format!("Cannot install {name}\n`{manager}` is required but was not found on this system. {hint}"),
                         ToastKind::Warning,
                     );
                     return Some(false);
@@ -159,13 +196,17 @@ impl AppShell {
                         binary: binary.clone(),
                         command: install_cmd.clone(),
                         uninstall: false,
-                        working_dir: self.app_state.workspace_root_path().map(std::path::PathBuf::from),
+                        working_dir: self
+                            .app_state
+                            .workspace_root_path()
+                            .map(std::path::PathBuf::from),
                     },
                 });
 
                 let changed = true;
                 self.pending_lsp_server = None;
-                self.lsp_retry_at = Some(std::time::Instant::now() + std::time::Duration::from_secs(15));
+                self.lsp_retry_at =
+                    Some(std::time::Instant::now() + std::time::Duration::from_secs(15));
                 self.show_transient_toast_kind(
                     format!("Installing {binary}\nRunning: {install_cmd}\nOpen Extensions Manager footer to watch live logs."),
                     ToastKind::Info,
@@ -175,23 +216,43 @@ impl AppShell {
                 Some(changed || true)
             }
             Command::ExtensionsUninstallSelected => {
-                let selected = self.app_state.active_extensions_manager_buffer().and_then(|state| {
-                    state.selected_item().map(|item| {
-                        let uninstall = if state.platform == "macOS" {
-                            item.macos_uninstall.clone()
-                        } else {
-                            item.linux_uninstall.clone()
-                        };
-                        (item.name.clone(), item.binary.clone(), uninstall)
-                    })
-                });
+                if let Some(running) = self
+                    .app_state
+                    .active_extensions_manager_buffer()
+                    .and_then(|state| state.command.as_ref())
+                    .filter(|cmd| cmd.running)
+                {
+                    self.show_transient_toast_kind(
+                        format!(
+                            "Another operation is in progress ({})\nWait for it to finish before starting a new one.",
+                            running.binary
+                        ),
+                        ToastKind::Warning,
+                    );
+                    return Some(false);
+                }
+                let selected =
+                    self.app_state
+                        .active_extensions_manager_buffer()
+                        .and_then(|state| {
+                            state.selected_item().map(|item| {
+                                let uninstall = if state.platform == "macOS" {
+                                    item.macos_uninstall.clone()
+                                } else {
+                                    item.linux_uninstall.clone()
+                                };
+                                (item.name.clone(), item.binary.clone(), uninstall)
+                            })
+                        });
 
                 let Some((name, binary, uninstall_cmd)) = selected else {
                     return Some(false);
                 };
                 if uninstall_cmd.trim().is_empty() {
                     self.show_transient_toast_kind(
-                        format!("Uninstall unavailable\nNo uninstall command configured for {name}"),
+                        format!(
+                            "Uninstall unavailable\nNo uninstall command configured for {name}"
+                        ),
                         ToastKind::Warning,
                     );
                     return Some(false);
@@ -207,7 +268,10 @@ impl AppShell {
                         binary: binary.clone(),
                         command: uninstall_cmd.clone(),
                         uninstall: true,
-                        working_dir: self.app_state.workspace_root_path().map(std::path::PathBuf::from),
+                        working_dir: self
+                            .app_state
+                            .workspace_root_path()
+                            .map(std::path::PathBuf::from),
                     },
                 });
 
@@ -303,7 +367,9 @@ impl AppShell {
                     Command::FilePickerAppendQuery(text) => {
                         self.app_state.extensions_append_filter(text)
                     }
-                    Command::FilePickerBackspaceQuery => self.app_state.extensions_backspace_filter(),
+                    Command::FilePickerBackspaceQuery => {
+                        self.app_state.extensions_backspace_filter()
+                    }
                     _ => false,
                 };
                 if changed {
@@ -344,4 +410,43 @@ impl AppShell {
             _ => None,
         }
     }
+}
+
+/// If `install_cmd` relies on a package manager that is missing from the
+/// (version-manager-augmented) PATH, return that manager plus an install hint.
+/// Unknown leading tokens are not gated — only well-known managers are checked.
+fn missing_install_prerequisite(install_cmd: &str) -> Option<(&'static str, &'static str)> {
+    let first_token = install_cmd.split_whitespace().next()?;
+    let (manager, hint) = match first_token {
+        "brew" => (
+            "brew",
+            "Install Homebrew first: https://brew.sh, then retry.",
+        ),
+        "npm" | "npx" => (
+            "npm",
+            "Install Node.js (includes npm) first: https://nodejs.org or `brew install node`.",
+        ),
+        "go" => (
+            "go",
+            "Install Go first: https://go.dev/dl or `brew install go`.",
+        ),
+        "cargo" | "rustup" => (
+            "cargo",
+            "Install Rust first: https://rustup.rs.",
+        ),
+        "pip" | "pip3" | "pipx" => (
+            "pip3",
+            "Install Python 3 first: https://www.python.org or `brew install python`.",
+        ),
+        "gem" => ("gem", "Install Ruby first: `brew install ruby`."),
+        "dotnet" => (
+            "dotnet",
+            "Install the .NET SDK first: https://dotnet.microsoft.com/download.",
+        ),
+        _ => return None,
+    };
+
+    let resolved_path = crate::async_runtime::scheduler::resolve_system_path();
+    let found = std::env::split_paths(&resolved_path).any(|dir| dir.join(manager).is_file());
+    if found { None } else { Some((manager, hint)) }
 }

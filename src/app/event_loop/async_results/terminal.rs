@@ -118,7 +118,7 @@ pub(super) fn handle_terminal_result(
             for tab in &mut app.terminal_tabs {
                 if tab.session_id == Some(session_id) {
                     let scrolled_rows = tab.grid.feed_bytes(&chunk);
-                    tab.grid.apply_regex_highlights();
+                    tab.grid.apply_regex_highlights_incremental(scrolled_rows);
                     if preserve_viewport {
                         tab.grid.view_scroll_up(scrolled_rows);
                     } else {
@@ -131,7 +131,8 @@ pub(super) fn handle_terminal_result(
             }
             if app.right_pty_session_id == Some(session_id) {
                 let scrolled_rows = app.right_terminal_grid.feed_bytes(&chunk);
-                app.right_terminal_grid.apply_regex_highlights();
+                app.right_terminal_grid
+                    .apply_regex_highlights_incremental(scrolled_rows);
                 let preserve_right_viewport =
                     preserve_viewport || app.right_terminal_grid.scroll_offset > 0;
                 if preserve_right_viewport {
@@ -145,7 +146,7 @@ pub(super) fn handle_terminal_result(
             let is_terminal_buffer = app.terminal_buffer_grids.contains_key(&session_id);
             if let Some(grid) = app.terminal_buffer_grids.get_mut(&session_id) {
                 let scrolled_rows = grid.feed_bytes(&chunk);
-                grid.apply_regex_highlights();
+                grid.apply_regex_highlights_incremental(scrolled_rows);
                 if preserve_viewport {
                     grid.view_scroll_up(scrolled_rows);
                 } else {

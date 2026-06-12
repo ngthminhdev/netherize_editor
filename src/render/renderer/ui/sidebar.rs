@@ -1,5 +1,5 @@
 use crate::render::{
-    icon_pipeline::{canonical_icon_id, IconDrawInstance},
+    icon_pipeline::{IconDrawInstance, canonical_icon_id},
     region_pipeline::RegionDrawInstance,
     renderer::{Renderer, SidebarFilterState, SidebarRow},
 };
@@ -47,7 +47,10 @@ impl Renderer {
             self.sidebar_icon_pipeline.upload_instances(
                 &self.device,
                 &self.sidebar_icon_instances,
-                [self.surface_state.config.width, self.surface_state.config.height],
+                [
+                    self.surface_state.config.width,
+                    self.surface_state.config.height,
+                ],
             );
             return Vec::new();
         }
@@ -270,7 +273,10 @@ impl Renderer {
         self.sidebar_icon_pipeline.upload_instances(
             &self.device,
             &self.sidebar_icon_instances,
-            [self.surface_state.config.width, self.surface_state.config.height],
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
         );
         self.sidebar_glyph_instances = glyphs;
         self.sidebar_text_pipeline.upload_instances(
@@ -291,7 +297,10 @@ impl Renderer {
         self.sidebar_icon_pipeline.upload_instances(
             &self.device,
             &self.sidebar_icon_instances,
-            [self.surface_state.config.width, self.surface_state.config.height],
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
         );
     }
 }

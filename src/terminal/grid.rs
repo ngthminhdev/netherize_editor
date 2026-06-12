@@ -47,6 +47,10 @@ pub struct TerminalCell {
     /// Per-cell foreground color override (linear RGBA).
     /// When `Some`, takes precedence over the ANSI-based `style.fg`.
     pub style_fg: Option<[f32; 4]>,
+    /// Set on the first cell (col 0) of a row that is a soft-wrap continuation
+    /// of the previous physical row (the line filled to the edge with no
+    /// newline). Lets highlighting treat wrapped rows as one logical line.
+    pub wrap_continued: bool,
 }
 
 impl Default for TerminalCell {
@@ -55,6 +59,7 @@ impl Default for TerminalCell {
             ch: ' ',
             style: CellStyle::default(),
             style_fg: None,
+            wrap_continued: false,
         }
     }
 }
@@ -385,7 +390,11 @@ impl TerminalGrid {
         }
 
         let mut scrolled = 0usize;
-        if self.cursor_col >= self.cols {
+        // A soft wrap happens when the cursor has run past the last column with
+        // no intervening newline. The first cell of the new row records this so
+        // highlighting can stitch wrapped rows back into one logical line.
+        let wrapped = self.cursor_col >= self.cols;
+        if wrapped {
             // Wrap: xuống dòng mới.
             self.cursor_col = 0;
             self.cursor_row += 1;
@@ -401,6 +410,7 @@ impl TerminalGrid {
             ch,
             style: self.current_style,
             style_fg: None,
+            wrap_continued: wrapped,
         };
         self.cursor_col += 1;
         scrolled
@@ -942,6 +952,28 @@ impl TerminalGrid {
     /// **Step 2 — Data-type overrides:** scans each row for string, number,
     /// boolean/null and time patterns, overriding individual cell colors.
     pub fn apply_regex_highlights(&mut self) {
+        self.apply_regex_highlights_from(0);
+    }
+
+    /// Incremental variant for PTY feeds: only re-run the regexes over rows
+    /// this feed could have touched — the live grid plus the `rows_scrolled`
+    /// rows the feed just pushed into scrollback. Rows deeper in scrollback can
+    /// never change again and keep the colors they got while still live.
+    ///
+    /// Without this, every output chunk re-highlighted the ENTIRE scrollback
+    /// (8 regexes × up to SCROLLBACK_LIMIT rows) on the UI thread, making a
+    /// busy terminal quadratic over the course of a session.
+    pub fn apply_regex_highlights_incremental(&mut self, rows_scrolled: usize) {
+        let mut from_row = self.scrollback.len().saturating_sub(rows_scrolled);
+        // Lùi về đầu logical line (soft-wrap) để token vắt ngang ranh giới vẫn
+        // được match trên text đầy đủ.
+        while from_row > 0 && self.row_is_wrap_continued(from_row) {
+            from_row -= 1;
+        }
+        self.apply_regex_highlights_from(from_row);
+    }
+
+    fn apply_regex_highlights_from(&mut self, from_row: usize) {
         use crate::terminal::highlighter::{
             RE_BOOL, RE_LOG_DEBUG, RE_LOG_ERROR, RE_LOG_WARN, RE_NULL, RE_NUMBER, RE_STRING,
             RE_TIME,
@@ -949,115 +981,107 @@ impl TerminalGrid {
 
         let colors = self.highlight_colors;
         let cols = self.cols;
-        let rows = self.rows;
-        let sb_len = self.scrollback.len();
-        let offset = self.scroll_offset;
+        let total = self.total_rows();
 
-        for display_row in 0..rows {
-            // Map display_row to the actual cell storage (scrollback or live grid).
-            let source_from_bottom = (rows - 1 - display_row) + offset;
+        // Phase 1 (immutable borrow): walk the buffer one *logical* line at a
+        // time and collect cell color overrides as `(absolute_row, col, color)`.
+        //
+        // A logical line is a maximal run of physical rows where each row after
+        // the first is a soft-wrap continuation (`wrap_continued`). Running the
+        // regexes over the joined text — instead of per physical row — keeps log
+        // levels, strings, numbers and timestamps highlighted across the wrap
+        // instead of resetting at every visual line break. Char index `i` in the
+        // joined text maps back to row `start + i / cols`, col `i % cols`, since
+        // every physical row contributes exactly `cols` chars.
+        let mut updates: Vec<(usize, usize, [f32; 4])> = Vec::new();
+        let mut start = from_row;
+        while start < total {
+            let mut end = start + 1;
+            while end < total && self.row_is_wrap_continued(end) {
+                end += 1;
+            }
 
-            // Step 1: Build row text for regex matching.
-            let row_text: String = if source_from_bottom < rows {
-                let live_row = rows - 1 - source_from_bottom;
-                let start = live_row * cols;
-                self.cells[start..start + cols]
-                    .iter()
-                    .map(|c| c.ch)
-                    .collect()
-            } else {
-                let sb_idx = sb_len.saturating_sub(source_from_bottom - rows + 1);
-                if sb_idx < sb_len {
-                    self.scrollback[sb_idx].iter().map(|c| c.ch).collect()
-                } else {
-                    continue;
+            let mut logical = String::with_capacity((end - start) * cols);
+            for row in start..end {
+                match self.row_cells_absolute(row) {
+                    Some(cells) => logical.extend(cells.iter().map(|c| c.ch)),
+                    None => logical.extend(std::iter::repeat(' ').take(cols)),
+                }
+            }
+
+            let push_range = |updates: &mut Vec<(usize, usize, [f32; 4])>,
+                              s: usize,
+                              e: usize,
+                              color: [f32; 4]| {
+                for i in s..e {
+                    updates.push((start + i / cols, i % cols, color));
                 }
             };
 
-            // Step 1: Determine base line color from log-level prefix.
-            let line_color: Option<[f32; 4]> = if RE_LOG_ERROR.is_match(&row_text) {
+            // Step 1: base line color from the log-level prefix, every cell.
+            let line_color = if RE_LOG_ERROR.is_match(&logical) {
                 Some(colors.error)
-            } else if RE_LOG_WARN.is_match(&row_text) {
+            } else if RE_LOG_WARN.is_match(&logical) {
                 Some(colors.warn)
-            } else if RE_LOG_DEBUG.is_match(&row_text) {
+            } else if RE_LOG_DEBUG.is_match(&logical) {
                 Some(colors.fg_dim)
             } else {
                 None
             };
-
-            // Apply base line color to every cell in this row.
             if let Some(color) = line_color {
-                self.set_visible_row_style_fg(display_row, offset, cols, rows, sb_len, |_| {
-                    Some(color)
-                });
+                push_range(&mut updates, 0, (end - start) * cols, color);
             }
 
-            // Step 2: Data-type overrides (these win over the line color).
-            // Collect match ranges from all data-type regexes first, then apply.
-            let mut overrides: Vec<(usize, usize, [f32; 4])> = Vec::new();
-
-            for mat in RE_STRING.find_iter(&row_text) {
-                let (s, e) = byte_to_char_range(&row_text, mat.start(), mat.end());
-                overrides.push((s, e, colors.syntax_string));
-            }
-            for mat in RE_NUMBER.find_iter(&row_text) {
-                let (s, e) = byte_to_char_range(&row_text, mat.start(), mat.end());
-                overrides.push((s, e, colors.syntax_number));
-            }
-            for mat in RE_BOOL.find_iter(&row_text) {
-                let (s, e) = byte_to_char_range(&row_text, mat.start(), mat.end());
-                overrides.push((s, e, colors.syntax_keyword));
-            }
-            for mat in RE_NULL.find_iter(&row_text) {
-                let (s, e) = byte_to_char_range(&row_text, mat.start(), mat.end());
-                overrides.push((s, e, colors.syntax_keyword));
-            }
-            for mat in RE_TIME.find_iter(&row_text) {
-                let (s, e) = byte_to_char_range(&row_text, mat.start(), mat.end());
-                overrides.push((s, e, colors.syntax_number));
+            // Step 2: data-type overrides. Pushed lowest precedence first so
+            // that — since later writes win in phase 2 — strings end up on top,
+            // matching the original `find`-first ordering (string > number >
+            // bool > null > time, all above the base line color).
+            for (re, color) in [
+                (&RE_TIME, colors.syntax_number),
+                (&RE_NULL, colors.syntax_keyword),
+                (&RE_BOOL, colors.syntax_keyword),
+                (&RE_NUMBER, colors.syntax_number),
+                (&RE_STRING, colors.syntax_string),
+            ] {
+                for mat in re.find_iter(&logical) {
+                    let (s, e) = byte_to_char_range(&logical, mat.start(), mat.end());
+                    push_range(&mut updates, s, e, color);
+                }
             }
 
-            if !overrides.is_empty() {
-                self.set_visible_row_style_fg(display_row, offset, cols, rows, sb_len, |col| {
-                    overrides
-                        .iter()
-                        .find(|(s, e, _)| col >= *s && col < *e)
-                        .map(|(_, _, c)| *c)
-                });
-            }
+            start = end;
+        }
+
+        // Phase 2 (mutable borrow): apply the collected overrides in push order
+        // so higher-precedence matches (pushed later) win on overlapping cells.
+        for (row, col, color) in updates {
+            self.set_style_fg_absolute(row, col, color);
         }
     }
 
-    /// Set `style_fg` on cells in a visible display row.
-    ///
-    /// `color_fn` is called for each column; returning `Some(color)` sets the
-    /// override, `None` leaves the cell unchanged.
-    fn set_visible_row_style_fg(
-        &mut self,
-        display_row: usize,
-        offset: usize,
-        cols: usize,
-        rows: usize,
-        sb_len: usize,
-        color_fn: impl Fn(usize) -> Option<[f32; 4]>,
-    ) {
-        let source_from_bottom = (rows - 1 - display_row) + offset;
-        if source_from_bottom < rows {
-            let live_row = rows - 1 - source_from_bottom;
-            let start = live_row * cols;
-            for col in 0..cols {
-                if let Some(color) = color_fn(col) {
-                    self.cells[start + col].style_fg = Some(color);
-                }
+    /// Whether the physical row at `absolute_row` is a soft-wrap continuation of
+    /// the row above it (flag stored on its first cell at write time).
+    fn row_is_wrap_continued(&self, absolute_row: usize) -> bool {
+        self.row_cells_absolute(absolute_row)
+            .and_then(|cells| cells.first())
+            .is_some_and(|cell| cell.wrap_continued)
+    }
+
+    /// Set `style_fg` on the cell at an absolute `(row, col)`, resolving whether
+    /// the row lives in scrollback or the live grid. Out-of-bounds is ignored.
+    fn set_style_fg_absolute(&mut self, row: usize, col: usize, color: [f32; 4]) {
+        if col >= self.cols {
+            return;
+        }
+        if row < self.scrollback.len() {
+            if let Some(cell) = self.scrollback[row].get_mut(col) {
+                cell.style_fg = Some(color);
             }
-        } else {
-            let sb_idx = sb_len.saturating_sub(source_from_bottom - rows + 1);
-            if sb_idx < sb_len {
-                for col in 0..cols {
-                    if let Some(color) = color_fn(col) {
-                        self.scrollback[sb_idx][col].style_fg = Some(color);
-                    }
-                }
+        } else if let Some(live_row) = row.checked_sub(self.scrollback.len())
+            && live_row < self.rows
+        {
+            if let Some(cell) = self.cells.get_mut(live_row * self.cols + col) {
+                cell.style_fg = Some(color);
             }
         }
     }
@@ -1355,6 +1379,7 @@ static BLANK_CELL: TerminalCell = TerminalCell {
         bold: false,
     },
     style_fg: None,
+    wrap_continued: false,
 };
 
 /// Convert a byte-offset range from a regex match into a char-index range.
@@ -1812,5 +1837,85 @@ mod tests {
         assert_eq!(grid.cell_at(0, 17).style_fg, Some(syn_kw));
         // 'n' at col 30 starts "null".
         assert_eq!(grid.cell_at(0, 30).style_fg, Some(syn_kw));
+    }
+
+    #[test]
+    fn apply_regex_highlights_string_spanning_soft_wrap_keeps_color_on_continuation() {
+        // A quoted string longer than the grid width soft-wraps onto a second
+        // physical row. The closing quote is on row 1, so neither row matches
+        // RE_STRING on its own — only the joined logical line does.
+        let mut grid = TerminalGrid::new(8, 4);
+        grid.feed_chunk("\"abcdefghij\"");
+        grid.apply_regex_highlights();
+
+        let syn_str = grid.highlight_colors.syntax_string;
+        // Row 1 is flagged as a wrap continuation of row 0.
+        assert!(grid.cell_at(1, 0).wrap_continued);
+        // Opening quote (row 0) and the wrapped tail (row 1) share string color.
+        assert_eq!(grid.cell_at(0, 0).style_fg, Some(syn_str));
+        assert_eq!(grid.cell_at(1, 0).style_fg, Some(syn_str)); // 'h'
+        assert_eq!(grid.cell_at(1, 3).style_fg, Some(syn_str)); // closing quote
+    }
+
+    #[test]
+    fn apply_regex_highlights_log_level_spans_soft_wrap() {
+        // An error line wraps; the continuation row must keep the error tint
+        // even though the "E/" prefix only appears on the first physical row.
+        let mut grid = TerminalGrid::new(8, 4);
+        grid.feed_chunk("E/fatal boom");
+        grid.apply_regex_highlights();
+
+        let error = grid.highlight_colors.error;
+        assert!(grid.cell_at(1, 0).wrap_continued);
+        assert_eq!(grid.cell_at(0, 0).style_fg, Some(error));
+        assert_eq!(grid.cell_at(1, 0).style_fg, Some(error));
+    }
+
+    #[test]
+    fn apply_regex_highlights_incremental_covers_rows_scrolled_into_scrollback() {
+        // 3 visible rows: feeding 5 log lines pushes 2 into scrollback within a
+        // single feed. The incremental pass must still color those 2 rows.
+        let mut grid = TerminalGrid::new(20, 3);
+        let scrolled =
+            grid.feed_chunk("E/boom one\r\nE/boom two\r\nE/boom three\r\nE/boom four\r\nE/boom five");
+        grid.apply_regex_highlights_incremental(scrolled);
+
+        let error = grid.highlight_colors.error;
+        let in_scrollback = grid.scrollback.len();
+        assert!(in_scrollback >= 2, "expected rows pushed into scrollback");
+        assert!(
+            scrolled >= in_scrollback,
+            "feed must report at least the rows it scrolled"
+        );
+        for row in 0..in_scrollback {
+            assert_eq!(
+                grid.scrollback[row][0].style_fg,
+                Some(error),
+                "scrollback row {row} must be highlighted"
+            );
+        }
+        // Live rows.
+        for row in 0..3 {
+            assert_eq!(grid.cell_at(row, 0).style_fg, Some(error));
+        }
+    }
+
+    #[test]
+    fn apply_regex_highlights_incremental_does_not_touch_old_scrollback() {
+        let mut grid = TerminalGrid::new(20, 2);
+        // First feed scrolls a warn line into scrollback and highlights it.
+        let scrolled = grid.feed_chunk("W/old warning\r\nplain\r\nplain2");
+        grid.apply_regex_highlights_incremental(scrolled);
+        let warn = grid.highlight_colors.warn;
+        assert_eq!(grid.scrollback[0][0].style_fg, Some(warn));
+
+        // Wipe the recorded color to detect re-processing, then feed more
+        // output WITHOUT scrolling past that old row.
+        grid.scrollback[0][0].style_fg = None;
+        let scrolled = grid.feed_chunk("plain3\r\nplain4");
+        grid.apply_regex_highlights_incremental(scrolled);
+
+        // Old scrollback row was outside the incremental window — untouched.
+        assert_eq!(grid.scrollback[0][0].style_fg, None);
     }
 }

@@ -1,6 +1,6 @@
 {
-  "last_heartbeat": "2026-05-30T06:30:42.080Z",
-  "engine_status": "running",
+  "last_heartbeat": "2026-06-12T04:25:06.788Z",
+  "engine_status": "stopped",
   "execution_log": [
     {
       "task_id": "anatomy-rescan",

@@ -435,23 +435,22 @@ impl AppShell {
             return false;
         };
 
-        let loaded_theme = if self.theme_picker_preview_profile.as_deref()
-            == Some(theme_profile.as_str())
-        {
-            self.base_theme.clone()
-        } else {
-            match ThemeConfig::load(&theme_profile) {
-                Ok(theme) => theme,
-                Err(err) => {
-                    eprintln!(
-                        "[AppShell] theme load failed for profile '{}': {err}",
-                        theme_profile
-                    );
-                    self.show_transient_toast(format!("Failed to load theme: {theme_profile}"));
-                    return true;
+        let loaded_theme =
+            if self.theme_picker_preview_profile.as_deref() == Some(theme_profile.as_str()) {
+                self.base_theme.clone()
+            } else {
+                match ThemeConfig::load(&theme_profile) {
+                    Ok(theme) => theme,
+                    Err(err) => {
+                        eprintln!(
+                            "[AppShell] theme load failed for profile '{}': {err}",
+                            theme_profile
+                        );
+                        self.show_transient_toast(format!("Failed to load theme: {theme_profile}"));
+                        return true;
+                    }
                 }
-            }
-        };
+            };
 
         self.theme_picker_original_theme = None;
         self.theme_picker_preview_profile = None;
@@ -576,25 +575,25 @@ impl AppShell {
                 changed | self.close_current_buffer_now()
             }
             PendingConfirmationAction::ExternalOverwrite { path } => {
-                let active_matches = self
-                    .app_state
-                    .active_file()
-                    .is_some_and(|active| {
-                        if active == path.as_path() {
-                            return true;
-                        }
-                        match (active.canonicalize().ok(), path.canonicalize().ok()) {
-                            (Some(active_canon), Some(target_canon)) => active_canon == target_canon,
-                            _ => false,
-                        }
-                    });
+                let active_matches = self.app_state.active_file().is_some_and(|active| {
+                    if active == path.as_path() {
+                        return true;
+                    }
+                    match (active.canonicalize().ok(), path.canonicalize().ok()) {
+                        (Some(active_canon), Some(target_canon)) => active_canon == target_canon,
+                        _ => false,
+                    }
+                });
                 if !active_matches {
                     return changed;
                 }
                 if confirmed {
                     changed |= self.handle_command(Command::SaveFile);
                 } else {
-                    match self.app_state.reload_active_file_from_disk_discarding_local() {
+                    match self
+                        .app_state
+                        .reload_active_file_from_disk_discarding_local()
+                    {
                         Ok(_) => {
                             self.invalidate_highlights_and_parse_active_buffer();
                             self.force_flush_lsp_did_change_for_active_file();
@@ -629,7 +628,6 @@ impl AppShell {
                 });
                 changed | true
             }
-
         }
     }
 }

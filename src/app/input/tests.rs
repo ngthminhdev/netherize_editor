@@ -335,10 +335,16 @@ fn right_sidebar_terminal_ctrl_u_d_scroll_half_page() {
     context.right_sidebar_terminal = true;
     let t0 = std::time::Instant::now();
 
+    // Forwarded as opencode's default half-page keybinds (ctrl+alt+u / ctrl+alt+d)
+    // because the chat history lives inside opencode's own viewport, not in our
+    // grid scrollback.
     let up = handler.route_normalized_input(ctrl_input('u', KeyCode::KeyU), &map, context, t0);
     match up {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::TerminalScrollHalfPageUp);
+            assert_eq!(
+                translated.command,
+                Command::TerminalWriteInput("\u{1b}\u{15}".to_string())
+            );
         }
         other => panic!("expected scroll up dispatch, got {:?}", other),
     }
@@ -346,9 +352,33 @@ fn right_sidebar_terminal_ctrl_u_d_scroll_half_page() {
     let down = handler.route_normalized_input(ctrl_input('d', KeyCode::KeyD), &map, context, t0);
     match down {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::TerminalScrollHalfPageDown);
+            assert_eq!(
+                translated.command,
+                Command::TerminalWriteInput("\u{1b}\u{4}".to_string())
+            );
         }
         other => panic!("expected scroll down dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn right_sidebar_terminal_ctrl_u_d_scroll_even_when_mode_drifted() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Inspector);
+    context.right_sidebar_terminal = true;
+    let t0 = std::time::Instant::now();
+
+    let up = handler.route_normalized_input(ctrl_input('u', KeyCode::KeyU), &map, context, t0);
+    match up {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::TerminalWriteInput("\u{1b}\u{15}".to_string())
+            );
+        }
+        other => panic!("expected right-sidebar scroll up dispatch, got {:?}", other),
     }
 }
 
@@ -364,11 +394,17 @@ fn bottom_terminal_ctrl_u_d_still_forward_raw_to_pty() {
     let up = handler.route_normalized_input(ctrl_input('u', KeyCode::KeyU), &map, context, t0);
     match up {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert!(
-                matches!(translated.command, Command::TerminalWriteInput(_)),
-                "bottom terminal Ctrl+U should forward raw, got {:?}",
-                translated.command
-            );
+            match &translated.command {
+                Command::TerminalWriteInput(payload) => {
+                    assert!(
+                        !payload.starts_with('\u{1b}'),
+                        "bottom terminal Ctrl+U must stay raw ^U, not the right-dock \
+                         ctrl+alt+u forward, got {:?}",
+                        payload
+                    );
+                }
+                other => panic!("bottom terminal Ctrl+U should forward raw, got {:?}", other),
+            }
         }
         other => panic!("expected raw write dispatch, got {:?}", other),
     }
@@ -927,7 +963,10 @@ fn interrupted_prefix_falls_back_and_does_not_stick() {
 }
 
 #[test]
-fn prefix_timeout_resets_safely() {
+fn pending_chord_survives_timeout_window() {
+    // Chord sequences must NOT silently expire: their state is visible via the
+    // which-key overlay, so a continuation key pressed after a long pause must
+    // still resolve the chord instead of firing a normal-mode command.
     let mut handler = InputHandler::new();
     let map = make_map();
     let context = KeybindingContext::for_mode(EditorMode::Normal);
@@ -939,15 +978,24 @@ fn prefix_timeout_resets_safely() {
         context,
         t0,
     );
+    assert!(handler.pending_chord_sequence().is_some());
 
+    // Well past the old 1.5s prefix timeout — the chord must still be alive.
     let after_timeout = t0 + Duration::from_millis(1_700);
-    let expired = handler.route_normalized_input(
-        char_input('f', KeyCode::KeyF),
+
+    // 'q' has no continuation in the chord: it cancels the chord and falls
+    // back to normal resolution ('q' is unbound -> NoDispatch, not None).
+    let interrupted = handler.route_normalized_input(
+        char_input('q', KeyCode::KeyQ),
         &map,
         context,
         after_timeout,
     );
-    assert!(expired.is_none());
+    assert!(matches!(
+        interrupted,
+        Some(InputRouteOutcome::NoDispatch { .. })
+    ));
+    assert!(handler.pending_chord_sequence().is_none());
 
     let next = handler.route_normalized_input(
         char_input('j', KeyCode::KeyJ),
@@ -959,8 +1007,37 @@ fn prefix_timeout_resets_safely() {
         Some(InputRouteOutcome::Dispatch(translated)) => {
             assert_eq!(translated.command, Command::MoveDown);
         }
-        other => panic!("expected router recovered after timeout, got {:?}", other),
+        other => panic!("expected router recovered after interrupt, got {:?}", other),
     }
+}
+
+#[test]
+fn escape_cancels_pending_chord_without_fallback_dispatch() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let t0 = std::time::Instant::now();
+
+    let _ = handler.route_normalized_input(
+        named_input(NamedKey::Space, Some(KeyCode::Space)),
+        &map,
+        context,
+        t0,
+    );
+    assert!(handler.pending_chord_sequence().is_some());
+
+    let cancelled = handler.route_normalized_input(
+        named_input(NamedKey::Escape, Some(KeyCode::Escape)),
+        &map,
+        context,
+        t0 + Duration::from_millis(500),
+    );
+    assert!(matches!(
+        cancelled,
+        Some(InputRouteOutcome::NoDispatch { .. })
+    ));
+    assert!(handler.pending_chord_sequence().is_none());
+    assert_eq!(handler.get_pending_keys(), "");
 }
 
 #[test]
@@ -978,8 +1055,9 @@ fn focus_loss_resets_prefix_safely() {
     );
     handler.on_focus_changed(false);
 
+    // 'q' không được bind trong Normal mode ('f' giờ mở find-char pending).
     let after_focus_lost =
-        handler.route_normalized_input(char_input('f', KeyCode::KeyF), &map, context, now);
+        handler.route_normalized_input(char_input('q', KeyCode::KeyQ), &map, context, now);
     assert!(after_focus_lost.is_none());
 
     let next = handler.route_normalized_input(char_input('j', KeyCode::KeyJ), &map, context, now);
@@ -991,6 +1069,57 @@ fn focus_loss_resets_prefix_safely() {
             "expected router recovered after focus loss, got {:?}",
             other
         ),
+    }
+}
+
+#[test]
+fn bare_find_char_motion_waits_then_dispatches_move_find_char() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let now = std::time::Instant::now();
+
+    let pending = handler.route_normalized_input(char_input('f', KeyCode::KeyF), &map, context, now);
+    assert!(matches!(
+        pending,
+        Some(InputRouteOutcome::NoDispatch { .. })
+    ));
+
+    let resolved =
+        handler.route_normalized_input(char_input('x', KeyCode::KeyX), &map, context, now);
+    match resolved {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::MoveFindChar(crate::core::commands::FindMotionKind::ForwardTo, 'x')
+            );
+        }
+        other => panic!("expected find-char dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn bare_find_char_motion_cancelled_by_escape() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let context = KeybindingContext::for_mode(EditorMode::Normal);
+    let now = std::time::Instant::now();
+
+    let _ = handler.route_normalized_input(char_input('t', KeyCode::KeyT), &map, context, now);
+    let _ = handler.route_normalized_input(
+        named_input(NamedKey::Escape, Some(KeyCode::Escape)),
+        &map,
+        context,
+        now,
+    );
+
+    // Sau Esc, 'j' phải dispatch motion bình thường (pending đã bị huỷ).
+    let next = handler.route_normalized_input(char_input('j', KeyCode::KeyJ), &map, context, now);
+    match next {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(translated.command, Command::MoveDown);
+        }
+        other => panic!("expected recovery after Esc, got {:?}", other),
     }
 }
 

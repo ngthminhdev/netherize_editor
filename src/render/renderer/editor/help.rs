@@ -53,10 +53,13 @@ impl Renderer {
             return;
         }
 
-        let font_size = self.theme.editor.font_size.max(14.0);
-        let title_size = (font_size * 2.2).max(28.0);
-        let small_size = (font_size * 0.82).max(11.0);
-        let line_height = self.theme.editor.line_height.max(font_size + 5.0);
+        // Scale hardcoded chrome px so layout tracks the runtime-scaled text
+        // metrics across monitors (same pattern as extensions.rs).
+        let s = self.ui_scale.max(0.5);
+        let font_size = self.theme.editor.font_size.max(14.0 * s);
+        let title_size = (font_size * 2.2).max(28.0 * s);
+        let small_size = (font_size * 0.82).max(11.0 * s);
+        let line_height = self.theme.editor.line_height.max(font_size + 5.0 * s);
         self.editor_overlay_text_system
             .set_metrics(Metrics::new(font_size, line_height));
         self.editor_overlay_scissor = rect_to_scissor(center_bounds);
@@ -65,8 +68,8 @@ impl Renderer {
         // both special buffer tabs should occupy the center editor region with
         // identical inset behavior instead of using independent full-screen
         // margins.
-        let pad_x = self.editor_padding_x.max(18.0);
-        let pad_y = self.editor_padding_y.max(18.0);
+        let pad_x = self.editor_padding_x.max(18.0 * s);
+        let pad_y = self.editor_padding_y.max(18.0 * s);
         let panel_x = center_bounds[0] + pad_x;
         let panel_y = center_bounds[1] + pad_y - help.scroll_y;
         let panel_w = (center_bounds[2] - pad_x * 2.0).max(1.0);
@@ -84,42 +87,42 @@ impl Renderer {
         let mut card_border = divider;
         card_border[3] = 0.72;
 
-        // ── sizing constants (tweak here) ──────────────────────────────────────
-        let hdr_logo_x = 176.0;
-        let hdr_accent_x = 24.0;
-        let hdr_accent_y = 24.0;
-        let hdr_accent_size = 120.0;
-        let hdr_subtitle_gap = 24.0;
-        let hdr_meta_col_w = 420.0;
-        let hdr_meta_lh_gap = 28.0;
-        let hdr_wrap_margin = 56.0;
-        let hdr_title_gap = 64.0;
-        let hdr_min_h = 208.0;
-        let legend_gap_top = 56.0;
-        let legend_h = 116.0;
-        let legend_text_x = 40.0;
-        let legend_text_y = 36.0;
-        let grid_gap_top = 56.0;
-        let col_gap = 40.0;
-        let card_h_min = 440.0;
-        let card_h_max = 720.0;
-        let card_title_div_y = 92.0;
-        let card_title_x = 36.0;
-        let card_title_y = 24.0;
-        let card_hint_rx = 292.0;
-        let hint_clamp_w = 264.0;
-        let entry_row_h = 104.0;
+        // ── sizing constants (tweak here; all device px scaled by ui_scale) ────
+        let hdr_logo_x = 176.0 * s;
+        let hdr_accent_x = 24.0 * s;
+        let hdr_accent_y = 24.0 * s;
+        let hdr_accent_size = 120.0 * s;
+        let hdr_subtitle_gap = 24.0 * s;
+        let hdr_meta_col_w = 420.0 * s;
+        let hdr_meta_lh_gap = 28.0 * s;
+        let hdr_wrap_margin = 56.0 * s;
+        let hdr_title_gap = 64.0 * s;
+        let hdr_min_h = 208.0 * s;
+        let legend_gap_top = 56.0 * s;
+        let legend_h = 116.0 * s;
+        let legend_text_x = 40.0 * s;
+        let legend_text_y = 36.0 * s;
+        let grid_gap_top = 56.0 * s;
+        let col_gap = 40.0 * s;
+        let card_h_min = 440.0 * s;
+        let card_h_max = 720.0 * s;
+        let card_title_div_y = 92.0 * s;
+        let card_title_x = 36.0 * s;
+        let card_title_y = 24.0 * s;
+        let card_hint_rx = 292.0 * s;
+        let hint_clamp_w = 264.0 * s;
+        let entry_row_h = 104.0 * s;
         let key_col_ratio = 0.52_f32;
-        let key_col_min = 440.0;
-        let key_col_max = 680.0;
-        let label_col_extra = 120.0;
-        let label_col_min = 220.0;
-        let entry_top_pad = 184.0;
-        let entry_y_start = 136.0;
-        let entry_key_x = 36.0;
+        let key_col_min = 440.0 * s;
+        let key_col_max = 680.0 * s;
+        let label_col_extra = 120.0 * s;
+        let label_col_min = 220.0 * s;
+        let entry_top_pad = 184.0 * s;
+        let entry_y_start = 136.0 * s;
+        let entry_key_x = 36.0 * s;
         // let entry_key_y_adj = 6.0;
         let key_fs_ratio = 0.72_f32;
-        let key_fs_min = 10.0;
+        let key_fs_min = 10.0 * s;
         // ───────────────────────────────────────────────────────────────────────
 
         let mut glyphs = Vec::new();
@@ -165,7 +168,7 @@ impl Renderer {
         }
 
         self.editor_overlay_text_system
-            .set_metrics(Metrics::new(title_size, title_size + 8.0));
+            .set_metrics(Metrics::new(title_size, title_size + 8.0 * s));
         self.editor_overlay_text_system.set_size(
             Some((panel_w - hdr_wrap_margin).max(1.0)),
             Some(line_height),
@@ -191,7 +194,7 @@ impl Renderer {
             accent,
         ));
         self.editor_overlay_text_system
-            .set_metrics(Metrics::new(small_size, small_size + 8.0));
+            .set_metrics(Metrics::new(small_size, small_size + 8.0 * s));
         let meta_x = panel_x + panel_w - hdr_meta_col_w;
         for (idx, line) in [
             "leader = space".to_string(),
@@ -249,15 +252,15 @@ impl Renderer {
         ));
 
         let grid_top = legend_y + legend_h + grid_gap_top;
-        let columns = if panel_w > 1680.0 {
+        let columns = if panel_w > 1680.0 * s {
             4
-        } else if panel_w > 1180.0 {
+        } else if panel_w > 1180.0 * s {
             3
         } else {
             2
         };
         let card_w = (panel_w - col_gap * (columns as f32 - 1.0)) / columns as f32;
-        let available_grid_h = (panel_y + panel_h - grid_top).max(180.0);
+        let available_grid_h = (panel_y + panel_h - grid_top).max(180.0 * s);
         let visible_rows = ((help.sections.len() + columns - 1) / columns).max(1) as f32;
         let card_h = ((available_grid_h - col_gap * (visible_rows - 1.0)) / visible_rows)
             .clamp(card_h_min, card_h_max);
@@ -266,7 +269,7 @@ impl Renderer {
             let row = idx / columns;
             let x = panel_x + col as f32 * (card_w + col_gap);
             let y = grid_top + row as f32 * (card_h + col_gap) - help.scroll_y;
-            if y + card_h < panel_y + 40.0 {
+            if y + card_h < panel_y + 40.0 * s {
                 // card is entirely above the visible area
                 continue;
             }
@@ -321,7 +324,7 @@ impl Renderer {
                     &key_refs,
                     (font_size * key_fs_ratio).max(key_fs_min),
                 );
-                let label_x = x + entry_key_x + key_col_w.max(keycaps_w + 20.0);
+                let label_x = x + entry_key_x + key_col_w.max(keycaps_w + 20.0 * s);
                 glyphs.extend(layout_help_keycaps(
                     &key_refs,
                     &mut self.editor_overlay_text_system,

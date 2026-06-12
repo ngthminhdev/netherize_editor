@@ -134,9 +134,9 @@ impl AppState {
         let Some(idx) = self.active_buffer_index else {
             return false;
         };
-        self.buffers.get(idx).is_some_and(|entry| {
-            matches!(&entry.content, BufferContent::Text(buffer) if buffer.missing_on_disk)
-        })
+        self.buffers.get(idx).is_some_and(
+            |entry| matches!(&entry.content, BufferContent::Text(buffer) if buffer.missing_on_disk),
+        )
     }
 }
 

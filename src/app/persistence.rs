@@ -1,4 +1,8 @@
-use std::{collections::HashMap, path::{Path, PathBuf}, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +16,9 @@ pub struct AppPersistentState {
     pub recent_project_meta: HashMap<PathBuf, RecentProjectMeta>,
     #[serde(default)]
     pub theme_profile: Option<String>,
+    /// True after the one-time first-run key-hint toast was shown.
+    #[serde(default)]
+    pub first_run_tour_shown: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -87,7 +94,8 @@ impl AppPersistentState {
         self.recent_projects.retain(|p| p != &path);
         self.recent_projects.insert(0, path.clone());
         let keep: std::collections::HashSet<_> = self.recent_projects.iter().cloned().collect();
-        self.recent_project_meta.retain(|path, _| keep.contains(path));
+        self.recent_project_meta
+            .retain(|path, _| keep.contains(path));
         let last_opened_unix_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .ok()

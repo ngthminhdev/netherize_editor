@@ -9,17 +9,16 @@ use crate::{
 };
 
 use super::{
-    palette_footer_content_height, palette_footer_height, render_palette_badge,
-    push_palette_icon_or_badge, render_palette_chrome, render_palette_footer,
-    render_palette_selection, PaletteFooterAction, PALETTE_FOOTER_TOP_PAD,
-    PALETTE_HEADER_BOTTOM_PAD,
+    PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD, PaletteFooterAction,
+    palette_footer_content_height, palette_footer_height, push_palette_icon_or_badge,
+    render_palette_badge, render_palette_chrome, render_palette_footer, render_palette_selection,
 };
 
 use super::super::{
-    components::{layout_prefix_icon_badge, PrefixIconBadge, PrefixIconBadgeChrome},
+    components::{PrefixIconBadge, PrefixIconBadgeChrome, layout_prefix_icon_badge},
     helpers::{
-        clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
-        layout_panel_text, rect_to_scissor,
+        clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor, layout_panel_text,
+        rect_to_scissor,
     },
 };
 
@@ -44,7 +43,8 @@ impl Renderer {
             } else {
                 4.0
             };
-        let is_file_picker = model.mode == crate::app::command_palette::CommandPaletteMode::FilePicker;
+        let is_file_picker =
+            model.mode == crate::app::command_palette::CommandPaletteMode::FilePicker;
         let row_h = model.row_height.max(1.0);
         let text_x = panel_x + model.panel_padding + 8.0;
 
@@ -303,7 +303,10 @@ impl Renderer {
         self.palette_icon_pipeline.upload_instances(
             &self.device,
             &self.palette_icon_instances,
-            [self.surface_state.config.width, self.surface_state.config.height],
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
         );
         self.palette_glyph_instances = glyphs;
     }
@@ -341,8 +344,6 @@ fn shift_ranges_after_badge(label: &str, ranges: &[(usize, usize)]) -> Vec<(usiz
         })
         .collect()
 }
-
-
 
 fn file_picker_tone_color(
     tone: crate::app::command_palette::CommandPaletteItemTone,
