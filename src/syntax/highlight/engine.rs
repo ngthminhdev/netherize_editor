@@ -213,9 +213,7 @@ pub(crate) fn generate_query_highlight_spans_for_node(
             // `@string` (priority 100) which masks nested interpolation
             // expressions (Variable priority 42, Function priority 85).
             // Override to StringTemplate (priority 30) so inner tokens win.
-            if category == HighlightCategory::String
-                && node.kind() == "template_string"
-            {
+            if category == HighlightCategory::String && node.kind() == "template_string" {
                 category = HighlightCategory::StringTemplate;
             }
 
@@ -256,35 +254,47 @@ pub(crate) fn capture_category(capture_name: &str) -> Option<HighlightCategory> 
         "string.special.key" => Some(HighlightCategory::Property),
         "markup.strong" | "syntax.markup.strong" => Some(HighlightCategory::MarkupStrong),
         "markup.italic" | "syntax.markup.italic" => Some(HighlightCategory::MarkupItalic),
-        "markup.raw.inline" | "syntax.markup.raw.inline" => Some(HighlightCategory::MarkupInlineCode),
+        "markup.raw.inline" | "syntax.markup.raw.inline" => {
+            Some(HighlightCategory::MarkupInlineCode)
+        }
         "markup.link.text" | "syntax.markup.link.text" => Some(HighlightCategory::MarkupLink),
         "syntax.keyword" => Some(HighlightCategory::Keyword),
-        "syntax.keyword.control" | "keyword.control" | "keyword.control.return"
-        | "keyword.control.conditional" | "keyword.control.repeat" | "keyword.control.import" => {
-            Some(HighlightCategory::KeywordControl)
-        }
-        "syntax.keyword.storage" | "keyword.storage" | "keyword.storage.type"
-        | "keyword.storage.modifier" => {
-            Some(HighlightCategory::KeywordStorage)
-        }
+        "syntax.keyword.control"
+        | "keyword.control"
+        | "keyword.control.return"
+        | "keyword.control.conditional"
+        | "keyword.control.repeat"
+        | "keyword.control.import" => Some(HighlightCategory::KeywordControl),
+        "syntax.keyword.storage"
+        | "keyword.storage"
+        | "keyword.storage.type"
+        | "keyword.storage.modifier" => Some(HighlightCategory::KeywordStorage),
         "syntax.string.template" => Some(HighlightCategory::StringTemplate),
         "syntax.string" => Some(HighlightCategory::String),
         "syntax.string.escape" | "string.escape" | "character.escape" | "escape.sequence" => {
             Some(HighlightCategory::StringEscape)
         }
         "syntax.comment" => Some(HighlightCategory::Comment),
-        "syntax.comment.doc" | "syntax.comment.documentation" | "comment.documentation" | "comment.doc" | "comment.block.documentation" => {
-            Some(HighlightCategory::CommentDoc)
-        }
+        "syntax.comment.doc"
+        | "syntax.comment.documentation"
+        | "comment.documentation"
+        | "comment.doc"
+        | "comment.block.documentation" => Some(HighlightCategory::CommentDoc),
         "syntax.type" => Some(HighlightCategory::Type),
-        "syntax.type.builtin" | "type.builtin" | "builtin.type" => Some(HighlightCategory::TypeBuiltin),
+        "syntax.type.builtin" | "type.builtin" | "builtin.type" => {
+            Some(HighlightCategory::TypeBuiltin)
+        }
         "syntax.function" => Some(HighlightCategory::Function),
-        "syntax.function.builtin" | "function.builtin" | "function.method.builtin" => Some(HighlightCategory::FunctionBuiltin),
+        "syntax.function.builtin" | "function.builtin" | "function.method.builtin" => {
+            Some(HighlightCategory::FunctionBuiltin)
+        }
         "syntax.number" => Some(HighlightCategory::Number),
         "syntax.boolean" => Some(HighlightCategory::Boolean),
         "syntax.identifier" => Some(HighlightCategory::Identifier),
         "syntax.variable" => Some(HighlightCategory::Variable),
-        "syntax.variable.builtin" | "variable.builtin" | "variable.language" => Some(HighlightCategory::VariableBuiltin),
+        "syntax.variable.builtin" | "variable.builtin" | "variable.language" => {
+            Some(HighlightCategory::VariableBuiltin)
+        }
         "syntax.parameter" => Some(HighlightCategory::Parameter),
         "syntax.field" => Some(HighlightCategory::Field),
         "syntax.property" => Some(HighlightCategory::Property),
@@ -335,7 +345,9 @@ pub(crate) fn capture_category(capture_name: &str) -> Option<HighlightCategory> 
         _ if capture_name.starts_with("type") => Some(HighlightCategory::Type),
         _ if capture_name.starts_with("constructor") => Some(HighlightCategory::Constructor),
         _ if capture_name.starts_with("attribute") => Some(HighlightCategory::Attribute),
-        _ if capture_name.starts_with("function.builtin") => Some(HighlightCategory::FunctionBuiltin),
+        _ if capture_name.starts_with("function.builtin") => {
+            Some(HighlightCategory::FunctionBuiltin)
+        }
         _ if capture_name.starts_with("function") || capture_name.starts_with("method") => {
             Some(HighlightCategory::Function)
         }
@@ -381,8 +393,6 @@ struct SpanRun {
     priority: u8,
 }
 
-
-
 pub(crate) fn normalize_spans(
     source: &str,
     spans: Vec<HighlightSpan>,
@@ -405,7 +415,8 @@ pub(crate) fn normalize_spans(
     }
 
     let mut runs: Vec<SpanRun> = Vec::with_capacity(spans.len());
-    let mut boundaries: Vec<usize> = Vec::with_capacity(spans.len().saturating_mul(2).saturating_add(2));
+    let mut boundaries: Vec<usize> =
+        Vec::with_capacity(spans.len().saturating_mul(2).saturating_add(2));
     boundaries.push(paint_start);
     boundaries.push(paint_end);
 

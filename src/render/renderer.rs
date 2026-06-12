@@ -354,7 +354,12 @@ impl Renderer {
         center_bounds: [f32; 4],
         down: bool,
     ) -> Option<usize> {
-        crate::render::renderer::editor::soft_wrap_visual_move_target(self, app_state, center_bounds, down)
+        crate::render::renderer::editor::soft_wrap_visual_move_target(
+            self,
+            app_state,
+            center_bounds,
+            down,
+        )
     }
 
     pub fn editor_chrome_instances(&self) -> &[RegionDrawInstance] {

@@ -555,7 +555,6 @@ impl InputMap {
             });
         }
 
-
         if input.modifiers.control_key()
             && !input.modifiers.super_key()
             && input.physical_key == Some(KeyD)

@@ -2,11 +2,12 @@ use super::*;
 #[cfg(target_os = "macos")]
 use winit::platform::macos::WindowAttributesExtMacOS;
 use winit::{
-    event::ElementState,
+    event::{ElementState, MouseButton, MouseScrollDelta},
     keyboard::{Key, KeyCode, NamedKey, PhysicalKey},
 };
 
 const FOCUS_RING_THICKNESS: f32 = 2.0;
+const TERMINAL_SAFE_INSET_X: f32 = 2.0;
 
 #[cfg(target_os = "macos")]
 fn apply_platform_window_chrome(
@@ -63,6 +64,63 @@ fn visible_region_bounds(
                 region.bounds.height,
             ]
         })
+}
+
+fn point_in_bounds(position: (f32, f32), bounds: [f32; 4]) -> bool {
+    let (x, y) = position;
+    x >= bounds[0] && x <= bounds[0] + bounds[2] && y >= bounds[1] && y <= bounds[1] + bounds[3]
+}
+
+fn terminal_cell_at_position(
+    position: (f32, f32),
+    bounds: [f32; 4],
+    cols: usize,
+    rows: usize,
+    panel_padding: f32,
+    font_size: f32,
+    line_height: f32,
+) -> Option<(usize, usize)> {
+    if cols == 0 || rows == 0 || !point_in_bounds(position, bounds) {
+        return None;
+    }
+
+    let origin_x = bounds[0] + panel_padding + TERMINAL_SAFE_INSET_X;
+    let origin_y = bounds[1] + panel_padding;
+    let cell_width = (font_size * 0.6).max(1.0);
+    let cell_height = line_height.max(1.0);
+    let x = position.0 - origin_x;
+    let y = position.1 - origin_y;
+    if x < 0.0 || y < 0.0 {
+        return None;
+    }
+
+    let col = (x / cell_width).floor() as usize;
+    let row = (y / cell_height).floor() as usize;
+    if col >= cols || row >= rows {
+        return None;
+    }
+    // Xterm mouse coordinates are 1-based column/row values.
+    Some((col + 1, row + 1))
+}
+
+fn sgr_mouse_sequence(button_code: u8, col: usize, row: usize, pressed: bool) -> String {
+    let suffix = if pressed { 'M' } else { 'm' };
+    format!("\x1b[<{button_code};{col};{row}{suffix}")
+}
+
+/// SGR wheel events are press-only: button 64 scrolls up, 65 scrolls down.
+fn sgr_wheel_sequence(scroll_up: bool, col: usize, row: usize) -> String {
+    let code = if scroll_up { 64 } else { 65 };
+    sgr_mouse_sequence(code, col, row, true)
+}
+
+fn mouse_button_code(button: MouseButton) -> Option<u8> {
+    match button {
+        MouseButton::Left => Some(0),
+        MouseButton::Middle => Some(1),
+        MouseButton::Right => Some(2),
+        _ => None,
+    }
 }
 
 fn symbol_kind_label(kind: &str) -> String {
@@ -164,6 +222,141 @@ fn build_editor_breadcrumb_segments(
         color: symbol_kind_color(&current.kind, theme),
     });
     segments
+}
+
+impl AppShell {
+    fn current_right_sidebar_bounds(&self) -> Option<[f32; 4]> {
+        let layout = self
+            .layout_engine
+            .compute(self.window_size, &self.panel_state);
+        let flat_regions: Vec<_> = layout.model.flatten();
+        visible_region_bounds(&flat_regions, RegionId::RightSidebar)
+    }
+
+    fn right_terminal_active(&self) -> bool {
+        self.panel_state.right.visible
+            && self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal)
+    }
+
+    fn right_terminal_mouse_cell_at(&self, position: (f32, f32)) -> Option<(usize, usize)> {
+        if !self.right_terminal_active() {
+            return None;
+        }
+        let bounds = self.current_right_sidebar_bounds()?;
+        let scaled_ui = scale_ui_config(&self.ui_config, self.runtime_scale);
+        let panel_padding = scaled_ui
+            .layout
+            .inner_padding
+            .max(scaled_ui.spacing.panel_padding);
+        terminal_cell_at_position(
+            position,
+            bounds,
+            self.right_terminal_grid.cols,
+            self.right_terminal_grid.rows,
+            panel_padding,
+            self.theme.ui.panel_font_size,
+            self.theme.ui.panel_line_height,
+        )
+    }
+
+    fn right_terminal_mouse_targeted(&self) -> bool {
+        if !self.right_terminal_active() {
+            return false;
+        }
+        let Some(bounds) = self.current_right_sidebar_bounds() else {
+            return false;
+        };
+        self.last_cursor_position
+            .is_some_and(|position| point_in_bounds(position, bounds))
+            || self.focus_manager.current() == FocusTarget::RightSidebar
+    }
+
+    fn focus_right_terminal_for_mouse(&mut self) {
+        let _ = self.handle_command(Command::AiChatFocus);
+    }
+
+    fn handle_right_terminal_mouse_wheel(&mut self, delta: MouseScrollDelta) -> bool {
+        if !self.right_terminal_mouse_targeted() {
+            return false;
+        }
+
+        let line_height = self.theme.ui.panel_line_height.max(1.0) as f64;
+        let Some((scroll_up, steps)) = (match delta {
+            MouseScrollDelta::LineDelta(_, y) if y.abs() > f32::EPSILON => {
+                Some((y > 0.0, y.abs().ceil() as usize))
+            }
+            MouseScrollDelta::PixelDelta(position) if position.y.abs() > f64::EPSILON => Some((
+                position.y > 0.0,
+                (position.y.abs() / line_height).ceil() as usize,
+            )),
+            _ => None,
+        }) else {
+            return false;
+        };
+
+        self.focus_right_terminal_for_mouse();
+
+        // opencode keeps its chat history inside its own TUI viewport, so the
+        // wheel must be forwarded as SGR mouse events for opencode to scroll
+        // itself (its mouse capture is on by default). Scrolling our grid
+        // scrollback would show nothing — full-screen repaints never reach it.
+        let (col, row) = self
+            .last_cursor_position
+            .and_then(|position| self.right_terminal_mouse_cell_at(position))
+            .unwrap_or((
+                (self.right_terminal_grid.cols / 2).max(1),
+                (self.right_terminal_grid.rows / 2).max(1),
+            ));
+        let mut changed = false;
+        for _ in 0..steps.max(1).min(24) {
+            changed |= self.handle_command(Command::TerminalWriteInput(sgr_wheel_sequence(
+                scroll_up, col, row,
+            )));
+        }
+        changed
+    }
+
+    fn handle_right_terminal_mouse_input(
+        &mut self,
+        button: MouseButton,
+        state: ElementState,
+    ) -> bool {
+        let Some(base_code) = mouse_button_code(button) else {
+            return false;
+        };
+        let Some(position) = self.last_cursor_position else {
+            return false;
+        };
+        if !self.right_terminal_active() {
+            return false;
+        }
+        let Some(bounds) = self.current_right_sidebar_bounds() else {
+            return false;
+        };
+        if !point_in_bounds(position, bounds) {
+            return false;
+        }
+
+        let cell = self.right_terminal_mouse_cell_at(position);
+        self.focus_right_terminal_for_mouse();
+
+        if let Some((col, row)) = cell {
+            let modifiers = self.input_handler.current_modifiers();
+            let mut code = base_code;
+            if modifiers.shift_key() {
+                code += 4;
+            }
+            if modifiers.alt_key() {
+                code += 8;
+            }
+            if modifiers.control_key() {
+                code += 16;
+            }
+            let sequence = sgr_mouse_sequence(code, col, row, state == ElementState::Pressed);
+            let _ = self.handle_command(Command::TerminalWriteInput(sequence));
+        }
+        true
+    }
 }
 
 impl ApplicationHandler<AppEvent> for AppShell {
@@ -422,8 +615,18 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     Some(InputRouteOutcome::NoDispatch { .. }) | None => {}
                 }
             }
-            WindowEvent::MouseWheel { .. } => {
-                if self.invalidate_editor_overlays() {
+            WindowEvent::CursorMoved { position, .. } => {
+                self.last_cursor_position = Some((position.x as f32, position.y as f32));
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                if self.handle_right_terminal_mouse_wheel(delta) {
+                    self.request_redraw();
+                } else if self.invalidate_editor_overlays() {
+                    self.request_redraw();
+                }
+            }
+            WindowEvent::MouseInput { state, button, .. } => {
+                if self.handle_right_terminal_mouse_input(button, state) {
                     self.request_redraw();
                 }
             }
@@ -462,13 +665,19 @@ impl ApplicationHandler<AppEvent> for AppShell {
         // (file ngoài tầm watcher, watcher chết, mtime cùng giây…). 3s đủ, đỡ wake CPU.
         if now.duration_since(self.last_external_file_check) >= Duration::from_secs(3) {
             self.last_external_file_check = now;
-            let (reloaded_paths, active_reloaded) = self.app_state.check_and_reload_external_changes(&mut self.last_external_file_check_times);
-            if !reloaded_paths.is_empty() {
-                if active_reloaded {
-                    self.invalidate_highlights_and_parse_active_buffer();
-                    self.force_flush_lsp_did_change_for_active_file();
-                }
-                self.request_redraw();
+            // #4: poll chỉ stat mtime; nội dung được worker đọc và áp về qua
+            // ExternalFilesRead -> apply_external_file_contents (kèm LSP sync).
+            let changed_paths = self
+                .app_state
+                .collect_externally_modified_open_buffers(&mut self.last_external_file_check_times);
+            if !changed_paths.is_empty() {
+                self.submit(RequestSpec {
+                    revision_id: 0,
+                    topic: RequestTopic::WorkspaceWatch,
+                    payload: WorkerRequestPayload::ReadExternalFiles {
+                        paths: changed_paths,
+                    },
+                });
             }
         }
         if self.tick_caret_blink() {
@@ -492,7 +701,11 @@ impl ApplicationHandler<AppEvent> for AppShell {
             None => external_check_deadline,
         });
         if let Some(git_status_deadline) = self.next_workspace_git_status_refresh_deadline() {
-            next_deadline = Some(next_deadline.unwrap_or(git_status_deadline).min(git_status_deadline));
+            next_deadline = Some(
+                next_deadline
+                    .unwrap_or(git_status_deadline)
+                    .min(git_status_deadline),
+            );
         }
         if let Some(lsp_deadline) = self.next_lsp_did_change_flush_deadline() {
             next_deadline = Some(match next_deadline {
@@ -949,7 +1162,9 @@ impl AppShell {
                         renderer.clear_buffer_terminal();
                         renderer.clear_editor_content();
                         renderer.update_help_buffer_content(help, center_bounds);
-                    } else if let Some(extensions) = self.app_state.active_extensions_manager_buffer() {
+                    } else if let Some(extensions) =
+                        self.app_state.active_extensions_manager_buffer()
+                    {
                         renderer.set_editor_breadcrumb_segments(Vec::new());
                         renderer.clear_welcome_logo();
                         renderer.clear_buffer_terminal();
@@ -1091,14 +1306,13 @@ impl AppShell {
                     && let Some(renderer) = self.renderer.as_mut()
                 {
                     let (cursor_line, cursor_col) = self.app_state.cursor_line_col();
-                    let breadcrumb_viewport_changed = renderer.set_editor_breadcrumb_segments(
-                        build_editor_breadcrumb_segments(
+                    let breadcrumb_viewport_changed =
+                        renderer.set_editor_breadcrumb_segments(build_editor_breadcrumb_segments(
                             &self.cached_document_symbols,
                             cursor_line,
                             cursor_col,
                             &self.theme,
-                        ),
-                    );
+                        ));
                     if breadcrumb_viewport_changed {
                         let effective_highlights =
                             crate::syntax::highlight::overlay_highlight_layers(
@@ -1270,11 +1484,12 @@ impl AppShell {
         let ai_chat_active = self.panel_state.right.visible
             && right_sidebar_bounds.is_some()
             && self.panel_state.right.active_tab_id() == Some(PanelTabId::AiChat);
-        let markdown_preview_uses_ai_chat_pipeline = self.app_state.active_buffer_is_markdown_preview()
-            || (self.panel_state.right.visible
-                && right_sidebar_bounds.is_some()
-                && self.panel_state.right.active_tab_id() == Some(PanelTabId::MarkdownPreview)
-                && self.app_state.markdown_preview.visible);
+        let markdown_preview_uses_ai_chat_pipeline =
+            self.app_state.active_buffer_is_markdown_preview()
+                || (self.panel_state.right.visible
+                    && right_sidebar_bounds.is_some()
+                    && self.panel_state.right.active_tab_id() == Some(PanelTabId::MarkdownPreview)
+                    && self.app_state.markdown_preview.visible);
         if ai_chat_active {
             let history_bounds = visible_region_bounds(&flat_regions, RegionId::AiChatHistory);
             let input_bounds = visible_region_bounds(&flat_regions, RegionId::AiChatInput);
@@ -1771,7 +1986,9 @@ fn focus_ring_instances(
 mod tests {
     use super::{
         breadcrumb_segment_text, build_editor_breadcrumb_segments, focus_ring_instances,
-        focus_target_region_id, statusbar_source_path_label, visible_region_bounds,
+        focus_target_region_id, mouse_button_code, point_in_bounds, sgr_mouse_sequence,
+        sgr_wheel_sequence,
+        statusbar_source_path_label, terminal_cell_at_position, visible_region_bounds,
     };
     use crate::async_runtime::message::{
         LspDocumentSymbol, LspDocumentSymbolSegment, LspPosition, LspRange,
@@ -1782,6 +1999,7 @@ mod tests {
         region_model::{FlatRegion, RegionBounds, RegionId},
     };
     use std::path::Path;
+    use winit::event::MouseButton;
 
     #[test]
     fn focus_target_region_id_maps_center_editor() {
@@ -1846,11 +2064,55 @@ mod tests {
             },
         ];
 
-        assert_eq!(visible_region_bounds(&regions, RegionId::RightSidebar), None);
+        assert_eq!(
+            visible_region_bounds(&regions, RegionId::RightSidebar),
+            None
+        );
         assert_eq!(
             visible_region_bounds(&regions, RegionId::Center),
             Some([0.0, 0.0, 800.0, 600.0])
         );
+    }
+
+    #[test]
+    fn terminal_cell_at_position_returns_one_based_cell_inside_content() {
+        let cell = terminal_cell_at_position(
+            (114.0, 73.0),
+            [100.0, 50.0, 300.0, 200.0],
+            20,
+            10,
+            10.0,
+            14.0,
+            20.0,
+        );
+
+        assert_eq!(cell, Some((1, 1)));
+        assert_eq!(
+            terminal_cell_at_position(
+                (90.0, 73.0),
+                [100.0, 50.0, 300.0, 200.0],
+                20,
+                10,
+                10.0,
+                14.0,
+                20.0,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn sgr_mouse_sequence_uses_press_and_release_suffixes() {
+        assert_eq!(mouse_button_code(MouseButton::Left), Some(0));
+        assert!(point_in_bounds((12.0, 14.0), [10.0, 10.0, 20.0, 20.0]));
+        assert_eq!(sgr_mouse_sequence(0, 3, 4, true), "\x1b[<0;3;4M");
+        assert_eq!(sgr_mouse_sequence(0, 3, 4, false), "\x1b[<0;3;4m");
+    }
+
+    #[test]
+    fn sgr_wheel_sequence_is_press_only_with_wheel_button_codes() {
+        assert_eq!(sgr_wheel_sequence(true, 5, 7), "\x1b[<64;5;7M");
+        assert_eq!(sgr_wheel_sequence(false, 5, 7), "\x1b[<65;5;7M");
     }
 
     #[test]

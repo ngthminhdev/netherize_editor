@@ -335,10 +335,16 @@ fn right_sidebar_terminal_ctrl_u_d_scroll_half_page() {
     context.right_sidebar_terminal = true;
     let t0 = std::time::Instant::now();
 
+    // Forwarded as opencode's default half-page keybinds (ctrl+alt+u / ctrl+alt+d)
+    // because the chat history lives inside opencode's own viewport, not in our
+    // grid scrollback.
     let up = handler.route_normalized_input(ctrl_input('u', KeyCode::KeyU), &map, context, t0);
     match up {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::TerminalScrollHalfPageUp);
+            assert_eq!(
+                translated.command,
+                Command::TerminalWriteInput("\u{1b}\u{15}".to_string())
+            );
         }
         other => panic!("expected scroll up dispatch, got {:?}", other),
     }
@@ -346,9 +352,33 @@ fn right_sidebar_terminal_ctrl_u_d_scroll_half_page() {
     let down = handler.route_normalized_input(ctrl_input('d', KeyCode::KeyD), &map, context, t0);
     match down {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::TerminalScrollHalfPageDown);
+            assert_eq!(
+                translated.command,
+                Command::TerminalWriteInput("\u{1b}\u{4}".to_string())
+            );
         }
         other => panic!("expected scroll down dispatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn right_sidebar_terminal_ctrl_u_d_scroll_even_when_mode_drifted() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Inspector);
+    context.right_sidebar_terminal = true;
+    let t0 = std::time::Instant::now();
+
+    let up = handler.route_normalized_input(ctrl_input('u', KeyCode::KeyU), &map, context, t0);
+    match up {
+        Some(InputRouteOutcome::Dispatch(translated)) => {
+            assert_eq!(
+                translated.command,
+                Command::TerminalWriteInput("\u{1b}\u{15}".to_string())
+            );
+        }
+        other => panic!("expected right-sidebar scroll up dispatch, got {:?}", other),
     }
 }
 
@@ -364,11 +394,17 @@ fn bottom_terminal_ctrl_u_d_still_forward_raw_to_pty() {
     let up = handler.route_normalized_input(ctrl_input('u', KeyCode::KeyU), &map, context, t0);
     match up {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert!(
-                matches!(translated.command, Command::TerminalWriteInput(_)),
-                "bottom terminal Ctrl+U should forward raw, got {:?}",
-                translated.command
-            );
+            match &translated.command {
+                Command::TerminalWriteInput(payload) => {
+                    assert!(
+                        !payload.starts_with('\u{1b}'),
+                        "bottom terminal Ctrl+U must stay raw ^U, not the right-dock \
+                         ctrl+alt+u forward, got {:?}",
+                        payload
+                    );
+                }
+                other => panic!("bottom terminal Ctrl+U should forward raw, got {:?}", other),
+            }
         }
         other => panic!("expected raw write dispatch, got {:?}", other),
     }

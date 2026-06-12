@@ -1,4 +1,8 @@
-use std::{collections::HashMap, path::{Path, PathBuf}, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -87,7 +91,8 @@ impl AppPersistentState {
         self.recent_projects.retain(|p| p != &path);
         self.recent_projects.insert(0, path.clone());
         let keep: std::collections::HashSet<_> = self.recent_projects.iter().cloned().collect();
-        self.recent_project_meta.retain(|path, _| keep.contains(path));
+        self.recent_project_meta
+            .retain(|path, _| keep.contains(path));
         let last_opened_unix_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .ok()

@@ -5,8 +5,8 @@ mod diagnostics;
 use crate::{
     app::app_state::{
         AppState, CompletionDisplayItem, DiagnosticsState, EditorOverlay, FloatingBoxBlock,
-        FloatingBoxStyle, HelpState, OverlayColorToken, ReferencesBufferItem, ReferencesBufferState,
-        SettingItem, SettingsState,
+        FloatingBoxStyle, HelpState, OverlayColorToken, ReferencesBufferItem,
+        ReferencesBufferState, SettingItem, SettingsState,
     },
     async_runtime::message::LspDiagnostic,
     config::theme_config::ThemeConfig,
@@ -90,7 +90,11 @@ impl Renderer {
 
         let header_y = panel_y + 6.0;
         let unique_file_count = references.path_counts.len();
-        let left_title = if references.loading { "References · loading..." } else { "References" };
+        let left_title = if references.loading {
+            "References · loading..."
+        } else {
+            "References"
+        };
         let count_label = &mut self.temp_string_buffer;
         count_label.clear();
         let _ = write!(
@@ -99,7 +103,8 @@ impl Renderer {
             references.items.len(),
             unique_file_count
         );
-        let header_count_w = estimate_monospace_width(" 999 refs · 999 files", font_size).min(left_w * 0.55);
+        let header_count_w =
+            estimate_monospace_width(" 999 refs · 999 files", font_size).min(left_w * 0.55);
         self.editor_overlay_text_system
             .set_size(Some((left_w - 20.0).max(1.0)), Some(line_height));
         glyphs.extend(layout_panel_text_bold(
@@ -206,17 +211,30 @@ impl Renderer {
                     let mut group_bg = self.theme.ui.overlay_bg.as_f32();
                     group_bg[3] = (group_bg[3] * 0.85).clamp(0.18, 0.45);
                     chrome.push(RegionDrawInstance::new(
-                        [left_x + 8.0, draw_y + 2.0, (left_w - 16.0).max(1.0), (line_height + 3.0).max(12.0)],
+                        [
+                            left_x + 8.0,
+                            draw_y + 2.0,
+                            (left_w - 16.0).max(1.0),
+                            (line_height + 3.0).max(12.0),
+                        ],
                         group_bg,
                     ));
-                    let group_count = references.path_counts.get(&item.relative_path).copied().unwrap_or(0);
+                    let group_count = references
+                        .path_counts
+                        .get(&item.relative_path)
+                        .copied()
+                        .unwrap_or(0);
                     count_label.clear();
                     let _ = write!(count_label, "{}", group_count);
                     let count_w = estimate_monospace_width(count_label, font_size).max(16.0);
                     right_header_buffer.clear();
                     let _ = write!(right_header_buffer, "▾ {}", file_name);
                     glyphs.extend(layout_panel_text_bold(
-                        &clamp_monospace_text(right_header_buffer, left_text_width * 0.50, font_size),
+                        &clamp_monospace_text(
+                            right_header_buffer,
+                            left_text_width * 0.50,
+                            font_size,
+                        ),
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,
@@ -226,7 +244,11 @@ impl Renderer {
                     ));
                     let folder_x = left_x + left_w * 0.54;
                     glyphs.extend(layout_panel_text(
-                        &clamp_monospace_text(&folder_label, (left_x + left_w - folder_x - count_w - 26.0).max(1.0), font_size),
+                        &clamp_monospace_text(
+                            &folder_label,
+                            (left_x + left_w - folder_x - count_w - 26.0).max(1.0),
+                            font_size,
+                        ),
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,
@@ -440,10 +462,6 @@ fn compact_reference_path(path: &str) -> String {
         path.to_string()
     }
 }
-
-
-
-
 
 fn reference_row_summary<'a>(item: &'a ReferencesBufferItem, buffer: &'a mut String) -> &'a str {
     let summary = item.summary.trim();

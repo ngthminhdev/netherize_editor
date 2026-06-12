@@ -166,7 +166,11 @@ fn setting_value_ratio(item: &SettingItem) -> Option<f32> {
         SettingItem::LineHeight { current } => (*current - 10.0) / (64.0 - 10.0),
         SettingItem::IndentTabWidth { current } => (*current as f32 - 1.0) / (8.0 - 1.0),
         SettingItem::UiRounding { enabled, radius_px } => {
-            if *enabled { *radius_px / 24.0 } else { 0.0 }
+            if *enabled {
+                *radius_px / 24.0
+            } else {
+                0.0
+            }
         }
         SettingItem::SidebarWidth { current } => (*current as f32 - 160.0) / (1280.0 - 160.0),
         SettingItem::RightSidebarWidth { current } => (*current as f32 - 180.0) / (1440.0 - 180.0),
@@ -330,7 +334,6 @@ impl Renderer {
         let content_bottom = panel_y + panel_h;
         let rows_bottom = (content_bottom - footer_h).max(content_top + line_height);
 
-
         let panel_bg = self.theme.ui.panel_bg.as_f32();
         let editor_bg = self.theme.editor.bg.as_f32();
         let mut divider = self.theme.ui.fg_ghost.as_f32();
@@ -471,12 +474,20 @@ impl Renderer {
                 let mut key_fill = editor_bg;
                 key_fill[3] = key_fill[3].max(0.92);
                 chrome.push(
-                    RegionDrawInstance::new([shortcut_x, shortcuts_y - 1.0, key_w, key_h], key_outline)
-                        .with_radius(4.0),
+                    RegionDrawInstance::new(
+                        [shortcut_x, shortcuts_y - 1.0, key_w, key_h],
+                        key_outline,
+                    )
+                    .with_radius(4.0),
                 );
                 chrome.push(
                     RegionDrawInstance::new(
-                        [shortcut_x + 1.5, shortcuts_y + 0.5, key_w - 3.0, key_h - 3.0],
+                        [
+                            shortcut_x + 1.5,
+                            shortcuts_y + 0.5,
+                            key_w - 3.0,
+                            key_h - 3.0,
+                        ],
                         key_fill,
                     )
                     .with_radius(3.0),
@@ -777,7 +788,11 @@ impl Renderer {
                 chrome.push(
                     RegionDrawInstance::new(
                         [meter_x, meter_y, meter_w * ratio, meter_h],
-                        if is_selected { accent } else { with_alpha(accent, 0.48) },
+                        if is_selected {
+                            accent
+                        } else {
+                            with_alpha(accent, 0.48)
+                        },
                     )
                     .with_radius(1.5),
                 );
@@ -807,11 +822,8 @@ impl Renderer {
                 .with_radius(8.0),
             );
             chrome.push(
-                RegionDrawInstance::new(
-                    [right_x + 10.0, detail_top, 3.0, detail_h],
-                    accent,
-                )
-                .with_radius(2.0),
+                RegionDrawInstance::new([right_x + 10.0, detail_top, 3.0, detail_h], accent)
+                    .with_radius(2.0),
             );
             self.editor_overlay_text_system
                 .set_size(Some(right_text_width - 20.0), Some(line_height));

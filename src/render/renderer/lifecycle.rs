@@ -421,7 +421,10 @@ impl Renderer {
         self.topbar_icon_pipeline.upload_instances(
             &self.device,
             &self.topbar_icon_instances,
-            [self.surface_state.config.width, self.surface_state.config.height],
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
         );
         self.topbar_chrome_instances.clear();
         self.topbar_text_batches.clear();

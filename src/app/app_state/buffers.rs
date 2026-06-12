@@ -70,7 +70,6 @@ impl AppState {
 
         fs::write(&path, self.text.to_string())
             .map_err(|err| format!("save file {:?} failed: {err}", path))?;
-        self.last_saved_at = Some(Instant::now());
 
         let canonical_path = path
             .canonicalize()
@@ -167,9 +166,9 @@ impl AppState {
     }
 
     pub fn close_buffer_for_path(&mut self, path: &Path) -> Result<bool, String> {
-        let Some(index) = self.buffers.iter().position(|entry| {
-            matches!(&entry.content, BufferContent::Text(buffer) if buffer.path == path)
-        }) else {
+        let Some(index) = self.buffers.iter().position(
+            |entry| matches!(&entry.content, BufferContent::Text(buffer) if buffer.path == path),
+        ) else {
             return Ok(false);
         };
         self.close_buffer_index(index)
@@ -256,7 +255,8 @@ impl AppState {
     pub fn begin_visual_block_selection(&mut self) -> bool {
         let (line_idx, col) = self.cursor_line_col();
         if self.visual_block_anchor_line == Some(line_idx)
-            && self.visual_block_anchor_col == Some(col) {
+            && self.visual_block_anchor_col == Some(col)
+        {
             return false;
         }
         self.visual_block_anchor_line = Some(line_idx);
@@ -691,14 +691,40 @@ impl AppState {
         true
     }
 
-    pub fn check_and_reload_external_changes(
+    /// In-memory text of the open buffer at `path` (active or inactive).
+    /// Used to push externally reloaded content to the LSP server.
+    pub fn buffer_text_for_path(&self, path: &Path) -> Option<String> {
+        if self
+            .active_file()
+            .is_some_and(|active| crate::app::app_state::overlays::path_matches(active, path))
+        {
+            return Some(self.text_string());
+        }
+        self.buffers.iter().find_map(|entry| match &entry.content {
+            BufferContent::Text(buffer)
+                if crate::app::app_state::overlays::path_matches(&buffer.path, path) =>
+            {
+                buffer.in_memory_text.as_ref().map(|rope| rope.to_string())
+            }
+            _ => None,
+        })
+    }
+
+    /// 3s safety-net poll: stat every clean open buffer and return the paths
+    /// whose mtime changed. NO file contents are read here (#4) — the caller
+    /// submits a `ReadExternalFiles` worker request and the contents come back
+    /// through `apply_external_file_contents`. The self-save echo check also
+    /// lives in the apply phase (content compare beats re-reading the disk).
+    /// `buffer.last_known_modified_time` is only advanced when the content is
+    /// applied, so an in-flight change keeps being re-detected (idempotent)
+    /// rather than silently dropped if a read fails.
+    pub fn collect_externally_modified_open_buffers(
         &mut self,
         last_checked_times: &mut HashMap<PathBuf, std::time::SystemTime>,
-    ) -> (Vec<PathBuf>, bool) {
-        let mut reloaded_paths = Vec::new();
-        let mut active_reloaded = false;
+    ) -> Vec<PathBuf> {
+        let mut changed_paths = Vec::new();
 
-        let candidates: Vec<(usize, PathBuf, bool)> = self
+        let candidates: Vec<(usize, PathBuf)> = self
             .buffers
             .iter()
             .enumerate()
@@ -707,7 +733,7 @@ impl AppState {
                     let is_active = self.active_buffer_index == Some(idx);
                     let is_dirty = buffer.dirty || (is_active && self.dirty);
                     if !is_dirty {
-                        Some((idx, buffer.path.clone(), is_active))
+                        Some((idx, buffer.path.clone()))
                     } else {
                         None
                     }
@@ -717,7 +743,7 @@ impl AppState {
             })
             .collect();
 
-        for (idx, path, is_active) in candidates {
+        for (idx, path) in candidates {
             if let Ok(metadata) = std::fs::metadata(&path) {
                 if let Ok(modified_time) = metadata.modified() {
                     let needs_reload = if let Some(slot) = self.buffers.get(idx)
@@ -734,59 +760,14 @@ impl AppState {
                     };
 
                     if needs_reload {
-                        // #3: chỉ bỏ qua nếu đây thực sự là echo của lần save vừa rồi
-                        // (đĩa == bộ nhớ). External edit thật trong cửa sổ 2s vẫn reload.
-                        if is_active
-                            && self.should_ignore_self_save_event()
-                            && self.active_disk_content_matches_memory(&path)
-                        {
-                            if let Some(slot) = self.buffers.get_mut(idx)
-                                && let BufferContent::Text(ref mut buffer) = slot.content
-                            {
-                                buffer.last_known_modified_time = Some(modified_time);
-                            }
-                            last_checked_times.insert(path, modified_time);
-                            continue;
-                        }
-
-                        if is_active {
-                            if let Ok(()) = self.load_buffer_from_file(&path) {
-                                self.active_file = Some(path.clone());
-                                let reloaded_text = self.text.clone();
-                                if let Some(slot) = self.buffers.get_mut(idx) {
-                                    if let BufferContent::Text(ref mut buffer) = slot.content {
-                                        buffer.in_memory_text = Some(reloaded_text);
-                                        buffer.missing_on_disk = false;
-                                        buffer.dirty = false;
-                                        buffer.last_known_modified_time = Some(modified_time);
-                                    }
-                                }
-                                self.dirty = false;
-                                active_reloaded = true;
-                                reloaded_paths.push(path.clone());
-                            }
-                        } else {
-                            if let Ok(content) = std::fs::read_to_string(&path) {
-                                if let Some(slot) = self.buffers.get_mut(idx) {
-                                    if let BufferContent::Text(ref mut buffer) = slot.content {
-                                        buffer.in_memory_text = Some(Rope::from(content));
-                                        buffer.missing_on_disk = false;
-                                        buffer.dirty = false;
-                                        buffer.last_known_modified_time = Some(modified_time);
-                                    }
-                                }
-                                reloaded_paths.push(path.clone());
-                            }
-                        }
-                        last_checked_times.insert(path, modified_time);
-                    } else {
-                        last_checked_times.insert(path, modified_time);
+                        changed_paths.push(path.clone());
                     }
+                    last_checked_times.insert(path, modified_time);
                 }
             }
         }
 
-        (reloaded_paths, active_reloaded)
+        changed_paths
     }
 }
 

@@ -153,6 +153,7 @@ impl AppShell {
             },
             right_terminal_needs_layout: true,
             last_right_terminal_bounds: None,
+            last_cursor_position: None,
             pending_right_pty_spawn: false,
             right_pty_startup_command: None,
             terminal_buffer_grids: HashMap::new(),
@@ -1599,6 +1600,25 @@ impl AppShell {
         });
     }
 
+    /// Submit an async workspace tree rescan; the result comes back as
+    /// `WorkspaceRescanned` and is applied via `apply_workspace_rescan`.
+    pub(super) fn submit_workspace_rescan(&mut self) {
+        let Some((root_path, ignore_rules, options)) =
+            self.app_state.workspace_rescan_request_params()
+        else {
+            return;
+        };
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::WorkspaceWatch,
+            payload: WorkerRequestPayload::RescanWorkspace {
+                root_path,
+                ignore_rules,
+                options,
+            },
+        });
+    }
+
     pub(super) fn submit_lsp_did_open_for_active_file(&mut self) {
         self.ensure_external_file_watch_for_active();
         self.pending_lsp_document_sync = None;
@@ -1680,6 +1700,53 @@ impl AppShell {
             },
         });
         true
+    }
+
+    /// Re-sync an externally reloaded document (usually an inactive buffer)
+    /// with the running LSP server. Without this, the server keeps the stale
+    /// didOpen overlay for that file, which SHADOWS the new on-disk content —
+    /// cross-file diagnostics in the active file are then computed against old
+    /// code until the user manually revisits the reloaded buffer.
+    ///
+    /// Never starts a server on behalf of an inactive buffer: if no server for
+    /// the file's language is running, the sync is skipped (the server will
+    /// read fresh content from disk when it starts later).
+    pub(super) fn submit_lsp_sync_for_externally_reloaded_path(&mut self, path: &Path) {
+        let Some(profile) = crate::lsp::registry::language_profile_for_path(path) else {
+            return;
+        };
+        if profile.lsp_binary.is_empty() {
+            return;
+        }
+        let Some(active) = self.active_lsp_server.as_ref() else {
+            return;
+        };
+        // server_name may be a bare binary or a resolved absolute path
+        // (e.g. venv-local pylsp, FVM dart).
+        let matches_running_server = active.server_name == profile.lsp_binary
+            || active
+                .server_name
+                .ends_with(&format!("/{}", profile.lsp_binary));
+        if !matches_running_server {
+            return;
+        }
+        let Some(text) = self.app_state.buffer_text_for_path(path) else {
+            return;
+        };
+
+        let version = self.app_state.revision().min(i32::MAX as u64) as i32;
+        // LspDidOpen payload handles both "not yet open -> didOpen" and
+        // "already open -> didChange" in the worker.
+        self.submit(RequestSpec {
+            revision_id: self.app_state.revision(),
+            topic: RequestTopic::LspClient,
+            payload: WorkerRequestPayload::LspDidOpen {
+                uri: path_to_lsp_uri(path),
+                language_id: language_id_for_path(path),
+                version,
+                text,
+            },
+        });
     }
 
     pub(super) fn queue_lsp_did_change_for_active_file(&mut self) {

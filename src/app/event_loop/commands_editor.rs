@@ -9,11 +9,14 @@ impl AppShell {
             return false;
         };
         let (cursor_line, _) = self.app_state.cursor_line_col();
-        let Some(target_col) = renderer.soft_wrap_visual_move_target(&self.app_state, center_bounds, down) else {
+        let Some(target_col) =
+            renderer.soft_wrap_visual_move_target(&self.app_state, center_bounds, down)
+        else {
             return false;
         };
         let before = self.app_state.cursor_char_idx();
-        self.app_state.jump_to_line_and_column(cursor_line, target_col)
+        self.app_state
+            .jump_to_line_and_column(cursor_line, target_col)
             && self.app_state.cursor_char_idx() != before
     }
 
@@ -28,9 +31,8 @@ impl AppShell {
             | Command::Backspace
             | Command::Newline => {
                 // Clear semantic highlights and increment revision when typing/deleting
-                self.semantic_highlight_request_revision = self
-                    .semantic_highlight_request_revision
-                    .saturating_add(1);
+                self.semantic_highlight_request_revision =
+                    self.semantic_highlight_request_revision.saturating_add(1);
                 let semantic_symbols_cleared = self.app_state.clear_semantic_symbol_highlights();
                 let semantic_spans_cleared = !self.semantic_highlight_spans.is_empty();
                 if semantic_spans_cleared {
@@ -99,9 +101,10 @@ impl AppShell {
             Command::ScrollHalfPageUp | Command::ScrollHalfPageDown
                 if self.app_state.has_scrollable_floating_overlay() =>
             {
-                let changed = self
-                    .app_state
-                    .scroll_floating_overlay_half_page(matches!(command, Command::ScrollHalfPageDown));
+                let changed = self.app_state.scroll_floating_overlay_half_page(matches!(
+                    command,
+                    Command::ScrollHalfPageDown
+                ));
                 if changed {
                     self.editor_caret_needs_layout = true;
                     self.request_redraw();
@@ -321,9 +324,8 @@ impl AppShell {
         };
         if is_typing_edit {
             let _ = self.app_state.clear_completion();
-            self.semantic_highlight_request_revision = self
-                .semantic_highlight_request_revision
-                .saturating_add(1);
+            self.semantic_highlight_request_revision =
+                self.semantic_highlight_request_revision.saturating_add(1);
             if self.app_state.clear_semantic_symbol_highlights() {
                 self.editor_caret_needs_layout = true;
                 self.request_redraw();
@@ -382,9 +384,8 @@ impl AppShell {
                 self.force_flush_lsp_did_change_for_active_file();
                 self.ensure_document_symbol_breadcrumbs(true);
             }
-            self.semantic_highlight_request_revision = self
-                .semantic_highlight_request_revision
-                .saturating_add(1);
+            self.semantic_highlight_request_revision =
+                self.semantic_highlight_request_revision.saturating_add(1);
             if self.app_state.clear_semantic_symbol_highlights() {
                 self.editor_caret_needs_layout = true;
                 self.request_redraw();

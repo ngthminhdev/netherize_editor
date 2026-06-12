@@ -98,32 +98,34 @@ pub(super) fn syntax_spans_to_styled(
                     theme.syntax.keyword.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::KeywordControl => {
-                                    theme.syntax.keyword_control.as_u8()
-                                }
-                                crate::syntax::highlight::HighlightCategory::KeywordStorage => {
-                                    theme.syntax.keyword_storage.as_u8()
-                                }
+                    theme.syntax.keyword_control.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::KeywordStorage => {
+                    theme.syntax.keyword_storage.as_u8()
+                }
                 crate::syntax::highlight::HighlightCategory::String => theme.syntax.string.as_u8(),
-                crate::syntax::highlight::HighlightCategory::StringTemplate => theme.syntax.string.as_u8(),
+                crate::syntax::highlight::HighlightCategory::StringTemplate => {
+                    theme.syntax.string.as_u8()
+                }
                 crate::syntax::highlight::HighlightCategory::StringEscape => {
-                                    theme.syntax.string_escape.as_u8()
-                                }
+                    theme.syntax.string_escape.as_u8()
+                }
                 crate::syntax::highlight::HighlightCategory::Comment => {
                     theme.syntax.comment.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::CommentDoc => {
-                                    theme.syntax.comment_doc.as_u8()
-                                }
+                    theme.syntax.comment_doc.as_u8()
+                }
                 crate::syntax::highlight::HighlightCategory::Type => theme.syntax.r#type.as_u8(),
                 crate::syntax::highlight::HighlightCategory::TypeBuiltin => {
-                                    theme.syntax.type_builtin.as_u8()
-                                }
+                    theme.syntax.type_builtin.as_u8()
+                }
                 crate::syntax::highlight::HighlightCategory::Function => {
                     theme.syntax.function.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::FunctionBuiltin => {
-                                    theme.syntax.function_builtin.as_u8()
-                                }
+                    theme.syntax.function_builtin.as_u8()
+                }
                 crate::syntax::highlight::HighlightCategory::Number => theme.syntax.number.as_u8(),
                 crate::syntax::highlight::HighlightCategory::Boolean => {
                     theme.syntax.boolean.as_u8()
@@ -135,8 +137,8 @@ pub(super) fn syntax_spans_to_styled(
                     theme.syntax.variable.as_u8()
                 }
                 crate::syntax::highlight::HighlightCategory::VariableBuiltin => {
-                                    theme.syntax.variable_builtin.as_u8()
-                                }
+                    theme.syntax.variable_builtin.as_u8()
+                }
                 crate::syntax::highlight::HighlightCategory::Parameter => {
                     theme.syntax.parameter.as_u8()
                 }
@@ -169,17 +171,17 @@ pub(super) fn syntax_spans_to_styled(
                 }
                 crate::syntax::highlight::HighlightCategory::Tag => theme.syntax.tag.as_u8(),
                 crate::syntax::highlight::HighlightCategory::MarkupStrong => {
-                                    theme.syntax.markup_strong.as_u8()
-                                }
-                                crate::syntax::highlight::HighlightCategory::MarkupItalic => {
-                                    theme.syntax.markup_italic.as_u8()
-                                }
-                                crate::syntax::highlight::HighlightCategory::MarkupInlineCode => {
-                                    theme.syntax.markup_inline_code.as_u8()
-                                }
-                                crate::syntax::highlight::HighlightCategory::MarkupLink => {
-                                    theme.syntax.markup_link.as_u8()
-                                }
+                    theme.syntax.markup_strong.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::MarkupItalic => {
+                    theme.syntax.markup_italic.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::MarkupInlineCode => {
+                    theme.syntax.markup_inline_code.as_u8()
+                }
+                crate::syntax::highlight::HighlightCategory::MarkupLink => {
+                    theme.syntax.markup_link.as_u8()
+                }
             };
             StyledTextSpan::with_style(
                 span.range.start,
@@ -467,7 +469,8 @@ fn display_width(text: &str) -> usize {
                 || (0x3040..=0x30FF).contains(&code)  // Hiragana, Katakana
                 || (0xAC00..=0xD7AF).contains(&code)  // Hangul
                 || (0xFF00..=0xFFEF).contains(&code)  // Fullwidth
-                || (0x1F300..=0x1F9FF).contains(&code) // Emoji
+                || (0x1F300..=0x1F9FF).contains(&code)
+            // Emoji
             {
                 2
             } else {
@@ -1336,7 +1339,10 @@ fn compute_git_change_matches(
     children_map: &HashMap<PathBuf, Vec<PathBuf>>,
     out: &mut HashMap<PathBuf, bool>,
 ) -> bool {
-    let file_type = node_types.get(path).copied().unwrap_or(WorkspaceNodeType::File);
+    let file_type = node_types
+        .get(path)
+        .copied()
+        .unwrap_or(WorkspaceNodeType::File);
     let is_dirty_path = app_state.is_dirty()
         && app_state
             .active_file()
@@ -1348,7 +1354,8 @@ fn compute_git_change_matches(
 
     if let Some(children) = children_map.get(path) {
         for child in children {
-            subtree_match |= compute_git_change_matches(app_state, child, node_types, children_map, out);
+            subtree_match |=
+                compute_git_change_matches(app_state, child, node_types, children_map, out);
         }
     }
 
@@ -1429,7 +1436,13 @@ pub(super) fn collect_explorer_entries(app_state: &AppState) -> Vec<ExplorerEntr
     let git_changes_only = app_state.workspace_show_git_changes_only();
     let mut git_change_matches: HashMap<PathBuf, bool> = HashMap::new();
     if git_changes_only {
-        compute_git_change_matches(app_state, &root, &node_types, &children_map, &mut git_change_matches);
+        compute_git_change_matches(
+            app_state,
+            &root,
+            &node_types,
+            &children_map,
+            &mut git_change_matches,
+        );
     }
 
     let mut entries = Vec::new();
@@ -1443,7 +1456,11 @@ pub(super) fn collect_explorer_entries(app_state: &AppState) -> Vec<ExplorerEntr
         &children_map,
         filter_query.as_deref(),
         &subtree_matches,
-        if git_changes_only { Some(&git_change_matches) } else { None },
+        if git_changes_only {
+            Some(&git_change_matches)
+        } else {
+            None
+        },
         &mut entries,
     );
     entries
@@ -1497,15 +1514,19 @@ fn collect_visible_explorer_entries(
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("?");
-        
+
         let subtree_match =
             filter_query.is_none_or(|_| subtree_matches.get(child).copied().unwrap_or(false));
         if !subtree_match {
             continue;
         }
 
-        let git_match =
-            git_change_matches.is_none() || git_change_matches.unwrap().get(child).copied().unwrap_or(false);
+        let git_match = git_change_matches.is_none()
+            || git_change_matches
+                .unwrap()
+                .get(child)
+                .copied()
+                .unwrap_or(false);
         if !git_match {
             continue;
         }
@@ -1517,7 +1538,7 @@ fn collect_visible_explorer_entries(
                     .iter()
                     .any(|nested| subtree_matches.get(nested).copied().unwrap_or(false))
             });
-        
+
         let is_expanded = file_type == WorkspaceNodeType::Folder
             && (app_state.workspace_is_expanded(child) || has_matching_descendant);
 

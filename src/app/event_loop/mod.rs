@@ -97,6 +97,7 @@ pub struct AppShell {
     right_terminal_grid: TerminalGrid,
     right_terminal_needs_layout: bool,
     last_right_terminal_bounds: Option<[f32; 4]>,
+    last_cursor_position: Option<(f32, f32)>,
     pending_right_pty_spawn: bool,
     /// When `Some`, this command string will be written into the right PTY
     /// immediately after `PtySpawned` is received for the right terminal.

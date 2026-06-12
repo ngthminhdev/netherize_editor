@@ -1,12 +1,17 @@
-use std::{fs, path::{Path, PathBuf}, sync::OnceLock};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
 
 use cosmic_text::Metrics;
 
 use crate::{
     render::{
         glyph_instance::GlyphInstance,
-        icon_pipeline::{canonical_icon_id, IconDrawInstance},
-        region_pipeline::RegionDrawInstance, renderer::Renderer,
+        icon_pipeline::{IconDrawInstance, canonical_icon_id},
+        region_pipeline::RegionDrawInstance,
+        renderer::Renderer,
     },
     terminal::grid::TerminalGrid,
     text::text_system::StyledTextSpan,
@@ -14,9 +19,8 @@ use crate::{
 
 use super::super::{
     components::{
+        HighlightChipStyle, PrefixIconBadge, PrefixIconBadgeChrome, ShortcutHintSegment,
         layout_prefix_icon_badge, layout_shortcut_hint, push_centered_highlight_chip,
-        HighlightChipStyle, PrefixIconBadge, PrefixIconBadgeChrome,
-        ShortcutHintSegment,
     },
     helpers::{
         estimate_monospace_width, layout_clamp, layout_panel_text, layout_panel_text_bold,
@@ -71,8 +75,6 @@ fn parse_welcome_git_head(head: &str) -> Option<String> {
         format!("detached:{}", &head[..short_len])
     })
 }
-
-
 
 fn bundled_logo() -> Option<&'static BundledLogo> {
     static LOGO: OnceLock<Option<BundledLogo>> = OnceLock::new();
@@ -158,8 +160,8 @@ impl Renderer {
         // column widths instead so narrow windows/panes collapse predictably.
         let min_left_column_w = sx(500.0);
         let min_right_column_w = sx(560.0);
-        let two_column = bounds[2] >= min_left_column_w + min_right_column_w
-            && bounds[3] >= sx(520.0);
+        let two_column =
+            bounds[2] >= min_left_column_w + min_right_column_w && bounds[3] >= sx(520.0);
         let left_w = if two_column {
             (bounds[2] * 0.52).clamp(min_left_column_w, bounds[2] - min_right_column_w)
         } else {
@@ -245,7 +247,18 @@ impl Renderer {
                     1.0,
                 ];
                 chrome.push(RegionDrawInstance::new(bounds, border_color).with_radius(radius));
-                chrome.push(RegionDrawInstance::new([x + border, y + border, (w - border * 2.0).max(1.0), (h - border * 2.0).max(1.0)], bg_color).with_radius((radius - border).max(2.0)));
+                chrome.push(
+                    RegionDrawInstance::new(
+                        [
+                            x + border,
+                            y + border,
+                            (w - border * 2.0).max(1.0),
+                            (h - border * 2.0).max(1.0),
+                        ],
+                        bg_color,
+                    )
+                    .with_radius((radius - border).max(2.0)),
+                );
             }
             if let Some(asset_icon) = canonical_icon_id(icon) {
                 let [x, y, w, h] = bounds;
@@ -432,9 +445,33 @@ impl Renderer {
         let section_size = sx(10.5);
         let mut card_y = meta_y + sx(58.0);
         let action_cards = [
-            ("START", "built_in:file", self.theme.ui.cyan.as_f32(), "New Instance", "Open another editor window", &["⌘", "⇧", "N"][..], false),
-            ("", "built_in:folder", self.theme.ui.info.as_f32(), "Open Folder", "Browse for a project folder", &["⌘", "O"][..], false),
-            ("", "built_in:conf", self.theme.ui.magenta.as_f32(), "Command Palette", "Search commands, files, symbols", &["⌘", "P"][..], false),
+            (
+                "START",
+                "built_in:file",
+                self.theme.ui.cyan.as_f32(),
+                "New Instance",
+                "Open another editor window",
+                &["⌘", "⇧", "N"][..],
+                false,
+            ),
+            (
+                "",
+                "built_in:folder",
+                self.theme.ui.info.as_f32(),
+                "Open Folder",
+                "Browse for a project folder",
+                &["⌘", "O"][..],
+                false,
+            ),
+            (
+                "",
+                "built_in:conf",
+                self.theme.ui.magenta.as_f32(),
+                "Command Palette",
+                "Search commands, files, symbols",
+                &["⌘", "P"][..],
+                false,
+            ),
         ];
         for (section, icon, color, title, sub, keys, active) in action_cards {
             if !section.is_empty() {
@@ -455,8 +492,22 @@ impl Renderer {
             card_fill[3] = if active { 0.98 } else { 0.72 };
             let mut card_border = if active { accent } else { border };
             card_border[3] = if active { 0.72 } else { 0.60 };
-            chrome.push(RegionDrawInstance::new([card_x, card_y, card_w, card_h], card_border).with_radius(sx(8.0)));
-            chrome.push(RegionDrawInstance::new([card_x + sx(1.0), card_y + sx(1.0), card_w - sx(2.0), card_h - sx(2.0)], card_fill).with_radius(sx(7.0)));
+            chrome.push(
+                RegionDrawInstance::new([card_x, card_y, card_w, card_h], card_border)
+                    .with_radius(sx(8.0)),
+            );
+            chrome.push(
+                RegionDrawInstance::new(
+                    [
+                        card_x + sx(1.0),
+                        card_y + sx(1.0),
+                        card_w - sx(2.0),
+                        card_h - sx(2.0),
+                    ],
+                    card_fill,
+                )
+                .with_radius(sx(7.0)),
+            );
             icon_badge(
                 self,
                 &mut glyphs,
@@ -469,19 +520,57 @@ impl Renderer {
                 0.56,
                 PrefixIconBadgeChrome::Outline,
             );
-            line(self, &mut glyphs, title, card_x + sx(70.0), card_y + sx(14.0), card_title_size, sx(16.0), fg, true);
-            line(self, &mut glyphs, sub, card_x + sx(70.0), card_y + sx(33.0), card_sub_size, sx(14.0), fg_ghost, false);
+            line(
+                self,
+                &mut glyphs,
+                title,
+                card_x + sx(70.0),
+                card_y + sx(14.0),
+                card_title_size,
+                sx(16.0),
+                fg,
+                true,
+            );
+            line(
+                self,
+                &mut glyphs,
+                sub,
+                card_x + sx(70.0),
+                card_y + sx(33.0),
+                card_sub_size,
+                sx(14.0),
+                fg_ghost,
+                false,
+            );
             if card_w >= sx(350.0) {
                 let key_size = sx(9.5);
                 let key_x = card_x + card_w - sx(18.0) - shortcut_hint_width(keys, key_size);
-                key_hint(self, &mut glyphs, &mut chrome, keys, key_x, card_y + sx(17.0), key_size);
+                key_hint(
+                    self,
+                    &mut glyphs,
+                    &mut chrome,
+                    keys,
+                    key_x,
+                    card_y + sx(17.0),
+                    key_size,
+                );
             }
             card_y += card_h + card_gap;
         }
 
         if !two_column {
             let footer = "Press ⌘ ⇧ N for New Instance  |  Press ⌘ O for Open Folder";
-            line(self, &mut glyphs, footer, centered_x(bounds[0] + bounds[2] * 0.5, footer, sx(10.0)), bounds[1] + bounds[3] - sx(30.0), sx(10.0), sx(13.0), fg_ghost, false);
+            line(
+                self,
+                &mut glyphs,
+                footer,
+                centered_x(bounds[0] + bounds[2] * 0.5, footer, sx(10.0)),
+                bounds[1] + bounds[3] - sx(30.0),
+                sx(10.0),
+                sx(13.0),
+                fg_ghost,
+                false,
+            );
 
             self.welcome_logo_chrome_instances = chrome;
             self.welcome_icon_instances = icons;
@@ -549,15 +638,33 @@ impl Renderer {
         let recent_panel_top = y - sx(8.0);
         let recent_rows = recent_projects.len().min(5).max(1) as f32;
         let recent_panel_h = sx(10.0) + recent_rows * sx(44.0);
-        chrome.push(RegionDrawInstance::new([rx, recent_panel_top, rw, recent_panel_h], recent_panel_border).with_radius(sx(8.0)));
-        chrome.push(RegionDrawInstance::new([rx + sx(1.0), recent_panel_top + sx(1.0), rw - sx(2.0), recent_panel_h - sx(2.0)], recent_panel_fill).with_radius(sx(7.0)));
+        chrome.push(
+            RegionDrawInstance::new(
+                [rx, recent_panel_top, rw, recent_panel_h],
+                recent_panel_border,
+            )
+            .with_radius(sx(8.0)),
+        );
+        chrome.push(
+            RegionDrawInstance::new(
+                [
+                    rx + sx(1.0),
+                    recent_panel_top + sx(1.0),
+                    rw - sx(2.0),
+                    recent_panel_h - sx(2.0),
+                ],
+                recent_panel_fill,
+            )
+            .with_radius(sx(7.0)),
+        );
         for (index, project) in recent_projects.iter().take(5).enumerate() {
             let name = project
                 .file_name()
                 .and_then(|name| name.to_str())
                 .unwrap_or("unknown");
             let path = project.display().to_string();
-            let icon_source = crate::app::persistence::AppPersistentState::infer_project_icon_source(project);
+            let icon_source =
+                crate::app::persistence::AppPersistentState::infer_project_icon_source(project);
             let icon_name = Path::new(&icon_source)
                 .file_name()
                 .and_then(|name| name.to_str())
@@ -587,7 +694,11 @@ impl Renderer {
             let branch_max_w = sx(112.0).min((text_right - text_x) * 0.34).max(0.0);
             let branch_label = ellipsize(&raw_branch_label, path_size, branch_max_w);
             let branch_w = text_w(&branch_label, path_size);
-            let branch_gap = if branch_label.is_empty() { 0.0 } else { sx(14.0) };
+            let branch_gap = if branch_label.is_empty() {
+                0.0
+            } else {
+                sx(14.0)
+            };
             let branch_x = (text_right - branch_w).max(text_x);
             let path_max_w = (branch_x - text_x - branch_gap).max(0.0);
             let path_label = ellipsize(&path, path_size, path_max_w);
@@ -674,13 +785,51 @@ impl Renderer {
         //     false,
         // );
         y += sx(34.0);
-        line(self, &mut glyphs, "MORE ACTIONS", rx, y, sx(12.0), sx(14.0), fg_ghost, true);
+        line(
+            self,
+            &mut glyphs,
+            "MORE ACTIONS",
+            rx,
+            y,
+            sx(12.0),
+            sx(14.0),
+            fg_ghost,
+            true,
+        );
         y += sx(24.0);
         let more_cards = [
-            ("built_in:folder_open", self.theme.ui.warning.as_f32(), "Recent Projects", "Jump back into previous work", &["Space", "P", "J"][..], false),
-            ("built_in:json", self.theme.ui.amber.as_f32(), "Search in Files", "Find text across project", &["Space", "F", "W"][..], false),
-            ("built_in:todo", self.theme.ui.magenta.as_f32(), "Explore Extensions", "Themes, languages, tools", &["Space", "X"][..], false),
-            ("built_in:conf", self.theme.ui.info.as_f32(), "Settings", "Configure editor behavior", &["⌘", ","][..], false),
+            (
+                "built_in:folder_open",
+                self.theme.ui.warning.as_f32(),
+                "Recent Projects",
+                "Jump back into previous work",
+                &["Space", "P", "J"][..],
+                false,
+            ),
+            (
+                "built_in:json",
+                self.theme.ui.amber.as_f32(),
+                "Search in Files",
+                "Find text across project",
+                &["Space", "F", "W"][..],
+                false,
+            ),
+            (
+                "built_in:todo",
+                self.theme.ui.magenta.as_f32(),
+                "Explore Extensions",
+                "Themes, languages, tools",
+                &["Space", "X"][..],
+                false,
+            ),
+            (
+                "built_in:conf",
+                self.theme.ui.info.as_f32(),
+                "Settings",
+                "Configure editor behavior",
+                &["⌘", ","][..],
+                false,
+            ),
         ];
         let more_card_h = sx(54.0);
         let more_gap = sx(10.0);
@@ -689,8 +838,21 @@ impl Renderer {
             card_fill[3] = if active { 0.90 } else { 0.52 };
             let mut card_border = if active { accent } else { border };
             card_border[3] = if active { 0.65 } else { 0.40 };
-            chrome.push(RegionDrawInstance::new([rx, y, rw, more_card_h], card_border).with_radius(sx(8.0)));
-            chrome.push(RegionDrawInstance::new([rx + sx(1.0), y + sx(1.0), rw - sx(2.0), more_card_h - sx(2.0)], card_fill).with_radius(sx(7.0)));
+            chrome.push(
+                RegionDrawInstance::new([rx, y, rw, more_card_h], card_border).with_radius(sx(8.0)),
+            );
+            chrome.push(
+                RegionDrawInstance::new(
+                    [
+                        rx + sx(1.0),
+                        y + sx(1.0),
+                        rw - sx(2.0),
+                        more_card_h - sx(2.0),
+                    ],
+                    card_fill,
+                )
+                .with_radius(sx(7.0)),
+            );
             icon_badge(
                 self,
                 &mut glyphs,
@@ -703,17 +865,55 @@ impl Renderer {
                 0.54,
                 PrefixIconBadgeChrome::Outline,
             );
-            line(self, &mut glyphs, title, rx + sx(64.0), y + sx(12.0), sx(12.5), sx(15.0), fg, true);
-            line(self, &mut glyphs, sub, rx + sx(64.0), y + sx(31.0), sx(10.0), sx(13.0), fg_ghost, false);
+            line(
+                self,
+                &mut glyphs,
+                title,
+                rx + sx(64.0),
+                y + sx(12.0),
+                sx(12.5),
+                sx(15.0),
+                fg,
+                true,
+            );
+            line(
+                self,
+                &mut glyphs,
+                sub,
+                rx + sx(64.0),
+                y + sx(31.0),
+                sx(10.0),
+                sx(13.0),
+                fg_ghost,
+                false,
+            );
             if rw >= sx(330.0) {
                 let key_size = sx(9.0);
                 let key_x = rx + rw - sx(16.0) - shortcut_hint_width(keys, key_size);
-                key_hint(self, &mut glyphs, &mut chrome, keys, key_x, y + sx(16.0), key_size);
+                key_hint(
+                    self,
+                    &mut glyphs,
+                    &mut chrome,
+                    keys,
+                    key_x,
+                    y + sx(16.0),
+                    key_size,
+                );
             }
             y += more_card_h + more_gap;
         }
         let footer = "Press Space P J for Recent Projects  |  Press ⌘ , for Settings";
-        line(self, &mut glyphs, footer, centered_x(bounds[0] + bounds[2] * 0.5, footer, sx(10.0)), bounds[1] + bounds[3] - sx(34.0), sx(10.0), sx(13.0), fg_ghost, false);
+        line(
+            self,
+            &mut glyphs,
+            footer,
+            centered_x(bounds[0] + bounds[2] * 0.5, footer, sx(10.0)),
+            bounds[1] + bounds[3] - sx(34.0),
+            sx(10.0),
+            sx(13.0),
+            fg_ghost,
+            false,
+        );
 
         self.welcome_logo_chrome_instances = chrome;
         self.welcome_icon_instances = icons;

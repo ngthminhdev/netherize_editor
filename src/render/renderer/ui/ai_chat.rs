@@ -1453,7 +1453,7 @@ impl Renderer {
 
         let mut all_glyphs: Vec<GlyphInstance> = Vec::new();
         let mut chrome_instances: Vec<RegionDrawInstance> = Vec::new();
-        
+
         let code_bg = blend_rgb(
             self.theme.ui.panel_bg.as_f32(),
             self.theme.ui.selection_bg.as_f32(),
@@ -1489,10 +1489,13 @@ impl Renderer {
         }
 
         let mut layouted_lines: Vec<LayoutedLine> = Vec::new();
-        
+
         for (line_idx, preview_line) in lines.iter().enumerate() {
             let is_code = matches!(preview_line.block_type, MarkdownBlockType::CodeBlock);
-            let is_table = matches!(preview_line.block_type, MarkdownBlockType::TableHeader | MarkdownBlockType::TableRow);
+            let is_table = matches!(
+                preview_line.block_type,
+                MarkdownBlockType::TableHeader | MarkdownBlockType::TableRow
+            );
             let wrapped_lines = if is_code {
                 word_wrap_with_ranges(&preview_line.text, code_max_chars)
             } else if is_table {
@@ -1508,14 +1511,16 @@ impl Renderer {
                     .iter()
                     .filter_map(|span| clip_styled_span_to_range(*span, &byte_range))
                     .collect();
-                
-                let is_code_block_start = is_code 
-                    && (line_idx == 0 || !matches!(lines[line_idx - 1].block_type, MarkdownBlockType::CodeBlock)) 
+
+                let is_code_block_start = is_code
+                    && (line_idx == 0
+                        || !matches!(lines[line_idx - 1].block_type, MarkdownBlockType::CodeBlock))
                     && w_idx == 0;
-                let is_code_block_end = is_code 
-                    && (line_idx + 1 == lines.len() || !matches!(lines[line_idx + 1].block_type, MarkdownBlockType::CodeBlock)) 
+                let is_code_block_end = is_code
+                    && (line_idx + 1 == lines.len()
+                        || !matches!(lines[line_idx + 1].block_type, MarkdownBlockType::CodeBlock))
                     && w_idx + 1 == num_wrapped;
-                
+
                 layouted_lines.push(LayoutedLine {
                     block_type: preview_line.block_type,
                     text: wrapped_text,
@@ -1538,17 +1543,17 @@ impl Renderer {
         let spacing_code_block_padding = 6.0;
 
         let mut current_y = 0.0;
-        
+
         for i in 0..layouted_lines.len() {
             let is_code_block_start = layouted_lines[i].is_code_block_start;
             let is_code_block_end = layouted_lines[i].is_code_block_end;
             let is_code_block = layouted_lines[i].is_code_block;
             let block_type = layouted_lines[i].block_type;
-            
+
             if i > 0 {
                 let prev_block_type = layouted_lines[i - 1].block_type;
                 let prev_is_code = layouted_lines[i - 1].is_code_block;
-                
+
                 if is_code_block_start {
                     current_y += spacing_code_block_margin;
                 } else if matches!(block_type, MarkdownBlockType::Heading(_)) {
@@ -1571,14 +1576,14 @@ impl Renderer {
                     }
                 }
             }
-            
+
             if is_code_block_start {
                 current_y += spacing_code_block_padding;
             }
-            
+
             layouted_lines[i].y_offset = current_y;
             current_y += line_h;
-            
+
             if is_code_block_end {
                 current_y += spacing_code_block_padding;
             }
@@ -1592,7 +1597,7 @@ impl Renderer {
         // Step 3: Draw code block backgrounds (unified per block) and table header highlights
         let mut current_code_block_start: Option<usize> = None;
         let start_y = clip[1];
-        
+
         for i in 0..layouted_lines.len() {
             let line = &layouted_lines[i];
             if line.is_code_block_start {
@@ -1602,15 +1607,15 @@ impl Renderer {
                 if let Some(start_idx) = current_code_block_start.take() {
                     let y_start = layouted_lines[start_idx].y_offset - spacing_code_block_padding;
                     let y_end = line.y_offset + line_h + spacing_code_block_padding;
-                    
+
                     let screen_y_start = start_y + y_start - scroll_offset_y;
                     let screen_y_end = start_y + y_end - scroll_offset_y;
                     let height = screen_y_end - screen_y_start;
-                    
+
                     let box_x = clip[0] + code_inset_x;
                     let box_w = (clip[2] - code_inset_x * 2.0).max(1.0);
                     let rect = [box_x, screen_y_start, box_w, height.max(1.0)];
-                    
+
                     chrome_instances.push(
                         RegionDrawInstance::new(rect, code_border)
                             .with_radius(self.panel_corner_radius.min(6.0)),
@@ -1629,10 +1634,15 @@ impl Renderer {
                     );
                 }
             }
-            
+
             if matches!(line.block_type, MarkdownBlockType::TableHeader) {
                 let y = start_y + line.y_offset - scroll_offset_y;
-                let rect = [clip[0] + code_inset_x, y, (clip[2] - code_inset_x * 2.0).max(1.0), line_h];
+                let rect = [
+                    clip[0] + code_inset_x,
+                    y,
+                    (clip[2] - code_inset_x * 2.0).max(1.0),
+                    line_h,
+                ];
                 chrome_instances.push(
                     RegionDrawInstance::new(rect, table_header_bg)
                         .with_radius(self.panel_corner_radius.min(4.0)),
@@ -1642,10 +1652,10 @@ impl Renderer {
 
         // Step 4: Draw all text lines
         let visible_bottom = clip[1] + clip[3];
-        
+
         for line in &layouted_lines {
             let y = start_y + line.y_offset - scroll_offset_y;
-            
+
             if y + line_h < clip[1] {
                 continue;
             }
@@ -1657,8 +1667,12 @@ impl Renderer {
                 continue;
             }
 
-            let text_x = if line.is_code_block { code_text_x } else { clip[0] };
-            
+            let text_x = if line.is_code_block {
+                code_text_x
+            } else {
+                clip[0]
+            };
+
             let default_color = match line.block_type {
                 MarkdownBlockType::Heading(_) => fg,
                 MarkdownBlockType::CodeBlock => fg_dim,

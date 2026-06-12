@@ -647,3 +647,123 @@
 | 13:35 | Edited src/app/app_state/tests.rs | modified external_edit_within_self_save_window_still_reloads() | ~516 |
 | 13:45 | Fixed file watcher not waking event loop (#1-#8) | file_watch.rs, dispatch.rs, emit-path, message.rs, application.rs, palette.rs, buffers.rs, overlays.rs, mod.rs, setup.rs | notify path now wakes winit loop via emit_message_and_wake; +watcher restart, +out-of-root watch, !=mtime, content-based self-save, 3s poll, removed eprintln; 676 tests pass | ~4200 |
 | 13:39 | Session end: 25 writes across 12 files (dispatch.rs, file_watch.rs, message.rs, setup.rs, commands_explorer.rs) | 16 reads | ~157646 tok |
+
+## Session: 2026-06-11 21:39
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 23:37 | Fixed right-dock opencode scroll/mouse routing | input/handler.rs, event_loop/application.rs, commands_ai_chat.rs, tests | Ctrl-U/D now survives mode drift; right dock gets scoped wheel scroll + SGR click forwarding; focused tests/check pass | ~52000 |
+
+## Session: 2026-06-11 23:40
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 00:00 | Edited src/terminal/grid.rs | 6→10 lines | ~126 |
+| 00:00 | Edited src/terminal/grid.rs | 7→8 lines | ~42 |
+| 00:00 | Edited src/terminal/grid.rs | 9→10 lines | ~61 |
+| 00:00 | Edited src/terminal/grid.rs | 18→23 lines | ~232 |
+| 00:01 | Edited src/terminal/grid.rs | modified apply_regex_highlights() | ~1294 |
+| 00:01 | Edited src/terminal/grid.rs | inline fix | ~21 |
+| 00:01 | Edited src/terminal/grid.rs | modified apply_regex_highlights_string_spanning_soft_wrap_keeps_color_on_continuation() | ~437 |
+| 00:03 | terminal highlight lost on soft-wrap: track wrap_continued + highlight per logical line | src/terminal/grid.rs | fixed, 28 grid tests pass | ~9k |
+| 00:04 | Session end: 7 writes across 1 files (grid.rs) | 4 reads | ~67261 tok |
+
+## Session: 2026-06-11 00:15
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 00:26 | Created tests/vietnamese_terminal_render.rs | — | ~1065 |
+| 00:29 | Edited tests/vietnamese_terminal_render.rs | added 2 import(s) | ~83 |
+| 00:29 | Edited tests/vietnamese_terminal_render.rs | modified dock_build_instances_emits_glyph_per_vietnamese_cell() | ~591 |
+| 00:34 | Edited tests/vietnamese_terminal_render.rs | modified nerd_font_family_still_shapes_vietnamese_via_fallback() | ~384 |
+
+## Session: 2026-06-11 00:43
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 00:46 | Edited src/text/atlas.rs | 6→9 lines | ~129 |
+| 00:46 | Edited src/text/atlas.rs | 4→5 lines | ~30 |
+| 00:46 | Edited src/text/atlas.rs | modified solid_entry() | ~265 |
+| 00:47 | Created src/terminal/cell_shapes.rs | — | ~2945 |
+| 00:48 | Edited src/terminal/terminal_renderer.rs | 5→6 lines | ~71 |
+| 00:48 | Edited src/terminal/terminal_renderer.rs | modified solid_cell_rects() | ~387 |
+| 00:49 | Session end: 6 writes across 3 files (atlas.rs, cell_shapes.rs, terminal_renderer.rs) | 1 reads | ~7321 tok |
+| 00:52 | Edited src/terminal/mod.rs | 2→3 lines | ~15 |
+| 00:50 | Diagnosed right-dock "đứt nét": cell h=22 vs font glyph ~17px → gaps in ▀▄█/┃. Captured real opencode PTY stream, replayed through grid — Vietnamese NFC intact (bug-047 fix works) | src/terminal/cell_shapes.rs (new), terminal_renderer.rs, src/text/atlas.rs | procedural block/box-drawing quads fill cells exactly; 704 tests pass | ~60k |
+| 00:52 | Added regression tests: NFC/NFD Vietnamese through grid+shaping+headless wgpu dock path | tests/vietnamese_terminal_render.rs (new) | 9 tests pass | ~8k |
+| 00:57 | Session end: 7 writes across 4 files (atlas.rs, cell_shapes.rs, terminal_renderer.rs, mod.rs) | 2 reads | ~7365 tok |
+
+## Session: 2026-06-11 00:58
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-11 01:00
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 01:07 | Edited src/app/input/handler.rs | modified right_chat_scroll_command() | ~338 |
+| 01:07 | Edited src/app/event_loop/application.rs | modified sgr_mouse_sequence() | ~119 |
+| 01:07 | Edited src/app/event_loop/application.rs | modified min() | ~244 |
+| 01:07 | Edited src/app/input/tests.rs | expanded (+9 lines) | ~269 |
+| 01:07 | Edited src/app/input/tests.rs | 8→11 lines | ~113 |
+| 01:08 | Edited src/app/input/tests.rs | expanded (+6 lines) | ~174 |
+| 01:08 | Edited src/app/event_loop/application.rs | modified sgr_wheel_sequence_is_press_only_with_wheel_button_codes() | ~100 |
+| 01:08 | Edited src/app/event_loop/application.rs | 1→2 lines | ~31 |
+| 01:12 | Fix right-dock opencode scroll: forward ctrl+alt+u/d + SGR wheel into PTY instead of local scrollback (bug-057) | src/app/input/handler.rs, src/app/event_loop/application.rs, src/app/input/tests.rs | 705 tests pass | ~30k |
+| 01:12 | Session end: 8 writes across 3 files (handler.rs, application.rs, tests.rs) | 5 reads | ~82863 tok |
+| 01:19 | Session end: 8 writes across 3 files (handler.rs, application.rs, tests.rs) | 11 reads | ~134371 tok |
+| 01:23 | Edited src/async_runtime/scheduler/file_watch.rs | 1→6 lines | ~32 |
+| 01:23 | Edited src/async_runtime/scheduler/file_watch.rs | modified file_watch_restart_backoff() | ~183 |
+| 01:23 | Edited src/async_runtime/scheduler/file_watch.rs | modified degraded() | ~768 |
+| 01:23 | Edited src/async_runtime/scheduler/file_watch.rs | extend_unique_file_events() → extend_unique_file_events_with_seen() | ~260 |
+| 01:24 | Edited src/async_runtime/scheduler/file_watch.rs | modified extend_unique_file_events() | ~158 |
+| 01:24 | Edited src/app/event_loop/async_results/failure.rs | expanded (+8 lines) | ~147 |
+| 01:24 | Edited src/async_runtime/scheduler/file_watch.rs | modified extend_unique_file_events() | ~82 |
+| 01:24 | Edited src/app/app_state/palette.rs | modified exists() | ~354 |
+| 01:25 | Edited src/app/app_state/palette.rs | 6→8 lines | ~153 |
+| 01:25 | Edited src/app/app_state/palette.rs | modified read_to_string() | ~153 |
+| 01:25 | Edited src/app/app_state/buffers.rs | modified buffer_text_for_path() | ~215 |
+| 01:25 | Edited src/app/event_loop/setup.rs | modified submit_lsp_sync_for_externally_reloaded_path() | ~563 |
+| 01:26 | Edited src/app/event_loop/async_results/filesystem.rs | 4→7 lines | ~100 |
+| 01:26 | Edited src/app/event_loop/async_results/filesystem.rs | 3→3 lines | ~42 |
+| 01:26 | Edited src/app/event_loop/application.rs | modified is_empty() | ~254 |
+| 01:26 | Edited src/app/app_state/tests.rs | modified external_rename_without_new_path_on_existing_file_reloads_like_modify() | ~883 |
+| 01:27 | Edited src/async_runtime/scheduler/file_watch.rs | modified file_watch_restart_backoff() | ~38 |
+| 01:27 | Edited src/async_runtime/scheduler/tests.rs | inline fix | ~27 |
+| 01:27 | Edited src/async_runtime/scheduler/tests.rs | modified file_watch_restart_backoff_grows_exponentially_and_caps_at_30s() | ~176 |
+| 01:30 | File-watcher audit fixes: rename-as-modify normalization, LSP sync for inactive reloads, watcher never gives up + degraded toast, HashSet dedup (bug-058) | palette.rs, setup.rs, file_watch.rs, filesystem.rs, failure.rs, application.rs, buffers.rs, mod.rs | 708 tests pass | ~35k |
+| 01:30 | Session end: 27 writes across 9 files (handler.rs, application.rs, tests.rs, file_watch.rs, failure.rs) | 16 reads | ~188508 tok |
+| 02:29 | Edited src/async_runtime/scheduler/dispatch.rs | expanded (+64 lines) | ~746 |
+| 02:29 | Edited src/async_runtime/scheduler/dispatch.rs | 13→17 lines | ~223 |
+| 02:31 | Edited src/app/app_state/palette.rs | modified is_some() | ~132 |
+| 02:31 | Edited src/app/app_state/palette.rs | removed 50 lines | ~168 |
+| 02:31 | Edited src/app/app_state/palette.rs | reduced (-27 lines) | ~158 |
+| 02:32 | Edited src/app/app_state/palette.rs | reduced (-7 lines) | ~71 |
+| 02:32 | Edited src/app/app_state/palette.rs | modified apply_external_file_contents() | ~1618 |
+| 02:32 | Edited src/app/app_state/palette.rs | added 1 import(s) | ~27 |
+| 02:32 | Edited src/app/app_state/palette.rs | 4→4 lines | ~40 |
+| 02:33 | Edited src/app/app_state/buffers.rs | modified collect_externally_modified_open_buffers() | ~671 |
+| 02:34 | Edited src/app/app_state/buffers.rs | 3→3 lines | ~8 |
+| 02:34 | Edited src/app/event_loop/application.rs | modified is_empty() | ~180 |
+| 02:34 | Edited src/app/event_loop/async_results/filesystem.rs | modified apply_external_file_events() | ~418 |
+| 02:35 | Edited src/app/event_loop/async_results/mod.rs | expanded (+6 lines) | ~123 |
+| 02:35 | Edited src/app/event_loop/async_results/filesystem.rs | modified handle_external_files_read() | ~707 |
+| 02:36 | Edited src/app/event_loop/setup.rs | modified submit_workspace_rescan() | ~192 |
+| 02:36 | Edited src/app/app_state/palette.rs | modified workspace_rescan_request_params() | ~175 |
+| 02:39 | Edited src/terminal/grid.rs | modified apply_regex_highlights() | ~381 |
+| 02:39 | Edited src/terminal/grid.rs | 3→3 lines | ~36 |
+| 02:40 | Edited src/terminal/grid.rs | modified apply_regex_highlights_incremental_covers_rows_scrolled_into_scrollback() | ~559 |
+| 02:41 | Edited src/terminal/grid.rs | scrollback() → len() | ~142 |
+| 02:45 | #4 async I/O: two-phase external-change pipeline (ReadExternalFiles + RescanWorkspace workers) + incremental terminal regex highlight (bug-059) | palette.rs, buffers.rs, message.rs, dispatch.rs, filesystem.rs, setup.rs, application.rs, grid.rs, model.rs | 710 tests pass | ~45k |
+| 02:45 | Session end: 48 writes across 12 files (handler.rs, application.rs, tests.rs, file_watch.rs, failure.rs) | 18 reads | ~211360 tok |
+
+## Session: 2026-06-12 09:57
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-12 10:00
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|

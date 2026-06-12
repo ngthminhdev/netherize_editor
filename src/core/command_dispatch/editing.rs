@@ -151,10 +151,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             // Check if in VisualBlock mode first
             if ctx.app_state.current_mode() == EditorMode::VisualBlock {
                 let changed = ctx.app_state.visual_block_insert_before();
-                return DispatchReport::success(
-                    "Dispatch: visual block insert before",
-                    changed,
-                );
+                return DispatchReport::success("Dispatch: visual block insert before", changed);
             }
             match ctx.enter_insert_mode_if_needed() {
                 Ok(mode_changed) => {
@@ -169,19 +166,16 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                         changed,
                     )
                 }
-                Err(err) => {
-                    DispatchReport::failure(format!("Dispatch: insert at line start rejected ({err})"))
-                }
+                Err(err) => DispatchReport::failure(format!(
+                    "Dispatch: insert at line start rejected ({err})"
+                )),
             }
-        },
+        }
         Command::AppendAtLineEnd => {
             // Check if in VisualBlock mode first
             if ctx.app_state.current_mode() == EditorMode::VisualBlock {
                 let changed = ctx.app_state.visual_block_append_after();
-                return DispatchReport::success(
-                    "Dispatch: visual block append after",
-                    changed,
-                );
+                return DispatchReport::success("Dispatch: visual block append after", changed);
             }
             match ctx.enter_insert_mode_if_needed() {
                 Ok(mode_changed) => {
@@ -196,11 +190,11 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                         changed,
                     )
                 }
-                Err(err) => {
-                    DispatchReport::failure(format!("Dispatch: append at line end rejected ({err})"))
-                }
+                Err(err) => DispatchReport::failure(format!(
+                    "Dispatch: append at line end rejected ({err})"
+                )),
             }
-        },
+        }
         Command::AppendAfterCursor => match ctx.enter_insert_mode_if_needed() {
             Ok(mode_changed) => {
                 let cursor_changed = ctx.app_state.append_after_cursor();
@@ -398,7 +392,8 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 let changed = ctx.app_state.visual_block_change();
                 return DispatchReport::success(
                     if changed {
-                        "Dispatch: changed visual block selection and entered multi-insert".to_string()
+                        "Dispatch: changed visual block selection and entered multi-insert"
+                            .to_string()
                     } else {
                         "Dispatch: visual block change ignored".to_string()
                     },

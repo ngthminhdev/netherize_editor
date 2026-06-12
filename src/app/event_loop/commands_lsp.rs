@@ -87,8 +87,6 @@ impl AppShell {
         false
     }
 
-
-
     pub(in crate::app::event_loop) fn accept_lsp_install_guide(&mut self) -> bool {
         let Some(guide) = self.active_lsp_guide.take() else {
             return false;
@@ -621,14 +619,10 @@ impl AppShell {
             return false;
         };
 
-        let origin = self
-            .app_state
-            .active_file()
-            .map(PathBuf::from)
-            .map(|path| {
-                let (line, col) = self.app_state.cursor_line_col();
-                (path, line, col)
-            });
+        let origin = self.app_state.active_file().map(PathBuf::from).map(|path| {
+            let (line, col) = self.app_state.cursor_line_col();
+            (path, line, col)
+        });
 
         let _ = self.app_state.close_current_buffer();
 

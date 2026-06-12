@@ -642,12 +642,16 @@ fn parse_syntax(raw: &RawSyntax) -> Result<SyntaxThemeTokens, String> {
         keyword_control: parse_color(
             "syntax",
             "keyword_control",
-            raw.keyword_control.as_deref().unwrap_or(raw.keyword.as_str()),
+            raw.keyword_control
+                .as_deref()
+                .unwrap_or(raw.keyword.as_str()),
         )?,
         keyword_storage: parse_color(
             "syntax",
             "keyword_storage",
-            raw.keyword_storage.as_deref().unwrap_or(raw.keyword.as_str()),
+            raw.keyword_storage
+                .as_deref()
+                .unwrap_or(raw.keyword.as_str()),
         )?,
         string: parse_color("syntax", "string", &raw.string)?,
         string_escape: parse_color(
@@ -663,7 +667,9 @@ fn parse_syntax(raw: &RawSyntax) -> Result<SyntaxThemeTokens, String> {
         function_builtin: parse_color(
             "syntax",
             "function_builtin",
-            raw.function_builtin.as_deref().unwrap_or(raw.function.as_str()),
+            raw.function_builtin
+                .as_deref()
+                .unwrap_or(raw.function.as_str()),
         )?,
         comment: parse_color("syntax", "comment", &raw.comment)?,
         comment_doc: parse_color(
@@ -803,7 +809,9 @@ fn parse_syntax(raw: &RawSyntax) -> Result<SyntaxThemeTokens, String> {
         markup_inline_code: parse_color(
             "syntax",
             "markup_inline_code",
-            raw.markup_inline_code.as_deref().unwrap_or(raw.string.as_str()),
+            raw.markup_inline_code
+                .as_deref()
+                .unwrap_or(raw.string.as_str()),
         )?,
         markup_link: parse_color(
             "syntax",
@@ -912,24 +920,64 @@ fn parse_icons(raw: &RawIcons, ui: &UiThemeTokens) -> Result<IconThemeTokens, St
         tsx: parse_file_icon("icons.tsx", raw.tsx.as_ref(), "built_in:tsx", ui.info)?,
         jsx: parse_file_icon("icons.jsx", raw.jsx.as_ref(), "built_in:reactjs", ui.amber)?,
         java: parse_file_icon("icons.java", raw.java.as_ref(), "built_in:java", ui.error)?,
-        kotlin: parse_file_icon("icons.kotlin", raw.kotlin.as_ref(), "built_in:kotlin", ui.magenta)?,
+        kotlin: parse_file_icon(
+            "icons.kotlin",
+            raw.kotlin.as_ref(),
+            "built_in:kotlin",
+            ui.magenta,
+        )?,
         c: parse_file_icon("icons.c", raw.c.as_ref(), "built_in:c", ui.info)?,
         cpp: parse_file_icon("icons.cpp", raw.cpp.as_ref(), "built_in:cpp", ui.info)?,
-        csharp: parse_file_icon("icons.csharp", raw.csharp.as_ref(), "built_in:csharp", ui.success)?,
+        csharp: parse_file_icon(
+            "icons.csharp",
+            raw.csharp.as_ref(),
+            "built_in:csharp",
+            ui.success,
+        )?,
         dart: parse_file_icon("icons.dart", raw.dart.as_ref(), "built_in:dart", ui.cyan)?,
-        swift: parse_file_icon("icons.swift", raw.swift.as_ref(), "built_in:swift", ui.warning)?,
+        swift: parse_file_icon(
+            "icons.swift",
+            raw.swift.as_ref(),
+            "built_in:swift",
+            ui.warning,
+        )?,
         php: parse_file_icon("icons.php", raw.php.as_ref(), "built_in:php", ui.magenta)?,
         ruby: parse_file_icon("icons.ruby", raw.ruby.as_ref(), "built_in:ruby", ui.error)?,
         lua: parse_file_icon("icons.lua", raw.lua.as_ref(), "built_in:lua", ui.info)?,
         zig: parse_file_icon("icons.zig", raw.zig.as_ref(), "built_in:zig", ui.warning)?,
-        scala: parse_file_icon("icons.scala", raw.scala.as_ref(), "built_in:scala", ui.error)?,
-        docker: parse_file_icon("icons.docker", raw.docker.as_ref(), "built_in:docker", ui.info)?,
+        scala: parse_file_icon(
+            "icons.scala",
+            raw.scala.as_ref(),
+            "built_in:scala",
+            ui.error,
+        )?,
+        docker: parse_file_icon(
+            "icons.docker",
+            raw.docker.as_ref(),
+            "built_in:docker",
+            ui.info,
+        )?,
         sql: parse_file_icon("icons.sql", raw.sql.as_ref(), "built_in:sql", ui.amber)?,
         xml: parse_file_icon("icons.xml", raw.xml.as_ref(), "built_in:xml", ui.amber)?,
-        gradle: parse_file_icon("icons.gradle", raw.gradle.as_ref(), "built_in:gradle", ui.success)?,
+        gradle: parse_file_icon(
+            "icons.gradle",
+            raw.gradle.as_ref(),
+            "built_in:gradle",
+            ui.success,
+        )?,
         vue: parse_file_icon("icons.vue", raw.vue.as_ref(), "built_in:vue", ui.success)?,
-        svelte: parse_file_icon("icons.svelte", raw.svelte.as_ref(), "built_in:svelte", ui.error)?,
-        astro: parse_file_icon("icons.astro", raw.astro.as_ref(), "built_in:astro", ui.warning)?,
+        svelte: parse_file_icon(
+            "icons.svelte",
+            raw.svelte.as_ref(),
+            "built_in:svelte",
+            ui.error,
+        )?,
+        astro: parse_file_icon(
+            "icons.astro",
+            raw.astro.as_ref(),
+            "built_in:astro",
+            ui.warning,
+        )?,
         elm: parse_file_icon("icons.elm", raw.elm.as_ref(), "built_in:elm", ui.info)?,
         haskell: parse_file_icon(
             "icons.haskell",
@@ -937,7 +985,12 @@ fn parse_icons(raw: &RawIcons, ui: &UiThemeTokens) -> Result<IconThemeTokens, St
             "built_in:haskell",
             ui.magenta,
         )?,
-        ocaml: parse_file_icon("icons.ocaml", raw.ocaml.as_ref(), "built_in:ocaml", ui.amber)?,
+        ocaml: parse_file_icon(
+            "icons.ocaml",
+            raw.ocaml.as_ref(),
+            "built_in:ocaml",
+            ui.amber,
+        )?,
         r: parse_file_icon("icons.r", raw.r.as_ref(), "built_in:r", ui.info)?,
         perl: parse_file_icon("icons.perl", raw.perl.as_ref(), "built_in:perl", ui.info)?,
         clojure: parse_file_icon(
@@ -946,7 +999,12 @@ fn parse_icons(raw: &RawIcons, ui: &UiThemeTokens) -> Result<IconThemeTokens, St
             "built_in:clojure",
             ui.success,
         )?,
-        fsharp: parse_file_icon("icons.fsharp", raw.fsharp.as_ref(), "built_in:fsharp", ui.info)?,
+        fsharp: parse_file_icon(
+            "icons.fsharp",
+            raw.fsharp.as_ref(),
+            "built_in:fsharp",
+            ui.info,
+        )?,
         nim: parse_file_icon("icons.nim", raw.nim.as_ref(), "built_in:nim", ui.amber)?,
         solidity: parse_file_icon(
             "icons.solidity",
@@ -960,7 +1018,12 @@ fn parse_icons(raw: &RawIcons, ui: &UiThemeTokens) -> Result<IconThemeTokens, St
             "built_in:graphql",
             ui.magenta,
         )?,
-        toml: parse_file_icon("icons.toml", raw.toml.as_ref(), "built_in:toml", ui.fg_ghost)?,
+        toml: parse_file_icon(
+            "icons.toml",
+            raw.toml.as_ref(),
+            "built_in:toml",
+            ui.fg_ghost,
+        )?,
         yaml: parse_file_icon("icons.yaml", raw.yaml.as_ref(), "built_in:yaml", ui.amber)?,
         makefile: parse_file_icon(
             "icons.makefile",
@@ -969,26 +1032,66 @@ fn parse_icons(raw: &RawIcons, ui: &UiThemeTokens) -> Result<IconThemeTokens, St
             ui.warning,
         )?,
         cmake: parse_file_icon("icons.cmake", raw.cmake.as_ref(), "built_in:cmake", ui.info)?,
-        nginx: parse_file_icon("icons.nginx", raw.nginx.as_ref(), "built_in:nginx", ui.success)?,
+        nginx: parse_file_icon(
+            "icons.nginx",
+            raw.nginx.as_ref(),
+            "built_in:nginx",
+            ui.success,
+        )?,
         terraform: parse_file_icon(
             "icons.terraform",
             raw.terraform.as_ref(),
             "built_in:terraform",
             ui.magenta,
         )?,
-        ansible: parse_file_icon("icons.ansible", raw.ansible.as_ref(), "built_in:ansible", ui.error)?,
-        python: parse_file_icon("icons.python", raw.python.as_ref(), "built_in:python", ui.info)?,
+        ansible: parse_file_icon(
+            "icons.ansible",
+            raw.ansible.as_ref(),
+            "built_in:ansible",
+            ui.error,
+        )?,
+        python: parse_file_icon(
+            "icons.python",
+            raw.python.as_ref(),
+            "built_in:python",
+            ui.info,
+        )?,
         go: parse_file_icon("icons.go", raw.go.as_ref(), "built_in:go", ui.cyan)?,
-        config: parse_file_icon("icons.config", raw.config.as_ref(), "built_in:conf", ui.fg_ghost)?,
+        config: parse_file_icon(
+            "icons.config",
+            raw.config.as_ref(),
+            "built_in:conf",
+            ui.fg_ghost,
+        )?,
         json: parse_file_icon("icons.json", raw.json.as_ref(), "built_in:json", ui.amber)?,
-        markdown: parse_file_icon("icons.markdown", raw.markdown.as_ref(), "built_in:markdown", ui.info)?,
+        markdown: parse_file_icon(
+            "icons.markdown",
+            raw.markdown.as_ref(),
+            "built_in:markdown",
+            ui.info,
+        )?,
         html: parse_file_icon("icons.html", raw.html.as_ref(), "built_in:html", ui.error)?,
         css: parse_file_icon("icons.css", raw.css.as_ref(), "built_in:css", ui.info)?,
         sass: parse_file_icon("icons.sass", raw.sass.as_ref(), "built_in:sass", ui.magenta)?,
-        shell: parse_file_icon("icons.shell", raw.shell.as_ref(), "built_in:shell", ui.success)?,
+        shell: parse_file_icon(
+            "icons.shell",
+            raw.shell.as_ref(),
+            "built_in:shell",
+            ui.success,
+        )?,
         git: parse_file_icon("icons.git", raw.git.as_ref(), "built_in:git", ui.warning)?,
-        lock: parse_file_icon("icons.lock", raw.lock.as_ref(), "built_in:lock", ui.fg_ghost)?,
-        image: parse_file_icon("icons.image", raw.image.as_ref(), "built_in:image", ui.success)?,
+        lock: parse_file_icon(
+            "icons.lock",
+            raw.lock.as_ref(),
+            "built_in:lock",
+            ui.fg_ghost,
+        )?,
+        image: parse_file_icon(
+            "icons.image",
+            raw.image.as_ref(),
+            "built_in:image",
+            ui.success,
+        )?,
         proto: parse_file_icon("icons.proto", raw.proto.as_ref(), "built_in:proto", ui.info)?,
     })
 }

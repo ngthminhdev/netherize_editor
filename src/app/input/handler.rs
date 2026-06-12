@@ -196,15 +196,18 @@ impl InputHandler {
     }
 
     /// In the right-sidebar opencode chat, Ctrl+U/Ctrl+D scroll the chat history
-    /// (half a page) instead of being forwarded as raw control bytes to the PTY.
-    /// Scoped to the right sidebar so the bottom-panel shell keeps ^U/^D intact.
+    /// half a page. opencode is a full-screen TUI that keeps its history inside
+    /// its own viewport — nothing ever reaches our scrollback — so local grid
+    /// scrolling can never reveal it. Instead, forward opencode's own default
+    /// half-page keybinds (`ctrl+alt+u` / `ctrl+alt+d`, encoded as ESC + ^U/^D)
+    /// so opencode scrolls its message list itself.
+    /// Scoped by `right_sidebar_terminal`, so the bottom-panel shell keeps ^U/^D
+    /// intact even if the right dock's editor mode has drifted out of TerminalFocus.
     fn right_chat_scroll_command(
         normalized: &NormalizedInput,
         context: KeybindingContext,
     ) -> Option<Command> {
         if !(context.right_sidebar_terminal
-            && context.focus == InputFocusContext::Terminal
-            && context.mode == EditorMode::TerminalFocus
             && normalized.modifiers.control_key()
             && !normalized.modifiers.alt_key()
             && !normalized.modifiers.super_key())
@@ -212,8 +215,8 @@ impl InputHandler {
             return None;
         }
         match normalized.physical_key {
-            Some(KeyCode::KeyU) => Some(Command::TerminalScrollHalfPageUp),
-            Some(KeyCode::KeyD) => Some(Command::TerminalScrollHalfPageDown),
+            Some(KeyCode::KeyU) => Some(Command::TerminalWriteInput("\u{1b}\u{15}".to_string())),
+            Some(KeyCode::KeyD) => Some(Command::TerminalWriteInput("\u{1b}\u{4}".to_string())),
             _ => None,
         }
     }

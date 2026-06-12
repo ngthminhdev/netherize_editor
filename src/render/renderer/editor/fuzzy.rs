@@ -48,7 +48,8 @@ impl Renderer {
         let panel_y = center_bounds[1] + pad_y;
         let panel_w = (center_bounds[2] - pad_x * 2.0).max(1.0);
         let panel_h = (center_bounds[3] - pad_y * 2.0).max(1.0);
-        let is_live_grep = fuzzy_state.mode == crate::app::command_palette::CommandPaletteMode::LiveGrep;
+        let is_live_grep =
+            fuzzy_state.mode == crate::app::command_palette::CommandPaletteMode::LiveGrep;
         let gap = if is_live_grep { 0.0 } else { 16.0 };
 
         let left_w = if is_live_grep {
@@ -95,7 +96,11 @@ impl Renderer {
             RegionDrawInstance::new([right_x, panel_y + header_h - 1.0, right_w, 1.0], divider),
         ];
 
-        let header_y = if is_live_grep { panel_y + 12.0 } else { panel_y + 6.0 };
+        let header_y = if is_live_grep {
+            panel_y + 12.0
+        } else {
+            panel_y + 6.0
+        };
 
         let title = match fuzzy_state.mode {
             crate::app::command_palette::CommandPaletteMode::FilePicker => "File Picker",
@@ -106,7 +111,11 @@ impl Renderer {
         let unique_file_count = if is_live_grep {
             let mut paths = Vec::<String>::new();
             for item in &fuzzy_state.results {
-                if let crate::app::command_palette::CommandPaletteAction::OpenSearchMatch { path, .. } = &item.action {
+                if let crate::app::command_palette::CommandPaletteAction::OpenSearchMatch {
+                    path,
+                    ..
+                } = &item.action
+                {
                     let path_label = path.display().to_string();
                     if !paths.iter().any(|existing| existing == &path_label) {
                         paths.push(path_label);
@@ -118,7 +127,12 @@ impl Renderer {
             0
         };
         let left_header = if is_live_grep {
-            format!("{}  {} results · {} files", title, fuzzy_state.results.len(), unique_file_count)
+            format!(
+                "{}  {} results · {} files",
+                title,
+                fuzzy_state.results.len(),
+                unique_file_count
+            )
         } else {
             format!("{}  > {}", title, fuzzy_state.query)
         };
@@ -126,7 +140,8 @@ impl Renderer {
         self.editor_overlay_text_system
             .set_size(Some((left_w - 20.0).max(1.0)), Some(line_height));
         if is_live_grep {
-            let header_count_w = estimate_monospace_width(" 999 results · 999 files", font_size).min(left_w * 0.55);
+            let header_count_w =
+                estimate_monospace_width(" 999 results · 999 files", font_size).min(left_w * 0.55);
             glyphs.extend(layout_panel_text(
                 title,
                 &mut self.editor_overlay_text_system,
@@ -136,7 +151,11 @@ impl Renderer {
                 header_y,
                 fg,
             ));
-            let count_label = format!("{} results · {} files", fuzzy_state.results.len(), unique_file_count);
+            let count_label = format!(
+                "{} results · {} files",
+                fuzzy_state.results.len(),
+                unique_file_count
+            );
             glyphs.extend(layout_panel_text(
                 &clamp_monospace_text(&count_label, header_count_w, font_size),
                 &mut self.editor_overlay_text_system,
@@ -176,20 +195,33 @@ impl Renderer {
             let aa_text_w = estimate_monospace_width(aa_text, font_size);
             let option_w = aa_text_w + 22.0;
             glyphs.extend(layout_panel_text(
-                &clamp_monospace_text(&search_text, (search_box_w - option_w - 18.0).max(1.0), font_size),
+                &clamp_monospace_text(
+                    &search_text,
+                    (search_box_w - option_w - 18.0).max(1.0),
+                    font_size,
+                ),
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
                 search_box_x + 10.0,
                 search_box_y + 4.0,
-                if fuzzy_state.query.trim().is_empty() { fg_ghost } else { fg_dim },
+                if fuzzy_state.query.trim().is_empty() {
+                    fg_ghost
+                } else {
+                    fg_dim
+                },
             ));
             let aa_active = fuzzy_state.live_grep_case_sensitive;
             if aa_active {
                 let mut aa_bg = self.theme.ui.accent.as_f32();
                 aa_bg[3] = aa_bg[3].clamp(0.35, 0.70);
                 chrome.push(RegionDrawInstance::new(
-                    [search_box_x + search_box_w - option_w - 8.0, search_box_y + 3.0, option_w, (line_height + 2.0).max(12.0)],
+                    [
+                        search_box_x + search_box_w - option_w - 8.0,
+                        search_box_y + 3.0,
+                        option_w,
+                        (line_height + 2.0).max(12.0),
+                    ],
                     aa_bg,
                 ));
             }
@@ -211,8 +243,17 @@ impl Renderer {
             .map(|item| {
                 if is_live_grep {
                     match &item.action {
-                        crate::app::command_palette::CommandPaletteAction::OpenSearchMatch { path, line, column } => {
-                            format!("{}:{}:{}", compact_search_path(&path.display().to_string()), line, column)
+                        crate::app::command_palette::CommandPaletteAction::OpenSearchMatch {
+                            path,
+                            line,
+                            column,
+                        } => {
+                            format!(
+                                "{}:{}:{}",
+                                compact_search_path(&path.display().to_string()),
+                                line,
+                                column
+                            )
                         }
                         _ => item.label.clone(),
                     }
@@ -276,9 +317,10 @@ impl Renderer {
             let item = &fuzzy_state.results[item_idx];
             let current_group_path = if is_live_grep {
                 match &item.action {
-                    crate::app::command_palette::CommandPaletteAction::OpenSearchMatch { path, .. } => {
-                        Some(path.display().to_string())
-                    }
+                    crate::app::command_palette::CommandPaletteAction::OpenSearchMatch {
+                        path,
+                        ..
+                    } => Some(path.display().to_string()),
                     _ => None,
                 }
             } else {
@@ -295,14 +337,24 @@ impl Renderer {
                     let mut group_bg = self.theme.ui.overlay_bg.as_f32();
                     group_bg[3] = (group_bg[3] * 0.85).clamp(0.18, 0.45);
                     chrome.push(RegionDrawInstance::new(
-                        [left_x + 8.0, draw_y + 2.0, (left_w - 16.0).max(1.0), (line_height + 3.0).max(12.0)],
+                        [
+                            left_x + 8.0,
+                            draw_y + 2.0,
+                            (left_w - 16.0).max(1.0),
+                            (line_height + 3.0).max(12.0),
+                        ],
                         group_bg,
                     ));
-                    let group_count = count_search_matches_for_path(&fuzzy_state.results, path_label);
+                    let group_count =
+                        count_search_matches_for_path(&fuzzy_state.results, path_label);
                     let count_label = format!("{}", group_count);
                     let count_w = estimate_monospace_width(&count_label, font_size).max(16.0);
                     glyphs.extend(layout_panel_text_bold(
-                        &clamp_monospace_text(&format!("▾ {}", file_name), left_text_width * 0.50, font_size),
+                        &clamp_monospace_text(
+                            &format!("▾ {}", file_name),
+                            left_text_width * 0.50,
+                            font_size,
+                        ),
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,
@@ -312,7 +364,11 @@ impl Renderer {
                     ));
                     let folder_x = left_x + left_w * 0.54;
                     glyphs.extend(layout_panel_text(
-                        &clamp_monospace_text(&folder_label, (left_x + left_w - folder_x - count_w - 26.0).max(1.0), font_size),
+                        &clamp_monospace_text(
+                            &folder_label,
+                            (left_x + left_w - folder_x - count_w - 26.0).max(1.0),
+                            font_size,
+                        ),
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,
@@ -397,7 +453,11 @@ impl Renderer {
                 };
                 if is_live_grep && !fuzzy_state.query.trim().is_empty() {
                     let clamped_summary = clamp_monospace_text(&summary, summary_w, font_size);
-                    let spans = search_summary_spans(&clamped_summary, &fuzzy_state.query, self.theme.ui.warning.as_u8());
+                    let spans = search_summary_spans(
+                        &clamped_summary,
+                        &fuzzy_state.query,
+                        self.theme.ui.warning.as_u8(),
+                    );
                     glyphs.extend(layout_panel_rich_text(
                         &clamped_summary,
                         &spans,
@@ -426,7 +486,10 @@ impl Renderer {
 
         if is_live_grep {
             let footer_y = panel_y + panel_h - footer_h;
-            chrome.push(RegionDrawInstance::new([left_x, footer_y, left_w, 1.0], divider));
+            chrome.push(RegionDrawInstance::new(
+                [left_x, footer_y, left_w, 1.0],
+                divider,
+            ));
             let footer_text = format!(
                 "↑↓ navigate  |  Enter open match  |  Esc/Q close   • {} results   {} files",
                 fuzzy_state.results.len(),
@@ -606,8 +669,6 @@ fn compact_search_path(path: &str) -> String {
         path.to_string()
     }
 }
-
-
 
 fn count_search_matches_for_path(
     results: &[crate::app::command_palette::CommandPaletteItem],

@@ -37,6 +37,9 @@ pub struct GlyphAtlas {
     /// `flush_pending()` 1 lần cuối batch để gộp `queue.write_texture` —
     /// tránh N submit GPU khi mở file mới (mỗi glyph riêng = 1 submit).
     pending: Vec<PendingGlyphUpload>,
+    /// Vùng texel đặc (alpha 255) — dùng vẽ hình chữ nhật solid (block/box
+    /// drawing chars) qua text pipeline. Khởi tạo lazy lần đầu cần.
+    solid: Option<AtlasEntry>,
 }
 
 struct PendingGlyphUpload {
@@ -84,6 +87,7 @@ impl GlyphAtlas {
             row_height: 0,
             entries: HashMap::new(),
             pending: Vec::new(),
+            solid: None,
         }
     }
 
@@ -132,6 +136,33 @@ impl GlyphAtlas {
         };
         self.entries.insert(cache_key, entry);
         Ok(entry)
+    }
+
+    /// Entry trỏ tới một vùng texel đặc (alpha = 255). Dùng làm texture cho
+    /// các quad solid (block elements / box drawing) vẽ chung pass với text.
+    /// Vùng 4×4 được reserve nhưng entry chỉ trỏ vào lõi 2×2 để Nearest
+    /// sampling không bleed sang glyph kề cạnh.
+    pub fn solid_entry(&mut self) -> Option<AtlasEntry> {
+        if let Some(entry) = self.solid {
+            return Some(entry);
+        }
+        let region = self.allocate_region(4, 4)?;
+        self.pending.push(PendingGlyphUpload {
+            region,
+            alpha: vec![255u8; 16],
+        });
+        let entry = AtlasEntry {
+            region: AtlasRegion {
+                x: region.x + 1,
+                y: region.y + 1,
+                width: 2,
+                height: 2,
+            },
+            placement_left: 0,
+            placement_top: 0,
+        };
+        self.solid = Some(entry);
+        Some(entry)
     }
 
     /// Upload toàn bộ glyph mới reserve trong batch. Idempotent khi rỗng.

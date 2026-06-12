@@ -127,16 +127,19 @@ impl AppShell {
                 }
             }
             Command::ExtensionsInstallSelected => {
-                let selected = self.app_state.active_extensions_manager_buffer().and_then(|state| {
-                    state.selected_item().map(|item| {
-                        let install = if state.platform == "macOS" {
-                            item.macos_install.clone()
-                        } else {
-                            item.linux_install.clone()
-                        };
-                        (item.name.clone(), item.binary.clone(), install)
-                    })
-                });
+                let selected =
+                    self.app_state
+                        .active_extensions_manager_buffer()
+                        .and_then(|state| {
+                            state.selected_item().map(|item| {
+                                let install = if state.platform == "macOS" {
+                                    item.macos_install.clone()
+                                } else {
+                                    item.linux_install.clone()
+                                };
+                                (item.name.clone(), item.binary.clone(), install)
+                            })
+                        });
 
                 let Some((name, binary, install_cmd)) = selected else {
                     return Some(false);
@@ -159,13 +162,17 @@ impl AppShell {
                         binary: binary.clone(),
                         command: install_cmd.clone(),
                         uninstall: false,
-                        working_dir: self.app_state.workspace_root_path().map(std::path::PathBuf::from),
+                        working_dir: self
+                            .app_state
+                            .workspace_root_path()
+                            .map(std::path::PathBuf::from),
                     },
                 });
 
                 let changed = true;
                 self.pending_lsp_server = None;
-                self.lsp_retry_at = Some(std::time::Instant::now() + std::time::Duration::from_secs(15));
+                self.lsp_retry_at =
+                    Some(std::time::Instant::now() + std::time::Duration::from_secs(15));
                 self.show_transient_toast_kind(
                     format!("Installing {binary}\nRunning: {install_cmd}\nOpen Extensions Manager footer to watch live logs."),
                     ToastKind::Info,
@@ -175,23 +182,28 @@ impl AppShell {
                 Some(changed || true)
             }
             Command::ExtensionsUninstallSelected => {
-                let selected = self.app_state.active_extensions_manager_buffer().and_then(|state| {
-                    state.selected_item().map(|item| {
-                        let uninstall = if state.platform == "macOS" {
-                            item.macos_uninstall.clone()
-                        } else {
-                            item.linux_uninstall.clone()
-                        };
-                        (item.name.clone(), item.binary.clone(), uninstall)
-                    })
-                });
+                let selected =
+                    self.app_state
+                        .active_extensions_manager_buffer()
+                        .and_then(|state| {
+                            state.selected_item().map(|item| {
+                                let uninstall = if state.platform == "macOS" {
+                                    item.macos_uninstall.clone()
+                                } else {
+                                    item.linux_uninstall.clone()
+                                };
+                                (item.name.clone(), item.binary.clone(), uninstall)
+                            })
+                        });
 
                 let Some((name, binary, uninstall_cmd)) = selected else {
                     return Some(false);
                 };
                 if uninstall_cmd.trim().is_empty() {
                     self.show_transient_toast_kind(
-                        format!("Uninstall unavailable\nNo uninstall command configured for {name}"),
+                        format!(
+                            "Uninstall unavailable\nNo uninstall command configured for {name}"
+                        ),
                         ToastKind::Warning,
                     );
                     return Some(false);
@@ -207,7 +219,10 @@ impl AppShell {
                         binary: binary.clone(),
                         command: uninstall_cmd.clone(),
                         uninstall: true,
-                        working_dir: self.app_state.workspace_root_path().map(std::path::PathBuf::from),
+                        working_dir: self
+                            .app_state
+                            .workspace_root_path()
+                            .map(std::path::PathBuf::from),
                     },
                 });
 
@@ -303,7 +318,9 @@ impl AppShell {
                     Command::FilePickerAppendQuery(text) => {
                         self.app_state.extensions_append_filter(text)
                     }
-                    Command::FilePickerBackspaceQuery => self.app_state.extensions_backspace_filter(),
+                    Command::FilePickerBackspaceQuery => {
+                        self.app_state.extensions_backspace_filter()
+                    }
                     _ => false,
                 };
                 if changed {

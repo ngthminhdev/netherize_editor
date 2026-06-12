@@ -8,17 +8,17 @@ use crate::{
     },
 };
 
-use super::{
-    palette_footer_content_height, palette_footer_height, push_palette_icon_or_badge,
-    render_palette_badge, render_palette_chrome, render_palette_footer, render_palette_selection,
-    PaletteFooterAction, PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD,
-};
 use super::super::{
     components::PrefixIconBadgeChrome,
     helpers::{
-        clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor,
-        layout_panel_text, layout_panel_text_bold, rect_to_scissor,
+        clamp_monospace_text, estimate_monospace_width, gutter_width_for_editor, layout_panel_text,
+        layout_panel_text_bold, rect_to_scissor,
     },
+};
+use super::{
+    PALETTE_FOOTER_TOP_PAD, PALETTE_HEADER_BOTTOM_PAD, PaletteFooterAction,
+    palette_footer_content_height, palette_footer_height, push_palette_icon_or_badge,
+    render_palette_badge, render_palette_chrome, render_palette_footer, render_palette_selection,
 };
 
 impl Renderer {
@@ -253,7 +253,10 @@ impl Renderer {
         self.palette_icon_pipeline.upload_instances(
             &self.device,
             &self.palette_icon_instances,
-            [self.surface_state.config.width, self.surface_state.config.height],
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
         );
         self.palette_glyph_instances = glyphs;
     }

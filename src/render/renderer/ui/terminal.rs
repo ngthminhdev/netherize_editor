@@ -183,13 +183,9 @@ impl Renderer {
             self.buffer_terminal_view_renderer.cell_height = line_h;
             self.buffer_terminal_view_renderer.font_size = font_size;
 
-            self.buffer_terminal_cell_background_instances =
-                self.buffer_terminal_view_renderer.build_background_instances(
-                    grid,
-                    default_fg,
-                    default_bg,
-                    width,
-                );
+            self.buffer_terminal_cell_background_instances = self
+                .buffer_terminal_view_renderer
+                .build_background_instances(grid, default_fg, default_bg, width);
             self.buffer_terminal_glyph_instances =
                 self.buffer_terminal_view_renderer.build_instances(
                     grid,
@@ -398,13 +394,9 @@ impl Renderer {
                                 1.0,
                             )
                         }
-                        crate::config::ui_config::CursorShape::Block => (
-                            cell_x,
-                            cell_y,
-                            cell_w.max(1.0),
-                            cell_h.max(1.0),
-                            0.45,
-                        ),
+                        crate::config::ui_config::CursorShape::Block => {
+                            (cell_x, cell_y, cell_w.max(1.0), cell_h.max(1.0), 0.45)
+                        }
                     };
                     cursor_instances.push(RegionDrawInstance::new(
                         [x, y, w, h],

@@ -1,6 +1,4 @@
-use super::overlays::{
-    collect_search_highlights, is_completion_identifier_char,
-};
+use super::overlays::{collect_search_highlights, is_completion_identifier_char};
 use super::*;
 
 fn inline_suggestion_accept_prefix_byte_len(suggestion: &str) -> usize {
@@ -1050,10 +1048,8 @@ impl AppState {
         };
 
         // Use cached items for incremental filtering (much faster than re-requesting from LSP)
-        let mut filtered_items = super::overlays::filter_cached_completion_items(
-            &state.cached_full_items,
-            prefix,
-        );
+        let mut filtered_items =
+            super::overlays::filter_cached_completion_items(&state.cached_full_items, prefix);
 
         let next_selected = if filtered_items.is_empty() { 0 } else { 0 };
         let changed = state.filtered_items != filtered_items

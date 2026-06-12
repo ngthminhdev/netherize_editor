@@ -663,8 +663,16 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert(Some("normal"), ch('{'), MOVE_PARAGRAPH_UP);
     km.insert(Some("normal"), ch('}'), MOVE_PARAGRAPH_DOWN);
-    km.insert(Some("normal"), KeySpec::CtrlPlus(KeyCode::KeyH), BUFFER_PREV);
-    km.insert(Some("normal"), KeySpec::CtrlPlus(KeyCode::KeyL), BUFFER_NEXT);
+    km.insert(
+        Some("normal"),
+        KeySpec::CtrlPlus(KeyCode::KeyH),
+        BUFFER_PREV,
+    );
+    km.insert(
+        Some("normal"),
+        KeySpec::CtrlPlus(KeyCode::KeyL),
+        BUFFER_NEXT,
+    );
     km.insert(Some("normal"), KeySpec::CtrlPlus(KeyCode::KeyR), REDO);
     km.insert(Some("normal"), ch('n'), SEARCH_NEXT);
     km.insert(Some("normal"), ch('N'), SEARCH_PREV);
@@ -717,8 +725,16 @@ pub fn builtin_defaults() -> ResolvedKeymap {
         nk(NamedKey::ArrowDown),
         OVERLAY_SELECT_NEXT,
     );
-    km.insert(Some("palette"), KeySpec::CtrlPlus(KeyCode::KeyP), OVERLAY_SELECT_PREV);
-    km.insert(Some("palette"), KeySpec::CtrlPlus(KeyCode::KeyN), OVERLAY_SELECT_NEXT);
+    km.insert(
+        Some("palette"),
+        KeySpec::CtrlPlus(KeyCode::KeyP),
+        OVERLAY_SELECT_PREV,
+    );
+    km.insert(
+        Some("palette"),
+        KeySpec::CtrlPlus(KeyCode::KeyN),
+        OVERLAY_SELECT_NEXT,
+    );
     km.insert(
         Some("palette"),
         nk(NamedKey::Backspace),
@@ -738,15 +754,51 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("terminal"), cmd(KeyCode::KeyV), TERMINAL_PASTE);
     km.insert(Some("terminal"), cmd(KeyCode::KeyT), TERMINAL_TAB_NEW);
     km.insert(Some("terminal"), cmd(KeyCode::KeyW), TERMINAL_TAB_CLOSE);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit1), TERMINAL_TAB_SWITCH_1);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit2), TERMINAL_TAB_SWITCH_2);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit3), TERMINAL_TAB_SWITCH_3);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit4), TERMINAL_TAB_SWITCH_4);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit5), TERMINAL_TAB_SWITCH_5);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit6), TERMINAL_TAB_SWITCH_6);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit7), TERMINAL_TAB_SWITCH_7);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit8), TERMINAL_TAB_SWITCH_8);
-    km.insert(Some("terminal"), cmd(KeyCode::Digit9), TERMINAL_TAB_SWITCH_9);
+    km.insert(
+        Some("terminal"),
+        cmd(KeyCode::Digit1),
+        TERMINAL_TAB_SWITCH_1,
+    );
+    km.insert(
+        Some("terminal"),
+        cmd(KeyCode::Digit2),
+        TERMINAL_TAB_SWITCH_2,
+    );
+    km.insert(
+        Some("terminal"),
+        cmd(KeyCode::Digit3),
+        TERMINAL_TAB_SWITCH_3,
+    );
+    km.insert(
+        Some("terminal"),
+        cmd(KeyCode::Digit4),
+        TERMINAL_TAB_SWITCH_4,
+    );
+    km.insert(
+        Some("terminal"),
+        cmd(KeyCode::Digit5),
+        TERMINAL_TAB_SWITCH_5,
+    );
+    km.insert(
+        Some("terminal"),
+        cmd(KeyCode::Digit6),
+        TERMINAL_TAB_SWITCH_6,
+    );
+    km.insert(
+        Some("terminal"),
+        cmd(KeyCode::Digit7),
+        TERMINAL_TAB_SWITCH_7,
+    );
+    km.insert(
+        Some("terminal"),
+        cmd(KeyCode::Digit8),
+        TERMINAL_TAB_SWITCH_8,
+    );
+    km.insert(
+        Some("terminal"),
+        cmd(KeyCode::Digit9),
+        TERMINAL_TAB_SWITCH_9,
+    );
 
     // ── Terminal normal mode bindings (copy mode / virtual cursor) ──────────
     km.insert(
@@ -797,7 +849,11 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("terminal_normal"), ch('V'), ENTER_VISUAL_LINE);
     km.insert(Some("terminal_normal"), ph(KeyCode::KeyY), YANK_SELECTION);
     km.insert(Some("terminal_normal"), cmd(KeyCode::KeyV), TERMINAL_PASTE);
-    km.insert(Some("terminal_normal"), cmd(KeyCode::KeyT), TERMINAL_TAB_NEW);
+    km.insert(
+        Some("terminal_normal"),
+        cmd(KeyCode::KeyT),
+        TERMINAL_TAB_NEW,
+    );
     km.insert(
         Some("terminal_normal"),
         cmd(KeyCode::KeyW),

@@ -1,10 +1,6 @@
 use std::ops::Range;
 
-use super::{
-    engine::normalize_spans,
-    HighlightCategory,
-    HighlightSpan,
-};
+use super::{HighlightCategory, HighlightSpan, engine::normalize_spans};
 
 fn span(range: Range<usize>, category: HighlightCategory) -> HighlightSpan {
     HighlightSpan { range, category }
@@ -84,11 +80,7 @@ fn normalize_spans_clips_to_byte_window() {
 #[test]
 fn normalize_spans_sanitizes_utf8_boundaries() {
     let source = "aéb";
-    let normalized = normalize_spans(
-        source,
-        vec![span(1..2, HighlightCategory::String)],
-        None,
-    );
+    let normalized = normalize_spans(source, vec![span(1..2, HighlightCategory::String)], None);
 
     assert_eq!(normalized, vec![span(1..3, HighlightCategory::String)]);
 }

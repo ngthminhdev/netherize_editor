@@ -7,8 +7,7 @@ use cosmic_text::{
 
 const BUNDLED_GOOGLE_SANS_CODE_FONT: &[u8] =
     include_bytes!("../../config/fonts/GoogleSansCode.ttf");
-const BUNDLED_HACK_NERD_FONT: &[u8] =
-    include_bytes!("../../config/fonts/HackNerdFont-Regular.ttf");
+const BUNDLED_HACK_NERD_FONT: &[u8] = include_bytes!("../../config/fonts/HackNerdFont-Regular.ttf");
 
 use crate::config::theme_config::srgb_rgba_to_linear_f32;
 

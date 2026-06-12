@@ -1,7 +1,7 @@
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::ops::Range;
 use tree_sitter::Node;
-use once_cell::sync::Lazy;
 
 use crate::config::theme_config::ThemeConfig;
 use crate::syntax::{
@@ -13,10 +13,10 @@ use std::collections::HashMap;
 
 mod categories;
 mod engine;
-mod queries;
-mod spans;
 #[cfg(test)]
 mod normalize_tests;
+mod queries;
+mod spans;
 
 pub use categories::{HighlightCategory, HighlightPalette};
 pub use queries::highlight_markdown_inline;
@@ -55,8 +55,12 @@ pub fn generate_highlight_spans(tree_state: &SyntaxTreeState, source: &str) -> V
         source,
         None,
     );
-    let injected =
-        generate_injection_highlights(tree_state.language_id(), tree_state.root_node(), source, None);
+    let injected = generate_injection_highlights(
+        tree_state.language_id(),
+        tree_state.root_node(),
+        source,
+        None,
+    );
     if injected.is_empty() {
         base
     } else {
@@ -159,13 +163,10 @@ pub fn generate_dotenv_highlight_spans(source: &str) -> Vec<HighlightSpan> {
     spans
 }
 
-static RE_PT_STRING: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"#).unwrap()
-});
+static RE_PT_STRING: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"#).unwrap());
 
-static RE_PT_HASH: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\b[0-9a-fA-F]{8,}\b").unwrap()
-});
+static RE_PT_HASH: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b[0-9a-fA-F]{8,}\b").unwrap());
 
 static RE_PT_PATH: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)\b[a-z0-9_.-]+(?:/[a-z0-9_.-]+)+\b|/(?:[a-z0-9_.-]+/)+[a-z0-9_.-]+\b|\b[a-z0-9_.-]+\.(?:js|ts|jsx|tsx|rs|go|py|c|cpp|h|html|css|json|yaml|yml|toml|md|txt|sh|bash|xml|proto|rs)\b").unwrap()
@@ -175,33 +176,27 @@ static RE_PT_URL: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"\bhttps?://[a-zA-Z0-9_.-]+(?::\d+)?(?:/[a-zA-Z0-9_.-]+)*\b").unwrap()
 });
 
-static RE_PT_COMMENT: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)(?:^\s*#|^\s*//|^\s*;|(?:\s+#|\s+//|\s+;)).*$").unwrap()
-});
+static RE_PT_COMMENT: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)(?:^\s*#|^\s*//|^\s*;|(?:\s+#|\s+//|\s+;)).*$").unwrap());
 
-static RE_PT_KEY_VALUE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)^[a-zA-Z0-9_.-]+\s*[:=]").unwrap()
-});
+static RE_PT_KEY_VALUE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^[a-zA-Z0-9_.-]+\s*[:=]").unwrap());
 
 static RE_PT_STATUS: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\b(?:ERROR|WARN|WARNING|INFO|DEBUG|TRACE|FATAL|OK|SUCCESS|FAIL|FAILED|TODO|FIXME)\b").unwrap()
+    Regex::new(
+        r"\b(?:ERROR|WARN|WARNING|INFO|DEBUG|TRACE|FATAL|OK|SUCCESS|FAIL|FAILED|TODO|FIXME)\b",
+    )
+    .unwrap()
 });
 
-static RE_PT_DATE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\b\d{4}-\d{2}-\d{2}\b").unwrap()
-});
+static RE_PT_DATE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b\d{4}-\d{2}-\d{2}\b").unwrap());
 
-static RE_PT_TIME: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\b\d{2}:\d{2}:\d{2}(?:\.\d+)?\b").unwrap()
-});
+static RE_PT_TIME: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\b\d{2}:\d{2}:\d{2}(?:\.\d+)?\b").unwrap());
 
-static RE_PT_NUMBER: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\b\d+(?:\.\d+)?\b").unwrap()
-});
+static RE_PT_NUMBER: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b\d+(?:\.\d+)?\b").unwrap());
 
-static RE_PT_BOOL: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\b(?:true|false|null|nil)\b").unwrap()
-});
+static RE_PT_BOOL: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b(?:true|false|null|nil)\b").unwrap());
 
 pub fn generate_plaintext_highlight_spans(source: &str) -> Vec<HighlightSpan> {
     let mut raw = Vec::new();

@@ -789,9 +789,11 @@
         "user-reported",
         "rs"
       ],
-      "related_bugs": [],
-      "occurrences": 1,
-      "last_seen": "2026-06-11T00:00:00Z"
+      "related_bugs": [
+        "bug-048"
+      ],
+      "occurrences": 2,
+      "last_seen": "2026-06-12T00:15:00+07:00"
     },
     {
       "id": "bug-048",
@@ -864,10 +866,404 @@
       "file": "src/async_runtime/scheduler/file_watch.rs",
       "root_cause": "The notify file-watch worker emitted FileSystemEvents via emit_message (no wake) and dispatch.rs never passed event_proxy into run_file_watch_request. With ControlFlow::Wait the winit loop stayed asleep, so FileSystemEvents sat unconsumed in the mpsc channel until an unrelated event (keypress/mouse/terminal/1s poll tick) woke it. The whole notify path (workspace rescan, file-picker refresh, conflict detection, rename/delete handling) was effectively dead; only the 1s mtime poll over OPEN buffers worked, so tree-level changes never appeared.",
       "fix": "Passed event_proxy into run_file_watch_request and switched the FileSystemEvents emit to emit_message_and_wake (#1). Also: auto-restart watcher with backoff on failure (#4); non-recursive watch for files opened outside workspace root with dedup set (#5, added recursive flag to StartFileWatch payload); poll mtime compare > -> != to catch git checkout restoring older mtime (#2); self-save ignore now content-based via active_disk_content_matches_memory so genuine external edits within the 2s window still reload (#3); reduced safety-net poll 1s -> 3s (#6); removed debug eprintln noise (#7).",
-      "tags": ["file-watcher", "notify", "event-loop", "winit", "wake", "external-reload", "rust"],
+      "tags": [
+        "file-watcher",
+        "notify",
+        "event-loop",
+        "winit",
+        "wake",
+        "external-reload",
+        "rust"
+      ],
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-06-11T00:00:00.000Z"
+    },
+    {
+      "id": "bug-053",
+      "timestamp": "2026-06-11T16:37:02Z",
+      "error_message": "Ctrl-U/Ctrl-D still do not scroll opencode output when the right dock is focused; user asked whether mouse scroll/click should be allowed only in the right dock.",
+      "file": "src/app/input/handler.rs, src/app/event_loop/application.rs, src/app/event_loop/commands_ai_chat.rs",
+      "root_cause": "Right-dock Ctrl-U/D was still gated by TerminalFocus/Terminal input context, so a focused right terminal with mode drift could miss the interception and fall through. Mouse wheel/input events were also ignored globally, so the right-dock terminal had no mouse scroll or xterm mouse click path.",
+      "fix": "Scoped Ctrl-U/D interception to KeybindingContext.right_sidebar_terminal regardless of mode drift, made AiChatFocus always re-enter TerminalFocus, and added right-dock-only mouse wheel scrolling plus SGR mouse click forwarding through TerminalWriteInput.",
+      "tags": [
+        "right-sidebar",
+        "opencode",
+        "terminal",
+        "scroll",
+        "mouse",
+        "ctrl-u",
+        "ctrl-d"
+      ],
+      "related_bugs": [
+        "bug-052"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T16:37:02Z"
+    },
+    {
+      "id": "bug-054",
+      "timestamp": "2026-06-11T16:37:02Z",
+      "error_message": "cargo test rejected two test-name filters passed as positional arguments: unexpected argument 'sgr_mouse_sequence_uses_press_and_release_suffixes'",
+      "file": "verification command",
+      "root_cause": "Cargo accepts only one TESTNAME filter before the '--' separator; passing two separate test names is invalid.",
+      "fix": "Reran the two focused tests as separate cargo test commands.",
+      "tags": [
+        "verification",
+        "cargo-test",
+        "command-syntax"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T16:37:02Z"
+    },
+    {
+      "id": "bug-055",
+      "timestamp": "2026-06-12T00:00:00Z",
+      "error_message": "Terminal regex highlight (log level / strings / numbers / timestamps) is lost on soft-wrapped lines: every time a long log line wraps to the next visual row, the wrapped portion loses its color.",
+      "file": "src/terminal/grid.rs",
+      "root_cause": "apply_regex_highlights ran the regexes per physical grid row (cols-wide), independently. When a logical log line wraps across rows, the continuation row has no log-level prefix (so it lost the base line color) and a token split across the wrap boundary (e.g. a quoted string \"solo_quest...t_backend\") doesn't match on the second row because its opening quote is on the first row. The grid never recorded which rows were soft-wrap continuations.",
+      "fix": "Added wrap_continued flag to TerminalCell, set on the first cell of a row when print_char_at_cursor auto-wraps (cursor_col >= cols, no newline). Rewrote apply_regex_highlights to walk the buffer one LOGICAL line at a time (maximal run of rows where each after the first has wrap_continued), join their text, run regexes on the joined text, and map char index i back to physical (row start + i/cols, col i%cols). Two-phase (collect (row,col,color) under immutable borrow, then apply) to avoid borrow conflicts. Data-type matches pushed lowest-precedence-first so later writes win, preserving original string>number>bool>null>time>base-color precedence. Removed set_visible_row_style_fg; added row_is_wrap_continued + set_style_fg_absolute. Tests: apply_regex_highlights_string_spanning_soft_wrap_keeps_color_on_continuation, apply_regex_highlights_log_level_spans_soft_wrap.",
+      "tags": [
+        "terminal",
+        "highlight",
+        "regex",
+        "soft-wrap",
+        "line-wrap",
+        "grid",
+        "rendering",
+        "user-reported",
+        "rs"
+      ],
+      "related_bugs": [
+        "bug-047"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-06-12T00:00:00Z"
+    },
+    {
+      "id": "bug-056",
+      "timestamp": "2026-06-11T17:52:30.730Z",
+      "error_message": "Wrong reference: grid should be cell_shapes",
+      "file": "src/terminal/mod.rs",
+      "root_cause": "Used \"grid\" instead of \"cell_shapes\"",
+      "fix": "Changed grid → cell_shapes",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T17:52:30.730Z"
+    },
+    {
+      "id": "bug-048",
+      "timestamp": "2026-06-12T00:45:00+07:00",
+      "error_message": "Right dock (opencode) renders 'đứt nét': block-element logo (▀▄█) has gaps between cells and vertical borders (┃│) appear as broken dashes. User initially attributed Vietnamese mark loss to this.",
+      "file": "src/terminal/cell_shapes.rs, src/terminal/terminal_renderer.rs, src/text/atlas.rs",
+      "root_cause": "Terminal cells are panel_line_height tall (22px) but block/box-drawing glyphs from the font only cover the font's natural line box (~17px at 14px font). Each row leaves a ~5px uncovered strip, so vertical lines and block art show seams. Fonts can never fill an arbitrary cell height; real terminal emulators (kitty, alacritty) draw these characters procedurally.",
+      "fix": "Added src/terminal/cell_shapes.rs: solid_cell_rects() maps Block Elements (U+2580-259F incl. shades/quadrants) and Box Drawing (light/heavy/double lines, corners, tees, half-lines; rounded mapped to square; doubles approximated as heavy) to cell-filling rectangles. GlyphAtlas::solid_entry() lazily reserves a 4x4 white texel region (entry points at inset 2x2 core to avoid Nearest-sampling bleed). build_instances() emits these as GlyphInstance quads with fg color (alpha scaled for ░▒▓) and skips font shaping for those chars. Dashed/diagonal chars still use font glyphs.",
+      "tags": [
+        "terminal",
+        "rendering",
+        "box-drawing",
+        "block-elements",
+        "right-dock",
+        "opencode",
+        "user-reported",
+        "rs"
+      ],
+      "related_bugs": [
+        "bug-047"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-06-12T00:45:00+07:00"
+    },
+    {
+      "id": "bug-058",
+      "timestamp": "2026-06-11T18:07:05.078Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/input/handler.rs",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 21→25 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T18:07:05.078Z"
+    },
+    {
+      "id": "bug-059",
+      "timestamp": "2026-06-11T18:07:25.689Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/event_loop/application.rs",
+      "root_cause": "5 lines replaced/restructured",
+      "fix": "Rewrote 11→21 lines (5 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T18:07:25.689Z"
+    },
+    {
+      "id": "bug-060",
+      "timestamp": "2026-06-11T18:07:46.469Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/input/tests.rs",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 16→25 lines (2 removed) | Also: matches!(translated.command, Command::TerminalWrit; \"bottom terminal Ctrl+U should forward raw, got {:",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-06-11T18:08:08.050Z"
+    },
+    {
+      "id": "bug-057",
+      "timestamp": "2026-06-12T00:00:00+07:00",
+      "error_message": "Ctrl-U/D in the focused right dock still don't scroll the opencode chat content even after bug-053's interception fix; user asked whether to allow mouse (scroll/click) in the right dock instead.",
+      "file": "src/app/input/handler.rs, src/app/event_loop/application.rs",
+      "root_cause": "The bug-045/053 plumbing was correct but scrolled the WRONG surface: Ctrl-U/D mapped to TerminalScrollHalfPageUp/Down and mouse wheel to TerminalScrollUp/Down, which only move our grid's scrollback view. opencode is a full-screen TUI that repaints in place via cursor positioning + erase - it never emits newlines at the bottom row, so its chat history NEVER enters our scrollback (scrollback stays empty/stale frames). The history lives inside opencode's own viewport; no amount of local scrollback scrolling can reveal it.",
+      "fix": "Forward scroll intent INTO opencode instead of scrolling locally. right_chat_scroll_command now maps Ctrl-U/D to TerminalWriteInput(\"\\x1b\\x15\" / \"\\x1b\\x04\") - opencode's default messages_half_page_up/down keybinds (ctrl+alt+u/d, legacy ESC-prefix encoding). handle_right_terminal_mouse_wheel now writes SGR wheel events (sgr_wheel_sequence: button 64 up / 65 down, press-only 'M') at the hovered cell (grid-center fallback) via TerminalWriteInput; opencode's mouse capture is on by default so it scrolls its message list itself. Clicks were already SGR-forwarded. Updated tests incl. new sgr_wheel_sequence_is_press_only_with_wheel_button_codes; full suite 705 passed.",
+      "tags": [
+        "right-sidebar",
+        "opencode",
+        "terminal",
+        "scroll",
+        "mouse",
+        "ctrl-u",
+        "ctrl-d",
+        "tui-viewport",
+        "sgr-mouse",
+        "user-reported"
+      ],
+      "related_bugs": [
+        "bug-045",
+        "bug-053"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-06-12T00:00:00+07:00"
+    },
+    {
+      "id": "bug-062",
+      "timestamp": "2026-06-11T18:23:21.657Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/async_runtime/scheduler/file_watch.rs",
+      "root_cause": "4 lines replaced/restructured",
+      "fix": "Rewrote 4→11 lines (4 removed) | Also: extend_unique_file_events(; extend_unique_file_events(",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-06-11T18:23:53.555Z"
+    },
+    {
+      "id": "bug-063",
+      "timestamp": "2026-06-11T18:27:17.342Z",
+      "error_message": "Wrong reference: normalize_notify_event should be file_watch_restart_backoff",
+      "file": "src/async_runtime/scheduler/tests.rs",
+      "root_cause": "Used \"normalize_notify_event\" instead of \"file_watch_restart_backoff\"",
+      "fix": "Changed normalize_notify_event → file_watch_restart_backoff",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T18:27:17.342Z"
+    },
+    {
+      "id": "bug-058",
+      "timestamp": "2026-06-12T00:00:00+07:00",
+      "error_message": "File-watcher audit (user-requested): external edits by Claude Code/other IDEs could still leave the editor showing stale code in 3 cases.",
+      "file": "src/app/app_state/palette.rs, src/app/event_loop/setup.rs, src/async_runtime/scheduler/file_watch.rs, src/app/event_loop/async_results/{filesystem,failure}.rs, src/app/event_loop/application.rs, src/app/app_state/{mod,buffers}.rs",
+      "root_cause": "(1) macOS FSEvents splits renames into two single-path events (new_path=None); atomic saves (write temp + rename over) therefore arrived as Rename{new_path:None} and BOTH the active and inactive branches of apply_external_file_events skipped them entirely - reload only happened via the 3s poll. (2) Inactive-buffer reloads updated the in-memory rope but never told the LSP server; the stale didOpen overlay SHADOWS new on-disk content, so cross-file diagnostics in the active file were computed against old code until the user revisited the buffer. (3) The watcher gave up permanently after 5 restarts, silently - tree-level changes (new files created by agents) stopped appearing forever.",
+      "fix": "(1) Normalize Rename{new_path:None, path still exists} to Modify at the top of apply_external_file_events (rescan decision still made on raw events first). (2) Added ExternalChangeReport.inactive_reloaded_paths + AppState::buffer_text_for_path + AppShell::submit_lsp_sync_for_externally_reloaded_path (sends LspDidOpen which the worker turns into didOpen-or-didChange; never starts a server for inactive buffers); called from both the notify path (filesystem.rs) and the 3s poll (application.rs). (3) Watcher now restarts forever with exponential backoff 2s->30s cap, resets after a 60s stable run, and emits Failed exactly once past 5 restarts -> failure.rs shows a 'File watcher degraded' toast. Bonus: HashSet dedup for event batches (was O(n^2) Vec::contains). Tests: external_rename_without_new_path_on_existing_file_reloads_like_modify, external_modify_of_inactive_buffer_is_reported_for_lsp_sync, file_watch_restart_backoff_grows_exponentially_and_caps_at_30s. Full suite 708 passed.",
+      "tags": [
+        "file-watcher",
+        "fsevents",
+        "rename",
+        "atomic-save",
+        "lsp-overlay",
+        "didchange",
+        "stale-content",
+        "watcher-restart",
+        "audit-found"
+      ],
+      "related_bugs": [
+        "bug-052"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-06-12T00:00:00+07:00"
+    },
+    {
+      "id": "bug-065",
+      "timestamp": "2026-06-11T19:29:42.291Z",
+      "error_message": "Function not marked async",
+      "file": "src/async_runtime/scheduler/dispatch.rs",
+      "root_cause": "Function uses await but wasn't declared async",
+      "fix": "Added async modifier",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T19:29:42.291Z"
+    },
+    {
+      "id": "bug-066",
+      "timestamp": "2026-06-11T19:31:26.843Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/app_state/palette.rs",
+      "root_cause": "11 lines replaced/restructured",
+      "fix": "Rewrote 17→8 lines (11 removed) | Also: // Check if this is a self-save event by comparing; let current_active_path = event.path.clone(); | Also: match std::fs::read_to_string(&buffer.path) {; Ok(content) => { | Also: if let Ok(content) = std::fs::read_to_string(new_p; buffer.in_memory_text = Some(Rope::from_str(&conte",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 4,
+      "last_seen": "2026-06-11T19:32:01.838Z"
+    },
+    {
+      "id": "bug-067",
+      "timestamp": "2026-06-11T19:32:24.247Z",
+      "error_message": "Function not marked async",
+      "file": "src/app/app_state/palette.rs",
+      "root_cause": "Function uses await but wasn't declared async",
+      "fix": "Added async modifier",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T19:32:24.247Z"
+    },
+    {
+      "id": "bug-068",
+      "timestamp": "2026-06-11T19:33:46.239Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/app/app_state/buffers.rs",
+      "root_cause": "37 lines replaced/restructured",
+      "fix": "Rewrote 94→56 lines (37 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T19:33:46.239Z"
+    },
+    {
+      "id": "bug-069",
+      "timestamp": "2026-06-11T19:34:04.082Z",
+      "error_message": "Wrong reference: reloaded_paths should be changed_paths",
+      "file": "src/app/app_state/buffers.rs",
+      "root_cause": "Used \"reloaded_paths\" instead of \"changed_paths\"",
+      "fix": "Changed reloaded_paths → changed_paths",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T19:34:04.082Z"
+    },
+    {
+      "id": "bug-070",
+      "timestamp": "2026-06-11T19:35:52.285Z",
+      "error_message": "Function not marked async",
+      "file": "src/app/event_loop/async_results/filesystem.rs",
+      "root_cause": "Function uses await but wasn't declared async",
+      "fix": "Added async modifier",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T19:35:52.285Z"
+    },
+    {
+      "id": "bug-071",
+      "timestamp": "2026-06-11T19:36:02.574Z",
+      "error_message": "Function not marked async",
+      "file": "src/app/event_loop/setup.rs",
+      "root_cause": "Function uses await but wasn't declared async",
+      "fix": "Added async modifier",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T19:36:02.574Z"
+    },
+    {
+      "id": "bug-072",
+      "timestamp": "2026-06-11T19:41:00.620Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/terminal/grid.rs",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 10→14 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-11T19:41:00.620Z"
+    },
+    {
+      "id": "bug-059",
+      "timestamp": "2026-06-12T00:00:00+07:00",
+      "error_message": "Main-thread blocking I/O in external-change pipeline (#4 from file-watcher audit) + terminal regex highlight re-processed entire scrollback on every PTY chunk (quadratic).",
+      "file": "src/app/app_state/{palette,buffers,mod,overlays}.rs, src/async_runtime/{message.rs,scheduler/dispatch.rs}, src/app/event_loop/{setup.rs,application.rs,async_results/{filesystem,mod,terminal}.rs}, src/workspace/model.rs, src/terminal/grid.rs",
+      "root_cause": "(a) apply_external_file_events did std::fs::read_to_string per buffer + workspace.rescan() (full tree walk) synchronously in the winit event loop; the 3s poll also read files inline. Mass external changes (git checkout, agent bulk edits) caused UI hitches. (b) apply_regex_highlights ran 8 regexes over total_rows() = scrollback + live on EVERY PtyOutput chunk; busy terminals became O(scrollback x chunks) on the UI thread.",
+      "fix": "(a) Two-phase pipeline: phase 1 (apply_external_file_events) only triages - pending_reload_paths + workspace_rescan_needed flags in ExternalChangeReport; new worker payloads ReadExternalFiles (tokio::fs reads -> ExternalFilesRead) and RescanWorkspace (spawn_blocking tree walk -> WorkspaceRescanned, dropped on scan error to avoid swapping in an empty tree); phase 2 apply_external_file_contents re-validates dirty state at apply time (in-flight user edits become conflicts), detects self-save echo by content compare (replaced the last_saved_at/SELF_SAVE_IGNORE_WINDOW disk-read heuristic, now deleted), and apply_workspace_rescan swaps nodes + refreshes picker. Poll path renamed collect_externally_modified_open_buffers - stat-only, submits ReadExternalFiles. Tests use apply_external_file_events_for_test driver simulating the worker synchronously. (b) apply_regex_highlights_incremental(rows_scrolled): only re-highlights live grid + rows just pushed to scrollback, walking back over wrap_continued to logical line start; full-pass apply_regex_highlights() kept for tests. Note: feed_chunk tests must use \\r\\n - bare \\n leaves cursor_col unchanged (no implicit CR). Full suite 710 passed.",
+      "tags": [
+        "performance",
+        "main-thread-io",
+        "file-watcher",
+        "two-phase",
+        "worker",
+        "terminal",
+        "regex-highlight",
+        "scrollback",
+        "quadratic",
+        "incremental"
+      ],
+      "related_bugs": [
+        "bug-058",
+        "bug-052",
+        "bug-055"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-06-12T00:00:00+07:00"
     }
   ]
 }

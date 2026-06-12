@@ -19,6 +19,14 @@ pub(super) fn handle_worker_failure(app: &mut AppShell, event: WorkerEvent) {
         if topic == RequestTopic::LspClient {
             app.pending_lsp_server = None;
         }
+        // File watcher keeps restarting forever; it emits Failed exactly once
+        // when crossing the degraded threshold so the user learns that live
+        // external updates may lag (only the 3s open-buffer poll is guaranteed).
+        if topic == RequestTopic::WorkspaceWatch {
+            app.show_transient_toast(
+                "File watcher degraded — external changes may lag (3s poll fallback)".to_string(),
+            );
+        }
         // completionItem/resolve failed (e.g. server doesn't advertise resolveProvider).
         // Mark as resolved so the panel shows "No documentation available".
         if app.completion_resolve_request_id == Some(request_id) {

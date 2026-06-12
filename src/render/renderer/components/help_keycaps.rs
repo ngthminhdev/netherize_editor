@@ -46,10 +46,7 @@ pub fn help_keycap_palette(
         .trim()
         .to_ascii_lowercase();
 
-    let (tone, text) = if matches!(
-        normalized.as_str(),
-        "cmd" | "⌘" | "option" | "opt" | "alt"
-    ) {
+    let (tone, text) = if matches!(normalized.as_str(), "cmd" | "⌘" | "option" | "opt" | "alt") {
         (accent, fg)
     } else if matches!(normalized.as_str(), "spc" | "space" | "leader") {
         (warning, fg)
@@ -101,7 +98,11 @@ pub fn layout_help_keycaps(
     let mut cursor_x = origin_x;
     let scale = (font_size / 14.0).max(0.5);
     let key_gap = (font_size * 0.44).max(4.0 * scale);
-    let key_height = layout_clamp(font_size + 12.0 * scale, 24.0 * scale, row_height - 6.0 * scale);
+    let key_height = layout_clamp(
+        font_size + 12.0 * scale,
+        24.0 * scale,
+        row_height - 6.0 * scale,
+    );
     let key_radius = layout_clamp(key_height * 0.20, 4.0 * scale, 12.0 * scale);
     let border_thickness = layout_clamp(key_height * 0.06, 1.0, 1.5 * scale);
     let key_padding_x = layout_clamp(font_size * 0.8, 8.0 * scale, 24.0 * scale);
