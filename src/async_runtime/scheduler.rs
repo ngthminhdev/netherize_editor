@@ -29,6 +29,7 @@ mod syntax_jobs;
 mod tests;
 
 pub use runtime::AsyncScheduler;
+pub(crate) use syntax_jobs::resolve_system_path;
 
 /// When a file is below both thresholds the async worker highlights the full
 /// buffer (parse once, generate spans for everything).  Above the thresholds

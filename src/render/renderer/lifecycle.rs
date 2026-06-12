@@ -137,6 +137,7 @@ impl Renderer {
         let diagnostic_hover_text_system = make_text_system(editor_metrics, font_family.as_deref());
         let ai_chat_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let toast_text_system = make_text_system(ui_metrics, font_family.as_deref());
+        let whichkey_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let leap_label_text_system = make_text_system(leap_metrics, font_family.as_deref());
 
         let atlas = GlyphAtlas::new(&device, ATLAS_SIZE, ATLAS_SIZE);
@@ -170,6 +171,8 @@ impl Renderer {
         let diagnostic_hover_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let toast_text_pipeline =
+            make_text_pipeline(&device, &atlas, surface_format, width, height);
+        let whichkey_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let leap_label_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
@@ -286,6 +289,7 @@ impl Renderer {
             panel_padding: 10.0,
             panel_corner_radius: 10.0,
             round_ui: true,
+            ui_scale: 1.0,
             sidebar_base_padding: 10.0,
             sidebar_indent_per_depth: 15.0,
             topbar_padding_x: 14.0,
@@ -320,6 +324,11 @@ impl Renderer {
             toast_glyph_instances: Vec::new(),
             toast_chrome_instances: Vec::new(),
             toast_scissor: None,
+            whichkey_text_system,
+            whichkey_text_pipeline,
+            whichkey_glyph_instances: Vec::new(),
+            whichkey_chrome_instances: Vec::new(),
+            whichkey_scissor: None,
             ai_chat_text_system,
             ai_chat_text_pipeline,
             ai_chat_header_image_pipeline,
@@ -378,6 +387,7 @@ impl Renderer {
             theme.editor.line_height,
         ));
         self.toast_text_system.set_metrics(ui_metrics);
+        self.whichkey_text_system.set_metrics(ui_metrics);
         self.ai_chat_text_system.set_metrics(ui_metrics);
         let panel_metrics = Metrics::new(theme.ui.panel_font_size, theme.ui.panel_line_height);
         self.welcome_logo_text_system.set_metrics(panel_metrics);
@@ -410,6 +420,7 @@ impl Renderer {
         self.system_dep_text_system.set_font_family(family);
         self.diagnostic_hover_text_system.set_font_family(family);
         self.toast_text_system.set_font_family(family);
+        self.whichkey_text_system.set_font_family(family);
         self.leap_label_text_system.set_font_family(family);
         self.ai_chat_text_system.set_font_family(family);
 
@@ -457,6 +468,10 @@ impl Renderer {
         self.last_palette_model = None;
     }
 
+    pub fn set_ui_scale(&mut self, scale: f32) {
+        self.ui_scale = scale.max(0.25);
+    }
+
     pub fn apply_ui_config(&mut self, ui: &UiConfig) {
         self.editor_padding_x = ui.layout.inner_padding.max(ui.spacing.editor_padding);
         self.editor_padding_y = ui.layout.inner_padding.max(ui.spacing.editor_padding);
@@ -490,6 +505,7 @@ impl Renderer {
         self.topbar_text_system.set_metrics(status_metrics);
         self.statusbar_text_system.set_metrics(status_metrics);
         self.toast_text_system.set_metrics(status_metrics);
+        self.whichkey_text_system.set_metrics(status_metrics);
         self.last_topbar_layout_key = None;
         self.last_statusbar_layout_key = None;
         self.last_palette_model = None;
@@ -515,6 +531,7 @@ impl Renderer {
             &mut self.system_dep_text_pipeline,
             &mut self.diagnostic_hover_text_pipeline,
             &mut self.toast_text_pipeline,
+            &mut self.whichkey_text_pipeline,
             &mut self.leap_label_text_pipeline,
             &mut self.ai_chat_text_pipeline,
         ] {

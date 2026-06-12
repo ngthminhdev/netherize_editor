@@ -1,7 +1,21 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-12T02:54:50.840Z
-> Files: 375 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-12T15:38:50.645Z
+> Files: 382 tracked | Anatomy hits: 0 | Misses: 0
+
+## ../../../../tmp/
+
+- `codestral_ctx_test.py` — average, ask (~1020 tok)
+- `multiline_test.py` — ask, show, process (~588 tok)
+- `sanitize_check.py` — Mirror of src/app/event_loop/async_results/ai.rs::sanitize_inline_suggestion (~490 tok)
+
+## ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/
+
+- `onboarding-roadmap.md` — Declares blocks (~497 tok)
+
+## ../../.config/netherize/
+
+- `ui.toml` (~139 tok)
 
 ## ./
 
@@ -9,6 +23,7 @@
 - `.DS_Store` (~1640 tok)
 - `.gitignore` — Git ignore rules (~32 tok)
 - `AGENTS.md` — Project Rules Precedence (~1490 tok)
+- `AI_INLINE_COMPLETION_STATUS_REPORT.md` — AI inline completion audit/status report (~1600 tok)
 - `BUILD.md` — Build Instructions (~915 tok)
 - `Cargo.toml` — Rust package manifest (~669 tok)
 - `CLAUDE.md` — OpenWolf (~1543 tok)
@@ -189,11 +204,11 @@
 ## config/
 
 - `.DS_Store` (~1640 tok)
-- `ai.toml` (~79 tok)
+- `ai.toml` (~219 tok)
 
 ## config/keymaps/
 
-- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5308 tok)
+- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5194 tok)
 
 ## config/themes/
 
@@ -283,7 +298,7 @@
 
 ## config/ui/
 
-- `default.toml` (~377 tok)
+- `default.toml` (~391 tok)
 
 ## docs/
 
@@ -315,85 +330,85 @@
 - `file_picker.rs` — FilePickerEntry: open, close, append_query, backspace_query + 6 more (~1644 tok)
 - `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~2135 tok)
 - `mod.rs` (~66 tok)
-- `persistence.rs` — AppPersistentState: load, save, push_recent, push_recent_with_icon + 4 more (~1318 tok)
-- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~15913 tok)
+- `persistence.rs` — True after the one-time first-run key-hint toast was shown. (~1263 tok)
+- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~16007 tok)
 
 ## src/app/app_state/
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer + 12 more (~8220 tok)
-- `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag + 17 more (~10839 tok)
-- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new + 4 more (~24547 tok)
+- `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~10520 tok)
+- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~23243 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
 - `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~18369 tok)
-- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_dart_env_selector + 22 more (~18910 tok)
-- `settings.rs` — [derive(Debug, Clone, PartialEq)] (~1971 tok)
-- `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, preview_file_history_index + 9 more (~11562 tok)
+- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_dart_ (~17907 tok)
+- `settings.rs` — window.scale_factor_override — None = follow the display ("Auto"). (~1990 tok)
+- `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, prev (~12339 tok)
 - `tests.rs` — [cfg(test)] (~21632 tok)
 - `workspace.rs` — attach_workspace, clear_workspace_session_state, workspace_root_path, workspace_nodes + 22 more (~4384 tok)
 
 ## src/app/event_loop/
 
-- `application.rs` — [cfg(target_os = "macos")] (~27326 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~27029 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~11819 tok)
-- `commands_completion.rs` (~16330 tok)
-- `commands_editor.rs` (~5438 tok)
+- `commands_completion.rs` (~15455 tok)
+- `commands_editor.rs` (~5335 tok)
 - `commands_explorer.rs` (~7819 tok)
-- `commands_lsp.rs` (~9653 tok)
+- `commands_lsp.rs` (~9141 tok)
 - `commands_palette.rs` (~7900 tok)
 - `commands_prompts.rs` (~7222 tok)
-- `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~6809 tok)
-- `commands_settings.rs` (~4692 tok)
+- `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~7036 tok)
+- `commands_settings.rs` (~5021 tok)
 - `commands_terminal.rs` (~6896 tok)
-- `commands_tests.rs` — [derive(Default)] (~31888 tok)
-- `commands.rs` — [path = "commands_ai_chat.rs"] (~10368 tok)
+- `commands_tests.rs` — [derive(Default)] (~29998 tok)
+- `commands.rs` — [path = "commands_ai_chat.rs"] (~10265 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18582 tok)
-- `mod.rs` — Struct: AppShell (~6944 tok)
-- `setup.rs` — new, new_for_tests (~22515 tok)
+- `mod.rs` — Struct: AppShell (~6788 tok)
+- `setup.rs` — new, new_for_tests (~21919 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
 
-- `ai.rs` (~938 tok)
-- `failure.rs` (~1384 tok)
+- `ai.rs` — Chars of buffer text after the caret used to trim suggestion/suffix overlap. (~2878 tok)
+- `failure.rs` — Consecutive inline-completion failures before the user is told once and (~1604 tok)
 - `filesystem.rs` (~1750 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
-- `lsp.rs` (~9836 tok)
+- `lsp.rs` (~9284 tok)
 - `mod.rs` (~9705 tok)
 - `preview.rs` (~993 tok)
 - `shell.rs` (~112 tok)
 - `syntax.rs` (~421 tok)
-- `system.rs` (~1996 tok)
+- `system.rs` (~1916 tok)
 - `terminal.rs` (~3021 tok)
 
 ## src/app/input/
 
-- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix + 3 more (~20186 tok)
+- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix (~20114 tok)
 - `helpers.rs` — Trả về true nếu đây là event modifier-only (ShiftLeft, ShiftRight, ControlLeft...). (~4366 tok)
 - `mod.rs` (~69 tok)
 - `model.rs` — Dữ liệu key đã chuẩn hóa để tách phần "đọc winit event" (~764 tok)
-- `pending.rs` — [derive(Debug, Clone, PartialEq, Eq)] (~2421 tok)
-- `tests.rs` (~18842 tok)
+- `pending.rs` — [derive(Debug, Clone, PartialEq, Eq)] (~2406 tok)
+- `tests.rs` (~18491 tok)
 
 ## src/app/input_map/
 
 - `focus.rs` (~11494 tok)
 - `helpers.rs` (~180 tok)
-- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette + 7 more (~5174 tok)
+- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette (~5397 tok)
 - `tests.rs` (~16214 tok)
 
 ## src/async_runtime/
 
 - `dart_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~1030 tok)
-- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~7595 tok)
+- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~7100 tok)
 - `mod.rs` (~22 tok)
 - `python_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~948 tok)
-- `scheduler.rs` — Declares FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD (~2480 tok)
+- `scheduler.rs` — Declares FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD (~2328 tok)
 
 ## src/async_runtime/scheduler/
 
 - `ai_jobs.rs` — Platform install command for opencode: (~3926 tok)
-- `ai.rs` (~1994 tok)
+- `ai.rs` (~1916 tok)
 - `dispatch.rs` (~7139 tok)
 - `emit.rs` (~458 tok)
 - `file_watch.rs` — Declares FILE_WATCH_DEGRADED_THRESHOLD (~3241 tok)
@@ -405,18 +420,18 @@
 - `lsp.rs` (~7248 tok)
 - `pty.rs` (~3903 tok)
 - `runtime.rs` — Runtime wrapper duy nhất cho background jobs. (~839 tok)
-- `syntax_jobs.rs` (~7416 tok)
+- `syntax_jobs.rs` (~7423 tok)
 - `tests.rs` (~1915 tok)
 
 ## src/config/
 
 - `ai_config.rs` — [derive(Debug, Clone, Deserialize, Serialize, Default)] (~1206 tok)
 - `keymap_config.rs` — Root structure of a `.toml` keymap profile file. (~350 tok)
-- `keymap_loader.rs` — Load and layer keymap profiles, returning a flat list of validated bindings. (~1675 tok)
+- `keymap_loader.rs` — Load and layer keymap profiles, returning a flat list of validated bindings. (~1764 tok)
 - `mod.rs` (~35 tok)
 - `paths.rs` — user_config_root, legacy_app_state_root (~205 tok)
 - `theme_config.rs` — Theme configuration entrypoint. (~182 tok)
-- `ui_config.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~9203 tok)
+- `ui_config.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~8633 tok)
 
 ## src/config/theme_config/
 
@@ -427,8 +442,8 @@
 
 ## src/core/
 
-- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~9872 tok)
-- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5569 tok)
+- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~9448 tok)
+- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5259 tok)
 - `mod.rs` (~35 tok)
 - `mode.rs` — Các mode cốt lõi của editor. (~4298 tok)
 - `text_object.rs` — find_text_object_range (~1753 tok)
@@ -436,13 +451,13 @@
 
 ## src/core/command_dispatch/
 
-- `common.rs` — Struct: DispatchReport (~1739 tok)
+- `common.rs` — Struct: DispatchReport (~1802 tok)
 - `editing.rs` (~10629 tok)
-- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~4642 tok)
-- `navigation.rs` (~3287 tok)
-- `palette.rs` (~6937 tok)
+- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~4342 tok)
+- `navigation.rs` — Chụp lại (file, line, col) hiện tại trước một jump-motion (gg/G/{}/n/N). (~3534 tok)
+- `palette.rs` (~6718 tok)
 - `session.rs` (~4027 tok)
-- `tests.rs` (~18328 tok)
+- `tests.rs` (~18631 tok)
 
 ## src/lsp/
 
@@ -462,7 +477,7 @@
 - `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
 - `region_pipeline.rs` — RegionDrawInstance: new, with_radius, new, update_screen_size + 3 more (~3035 tok)
-- `renderer.rs` — Core renderer types and module layout. (~4530 tok)
+- `renderer.rs` — Core renderer types and module layout. (~4637 tok)
 - `surface.rs` — SurfaceState giữ toàn bộ thông tin liên quan đến swapchain/surface. (~797 tok)
 - `text_pipeline.rs` — TextPipeline: new, update_screen_size, upload_instances, draw + 1 more (~2779 tok)
 
@@ -471,9 +486,9 @@
 - `components.rs` (~123 tok)
 - `editor.rs` — Editor viewport rendering modules. (~2289 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3458 tok)
-- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~6991 tok)
+- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~6729 tok)
 - `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~3160 tok)
-- `ui.rs` — Panel UI rendering modules. (~42 tok)
+- `ui.rs` — Panel UI rendering modules. (~43 tok)
 
 ## src/render/renderer/components/
 
@@ -486,12 +501,12 @@
 
 - `buffers.rs` — clear_editor_overlays, update_references_buffer_content (~5570 tok)
 - `completion.rs` — Declares COMPLETION_KIND_TEXT (~1959 tok)
-- `extensions.rs` — update_extensions_manager_content (~9794 tok)
-- `fuzzy.rs` — update_fuzzy_picker_buffer_content (~8206 tok)
-- `help.rs` — update_help_buffer_content (~4176 tok)
+- `extensions.rs` — update_extensions_manager_content (~9544 tok)
+- `fuzzy.rs` — update_fuzzy_picker_buffer_content (~7928 tok)
+- `help.rs` — update_help_buffer_content (~3996 tok)
 - `overlays.rs` — update_editor_overlays (~19960 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11283 tok)
-- `settings.rs` — update_settings_buffer_content (~10591 tok)
+- `settings.rs` — update_settings_buffer_content (~10926 tok)
 - `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~7848 tok)
 
 ## src/render/renderer/editor/buffers/
@@ -504,7 +519,7 @@
 
 ## src/render/renderer/lifecycle/
 
-- `frame.rs` — render (~9400 tok)
+- `frame.rs` — render (~8953 tok)
 
 ## src/render/renderer/palette/
 
@@ -520,11 +535,12 @@
 - `ai_chat.rs` — Right-sidebar AI chat and markdown preview text rendering. (~19536 tok)
 - `popups.rs` — update_lsp_guide_popup, clear_lsp_guide_popup, update_system_dep_popup (~6724 tok)
 - `sidebar.rs` — update_sidebar_content, clear_sidebar (~3120 tok)
-- `statusbar.rs` — Render the three-zone status bar. (~5546 tok)
+- `statusbar.rs` — Render the three-zone status bar. (~5692 tok)
 - `terminal.rs` — update_terminal_content, update_right_terminal_content, clear_right_terminal, update_buffer_terminal_content (~7134 tok)
 - `topbar.rs` — update_topbar_content (~4633 tok)
 - `utils.rs` — Declares BORDER (~2418 tok)
-- `welcome.rs` — update_welcome_screen_content (~9806 tok)
+- `welcome.rs` — update_welcome_screen_content (~9261 tok)
+- `whichkey.rs` — Which-key overlay: while a chord is pending (e.g. Space …), show every (~1932 tok)
 
 ## src/render/shaders/
 

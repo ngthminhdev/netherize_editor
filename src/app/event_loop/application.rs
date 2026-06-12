@@ -8,6 +8,9 @@ use winit::{
 
 const FOCUS_RING_THICKNESS: f32 = 2.0;
 const TERMINAL_SAFE_INSET_X: f32 = 2.0;
+/// Delay before the which-key overlay appears for a pending chord — long
+/// enough that fast chords never flash it, short enough to help a stuck user.
+const WHICHKEY_DELAY: Duration = Duration::from_millis(300);
 
 #[cfg(target_os = "macos")]
 fn apply_platform_window_chrome(
@@ -427,6 +430,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
 
         self.startup_subsystems();
         self.update_window_title();
+        self.show_first_run_tour_if_needed();
         self.request_redraw();
     }
 
@@ -470,6 +474,12 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 self.request_redraw();
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                // Refresh the cached physical size before recomputing: when the
+                // window crosses monitors the old physical size belongs to the
+                // previous scale factor and inflates content_scale (UI zoom bug).
+                if let Some(window) = self.window.as_ref() {
+                    self.window_size = window.inner_size();
+                }
                 self.update_runtime_scaling_for_window(scale_factor);
                 self.request_redraw();
             }
@@ -612,7 +622,13 @@ impl ApplicationHandler<AppEvent> for AppShell {
                             self.request_redraw();
                         }
                     }
-                    Some(InputRouteOutcome::NoDispatch { .. }) | None => {}
+                    Some(InputRouteOutcome::NoDispatch { .. }) => {
+                        // Pending state may have changed (chord started, advanced,
+                        // or cancelled by Esc/timeout): refresh so the statusbar
+                        // pending keys and the which-key overlay track it.
+                        self.request_redraw();
+                    }
+                    None => {}
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
@@ -638,6 +654,7 @@ impl ApplicationHandler<AppEvent> for AppShell {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         self.flush_pending_parse_after_debounce();
         self.flush_pending_git_diff_after_debounce();
+        self.enforce_ai_inline_anchor();
         self.flush_pending_ai_inline_completion();
         self.flush_pending_lsp_did_change_after_debounce();
         self.flush_pending_lsp_completion_after_debounce();
@@ -689,6 +706,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.clear_expired_transient_toast() {
             self.request_redraw();
         }
+        if self.tick_whichkey_delay() {
+            self.request_redraw();
+        }
         if self.app_state.workspace_is_inputting_filter() {
             self.sidebar_needs_layout = true;
             self.request_redraw();
@@ -731,6 +751,15 @@ impl ApplicationHandler<AppEvent> for AppShell {
                 None => lsp_retry_deadline,
             });
         }
+        if !self.whichkey_redraw_fired
+            && let Some((_, started_at)) = self.input_handler.pending_chord_sequence()
+        {
+            let whichkey_deadline = started_at + WHICHKEY_DELAY;
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(whichkey_deadline),
+                None => whichkey_deadline,
+            });
+        }
 
         if let Some(deadline) = next_deadline {
             event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
@@ -766,6 +795,25 @@ impl ApplicationHandler<AppEvent> for AppShell {
 }
 
 impl AppShell {
+    /// True exactly once when a pending chord crosses `WHICHKEY_DELAY`, so the
+    /// frame that first shows the which-key overlay gets scheduled.
+    fn tick_whichkey_delay(&mut self) -> bool {
+        match self.input_handler.pending_chord_sequence() {
+            Some((_, started_at)) => {
+                if !self.whichkey_redraw_fired && started_at.elapsed() >= WHICHKEY_DELAY {
+                    self.whichkey_redraw_fired = true;
+                    true
+                } else {
+                    false
+                }
+            }
+            None => {
+                self.whichkey_redraw_fired = false;
+                false
+            }
+        }
+    }
+
     fn tick_smooth_scroll_animation(&mut self) -> bool {
         // Global kill-switch: disable smooth scroll and always snap to target.
         self.last_scroll_animation_tick = Instant::now();
@@ -1725,6 +1773,50 @@ impl AppShell {
                             .is_indexing(profile.key)
                             .then(|| "Indexing symbols…".to_string())
                     });
+                let lsp_indicator = {
+                    use crate::render::renderer::LspStatusIndicator;
+                    let active_profile = (!show_welcome)
+                        .then(|| {
+                            self.app_state
+                                .active_file()
+                                .and_then(crate::lsp::registry::language_profile_for_path)
+                        })
+                        .flatten();
+                    match active_profile {
+                        None => LspStatusIndicator::NotApplicable,
+                        Some(profile) => {
+                            if let Some(pending) = &self.pending_lsp_server {
+                                LspStatusIndicator::Starting(pending.server_name.clone())
+                            } else if let Some(guide) = &self.active_lsp_guide {
+                                LspStatusIndicator::Missing(guide.binary.clone())
+                            } else if let Some(active) = self
+                                .active_lsp_server
+                                .as_ref()
+                                .filter(|active| active.server_name == profile.lsp_binary)
+                            {
+                                LspStatusIndicator::Running(active.server_name.clone())
+                            } else {
+                                LspStatusIndicator::Inactive
+                            }
+                        }
+                    }
+                };
+                let ai_status = if show_welcome {
+                    None
+                } else {
+                    self.ai_config.inline_completion().map(|_| {
+                        let cooling_down = self
+                            .ai_inline_cooldown_until
+                            .is_some_and(|until| std::time::Instant::now() < until);
+                        if cooling_down {
+                            crate::render::renderer::AiInlineStatus::Error
+                        } else if self.ai_inline_inflight {
+                            crate::render::renderer::AiInlineStatus::Loading
+                        } else {
+                            crate::render::renderer::AiInlineStatus::Ready
+                        }
+                    })
+                };
                 let pill_quads = renderer.update_statusbar_content(
                     mode,
                     &pending_keys,
@@ -1740,6 +1832,8 @@ impl AppShell {
                     self.pending_lsp_server.is_some(),
                     self.lsp_loading_frame,
                     lsp_progress_label.as_deref(),
+                    &lsp_indicator,
+                    ai_status,
                     self.runtime_versions.venv_name.as_deref(),
                     self.runtime_versions.python_version.as_deref(),
                     self.runtime_versions.node_version.as_deref(),
@@ -1842,6 +1936,34 @@ impl AppShell {
                 }
                 self.last_terminal_bounds = None;
             }
+        }
+
+        // ── Which-key overlay: pending chord continuations ───────────────────
+        let whichkey_model = self
+            .input_handler
+            .pending_chord_sequence()
+            .filter(|(_, started_at)| started_at.elapsed() >= WHICHKEY_DELAY)
+            .map(|(sequence, _)| {
+                (
+                    self.input_handler.get_pending_keys(),
+                    self.input_map
+                        .whichkey_entries(sequence, self.build_context()),
+                )
+            })
+            .filter(|(_, entries)| !entries.is_empty());
+        if let Some((prefix_label, entries)) = whichkey_model {
+            let statusbar_h = layout
+                .model
+                .find(RegionId::StatusBar)
+                .map(|region| region.height)
+                .unwrap_or(0.0);
+            if let Some(renderer) = self.renderer.as_mut() {
+                let w = self.window_size.width as f32;
+                let h = self.window_size.height as f32;
+                renderer.update_whichkey_popup(&prefix_label, &entries, w, h, statusbar_h);
+            }
+        } else if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_whichkey_popup();
         }
 
         // ── LSP Install Guide Popup (always on top) ─────────────────────────

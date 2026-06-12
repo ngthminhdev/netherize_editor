@@ -1,6 +1,11 @@
 use super::super::*;
 use crate::async_runtime::message::{RequestTopic, WorkerEvent};
 
+/// Consecutive inline-completion failures before the user is told once and
+/// the feature cools down instead of failing silently on every keystroke.
+const AI_INLINE_FAILURE_TOAST_THRESHOLD: u32 = 3;
+const AI_INLINE_FAILURE_COOLDOWN_SECS: u64 = 60;
+
 pub(super) fn handle_worker_failure(app: &mut AppShell, event: WorkerEvent) {
     let request_id = event.request_id;
     let revision_id = event.revision_id;
@@ -22,6 +27,23 @@ pub(super) fn handle_worker_failure(app: &mut AppShell, event: WorkerEvent) {
         // File watcher keeps restarting forever; it emits Failed exactly once
         // when crossing the degraded threshold so the user learns that live
         // external updates may lag (only the 3s open-buffer poll is guaranteed).
+        if topic == RequestTopic::AiInlineCompletion {
+            app.ai_inline_inflight = false;
+            // Cancelled requests are normal churn while typing, not provider failures.
+            if !error.message.contains("cancelled") {
+                app.ai_inline_failure_streak = app.ai_inline_failure_streak.saturating_add(1);
+                if app.ai_inline_failure_streak >= AI_INLINE_FAILURE_TOAST_THRESHOLD {
+                    app.ai_inline_failure_streak = 0;
+                    app.ai_inline_cooldown_until = Some(
+                        std::time::Instant::now()
+                            + std::time::Duration::from_secs(AI_INLINE_FAILURE_COOLDOWN_SECS),
+                    );
+                    app.show_transient_toast(format!(
+                        "AI completion unavailable — paused for {AI_INLINE_FAILURE_COOLDOWN_SECS}s"
+                    ));
+                }
+            }
+        }
         if topic == RequestTopic::WorkspaceWatch {
             app.show_transient_toast(
                 "File watcher degraded — external changes may lag (3s poll fallback)".to_string(),

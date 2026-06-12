@@ -383,7 +383,14 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
         ctx.app_state.command_palette_mode(),
         Some(CommandPaletteMode::InFileSearch)
     ) {
+        let origin = ctx.app_state.active_file().map(|active| {
+            let (line, col) = ctx.app_state.cursor_line_col();
+            (active.to_path_buf(), line, col)
+        });
         let moved = ctx.app_state.search_next();
+        if moved && let Some((origin_path, line, col)) = origin {
+            ctx.app_state.push_jump_entry(origin_path, line, col);
+        }
         let changed = moved || ctx.close_palette_and_exit_focus();
         return DispatchReport::success_with_flags(
             if moved {
@@ -443,6 +450,12 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
             open_report
         }
         CommandPaletteAction::OpenSearchMatch { path, line, column } => {
+            // Ghi vị trí xuất phát để Ctrl+O quay về (kể cả khi match cùng file —
+            // ctx.open_file chỉ push khi đổi file; push trùng được dedup).
+            let origin = ctx.app_state.active_file().map(|active| {
+                let (origin_line, origin_col) = ctx.app_state.cursor_line_col();
+                (active.to_path_buf(), origin_line, origin_col)
+            });
             let changed = ctx.close_palette_and_exit_focus();
             let mut open_report = ctx.open_file(path.clone());
             if !open_report.success {
@@ -450,6 +463,10 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
                 return open_report;
             }
 
+            if let Some((origin_path, origin_line, origin_col)) = origin {
+                ctx.app_state
+                    .push_jump_entry(origin_path, origin_line, origin_col);
+            }
             let jumped = ctx.app_state.jump_to_line_and_column(
                 line.saturating_sub(1) as usize,
                 column.saturating_sub(1) as usize,

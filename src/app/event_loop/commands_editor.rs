@@ -68,7 +68,14 @@ impl AppShell {
                     self.queue_lsp_did_change_for_active_file();
                     self.pending_parse_after_debounce = true;
                     self.last_parse_submit_at = Some(Instant::now());
-                    self.queue_ai_inline_completion();
+                    if self.ai_inline_suggestion_retained {
+                        // Typing consumed the head of the visible ghost text;
+                        // follow the caret with the retained remainder instead
+                        // of letting the anchor watchdog clear it.
+                        self.reanchor_ai_inline();
+                    } else {
+                        self.queue_ai_inline_completion();
+                    }
                 }
                 let completion_changed = if report.state_changed {
                     self.refresh_open_completion_after_text_edit()
@@ -210,6 +217,8 @@ impl AppShell {
                     .cloned();
 
                 if let Some(target) = resolved_target {
+                    // Leap là một jump -> ghi origin để Ctrl+O quay về.
+                    self.app_state.push_jump();
                     let changed = self.app_state.leap_jump_to_char(target.char_idx);
                     let viewport_lines = self.editor_viewport_lines();
                     let prev_scroll = self.app_state.target_scroll_y;
@@ -298,9 +307,16 @@ impl AppShell {
                 | Command::WrapSelectionWithStar
                 | Command::DeleteWordForward
                 | Command::DeleteWordBackward
+                | Command::Operate {
+                    op: crate::core::commands::Operator::Delete
+                        | crate::core::commands::Operator::Change,
+                    ..
+                }
                 | Command::ChangeSelection
                 | Command::ChangeWordForward
                 | Command::ChangeWordBackward
+                | Command::DeleteToLineEnd
+                | Command::ChangeToLineEnd
                 | Command::PasteAfter
                 | Command::PasteBefore
                 | Command::EditorPaste
@@ -347,6 +363,7 @@ impl AppShell {
         };
         self.reconcile_highlight_spans_with_pending_edits();
         if report.success && should_notify_did_open {
+            self.close_completion_popup();
             self.invalidate_highlights_and_parse_active_buffer();
             parsed_after_buffer_switch = true;
             self.mark_explorer_dirty();
@@ -357,6 +374,7 @@ impl AppShell {
         }
 
         if report.state_changed && is_cursor_move {
+            self.refresh_open_completion_after_text_edit();
             let prev_scroll = self.app_state.target_scroll_y;
             let viewport_lines = self.editor_viewport_lines();
             self.app_state.auto_scroll_to_cursor(viewport_lines);
@@ -370,6 +388,7 @@ impl AppShell {
             self.submit_lsp_document_highlight();
             self.ensure_document_symbol_breadcrumbs(false);
         } else if report.state_changed {
+            self.refresh_open_completion_after_text_edit();
             self.editor_needs_layout = true;
             self.editor_caret_needs_layout = false;
         }

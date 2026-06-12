@@ -343,6 +343,9 @@ pub struct ExtensionsManagerState {
     pub expanded_binary: Option<String>,
     pub items: Vec<ExtensionItem>,
     pub command: Option<ExtensionCommandState>,
+    /// False until the first async `which` sweep returns — installed states are
+    /// unknown before that and must render as "checking", not as a guess.
+    pub deps_checked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -371,6 +374,7 @@ impl ExtensionsManagerState {
             expanded_binary: None,
             items: default_extension_items(),
             command: None,
+            deps_checked: false,
         }
     }
 
@@ -563,7 +567,7 @@ fn default_extension_items() -> Vec<ExtensionItem> {
             "SEARCH",
             "brew install fzf",
             "sudo apt install fzf",
-            true,
+            false,
         ),
         cli_extension(
             "ripgrep",
@@ -572,7 +576,7 @@ fn default_extension_items() -> Vec<ExtensionItem> {
             "SEARCH",
             "brew install ripgrep",
             "sudo apt install ripgrep",
-            true,
+            false,
         ),
         cli_extension(
             "fd",
@@ -590,7 +594,7 @@ fn default_extension_items() -> Vec<ExtensionItem> {
             "GIT",
             "brew install lazygit",
             "sudo apt install lazygit",
-            true,
+            false,
         ),
         cli_extension(
             "lazydocker",
@@ -617,7 +621,7 @@ fn default_extension_items() -> Vec<ExtensionItem> {
             "GIT",
             "brew install git-delta",
             "sudo apt install git-delta",
-            true,
+            false,
         ),
         cli_extension(
             "opencode",
@@ -626,7 +630,7 @@ fn default_extension_items() -> Vec<ExtensionItem> {
             "AI",
             "curl -fsSL https://opencode.ai/install | sh",
             "curl -fsSL https://opencode.ai/install | sh",
-            true,
+            false,
         ),
     ];
 
@@ -636,7 +640,7 @@ fn default_extension_items() -> Vec<ExtensionItem> {
             "rust-analyzer",
             "rustup component add rust-analyzer",
             vec![".rs"],
-            true,
+            false,
         ),
         lsp_extension(
             "JavaScript",
@@ -673,12 +677,21 @@ fn default_extension_items() -> Vec<ExtensionItem> {
             vec![".go"],
             false,
         ),
+        // Dart's language server ships inside the SDK (`dart language-server`),
+        // so detection checks the `dart` binary itself (Flutter/FVM also provide it).
+        lsp_extension(
+            "Dart",
+            "dart",
+            "brew tap dart-lang/dart && brew install dart",
+            vec![".dart"],
+            false,
+        ),
         lsp_extension(
             "Python",
             "pylsp",
             "pip install python-lsp-server",
             vec![".py"],
-            true,
+            false,
         ),
         lsp_extension("Java", "jdtls", "brew install jdtls", vec![".java"], false),
         lsp_extension(
@@ -693,7 +706,7 @@ fn default_extension_items() -> Vec<ExtensionItem> {
             "yaml-language-server",
             "npm install -g yaml-language-server",
             vec![".yaml", ".yml"],
-            true,
+            false,
         ),
         lsp_extension(
             "Dockerfile",
@@ -707,14 +720,14 @@ fn default_extension_items() -> Vec<ExtensionItem> {
             "vscode-json-language-server",
             "npm install -g vscode-langservers-extracted",
             vec![".json"],
-            true,
+            false,
         ),
         lsp_extension(
             "Bash",
             "bash-language-server",
             "npm install -g bash-language-server",
             vec![".sh"],
-            true,
+            false,
         ),
     ]);
     items
@@ -1213,6 +1226,9 @@ fn build_help_lines(
         "editor.center_cursor_line",
         "Center cursor",
     );
+    lines.push("  f/F <char>            Find char on line (→/←), highlights all matches".to_string());
+    lines.push("  t/T <char>            Till char on line (→/←)".to_string());
+    lines.push("  n / N                 Repeat find-char or search jump (→/←)".to_string());
     lines.push("".to_string());
 
     // ── Editing ─────────────────────────────────────────────────────────────
@@ -1295,6 +1311,12 @@ fn build_help_lines(
         bindings,
         "editor.change_to_line_end",
         "Change to line end",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "editor.yank_to_line_end",
+        "Yank to line end",
     );
     append_help_binding(&mut lines, bindings, "editor.join_lines", "Join lines");
     append_help_binding(
@@ -1473,6 +1495,12 @@ fn build_help_lines(
         "ai.accept_inline",
         "Accept inline suggestion",
     );
+    append_help_binding(
+        &mut lines,
+        bindings,
+        "ai.accept_inline_word",
+        "Accept inline suggestion word",
+    );
     lines.push("".to_string());
 
     // ── Tools ───────────────────────────────────────────────────────────────
@@ -1596,6 +1624,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "editor.substitute_line" => "Substitute line",
         "editor.yank_selection" => "Yank selection",
         "editor.yank_current_line" => "Yank line",
+        "editor.yank_to_line_end" => "Yank to line end",
         "editor.toggle_line_comment" => "Toggle line comment",
         "editor.toggle_selection_comment" => "Toggle comment",
         "editor.wrap_selection_with_star" => "Wrap with *",
@@ -1688,6 +1717,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "diagnostics.open_picker" => "Diagnostics picker",
         // ── AI ────────────────────────────────────────────────────────────
         "ai.accept_inline" => "Accept AI suggestion",
+        "ai.accept_inline_word" => "Accept AI suggestion word",
         "ai.chat_toggle" => "Toggle AI chat",
         "ai.chat_send" => "Send AI message",
         "ai.chat_stop" => "Stop AI chat generation",

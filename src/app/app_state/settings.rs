@@ -12,6 +12,8 @@ pub enum SettingItem {
     BottomPanelHeight { current: i32 },
     UiRounding { enabled: bool, radius_px: f32 },
     EnableOutline { enabled: bool },
+    /// window.scale_factor_override — None = follow the display ("Auto").
+    UiScale { current: Option<f32> },
 }
 
 impl SettingItem {
@@ -29,6 +31,7 @@ impl SettingItem {
             Self::BottomPanelHeight { .. } => "Bottom Dock Height",
             Self::UiRounding { .. } => "UI Rounding",
             Self::EnableOutline { .. } => "Panel Outlines",
+            Self::UiScale { .. } => "UI Scale",
         }
     }
 }
@@ -43,6 +46,7 @@ pub enum SettingsEditingKind {
     SidebarWidth,
     RightSidebarWidth,
     BottomPanelHeight,
+    UiScale,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -73,6 +77,7 @@ impl SettingsState {
         border_radius_px: f32,
         enable_outline: bool,
         inline_suggestion_enabled: bool,
+        ui_scale_override: Option<f32>,
     ) -> Self {
         Self {
             selected_index: 0,
@@ -87,6 +92,9 @@ impl SettingsState {
                 },
                 SettingItem::EnableOutline {
                     enabled: enable_outline,
+                },
+                SettingItem::UiScale {
+                    current: ui_scale_override,
                 },
                 // TYPOGRAPHY
                 SettingItem::FontFamily {
@@ -183,6 +191,12 @@ impl SettingsState {
                 } else {
                     "0".to_string()
                 },
+            ),
+            SettingItem::UiScale { current } => (
+                SettingsEditingKind::UiScale,
+                current
+                    .map(|v| format!("{v:.2}"))
+                    .unwrap_or_else(|| "auto".to_string()),
             ),
             SettingItem::ThemeSelector { .. }
             | SettingItem::EnableOutline { .. }

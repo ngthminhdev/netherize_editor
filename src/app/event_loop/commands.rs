@@ -269,8 +269,32 @@ impl AppShell {
                 | Command::Newline
                 | Command::InsertTab
         ) && self.app_state.current_mode() == EditorMode::Insert;
+        self.ai_inline_suggestion_retained = false;
         if is_insert_typing {
-            let _ = self.app_state.clear_inline_suggestion();
+            let retained = repeat_count == 1
+                && match &command {
+                    // Auto-pairing chars insert a closing char the suggestion
+                    // doesn't know about — never retain across those.
+                    Command::InsertChar(ch)
+                        if !matches!(ch, '(' | '[' | '{' | '"' | '\'' | '`') =>
+                    {
+                        let mut buf = [0u8; 4];
+                        self.app_state
+                            .retain_inline_suggestion_for_typed_text(ch.encode_utf8(&mut buf))
+                    }
+                    Command::InsertText(text) => self
+                        .app_state
+                        .retain_inline_suggestion_for_typed_text(text),
+                    _ => false,
+                };
+            if retained {
+                // In-flight results no longer match the retained remainder;
+                // bump the revision so they get dropped as stale.
+                self.ai_inline_revision = self.ai_inline_revision.saturating_add(1);
+                self.ai_inline_suggestion_retained = true;
+            } else {
+                let _ = self.app_state.clear_inline_suggestion();
+            }
             self.cancel_ai_inline_completion();
         }
         if matches!(command, Command::SwitchMode(ModeEvent::Escape)) {
@@ -399,6 +423,11 @@ impl AppShell {
                 | Command::ChangeWordBackward
                 | Command::ChangeToLineEnd
                 | Command::SubstituteLine
+                | Command::Operate {
+                    op: crate::core::commands::Operator::Delete
+                        | crate::core::commands::Operator::Change,
+                    ..
+                }
         );
         let changed = self.handle_generic_editor_command(command, repeat_count);
         let mode_after = self.app_state.current_mode();
@@ -597,6 +626,25 @@ impl AppShell {
             kind,
             created_at: now,
             expires_at: now + Duration::from_secs(4),
+        });
+    }
+
+    /// One-time onboarding toast for brand-new installs: the three keys a new
+    /// user needs before anything else. Marks persistent state so it never
+    /// shows again.
+    pub(super) fn show_first_run_tour_if_needed(&mut self) {
+        if self.persistent_state.first_run_tour_shown {
+            return;
+        }
+        self.persistent_state.first_run_tour_shown = true;
+        self.persistent_state.save();
+
+        let now = Instant::now();
+        self.transient_toast = Some(TransientToast {
+            message: "Welcome to Netherize\nPress i to type, Esc to go back to Normal mode, and Space ? (or F1) to see every keybinding.".to_string(),
+            kind: ToastKind::Info,
+            created_at: now,
+            expires_at: now + Duration::from_secs(12),
         });
     }
 

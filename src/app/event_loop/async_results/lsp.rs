@@ -606,6 +606,13 @@ pub(super) fn handle_lsp_result(
             if completion.filtered_items.is_empty() {
                 return;
             }
+            // Ghost text wins: if an AI inline suggestion is already visible, do
+            // not pop the LSP completion menu over it. The next keystroke clears
+            // the ghost text and re-requests completion, so the menu comes back
+            // once the ghost text is gone.
+            if app.app_state.inline_suggestion().is_some() {
+                return;
+            }
             let changed = app.app_state.set_completion(completion);
             if changed {
                 app.submit_completion_resolve();

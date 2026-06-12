@@ -111,6 +111,9 @@ pub enum Command {
     MoveToLastLine,
     MoveParagraphUp,
     MoveParagraphDown,
+    /// Vim f/F/t/T motion: nhảy tới ký tự trên dòng hiện tại, đồng thời set
+    /// search highlight cho ký tự đó để n/N nhảy tiếp giữa các match.
+    MoveFindChar(FindMotionKind, char),
     ScrollHalfPageUp,
     ScrollHalfPageDown,
     CenterCursorLine,
@@ -473,6 +476,7 @@ impl Command {
                 | Self::MoveToLastLine
                 | Self::MoveParagraphUp
                 | Self::MoveParagraphDown
+                | Self::MoveFindChar(..)
                 | Self::ScrollHalfPageUp
                 | Self::ScrollHalfPageDown
                 | Self::CenterCursorLine

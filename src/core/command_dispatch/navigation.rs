@@ -5,6 +5,25 @@ use crate::core::{
 
 use super::common::{DispatchCtx, DispatchReport};
 
+/// Chụp lại (file, line, col) hiện tại trước một jump-motion (gg/G/{}/n/N).
+fn jump_origin(ctx: &DispatchCtx<'_, '_, '_>) -> Option<(std::path::PathBuf, usize, usize)> {
+    ctx.app_state.active_file().map(|active| {
+        let (line, col) = ctx.app_state.cursor_line_col();
+        (active.to_path_buf(), line, col)
+    })
+}
+
+/// Push origin vào jump stack nếu motion thực sự di chuyển cursor (vim jumplist).
+fn record_jump_if_moved(
+    ctx: &mut DispatchCtx<'_, '_, '_>,
+    origin: Option<(std::path::PathBuf, usize, usize)>,
+    moved: bool,
+) {
+    if moved && let Some((path, line, col)) = origin {
+        ctx.app_state.push_jump_entry(path, line, col);
+    }
+}
+
 pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> DispatchReport {
     if let Some(report) = dispatch_terminal_normal(ctx, &command) {
         return report;
@@ -130,19 +149,27 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             )
         }
         Command::MoveToFirstLine => {
+            let origin = jump_origin(ctx);
             let changed = ctx.app_state.move_to_first_line();
+            record_jump_if_moved(ctx, origin, changed);
             DispatchReport::success("Dispatch: move to first line", changed)
         }
         Command::MoveToLastLine => {
+            let origin = jump_origin(ctx);
             let changed = ctx.app_state.move_to_last_line();
+            record_jump_if_moved(ctx, origin, changed);
             DispatchReport::success("Dispatch: move to last line", changed)
         }
         Command::MoveParagraphUp => {
+            let origin = jump_origin(ctx);
             let changed = ctx.app_state.move_paragraph_up();
+            record_jump_if_moved(ctx, origin, changed);
             DispatchReport::success("Dispatch: move paragraph up", changed)
         }
         Command::MoveParagraphDown => {
+            let origin = jump_origin(ctx);
             let changed = ctx.app_state.move_paragraph_down();
+            record_jump_if_moved(ctx, origin, changed);
             DispatchReport::success("Dispatch: move paragraph down", changed)
         }
         Command::ScrollHalfPageUp | Command::ScrollHalfPageDown | Command::CenterCursorLine => {
@@ -160,8 +187,23 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             true,
             false,
         ),
+        Command::MoveFindChar(kind, target) => {
+            let changed = ctx
+                .app_state
+                .find_char_motion_and_highlight(kind, target);
+            DispatchReport::success(
+                if changed {
+                    format!("Dispatch: find char '{target}' ({kind:?})")
+                } else {
+                    format!("Dispatch: find char '{target}' not found on line")
+                },
+                changed,
+            )
+        }
         Command::SearchNext => {
+            let origin = jump_origin(ctx);
             let changed = ctx.app_state.search_next();
+            record_jump_if_moved(ctx, origin, changed);
             DispatchReport::success(
                 if changed {
                     "Dispatch: search next".to_string()
@@ -172,7 +214,9 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             )
         }
         Command::SearchPrev => {
+            let origin = jump_origin(ctx);
             let changed = ctx.app_state.search_prev();
+            record_jump_if_moved(ctx, origin, changed);
             DispatchReport::success(
                 if changed {
                     "Dispatch: search previous".to_string()

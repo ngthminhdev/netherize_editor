@@ -36,24 +36,29 @@ impl Renderer {
             return;
         }
 
+        // Scale hardcoded chrome px so paddings/offsets track the runtime-scaled
+        // text metrics across monitors (same pattern as extensions.rs).
+        let s = self.ui_scale.max(0.5);
         let font_size = self.theme.editor.font_size;
-        let line_height = self.theme.editor.line_height.max(font_size + 4.0);
+        let line_height = self.theme.editor.line_height.max(font_size + 4.0 * s);
         self.editor_overlay_text_system
             .set_metrics(Metrics::new(font_size, line_height));
         self.editor_overlay_scissor = rect_to_scissor(center_bounds);
 
-        let pad_x = self.editor_padding_x.max(14.0);
-        let pad_y = self.editor_padding_y.max(14.0);
+        let pad_x = self.editor_padding_x.max(14.0 * s);
+        let pad_y = self.editor_padding_y.max(14.0 * s);
         let panel_x = center_bounds[0] + pad_x;
         let panel_y = center_bounds[1] + pad_y;
         let panel_w = (center_bounds[2] - pad_x * 2.0).max(1.0);
         let panel_h = (center_bounds[3] - pad_y * 2.0).max(1.0);
         let is_live_grep =
             fuzzy_state.mode == crate::app::command_palette::CommandPaletteMode::LiveGrep;
-        let gap = if is_live_grep { 0.0 } else { 16.0 };
+        let gap = if is_live_grep { 0.0 } else { 16.0 * s };
 
         let left_w = if is_live_grep {
-            (panel_w * 0.56).clamp(420.0, 720.0).min(panel_w * 0.62)
+            (panel_w * 0.56)
+                .clamp(420.0 * s, 720.0 * s)
+                .min(panel_w * 0.62)
         } else {
             (panel_w * 0.5).max(1.0)
         };
@@ -62,11 +67,11 @@ impl Renderer {
         let right_x = left_x + left_w + gap;
 
         let header_h = if is_live_grep {
-            line_height * 2.0 + 30.0
+            line_height * 2.0 + 30.0 * s
         } else {
-            line_height + 14.0
+            line_height + 14.0 * s
         };
-        let footer_h = line_height + 10.0;
+        let footer_h = line_height + 10.0 * s;
         let content_top = panel_y + header_h;
         let content_bottom = (panel_y + panel_h - footer_h).max(content_top + line_height);
         let content_h = (content_bottom - content_top).max(line_height);
@@ -97,9 +102,9 @@ impl Renderer {
         ];
 
         let header_y = if is_live_grep {
-            panel_y + 12.0
+            panel_y + 12.0 * s
         } else {
-            panel_y + 6.0
+            panel_y + 6.0 * s
         };
 
         let title = match fuzzy_state.mode {
@@ -138,7 +143,7 @@ impl Renderer {
         };
 
         self.editor_overlay_text_system
-            .set_size(Some((left_w - 20.0).max(1.0)), Some(line_height));
+            .set_size(Some((left_w - 20.0 * s).max(1.0)), Some(line_height));
         if is_live_grep {
             let header_count_w =
                 estimate_monospace_width(" 999 results · 999 files", font_size).min(left_w * 0.55);
@@ -147,7 +152,7 @@ impl Renderer {
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
-                left_x + 10.0,
+                left_x + 10.0 * s,
                 header_y,
                 fg,
             ));
@@ -161,27 +166,27 @@ impl Renderer {
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
-                (left_x + left_w - header_count_w - 10.0).max(left_x + 90.0),
+                (left_x + left_w - header_count_w - 10.0 * s).max(left_x + 90.0 * s),
                 header_y,
                 fg_dim,
             ));
         } else {
             glyphs.extend(layout_panel_text(
-                &clamp_monospace_text(&left_header, (left_w - 20.0).max(1.0), font_size),
+                &clamp_monospace_text(&left_header, (left_w - 20.0 * s).max(1.0), font_size),
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
-                left_x + 10.0,
+                left_x + 10.0 * s,
                 header_y,
                 fg,
             ));
         }
 
         if is_live_grep {
-            let search_box_x = left_x + 14.0;
-            let search_box_y = header_y + line_height + 6.0;
-            let search_box_w = (left_w - 28.0).max(1.0);
-            let search_box_h = line_height + 8.0;
+            let search_box_x = left_x + 14.0 * s;
+            let search_box_y = header_y + line_height + 6.0 * s;
+            let search_box_w = (left_w - 28.0 * s).max(1.0);
+            let search_box_h = line_height + 8.0 * s;
             chrome.push(RegionDrawInstance::new(
                 [search_box_x, search_box_y, search_box_w, search_box_h],
                 self.theme.ui.overlay_bg.as_f32(),
@@ -193,18 +198,18 @@ impl Renderer {
             };
             let aa_text = "Aa";
             let aa_text_w = estimate_monospace_width(aa_text, font_size);
-            let option_w = aa_text_w + 22.0;
+            let option_w = aa_text_w + 22.0 * s;
             glyphs.extend(layout_panel_text(
                 &clamp_monospace_text(
                     &search_text,
-                    (search_box_w - option_w - 18.0).max(1.0),
+                    (search_box_w - option_w - 18.0 * s).max(1.0),
                     font_size,
                 ),
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
-                search_box_x + 10.0,
-                search_box_y + 4.0,
+                search_box_x + 10.0 * s,
+                search_box_y + 4.0 * s,
                 if fuzzy_state.query.trim().is_empty() {
                     fg_ghost
                 } else {
@@ -217,23 +222,23 @@ impl Renderer {
                 aa_bg[3] = aa_bg[3].clamp(0.35, 0.70);
                 chrome.push(RegionDrawInstance::new(
                     [
-                        search_box_x + search_box_w - option_w - 8.0,
-                        search_box_y + 3.0,
+                        search_box_x + search_box_w - option_w - 8.0 * s,
+                        search_box_y + 3.0 * s,
                         option_w,
-                        (line_height + 2.0).max(12.0),
+                        (line_height + 2.0 * s).max(12.0 * s),
                     ],
                     aa_bg,
                 ));
             }
-            let aa_box_x = search_box_x + search_box_w - option_w - 8.0;
-            let aa_box_h = (line_height + 2.0).max(12.0);
+            let aa_box_x = search_box_x + search_box_w - option_w - 8.0 * s;
+            let aa_box_h = (line_height + 2.0 * s).max(12.0 * s);
             glyphs.extend(layout_panel_text(
                 aa_text,
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
                 aa_box_x + ((option_w - aa_text_w) * 0.5).max(0.0),
-                search_box_y + 3.0 + ((aa_box_h - line_height) * 0.5).max(0.0),
+                search_box_y + 3.0 * s + ((aa_box_h - line_height) * 0.5).max(0.0),
                 if aa_active { fg } else { fg_ghost },
             ));
         }
@@ -264,13 +269,13 @@ impl Renderer {
             .unwrap_or_else(|| "No file selected".to_string());
 
         self.editor_overlay_text_system
-            .set_size(Some((right_w - 20.0).max(1.0)), Some(line_height));
+            .set_size(Some((right_w - 20.0 * s).max(1.0)), Some(line_height));
         glyphs.extend(layout_panel_text(
-            &clamp_monospace_text(&right_header, (right_w - 20.0).max(1.0), font_size),
+            &clamp_monospace_text(&right_header, (right_w - 20.0 * s).max(1.0), font_size),
             &mut self.editor_overlay_text_system,
             &mut self.atlas,
             &self.queue,
-            right_x + 10.0,
+            right_x + 10.0 * s,
             header_y,
             fg,
         ));
@@ -283,30 +288,34 @@ impl Renderer {
                 _ => "Type to search  |  Ctrl+N/P / Up/Down to navigate  |  Enter to open",
             };
             self.editor_overlay_text_system
-                .set_size(Some((panel_w - 20.0).max(1.0)), Some(line_height));
+                .set_size(Some((panel_w - 20.0 * s).max(1.0)), Some(line_height));
             glyphs.extend(layout_panel_text(
-                &clamp_monospace_text(help_text, (panel_w - 20.0).max(1.0), font_size),
+                &clamp_monospace_text(help_text, (panel_w - 20.0 * s).max(1.0), font_size),
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
-                panel_x + 10.0,
-                panel_y + panel_h - footer_h + 4.0,
+                panel_x + 10.0 * s,
+                panel_y + panel_h - footer_h + 4.0 * s,
                 fg_ghost,
             ));
         }
 
         let row_h = if is_live_grep {
-            line_height + 8.0
+            line_height + 8.0 * s
         } else {
-            line_height * 2.0 + 8.0
+            line_height * 2.0 + 8.0 * s
         };
-        let group_header_h = if is_live_grep { line_height + 7.0 } else { 0.0 };
+        let group_header_h = if is_live_grep {
+            line_height + 7.0 * s
+        } else {
+            0.0
+        };
         let visible_rows = ((content_h / row_h).floor() as usize).max(1);
         let mut start_idx = fuzzy_state.selected_index.saturating_sub(visible_rows / 2);
         if start_idx + visible_rows > fuzzy_state.results.len() {
             start_idx = fuzzy_state.results.len().saturating_sub(visible_rows);
         }
-        let left_text_width = (left_w - 20.0).max(1.0);
+        let left_text_width = (left_w - 20.0 * s).max(1.0);
         let mut draw_y = content_top;
         let mut previous_group_path: Option<String> = None;
         let mut rendered_rows = 0usize;
@@ -338,17 +347,17 @@ impl Renderer {
                     group_bg[3] = (group_bg[3] * 0.85).clamp(0.18, 0.45);
                     chrome.push(RegionDrawInstance::new(
                         [
-                            left_x + 8.0,
-                            draw_y + 2.0,
-                            (left_w - 16.0).max(1.0),
-                            (line_height + 3.0).max(12.0),
+                            left_x + 8.0 * s,
+                            draw_y + 2.0 * s,
+                            (left_w - 16.0 * s).max(1.0),
+                            (line_height + 3.0 * s).max(12.0 * s),
                         ],
                         group_bg,
                     ));
                     let group_count =
                         count_search_matches_for_path(&fuzzy_state.results, path_label);
                     let count_label = format!("{}", group_count);
-                    let count_w = estimate_monospace_width(&count_label, font_size).max(16.0);
+                    let count_w = estimate_monospace_width(&count_label, font_size).max(16.0 * s);
                     glyphs.extend(layout_panel_text_bold(
                         &clamp_monospace_text(
                             &format!("▾ {}", file_name),
@@ -358,22 +367,22 @@ impl Renderer {
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,
-                        left_x + 16.0,
-                        draw_y + 4.0,
+                        left_x + 16.0 * s,
+                        draw_y + 4.0 * s,
                         self.theme.ui.accent.as_f32(),
                     ));
                     let folder_x = left_x + left_w * 0.54;
                     glyphs.extend(layout_panel_text(
                         &clamp_monospace_text(
                             &folder_label,
-                            (left_x + left_w - folder_x - count_w - 26.0).max(1.0),
+                            (left_x + left_w - folder_x - count_w - 26.0 * s).max(1.0),
                             font_size,
                         ),
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,
                         folder_x,
-                        draw_y + 4.0,
+                        draw_y + 4.0 * s,
                         fg_ghost,
                     ));
                     glyphs.extend(layout_panel_text_bold(
@@ -381,8 +390,8 @@ impl Renderer {
                         &mut self.editor_overlay_text_system,
                         &mut self.atlas,
                         &self.queue,
-                        left_x + left_w - count_w - 18.0,
-                        draw_y + 4.0,
+                        left_x + left_w - count_w - 18.0 * s,
+                        draw_y + 4.0 * s,
                         fg,
                     ));
                     draw_y += group_header_h;
@@ -393,11 +402,16 @@ impl Renderer {
             let is_selected = item_idx == fuzzy_state.selected_index;
             if is_selected {
                 chrome.push(RegionDrawInstance::new(
-                    [left_x + 6.0, row_y, (left_w - 12.0).max(1.0), row_h - 4.0],
+                    [
+                        left_x + 6.0 * s,
+                        row_y,
+                        (left_w - 12.0 * s).max(1.0),
+                        row_h - 4.0 * s,
+                    ],
                     selection_bg,
                 ));
                 chrome.push(RegionDrawInstance::new(
-                    [left_x + 6.0, row_y, 3.0, row_h - 4.0],
+                    [left_x + 6.0 * s, row_y, 3.0 * s, row_h - 4.0 * s],
                     accent,
                 ));
             }
@@ -430,8 +444,8 @@ impl Renderer {
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    left_x + 14.0,
-                    row_y + 4.0,
+                    left_x + 14.0 * s,
+                    row_y + 4.0 * s,
                     row_label_color,
                 ));
             }
@@ -439,17 +453,17 @@ impl Renderer {
             let summary = item.secondary_label.clone().unwrap_or_default();
             if !summary.is_empty() {
                 let summary_x = if is_live_grep {
-                    left_x + 22.0
+                    left_x + 22.0 * s
                 } else {
-                    left_x + 14.0
+                    left_x + 14.0 * s
                 };
-                let summary_w = (left_x + left_w - summary_x - 10.0).max(1.0);
+                let summary_w = (left_x + left_w - summary_x - 10.0 * s).max(1.0);
                 self.editor_overlay_text_system
                     .set_size(Some(summary_w), Some(line_height));
                 let summary_y = if is_live_grep {
-                    row_y + 4.0
+                    row_y + 4.0 * s
                 } else {
-                    row_y + line_height + 2.0
+                    row_y + line_height + 2.0 * s
                 };
                 if is_live_grep && !fuzzy_state.query.trim().is_empty() {
                     let clamped_summary = clamp_monospace_text(&summary, summary_w, font_size);
@@ -496,14 +510,14 @@ impl Renderer {
                 unique_file_count
             );
             self.editor_overlay_text_system
-                .set_size(Some((left_w - 20.0).max(1.0)), Some(line_height));
+                .set_size(Some((left_w - 20.0 * s).max(1.0)), Some(line_height));
             glyphs.extend(layout_panel_text(
-                &clamp_monospace_text(&footer_text, (left_w - 20.0).max(1.0), font_size),
+                &clamp_monospace_text(&footer_text, (left_w - 20.0 * s).max(1.0), font_size),
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
-                left_x + 10.0,
-                footer_y + 4.0,
+                left_x + 10.0 * s,
+                footer_y + 4.0 * s,
                 fg_ghost,
             ));
         }
@@ -519,8 +533,8 @@ impl Renderer {
                         .unwrap_or(1)
                 ),
                 font_size,
-            ) + 14.0;
-            let preview_text_width = (right_w - 20.0 - line_number_width).max(1.0);
+            ) + 14.0 * s;
+            let preview_text_width = (right_w - 20.0 * s - line_number_width).max(1.0);
             let preview_rows = ((content_h / line_height).floor() as usize).max(1);
             let mut preview_start = 0usize;
             if let Some(target_idx) = fuzzy_state
@@ -551,18 +565,28 @@ impl Renderer {
                 };
                 if let Some(bg) = line_bg {
                     chrome.push(RegionDrawInstance::new(
-                        [right_x + 6.0, row_y, (right_w - 12.0).max(1.0), line_height],
+                        [
+                            right_x + 6.0 * s,
+                            row_y,
+                            (right_w - 12.0 * s).max(1.0),
+                            line_height,
+                        ],
                         bg,
                     ));
                 } else if line.is_target {
                     chrome.push(RegionDrawInstance::new(
-                        [right_x + 6.0, row_y, (right_w - 12.0).max(1.0), line_height],
+                        [
+                            right_x + 6.0 * s,
+                            row_y,
+                            (right_w - 12.0 * s).max(1.0),
+                            line_height,
+                        ],
                         selection_bg,
                     ));
                 }
                 if line.is_target {
                     chrome.push(RegionDrawInstance::new(
-                        [right_x + 6.0, row_y, 3.0, line_height],
+                        [right_x + 6.0 * s, row_y, 3.0 * s, line_height],
                         accent,
                     ));
                 }
@@ -574,7 +598,7 @@ impl Renderer {
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    right_x + 10.0,
+                    right_x + 10.0 * s,
                     row_y,
                     if line.is_target { warning } else { fg_ghost },
                 ));
@@ -611,7 +635,7 @@ impl Renderer {
                     &mut self.editor_overlay_text_system,
                     &mut self.atlas,
                     &self.queue,
-                    right_x + 10.0 + line_number_width,
+                    right_x + 10.0 * s + line_number_width,
                     row_y,
                 ));
             }
@@ -626,14 +650,14 @@ impl Renderer {
                 "Loading preview..."
             };
             self.editor_overlay_text_system
-                .set_size(Some((right_w - 20.0).max(1.0)), Some(line_height));
+                .set_size(Some((right_w - 20.0 * s).max(1.0)), Some(line_height));
             glyphs.extend(layout_panel_text(
                 empty_message,
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
-                right_x + 10.0,
-                content_top + 4.0,
+                right_x + 10.0 * s,
+                content_top + 4.0 * s,
                 fg_ghost,
             ));
         }

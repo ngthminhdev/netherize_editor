@@ -105,6 +105,7 @@ fn named_key_display(named: NamedKey) -> String {
         NamedKey::ArrowDown => "<Down>".to_string(),
         NamedKey::ArrowLeft => "<Left>".to_string(),
         NamedKey::ArrowRight => "<Right>".to_string(),
+        NamedKey::F1 => "<F1>".to_string(),
         NamedKey::F12 => "<F12>".to_string(),
         _ => format!("<{named:?}>"),
     }
@@ -225,6 +226,7 @@ fn parse_non_leader_key(token: &str) -> Option<KeySpec> {
         "arrowleft" => Some(NamedKey::ArrowLeft),
         "arrowright" => Some(NamedKey::ArrowRight),
         "tab" => Some(NamedKey::Tab),
+        "f1" => Some(NamedKey::F1),
         "f12" => Some(NamedKey::F12),
         _ => None,
     };
@@ -341,6 +343,16 @@ pub enum SequenceLookup<'a> {
     None,
     Prefix,
     Exact(&'a str),
+}
+
+/// One possible continuation of a pending chord prefix (which-key overlay).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SequenceContinuation {
+    /// Display token of the next key (e.g. "f", "<Space>").
+    pub key: String,
+    /// Command id when prefix+key is an exact binding; `None` for a group
+    /// where deeper chords continue.
+    pub command_id: Option<String>,
 }
 
 /// The fully resolved keymap after all layers have been applied.
@@ -478,6 +490,56 @@ impl ResolvedKeymap {
         SequenceLookup::None
     }
 
+    /// Enumerate every distinct next key continuing `prefix` in the given mode,
+    /// for the which-key overlay. `command_id` is `Some` when prefix+key is an
+    /// exact binding (mode-specific wins over global, mirroring
+    /// `lookup_sequence`), `None` when only deeper chords follow (+group).
+    pub fn sequence_continuations(
+        &self,
+        prefix: &[KeySpec],
+        mode_str: &str,
+    ) -> Vec<SequenceContinuation> {
+        #[derive(Default)]
+        struct Acc {
+            mode_exact: Option<String>,
+            global_exact: Option<String>,
+        }
+        let mut by_key: HashMap<String, Acc> = HashMap::new();
+        for (key, id) in &self.sequences {
+            let scope = key.mode.as_deref();
+            let in_mode_scope = scope == Some(mode_str);
+            if !in_mode_scope && scope.is_some() {
+                continue;
+            }
+            if key.steps.len() <= prefix.len() || !key.steps.starts_with(prefix) {
+                continue;
+            }
+            let token = key.steps[prefix.len()].display_token();
+            let acc = by_key.entry(token).or_default();
+            if key.steps.len() == prefix.len() + 1 {
+                if in_mode_scope {
+                    acc.mode_exact = Some(id.clone());
+                } else {
+                    acc.global_exact = Some(id.clone());
+                }
+            }
+        }
+        let mut out: Vec<SequenceContinuation> = by_key
+            .into_iter()
+            .map(|(key, acc)| SequenceContinuation {
+                key,
+                command_id: acc.mode_exact.or(acc.global_exact),
+            })
+            .collect();
+        out.sort_by(|a, b| {
+            a.key
+                .to_ascii_lowercase()
+                .cmp(&b.key.to_ascii_lowercase())
+                .then_with(|| a.key.cmp(&b.key))
+        });
+        out
+    }
+
     /// Build a `ResolvedKeymap` from a list of `KeyBinding` entries loaded
     /// from TOML.  Invalid key strings are logged and skipped.
     pub fn from_bindings(bindings: &[KeyBinding]) -> Self {
@@ -592,7 +654,10 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("insert"), nk(NamedKey::Escape), ENTER_NORMAL);
     km.insert(Some("insert"), nk(NamedKey::Backspace), BACKSPACE);
     km.insert(Some("insert"), nk(NamedKey::Enter), NEWLINE);
-    km.insert(Some("insert"), nk(NamedKey::Tab), AI_ACCEPT_INLINE);
+    // Tab inserts indentation; AI ghost text is accepted only via Ctrl+J
+    // (and Ctrl+L for word-by-word). Keeping Tab off the accept path avoids the
+    // overlap/ambiguity with the LSP completion menu.
+    km.insert(Some("insert"), nk(NamedKey::Tab), INSERT_TAB);
     km.insert(Some("insert"), nk(NamedKey::ArrowLeft), MOVE_LEFT);
     km.insert(Some("insert"), nk(NamedKey::ArrowRight), MOVE_RIGHT);
     km.insert(Some("insert"), nk(NamedKey::ArrowUp), MOVE_UP);
@@ -1241,6 +1306,52 @@ mod tests {
     #[test]
     fn parse_unknown_key_returns_none() {
         assert!(parse_key_spec("XF86AudioPlay").is_none());
+    }
+
+    #[test]
+    fn sequence_continuations_lists_exacts_groups_and_mode_priority() {
+        let mut km = ResolvedKeymap::new();
+        // <leader>f -> file picker (global)
+        km.insert_sequence(
+            None,
+            vec![KeySpec::Leader, KeySpec::Physical(KeyCode::KeyF)],
+            "app.open_file_picker",
+        );
+        // <leader>g d -> deeper chord => "g" is a group after <leader>
+        km.insert_sequence(
+            None,
+            vec![
+                KeySpec::Leader,
+                KeySpec::Physical(KeyCode::KeyG),
+                KeySpec::Physical(KeyCode::KeyD),
+            ],
+            "lsp.goto_definition",
+        );
+        // mode-specific override of <leader>f in visual mode
+        km.insert_sequence(
+            Some("visual"),
+            vec![KeySpec::Leader, KeySpec::Physical(KeyCode::KeyF)],
+            "editor.format_selection",
+        );
+
+        let prefix = vec![KeySpec::Leader];
+        let normal = km.sequence_continuations(&prefix, "normal");
+        let f = normal.iter().find(|c| c.key == "f").expect("f present");
+        assert_eq!(f.command_id.as_deref(), Some("app.open_file_picker"));
+        let g = normal.iter().find(|c| c.key == "g").expect("g present");
+        assert_eq!(g.command_id, None, "deeper chord shows as group");
+
+        let visual = km.sequence_continuations(&prefix, "visual");
+        let f = visual.iter().find(|c| c.key == "f").expect("f present");
+        assert_eq!(
+            f.command_id.as_deref(),
+            Some("editor.format_selection"),
+            "mode-specific exact wins over global"
+        );
+
+        // Non-matching prefix yields nothing.
+        let none = km.sequence_continuations(&[KeySpec::Physical(KeyCode::KeyZ)], "normal");
+        assert!(none.is_empty());
     }
 
     #[test]

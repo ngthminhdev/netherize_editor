@@ -116,12 +116,10 @@ impl Renderer {
         let fg_dim = self.theme.ui.fg_dim.as_f32();
         let fg_ghost = self.theme.ui.fg_ghost.as_f32();
         let accent = self.theme.ui.accent.as_f32();
-        let runtime_scale = (self.theme.editor.font_size / 14.0).max(0.5);
-        let welcome_scale = layout_clamp(
-            (self.welcome_card_max_width / 560.0) * runtime_scale,
-            0.5,
-            3.0,
-        );
+        // welcome_card_max_width already carries the runtime scale (scale_ui_config),
+        // so dividing by the 560 design width yields the scale directly. Multiplying
+        // by font-derived runtime scale again squared the zoom across monitors.
+        let welcome_scale = layout_clamp(self.welcome_card_max_width / 560.0, 0.5, 3.0);
         let sx = |value: f32| value * welcome_scale;
         let text_w = |text: &str, size: f32| estimate_monospace_width(text, size);
         let centered_x = |center: f32, text: &str, size: f32| center - text_w(text, size) * 0.5;
@@ -830,6 +828,14 @@ impl Renderer {
                 &["⌘", ","][..],
                 false,
             ),
+            (
+                "built_in:readme",
+                self.theme.ui.success.as_f32(),
+                "Keyboard Cheat Sheet",
+                "Every keybinding at a glance",
+                &["Space", "?"][..],
+                false,
+            ),
         ];
         let more_card_h = sx(54.0);
         let more_gap = sx(10.0);
@@ -902,7 +908,7 @@ impl Renderer {
             }
             y += more_card_h + more_gap;
         }
-        let footer = "Press Space P J for Recent Projects  |  Press ⌘ , for Settings";
+        let footer = "Press Space ? or F1 for all keybindings  |  Space P J for Recent Projects  |  ⌘ , for Settings";
         line(
             self,
             &mut glyphs,

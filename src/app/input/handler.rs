@@ -64,6 +64,17 @@ impl InputHandler {
         self.modifiers
     }
 
+    /// Pending chord sequence (for the which-key overlay) and when it started.
+    /// `None` while no multi-step chord is in flight (operator/leap pendings
+    /// have no sequence and are excluded on purpose).
+    pub fn pending_chord_sequence(
+        &self,
+    ) -> Option<(&crate::app::input_map::PendingSequence, Instant)> {
+        let pending = self.pending_input.as_ref()?;
+        let sequence = pending.sequence.as_ref()?;
+        Some((sequence, pending.started_at))
+    }
+
     pub fn get_pending_keys(&self) -> String {
         let pending_state = self.pending_input.as_ref().map(|pending| &pending.state);
         let sequence = self
@@ -929,6 +940,36 @@ impl InputHandler {
                     });
                 }
 
+                PendingState::FindCharMotion { kind } => {
+                    let kind = *kind;
+                    if let Some(ch) = replace_char_from_input(&normalized) {
+                        let command = Command::MoveFindChar(kind, ch);
+                        self.clear_pending_input();
+                        let (repeat_count, count_ignored) =
+                            self.consume_repeat_count_for_command(&command, Some(&pending.state));
+                        return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                            input_debug,
+                            format!(
+                                "mode={} focus={} -> find-char motion resolved ({ch:?})",
+                                context.mode.as_str(),
+                                context.focus.as_str()
+                            ),
+                            command,
+                            repeat_count,
+                            count_ignored,
+                        )));
+                    }
+                    self.reset_prefix();
+                    return Some(InputRouteOutcome::NoDispatch {
+                        input_debug,
+                        route_debug: format!(
+                            "mode={} focus={} -> find-char motion reset (not a printable char)",
+                            context.mode.as_str(),
+                            context.focus.as_str()
+                        ),
+                    });
+                }
+
                 PendingState::OperatorFindChar { op, kind } => {
                     if let Some(ch) = replace_char_from_input(&normalized) {
                         let command = Command::Operate {
@@ -978,6 +1019,25 @@ impl InputHandler {
                 });
             };
 
+            // Esc cancels the pending chord outright (closing the which-key
+            // overlay) instead of falling through to a mode-level escape.
+            if normalized.named_key == Some(NamedKey::Escape) {
+                self.reset_prefix();
+                return Some(InputRouteOutcome::NoDispatch {
+                    input_debug,
+                    route_debug: format!(
+                        "mode={} focus={} -> chord cancelled by Esc",
+                        context.mode.as_str(),
+                        context.focus.as_str(),
+                    ),
+                });
+            }
+
+            // The chord keeps its original start time across steps so the
+            // which-key overlay (delay measured from the first key) stays
+            // visible instead of re-arming its delay on every step.
+            let chord_started_at = pending.started_at;
+
             if let Some(matched) = input_map.resolve_sequence_next(sequence, &normalized, context) {
                 match matched {
                     SequenceMatch::Dispatch(resolved) => {
@@ -1006,7 +1066,7 @@ impl InputHandler {
                         self.pending_input = Some(PendingInput {
                             state: next_state.clone(),
                             sequence: Some(next_sequence),
-                            started_at: now,
+                            started_at: chord_started_at,
                         });
                         return Some(InputRouteOutcome::NoDispatch {
                             input_debug,
@@ -1133,6 +1193,34 @@ impl InputHandler {
                         context.mode.as_str(),
                         context.focus.as_str(),
                         op
+                    ),
+                });
+            }
+        }
+
+        // Bare f/F/t/T motion trong Normal/Visual mode -> chờ target char.
+        // Phải đứng trước resolve_sequence_start để không bị keymap chord nuốt.
+        if context.focus == InputFocusContext::Editor
+            && matches!(context.mode, EditorMode::Normal | EditorMode::Visual)
+            && !normalized.has_command_modifier()
+            && !normalized.modifiers.control_key()
+            && !normalized.modifiers.alt_key()
+        {
+            if let Some(kind) = find_motion_prefix_from_input(&normalized) {
+                if self.operator_count.is_none() {
+                    self.operator_count = self.pending_count.take();
+                }
+                self.pending_input = Some(PendingInput {
+                    sequence: None,
+                    state: PendingState::FindCharMotion { kind },
+                    started_at: now,
+                });
+                return Some(InputRouteOutcome::NoDispatch {
+                    input_debug,
+                    route_debug: format!(
+                        "mode={} focus={} -> find-char motion start ({kind:?}), waiting target char",
+                        context.mode.as_str(),
+                        context.focus.as_str(),
                     ),
                 });
             }
@@ -1381,6 +1469,10 @@ impl InputHandler {
             }
         }
 
+        // Ghost text is accepted only via Ctrl+J / Ctrl+L (see resolved_keymap +
+        // config keymap). Tab is intentionally NOT an accept key — it inserts
+        // indentation — so there is no Tab/accept ambiguity here.
+
         if let Some(resolved) = input_map.resolve(&normalized, context) {
             let (repeat_count, count_ignored) =
                 self.consume_repeat_count_for_command(&resolved.command, None);
@@ -1476,6 +1568,13 @@ impl InputHandler {
                 pending.state,
                 PendingState::LeapChar | PendingState::LeapLabel
             ) {
+                return;
+            }
+            // Chord sequences never expire: their state is visible (statusbar
+            // pending keys + which-key overlay), so a silent reset would make
+            // the next key fire a surprise normal-mode command (e.g. paste)
+            // while the overlay still invites a continuation. Esc cancels.
+            if pending.sequence.is_some() {
                 return;
             }
             if now.duration_since(pending.started_at) > self.prefix_timeout {

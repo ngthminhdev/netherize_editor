@@ -184,6 +184,11 @@ impl AppShell {
                     let next = (current + delta * 20).clamp(120, 1040);
                     self.update_active_settings_edit_draft(next.to_string())
                 }
+                crate::app::app_state::SettingItem::UiScale { current } => {
+                    let base = current.unwrap_or(self.runtime_scale);
+                    let next = (base + delta as f32 * 0.05).clamp(0.5, 3.0);
+                    self.update_active_settings_edit_draft(format!("{next:.2}"))
+                }
                 _ => false,
             };
         }
@@ -278,8 +283,33 @@ impl AppShell {
                 self.ui_config.border_radius_px = next;
                 self.finalize_settings_change()
             }
+            crate::app::app_state::SettingItem::UiScale { current } => {
+                let base = current.unwrap_or(self.runtime_scale);
+                let next = (base + delta as f32 * 0.05).clamp(0.5, 3.0);
+                self.ui_config.window.scale_factor_override = Some(next);
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::UiScale { current }) =
+                        state.selected_item_mut()
+                {
+                    *current = Some(next);
+                }
+                self.refresh_runtime_scale_from_window();
+                self.finalize_settings_change()
+            }
             _ => false,
         }
+    }
+
+    /// Recompute runtime scaling with the live window scale factor — needed when
+    /// `scale_factor_override` changes, since `apply_scaled_runtime_config` alone
+    /// reuses the previously computed `runtime_scale`.
+    fn refresh_runtime_scale_from_window(&mut self) {
+        let scale_factor = self
+            .window
+            .as_ref()
+            .map(|window| window.scale_factor())
+            .unwrap_or(1.0);
+        self.update_runtime_scaling_for_window(scale_factor);
     }
 
     pub(super) fn activate_selected_setting(&mut self) -> bool {
@@ -356,7 +386,8 @@ impl AppShell {
             | crate::app::app_state::SettingItem::UiRounding { .. }
             | crate::app::app_state::SettingItem::SidebarWidth { .. }
             | crate::app::app_state::SettingItem::RightSidebarWidth { .. }
-            | crate::app::app_state::SettingItem::BottomPanelHeight { .. } => {
+            | crate::app::app_state::SettingItem::BottomPanelHeight { .. }
+            | crate::app::app_state::SettingItem::UiScale { .. } => {
                 let changed = self.app_state.settings_begin_editing();
                 if changed {
                     if let Ok(result) = self
@@ -496,6 +527,27 @@ impl AppShell {
                         *enabled = value > 0.0;
                         *radius_px = value;
                     }
+                    changed = true;
+                }
+            }
+            crate::app::app_state::SettingsEditingKind::UiScale => {
+                let next = if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("auto") {
+                    Some(None)
+                } else {
+                    trimmed
+                        .parse::<f32>()
+                        .ok()
+                        .map(|value| Some(value.clamp(0.5, 3.0)))
+                };
+                if let Some(next) = next {
+                    self.ui_config.window.scale_factor_override = next;
+                    if let Some(state) = self.app_state.active_settings_buffer_mut()
+                        && let Some(crate::app::app_state::SettingItem::UiScale { current }) =
+                            state.selected_item_mut()
+                    {
+                        *current = next;
+                    }
+                    self.refresh_runtime_scale_from_window();
                     changed = true;
                 }
             }

@@ -12,7 +12,7 @@ impl AppShell {
             Command::LspReferences => Some(self.submit_lsp_references()),
             Command::LspRename => Some(self.open_lsp_rename_prompt()),
             Command::LspFormatDocument => Some(self.submit_lsp_format_document()),
-            Command::TriggerCompletion => Some(self.submit_lsp_completion()),
+            Command::TriggerCompletion => Some(self.submit_lsp_completion_manual()),
             Command::CodeAction => Some(self.submit_lsp_code_action()),
             Command::LspSelectPythonEnv => Some(self.handle_lsp_select_python_env()),
             Command::LspSelectDartEnv => Some(self.handle_lsp_select_dart_env()),
@@ -20,7 +20,7 @@ impl AppShell {
             Command::CompletionPrev => Some(self.select_prev_completion_item()),
             Command::CompletionAccept => Some(self.accept_completion_item()),
             Command::CompletionClose => Some(self.cancel_completion_and_return_normal()),
-            Command::AiAcceptInline => {
+            Command::AiAcceptInline | Command::AiAcceptInlineWord => {
                 let report = dispatch_command(&mut self.app_state, command.clone());
                 if report.state_changed {
                     self.reconcile_highlight_spans_with_pending_edits();
@@ -30,6 +30,14 @@ impl AppShell {
                     self.app_state.auto_scroll_to_cursor(viewport_lines);
                     self.queue_lsp_did_change_for_active_file();
                     self.submit_parse_for_active_buffer(true);
+                    // A word accept keeps the rest of the suggestion visible at
+                    // the caret's new position; re-anchor so the watchdog keeps
+                    // it instead of clearing it as a stale ghost.
+                    if self.app_state.inline_suggestion().is_some() {
+                        self.reanchor_ai_inline();
+                    } else {
+                        self.ai_inline_anchor = None;
+                    }
                 }
                 Some(report.request_redraw || report.state_changed)
             }

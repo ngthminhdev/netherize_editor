@@ -73,14 +73,26 @@ impl AppState {
             return;
         };
         let (line, col) = self.cursor_line_col();
-        self.jump_back_stack.push((path, line, col));
-        self.jump_forward_stack.clear();
+        self.push_jump_entry(path, line, col);
     }
 
     /// Push an explicit file+line+column onto the jump back stack.
     /// Useful when the current active surface is a non-file buffer.
+    /// Vim-style: dedup khi đỉnh stack đã là cùng (file, line); cap 100 entry.
     pub fn push_jump_entry(&mut self, path: PathBuf, line: usize, col: usize) {
+        const JUMP_STACK_LIMIT: usize = 100;
+        if let Some(top) = self.jump_back_stack.last_mut()
+            && top.0 == path
+            && top.1 == line
+        {
+            top.2 = col;
+            self.jump_forward_stack.clear();
+            return;
+        }
         self.jump_back_stack.push((path, line, col));
+        if self.jump_back_stack.len() > JUMP_STACK_LIMIT {
+            self.jump_back_stack.remove(0);
+        }
         self.jump_forward_stack.clear();
     }
 
@@ -785,6 +797,17 @@ impl AppState {
             })
     }
 
+    /// Extensions manager buffer regardless of which buffer is active — async
+    /// detection/install results must land even when the user switched away.
+    pub fn any_extensions_manager_buffer_mut(&mut self) -> Option<&mut ExtensionsManagerState> {
+        self.buffers
+            .iter_mut()
+            .find_map(|buffer| match &mut buffer.content {
+                BufferContent::ExtensionsManager(state) => Some(state),
+                _ => None,
+            })
+    }
+
     pub fn active_settings_buffer(&self) -> Option<&SettingsState> {
         match self.active_buffer().map(|buffer| &buffer.content) {
             Some(BufferContent::SettingsTab(state)) => Some(state),
@@ -1235,6 +1258,7 @@ impl AppState {
         border_radius_px: f32,
         enable_outline: bool,
         inline_suggestion_enabled: bool,
+        ui_scale_override: Option<f32>,
     ) -> usize {
         // Save current text buffer before switching to settings buffer
         self.save_current_text_buffer_history();
@@ -1266,6 +1290,7 @@ impl AppState {
             border_radius_px,
             enable_outline,
             inline_suggestion_enabled,
+            ui_scale_override,
         );
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {

@@ -113,6 +113,32 @@ pub(super) struct TextScissorBatch {
     pub(super) range: InstanceDrawRange,
 }
 
+/// Status-bar LSP indicator for the active file's language server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LspStatusIndicator {
+    /// Active file has no language profile — hide the indicator entirely.
+    NotApplicable,
+    /// A profile exists but no server is running.
+    Inactive,
+    /// Server process is being spawned/initialized.
+    Starting(String),
+    /// Server is alive and serving this workspace.
+    Running(String),
+    /// Server binary is missing — install guide shown.
+    Missing(String),
+}
+
+/// Status-bar chip state for AI inline completion. None (not passed) hides the chip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AiInlineStatus {
+    /// Provider configured and idle.
+    Ready,
+    /// A completion request is in flight.
+    Loading,
+    /// Circuit breaker tripped — completions paused after repeated failures.
+    Error,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct StatusbarLayoutKey {
     pub(super) mode: EditorMode,
@@ -129,6 +155,8 @@ pub(super) struct StatusbarLayoutKey {
     pub(super) lsp_loading: bool,
     pub(super) lsp_loading_frame: u8,
     pub(super) lsp_progress: Option<String>,
+    pub(super) lsp_indicator: LspStatusIndicator,
+    pub(super) ai_status: Option<AiInlineStatus>,
     pub(super) bounds: [f32; 4],
     pub(super) venv_name: Option<String>,
     pub(super) python_version: Option<String>,
@@ -286,6 +314,9 @@ pub struct Renderer {
     pub(super) panel_padding: f32,
     pub(super) panel_corner_radius: f32,
     pub(super) round_ui: bool,
+    /// Effective runtime UI scale (dpi_scale × content_scale). Single source for
+    /// scaling hardcoded px chrome (paddings, radii) so they track text size.
+    pub(super) ui_scale: f32,
     pub(super) sidebar_base_padding: f32,
     pub(super) sidebar_indent_per_depth: f32,
     pub(super) topbar_padding_x: f32,
@@ -317,6 +348,13 @@ pub struct Renderer {
     pub(super) toast_glyph_instances: Vec<GlyphInstance>,
     pub(super) toast_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) toast_scissor: Option<[u32; 4]>,
+
+    // ── Which-key overlay (pending chord hints) ──────────────────────────────
+    pub(super) whichkey_text_system: TextSystem,
+    pub(super) whichkey_text_pipeline: TextPipeline,
+    pub(super) whichkey_glyph_instances: Vec<GlyphInstance>,
+    pub(super) whichkey_chrome_instances: Vec<RegionDrawInstance>,
+    pub(super) whichkey_scissor: Option<[u32; 4]>,
 
     // ── AI Chat (RightSidebar) ─────────────────────────────────────────────
     pub(super) ai_chat_text_system: TextSystem,

@@ -42,6 +42,9 @@ impl Renderer {
             .active_file()
             .and_then(|path| app_state.diagnostics_for_path(path));
         let geometry = editor_viewport_geometry(self, app_state, center_bounds);
+        // Scale hardcoded popup/chrome px so they track runtime-scaled text
+        // metrics across monitors (same pattern as extensions.rs).
+        let ui_s = self.ui_scale.max(0.5);
         let viewport_top = geometry.viewport_text_top;
         let viewport_bottom = viewport_top + geometry.viewport_text_height.max(1.0);
         let viewport_right = center_bounds[0] + center_bounds[2] - self.editor_padding_x;
@@ -248,25 +251,32 @@ impl Renderer {
                     style,
                     scroll,
                 } => {
-                    const PAD_X: f32 = 14.0;
-                    const PAD_Y: f32 = 10.0;
-                    const BORDER: f32 = 1.0;
-                    const CODE_PAD_X: f32 = 12.0;
-                    const CODE_PAD_Y: f32 = 8.0;
-                    const CONTENT_INSET_X: f32 = 14.0;
-                    const CONTENT_INSET_Y: f32 = 12.0;
+                    #[allow(non_snake_case)]
+                    let PAD_X: f32 = 14.0 * ui_s;
+                    #[allow(non_snake_case)]
+                    let PAD_Y: f32 = 10.0 * ui_s;
+                    #[allow(non_snake_case)]
+                    let BORDER: f32 = 1.0;
+                    #[allow(non_snake_case)]
+                    let CODE_PAD_X: f32 = 12.0 * ui_s;
+                    #[allow(non_snake_case)]
+                    let CODE_PAD_Y: f32 = 8.0 * ui_s;
+                    #[allow(non_snake_case)]
+                    let CONTENT_INSET_X: f32 = 14.0 * ui_s;
+                    #[allow(non_snake_case)]
+                    let CONTENT_INSET_Y: f32 = 12.0 * ui_s;
                     let char_w = (geometry.font_size * 0.6).max(1.0);
                     let is_doc_hover = matches!(style, FloatingBoxStyle::DocHover);
                     let header_h = if is_doc_hover {
-                        geometry.line_height + 14.0
+                        geometry.line_height + 14.0 * ui_s
                     } else {
                         0.0
                     };
-                    let block_gap = if is_doc_hover { 10.0 } else { 0.0 };
+                    let block_gap = if is_doc_hover { 10.0 * ui_s } else { 0.0 };
 
                     // ── Hover card size caps ─────────────────────────────────────
                     let max_popup_w = (center_bounds[2] * 0.58)
-                        .max(260.0)
+                        .max(260.0 * ui_s)
                         .min(geometry.viewport_text_width);
                     let max_popup_h = (center_bounds[3] * 0.58).max(geometry.line_height * 3.0);
                     let wrap_cols = ((max_popup_w - PAD_X * 2.0) / char_w).floor() as usize;
@@ -312,7 +322,7 @@ impl Renderer {
                     };
 
                     let desired_popup_w = max_len as f32 * char_w + PAD_X * 2.0;
-                    let popup_w = clamp_popup_width(desired_popup_w, 260.0, max_popup_w);
+                    let popup_w = clamp_popup_width(desired_popup_w, 260.0 * ui_s, max_popup_w);
                     debug_assert!(
                         popup_w.is_finite() && popup_w >= 1.0,
                         "floating overlay popup width must stay finite: desired={desired_popup_w}, max_popup_w={max_popup_w}"
@@ -642,8 +652,10 @@ impl Renderer {
                 + geometry.line_height
                 + 2.0;
             let line_h = geometry.line_height;
-            const PAD_X: f32 = 14.0;
-            const PAD_Y: f32 = 4.0;
+            #[allow(non_snake_case)]
+            let PAD_X: f32 = 14.0 * ui_s;
+            #[allow(non_snake_case)]
+            let PAD_Y: f32 = 4.0 * ui_s;
             const TEXT: &str = "⟳  Loading…";
             let spinner_w = TEXT.chars().count() as f32 * char_w + PAD_X * 2.0;
             let spinner_h = line_h + PAD_Y * 2.0;
@@ -685,26 +697,35 @@ impl Renderer {
                 return;
             }
 
-            const PAD_X: f32 = 30.0;
-            const PAD_Y: f32 = 20.0;
             const MAX_VISIBLE_ROWS: usize = 10;
-            const BADGE_GAP: f32 = 25.0;
-            const SCROLLBAR_W: f32 = 7.5;
-            const FOOTER_H: f32 = 65.0;
-            const DOC_PANEL_W: f32 = 650.0;
-            const DOC_PAD: f32 = 35.0;
-            const MIN_LIST_W: f32 = 700.0;
-            const MAX_LIST_W_WITH_DOCS: f32 = 1200.0;
+            #[allow(non_snake_case)]
+            let PAD_X: f32 = 30.0 * ui_s;
+            #[allow(non_snake_case)]
+            let PAD_Y: f32 = 20.0 * ui_s;
+            #[allow(non_snake_case)]
+            let BADGE_GAP: f32 = 25.0 * ui_s;
+            #[allow(non_snake_case)]
+            let SCROLLBAR_W: f32 = 7.5 * ui_s;
+            #[allow(non_snake_case)]
+            let FOOTER_H: f32 = 65.0 * ui_s;
+            #[allow(non_snake_case)]
+            let DOC_PANEL_W: f32 = 650.0 * ui_s;
+            #[allow(non_snake_case)]
+            let DOC_PAD: f32 = 35.0 * ui_s;
+            #[allow(non_snake_case)]
+            let MIN_LIST_W: f32 = 700.0 * ui_s;
+            #[allow(non_snake_case)]
+            let MAX_LIST_W_WITH_DOCS: f32 = 1200.0 * ui_s;
 
             let char_w = (geometry.font_size * 0.6).max(1.0);
             // Badge size tracks row height so it never overflows the row
             // Row height slightly taller than natural line height
-            let popup_row_h = (geometry.line_height * 1.4).max(28.0);
+            let popup_row_h = (geometry.line_height * 1.4).max(28.0 * ui_s);
             // Text uses editor's actual font metrics — no size cap
             let popup_label_line_h = geometry.line_height;
             // Offset so the text block sits centered inside the taller row
             let text_v_center = (popup_row_h - popup_label_line_h) * 0.5;
-            let badge_size = (popup_row_h * 0.82).clamp(28.0, 44.0);
+            let badge_size = (popup_row_h * 0.82).clamp(28.0 * ui_s, 44.0 * ui_s);
             let badge_radius = badge_size * 0.22;
             let badge_col_w = PAD_X + badge_size + BADGE_GAP;
 
@@ -807,8 +828,8 @@ impl Renderer {
             let doc_bg = blend_rgba(bg, fg, 0.02, 1.0);
             // Drop shadow: black at 45% alpha, offset +2x/+4y, oversized
             let shadow_color: [f32; 4] = [0.0, 0.0, 0.0, 0.45];
-            let shadow_offset_x = 2.0;
-            let shadow_offset_y = 4.0;
+            let shadow_offset_x = 2.0 * ui_s;
+            let shadow_offset_y = 4.0 * ui_s;
 
             // --- Drop shadow ---
             chrome_quads.push(RegionDrawInstance::new(

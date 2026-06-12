@@ -90,6 +90,23 @@ impl AppShell {
         );
     }
 
+    /// Explicit completion request (Ctrl+Space). Unlike the automatic typing
+    /// trigger, the user's intent wins over AI ghost text: dismiss the
+    /// suggestion and invalidate any in-flight AI request (so its late result
+    /// can't pop the menu back off the screen), then request the LSP menu.
+    pub(super) fn submit_lsp_completion_manual(&mut self) -> bool {
+        self.ai_inline_anchor = None;
+        self.ai_inline_revision = self.ai_inline_revision.saturating_add(1);
+        self.cancel_ai_inline_completion();
+        let mut changed = self.app_state.clear_inline_suggestion();
+        if changed {
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+        }
+        changed |= self.submit_lsp_completion();
+        changed
+    }
+
     pub(super) fn submit_lsp_completion(&mut self) -> bool {
         if self.active_lsp_server.is_none() {
             if self.pending_lsp_server.is_some() {

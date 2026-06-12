@@ -86,3 +86,5 @@
 [2026-06-12T02:55:06.798Z] [INFO] OpenWolf daemon started
 [2026-06-12T02:55:06.798Z] [INFO] Dashboard server listening on port 18791
 [2026-06-12T02:55:17.286Z] [INFO] WebSocket client connected
+[2026-06-12T04:34:09.792Z] [INFO] Daemon shutting down...
+[2026-06-12T04:34:09.802Z] [INFO] Daemon stopped

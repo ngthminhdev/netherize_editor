@@ -187,6 +187,7 @@ impl AppShell {
             active_system_dep_guide: None,
             dismissed_system_deps: false,
             transient_toast: None,
+            whichkey_redraw_fired: false,
             theme_picker_original_theme: None,
             theme_picker_preview_profile: None,
             base_theme,
@@ -239,8 +240,12 @@ impl AppShell {
             ai_inline_revision: 0,
             pending_ai_inline_request: None,
             ai_inline_cancel_token: None,
-            last_ai_inline_queue_at: None,
             last_ai_inline_submit_at: None,
+            ai_inline_suggestion_retained: false,
+            ai_inline_inflight: false,
+            ai_inline_failure_streak: 0,
+            ai_inline_cooldown_until: None,
+            ai_inline_anchor: None,
             pending_lsp_document_sync: None,
             last_editor_bounds: None,
             last_show_welcome: None,
@@ -509,13 +514,12 @@ impl AppShell {
     }
 
     pub(super) fn update_runtime_scaling_for_window(&mut self, scale_factor: f64) {
-        // let raw_scale = if let Some(over) = self.ui_config.window.scale_factor_override {
-        //     over as f64
-        // } else {
-        //     scale_factor
-        // };
-        // let dpi_scale = (raw_scale as f32).max(0.25);
-        let dpi_scale = (scale_factor as f32).max(0.25);
+        let raw_scale = if let Some(over) = self.ui_config.window.scale_factor_override {
+            over as f64
+        } else {
+            scale_factor
+        };
+        let dpi_scale = (raw_scale as f32).max(0.25);
         let logical_width = self.window_size.width as f32 / dpi_scale;
         let logical_height = self.window_size.height as f32 / dpi_scale;
 
@@ -595,6 +599,7 @@ impl AppShell {
         self.panel_state.right.size_px = scaled_ui.docks.right.size_px;
         self.panel_state.bottom.size_px = scaled_ui.docks.bottom.size_px;
         if let Some(renderer) = self.renderer.as_mut() {
+            renderer.set_ui_scale(self.runtime_scale);
             renderer.apply_theme(scaled_theme);
             renderer.apply_ui_config(&scaled_ui);
         }
@@ -796,6 +801,7 @@ impl AppShell {
             command_palette_mode: self.app_state.command_palette_mode(),
             welcome_visible,
             completion_visible: self.app_state.has_completion(),
+            inline_suggestion_visible: self.app_state.inline_suggestion().is_some(),
             hover_overlay_visible: self.app_state.has_scrollable_floating_overlay(),
             zen_mode_active: self.panel_state.maximized_region.is_some(),
             right_sidebar_terminal: self.focus_manager.current() == FocusTarget::RightSidebar
@@ -1141,6 +1147,48 @@ impl AppShell {
         self.pending_ai_inline_request = None;
         if let Some(token) = self.ai_inline_cancel_token.take() {
             token.cancel();
+            self.ai_inline_inflight = false;
+        }
+    }
+
+    /// True while the caret is still exactly where the inline pipeline was
+    /// anchored: same buffer, same char index, still in Insert mode.
+    pub(super) fn ai_inline_anchor_is_current(&self) -> bool {
+        let Some((file, cursor)) = self.ai_inline_anchor.as_ref() else {
+            return false;
+        };
+        self.app_state.current_mode() == EditorMode::Insert
+            && *cursor == self.app_state.cursor_char_idx()
+            && file.as_deref() == self.app_state.active_file()
+    }
+
+    /// Re-anchor the pipeline to the caret's current position. Called after
+    /// edits that legitimately move the caret while keeping the suggestion
+    /// (prefix-retained typing, partial word accept).
+    pub(super) fn reanchor_ai_inline(&mut self) {
+        self.ai_inline_anchor = Some((
+            self.app_state.active_file().map(PathBuf::from),
+            self.app_state.cursor_char_idx(),
+        ));
+    }
+
+    /// Watchdog run every event-loop pass, before the debounce flush: if the
+    /// caret moved away from the anchor (cursor motion, mouse click, mode or
+    /// buffer switch) the whole pipeline is torn down — the pending debounced
+    /// request is dropped, the in-flight request is cancelled and its late
+    /// result invalidated via a revision bump, and any visible ghost text is
+    /// cleared so it can't follow the caret to the new position.
+    pub(super) fn enforce_ai_inline_anchor(&mut self) {
+        if self.ai_inline_anchor.is_none() || self.ai_inline_anchor_is_current() {
+            return;
+        }
+        self.ai_inline_anchor = None;
+        self.ai_inline_revision = self.ai_inline_revision.saturating_add(1);
+        self.cancel_ai_inline_completion();
+        if self.app_state.clear_inline_suggestion() {
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+            self.request_redraw();
         }
     }
 
@@ -1158,30 +1206,32 @@ impl AppShell {
             return;
         };
         let now = Instant::now();
-        if !self.should_queue_ai_inline_completion(cfg, now) {
+        if let Some(until) = self.ai_inline_cooldown_until {
+            if now < until {
+                self.cancel_ai_inline_completion();
+                return;
+            }
+            self.ai_inline_cooldown_until = None;
+        }
+        if !self.should_queue_ai_inline_completion(cfg) {
             self.pending_ai_inline_request = None;
-            self.last_ai_inline_queue_at = Some(now);
             return;
         }
-        self.last_ai_inline_queue_at = Some(now);
+        // Every typing edit (re-)queues; the debounce in flush coalesces fast
+        // keystrokes so the request fires once the user pauses. Rate limiting
+        // (min_interval) is enforced at flush time by delaying, not dropping.
         self.ai_inline_revision = self.ai_inline_revision.saturating_add(1);
         self.pending_ai_inline_request = Some(PendingAiInlineRequest {
             revision: self.ai_inline_revision,
             queued_at: now,
         });
+        self.reanchor_ai_inline();
     }
 
     fn should_queue_ai_inline_completion(
         &self,
         cfg: &crate::config::ai_config::InlineCompletionConfig,
-        now: Instant,
     ) -> bool {
-        if let Some(last_submit) = self.last_ai_inline_submit_at
-            && last_submit.elapsed() < Duration::from_millis(cfg.min_interval_ms())
-        {
-            return false;
-        }
-
         let cursor = self.app_state.cursor_char_idx();
         if cursor < cfg.min_prefix_chars() {
             return false;
@@ -1199,13 +1249,7 @@ impl AppShell {
             return false;
         }
 
-        if before.is_some_and(|ch| cfg.trigger_chars().contains(&ch)) {
-            return true;
-        }
-
-        self.last_ai_inline_queue_at
-            .map(|last| now.duration_since(last) >= Duration::from_millis(cfg.idle_trigger_ms()))
-            .unwrap_or(true)
+        true
     }
 
     pub(super) fn flush_pending_ai_inline_completion(&mut self) {
@@ -1216,7 +1260,21 @@ impl AppShell {
             self.cancel_ai_inline_completion();
             return;
         };
+        // The caret moved away (or the mode/buffer changed) since this request
+        // was queued: a completion for the old spot is useless — cancel instead
+        // of requesting at whatever position the caret happens to be at now.
+        if !self.ai_inline_anchor_is_current() {
+            self.enforce_ai_inline_anchor();
+            return;
+        }
         if pending.queued_at.elapsed() < Duration::from_millis(cfg.debounce_ms()) {
+            return;
+        }
+        // Rate limit: keep the pending request and retry on the next wake
+        // (next_ai_inline_flush_deadline accounts for this) instead of dropping.
+        if let Some(last_submit) = self.last_ai_inline_submit_at
+            && last_submit.elapsed() < Duration::from_millis(cfg.min_interval_ms())
+        {
             return;
         }
         let revision = pending.revision;
@@ -1230,6 +1288,7 @@ impl AppShell {
         let api_key = cfg.provider.api_key.clone();
         let model = cfg.provider.model.clone();
         let endpoint_kind = cfg.provider.endpoint_kind.clone();
+        let reasoning_effort = cfg.provider.reasoning_effort.clone();
         let max_tokens = cfg.max_tokens();
 
         let text = self.app_state.text_string();
@@ -1249,6 +1308,8 @@ impl AppShell {
         }
         let language_id = self.app_state.active_file().map(language_id_for_path);
         self.last_ai_inline_submit_at = Some(Instant::now());
+        self.ai_inline_inflight = true;
+        self.request_redraw();
         self.submit(RequestSpec {
             revision_id: revision,
             topic: RequestTopic::AiInlineCompletion,
@@ -1257,6 +1318,7 @@ impl AppShell {
                 api_key,
                 model,
                 endpoint_kind,
+                reasoning_effort,
                 prefix,
                 suffix,
                 language_id,
@@ -1270,7 +1332,14 @@ impl AppShell {
     pub(super) fn next_ai_inline_flush_deadline(&self) -> Option<Instant> {
         let pending = self.pending_ai_inline_request.as_ref()?;
         let cfg = self.ai_config.inline_completion()?;
-        Some(pending.queued_at + Duration::from_millis(cfg.debounce_ms()))
+        let debounce_deadline = pending.queued_at + Duration::from_millis(cfg.debounce_ms());
+        let min_interval_deadline = self
+            .last_ai_inline_submit_at
+            .map(|last| last + Duration::from_millis(cfg.min_interval_ms()));
+        Some(match min_interval_deadline {
+            Some(interval_deadline) => debounce_deadline.max(interval_deadline),
+            None => debounce_deadline,
+        })
     }
 
     pub(super) fn submit_active_palette_fzf_search(&mut self) {

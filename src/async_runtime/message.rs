@@ -347,6 +347,7 @@ pub enum WorkerRequestPayload {
         api_key: Option<String>,
         model: String,
         endpoint_kind: Option<String>,
+        reasoning_effort: Option<String>,
         prefix: String,
         suffix: String,
         language_id: Option<String>,

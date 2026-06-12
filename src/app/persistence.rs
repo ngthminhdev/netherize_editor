@@ -16,6 +16,9 @@ pub struct AppPersistentState {
     pub recent_project_meta: HashMap<PathBuf, RecentProjectMeta>,
     #[serde(default)]
     pub theme_profile: Option<String>,
+    /// True after the one-time first-run key-hint toast was shown.
+    #[serde(default)]
+    pub first_run_tour_shown: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -109,6 +109,28 @@ fn insert_edit_clears_stale_semantic_highlight_spans() {
 }
 
 #[test]
+fn operator_delete_clears_stale_semantic_symbol_highlights() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let text = "bootstrap.NewApp\nsecond line";
+    shell.app_state = AppState::from_text(PathBuf::from("semantic-highlight-dd.ts"), text);
+    let _ = shell.app_state.apply_mode_event(ModeEvent::EnterNormal);
+    assert!(
+        shell
+            .app_state
+            .set_semantic_symbol_highlights(vec![(0, "bootstrap".len())])
+    );
+    let revision_before = shell.semantic_highlight_request_revision;
+
+    assert!(shell.handle_command(Command::Operate {
+        op: crate::core::commands::Operator::Delete,
+        target: crate::core::commands::OperationTarget::CurrentLine,
+    }));
+
+    assert!(shell.app_state.semantic_symbol_highlights().is_empty());
+    assert!(shell.semantic_highlight_request_revision > revision_before);
+}
+
+#[test]
 fn move_to_last_line_uses_viewport_layout_path() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let text = (0..120)
@@ -3131,4 +3153,83 @@ fn resize_panel_and_ui_config_stay_in_sync() {
         shell.panel_state.bottom.size_px,
         shell.ui_config.docks.bottom.size_px
     );
+}
+
+#[test]
+fn manual_trigger_completion_dismisses_ghost_text_and_invalidates_inflight_ai() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root = std::env::temp_dir().join(format!(
+        "netherize_manual_completion_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(root.join("src")).expect("create workspace");
+    let file_path = root.join("src/main.rs");
+    std::fs::write(&file_path, "fn demo() {\n    de\n}\n").expect("write file");
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+    shell.active_lsp_server = Some(ActiveLspServer {
+        server_name: "rust-analyzer".to_string(),
+        root_path: root.clone(),
+    });
+    shell
+        .app_state
+        .apply_mode_event(ModeEvent::EnterInsert)
+        .expect("enter insert");
+    shell.app_state.jump_to_line_and_column(1, 6);
+
+    // Ghost text visible + an AI request in flight at the current caret.
+    shell
+        .app_state
+        .set_inline_suggestion(Some("mo()".to_string()));
+    shell.reanchor_ai_inline();
+    shell.ai_inline_inflight = true;
+    shell.ai_inline_cancel_token = Some(CancellationToken::new());
+    let revision_before = shell.ai_inline_revision;
+
+    assert!(shell.handle_command(Command::TriggerCompletion));
+
+    // Ctrl+Space must dismiss the ghost, cancel AI, and submit an LSP request.
+    assert!(shell.app_state.inline_suggestion().is_none());
+    assert!(shell.ai_inline_anchor.is_none());
+    assert!(!shell.ai_inline_inflight);
+    assert!(shell.ai_inline_revision > revision_before);
+    assert!(shell.app_state.is_completion_loading());
+    let request_id = shell
+        .active_lsp_completion_request_id
+        .expect("manual completion request should be active");
+
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id,
+        revision_id: 0,
+        topic: crate::async_runtime::message::RequestTopic::LspRequest,
+        payload: crate::async_runtime::message::WorkerResultPayload::LspCompletionResult {
+            items: vec![test_completion_item("demo", "demo")],
+            cursor_line: 1,
+            cursor_col: 6,
+            prefix_start_col: 4,
+            prefix: "de".to_string(),
+        },
+    });
+
+    assert!(shell.app_state.completion().is_some());
+
+    // A late result from the cancelled AI request must not replace the manual
+    // completion popup or restore ghost text.
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: request_id + 1,
+        revision_id: revision_before,
+        topic: crate::async_runtime::message::RequestTopic::AiInlineCompletion,
+        payload: crate::async_runtime::message::WorkerResultPayload::AiInlineCompletionResult {
+            suggestion: "mo()".to_string(),
+        },
+    });
+
+    assert!(shell.app_state.inline_suggestion().is_none());
+    assert!(shell.app_state.completion().is_some());
 }
