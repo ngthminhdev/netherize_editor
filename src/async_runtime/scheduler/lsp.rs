@@ -22,7 +22,7 @@ use crate::{
 };
 
 use super::{
-    LspSessionHandle, LspSessionRegistry, async_trace,
+    LspSessionHandle, LspSessionRegistry, async_trace, session_name_matches_binary,
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
     lsp_io::{spawn_lsp_stderr_logger, spawn_lsp_stdout_reader},
     lsp_parse::{
@@ -162,13 +162,20 @@ fn execute_lsp_request(
             root_path,
             server_command,
             custom_bin_path,
+            interpreter_path,
+            launch_args,
         } => {
             let handle = tokio::runtime::Handle::try_current()
                 .map_err(|_| "tokio runtime unavailable while starting lsp server".to_string())?;
+            let launch_args_ref: Option<Vec<&str>> = launch_args
+                .as_ref()
+                .map(|args| args.iter().map(String::as_str).collect());
             let spawned = handle.block_on(spawn_lsp_server(
                 server_command.as_deref(),
                 root_path,
                 custom_bin_path.as_deref(),
+                interpreter_path.as_deref(),
+                launch_args_ref.as_deref(),
                 request.request_id,
                 request.revision_id,
             ))?;
@@ -221,55 +228,58 @@ fn execute_lsp_request(
             version,
             text,
         } => {
-            let Some(server_key) = language_profile_for_language_id(language_id)
-                .map(|profile| profile.lsp_binary)
-                .or(Some(language_id.as_str()))
-            else {
-                return Err("lsp didOpen rejected: language profile not found".to_string());
-            };
-            let Some(session) = lsp_sessions.get_by_binary(server_key)? else {
+            // Fan the document out to every server running for this language
+            // (primary + companions, e.g. pyright + ruff), filtered so we never
+            // leak it to an unrelated server that happens to share the root.
+            let expected = crate::lsp::registry::expected_server_binaries(language_id);
+            let sessions: Vec<_> = lsp_sessions
+                .sessions_for_document_uri(uri)?
+                .into_iter()
+                .filter(|session| {
+                    expected.is_empty()
+                        || expected.iter().any(|binary| {
+                            session_name_matches_binary(&session.server_name, binary)
+                        })
+                })
+                .collect();
+            if sessions.is_empty() {
                 return Err("lsp didOpen rejected: server is not running".to_string());
-            };
-            session.update_request_meta(request.request_id, request.revision_id);
-            if session.is_document_open(uri) {
-                session.send_notification(
+            }
+            for session in &sessions {
+                let process = &session.process;
+                process.update_request_meta(request.request_id, request.revision_id);
+                if process.is_document_open(uri) {
+                    process.send_notification(
+                        "textDocument/didChange",
+                        build_did_change_notification(uri, *version, text),
+                    )?;
+                } else {
+                    process.send_notification(
+                        "textDocument/didOpen",
+                        build_did_open_notification(uri, language_id, *version, text),
+                    )?;
+                    process.mark_document_open(uri);
+                }
+            }
+            Ok(WorkerResultPayload::LspAck {
+                action: "didOpen".to_string(),
+                uri: Some(uri.clone()),
+                version: Some(*version),
+            })
+        }
+        WorkerRequestPayload::LspDidChange { uri, version, text } => {
+            // Fan out to every server mirroring this document (pyright + ruff).
+            let sessions = lsp_sessions.sessions_with_open_document(uri)?;
+            if sessions.is_empty() {
+                return Err("lsp didChange rejected: server is not running".to_string());
+            }
+            for process in &sessions {
+                process.update_request_meta(request.request_id, request.revision_id);
+                process.send_notification(
                     "textDocument/didChange",
                     build_did_change_notification(uri, *version, text),
                 )?;
-                Ok(WorkerResultPayload::LspAck {
-                    action: "didChange".to_string(),
-                    uri: Some(uri.clone()),
-                    version: Some(*version),
-                })
-            } else {
-                session.send_notification(
-                    "textDocument/didOpen",
-                    build_did_open_notification(uri, language_id, *version, text),
-                )?;
-                session.mark_document_open(uri);
-                Ok(WorkerResultPayload::LspAck {
-                    action: "didOpen".to_string(),
-                    uri: Some(uri.clone()),
-                    version: Some(*version),
-                })
             }
-        }
-        WorkerRequestPayload::LspDidChange { uri, version, text } => {
-            let Some(active_session) = lsp_sessions
-                .sessions
-                .lock()
-                .map_err(|_| "lsp session lock poisoned".to_string())?
-                .values()
-                .find(|session| session.process.is_document_open(uri))
-                .map(|session| session.process.clone())
-            else {
-                return Err("lsp didChange rejected: server is not running".to_string());
-            };
-            active_session.update_request_meta(request.request_id, request.revision_id);
-            active_session.send_notification(
-                "textDocument/didChange",
-                build_did_change_notification(uri, *version, text),
-            )?;
 
             Ok(WorkerResultPayload::LspAck {
                 action: "didChange".to_string(),
@@ -278,20 +288,16 @@ fn execute_lsp_request(
             })
         }
         WorkerRequestPayload::LspDidClose { uri } => {
-            let Some(active_session) = lsp_sessions
-                .sessions
-                .lock()
-                .map_err(|_| "lsp session lock poisoned".to_string())?
-                .values()
-                .find(|session| session.process.is_document_open(uri))
-                .map(|session| session.process.clone())
-            else {
+            let sessions = lsp_sessions.sessions_with_open_document(uri)?;
+            if sessions.is_empty() {
                 return Err("lsp didClose rejected: server is not running".to_string());
-            };
-            active_session.update_request_meta(request.request_id, request.revision_id);
-            active_session
-                .send_notification("textDocument/didClose", build_did_close_notification(uri))?;
-            active_session.mark_document_closed(uri);
+            }
+            for process in &sessions {
+                process.update_request_meta(request.request_id, request.revision_id);
+                process
+                    .send_notification("textDocument/didClose", build_did_close_notification(uri))?;
+                process.mark_document_closed(uri);
+            }
 
             Ok(WorkerResultPayload::LspAck {
                 action: "didClose".to_string(),
@@ -499,7 +505,10 @@ fn execute_lsp_request(
             tab_size,
             insert_spaces,
         } => {
-            let handle = lsp_sessions.get_handle_by_uri(uri)?.or_else(|| {
+            // Route to whichever running server can actually format (advertises
+            // documentFormatting). For Python that is ruff, not pyright. Fall
+            // back to the primary if none with the doc open is found.
+            let handle = lsp_sessions.get_formatter_handle(uri)?.or_else(|| {
                 language_profile_for_language_id(language_id)
                     .map(|profile| profile.lsp_binary)
                     .and_then(|key| lsp_sessions.get_handle(key).ok().flatten())
@@ -601,10 +610,21 @@ fn execute_lsp_request(
                 .update_request_meta(request.request_id, request.revision_id);
             handle_lsp_code_action(&handle.process, uri, *line, *character, diagnostics)
         }
-        WorkerRequestPayload::WorkspaceSymbolRequest { language_id, query } => {
-            let handle = language_profile_for_language_id(language_id)
-                .map(|profile| profile.lsp_binary)
-                .and_then(|key| lsp_sessions.get_handle(key).ok().flatten());
+        WorkerRequestPayload::WorkspaceSymbolRequest {
+            language_id,
+            query,
+            root_path,
+        } => {
+            let binary = language_profile_for_language_id(language_id).map(|profile| profile.lsp_binary);
+            // Prefer the session at the requested root (correct module among
+            // several); fall back to any same-binary session for back-compat.
+            let handle = match (binary, root_path.as_deref()) {
+                (Some(key), Some(root)) => lsp_sessions
+                    .get_handle_by_binary_and_root(key, root)?
+                    .or(lsp_sessions.get_handle(key)?),
+                (Some(key), None) => lsp_sessions.get_handle(key)?,
+                (None, _) => None,
+            };
             let Some(handle) = handle else {
                 return Err("workspace/symbol rejected: LSP server not running".to_string());
             };

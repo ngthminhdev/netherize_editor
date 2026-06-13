@@ -1516,6 +1516,33 @@ impl AppShell {
             }
         };
 
+        // For Python, hand the selected interpreter to pylsp so completion and
+        // diagnostics resolve against the chosen environment, not pylsp's own.
+        let interpreter_path = self
+            .app_state
+            .active_file()
+            .and_then(crate::lsp::registry::language_profile_for_path)
+            .filter(|profile| profile.key == "python")
+            .and(self.selected_python_env.clone());
+
+        // Companion servers (e.g. ruff alongside pyright) launch with the
+        // primary. Collect them as owned data before submitting to avoid
+        // borrowing `self.app_state` across the mutable `self.submit` calls.
+        let companions: Vec<(String, Vec<String>)> = self
+            .app_state
+            .active_file()
+            .map(crate::lsp::registry::companion_servers_for_path)
+            .unwrap_or(&[])
+            .iter()
+            .map(|companion| {
+                (
+                    companion.binary.to_string(),
+                    companion.launch_args.iter().map(|s| s.to_string()).collect(),
+                )
+            })
+            .collect();
+        let root_path = desired.root_path.clone();
+
         self.pending_lsp_server = Some(desired.clone());
         self.submit(RequestSpec {
             revision_id: 0,
@@ -1523,9 +1550,26 @@ impl AppShell {
             payload: WorkerRequestPayload::StartLspServer {
                 root_path: desired.root_path,
                 server_command: Some(desired.server_name),
-                custom_bin_path,
+                custom_bin_path: custom_bin_path.clone(),
+                interpreter_path,
+                launch_args: None,
             },
         });
+
+        for (binary, args) in companions {
+            self.submit(RequestSpec {
+                revision_id: 0,
+                topic: RequestTopic::LspClient,
+                payload: WorkerRequestPayload::StartLspServer {
+                    root_path: root_path.clone(),
+                    server_command: Some(binary),
+                    // Prefer a venv-local companion (e.g. `.venv/bin/ruff`).
+                    custom_bin_path: custom_bin_path.clone(),
+                    interpreter_path: None,
+                    launch_args: Some(args),
+                },
+            });
+        }
         true
     }
 
@@ -1556,16 +1600,24 @@ impl AppShell {
             return None;
         }
         let mut server_name = profile.lsp_binary.to_string();
-        let root_path = crate::lsp::registry::find_project_root(path, profile.root_markers);
+        let root_path = if profile.key == "go" {
+            // Honor go.work multi-module workspaces.
+            crate::lsp::registry::find_go_module_root(path)
+        } else {
+            crate::lsp::registry::find_project_root(path, profile.root_markers)
+        };
 
         if profile.key == "python"
             && let Some(python_path) = &self.selected_python_env
         {
-            let local_pylsp = python_path.parent().map(|p| p.join("pylsp"));
-            if let Some(local_pylsp) = local_pylsp
-                && local_pylsp.try_exists().unwrap_or(false)
+            // Prefer a language server installed inside the selected venv
+            // (e.g. `pyright-langserver` from `pip install pyright`) over a
+            // global one, so it runs against the project's own packages.
+            let local_server = python_path.parent().map(|p| p.join(profile.lsp_binary));
+            if let Some(local_server) = local_server
+                && local_server.try_exists().unwrap_or(false)
             {
-                server_name = local_pylsp.to_string_lossy().to_string();
+                server_name = local_server.to_string_lossy().to_string();
             }
         } else if profile.key == "dart" {
             let mut resolved_dart_path = self.selected_dart_env.clone();
@@ -1907,12 +1959,19 @@ impl AppShell {
             }
             return;
         }
+        // Route to the session at the active file's project root, so with
+        // multiple modules (e.g. several go.mod) the index isn't built from a
+        // different module's gopls session.
+        let root_path = self
+            .desired_lsp_server_for_active_file()
+            .map(|server| server.root_path);
         self.submit(RequestSpec {
             revision_id: 0,
             topic: RequestTopic::LspRequest,
             payload: WorkerRequestPayload::WorkspaceSymbolRequest {
                 language_id,
                 query: String::new(), // Empty query returns all symbols
+                root_path,
             },
         });
     }

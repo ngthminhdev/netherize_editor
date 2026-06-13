@@ -374,6 +374,7 @@ mod tests {
                 uri: "file:///tmp/demo.rs".to_string(),
                 diagnostics: Vec::new(),
                 version: None,
+                server_name: "rust-analyzer".to_string(),
             },
         }))
         .expect("send diagnostics result");

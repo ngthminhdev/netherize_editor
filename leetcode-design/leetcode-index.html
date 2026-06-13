@@ -1,0 +1,445 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Netherize × LeetCode — Feature Spec Overview</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{background:#060b13;color:#d0d7e4;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased}
+body{min-height:100vh}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-thumb{background:#2a364d88;border-radius:2px}
+
+:root{
+  --bg:#111720; --panel:#161d2a; --ed:#1c2433; --term:#111720; --st:#0e1420;
+  --bd:#1e2738; --sel:#243044;
+  --fg:#d0d7e4; --dim:#8a9abf; --gh:#3d5070;
+  --cyan:#22ECDB; --green:#3CEC85; --mag:#F38CEC;
+  --amb:#EACD61; --info:#69C3FF; --warn:#FF955C; --err:#E35535;
+  --fui:'Inter',system-ui,sans-serif;
+  --fmono:'JetBrains Mono',ui-monospace,monospace;
+}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+@keyframes blink{0%,100%{opacity:.9}50%{opacity:0}}
+
+.page-header{
+  background:var(--panel);border-bottom:1px solid var(--bd);
+  padding:0 40px;display:flex;align-items:center;gap:16px;height:48px;
+}
+.logo-mark{font-family:var(--fmono);font-size:13px;font-weight:700;color:var(--cyan);letter-spacing:.06em}
+.logo-text{font-family:var(--fmono);font-size:13px;font-weight:600;letter-spacing:.2em;color:var(--fg)}
+.hdr-div{color:var(--gh)}
+.hdr-sub{font-size:11px;color:var(--gh)}
+.hdr-badge{font-size:10px;color:var(--amb);font-family:var(--fmono);
+  border:1px solid rgba(234,205,97,.25);border-radius:3px;padding:2px 8px}
+.hdr-links{margin-left:auto;display:flex;gap:8px}
+.hdr-links a{font-size:10px;color:var(--gh);font-family:var(--fmono);text-decoration:none;
+  padding:3px 8px;border:1px solid transparent;border-radius:3px;transition:all .15s}
+.hdr-links a:hover{color:var(--dim);border-color:var(--bd)}
+
+.page{max-width:1240px;margin:0 auto;padding:48px 40px 80px}
+.section{margin-bottom:52px}
+.section-ttl{font-size:10px;color:var(--gh);letter-spacing:.12em;text-transform:uppercase;
+  font-weight:600;margin-bottom:20px;font-family:var(--fui)}
+
+.diag-container{position:relative;overflow:hidden;border-radius:9px;
+  border:1px solid var(--bd);height:476px}
+
+.d-topbar{height:36px;flex-shrink:0;background:var(--panel);border-bottom:1px solid var(--bd);
+  display:flex;align-items:center;padding:0 12px;gap:10px}
+.d-logo{font-family:var(--fmono);font-size:13px;font-weight:700;color:var(--cyan);
+  padding-right:10px;border-right:1px solid var(--bd);margin-right:4px}
+.d-tabs{display:flex;align-items:stretch;flex:1;height:100%}
+.d-tab{display:flex;align-items:center;padding:0 14px;font-family:var(--fmono);font-size:11px;
+  color:var(--gh);border-right:1px solid var(--bd);flex-shrink:0;position:relative;gap:5px}
+.d-tab.act{color:var(--dim);background:rgba(36,48,68,.5)}
+.d-tab.act::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;
+  background:var(--cyan);border-radius:1px}
+.d-dot{width:5px;height:5px;border-radius:50%;background:var(--warn)}
+
+.d-body{flex:1;display:flex;overflow:hidden}
+.d-left{width:240px;background:var(--panel);border-right:1px solid var(--bd);
+  display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;position:relative}
+.d-center{flex:1;background:var(--ed);display:flex;flex-direction:column;overflow:hidden;
+  min-width:0;position:relative}
+.d-right{width:280px;background:var(--panel);border-left:1px solid var(--bd);
+  display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;position:relative}
+
+.d-col-tabs{height:28px;display:flex;align-items:stretch;border-bottom:1px solid var(--bd);flex-shrink:0}
+.d-col-tab{display:flex;align-items:center;padding:0 10px;font-family:var(--fui);font-size:10px;
+  color:var(--gh);border-right:1px solid var(--bd);cursor:default;position:relative}
+.d-col-tab.act{color:var(--dim);background:rgba(36,48,68,.6)}
+.d-col-tab.act::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;
+  background:var(--cyan);border-radius:1px}
+
+.d-gutter{width:42px;background:var(--ed);border-right:1px solid var(--bd);
+  padding:10px 4px;display:flex;flex-direction:column;flex-shrink:0}
+.d-gnum{font-family:var(--fmono);font-size:11px;color:var(--gh);
+  line-height:20px;min-height:20px;text-align:right;opacity:.4}
+.d-gnum.act{opacity:.9;color:var(--fg)}
+.d-code{flex:1;padding:10px 14px;overflow:hidden;display:flex;flex-direction:column}
+.cl{font-family:var(--fmono);font-size:11px;line-height:20px;min-height:20px;white-space:pre}
+.kw{color:#EACD61}.fn{color:#69C3FF}.ty{color:#B78AFF}
+.co{color:#3a5070}.pu{color:#5a7090}.pa{color:#22ECDB}.va{color:#d0d7e4}
+
+.d-statusbar{height:24px;flex-shrink:0;background:var(--st);
+  border-top:1px solid rgba(30,39,56,.5);
+  display:flex;align-items:center;padding:0 10px;gap:10px;
+  font-family:var(--fmono);font-size:10px;color:var(--gh)}
+.d-mode{display:flex;align-items:center;gap:4px;padding:1px 7px;border-radius:4px;
+  background:rgba(34,236,219,.1);border:1px solid rgba(34,236,219,.25)}
+.d-mode-dot{width:5px;height:5px;border-radius:50%;background:var(--cyan)}
+.d-mode-lbl{font-size:10px;font-weight:600;letter-spacing:.1em;color:var(--cyan)}
+
+.d-bottom{height:160px;background:var(--term);border-top:1px solid var(--bd);
+  display:flex;flex-direction:column;flex-shrink:0}
+.d-btabs{height:28px;display:flex;align-items:stretch;border-bottom:1px solid var(--bd);
+  background:var(--panel);flex-shrink:0}
+.d-btab{display:flex;align-items:center;padding:0 12px;font-family:var(--fui);font-size:10px;
+  color:var(--gh);border-right:1px solid var(--bd);cursor:default;position:relative}
+.d-btab.act{color:var(--dim);background:rgba(36,48,68,.6)}
+.d-btab.act::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;
+  background:var(--cyan);border-radius:1px}
+
+.callout{position:absolute;z-index:10;display:flex;align-items:center;gap:6px;pointer-events:none}
+.callout-badge{width:22px;height:22px;border-radius:50%;background:var(--amb);color:#0d1218;
+  font-family:var(--fmono);font-size:11px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.callout-label{background:rgba(6,11,19,.88);border:1px solid var(--bd);border-radius:4px;
+  padding:3px 8px;font-family:var(--fmono);font-size:10px;color:var(--fg);white-space:nowrap}
+
+.feature-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
+.feat-card{background:var(--panel);border:1px solid var(--bd);border-radius:7px;
+  padding:16px 18px;display:flex;flex-direction:column;gap:10px;
+  transition:border-color .15s;text-decoration:none;color:inherit}
+.feat-card:hover{border-color:rgba(34,236,219,.3)}
+.feat-card-top{display:flex;align-items:flex-start;gap:12px}
+.feat-num{width:28px;height:28px;border-radius:50%;flex-shrink:0;
+  background:rgba(34,236,219,.1);border:1px solid rgba(34,236,219,.2);
+  color:var(--cyan);font-family:var(--fmono);font-size:12px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;margin-top:1px}
+.feat-name{font-family:var(--fmono);font-size:13px;font-weight:500;color:var(--fg)}
+.feat-region{font-size:10px;color:var(--cyan);font-family:var(--fmono);margin-top:2px}
+.feat-desc{font-size:11px;color:var(--dim);font-family:var(--fui);line-height:1.6}
+.feat-bottom{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.feat-shortcuts{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.feat-cta{margin-left:auto;font-size:10px;color:var(--cyan);font-family:var(--fmono);opacity:.7}
+.keycap{font-size:9px;color:var(--gh);border:1px solid var(--gh);border-radius:2px;
+  padding:0 4px;line-height:15px;font-family:var(--fmono);display:inline-block}
+
+.palette-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.pal-item{display:flex;align-items:center;gap:10px;background:var(--panel);
+  border:1px solid var(--bd);border-radius:5px;padding:8px 12px}
+.pal-swatch{width:28px;height:28px;border-radius:4px;flex-shrink:0}
+.pal-key{font-size:10px;color:var(--gh);font-family:var(--fmono)}
+.pal-hex{font-size:11px;color:var(--fg);font-family:var(--fmono);font-weight:500}
+.pal-use{font-size:9px;color:var(--gh);font-family:var(--fui);margin-top:1px}
+
+.ex{display:flex;align-items:center;gap:4px;padding:1px 6px 1px 20px;height:20px;
+  font-family:var(--fmono);font-size:10px;color:var(--dim)}
+.ex.act{background:rgba(34,236,219,.1);color:var(--cyan)}
+.rd-row{padding:4px 10px;font-family:var(--fmono);font-size:11px;color:var(--dim);line-height:1.6}
+.bt-row{display:flex;align-items:center;gap:8px;padding:0 10px;height:26px;
+  font-family:var(--fmono);font-size:10px;color:var(--dim);border-bottom:1px solid var(--bd)}
+.bt-badge{font-size:9px;font-weight:500;border-radius:3px;padding:1px 6px;flex-shrink:0}
+.bp{color:#3CEC85;background:rgba(60,236,133,.1);border:1px solid rgba(60,236,133,.2)}
+</style>
+</head>
+<body>
+
+<header class="page-header">
+  <span class="logo-mark">N</span>
+  <span class="logo-text">NETHERIZE</span>
+  <span class="hdr-div">×</span>
+  <span class="hdr-sub">LeetCode Interview Feature — UI/UX Spec</span>
+  <span class="hdr-badge">v1.0 · 5 panels · 18 artboards</span>
+  <nav class="hdr-links">
+    <a href="leetcode-problem-view.html">Problem View</a>
+    <a href="leetcode-test-runner.html">Test Runner</a>
+    <a href="leetcode-mock-interview.html">Mock Interview</a>
+    <a href="leetcode-topic-progress.html">Topic/Progress</a>
+  </nav>
+</header>
+
+<div class="page">
+
+  <div class="section">
+    <div class="section-ttl">Feature Region Map — all 5 panels in context</div>
+    <div class="diag-container">
+      <div style="transform:scale(0.72);transform-origin:top left;width:1100px;height:660px">
+        <div style="width:1100px;height:660px;background:var(--bg);display:flex;flex-direction:column;overflow:hidden">
+          <div class="d-topbar">
+            <span class="d-logo">N</span>
+            <div class="d-tabs">
+              <div class="d-tab act">two_sum.rs<span class="d-dot"></span></div>
+              <div class="d-tab">renderer.rs</div>
+              <div class="d-tab">mod.rs</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;padding:0 8px;border-left:1px solid var(--bd)">
+              <span style="font-size:10px;color:var(--gh);font-family:var(--fmono)">Mock Interview</span>
+              <span style="font-size:10px;color:var(--cyan);font-family:var(--fmono);border:1px solid rgba(34,236,219,.2);border-radius:3px;padding:1px 6px">ACTIVE</span>
+            </div>
+          </div>
+          <div class="d-body">
+            <div class="d-left">
+              <div class="d-col-tabs">
+                <div class="d-col-tab">Explorer</div>
+                <div class="d-col-tab act">LeetCode</div>
+              </div>
+              <div style="padding:6px 10px;border-bottom:1px solid var(--bd)">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                  <span style="font-size:10px;color:var(--gh);font-family:var(--fui)">Overall</span>
+                  <span style="font-size:10px;color:var(--dim);font-family:var(--fmono)">21/150</span>
+                </div>
+                <div style="height:4px;background:var(--bd);border-radius:2px">
+                  <div style="height:100%;width:14%;background:var(--cyan);border-radius:2px"></div>
+                </div>
+              </div>
+              <div style="font-size:10px;color:var(--gh);padding:5px 10px 3px;font-family:var(--fui);letter-spacing:.08em;text-transform:uppercase;font-weight:600">By Topic</div>
+              <div class="ex">▶&nbsp;Two Pointers<span style="margin-left:auto;color:var(--cyan);font-size:9px">12/20</span></div>
+              <div class="ex">▶&nbsp;Dynamic Prog…<span style="margin-left:auto;color:var(--gh);font-size:9px">5/30</span></div>
+              <div class="ex">▶&nbsp;Graph<span style="margin-left:auto;color:var(--gh);font-size:9px">2/25</span></div>
+              <div class="ex">▶&nbsp;Binary Search<span style="margin-left:auto;color:var(--gh);font-size:9px">4/15</span></div>
+              <div class="ex">▶&nbsp;Sliding Window<span style="margin-left:auto;color:var(--green);font-size:9px">✓ 8/10</span></div>
+              <div style="height:1px;background:var(--bd);margin:4px 0"></div>
+              <div style="font-size:10px;color:var(--gh);padding:3px 10px;font-family:var(--fui);letter-spacing:.08em;text-transform:uppercase;font-weight:600">Needs Review</div>
+              <div class="ex"><span style="color:var(--amb);margin-right:4px">·</span>Longest Substr…</div>
+              <div class="ex"><span style="color:var(--amb);margin-right:4px">·</span>Coin Change</div>
+              <div class="callout" style="bottom:8px;left:50%;transform:translateX(-50%)">
+                <div class="callout-badge">⑤</div>
+                <div class="callout-label">Topic / Progress · Left dock tab</div>
+              </div>
+            </div>
+            <div class="d-center">
+              <div style="height:28px;display:flex;align-items:stretch;border-bottom:1px solid var(--bd);background:var(--panel);flex-shrink:0">
+                <div style="display:flex;align-items:center;padding:0 12px;font-family:var(--fmono);font-size:10px;color:var(--dim);border-right:1px solid var(--bd)">two_sum.rs</div>
+                <div style="display:flex;align-items:center;padding:0 12px;font-family:var(--fmono);font-size:10px;color:var(--gh);border-right:1px solid var(--bd)">renderer.rs</div>
+              </div>
+              <div style="flex:1;display:flex;overflow:hidden">
+                <div class="d-gutter">
+                  <div class="d-gnum">1</div><div class="d-gnum">2</div><div class="d-gnum">3</div>
+                  <div class="d-gnum act">4</div><div class="d-gnum">5</div><div class="d-gnum">6</div>
+                  <div class="d-gnum">7</div><div class="d-gnum">8</div><div class="d-gnum">9</div>
+                  <div class="d-gnum">10</div>
+                </div>
+                <div class="d-code">
+                  <div class="cl"><span class="kw">pub fn</span> <span class="fn">two_sum</span>(<span class="pa">nums</span>: <span class="ty">Vec</span>&lt;<span class="ty">i32</span>&gt;, <span class="pa">target</span>: <span class="ty">i32</span>) -&gt; <span class="ty">Vec</span>&lt;<span class="ty">i32</span>&gt; <span class="pu">{</span></div>
+                  <div class="cl">    <span class="kw">let mut</span> <span class="va">seen</span> = std::collections::<span class="ty">HashMap</span>::<span class="fn">new</span><span class="pu">();</span></div>
+                  <div class="cl">    <span class="kw">for</span> (<span class="pa">i</span>, &amp;<span class="pa">v</span>) <span class="kw">in</span> <span class="va">nums</span>.<span class="fn">iter</span><span class="pu">().</span><span class="fn">enumerate</span><span class="pu">() {</span></div>
+                  <div class="cl" style="background:rgba(36,48,68,.5)">        <span class="kw">let</span> <span class="va">c</span> = <span class="va">target</span> - <span class="va">v</span><span class="pu">;</span>&ensp;<span style="display:inline-block;width:2px;height:12px;background:var(--cyan);vertical-align:middle;animation:blink 1.2s ease infinite"></span></div>
+                  <div class="cl">        <span class="kw">if let</span> <span class="ty">Some</span>(&amp;<span class="va">j</span>) = <span class="va">seen</span>.<span class="fn">get</span><span class="pu">(&amp;</span><span class="va">c</span><span class="pu">) { </span><span class="kw">return</span> <span class="fn">vec!</span><span class="pu">[</span><span class="va">j</span> <span class="kw">as</span> <span class="ty">i32</span>, <span class="va">i</span> <span class="kw">as</span> <span class="ty">i32</span><span class="pu">] }</span></div>
+                  <div class="cl">        <span class="va">seen</span>.<span class="fn">insert</span><span class="pu">(</span><span class="va">v</span>, <span class="va">i</span><span class="pu">);</span></div>
+                  <div class="cl">    <span class="pu">}</span></div>
+                  <div class="cl">    <span class="fn">vec!</span><span class="pu">[]</span></div>
+                  <div class="cl"><span class="pu">}</span></div>
+                </div>
+              </div>
+              <div class="d-bottom" style="position:relative">
+                <div class="d-btabs">
+                  <div class="d-btab act">Test Runner <span style="width:5px;height:5px;border-radius:50%;background:var(--green);display:inline-block;margin-left:4px"></span></div>
+                  <div class="d-btab">Debug Print</div>
+                  <div class="d-btab">Terminal</div>
+                </div>
+                <div style="padding:0 10px;font-size:11px;font-family:var(--fmono);color:var(--green);height:24px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--bd)">
+                  ✓&ensp;3 / 3 passed<span style="color:var(--gh)">·</span><span style="color:var(--gh)">avg 1 ms</span>
+                </div>
+                <div class="bt-row">
+                  <span style="color:var(--dim)">Case 1 — [2,7,11,15], target=9</span>
+                  <span class="bt-badge bp">PASS</span>
+                  <span style="margin-left:auto;color:var(--gh)">1 ms</span>
+                </div>
+                <div class="bt-row">
+                  <span style="color:var(--dim)">Case 2 — [3,2,4], target=6</span>
+                  <span class="bt-badge bp">PASS</span>
+                  <span style="margin-left:auto;color:var(--gh)">0 ms</span>
+                </div>
+                <div class="bt-row">
+                  <span style="color:var(--dim)">Case 3 — [3,3], target=6</span>
+                  <span class="bt-badge bp">PASS</span>
+                  <span style="margin-left:auto;color:var(--gh)">2 ms</span>
+                </div>
+                <div class="callout" style="bottom:6px;left:50%;transform:translateX(-50%)">
+                  <div class="callout-badge">②</div>
+                  <div class="callout-label">Test Runner · Bottom dock</div>
+                  <div class="callout-badge" style="margin-left:6px">③</div>
+                  <div class="callout-label">Debug Print · adjacent tab</div>
+                </div>
+              </div>
+            </div>
+            <div class="d-right">
+              <div class="d-col-tabs"><div class="d-col-tab act">Problem</div><div class="d-col-tab">Inspector</div></div>
+              <div style="padding:8px 10px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span style="font-family:var(--fmono);font-size:11px;font-weight:500;color:var(--fg)">#1 · Two Sum</span>
+                <span style="font-size:9px;color:#3CEC85;background:rgba(60,236,133,.1);border:1px solid rgba(60,236,133,.2);border-radius:3px;padding:1px 6px;font-family:var(--fmono)">Easy</span>
+                <div style="display:flex;gap:4px;margin-top:4px;width:100%">
+                  <div style="font-size:10px;color:var(--info);border:1px solid rgba(105,195,255,.3);border-radius:20px;padding:2px 8px;font-family:var(--fmono)">▶ Run</div>
+                  <div style="font-size:10px;color:var(--green);border:1px solid rgba(60,236,133,.3);border-radius:20px;padding:2px 8px;font-family:var(--fmono)">✓ Submitted</div>
+                </div>
+              </div>
+              <div class="rd-row" style="border-bottom:1px solid var(--bd)">
+                <div style="font-size:10px;color:var(--green);margin-bottom:4px">Accepted</div>
+                <div style="font-size:10px;color:var(--gh)">Runtime: 0ms · beats 100%</div>
+              </div>
+              <div class="rd-row">Given an array of integers <span style="color:var(--cyan)">nums</span> and an integer <span style="color:var(--cyan)">target</span>, return indices of the two numbers that add up to target.</div>
+              <div class="callout" style="bottom:8px;left:50%;transform:translateX(-50%)">
+                <div class="callout-badge">①</div>
+                <div class="callout-label">Problem View · Right dock · 650px</div>
+              </div>
+            </div>
+          </div>
+          <div class="d-statusbar">
+            <div class="d-mode">
+              <div class="d-mode-dot"></div>
+              <span class="d-mode-lbl">NORMAL</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;padding:1px 8px;border-radius:4px;border:1px solid rgba(34,236,219,.3);background:rgba(34,236,219,.08);flex-shrink:0;position:relative">
+              <div style="width:5px;height:5px;border-radius:50%;background:var(--cyan);animation:pulse 2s ease infinite"></div>
+              <span style="font-size:10px;font-weight:600;color:var(--cyan);font-family:var(--fmono)">INTERVIEW · 42:15</span>
+              <div class="callout" style="bottom:28px;left:0;white-space:nowrap">
+                <div class="callout-badge">④</div>
+                <div class="callout-label">Mock Interview · timer pill in status bar</div>
+              </div>
+            </div>
+            <span>⎇ main</span>
+            <span style="color:var(--warn);font-size:8px">●</span>
+            <span>two_sum.rs</span>
+            <div style="flex:1"></div>
+            <span>Ln 4, Col 9</span>
+            <span>Rust</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-ttl">Feature Panels — click to open spec file</div>
+    <div class="feature-grid">
+
+      <a class="feat-card" href="leetcode-problem-view.html">
+        <div class="feat-card-top">
+          <div class="feat-num">①</div>
+          <div>
+            <div class="feat-name">Problem View</div>
+            <div class="feat-region">Right dock · 650px wide</div>
+          </div>
+        </div>
+        <div class="feat-desc">Markdown problem description with title, difficulty badge, examples, constraints, Follow-up. Pill buttons for Run and Submit — flat border-only, no gradients. Independent scroll.</div>
+        <div class="feat-bottom">
+          <div class="feat-shortcuts">
+            <span class="keycap">⎵lp</span>&ensp;<span style="font-size:10px;color:var(--gh)">open</span>&emsp;
+            <span class="keycap">⌘↵</span>&ensp;<span style="font-size:10px;color:var(--gh)">run</span>&emsp;
+            <span class="keycap">⎵ls</span>&ensp;<span style="font-size:10px;color:var(--gh)">submit</span>&emsp;
+            <span class="keycap">⎵ln</span>&ensp;<span style="font-size:10px;color:var(--gh)">next</span>
+          </div>
+          <span class="feat-cta">4 states →</span>
+        </div>
+      </a>
+
+      <a class="feat-card" href="leetcode-test-runner.html">
+        <div class="feat-card-top">
+          <div class="feat-num">②</div>
+          <div>
+            <div class="feat-name">Test Runner</div>
+            <div class="feat-region">Bottom dock · tab · 420px tall</div>
+          </div>
+        </div>
+        <div class="feat-desc">Test case list with PASS / FAIL / TLE / RUNNING / PENDING badges, per-case runtime, and inline diff (Expected vs Got with git-style +/− coloring) on failure. Summary row: X/Y passed.</div>
+        <div class="feat-bottom">
+          <div class="feat-shortcuts">
+            <span class="keycap">⌘↵</span>&ensp;<span style="font-size:10px;color:var(--gh)">run</span>&emsp;
+            <span class="keycap">⎵tt</span>&ensp;<span style="font-size:10px;color:var(--gh)">focus tab</span>&emsp;
+            <span class="keycap">esc</span>&ensp;<span style="font-size:10px;color:var(--gh)">cancel</span>
+          </div>
+          <span class="feat-cta">5 states →</span>
+        </div>
+      </a>
+
+      <a class="feat-card" href="leetcode-test-runner.html">
+        <div class="feat-card-top">
+          <div class="feat-num">③</div>
+          <div>
+            <div class="feat-name">Debug Print</div>
+            <div class="feat-region">Bottom dock · adjacent tab · same 420px</div>
+          </div>
+        </div>
+        <div class="feat-desc">Structured output from <code style="font-family:var(--fmono);color:var(--cyan);font-size:10px">debug!(x)</code> macro. Pretty-prints Vec/HashMap/Set as collapsible tree nodes. Separate from stdout. Dim variable names, bright values.</div>
+        <div class="feat-bottom">
+          <div class="feat-shortcuts">
+            <span class="keycap">⎵td</span>&ensp;<span style="font-size:10px;color:var(--gh)">focus</span>&emsp;
+            <span class="keycap">cc</span>&ensp;<span style="font-size:10px;color:var(--gh)">clear</span>&emsp;
+            <span class="keycap">Tab</span>&ensp;<span style="font-size:10px;color:var(--gh)">switch tabs</span>
+          </div>
+          <span class="feat-cta">3 states →</span>
+        </div>
+      </a>
+
+      <a class="feat-card" href="leetcode-mock-interview.html">
+        <div class="feat-card-top">
+          <div class="feat-num">④</div>
+          <div>
+            <div class="feat-name">Mock Interview</div>
+            <div class="feat-region">Overlay + status bar timer</div>
+          </div>
+        </div>
+        <div class="feat-desc">Countdown timer pill in status bar — cyan while active, amber (#FF955C) + pulse when &lt;5 min. Pre-coding approach note overlay. Test results hidden until Submit. Triggers via keybind or command palette.</div>
+        <div class="feat-bottom">
+          <div class="feat-shortcuts">
+            <span class="keycap">⎵mi</span>&ensp;<span style="font-size:10px;color:var(--gh)">start</span>&emsp;
+            <span class="keycap">:MockInterview 45</span>&emsp;
+            <span class="keycap">esc</span>&ensp;<span style="font-size:10px;color:var(--gh)">abort</span>
+          </div>
+          <span class="feat-cta">3 states →</span>
+        </div>
+      </a>
+
+      <a class="feat-card" href="leetcode-topic-progress.html">
+        <div class="feat-card-top">
+          <div class="feat-num">⑤</div>
+          <div>
+            <div class="feat-name">Topic / Progress</div>
+            <div class="feat-region">Left dock · LeetCode tab · 220px</div>
+          </div>
+        </div>
+        <div class="feat-desc">Problems grouped by tag (Two Pointers, DP, Graph…). Solved ✓ green / Needs Review ★ amber / Unsolved ghost. Progress bar by difficulty. Recent activity. Lives alongside Explorer / Search / Outline.</div>
+        <div class="feat-bottom">
+          <div class="feat-shortcuts">
+            <span class="keycap">⎵ll</span>&ensp;<span style="font-size:10px;color:var(--gh)">open</span>&emsp;
+            <span class="keycap">⎵lr</span>&ensp;<span style="font-size:10px;color:var(--gh)">random</span>&emsp;
+            <span class="keycap">⎵lR</span>&ensp;<span style="font-size:10px;color:var(--gh)">review queue</span>
+          </div>
+          <span class="feat-cta">3 states →</span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-ttl">Design Token Reference — config/themes/default-dark.toml</div>
+    <div class="palette-grid">
+      <div class="pal-item"><div class="pal-swatch" style="background:#111720;border:1px solid #1e2738"></div><div><div class="pal-key">outer_bg</div><div class="pal-hex">#111720</div><div class="pal-use">window · status_bar</div></div></div>
+      <div class="pal-item"><div class="pal-swatch" style="background:#161d2a;border:1px solid #1e2738"></div><div><div class="pal-key">panel_bg / sidebar_bg</div><div class="pal-hex">#161d2a</div><div class="pal-use">docks · tab bars · overlays</div></div></div>
+      <div class="pal-item"><div class="pal-swatch" style="background:#1c2433;border:1px solid #1e2738"></div><div><div class="pal-key">editor_bg</div><div class="pal-hex">#1c2433</div><div class="pal-use">code area · inline cards</div></div></div>
+      <div class="pal-item"><div class="pal-swatch" style="background:#0e1420;border:1px solid #1e2738"></div><div><div class="pal-key">status_bg</div><div class="pal-hex">#0e1420</div><div class="pal-use">status bar only</div></div></div>
+      <div class="pal-item"><div class="pal-swatch" style="background:#1e2738"></div><div><div class="pal-key">border</div><div class="pal-hex">#1e2738 · 1px</div><div class="pal-use">all dividers</div></div></div>
+      <div class="pal-item"><div class="pal-swatch" style="background:#243044"></div><div><div class="pal-key">selection</div><div class="pal-hex">#243044</div><div class="pal-use">active row / selected item</div></div></div>
+      <div class="pal-item"><div class="pal-swatch" style="background:#d0d7e4"></div><div><div class="pal-key">fg</div><div class="pal-hex">#d0d7e4</div><div class="pal-use">primary text</div></div></div>
+      <div class="pal-item"><div class="pal-swatch" style="background:#8a9abf"></div><div><div class="pal-key">fg_dim</div><div class="pal-hex">#8a9abf</div><div class="pal-use">secondary text · body</div></div></div>
+      <div class="pal-item"><div class="pal-swatch" style="background:#3d5070"></div><div><div class="pal-key">fg_ghost</div><div class="pal-hex">#3d5070</div><div class="pal-use">hints · inactive · metadata</div></div></div>
+      <div class="pal-item"><div class="pal-swatch" style="background:#22ECDB"></div><div><div class="pal-key">cyan · mode_normal</div><div class="pal-hex">#22ECDB</div><div class="pal-use">cursor · interview_active · accent</div></div></div>
+      <div class="pal-item"><div class="pal-swatch" style="background:#3CEC85"></div><div><div class="pal-key">green · pass</div><div class="pal-hex">#3CEC85</div><div class="pal-use">PASS · Accepted · solved ✓</div></div></div>
+      <div class="pal-item"><div class="pal-swatch" style="background:#EACD61"></div><div><div class="pal-key">amber · medium</div><div class="pal-hex">#EACD61</div><div class="pal-use">needs review ★ · Medium badge</div></div></div>
+      <div class="pal-item"><div class="pal-swatch" style="background:#69C3FF"></div><div><div class="pal-key">info · running</div><div class="pal-hex">#69C3FF</div><div class="pal-use">RUNNING state · Run button</div></div></div>
+      <div class="pal-item"><div class="pal-swatch" style="background:#FF955C"></div><div><div class="pal-key">warning · tle</div><div class="pal-hex">#FF955C</div><div class="pal-use">TLE · interview warning · dirty</div></div></div>
+      <div class="pal-item"><div class="pal-swatch" style="background:#E35535"></div><div><div class="pal-key">error · fail</div><div class="pal-hex">#E35535</div><div class="pal-use">FAIL · Wrong Answer · Hard badge</div></div></div>
+      <div class="pal-item"><div class="pal-swatch" style="background:#4a5e84"></div><div><div class="pal-key">skipped</div><div class="pal-hex">#4a5e84</div><div class="pal-use">PENDING / SKIPPED badge</div></div></div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

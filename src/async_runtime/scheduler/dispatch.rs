@@ -100,6 +100,28 @@ pub(super) async fn dispatch_loop(
             continue;
         }
 
+        // Document-sync notifications must reach the server BEFORE any request
+        // that depends on the updated buffer. Each LSP message is otherwise
+        // spawned independently, so a completion/hover could race ahead of the
+        // didChange and be answered against stale text. Run sync notifications
+        // inline (awaited) so they are fully sent before the next message —
+        // which the channel delivers in submit order — is dispatched.
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::LspDidOpen { .. }
+                | WorkerRequestPayload::LspDidChange { .. }
+                | WorkerRequestPayload::LspDidClose { .. }
+        ) {
+            run_lsp_request(
+                request,
+                lsp_sessions.clone(),
+                result_tx.clone(),
+                event_proxy.clone(),
+            )
+            .await;
+            continue;
+        }
+
         if matches!(
             request.payload,
             WorkerRequestPayload::StartLspServer { .. }

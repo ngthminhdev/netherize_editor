@@ -302,6 +302,7 @@ pub struct HelpState {
     pub sections: Vec<HelpSection>,
     pub lines: Vec<String>,
     pub scroll_y: f32,
+    pub max_scroll_y: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -688,11 +689,26 @@ fn default_extension_items() -> Vec<ExtensionItem> {
         ),
         lsp_extension(
             "Python",
-            "pylsp",
-            "pip install python-lsp-server",
+            "pyright-langserver",
+            "npm install -g pyright",
             vec![".py"],
             false,
         ),
+        // ruff runs as a companion LSP (`ruff server`) next to pyright: fast
+        // lint diagnostics, formatting and quick-fixes for Python.
+        ExtensionItem {
+            name: "(ruff)".to_string(),
+            subtitle: "Python linter & formatter (LSP companion)".to_string(),
+            binary: "ruff".to_string(),
+            category: ExtensionCategory::LanguageServers,
+            tag: "PYTHON".to_string(),
+            macos_install: "brew install ruff".to_string(),
+            linux_install: "pip install ruff".to_string(),
+            macos_uninstall: "brew uninstall ruff".to_string(),
+            linux_uninstall: "pip uninstall -y ruff".to_string(),
+            extensions: vec![".py".to_string()],
+            installed: false,
+        },
         lsp_extension("Java", "jdtls", "brew install jdtls", vec![".java"], false),
         lsp_extension(
             "SQL",
@@ -877,34 +893,43 @@ impl HelpState {
             sections: build_help_sections(bindings),
             lines: build_help_lines(profile_name, source_label, bindings),
             scroll_y: 0.0,
+            max_scroll_y: 0.0,
         }
     }
 }
 
 fn build_help_sections(bindings: &[crate::config::keymap_config::KeyBinding]) -> Vec<HelpSection> {
-    let specs = [
-        (None, "GLOBAL", "any mode"),
-        (Some("insert"), "INSERT", "mode = insert"),
-        (Some("palette"), "PALETTE", "mode = palette"),
-        (Some("normal"), "NORMAL", "mode = normal"),
-        (Some("visual"), "VISUAL", "mode = visual"),
-        (Some("terminal"), "TERMINAL", "mode = terminal"),
-        (
-            Some("terminal_normal"),
-            "TERMINAL NORMAL",
-            "mode = terminal_normal",
-        ),
-        (Some("explorer"), "EXPLORER", "mode = explorer"),
-        (Some("multicursor"), "MULTICURSOR", "mode = multicursor"),
-        (Some("multiinsert"), "MULTIINSERT", "mode = multiinsert"),
+    let preferred_modes = [
+        None,
+        Some("insert"),
+        Some("palette"),
+        Some("normal"),
+        Some("visual"),
+        Some("visual_block"),
+        Some("terminal"),
+        Some("terminal_normal"),
+        Some("explorer"),
+        Some("multicursor"),
+        Some("multiinsert"),
+        Some("resize"),
+        Some("preview"),
     ];
-
-    let mut sections: Vec<HelpSection> = specs
+    let mut modes = preferred_modes
         .into_iter()
-        .filter_map(|(mode, title, mode_hint)| {
+        .map(|mode| mode.map(str::to_string))
+        .collect::<Vec<_>>();
+    for binding in bindings {
+        if !modes.iter().any(|mode| mode == &binding.mode) {
+            modes.push(binding.mode.clone());
+        }
+    }
+
+    let mut sections: Vec<HelpSection> = modes
+        .into_iter()
+        .filter_map(|mode| {
             let entries = bindings
                 .iter()
-                .filter(|binding| binding.mode.as_deref() == mode)
+                .filter(|binding| binding.mode == mode)
                 .filter_map(|binding| {
                     Some(HelpEntry {
                         keys: format_key_binding_for_help(&binding.key)?
@@ -915,9 +940,17 @@ fn build_help_sections(bindings: &[crate::config::keymap_config::KeyBinding]) ->
                     })
                 })
                 .collect::<Vec<_>>();
+            let title = mode
+                .as_deref()
+                .map(|mode| mode.replace('_', " ").to_uppercase())
+                .unwrap_or_else(|| "GLOBAL".to_string());
+            let mode_hint = mode
+                .as_deref()
+                .map(|mode| format!("mode = {mode}"))
+                .unwrap_or_else(|| "any mode".to_string());
             (!entries.is_empty()).then_some(HelpSection {
-                title: title.to_string(),
-                mode_hint: mode_hint.to_string(),
+                title,
+                mode_hint,
                 entries,
             })
         })
@@ -2150,7 +2183,14 @@ pub struct AppState {
     inline_suggestion: Option<String>,
     jump_back_stack: Vec<(PathBuf, usize, usize)>,
     jump_forward_stack: Vec<(PathBuf, usize, usize)>,
+    /// Merged, display-ready diagnostics per file (union of all servers).
+    /// Kept in sync from `diagnostics_by_server` so every reader (gutter,
+    /// panel, navigation) stays unchanged.
     diagnostics: HashMap<PathBuf, Vec<LspDiagnostic>>,
+    /// Raw diagnostics keyed by file then by publishing server, so that two
+    /// servers running together (e.g. pyright + ruff) don't overwrite each
+    /// other when each publishes its own set for the same file.
+    diagnostics_by_server: HashMap<PathBuf, HashMap<String, Vec<LspDiagnostic>>>,
     /// Latest `$/progress` snapshot, keyed by `(server, token)` so concurrent
     /// progress streams don't clobber each other. The status bar reads the
     /// most recently updated entry.
@@ -2226,6 +2266,7 @@ impl AppState {
             jump_back_stack: Vec::new(),
             jump_forward_stack: Vec::new(),
             diagnostics: HashMap::new(),
+            diagnostics_by_server: HashMap::new(),
             lsp_progress: HashMap::new(),
             lsp_progress_active_key: None,
             pending_explorer_rename_path: None,
@@ -2288,6 +2329,7 @@ impl AppState {
             jump_back_stack: Vec::new(),
             jump_forward_stack: Vec::new(),
             diagnostics: HashMap::new(),
+            diagnostics_by_server: HashMap::new(),
             lsp_progress: HashMap::new(),
             lsp_progress_active_key: None,
             pending_explorer_rename_path: None,

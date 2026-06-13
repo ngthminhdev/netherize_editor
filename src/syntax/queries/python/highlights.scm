@@ -4,11 +4,17 @@
 (comment) @syntax.comment
 
 ; --- Strings ---
-(string) @syntax.string
+; Capture the delimiters and literal text as string, but deliberately do NOT
+; capture the whole (string) node, so embedded expressions inside f-strings
+; ({ ... } interpolations) keep their own syntax highlighting.
 (string (string_start) @syntax.string)
+(string (string_content) @syntax.string)
 (string (string_end) @syntax.string)
-(string (interpolation "{" @syntax.punctuation "}" @syntax.punctuation))
 (escape_sequence) @syntax.string.escape
+
+; --- f-string interpolation ---
+(interpolation "{" @syntax.punctuation)
+(interpolation "}" @syntax.punctuation)
 
 ; --- Numbers ---
 (integer) @syntax.number
@@ -33,6 +39,10 @@
   "and" "as" "assert" "async" "del" "exec" "from" "import" "in"
   "is" "not" "or" "pass" "print"
 ] @syntax.keyword
+
+; --- Pattern matching (soft keywords, Python 3.10+) ---
+(match_statement "match" @syntax.keyword.control)
+(case_clause "case" @syntax.keyword.control)
 
 ; --- Decorators ---
 (decorator) @syntax.function
@@ -98,9 +108,11 @@
 (attribute
   attribute: (identifier) @syntax.property)
 
-; --- Constructors / constants by naming convention ---
+; --- Constructors / classes by naming convention (CamelCase only) ---
+; Requires at least one lowercase letter so ALL_CAPS constants are NOT matched
+; here and fall through to the @syntax.constant rule below.
 ((identifier) @syntax.constructor
-  (#match? @syntax.constructor "^[A-Z]"))
+  (#match? @syntax.constructor "^[A-Z][A-Za-z0-9_]*[a-z]"))
 
 ; --- Variables / Identifiers ---
 (identifier) @syntax.identifier
@@ -119,6 +131,7 @@
   "=" "+=" "-=" "*=" "/=" "//=" "%=" "**="
   "&=" "|=" "^=" "<<=" ">>="
   "==" "!=" "<" ">" "<=" ">="
+  ":="
   "and" "or" "not" "is" "in"
   "&" "|" "^" "~" "<<" ">>"
 ] @syntax.operator

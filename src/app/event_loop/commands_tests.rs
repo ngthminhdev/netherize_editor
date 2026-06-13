@@ -1084,6 +1084,25 @@ fn colon_help_vim_command_opens_help_buffer() {
 }
 
 #[test]
+fn help_scroll_command_marks_the_cheatsheet_layout_dirty() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    assert!(shell.handle_command(Command::OpenHelp));
+    shell.app_state.set_help_max_scroll(500.0);
+    shell.editor_needs_layout = false;
+
+    assert!(shell.handle_command(Command::HelpScrollDown));
+
+    assert_eq!(
+        shell
+            .app_state
+            .active_help_buffer()
+            .map(|help| help.scroll_y),
+        Some(100.0)
+    );
+    assert!(shell.editor_needs_layout);
+}
+
+#[test]
 fn file_picker_confirm_scrolls_explorer_to_opened_file() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     let root = std::env::temp_dir().join(format!("netherize_picker_scroll_{}", std::process::id()));
@@ -2728,6 +2747,51 @@ fn go_workspace_completion_symbols_merge_with_lsp_results() {
     );
     assert_eq!(imported.item.export_kind, None);
     assert_eq!(imported.item.import_path, None);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn ts_non_exported_workspace_symbol_is_not_offered_standalone() {
+    // A TS workspace symbol without export metadata can't be auto-imported, so
+    // inserting it bare would create an undefined reference. It must be filtered
+    // out of standalone completions (in-scope forms come from tsserver).
+    let root = completion_temp_root("ts_non_export_filter");
+    let source_path =
+        write_completion_file(&root.join("util.ts"), "function helperLocal() {}\n");
+    let cache = crate::lsp::WorkspaceSymbolCache::new();
+    cache.insert_symbols(
+        "typescript",
+        vec![crate::lsp::CachedSymbol {
+            name: "helperLocal".to_string(),
+            kind: "Function".to_string(),
+            container_name: None,
+            file_path: source_path.clone(),
+            line: 0,
+            character: 9,
+            source_path: None,
+            import_path: None,
+            export_kind: None,
+            callable: Some(true),
+            has_parameters: Some(false),
+        }],
+    );
+
+    let completion = crate::app::app_state::CompletionState::from_lsp_items(
+        vec![test_completion_item("helperOther", "helperOther")],
+        0,
+        6,
+        0,
+        "helper".to_string(),
+        &cache,
+        Some("typescript"),
+    );
+    assert!(
+        completion
+            .filtered_items
+            .iter()
+            .all(|entry| entry.item.label != "helperLocal"),
+        "non-exported TS symbol must not be offered as a standalone completion"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 

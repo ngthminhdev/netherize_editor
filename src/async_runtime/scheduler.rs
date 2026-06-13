@@ -135,18 +135,25 @@ impl LspSessionRegistry {
         Ok(guard.insert(server_key, session))
     }
 
-    pub(super) fn get_by_binary(
+    /// Session matching `binary` rooted at `root_path`. Disambiguates when
+    /// several same-binary servers run (e.g. one gopls per go.mod), so a
+    /// workspace query hits the intended module rather than an arbitrary one.
+    pub(super) fn get_handle_by_binary_and_root(
         &self,
         binary: &str,
-    ) -> Result<Option<Arc<LspClientProcess>>, String> {
+        root_path: &Path,
+    ) -> Result<Option<LspSessionHandle>, String> {
         let guard = self
             .sessions
             .lock()
             .map_err(|_| "lsp session lock poisoned".to_string())?;
         Ok(guard
             .values()
-            .find(|session| session_name_matches_binary(&session.server_name, binary))
-            .map(|session| session.process.clone()))
+            .find(|session| {
+                session.root_path == root_path
+                    && session_name_matches_binary(&session.server_name, binary)
+            })
+            .cloned())
     }
 
     pub(super) fn get_handle(&self, binary: &str) -> Result<Option<LspSessionHandle>, String> {
@@ -160,14 +167,82 @@ impl LspSessionRegistry {
             .cloned())
     }
 
+    /// Session serving intelligence requests (hover/completion/definition) for
+    /// `uri`. When a primary server and a companion (e.g. ruff) both hold the
+    /// document open, the primary wins so requests aren't routed to the linter.
     pub(super) fn get_handle_by_uri(&self, uri: &str) -> Result<Option<LspSessionHandle>, String> {
+        let guard = self
+            .sessions
+            .lock()
+            .map_err(|_| "lsp session lock poisoned".to_string())?;
+        let mut companion_fallback: Option<LspSessionHandle> = None;
+        for session in guard.values() {
+            if !session.process.is_document_open(uri) {
+                continue;
+            }
+            if crate::lsp::registry::binary_is_companion(&session.server_name) {
+                companion_fallback.get_or_insert_with(|| session.clone());
+            } else {
+                return Ok(Some(session.clone()));
+            }
+        }
+        Ok(companion_fallback)
+    }
+
+    /// Every session that should mirror the document at `uri`: those that
+    /// already have it open, plus any whose root contains it (so a freshly
+    /// started companion still receives `didOpen`). Used to fan out document
+    /// sync to all servers running for the file (pyright + ruff together).
+    pub(super) fn sessions_for_document_uri(
+        &self,
+        uri: &str,
+    ) -> Result<Vec<LspSessionHandle>, String> {
         let guard = self
             .sessions
             .lock()
             .map_err(|_| "lsp session lock poisoned".to_string())?;
         Ok(guard
             .values()
-            .find(|session| session.process.is_document_open(uri))
+            .filter(|session| {
+                session.process.is_document_open(uri)
+                    || uri.starts_with(&crate::lsp::client::path_to_lsp_uri(&session.root_path))
+            })
+            .cloned()
+            .collect())
+    }
+
+    /// All sessions that currently hold `uri` open. Used to fan `didChange` /
+    /// `didClose` out to every server mirroring the document.
+    pub(super) fn sessions_with_open_document(
+        &self,
+        uri: &str,
+    ) -> Result<Vec<Arc<LspClientProcess>>, String> {
+        let guard = self
+            .sessions
+            .lock()
+            .map_err(|_| "lsp session lock poisoned".to_string())?;
+        Ok(guard
+            .values()
+            .filter(|session| session.process.is_document_open(uri))
+            .map(|session| session.process.clone())
+            .collect())
+    }
+
+    /// Session that can format `uri` (advertises `documentFormatting`). With
+    /// pyright (no formatter) + ruff, this resolves to ruff.
+    pub(super) fn get_formatter_handle(
+        &self,
+        uri: &str,
+    ) -> Result<Option<LspSessionHandle>, String> {
+        let guard = self
+            .sessions
+            .lock()
+            .map_err(|_| "lsp session lock poisoned".to_string())?;
+        Ok(guard
+            .values()
+            .find(|session| {
+                session.process.is_document_open(uri) && session.capabilities.document_formatting
+            })
             .cloned())
     }
 

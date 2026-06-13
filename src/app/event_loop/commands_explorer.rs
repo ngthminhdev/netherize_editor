@@ -90,6 +90,10 @@ impl AppShell {
         });
 
         self.app_state.clear_workspace_session_state();
+        // Drop the previous workspace's indexed symbols so completion can't
+        // suggest names — and synthesize imports — pointing at the old project
+        // during the window before the new workspace finishes indexing.
+        self.app_state.workspace_symbol_cache().clear_all();
         self.active_lsp_server = None;
         self.pending_lsp_server = None;
         self.pending_lsp_document_sync = None;

@@ -548,6 +548,103 @@ function greet(name) {
     }
 
     #[test]
+    fn python_highlight_uses_default_query_captures() {
+        let source = r#"
+import os
+
+MAX_SIZE = 32
+
+@decorator
+def greet(name: str) -> str:
+    value = 42
+    text = "hello"
+    match value:
+        case 42:
+            return f"answer={value} {name}"
+    return text
+"#;
+
+        let mut engine = SyntaxEngine::new(LanguageId::Python).expect("init python parser");
+        let tree = engine.parse_source(source, 20).expect("parse python");
+        let spans = generate_highlight_spans(&tree, source);
+
+        assert!(!spans.is_empty(), "expected python highlight spans");
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Keyword
+                    || s.category == HighlightCategory::KeywordControl
+                    || s.category == HighlightCategory::KeywordStorage),
+            "expected python keyword spans"
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Function),
+            "expected python function spans"
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::String),
+            "expected python string spans"
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.category == HighlightCategory::Constant),
+            "expected python constant spans"
+        );
+    }
+
+    #[test]
+    fn python_all_caps_name_is_constant_not_constructor() {
+        // MAX_SIZE must render as a constant, MyClass as a constructor.
+        let source = "MAX_SIZE = 10\nclass MyClass:\n    pass\n";
+
+        let mut engine = SyntaxEngine::new(LanguageId::Python).expect("init python parser");
+        let tree = engine.parse_source(source, 21).expect("parse python");
+        let spans = generate_highlight_spans(&tree, source);
+
+        let const_start = source.find("MAX_SIZE").expect("find MAX_SIZE");
+        let const_end = const_start + "MAX_SIZE".len();
+        assert!(
+            spans.iter().any(|s| s.range.start == const_start
+                && s.range.end == const_end
+                && s.category == HighlightCategory::Constant),
+            "ALL_CAPS name should be a Constant, got {spans:?}"
+        );
+        assert!(
+            !spans.iter().any(|s| s.range.start == const_start
+                && s.range.end == const_end
+                && s.category == HighlightCategory::Constructor),
+            "ALL_CAPS name must not be a Constructor"
+        );
+    }
+
+    #[test]
+    fn python_fstring_interpolation_highlights_embedded_expression() {
+        let source = "count = 3\nlabel = f\"value={count}\"\n";
+
+        let mut engine = SyntaxEngine::new(LanguageId::Python).expect("init python parser");
+        let tree = engine.parse_source(source, 22).expect("parse python");
+        let spans = generate_highlight_spans(&tree, source);
+
+        // The `count` reference inside the f-string interpolation must not be
+        // swallowed by the surrounding string span.
+        let interp_start = source.find("{count}").expect("find interpolation") + 1;
+        let interp_end = interp_start + "count".len();
+        assert!(
+            spans.iter().any(|s| {
+                s.range.start >= interp_start
+                    && s.range.end <= interp_end
+                    && s.category != HighlightCategory::String
+            }),
+            "expected f-string interpolation to contain non-string spans, got {spans:?}"
+        );
+    }
+
+    #[test]
     fn go_highlight_uses_default_query_captures() {
         let source = r#"
 package main

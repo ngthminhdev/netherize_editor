@@ -4,7 +4,9 @@ use crate::syntax::syntax_engine::LanguageId;
 
 const RUST_ROOT_MARKERS: &[&str] = &["Cargo.toml", ".git"];
 const JS_TS_ROOT_MARKERS: &[&str] = &["package.json", "tsconfig.json", ".git"];
-const GO_ROOT_MARKERS: &[&str] = &["go.mod", ".git"];
+// `go.work` first so multi-module workspaces root gopls at the workspace level
+// (enabling cross-module references) instead of at an inner module's go.mod.
+const GO_ROOT_MARKERS: &[&str] = &["go.work", "go.mod", ".git"];
 const JAVA_ROOT_MARKERS: &[&str] = &["pom.xml", "build.gradle", "build.gradle.kts", ".git"];
 const PYTHON_ROOT_MARKERS: &[&str] = &["pyproject.toml", "setup.py", "setup.cfg", ".git"];
 const SQL_ROOT_MARKERS: &[&str] = &[".sqls.json", "docker-compose.yml", ".git"];
@@ -23,6 +25,69 @@ pub struct LanguageProfile {
     pub root_markers: &'static [&'static str],
     pub extensions: &'static [&'static str],
     pub filenames: &'static [&'static str],
+}
+
+/// A secondary language server that runs *alongside* a language's primary
+/// server (e.g. ruff for linting + formatting next to pyright for Python).
+/// Companions receive the same document sync but only serve the capabilities
+/// they advertise; the primary keeps serving completion/hover/definition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompanionServer {
+    pub binary: &'static str,
+    pub launch_args: &'static [&'static str],
+    pub install_command: &'static str,
+}
+
+static PYTHON_COMPANIONS: &[CompanionServer] = &[CompanionServer {
+    // `ruff server` speaks LSP: fast lint diagnostics, formatting and quick-fix
+    // code actions. It is meant to run together with pyright.
+    binary: "ruff",
+    launch_args: &["server"],
+    install_command: "brew install ruff  (or: pip install ruff)",
+}];
+
+/// Companion servers for a language profile `key`, if any.
+pub fn companion_servers_for_key(key: &str) -> &'static [CompanionServer] {
+    match key {
+        "python" => PYTHON_COMPANIONS,
+        _ => &[],
+    }
+}
+
+/// Companion servers to launch for the file at `path`, if any.
+pub fn companion_servers_for_path(path: &Path) -> &'static [CompanionServer] {
+    language_profile_for_path(path)
+        .map(|profile| companion_servers_for_key(profile.key))
+        .unwrap_or(&[])
+}
+
+/// All server binaries (primary + companions) expected to serve `language_id`.
+/// Used to fan document sync out to exactly the servers running for a file's
+/// language, without leaking it to unrelated servers sharing the same root.
+pub fn expected_server_binaries(language_id: &str) -> Vec<&'static str> {
+    let mut binaries = Vec::new();
+    if let Some(profile) = language_profile_for_language_id(language_id) {
+        if !profile.lsp_binary.is_empty() {
+            binaries.push(profile.lsp_binary);
+        }
+        for companion in companion_servers_for_key(profile.key) {
+            binaries.push(companion.binary);
+        }
+    }
+    binaries
+}
+
+/// Whether `server_name` (a binary name or full path) is a known companion
+/// linter/formatter rather than a primary language server. Used to keep
+/// intelligence requests (hover/completion/definition) routed to the primary.
+pub fn binary_is_companion(server_name: &str) -> bool {
+    let stem = Path::new(server_name)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or(server_name);
+    PYTHON_COMPANIONS
+        .iter()
+        .any(|companion| companion.binary == stem)
 }
 
 static LANGUAGE_REGISTRY: &[LanguageProfile] = &[
@@ -103,9 +168,9 @@ static LANGUAGE_REGISTRY: &[LanguageProfile] = &[
         language_label: "Python",
         language_id: "python",
         syntax_language_id: Some(LanguageId::Python),
-        lsp_binary: "pylsp",
-        launch_args: &[],
-        install_command: "pip install python-lsp-server",
+        lsp_binary: "pyright-langserver",
+        launch_args: &["--stdio"],
+        install_command: "npm install -g pyright",
         root_markers: PYTHON_ROOT_MARKERS,
         extensions: &["py"],
         filenames: &[],
@@ -307,6 +372,18 @@ pub fn language_profile_for_binary(binary: &str) -> Option<&'static LanguageProf
     })
 }
 
+/// Resolve the gopls root for `file_path`. A `go.work` anywhere up the tree
+/// defines a multi-module workspace and takes priority, so gopls roots at the
+/// workspace (enabling cross-module references) instead of an inner module's
+/// `go.mod`. Falls back to the nearest `go.mod` / `.git`.
+pub fn find_go_module_root(file_path: &Path) -> PathBuf {
+    let workspace = find_project_root(file_path, &["go.work"]);
+    if workspace.join("go.work").exists() {
+        return workspace;
+    }
+    find_project_root(file_path, &["go.mod", ".git"])
+}
+
 pub fn find_project_root(file_path: &Path, markers: &[&str]) -> PathBuf {
     let anchor_dir = if file_path.is_dir() {
         file_path.to_path_buf()
@@ -395,6 +472,34 @@ mod tests {
         let detected = find_project_root(&file_path, &["package.json", ".git"]);
 
         assert_eq!(detected, project);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn find_go_module_root_prefers_go_work_over_nested_go_mod() {
+        let root = unique_temp_dir("go_work");
+        let workspace = root.join("ws");
+        let module = workspace.join("svc");
+        let nested = module.join("internal");
+        fs::create_dir_all(&nested).expect("create dirs");
+        fs::write(workspace.join("go.work"), "go 1.22\n").expect("write go.work");
+        fs::write(module.join("go.mod"), "module svc\n").expect("write go.mod");
+
+        let detected = super::find_go_module_root(&nested.join("main.go"));
+        assert_eq!(detected, workspace);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn find_go_module_root_falls_back_to_nearest_go_mod() {
+        let root = unique_temp_dir("go_mod_only");
+        let module = root.join("svc");
+        let nested = module.join("internal");
+        fs::create_dir_all(&nested).expect("create dirs");
+        fs::write(module.join("go.mod"), "module svc\n").expect("write go.mod");
+
+        let detected = super::find_go_module_root(&nested.join("main.go"));
+        assert_eq!(detected, module);
         let _ = fs::remove_dir_all(root);
     }
 

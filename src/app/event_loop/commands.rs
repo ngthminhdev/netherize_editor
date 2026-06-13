@@ -927,18 +927,22 @@ impl AppShell {
         match command {
             Command::HelpScrollDown => {
                 self.app_state.help_scroll_down(100.0);
+                self.editor_needs_layout = true;
                 Some(true)
             }
             Command::HelpScrollUp => {
                 self.app_state.help_scroll_up(100.0);
+                self.editor_needs_layout = true;
                 Some(true)
             }
             Command::HelpScrollHalfPageDown => {
                 self.app_state.help_scroll_down(400.0);
+                self.editor_needs_layout = true;
                 Some(true)
             }
             Command::HelpScrollHalfPageUp => {
                 self.app_state.help_scroll_up(400.0);
+                self.editor_needs_layout = true;
                 Some(true)
             }
             _ => None,

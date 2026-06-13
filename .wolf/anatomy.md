@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-13T05:09:47.000Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-13T14:57:17.470Z
 > Files: 382 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
@@ -324,7 +324,7 @@
 
 ## src/app/
 
-- `async_bridge.rs` — BridgePumpStats: new, pump (~4589 tok)
+- `async_bridge.rs` — BridgePumpStats: new, pump (~4298 tok)
 - `clipboard.rs` — SystemClipboard: new (~524 tok)
 - `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~15545 tok)
 - `file_picker.rs` — FilePickerEntry: open, close, append_query, backspace_query + 6 more (~1644 tok)
@@ -337,13 +337,13 @@
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer + 12 more (~8220 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~10520 tok)
-- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~23243 tok)
+- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~23608 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
-- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~18369 tok)
-- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_dart_ (~17919 tok)
+- `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~17364 tok)
+- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_dart_ (~18175 tok)
 - `settings.rs` — Snapshot of `[inline_completion]` config values used to seed the AI section (~2837 tok)
 - `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, prev (~12339 tok)
-- `tests.rs` — [cfg(test)] (~21632 tok)
+- `tests.rs` — [cfg(test)] (~20778 tok)
 - `workspace.rs` — attach_workspace, clear_workspace_session_state, workspace_root_path, workspace_nodes + 22 more (~4384 tok)
 
 ## src/app/event_loop/
@@ -352,18 +352,18 @@
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~11819 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
-- `commands_explorer.rs` (~7819 tok)
+- `commands_explorer.rs` (~7375 tok)
 - `commands_lsp.rs` (~9141 tok)
 - `commands_palette.rs` (~7900 tok)
 - `commands_prompts.rs` (~7222 tok)
 - `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~10092 tok)
 - `commands_settings.rs` (~5741 tok)
 - `commands_terminal.rs` (~6896 tok)
-- `commands_tests.rs` — [derive(Default)] (~31546 tok)
+- `commands_tests.rs` — [derive(Default)] (~31960 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~10265 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18582 tok)
 - `mod.rs` — Struct: AppShell (~6788 tok)
-- `setup.rs` — new, new_for_tests (~21919 tok)
+- `setup.rs` — new, new_for_tests (~22621 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
@@ -373,12 +373,12 @@
 - `filesystem.rs` (~1750 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
-- `lsp.rs` (~9284 tok)
+- `lsp.rs` (~9497 tok)
 - `mod.rs` (~9705 tok)
 - `preview.rs` (~993 tok)
 - `shell.rs` (~112 tok)
 - `syntax.rs` (~421 tok)
-- `system.rs` (~1916 tok)
+- `system.rs` (~1894 tok)
 - `terminal.rs` (~3021 tok)
 
 ## src/app/input/
@@ -400,27 +400,27 @@
 ## src/async_runtime/
 
 - `dart_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~1030 tok)
-- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~7100 tok)
+- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~7324 tok)
 - `mod.rs` (~22 tok)
-- `python_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~948 tok)
-- `scheduler.rs` — Declares FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD (~2328 tok)
+- `python_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~2566 tok)
+- `scheduler.rs` — Declares FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD (~3127 tok)
 
 ## src/async_runtime/scheduler/
 
 - `ai_jobs.rs` — Platform install command for opencode: (~3926 tok)
 - `ai.rs` (~1916 tok)
-- `dispatch.rs` (~7139 tok)
+- `dispatch.rs` (~6932 tok)
 - `emit.rs` (~458 tok)
 - `file_watch.rs` — Declares FILE_WATCH_DEGRADED_THRESHOLD (~3241 tok)
 - `fzf.rs` — Declares MAX_FZF_RESULTS (~2494 tok)
 - `git.rs` (~1560 tok)
 - `local_history.rs` — Local history (disk persistence) has been removed. (~42 tok)
-- `lsp_io.rs` (~2423 tok)
+- `lsp_io.rs` (~2278 tok)
 - `lsp_parse.rs` — Declares MAX_COMPLETION_ITEMS (~15075 tok)
-- `lsp.rs` (~7248 tok)
+- `lsp.rs` (~7054 tok)
 - `pty.rs` (~3903 tok)
 - `runtime.rs` — Runtime wrapper duy nhất cho background jobs. (~839 tok)
-- `syntax_jobs.rs` (~7423 tok)
+- `syntax_jobs.rs` (~7433 tok)
 - `tests.rs` (~1915 tok)
 
 ## src/config/
@@ -462,10 +462,10 @@
 ## src/lsp/
 
 - `capabilities.rs` — Bitmask nhỏ gọn của các tính năng mà LSP server khai báo trong `InitializeResult`. (~761 tok)
-- `client.rs` — LspEntry: lsp_entry_for_extension, refresh_patched_env_path, patched_env_path (~17032 tok)
+- `client.rs` — LspEntry: lsp_entry_for_extension, refresh_patched_env_path, patched_env_path (~16331 tok)
 - `mod.rs` (~62 tok)
-- `registry.rs` — LanguageProfile: all_language_profiles, language_profile_for_extension, language_profile_for_path, language_profile_for_language_id + 2 more (~4689 tok)
-- `symbol_cache.rs` — A workspace-wide symbol cache for fast import/completion suggestions. (~19293 tok)
+- `registry.rs` — LanguageProfile: companion_servers_for_key, companion_servers_for_path, expected_server_binaries, bi (~5544 tok)
+- `symbol_cache.rs` — Upper bound on node_modules packages scanned for type exports. High enough to (~19170 tok)
 
 ## src/render/
 
@@ -562,7 +562,7 @@
 
 - `categories.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~2812 tok)
 - `engine.rs` (~5276 tok)
-- `mod.rs` — generate_highlight_spans, generate_highlight_spans_with_cache, generate_dotenv_highlight_spans, generate_plaintext_highlight_spans + 3 more (~7538 tok)
+- `mod.rs` — generate_highlight_spans, generate_highlight_spans_with_cache, generate_dotenv_highlight_spans, gene (~7982 tok)
 - `normalize_tests.rs` (~632 tok)
 - `queries.rs` — highlight_markdown_inline (~3252 tok)
 - `spans.rs` — [derive(Debug, Clone, PartialEq, Eq)] (~1642 tok)
@@ -611,7 +611,7 @@
 
 ## src/syntax/queries/python/
 
-- `highlights.scm` — Declares annotations (~927 tok)
+- `highlights.scm` — Declares annotations (~1088 tok)
 
 ## src/syntax/queries/rust/
 

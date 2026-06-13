@@ -1721,6 +1721,21 @@ pub(super) fn build_completion_display_items_with_cache(
                 return None;
             }
 
+            // For TS/JS, only surface a standalone cache item when it carries
+            // export metadata, so accepting it synthesizes the import. Without
+            // it (non-exported locals, class members) the editor would insert a
+            // bare, unqualified name → an undefined reference, since TS imports
+            // are auto-synthesized only for exports. Their in-scope forms come
+            // from the LSP server. Other languages (e.g. Go, where bare inserts
+            // are resolved by goimports/same-package) keep their behavior.
+            let is_ts_js_family = matches!(
+                language_id,
+                Some("typescript" | "tsx" | "javascript" | "jsx")
+            );
+            if is_ts_js_family && symbol.export_kind.is_none() {
+                return None;
+            }
+
             // Score the symbol name against the prefix
             let (score, match_ranges) = score_completion_match(&symbol.name, prefix)?;
 

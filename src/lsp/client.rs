@@ -799,13 +799,19 @@ pub async fn spawn_lsp_server(
     requested_command: Option<&str>,
     root_path: &Path,
     custom_bin_path: Option<&Path>,
+    interpreter_path: Option<&Path>,
+    launch_args: Option<&[&str]>,
     request_id: u64,
     revision_id: u64,
 ) -> Result<SpawnedLspServer, String> {
     let server_name = resolve_lsp_server_command(requested_command, root_path)
         .ok_or_else(|| format!("no supported LSP server found for {}", root_path.display()))?;
     let mut command = Command::new(&server_name);
-    if let Some(profile) = language_profile_for_binary(&server_name) {
+    // Explicit args (e.g. a companion's `ruff server`) take priority; otherwise
+    // fall back to the primary profile's launch args.
+    if let Some(args) = launch_args {
+        command.args(args);
+    } else if let Some(profile) = language_profile_for_binary(&server_name) {
         command.args(profile.launch_args);
     }
     let path_env = if let Some(bin_path) = custom_bin_path {
@@ -984,6 +990,40 @@ pub async fn spawn_lsp_server(
     process
         .send_notification_async("initialized", json!({}))
         .await?;
+
+    // Point the Python language server at the user-selected interpreter so
+    // imports, completion and diagnostics resolve against that environment
+    // rather than the one the server itself runs under. Best-effort: a failure
+    // here must not abort spawn. pyright and pylsp use different config keys.
+    if let Some(interpreter) = interpreter_path {
+        let binary = Path::new(&server_name)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&server_name);
+        let interpreter = interpreter.to_string_lossy();
+        let settings = match binary {
+            "pyright-langserver" | "pyright" | "basedpyright-langserver" => Some(json!({
+                "python": {
+                    "pythonPath": interpreter,
+                    "defaultInterpreterPath": interpreter,
+                }
+            })),
+            "pylsp" => Some(json!({
+                "pylsp": {
+                    "plugins": { "jedi": { "environment": interpreter } }
+                }
+            })),
+            _ => None,
+        };
+        if let Some(settings) = settings {
+            let _ = process
+                .send_notification_async(
+                    "workspace/didChangeConfiguration",
+                    json!({ "settings": settings }),
+                )
+                .await;
+        }
+    }
 
     Ok(SpawnedLspServer {
         process,

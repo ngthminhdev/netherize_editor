@@ -14,6 +14,19 @@ pub(super) fn handle_lsp_result(
             root_path,
             completion_trigger_chars,
         } => {
+            // A companion server (e.g. ruff) runs alongside the primary. It must
+            // NOT take over `active_lsp_server` (which routes completion/hover to
+            // pyright) or contribute trigger chars; it only needs the document
+            // synced so it can publish lint diagnostics and serve formatting.
+            if crate::lsp::registry::binary_is_companion(&server_name) {
+                eprintln!(
+                    "[AppShell] companion LSP '{}' ready for {}",
+                    server_name,
+                    root_path.display()
+                );
+                app.submit_lsp_did_open_for_active_file();
+                return;
+            }
             let started = ActiveLspServer {
                 server_name: server_name.clone(),
                 root_path: root_path.clone(),
@@ -55,7 +68,10 @@ pub(super) fn handle_lsp_result(
             app.lsp_completion_trigger_chars.clear();
         }
         WorkerResultPayload::LspDiagnostics {
-            uri, diagnostics, ..
+            uri,
+            diagnostics,
+            server_name,
+            ..
         } => {
             if let Some(path) =
                 lsp_uri_to_path(&uri).and_then(|path| path.canonicalize().ok().or(Some(path)))
@@ -75,7 +91,10 @@ pub(super) fn handle_lsp_result(
                     .app_state
                     .active_file()
                     .is_some_and(|active| active == path.as_path());
-                if app.app_state.set_file_diagnostics(path, diagnostics) {
+                if app
+                    .app_state
+                    .set_file_diagnostics(path, server_name, diagnostics)
+                {
                     app.editor_needs_layout |=
                         app.app_state.active_buffer_is_diagnostics() || is_active_file;
                     app.editor_caret_needs_layout |= is_active_file;

@@ -1209,7 +1209,8 @@ impl AppShell {
                         renderer.clear_welcome_logo();
                         renderer.clear_buffer_terminal();
                         renderer.clear_editor_content();
-                        renderer.update_help_buffer_content(help, center_bounds);
+                        let max_scroll_y = renderer.update_help_buffer_content(help, center_bounds);
+                        self.app_state.set_help_max_scroll(max_scroll_y);
                     } else if let Some(extensions) =
                         self.app_state.active_extensions_manager_buffer()
                     {

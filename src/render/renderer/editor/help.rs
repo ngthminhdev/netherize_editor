@@ -44,13 +44,78 @@ fn cheat_sheet_logo_rgba() -> Option<&'static (u32, u32, Vec<u8>)> {
     .as_ref()
 }
 
+const HELP_CARD_MIN_WIDTH: f32 = 680.0;
+const HELP_CARD_GAP: f32 = 40.0;
+const HELP_CARD_MIN_HEIGHT: f32 = 220.0;
+const HELP_CARD_ENTRY_START: f32 = 136.0;
+const HELP_CARD_ENTRY_ROW_HEIGHT: f32 = 52.0;
+const HELP_CARD_BOTTOM_PADDING: f32 = 28.0;
+
+#[derive(Debug, Clone, Copy)]
+struct HelpCardLayout {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+#[derive(Debug, Clone)]
+struct HelpGridLayout {
+    columns: usize,
+    cards: Vec<HelpCardLayout>,
+    height: f32,
+}
+
+fn help_card_height(entry_count: usize, scale: f32) -> f32 {
+    let scale = scale.max(0.5);
+    (HELP_CARD_ENTRY_START * scale
+        + entry_count as f32 * HELP_CARD_ENTRY_ROW_HEIGHT * scale
+        + HELP_CARD_BOTTOM_PADDING * scale)
+        .max(HELP_CARD_MIN_HEIGHT * scale)
+}
+
+fn help_grid_layout(entry_counts: &[usize], panel_width: f32, scale: f32) -> HelpGridLayout {
+    let scale = scale.max(0.5);
+    let gap = HELP_CARD_GAP * scale;
+    let max_columns = entry_counts.len().max(1).min(4);
+    let columns = (((panel_width + gap) / (HELP_CARD_MIN_WIDTH * scale + gap)).floor() as usize)
+        .clamp(1, max_columns);
+    let card_width = ((panel_width - gap * (columns as f32 - 1.0)) / columns as f32).max(1.0);
+    let mut column_heights = vec![0.0_f32; columns];
+    let mut cards = Vec::with_capacity(entry_counts.len());
+
+    for entry_count in entry_counts {
+        let column = column_heights
+            .iter()
+            .enumerate()
+            .min_by(|left, right| left.1.total_cmp(right.1))
+            .map(|(index, _)| index)
+            .unwrap_or(0);
+        let height = help_card_height(*entry_count, scale);
+        cards.push(HelpCardLayout {
+            x: column as f32 * (card_width + gap),
+            y: column_heights[column],
+            width: card_width,
+            height,
+        });
+        column_heights[column] += height + gap;
+    }
+
+    let height = (column_heights.into_iter().fold(0.0_f32, f32::max) - gap).max(0.0);
+    HelpGridLayout {
+        columns,
+        cards,
+        height,
+    }
+}
+
 impl Renderer {
-    pub fn update_help_buffer_content(&mut self, help: &HelpState, center_bounds: [f32; 4]) {
+    pub fn update_help_buffer_content(&mut self, help: &HelpState, center_bounds: [f32; 4]) -> f32 {
         if center_bounds[2] < 1.0 || center_bounds[3] < 1.0 {
             self.image_pipeline.clear();
             self.image_scissor = None;
             self.clear_editor_overlays();
-            return;
+            return 0.0;
         }
 
         // Scale hardcoded chrome px so layout tracks the runtime-scaled text
@@ -71,7 +136,6 @@ impl Renderer {
         let pad_x = self.editor_padding_x.max(18.0 * s);
         let pad_y = self.editor_padding_y.max(18.0 * s);
         let panel_x = center_bounds[0] + pad_x;
-        let panel_y = center_bounds[1] + pad_y - help.scroll_y;
         let panel_w = (center_bounds[2] - pad_x * 2.0).max(1.0);
         let panel_h = (center_bounds[3] - pad_y * 2.0).max(1.0);
         let fg = self.theme.ui.fg.as_f32();
@@ -93,37 +157,45 @@ impl Renderer {
         let hdr_accent_y = 24.0 * s;
         let hdr_accent_size = 120.0 * s;
         let hdr_subtitle_gap = 24.0 * s;
+        let narrow_header = panel_w < 1100.0 * s;
         let hdr_meta_col_w = 420.0 * s;
         let hdr_meta_lh_gap = 28.0 * s;
         let hdr_wrap_margin = 56.0 * s;
         let hdr_title_gap = 64.0 * s;
-        let hdr_min_h = 208.0 * s;
+        let hdr_min_h = if narrow_header { 360.0 * s } else { 208.0 * s };
         let legend_gap_top = 56.0 * s;
-        let legend_h = 116.0 * s;
+        let legend_h = if narrow_header { 160.0 * s } else { 116.0 * s };
         let legend_text_x = 40.0 * s;
         let legend_text_y = 36.0 * s;
         let grid_gap_top = 56.0 * s;
-        let col_gap = 40.0 * s;
-        let card_h_min = 440.0 * s;
-        let card_h_max = 720.0 * s;
         let card_title_div_y = 92.0 * s;
         let card_title_x = 36.0 * s;
         let card_title_y = 24.0 * s;
-        let card_hint_rx = 292.0 * s;
-        let hint_clamp_w = 264.0 * s;
-        let entry_row_h = 104.0 * s;
-        let key_col_ratio = 0.52_f32;
-        let key_col_min = 440.0 * s;
-        let key_col_max = 680.0 * s;
-        let label_col_extra = 120.0 * s;
-        let label_col_min = 220.0 * s;
-        let entry_top_pad = 184.0 * s;
-        let entry_y_start = 136.0 * s;
+        let entry_row_h = HELP_CARD_ENTRY_ROW_HEIGHT * s;
+        let key_col_ratio = 0.38_f32;
+        let key_col_min = 180.0 * s;
+        let key_col_max = 320.0 * s;
+        let label_col_extra = 80.0 * s;
+        let label_col_min = 140.0 * s;
+        let entry_y_start = HELP_CARD_ENTRY_START * s;
         let entry_key_x = 36.0 * s;
-        // let entry_key_y_adj = 6.0;
         let key_fs_ratio = 0.72_f32;
         let key_fs_min = 10.0 * s;
         // ───────────────────────────────────────────────────────────────────────
+
+        let header_height = (title_size + line_height + hdr_title_gap).max(hdr_min_h);
+        let legend_y_offset = header_height + legend_gap_top;
+        let grid_top_offset = legend_y_offset + legend_h + grid_gap_top;
+        let entry_counts = help
+            .sections
+            .iter()
+            .map(|section| section.entries.len())
+            .collect::<Vec<_>>();
+        let grid_layout = help_grid_layout(&entry_counts, panel_w, s);
+        debug_assert!((1..=4).contains(&grid_layout.columns));
+        let content_height = grid_top_offset + grid_layout.height + 32.0 * s;
+        let max_scroll_y = (content_height - panel_h).max(0.0);
+        let panel_y = center_bounds[1] + pad_y - help.scroll_y.min(max_scroll_y);
 
         let mut glyphs = Vec::new();
         let mut chrome = vec![RegionDrawInstance::new(
@@ -195,7 +267,16 @@ impl Renderer {
         ));
         self.editor_overlay_text_system
             .set_metrics(Metrics::new(small_size, small_size + 8.0 * s));
-        let meta_x = panel_x + panel_w - hdr_meta_col_w;
+        let meta_x = if narrow_header {
+            panel_x + hdr_logo_x
+        } else {
+            panel_x + panel_w - hdr_meta_col_w
+        };
+        let meta_y = if narrow_header {
+            panel_y + title_size + line_height + 72.0 * s
+        } else {
+            panel_y
+        };
         for (idx, line) in [
             "leader = space".to_string(),
             "mod = ⌘ (macOS)".to_string(),
@@ -211,12 +292,11 @@ impl Renderer {
                 &mut self.atlas,
                 &self.queue,
                 meta_x,
-                panel_y + idx as f32 * (small_size + hdr_meta_lh_gap),
+                meta_y + idx as f32 * (small_size + hdr_meta_lh_gap),
                 fg_dim,
             ));
         }
-        let header_bottom =
-            (panel_y + title_size + line_height + hdr_title_gap).max(panel_y + hdr_min_h);
+        let header_bottom = panel_y + header_height;
         chrome.push(RegionDrawInstance::new(
             [panel_x, header_bottom, panel_w, 1.0],
             divider,
@@ -238,11 +318,16 @@ impl Renderer {
             ],
             card_bg,
         ));
-        glyphs.extend(layout_panel_text(
-            &format!(
+        let legend_primary = if narrow_header {
+            "Legend: spc = Space  ·  mod = Cmd  ·  Ctrl = Control  ·  K = chord".to_string()
+        } else {
+            format!(
                 "Legend: spc = leader (Space)  ·  mod = ⌘ (Cmd)  ·  Ctrl = Control  ·  K = key chord  ·  Source: {}  ·  Profile: {}",
                 help.source_label, help.profile_name
-            ),
+            )
+        };
+        glyphs.extend(layout_panel_text(
+            &legend_primary,
             &mut self.editor_overlay_text_system,
             &mut self.atlas,
             &self.queue,
@@ -250,27 +335,32 @@ impl Renderer {
             legend_y + legend_text_y,
             fg_dim,
         ));
+        if narrow_header {
+            glyphs.extend(layout_panel_text(
+                &format!(
+                    "Source: {}  ·  Profile: {}",
+                    help.source_label, help.profile_name
+                ),
+                &mut self.editor_overlay_text_system,
+                &mut self.atlas,
+                &self.queue,
+                panel_x + legend_text_x,
+                legend_y + legend_text_y + line_height,
+                fg_dim,
+            ));
+        }
 
         let grid_top = legend_y + legend_h + grid_gap_top;
-        let columns = if panel_w > 1680.0 * s {
-            4
-        } else if panel_w > 1180.0 * s {
-            3
-        } else {
-            2
-        };
-        let card_w = (panel_w - col_gap * (columns as f32 - 1.0)) / columns as f32;
-        let available_grid_h = (panel_y + panel_h - grid_top).max(180.0 * s);
-        let visible_rows = ((help.sections.len() + columns - 1) / columns).max(1) as f32;
-        let card_h = ((available_grid_h - col_gap * (visible_rows - 1.0)) / visible_rows)
-            .clamp(card_h_min, card_h_max);
-        for (idx, section) in help.sections.iter().enumerate() {
-            let col = idx % columns;
-            let row = idx / columns;
-            let x = panel_x + col as f32 * (card_w + col_gap);
-            let y = grid_top + row as f32 * (card_h + col_gap) - help.scroll_y;
-            if y + card_h < panel_y + 40.0 * s {
+        for (section, card) in help.sections.iter().zip(&grid_layout.cards) {
+            let x = panel_x + card.x;
+            let y = grid_top + card.y;
+            let card_w = card.width;
+            let card_h = card.height;
+            if y + card_h < center_bounds[1] {
                 // card is entirely above the visible area
+                continue;
+            }
+            if y > center_bounds[1] + center_bounds[3] {
                 continue;
             }
             chrome.push(RegionDrawInstance::new([x, y, card_w, card_h], card_border));
@@ -306,18 +396,21 @@ impl Renderer {
                 section_color,
             ));
             glyphs.extend(layout_panel_text(
-                &clamp_monospace_text(&section.mode_hint, hint_clamp_w, font_size),
+                &clamp_monospace_text(
+                    &section.mode_hint,
+                    (card_w * 0.34).max(100.0 * s),
+                    font_size,
+                ),
                 &mut self.editor_overlay_text_system,
                 &mut self.atlas,
                 &self.queue,
-                x + card_w - card_hint_rx,
+                x + card_w * 0.62,
                 y + card_title_y,
                 fg_ghost,
             ));
             let key_col_w = (card_w * key_col_ratio).clamp(key_col_min, key_col_max);
             let label_col_w = (card_w - key_col_w - label_col_extra).max(label_col_min);
-            let max_entries = ((card_h - entry_top_pad) / entry_row_h).floor().max(1.0) as usize;
-            for (entry_idx, entry) in section.entries.iter().take(max_entries).enumerate() {
+            for (entry_idx, entry) in section.entries.iter().enumerate() {
                 let ey = y + entry_y_start + entry_idx as f32 * entry_row_h;
                 let key_refs: Vec<&str> = entry.keys.iter().map(String::as_str).collect();
                 let keycaps_w = estimate_help_keycaps_width(
@@ -376,5 +469,30 @@ impl Renderer {
             &self.queue,
             &self.editor_overlay_glyph_instances,
         );
+        max_scroll_y
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{help_card_height, help_grid_layout};
+
+    #[test]
+    fn help_layout_uses_one_column_for_a_narrow_panel() {
+        let layout = help_grid_layout(&[8, 9, 3], 720.0, 1.0);
+
+        assert_eq!(layout.columns, 1);
+        assert_eq!(layout.cards.len(), 3);
+        assert!(layout.cards[1].y >= layout.cards[0].y + layout.cards[0].height);
+        assert!(layout.cards[2].y >= layout.cards[1].y + layout.cards[1].height);
+    }
+
+    #[test]
+    fn help_card_height_grows_to_render_every_entry() {
+        let short = help_card_height(2, 1.0);
+        let normal_mode = help_card_height(85, 1.0);
+
+        assert!(normal_mode > short);
+        assert!(normal_mode >= 85.0 * 44.0);
     }
 }

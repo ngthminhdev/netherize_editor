@@ -65,7 +65,6 @@ pub(super) fn handle_system_result(app: &mut AppShell, payload: WorkerResultPayl
             app.request_redraw();
         }
         WorkerResultPayload::PythonEnvironmentsDiscovered(envs) => {
-            eprintln!("[AppShell] python environments discovered: {}", envs.len());
             let items: Vec<crate::app::command_palette::CommandPaletteItem> = envs
                 .into_iter()
                 .map(|env| crate::app::command_palette::CommandPaletteItem {

@@ -80,6 +80,7 @@ pub(super) fn spawn_lsp_stdout_reader(
                             uri: parsed.uri,
                             version: parsed.version,
                             diagnostics: parsed.diagnostics,
+                            server_name: server_name.clone(),
                         },
                     }),
                 );

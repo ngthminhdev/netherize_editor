@@ -1236,3 +1236,97 @@
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
+
+## Session: 2026-06-13 19:55
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-13 20:21
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 20:35 | Created src/syntax/queries/python/highlights.scm | — | ~1088 |
+| 20:36 | Edited src/syntax/highlight/mod.rs | modified python_highlight_uses_default_query_captures() | ~964 |
+| 20:38 | Created src/async_runtime/python_env.rs | — | ~2566 |
+| 20:38 | Edited src/async_runtime/message.rs | 5→8 lines | ~90 |
+| 20:38 | Edited src/app/event_loop/setup.rs | expanded (+10 lines) | ~231 |
+| 20:38 | Edited src/async_runtime/scheduler/lsp.rs | 14→16 lines | ~171 |
+| 20:39 | Edited src/lsp/client.rs | modified spawn_lsp_server() | ~66 |
+| 20:39 | Edited src/lsp/client.rs | expanded (+29 lines) | ~326 |
+| 20:39 | Edited src/app/event_loop/async_results/system.rs | 3→2 lines | ~41 |
+| 20:43 | Session end: 9 writes across 8 files (highlights.scm, mod.rs, python_env.rs, message.rs, setup.rs) | 15 reads | ~102537 tok |
+| 20:54 | Edited src/lsp/registry.rs | 10→10 lines | ~98 |
+| 20:54 | Edited src/lsp/client.rs | 28→33 lines | ~359 |
+| 20:55 | Edited src/app/event_loop/setup.rs | modified unwrap_or() | ~183 |
+| 20:55 | Edited src/app/app_state/mod.rs | 7→7 lines | ~46 |
+| 20:55 | Edited src/async_runtime/scheduler/syntax_jobs.rs | 3→3 lines | ~23 |
+| 21:01 | Edited src/lsp/registry.rs | modified companion_servers_for_path() | ~458 |
+| 21:01 | Edited src/async_runtime/message.rs | 8→11 lines | ~141 |
+| 21:01 | Edited src/async_runtime/message.rs | 5→8 lines | ~81 |
+| 21:01 | Edited src/async_runtime/scheduler/lsp_io.rs | 5→6 lines | ~85 |
+| 21:02 | Edited src/app/async_bridge.rs | 5→6 lines | ~70 |
+| 21:02 | Edited src/app/app_state/mod.rs | expanded (+7 lines) | ~168 |
+| 21:02 | Edited src/app/app_state/mod.rs | 3→4 lines | ~47 |
+| 21:02 | Edited src/app/app_state/palette.rs | modified set_file_diagnostics() | ~382 |
+| 21:03 | Edited src/app/event_loop/async_results/lsp.rs | 3→6 lines | ~38 |
+| 21:03 | Edited src/app/event_loop/async_results/lsp.rs | modified set_file_diagnostics() | ~39 |
+| 21:03 | Edited src/async_runtime/scheduler.rs | modified get_handle_by_uri() | ~651 |
+| 21:04 | Edited src/lsp/registry.rs | modified companion_servers_for_key() | ~307 |
+| 21:04 | Edited src/async_runtime/scheduler.rs | modified sessions_with_open_document() | ~198 |
+| 21:04 | Edited src/async_runtime/scheduler/lsp.rs | 16→21 lines | ~233 |
+| 21:05 | Edited src/lsp/client.rs | modified spawn_lsp_server() | ~222 |
+| 21:05 | Edited src/async_runtime/scheduler/lsp.rs | modified is_empty() | ~485 |
+| 21:05 | Edited src/async_runtime/scheduler/lsp.rs | modified is_empty() | ~418 |
+| 21:05 | Edited src/async_runtime/scheduler/lsp.rs | 18→21 lines | ~303 |
+| 21:06 | Edited src/async_runtime/scheduler/lsp.rs | 2→2 lines | ~26 |
+| 21:07 | Edited src/app/event_loop/setup.rs | expanded (+34 lines) | ~491 |
+| 21:07 | Edited src/app/event_loop/async_results/lsp.rs | modified binary_is_companion() | ~233 |
+| 21:07 | Edited src/async_runtime/scheduler.rs | removed 15 lines | ~26 |
+| 21:08 | Edited src/app/app_state/tests.rs | modified make_diagnostic() | ~608 |
+| 21:13 | Session end: 37 writes across 15 files (highlights.scm, mod.rs, python_env.rs, message.rs, setup.rs) | 25 reads | ~204911 tok |
+| 21:18 | Edited src/app/app_state/mod.rs | expanded (+15 lines) | ~250 |
+| 21:18 | Edited src/async_runtime/scheduler/syntax_jobs.rs | 3→4 lines | ~30 |
+| 21:19 | Session end: 39 writes across 15 files (highlights.scm, mod.rs, python_env.rs, message.rs, setup.rs) | 25 reads | ~205614 tok |
+| 21:29 | Session end: 39 writes across 15 files (highlights.scm, mod.rs, python_env.rs, message.rs, setup.rs) | 30 reads | ~271521 tok |
+| 21:32 | Edited src/app/event_loop/commands_explorer.rs | 3→7 lines | ~114 |
+| 21:32 | Edited src/lsp/registry.rs | 1→3 lines | ~60 |
+| 21:33 | Edited src/lsp/registry.rs | modified find_go_module_root() | ~166 |
+| 21:33 | Edited src/app/event_loop/setup.rs | 2→7 lines | ~89 |
+| 21:33 | Edited src/lsp/symbol_cache.rs | expanded (+9 lines) | ~213 |
+| 21:34 | Edited src/lsp/symbol_cache.rs | modified get() | ~173 |
+| 21:34 | Edited src/lsp/symbol_cache.rs | modified is_ts_js_language() | ~86 |
+| 21:34 | Edited src/app/app_state/overlays.rs | modified is_none() | ~177 |
+| 21:34 | Edited src/lsp/symbol_cache.rs | 1→5 lines | ~88 |
+| 21:35 | Edited src/lsp/symbol_cache.rs | modified collect_ts_js_files() | ~224 |
+| 21:35 | Edited src/lsp/symbol_cache.rs | expanded (+7 lines) | ~101 |
+| 21:35 | Edited src/async_runtime/message.rs | 5→9 lines | ~113 |
+| 21:35 | Edited src/app/event_loop/setup.rs | expanded (+7 lines) | ~176 |
+| 21:35 | Edited src/async_runtime/scheduler.rs | modified get_handle_by_binary_and_root() | ~231 |
+| 21:36 | Edited src/async_runtime/scheduler/lsp.rs | expanded (+11 lines) | ~243 |
+| 21:36 | Edited src/async_runtime/scheduler/dispatch.rs | expanded (+22 lines) | ~340 |
+| 21:37 | Edited src/lsp/symbol_cache.rs | modified ts_js_query_merges_family_buckets() | ~428 |
+| 21:37 | Edited src/lsp/registry.rs | modified find_go_module_root_prefers_go_work_over_nested_go_mod() | ~325 |
+| 21:42 | Edited src/app/app_state/overlays.rs | modified is_none() | ~219 |
+| 21:44 | Edited src/app/event_loop/commands_tests.rs | modified ts_non_exported_workspace_symbol_is_not_offered_standalone() | ~436 |
+
+## Session: 2026-06-13 21:46
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 21:56 | Edited src/lsp/symbol_cache.rs | 5→10 lines | ~195 |
+| 21:56 | Edited src/lsp/symbol_cache.rs | modified collect_ts_js_files() | ~255 |
+| 21:56 | Edited src/lsp/symbol_cache.rs | modified is_dir() | ~225 |
+| 21:56 | Edited src/lsp/symbol_cache.rs | modified is_dir() | ~168 |
+| 21:56 | Edited src/lsp/symbol_cache.rs | modified is_dir() | ~264 |
+| 21:57 | Edited src/lsp/symbol_cache.rs | modified is_dir() | ~235 |
+| 21:57 | Edited src/lsp/symbol_cache.rs | modified is_dir() | ~178 |
+| 21:59 | Session end: 7 writes across 1 files (symbol_cache.rs) | 4 reads | ~22597 tok |
+| 21:59 | Session end: 7 writes across 1 files (symbol_cache.rs) | 4 reads | ~22597 tok |
+| 22:02 | Session end: 7 writes across 1 files (symbol_cache.rs) | 4 reads | ~22597 tok |
+| 22:04 | Session end: 7 writes across 1 files (symbol_cache.rs) | 5 reads | ~22597 tok |
+| 23:27 | Session end: 7 writes across 1 files (symbol_cache.rs) | 6 reads | ~22597 tok |
+| 23:32 | Session end: 7 writes across 1 files (symbol_cache.rs) | 6 reads | ~22597 tok |
+| 23:40 | Session end: 7 writes across 1 files (symbol_cache.rs) | 6 reads | ~22597 tok |
+| 23:48 | Session end: 7 writes across 1 files (symbol_cache.rs) | 8 reads | ~51032 tok |
+| 23:51 | Session end: 7 writes across 1 files (symbol_cache.rs) | 8 reads | ~51032 tok |

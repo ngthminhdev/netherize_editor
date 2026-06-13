@@ -650,17 +650,39 @@ impl AppState {
         self.diagnostics.get(&normalized).map(Vec::as_slice)
     }
 
-    pub fn set_file_diagnostics(&mut self, path: PathBuf, diagnostics: Vec<LspDiagnostic>) -> bool {
+    /// Replace the diagnostics published by `server_name` for `path`, then
+    /// rebuild the merged view. Storing per-server lets pyright and ruff (which
+    /// run together for Python) coexist instead of clobbering each other.
+    pub fn set_file_diagnostics(
+        &mut self,
+        path: PathBuf,
+        server_name: String,
+        diagnostics: Vec<LspDiagnostic>,
+    ) -> bool {
         let normalized = path.canonicalize().unwrap_or(path);
+
+        let per_server = self.diagnostics_by_server.entry(normalized.clone()).or_default();
+        let previous = per_server.get(&server_name);
+        if previous.map(Vec::as_slice) == Some(diagnostics.as_slice()) {
+            return false; // No change from this server.
+        }
         if diagnostics.is_empty() {
-            return self.diagnostics.remove(&normalized).is_some();
+            per_server.remove(&server_name);
+        } else {
+            per_server.insert(server_name, diagnostics);
         }
 
-        let changed = self.diagnostics.get(&normalized) != Some(&diagnostics);
-        if changed {
-            self.diagnostics.insert(normalized, diagnostics);
+        // Rebuild the merged view for this file from all remaining servers.
+        if per_server.is_empty() {
+            self.diagnostics_by_server.remove(&normalized);
+            self.diagnostics.remove(&normalized);
+        } else {
+            let mut merged: Vec<LspDiagnostic> =
+                per_server.values().flatten().cloned().collect();
+            merged.sort_by_key(|d| (d.range.start.line, d.range.start.character));
+            self.diagnostics.insert(normalized, merged);
         }
-        changed
+        true
     }
 
     /// Currently displayed LSP progress entry, if any. The status bar uses this
@@ -961,13 +983,20 @@ impl AppState {
 
     pub fn help_scroll_down(&mut self, amount: f32) {
         if let Some(buf) = self.active_help_buffer_mut() {
-            buf.scroll_y += amount;
+            buf.scroll_y = (buf.scroll_y + amount).min(buf.max_scroll_y);
         }
     }
 
     pub fn help_scroll_up(&mut self, amount: f32) {
         if let Some(buf) = self.active_help_buffer_mut() {
             buf.scroll_y = (buf.scroll_y - amount).max(0.0);
+        }
+    }
+
+    pub fn set_help_max_scroll(&mut self, max_scroll_y: f32) {
+        if let Some(buf) = self.active_help_buffer_mut() {
+            buf.max_scroll_y = max_scroll_y.max(0.0);
+            buf.scroll_y = buf.scroll_y.min(buf.max_scroll_y);
         }
     }
 
@@ -983,6 +1012,20 @@ impl AppState {
     pub fn open_help_buffer(&mut self) -> usize {
         // Save current text buffer before switching to help buffer
         self.save_current_text_buffer_history();
+
+        if let Some(existing_idx) = self
+            .buffers
+            .iter()
+            .position(|buffer| matches!(buffer.content, BufferContent::Help(_)))
+        {
+            self.is_initial_launch_welcome = false;
+            self.reset_text_editor_state();
+            self.buffers[existing_idx].content = BufferContent::Help(HelpState::new());
+            self.active_buffer_index = Some(existing_idx);
+            let _ = self.clear_current_overlays();
+            self.bump_revision();
+            return existing_idx;
+        }
 
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {

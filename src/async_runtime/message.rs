@@ -202,6 +202,12 @@ pub enum WorkerRequestPayload {
         root_path: PathBuf,
         server_command: Option<String>,
         custom_bin_path: Option<PathBuf>,
+        /// Python interpreter chosen by the user, pushed to the Python server so
+        /// analysis (completion, diagnostics) runs against the selected env.
+        interpreter_path: Option<PathBuf>,
+        /// Launch arguments. `None` falls back to the primary profile's args;
+        /// companion servers (e.g. `ruff server`) pass their own.
+        launch_args: Option<Vec<String>>,
     },
     FzfSearch {
         query: String,
@@ -422,6 +428,10 @@ pub enum WorkerRequestPayload {
     WorkspaceSymbolRequest {
         language_id: String,
         query: String,
+        /// Project root of the target server, so the worker routes to the
+        /// session at this root instead of an arbitrary same-binary one
+        /// (critical when multiple gopls/tsserver sessions run side by side).
+        root_path: Option<PathBuf>,
     },
     /// Local TS/JS export indexing request — scans project files outside the UI
     /// thread and returns importable workspace symbols.
@@ -635,6 +645,9 @@ pub enum WorkerResultPayload {
         uri: String,
         version: Option<u64>,
         diagnostics: Vec<LspDiagnostic>,
+        /// Which server published these. Diagnostics are stored per-server so
+        /// pyright and ruff (running together) don't overwrite each other.
+        server_name: String,
     },
     LspLogMessage {
         level: String,

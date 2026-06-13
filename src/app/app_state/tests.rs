@@ -25,6 +25,65 @@ mod tests {
             .as_nanos();
         std::env::temp_dir().join(format!("netherize_phase4_{suffix}_{nanos}.txt"))
     }
+    fn make_diagnostic(line: u32, message: &str) -> crate::async_runtime::message::LspDiagnostic {
+        use crate::async_runtime::message::{LspDiagnostic, LspPosition, LspRange};
+        LspDiagnostic {
+            range: LspRange {
+                start: LspPosition { line, character: 0 },
+                end: LspPosition { line, character: 1 },
+            },
+            severity: Some(1),
+            code: None,
+            source: None,
+            message: message.to_string(),
+            tags: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn diagnostics_from_two_servers_merge_and_clear_independently() {
+        let mut state = AppState::new(unique_temp_path("diag_merge_state"));
+        let path = unique_temp_path("diag_merge_file");
+
+        // pyright and ruff publish independently for the same file.
+        assert!(state.set_file_diagnostics(
+            path.clone(),
+            "pyright-langserver".to_string(),
+            vec![make_diagnostic(1, "type error")],
+        ));
+        assert!(state.set_file_diagnostics(
+            path.clone(),
+            "ruff".to_string(),
+            vec![make_diagnostic(5, "unused import")],
+        ));
+        assert_eq!(
+            state.diagnostics_for_path(&path).map(<[_]>::len),
+            Some(2),
+            "both servers' diagnostics should be visible (no clobber)"
+        );
+
+        // ruff clears its set; pyright's must remain.
+        assert!(state.set_file_diagnostics(path.clone(), "ruff".to_string(), Vec::new()));
+        let after = state.diagnostics_for_path(&path).unwrap_or(&[]);
+        assert_eq!(after.len(), 1);
+        assert_eq!(after[0].message, "type error");
+
+        // Re-publishing the identical set from pyright is a no-op (no redraw).
+        assert!(!state.set_file_diagnostics(
+            path.clone(),
+            "pyright-langserver".to_string(),
+            vec![make_diagnostic(1, "type error")],
+        ));
+
+        // pyright clears too -> the file drops out entirely.
+        assert!(state.set_file_diagnostics(
+            path.clone(),
+            "pyright-langserver".to_string(),
+            Vec::new()
+        ));
+        assert!(state.diagnostics_for_path(&path).is_none());
+    }
+
     fn read_external_files(paths: &[PathBuf]) -> Vec<ExternalFileRead> {
         paths
             .iter()
@@ -200,6 +259,68 @@ mod tests {
             help.lines
                 .iter()
                 .any(|line| line.contains("j") && line.contains("Move down"))
+        );
+    }
+
+    #[test]
+    fn help_buffer_includes_every_configured_mode() {
+        let bindings = ["normal", "resize", "preview", "visual_block"]
+            .into_iter()
+            .map(|mode| KeyBinding {
+                key: "j".to_string(),
+                mode: Some(mode.to_string()),
+                command: "editor.move_down".to_string(),
+            })
+            .collect::<Vec<_>>();
+
+        let help = super::HelpState::from_bindings("test-profile", "test.toml", &bindings);
+        let titles = help
+            .sections
+            .iter()
+            .map(|section| section.title.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(titles.contains(&"NORMAL"));
+        assert!(titles.contains(&"RESIZE"));
+        assert!(titles.contains(&"PREVIEW"));
+        assert!(titles.contains(&"VISUAL BLOCK"));
+    }
+
+    #[test]
+    fn opening_help_buffer_reuses_the_existing_tab() {
+        let mut state = AppState::new(unique_temp_path("reuse_help_buffer"));
+
+        let first_index = state.open_help_buffer();
+        let buffer_count = state.buffers().len();
+        let second_index = state.open_help_buffer();
+
+        assert_eq!(second_index, first_index);
+        assert_eq!(state.buffers().len(), buffer_count);
+        assert_eq!(state.active_buffer_index(), Some(first_index));
+    }
+
+    #[test]
+    fn help_scroll_is_clamped_to_the_rendered_content() {
+        let mut state = AppState::new(unique_temp_path("bounded_help_scroll"));
+        state.open_help_buffer();
+        state.set_help_max_scroll(250.0);
+
+        state.help_scroll_down(400.0);
+        assert_eq!(
+            state.active_help_buffer().map(|help| help.scroll_y),
+            Some(250.0)
+        );
+
+        state.set_help_max_scroll(100.0);
+        assert_eq!(
+            state.active_help_buffer().map(|help| help.scroll_y),
+            Some(100.0)
+        );
+
+        state.help_scroll_up(150.0);
+        assert_eq!(
+            state.active_help_buffer().map(|help| help.scroll_y),
+            Some(0.0)
         );
     }
 

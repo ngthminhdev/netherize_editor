@@ -3,7 +3,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-const MAX_TS_JS_PACKAGE_EXPORT_PACKAGES: usize = 256;
+/// Upper bound on node_modules packages scanned for type exports. High enough to
+/// cover even large dependency sets; acts only as a runaway backstop. Packages
+/// are visited in sorted order so any truncation is stable across runs.
+const MAX_TS_JS_PACKAGE_EXPORT_PACKAGES: usize = 4000;
+/// Upper bound on workspace source files scanned for the local TS/JS index, so a
+/// pathological repo can't trigger truly unbounded reads. Set high to favor a
+/// complete index (indexing runs off the UI thread). Files are visited in sorted
+/// order, so if the cap is ever hit the omitted set is stable, not random.
+/// `index_ts_js_workspace_exports` logs when the cap truncates the scan.
+const MAX_TS_JS_SOURCE_FILES: usize = 50_000;
 
 /// A workspace-wide symbol cache for fast import/completion suggestions.
 /// Stores symbols indexed from LSP `workspace/symbol` requests and local TS/JS
@@ -87,7 +96,16 @@ impl WorkspaceSymbolCache {
         let prefix_lower = prefix.to_lowercase();
         let mut results = Vec::new();
 
+        // TS/JS share one server/root and one source tree, but indexing is keyed
+        // by the active file's language, so .ts/.tsx/.js/.jsx land in separate
+        // buckets. Query across the whole family so e.g. opening a .tsx still
+        // sees the index built while a .ts was active.
         let languages: Vec<&String> = match language_id {
+            Some(lang) if is_ts_js_language(lang) => inner
+                .symbols_by_language
+                .keys()
+                .filter(|k| is_ts_js_language(k))
+                .collect(),
             Some(lang) => inner
                 .symbols_by_language
                 .keys()
@@ -96,10 +114,17 @@ impl WorkspaceSymbolCache {
             None => inner.symbols_by_language.keys().collect(),
         };
 
+        let mut seen: HashSet<(String, PathBuf, u32)> = HashSet::new();
         for lang in languages {
             if let Some(symbols) = inner.symbols_by_language.get(lang) {
                 for symbol in symbols {
-                    if fuzzy_match(&symbol.name.to_lowercase(), &prefix_lower) {
+                    if fuzzy_match(&symbol.name.to_lowercase(), &prefix_lower)
+                        && seen.insert((
+                            symbol.name.clone(),
+                            symbol.file_path.clone(),
+                            symbol.line,
+                        ))
+                    {
                         results.push(symbol.clone());
                     }
                 }
@@ -183,6 +208,13 @@ impl Default for WorkspaceSymbolCache {
 pub fn index_ts_js_workspace_exports(workspace_root: &Path) -> Vec<CachedSymbol> {
     let mut files = Vec::new();
     collect_ts_js_files(workspace_root, &mut files);
+    if files.len() >= MAX_TS_JS_SOURCE_FILES {
+        eprintln!(
+            "[symbol-index] TS/JS source scan capped at {MAX_TS_JS_SOURCE_FILES} files in {} — \
+             workspace index is partial",
+            workspace_root.display()
+        );
+    }
 
     let mut symbols = Vec::new();
     let mut seen = HashSet::new();
@@ -269,7 +301,10 @@ fn collect_node_package_dirs(
     let Ok(entries) = fs::read_dir(node_modules) else {
         return;
     };
-    for entry in entries.flatten() {
+    // Sorted order makes truncation at `max_packages` deterministic.
+    let mut entries: Vec<fs::DirEntry> = entries.flatten().collect();
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
         if out.len() >= max_packages {
             return;
         }
@@ -303,7 +338,9 @@ fn collect_scoped_node_package_dirs(
     let Ok(entries) = fs::read_dir(scope_dir) else {
         return;
     };
-    for entry in entries.flatten() {
+    let mut entries: Vec<fs::DirEntry> = entries.flatten().collect();
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
         if out.len() >= max_packages {
             return;
         }
@@ -740,14 +777,25 @@ fn is_valid_ts_js_identifier(s: &str) -> bool {
 }
 
 fn collect_ts_js_files(root: &Path, out: &mut Vec<PathBuf>) {
+    if out.len() >= MAX_TS_JS_SOURCE_FILES {
+        return;
+    }
     let Ok(entries) = fs::read_dir(root) else {
         return;
     };
-    for entry in entries.flatten() {
-        let path = entry.path();
+    // Sort by name so the DFS order — and any truncation at the cap — is stable
+    // across runs rather than dependent on filesystem readdir order. Use
+    // `file_type()` (does not follow symlinks) to avoid symlink-cycle recursion.
+    let mut entries: Vec<fs::DirEntry> = entries.flatten().collect();
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        if out.len() >= MAX_TS_JS_SOURCE_FILES {
+            return;
+        }
         let Ok(file_type) = entry.file_type() else {
             continue;
         };
+        let path = entry.path();
         if file_type.is_dir() {
             let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
                 continue;
@@ -760,6 +808,12 @@ fn collect_ts_js_files(root: &Path, out: &mut Vec<PathBuf>) {
             out.push(path);
         }
     }
+}
+
+/// The TS/JS language ids that share a single server, source tree and symbol
+/// index. Kept together so cross-bucket queries see the whole family.
+fn is_ts_js_language(language_id: &str) -> bool {
+    matches!(language_id, "typescript" | "tsx" | "javascript" | "jsx")
 }
 
 fn should_skip_index_dir(name: &str) -> bool {
@@ -1778,6 +1832,47 @@ mod tests {
         let results = cache.query_symbols("test", None);
         assert!(results.len() >= 1);
         assert!(results.iter().any(|s| s.name == "test_function"));
+    }
+
+    #[test]
+    fn ts_js_query_merges_family_buckets() {
+        // Index built while a `.ts` was active (bucket "typescript")...
+        let cache = WorkspaceSymbolCache::new();
+        cache.insert_symbols(
+            "typescript",
+            vec![cached_symbol("MyWidget", "Class", "src/widget.ts", 1, 0)],
+        );
+
+        // ...must still be visible when querying as ".tsx" (different bucket).
+        let results = cache.query_symbols("MyWid", Some("tsx"));
+        assert!(
+            results.iter().any(|s| s.name == "MyWidget"),
+            "tsx query should see the typescript-bucket symbol, got {results:?}"
+        );
+
+        // A non-family language must NOT pull in TS symbols.
+        let go_results = cache.query_symbols("MyWid", Some("go"));
+        assert!(go_results.is_empty(), "go query must not see TS symbols");
+    }
+
+    #[test]
+    fn ts_js_query_dedups_across_family_buckets() {
+        // Same symbol indexed under two family buckets should appear once.
+        let cache = WorkspaceSymbolCache::new();
+        cache.insert_symbols(
+            "typescript",
+            vec![cached_symbol("Shared", "Class", "src/a.ts", 3, 0)],
+        );
+        cache.insert_symbols(
+            "javascript",
+            vec![cached_symbol("Shared", "Class", "src/a.ts", 3, 0)],
+        );
+        let results = cache.query_symbols("Shared", Some("tsx"));
+        assert_eq!(
+            results.iter().filter(|s| s.name == "Shared").count(),
+            1,
+            "duplicate across family buckets should be collapsed"
+        );
     }
 
     #[test]

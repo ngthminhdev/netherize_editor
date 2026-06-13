@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Netherize × LeetCode — Topic/Progress Spec</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{background:#060b13;color:#d0d7e4;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased}
+body{min-height:100vh;padding-bottom:60px}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-thumb{background:#2a364d88;border-radius:2px}
+
+:root{
+  --bg:#111720; --panel:#161d2a; --ed:#1c2433; --term:#111720; --st:#0e1420;
+  --bd:#1e2738; --sel:#243044;
+  --fg:#d0d7e4; --dim:#8a9abf; --gh:#3d5070;
+  --cyan:#22ECDB; --green:#3CEC85; --mag:#F38CEC;
+  --amb:#EACD61; --info:#69C3FF; --warn:#FF955C; --err:#E35535;
+  --fui:'Inter',system-ui,sans-serif;
+  --fmono:'JetBrains Mono',ui-monospace,monospace;
+}
+
+/* ── Spec shell ── */
+.spec-nav{position:sticky;top:0;z-index:100;background:var(--panel);
+  border-bottom:1px solid var(--bd);height:40px;padding:0 24px;
+  display:flex;align-items:center;gap:14px;font-family:var(--fui)}
+.snav-logo{font-family:var(--fmono);font-size:11px;font-weight:600;letter-spacing:.16em;color:var(--dim)}
+.snav-div{color:var(--gh)}
+.snav-name{font-size:11px;color:var(--dim)}
+.snav-region{font-size:10px;color:var(--cyan);font-family:var(--fmono);
+  border:1px solid rgba(34,236,219,.25);border-radius:3px;padding:2px 8px}
+.snav-kb{font-size:10px;color:var(--gh);font-family:var(--fmono)}
+.snav-links{margin-left:auto;display:flex;gap:8px}
+.snav-links a{font-size:10px;color:var(--gh);font-family:var(--fmono);
+  text-decoration:none;padding:3px 8px;border:1px solid transparent;border-radius:3px;transition:all .15s}
+.snav-links a:hover{color:var(--dim);border-color:var(--bd)}
+
+.g-lbl{font-size:10px;color:var(--gh);font-family:var(--fmono);
+  letter-spacing:.12em;text-transform:uppercase;padding:28px 32px 12px}
+.gallery{display:flex;gap:28px;overflow-x:auto;padding:0 32px 40px}
+.artboard{flex-shrink:0;display:flex;flex-direction:column;gap:8px}
+.ab-lbl{font-size:10px;color:var(--amb);font-family:var(--fmono);
+  letter-spacing:.1em;text-transform:uppercase;font-weight:500}
+.ab-sub{font-size:10px;color:var(--gh);font-family:var(--fmono);margin-top:2px}
+
+/* ── IDE frame (left dock in context) ── */
+.ide-slice{
+  width:580px;height:620px;
+  background:var(--bg);border:1px solid var(--bd);border-radius:7px;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+
+/* Simple top bar */
+.mini-topbar{
+  height:32px;flex-shrink:0;background:var(--panel);border-bottom:1px solid var(--bd);
+  display:flex;align-items:center;padding:0 10px;gap:8px;
+}
+.mini-tb-logo{font-family:var(--fmono);font-size:11px;font-weight:700;color:var(--cyan);
+  padding-right:8px;border-right:1px solid var(--bd);margin-right:2px}
+.mini-tb-file{font-family:var(--fmono);font-size:10px;color:var(--gh)}
+
+.ide-body{display:flex;flex:1;overflow:hidden}
+
+/* Left dock */
+.ldock{width:220px;background:var(--panel);border-right:1px solid var(--bd);
+  display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}
+
+/* Tab bar */
+.tabbar{height:28px;display:flex;align-items:stretch;border-bottom:1px solid var(--bd);flex-shrink:0}
+.tab{display:flex;align-items:center;padding:0 10px;font-family:var(--fui);font-size:10px;
+  color:var(--gh);border-right:1px solid var(--bd);cursor:default;
+  letter-spacing:.04em;position:relative;flex-shrink:0}
+.tab.act{color:var(--dim);background:rgba(36,48,68,.6)}
+.tab.act::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;
+  background:var(--cyan);border-radius:1px}
+
+/* Center editor (ghost) */
+.ghost-ed{flex:1;background:var(--ed);display:flex;align-items:center;
+  justify-content:center;opacity:.25}
+.ghost-ed-lines{display:flex;flex-direction:column;gap:0;padding:10px 14px;
+  font-family:var(--fmono);font-size:10px;color:var(--gh);line-height:18px;width:100%}
+
+/* Badges */
+.badge{font-family:var(--fmono);font-size:9px;font-weight:500;border-radius:3px;
+  padding:1px 6px;flex-shrink:0}
+.be{color:#3CEC85;background:rgba(60,236,133,.1);border:1px solid rgba(60,236,133,.2)}
+.bm{color:#EACD61;background:rgba(234,205,97,.1);border:1px solid rgba(234,205,97,.2)}
+.bh{color:#E35535;background:rgba(227,85,53,.1);border:1px solid rgba(227,85,53,.2)}
+
+/* Keycap */
+.keycap{font-size:9px;color:var(--gh);border:1px solid var(--gh);border-radius:2px;
+  padding:0 3px;line-height:14px;font-family:var(--fmono)}
+
+/* ── Progress summary bar ── */
+.prog-bar-wrap{height:4px;background:var(--bd);border-radius:2px;overflow:hidden}
+.prog-bar-fill{height:100%;border-radius:2px;background:var(--cyan)}
+
+/* ── Dock inner elements ── */
+.dock-section-hdr{
+  padding:6px 10px 4px;
+  font-size:10px;color:var(--gh);font-family:var(--fui);
+  letter-spacing:.1em;text-transform:uppercase;font-weight:600;
+  display:flex;align-items:center;justify-content:space-between;
+}
+
+/* Topic rows */
+.topic-row{
+  display:flex;align-items:center;gap:6px;
+  padding:0 6px 0 10px;height:24px;
+  font-family:var(--fmono);font-size:11px;
+  cursor:default;transition:background .08s;
+}
+.topic-row:hover{background:rgba(36,48,68,.5)}
+.topic-row.active{background:var(--sel)}
+.topic-chevron{font-size:8px;color:var(--gh);flex-shrink:0}
+.topic-name{color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topic-cnt{font-size:10px;color:var(--gh);flex-shrink:0}
+.topic-done{font-size:10px;color:var(--green);flex-shrink:0}
+
+/* Problem sub-rows */
+.prob-row{
+  display:flex;align-items:center;gap:6px;
+  padding:0 6px 0 26px;height:20px;
+  font-family:var(--fmono);font-size:10px;
+  cursor:default;transition:background .08s;
+}
+.prob-row:hover{background:rgba(36,48,68,.5)}
+.prob-solved{color:var(--green)}
+.prob-unsolved{color:var(--gh)}
+.prob-review{color:var(--amb)}
+.prob-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Progress summary view */
+.prog-card{
+  margin:8px 8px 0;
+  background:var(--ed);border:1px solid var(--bd);border-radius:5px;padding:8px 10px;
+}
+.prog-card-title{font-size:10px;color:var(--gh);font-family:var(--fui);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;font-weight:600}
+.prog-row{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.prog-lbl{font-size:10px;color:var(--gh);font-family:var(--fmono);width:52px;flex-shrink:0}
+.prog-cnt{font-size:10px;color:var(--dim);font-family:var(--fmono);width:36px;flex-shrink:0}
+.prog-bar-wrap2{flex:1;height:4px;background:var(--bd);border-radius:2px;overflow:hidden}
+.prog-bar-e{height:100%;border-radius:2px;background:var(--green)}
+.prog-bar-m{height:100%;border-radius:2px;background:var(--amb)}
+.prog-bar-h{height:100%;border-radius:2px;background:var(--err)}
+
+/* Recent activity */
+.activity-row{
+  display:flex;align-items:center;gap:6px;
+  padding:2px 10px;height:22px;
+  font-family:var(--fmono);font-size:10px;color:var(--dim);
+}
+.act-ico-pass{color:var(--green);font-size:9px;width:10px;flex-shrink:0;text-align:center}
+.act-ico-fail{color:var(--err);font-size:9px;width:10px;flex-shrink:0;text-align:center}
+.act-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.act-time{color:var(--gh);font-size:10px;flex-shrink:0}
+
+/* Needs review list */
+.review-row{
+  display:flex;align-items:center;gap:6px;
+  padding:0 6px 0 14px;height:20px;
+  font-family:var(--fmono);font-size:10px;
+}
+.review-dot{width:4px;height:4px;border-radius:50%;background:var(--amb);flex-shrink:0}
+.review-name{color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── Annotation legend ── */
+.ann{padding:24px 32px 8px;border-top:1px solid var(--bd);margin-top:16px}
+.ann-ttl{font-size:10px;color:var(--gh);text-transform:uppercase;letter-spacing:.12em;
+  font-family:var(--fui);font-weight:600;margin-bottom:14px}
+.ann-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px 24px}
+.ai{display:flex;align-items:baseline;gap:7px;font-size:11px;font-family:var(--fmono);padding:2px 0}
+.ai-n{color:var(--amb);width:18px;flex-shrink:0}
+.ai-k{color:var(--gh)}
+.ai-v{color:var(--dim)}
+.sw{width:10px;height:10px;border-radius:2px;display:inline-block;flex-shrink:0;margin-left:auto}
+</style>
+</head>
+<body>
+
+<!-- ── SPEC NAV ── -->
+<nav class="spec-nav">
+  <span class="snav-logo">NETHERIZE</span>
+  <span class="snav-div">×</span>
+  <span class="snav-name">Topic / Progress</span>
+  <span class="snav-region">Left dock · 220px · alongside Explorer</span>
+  <span class="snav-kb">⎵ll open · Tab next tab · ⎵lp open problem · ⎵lr mark review</span>
+  <nav class="snav-links">
+    <a href="leetcode-mock-interview.html">← Mock Interview</a>
+    <a href="leetcode-index.html">Overview →</a>
+  </nav>
+</nav>
+
+<!-- ── GALLERY ── -->
+<div class="g-lbl">Topic / Progress — 3 States</div>
+<div class="gallery">
+
+  <!-- ── ① Tag List ── -->
+  <div class="artboard">
+    <div class="ab-lbl">① Tag List</div>
+    <div class="ab-sub">left dock LeetCode tab · collapsed topics · global progress header</div>
+    <div class="ide-slice">
+      <div class="mini-topbar">
+        <span class="mini-tb-logo">N</span>
+        <span class="mini-tb-file">two_sum.rs</span>
+      </div>
+      <div class="ide-body">
+        <!-- Left dock -->
+        <div class="ldock">
+          <div class="tabbar">
+            <div class="tab">Explorer</div>
+            <div class="tab">Search</div>
+            <div class="tab act">LeetCode</div>
+          </div>
+          <!-- Progress summary strip -->
+          <div style="padding:8px 10px;border-bottom:1px solid var(--bd)">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+              <span style="font-size:10px;color:var(--gh);font-family:var(--fui)">Overall</span>
+              <span style="font-size:10px;color:var(--dim);font-family:var(--fmono)">21 / 150</span>
+            </div>
+            <div class="prog-bar-wrap"><div class="prog-bar-fill" style="width:14%"></div></div>
+          </div>
+          <!-- By Topic section -->
+          <div class="dock-section-hdr">
+            By Topic
+            <span class="keycap">⎵lt</span>
+          </div>
+          <div style="flex:1;overflow-y:auto">
+            <div class="topic-row">
+              <span class="topic-chevron">▶</span>
+              <span class="topic-name">Two Pointers</span>
+              <span class="topic-cnt" style="color:var(--cyan)">12/20</span>
+            </div>
+            <div class="topic-row">
+              <span class="topic-chevron">▶</span>
+              <span class="topic-name">Dynamic Programming</span>
+              <span class="topic-cnt">5/30</span>
+            </div>
+            <div class="topic-row">
+              <span class="topic-chevron">▶</span>
+              <span class="topic-name">Graph</span>
+              <span class="topic-cnt">2/25</span>
+            </div>
+            <div class="topic-row">
+              <span class="topic-chevron">▶</span>
+              <span class="topic-name">Binary Search</span>
+              <span class="topic-cnt">4/15</span>
+            </div>
+            <div class="topic-row">
+              <span class="topic-chevron">▶</span>
+              <span class="topic-name">Sliding Window</span>
+              <span class="topic-done">✓ 8/10</span>
+            </div>
+            <div class="topic-row">
+              <span class="topic-chevron">▶</span>
+              <span class="topic-name">Stack / Queue</span>
+              <span class="topic-cnt">3/12</span>
+            </div>
+            <div class="topic-row">
+              <span class="topic-chevron">▶</span>
+              <span class="topic-name">Tree / Trie</span>
+              <span class="topic-cnt">1/18</span>
+            </div>
+            <!-- Divider -->
+            <div style="height:1px;background:var(--bd);margin:4px 0"></div>
+            <div class="dock-section-hdr">Needs Review</div>
+            <div class="review-row">
+              <span class="review-dot"></span>
+              <span class="review-name" style="color:var(--amb)">Longest Substring Without Repeat</span>
+            </div>
+            <div class="review-row">
+              <span class="review-dot"></span>
+              <span class="review-name" style="color:var(--amb)">Coin Change</span>
+            </div>
+            <div class="review-row">
+              <span class="review-dot"></span>
+              <span class="review-name" style="color:var(--amb)">Merge Intervals</span>
+            </div>
+          </div>
+        </div>
+        <!-- Ghost editor -->
+        <div class="ghost-ed">
+          <div class="ghost-ed-lines">
+            <div>pub fn two_sum(nums: Vec&lt;i32&gt;, target: i32) -&gt; Vec&lt;i32&gt; {</div>
+            <div>    let mut seen = HashMap::new();</div>
+            <div>    for (i, &amp;v) in nums.iter().enumerate() {</div>
+            <div>        let c = target - v;</div>
+            <div>        if let Some(&amp;j) = seen.get(&amp;c) { return vec![j, i] }</div>
+            <div>        seen.insert(v, i);</div>
+            <div>    }</div>
+            <div>    vec![]</div>
+            <div>}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ② Tag Expanded ── -->
+  <div class="artboard">
+    <div class="ab-lbl">② Tag Expanded</div>
+    <div class="ab-sub">Two Pointers expanded · ✓ solved · ★ needs review · open problem</div>
+    <div class="ide-slice">
+      <div class="mini-topbar">
+        <span class="mini-tb-logo">N</span>
+        <span class="mini-tb-file">two_sum.rs</span>
+      </div>
+      <div class="ide-body">
+        <div class="ldock">
+          <div class="tabbar">
+            <div class="tab">Explorer</div>
+            <div class="tab">Search</div>
+            <div class="tab act">LeetCode</div>
+          </div>
+          <div style="padding:8px 10px;border-bottom:1px solid var(--bd)">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+              <span style="font-size:10px;color:var(--gh);font-family:var(--fui)">Overall</span>
+              <span style="font-size:10px;color:var(--dim);font-family:var(--fmono)">21 / 150</span>
+            </div>
+            <div class="prog-bar-wrap"><div class="prog-bar-fill" style="width:14%"></div></div>
+          </div>
+          <div class="dock-section-hdr">By Topic</div>
+          <div style="flex:1;overflow-y:auto">
+            <!-- Expanded topic -->
+            <div class="topic-row active" style="background:rgba(34,236,219,.07)">
+              <span class="topic-chevron" style="color:var(--cyan)">▼</span>
+              <span class="topic-name" style="color:var(--cyan)">Two Pointers</span>
+              <span class="topic-cnt" style="color:var(--cyan)">12/20</span>
+            </div>
+            <!-- Problem list under topic -->
+            <div class="prob-row">
+              <span class="prob-solved">✓</span>
+              <span class="prob-name" style="color:var(--dim)">#1 Two Sum</span>
+              <span class="badge be">Easy</span>
+            </div>
+            <div class="prob-row">
+              <span class="prob-solved">✓</span>
+              <span class="prob-name" style="color:var(--dim)">#167 Two Sum II</span>
+              <span class="badge be">Easy</span>
+            </div>
+            <div class="prob-row">
+              <span class="prob-review">★</span>
+              <span class="prob-name" style="color:var(--amb)">#3 Longest Substr…</span>
+              <span class="badge bm">Med</span>
+            </div>
+            <div class="prob-row">
+              <span class="prob-solved">✓</span>
+              <span class="prob-name" style="color:var(--dim)">#11 Container Water</span>
+              <span class="badge bm">Med</span>
+            </div>
+            <div class="prob-row">
+              <span class="prob-solved">✓</span>
+              <span class="prob-name" style="color:var(--dim)">#15 3Sum</span>
+              <span class="badge bm">Med</span>
+            </div>
+            <div class="prob-row">
+              <span class="prob-unsolved">·</span>
+              <span class="prob-name">#42 Trapping Rain Water</span>
+              <span class="badge bh">Hard</span>
+            </div>
+            <div class="prob-row">
+              <span class="prob-unsolved">·</span>
+              <span class="prob-name">#75 Sort Colors</span>
+              <span class="badge bm">Med</span>
+            </div>
+            <div class="prob-row">
+              <span class="prob-unsolved">·</span>
+              <span class="prob-name">#125 Valid Palindrome</span>
+              <span class="badge be">Easy</span>
+            </div>
+            <!-- Collapsed topics below -->
+            <div style="height:1px;background:var(--bd);margin:4px 0"></div>
+            <div class="topic-row">
+              <span class="topic-chevron">▶</span>
+              <span class="topic-name">Dynamic Programming</span>
+              <span class="topic-cnt">5/30</span>
+            </div>
+            <div class="topic-row">
+              <span class="topic-chevron">▶</span>
+              <span class="topic-name">Graph</span>
+              <span class="topic-cnt">2/25</span>
+            </div>
+            <div class="topic-row">
+              <span class="topic-chevron">▶</span>
+              <span class="topic-name">Binary Search</span>
+              <span class="topic-cnt">4/15</span>
+            </div>
+          </div>
+        </div>
+        <div class="ghost-ed">
+          <div class="ghost-ed-lines">
+            <div>pub fn two_sum(nums: Vec&lt;i32&gt;, target: i32) -&gt; Vec&lt;i32&gt; {</div>
+            <div>    let mut seen = HashMap::new();</div>
+            <div>    for (i, &amp;v) in nums.iter().enumerate() {</div>
+            <div>        let c = target - v;</div>
+            <div>    }</div>
+            <div>    vec![]</div>
+            <div>}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ③ Progress Summary ── -->
+  <div class="artboard">
+    <div class="ab-lbl">③ Progress Summary</div>
+    <div class="ab-sub">⎵lp progress view · by difficulty bars · recent activity</div>
+    <div class="ide-slice">
+      <div class="mini-topbar">
+        <span class="mini-tb-logo">N</span>
+        <span class="mini-tb-file">two_sum.rs</span>
+      </div>
+      <div class="ide-body">
+        <div class="ldock">
+          <div class="tabbar">
+            <div class="tab">Explorer</div>
+            <div class="tab">Search</div>
+            <div class="tab act">LeetCode</div>
+          </div>
+          <div style="flex:1;overflow-y:auto;padding-bottom:8px">
+            <!-- Overall progress card -->
+            <div class="prog-card" style="margin-top:8px">
+              <div class="prog-card-title">Overall Progress</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                <span style="font-size:16px;font-family:var(--fmono);font-weight:600;color:var(--fg)">21</span>
+                <span style="font-size:11px;color:var(--gh);font-family:var(--fmono)">/ 150 solved</span>
+                <span style="font-size:11px;color:var(--cyan);font-family:var(--fmono)">14%</span>
+              </div>
+              <div class="prog-bar-wrap" style="height:6px">
+                <div class="prog-bar-fill" style="width:14%"></div>
+              </div>
+            </div>
+            <!-- By Difficulty card -->
+            <div class="prog-card">
+              <div class="prog-card-title">By Difficulty</div>
+              <div class="prog-row">
+                <span class="prog-lbl" style="color:var(--green)">Easy</span>
+                <span class="prog-cnt">15/50</span>
+                <div class="prog-bar-wrap2"><div class="prog-bar-e" style="width:30%"></div></div>
+              </div>
+              <div class="prog-row">
+                <span class="prog-lbl" style="color:var(--amb)">Medium</span>
+                <span class="prog-cnt">5/70</span>
+                <div class="prog-bar-wrap2"><div class="prog-bar-m" style="width:7%"></div></div>
+              </div>
+              <div class="prog-row" style="margin-bottom:0">
+                <span class="prog-lbl" style="color:var(--err)">Hard</span>
+                <span class="prog-cnt">1/30</span>
+                <div class="prog-bar-wrap2"><div class="prog-bar-h" style="width:3%"></div></div>
+              </div>
+            </div>
+            <!-- Recent activity -->
+            <div style="margin:0 8px 0">
+              <div class="dock-section-hdr" style="padding:8px 2px 4px;border:none">Recent</div>
+              <div class="activity-row">
+                <span class="act-ico-pass">✓</span>
+                <span class="act-name">Two Sum</span>
+                <span class="act-time">1d ago</span>
+              </div>
+              <div class="activity-row">
+                <span class="act-ico-pass">✓</span>
+                <span class="act-name">Valid Parentheses</span>
+                <span class="act-time">2d ago</span>
+              </div>
+              <div class="activity-row">
+                <span class="act-ico-fail">✗</span>
+                <span class="act-name" style="color:var(--gh)">Merge Intervals</span>
+                <span class="act-time">3d ago</span>
+              </div>
+              <div class="activity-row">
+                <span class="act-ico-pass">✓</span>
+                <span class="act-name">Climbing Stairs</span>
+                <span class="act-time">4d ago</span>
+              </div>
+              <div class="activity-row">
+                <span class="act-ico-fail">✗</span>
+                <span class="act-name" style="color:var(--gh)">Word Break</span>
+                <span class="act-time">5d ago</span>
+              </div>
+            </div>
+            <!-- Quick actions -->
+            <div style="margin:8px 8px 0;display:flex;flex-direction:column;gap:4px">
+              <div class="dock-section-hdr" style="padding:4px 2px;border:none">Quick</div>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <div style="display:flex;align-items:center;gap:8px;padding:4px 4px;
+                  border-radius:4px;cursor:default;
+                  border:1px solid var(--bd)">
+                  <span class="keycap">⎵lr</span>
+                  <span style="font-size:10px;color:var(--dim);font-family:var(--fui)">Random problem</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;padding:4px 4px;
+                  border-radius:4px;cursor:default;
+                  border:1px solid var(--bd)">
+                  <span class="keycap">⎵lR</span>
+                  <span style="font-size:10px;color:var(--amb);font-family:var(--fui)">Review flagged</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="ghost-ed">
+          <div class="ghost-ed-lines">
+            <div>pub fn two_sum(nums: Vec&lt;i32&gt;, target: i32) -&gt; Vec&lt;i32&gt; {</div>
+            <div>    let mut seen = HashMap::new();</div>
+            <div>    for (i, &amp;v) in nums.iter().enumerate() {</div>
+            <div>        let c = target - v;</div>
+            <div>    }</div>
+            <div>    vec![]</div>
+            <div>}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /gallery -->
+
+<!-- ── TOKEN ANNOTATIONS ── -->
+<div class="ann">
+  <div class="ann-ttl">Token Annotations — config/themes/default-dark.toml</div>
+  <div class="ann-grid">
+    <div class="ai"><span class="ai-n">①</span><span class="ai-k">ldock_w:</span><span class="ai-v">220px (left dock width)</span></div>
+    <div class="ai"><span class="ai-n">②</span><span class="ai-k">ldock_bg:</span><span class="ai-v">#161d2a (panel_bg)</span><span class="sw" style="background:#161d2a;border:1px solid #1e2738"></span></div>
+    <div class="ai"><span class="ai-n">③</span><span class="ai-k">tab_active_accent:</span><span class="ai-v">#22ECDB · 2px bottom</span><span class="sw" style="background:#22ECDB"></span></div>
+    <div class="ai"><span class="ai-n">④</span><span class="ai-k">topic_row_h:</span><span class="ai-v">24px</span></div>
+    <div class="ai"><span class="ai-n">⑤</span><span class="ai-k">topic_row_hover:</span><span class="ai-v">rgba(36,48,68,.5)</span><span class="sw" style="background:#243044;opacity:.5"></span></div>
+    <div class="ai"><span class="ai-n">⑥</span><span class="ai-k">topic_active_bg:</span><span class="ai-v">rgba(34,236,219,.07) · name #22ECDB</span><span class="sw" style="background:#22ECDB;opacity:.3"></span></div>
+    <div class="ai"><span class="ai-n">⑦</span><span class="ai-k">solved_icon_fg:</span><span class="ai-v">#3CEC85 (green)</span><span class="sw" style="background:#3CEC85"></span></div>
+    <div class="ai"><span class="ai-n">⑧</span><span class="ai-k">review_icon_fg:</span><span class="ai-v">#EACD61 (amber) · name amber</span><span class="sw" style="background:#EACD61"></span></div>
+    <div class="ai"><span class="ai-n">⑨</span><span class="ai-k">unsolved_icon_fg:</span><span class="ai-v">#3d5070 (fg_ghost)</span><span class="sw" style="background:#3d5070"></span></div>
+    <div class="ai"><span class="ai-n">⑩</span><span class="ai-k">prog_bar_fg:</span><span class="ai-v">#22ECDB (overall) · h:4–6px</span><span class="sw" style="background:#22ECDB"></span></div>
+    <div class="ai"><span class="ai-n">⑪</span><span class="ai-k">prog_bar_easy:</span><span class="ai-v">#3CEC85</span><span class="sw" style="background:#3CEC85"></span></div>
+    <div class="ai"><span class="ai-n">⑫</span><span class="ai-k">prog_bar_med:</span><span class="ai-v">#EACD61</span><span class="sw" style="background:#EACD61"></span></div>
+    <div class="ai"><span class="ai-n">⑬</span><span class="ai-k">prog_bar_hard:</span><span class="ai-v">#E35535</span><span class="sw" style="background:#E35535"></span></div>
+    <div class="ai"><span class="ai-n">⑭</span><span class="ai-k">card_bg:</span><span class="ai-v">#1c2433 (editor_bg)</span><span class="sw" style="background:#1c2433;border:1px solid #1e2738"></span></div>
+    <div class="ai"><span class="ai-n">⑮</span><span class="ai-k">review_dot_fg:</span><span class="ai-v">#EACD61 · r:50% · 4px</span><span class="sw" style="background:#EACD61"></span></div>
+    <div class="ai"><span class="ai-n">⑯</span><span class="ai-k">section_lbl:</span><span class="ai-v">#3d5070 · 10px Inter · tracking .1em</span></div>
+    <div class="ai"><span class="ai-n">⑰</span><span class="ai-k">prob_row_h:</span><span class="ai-v">20px · indent 26px (16px from parent)</span></div>
+    <div class="ai"><span class="ai-n">⑱</span><span class="ai-k">activity_pass:</span><span class="ai-v">#3CEC85 (green)</span><span class="sw" style="background:#3CEC85"></span></div>
+    <div class="ai"><span class="ai-n">⑲</span><span class="ai-k">activity_fail:</span><span class="ai-v">#E35535 (error)</span><span class="sw" style="background:#E35535"></span></div>
+    <div class="ai"><span class="ai-n">⑳</span><span class="ai-k">trigger:</span><span class="ai-v">⎵ll open · ⎵lr random · ⎵lR review queue</span></div>
+  </div>
+</div>
+
+</body>
+</html>
