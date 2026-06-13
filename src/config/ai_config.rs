@@ -72,6 +72,57 @@ impl AiConfig {
         self.save_user_override()
     }
 
+    /// Mutable access to the inline-completion config, creating a disabled
+    /// default if the section is missing so settings edits never silently fail.
+    fn inline_mut(&mut self) -> &mut InlineCompletionConfig {
+        self.inline_completion
+            .get_or_insert_with(InlineCompletionConfig::with_defaults)
+    }
+
+    pub fn set_inline_api_url(&mut self, value: String) -> Result<(), String> {
+        self.inline_mut().provider.api_url = value.trim().to_string();
+        self.save_user_override()
+    }
+
+    pub fn set_inline_model(&mut self, value: String) -> Result<(), String> {
+        self.inline_mut().provider.model = value.trim().to_string();
+        self.save_user_override()
+    }
+
+    pub fn set_inline_api_key(&mut self, value: String) -> Result<(), String> {
+        let trimmed = value.trim();
+        self.inline_mut().provider.api_key =
+            (!trimmed.is_empty()).then(|| trimmed.to_string());
+        self.save_user_override()
+    }
+
+    pub fn set_inline_endpoint_kind(&mut self, value: String) -> Result<(), String> {
+        let trimmed = value.trim();
+        self.inline_mut().provider.endpoint_kind =
+            (!trimmed.is_empty()).then(|| trimmed.to_string());
+        self.save_user_override()
+    }
+
+    pub fn set_inline_max_tokens(&mut self, value: u32) -> Result<(), String> {
+        self.inline_mut().max_tokens = Some(value);
+        self.save_user_override()
+    }
+
+    pub fn set_inline_prefix_chars(&mut self, value: usize) -> Result<(), String> {
+        self.inline_mut().prefix_chars = Some(value);
+        self.save_user_override()
+    }
+
+    pub fn set_inline_suffix_chars(&mut self, value: usize) -> Result<(), String> {
+        self.inline_mut().suffix_chars = Some(value);
+        self.save_user_override()
+    }
+
+    pub fn set_inline_debounce_ms(&mut self, value: u64) -> Result<(), String> {
+        self.inline_mut().debounce_ms = Some(value);
+        self.save_user_override()
+    }
+
     pub fn save_user_override(&self) -> Result<(), String> {
         let path = candidate_paths()
             .into_iter()
@@ -88,6 +139,30 @@ impl AiConfig {
 }
 
 impl InlineCompletionConfig {
+    /// A disabled config with empty provider fields, used as the seed when the
+    /// user edits AI settings while no `[inline_completion]` section exists yet.
+    fn with_defaults() -> Self {
+        Self {
+            enabled: Some(false),
+            provider: AiProviderConfig {
+                api_url: String::new(),
+                model: String::new(),
+                api_key: None,
+                endpoint_kind: None,
+                reasoning_effort: None,
+            },
+            debounce_ms: None,
+            prefix_chars: None,
+            suffix_chars: None,
+            max_tokens: None,
+            trigger_chars: None,
+            idle_trigger_ms: None,
+            min_prefix_chars: None,
+            suppress_in_middle_of_word: None,
+            min_interval_ms: None,
+        }
+    }
+
     pub fn debounce_ms(&self) -> u64 {
         self.debounce_ms.unwrap_or(80)
     }

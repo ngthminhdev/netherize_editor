@@ -262,6 +262,73 @@ fn settings_commit_ui_rounding_edit_clamps_to_24() {
 }
 
 #[test]
+fn settings_exposes_ai_inline_config_items() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.handle_command(Command::OpenSettings);
+    let settings = shell
+        .app_state
+        .active_settings_buffer()
+        .expect("settings buffer");
+
+    // The AI section must surface the editable endpoint/model/tuning fields, not
+    // just the on/off toggle — otherwise they would only be reachable by hand-
+    // editing config/ai.toml.
+    let has = |pred: fn(&crate::app::app_state::SettingItem) -> bool| {
+        settings.items.iter().any(pred)
+    };
+    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiApiUrl { .. })));
+    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiModel { .. })));
+    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiApiKey { .. })));
+    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiEndpointKind { .. })));
+    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiMaxTokens { .. })));
+    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiPrefixChars { .. })));
+    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiSuffixChars { .. })));
+    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiDebounceMs { .. })));
+}
+
+#[test]
+fn settings_activate_begins_text_edit_for_ai_model() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.handle_command(Command::OpenSettings);
+    let model_value = {
+        let settings = shell
+            .app_state
+            .active_settings_buffer_mut()
+            .expect("settings buffer");
+        let (idx, value) = settings
+            .items
+            .iter()
+            .enumerate()
+            .find_map(|(idx, item)| match item {
+                crate::app::app_state::SettingItem::AiModel { current } => {
+                    Some((idx, current.clone()))
+                }
+                _ => None,
+            })
+            .expect("ai model setting present");
+        settings.selected_index = idx;
+        value
+    };
+
+    let changed = shell.handle_command(Command::SettingsActivate);
+
+    assert!(changed);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Insert);
+    let settings = shell
+        .app_state
+        .active_settings_buffer()
+        .expect("settings buffer");
+    let editing = settings.editing.as_ref().expect("editing state");
+    assert_eq!(
+        editing.kind,
+        crate::app::app_state::SettingsEditingKind::AiModel
+    );
+    // Editing seeds the draft from the live config value so the user edits the
+    // real model id rather than a blank field.
+    assert_eq!(editing.draft, model_value);
+}
+
+#[test]
 fn settings_text_edit_works_after_opening_from_right_terminal_focus() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     shell.panel_state.right.visible = true;

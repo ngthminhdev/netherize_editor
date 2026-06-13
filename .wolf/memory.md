@@ -1196,3 +1196,43 @@
 | 22:38 | Edited src/app/event_loop/commands_lsp.rs | inline fix | ~23 |
 | 23:06 | Completed Ctrl+Space-over-ghost-text fix and strengthened regression coverage through LSP result plus late AI result | commands_completion.rs, commands_lsp.rs, commands_tests.rs | cargo check + 46 completion tests + 9 AI tests pass | ~8k |
 | 23:10 | Final verification for manual Ctrl+Space completion override | commands_completion.rs, commands_lsp.rs, commands_tests.rs | rustfmt/diff/JSON clean; full lib suite 730 passed | ~2k |
+
+## Session: 2026-06-13 11:47
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 11:55 | Edited config/ai.toml | 3→3 lines | ~15 |
+| --:-- | Verified ghost-text context uses prefix/suffix from caret; raised inline context | config/ai.toml | prefix 1200->4000, suffix 400->1500, max_tokens 96->160; A/B vs local model confirms larger prefix recovers far-away defs | ~6k |
+| 11:57 | Session end: 1 writes across 1 files (ai.toml) | 4 reads | ~25276 tok |
+| 12:03 | Edited src/config/ai_config.rs | modified set_inline_completion_enabled() | ~614 |
+| 12:03 | Edited src/config/ai_config.rs | modified with_defaults() | ~247 |
+| 12:03 | Edited src/app/app_state/settings.rs | expanded (+22 lines) | ~359 |
+| 12:03 | Edited src/app/app_state/settings.rs | expanded (+8 lines) | ~155 |
+| 12:03 | Edited src/app/app_state/settings.rs | expanded (+8 lines) | ~87 |
+| 12:03 | Edited src/app/app_state/settings.rs | expanded (+20 lines) | ~354 |
+| 12:04 | Edited src/app/app_state/settings.rs | 4→5 lines | ~42 |
+| 12:04 | Edited src/app/app_state/settings.rs | expanded (+22 lines) | ~261 |
+| 12:04 | Edited src/app/app_state/palette.rs | 6→7 lines | ~75 |
+| 12:04 | Edited src/app/app_state/palette.rs | 6→7 lines | ~54 |
+| 12:04 | Edited src/app/event_loop/commands_settings.rs | expanded (+19 lines) | ~363 |
+| 12:04 | Edited src/app/event_loop/commands_settings.rs | 3→4 lines | ~46 |
+| 12:05 | Edited src/app/event_loop/commands_settings_helpers.rs | expanded (+8 lines) | ~334 |
+| 12:05 | Edited src/app/event_loop/commands_settings_helpers.rs | expanded (+112 lines) | ~1354 |
+| 12:06 | Edited src/app/event_loop/commands_settings_helpers.rs | modified commit_ai_text_edit() | ~543 |
+| 12:06 | Edited src/app/event_loop/commands_settings_helpers.rs | expanded (+16 lines) | ~381 |
+| 12:06 | Edited src/app/event_loop/commands_settings_helpers.rs | modified apply_ai_number_adjust() | ~835 |
+| 12:07 | Edited src/render/renderer/editor/settings.rs | expanded (+8 lines) | ~111 |
+| 12:07 | Edited src/render/renderer/editor/settings.rs | expanded (+24 lines) | ~364 |
+| 12:07 | Edited src/render/renderer/editor/settings.rs | modified display_value() | ~191 |
+| 12:07 | Edited src/render/renderer/editor/settings.rs | modified mask_secret() | ~367 |
+| 12:07 | Edited src/render/renderer/editor/settings.rs | expanded (+11 lines) | ~261 |
+| 12:07 | Edited src/render/renderer/editor/settings.rs | 4→8 lines | ~109 |
+| 12:08 | Edited src/render/renderer/editor/settings.rs | expanded (+34 lines) | ~426 |
+| 12:09 | Edited src/app/event_loop/commands_tests.rs | modified settings_exposes_ai_inline_config_items() | ~753 |
+| --:-- | Added editable AI inline-completion fields to Settings tab (cmd-,) | ai_config.rs, app_state/settings.rs, palette.rs, commands_settings*.rs, render/editor/settings.rs, commands_tests.rs | endpoint/model/api_key/endpoint_kind/max_tokens/prefix/suffix/debounce — save persists to config/ai.toml and applies live (no reload); 10 settings tests pass | ~30k |
+| 12:10 | Session end: 26 writes across 7 files (ai.toml, ai_config.rs, settings.rs, palette.rs, commands_settings.rs) | 10 reads | ~111068 tok |
+
+## Session: 2026-06-13 19:18
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|

@@ -1,3 +1,17 @@
+/// Snapshot of `[inline_completion]` config values used to seed the AI section
+/// of the settings tab. Built from `AiConfig` when the tab opens.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AiInlineSettings {
+    pub api_url: String,
+    pub model: String,
+    pub api_key: String,
+    pub endpoint_kind: String,
+    pub max_tokens: u32,
+    pub prefix_chars: usize,
+    pub suffix_chars: usize,
+    pub debounce_ms: u64,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum SettingItem {
     ThemeSelector { current: String },
@@ -7,6 +21,14 @@ pub enum SettingItem {
     IndentTabWidth { current: u8 },
     IndentInsertSpaces { enabled: bool },
     InlineSuggestion { enabled: bool },
+    AiApiUrl { current: String },
+    AiModel { current: String },
+    AiApiKey { current: String },
+    AiEndpointKind { current: String },
+    AiMaxTokens { current: u32 },
+    AiPrefixChars { current: usize },
+    AiSuffixChars { current: usize },
+    AiDebounceMs { current: u64 },
     SidebarWidth { current: i32 },
     RightSidebarWidth { current: i32 },
     BottomPanelHeight { current: i32 },
@@ -26,6 +48,14 @@ impl SettingItem {
             Self::IndentTabWidth { .. } => "Tab Width",
             Self::IndentInsertSpaces { .. } => "Indent Style",
             Self::InlineSuggestion { .. } => "Inline Completion",
+            Self::AiApiUrl { .. } => "AI Endpoint",
+            Self::AiModel { .. } => "AI Model",
+            Self::AiApiKey { .. } => "AI API Key",
+            Self::AiEndpointKind { .. } => "AI Endpoint Kind",
+            Self::AiMaxTokens { .. } => "AI Max Tokens",
+            Self::AiPrefixChars { .. } => "AI Prefix Context",
+            Self::AiSuffixChars { .. } => "AI Suffix Context",
+            Self::AiDebounceMs { .. } => "AI Debounce",
             Self::SidebarWidth { .. } => "Left Dock Width",
             Self::RightSidebarWidth { .. } => "Right Dock Width",
             Self::BottomPanelHeight { .. } => "Bottom Dock Height",
@@ -47,6 +77,14 @@ pub enum SettingsEditingKind {
     RightSidebarWidth,
     BottomPanelHeight,
     UiScale,
+    AiApiUrl,
+    AiModel,
+    AiApiKey,
+    AiEndpointKind,
+    AiMaxTokens,
+    AiPrefixChars,
+    AiSuffixChars,
+    AiDebounceMs,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,6 +115,7 @@ impl SettingsState {
         border_radius_px: f32,
         enable_outline: bool,
         inline_suggestion_enabled: bool,
+        ai: AiInlineSettings,
         ui_scale_override: Option<f32>,
     ) -> Self {
         Self {
@@ -116,6 +155,28 @@ impl SettingsState {
                 // AI
                 SettingItem::InlineSuggestion {
                     enabled: inline_suggestion_enabled,
+                },
+                SettingItem::AiApiUrl {
+                    current: ai.api_url,
+                },
+                SettingItem::AiModel { current: ai.model },
+                SettingItem::AiApiKey {
+                    current: ai.api_key,
+                },
+                SettingItem::AiEndpointKind {
+                    current: ai.endpoint_kind,
+                },
+                SettingItem::AiMaxTokens {
+                    current: ai.max_tokens,
+                },
+                SettingItem::AiPrefixChars {
+                    current: ai.prefix_chars,
+                },
+                SettingItem::AiSuffixChars {
+                    current: ai.suffix_chars,
+                },
+                SettingItem::AiDebounceMs {
+                    current: ai.debounce_ms,
                 },
                 // LAYOUT
                 SettingItem::SidebarWidth {
@@ -198,6 +259,26 @@ impl SettingsState {
                     .map(|v| format!("{v:.2}"))
                     .unwrap_or_else(|| "auto".to_string()),
             ),
+            SettingItem::AiApiUrl { current } => {
+                (SettingsEditingKind::AiApiUrl, current.clone())
+            }
+            SettingItem::AiModel { current } => (SettingsEditingKind::AiModel, current.clone()),
+            SettingItem::AiApiKey { current } => (SettingsEditingKind::AiApiKey, current.clone()),
+            SettingItem::AiEndpointKind { current } => {
+                (SettingsEditingKind::AiEndpointKind, current.clone())
+            }
+            SettingItem::AiMaxTokens { current } => {
+                (SettingsEditingKind::AiMaxTokens, current.to_string())
+            }
+            SettingItem::AiPrefixChars { current } => {
+                (SettingsEditingKind::AiPrefixChars, current.to_string())
+            }
+            SettingItem::AiSuffixChars { current } => {
+                (SettingsEditingKind::AiSuffixChars, current.to_string())
+            }
+            SettingItem::AiDebounceMs { current } => {
+                (SettingsEditingKind::AiDebounceMs, current.to_string())
+            }
             SettingItem::ThemeSelector { .. }
             | SettingItem::EnableOutline { .. }
             | SettingItem::IndentInsertSpaces { .. }

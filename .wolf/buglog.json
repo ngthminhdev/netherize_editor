@@ -2124,6 +2124,22 @@
       ],
       "occurrences": 1,
       "last_seen": "2026-06-12T23:10:55+07:00"
+    },
+    {
+      "id": "bug-124",
+      "timestamp": "2026-06-13T05:08:00.569Z",
+      "error_message": "Significant refactor of ",
+      "file": "src/render/renderer/editor/settings.rs",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 6→40 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "rs"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-06-13T05:08:00.569Z"
     }
   ]
 }

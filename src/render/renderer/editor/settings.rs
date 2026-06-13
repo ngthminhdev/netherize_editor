@@ -47,7 +47,15 @@ impl SettingItem {
             Self::IndentTabWidth { .. } | Self::IndentInsertSpaces { .. } => {
                 SettingsSection::Editor
             }
-            Self::InlineSuggestion { .. } => SettingsSection::Ai,
+            Self::InlineSuggestion { .. }
+            | Self::AiApiUrl { .. }
+            | Self::AiModel { .. }
+            | Self::AiApiKey { .. }
+            | Self::AiEndpointKind { .. }
+            | Self::AiMaxTokens { .. }
+            | Self::AiPrefixChars { .. }
+            | Self::AiSuffixChars { .. }
+            | Self::AiDebounceMs { .. } => SettingsSection::Ai,
             Self::SidebarWidth { .. }
             | Self::RightSidebarWidth { .. }
             | Self::BottomPanelHeight { .. } => SettingsSection::Layout,
@@ -77,6 +85,30 @@ impl SettingItem {
             }
             Self::InlineSuggestion { .. } => {
                 "Press Enter to toggle AI inline completion from config/ai.toml."
+            }
+            Self::AiApiUrl { .. } => {
+                "Base URL of the completion API (OpenAI-compatible). Enter to edit. Applies live."
+            }
+            Self::AiModel { .. } => {
+                "Model id sent with each completion request. Enter to edit. Applies live."
+            }
+            Self::AiApiKey { .. } => {
+                "Bearer token for the API. Stored in config/ai.toml; leave empty for none."
+            }
+            Self::AiEndpointKind { .. } => {
+                "Request shape: 'chat' (/chat/completions) or 'responses'. Enter to edit."
+            }
+            Self::AiMaxTokens { .. } => {
+                "Max tokens the model may return per suggestion. h/l ±16 or Enter to edit."
+            }
+            Self::AiPrefixChars { .. } => {
+                "Characters of code before the cursor sent as context. h/l ±200 or Enter."
+            }
+            Self::AiSuffixChars { .. } => {
+                "Characters of code after the cursor sent as context. h/l ±100 or Enter."
+            }
+            Self::AiDebounceMs { .. } => {
+                "Idle time after typing before a request fires. h/l ±10 ms or Enter."
             }
             Self::SidebarWidth { .. } => {
                 "Reserved width for the left dock when the workspace sidebar is shown."
@@ -126,6 +158,15 @@ impl SettingItem {
             Self::UiScale { current } => current
                 .map(|v| format!("{v:.2}"))
                 .unwrap_or_else(|| "\"auto\"".to_string()),
+            Self::AiApiUrl { current }
+            | Self::AiModel { current }
+            | Self::AiEndpointKind { current } => format!("\"{}\"", current),
+            Self::AiApiKey { current } => format!("\"{}\"", mask_secret(current)),
+            Self::AiMaxTokens { current } => current.to_string(),
+            Self::AiPrefixChars { current } | Self::AiSuffixChars { current } => {
+                current.to_string()
+            }
+            Self::AiDebounceMs { current } => current.to_string(),
         }
     }
 
@@ -161,8 +202,40 @@ impl SettingItem {
             Self::UiScale { current } => current
                 .map(|v| format!("{v:.2}×"))
                 .unwrap_or_else(|| "Auto (display)".to_string()),
+            Self::AiApiUrl { current }
+            | Self::AiModel { current }
+            | Self::AiEndpointKind { current } => {
+                if current.trim().is_empty() {
+                    "Not set".to_string()
+                } else {
+                    current.clone()
+                }
+            }
+            Self::AiApiKey { current } => {
+                if current.trim().is_empty() {
+                    "Not set".to_string()
+                } else {
+                    mask_secret(current)
+                }
+            }
+            Self::AiMaxTokens { current } => format!("{current} tok"),
+            Self::AiPrefixChars { current } | Self::AiSuffixChars { current } => {
+                format!("{current} ch")
+            }
+            Self::AiDebounceMs { current } => format!("{current} ms"),
         }
     }
+}
+
+/// Mask a secret for display, revealing only the last 4 characters.
+fn mask_secret(secret: &str) -> String {
+    let visible = 4;
+    let len = secret.chars().count();
+    if len <= visible {
+        return "•".repeat(len);
+    }
+    let tail: String = secret.chars().skip(len - visible).collect();
+    format!("{}{tail}", "•".repeat(len.saturating_sub(visible).min(8)))
 }
 
 fn with_alpha(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
@@ -196,6 +269,10 @@ fn setting_control_hint(item: &SettingItem) -> &'static [(&'static str, &'static
         SettingItem::EnableOutline { .. }
         | SettingItem::IndentInsertSpaces { .. }
         | SettingItem::InlineSuggestion { .. } => &[("Enter", "toggle")],
+        SettingItem::AiApiUrl { .. }
+        | SettingItem::AiModel { .. }
+        | SettingItem::AiApiKey { .. }
+        | SettingItem::AiEndpointKind { .. } => &[("Enter", "edit")],
         _ => &[("h/l", "adjust"), ("Enter", "edit exact")],
     }
 }
@@ -218,7 +295,18 @@ fn current_row_value(settings: &SettingsState, item: &SettingItem, is_selected: 
         | (SettingsEditingKind::SidebarWidth, SettingItem::SidebarWidth { .. })
         | (SettingsEditingKind::RightSidebarWidth, SettingItem::RightSidebarWidth { .. })
         | (SettingsEditingKind::BottomPanelHeight, SettingItem::BottomPanelHeight { .. })
-        | (SettingsEditingKind::UiScale, SettingItem::UiScale { .. }) => {
+        | (SettingsEditingKind::UiScale, SettingItem::UiScale { .. })
+        | (SettingsEditingKind::AiApiUrl, SettingItem::AiApiUrl { .. })
+        | (SettingsEditingKind::AiModel, SettingItem::AiModel { .. })
+        | (SettingsEditingKind::AiEndpointKind, SettingItem::AiEndpointKind { .. })
+        | (SettingsEditingKind::AiMaxTokens, SettingItem::AiMaxTokens { .. })
+        | (SettingsEditingKind::AiPrefixChars, SettingItem::AiPrefixChars { .. })
+        | (SettingsEditingKind::AiSuffixChars, SettingItem::AiSuffixChars { .. })
+        | (SettingsEditingKind::AiDebounceMs, SettingItem::AiDebounceMs { .. }) => {
+            format!("{}_", editing.draft)
+        }
+        (SettingsEditingKind::AiApiKey, SettingItem::AiApiKey { .. }) => {
+            // Show the raw key while editing so the user can verify what they type.
             format!("{}_", editing.draft)
         }
         _ => item.display_value(),
@@ -260,8 +348,42 @@ fn settings_preview_lines(settings: &SettingsState) -> Vec<String> {
 
     lines.extend(["".to_string(), "[ai.inline_completion]".to_string()]);
     for item in &settings.items {
-        if let SettingItem::InlineSuggestion { .. } = item {
-            lines.push(format!("enabled = {}", item.preview_value()));
+        match item {
+            SettingItem::InlineSuggestion { .. } => {
+                lines.push(format!("enabled = {}", item.preview_value()))
+            }
+            SettingItem::AiDebounceMs { .. } => {
+                lines.push(format!("debounce_ms = {}", item.preview_value()))
+            }
+            SettingItem::AiPrefixChars { .. } => {
+                lines.push(format!("prefix_chars = {}", item.preview_value()))
+            }
+            SettingItem::AiSuffixChars { .. } => {
+                lines.push(format!("suffix_chars = {}", item.preview_value()))
+            }
+            SettingItem::AiMaxTokens { .. } => {
+                lines.push(format!("max_tokens = {}", item.preview_value()))
+            }
+            _ => {}
+        }
+    }
+
+    lines.extend(["".to_string(), "[ai.inline_completion.provider]".to_string()]);
+    for item in &settings.items {
+        match item {
+            SettingItem::AiApiUrl { .. } => {
+                lines.push(format!("api_url = {}", item.preview_value()))
+            }
+            SettingItem::AiModel { .. } => {
+                lines.push(format!("model = {}", item.preview_value()))
+            }
+            SettingItem::AiApiKey { .. } => {
+                lines.push(format!("api_key = {}", item.preview_value()))
+            }
+            SettingItem::AiEndpointKind { .. } => {
+                lines.push(format!("endpoint_kind = {}", item.preview_value()))
+            }
+            _ => {}
         }
     }
 

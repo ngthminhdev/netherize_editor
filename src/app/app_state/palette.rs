@@ -1258,6 +1258,7 @@ impl AppState {
         border_radius_px: f32,
         enable_outline: bool,
         inline_suggestion_enabled: bool,
+        ai: AiInlineSettings,
         ui_scale_override: Option<f32>,
     ) -> usize {
         // Save current text buffer before switching to settings buffer
@@ -1290,6 +1291,7 @@ impl AppState {
             border_radius_px,
             enable_outline,
             inline_suggestion_enabled,
+            ai,
             ui_scale_override,
         );
         self.is_initial_launch_welcome = false;

@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-12T15:38:50.645Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-13T05:09:47.000Z
 > Files: 382 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
@@ -204,7 +204,7 @@
 ## config/
 
 - `.DS_Store` (~1640 tok)
-- `ai.toml` (~219 tok)
+- `ai.toml` (~76 tok)
 
 ## config/keymaps/
 
@@ -340,8 +340,8 @@
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~23243 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
 - `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~18369 tok)
-- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_dart_ (~17907 tok)
-- `settings.rs` — window.scale_factor_override — None = follow the display ("Auto"). (~1990 tok)
+- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_dart_ (~17919 tok)
+- `settings.rs` — Snapshot of `[inline_completion]` config values used to seed the AI section (~2837 tok)
 - `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, prev (~12339 tok)
 - `tests.rs` — [cfg(test)] (~21632 tok)
 - `workspace.rs` — attach_workspace, clear_workspace_session_state, workspace_root_path, workspace_nodes + 22 more (~4384 tok)
@@ -356,10 +356,10 @@
 - `commands_lsp.rs` (~9141 tok)
 - `commands_palette.rs` (~7900 tok)
 - `commands_prompts.rs` (~7222 tok)
-- `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~7036 tok)
-- `commands_settings.rs` (~5021 tok)
+- `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~10092 tok)
+- `commands_settings.rs` (~5741 tok)
 - `commands_terminal.rs` (~6896 tok)
-- `commands_tests.rs` — [derive(Default)] (~29998 tok)
+- `commands_tests.rs` — [derive(Default)] (~31546 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~10265 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18582 tok)
 - `mod.rs` — Struct: AppShell (~6788 tok)
@@ -425,7 +425,7 @@
 
 ## src/config/
 
-- `ai_config.rs` — [derive(Debug, Clone, Deserialize, Serialize, Default)] (~1206 tok)
+- `ai_config.rs` — [derive(Debug, Clone, Deserialize, Serialize, Default)] (~1963 tok)
 - `keymap_config.rs` — Root structure of a `.toml` keymap profile file. (~350 tok)
 - `keymap_loader.rs` — Load and layer keymap profiles, returning a flat list of validated bindings. (~1764 tok)
 - `mod.rs` (~35 tok)
@@ -506,7 +506,7 @@
 - `help.rs` — update_help_buffer_content (~3996 tok)
 - `overlays.rs` — update_editor_overlays (~19960 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11283 tok)
-- `settings.rs` — update_settings_buffer_content (~10926 tok)
+- `settings.rs` — Declares SettingsSection (~12386 tok)
 - `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~7848 tok)
 
 ## src/render/renderer/editor/buffers/
