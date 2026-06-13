@@ -189,6 +189,22 @@ impl AppShell {
                     let next = (base + delta as f32 * 0.05).clamp(0.5, 3.0);
                     self.update_active_settings_edit_draft(format!("{next:.2}"))
                 }
+                crate::app::app_state::SettingItem::AiMaxTokens { current } => {
+                    let next = (current as i64 + delta as i64 * 16).clamp(1, 4096);
+                    self.update_active_settings_edit_draft(next.to_string())
+                }
+                crate::app::app_state::SettingItem::AiPrefixChars { current } => {
+                    let next = (current as i64 + delta as i64 * 200).clamp(0, 32_000);
+                    self.update_active_settings_edit_draft(next.to_string())
+                }
+                crate::app::app_state::SettingItem::AiSuffixChars { current } => {
+                    let next = (current as i64 + delta as i64 * 100).clamp(0, 16_000);
+                    self.update_active_settings_edit_draft(next.to_string())
+                }
+                crate::app::app_state::SettingItem::AiDebounceMs { current } => {
+                    let next = (current as i64 + delta as i64 * 10).clamp(0, 5_000);
+                    self.update_active_settings_edit_draft(next.to_string())
+                }
                 _ => false,
             };
         }
@@ -296,8 +312,75 @@ impl AppShell {
                 self.refresh_runtime_scale_from_window();
                 self.finalize_settings_change()
             }
+            crate::app::app_state::SettingItem::AiMaxTokens { current } => {
+                let next = (current as i64 + delta as i64 * 16).clamp(1, 4096) as u32;
+                self.apply_ai_number_adjust(
+                    |ai| ai.set_inline_max_tokens(next),
+                    |item| {
+                        if let crate::app::app_state::SettingItem::AiMaxTokens { current } = item {
+                            *current = next;
+                        }
+                    },
+                    "max tokens",
+                )
+            }
+            crate::app::app_state::SettingItem::AiPrefixChars { current } => {
+                let next = (current as i64 + delta as i64 * 200).clamp(0, 32_000) as usize;
+                self.apply_ai_number_adjust(
+                    |ai| ai.set_inline_prefix_chars(next),
+                    |item| {
+                        if let crate::app::app_state::SettingItem::AiPrefixChars { current } = item
+                        {
+                            *current = next;
+                        }
+                    },
+                    "prefix context",
+                )
+            }
+            crate::app::app_state::SettingItem::AiSuffixChars { current } => {
+                let next = (current as i64 + delta as i64 * 100).clamp(0, 16_000) as usize;
+                self.apply_ai_number_adjust(
+                    |ai| ai.set_inline_suffix_chars(next),
+                    |item| {
+                        if let crate::app::app_state::SettingItem::AiSuffixChars { current } = item
+                        {
+                            *current = next;
+                        }
+                    },
+                    "suffix context",
+                )
+            }
+            crate::app::app_state::SettingItem::AiDebounceMs { current } => {
+                let next = (current as i64 + delta as i64 * 10).clamp(0, 5_000) as u64;
+                self.apply_ai_number_adjust(
+                    |ai| ai.set_inline_debounce_ms(next),
+                    |item| {
+                        if let crate::app::app_state::SettingItem::AiDebounceMs { current } = item {
+                            *current = next;
+                        }
+                    },
+                    "debounce",
+                )
+            }
             _ => false,
         }
+    }
+
+    /// Apply an h/l adjustment to a numeric AI field: persist via the config
+    /// setter (active immediately, no reload), mirror onto the live item, and
+    /// flag a relayout. Shares the persistence path with `commit_ai_number_edit`.
+    fn apply_ai_number_adjust(
+        &mut self,
+        set: impl FnOnce(&mut crate::config::ai_config::AiConfig) -> Result<(), String>,
+        update_item: impl FnOnce(&mut crate::app::app_state::SettingItem),
+        label: &str,
+    ) -> bool {
+        let changed = self.commit_ai_number_edit(set, update_item, label);
+        if changed {
+            self.editor_needs_layout = true;
+            self.editor_caret_needs_layout = false;
+        }
+        changed
     }
 
     /// Recompute runtime scaling with the live window scale factor — needed when
@@ -387,6 +470,14 @@ impl AppShell {
             | crate::app::app_state::SettingItem::SidebarWidth { .. }
             | crate::app::app_state::SettingItem::RightSidebarWidth { .. }
             | crate::app::app_state::SettingItem::BottomPanelHeight { .. }
+            | crate::app::app_state::SettingItem::AiApiUrl { .. }
+            | crate::app::app_state::SettingItem::AiModel { .. }
+            | crate::app::app_state::SettingItem::AiApiKey { .. }
+            | crate::app::app_state::SettingItem::AiEndpointKind { .. }
+            | crate::app::app_state::SettingItem::AiMaxTokens { .. }
+            | crate::app::app_state::SettingItem::AiPrefixChars { .. }
+            | crate::app::app_state::SettingItem::AiSuffixChars { .. }
+            | crate::app::app_state::SettingItem::AiDebounceMs { .. }
             | crate::app::app_state::SettingItem::UiScale { .. } => {
                 let changed = self.app_state.settings_begin_editing();
                 if changed {
@@ -400,6 +491,57 @@ impl AppShell {
                     self.editor_caret_needs_layout = false;
                 }
                 changed
+            }
+        }
+    }
+
+    /// Persist an AI inline-completion text field and mirror it onto the live
+    /// settings item. The config setter mutates `self.ai_config` in place and
+    /// saves to disk, so the change takes effect on the next keystroke with no
+    /// reload. Returns whether the value was committed.
+    fn commit_ai_text_edit(
+        &mut self,
+        value: String,
+        set: impl FnOnce(&mut crate::config::ai_config::AiConfig, String) -> Result<(), String>,
+        update_item: impl FnOnce(&mut crate::app::app_state::SettingItem, String),
+        label: &str,
+    ) -> bool {
+        match set(&mut self.ai_config, value.clone()) {
+            Ok(()) => {
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(item) = state.selected_item_mut()
+                {
+                    update_item(item, value);
+                }
+                true
+            }
+            Err(err) => {
+                eprintln!("[settings] failed to save AI {label}: {err}");
+                false
+            }
+        }
+    }
+
+    /// Numeric counterpart to [`Self::commit_ai_text_edit`]; the clamped value is
+    /// captured by the closures so callers keep parse/clamp logic at the call site.
+    fn commit_ai_number_edit(
+        &mut self,
+        set: impl FnOnce(&mut crate::config::ai_config::AiConfig) -> Result<(), String>,
+        update_item: impl FnOnce(&mut crate::app::app_state::SettingItem),
+        label: &str,
+    ) -> bool {
+        match set(&mut self.ai_config) {
+            Ok(()) => {
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(item) = state.selected_item_mut()
+                {
+                    update_item(item);
+                }
+                true
+            }
+            Err(err) => {
+                eprintln!("[settings] failed to save AI {label}: {err}");
+                false
             }
         }
     }
@@ -549,6 +691,119 @@ impl AppShell {
                     }
                     self.refresh_runtime_scale_from_window();
                     changed = true;
+                }
+            }
+            crate::app::app_state::SettingsEditingKind::AiApiUrl => {
+                changed = self.commit_ai_text_edit(
+                    trimmed.to_string(),
+                    |ai, value| ai.set_inline_api_url(value),
+                    |item, value| {
+                        if let crate::app::app_state::SettingItem::AiApiUrl { current } = item {
+                            *current = value;
+                        }
+                    },
+                    "endpoint",
+                );
+            }
+            crate::app::app_state::SettingsEditingKind::AiModel => {
+                changed = self.commit_ai_text_edit(
+                    trimmed.to_string(),
+                    |ai, value| ai.set_inline_model(value),
+                    |item, value| {
+                        if let crate::app::app_state::SettingItem::AiModel { current } = item {
+                            *current = value;
+                        }
+                    },
+                    "model",
+                );
+            }
+            crate::app::app_state::SettingsEditingKind::AiApiKey => {
+                changed = self.commit_ai_text_edit(
+                    trimmed.to_string(),
+                    |ai, value| ai.set_inline_api_key(value),
+                    |item, value| {
+                        if let crate::app::app_state::SettingItem::AiApiKey { current } = item {
+                            *current = value;
+                        }
+                    },
+                    "API key",
+                );
+            }
+            crate::app::app_state::SettingsEditingKind::AiEndpointKind => {
+                changed = self.commit_ai_text_edit(
+                    trimmed.to_string(),
+                    |ai, value| ai.set_inline_endpoint_kind(value),
+                    |item, value| {
+                        if let crate::app::app_state::SettingItem::AiEndpointKind { current } = item
+                        {
+                            *current = value;
+                        }
+                    },
+                    "endpoint kind",
+                );
+            }
+            crate::app::app_state::SettingsEditingKind::AiMaxTokens => {
+                if let Ok(value) = trimmed.parse::<u32>() {
+                    let value = value.clamp(1, 4096);
+                    changed = self.commit_ai_number_edit(
+                        |ai| ai.set_inline_max_tokens(value),
+                        |item| {
+                            if let crate::app::app_state::SettingItem::AiMaxTokens { current } =
+                                item
+                            {
+                                *current = value;
+                            }
+                        },
+                        "max tokens",
+                    );
+                }
+            }
+            crate::app::app_state::SettingsEditingKind::AiPrefixChars => {
+                if let Ok(value) = trimmed.parse::<usize>() {
+                    let value = value.min(32_000);
+                    changed = self.commit_ai_number_edit(
+                        |ai| ai.set_inline_prefix_chars(value),
+                        |item| {
+                            if let crate::app::app_state::SettingItem::AiPrefixChars { current } =
+                                item
+                            {
+                                *current = value;
+                            }
+                        },
+                        "prefix context",
+                    );
+                }
+            }
+            crate::app::app_state::SettingsEditingKind::AiSuffixChars => {
+                if let Ok(value) = trimmed.parse::<usize>() {
+                    let value = value.min(16_000);
+                    changed = self.commit_ai_number_edit(
+                        |ai| ai.set_inline_suffix_chars(value),
+                        |item| {
+                            if let crate::app::app_state::SettingItem::AiSuffixChars { current } =
+                                item
+                            {
+                                *current = value;
+                            }
+                        },
+                        "suffix context",
+                    );
+                }
+            }
+            crate::app::app_state::SettingsEditingKind::AiDebounceMs => {
+                if let Ok(value) = trimmed.parse::<u64>() {
+                    let value = value.clamp(0, 5_000);
+                    changed = self.commit_ai_number_edit(
+                        |ai| ai.set_inline_debounce_ms(value),
+                        |item| {
+                            if let crate::app::app_state::SettingItem::AiDebounceMs { current } =
+                                item
+                            {
+                                *current = value;
+                            }
+                        },
+                        "debounce",
+                    );
                 }
             }
         }

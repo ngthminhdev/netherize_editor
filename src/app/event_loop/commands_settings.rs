@@ -16,6 +16,25 @@ impl AppShell {
                     .font_family
                     .clone()
                     .unwrap_or_default();
+                let ai_cfg = self.ai_config.inline_completion.as_ref();
+                let ai = crate::app::app_state::AiInlineSettings {
+                    api_url: ai_cfg
+                        .map(|cfg| cfg.provider.api_url.clone())
+                        .unwrap_or_default(),
+                    model: ai_cfg
+                        .map(|cfg| cfg.provider.model.clone())
+                        .unwrap_or_default(),
+                    api_key: ai_cfg
+                        .and_then(|cfg| cfg.provider.api_key.clone())
+                        .unwrap_or_default(),
+                    endpoint_kind: ai_cfg
+                        .and_then(|cfg| cfg.provider.endpoint_kind.clone())
+                        .unwrap_or_default(),
+                    max_tokens: ai_cfg.map(|cfg| cfg.max_tokens()).unwrap_or(96),
+                    prefix_chars: ai_cfg.map(|cfg| cfg.prefix_chars()).unwrap_or(1200),
+                    suffix_chars: ai_cfg.map(|cfg| cfg.suffix_chars()).unwrap_or(400),
+                    debounce_ms: ai_cfg.map(|cfg| cfg.debounce_ms()).unwrap_or(80),
+                };
                 self.app_state.open_settings_buffer(
                     theme_profile,
                     font_family,
@@ -30,6 +49,7 @@ impl AppShell {
                     self.ui_config.border_radius_px,
                     self.ui_config.enable_outline,
                     self.ai_config.inline_completion_enabled(),
+                    ai,
                     self.ui_config.window.scale_factor_override,
                 );
                 let _ = self.sync_focus_mode_for_active_buffer();

@@ -1,12 +1,13 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-12T15:38:50.645Z
-> Files: 382 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-13T12:33:44.844Z
+> Files: 383 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
 - `codestral_ctx_test.py` — average, ask (~1020 tok)
 - `multiline_test.py` — ask, show, process (~588 tok)
+- `resolve_merge.sh` (~354 tok)
 - `sanitize_check.py` — Mirror of src/app/event_loop/async_results/ai.rs::sanitize_inline_suggestion (~490 tok)
 
 ## ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/
@@ -28,7 +29,6 @@
 - `Cargo.toml` — Rust package manifest (~669 tok)
 - `CLAUDE.md` — OpenWolf (~1543 tok)
 - `Cross.toml` (~73 tok)
-- `debug.md` — Kiến trúc Built-in Debugger: Hệ thống Generic DAP Client trong Netherize Editor (~2000 tok)
 - `DEPENDENCIES.md` — Netherize Editor - Runtime Dependencies (~1867 tok)
 - `README.md` — Project documentation (~6759 tok)
 - `update_themes.sh` — Script to update all theme files with vibrant syntax colors (~410 tok)
@@ -205,7 +205,7 @@
 ## config/
 
 - `.DS_Store` (~1640 tok)
-- `ai.toml` (~219 tok)
+- `ai.toml` (~75 tok)
 
 ## config/keymaps/
 
@@ -320,14 +320,14 @@
 ## src/
 
 - `editor_core.rs` — Editor core buffer tối thiểu cho single-file workflow. (~7620 tok)
-- `lib.rs` — Phiên bản hiển thị trong UI (Welcome screen, status bar…). (~130 tok)
+- `lib.rs` — Phiên bản hiển thị trong UI (Welcome screen, status bar…). (~126 tok)
 - `main.rs` (~42 tok)
 
 ## src/app/
 
 - `async_bridge.rs` — BridgePumpStats: new, pump (~4589 tok)
 - `clipboard.rs` — SystemClipboard: new (~524 tok)
-- `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~15739 tok)
+- `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~15545 tok)
 - `file_picker.rs` — FilePickerEntry: open, close, append_query, backspace_query + 6 more (~1644 tok)
 - `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~2135 tok)
 - `mod.rs` (~66 tok)
@@ -341,15 +341,15 @@
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~23243 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
 - `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~18369 tok)
-- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_dart_ (~17907 tok)
-- `settings.rs` — window.scale_factor_override — None = follow the display ("Auto"). (~1990 tok)
+- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_dart_ (~17919 tok)
+- `settings.rs` — Snapshot of `[inline_completion]` config values used to seed the AI section (~2837 tok)
 - `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, prev (~12339 tok)
 - `tests.rs` — [cfg(test)] (~21632 tok)
 - `workspace.rs` — attach_workspace, clear_workspace_session_state, workspace_root_path, workspace_nodes + 22 more (~4384 tok)
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~27029 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~29219 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~11819 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
@@ -357,10 +357,10 @@
 - `commands_lsp.rs` (~9141 tok)
 - `commands_palette.rs` (~7900 tok)
 - `commands_prompts.rs` (~7222 tok)
-- `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~7036 tok)
-- `commands_settings.rs` (~5021 tok)
+- `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~10092 tok)
+- `commands_settings.rs` (~5741 tok)
 - `commands_terminal.rs` (~6896 tok)
-- `commands_tests.rs` — [derive(Default)] (~29998 tok)
+- `commands_tests.rs` — [derive(Default)] (~31546 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~10265 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18582 tok)
 - `mod.rs` — Struct: AppShell (~6788 tok)
@@ -384,7 +384,7 @@
 
 ## src/app/input/
 
-- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix (~20114 tok)
+- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix (~20241 tok)
 - `helpers.rs` — Trả về true nếu đây là event modifier-only (ShiftLeft, ShiftRight, ControlLeft...). (~4366 tok)
 - `mod.rs` (~69 tok)
 - `model.rs` — Dữ liệu key đã chuẩn hóa để tách phần "đọc winit event" (~764 tok)
@@ -426,7 +426,7 @@
 
 ## src/config/
 
-- `ai_config.rs` — [derive(Debug, Clone, Deserialize, Serialize, Default)] (~1206 tok)
+- `ai_config.rs` — [derive(Debug, Clone, Deserialize, Serialize, Default)] (~1963 tok)
 - `keymap_config.rs` — Root structure of a `.toml` keymap profile file. (~350 tok)
 - `keymap_loader.rs` — Load and layer keymap profiles, returning a flat list of validated bindings. (~1764 tok)
 - `mod.rs` (~35 tok)
@@ -459,13 +459,6 @@
 - `palette.rs` (~6718 tok)
 - `session.rs` (~4027 tok)
 - `tests.rs` (~18631 tok)
-
-## src/dap/
-
-- `client.rs` — DapClient: launch, send_request (~2863 tok)
-- `mod.rs` (~55 tok)
-- `session.rs` — DapSession: new, initialize, launch_flutter, set_breakpoints + 9 more (~3582 tok)
-- `types.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~3916 tok)
 
 ## src/lsp/
 
@@ -514,7 +507,7 @@
 - `help.rs` — update_help_buffer_content (~3996 tok)
 - `overlays.rs` — update_editor_overlays (~19960 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11283 tok)
-- `settings.rs` — update_settings_buffer_content (~10926 tok)
+- `settings.rs` — Declares SettingsSection (~12386 tok)
 - `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~7848 tok)
 
 ## src/render/renderer/editor/buffers/
@@ -665,13 +658,13 @@
 
 ## src/workbench/
 
-- `debug_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~4026 tok)
+- `debug_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~1847 tok)
 - `focus_manager.rs` — FocusManager: label, current, set, ensure_valid + 3 more (~1406 tok)
-- `inspector_panel.rs` — InspectorNode: title, leaf, branch, sync_from_debug_state + 6 more (~6251 tok)
+- `inspector_panel.rs` — InspectorNode: title, leaf, branch, sync_from_debug_state + 6 more (~3078 tok)
 - `layout_engine.rs` — SplitHandle: label, contains, from_ui_theme, new + 1 more (~11133 tok)
 - `mod.rs` (~54 tok)
 - `overlay_manager.rs` — OverlaySurface: toggle_command_palette, is_command_palette_open, command_palette_query, push_command_palette_text + 3 more (~2247 tok)
-- `panel_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~2404 tok)
+- `panel_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~2406 tok)
 - `region_model.rs` — ID chuẩn hóa cho các vùng chính của Workbench. (~960 tok)
 - `text_coordinate_map.rs` — [derive(Debug, Clone, PartialEq)] (~1674 tok)
 
