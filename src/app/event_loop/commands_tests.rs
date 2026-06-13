@@ -273,17 +273,40 @@ fn settings_exposes_ai_inline_config_items() {
     // The AI section must surface the editable endpoint/model/tuning fields, not
     // just the on/off toggle — otherwise they would only be reachable by hand-
     // editing config/ai.toml.
-    let has = |pred: fn(&crate::app::app_state::SettingItem) -> bool| {
-        settings.items.iter().any(pred)
-    };
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiApiUrl { .. })));
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiModel { .. })));
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiApiKey { .. })));
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiEndpointKind { .. })));
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiMaxTokens { .. })));
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiPrefixChars { .. })));
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiSuffixChars { .. })));
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiDebounceMs { .. })));
+    let has =
+        |pred: fn(&crate::app::app_state::SettingItem) -> bool| settings.items.iter().any(pred);
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiApiUrl { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiModel { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiApiKey { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiEndpointKind { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiMaxTokens { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiPrefixChars { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiSuffixChars { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiDebounceMs { .. }
+    )));
 }
 
 #[test]
@@ -3220,6 +3243,48 @@ fn resize_panel_and_ui_config_stay_in_sync() {
         shell.panel_state.bottom.size_px,
         shell.ui_config.docks.bottom.size_px
     );
+}
+
+#[test]
+fn focus_dap_opens_and_focuses_inspector() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.left.visible = false;
+
+    assert!(shell.handle_command(Command::FocusDap));
+    assert!(shell.panel_state.left.visible);
+    assert_eq!(
+        shell.panel_state.left.active_tab_id(),
+        Some(PanelTabId::Inspector)
+    );
+    assert_eq!(shell.focus_manager.current(), FocusTarget::LeftSidebar);
+}
+
+#[test]
+fn dap_and_flutter_command_ids_survive_main_merge() {
+    use crate::core::command_ids;
+
+    for id in [
+        command_ids::FOCUS_DAP,
+        command_ids::DAP_TOGGLE_EXPAND,
+        command_ids::DEBUG_START,
+        command_ids::DEBUG_STOP,
+        command_ids::DEBUG_STEP_OVER,
+        command_ids::DEBUG_STEP_INTO,
+        command_ids::DEBUG_STEP_OUT,
+        command_ids::DEBUG_TOGGLE_BREAKPOINT,
+        command_ids::FLUTTER_DEVICES,
+        command_ids::FLUTTER_HOT_RELOAD,
+        command_ids::FLUTTER_HOT_RESTART,
+    ] {
+        assert!(
+            command_ids::ALL_IDS.contains(&id),
+            "missing command id: {id}"
+        );
+        assert!(
+            command_ids::parse(id, None).is_some(),
+            "unparsed command id: {id}"
+        );
+    }
 }
 
 #[test]

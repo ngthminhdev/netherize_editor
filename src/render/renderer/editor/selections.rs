@@ -683,6 +683,7 @@ impl Renderer {
         font_size: f32,
         gutter_digits: usize,
         gutter_width: f32,
+        breakpoint_lines: &[usize],
     ) {
         let geometry = editor_viewport_geometry(self, app_state, center_bounds);
         let gutter_inset_left = self.editor_padding_x + 6.0;
@@ -946,12 +947,23 @@ impl Renderer {
                 gutter_text_color
             };
 
+            if breakpoint_lines.contains(&abs_line) {
+                let dot_size = (run.line_height * 0.52).clamp(8.0, 12.0);
+                let dot_x = gutter_x + 3.0;
+                let dot_y = line_top_y + (run.line_height - dot_size) * 0.5;
+                let dot_color = self.theme.ui.error.as_f32();
+                quads.push(
+                    RegionDrawInstance::new([dot_x, dot_y, dot_size, dot_size], dot_color)
+                        .with_radius(dot_size * 0.5),
+                );
+            }
+
             gutter_glyphs.extend(layout_panel_text(
                 &label,
                 &mut self.gutter_text_system,
                 &mut self.atlas,
                 &self.queue,
-                gutter_x,
+                gutter_x + 14.0,
                 line_top_y,
                 color,
             ));

@@ -596,6 +596,11 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
             true,
             false,
         ),
+        CommandPaletteAction::SelectFlutterDevice { .. } => DispatchReport::success_with_flags(
+            "Dispatch: flutter device selected (handled by AppShell)".to_string(),
+            true,
+            false,
+        ),
     }
 }
 

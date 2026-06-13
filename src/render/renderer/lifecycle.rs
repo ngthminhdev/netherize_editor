@@ -214,6 +214,8 @@ impl Renderer {
             relative_numbers: false,
             last_editor_chrome_instances: Vec::new(),
             editor_breadcrumb_segments: Vec::new(),
+            dap_is_active: false,
+            dap_is_paused: false,
             sidebar_text_system,
             sidebar_text_pipeline,
             sidebar_glyph_instances: Vec::new(),

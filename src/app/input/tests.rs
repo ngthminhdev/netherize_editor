@@ -393,19 +393,17 @@ fn bottom_terminal_ctrl_u_d_still_forward_raw_to_pty() {
 
     let up = handler.route_normalized_input(ctrl_input('u', KeyCode::KeyU), &map, context, t0);
     match up {
-        Some(InputRouteOutcome::Dispatch(translated)) => {
-            match &translated.command {
-                Command::TerminalWriteInput(payload) => {
-                    assert!(
-                        !payload.starts_with('\u{1b}'),
-                        "bottom terminal Ctrl+U must stay raw ^U, not the right-dock \
+        Some(InputRouteOutcome::Dispatch(translated)) => match &translated.command {
+            Command::TerminalWriteInput(payload) => {
+                assert!(
+                    !payload.starts_with('\u{1b}'),
+                    "bottom terminal Ctrl+U must stay raw ^U, not the right-dock \
                          ctrl+alt+u forward, got {:?}",
-                        payload
-                    );
-                }
-                other => panic!("bottom terminal Ctrl+U should forward raw, got {:?}", other),
+                    payload
+                );
             }
-        }
+            other => panic!("bottom terminal Ctrl+U should forward raw, got {:?}", other),
+        },
         other => panic!("expected raw write dispatch, got {:?}", other),
     }
 }
@@ -1079,7 +1077,8 @@ fn bare_find_char_motion_waits_then_dispatches_move_find_char() {
     let context = KeybindingContext::for_mode(EditorMode::Normal);
     let now = std::time::Instant::now();
 
-    let pending = handler.route_normalized_input(char_input('f', KeyCode::KeyF), &map, context, now);
+    let pending =
+        handler.route_normalized_input(char_input('f', KeyCode::KeyF), &map, context, now);
     assert!(matches!(
         pending,
         Some(InputRouteOutcome::NoDispatch { .. })

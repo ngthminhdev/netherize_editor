@@ -94,7 +94,9 @@ impl AsyncResultRouter for AppShell {
             WorkerResultPayload::SystemDepCheckResult { .. }
             | WorkerResultPayload::RuntimeVersionsDetected { .. }
             | WorkerResultPayload::PythonEnvironmentsDiscovered(_)
-            | WorkerResultPayload::DartEnvironmentsDiscovered(_) => {
+            | WorkerResultPayload::DartEnvironmentsDiscovered(_)
+            | WorkerResultPayload::FlutterDevicesDiscovered(_)
+            | WorkerResultPayload::FlutterEmulatorLaunched => {
                 system::handle_system_result(self, result.payload);
             }
             WorkerResultPayload::FileCopyResult { .. } => {

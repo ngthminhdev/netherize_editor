@@ -82,6 +82,10 @@ impl AsyncScheduler {
 
         Ok(request)
     }
+
+    pub fn enter(&self) -> tokio::runtime::EnterGuard<'_> {
+        self._runtime.handle().enter()
+    }
 }
 
 pub(super) fn build_worker_runtime() -> Result<tokio::runtime::Runtime, String> {

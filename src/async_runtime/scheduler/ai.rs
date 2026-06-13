@@ -67,7 +67,10 @@ pub(super) async fn execute_ai_inline_request(
         "max_tokens": max_tokens,
         "stream": stream_response
     });
-    if let Some(effort) = reasoning_effort.as_ref().filter(|effort| !effort.is_empty()) {
+    if let Some(effort) = reasoning_effort
+        .as_ref()
+        .filter(|effort| !effort.is_empty())
+    {
         body["reasoning_effort"] = serde_json::Value::String(effort.clone());
     }
 

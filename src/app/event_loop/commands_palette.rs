@@ -396,6 +396,47 @@ impl AppShell {
                 if matches!(command, Command::FilePickerConfirmSelection)
                     && matches!(
                         self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::FlutterDevices)
+                    )
+                {
+                    let changed = self.confirm_flutter_device_selection();
+                    let _ = dispatch_command(&mut self.app_state, Command::CloseFilePicker);
+                    return Some(changed);
+                }
+
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::DebugWatchInput)
+                    )
+                {
+                    let expr = self
+                        .app_state
+                        .command_palette_query_text()
+                        .trim()
+                        .to_string();
+                    let _ = dispatch_command(&mut self.app_state, Command::CloseFilePicker);
+                    if !expr.is_empty() {
+                        if let Some(session) = &self.dap_session {
+                            if let Ok(mut state) = session.state.try_lock() {
+                                state.add_watch_expression(expr.clone());
+                            }
+                            let session_clone = session.clone();
+                            tokio::spawn(async move {
+                                let _ = session_clone.evaluate_watch_expressions().await;
+                            });
+                            if let Ok(state_guard) = session.state.try_lock() {
+                                self.dap_panel_state.sync_from_debug_state(&state_guard);
+                            }
+                            self.sidebar_needs_layout = true;
+                        }
+                    }
+                    return Some(true);
+                }
+
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
                         Some(CommandPaletteMode::InFileSearch)
                     )
                 {
@@ -449,6 +490,21 @@ impl AppShell {
                 } else {
                     None
                 };
+                // Capture the command ID before dispatch closes the palette.
+                let pending_execute_command_id: Option<String> =
+                    if matches!(command, Command::FilePickerConfirmSelection)
+                        && palette_mode_before == Some(CommandPaletteMode::CommandPalette)
+                    {
+                        if let Some(CommandPaletteAction::ExecuteCommand(ref id)) =
+                            self.app_state.command_palette_selected_action()
+                        {
+                            Some(id.clone())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
                 let confirmed_from_fuzzy_picker =
                     matches!(command, Command::FilePickerConfirmSelection)
                         && self.app_state.active_buffer_is_fuzzy_picker();
@@ -514,6 +570,22 @@ impl AppShell {
                     }
                     self.arm_palette_ime_commit_suppression();
                     self.focus_manager.set(FocusTarget::OverlayLayer);
+                    return Some(true);
+                }
+
+                // When ExecuteCommand dispatches FlutterDevices, trigger the device scan.
+                if report.success
+                    && pending_execute_command_id.as_deref() == Some("flutter.devices")
+                {
+                    self.app_state.open_flutter_device_selector();
+                    let flutter_path = self.current_flutter_path();
+                    self.submit(RequestSpec {
+                        revision_id: 0,
+                        topic: RequestTopic::SystemTask,
+                        payload: WorkerRequestPayload::ScanFlutterDevices {
+                            flutter_path: Some(flutter_path),
+                        },
+                    });
                     return Some(true);
                 }
 

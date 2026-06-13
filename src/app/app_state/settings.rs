@@ -14,28 +14,71 @@ pub struct AiInlineSettings {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SettingItem {
-    ThemeSelector { current: String },
-    FontFamily { current: String },
-    FontSize { current: f32 },
-    LineHeight { current: f32 },
-    IndentTabWidth { current: u8 },
-    IndentInsertSpaces { enabled: bool },
-    InlineSuggestion { enabled: bool },
-    AiApiUrl { current: String },
-    AiModel { current: String },
-    AiApiKey { current: String },
-    AiEndpointKind { current: String },
-    AiMaxTokens { current: u32 },
-    AiPrefixChars { current: usize },
-    AiSuffixChars { current: usize },
-    AiDebounceMs { current: u64 },
-    SidebarWidth { current: i32 },
-    RightSidebarWidth { current: i32 },
-    BottomPanelHeight { current: i32 },
-    UiRounding { enabled: bool, radius_px: f32 },
-    EnableOutline { enabled: bool },
+    ThemeSelector {
+        current: String,
+    },
+    FontFamily {
+        current: String,
+    },
+    FontSize {
+        current: f32,
+    },
+    LineHeight {
+        current: f32,
+    },
+    IndentTabWidth {
+        current: u8,
+    },
+    IndentInsertSpaces {
+        enabled: bool,
+    },
+    InlineSuggestion {
+        enabled: bool,
+    },
+    AiApiUrl {
+        current: String,
+    },
+    AiModel {
+        current: String,
+    },
+    AiApiKey {
+        current: String,
+    },
+    AiEndpointKind {
+        current: String,
+    },
+    AiMaxTokens {
+        current: u32,
+    },
+    AiPrefixChars {
+        current: usize,
+    },
+    AiSuffixChars {
+        current: usize,
+    },
+    AiDebounceMs {
+        current: u64,
+    },
+    SidebarWidth {
+        current: i32,
+    },
+    RightSidebarWidth {
+        current: i32,
+    },
+    BottomPanelHeight {
+        current: i32,
+    },
+    UiRounding {
+        enabled: bool,
+        radius_px: f32,
+    },
+    EnableOutline {
+        enabled: bool,
+    },
     /// window.scale_factor_override — None = follow the display ("Auto").
-    UiScale { current: Option<f32> },
+    UiScale {
+        current: Option<f32>,
+    },
 }
 
 impl SettingItem {
@@ -259,9 +302,7 @@ impl SettingsState {
                     .map(|v| format!("{v:.2}"))
                     .unwrap_or_else(|| "auto".to_string()),
             ),
-            SettingItem::AiApiUrl { current } => {
-                (SettingsEditingKind::AiApiUrl, current.clone())
-            }
+            SettingItem::AiApiUrl { current } => (SettingsEditingKind::AiApiUrl, current.clone()),
             SettingItem::AiModel { current } => (SettingsEditingKind::AiModel, current.clone()),
             SettingItem::AiApiKey { current } => (SettingsEditingKind::AiApiKey, current.clone()),
             SettingItem::AiEndpointKind { current } => {

@@ -200,10 +200,24 @@ impl InputHandler {
         }
 
         let normalized = NormalizedInput::from_key_event(key_event, self.modifiers);
+        let is_f5 = normalized.named_key == Some(NamedKey::F5);
+        if is_f5 {
+            eprintln!(
+                "[DAP LOG] [F5 Input Handler] translate_key_event: normalized F5 key_event, modifiers: {:?}",
+                self.modifiers
+            );
+        }
         if key_event.repeat {
             return self.route_repeated_normalized_input(normalized, input_map, context);
         }
-        self.route_normalized_input(normalized, input_map, context, Instant::now())
+        let outcome = self.route_normalized_input(normalized, input_map, context, Instant::now());
+        if is_f5 {
+            eprintln!(
+                "[DAP LOG] [F5 Input Handler] translate_key_event F5 outcome: {:?}",
+                outcome
+            );
+        }
+        outcome
     }
 
     /// In the right-sidebar opencode chat, Ctrl+U/Ctrl+D scroll the chat history

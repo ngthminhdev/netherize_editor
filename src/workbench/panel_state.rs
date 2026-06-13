@@ -16,7 +16,7 @@ impl PanelTabId {
         match self {
             Self::Explorer => "Explorer",
             Self::Search => "Search",
-            Self::Inspector => "Inspector",
+            Self::Inspector => "DAP",
             Self::Outline => "Outline",
             Self::Terminal => "Terminal",
             Self::DebugConsole => "Debug Console",
@@ -188,26 +188,26 @@ pub struct WorkbenchPanelState {
 impl Default for WorkbenchPanelState {
     fn default() -> Self {
         Self {
-            left: PanelState::new(true, 240.0, vec![PanelTabId::Explorer, PanelTabId::Search]),
+            left: PanelState::new(
+                true,
+                240.0,
+                vec![PanelTabId::Explorer, PanelTabId::Inspector],
+            ),
             right: PanelState::new(
                 false,
                 650.0,
                 vec![
                     PanelTabId::Terminal,
+                    PanelTabId::Search,
                     PanelTabId::AiChat,
                     PanelTabId::MarkdownPreview,
-                    PanelTabId::Inspector,
                     PanelTabId::Outline,
                 ],
             ),
             bottom: PanelState::new(
                 false,
                 420.0,
-                vec![
-                    PanelTabId::Terminal,
-                    PanelTabId::DebugConsole,
-                    PanelTabId::Problems,
-                ],
+                vec![PanelTabId::Terminal, PanelTabId::DebugConsole],
             ),
             overlay_visible: false,
             ai_chat: AiChatState::default(),

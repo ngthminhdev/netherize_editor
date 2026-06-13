@@ -334,7 +334,22 @@ fn dispatch_command_with_clipboard_once(
             format!("Dispatch: resize command {command:?} handled by event loop"),
             false,
         ),
-        Command::SaveFile
+        Command::DebugStart
+        | Command::DebugStop
+        | Command::DebugContinue
+        | Command::DebugStepOver
+        | Command::DebugStepInto
+        | Command::DebugStepOut
+        | Command::DebugToggleBreakpoint
+        | Command::DebugWatchAdd
+        | Command::DebugWatchRemove
+        | Command::DebugGotoFrame
+        | Command::FocusDap
+        | Command::DapToggleExpand
+        | Command::FlutterDevices
+        | Command::FlutterHotReload
+        | Command::FlutterHotRestart
+        | Command::SaveFile
         | Command::OpenFile(_)
         | Command::NewInstance
         | Command::OpenFolder

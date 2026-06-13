@@ -8,6 +8,10 @@ impl AppState {
         Ok(())
     }
 
+    pub fn detach_workspace(&mut self) {
+        self.workspace_model = None;
+    }
+
     pub fn clear_workspace_session_state(&mut self) -> bool {
         let mut changed = false;
 

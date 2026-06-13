@@ -1,12 +1,13 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-13T05:09:47.000Z
-> Files: 382 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-13T12:33:44.844Z
+> Files: 383 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
 - `codestral_ctx_test.py` — average, ask (~1020 tok)
 - `multiline_test.py` — ask, show, process (~588 tok)
+- `resolve_merge.sh` (~354 tok)
 - `sanitize_check.py` — Mirror of src/app/event_loop/async_results/ai.rs::sanitize_inline_suggestion (~490 tok)
 
 ## ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/
@@ -204,7 +205,7 @@
 ## config/
 
 - `.DS_Store` (~1640 tok)
-- `ai.toml` (~76 tok)
+- `ai.toml` (~75 tok)
 
 ## config/keymaps/
 
@@ -348,7 +349,7 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~27029 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~29219 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~11819 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
@@ -383,7 +384,7 @@
 
 ## src/app/input/
 
-- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix (~20114 tok)
+- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix (~20241 tok)
 - `helpers.rs` — Trả về true nếu đây là event modifier-only (ShiftLeft, ShiftRight, ControlLeft...). (~4366 tok)
 - `mod.rs` (~69 tok)
 - `model.rs` — Dữ liệu key đã chuẩn hóa để tách phần "đọc winit event" (~764 tok)

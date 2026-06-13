@@ -80,12 +80,7 @@ impl Renderer {
 
         let mut chrome = vec![
             RegionDrawInstance::new(
-                [
-                    panel_x - 1.0,
-                    panel_y - 1.0,
-                    panel_w + 2.0,
-                    panel_h + 2.0,
-                ],
+                [panel_x - 1.0, panel_y - 1.0, panel_w + 2.0, panel_h + 2.0],
                 border_color,
             )
             .with_radius(self.panel_corner_radius + 1.0),
@@ -176,7 +171,8 @@ impl Renderer {
             ));
         }
 
-        self.whichkey_scissor = rect_to_scissor([panel_x - 2.0, panel_y - 2.0, panel_w + 4.0, panel_h + 4.0]);
+        self.whichkey_scissor =
+            rect_to_scissor([panel_x - 2.0, panel_y - 2.0, panel_w + 4.0, panel_h + 4.0]);
         self.whichkey_chrome_instances = chrome;
         self.whichkey_glyph_instances = glyphs;
         self.whichkey_text_pipeline.upload_instances(

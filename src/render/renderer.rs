@@ -162,6 +162,7 @@ pub(super) struct StatusbarLayoutKey {
     pub(super) python_version: Option<String>,
     pub(super) node_version: Option<String>,
     pub(super) go_version: Option<String>,
+    pub(super) active_device: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -212,6 +213,8 @@ pub struct Renderer {
     pub relative_numbers: bool,
     pub(super) last_editor_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) editor_breadcrumb_segments: Vec<EditorBreadcrumbSegment>,
+    pub dap_is_active: bool,
+    pub dap_is_paused: bool,
 
     // ── Explorer sidebar ──────────────────────────────────────────────────────
     pub(super) sidebar_text_system: TextSystem,

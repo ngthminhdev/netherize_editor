@@ -610,12 +610,29 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     }
                     return;
                 }
+                if let Key::Named(NamedKey::F5) = key_event.logical_key {
+                    eprintln!(
+                        "[DAP LOG] [F5 Application] WindowEvent::KeyboardInput F5 pressed: {:?}",
+                        key_event
+                    );
+                }
                 let context = self.build_context();
                 let outcome =
                     self.input_handler
                         .translate_key_event(&key_event, &self.input_map, context);
+                if let Key::Named(NamedKey::F5) = key_event.logical_key {
+                    eprintln!(
+                        "[DAP LOG] [F5 Application] WindowEvent F5 translation outcome: {:?}",
+                        outcome
+                    );
+                }
                 match outcome {
                     Some(InputRouteOutcome::Dispatch(translated)) => {
+                        if let Command::DebugStart = &translated.command {
+                            eprintln!(
+                                "[DAP LOG] [F5 Application] WindowEvent F5 translated to Command::DebugStart"
+                            );
+                        }
                         if self
                             .handle_command_with_count(translated.command, translated.repeat_count)
                         {
@@ -1252,12 +1269,40 @@ impl AppShell {
                                 syntax_spans_to_styled(&effective_highlights, &text, &self.theme);
                             styled_spans
                                 .extend(diagnostic_spans_to_styled(&self.app_state, &self.theme));
+                            let breakpoint_lines =
+                                if let Some(active_file) = self.app_state.active_file() {
+                                    self.breakpoints
+                                        .get(active_file)
+                                        .cloned()
+                                        .unwrap_or_default()
+                                } else {
+                                    Vec::new()
+                                };
                             renderer.update_editor_content(
                                 &text,
                                 &self.app_state,
                                 center_bounds,
                                 &styled_spans,
+                                &breakpoint_lines,
                             );
+                            let (dap_active, dap_paused, should_clear) =
+                                if let Some(session) = &self.dap_session {
+                                    let state = session.state.try_lock();
+                                    let terminated =
+                                        state.as_ref().map(|s| s.terminated).unwrap_or(false);
+                                    if terminated {
+                                        (false, false, true)
+                                    } else {
+                                        (true, state.map(|s| s.paused).unwrap_or(false), false)
+                                    }
+                                } else {
+                                    (false, false, false)
+                                };
+                            if should_clear {
+                                self.dap_session = None;
+                            }
+                            renderer.dap_is_active = dap_active;
+                            renderer.dap_is_paused = dap_paused;
                             renderer.update_editor_overlays(&self.app_state, center_bounds);
                         }
                     }
@@ -1361,6 +1406,12 @@ impl AppShell {
                             cursor_col,
                             &self.theme,
                         ));
+                    let breakpoint_lines = self
+                        .app_state
+                        .active_file()
+                        .and_then(|active_file| self.breakpoints.get(active_file))
+                        .cloned()
+                        .unwrap_or_default();
                     if breadcrumb_viewport_changed {
                         let effective_highlights =
                             crate::syntax::highlight::overlay_highlight_layers(
@@ -1377,10 +1428,32 @@ impl AppShell {
                             &self.app_state,
                             center_bounds,
                             &styled_spans,
+                            &breakpoint_lines,
                         );
                     } else {
-                        renderer.update_editor_caret(&self.app_state, center_bounds);
+                        renderer.update_editor_caret(
+                            &self.app_state,
+                            center_bounds,
+                            &breakpoint_lines,
+                        );
                     }
+                    let (dap_active, dap_paused, should_clear) =
+                        if let Some(session) = &self.dap_session {
+                            let state = session.state.try_lock();
+                            let terminated = state.as_ref().map(|s| s.terminated).unwrap_or(false);
+                            if terminated {
+                                (false, false, true)
+                            } else {
+                                (true, state.map(|s| s.paused).unwrap_or(false), false)
+                            }
+                        } else {
+                            (false, false, false)
+                        };
+                    if should_clear {
+                        self.dap_session = None;
+                    }
+                    renderer.dap_is_active = dap_active;
+                    renderer.dap_is_paused = dap_paused;
                     renderer.update_editor_overlays(&self.app_state, center_bounds);
                 }
                 self.editor_caret_needs_layout = false;
@@ -1494,13 +1567,58 @@ impl AppShell {
         } else {
             0
         };
-        let sidebar_rows = build_sidebar_rows(
-            &self.explorer_snapshot.entries,
-            self.explorer_cursor,
-            &self.theme,
-            self.app_state.workspace_has_active_filter(),
-            sidebar_scroll_offset_rows,
-        );
+        let sidebar_rows = if self.panel_state.left.active_tab_id() == Some(PanelTabId::Inspector) {
+            if let Some(session) = &self.dap_session {
+                if let Ok(debug_state) = session.state.try_lock() {
+                    self.dap_panel_state.sync_from_debug_state(&debug_state);
+                }
+            }
+            let visible = self.dap_panel_state.visible_rows();
+            let selected = self.dap_panel_state.selected_row;
+            visible
+                .into_iter()
+                .enumerate()
+                .map(|(idx, r)| {
+                    let arrow = self
+                        .theme
+                        .sidebar_arrow(r.expandable, r.expanded)
+                        .to_string();
+                    let icon = if r.depth == 0 {
+                        match r.section_index {
+                            0 => "󰏫", // Variables
+                            1 => "󰛢", // Watch
+                            2 => "󰢱", // CallStack
+                            3 => "󰔧", // Breakpoints
+                            _ => "•",
+                        }
+                        .to_string()
+                    } else {
+                        "•".to_string()
+                    };
+                    SidebarRow {
+                        path: None,
+                        depth: r.depth,
+                        arrow,
+                        nerd_icon: icon,
+                        icon_color: self.theme.icons.default_file.color.as_f32(),
+                        label: r.label,
+                        prefix_marker: None,
+                        prefix_color: None,
+                        git_marker: None,
+                        git_color: None,
+                        is_selected: idx == selected,
+                    }
+                })
+                .collect::<Vec<_>>()
+        } else {
+            build_sidebar_rows(
+                &self.explorer_snapshot.entries,
+                self.explorer_cursor,
+                &self.theme,
+                self.app_state.workspace_has_active_filter(),
+                sidebar_scroll_offset_rows,
+            )
+        };
         if let Some(renderer) = self.renderer.as_mut() {
             if let Some(bounds) = sidebar_bounds {
                 let sidebar_focused = self.focus_manager.current() == FocusTarget::LeftSidebar;
@@ -1838,6 +1956,7 @@ impl AppShell {
                     self.runtime_versions.python_version.as_deref(),
                     self.runtime_versions.node_version.as_deref(),
                     self.runtime_versions.go_version.as_deref(),
+                    self.app_state.active_dart_device_id(),
                     status_bounds,
                 );
                 region_instances.extend(pill_quads);
@@ -1886,18 +2005,56 @@ impl AppShell {
                     .map(|renderer| {
                         renderer.terminal_tab_bar_content_bounds(
                             bottom_bounds,
-                            self.terminal_tabs.len(),
+                            self.panel_state.bottom.tabs.len(),
                         )
                     })
                     .unwrap_or(bottom_bounds);
 
+                let active_tab = self.panel_state.bottom.active_tab_id();
+                let is_debug_console = active_tab == Some(PanelTabId::DebugConsole);
+                if is_debug_console {
+                    let messages = if let Some(session) = &self.dap_session {
+                        if let Ok(state) = session.state.try_lock() {
+                            state.console_messages.clone()
+                        } else {
+                            Vec::new()
+                        }
+                    } else {
+                        Vec::new()
+                    };
+
+                    if messages.len() < self.dap_console_fed_count {
+                        self.dap_console_grid.clear();
+                        self.dap_console_fed_count = 0;
+                    }
+
+                    if self.dap_console_fed_count < messages.len() {
+                        for msg in &messages[self.dap_console_fed_count..] {
+                            self.dap_console_grid.feed_chunk(msg);
+                            if !msg.ends_with('\n') {
+                                self.dap_console_grid.feed_chunk("\n");
+                            }
+                        }
+                        self.dap_console_fed_count = messages.len();
+                        self.dap_console_grid.view_scroll_to_bottom();
+                    }
+                }
+
                 let bounds_changed = self.last_terminal_bounds != Some(bottom_bounds);
                 let grid_changed = self.sync_terminal_layout(terminal_content_bounds);
-                if (self.terminal_needs_layout || bounds_changed || grid_changed)
+                if (self.terminal_needs_layout
+                    || bounds_changed
+                    || grid_changed
+                    || is_debug_console)
                     && let Some(renderer) = self.renderer.as_mut()
                 {
+                    let grid = if is_debug_console {
+                        &self.dap_console_grid
+                    } else {
+                        &self.terminal_tabs[self.active_terminal_tab].grid
+                    };
                     renderer.update_terminal_content(
-                        &self.terminal_tabs[self.active_terminal_tab].grid,
+                        grid,
                         terminal_content_bounds,
                         self.app_state.current_mode(),
                     );
@@ -1907,22 +2064,42 @@ impl AppShell {
 
                 // Render tab bar after terminal content layout so tab labels are
                 // appended after body glyphs in the shared terminal text pipeline.
+                // Compute tab info before mutable borrow of renderer.
+                let tab_labels_short: Vec<&str> = self
+                    .panel_state
+                    .bottom
+                    .tabs
+                    .iter()
+                    .map(|t| match t {
+                        PanelTabId::Terminal => "Term",
+                        PanelTabId::DebugConsole => "Debug",
+                        PanelTabId::Problems => "Probs",
+                        _ => t.label(),
+                    })
+                    .collect();
+                let terminal_is_running = self
+                    .active_terminal_tab()
+                    .is_some_and(|tab| tab.status.is_running());
+                let dap_is_active = self.dap_session.is_some();
+                let tab_running: Vec<bool> = self
+                    .panel_state
+                    .bottom
+                    .tabs
+                    .iter()
+                    .map(|t| match t {
+                        PanelTabId::Terminal => terminal_is_running,
+                        PanelTabId::DebugConsole => dap_is_active,
+                        _ => false,
+                    })
+                    .collect();
+                let active_tab_idx = self.panel_state.bottom.active_tab;
+
                 let tab_bar_quads = if let Some(renderer) = self.renderer.as_mut() {
-                    let labels: Vec<&str> = self
-                        .terminal_tabs
-                        .iter()
-                        .map(|t| t.label.as_str())
-                        .collect();
-                    let running: Vec<bool> = self
-                        .terminal_tabs
-                        .iter()
-                        .map(|t| t.status.is_running())
-                        .collect();
                     renderer
                         .update_terminal_tab_bar(
-                            &labels,
-                            &running,
-                            self.active_terminal_tab,
+                            &tab_labels_short,
+                            &tab_running,
+                            active_tab_idx,
                             bottom_bounds,
                         )
                         .0
@@ -2109,8 +2286,8 @@ mod tests {
     use super::{
         breadcrumb_segment_text, build_editor_breadcrumb_segments, focus_ring_instances,
         focus_target_region_id, mouse_button_code, point_in_bounds, sgr_mouse_sequence,
-        sgr_wheel_sequence,
-        statusbar_source_path_label, terminal_cell_at_position, visible_region_bounds,
+        sgr_wheel_sequence, statusbar_source_path_label, terminal_cell_at_position,
+        visible_region_bounds,
     };
     use crate::async_runtime::message::{
         LspDocumentSymbol, LspDocumentSymbolSegment, LspPosition, LspRange,

@@ -53,6 +53,10 @@ pub enum CommandPaletteMode {
     PythonEnvSelector,
     /// Dart environment selector — opened from the command palette.
     DartEnvSelector,
+    /// Flutter devices selector.
+    FlutterDevices,
+    /// Debug watch expression input.
+    DebugWatchInput,
 }
 
 impl CommandPaletteMode {
@@ -79,6 +83,8 @@ impl CommandPaletteMode {
             Self::CodeAction => "action> ",
             Self::PythonEnvSelector => "python> ",
             Self::DartEnvSelector => "dart> ",
+            Self::FlutterDevices => "devices> ",
+            Self::DebugWatchInput => "watch> ",
         }
     }
 
@@ -105,6 +111,8 @@ impl CommandPaletteMode {
             Self::CodeAction => "no code actions available",
             Self::PythonEnvSelector => "scanning Python environments...",
             Self::DartEnvSelector => "scanning Dart environments...",
+            Self::FlutterDevices => "scanning Flutter devices...",
+            Self::DebugWatchInput => "enter expression to watch...",
         }
     }
 
@@ -131,6 +139,8 @@ impl CommandPaletteMode {
             Self::CodeAction => "ACTIONS",
             Self::PythonEnvSelector => "PYTHON ENV",
             Self::DartEnvSelector => "DART ENV",
+            Self::FlutterDevices => "DEVICES",
+            Self::DebugWatchInput => "WATCH",
         }
     }
 
@@ -173,6 +183,11 @@ pub enum CommandPaletteAction {
     SelectPythonEnv(PathBuf),
     /// Chọn Dart/Flutter SDK path để restart LSP.
     SelectDartEnv(PathBuf),
+    SelectFlutterDevice {
+        device_id: String,
+        is_emulator: bool,
+        is_active: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -582,6 +597,7 @@ impl CommandPalette {
                 | CommandPaletteMode::CodeAction
                 | CommandPaletteMode::PythonEnvSelector
                 | CommandPaletteMode::DartEnvSelector
+                | CommandPaletteMode::FlutterDevices
         ) {
             self.results = self.static_items.clone();
             if self.results.is_empty() {
@@ -654,6 +670,8 @@ impl CommandPalette {
             CommandPaletteMode::CodeAction => unreachable!("handled above"),
             CommandPaletteMode::PythonEnvSelector => Vec::new(),
             CommandPaletteMode::DartEnvSelector => Vec::new(),
+            CommandPaletteMode::FlutterDevices => Vec::new(),
+            CommandPaletteMode::DebugWatchInput => Vec::new(),
         };
 
         if self.results.is_empty() {
@@ -1100,6 +1118,17 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
         ("buffer.next", "Next Buffer"),
         ("buffer.prev", "Previous Buffer"),
         ("buffer.close_current", "Close Current Buffer"),
+        ("flutter.devices", "Select Flutter Device"),
+        ("flutter.hot_reload", "Flutter Hot Reload"),
+        ("flutter.hot_restart", "Flutter Hot Restart"),
+        ("dap.continue", "Debug: Start/Continue"),
+        ("dap.stop", "Debug: Stop"),
+        ("dap.step_over", "Debug: Step Over"),
+        ("dap.step_into", "Debug: Step Into"),
+        ("dap.step_out", "Debug: Step Out"),
+        ("dap.toggle_breakpoint", "Debug: Toggle Breakpoint"),
+        ("dap.watch_add", "Debug: Add Watch Expression"),
+        ("app.focus_dap", "Focus DAP Panel"),
     ];
     let q = query.trim().to_ascii_lowercase();
     candidates

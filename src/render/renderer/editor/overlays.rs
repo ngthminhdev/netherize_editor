@@ -125,6 +125,68 @@ impl Renderer {
                     x += separator_w;
                 }
             }
+
+            if self.dap_is_active {
+                let status_text = if self.dap_is_paused {
+                    "⏸ PAUSED "
+                } else {
+                    "▶ RUNNING "
+                };
+                let status_color = if self.dap_is_paused {
+                    self.theme.ui.warning.as_f32()
+                } else {
+                    self.theme.ui.success.as_f32()
+                };
+
+                let controls_text = " F5 Cont | F6 Over | F7 Into | F8 Out | ⇧F5 Stop ";
+                let controls_color = self.theme.ui.fg_ghost.as_f32();
+
+                // Compute widths
+                let status_w = estimate_monospace_width(status_text, geometry.font_size);
+                let controls_w = estimate_monospace_width(controls_text, geometry.font_size);
+
+                // Draw background pill for the active status bar
+                let pill_w = status_w + controls_w;
+                let pill_x = header_x + header_w - pill_w - self.editor_padding_x;
+                let pill_y = header_y + ((header_h - geometry.line_height).max(0.0) * 0.5);
+
+                // Draw a sleek dark border/background for the debug control pill
+                let pill_bg = blend_rgba(header_bg, self.theme.ui.border_color.as_f32(), 0.3, 1.0);
+                chrome_quads.push(
+                    RegionDrawInstance::new(
+                        [
+                            pill_x - 4.0,
+                            pill_y - 2.0,
+                            pill_w + 8.0,
+                            geometry.line_height + 4.0,
+                        ],
+                        pill_bg,
+                    )
+                    .with_radius(4.0),
+                );
+
+                // Draw status
+                glyphs.extend(layout_panel_text_bold(
+                    status_text,
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    pill_x,
+                    pill_y,
+                    status_color,
+                ));
+
+                // Draw controls
+                glyphs.extend(layout_panel_text(
+                    controls_text,
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    pill_x + status_w,
+                    pill_y,
+                    controls_color,
+                ));
+            }
         }
 
         if let Some(diagnostics) = active_diagnostics {

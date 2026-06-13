@@ -201,6 +201,20 @@ pub const FOCUS_EDITOR: &str = "app.focus_editor";
 pub const FOCUS_EXPLORER: &str = "app.focus_explorer";
 pub const FOCUS_TERMINAL: &str = "app.focus_terminal";
 pub const FOCUS_INSPECTOR: &str = "app.focus_inspector";
+pub const FOCUS_DAP: &str = "app.focus_dap";
+pub const DAP_TOGGLE_EXPAND: &str = "dap.toggle_expand";
+pub const DEBUG_START: &str = "dap.continue";
+pub const DEBUG_STOP: &str = "dap.stop";
+pub const DEBUG_STEP_OVER: &str = "dap.step_over";
+pub const DEBUG_STEP_INTO: &str = "dap.step_into";
+pub const DEBUG_STEP_OUT: &str = "dap.step_out";
+pub const DEBUG_TOGGLE_BREAKPOINT: &str = "dap.toggle_breakpoint";
+pub const DEBUG_WATCH_ADD: &str = "dap.watch_add";
+pub const DEBUG_WATCH_REMOVE: &str = "dap.watch_remove";
+pub const DEBUG_GOTO_FRAME: &str = "dap.goto_frame";
+pub const FLUTTER_DEVICES: &str = "flutter.devices";
+pub const FLUTTER_HOT_RELOAD: &str = "flutter.hot_reload";
+pub const FLUTTER_HOT_RESTART: &str = "flutter.hot_restart";
 pub const FOCUS_LEFT: &str = "app.focus_left";
 pub const FOCUS_RIGHT: &str = "app.focus_right";
 pub const FOCUS_UP: &str = "app.focus_up";
@@ -487,6 +501,20 @@ pub const ALL_IDS: &[&str] = &[
     OPEN_HELP,
     MARKDOWN_PREVIEW_SCROLL_TOP,
     MARKDOWN_PREVIEW_SCROLL_BOTTOM,
+    FOCUS_DAP,
+    DAP_TOGGLE_EXPAND,
+    DEBUG_START,
+    DEBUG_STOP,
+    DEBUG_STEP_OVER,
+    DEBUG_STEP_INTO,
+    DEBUG_STEP_OUT,
+    DEBUG_TOGGLE_BREAKPOINT,
+    DEBUG_WATCH_ADD,
+    DEBUG_WATCH_REMOVE,
+    DEBUG_GOTO_FRAME,
+    FLUTTER_DEVICES,
+    FLUTTER_HOT_RELOAD,
+    FLUTTER_HOT_RESTART,
 ];
 
 /// A command id is valid if it is registered in ALL_IDS or resolvable by
@@ -652,6 +680,20 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         FOCUS_EXPLORER => Some(Command::FocusExplorer),
         FOCUS_TERMINAL => Some(Command::FocusTerminal),
         FOCUS_INSPECTOR => Some(Command::FocusInspector),
+        FOCUS_DAP => Some(Command::FocusDap),
+        DAP_TOGGLE_EXPAND => Some(Command::DapToggleExpand),
+        DEBUG_START => Some(Command::DebugStart),
+        DEBUG_STOP => Some(Command::DebugStop),
+        DEBUG_STEP_OVER => Some(Command::DebugStepOver),
+        DEBUG_STEP_INTO => Some(Command::DebugStepInto),
+        DEBUG_STEP_OUT => Some(Command::DebugStepOut),
+        DEBUG_TOGGLE_BREAKPOINT => Some(Command::DebugToggleBreakpoint),
+        DEBUG_WATCH_ADD => Some(Command::DebugWatchAdd),
+        DEBUG_WATCH_REMOVE => Some(Command::DebugWatchRemove),
+        DEBUG_GOTO_FRAME => Some(Command::DebugGotoFrame),
+        FLUTTER_DEVICES => Some(Command::FlutterDevices),
+        FLUTTER_HOT_RELOAD => Some(Command::FlutterHotReload),
+        FLUTTER_HOT_RESTART => Some(Command::FlutterHotRestart),
         FOCUS_LEFT => Some(Command::FocusLeft),
         FOCUS_RIGHT => Some(Command::FocusRight),
         FOCUS_UP => Some(Command::FocusUp),

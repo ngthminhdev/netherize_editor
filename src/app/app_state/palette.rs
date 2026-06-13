@@ -66,6 +66,21 @@ impl AppState {
             .open_with_items(CommandPaletteMode::DartEnvSelector, items);
     }
 
+    pub fn open_flutter_device_selector(&mut self) -> bool {
+        let workspace = self.workspace_model.as_ref();
+        self.command_palette
+            .open(CommandPaletteMode::FlutterDevices, workspace)
+            > 0
+    }
+
+    pub fn open_flutter_device_selector_with_items(
+        &mut self,
+        items: Vec<crate::app::command_palette::CommandPaletteItem>,
+    ) {
+        self.command_palette
+            .open_with_items(CommandPaletteMode::FlutterDevices, items);
+    }
+
     /// Push current file+line+column onto the jump back stack before a jump (e.g. gd).
     /// Clears the forward stack since jumping starts a new branch.
     pub fn push_jump(&mut self) {
@@ -253,6 +268,9 @@ impl AppState {
     }
 
     pub fn command_palette_mode(&self) -> Option<CommandPaletteMode> {
+        if self.command_palette.is_visible {
+            return Some(self.command_palette.mode);
+        }
         if let Some(index) = self.active_buffer_index {
             if let Some(BufferEntry {
                 content: BufferContent::FuzzyPicker(state),
@@ -262,11 +280,7 @@ impl AppState {
                 return Some(state.mode);
             }
         }
-        if self.command_palette.is_visible {
-            Some(self.command_palette.mode)
-        } else {
-            None
-        }
+        None
     }
 
     pub fn command_palette_query_text(&self) -> &str {

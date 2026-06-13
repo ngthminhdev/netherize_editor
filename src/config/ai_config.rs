@@ -91,8 +91,7 @@ impl AiConfig {
 
     pub fn set_inline_api_key(&mut self, value: String) -> Result<(), String> {
         let trimmed = value.trim();
-        self.inline_mut().provider.api_key =
-            (!trimmed.is_empty()).then(|| trimmed.to_string());
+        self.inline_mut().provider.api_key = (!trimmed.is_empty()).then(|| trimmed.to_string());
         self.save_user_override()
     }
 

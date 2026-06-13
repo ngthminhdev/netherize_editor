@@ -190,7 +190,11 @@ fn arm_rects((up, down, left, right): (Arm, Arm, Arm, Arm), w: f32, h: f32) -> V
     let v_thick = arm_thickness(up, base).max(arm_thickness(down, base));
     if v_thick > 0.0 {
         let x = cx - v_thick / 2.0;
-        let top = if up != Arm::None { 0.0 } else { cy - v_thick / 2.0 };
+        let top = if up != Arm::None {
+            0.0
+        } else {
+            cy - v_thick / 2.0
+        };
         let bottom = if down != Arm::None {
             h
         } else {

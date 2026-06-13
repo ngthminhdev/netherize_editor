@@ -450,10 +450,7 @@ fn missing_install_prerequisite(install_cmd: &str) -> Option<(&'static str, &'st
             "go",
             "Install Go first: https://go.dev/dl or `brew install go`.",
         ),
-        "cargo" | "rustup" => (
-            "cargo",
-            "Install Rust first: https://rustup.rs.",
-        ),
+        "cargo" | "rustup" => ("cargo", "Install Rust first: https://rustup.rs."),
         "pip" | "pip3" | "pipx" => (
             "pip3",
             "Install Python 3 first: https://www.python.org or `brew install python`.",

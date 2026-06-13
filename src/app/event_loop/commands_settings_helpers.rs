@@ -329,7 +329,8 @@ impl AppShell {
                 self.apply_ai_number_adjust(
                     |ai| ai.set_inline_prefix_chars(next),
                     |item| {
-                        if let crate::app::app_state::SettingItem::AiPrefixChars { current } = item {
+                        if let crate::app::app_state::SettingItem::AiPrefixChars { current } = item
+                        {
                             *current = next;
                         }
                     },
@@ -341,7 +342,8 @@ impl AppShell {
                 self.apply_ai_number_adjust(
                     |ai| ai.set_inline_suffix_chars(next),
                     |item| {
-                        if let crate::app::app_state::SettingItem::AiSuffixChars { current } = item {
+                        if let crate::app::app_state::SettingItem::AiSuffixChars { current } = item
+                        {
                             *current = next;
                         }
                     },
@@ -746,7 +748,8 @@ impl AppShell {
                     changed = self.commit_ai_number_edit(
                         |ai| ai.set_inline_max_tokens(value),
                         |item| {
-                            if let crate::app::app_state::SettingItem::AiMaxTokens { current } = item
+                            if let crate::app::app_state::SettingItem::AiMaxTokens { current } =
+                                item
                             {
                                 *current = value;
                             }

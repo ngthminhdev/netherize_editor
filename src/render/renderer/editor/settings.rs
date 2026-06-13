@@ -368,15 +368,16 @@ fn settings_preview_lines(settings: &SettingsState) -> Vec<String> {
         }
     }
 
-    lines.extend(["".to_string(), "[ai.inline_completion.provider]".to_string()]);
+    lines.extend([
+        "".to_string(),
+        "[ai.inline_completion.provider]".to_string(),
+    ]);
     for item in &settings.items {
         match item {
             SettingItem::AiApiUrl { .. } => {
                 lines.push(format!("api_url = {}", item.preview_value()))
             }
-            SettingItem::AiModel { .. } => {
-                lines.push(format!("model = {}", item.preview_value()))
-            }
+            SettingItem::AiModel { .. } => lines.push(format!("model = {}", item.preview_value())),
             SettingItem::AiApiKey { .. } => {
                 lines.push(format!("api_key = {}", item.preview_value()))
             }
@@ -901,12 +902,12 @@ impl Renderer {
                             }
                         }
                         SettingItem::InlineSuggestion { enabled } => {
-                          if *enabled {
-                            "ON"
-                          } else {
-                            "OFF"
-                          }
-                        },
+                            if *enabled {
+                                "ON"
+                            } else {
+                                "OFF"
+                            }
+                        }
                         _ => "",
                     };
                     if !badge_label.is_empty() {
@@ -1008,12 +1009,7 @@ impl Renderer {
                 preview_start_y = detail_top + detail_h + 12.0 * s;
                 chrome.push(
                     RegionDrawInstance::new(
-                        [
-                            right_x + 10.0 * s,
-                            detail_top,
-                            right_w - 20.0 * s,
-                            detail_h,
-                        ],
+                        [right_x + 10.0 * s, detail_top, right_w - 20.0 * s, detail_h],
                         with_alpha(panel_bg, 0.55),
                     )
                     .with_radius(8.0 * s),

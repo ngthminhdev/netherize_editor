@@ -179,6 +179,15 @@ impl AppShell {
             explorer_clipboard_path: None,
             pending_confirmation: None,
             workspace_git_branch,
+            dap_session: None,
+            breakpoints: HashMap::new(),
+            dap_panel_state: crate::workbench::inspector_panel::InspectorPanelState::default(),
+            dap_console_grid: {
+                let mut g = TerminalGrid::new(120, 40);
+                g.highlight_colors = HighlightColors::from_theme(&theme);
+                g
+            },
+            dap_console_fed_count: 0,
             active_lsp_server: None,
             pending_lsp_server: None,
             lsp_completion_trigger_chars: Vec::new(),
@@ -281,6 +290,7 @@ impl AppShell {
     }
 
     pub(super) fn startup_subsystems(&mut self) {
+        self.load_breakpoints();
         let cwd = std::env::current_dir().unwrap_or_default();
         let workspace_root = self
             .app_state
@@ -672,6 +682,9 @@ impl AppShell {
                 }
             }
         }
+        if self.dap_console_grid.resize(cols, rows) {
+            grid_changed = true;
+        }
         if grid_changed {
             self.terminal_needs_layout = true;
         }
@@ -740,7 +753,13 @@ impl AppShell {
             InputFocusContext::Welcome
         } else {
             match self.focus_manager.current() {
-                FocusTarget::LeftSidebar => InputFocusContext::Explorer,
+                FocusTarget::LeftSidebar => {
+                    if self.panel_state.left.active_tab_id() == Some(PanelTabId::Inspector) {
+                        InputFocusContext::Inspector
+                    } else {
+                        InputFocusContext::Explorer
+                    }
+                }
                 FocusTarget::RightSidebar => match self.panel_state.right.active_tab_id() {
                     Some(PanelTabId::AiChat) => InputFocusContext::AiChat,
                     Some(PanelTabId::MarkdownPreview) => InputFocusContext::MarkdownPreview,

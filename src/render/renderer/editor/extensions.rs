@@ -298,7 +298,12 @@ impl Renderer {
         let shortcut_h = (line_height * 0.82).max(16.0 * s);
         chrome.push(
             RegionDrawInstance::new(
-                [inner_x, shortcuts_y - 2.0 * s, inner_w, shortcut_h + 6.0 * s],
+                [
+                    inner_x,
+                    shortcuts_y - 2.0 * s,
+                    inner_w,
+                    shortcut_h + 6.0 * s,
+                ],
                 overlay,
             )
             .with_radius(4.0 * s),
