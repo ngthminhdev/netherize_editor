@@ -186,6 +186,9 @@ pub fn canonical_icon_id(icon: &str) -> Option<&'static str> {
         "yaml" => "built_in:yaml",
         "yarnlock" => "built_in:yarnlock",
         "zig" => "built_in:zig",
+        "sparkles" => "built_in:sparkles",
+        "flask" => "built_in:flask",
+        "outline" => "built_in:outline",
         _ => "built_in:file",
     })
 }
@@ -1061,6 +1064,18 @@ fn build_bearded_atlas() -> BuiltAtlas {
         (
             "built_in:zig",
             include_bytes!("../../assets/bearded-icons/zig.svg"),
+        ),
+        (
+            "built_in:sparkles",
+            include_bytes!("../../assets/bearded-icons/sparkles.svg"),
+        ),
+        (
+            "built_in:flask",
+            include_bytes!("../../assets/bearded-icons/flask.svg"),
+        ),
+        (
+            "built_in:outline",
+            include_bytes!("../../assets/bearded-icons/outline.svg"),
         ),
     ];
     let icon_size = 96u32;

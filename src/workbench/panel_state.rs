@@ -28,19 +28,19 @@ impl PanelTabId {
         }
     }
 
-    /// Nerd Font glyph displayed as prefix icon in the right-dock tab strip.
+    /// Icon displayed in the right-dock tab strip (SVG asset or nerd-font glyph).
     pub fn icon_glyph(self) -> Option<&'static str> {
         match self {
-            Self::Explorer => Some(""),        // nf-fa-folder
-            Self::Search => Some(""),          // nf-fa-search
-            Self::Inspector => Some(""),       // nf-fa-info_circle
-            Self::Outline => Some(""),         // nf-fa-sitemap
-            Self::Terminal => Some(""),        // nf-fa-terminal
-            Self::TestRunner => Some(""),      // nf-fa-bug
-            Self::DebugConsole => Some(""),    // nf-fa-terminal
-            Self::Problems => Some(""),        // nf-fa-exclamation_triangle
-            Self::AiChat => Some(""),          // nf-fa-comment
-            Self::MarkdownPreview => Some(""), // nf-fa-file_text
+            Self::Explorer => Some(""),        // nf-fa-folder
+            Self::Search => Some(""),          // nf-fa-search
+            Self::Inspector => Some(""),       // nf-fa-info_circle
+            Self::Outline => Some("built_in:outline"),
+            Self::Terminal => Some(""),        // nf-fa-terminal
+            Self::TestRunner => Some("built_in:flask"),
+            Self::DebugConsole => Some(""),    // nf-fa-terminal
+            Self::Problems => Some(""),        // nf-fa-exclamation_triangle
+            Self::AiChat => Some("built_in:sparkles"),
+            Self::MarkdownPreview => Some(""), // nf-fa-file_text
         }
     }
 }

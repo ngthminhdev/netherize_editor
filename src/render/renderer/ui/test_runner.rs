@@ -426,7 +426,7 @@ impl crate::render::renderer::Renderer {
         let iw = (rb[2] - inset * 2.0).max(0.0);
         let ih = (rb[3] - inset * 2.0).max(0.0);
         let strip_h = strip_h.min(ih).max(0.0);
-        let (mut chrome, mut glyphs) =
+        let (mut chrome, mut glyphs, strip_icons) =
             self.build_right_tab_strip([ix, iy, iw, strip_h], labels, icons, active, strip_focused);
         let mut content_icons = Vec::new();
         // Content sits BELOW the strip band; the strip is appended first so it
@@ -461,6 +461,7 @@ impl crate::render::renderer::Renderer {
         self.test_runner_scissor = rect_to_scissor([ix, iy, iw, ih]);
         self.test_runner_chrome_instances = chrome;
         self.test_runner_glyph_instances = glyphs;
+        content_icons.extend(strip_icons);
         self.test_runner_icon_instances = content_icons;
         self.test_runner_icon_pipeline.upload_instances(
             &self.device,
@@ -486,11 +487,12 @@ impl crate::render::renderer::Renderer {
         icons: &[Option<&'static str>],
         active: usize,
         focused: bool,
-    ) -> (Vec<RegionDrawInstance>, Vec<GlyphInstance>) {
+    ) -> (Vec<RegionDrawInstance>, Vec<GlyphInstance>, Vec<IconDrawInstance>) {
         let mut chrome: Vec<RegionDrawInstance> = Vec::new();
         let mut glyphs: Vec<GlyphInstance> = Vec::new();
+        let mut icon_instances: Vec<IconDrawInstance> = Vec::new();
         if labels.is_empty() || bounds[2] <= 1.0 || bounds[3] <= 1.0 {
-            return (chrome, glyphs);
+            return (chrome, glyphs, icon_instances);
         }
 
         // Sizing mirrors the bottom-dock terminal tab bar: slightly larger font,
@@ -586,26 +588,55 @@ impl crate::render::renderer::Renderer {
                 ));
             }
             let label_color = if is_active { fg } else { fg_dim };
-            // Build display string with optional nerd-font icon prefix.
+            // SVG asset icons are rendered as textured quads via the icon pipeline;
+            // legacy nerd-font glyphs fall back to the text pipeline.
             let icon = icons.get(i).and_then(|id| *id);
-            let display = match icon {
-                Some(glyph) => format!("{glyph} {label}"),
-                None => label.to_string(),
-            };
-            // Center the text horizontally within the tab.
-            let text_w = estimate_monospace_width(&display, font);
-            let text_x = tab_x + ((tab_w - text_w) * 0.5).max(4.0);
-            let max_chars = ((tab_w - (text_x - tab_x) - 4.0) / char_w).max(1.0) as usize;
-            let shown = clip_chars(&display, max_chars.max(1));
-            glyphs.extend(layout_panel_text(
-                &shown,
-                &mut self.test_runner_text_system,
-                &mut self.atlas,
-                &self.queue,
-                text_x,
-                text_y,
-                label_color,
-            ));
+            if let Some(icon_id) = icon.and_then(|id| canonical_icon_id(id)) {
+                let icon_size = (line_h * 0.72).min(font * 1.3);
+                let label_w = estimate_monospace_width(label, font);
+                let total_w = icon_size + 4.0 + label_w;
+                let start_x = tab_x + ((tab_w - total_w) * 0.5).max(4.0);
+                icon_instances.push(IconDrawInstance {
+                    icon: icon_id,
+                    rect: [
+                        start_x,
+                        text_y + (line_h - icon_size) * 0.5,
+                        icon_size,
+                        icon_size,
+                    ],
+                    tint: label_color,
+                });
+                let label_x = start_x + icon_size + 4.0;
+                let max_chars = ((tab_w - (label_x - tab_x) - 4.0) / char_w).max(1.0) as usize;
+                let shown = clip_chars(label, max_chars.max(1));
+                glyphs.extend(layout_panel_text(
+                    &shown,
+                    &mut self.test_runner_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    label_x,
+                    text_y,
+                    label_color,
+                ));
+            } else {
+                let display = match icon {
+                    Some(glyph) => format!("{glyph} {label}"),
+                    None => label.to_string(),
+                };
+                let text_w = estimate_monospace_width(&display, font);
+                let text_x = tab_x + ((tab_w - text_w) * 0.5).max(4.0);
+                let max_chars = ((tab_w - (text_x - tab_x) - 4.0) / char_w).max(1.0) as usize;
+                let shown = clip_chars(&display, max_chars.max(1));
+                glyphs.extend(layout_panel_text(
+                    &shown,
+                    &mut self.test_runner_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    text_x,
+                    text_y,
+                    label_color,
+                ));
+            }
         }
 
         // Bottom divider between the strip and the content below.
@@ -613,7 +644,7 @@ impl crate::render::renderer::Renderer {
             [bounds[0], bounds[1] + bounds[3] - 1.0, bounds[2], 1.0],
             border,
         ));
-        (chrome, glyphs)
+        (chrome, glyphs, icon_instances)
     }
 
     /// Hit-test a point against the right-dock tab strip. Returns the tab index
