@@ -949,7 +949,9 @@ impl AppState {
         let total = self.text.len_chars();
         let cursor = self.cursor_char_idx.min(total);
         let (line, _) = self.cursor_line_col();
-        let line_start = self.text.line_to_char(line.min(self.text.len_lines().saturating_sub(1)));
+        let line_start = self
+            .text
+            .line_to_char(line.min(self.text.len_lines().saturating_sub(1)));
         let line_prefix = if line_start <= cursor {
             self.text.slice(line_start..cursor).to_string()
         } else {

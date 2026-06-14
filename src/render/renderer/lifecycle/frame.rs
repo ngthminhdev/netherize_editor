@@ -63,7 +63,11 @@ impl Renderer {
             ai_chat_history_chrome_start + ai_chat_history_chrome_count;
         let ai_chat_suggestion_chrome_count = self.ai_chat_suggestion_chrome_instances.len() as u32;
 
-        let palette_start = ai_chat_suggestion_chrome_start + ai_chat_suggestion_chrome_count;
+        let test_runner_chrome_start =
+            ai_chat_suggestion_chrome_start + ai_chat_suggestion_chrome_count;
+        let test_runner_chrome_count = self.test_runner_chrome_instances.len() as u32;
+
+        let palette_start = test_runner_chrome_start + test_runner_chrome_count;
         let palette_count = self.palette_chrome_instances.len() as u32;
 
         let lsp_guide_start = palette_start + palette_count;
@@ -96,6 +100,7 @@ impl Renderer {
         all_instances.extend_from_slice(&self.right_terminal_cursor_instances);
         all_instances.extend_from_slice(&self.ai_chat_history_chrome_instances);
         all_instances.extend_from_slice(&self.ai_chat_suggestion_chrome_instances);
+        all_instances.extend_from_slice(&self.test_runner_chrome_instances);
         all_instances.extend_from_slice(&self.palette_chrome_instances);
         all_instances.extend_from_slice(&self.lsp_guide_chrome_instances);
         all_instances.extend_from_slice(&self.system_dep_chrome_instances);
@@ -366,6 +371,45 @@ impl Renderer {
                     |render_pass| {
                         self.ai_chat_text_pipeline
                             .draw_range(render_pass, batch.range);
+                    },
+                );
+            }
+
+            // 4d. Test Runner panel: chrome (case rows / fields) then text.
+            if test_runner_chrome_count > 0 {
+                draw_text_region(
+                    &mut pass,
+                    self.test_runner_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.region_pipeline.draw_range(
+                            render_pass,
+                            test_runner_chrome_start,
+                            test_runner_chrome_count,
+                        );
+                    },
+                );
+            }
+            if !self.test_runner_icon_instances.is_empty() {
+                draw_text_region(
+                    &mut pass,
+                    self.test_runner_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.test_runner_icon_pipeline.draw(render_pass);
+                    },
+                );
+            }
+            if !self.test_runner_glyph_instances.is_empty() {
+                draw_text_region(
+                    &mut pass,
+                    self.test_runner_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.test_runner_text_pipeline.draw(render_pass);
                     },
                 );
             }

@@ -99,6 +99,11 @@ pub struct AppShell {
     last_right_terminal_bounds: Option<[f32; 4]>,
     last_cursor_position: Option<(f32, f32)>,
     pending_right_pty_spawn: bool,
+    /// Label of the AI agent currently launched in the right-dock terminal
+    /// (e.g. "opencode"), for display. `None` when no agent is running.
+    right_agent_label: Option<String>,
+    /// Selection index in the in-panel AI-agent picker (AI Chat tab, no agent).
+    ai_agent_picker_selected: usize,
     /// When `Some`, this command string will be written into the right PTY
     /// immediately after `PtySpawned` is received for the right terminal.
     right_pty_startup_command: Option<String>,
@@ -109,6 +114,11 @@ pub struct AppShell {
     semantic_highlight_spans: Vec<HighlightSpan>,
     cached_document_symbols_path: Option<PathBuf>,
     cached_document_symbols: Vec<crate::async_runtime::message::LspDocumentSymbol>,
+    /// File the Outline panel last requested symbols for, so it fetches once per
+    /// file instead of every frame the Outline tab is shown.
+    outline_fetch_path: Option<PathBuf>,
+    /// Selected index in the Outline list when navigating via keyboard.
+    outline_selected: Option<usize>,
     syntax_engine: Option<SyntaxEngine>,
     syntax_engine_file: Option<PathBuf>,
     /// Bottom-panel terminal tabs. Always non-empty when the panel is open.
@@ -564,7 +574,9 @@ impl AppShell {
             return self.active_terminal_tab_mut().map(|tab| &mut tab.grid);
         }
         if self.focus_manager.current() == FocusTarget::RightSidebar
-            && self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal)
+            && (self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal)
+                || (self.panel_state.right.active_tab_id() == Some(PanelTabId::AiChat)
+                    && self.right_pty_session_id.is_some()))
         {
             return Some(&mut self.right_terminal_grid);
         }
@@ -581,8 +593,13 @@ impl AppShell {
             return self.active_terminal_tab().and_then(|tab| tab.session_id);
         }
         if self.focus_manager.current() == FocusTarget::RightSidebar
-            && self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal)
+            && matches!(
+                self.panel_state.right.active_tab_id(),
+                Some(PanelTabId::Terminal) | Some(PanelTabId::AiChat)
+            )
         {
+            // `right_pty_session_id` is None when no agent is running, so this
+            // naturally yields None on the AiChat tab's picker state.
             return self.right_pty_session_id;
         }
         None

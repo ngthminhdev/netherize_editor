@@ -59,6 +59,7 @@ usvg = "0.45"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", default-features = true }
+naga = { version = "29", features = ["wgsl-in"] }
 
 [[bench]]
 name = "editor_bench"

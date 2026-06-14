@@ -1,0 +1,1050 @@
+//! Test Runner panel (bottom dock): renders authored test cases with their
+//! input/expected/actual and pass-fail status. Mirrors the dedicated-surface
+//! pattern of the which-key overlay (text system + pipeline + chrome + scissor).
+//!
+//! Colors come from the theme `[ui]` tokens — never hard-coded.
+
+use crate::runner::{TestField, TestRunnerState, TestStatus};
+
+use super::super::helpers::{
+    estimate_monospace_width, layout_panel_text, mode_display_label, mode_pill_color,
+    rect_to_scissor,
+};
+use crate::core::mode::EditorMode;
+use crate::render::{
+    glyph_instance::GlyphInstance,
+    icon_pipeline::{IconDrawInstance, canonical_icon_id},
+    region_pipeline::RegionDrawInstance,
+};
+
+const RUNNER_HEADER_H: f32 = 58.0;
+const RUNNER_FOOTER_H: f32 = 40.0;
+const RUNNER_CARD_H: f32 = 154.0;
+const RUNNER_CARD_ERROR_H: f32 = 188.0;
+const RUNNER_FIELD_H: f32 = 48.0;
+const RUNNER_CARD_GAP: f32 = 10.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TestRunnerPointerAction {
+    Run,
+    AddCase,
+    SelectCase(usize),
+    OpenField { case_index: usize, expected: bool },
+}
+
+fn point_inside(point: (f32, f32), rect: [f32; 4]) -> bool {
+    point.0 >= rect[0]
+        && point.0 < rect[0] + rect[2]
+        && point.1 >= rect[1]
+        && point.1 < rect[1] + rect[3]
+}
+
+fn runner_header_run_rect(bounds: [f32; 4], pad: f32, scale: f32) -> [f32; 4] {
+    [
+        bounds[0] + bounds[2] - pad - 130.0 * scale,
+        bounds[1] + 12.0 * scale,
+        130.0 * scale,
+        30.0 * scale,
+    ]
+}
+
+fn runner_add_rect(bounds: [f32; 4], pad: f32, scale: f32) -> [f32; 4] {
+    [
+        bounds[0] + pad,
+        bounds[1] + bounds[3] - RUNNER_FOOTER_H * scale + 5.0 * scale,
+        (bounds[2] - pad * 2.0).max(1.0),
+        30.0 * scale,
+    ]
+}
+
+fn runner_card_rect(bounds: [f32; 4], pad: f32, y: f32, height: f32) -> [f32; 4] {
+    [bounds[0] + pad, y, (bounds[2] - pad * 2.0).max(1.0), height]
+}
+
+fn runner_field_rect(card: [f32; 4], expected: bool, scale: f32) -> [f32; 4] {
+    let y = card[1] + if expected { 91.0 * scale } else { 35.0 * scale };
+    [
+        card[0] + 10.0 * scale,
+        y,
+        (card[2] - 20.0 * scale).max(1.0),
+        RUNNER_FIELD_H * scale,
+    ]
+}
+
+pub fn test_runner_pointer_action_at(
+    bounds: [f32; 4],
+    state: &TestRunnerState,
+    inner_padding: f32,
+    point: (f32, f32),
+    scale: f32,
+) -> Option<TestRunnerPointerAction> {
+    let pad = inner_padding.max(8.0 * scale);
+    if point_inside(point, runner_header_run_rect(bounds, pad, scale)) {
+        return Some(TestRunnerPointerAction::Run);
+    }
+    if point_inside(point, runner_add_rect(bounds, pad, scale)) {
+        return Some(TestRunnerPointerAction::AddCase);
+    }
+    let mut y = bounds[1] + RUNNER_HEADER_H * scale;
+    for (index, case) in state.cases.iter().enumerate().skip(state.scroll_offset) {
+        let show_actual = matches!(case.status, TestStatus::Failed | TestStatus::Error);
+        let height = if show_actual {
+            RUNNER_CARD_ERROR_H * scale
+        } else {
+            RUNNER_CARD_H * scale
+        };
+        let card = runner_card_rect(bounds, pad, y, height);
+        if point_inside(point, runner_field_rect(card, false, scale)) {
+            return Some(TestRunnerPointerAction::OpenField {
+                case_index: index,
+                expected: false,
+            });
+        }
+        if point_inside(point, runner_field_rect(card, true, scale)) {
+            return Some(TestRunnerPointerAction::OpenField {
+                case_index: index,
+                expected: true,
+            });
+        }
+        if point_inside(point, card) {
+            return Some(TestRunnerPointerAction::SelectCase(index));
+        }
+        y += height + RUNNER_CARD_GAP * scale;
+        if y >= bounds[1] + bounds[3] - RUNNER_FOOTER_H * scale {
+            break;
+        }
+    }
+    None
+}
+
+impl crate::render::renderer::Renderer {
+    pub fn test_runner_pointer_action_at(
+        &self,
+        bounds: [f32; 4],
+        state: &TestRunnerState,
+        inner_padding: f32,
+        point: (f32, f32),
+    ) -> Option<TestRunnerPointerAction> {
+        let scale = self.ui_scale.max(0.5);
+        test_runner_pointer_action_at(bounds, state, inner_padding, point, scale)
+    }
+
+    /// Build the Test Runner case-list chrome + glyphs for `bounds` (the right
+    /// dock content rect below the tab strip). `show_cursor` lights the edit
+    /// caret (true only while the panel is focused). Returns the buffers so the
+    /// caller can merge them with the tab strip before a single upload.
+    fn build_test_runner_content(
+        &mut self,
+        bounds: [f32; 4],
+        state: &TestRunnerState,
+        inner_padding: f32,
+        _show_cursor: bool,
+        file_label: &str,
+        runtime_label: &str,
+        mode: EditorMode,
+    ) -> (Vec<RegionDrawInstance>, Vec<GlyphInstance>) {
+        if bounds[2] <= 2.0 || bounds[3] <= 2.0 {
+            return (Vec::new(), Vec::new());
+        }
+
+        let scale = self.ui_scale.max(0.5);
+        let pad = inner_padding.max(8.0 * scale);
+        let font = self.theme.ui.panel_font_size.max(11.0);
+        let line_h = self.theme.ui.panel_line_height.max(font + 4.0);
+        let radius = self.panel_corner_radius.max(6.0);
+
+        let fg = self.theme.ui.fg.as_f32();
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let fg_ghost = self.theme.ui.fg_ghost.as_f32();
+        let accent = self.theme.ui.accent.as_f32();
+        let success = self.theme.ui.success.as_f32();
+        let error = self.theme.ui.error.as_f32();
+        let warning = self.theme.ui.warning.as_f32();
+        let info = self.theme.ui.info.as_f32();
+        let selection_bg = self.theme.ui.selection_bg.as_f32();
+        let panel_bg = self.theme.ui.panel_bg.as_f32();
+
+        let status_color = |status: TestStatus| -> [f32; 4] {
+            match status {
+                TestStatus::Passed => success,
+                TestStatus::Failed => error,
+                TestStatus::Error => warning,
+                TestStatus::Running => info,
+                TestStatus::Pending => fg_ghost,
+            }
+        };
+
+        let mut chrome: Vec<RegionDrawInstance> = Vec::new();
+        let mut glyphs: Vec<GlyphInstance> = Vec::new();
+        let x0 = bounds[0] + pad;
+        let header_y = bounds[1] + 9.0 * scale;
+        let run_rect = runner_header_run_rect(bounds, pad, scale);
+
+        let title = if file_label.is_empty() {
+            "No active file"
+        } else {
+            file_label
+        };
+        glyphs.extend(layout_panel_text(
+            title,
+            &mut self.test_runner_text_system,
+            &mut self.atlas,
+            &self.queue,
+            x0,
+            header_y,
+            fg,
+        ));
+        let protocol = if runtime_label.is_empty() {
+            "JSON stdin → JSON stdout".to_string()
+        } else {
+            format!("{runtime_label} · JSON stdin → JSON stdout")
+        };
+        glyphs.extend(layout_panel_text(
+            &protocol,
+            &mut self.test_runner_text_system,
+            &mut self.atlas,
+            &self.queue,
+            x0,
+            header_y + line_h,
+            fg_ghost,
+        ));
+        let mode_label = mode_display_label(mode);
+        let mode_w = estimate_monospace_width(mode_label, font) + 14.0 * scale;
+        let mode_x = (run_rect[0] - mode_w - 8.0 * scale).max(x0);
+        let mode_pill_color = mode_pill_color(mode, &self.theme);
+        chrome.push(
+            RegionDrawInstance::new(
+                [mode_x, run_rect[1], mode_w, run_rect[3]],
+                lerp_color(panel_bg, mode_pill_color, 0.12),
+            )
+            .with_radius(5.0 * scale),
+        );
+        glyphs.extend(layout_panel_text(
+            mode_label,
+            &mut self.test_runner_text_system,
+            &mut self.atlas,
+            &self.queue,
+            mode_x + 7.0 * scale,
+            run_rect[1] + 6.0 * scale,
+            mode_pill_color,
+        ));
+        chrome.push(
+            RegionDrawInstance::new(run_rect, lerp_color(panel_bg, success, 0.24))
+                .with_radius(6.0 * scale),
+        );
+        glyphs.extend(layout_panel_text(
+            if state.is_generating {
+                "󱥸 Generating…"
+            } else if state.is_running {
+                " Running"
+            } else {
+                " Run F5"
+            },
+            &mut self.test_runner_text_system,
+            &mut self.atlas,
+            &self.queue,
+            run_rect[0] + 10.0 * scale,
+            run_rect[1] + 6.0 * scale,
+            success,
+        ));
+
+        let list_bottom = bounds[1] + bounds[3] - RUNNER_FOOTER_H * scale;
+        let mut y = bounds[1] + RUNNER_HEADER_H * scale;
+        for (i, case) in state.cases.iter().enumerate().skip(state.scroll_offset) {
+            let selected = state.selected == Some(i);
+            let show_actual = matches!(case.status, TestStatus::Failed | TestStatus::Error);
+            let card_h = if show_actual {
+                RUNNER_CARD_ERROR_H * scale
+            } else {
+                RUNNER_CARD_H * scale
+            };
+            if y + card_h > list_bottom {
+                break;
+            }
+            let card = runner_card_rect(bounds, pad, y, card_h);
+            chrome.push(
+                RegionDrawInstance::new(
+                    card,
+                    if selected {
+                        selection_bg
+                    } else {
+                        lerp_color(panel_bg, fg, 0.025)
+                    },
+                )
+                .with_radius(radius),
+            );
+            if selected {
+                chrome.push(
+                    RegionDrawInstance::new([card[0], card[1], 2.0, card[3]], accent)
+                        .with_radius(radius),
+                );
+            }
+            let duration = case
+                .duration_ms
+                .map(|ms| format!(" · {ms} ms"))
+                .unwrap_or_default();
+            let head = if case.ai_generated {
+                format!("Case {} · AI", i + 1)
+            } else {
+                format!("Case {}", i + 1)
+            };
+            glyphs.extend(layout_panel_text(
+                &head,
+                &mut self.test_runner_text_system,
+                &mut self.atlas,
+                &self.queue,
+                card[0] + 10.0 * scale,
+                card[1] + 8.0 * scale,
+                if selected { fg } else { fg_dim },
+            ));
+            let status = format!("{}{}", case.status.label(), duration);
+            let status_w = estimate_monospace_width(&status, font);
+            glyphs.extend(layout_panel_text(
+                &status,
+                &mut self.test_runner_text_system,
+                &mut self.atlas,
+                &self.queue,
+                card[0] + card[2] - 10.0 * scale - status_w,
+                card[1] + 8.0 * scale,
+                status_color(case.status),
+            ));
+            for field in [TestField::Input, TestField::Expected] {
+                let expected_field = field == TestField::Expected;
+                let rect = runner_field_rect(card, expected_field, scale);
+                let (label, value) = match field {
+                    TestField::Input => ("INPUT JSON", &case.input),
+                    TestField::Expected => ("EXPECTED JSON", &case.expected),
+                };
+                chrome.push(
+                    RegionDrawInstance::new(rect, lerp_color(panel_bg, fg, 0.06))
+                        .with_radius(5.0 * scale),
+                );
+                glyphs.extend(layout_panel_text(
+                    label,
+                    &mut self.test_runner_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    rect[0] + 7.0 * scale,
+                    rect[1] + 4.0 * scale,
+                    fg_ghost,
+                ));
+                let max_chars = ((rect[2] - 14.0 * scale)
+                    / estimate_monospace_width("0", font).max(1.0))
+                    as usize;
+                let preview = json_preview(value, max_chars);
+                glyphs.extend(layout_panel_text(
+                    &preview,
+                    &mut self.test_runner_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    rect[0] + 7.0 * scale,
+                    rect[1] + line_h + 2.0 * scale,
+                    fg,
+                ));
+            }
+            if show_actual {
+                let actual = case.actual.as_deref().unwrap_or("");
+                let raw = if matches!(case.status, TestStatus::Error) {
+                    summarize_error(case.stderr.as_deref(), actual)
+                } else {
+                    case.stderr.clone().unwrap_or_else(|| actual.to_string())
+                };
+                let shown = clip_chars(&flatten_value(&raw), 60);
+                glyphs.extend(layout_panel_text(
+                    &format!("ACTUAL / ERROR  {shown}"),
+                    &mut self.test_runner_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    card[0] + 10.0 * scale,
+                    card[1] + card[3] - line_h - 7.0 * scale,
+                    if matches!(case.status, TestStatus::Error) {
+                        warning
+                    } else {
+                        error
+                    },
+                ));
+            }
+            y += card_h + RUNNER_CARD_GAP * scale;
+        }
+
+        let add_rect = runner_add_rect(bounds, pad, scale);
+        chrome.push(
+            RegionDrawInstance::new(add_rect, lerp_color(panel_bg, accent, 0.08))
+                .with_radius(6.0 * scale),
+        );
+        glyphs.extend(layout_panel_text(
+            "+ Add A   ·   X del   ·   G gen   ·   click to edit",
+            &mut self.test_runner_text_system,
+            &mut self.atlas,
+            &self.queue,
+            add_rect[0] + 12.0 * scale,
+            add_rect[1] + 6.0 * scale,
+            accent,
+        ));
+
+        (chrome, glyphs)
+    }
+
+    /// Render the right-dock tab strip plus (when the Test Runner tab is active)
+    /// the case list, into the shared Test Runner surface in one upload. Drawn
+    /// every frame the right dock is visible, regardless of the active tab —
+    /// when AI Chat/Inspector/… is active the Test Runner pipeline is otherwise
+    /// idle, so it doubles as the strip surface. `content` is `Some` only for
+    /// the Test Runner tab.
+    #[allow(clippy::type_complexity)]
+    pub fn update_right_dock_panel(
+        &mut self,
+        rb: [f32; 4],
+        labels: &[&str],
+        icons: &[Option<&'static str>],
+        active: usize,
+        strip_h: f32,
+        strip_focused: bool,
+        content: Option<(&TestRunnerState, f32, bool, &str, &str)>,
+        outline: Option<(
+            &[crate::async_runtime::message::LspDocumentSymbol],
+            Option<usize>,
+            f32,
+        )>,
+        agent_picker: Option<(&[(&str, &str)], usize, bool)>,
+        mode: EditorMode,
+    ) {
+        if rb[2] <= 2.0 || rb[3] <= 2.0 {
+            self.clear_test_runner();
+            return;
+        }
+
+        // Inset the strip + content so the panel's focus-ring outline stays
+        // visible around them (mirrors the bottom dock's tab-bar outline inset),
+        // instead of the strip painting over the panel's top/side border.
+        let inset = crate::workbench::layout_engine::RIGHT_DOCK_OUTLINE_INSET
+            .min(rb[2] * 0.5)
+            .min(rb[3] * 0.5)
+            .max(0.0);
+        let ix = rb[0] + inset;
+        let iy = rb[1] + inset;
+        let iw = (rb[2] - inset * 2.0).max(0.0);
+        let ih = (rb[3] - inset * 2.0).max(0.0);
+        let strip_h = strip_h.min(ih).max(0.0);
+        let (mut chrome, mut glyphs) =
+            self.build_right_tab_strip([ix, iy, iw, strip_h], labels, icons, active, strip_focused);
+        let mut content_icons = Vec::new();
+        // Content sits BELOW the strip band; the strip is appended first so it
+        // never overlaps content, and the strip's own band is reserved by layout
+        // — keeping the strip visually on top of the dock content.
+        let content_bounds = [ix, iy + strip_h, iw, (ih - strip_h).max(0.0)];
+
+        if let Some((state, inner_padding, show_cursor, file_label, runtime_label)) = content {
+            let (cc, cg) = self.build_test_runner_content(
+                content_bounds,
+                state,
+                inner_padding,
+                show_cursor,
+                file_label,
+                runtime_label,
+                mode,
+            );
+            chrome.extend(cc);
+            glyphs.extend(cg);
+        } else if let Some((symbols, selected, inner_padding)) = outline {
+            let (cc, cg, ci) =
+                self.build_outline_content(content_bounds, symbols, selected, inner_padding);
+            chrome.extend(cc);
+            glyphs.extend(cg);
+            content_icons.extend(ci);
+        } else if let Some((agents, selected, focused)) = agent_picker {
+            let (cc, cg) = self.build_ai_agent_picker(content_bounds, agents, selected, focused);
+            chrome.extend(cc);
+            glyphs.extend(cg);
+        }
+
+        self.test_runner_scissor = rect_to_scissor([ix, iy, iw, ih]);
+        self.test_runner_chrome_instances = chrome;
+        self.test_runner_glyph_instances = glyphs;
+        self.test_runner_icon_instances = content_icons;
+        self.test_runner_icon_pipeline.upload_instances(
+            &self.device,
+            &self.test_runner_icon_instances,
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
+        );
+        self.test_runner_text_pipeline.upload_instances(
+            &self.device,
+            &self.queue,
+            &self.test_runner_glyph_instances,
+        );
+    }
+
+    /// Build the right-dock tab strip: equal-width chips, active tab highlighted
+    /// with an accent underline. Geometry mirrors `right_dock_tab_index_at`.
+    fn build_right_tab_strip(
+        &mut self,
+        bounds: [f32; 4],
+        labels: &[&str],
+        icons: &[Option<&'static str>],
+        active: usize,
+        focused: bool,
+    ) -> (Vec<RegionDrawInstance>, Vec<GlyphInstance>) {
+        let mut chrome: Vec<RegionDrawInstance> = Vec::new();
+        let mut glyphs: Vec<GlyphInstance> = Vec::new();
+        if labels.is_empty() || bounds[2] <= 1.0 || bounds[3] <= 1.0 {
+            return (chrome, glyphs);
+        }
+
+        // Sizing mirrors the bottom-dock terminal tab bar: slightly larger font,
+        // distinct active-tab fill, a top accent border, vertical-centered text
+        // and a left label inset so the tabs don't look cramped.
+        let font = (self.theme.ui.panel_font_size + 2.0).max(11.0);
+        let line_h = self.theme.ui.panel_line_height.max(font + 4.0);
+        let fg = self.theme.ui.fg.as_f32();
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let accent = self.theme.ui.accent.as_f32();
+        let panel_bg = self.theme.ui.panel_bg.as_f32();
+        let border = self.theme.ui.border_color.as_f32();
+        let active_bg = lerp_color(panel_bg, fg, 0.06);
+        let inactive_bg = lerp_color(panel_bg, fg, 0.015);
+        const TOP_BORDER: f32 = 3.0;
+        // Round ONLY the strip's two top corners so they follow the panel's
+        // rounded focus-ring outline (top-left under the first tab, top-right
+        // under the last). The strip sits one outline-inset inside the ring, so
+        // subtract that inset so the curve nests just within it instead of poking
+        // out. The bottom stays square (flush with the content below).
+        let inset = crate::workbench::layout_engine::RIGHT_DOCK_OUTLINE_INSET;
+        let radius = (self.panel_corner_radius - inset)
+            .min(bounds[3])
+            .min(bounds[2] * 0.5)
+            .max(0.0);
+
+        // Strip background — top corners only ([TL, TR, BR, BL]).
+        chrome.push(
+            RegionDrawInstance::new(bounds, inactive_bg)
+                .with_corner_radii([radius, radius, 0.0, 0.0]),
+        );
+
+        let n = labels.len();
+        let tab_w = bounds[2] / n as f32;
+        let text_y = bounds[1] + ((bounds[3] - line_h) * 0.5).max(0.0);
+        let char_w = estimate_monospace_width("0", font).max(1.0);
+        for (i, label) in labels.iter().enumerate() {
+            let tab_x = bounds[0] + i as f32 * tab_w;
+            let is_active = i == active;
+            // Only the outer corner of the first/last tab is rounded; the inner
+            // edge and every interior tab stay square so the curve appears solely
+            // at the panel's outer corners.
+            let is_first = i == 0;
+            let is_last = i + 1 == n;
+            let tab_corners = [
+                if is_first { radius } else { 0.0 }, // top-left
+                if is_last { radius } else { 0.0 },  // top-right
+                0.0,
+                0.0,
+            ];
+            if is_active {
+                chrome.push(
+                    RegionDrawInstance::new([tab_x, bounds[1], tab_w, bounds[3]], active_bg)
+                        .with_corner_radii(tab_corners),
+                );
+                // Top accent border (like the bottom dock's active tab). Inset it
+                // on the outer side of the first/last tab so it never overruns the
+                // rounded corner into the panel outline.
+                let bar_col = if focused { accent } else { fg_dim };
+                let bar_x = if is_first { tab_x + radius } else { tab_x };
+                let mut bar_w = tab_w;
+                if is_first {
+                    bar_w -= radius;
+                }
+                if is_last {
+                    bar_w -= radius;
+                }
+                chrome.push(
+                    RegionDrawInstance::new(
+                        [bar_x, bounds[1], bar_w.max(0.0), TOP_BORDER],
+                        bar_col,
+                    )
+                    .with_corner_radii([
+                        if is_first { radius } else { 0.0 },
+                        if is_last { radius } else { 0.0 },
+                        0.0,
+                        0.0,
+                    ]),
+                );
+            }
+            // Thin separator between tabs.
+            if i + 1 < n {
+                let mut sep = border;
+                sep[3] *= 0.5;
+                chrome.push(RegionDrawInstance::new(
+                    [
+                        tab_x + tab_w - 0.5,
+                        bounds[1] + 6.0,
+                        1.0,
+                        (bounds[3] - 12.0).max(0.0),
+                    ],
+                    sep,
+                ));
+            }
+            let label_color = if is_active { fg } else { fg_dim };
+            // Build display string with optional nerd-font icon prefix.
+            let icon = icons.get(i).and_then(|id| *id);
+            let display = match icon {
+                Some(glyph) => format!("{glyph} {label}"),
+                None => label.to_string(),
+            };
+            // Center the text horizontally within the tab.
+            let text_w = estimate_monospace_width(&display, font);
+            let text_x = tab_x + ((tab_w - text_w) * 0.5).max(4.0);
+            let max_chars = ((tab_w - (text_x - tab_x) - 4.0) / char_w).max(1.0) as usize;
+            let shown = clip_chars(&display, max_chars.max(1));
+            glyphs.extend(layout_panel_text(
+                &shown,
+                &mut self.test_runner_text_system,
+                &mut self.atlas,
+                &self.queue,
+                text_x,
+                text_y,
+                label_color,
+            ));
+        }
+
+        // Bottom divider between the strip and the content below.
+        chrome.push(RegionDrawInstance::new(
+            [bounds[0], bounds[1] + bounds[3] - 1.0, bounds[2], 1.0],
+            border,
+        ));
+        (chrome, glyphs)
+    }
+
+    /// Hit-test a point against the right-dock tab strip. Returns the tab index
+    /// under `pos`, or `None`. `strip_bounds` is `[x, y, w, strip_h]`.
+    pub fn right_dock_tab_index_at(
+        &self,
+        tab_count: usize,
+        strip_bounds: [f32; 4],
+        pos: (f32, f32),
+    ) -> Option<usize> {
+        if tab_count == 0 {
+            return None;
+        }
+        let (px, py) = pos;
+        if px < strip_bounds[0]
+            || px >= strip_bounds[0] + strip_bounds[2]
+            || py < strip_bounds[1]
+            || py >= strip_bounds[1] + strip_bounds[3]
+        {
+            return None;
+        }
+        let tab_w = strip_bounds[2] / tab_count as f32;
+        if tab_w <= 0.0 {
+            return None;
+        }
+        let idx = ((px - strip_bounds[0]) / tab_w) as usize;
+        Some(idx.min(tab_count - 1))
+    }
+
+    /// Build the in-panel AI-agent picker: a header + a vertical list of agents
+    /// (label + command), with the selected row highlighted. `agents` is
+    /// `[(label, command)]`.
+    fn build_ai_agent_picker(
+        &mut self,
+        bounds: [f32; 4],
+        agents: &[(&str, &str)],
+        selected: usize,
+        focused: bool,
+    ) -> (Vec<RegionDrawInstance>, Vec<GlyphInstance>) {
+        let mut chrome: Vec<RegionDrawInstance> = Vec::new();
+        let mut glyphs: Vec<GlyphInstance> = Vec::new();
+        if bounds[2] <= 2.0 || bounds[3] <= 2.0 {
+            return (chrome, glyphs);
+        }
+
+        let scale = self.ui_scale.max(0.5);
+        let pad = 12.0 * scale;
+        let font = self.theme.ui.panel_font_size.max(11.0);
+        let line_h = self.theme.ui.panel_line_height.max(font + 4.0);
+        let fg = self.theme.ui.fg.as_f32();
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let fg_ghost = self.theme.ui.fg_ghost.as_f32();
+        let accent = self.theme.ui.accent.as_f32();
+        let selection_bg = self.theme.ui.selection_bg.as_f32();
+
+        let x0 = bounds[0] + pad;
+        let bottom = bounds[1] + bounds[3];
+        let mut y = bounds[1] + pad;
+
+        // Header.
+        glyphs.extend(layout_panel_text(
+            "Start an AI agent   ↑↓/j k · Enter",
+            &mut self.test_runner_text_system,
+            &mut self.atlas,
+            &self.queue,
+            x0,
+            y,
+            fg_ghost,
+        ));
+        y += line_h + 6.0 * scale;
+
+        let row_h = line_h + 10.0 * scale;
+        let char_w = estimate_monospace_width("0", font).max(1.0);
+        for (i, (label, command)) in agents.iter().enumerate() {
+            if y + row_h > bottom + 1.0 {
+                break;
+            }
+            let is_sel = i == selected;
+            if is_sel {
+                chrome.push(RegionDrawInstance::new(
+                    [bounds[0] + pad * 0.5, y, (bounds[2] - pad).max(0.0), row_h],
+                    selection_bg,
+                ));
+                // Accent bar on the selected row.
+                chrome.push(RegionDrawInstance::new(
+                    [bounds[0] + pad * 0.5, y, 2.0, row_h],
+                    if focused { accent } else { fg_dim },
+                ));
+            }
+            let row_text_y = y + (row_h - line_h) * 0.5;
+            let label_color = if is_sel { fg } else { fg_dim };
+            glyphs.extend(layout_panel_text(
+                label,
+                &mut self.test_runner_text_system,
+                &mut self.atlas,
+                &self.queue,
+                x0,
+                row_text_y,
+                label_color,
+            ));
+            // Dim command to the right of the label.
+            let cmd_text = format!("$ {command}");
+            let cmd_w = estimate_monospace_width(&cmd_text, font);
+            let label_w = estimate_monospace_width(label, font);
+            let cmd_x = bounds[0] + bounds[2] - pad - cmd_w;
+            if cmd_x > x0 + label_w + char_w * 2.0 {
+                glyphs.extend(layout_panel_text(
+                    &cmd_text,
+                    &mut self.test_runner_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    cmd_x,
+                    row_text_y,
+                    fg_ghost,
+                ));
+            }
+            y += row_h;
+        }
+
+        (chrome, glyphs)
+    }
+
+    /// Build the Outline panel: a flat, indented list of the active file's LSP
+    /// document symbols. Each row = kind icon + name + right-aligned line number;
+    /// the symbol containing the cursor is highlighted. Rows past the bottom are
+    /// clipped (no scroll yet).
+    fn build_outline_content(
+        &mut self,
+        bounds: [f32; 4],
+        symbols: &[crate::async_runtime::message::LspDocumentSymbol],
+        selected: Option<usize>,
+        inner_padding: f32,
+    ) -> (
+        Vec<RegionDrawInstance>,
+        Vec<GlyphInstance>,
+        Vec<IconDrawInstance>,
+    ) {
+        let mut chrome: Vec<RegionDrawInstance> = Vec::new();
+        let mut glyphs: Vec<GlyphInstance> = Vec::new();
+        let mut icons: Vec<IconDrawInstance> = Vec::new();
+        if bounds[2] <= 2.0 || bounds[3] <= 2.0 {
+            return (chrome, glyphs, icons);
+        }
+
+        let scale = self.ui_scale.max(0.5);
+        let pad = inner_padding.max(8.0 * scale);
+        let font = self.theme.ui.panel_font_size.max(11.0);
+        let line_h = self.theme.ui.panel_line_height.max(font + 4.0);
+        let fg = self.theme.ui.fg.as_f32();
+        let fg_dim = self.theme.ui.fg_dim.as_f32();
+        let fg_ghost = self.theme.ui.fg_ghost.as_f32();
+        let selection_bg = self.theme.ui.selection_bg.as_f32();
+
+        let x0 = bounds[0] + pad;
+        let bottom = bounds[1] + bounds[3];
+        let mut y = bounds[1] + pad * 0.5;
+
+        if symbols.is_empty() {
+            glyphs.extend(layout_panel_text(
+                "No symbols — open a file with a language server.",
+                &mut self.test_runner_text_system,
+                &mut self.atlas,
+                &self.queue,
+                x0,
+                y,
+                fg_ghost,
+            ));
+            return (chrome, glyphs, icons);
+        }
+
+        let char_w = estimate_monospace_width("0", font).max(1.0);
+        let indent_w = char_w * 2.0;
+        for (i, sym) in symbols.iter().enumerate() {
+            if y + line_h > bottom + 1.0 {
+                break;
+            }
+            let depth = sym.ancestors.len() as f32;
+            let row_x = x0 + depth * indent_w;
+
+            if Some(i) == selected {
+                chrome.push(RegionDrawInstance::new(
+                    [bounds[0], y - 1.0, bounds[2], line_h],
+                    selection_bg,
+                ));
+            }
+
+            // Right-aligned dim line number, reserved first so the name clips
+            // before overlapping it.
+            let line_no = (sym.range.start.line + 1).to_string();
+            let num_w = estimate_monospace_width(&line_no, font);
+            let num_x = bounds[0] + bounds[2] - pad - num_w;
+            glyphs.extend(layout_panel_text(
+                &line_no,
+                &mut self.test_runner_text_system,
+                &mut self.atlas,
+                &self.queue,
+                num_x,
+                y,
+                fg_ghost,
+            ));
+
+            let icon_color = outline_kind_color(
+                &sym.kind,
+                self.theme.ui.info.as_f32(),
+                self.theme.ui.warning.as_f32(),
+                self.theme.ui.success.as_f32(),
+                fg_dim,
+            );
+            let icon_size = line_h.min(18.0 * scale).max(12.0);
+            if let Some(icon) = outline_symbol_icon_id(&sym.kind) {
+                icons.push(IconDrawInstance {
+                    icon,
+                    rect: [row_x, y + (line_h - icon_size) * 0.5, icon_size, icon_size],
+                    tint: icon_color,
+                });
+            }
+
+            let name_x = row_x + icon_size + char_w;
+            let avail = (num_x - name_x - char_w).max(0.0);
+            let max_chars = (avail / char_w) as usize;
+            let name = clip_chars(&sym.name, max_chars.max(1));
+            let name_color = if Some(i) == selected { fg } else { fg_dim };
+            glyphs.extend(layout_panel_text(
+                &name,
+                &mut self.test_runner_text_system,
+                &mut self.atlas,
+                &self.queue,
+                name_x,
+                y,
+                name_color,
+            ));
+
+            y += line_h;
+        }
+
+        (chrome, glyphs, icons)
+    }
+
+    /// Hit-test a point against the Outline list. Returns the symbol index under
+    /// `pos`, or `None`. Geometry mirrors `build_outline_content`.
+    pub fn outline_row_at(
+        &self,
+        content_bounds: [f32; 4],
+        count: usize,
+        inner_padding: f32,
+        pos: (f32, f32),
+    ) -> Option<usize> {
+        if count == 0 {
+            return None;
+        }
+        let scale = self.ui_scale.max(0.5);
+        let pad = inner_padding.max(8.0 * scale);
+        let font = self.theme.ui.panel_font_size.max(11.0);
+        let line_h = self.theme.ui.panel_line_height.max(font + 4.0);
+        let (px, py) = pos;
+        if px < content_bounds[0] || px >= content_bounds[0] + content_bounds[2] {
+            return None;
+        }
+        let y0 = content_bounds[1] + pad * 0.5;
+        if py < y0 {
+            return None;
+        }
+        let idx = ((py - y0) / line_h) as usize;
+        if idx >= count {
+            return None;
+        }
+        // A row clipped below the panel bottom isn't clickable.
+        let row_bottom = y0 + (idx as f32 + 1.0) * line_h;
+        if row_bottom > content_bounds[1] + content_bounds[3] + 1.0 {
+            return None;
+        }
+        Some(idx)
+    }
+
+    /// Drop the Test Runner buffers (called each frame the tab is not active).
+    pub fn clear_test_runner(&mut self) {
+        if self.test_runner_scissor.is_none()
+            && self.test_runner_chrome_instances.is_empty()
+            && self.test_runner_glyph_instances.is_empty()
+            && self.test_runner_icon_instances.is_empty()
+        {
+            return;
+        }
+        self.test_runner_scissor = None;
+        self.test_runner_chrome_instances.clear();
+        self.test_runner_glyph_instances.clear();
+        self.test_runner_icon_instances.clear();
+        self.test_runner_icon_pipeline.upload_instances(
+            &self.device,
+            &[],
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
+        );
+        self.test_runner_text_pipeline
+            .upload_instances(&self.device, &self.queue, &[]);
+    }
+}
+
+/// Replace newlines with a visible return glyph so a multiline value renders on
+/// a single row. One char in → one char out, so caret char-indexing is stable.
+fn flatten_value(value: &str) -> String {
+    value.replace('\n', "⏎")
+}
+
+fn json_preview(value: &str, max_chars: usize) -> String {
+    let compact = serde_json::from_str::<serde_json::Value>(value)
+        .and_then(|json| serde_json::to_string(&json))
+        .unwrap_or_else(|_| flatten_value(value));
+    clip_chars(&compact, max_chars)
+}
+
+fn outline_symbol_icon_id(kind: &str) -> Option<&'static str> {
+    canonical_icon_id(crate::app::command_palette::symbol_icon(kind))
+}
+
+/// Color an Outline kind icon by category (mirrors the symbol-picker tones).
+fn outline_kind_color(
+    kind: &str,
+    function: [f32; 4],
+    type_: [f32; 4],
+    variable: [f32; 4],
+    default: [f32; 4],
+) -> [f32; 4] {
+    match kind {
+        "Function" | "Method" | "Constructor" => function,
+        "Class" | "Struct" | "Interface" | "Enum" | "TypeParameter" => type_,
+        "Variable" | "Constant" | "Field" | "Property" | "EnumMember" => variable,
+        _ => default,
+    }
+}
+
+/// Truncate `s` to at most `max` chars, appending `…` when it overflows.
+fn clip_chars(s: &str, max: usize) -> String {
+    if max == 0 {
+        return String::new();
+    }
+    let count = s.chars().count();
+    if count <= max {
+        return s.to_string();
+    }
+    let keep = max.saturating_sub(1).max(1);
+    let mut out: String = s.chars().take(keep).collect();
+    out.push('…');
+    out
+}
+
+/// Distill a one-line summary from a program's stderr. Prefers the first line
+/// that names an error/exception (the useful part of a stack trace); falls back
+/// to the first non-empty line, then to captured stdout. Newlines flattened.
+fn summarize_error(stderr: Option<&str>, actual: &str) -> String {
+    let text = stderr.unwrap_or("").trim();
+    if !text.is_empty() {
+        let pick = text
+            .lines()
+            .map(str::trim)
+            .find(|l| {
+                let lower = l.to_ascii_lowercase();
+                lower.contains("error") || lower.contains("exception") || lower.contains("panic")
+            })
+            .or_else(|| text.lines().map(str::trim).find(|l| !l.is_empty()))
+            .unwrap_or(text);
+        return flatten_value(pick);
+    }
+    flatten_value(actual)
+}
+
+/// Linear blend of two RGBA colors by factor `t` (0 = a, 1 = b). Alpha is kept
+/// from `a` so a subtle tint over a solid panel stays opaque.
+fn lerp_color(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+        a[3],
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TestRunnerPointerAction, outline_symbol_icon_id, test_runner_pointer_action_at};
+    use crate::runner::TestRunnerState;
+
+    #[test]
+    fn outline_uses_document_symbol_svg_icons() {
+        assert_eq!(
+            outline_symbol_icon_id("Function"),
+            Some("built_in:symbol-function")
+        );
+        assert_eq!(
+            outline_symbol_icon_id("Method"),
+            Some("built_in:symbol-method")
+        );
+        assert_eq!(
+            outline_symbol_icon_id("Struct"),
+            Some("built_in:symbol-struct")
+        );
+        assert_eq!(
+            outline_symbol_icon_id("Field"),
+            Some("built_in:symbol-field")
+        );
+    }
+
+    #[test]
+    fn case_card_pointer_hit_test_finds_actions_and_fields() {
+        let mut state = TestRunnerState::new();
+        state.add_case("{}", "null");
+        let bounds = [0.0, 0.0, 320.0, 600.0];
+
+        assert_eq!(
+            test_runner_pointer_action_at(bounds, &state, 12.0, (275.0, 26.0), 1.0),
+            Some(TestRunnerPointerAction::Run)
+        );
+        assert_eq!(
+            test_runner_pointer_action_at(bounds, &state, 12.0, (80.0, 115.0), 1.0),
+            Some(TestRunnerPointerAction::OpenField {
+                case_index: 0,
+                expected: false,
+            })
+        );
+        assert_eq!(
+            test_runner_pointer_action_at(bounds, &state, 12.0, (80.0, 176.0), 1.0),
+            Some(TestRunnerPointerAction::OpenField {
+                case_index: 0,
+                expected: true,
+            })
+        );
+        assert_eq!(
+            test_runner_pointer_action_at(bounds, &state, 12.0, (160.0, 580.0), 1.0),
+            Some(TestRunnerPointerAction::AddCase)
+        );
+    }
+}

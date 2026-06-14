@@ -254,6 +254,25 @@ impl AppShell {
         command: Command,
         repeat_count: usize,
     ) -> bool {
+        let test_edit_before = self.app_state.test_field_edit.is_some();
+        let res = self.handle_command_with_count_impl(command, repeat_count);
+        let test_edit_after = self.app_state.test_field_edit.is_some();
+        if test_edit_before && !test_edit_after {
+            self.panel_state.right.visible = true;
+            self.panel_state
+                .right
+                .switch_to_tab(crate::workbench::panel_state::PanelTabId::TestRunner);
+            self.focus_manager.set(FocusTarget::RightSidebar);
+        }
+        if self.focus_manager.current() != FocusTarget::RightSidebar
+            || self.panel_state.right.active_tab_id() != Some(PanelTabId::Outline)
+        {
+            self.outline_selected = None;
+        }
+        res
+    }
+
+    fn handle_command_with_count_impl(&mut self, command: Command, repeat_count: usize) -> bool {
         if matches!(command, Command::NewInstance) {
             return self.spawn_new_instance();
         }
@@ -282,9 +301,9 @@ impl AppShell {
                         self.app_state
                             .retain_inline_suggestion_for_typed_text(ch.encode_utf8(&mut buf))
                     }
-                    Command::InsertText(text) => self
-                        .app_state
-                        .retain_inline_suggestion_for_typed_text(text),
+                    Command::InsertText(text) => {
+                        self.app_state.retain_inline_suggestion_for_typed_text(text)
+                    }
                     _ => false,
                 };
             if retained {

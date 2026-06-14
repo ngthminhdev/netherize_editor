@@ -2220,6 +2220,7 @@ dependencies = [
  "ignore",
  "image",
  "lsp-types",
+ "naga",
  "notify",
  "once_cell",
  "pollster 0.4.0",

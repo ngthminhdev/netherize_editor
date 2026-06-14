@@ -2066,4 +2066,45 @@ mod tests {
 
         let _ = fs::remove_dir_all(temp_dir);
     }
+
+    #[test]
+    fn leetcode_cases_load_and_persist_via_file_header() {
+        use crate::runner::leetcode_cache::{
+            CachedCase, LeetCodeProblemCache, build_header, load_cache_in, save_cache_in,
+        };
+        let dir = unique_temp_path("leetcode_cache_glue");
+        save_cache_in(
+            &dir,
+            &LeetCodeProblemCache {
+                id: "1".into(),
+                slug: "two-sum".into(),
+                title: "Two Sum".into(),
+                statement: String::new(),
+                function_name: "twoSum".into(),
+                parameters: Vec::new(),
+                cases: vec![CachedCase {
+                    input: r#"{"nums":[2,7],"target":9}"#.into(),
+                    expected: "[0,1]".into(),
+                }],
+            },
+        )
+        .expect("seed cache");
+
+        let header = build_header("javascript", "1", "two-sum", "Two Sum");
+        let mut state = AppState::from_text(
+            unique_temp_path("solution.js"),
+            &format!("{header}function solve() {{}}\n"),
+        );
+
+        assert!(state.load_leetcode_cases_from(&dir));
+        assert_eq!(state.test_runner.cases.len(), 1);
+        assert_eq!(state.test_runner.cases[0].expected, "[0,1]");
+
+        state.test_runner.add_case("{}", "null");
+        state.persist_leetcode_cases_to(&dir);
+        let reloaded = load_cache_in(&dir, "1").expect("reload cache");
+        assert_eq!(reloaded.cases.len(), 2);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

@@ -56,6 +56,9 @@ pub enum RequestTopic {
     SystemTask,
     /// File system operations (copy, move, etc).
     FileOperation,
+    /// Run-and-compare test execution (LeetCode/interview runner).
+    TestRunner,
+    LeetCode,
 }
 
 /// Which search mode the fzf worker is running.
@@ -439,6 +442,38 @@ pub enum WorkerRequestPayload {
         language_id: String,
         workspace_root: PathBuf,
     },
+    /// Run the active source file against a batch of test-case inputs. The same
+    /// `program`+`args` is invoked once per input (stdin), and stdout/stderr is
+    /// captured per case. Comparison with expected output happens on the main
+    /// thread (kept out of the worker so the judge stays single-sourced).
+    RunTestCases {
+        /// Optional one-time compile step (compiled languages like Rust). Run
+        /// once before any case; on failure every case becomes an Error.
+        compile: Option<crate::runner::CompileStep>,
+        program: String,
+        /// Full argument vector (leading args + source file path), or just the
+        /// compiled binary path for compiled languages.
+        args: Vec<String>,
+        working_dir: Option<PathBuf>,
+        /// stdin text for each case, index-aligned with the authored cases.
+        inputs: Vec<String>,
+        /// Per-case wall-clock kill deadline in milliseconds.
+        timeout_ms: u64,
+        /// Human-readable command preview echoed back for display.
+        command_preview: String,
+    },
+    FetchLeetCodeProblem {
+        input: String,
+        language_key: String,
+        destination_dir: PathBuf,
+        use_ai: bool,
+        provider: Option<crate::config::ai_config::AiProviderConfig>,
+    },
+    GenerateLeetCodeTests {
+        cache: crate::runner::leetcode_cache::LeetCodeProblemCache,
+        language_key: String,
+        provider: crate::config::ai_config::AiProviderConfig,
+    },
 }
 
 /// Loại location từ LSP — dùng cho definition và references.
@@ -579,6 +614,23 @@ pub enum WorkerResultPayload {
         byte_count: usize,
         parse_time_ms: u128,
         highlight_time_ms: u128,
+    },
+    LeetCodeProblemFetched {
+        title: String,
+        title_slug: String,
+        language_key: String,
+        file_path: PathBuf,
+        cases: Vec<crate::runner::leetcode_api::LeetCodeTestCase>,
+    },
+    LeetCodeProblemFetchFailed {
+        message: String,
+    },
+    LeetCodeTestsGenerated {
+        id: String,
+        cases: Vec<crate::runner::leetcode_api::LeetCodeTestCase>,
+    },
+    LeetCodeTestsGenerateFailed {
+        message: String,
     },
     ParseSummary {
         file_path: PathBuf,
@@ -813,6 +865,13 @@ pub enum WorkerResultPayload {
     WorkspaceSymbols {
         language_id: String,
         symbols: Vec<crate::lsp::CachedSymbol>,
+    },
+    /// All test cases finished running. `outcomes` is index-aligned with the
+    /// submitted `inputs`; the main thread folds each into its `TestCase` and
+    /// judges pass/fail.
+    TestCasesCompleted {
+        command_preview: String,
+        outcomes: Vec<crate::runner::TestCaseOutcome>,
     },
 }
 

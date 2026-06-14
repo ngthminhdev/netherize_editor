@@ -13,6 +13,7 @@ mod helpers;
 mod lifecycle;
 mod palette;
 mod ui;
+pub(crate) use ui::test_runner::TestRunnerPointerAction;
 
 use std::path::PathBuf;
 
@@ -355,6 +356,15 @@ pub struct Renderer {
     pub(super) whichkey_glyph_instances: Vec<GlyphInstance>,
     pub(super) whichkey_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) whichkey_scissor: Option<[u32; 4]>,
+
+    // ── Test Runner (BottomPanel) ──────────────────────────────────────────
+    pub(super) test_runner_text_system: TextSystem,
+    pub(super) test_runner_text_pipeline: TextPipeline,
+    pub(super) test_runner_glyph_instances: Vec<GlyphInstance>,
+    pub(super) test_runner_icon_pipeline: IconPipeline,
+    pub(super) test_runner_icon_instances: Vec<IconDrawInstance>,
+    pub(super) test_runner_chrome_instances: Vec<RegionDrawInstance>,
+    pub(super) test_runner_scissor: Option<[u32; 4]>,
 
     // ── AI Chat (RightSidebar) ─────────────────────────────────────────────
     pub(super) ai_chat_text_system: TextSystem,

@@ -51,6 +51,30 @@ impl AppState {
             .open_with_items(CommandPaletteMode::PythonEnvSelector, items);
     }
 
+    /// Open the LeetCode language picker (empty). The shell repopulates it
+    /// with MRU-sorted language items via [`Self::open_leetcode_language_selector_with_items`].
+    pub fn open_leetcode_language_selector(&mut self) -> bool {
+        let workspace = self.workspace_model.as_ref();
+        self.command_palette
+            .open(CommandPaletteMode::LeetCodeLanguageSelector, workspace)
+            > 0
+    }
+
+    pub fn open_leetcode_problem_input(&mut self) -> bool {
+        let workspace = self.workspace_model.as_ref();
+        self.command_palette
+            .open(CommandPaletteMode::LeetCodeProblemInput, workspace)
+            > 0
+    }
+
+    pub fn open_leetcode_language_selector_with_items(
+        &mut self,
+        items: Vec<crate::app::command_palette::CommandPaletteItem>,
+    ) {
+        self.command_palette
+            .open_with_items(CommandPaletteMode::LeetCodeLanguageSelector, items);
+    }
+
     pub fn open_dart_env_selector(&mut self) -> bool {
         let workspace = self.workspace_model.as_ref();
         self.command_palette
@@ -661,7 +685,10 @@ impl AppState {
     ) -> bool {
         let normalized = path.canonicalize().unwrap_or(path);
 
-        let per_server = self.diagnostics_by_server.entry(normalized.clone()).or_default();
+        let per_server = self
+            .diagnostics_by_server
+            .entry(normalized.clone())
+            .or_default();
         let previous = per_server.get(&server_name);
         if previous.map(Vec::as_slice) == Some(diagnostics.as_slice()) {
             return false; // No change from this server.
@@ -677,8 +704,7 @@ impl AppState {
             self.diagnostics_by_server.remove(&normalized);
             self.diagnostics.remove(&normalized);
         } else {
-            let mut merged: Vec<LspDiagnostic> =
-                per_server.values().flatten().cloned().collect();
+            let mut merged: Vec<LspDiagnostic> = per_server.values().flatten().cloned().collect();
             merged.sort_by_key(|d| (d.range.start.line, d.range.start.character));
             self.diagnostics.insert(normalized, merged);
         }

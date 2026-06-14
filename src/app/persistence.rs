@@ -19,6 +19,13 @@ pub struct AppPersistentState {
     /// True after the one-time first-run key-hint toast was shown.
     #[serde(default)]
     pub first_run_tour_shown: bool,
+    /// Language keys for the "New LeetCode File" picker, most-recently-used
+    /// first. Lets the picker surface the language you reached for last.
+    #[serde(default)]
+    pub recent_leetcode_languages: Vec<String>,
+    /// Agent ids for the AI Chat agent picker, most-recently-used first.
+    #[serde(default)]
+    pub recent_ai_agents: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -109,6 +116,26 @@ impl AppPersistentState {
         );
     }
 
+    /// Record `language_key` as the most-recently-used LeetCode language,
+    /// moving it to the front of the MRU list (deduped, capped).
+    pub fn push_recent_leetcode_language(&mut self, language_key: &str) {
+        const MAX_RECENT_LANGUAGES: usize = 12;
+        self.recent_leetcode_languages
+            .retain(|key| key != language_key);
+        self.recent_leetcode_languages
+            .insert(0, language_key.to_string());
+        self.recent_leetcode_languages
+            .truncate(MAX_RECENT_LANGUAGES);
+    }
+
+    /// Record `agent_id` as the most-recently-used AI agent (front, dedup, cap).
+    pub fn push_recent_ai_agent(&mut self, agent_id: &str) {
+        const MAX_RECENT_AGENTS: usize = 12;
+        self.recent_ai_agents.retain(|id| id != agent_id);
+        self.recent_ai_agents.insert(0, agent_id.to_string());
+        self.recent_ai_agents.truncate(MAX_RECENT_AGENTS);
+    }
+
     pub fn infer_project_icon_source(path: &Path) -> String {
         const MARKERS: &[&str] = &[
             "Cargo.toml",
@@ -158,5 +185,30 @@ impl AppPersistentState {
         self.theme_profile = theme_profile
             .map(|profile| profile.trim().to_string())
             .filter(|profile| !profile.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn leetcode_language_mru_moves_to_front_and_dedups() {
+        let mut state = AppPersistentState::default();
+        state.push_recent_leetcode_language("python");
+        state.push_recent_leetcode_language("go");
+        state.push_recent_leetcode_language("python"); // re-use floats to front
+        assert_eq!(state.recent_leetcode_languages, vec!["python", "go"]);
+    }
+
+    #[test]
+    fn leetcode_language_mru_is_capped() {
+        let mut state = AppPersistentState::default();
+        for i in 0..20 {
+            state.push_recent_leetcode_language(&format!("lang{i}"));
+        }
+        assert_eq!(state.recent_leetcode_languages.len(), 12);
+        // Most recent stays at the front.
+        assert_eq!(state.recent_leetcode_languages[0], "lang19");
     }
 }

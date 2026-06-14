@@ -755,3 +755,308 @@ pub(super) async fn run_system_dep_install(
 
     emit_message_and_wake(&tx, &event_proxy, WorkerMessage::SystemDepInstallDone);
 }
+
+/// Execute a single test case: spawn `program args`, feed `input` to stdin,
+/// and capture stdout/stderr with a wall-clock `timeout`. Never panics — every
+/// failure path returns a `spawn_error`. Free of `tx`/`event_proxy` so it is
+/// directly integration-testable under `#[tokio::test]`.
+pub(crate) async fn execute_one_case(
+    program: &str,
+    args: &[String],
+    working_dir: Option<&std::path::Path>,
+    input: &str,
+    timeout: Duration,
+) -> crate::runner::TestCaseOutcome {
+    use crate::runner::TestCaseOutcome;
+    use tokio::io::AsyncWriteExt;
+
+    let started = Instant::now();
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.args(args)
+        .env("PATH", resolve_system_path())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    if let Some(dir) = working_dir {
+        cmd.current_dir(dir);
+    }
+
+    let mut child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            return TestCaseOutcome {
+                actual: String::new(),
+                stderr: String::new(),
+                exit_code: None,
+                duration_ms: started.elapsed().as_millis() as u64,
+                spawn_error: Some(format!("failed to run `{program}`: {err}")),
+            };
+        }
+    };
+
+    // Write stdin (ignore broken-pipe if the program never reads it), then drop
+    // the handle so the child sees EOF.
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(input.as_bytes()).await;
+        let _ = stdin.shutdown().await;
+    }
+
+    match tokio::time::timeout(timeout, child.wait_with_output()).await {
+        Ok(Ok(output)) => TestCaseOutcome {
+            actual: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+            exit_code: output.status.code(),
+            duration_ms: started.elapsed().as_millis() as u64,
+            spawn_error: None,
+        },
+        Ok(Err(err)) => TestCaseOutcome {
+            actual: String::new(),
+            stderr: String::new(),
+            exit_code: None,
+            duration_ms: started.elapsed().as_millis() as u64,
+            spawn_error: Some(format!("process error: {err}")),
+        },
+        Err(_) => TestCaseOutcome {
+            actual: String::new(),
+            stderr: String::new(),
+            exit_code: None,
+            duration_ms: started.elapsed().as_millis() as u64,
+            spawn_error: Some(format!("timed out after {} ms", timeout.as_millis())),
+        },
+    }
+}
+
+/// Run a one-time compile step (e.g. `rustc`). Returns `Err(stderr+stdout)` on
+/// spawn failure, non-zero exit, or timeout so the caller can surface the
+/// compiler diagnostics. Compilation gets a generous fixed deadline independent
+/// of the per-case run timeout.
+async fn run_compile_step(
+    step: &crate::runner::CompileStep,
+    working_dir: Option<&std::path::Path>,
+) -> Result<(), String> {
+    const COMPILE_TIMEOUT: Duration = Duration::from_secs(60);
+
+    let mut cmd = tokio::process::Command::new(&step.program);
+    cmd.args(&step.args)
+        .env("PATH", resolve_system_path())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    if let Some(dir) = working_dir {
+        cmd.current_dir(dir);
+    }
+
+    let child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(err) => return Err(format!("failed to run `{}`: {err}", step.program)),
+    };
+
+    match tokio::time::timeout(COMPILE_TIMEOUT, child.wait_with_output()).await {
+        Ok(Ok(output)) if output.status.success() => Ok(()),
+        Ok(Ok(output)) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let mut msg = stderr.trim().to_string();
+            if msg.is_empty() {
+                msg = stdout.trim().to_string();
+            }
+            if msg.is_empty() {
+                msg = format!("compiler exited with {:?}", output.status.code());
+            }
+            Err(msg)
+        }
+        Ok(Err(err)) => Err(format!("compiler process error: {err}")),
+        Err(_) => Err(format!(
+            "compilation timed out after {} s",
+            COMPILE_TIMEOUT.as_secs()
+        )),
+    }
+}
+
+/// Worker entry point: run every case sequentially and emit a single
+/// `TestCasesCompleted` result. Sequential (not parallel) keeps output
+/// deterministic and avoids a fork-bomb of compiler/interpreter processes.
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn run_test_cases(
+    request_id: u64,
+    revision_id: u64,
+    compile: Option<crate::runner::CompileStep>,
+    program: String,
+    args: Vec<String>,
+    working_dir: Option<PathBuf>,
+    inputs: Vec<String>,
+    timeout_ms: u64,
+    command_preview: String,
+    tx: std::sync::mpsc::Sender<crate::async_runtime::message::WorkerMessage>,
+    event_proxy: EventLoopProxy<AppEvent>,
+) {
+    use super::emit::emit_message_and_wake;
+    use crate::async_runtime::message::{
+        RequestTopic, WorkerMessage, WorkerResult, WorkerResultPayload,
+    };
+
+    let timeout = Duration::from_millis(timeout_ms.max(1));
+
+    // Compiled languages (Rust): build once before any case. A compile failure
+    // marks every case Error with the compiler output, so the user sees the
+    // diagnostics instead of N identical spawn errors.
+    if let Some(step) = &compile {
+        if let Err(compile_error) = run_compile_step(step, working_dir.as_deref()).await {
+            let outcomes = inputs
+                .iter()
+                .map(|_| crate::runner::TestCaseOutcome {
+                    actual: String::new(),
+                    stderr: compile_error.clone(),
+                    exit_code: None,
+                    duration_ms: 0,
+                    spawn_error: Some("compilation failed".to_string()),
+                })
+                .collect();
+            emit_message_and_wake(
+                &tx,
+                &event_proxy,
+                WorkerMessage::Result(WorkerResult {
+                    request_id,
+                    revision_id,
+                    topic: RequestTopic::TestRunner,
+                    payload: WorkerResultPayload::TestCasesCompleted {
+                        command_preview,
+                        outcomes,
+                    },
+                }),
+            );
+            return;
+        }
+    }
+
+    let mut outcomes = Vec::with_capacity(inputs.len());
+    for input in &inputs {
+        let outcome =
+            execute_one_case(&program, &args, working_dir.as_deref(), input, timeout).await;
+        outcomes.push(outcome);
+    }
+
+    emit_message_and_wake(
+        &tx,
+        &event_proxy,
+        WorkerMessage::Result(WorkerResult {
+            request_id,
+            revision_id,
+            topic: RequestTopic::TestRunner,
+            payload: WorkerResultPayload::TestCasesCompleted {
+                command_preview,
+                outcomes,
+            },
+        }),
+    );
+}
+
+#[cfg(test)]
+mod test_runner_tests {
+    use super::execute_one_case;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn runs_python_with_stdin_and_captures_stdout() {
+        // Skip silently if python3 isn't installed on this host.
+        if tokio::process::Command::new("python3")
+            .arg("--version")
+            .output()
+            .await
+            .is_err()
+        {
+            return;
+        }
+        let args = vec![
+            "-c".to_string(),
+            "import sys; print(int(sys.stdin.read()) * 2)".to_string(),
+        ];
+        let outcome =
+            execute_one_case("python3", &args, None, "21\n", Duration::from_secs(10)).await;
+        assert_eq!(outcome.spawn_error, None);
+        assert_eq!(outcome.exit_code, Some(0));
+        assert_eq!(outcome.actual.trim(), "42");
+    }
+
+    #[tokio::test]
+    async fn missing_program_reports_spawn_error() {
+        let outcome = execute_one_case(
+            "definitely_not_a_real_binary_xyz",
+            &[],
+            None,
+            "",
+            Duration::from_secs(2),
+        )
+        .await;
+        assert!(outcome.spawn_error.is_some());
+        assert_eq!(outcome.exit_code, None);
+    }
+
+    #[tokio::test]
+    async fn compiles_and_runs_rust_via_run_plan() {
+        // Skip silently if rustc isn't installed on this host.
+        if tokio::process::Command::new("rustc")
+            .arg("--version")
+            .output()
+            .await
+            .is_err()
+        {
+            return;
+        }
+        // Write a tiny doubling program, resolve its run plan, compile, run.
+        let dir = std::env::temp_dir();
+        let src = dir.join("netherize_lc_double_test.rs");
+        let bin = dir.join("netherize_lc_double_test_bin");
+        std::fs::write(
+            &src,
+            "use std::io::Read;\nfn main(){let mut s=String::new();\
+             std::io::stdin().read_to_string(&mut s).unwrap();\
+             println!(\"{}\", s.trim().parse::<i64>().unwrap()*2);}\n",
+        )
+        .unwrap();
+
+        let plan = crate::runner::resolve_run_plan(&src, &bin).expect("rust run plan");
+        let compile = plan.compile.expect("rust compiles");
+        super::run_compile_step(&compile, None)
+            .await
+            .expect("compile succeeds");
+
+        let outcome = execute_one_case(
+            &plan.program,
+            &plan.args,
+            None,
+            "21\n",
+            Duration::from_secs(10),
+        )
+        .await;
+        assert_eq!(outcome.spawn_error, None);
+        assert_eq!(outcome.exit_code, Some(0));
+        assert_eq!(outcome.actual.trim(), "42");
+
+        let _ = std::fs::remove_file(&src);
+        let _ = std::fs::remove_file(&bin);
+    }
+
+    #[tokio::test]
+    async fn rust_compile_failure_is_reported() {
+        if tokio::process::Command::new("rustc")
+            .arg("--version")
+            .output()
+            .await
+            .is_err()
+        {
+            return;
+        }
+        let dir = std::env::temp_dir();
+        let src = dir.join("netherize_lc_broken_test.rs");
+        let bin = dir.join("netherize_lc_broken_test_bin");
+        std::fs::write(&src, "fn main() { this is not valid rust }\n").unwrap();
+
+        let plan = crate::runner::resolve_run_plan(&src, &bin).expect("rust run plan");
+        let compile = plan.compile.expect("rust compiles");
+        let result = super::run_compile_step(&compile, None).await;
+        assert!(result.is_err(), "broken rust must fail to compile");
+
+        let _ = std::fs::remove_file(&src);
+    }
+}

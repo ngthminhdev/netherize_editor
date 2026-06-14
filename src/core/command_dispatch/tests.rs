@@ -972,6 +972,30 @@ fn editor_paste_appends_to_palette_query() {
 }
 
 #[test]
+fn editor_paste_appends_to_leetcode_problem_input_query() {
+    let mut app_state = AppState::from_text(unique_temp_path("paste_leetcode_input"), "alpha");
+    let mut clipboard = MockClipboard {
+        text: "https://leetcode.com/problems/two-sum/".to_string(),
+    };
+
+    let open = dispatch_command(&mut app_state, Command::FetchLeetCodeProblem);
+    assert!(open.success);
+    assert_eq!(
+        app_state.command_palette_mode(),
+        Some(CommandPaletteMode::LeetCodeProblemInput)
+    );
+
+    let paste =
+        dispatch_command_with_clipboard(&mut app_state, Command::EditorPaste, Some(&mut clipboard));
+
+    assert!(paste.success);
+    assert_eq!(
+        app_state.command_palette_query_text(),
+        "https://leetcode.com/problems/two-sum/"
+    );
+}
+
+#[test]
 fn editor_paste_appends_to_active_fuzzy_picker_query() {
     let mut app_state = AppState::from_text(unique_temp_path("paste_fuzzy_buffer"), "alpha");
     let mut clipboard = MockClipboard {

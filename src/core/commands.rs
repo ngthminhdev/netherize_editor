@@ -163,22 +163,22 @@ pub enum Command {
     SettingsAdjustDecrease,
     SettingsAdjustIncrease,
     SettingsActivate,
-    /// Decrease focused workbench window width in resize mode.
+    /// Resize-mode `h`: shrink width. Narrows the focused sidebar, or — when the
+    /// editor is focused — shrinks the left dock so the editor grows leftward.
     ResizeDecreaseWidth,
-    /// Increase focused workbench window width in resize mode.
+    /// Resize-mode `l`: grow width. Widens the focused sidebar, or — when the
+    /// editor is focused — shrinks the right dock so the editor grows rightward.
     ResizeIncreaseWidth,
-    /// Increase editor width from the left edge by shrinking the left dock.
-    ResizeIncreaseLeftWidth,
-    /// Decrease editor width from the left edge by growing the left dock.
-    ResizeDecreaseLeftWidth,
-    /// Increase editor width from the right edge by shrinking the right dock.
-    ResizeIncreaseRightWidth,
-    /// Decrease editor width from the right edge by growing the right dock.
-    ResizeDecreaseRightWidth,
-    /// Decrease focused workbench window height in resize mode.
+    /// Resize-mode `k`: shrink height. Shortens the focused bottom panel, or
+    /// shortens the editor (grows the bottom panel) when the editor is focused.
     ResizeDecreaseHeight,
-    /// Increase focused workbench window height in resize mode.
+    /// Resize-mode `j`: grow height. Heightens the focused bottom panel, or
+    /// heightens the editor (shrinks the bottom panel) when the editor is focused.
     ResizeIncreaseHeight,
+    /// Resize-mode `H`: grow the left dock (editor shrinks on its left edge).
+    ResizeGrowLeftDock,
+    /// Resize-mode `L`: grow the right dock (editor shrinks on its right edge).
+    ResizeGrowRightDock,
     GitOpenLazygit,
     GitOpenLazydocker,
     GitBlameLine,
@@ -213,6 +213,55 @@ pub enum Command {
     TerminalTabClose,
     /// Switch to terminal tab N (0-based index).
     SwitchTerminalTab(usize),
+    /// Switch the bottom dock's active outer tab to index N (0-based).
+    SwitchBottomTab(usize),
+    /// Switch the right dock's active outer tab to index N (0-based).
+    SwitchRightTab(usize),
+    /// Move outline selection highlight down (next) and jump main editor cursor.
+    OutlineNext,
+    /// Move outline selection highlight up (prev) and jump main editor cursor.
+    OutlinePrev,
+    /// Confirm outline selection, centering cursor and returning focus to the editor.
+    OutlineConfirm,
+    /// Run the active source file against all authored test cases (LeetCode
+    /// run-and-compare). Shell-handled: resolves the interpreter, marks cases
+    /// running, and submits the async execution worker.
+    RunTestCases,
+    /// Move the AI-agent picker selection (in-panel, AI Chat tab).
+    AiAgentPickerNext,
+    AiAgentPickerPrev,
+    /// Launch the selected AI agent in the right-dock terminal.
+    AiAgentPickerLaunch,
+    /// Open the "New LeetCode File" language picker. Selecting a language
+    /// scaffolds a runnable stdin/stdout starter file and opens it.
+    NewLeetCodeFile,
+    /// Fetch an existing LeetCode problem, generate a runnable solution file,
+    /// and populate the Test Runner with examples.
+    FetchLeetCodeProblem,
+    /// Focus the Test Runner panel (open bottom dock + switch to its tab).
+    TestRunnerFocus,
+    /// Return focus from the Test Runner panel to the editor.
+    TestRunnerUnfocus,
+    /// Append a new empty case and begin editing its Input field.
+    TestRunnerAddCase,
+    /// Delete the selected case.
+    TestRunnerDeleteCase,
+    /// Replace all cases with 5 AI-generated ones for the active problem.
+    TestRunnerGenerateCases,
+    /// Move case selection down (next).
+    TestRunnerNextCase,
+    /// Move case selection up (previous).
+    TestRunnerPrevCase,
+    /// Toggle the focused column between Input and Expected.
+    TestRunnerToggleField,
+    /// Start editing the focused field of the selected case in a scratch buffer.
+    TestRunnerEditField,
+    TestRunnerSelectCase(usize),
+    TestRunnerOpenField {
+        case_index: usize,
+        expected: bool,
+    },
+    TestRunnerScroll(isize),
 
     // ── Workbench focus navigation (Module 12 Phase 2) ─────────────────────────
     /// Move keyboard focus to the center editor region.

@@ -14,6 +14,7 @@ impl AppShell {
             | Command::OpenVimCommand
             | Command::OpenWorkspaceSymbols
             | Command::OpenDocumentSymbols
+            | Command::FetchLeetCodeProblem
             | Command::LspRename
             | Command::OpenInFileSearch
             | Command::SearchInFiles
@@ -387,6 +388,29 @@ impl AppShell {
                 if matches!(command, Command::FilePickerConfirmSelection)
                     && matches!(
                         self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::LeetCodeProblemInput)
+                    )
+                {
+                    return Some(self.confirm_leetcode_problem_input());
+                }
+
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
+                        Some(CommandPaletteMode::LeetCodeLanguageSelector)
+                    )
+                {
+                    return Some(match self.app_state.command_palette_selected_action() {
+                        Some(CommandPaletteAction::FetchLeetCodeWithLanguage { .. }) => {
+                            self.confirm_fetch_leetcode_language_selection()
+                        }
+                        _ => self.confirm_leetcode_language_selection(),
+                    });
+                }
+
+                if matches!(command, Command::FilePickerConfirmSelection)
+                    && matches!(
+                        self.app_state.command_palette_mode(),
                         Some(CommandPaletteMode::LspRename)
                     )
                 {
@@ -473,6 +497,29 @@ impl AppShell {
                     let _ = self.close_current_buffer_now();
                 }
 
+                // Command palette can open the LeetCode language picker without
+                // closing the overlay. Repopulate it with MRU-sorted languages
+                // (the dispatch arm opened it empty) and keep palette focus.
+                if self.app_state.command_palette_mode()
+                    == Some(CommandPaletteMode::LeetCodeLanguageSelector)
+                {
+                    self.refresh_leetcode_language_items();
+                    self.arm_palette_ime_commit_suppression();
+                    self.focus_manager.set(FocusTarget::OverlayLayer);
+                    return Some(true);
+                }
+
+                // Command palette can open the LeetCode problem-input prompt
+                // without closing the overlay. Keep palette focus so the user
+                // can type a problem ID/slug/URL (the input has no list items).
+                if self.app_state.command_palette_mode()
+                    == Some(CommandPaletteMode::LeetCodeProblemInput)
+                {
+                    self.arm_palette_ime_commit_suppression();
+                    self.focus_manager.set(FocusTarget::OverlayLayer);
+                    return Some(true);
+                }
+
                 // Command palette can open PythonEnvSelector without closing the overlay.
                 // Keep palette focus and kick off the async environment scan.
                 if self.app_state.command_palette_mode()
@@ -524,6 +571,10 @@ impl AppShell {
                 if file_changed {
                     self.invalidate_highlights_and_parse_active_buffer();
                     parsed_after_file_change = true;
+
+                    // Restore cached LeetCode test cases for the opened file
+                    // (no-op for files without a netherize-leetcode header).
+                    self.app_state.load_leetcode_cases_for_active_file();
 
                     if let Some(path) = file_after.as_ref() {
                         self.explorer_reveal_file(path);

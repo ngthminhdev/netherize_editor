@@ -5,6 +5,7 @@ pub enum PanelTabId {
     Inspector,
     Outline,
     Terminal,
+    TestRunner,
     DebugConsole,
     Problems,
     AiChat,
@@ -19,10 +20,27 @@ impl PanelTabId {
             Self::Inspector => "Inspector",
             Self::Outline => "Outline",
             Self::Terminal => "Terminal",
+            Self::TestRunner => "Test Runner",
             Self::DebugConsole => "Debug Console",
             Self::Problems => "Problems",
             Self::AiChat => "AI Chat",
             Self::MarkdownPreview => "Preview",
+        }
+    }
+
+    /// Nerd Font glyph displayed as prefix icon in the right-dock tab strip.
+    pub fn icon_glyph(self) -> Option<&'static str> {
+        match self {
+            Self::Explorer => Some(""),        // nf-fa-folder
+            Self::Search => Some(""),          // nf-fa-search
+            Self::Inspector => Some(""),       // nf-fa-info_circle
+            Self::Outline => Some(""),         // nf-fa-sitemap
+            Self::Terminal => Some(""),        // nf-fa-terminal
+            Self::TestRunner => Some(""),      // nf-fa-bug
+            Self::DebugConsole => Some(""),    // nf-fa-terminal
+            Self::Problems => Some(""),        // nf-fa-exclamation_triangle
+            Self::AiChat => Some(""),          // nf-fa-comment
+            Self::MarkdownPreview => Some(""), // nf-fa-file_text
         }
     }
 }
@@ -72,6 +90,16 @@ impl PanelState {
         } else {
             self.active_tab - 1
         };
+        true
+    }
+
+    /// Switch to the tab at `idx`. Returns `true` if the active tab changed,
+    /// `false` if `idx` is out of range or already active.
+    pub fn switch_to_index(&mut self, idx: usize) -> bool {
+        if idx >= self.tabs.len() || self.active_tab == idx {
+            return false;
+        }
+        self.active_tab = idx;
         true
     }
 
@@ -193,22 +221,14 @@ impl Default for WorkbenchPanelState {
                 false,
                 650.0,
                 vec![
-                    PanelTabId::Terminal,
                     PanelTabId::AiChat,
-                    PanelTabId::MarkdownPreview,
-                    PanelTabId::Inspector,
+                    PanelTabId::TestRunner,
                     PanelTabId::Outline,
                 ],
             ),
-            bottom: PanelState::new(
-                false,
-                420.0,
-                vec![
-                    PanelTabId::Terminal,
-                    PanelTabId::DebugConsole,
-                    PanelTabId::Problems,
-                ],
-            ),
+            // Bottom dock only exposes the Terminal for now; Debug Console and
+            // Problems have no content yet, so they're hidden to avoid dead tabs.
+            bottom: PanelState::new(false, 420.0, vec![PanelTabId::Terminal]),
             overlay_visible: false,
             ai_chat: AiChatState::default(),
             maximized_region: None,

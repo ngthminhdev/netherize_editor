@@ -48,6 +48,12 @@ impl SettingItem {
                 SettingsSection::Editor
             }
             Self::InlineSuggestion { .. }
+            | Self::LeetCodeAi { .. }
+            | Self::LeetCodeAiApiUrl { .. }
+            | Self::LeetCodeAiModel { .. }
+            | Self::LeetCodeAiApiKey { .. }
+            | Self::LeetCodeAiEndpointKind { .. }
+            | Self::LeetCodeAiReasoningEffort { .. }
             | Self::AiApiUrl { .. }
             | Self::AiModel { .. }
             | Self::AiApiKey { .. }
@@ -85,6 +91,24 @@ impl SettingItem {
             }
             Self::InlineSuggestion { .. } => {
                 "Press Enter to toggle AI inline completion from config/ai.toml."
+            }
+            Self::LeetCodeAi { .. } => {
+                "Use the configured AI provider to adapt fetched LeetCode snippets."
+            }
+            Self::LeetCodeAiApiUrl { .. } => {
+                "Dedicated base URL of the LeetCode AI completions API. Falls back to AI Endpoint if empty."
+            }
+            Self::LeetCodeAiModel { .. } => {
+                "Model id sent with each LeetCode AI request. Falls back to AI Model if empty."
+            }
+            Self::LeetCodeAiApiKey { .. } => {
+                "Bearer API key for LeetCode AI completions. Falls back to AI API Key if empty."
+            }
+            Self::LeetCodeAiEndpointKind { .. } => {
+                "Request shape for LeetCode AI: 'chat' (/chat/completions) or 'responses'. Defaults to 'chat'."
+            }
+            Self::LeetCodeAiReasoningEffort { .. } => {
+                "Reasoning effort ('low', 'medium', 'high') for reasoning models like mimo. Empty for non-reasoning."
             }
             Self::AiApiUrl { .. } => {
                 "Base URL of the completion API (OpenAI-compatible). Enter to edit. Applies live."
@@ -142,6 +166,7 @@ impl SettingItem {
             Self::IndentTabWidth { current } => current.to_string(),
             Self::IndentInsertSpaces { enabled }
             | Self::InlineSuggestion { enabled }
+            | Self::LeetCodeAi { enabled }
             | Self::EnableOutline { enabled } => {
                 if *enabled { "true" } else { "false" }.to_string()
             }
@@ -160,8 +185,14 @@ impl SettingItem {
                 .unwrap_or_else(|| "\"auto\"".to_string()),
             Self::AiApiUrl { current }
             | Self::AiModel { current }
-            | Self::AiEndpointKind { current } => format!("\"{}\"", current),
-            Self::AiApiKey { current } => format!("\"{}\"", mask_secret(current)),
+            | Self::AiEndpointKind { current }
+            | Self::LeetCodeAiApiUrl { current }
+            | Self::LeetCodeAiModel { current }
+            | Self::LeetCodeAiEndpointKind { current }
+            | Self::LeetCodeAiReasoningEffort { current } => format!("\"{}\"", current),
+            Self::AiApiKey { current } | Self::LeetCodeAiApiKey { current } => {
+                format!("\"{}\"", mask_secret(current))
+            }
             Self::AiMaxTokens { current } => current.to_string(),
             Self::AiPrefixChars { current } | Self::AiSuffixChars { current } => {
                 current.to_string()
@@ -187,6 +218,44 @@ impl SettingItem {
             }
             Self::InlineSuggestion { enabled } => {
                 if *enabled { "Enabled" } else { "Disabled" }.to_string()
+            }
+            Self::LeetCodeAi { enabled } => {
+                if *enabled { "Enabled" } else { "Disabled" }.to_string()
+            }
+            Self::LeetCodeAiApiUrl { current } => {
+                if current.is_empty() {
+                    "Use Inline Endpoint".to_string()
+                } else {
+                    current.clone()
+                }
+            }
+            Self::LeetCodeAiModel { current } => {
+                if current.is_empty() {
+                    "Use Inline Model".to_string()
+                } else {
+                    current.clone()
+                }
+            }
+            Self::LeetCodeAiApiKey { current } => {
+                if current.is_empty() {
+                    "Use Inline API Key".to_string()
+                } else {
+                    "••••••••".to_string()
+                }
+            }
+            Self::LeetCodeAiEndpointKind { current } => {
+                if current.is_empty() {
+                    "chat".to_string()
+                } else {
+                    current.clone()
+                }
+            }
+            Self::LeetCodeAiReasoningEffort { current } => {
+                if current.is_empty() {
+                    "None (Non-Reasoning)".to_string()
+                } else {
+                    current.clone()
+                }
             }
             Self::EnableOutline { enabled } => if *enabled { "On" } else { "Off" }.to_string(),
             Self::SidebarWidth { current }
@@ -269,10 +338,16 @@ fn setting_control_hint(item: &SettingItem) -> &'static [(&'static str, &'static
         SettingItem::EnableOutline { .. }
         | SettingItem::IndentInsertSpaces { .. }
         | SettingItem::InlineSuggestion { .. } => &[("Enter", "toggle")],
+        SettingItem::LeetCodeAi { .. } => &[("Enter", "toggle")],
         SettingItem::AiApiUrl { .. }
         | SettingItem::AiModel { .. }
         | SettingItem::AiApiKey { .. }
-        | SettingItem::AiEndpointKind { .. } => &[("Enter", "edit")],
+        | SettingItem::AiEndpointKind { .. }
+        | SettingItem::LeetCodeAiApiUrl { .. }
+        | SettingItem::LeetCodeAiModel { .. }
+        | SettingItem::LeetCodeAiApiKey { .. }
+        | SettingItem::LeetCodeAiEndpointKind { .. }
+        | SettingItem::LeetCodeAiReasoningEffort { .. } => &[("Enter", "edit")],
         _ => &[("h/l", "adjust"), ("Enter", "edit exact")],
     }
 }
@@ -302,10 +377,15 @@ fn current_row_value(settings: &SettingsState, item: &SettingItem, is_selected: 
         | (SettingsEditingKind::AiMaxTokens, SettingItem::AiMaxTokens { .. })
         | (SettingsEditingKind::AiPrefixChars, SettingItem::AiPrefixChars { .. })
         | (SettingsEditingKind::AiSuffixChars, SettingItem::AiSuffixChars { .. })
-        | (SettingsEditingKind::AiDebounceMs, SettingItem::AiDebounceMs { .. }) => {
+        | (SettingsEditingKind::AiDebounceMs, SettingItem::AiDebounceMs { .. })
+        | (SettingsEditingKind::LeetCodeAiApiUrl, SettingItem::LeetCodeAiApiUrl { .. })
+        | (SettingsEditingKind::LeetCodeAiModel, SettingItem::LeetCodeAiModel { .. })
+        | (SettingsEditingKind::LeetCodeAiEndpointKind, SettingItem::LeetCodeAiEndpointKind { .. })
+        | (SettingsEditingKind::LeetCodeAiReasoningEffort, SettingItem::LeetCodeAiReasoningEffort { .. }) => {
             format!("{}_", editing.draft)
         }
-        (SettingsEditingKind::AiApiKey, SettingItem::AiApiKey { .. }) => {
+        (SettingsEditingKind::AiApiKey, SettingItem::AiApiKey { .. })
+        | (SettingsEditingKind::LeetCodeAiApiKey, SettingItem::LeetCodeAiApiKey { .. }) => {
             // Show the raw key while editing so the user can verify what they type.
             format!("{}_", editing.draft)
         }
@@ -346,6 +426,38 @@ fn settings_preview_lines(settings: &SettingsState) -> Vec<String> {
         }
     }
 
+    lines.extend(["".to_string(), "[leetcode]".to_string()]);
+    for item in &settings.items {
+        match item {
+            SettingItem::LeetCodeAi { .. } => {
+                lines.push(format!("use_ai = {}", item.preview_value()))
+            }
+            _ => {}
+        }
+    }
+
+    lines.extend(["".to_string(), "[leetcode.provider]".to_string()]);
+    for item in &settings.items {
+        match item {
+            SettingItem::LeetCodeAiApiUrl { .. } => {
+                lines.push(format!("api_url = {}", item.preview_value()))
+            }
+            SettingItem::LeetCodeAiModel { .. } => {
+                lines.push(format!("model = {}", item.preview_value()))
+            }
+            SettingItem::LeetCodeAiApiKey { .. } => {
+                lines.push(format!("api_key = {}", item.preview_value()))
+            }
+            SettingItem::LeetCodeAiEndpointKind { .. } => {
+                lines.push(format!("endpoint_kind = {}", item.preview_value()))
+            }
+            SettingItem::LeetCodeAiReasoningEffort { .. } => {
+                lines.push(format!("reasoning_effort = {}", item.preview_value()))
+            }
+            _ => {}
+        }
+    }
+
     lines.extend(["".to_string(), "[ai.inline_completion]".to_string()]);
     for item in &settings.items {
         match item {
@@ -368,15 +480,16 @@ fn settings_preview_lines(settings: &SettingsState) -> Vec<String> {
         }
     }
 
-    lines.extend(["".to_string(), "[ai.inline_completion.provider]".to_string()]);
+    lines.extend([
+        "".to_string(),
+        "[ai.inline_completion.provider]".to_string(),
+    ]);
     for item in &settings.items {
         match item {
             SettingItem::AiApiUrl { .. } => {
                 lines.push(format!("api_url = {}", item.preview_value()))
             }
-            SettingItem::AiModel { .. } => {
-                lines.push(format!("model = {}", item.preview_value()))
-            }
+            SettingItem::AiModel { .. } => lines.push(format!("model = {}", item.preview_value())),
             SettingItem::AiApiKey { .. } => {
                 lines.push(format!("api_key = {}", item.preview_value()))
             }
@@ -860,7 +973,8 @@ impl Renderer {
             match item {
                 SettingItem::EnableOutline { enabled }
                 | SettingItem::IndentInsertSpaces { enabled }
-                | SettingItem::InlineSuggestion { enabled } => {
+                | SettingItem::InlineSuggestion { enabled }
+                | SettingItem::LeetCodeAi { enabled } => {
                     let toggle_w = 40.0 * s;
                     let toggle_h = 20.0 * s;
                     let toggle_x = left_x + left_w - toggle_w - 22.0 * s;
@@ -901,12 +1015,19 @@ impl Renderer {
                             }
                         }
                         SettingItem::InlineSuggestion { enabled } => {
-                          if *enabled {
-                            "ON"
-                          } else {
-                            "OFF"
-                          }
-                        },
+                            if *enabled {
+                                "ON"
+                            } else {
+                                "OFF"
+                            }
+                        }
+                        SettingItem::LeetCodeAi { enabled } => {
+                            if *enabled {
+                                "ON"
+                            } else {
+                                "OFF"
+                            }
+                        }
                         _ => "",
                     };
                     if !badge_label.is_empty() {
@@ -1008,12 +1129,7 @@ impl Renderer {
                 preview_start_y = detail_top + detail_h + 12.0 * s;
                 chrome.push(
                     RegionDrawInstance::new(
-                        [
-                            right_x + 10.0 * s,
-                            detail_top,
-                            right_w - 20.0 * s,
-                            detail_h,
-                        ],
+                        [right_x + 10.0 * s, detail_top, right_w - 20.0 * s, detail_h],
                         with_alpha(panel_bg, 0.55),
                     )
                     .with_radius(8.0 * s),

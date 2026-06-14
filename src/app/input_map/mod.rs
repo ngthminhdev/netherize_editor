@@ -41,6 +41,8 @@ pub enum InputFocusContext {
     Help,
     ExtensionsManager,
     BottomPanel,
+    /// Bottom panel Test Runner tab — modal: nav mode (j/k/i/a) + edit mode.
+    TestRunner,
     /// Bottom panel terminal (ESC = unfocus).
     Terminal,
     /// Buffer terminal chiếm toàn bộ center (lazygit, v.v.).
@@ -48,6 +50,8 @@ pub enum InputFocusContext {
     BufferTerminal,
     FuzzyPicker,
     SettingsTab,
+    /// Right sidebar Outline tab.
+    Outline,
 }
 
 impl InputFocusContext {
@@ -64,10 +68,12 @@ impl InputFocusContext {
             Self::Help => "help",
             Self::ExtensionsManager => "extensions_manager",
             Self::BottomPanel => "bottom_panel",
+            Self::TestRunner => "test_runner",
             Self::Terminal => "terminal",
             Self::BufferTerminal => "buffer_terminal",
             Self::FuzzyPicker => "fuzzy_picker",
             Self::SettingsTab => "settings_tab",
+            Self::Outline => "outline",
         }
     }
 
@@ -87,6 +93,7 @@ impl InputFocusContext {
                 | Self::ExtensionsManager
                 | Self::FuzzyPicker
                 | Self::SettingsTab
+                | Self::Outline
         )
     }
 }
@@ -108,6 +115,12 @@ pub struct KeybindingContext {
     /// the input layer rebind Ctrl+U/Ctrl+D to scroll instead of forwarding them
     /// as raw control bytes, without affecting the bottom-panel shell.
     pub right_sidebar_terminal: bool,
+    /// True when the Test Runner panel is in edit mode (typing edits a field).
+    /// Lets the input layer switch between nav-mode and edit-mode key handling.
+    pub test_runner_editing: bool,
+    /// True when the AI Chat tab is showing its in-panel agent picker (no agent
+    /// running). Lets the input layer route j/k/Enter to the picker.
+    pub ai_agent_picker_active: bool,
 }
 
 impl KeybindingContext {
@@ -127,6 +140,8 @@ impl KeybindingContext {
             hover_overlay_visible: false,
             zen_mode_active: false,
             right_sidebar_terminal: false,
+            test_runner_editing: false,
+            ai_agent_picker_active: false,
         }
     }
 
@@ -152,6 +167,8 @@ impl KeybindingContext {
             hover_overlay_visible: false,
             zen_mode_active: false,
             right_sidebar_terminal: false,
+            test_runner_editing: false,
+            ai_agent_picker_active: false,
         }
     }
 }
@@ -236,6 +253,22 @@ impl InputMap {
             );
         }
 
+        // Resize mode is modal: once active it owns h/j/k/l + Esc regardless of
+        // which panel holds focus, so the keys aren't swallowed by focus-specific
+        // handlers (explorer navigation, terminal copy mode, …).
+        if context.mode == EditorMode::Resize {
+            return resolved_keymap::resolve_command(
+                &self.keymap,
+                input,
+                "resize",
+                &self.open_file_path,
+            )
+            .map(|command| KeybindingMatch {
+                command,
+                reason: "resize mode binding",
+            });
+        }
+
         if context.hover_overlay_visible
             && context.focus == InputFocusContext::Editor
             && context.mode == EditorMode::Normal
@@ -273,7 +306,23 @@ impl InputMap {
 
         // AI Chat: bypass keymap — all input handled by handler.rs.
         if context.focus == InputFocusContext::AiChat {
-            return None;
+            if !input.has_command_modifier() {
+                return None;
+            }
+        }
+
+        // Test Runner: bypass keymap — modal input handled by handler.rs.
+        if context.focus == InputFocusContext::TestRunner {
+            if !input.has_command_modifier() {
+                return None;
+            }
+        }
+
+        // Outline: bypass keymap — all input handled by handler.rs.
+        if context.focus == InputFocusContext::Outline {
+            if !input.has_command_modifier() {
+                return None;
+            }
         }
 
         if context.focus == InputFocusContext::References {
@@ -462,7 +511,14 @@ impl InputMap {
 
     fn command_allowed_in_context(command: &Command, context: KeybindingContext) -> bool {
         if matches!(command, Command::SwitchMode(ModeEvent::EnterResize)) {
-            return context.focus == InputFocusContext::Editor;
+            // Resize mode can be entered while the editor, the explorer, or the
+            // terminal hold focus, so the focused panel can be resized in place.
+            return matches!(
+                context.focus,
+                InputFocusContext::Editor
+                    | InputFocusContext::Explorer
+                    | InputFocusContext::Terminal
+            );
         }
 
         true
@@ -553,8 +609,10 @@ impl InputMap {
             InputFocusContext::Terminal => editor_mode_str(context.mode),
             InputFocusContext::BufferTerminal => "terminal",
             InputFocusContext::BottomPanel => "bottom_panel",
+            InputFocusContext::TestRunner => "test_runner",
             InputFocusContext::FuzzyPicker => editor_mode_str(context.mode),
             InputFocusContext::SettingsTab => editor_mode_str(context.mode),
+            InputFocusContext::Outline => "normal",
         }
     }
 

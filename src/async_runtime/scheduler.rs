@@ -19,6 +19,7 @@ mod emit;
 mod file_watch;
 mod fzf;
 mod git;
+mod leetcode_fetch;
 mod lsp;
 mod lsp_io;
 mod lsp_parse;

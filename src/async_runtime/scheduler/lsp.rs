@@ -22,7 +22,7 @@ use crate::{
 };
 
 use super::{
-    LspSessionHandle, LspSessionRegistry, async_trace, session_name_matches_binary,
+    LspSessionHandle, LspSessionRegistry, async_trace,
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
     lsp_io::{spawn_lsp_stderr_logger, spawn_lsp_stdout_reader},
     lsp_parse::{
@@ -31,6 +31,7 @@ use super::{
         handle_lsp_document_symbols, handle_lsp_formatting, handle_lsp_hover,
         handle_lsp_references, handle_lsp_rename, handle_workspace_symbol,
     },
+    session_name_matches_binary,
 };
 
 pub(super) async fn run_lsp_request(
@@ -237,9 +238,9 @@ fn execute_lsp_request(
                 .into_iter()
                 .filter(|session| {
                     expected.is_empty()
-                        || expected.iter().any(|binary| {
-                            session_name_matches_binary(&session.server_name, binary)
-                        })
+                        || expected
+                            .iter()
+                            .any(|binary| session_name_matches_binary(&session.server_name, binary))
                 })
                 .collect();
             if sessions.is_empty() {
@@ -294,8 +295,10 @@ fn execute_lsp_request(
             }
             for process in &sessions {
                 process.update_request_meta(request.request_id, request.revision_id);
-                process
-                    .send_notification("textDocument/didClose", build_did_close_notification(uri))?;
+                process.send_notification(
+                    "textDocument/didClose",
+                    build_did_close_notification(uri),
+                )?;
                 process.mark_document_closed(uri);
             }
 
@@ -615,7 +618,8 @@ fn execute_lsp_request(
             query,
             root_path,
         } => {
-            let binary = language_profile_for_language_id(language_id).map(|profile| profile.lsp_binary);
+            let binary =
+                language_profile_for_language_id(language_id).map(|profile| profile.lsp_binary);
             // Prefer the session at the requested root (correct module among
             // several); fall back to any same-binary session for back-compat.
             let handle = match (binary, root_path.as_deref()) {

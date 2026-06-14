@@ -10,32 +10,99 @@ pub struct AiInlineSettings {
     pub prefix_chars: usize,
     pub suffix_chars: usize,
     pub debounce_ms: u64,
+    pub leetcode_ai_enabled: bool,
+    pub leetcode_api_url: String,
+    pub leetcode_model: String,
+    pub leetcode_api_key: String,
+    pub leetcode_endpoint_kind: String,
+    pub leetcode_reasoning_effort: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SettingItem {
-    ThemeSelector { current: String },
-    FontFamily { current: String },
-    FontSize { current: f32 },
-    LineHeight { current: f32 },
-    IndentTabWidth { current: u8 },
-    IndentInsertSpaces { enabled: bool },
-    InlineSuggestion { enabled: bool },
-    AiApiUrl { current: String },
-    AiModel { current: String },
-    AiApiKey { current: String },
-    AiEndpointKind { current: String },
-    AiMaxTokens { current: u32 },
-    AiPrefixChars { current: usize },
-    AiSuffixChars { current: usize },
-    AiDebounceMs { current: u64 },
-    SidebarWidth { current: i32 },
-    RightSidebarWidth { current: i32 },
-    BottomPanelHeight { current: i32 },
-    UiRounding { enabled: bool, radius_px: f32 },
-    EnableOutline { enabled: bool },
+    ThemeSelector {
+        current: String,
+    },
+    FontFamily {
+        current: String,
+    },
+    FontSize {
+        current: f32,
+    },
+    LineHeight {
+        current: f32,
+    },
+    IndentTabWidth {
+        current: u8,
+    },
+    IndentInsertSpaces {
+        enabled: bool,
+    },
+    InlineSuggestion {
+        enabled: bool,
+    },
+    LeetCodeAi {
+        enabled: bool,
+    },
+    LeetCodeAiApiUrl {
+        current: String,
+    },
+    LeetCodeAiModel {
+        current: String,
+    },
+    LeetCodeAiApiKey {
+        current: String,
+    },
+    LeetCodeAiEndpointKind {
+        current: String,
+    },
+    LeetCodeAiReasoningEffort {
+        current: String,
+    },
+    AiApiUrl {
+        current: String,
+    },
+    AiModel {
+        current: String,
+    },
+    AiApiKey {
+        current: String,
+    },
+    AiEndpointKind {
+        current: String,
+    },
+    AiMaxTokens {
+        current: u32,
+    },
+    AiPrefixChars {
+        current: usize,
+    },
+    AiSuffixChars {
+        current: usize,
+    },
+    AiDebounceMs {
+        current: u64,
+    },
+    SidebarWidth {
+        current: i32,
+    },
+    RightSidebarWidth {
+        current: i32,
+    },
+    BottomPanelHeight {
+        current: i32,
+    },
+    UiRounding {
+        enabled: bool,
+        radius_px: f32,
+    },
+    EnableOutline {
+        enabled: bool,
+    },
     /// window.scale_factor_override — None = follow the display ("Auto").
-    UiScale { current: Option<f32> },
+    UiScale {
+        current: Option<f32>,
+    },
 }
 
 impl SettingItem {
@@ -48,6 +115,12 @@ impl SettingItem {
             Self::IndentTabWidth { .. } => "Tab Width",
             Self::IndentInsertSpaces { .. } => "Indent Style",
             Self::InlineSuggestion { .. } => "Inline Completion",
+            Self::LeetCodeAi { .. } => "LeetCode AI",
+            Self::LeetCodeAiApiUrl { .. } => "LeetCode AI Endpoint",
+            Self::LeetCodeAiModel { .. } => "LeetCode AI Model",
+            Self::LeetCodeAiApiKey { .. } => "LeetCode AI API Key",
+            Self::LeetCodeAiEndpointKind { .. } => "LeetCode AI Endpoint Kind",
+            Self::LeetCodeAiReasoningEffort { .. } => "LeetCode AI Reasoning Effort",
             Self::AiApiUrl { .. } => "AI Endpoint",
             Self::AiModel { .. } => "AI Model",
             Self::AiApiKey { .. } => "AI API Key",
@@ -85,6 +158,11 @@ pub enum SettingsEditingKind {
     AiPrefixChars,
     AiSuffixChars,
     AiDebounceMs,
+    LeetCodeAiApiUrl,
+    LeetCodeAiModel,
+    LeetCodeAiApiKey,
+    LeetCodeAiEndpointKind,
+    LeetCodeAiReasoningEffort,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -155,6 +233,24 @@ impl SettingsState {
                 // AI
                 SettingItem::InlineSuggestion {
                     enabled: inline_suggestion_enabled,
+                },
+                SettingItem::LeetCodeAi {
+                    enabled: ai.leetcode_ai_enabled,
+                },
+                SettingItem::LeetCodeAiApiUrl {
+                    current: ai.leetcode_api_url,
+                },
+                SettingItem::LeetCodeAiModel {
+                    current: ai.leetcode_model,
+                },
+                SettingItem::LeetCodeAiApiKey {
+                    current: ai.leetcode_api_key,
+                },
+                SettingItem::LeetCodeAiEndpointKind {
+                    current: ai.leetcode_endpoint_kind,
+                },
+                SettingItem::LeetCodeAiReasoningEffort {
+                    current: ai.leetcode_reasoning_effort,
                 },
                 SettingItem::AiApiUrl {
                     current: ai.api_url,
@@ -259,9 +355,7 @@ impl SettingsState {
                     .map(|v| format!("{v:.2}"))
                     .unwrap_or_else(|| "auto".to_string()),
             ),
-            SettingItem::AiApiUrl { current } => {
-                (SettingsEditingKind::AiApiUrl, current.clone())
-            }
+            SettingItem::AiApiUrl { current } => (SettingsEditingKind::AiApiUrl, current.clone()),
             SettingItem::AiModel { current } => (SettingsEditingKind::AiModel, current.clone()),
             SettingItem::AiApiKey { current } => (SettingsEditingKind::AiApiKey, current.clone()),
             SettingItem::AiEndpointKind { current } => {
@@ -279,10 +373,26 @@ impl SettingsState {
             SettingItem::AiDebounceMs { current } => {
                 (SettingsEditingKind::AiDebounceMs, current.to_string())
             }
+            SettingItem::LeetCodeAiApiUrl { current } => {
+                (SettingsEditingKind::LeetCodeAiApiUrl, current.clone())
+            }
+            SettingItem::LeetCodeAiModel { current } => {
+                (SettingsEditingKind::LeetCodeAiModel, current.clone())
+            }
+            SettingItem::LeetCodeAiApiKey { current } => {
+                (SettingsEditingKind::LeetCodeAiApiKey, current.clone())
+            }
+            SettingItem::LeetCodeAiEndpointKind { current } => {
+                (SettingsEditingKind::LeetCodeAiEndpointKind, current.clone())
+            }
+            SettingItem::LeetCodeAiReasoningEffort { current } => {
+                (SettingsEditingKind::LeetCodeAiReasoningEffort, current.clone())
+            }
             SettingItem::ThemeSelector { .. }
             | SettingItem::EnableOutline { .. }
             | SettingItem::IndentInsertSpaces { .. }
-            | SettingItem::InlineSuggestion { .. } => return false,
+            | SettingItem::InlineSuggestion { .. }
+            | SettingItem::LeetCodeAi { .. } => return false,
         };
         self.editing = Some(SettingsEditingState { kind, draft });
         true

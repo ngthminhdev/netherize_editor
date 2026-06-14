@@ -703,21 +703,14 @@ fn default_profile_resize_keys_map_to_requested_directions() {
     let context = KeybindingContext::for_mode(EditorMode::Resize);
 
     let cases = [
+        // Lowercase resizes the focused panel/region.
         (
             input_from_physical(KeyCode::KeyH, "h"),
-            Command::ResizeIncreaseLeftWidth,
-        ),
-        (
-            shifted_input_from_physical(KeyCode::KeyH, "H"),
-            Command::ResizeDecreaseLeftWidth,
+            Command::ResizeDecreaseWidth,
         ),
         (
             input_from_physical(KeyCode::KeyL, "l"),
-            Command::ResizeIncreaseRightWidth,
-        ),
-        (
-            shifted_input_from_physical(KeyCode::KeyL, "L"),
-            Command::ResizeDecreaseRightWidth,
+            Command::ResizeIncreaseWidth,
         ),
         (
             input_from_physical(KeyCode::KeyJ, "j"),
@@ -726,6 +719,15 @@ fn default_profile_resize_keys_map_to_requested_directions() {
         (
             input_from_physical(KeyCode::KeyK, "k"),
             Command::ResizeDecreaseHeight,
+        ),
+        // Uppercase H/L grow the left/right dock.
+        (
+            shifted_input_from_physical(KeyCode::KeyH, "H"),
+            Command::ResizeGrowLeftDock,
+        ),
+        (
+            shifted_input_from_physical(KeyCode::KeyL, "L"),
+            Command::ResizeGrowRightDock,
         ),
     ];
 
@@ -783,20 +785,31 @@ fn default_profile_leader_rn_renames_and_leader_rr_enters_resize() {
     };
     assert_eq!(matched.command, Command::SwitchMode(ModeEvent::EnterResize));
 
+    // Resize mode is now reachable while the explorer or terminal hold focus too.
     for (mode, focus) in [
         (EditorMode::Normal, InputFocusContext::Explorer),
         (EditorMode::TerminalNormal, InputFocusContext::Terminal),
     ] {
         let context = KeybindingContext::with_focus(mode, focus);
-        let Some(SequenceMatch::Pending(sequence)) =
-            map.resolve_sequence_start(&input_space, context)
+        let SequenceMatch::Pending(sequence) = map
+            .resolve_sequence_start(&input_space, context)
+            .expect("leader should start a sequence")
         else {
-            continue;
+            panic!("{focus:?}: leader should be pending");
         };
-        assert_eq!(
-            map.resolve_sequence_next(&sequence, &input_r, context),
-            None
-        );
+        let SequenceMatch::Pending(sequence) = map
+            .resolve_sequence_next(&sequence, &input_r, context)
+            .expect("leader r should stay pending")
+        else {
+            panic!("{focus:?}: leader r should be pending");
+        };
+        let SequenceMatch::Dispatch(matched) = map
+            .resolve_sequence_next(&sequence, &input_r, context)
+            .expect("leader r r should dispatch resize mode")
+        else {
+            panic!("{focus:?}: leader r r should dispatch");
+        };
+        assert_eq!(matched.command, Command::SwitchMode(ModeEvent::EnterResize));
     }
 }
 

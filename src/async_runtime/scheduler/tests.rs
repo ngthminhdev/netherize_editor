@@ -5,7 +5,9 @@ use notify::{Event as NotifyEvent, EventKind as NotifyEventKind, event::ModifyKi
 use crate::async_runtime::{
     message::{FileSystemChangeKind, FileSystemEvent},
     scheduler::{
-        file_watch::{extend_unique_file_events, file_watch_restart_backoff, normalize_notify_event},
+        file_watch::{
+            extend_unique_file_events, file_watch_restart_backoff, normalize_notify_event,
+        },
         fzf::{build_file_preview_lines, build_fzf_find_file_script, build_fzf_live_grep_script},
         git::parse_git_blame_summary,
         runtime::build_worker_runtime,

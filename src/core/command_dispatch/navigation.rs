@@ -188,9 +188,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             false,
         ),
         Command::MoveFindChar(kind, target) => {
-            let changed = ctx
-                .app_state
-                .find_char_motion_and_highlight(kind, target);
+            let changed = ctx.app_state.find_char_motion_and_highlight(kind, target);
             DispatchReport::success(
                 if changed {
                     format!("Dispatch: find char '{target}' ({kind:?})")

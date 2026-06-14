@@ -287,6 +287,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::OpenInFileSearch
         | Command::OpenWorkspaceSymbols
         | Command::OpenDocumentSymbols
+        | Command::FetchLeetCodeProblem
         | Command::LspRename
         | Command::SearchInFiles
         | Command::OpenThemeSelector
@@ -325,12 +326,10 @@ fn dispatch_command_with_clipboard_once(
         | Command::TerminalSearchOpen => palette::dispatch(&mut ctx, command),
         Command::ResizeDecreaseWidth
         | Command::ResizeIncreaseWidth
-        | Command::ResizeIncreaseLeftWidth
-        | Command::ResizeDecreaseLeftWidth
-        | Command::ResizeIncreaseRightWidth
-        | Command::ResizeDecreaseRightWidth
         | Command::ResizeDecreaseHeight
-        | Command::ResizeIncreaseHeight => DispatchReport::success(
+        | Command::ResizeIncreaseHeight
+        | Command::ResizeGrowLeftDock
+        | Command::ResizeGrowRightDock => DispatchReport::success(
             format!("Dispatch: resize command {command:?} handled by event loop"),
             false,
         ),
@@ -352,6 +351,27 @@ fn dispatch_command_with_clipboard_once(
         | Command::TerminalTabClose
         | Command::CloseSidebars
         | Command::SwitchTerminalTab(_)
+        | Command::SwitchBottomTab(_)
+        | Command::SwitchRightTab(_)
+        | Command::OutlineNext
+        | Command::OutlinePrev
+        | Command::OutlineConfirm
+        | Command::RunTestCases
+        | Command::AiAgentPickerNext
+        | Command::AiAgentPickerPrev
+        | Command::AiAgentPickerLaunch
+        | Command::TestRunnerFocus
+        | Command::TestRunnerUnfocus
+        | Command::TestRunnerAddCase
+        | Command::TestRunnerDeleteCase
+        | Command::TestRunnerGenerateCases
+        | Command::TestRunnerNextCase
+        | Command::TestRunnerPrevCase
+        | Command::TestRunnerToggleField
+        | Command::TestRunnerEditField
+        | Command::TestRunnerSelectCase(_)
+        | Command::TestRunnerOpenField { .. }
+        | Command::TestRunnerScroll(_)
         | Command::FocusEditor
         | Command::FocusExplorer
         | Command::FocusTerminal
@@ -463,6 +483,16 @@ fn dispatch_command_with_clipboard_once(
             let changed = ctx.app_state.open_dart_env_selector();
             DispatchReport::success_with_flags(
                 "Dispatch: dart env selector opened".to_string(),
+                changed,
+                changed,
+            )
+        }
+        Command::NewLeetCodeFile => {
+            // Open the picker; the AppShell repopulates it with MRU-sorted
+            // language items right after this dispatch returns.
+            let changed = ctx.app_state.open_leetcode_language_selector();
+            DispatchReport::success_with_flags(
+                "Dispatch: leetcode language selector opened".to_string(),
                 changed,
                 changed,
             )

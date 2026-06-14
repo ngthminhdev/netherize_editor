@@ -1,3 +1,4 @@
+pub mod ai_agents;
 pub mod app_state;
 pub mod async_bridge;
 pub mod clipboard;

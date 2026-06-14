@@ -220,7 +220,11 @@ fn collect_global_pythons(envs: &mut Vec<PythonEnv>) {
     };
     let dirs: Vec<PathBuf> = std::env::split_paths(&path_var).collect();
     for exe in &["python3", "python"] {
-        if let Some(candidate) = dirs.iter().map(|dir| dir.join(exe)).find(|p| python_exists(p)) {
+        if let Some(candidate) = dirs
+            .iter()
+            .map(|dir| dir.join(exe))
+            .find(|p| python_exists(p))
+        {
             envs.push(PythonEnv {
                 kind: PythonEnvKind::Global,
                 display_name: format!("[global] {}", candidate.display()),

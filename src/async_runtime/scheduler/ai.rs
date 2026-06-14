@@ -67,7 +67,10 @@ pub(super) async fn execute_ai_inline_request(
         "max_tokens": max_tokens,
         "stream": stream_response
     });
-    if let Some(effort) = reasoning_effort.as_ref().filter(|effort| !effort.is_empty()) {
+    if let Some(effort) = reasoning_effort
+        .as_ref()
+        .filter(|effort| !effort.is_empty())
+    {
         body["reasoning_effort"] = serde_json::Value::String(effort.clone());
     }
 
@@ -90,15 +93,21 @@ pub(super) async fn execute_ai_inline_request(
         return read_streaming_response(request, worker_tx, response, cancel_token).await;
     }
 
-    let json: serde_json::Value = tokio::select! {
+    let body_text = tokio::select! {
         _ = cancel_token.cancelled() => {
             return Err(cancelled_message());
         }
-        json = response.json() => json.map_err(|err| format!("ai response decode failed: {err}"))?,
+        text = response.text() => text.map_err(|err| format!("ai response read failed: {err}"))?,
     };
     if cancel_token.is_cancelled() {
         return Err(cancelled_message());
     }
+    let mut cleaned = body_text.trim();
+    if let Some(idx) = cleaned.rfind('}') {
+        cleaned = &cleaned[..=idx];
+    }
+    let json: serde_json::Value = serde_json::from_str(cleaned)
+        .map_err(|err| format!("ai response decode failed: {err}"))?;
     if !status.is_success() {
         return Err(format!("ai request error {}: {}", status, json));
     }

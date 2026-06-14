@@ -50,6 +50,78 @@ impl AppShell {
             Command::DiagnosticsOpenSelection => Some(self.open_selected_diagnostic_item()),
             Command::JumpBack => Some(self.execute_jump_back()),
             Command::JumpForward => Some(self.execute_jump_forward()),
+            Command::OutlineNext => {
+                let current_idx = self
+                    .outline_selected
+                    .or_else(|| self.outline_cursor_symbol_index());
+                let count = self.cached_document_symbols.len();
+                if count > 0 {
+                    let next_idx = match current_idx {
+                        Some(idx) => (idx + 1).min(count - 1),
+                        None => 0,
+                    };
+                    self.outline_selected = Some(next_idx);
+                    let symbol = &self.cached_document_symbols[next_idx];
+                    let line = symbol.range.start.line as usize;
+                    let col = symbol.range.start.character as usize;
+                    self.app_state.push_jump();
+                    self.app_state.jump_to_line_and_column(line, col);
+                    let vp = self.editor_viewport_lines();
+                    self.app_state.center_cursor_line(vp);
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    Some(true)
+                } else {
+                    Some(false)
+                }
+            }
+            Command::OutlinePrev => {
+                let current_idx = self
+                    .outline_selected
+                    .or_else(|| self.outline_cursor_symbol_index());
+                let count = self.cached_document_symbols.len();
+                if count > 0 {
+                    let prev_idx = match current_idx {
+                        Some(idx) => idx.saturating_sub(1),
+                        None => 0,
+                    };
+                    self.outline_selected = Some(prev_idx);
+                    let symbol = &self.cached_document_symbols[prev_idx];
+                    let line = symbol.range.start.line as usize;
+                    let col = symbol.range.start.character as usize;
+                    self.app_state.push_jump();
+                    self.app_state.jump_to_line_and_column(line, col);
+                    let vp = self.editor_viewport_lines();
+                    self.app_state.center_cursor_line(vp);
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    Some(true)
+                } else {
+                    Some(false)
+                }
+            }
+            Command::OutlineConfirm => {
+                let current_idx = self
+                    .outline_selected
+                    .or_else(|| self.outline_cursor_symbol_index());
+                let count = self.cached_document_symbols.len();
+                if count > 0 {
+                    let idx = current_idx.unwrap_or(0);
+                    let symbol = &self.cached_document_symbols[idx];
+                    let line = symbol.range.start.line as usize;
+                    let col = symbol.range.start.character as usize;
+                    self.app_state.push_jump();
+                    self.app_state.jump_to_line_and_column(line, col);
+                    let vp = self.editor_viewport_lines();
+                    self.app_state.center_cursor_line(vp);
+                }
+                self.focus_manager.set(FocusTarget::CenterEditor);
+                let _ = self.release_focus_mode_to_editor();
+                self.outline_selected = None;
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+                Some(true)
+            }
             _ => None,
         }
     }
@@ -58,6 +130,7 @@ impl AppShell {
         let had_cache = self.cached_document_symbols_path.take().is_some()
             || !self.cached_document_symbols.is_empty();
         self.cached_document_symbols.clear();
+        self.outline_selected = None;
         had_cache
     }
 
@@ -93,6 +166,47 @@ impl AppShell {
             payload: WorkerRequestPayload::LspDocumentSymbolsRequest { language_id, uri },
         });
         false
+    }
+
+    /// Ensure the Outline panel has the active file's document symbols. Fetches
+    /// once per file (guarded by `outline_fetch_path`) so it doesn't re-request
+    /// every frame the Outline tab is rendered.
+    pub(in crate::app::event_loop) fn ensure_outline_symbols(&mut self) {
+        let Some(active) = self.app_state.active_file().map(PathBuf::from) else {
+            self.outline_fetch_path = None;
+            self.outline_selected = None;
+            return;
+        };
+        if self.outline_fetch_path.as_deref() == Some(active.as_path()) {
+            return;
+        }
+        self.outline_fetch_path = Some(active);
+        self.outline_selected = None;
+        // Reuses the breadcrumb document-symbol pipeline; the result lands in
+        // `cached_document_symbols` (shared) and triggers a redraw.
+        let _ = self.ensure_document_symbol_breadcrumbs(true);
+    }
+
+    /// Index of the cached document symbol whose range contains the cursor line
+    /// (deepest match wins), for the Outline "you are here" highlight.
+    pub(in crate::app::event_loop) fn outline_cursor_symbol_index(&self) -> Option<usize> {
+        if self.cached_document_symbols.is_empty() {
+            return None;
+        }
+        let (line, _) = self.app_state.cursor_line_col();
+        let line = line as u32;
+        let mut best: Option<usize> = None;
+        let mut best_depth = 0usize;
+        for (i, sym) in self.cached_document_symbols.iter().enumerate() {
+            if sym.range.start.line <= line && line <= sym.range.end.line {
+                let depth = sym.ancestors.len();
+                if best.is_none() || depth >= best_depth {
+                    best = Some(i);
+                    best_depth = depth;
+                }
+            }
+        }
+        best
     }
 
     pub(in crate::app::event_loop) fn accept_lsp_install_guide(&mut self) -> bool {

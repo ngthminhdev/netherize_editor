@@ -427,35 +427,39 @@ impl AppShell {
                 self.panel_state.toggle_right();
                 let is_now_visible = self.panel_state.right.visible;
 
-                // Switch the right sidebar to the Terminal tab (runs opencode).
-                self.panel_state.right.switch_to_tab(PanelTabId::Terminal);
+                // AI Chat tab = a terminal running a chosen CLI agent.
+                self.panel_state.right.switch_to_tab(PanelTabId::AiChat);
 
-                let focus_changed = if is_now_visible {
-                    // Ensure opencode is running whenever we open the right dock.
-                    self.ensure_right_opencode_terminal();
-                    let changed = self.focus_manager.set(FocusTarget::RightSidebar);
-                    // Enter terminal focus mode so keystrokes go to opencode.
-                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
-                        let _ = result;
+                if is_now_visible {
+                    let focus_changed = self.focus_manager.set(FocusTarget::RightSidebar);
+                    if focus_changed {
+                        self.input_handler.clear_pending_prefix();
                     }
-                    changed
+                    if self.right_pty_session_id.is_some() || self.pending_right_pty_spawn {
+                        // Agent already running — drop into it.
+                        if let Ok(result) =
+                            self.app_state.apply_mode_event(ModeEvent::FocusTerminal)
+                        {
+                            let _ = result;
+                        }
+                    } else {
+                        // No agent yet — let the user pick which CLI to launch.
+                        self.open_ai_agent_chooser();
+                    }
                 } else {
-                    // Closing: exit terminal focus mode.
+                    // Closing: exit any lingering terminal focus mode first.
                     if matches!(
                         self.app_state.current_mode(),
                         EditorMode::TerminalFocus | EditorMode::TerminalNormal
                     ) {
                         let _ = self.app_state.apply_mode_event(ModeEvent::ExitFocus);
                     }
-                    self.focus_manager.set(FocusTarget::CenterEditor)
-                };
-
-                if focus_changed {
-                    self.input_handler.clear_pending_prefix();
+                    if self.focus_manager.set(FocusTarget::CenterEditor) {
+                        self.input_handler.clear_pending_prefix();
+                    }
                 }
 
                 self.sidebar_needs_layout = true;
-                self.right_terminal_needs_layout = true;
                 Some(true)
             }
             Command::AiChatPromptInstall => Some(self.begin_ai_chat_install_confirmation()),
@@ -748,18 +752,18 @@ impl AppShell {
                     self.panel_state.right.visible = true;
                     self.sidebar_needs_layout = true;
                 }
-                self.panel_state.right.switch_to_tab(PanelTabId::Terminal);
-                self.ensure_right_opencode_terminal();
+                self.panel_state.right.switch_to_tab(PanelTabId::AiChat);
                 let focus_changed = self.focus_manager.set(FocusTarget::RightSidebar);
                 if focus_changed {
                     self.input_handler.clear_pending_prefix();
                 }
-                // Enter terminal focus so keystrokes reach opencode even when
-                // the right sidebar already owns focus but mode drifted away.
-                if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
-                    let _ = result;
+                if self.right_pty_session_id.is_some() || self.pending_right_pty_spawn {
+                    if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
+                        let _ = result;
+                    }
+                } else {
+                    self.open_ai_agent_chooser();
                 }
-                self.right_terminal_needs_layout = true;
                 Some(true)
             }
             Command::AiChatInputChar(ch) => {
@@ -872,6 +876,107 @@ impl AppShell {
             }
             _ => None,
         }
+    }
+
+    /// Show the in-panel AI-agent picker: focus the AI Chat tab so its inline
+    /// list (navigated with j/k, launched with Enter) renders and receives input.
+    pub(in crate::app::event_loop) fn open_ai_agent_chooser(&mut self) {
+        if !self.panel_state.right.visible {
+            self.panel_state.right.visible = true;
+            self.sidebar_needs_layout = true;
+        }
+        self.panel_state.right.switch_to_tab(PanelTabId::AiChat);
+        let count = self.ai_agent_picker_agents().len();
+        if self.ai_agent_picker_selected >= count {
+            self.ai_agent_picker_selected = 0;
+        }
+        if self.focus_manager.set(FocusTarget::RightSidebar) {
+            self.input_handler.clear_pending_prefix();
+        }
+    }
+
+    /// Agents for the picker, most-recently-used first.
+    pub(in crate::app::event_loop) fn ai_agent_picker_agents(
+        &self,
+    ) -> Vec<&'static crate::app::ai_agents::AiAgent> {
+        let recent = &self.persistent_state.recent_ai_agents;
+        let mut agents: Vec<&crate::app::ai_agents::AiAgent> =
+            crate::app::ai_agents::default_ai_agents().iter().collect();
+        agents.sort_by_key(|a| {
+            recent
+                .iter()
+                .position(|id| id == a.id)
+                .unwrap_or(usize::MAX)
+        });
+        agents
+    }
+
+    pub(in crate::app::event_loop) fn ai_agent_picker_move(&mut self, forward: bool) -> bool {
+        let count = self.ai_agent_picker_agents().len();
+        if count == 0 {
+            return false;
+        }
+        let cur = self.ai_agent_picker_selected.min(count - 1);
+        self.ai_agent_picker_selected = if forward {
+            (cur + 1) % count
+        } else {
+            (cur + count - 1) % count
+        };
+        true
+    }
+
+    /// Launch the selected agent in the right-dock terminal.
+    pub(in crate::app::event_loop) fn ai_agent_picker_launch(&mut self) -> bool {
+        let agents = self.ai_agent_picker_agents();
+        let Some(agent) = agents.get(self.ai_agent_picker_selected).copied() else {
+            return false;
+        };
+
+        self.persistent_state.push_recent_ai_agent(agent.id);
+        self.persistent_state.save();
+
+        if !self.panel_state.right.visible {
+            self.panel_state.right.visible = true;
+            self.sidebar_needs_layout = true;
+        }
+        self.panel_state.right.switch_to_tab(PanelTabId::AiChat);
+        self.spawn_right_agent_terminal(agent.command, agent.label);
+        self.focus_manager.set(FocusTarget::RightSidebar);
+        self.input_handler.clear_pending_prefix();
+        if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::FocusTerminal) {
+            let _ = result;
+        }
+        self.right_terminal_needs_layout = true;
+        self.show_transient_toast(format!("AI Chat\nLaunching {} …", agent.label));
+        true
+    }
+
+    /// Spawn `command` in the right-dock PTY via a login shell (so PATH resolves
+    /// the agent and any "command not found" shows in the terminal). Replaces any
+    /// running agent.
+    pub(super) fn spawn_right_agent_terminal(&mut self, command: &str, label: &str) {
+        let working_dir = self.default_terminal_working_dir();
+        // Reset the visible grid so the previous agent's output doesn't linger;
+        // the next layout sync resizes it to the panel.
+        self.right_terminal_grid = TerminalGrid::new(120, 40);
+        self.right_pty_session_id = None;
+        self.pending_right_pty_spawn = true;
+        self.right_agent_label = Some(label.to_string());
+        // Run the agent in the shell once the PTY is ready. `exec` replaces the
+        // login shell with the agent process, so the shell resolves PATH (login
+        // env) AND, when the agent exits or is killed (Ctrl-C), the PTY closes
+        // cleanly instead of dropping back to a live shell prompt. The PTY close
+        // resets `right_pty_session_id` to None, which re-shows the agent picker
+        // and clears the grid (see handle_terminal_result / PtySessionClosed).
+        self.right_pty_startup_command = Some(format!("exec {command}\r"));
+        self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::TerminalPty,
+            payload: WorkerRequestPayload::SpawnPtyShell {
+                shell: None,
+                working_dir,
+            },
+        });
     }
 
     /// Ensure the right-dock terminal is running `opencode`.

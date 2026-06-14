@@ -28,8 +28,9 @@ struct RegionInstanceRaw {
     rect: [f32; 4],
     // RGBA 0..1
     color: [f32; 4],
-    border_radius: f32,
-    _pad: [f32; 3],
+    // Per-corner radius [top-left, top-right, bottom-right, bottom-left].
+    // Replaces the old uniform border_radius + padding (same 4-float footprint).
+    corner_radii: [f32; 4],
 }
 
 impl RegionInstanceRaw {
@@ -51,7 +52,7 @@ impl RegionInstanceRaw {
                 wgpu::VertexAttribute {
                     offset: (std::mem::size_of::<[f32; 4]>() * 2) as u64,
                     shader_location: 3,
-                    format: wgpu::VertexFormat::Float32,
+                    format: wgpu::VertexFormat::Float32x4,
                 },
             ],
         }
@@ -62,7 +63,10 @@ impl RegionInstanceRaw {
 pub struct RegionDrawInstance {
     pub rect: [f32; 4],
     pub color: [f32; 4],
+    /// Uniform radius (kept for compatibility/tests). Mirrors the max corner.
     pub border_radius: f32,
+    /// Per-corner radius [top-left, top-right, bottom-right, bottom-left].
+    pub corner_radii: [f32; 4],
 }
 
 impl RegionDrawInstance {
@@ -71,11 +75,30 @@ impl RegionDrawInstance {
             rect,
             color,
             border_radius: 0.0,
+            corner_radii: [0.0; 4],
         }
     }
 
+    /// Round all four corners by the same radius.
     pub fn with_radius(mut self, border_radius: f32) -> Self {
-        self.border_radius = border_radius.max(0.0);
+        let r = border_radius.max(0.0);
+        self.border_radius = r;
+        self.corner_radii = [r; 4];
+        self
+    }
+
+    /// Round each corner independently: `[top_left, top_right, bottom_right,
+    /// bottom_left]`. Use for shapes that must curve only on some corners (e.g.
+    /// a tab strip whose top corners follow a rounded panel while its bottom
+    /// stays flush with the content below).
+    pub fn with_corner_radii(mut self, radii: [f32; 4]) -> Self {
+        self.corner_radii = [
+            radii[0].max(0.0),
+            radii[1].max(0.0),
+            radii[2].max(0.0),
+            radii[3].max(0.0),
+        ];
+        self.border_radius = self.corner_radii.iter().copied().fold(0.0_f32, f32::max);
         self
     }
 }
@@ -229,8 +252,7 @@ impl RegionPipeline {
             .map(|instance| RegionInstanceRaw {
                 rect: instance.rect,
                 color: instance.color,
-                border_radius: instance.border_radius,
-                _pad: [0.0; 3],
+                corner_radii: instance.corner_radii,
             })
             .collect();
         queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&raw));
@@ -285,5 +307,24 @@ impl RegionPipeline {
             mapped_at_creation: false,
         });
         self.instance_capacity = new_capacity;
+    }
+}
+
+#[cfg(test)]
+mod shader_tests {
+    /// The region shader is only compiled at GPU init, so a syntax/type error in
+    /// region.wgsl would otherwise surface as a runtime panic. Parse + validate
+    /// it here (same source the pipeline `include_str!`s) so shader regressions —
+    /// e.g. the per-corner `corner_radii` vertex input — fail in CI instead.
+    #[test]
+    fn region_shader_is_valid_wgsl() {
+        let src = include_str!("shaders/region.wgsl");
+        let module = naga::front::wgsl::parse_str(src).expect("region.wgsl must parse");
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .expect("region.wgsl must validate");
     }
 }

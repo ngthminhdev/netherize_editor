@@ -839,8 +839,9 @@ impl AppState {
         let line_start = self.text.line_to_char(line);
         let line_end = self.line_content_end_char_idx(line);
         let dest = match kind {
-            FindMotionKind::ForwardTo => ((cursor + 1).min(line_end)..line_end)
-                .find(|&i| self.text.char(i) == target),
+            FindMotionKind::ForwardTo => {
+                ((cursor + 1).min(line_end)..line_end).find(|&i| self.text.char(i) == target)
+            }
             FindMotionKind::ForwardTill => ((cursor + 1).min(line_end)..line_end)
                 .find(|&i| self.text.char(i) == target)
                 .map(|hit| hit.saturating_sub(1))

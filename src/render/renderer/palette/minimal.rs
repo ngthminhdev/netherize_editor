@@ -441,6 +441,37 @@ impl Renderer {
                 &self.queue,
                 &mut glyphs,
             );
+
+            // Right-aligned dimmed secondary label (e.g. the LeetCode language
+            // hint "python3 · .py", or a Python env path). Only drawn when it
+            // fits to the right of the primary label.
+            if let Some(secondary) = model
+                .secondary_labels
+                .get(absolute_idx)
+                .filter(|s| !s.is_empty())
+            {
+                let label_w =
+                    crate::render::renderer::helpers::estimate_monospace_width(label, font_size);
+                let sec_w = crate::render::renderer::helpers::estimate_monospace_width(
+                    secondary, font_size,
+                );
+                let sec_x = panel_x + panel_w - model.panel_padding - 8.0 - sec_w;
+                if sec_x > text_x + label_w + 16.0 {
+                    self.palette_text_system
+                        .set_size(Some(sec_w.max(1.0)), Some(model.line_height));
+                    glyphs.extend(layout_panel_text(
+                        secondary,
+                        &mut self.palette_text_system,
+                        &mut self.atlas,
+                        &self.queue,
+                        sec_x,
+                        label_y,
+                        model.hint_color,
+                    ));
+                    self.palette_text_system
+                        .set_size(Some(inner_width), Some(model.line_height));
+                }
+            }
             row_top += row_h;
         }
 

@@ -9,6 +9,17 @@ use crate::{
     },
 };
 
+/// Height (logical px) of the clickable tab strip reserved at the top of the
+/// right dock. Shared by the layout engine (to inset the AI Chat sub-regions)
+/// and the renderer (to draw the strip + place content below it).
+pub const RIGHT_TAB_STRIP_HEIGHT: f32 = 72.0;
+
+/// Inset (px) between the right-dock panel edge and its tab strip / content, so
+/// the panel's focus-ring outline stays visible around them instead of being
+/// painted over (mirrors the bottom dock's tab-bar outline inset). Matches
+/// `FOCUS_RING_THICKNESS`.
+pub const RIGHT_DOCK_OUTLINE_INSET: f32 = 2.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SplitHandleId {
     LeftCenter,
@@ -195,21 +206,27 @@ impl WorkbenchLayoutEngine {
         let right_sidebar = if panels.right.visible && right_w > 0.0 && body_h > 0.0 {
             let rs_rect = RegionBounds::new(right_x, center_y, right_w, body_h);
 
-            // Split into AI Chat sub-regions using inner_padding only
+            // Reserve a tab strip band at the very top; all tab content (AI Chat,
+            // Test Runner, …) lives below it.
+            let strip_h = RIGHT_TAB_STRIP_HEIGHT.min(rs_rect.height);
+            let content_y = rs_rect.y + strip_h;
+            let content_h = (rs_rect.height - strip_h).max(0.0);
+
+            // Split the content area into AI Chat sub-regions using inner_padding.
             let pad = self.config.inner_padding;
-            let available = (rs_rect.height - pad * 2.0).max(0.0);
+            let available = (content_h - pad * 2.0).max(0.0);
             let chat_input_h = self.config.chat_input_height.min(available * 0.5);
             let history_h = (available - chat_input_h - pad).max(0.0);
 
             let history_rect = RegionBounds::new(
                 rs_rect.x + pad,
-                rs_rect.y + pad,
+                content_y + pad,
                 (rs_rect.width - pad * 2.0).max(0.0),
                 history_h,
             );
             let input_rect = RegionBounds::new(
                 rs_rect.x + pad,
-                rs_rect.y + pad + history_h + pad,
+                content_y + pad + history_h + pad,
                 (rs_rect.width - pad * 2.0).max(0.0),
                 chat_input_h,
             );
@@ -558,9 +575,16 @@ impl WorkbenchLayoutEngine {
 
 #[cfg(test)]
 mod tests {
-    use super::{SplitHandleId, WorkbenchLayoutConfig, WorkbenchLayoutEngine};
+    use super::{
+        RIGHT_TAB_STRIP_HEIGHT, SplitHandleId, WorkbenchLayoutConfig, WorkbenchLayoutEngine,
+    };
     use crate::workbench::{panel_state::WorkbenchPanelState, region_model::RegionId};
     use winit::dpi::PhysicalSize;
+
+    #[test]
+    fn right_tab_strip_matches_terminal_tab_height() {
+        assert_eq!(RIGHT_TAB_STRIP_HEIGHT, 72.0);
+    }
 
     #[test]
     fn computes_core_regions_and_handles() {

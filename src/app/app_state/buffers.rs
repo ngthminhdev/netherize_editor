@@ -178,6 +178,13 @@ impl AppState {
         self.save_current_text_buffer_history();
         let removed = self.buffers.remove(current_idx);
         if let BufferContent::Text(buffer) = removed.content {
+            if let Some(ref session) = self.test_field_edit {
+                if buffer.path == session.scratch_path {
+                    let path_to_remove = session.scratch_path.clone();
+                    self.test_field_edit = None;
+                    let _ = std::fs::remove_file(path_to_remove);
+                }
+            }
             self.closed_text_buffers.insert(buffer.path.clone(), buffer);
         }
 

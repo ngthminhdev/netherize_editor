@@ -6,8 +6,10 @@ mod failure;
 mod filesystem;
 mod fzf;
 mod git;
+mod leetcode_fetch;
 mod lsp;
 mod preview;
+mod runner;
 mod shell;
 mod syntax;
 mod system;
@@ -105,6 +107,17 @@ impl AsyncResultRouter for AppShell {
             }
             WorkerResultPayload::WorkspaceRescanned { .. } => {
                 filesystem::handle_workspace_rescanned(self, result.payload);
+            }
+            WorkerResultPayload::TestCasesCompleted { .. } => {
+                runner::handle_test_cases_completed(self, result.payload);
+            }
+            WorkerResultPayload::LeetCodeProblemFetched { .. }
+            | WorkerResultPayload::LeetCodeProblemFetchFailed { .. } => {
+                leetcode_fetch::handle_leetcode_fetch_result(self, result.payload);
+            }
+            WorkerResultPayload::LeetCodeTestsGenerated { .. }
+            | WorkerResultPayload::LeetCodeTestsGenerateFailed { .. } => {
+                leetcode_fetch::handle_leetcode_generate_result(self, result.payload);
             }
             _ => {}
         }

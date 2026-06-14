@@ -89,6 +89,46 @@ fn make_default_profile_map() -> InputMap {
 }
 
 #[test]
+fn test_runner_field_editing_is_click_only() {
+    // Field editing moved to mouse clicks; `i`/Enter no longer open the editor.
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::TestRunner);
+    context.test_runner_editing = false;
+    let now = std::time::Instant::now();
+
+    let edit_enter = handler.route_normalized_input(
+        named_input(NamedKey::Enter, Some(KeyCode::Enter)),
+        &map,
+        context,
+        now,
+    );
+    assert!(edit_enter.is_none(), "Enter must not edit the field anymore");
+
+    let edit_i = handler.route_normalized_input(char_input('i', KeyCode::KeyI), &map, context, now);
+    assert!(edit_i.is_none(), "`i` must not edit the field anymore");
+}
+
+#[test]
+fn test_runner_routes_generate_command() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let mut context =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::TestRunner);
+    context.test_runner_editing = false;
+    let now = std::time::Instant::now();
+
+    let generate =
+        handler.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, now);
+    assert!(matches!(
+        generate,
+        Some(InputRouteOutcome::Dispatch(ref translated))
+            if translated.command == Command::TestRunnerGenerateCases
+    ));
+}
+
+#[test]
 fn leader_space_f_f_maps_to_open_file_picker() {
     let mut handler = InputHandler::new();
     let map = make_map();
@@ -393,19 +433,17 @@ fn bottom_terminal_ctrl_u_d_still_forward_raw_to_pty() {
 
     let up = handler.route_normalized_input(ctrl_input('u', KeyCode::KeyU), &map, context, t0);
     match up {
-        Some(InputRouteOutcome::Dispatch(translated)) => {
-            match &translated.command {
-                Command::TerminalWriteInput(payload) => {
-                    assert!(
-                        !payload.starts_with('\u{1b}'),
-                        "bottom terminal Ctrl+U must stay raw ^U, not the right-dock \
+        Some(InputRouteOutcome::Dispatch(translated)) => match &translated.command {
+            Command::TerminalWriteInput(payload) => {
+                assert!(
+                    !payload.starts_with('\u{1b}'),
+                    "bottom terminal Ctrl+U must stay raw ^U, not the right-dock \
                          ctrl+alt+u forward, got {:?}",
-                        payload
-                    );
-                }
-                other => panic!("bottom terminal Ctrl+U should forward raw, got {:?}", other),
+                    payload
+                );
             }
-        }
+            other => panic!("bottom terminal Ctrl+U should forward raw, got {:?}", other),
+        },
         other => panic!("expected raw write dispatch, got {:?}", other),
     }
 }
@@ -1079,7 +1117,8 @@ fn bare_find_char_motion_waits_then_dispatches_move_find_char() {
     let context = KeybindingContext::for_mode(EditorMode::Normal);
     let now = std::time::Instant::now();
 
-    let pending = handler.route_normalized_input(char_input('f', KeyCode::KeyF), &map, context, now);
+    let pending =
+        handler.route_normalized_input(char_input('f', KeyCode::KeyF), &map, context, now);
     assert!(matches!(
         pending,
         Some(InputRouteOutcome::NoDispatch { .. })
@@ -1915,50 +1954,40 @@ fn ime_commit_is_redirected_to_ai_chat_text() {
 }
 
 #[test]
-fn ai_chat_text_input_keeps_full_unicode_payload() {
+fn ai_agent_picker_j_k_navigate() {
     let mut handler = InputHandler::new();
     let map = make_map();
-    let context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::AiChat);
+    let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::AiChat);
+    context.ai_agent_picker_active = true;
     let now = std::time::Instant::now();
-    let input = NormalizedInput {
-        physical_key: Some(KeyCode::KeyD),
+    let j = NormalizedInput {
+        physical_key: Some(KeyCode::KeyJ),
         named_key: None,
-        text: Some("đổi".to_string()),
+        text: Some("j".to_string()),
         modifiers: ModifiersState::empty(),
     };
 
-    match handler.route_normalized_input(input, &map, context, now) {
+    match handler.route_normalized_input(j, &map, context, now) {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(
-                translated.command,
-                Command::AiChatInputText("đổi".to_string())
-            );
+            assert_eq!(translated.command, Command::AiAgentPickerNext);
         }
-        other => panic!("expected ai chat unicode dispatch, got {:?}", other),
+        other => panic!("expected agent picker next, got {:?}", other),
     }
 }
 
 #[test]
-fn ai_chat_ctrl_u_d_scroll_history() {
+fn ai_agent_picker_enter_launches() {
     let mut handler = InputHandler::new();
     let map = make_map();
-    let context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::AiChat);
+    let mut context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::AiChat);
+    context.ai_agent_picker_active = true;
     let now = std::time::Instant::now();
 
-    let up = handler.route_normalized_input(ctrl_input('u', KeyCode::KeyU), &map, context, now);
-    match up {
+    match handler.route_normalized_input(named_input(NamedKey::Enter, None), &map, context, now) {
         Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::AiChatScrollHalfPageUp);
+            assert_eq!(translated.command, Command::AiAgentPickerLaunch);
         }
-        other => panic!("expected ai chat scroll up dispatch, got {:?}", other),
-    }
-
-    let down = handler.route_normalized_input(ctrl_input('d', KeyCode::KeyD), &map, context, now);
-    match down {
-        Some(InputRouteOutcome::Dispatch(translated)) => {
-            assert_eq!(translated.command, Command::AiChatScrollHalfPageDown);
-        }
-        other => panic!("expected ai chat scroll down dispatch, got {:?}", other),
+        other => panic!("expected agent picker launch, got {:?}", other),
     }
 }
 
@@ -2008,4 +2037,143 @@ fn buffer_terminal_cmd_r_maps_to_focus_inspector() {
             other
         ),
     }
+}
+
+#[test]
+fn test_right_dock_switching_under_various_focuses() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let now = std::time::Instant::now();
+
+    // Helper to build Cmd-1 input
+    let cmd_1 = NormalizedInput {
+        physical_key: Some(KeyCode::Digit1),
+        named_key: None,
+        text: None,
+        modifiers: ModifiersState::SUPER,
+    };
+
+    // Helper to build Cmd-2 input
+    let cmd_2 = NormalizedInput {
+        physical_key: Some(KeyCode::Digit2),
+        named_key: None,
+        text: None,
+        modifiers: ModifiersState::SUPER,
+    };
+
+    // 1. Focused on Center Editor (Normal mode) -> Cmd-1 switches right dock tab
+    let context_editor =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Editor);
+    let mapped = handler.route_normalized_input(cmd_1.clone(), &map, context_editor, now);
+    assert!(
+        matches!(mapped, Some(InputRouteOutcome::Dispatch(ref trans)) if trans.command == Command::SwitchRightTab(0)),
+        "Expected SwitchRightTab(0) from editor normal mode focus, got {:?}",
+        mapped
+    );
+
+    // 2. Focused on AiChat -> Cmd-2 switches right dock tab
+    let context_aichat =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::AiChat);
+    let mapped = handler.route_normalized_input(cmd_2.clone(), &map, context_aichat, now);
+    assert!(
+        matches!(mapped, Some(InputRouteOutcome::Dispatch(ref trans)) if trans.command == Command::SwitchRightTab(1)),
+        "Expected SwitchRightTab(1) from AiChat focus, got {:?}",
+        mapped
+    );
+
+    // 3. Focused on TestRunner -> Cmd-2 switches right dock tab
+    let context_runner =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::TestRunner);
+    let mapped = handler.route_normalized_input(cmd_2.clone(), &map, context_runner, now);
+    assert!(
+        matches!(mapped, Some(InputRouteOutcome::Dispatch(ref trans)) if trans.command == Command::SwitchRightTab(1)),
+        "Expected SwitchRightTab(1) from TestRunner focus, got {:?}",
+        mapped
+    );
+
+    // 4. Focused on bottom terminal (TerminalFocus mode, right_sidebar_terminal: false) -> Cmd-2 switches terminal tab
+    let mut context_bottom_terminal =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal);
+    context_bottom_terminal.right_sidebar_terminal = false;
+    let mapped = handler.route_normalized_input(cmd_2.clone(), &map, context_bottom_terminal, now);
+    assert!(
+        matches!(mapped, Some(InputRouteOutcome::Dispatch(ref trans)) if trans.command == Command::SwitchTerminalTab(1)),
+        "Expected SwitchTerminalTab(1) from bottom terminal focus, got {:?}",
+        mapped
+    );
+
+    // 5. Focused on right sidebar terminal (TerminalFocus mode, right_sidebar_terminal: true) -> Cmd-1 switches right dock tab
+    let mut context_right_terminal =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal);
+    context_right_terminal.right_sidebar_terminal = true;
+    let mapped = handler.route_normalized_input(cmd_1.clone(), &map, context_right_terminal, now);
+    assert!(
+        matches!(mapped, Some(InputRouteOutcome::Dispatch(ref trans)) if trans.command == Command::SwitchRightTab(0)),
+        "Expected SwitchRightTab(0) from right sidebar terminal focus, got {:?}",
+        mapped
+    );
+}
+
+#[test]
+fn test_outline_navigation_routing() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let now = std::time::Instant::now();
+    let context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Outline);
+
+    // 1. Pressing 'j' -> OutlineNext
+    let j_input = NormalizedInput {
+        physical_key: Some(KeyCode::KeyJ),
+        named_key: None,
+        text: Some("j".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let mapped = handler.route_normalized_input(j_input, &map, context, now);
+    assert!(
+        matches!(mapped, Some(InputRouteOutcome::Dispatch(ref trans)) if trans.command == Command::OutlineNext),
+        "Expected OutlineNext command, got {:?}",
+        mapped
+    );
+
+    // 2. Pressing 'k' -> OutlinePrev
+    let k_input = NormalizedInput {
+        physical_key: Some(KeyCode::KeyK),
+        named_key: None,
+        text: Some("k".to_string()),
+        modifiers: ModifiersState::empty(),
+    };
+    let mapped = handler.route_normalized_input(k_input, &map, context, now);
+    assert!(
+        matches!(mapped, Some(InputRouteOutcome::Dispatch(ref trans)) if trans.command == Command::OutlinePrev),
+        "Expected OutlinePrev command, got {:?}",
+        mapped
+    );
+
+    // 3. Pressing Enter -> OutlineConfirm
+    let enter_input = NormalizedInput {
+        physical_key: Some(KeyCode::Enter),
+        named_key: Some(NamedKey::Enter),
+        text: None,
+        modifiers: ModifiersState::empty(),
+    };
+    let mapped = handler.route_normalized_input(enter_input, &map, context, now);
+    assert!(
+        matches!(mapped, Some(InputRouteOutcome::Dispatch(ref trans)) if trans.command == Command::OutlineConfirm),
+        "Expected OutlineConfirm command, got {:?}",
+        mapped
+    );
+
+    // 4. Pressing Esc -> FocusEditor
+    let esc_input = NormalizedInput {
+        physical_key: Some(KeyCode::Escape),
+        named_key: Some(NamedKey::Escape),
+        text: None,
+        modifiers: ModifiersState::empty(),
+    };
+    let mapped = handler.route_normalized_input(esc_input, &map, context, now);
+    assert!(
+        matches!(mapped, Some(InputRouteOutcome::Dispatch(ref trans)) if trans.command == Command::FocusEditor),
+        "Expected FocusEditor command, got {:?}",
+        mapped
+    );
 }

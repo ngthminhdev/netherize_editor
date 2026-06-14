@@ -181,6 +181,21 @@ impl Renderer {
         // ══════════════════════════════════════════════════════════════════════════
         let mut left_x = pill_x + pill_width + item_gap;
 
+        // ── Resize-mode key hint ───────────────────────────────────────────────────
+        if mode == EditorMode::Resize {
+            let hint = "h/l width  j/k height  H/L grow dock  esc: exit";
+            glyphs.extend(layout_panel_text(
+                hint,
+                &mut self.statusbar_text_system,
+                &mut self.atlas,
+                &self.queue,
+                left_x,
+                origin_y,
+                amber,
+            ));
+            left_x += estimate_monospace_width(hint, font_size) + item_gap;
+        }
+
         // ── Git branch ────────────────────────────────────────────────────────────
         let branch = git_branch.trim();
         if !branch.is_empty() {

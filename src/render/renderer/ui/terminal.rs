@@ -461,6 +461,54 @@ impl Renderer {
         ]
     }
 
+    /// Hit-test a point against the terminal tab bar laid out by
+    /// [`Self::update_terminal_tab_bar`]. Returns the index of the tab under
+    /// `pos`, or `None` when the point is outside the tab strip (or no strip is
+    /// drawn because `tab_count <= 1`). The geometry here MUST stay in sync with
+    /// `update_terminal_tab_bar` — both walk the same `tab_x`/`tab_w` sequence.
+    pub fn terminal_tab_index_at(
+        &self,
+        tab_count: usize,
+        bounds: [f32; 4],
+        pos: (f32, f32),
+    ) -> Option<usize> {
+        if tab_count <= 1 {
+            return None;
+        }
+        let outline_inset = Self::TAB_BAR_OUTLINE_INSET.min(bounds[3].max(0.0));
+        let tab_bar_h = Self::TAB_BAR_HEIGHT.min((bounds[3] - outline_inset).max(0.0));
+        if tab_bar_h < 1.0 {
+            return None;
+        }
+        let tab_bar_y = bounds[1] + outline_inset;
+        let (px, py) = pos;
+        if py < tab_bar_y || py >= tab_bar_y + tab_bar_h {
+            return None;
+        }
+
+        let mut tab_x = bounds[0] + Self::TAB_BAR_PADDING_X;
+        let right_limit = bounds[0] + bounds[2] - Self::TAB_BAR_PADDING_X;
+        let tab_width = ((right_limit - tab_x) / tab_count as f32).max(0.0);
+
+        for i in 0..tab_count {
+            let remaining_width = (right_limit - tab_x).max(0.0);
+            let tabs_left = (tab_count - i) as f32;
+            let tab_w = if i + 1 == tab_count {
+                remaining_width
+            } else {
+                tab_width.min(remaining_width - (tabs_left - 1.0).max(0.0))
+            };
+            if tab_w <= 0.0 {
+                break;
+            }
+            if px >= tab_x && px < tab_x + tab_w {
+                return Some(i);
+            }
+            tab_x += tab_w;
+        }
+        None
+    }
+
     pub fn update_terminal_tab_bar(
         &mut self,
         tab_labels: &[&str],

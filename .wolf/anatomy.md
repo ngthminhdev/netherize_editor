@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-13T14:57:17.470Z
-> Files: 382 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-14T14:28:06.324Z
+> Files: 404 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -11,6 +11,8 @@
 
 ## ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/
 
+- `feedback_superpowers_skills.md` (~334 tok)
+- `MEMORY.md` (~124 tok)
 - `onboarding-roadmap.md` — Declares blocks (~497 tok)
 
 ## ../../.config/netherize/
@@ -25,11 +27,13 @@
 - `AGENTS.md` — Project Rules Precedence (~1490 tok)
 - `AI_INLINE_COMPLETION_STATUS_REPORT.md` — AI inline completion audit/status report (~1600 tok)
 - `BUILD.md` — Build Instructions (~915 tok)
-- `Cargo.toml` — Rust package manifest (~669 tok)
+- `Cargo.toml` — Rust package manifest (~638 tok)
 - `CLAUDE.md` — OpenWolf (~1543 tok)
 - `Cross.toml` (~73 tok)
 - `DEPENDENCIES.md` — Netherize Editor - Runtime Dependencies (~1867 tok)
 - `README.md` — Project documentation (~6759 tok)
+- `twoSum.go` — Two Sum — reads from stdin, prints to stdout (for the Test Runner panel). (~263 tok)
+- `twoSum.js` — Two Sum — reads from stdin, prints to stdout (for the Test Runner panel). (~235 tok)
 - `update_themes.sh` — Script to update all theme files with vibrant syntax colors (~410 tok)
 
 ## .claude/
@@ -40,6 +44,7 @@
 ## .claude/rules/
 
 - `openwolf.md` (~313 tok)
+- `superpowers.md` (~328 tok)
 
 ## .claude/skills/generated/app-state/
 
@@ -181,6 +186,17 @@
 
 - `meta.json` (~105 tok)
 
+## LeetCode Test Runner (added 2026-06-14)
+
+- `src/app/event_loop/async_results/leetcode_fetch.rs` — applies fetched problem results: opens worker-created solution file, fills Test Runner cases, focuses panel, reports errors (~650 tok)
+- `src/app/event_loop/async_results/runner.rs` — handle_test_cases_completed: folds worker outcomes into test_runner state, judges pass/fail, toasts X/Y passed (~400 tok)
+- `src/async_runtime/scheduler/leetcode_fetch.rs` — async GraphQL ID/slug fetch, optional inline-provider AI adaptation with mechanical fallback, async unique-file write, worker wake/result delivery (~2400 tok)
+- `src/render/renderer/ui/test_runner.rs` — update_test_runner_content: draws case rows (status/input/expected/actual) + selected highlight + edit caret into bottom dock; clear_test_runner. Theme-token colors (~1100 tok)
+- `src/runner/leetcode_adapter.rs` — active-extension language detection and mechanical stdin-JSON/stdout-JSON wrappers for LeetCode snippets (~1200 tok)
+- `src/runner/leetcode_api.rs` — LeetCode input normalization, metadata DTO parsing, HTML example output extraction, JSON test-case construction (~1200 tok)
+- `src/runner/leetcode_cache.rs` — Solution-file `netherize-leetcode` header build/parse + per-problem JSON cache (id-keyed: statement, params, cases) load/save. Powers `g` generate context + cache-on-edit + load-on-open. 6 unit tests (~900 tok)
+- `src/runner/mod.rs` — Run-and-compare core: TestCase/TestStatus/TestRunnerState, outputs_match/normalize_output, resolve_run_command (ext→interpreter), TestCaseOutcome+apply_outcome, editing state machine (TestField, begin/end edit, insert/backspace/cursor, nav). Pure, 13 unit tests (~2600 tok)
+
 ## assets/bearded-icons/
 
 - `LICENSE` — Project license (~9374 tok)
@@ -204,11 +220,11 @@
 ## config/
 
 - `.DS_Store` (~1640 tok)
-- `ai.toml` (~76 tok)
+- `ai.toml` (~171 tok)
 
 ## config/keymaps/
 
-- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5194 tok)
+- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5314 tok)
 
 ## config/themes/
 
@@ -306,6 +322,11 @@
 - `MODULE12_HANDOFF_COMPACT.md` — Netherize Editor — Module 12 Handoff (Compact) (~1188 tok)
 - `perf_profiling.md` — Netherize Editor Perf Kit (Module 10 / Phase 3) (~786 tok)
 
+## docs/superpowers/specs/
+
+- `2026-06-14-leetcode-test-runner-ai-generate-design.md` — LeetCode Test Runner — AI Generate, Per-File Cache, UX Rework (~859 tok)
+- `2026-06-14-test-runner-field-editing-design.md` — Test Runner — Edit JSON fields via the real vim editor (~1569 tok)
+
 ## scripts/
 
 - `bundle_linux.sh` (~2227 tok)
@@ -319,51 +340,52 @@
 ## src/
 
 - `editor_core.rs` — Editor core buffer tối thiểu cho single-file workflow. (~7620 tok)
-- `lib.rs` — Phiên bản hiển thị trong UI (Welcome screen, status bar…). (~126 tok)
+- `lib.rs` — Phiên bản hiển thị trong UI (Welcome screen, status bar…). (~122 tok)
 - `main.rs` (~42 tok)
 
 ## src/app/
 
+- `ai_agents.rs` — AI agent CLIs that can be launched inside the right-dock terminal. (~635 tok)
 - `async_bridge.rs` — BridgePumpStats: new, pump (~4298 tok)
 - `clipboard.rs` — SystemClipboard: new (~524 tok)
-- `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~15545 tok)
+- `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~14954 tok)
 - `file_picker.rs` — FilePickerEntry: open, close, append_query, backspace_query + 6 more (~1644 tok)
 - `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~2135 tok)
 - `mod.rs` (~66 tok)
-- `persistence.rs` — True after the one-time first-run key-hint toast was shown. (~1263 tok)
-- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~16007 tok)
+- `persistence.rs` — True after the one-time first-run key-hint toast was shown. (~1823 tok)
+- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~16159 tok)
 
 ## src/app/app_state/
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer + 12 more (~8220 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~10520 tok)
-- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~23608 tok)
+- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~24453 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
 - `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~17364 tok)
-- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_dart_ (~18175 tok)
+- `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_leetc (~18583 tok)
 - `settings.rs` — Snapshot of `[inline_completion]` config values used to seed the AI section (~2837 tok)
 - `state.rs` — file_history_picker_items, build_file_history_diff_preview, begin_file_history_preview_session, prev (~12339 tok)
-- `tests.rs` — [cfg(test)] (~20778 tok)
+- `tests.rs` — [cfg(test)] (~21719 tok)
 - `workspace.rs` — attach_workspace, clear_workspace_session_state, workspace_root_path, workspace_nodes + 22 more (~4384 tok)
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~27029 tok)
-- `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~11819 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~30005 tok)
+- `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
-- `commands_explorer.rs` (~7375 tok)
-- `commands_lsp.rs` (~9141 tok)
-- `commands_palette.rs` (~7900 tok)
+- `commands_explorer.rs` (~7394 tok)
+- `commands_lsp.rs` (~9598 tok)
+- `commands_palette.rs` (~8052 tok)
 - `commands_prompts.rs` (~7222 tok)
-- `commands_settings_helpers.rs` — Declares RESIZE_STEP_PX (~10092 tok)
-- `commands_settings.rs` (~5741 tok)
-- `commands_terminal.rs` (~6896 tok)
-- `commands_tests.rs` — [derive(Default)] (~31960 tok)
+- `commands_settings_helpers.rs` — Which workbench dock a resize-mode key adjusts. (~9781 tok)
+- `commands_settings.rs` (~5614 tok)
+- `commands_terminal.rs` (~12688 tok)
+- `commands_tests.rs` — [derive(Default)] (~34526 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~10265 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18582 tok)
-- `mod.rs` — Struct: AppShell (~6788 tok)
-- `setup.rs` — new, new_for_tests (~22621 tok)
+- `mod.rs` — Struct: AppShell (~7021 tok)
+- `setup.rs` — new, new_for_tests (~22987 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
@@ -373,34 +395,36 @@
 - `filesystem.rs` (~1750 tok)
 - `fzf.rs` (~596 tok)
 - `git.rs` (~865 tok)
+- `leetcode_fetch.rs` (~1154 tok)
 - `lsp.rs` (~9497 tok)
-- `mod.rs` (~9705 tok)
+- `mod.rs` (~9234 tok)
 - `preview.rs` (~993 tok)
+- `runner.rs` — Fold the worker's per-case outcomes back into `test_runner` state and judge (~313 tok)
 - `shell.rs` (~112 tok)
 - `syntax.rs` (~421 tok)
 - `system.rs` (~1894 tok)
-- `terminal.rs` (~3021 tok)
+- `terminal.rs` (~2964 tok)
 
 ## src/app/input/
 
-- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix (~20114 tok)
+- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix (~20084 tok)
 - `helpers.rs` — Trả về true nếu đây là event modifier-only (ShiftLeft, ShiftRight, ControlLeft...). (~4366 tok)
 - `mod.rs` (~69 tok)
 - `model.rs` — Dữ liệu key đã chuẩn hóa để tách phần "đọc winit event" (~764 tok)
 - `pending.rs` — [derive(Debug, Clone, PartialEq, Eq)] (~2406 tok)
-- `tests.rs` (~18491 tok)
+- `tests.rs` (~20276 tok)
 
 ## src/app/input_map/
 
 - `focus.rs` (~11494 tok)
 - `helpers.rs` (~180 tok)
-- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette (~5397 tok)
-- `tests.rs` (~16214 tok)
+- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette (~5890 tok)
+- `tests.rs` (~15331 tok)
 
 ## src/async_runtime/
 
 - `dart_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~1030 tok)
-- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~7324 tok)
+- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~7949 tok)
 - `mod.rs` (~22 tok)
 - `python_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~2566 tok)
 - `scheduler.rs` — Declares FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD (~3127 tok)
@@ -409,23 +433,24 @@
 
 - `ai_jobs.rs` — Platform install command for opencode: (~3926 tok)
 - `ai.rs` (~1916 tok)
-- `dispatch.rs` (~6932 tok)
+- `dispatch.rs` (~7800 tok)
 - `emit.rs` (~458 tok)
 - `file_watch.rs` — Declares FILE_WATCH_DEGRADED_THRESHOLD (~3241 tok)
 - `fzf.rs` — Declares MAX_FZF_RESULTS (~2494 tok)
 - `git.rs` (~1560 tok)
+- `leetcode_fetch.rs` (~5132 tok)
 - `local_history.rs` — Local history (disk persistence) has been removed. (~42 tok)
 - `lsp_io.rs` (~2278 tok)
 - `lsp_parse.rs` — Declares MAX_COMPLETION_ITEMS (~15075 tok)
 - `lsp.rs` (~7054 tok)
 - `pty.rs` (~3903 tok)
 - `runtime.rs` — Runtime wrapper duy nhất cho background jobs. (~839 tok)
-- `syntax_jobs.rs` (~7433 tok)
+- `syntax_jobs.rs` (~10267 tok)
 - `tests.rs` (~1915 tok)
 
 ## src/config/
 
-- `ai_config.rs` — [derive(Debug, Clone, Deserialize, Serialize, Default)] (~1963 tok)
+- `ai_config.rs` — Dedicated AI provider for the LeetCode adapter. When left empty the code (~2963 tok)
 - `keymap_config.rs` — Root structure of a `.toml` keymap profile file. (~350 tok)
 - `keymap_loader.rs` — Load and layer keymap profiles, returning a flat list of validated bindings. (~1764 tok)
 - `mod.rs` (~35 tok)
@@ -442,8 +467,8 @@
 
 ## src/core/
 
-- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~9448 tok)
-- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5259 tok)
+- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~9501 tok)
+- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5882 tok)
 - `mod.rs` (~35 tok)
 - `mode.rs` — Các mode cốt lõi của editor. (~4298 tok)
 - `text_object.rs` — find_text_object_range (~1753 tok)
@@ -452,12 +477,12 @@
 ## src/core/command_dispatch/
 
 - `common.rs` — Struct: DispatchReport (~1802 tok)
-- `editing.rs` (~10629 tok)
-- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~4342 tok)
+- `editing.rs` (~9958 tok)
+- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~4658 tok)
 - `navigation.rs` — Chụp lại (file, line, col) hiện tại trước một jump-motion (gg/G/{}/n/N). (~3534 tok)
-- `palette.rs` (~6718 tok)
-- `session.rs` (~4027 tok)
-- `tests.rs` (~18631 tok)
+- `palette.rs` (~6779 tok)
+- `session.rs` (~4900 tok)
+- `tests.rs` (~18838 tok)
 
 ## src/lsp/
 
@@ -476,8 +501,8 @@
 - `image_pipeline.rs` — [repr(C)] (~2249 tok)
 - `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
-- `region_pipeline.rs` — RegionDrawInstance: new, with_radius, new, update_screen_size + 3 more (~3035 tok)
-- `renderer.rs` — Core renderer types and module layout. (~4637 tok)
+- `region_pipeline.rs` — RegionDrawInstance: new, with_radius, with_corner_radii, new (~3335 tok)
+- `renderer.rs` — Core renderer types and module layout. (~4737 tok)
 - `surface.rs` — SurfaceState giữ toàn bộ thông tin liên quan đến swapchain/surface. (~797 tok)
 - `text_pipeline.rs` — TextPipeline: new, update_screen_size, upload_instances, draw + 1 more (~2779 tok)
 
@@ -486,9 +511,9 @@
 - `components.rs` (~123 tok)
 - `editor.rs` — Editor viewport rendering modules. (~2289 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3458 tok)
-- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~6729 tok)
+- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~6892 tok)
 - `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~3160 tok)
-- `ui.rs` — Panel UI rendering modules. (~43 tok)
+- `ui.rs` — Panel UI rendering modules. (~48 tok)
 
 ## src/render/renderer/components/
 
@@ -519,7 +544,7 @@
 
 ## src/render/renderer/lifecycle/
 
-- `frame.rs` — render (~8953 tok)
+- `frame.rs` — render (~9303 tok)
 
 ## src/render/renderer/palette/
 
@@ -527,7 +552,7 @@
 - `highlighted_label.rs` — Render a label string with fuzzy-match character highlights. (~833 tok)
 - `leap.rs` — update_editor_leap_labels, clear_leap_labels (~1951 tok)
 - `live_grep.rs` — Declares to (~2616 tok)
-- `minimal.rs` (~4731 tok)
+- `minimal.rs` (~4802 tok)
 - `recent_projects.rs` (~5250 tok)
 
 ## src/render/renderer/ui/
@@ -535,8 +560,9 @@
 - `ai_chat.rs` — Right-sidebar AI chat and markdown preview text rendering. (~19536 tok)
 - `popups.rs` — update_lsp_guide_popup, clear_lsp_guide_popup, update_system_dep_popup (~6724 tok)
 - `sidebar.rs` — update_sidebar_content, clear_sidebar (~3120 tok)
-- `statusbar.rs` — Render the three-zone status bar. (~5692 tok)
-- `terminal.rs` — update_terminal_content, update_right_terminal_content, clear_right_terminal, update_buffer_terminal_content (~7134 tok)
+- `statusbar.rs` — Render the three-zone status bar. (~5840 tok)
+- `terminal.rs` — update_terminal_content, update_right_terminal_content, clear_right_terminal, update_buffer_terminal (~7135 tok)
+- `test_runner.rs` — Test Runner panel (bottom dock): renders authored test cases with their (~10360 tok)
 - `topbar.rs` — update_topbar_content (~4633 tok)
 - `utils.rs` — Declares BORDER (~2418 tok)
 - `welcome.rs` — update_welcome_screen_content (~9261 tok)
@@ -549,7 +575,13 @@
 - `icon.wgsl` (~190 tok)
 - `image.wgsl` (~136 tok)
 - `quad.wgsl` (~103 tok)
-- `region.wgsl` (~428 tok)
+- `region.wgsl` (~590 tok)
+
+## src/runner/
+
+- `leetcode_cache.rs` — Per-problem LeetCode metadata: solution-file header (so a file remembers (~1591 tok)
+- `leetcode.rs` — Scaffold templates for the "New LeetCode File" command. (~1723 tok)
+- `mod.rs` — Lightweight "run-and-compare" test runner for the LeetCode / competitive (~6280 tok)
 
 ## src/syntax/
 
@@ -660,10 +692,10 @@
 - `debug_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~1847 tok)
 - `focus_manager.rs` — FocusManager: label, current, set, ensure_valid + 3 more (~1406 tok)
 - `inspector_panel.rs` — InspectorNode: title, leaf, branch, sync_from_debug_state + 6 more (~3078 tok)
-- `layout_engine.rs` — SplitHandle: label, contains, from_ui_theme, new + 1 more (~11133 tok)
+- `layout_engine.rs` — Height (logical px) of the clickable tab strip reserved at the top of the (~10632 tok)
 - `mod.rs` (~54 tok)
 - `overlay_manager.rs` — OverlaySurface: toggle_command_palette, is_command_palette_open, command_palette_query, push_command_palette_text + 3 more (~2247 tok)
-- `panel_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~2406 tok)
+- `panel_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~2324 tok)
 - `region_model.rs` — ID chuẩn hóa cho các vùng chính của Workbench. (~960 tok)
 - `text_coordinate_map.rs` — [derive(Debug, Clone, PartialEq)] (~1674 tok)
 

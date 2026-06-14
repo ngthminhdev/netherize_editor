@@ -167,21 +167,13 @@ mod tests {
         // Caret on a fresh line indented by 8 spaces; the model re-emits that
         // indentation. Without stripping it the accepted line is double-indented.
         assert_eq!(
-            sanitize_inline_suggestion(
-                "        results.append(item * 2)",
-                "        ",
-                "",
-            ),
+            sanitize_inline_suggestion("        results.append(item * 2)", "        ", "",),
             Some("results.append(item * 2)".to_string())
         );
         // Tab indentation, multi-line: line 1's echoed tab is dropped, deeper
         // lines keep their own absolute indentation.
         assert_eq!(
-            sanitize_inline_suggestion(
-                "\tfor i := range xs {\n\t\tsum += i\n\t}",
-                "\t",
-                "",
-            ),
+            sanitize_inline_suggestion("\tfor i := range xs {\n\t\tsum += i\n\t}", "\t", "",),
             Some("for i := range xs {\n\t\tsum += i\n\t}".to_string())
         );
     }

@@ -1031,6 +1031,19 @@ impl InputMap {
         context: KeybindingContext,
     ) -> Option<KeybindingMatch> {
         let mode = context.mode;
+        // If we are focused on the right sidebar's terminal, Cmd-1..Cmd-9 must switch
+        // the right sidebar's active tab instead of bottom terminal tabs. Check global commands.
+        if context.right_sidebar_terminal && input.has_command_modifier() {
+            if let Some(command) =
+                resolved_keymap::resolve_global_command(&self.keymap, input, &self.open_file_path)
+            {
+                return Some(KeybindingMatch {
+                    command,
+                    reason: "right terminal focus: global cmd shortcut override",
+                });
+            }
+        }
+
         // Strict terminal mode: only consult terminal-mode bindings here.
         // Unmapped keys must fall through as raw PTY input instead of triggering globals.
         if let Some(command) = resolved_keymap::resolve_command_mode_only(

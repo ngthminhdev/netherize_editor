@@ -208,6 +208,14 @@ pub(super) fn handle_terminal_result(
                     crate::terminal::grid::HighlightColors::from_theme(&app.theme);
                 app.right_terminal_needs_layout = true;
                 app.last_right_terminal_bounds = None;
+                // Drop the renderer's uploaded terminal glyphs NOW. The redraw's
+                // own cleanup branch (`else if last_right_terminal_bounds.is_some()`)
+                // is skipped because we just nulled the bounds, so without this the
+                // dead agent's TUI text lingers on screen behind the re-shown
+                // picker. Clearing here guarantees the surface is blank.
+                if let Some(renderer) = app.renderer.as_mut() {
+                    renderer.clear_right_terminal();
+                }
                 // Exit TerminalFocus mode so the editor is not stuck in terminal input mode.
                 if matches!(
                     app.app_state.current_mode(),

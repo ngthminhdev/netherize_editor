@@ -20,9 +20,14 @@ use super::{
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
     file_watch::run_file_watch_request,
     fzf::run_fzf_request,
+    leetcode_fetch::{
+        LeetCodeFetchJob, LeetCodeGenerateJob, run_leetcode_fetch, run_leetcode_generate,
+    },
     lsp::run_lsp_request,
     pty::run_pty_request,
-    syntax_jobs::{execute_virtual_job, run_extension_command, run_system_dep_install},
+    syntax_jobs::{
+        execute_virtual_job, run_extension_command, run_system_dep_install, run_test_cases,
+    },
 };
 
 async fn detect_python_version(python_binary: Option<&std::path::Path>) -> Option<String> {
@@ -66,6 +71,53 @@ pub(super) async fn dispatch_loop(
     let mut active_ai_chat_cancel: Option<CancellationToken> = None;
 
     while let Some(request) = request_rx.recv().await {
+        if let WorkerRequestPayload::FetchLeetCodeProblem {
+            input,
+            language_key,
+            destination_dir,
+            use_ai,
+            provider,
+        } = request.payload.clone()
+        {
+            let worker_tx = result_tx.clone();
+            let worker_proxy = event_proxy.clone();
+            tokio::spawn(run_leetcode_fetch(
+                LeetCodeFetchJob {
+                    request_id: request.request_id,
+                    revision_id: request.revision_id,
+                    input,
+                    language_key,
+                    destination_dir,
+                    use_ai,
+                    provider,
+                },
+                worker_tx,
+                worker_proxy,
+            ));
+            continue;
+        }
+
+        if let WorkerRequestPayload::GenerateLeetCodeTests {
+            cache,
+            language_key,
+            provider,
+        } = request.payload.clone()
+        {
+            let worker_tx = result_tx.clone();
+            let worker_proxy = event_proxy.clone();
+            tokio::spawn(run_leetcode_generate(
+                LeetCodeGenerateJob {
+                    request_id: request.request_id,
+                    revision_id: request.revision_id,
+                    cache,
+                    language_key,
+                    provider,
+                },
+                worker_tx,
+                worker_proxy,
+            ));
+            continue;
+        }
         async_trace!(
             "[Scheduler] dispatch request_id={} revision={} topic={:?}",
             request.request_id,
@@ -333,6 +385,51 @@ pub(super) async fn dispatch_loop(
             continue;
         }
 
+        if matches!(request.payload, WorkerRequestPayload::RunTestCases { .. }) {
+            let request_id = request.request_id;
+            let revision_id = request.revision_id;
+            let (compile, program, args, working_dir, inputs, timeout_ms, command_preview) =
+                match request.payload {
+                    WorkerRequestPayload::RunTestCases {
+                        compile,
+                        program,
+                        args,
+                        working_dir,
+                        inputs,
+                        timeout_ms,
+                        command_preview,
+                    } => (
+                        compile,
+                        program,
+                        args,
+                        working_dir,
+                        inputs,
+                        timeout_ms,
+                        command_preview,
+                    ),
+                    _ => unreachable!(),
+                };
+            let worker_tx = result_tx.clone();
+            let runner_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                run_test_cases(
+                    request_id,
+                    revision_id,
+                    compile,
+                    program,
+                    args,
+                    working_dir,
+                    inputs,
+                    timeout_ms,
+                    command_preview,
+                    worker_tx,
+                    runner_proxy,
+                )
+                .await;
+            });
+            continue;
+        }
+
         if matches!(
             request.payload,
             WorkerRequestPayload::InstallSystemDeps { .. }
@@ -448,7 +545,10 @@ pub(super) async fn dispatch_loop(
             continue;
         }
 
-        if matches!(request.payload, WorkerRequestPayload::ReadExternalFiles { .. }) {
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::ReadExternalFiles { .. }
+        ) {
             let WorkerRequestPayload::ReadExternalFiles { paths } = request.payload else {
                 unreachable!()
             };
@@ -482,7 +582,10 @@ pub(super) async fn dispatch_loop(
             continue;
         }
 
-        if matches!(request.payload, WorkerRequestPayload::RescanWorkspace { .. }) {
+        if matches!(
+            request.payload,
+            WorkerRequestPayload::RescanWorkspace { .. }
+        ) {
             let WorkerRequestPayload::RescanWorkspace {
                 root_path,
                 ignore_rules,

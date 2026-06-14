@@ -8,30 +8,33 @@ description = "Clean full Neovim-style profile (block TOML, no inline bindings)"
 [meta]
 leader = "space"
 
+# Enter resize mode from the editor, the explorer, or the terminal (copy mode),
+# so panels can be resized while they hold focus.
 [[bindings]]
 mode = "normal"
 key = "<leader>r r"
 command = "mode.resize"
 
 [[bindings]]
-mode = "resize"
-key = "h"
-command = "resize.increase_left_width"
+mode = "explorer"
+key = "<leader>r r"
+command = "mode.resize"
 
 [[bindings]]
+mode = "terminal_normal"
+key = "<leader>r r"
+command = "mode.resize"
+
+# Lowercase h/j/k/l resize whichever panel/region is focused.
+[[bindings]]
 mode = "resize"
-key = "H"
-command = "resize.decrease_left_width"
+key = "h"
+command = "resize.decrease_width"
 
 [[bindings]]
 mode = "resize"
 key = "l"
-command = "resize.increase_right_width"
-
-[[bindings]]
-mode = "resize"
-key = "L"
-command = "resize.decrease_right_width"
+command = "resize.increase_width"
 
 [[bindings]]
 mode = "resize"
@@ -42,6 +45,17 @@ command = "resize.increase_height"
 mode = "resize"
 key = "k"
 command = "resize.decrease_height"
+
+# Uppercase H/L grow the left/right dock (the editor edge they border).
+[[bindings]]
+mode = "resize"
+key = "H"
+command = "resize.grow_left_dock"
+
+[[bindings]]
+mode = "resize"
+key = "L"
+command = "resize.grow_right_dock"
 
 [[bindings]]
 mode = "resize"
@@ -84,6 +98,10 @@ command = "app.focus_terminal"
 [[bindings]]
 key = "cmd+backslash"
 command = "app.toggle_bottom_dock"
+
+[[bindings]]
+key = "F5"
+command = "runner.run"
 
 [[bindings]]
 mode = "normal"

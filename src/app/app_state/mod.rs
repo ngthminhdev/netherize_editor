@@ -1259,7 +1259,9 @@ fn build_help_lines(
         "editor.center_cursor_line",
         "Center cursor",
     );
-    lines.push("  f/F <char>            Find char on line (→/←), highlights all matches".to_string());
+    lines.push(
+        "  f/F <char>            Find char on line (→/←), highlights all matches".to_string(),
+    );
     lines.push("  t/T <char>            Till char on line (→/←)".to_string());
     lines.push("  n / N                 Repeat find-char or search jump (→/←)".to_string());
     lines.push("".to_string());
@@ -2131,6 +2133,14 @@ pub enum EditorOverlay {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TestFieldEditSession {
+    pub case_index: usize,
+    pub field: crate::runner::TestField,
+    pub return_buffer_index: Option<usize>,
+    pub scratch_path: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ClipboardRecord {
     text: String,
     kind: ClipboardRecordKind,
@@ -2220,6 +2230,10 @@ pub struct AppState {
     // ── Workspace symbol cache ────────────────────────────────────────────────
     /// Pre-indexed workspace symbols for fast import suggestions.
     workspace_symbol_cache: Arc<crate::lsp::WorkspaceSymbolCache>,
+    // ── Test runner (LeetCode/interview run-and-compare) ──────────────────────
+    /// Authored test cases and their last run results for the active session.
+    pub test_runner: crate::runner::TestRunnerState,
+    pub test_field_edit: Option<TestFieldEditSession>,
 }
 
 impl AppState {
@@ -2283,7 +2297,59 @@ impl AppState {
             auto_folded_long_lines: Vec::new(),
             cached_line_starts: None,
             workspace_symbol_cache: Arc::new(crate::lsp::WorkspaceSymbolCache::new()),
+            test_runner: crate::runner::TestRunnerState::new(),
+            test_field_edit: None,
         }
+    }
+
+    /// Load cached test cases for the active file into the panel, if the file
+    /// carries a `netherize-leetcode` header and a cache exists for its id.
+    /// Returns true if cases were loaded.
+    pub fn load_leetcode_cases_for_active_file(&mut self) -> bool {
+        self.load_leetcode_cases_from(&crate::runner::leetcode_cache::cache_dir())
+    }
+
+    pub fn load_leetcode_cases_from(&mut self, dir: &std::path::Path) -> bool {
+        let Some(header) = crate::runner::leetcode_cache::parse_header(&self.text_string()) else {
+            return false;
+        };
+        let Some(cache) = crate::runner::leetcode_cache::load_cache_in(dir, &header.id) else {
+            return false;
+        };
+        self.test_runner.cases = cache
+            .cases
+            .iter()
+            .map(|case| crate::runner::TestCase::new(case.input.clone(), case.expected.clone()))
+            .collect();
+        self.test_runner.selected = (!self.test_runner.cases.is_empty()).then_some(0);
+        self.test_runner.focused_field = crate::runner::TestField::Input;
+        true
+    }
+
+    /// Write the panel's current cases back into the per-problem cache (keyed by
+    /// the active file's header id). Best-effort no-op if there is no header or
+    /// no existing cache entry.
+    pub fn persist_leetcode_cases_for_active_file(&self) {
+        self.persist_leetcode_cases_to(&crate::runner::leetcode_cache::cache_dir());
+    }
+
+    pub fn persist_leetcode_cases_to(&self, dir: &std::path::Path) {
+        let Some(header) = crate::runner::leetcode_cache::parse_header(&self.text_string()) else {
+            return;
+        };
+        let Some(mut cache) = crate::runner::leetcode_cache::load_cache_in(dir, &header.id) else {
+            return;
+        };
+        cache.cases = self
+            .test_runner
+            .cases
+            .iter()
+            .map(|case| crate::runner::leetcode_cache::CachedCase {
+                input: case.input.clone(),
+                expected: case.expected.clone(),
+            })
+            .collect();
+        let _ = crate::runner::leetcode_cache::save_cache_in(dir, &cache);
     }
 
     pub fn from_text(default_save_path: PathBuf, text: &str) -> Self {
@@ -2346,6 +2412,8 @@ impl AppState {
             auto_folded_long_lines: Vec::new(),
             cached_line_starts: None,
             workspace_symbol_cache: Arc::new(crate::lsp::WorkspaceSymbolCache::new()),
+            test_runner: crate::runner::TestRunnerState::new(),
+            test_field_edit: None,
         }
     }
 

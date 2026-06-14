@@ -119,11 +119,7 @@ impl WorkspaceSymbolCache {
             if let Some(symbols) = inner.symbols_by_language.get(lang) {
                 for symbol in symbols {
                     if fuzzy_match(&symbol.name.to_lowercase(), &prefix_lower)
-                        && seen.insert((
-                            symbol.name.clone(),
-                            symbol.file_path.clone(),
-                            symbol.line,
-                        ))
+                        && seen.insert((symbol.name.clone(), symbol.file_path.clone(), symbol.line))
                     {
                         results.push(symbol.clone());
                     }

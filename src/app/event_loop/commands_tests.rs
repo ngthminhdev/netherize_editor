@@ -273,17 +273,135 @@ fn settings_exposes_ai_inline_config_items() {
     // The AI section must surface the editable endpoint/model/tuning fields, not
     // just the on/off toggle — otherwise they would only be reachable by hand-
     // editing config/ai.toml.
-    let has = |pred: fn(&crate::app::app_state::SettingItem) -> bool| {
-        settings.items.iter().any(pred)
-    };
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiApiUrl { .. })));
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiModel { .. })));
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiApiKey { .. })));
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiEndpointKind { .. })));
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiMaxTokens { .. })));
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiPrefixChars { .. })));
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiSuffixChars { .. })));
-    assert!(has(|i| matches!(i, crate::app::app_state::SettingItem::AiDebounceMs { .. })));
+    let has =
+        |pred: fn(&crate::app::app_state::SettingItem) -> bool| settings.items.iter().any(pred);
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiApiUrl { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiModel { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiApiKey { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiEndpointKind { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiMaxTokens { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiPrefixChars { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiSuffixChars { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::AiDebounceMs { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::LeetCodeAi { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::LeetCodeAiApiUrl { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::LeetCodeAiModel { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::LeetCodeAiApiKey { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::LeetCodeAiEndpointKind { .. }
+    )));
+    assert!(has(|i| matches!(
+        i,
+        crate::app::app_state::SettingItem::LeetCodeAiReasoningEffort { .. }
+    )));
+}
+
+#[test]
+fn fetch_leetcode_command_opens_problem_input_palette() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    assert!(shell.handle_command(Command::FetchLeetCodeProblem));
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(crate::app::command_palette::CommandPaletteMode::LeetCodeProblemInput)
+    );
+    assert_eq!(shell.app_state.current_mode(), EditorMode::PaletteFocus);
+}
+
+#[test]
+fn fetch_leetcode_from_command_list_keeps_problem_input_open() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    // Open the command palette in its default command-list mode.
+    assert!(shell.handle_command(Command::OpenCommandPalette));
+    // Simulate the user selecting the "Fetch LeetCode Problem" entry.
+    assert!(shell.app_state.set_command_palette_results(
+        CommandPaletteMode::CommandPalette,
+        "",
+        vec![crate::app::command_palette::CommandPaletteItem::command(
+            "runner.fetch_leetcode_problem",
+            "Fetch LeetCode Problem",
+        )],
+    ));
+    assert!(shell.handle_command(Command::FilePickerConfirmSelection));
+    // The confirm flow must keep the problem-input prompt open with palette
+    // focus instead of tearing it down and returning focus to the editor.
+    assert_eq!(
+        shell.app_state.command_palette_mode(),
+        Some(CommandPaletteMode::LeetCodeProblemInput)
+    );
+    assert_eq!(shell.app_state.current_mode(), EditorMode::PaletteFocus);
+}
+
+#[test]
+fn fetched_leetcode_result_opens_file_and_populates_test_runner() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let path = std::env::temp_dir().join(format!(
+        "netherize_fetched_leetcode_{}.js",
+        std::process::id()
+    ));
+    std::fs::write(&path, "console.log(1);\n").expect("write fetched solution");
+
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: 1,
+        revision_id: 0,
+        topic: crate::async_runtime::message::RequestTopic::LeetCode,
+        payload: crate::async_runtime::message::WorkerResultPayload::LeetCodeProblemFetched {
+            title: "Two Sum".into(),
+            title_slug: "two-sum".into(),
+            language_key: "javascript".into(),
+            file_path: path.clone(),
+            cases: vec![crate::runner::leetcode_api::LeetCodeTestCase {
+                input: r#"{"nums":[2,7,11,15],"target":9}"#.into(),
+                expected: "[0,1]".into(),
+            }],
+        },
+    });
+
+    let canonical = path.canonicalize().expect("canonical fetched solution");
+    assert_eq!(shell.app_state.active_file(), Some(canonical.as_path()));
+    assert_eq!(shell.app_state.test_runner.cases.len(), 1);
+    assert_eq!(shell.app_state.test_runner.cases[0].expected, "[0,1]");
+    assert_eq!(
+        shell.panel_state.right.active_tab_id(),
+        Some(crate::workbench::panel_state::PanelTabId::TestRunner)
+    );
+    let _ = std::fs::remove_file(path);
 }
 
 #[test]
@@ -327,6 +445,47 @@ fn settings_activate_begins_text_edit_for_ai_model() {
     // real model id rather than a blank field.
     assert_eq!(editing.draft, model_value);
 }
+
+#[test]
+fn settings_activate_begins_text_edit_for_leetcode_ai_model() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.handle_command(Command::OpenSettings);
+    let model_value = {
+        let settings = shell
+            .app_state
+            .active_settings_buffer_mut()
+            .expect("settings buffer");
+        let (idx, value) = settings
+            .items
+            .iter()
+            .enumerate()
+            .find_map(|(idx, item)| match item {
+                crate::app::app_state::SettingItem::LeetCodeAiModel { current } => {
+                    Some((idx, current.clone()))
+                }
+                _ => None,
+            })
+            .expect("leetcode ai model setting present");
+        settings.selected_index = idx;
+        value
+    };
+
+    let changed = shell.handle_command(Command::SettingsActivate);
+
+    assert!(changed);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Insert);
+    let settings = shell
+        .app_state
+        .active_settings_buffer()
+        .expect("settings buffer");
+    let editing = settings.editing.as_ref().expect("editing state");
+    assert_eq!(
+        editing.kind,
+        crate::app::app_state::SettingsEditingKind::LeetCodeAiModel
+    );
+    assert_eq!(editing.draft, model_value);
+}
+
 
 #[test]
 fn settings_text_edit_works_after_opening_from_right_terminal_focus() {
@@ -395,6 +554,9 @@ fn right_terminal_focus_cmd_comma_routes_to_settings() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     shell.app_state = AppState::from_text(PathBuf::from("main.rs"), "fn main() {}\n");
     shell.panel_state.right.visible = true;
+    // Opencode terminal lives on the Terminal tab, which is no longer in the
+    // default right-dock tab set — add it for this terminal-focus scenario.
+    shell.panel_state.right.tabs.push(PanelTabId::Terminal);
     shell.panel_state.right.switch_to_tab(PanelTabId::Terminal);
     shell.focus_manager.set(FocusTarget::RightSidebar);
     shell
@@ -547,11 +709,15 @@ fn ai_chat_toggle_closing_right_dock_returns_focus_to_editor() {
     assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
     assert!(!shell.panel_state.right.visible);
 
+    // Pretend an agent is already running so the toggle opens straight to the
+    // terminal instead of the agent chooser.
+    shell.right_pty_session_id = Some(42);
+
     assert!(shell.handle_command(Command::AiChatToggle));
     assert!(shell.panel_state.right.visible);
     assert_eq!(
         shell.panel_state.right.active_tab_id(),
-        Some(PanelTabId::Terminal)
+        Some(PanelTabId::AiChat)
     );
     assert_eq!(shell.focus_manager.current(), FocusTarget::RightSidebar);
 
@@ -559,27 +725,50 @@ fn ai_chat_toggle_closing_right_dock_returns_focus_to_editor() {
     assert!(!shell.panel_state.right.visible);
     assert_eq!(
         shell.panel_state.right.active_tab_id(),
-        Some(PanelTabId::Terminal)
+        Some(PanelTabId::AiChat)
     );
     assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
 }
 
 #[test]
-fn ai_chat_focus_reenters_terminal_mode_when_right_sidebar_already_focused() {
+fn ai_chat_focus_opens_inline_agent_picker_when_none_running() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     shell.panel_state.right.visible = true;
-    shell.panel_state.right.switch_to_tab(PanelTabId::Terminal);
     shell.focus_manager.set(FocusTarget::RightSidebar);
     assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
+
+    assert!(shell.handle_command(Command::AiChatFocus));
+
+    // No agent running → AI Chat tab focused with its in-panel picker (no palette).
+    assert_eq!(
+        shell.panel_state.right.active_tab_id(),
+        Some(PanelTabId::AiChat)
+    );
+    assert!(!shell.app_state.is_command_palette_visible());
+    assert_eq!(shell.focus_manager.current(), FocusTarget::RightSidebar);
+
+    // j/k move the selection; Launch spawns the selected agent.
+    assert_eq!(shell.ai_agent_picker_selected, 0);
+    assert!(shell.handle_command(Command::AiAgentPickerNext));
+    assert_eq!(shell.ai_agent_picker_selected, 1);
+    assert!(shell.handle_command(Command::AiAgentPickerPrev));
+    assert_eq!(shell.ai_agent_picker_selected, 0);
+}
+
+#[test]
+fn ai_chat_focus_enters_terminal_when_agent_running() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.right.visible = true;
+    shell.right_pty_session_id = Some(7);
 
     assert!(shell.handle_command(Command::AiChatFocus));
 
     assert_eq!(shell.focus_manager.current(), FocusTarget::RightSidebar);
     assert_eq!(
         shell.panel_state.right.active_tab_id(),
-        Some(PanelTabId::Terminal)
+        Some(PanelTabId::AiChat)
     );
-    assert_eq!(shell.app_state.current_mode(), EditorMode::TerminalFocus);
+    assert!(!shell.app_state.is_command_palette_visible());
 }
 
 #[test]
@@ -2756,8 +2945,7 @@ fn ts_non_exported_workspace_symbol_is_not_offered_standalone() {
     // inserting it bare would create an undefined reference. It must be filtered
     // out of standalone completions (in-scope forms come from tsserver).
     let root = completion_temp_root("ts_non_export_filter");
-    let source_path =
-        write_completion_file(&root.join("util.ts"), "function helperLocal() {}\n");
+    let source_path = write_completion_file(&root.join("util.ts"), "function helperLocal() {}\n");
     let cache = crate::lsp::WorkspaceSymbolCache::new();
     cache.insert_symbols(
         "typescript",
@@ -3208,7 +3396,7 @@ fn resize_returns_false_when_panel_not_visible() {
 }
 
 #[test]
-fn resize_center_editor_increase_width_shrinks_left_sidebar_only() {
+fn resize_editor_h_shrinks_left_dock() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     shell.panel_state.left.visible = true;
     shell.panel_state.left.size_px = 280.0;
@@ -3216,7 +3404,8 @@ fn resize_center_editor_increase_width_shrinks_left_sidebar_only() {
     shell.panel_state.right.size_px = 320.0;
     shell.focus_manager.set(FocusTarget::CenterEditor);
 
-    let changed = shell.handle_command(Command::ResizeIncreaseLeftWidth);
+    // `h` with the editor focused shrinks the left dock (editor grows leftward).
+    let changed = shell.handle_command(Command::ResizeDecreaseWidth);
 
     assert!(changed);
     assert_eq!(shell.panel_state.left.size_px, 260.0);
@@ -3224,7 +3413,7 @@ fn resize_center_editor_increase_width_shrinks_left_sidebar_only() {
 }
 
 #[test]
-fn resize_center_editor_decrease_left_width_grows_left_sidebar_only() {
+fn resize_editor_l_shrinks_right_dock() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     shell.panel_state.left.visible = true;
     shell.panel_state.left.size_px = 280.0;
@@ -3232,23 +3421,8 @@ fn resize_center_editor_decrease_left_width_grows_left_sidebar_only() {
     shell.panel_state.right.size_px = 320.0;
     shell.focus_manager.set(FocusTarget::CenterEditor);
 
-    let changed = shell.handle_command(Command::ResizeDecreaseLeftWidth);
-
-    assert!(changed);
-    assert_eq!(shell.panel_state.left.size_px, 300.0);
-    assert_eq!(shell.panel_state.right.size_px, 320.0);
-}
-
-#[test]
-fn resize_center_editor_increase_right_width_shrinks_right_sidebar_only() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    shell.panel_state.left.visible = true;
-    shell.panel_state.left.size_px = 280.0;
-    shell.panel_state.right.visible = true;
-    shell.panel_state.right.size_px = 320.0;
-    shell.focus_manager.set(FocusTarget::CenterEditor);
-
-    let changed = shell.handle_command(Command::ResizeIncreaseRightWidth);
+    // `l` with the editor focused shrinks the right dock (editor grows rightward).
+    let changed = shell.handle_command(Command::ResizeIncreaseWidth);
 
     assert!(changed);
     assert_eq!(shell.panel_state.left.size_px, 280.0);
@@ -3256,19 +3430,71 @@ fn resize_center_editor_increase_right_width_shrinks_right_sidebar_only() {
 }
 
 #[test]
-fn resize_center_editor_decrease_width_grows_right_sidebar_only() {
+fn resize_grow_left_dock_command_grows_left() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
     shell.panel_state.left.visible = true;
     shell.panel_state.left.size_px = 280.0;
+    shell.focus_manager.set(FocusTarget::CenterEditor);
+
+    // `H` grows the left dock (editor shrinks on its left edge).
+    let changed = shell.handle_command(Command::ResizeGrowLeftDock);
+
+    assert!(changed);
+    assert_eq!(shell.panel_state.left.size_px, 300.0);
+}
+
+#[test]
+fn resize_grow_right_dock_command_grows_right() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
     shell.panel_state.right.visible = true;
     shell.panel_state.right.size_px = 320.0;
     shell.focus_manager.set(FocusTarget::CenterEditor);
 
-    let changed = shell.handle_command(Command::ResizeDecreaseRightWidth);
+    // `L` grows the right dock (editor shrinks on its right edge).
+    let changed = shell.handle_command(Command::ResizeGrowRightDock);
 
     assert!(changed);
-    assert_eq!(shell.panel_state.left.size_px, 280.0);
     assert_eq!(shell.panel_state.right.size_px, 340.0);
+}
+
+#[test]
+fn resize_editor_j_makes_editor_taller() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.bottom.visible = true;
+    shell.panel_state.bottom.size_px = 230.0;
+    shell.focus_manager.set(FocusTarget::CenterEditor);
+
+    // `j` with the editor focused shrinks the bottom panel (editor grows down).
+    let changed = shell.handle_command(Command::ResizeIncreaseHeight);
+
+    assert!(changed);
+    assert_eq!(shell.panel_state.bottom.size_px, 210.0);
+}
+
+#[test]
+fn resize_editor_k_makes_editor_shorter() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.bottom.visible = true;
+    shell.panel_state.bottom.size_px = 230.0;
+    shell.focus_manager.set(FocusTarget::CenterEditor);
+
+    let changed = shell.handle_command(Command::ResizeDecreaseHeight);
+
+    assert!(changed);
+    assert_eq!(shell.panel_state.bottom.size_px, 250.0);
+}
+
+#[test]
+fn resize_editor_h_is_noop_when_left_dock_hidden() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.panel_state.left.visible = false;
+    shell.panel_state.left.size_px = 280.0;
+    shell.focus_manager.set(FocusTarget::CenterEditor);
+
+    let changed = shell.handle_command(Command::ResizeDecreaseWidth);
+
+    assert!(!changed);
+    assert_eq!(shell.panel_state.left.size_px, 280.0);
 }
 
 #[test]
@@ -3363,4 +3589,160 @@ fn manual_trigger_completion_dismisses_ghost_text_and_invalidates_inflight_ai() 
 
     assert!(shell.app_state.inline_suggestion().is_none());
     assert!(shell.app_state.completion().is_some());
+}
+
+#[test]
+fn test_outline_navigation_commands() {
+    use crate::async_runtime::message::{LspDocumentSymbol, LspPosition, LspRange};
+
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let file_path = std::env::temp_dir().join("test_outline.rs");
+    std::fs::write(&file_path, "fn foo() {}\n\nfn bar() {}\n").expect("write file");
+    shell
+        .app_state
+        .open_file(file_path.clone())
+        .expect("open file");
+
+    shell.cached_document_symbols = vec![
+        LspDocumentSymbol {
+            name: "foo".to_string(),
+            kind: "Function".to_string(),
+            range: LspRange {
+                start: LspPosition {
+                    line: 0,
+                    character: 3,
+                },
+                end: LspPosition {
+                    line: 0,
+                    character: 6,
+                },
+            },
+            ancestors: vec![],
+        },
+        LspDocumentSymbol {
+            name: "bar".to_string(),
+            kind: "Function".to_string(),
+            range: LspRange {
+                start: LspPosition {
+                    line: 2,
+                    character: 3,
+                },
+                end: LspPosition {
+                    line: 2,
+                    character: 6,
+                },
+            },
+            ancestors: vec![],
+        },
+    ];
+
+    // Set focus and switch active tab so outline commands are not bypassed/reset
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+    shell
+        .panel_state
+        .right
+        .switch_to_tab(crate::workbench::panel_state::PanelTabId::Outline);
+
+    // Set cursor to a line without any symbols (line 1)
+    shell.app_state.jump_to_line_and_column(1, 0);
+
+    // Initial state
+    assert_eq!(shell.outline_selected, None);
+
+    // 1. Move to next (first symbol)
+    assert!(shell.handle_command(Command::OutlineNext));
+    assert_eq!(shell.outline_selected, Some(0));
+    assert_eq!(shell.app_state.cursor_line_col(), (0, 3));
+
+    // 2. Move to next (second symbol)
+    assert!(shell.handle_command(Command::OutlineNext));
+    assert_eq!(shell.outline_selected, Some(1));
+    assert_eq!(shell.app_state.cursor_line_col(), (2, 3));
+
+    // 3. Move to next at boundary (should clamp to last symbol)
+    assert!(shell.handle_command(Command::OutlineNext));
+    assert_eq!(shell.outline_selected, Some(1));
+    assert_eq!(shell.app_state.cursor_line_col(), (2, 3));
+
+    // 4. Move to previous (first symbol)
+    assert!(shell.handle_command(Command::OutlinePrev));
+    assert_eq!(shell.outline_selected, Some(0));
+    assert_eq!(shell.app_state.cursor_line_col(), (0, 3));
+
+    // 5. Move to previous at boundary (should clamp/stay at first symbol)
+    assert!(shell.handle_command(Command::OutlinePrev));
+    assert_eq!(shell.outline_selected, Some(0));
+    assert_eq!(shell.app_state.cursor_line_col(), (0, 3));
+
+    // 6. Confirm selection (should clear outline_selected and focus editor)
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+    assert!(shell.handle_command(Command::OutlineConfirm));
+    assert_eq!(shell.outline_selected, None);
+    assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
+    assert_eq!(shell.app_state.cursor_line_col(), (0, 3));
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn generated_leetcode_tests_populate_runner_with_ai_flag() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    // Simulate receiving AI-generated test cases via the worker result.
+    shell.app_state.test_runner.is_generating = true;
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: 42,
+        revision_id: 0,
+        topic: crate::async_runtime::message::RequestTopic::LeetCode,
+        payload: crate::async_runtime::message::WorkerResultPayload::LeetCodeTestsGenerated {
+            id: "1".into(),
+            cases: vec![
+                crate::runner::leetcode_api::LeetCodeTestCase {
+                    input: r#"{"nums":[2,7,11,15],"target":9}"#.into(),
+                    expected: "[0,1]".into(),
+                },
+                crate::runner::leetcode_api::LeetCodeTestCase {
+                    input: r#"{"nums":[3,3],"target":6}"#.into(),
+                    expected: "[0,1]".into(),
+                },
+            ],
+        },
+    });
+
+    // is_generating should be cleared.
+    assert!(!shell.app_state.test_runner.is_generating);
+    // Two cases should now be in the runner.
+    assert_eq!(shell.app_state.test_runner.cases.len(), 2);
+    // First case should be selected.
+    assert_eq!(shell.app_state.test_runner.selected, Some(0));
+    // All cases should be flagged as AI-generated.
+    assert!(shell.app_state.test_runner.cases[0].ai_generated);
+    assert!(shell.app_state.test_runner.cases[1].ai_generated);
+    // Verify case data.
+    assert_eq!(
+        shell.app_state.test_runner.cases[0].input,
+        r#"{"nums":[2,7,11,15],"target":9}"#
+    );
+    assert_eq!(shell.app_state.test_runner.cases[0].expected, "[0,1]");
+}
+
+#[test]
+fn generated_leetcode_tests_failure_clears_generating_flag() {
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.app_state.test_runner.is_generating = true;
+    // Add a pre-existing case to ensure it survives the failure.
+    shell.app_state.test_runner.cases = vec![crate::runner::TestCase::new("{}", "null")];
+
+    shell.on_worker_result(crate::async_runtime::message::WorkerResult {
+        request_id: 43,
+        revision_id: 0,
+        topic: crate::async_runtime::message::RequestTopic::LeetCode,
+        payload: crate::async_runtime::message::WorkerResultPayload::LeetCodeTestsGenerateFailed {
+            message: "AI model exhausted token budget on reasoning".into(),
+        },
+    });
+
+    // is_generating should be cleared even on failure.
+    assert!(!shell.app_state.test_runner.is_generating);
+    // Pre-existing cases should NOT be replaced on failure.
+    assert_eq!(shell.app_state.test_runner.cases.len(), 1);
 }

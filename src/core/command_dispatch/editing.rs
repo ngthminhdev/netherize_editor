@@ -583,6 +583,8 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                         | CommandPaletteMode::ExplorerDeleteConfirm
                         | CommandPaletteMode::LspRename
                         | CommandPaletteMode::BufferCloseConfirm
+                        | CommandPaletteMode::LeetCodeProblemInput
+                        | CommandPaletteMode::LeetCodeLanguageSelector
                 )
             ) && (ctx.app_state.current_mode() == EditorMode::PaletteFocus
                 || ctx.app_state.active_buffer_is_fuzzy_picker())

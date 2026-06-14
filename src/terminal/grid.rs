@@ -1876,8 +1876,8 @@ mod tests {
         // 3 visible rows: feeding 5 log lines pushes 2 into scrollback within a
         // single feed. The incremental pass must still color those 2 rows.
         let mut grid = TerminalGrid::new(20, 3);
-        let scrolled =
-            grid.feed_chunk("E/boom one\r\nE/boom two\r\nE/boom three\r\nE/boom four\r\nE/boom five");
+        let scrolled = grid
+            .feed_chunk("E/boom one\r\nE/boom two\r\nE/boom three\r\nE/boom four\r\nE/boom five");
         grid.apply_regex_highlights_incremental(scrolled);
 
         let error = grid.highlight_colors.error;

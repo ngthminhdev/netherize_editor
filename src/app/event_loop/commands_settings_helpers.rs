@@ -1,121 +1,115 @@
 use super::*;
 
+/// Which workbench dock a resize-mode key adjusts.
+#[derive(Clone, Copy)]
+enum ResizeDock {
+    Left,
+    Right,
+    Bottom,
+}
+
 impl AppShell {
     pub(super) const RESIZE_STEP_PX: f32 = 20.0;
 
-    pub(super) fn resize_focused_window(&mut self, width_delta: f32, height_delta: f32) -> bool {
-        let focus = self.focus_manager.current();
-        let mut changed = false;
-
-        match focus {
-            FocusTarget::LeftSidebar if width_delta != 0.0 && self.panel_state.left.visible => {
-                let next = (self.panel_state.left.size_px + width_delta).clamp(160.0, 1280.0);
-                changed = (next - self.panel_state.left.size_px).abs() > f32::EPSILON;
-                if changed {
-                    self.panel_state.left.size_px = next;
-                    self.ui_config.docks.left.size_px = next;
-                    self.sidebar_needs_layout = true;
-                }
-            }
-            FocusTarget::RightSidebar if width_delta != 0.0 && self.panel_state.right.visible => {
-                let next = (self.panel_state.right.size_px + width_delta).clamp(180.0, 1440.0);
-                changed = (next - self.panel_state.right.size_px).abs() > f32::EPSILON;
-                if changed {
-                    self.panel_state.right.size_px = next;
-                    self.ui_config.docks.right.size_px = next;
-                    self.sidebar_needs_layout = true;
-                }
-            }
-            FocusTarget::BottomPanel if height_delta != 0.0 && self.panel_state.bottom.visible => {
-                let next = (self.panel_state.bottom.size_px + height_delta).clamp(120.0, 1040.0);
-                changed = (next - self.panel_state.bottom.size_px).abs() > f32::EPSILON;
-                if changed {
-                    self.panel_state.bottom.size_px = next;
-                    self.ui_config.docks.bottom.size_px = next;
-                    self.terminal_needs_layout = true;
-                }
-            }
+    /// Resize-mode `h`/`l`: adjust the width of whatever region is focused.
+    ///
+    /// `delta > 0` means "grow toward the right" (`l`), `delta < 0` means
+    /// "grow toward the left" (`h`). A focused sidebar simply changes its own
+    /// width; with the editor focused the matching dock is shrunk so the editor
+    /// expands on that edge instead.
+    pub(super) fn resize_focused_width(&mut self, delta: f32) -> bool {
+        match self.focus_manager.current() {
+            FocusTarget::LeftSidebar => self.adjust_dock(ResizeDock::Left, delta),
+            FocusTarget::RightSidebar => self.adjust_dock(ResizeDock::Right, delta),
             FocusTarget::CenterEditor => {
-                if width_delta > 0.0 && self.panel_state.left.visible {
-                    let next = (self.panel_state.left.size_px - width_delta).clamp(160.0, 1280.0);
-                    if (next - self.panel_state.left.size_px).abs() > f32::EPSILON {
-                        self.panel_state.left.size_px = next;
-                        self.ui_config.docks.left.size_px = next;
-                        changed = true;
-                    }
-                } else if width_delta < 0.0 && self.panel_state.right.visible {
-                    let next = (self.panel_state.right.size_px - width_delta).clamp(180.0, 1440.0);
-                    if (next - self.panel_state.right.size_px).abs() > f32::EPSILON {
-                        self.panel_state.right.size_px = next;
-                        self.ui_config.docks.right.size_px = next;
-                        changed = true;
-                    }
-                }
-
-                if height_delta != 0.0 && self.panel_state.bottom.visible {
-                    let next =
-                        (self.panel_state.bottom.size_px - height_delta).clamp(120.0, 1040.0);
-                    if (next - self.panel_state.bottom.size_px).abs() > f32::EPSILON {
-                        self.panel_state.bottom.size_px = next;
-                        self.ui_config.docks.bottom.size_px = next;
-                        changed = true;
-                    }
-                }
-
-                if changed {
-                    self.sidebar_needs_layout = true;
-                    self.terminal_needs_layout = true;
+                if delta < 0.0 {
+                    // `h`: shrink the left dock so the editor grows leftward.
+                    self.adjust_dock(ResizeDock::Left, delta)
+                } else {
+                    // `l`: shrink the right dock so the editor grows rightward.
+                    self.adjust_dock(ResizeDock::Right, -delta)
                 }
             }
-            _ => {}
+            _ => false,
         }
-
-        if changed {
-            let _ = self.ui_config.save_user_override();
-            self.editor_needs_layout = true;
-            self.editor_caret_needs_layout = true;
-        }
-        changed
     }
 
-    pub(super) fn resize_editor_left_edge(&mut self, editor_width_delta: f32) -> bool {
-        if self.focus_manager.current() != FocusTarget::CenterEditor
-            || !self.panel_state.left.visible
-        {
+    /// Resize-mode `j`/`k`: adjust the height of whatever region is focused.
+    ///
+    /// `delta > 0` is "taller" (`j`), `delta < 0` is "shorter" (`k`). The bottom
+    /// panel changes its own height; with the editor focused the bottom panel is
+    /// shrunk so the editor grows downward.
+    pub(super) fn resize_focused_height(&mut self, delta: f32) -> bool {
+        match self.focus_manager.current() {
+            FocusTarget::BottomPanel => self.adjust_dock(ResizeDock::Bottom, delta),
+            FocusTarget::CenterEditor => self.adjust_dock(ResizeDock::Bottom, -delta),
+            _ => false,
+        }
+    }
+
+    /// Resize-mode `H`: grow the left dock (the editor shrinks on its left edge).
+    pub(super) fn resize_left_dock(&mut self, delta: f32) -> bool {
+        self.adjust_dock(ResizeDock::Left, delta)
+    }
+
+    /// Resize-mode `L`: grow the right dock (the editor shrinks on its right edge).
+    pub(super) fn resize_right_dock(&mut self, delta: f32) -> bool {
+        self.adjust_dock(ResizeDock::Right, delta)
+    }
+
+    /// Apply a clamped size delta to one dock and flag the affected layout.
+    /// Returns `true` if the dock was visible and its size actually changed.
+    fn adjust_dock(&mut self, dock: ResizeDock, delta: f32) -> bool {
+        let (size, min, max, visible) = match dock {
+            ResizeDock::Left => (
+                &mut self.panel_state.left.size_px,
+                160.0,
+                1280.0,
+                self.panel_state.left.visible,
+            ),
+            ResizeDock::Right => (
+                &mut self.panel_state.right.size_px,
+                180.0,
+                1440.0,
+                self.panel_state.right.visible,
+            ),
+            ResizeDock::Bottom => (
+                &mut self.panel_state.bottom.size_px,
+                120.0,
+                1040.0,
+                self.panel_state.bottom.visible,
+            ),
+        };
+
+        if !visible {
             return false;
         }
 
-        let next = (self.panel_state.left.size_px - editor_width_delta).clamp(160.0, 1280.0);
-        let changed = (next - self.panel_state.left.size_px).abs() > f32::EPSILON;
-        if changed {
-            self.panel_state.left.size_px = next;
-            self.ui_config.docks.left.size_px = next;
-            self.sidebar_needs_layout = true;
-            self.editor_needs_layout = true;
-            self.editor_caret_needs_layout = true;
-            let _ = self.ui_config.save_user_override();
-        }
-        changed
-    }
-
-    pub(super) fn resize_editor_right_edge(&mut self, editor_width_delta: f32) -> bool {
-        if self.focus_manager.current() != FocusTarget::CenterEditor
-            || !self.panel_state.right.visible
-        {
+        let next = (*size + delta).clamp(min, max);
+        if (next - *size).abs() <= f32::EPSILON {
             return false;
         }
+        *size = next;
 
-        let next = (self.panel_state.right.size_px - editor_width_delta).clamp(180.0, 1440.0);
-        let changed = (next - self.panel_state.right.size_px).abs() > f32::EPSILON;
-        if changed {
-            self.panel_state.right.size_px = next;
-            self.ui_config.docks.right.size_px = next;
-            self.sidebar_needs_layout = true;
-            self.editor_needs_layout = true;
-            self.editor_caret_needs_layout = true;
-            let _ = self.ui_config.save_user_override();
+        match dock {
+            ResizeDock::Left => {
+                self.ui_config.docks.left.size_px = next;
+                self.sidebar_needs_layout = true;
+            }
+            ResizeDock::Right => {
+                self.ui_config.docks.right.size_px = next;
+                self.sidebar_needs_layout = true;
+            }
+            ResizeDock::Bottom => {
+                self.ui_config.docks.bottom.size_px = next;
+                self.terminal_needs_layout = true;
+            }
         }
-        changed
+
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = true;
+        let _ = self.ui_config.save_user_override();
+        true
     }
 
     pub(super) fn finalize_settings_change(&mut self) -> bool {
@@ -329,7 +323,8 @@ impl AppShell {
                 self.apply_ai_number_adjust(
                     |ai| ai.set_inline_prefix_chars(next),
                     |item| {
-                        if let crate::app::app_state::SettingItem::AiPrefixChars { current } = item {
+                        if let crate::app::app_state::SettingItem::AiPrefixChars { current } = item
+                        {
                             *current = next;
                         }
                     },
@@ -341,7 +336,8 @@ impl AppShell {
                 self.apply_ai_number_adjust(
                     |ai| ai.set_inline_suffix_chars(next),
                     |item| {
-                        if let crate::app::app_state::SettingItem::AiSuffixChars { current } = item {
+                        if let crate::app::app_state::SettingItem::AiSuffixChars { current } = item
+                        {
                             *current = next;
                         }
                     },
@@ -446,6 +442,22 @@ impl AppShell {
                 self.editor_caret_needs_layout = false;
                 true
             }
+            crate::app::app_state::SettingItem::LeetCodeAi { enabled } => {
+                let next = !enabled;
+                if let Err(err) = self.ai_config.set_leetcode_ai_enabled(next) {
+                    eprintln!("[settings] failed to save LeetCode AI config: {err}");
+                    return false;
+                }
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::LeetCodeAi { enabled }) =
+                        state.selected_item_mut()
+                {
+                    *enabled = next;
+                }
+                self.editor_needs_layout = true;
+                self.editor_caret_needs_layout = false;
+                true
+            }
             crate::app::app_state::SettingItem::EnableOutline { enabled } => {
                 let next = !enabled;
                 self.ui_config.enable_outline = next;
@@ -476,6 +488,11 @@ impl AppShell {
             | crate::app::app_state::SettingItem::AiPrefixChars { .. }
             | crate::app::app_state::SettingItem::AiSuffixChars { .. }
             | crate::app::app_state::SettingItem::AiDebounceMs { .. }
+            | crate::app::app_state::SettingItem::LeetCodeAiApiUrl { .. }
+            | crate::app::app_state::SettingItem::LeetCodeAiModel { .. }
+            | crate::app::app_state::SettingItem::LeetCodeAiApiKey { .. }
+            | crate::app::app_state::SettingItem::LeetCodeAiEndpointKind { .. }
+            | crate::app::app_state::SettingItem::LeetCodeAiReasoningEffort { .. }
             | crate::app::app_state::SettingItem::UiScale { .. } => {
                 let changed = self.app_state.settings_begin_editing();
                 if changed {
@@ -746,7 +763,8 @@ impl AppShell {
                     changed = self.commit_ai_number_edit(
                         |ai| ai.set_inline_max_tokens(value),
                         |item| {
-                            if let crate::app::app_state::SettingItem::AiMaxTokens { current } = item
+                            if let crate::app::app_state::SettingItem::AiMaxTokens { current } =
+                                item
                             {
                                 *current = value;
                             }
@@ -802,6 +820,66 @@ impl AppShell {
                         "debounce",
                     );
                 }
+            }
+            crate::app::app_state::SettingsEditingKind::LeetCodeAiApiUrl => {
+                changed = self.commit_ai_text_edit(
+                    trimmed.to_string(),
+                    |ai, value| ai.set_leetcode_api_url(value),
+                    |item, value| {
+                        if let crate::app::app_state::SettingItem::LeetCodeAiApiUrl { current } = item {
+                            *current = value;
+                        }
+                    },
+                    "LeetCode API URL",
+                );
+            }
+            crate::app::app_state::SettingsEditingKind::LeetCodeAiModel => {
+                changed = self.commit_ai_text_edit(
+                    trimmed.to_string(),
+                    |ai, value| ai.set_leetcode_model(value),
+                    |item, value| {
+                        if let crate::app::app_state::SettingItem::LeetCodeAiModel { current } = item {
+                            *current = value;
+                        }
+                    },
+                    "LeetCode Model",
+                );
+            }
+            crate::app::app_state::SettingsEditingKind::LeetCodeAiApiKey => {
+                changed = self.commit_ai_text_edit(
+                    trimmed.to_string(),
+                    |ai, value| ai.set_leetcode_api_key(value),
+                    |item, value| {
+                        if let crate::app::app_state::SettingItem::LeetCodeAiApiKey { current } = item {
+                            *current = value;
+                        }
+                    },
+                    "LeetCode API Key",
+                );
+            }
+            crate::app::app_state::SettingsEditingKind::LeetCodeAiEndpointKind => {
+                changed = self.commit_ai_text_edit(
+                    trimmed.to_string(),
+                    |ai, value| ai.set_leetcode_endpoint_kind(value),
+                    |item, value| {
+                        if let crate::app::app_state::SettingItem::LeetCodeAiEndpointKind { current } = item {
+                            *current = value;
+                        }
+                    },
+                    "LeetCode Endpoint Kind",
+                );
+            }
+            crate::app::app_state::SettingsEditingKind::LeetCodeAiReasoningEffort => {
+                changed = self.commit_ai_text_edit(
+                    trimmed.to_string(),
+                    |ai, value| ai.set_leetcode_reasoning_effort(value),
+                    |item, value| {
+                        if let crate::app::app_state::SettingItem::LeetCodeAiReasoningEffort { current } = item {
+                            *current = value;
+                        }
+                    },
+                    "LeetCode Reasoning Effort",
+                );
             }
         }
 

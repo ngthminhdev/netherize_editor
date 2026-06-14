@@ -17,6 +17,8 @@ impl AppShell {
                     .clone()
                     .unwrap_or_default();
                 let ai_cfg = self.ai_config.inline_completion.as_ref();
+                let leetcode_cfg = self.ai_config.leetcode.as_ref();
+                let leetcode_provider = leetcode_cfg.and_then(|c| c.provider.as_ref());
                 let ai = crate::app::app_state::AiInlineSettings {
                     api_url: ai_cfg
                         .map(|cfg| cfg.provider.api_url.clone())
@@ -34,6 +36,22 @@ impl AppShell {
                     prefix_chars: ai_cfg.map(|cfg| cfg.prefix_chars()).unwrap_or(1200),
                     suffix_chars: ai_cfg.map(|cfg| cfg.suffix_chars()).unwrap_or(400),
                     debounce_ms: ai_cfg.map(|cfg| cfg.debounce_ms()).unwrap_or(80),
+                    leetcode_ai_enabled: self.ai_config.leetcode_ai_enabled(),
+                    leetcode_api_url: leetcode_provider
+                        .map(|p| p.api_url.clone())
+                        .unwrap_or_default(),
+                    leetcode_model: leetcode_provider
+                        .map(|p| p.model.clone())
+                        .unwrap_or_default(),
+                    leetcode_api_key: leetcode_provider
+                        .and_then(|p| p.api_key.clone())
+                        .unwrap_or_default(),
+                    leetcode_endpoint_kind: leetcode_provider
+                        .and_then(|p| p.endpoint_kind.clone())
+                        .unwrap_or_default(),
+                    leetcode_reasoning_effort: leetcode_provider
+                        .and_then(|p| p.reasoning_effort.clone())
+                        .unwrap_or_default(),
                 };
                 self.app_state.open_settings_buffer(
                     theme_profile,
@@ -322,30 +340,14 @@ impl AppShell {
             Command::SettingsAdjustDecrease => Some(self.adjust_selected_setting(-1)),
             Command::SettingsAdjustIncrease => Some(self.adjust_selected_setting(1)),
             Command::SettingsActivate => Some(self.activate_selected_setting()),
-            Command::ResizeDecreaseWidth => {
-                Some(self.resize_focused_window(-Self::RESIZE_STEP_PX, 0.0))
-            }
-            Command::ResizeIncreaseWidth => {
-                Some(self.resize_focused_window(Self::RESIZE_STEP_PX, 0.0))
-            }
-            Command::ResizeIncreaseLeftWidth => {
-                Some(self.resize_editor_left_edge(Self::RESIZE_STEP_PX))
-            }
-            Command::ResizeDecreaseLeftWidth => {
-                Some(self.resize_editor_left_edge(-Self::RESIZE_STEP_PX))
-            }
-            Command::ResizeIncreaseRightWidth => {
-                Some(self.resize_editor_right_edge(Self::RESIZE_STEP_PX))
-            }
-            Command::ResizeDecreaseRightWidth => {
-                Some(self.resize_editor_right_edge(-Self::RESIZE_STEP_PX))
-            }
+            Command::ResizeDecreaseWidth => Some(self.resize_focused_width(-Self::RESIZE_STEP_PX)),
+            Command::ResizeIncreaseWidth => Some(self.resize_focused_width(Self::RESIZE_STEP_PX)),
             Command::ResizeDecreaseHeight => {
-                Some(self.resize_focused_window(0.0, -Self::RESIZE_STEP_PX))
+                Some(self.resize_focused_height(-Self::RESIZE_STEP_PX))
             }
-            Command::ResizeIncreaseHeight => {
-                Some(self.resize_focused_window(0.0, Self::RESIZE_STEP_PX))
-            }
+            Command::ResizeIncreaseHeight => Some(self.resize_focused_height(Self::RESIZE_STEP_PX)),
+            Command::ResizeGrowLeftDock => Some(self.resize_left_dock(Self::RESIZE_STEP_PX)),
+            Command::ResizeGrowRightDock => Some(self.resize_right_dock(Self::RESIZE_STEP_PX)),
             Command::CloseFilePicker if self.app_state.active_buffer_is_extensions_manager() => {
                 if self.app_state.extensions_set_filter_focused(false) {
                     if let Ok(result) = self.app_state.apply_mode_event(ModeEvent::Escape) {
@@ -450,10 +452,7 @@ fn missing_install_prerequisite(install_cmd: &str) -> Option<(&'static str, &'st
             "go",
             "Install Go first: https://go.dev/dl or `brew install go`.",
         ),
-        "cargo" | "rustup" => (
-            "cargo",
-            "Install Rust first: https://rustup.rs.",
-        ),
+        "cargo" | "rustup" => ("cargo", "Install Rust first: https://rustup.rs."),
         "pip" | "pip3" | "pipx" => (
             "pip3",
             "Install Python 3 first: https://www.python.org or `brew install python`.",

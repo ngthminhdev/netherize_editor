@@ -11,14 +11,63 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
     }
 
     match command {
-        Command::SaveFile => match ctx.app_state.save_file() {
-            Ok(path) => DispatchReport::success_with_flags(
-                format!("Dispatch: save trigger succeeded -> {}", path.display()),
-                false,
-                false,
-            ),
-            Err(err) => DispatchReport::failure(format!("Dispatch: save trigger failed -> {err}")),
-        },
+        Command::SaveFile => {
+            if let Some(ref session) = ctx.app_state.test_field_edit {
+                if Some(session.scratch_path.as_path()) == ctx.app_state.active_file() {
+                    let text_str = ctx.app_state.text_string();
+                    match crate::runner::validate_json_text(session.field.label(), &text_str) {
+                        Ok(_) => {
+                            let case_index = session.case_index;
+                            if let Some(case) = ctx.app_state.test_runner.cases.get_mut(case_index)
+                            {
+                                match session.field {
+                                    crate::runner::TestField::Input => case.input = text_str,
+                                    crate::runner::TestField::Expected => case.expected = text_str,
+                                }
+                                case.reset_result();
+                            }
+                            let scratch_path = session.scratch_path.clone();
+                            let return_buffer_index = session.return_buffer_index;
+                            let scratch_idx_opt = ctx.app_state.buffers().iter().position(|b| {
+                                matches!(&b.content, crate::app::app_state::BufferContent::Text(tb) if tb.path == scratch_path)
+                            });
+                            let _ = ctx.app_state.close_buffer_for_path(&scratch_path);
+                            if let Some(mut r_idx) = return_buffer_index {
+                                if let Some(scratch_idx) = scratch_idx_opt {
+                                    if r_idx >= scratch_idx && r_idx > 0 {
+                                        r_idx -= 1;
+                                    }
+                                }
+                                if r_idx < ctx.app_state.buffers().len() {
+                                    let _ = ctx.app_state.activate_buffer_index(r_idx);
+                                }
+                            }
+                            // The solution file is active again; mirror the edited
+                            // cases into the per-problem cache.
+                            ctx.app_state.persist_leetcode_cases_for_active_file();
+                            return DispatchReport::success_with_flags(
+                                "Committed test field edit".to_string(),
+                                true,
+                                true,
+                            );
+                        }
+                        Err(err) => {
+                            return DispatchReport::failure(err);
+                        }
+                    }
+                }
+            }
+            match ctx.app_state.save_file() {
+                Ok(path) => DispatchReport::success_with_flags(
+                    format!("Dispatch: save trigger succeeded -> {}", path.display()),
+                    false,
+                    false,
+                ),
+                Err(err) => {
+                    DispatchReport::failure(format!("Dispatch: save trigger failed -> {err}"))
+                }
+            }
+        }
         Command::OpenFile(path) => ctx.open_file(path),
         Command::BufferNew => {
             let changed = ctx.app_state.new_empty_buffer();
@@ -55,19 +104,46 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 DispatchReport::failure(format!("Dispatch: previous buffer failed -> {err}"))
             }
         },
-        Command::BufferCloseCurrent => match ctx.app_state.close_current_buffer() {
-            Ok(changed) => DispatchReport::success(
-                if changed {
-                    "Dispatch: closed current buffer".to_string()
-                } else {
-                    "Dispatch: close current buffer ignored".to_string()
-                },
-                changed,
-            ),
-            Err(err) => {
-                DispatchReport::failure(format!("Dispatch: close current buffer failed -> {err}"))
+        Command::BufferCloseCurrent => {
+            if let Some(ref session) = ctx.app_state.test_field_edit {
+                if Some(session.scratch_path.as_path()) == ctx.app_state.active_file() {
+                    let scratch_path = session.scratch_path.clone();
+                    let return_buffer_index = session.return_buffer_index;
+                    let scratch_idx_opt = ctx.app_state.buffers().iter().position(|b| {
+                        matches!(&b.content, crate::app::app_state::BufferContent::Text(tb) if tb.path == scratch_path)
+                    });
+                    let _ = ctx.app_state.close_buffer_for_path(&scratch_path);
+                    if let Some(mut r_idx) = return_buffer_index {
+                        if let Some(scratch_idx) = scratch_idx_opt {
+                            if r_idx >= scratch_idx && r_idx > 0 {
+                                r_idx -= 1;
+                            }
+                        }
+                        if r_idx < ctx.app_state.buffers().len() {
+                            let _ = ctx.app_state.activate_buffer_index(r_idx);
+                        }
+                    }
+                    return DispatchReport::success_with_flags(
+                        "Cancelled test field edit".to_string(),
+                        true,
+                        true,
+                    );
+                }
             }
-        },
+            match ctx.app_state.close_current_buffer() {
+                Ok(changed) => DispatchReport::success(
+                    if changed {
+                        "Dispatch: closed current buffer".to_string()
+                    } else {
+                        "Dispatch: close current buffer ignored".to_string()
+                    },
+                    changed,
+                ),
+                Err(err) => DispatchReport::failure(format!(
+                    "Dispatch: close current buffer failed -> {err}"
+                )),
+            }
+        }
         Command::BufferGoto(index) => {
             let changed = ctx.app_state.goto_buffer_index(index);
             DispatchReport::success(
@@ -162,7 +238,9 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::MarkdownPreviewScrollTop
         | Command::MarkdownPreviewScrollBottom
         | Command::MarkdownPreviewScrollHalfPageUp
-        | Command::MarkdownPreviewScrollHalfPageDown => DispatchReport::success_with_flags(
+        | Command::MarkdownPreviewScrollHalfPageDown
+        | Command::SwitchBottomTab(_)
+        | Command::SwitchRightTab(_) => DispatchReport::success_with_flags(
             "Dispatch: workbench navigation (handled by event loop)",
             true,
             false,

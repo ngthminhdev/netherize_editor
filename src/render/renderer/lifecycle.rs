@@ -97,6 +97,8 @@ impl Renderer {
             crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
         let palette_icon_pipeline =
             crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
+        let test_runner_icon_pipeline =
+            crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
         let ai_chat_header_image_pipeline =
             crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
         let ai_chat_hero_image_pipeline =
@@ -138,6 +140,7 @@ impl Renderer {
         let ai_chat_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let toast_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let whichkey_text_system = make_text_system(ui_metrics, font_family.as_deref());
+        let test_runner_text_system = make_text_system(panel_metrics, font_family.as_deref());
         let leap_label_text_system = make_text_system(leap_metrics, font_family.as_deref());
 
         let atlas = GlyphAtlas::new(&device, ATLAS_SIZE, ATLAS_SIZE);
@@ -173,6 +176,8 @@ impl Renderer {
         let toast_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let whichkey_text_pipeline =
+            make_text_pipeline(&device, &atlas, surface_format, width, height);
+        let test_runner_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let leap_label_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
@@ -329,6 +334,13 @@ impl Renderer {
             whichkey_glyph_instances: Vec::new(),
             whichkey_chrome_instances: Vec::new(),
             whichkey_scissor: None,
+            test_runner_text_system,
+            test_runner_text_pipeline,
+            test_runner_glyph_instances: Vec::new(),
+            test_runner_icon_pipeline,
+            test_runner_icon_instances: Vec::new(),
+            test_runner_chrome_instances: Vec::new(),
+            test_runner_scissor: None,
             ai_chat_text_system,
             ai_chat_text_pipeline,
             ai_chat_header_image_pipeline,
@@ -391,6 +403,7 @@ impl Renderer {
         self.ai_chat_text_system.set_metrics(ui_metrics);
         let panel_metrics = Metrics::new(theme.ui.panel_font_size, theme.ui.panel_line_height);
         self.welcome_logo_text_system.set_metrics(panel_metrics);
+        self.test_runner_text_system.set_metrics(panel_metrics);
         self.leap_label_text_system.set_metrics(Metrics::new(
             theme.editor.font_size * 1.1,
             theme.editor.line_height * 1.1,
@@ -421,6 +434,7 @@ impl Renderer {
         self.diagnostic_hover_text_system.set_font_family(family);
         self.toast_text_system.set_font_family(family);
         self.whichkey_text_system.set_font_family(family);
+        self.test_runner_text_system.set_font_family(family);
         self.leap_label_text_system.set_font_family(family);
         self.ai_chat_text_system.set_font_family(family);
 
@@ -532,6 +546,7 @@ impl Renderer {
             &mut self.diagnostic_hover_text_pipeline,
             &mut self.toast_text_pipeline,
             &mut self.whichkey_text_pipeline,
+            &mut self.test_runner_text_pipeline,
             &mut self.leap_label_text_pipeline,
             &mut self.ai_chat_text_pipeline,
         ] {

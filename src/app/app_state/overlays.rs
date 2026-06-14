@@ -1114,7 +1114,7 @@ impl AppState {
         Ok(false)
     }
 
-    pub(super) fn activate_buffer_index(&mut self, index: usize) -> Result<(), String> {
+    pub fn activate_buffer_index(&mut self, index: usize) -> Result<(), String> {
         let Some(buffer) = self.buffers.get(index).cloned() else {
             return Err(format!("buffer index {index} out of range"));
         };

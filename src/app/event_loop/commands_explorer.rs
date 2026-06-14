@@ -657,6 +657,7 @@ impl AppShell {
                     return Some(false);
                 }
                 self.clear_highlight_layers();
+                self.app_state.load_leetcode_cases_for_active_file();
                 self.submit_active_buffer_git_baseline_refresh();
                 self.submit_parse_for_active_buffer(true);
                 self.submit_lsp_did_open_for_active_file();

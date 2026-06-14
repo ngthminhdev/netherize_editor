@@ -255,6 +255,11 @@ impl InputHandler {
             return self.route_ai_chat_input(normalized, input_debug, context);
         }
 
+        // Test Runner: modal input (nav mode + edit mode), all handled here.
+        if context.focus == InputFocusContext::TestRunner {
+            return self.route_test_runner_input(normalized, input_debug, context);
+        }
+
         if let Some(scroll) = Self::right_chat_scroll_command(&normalized, context) {
             self.clear_pending_counts();
             return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
@@ -373,8 +378,44 @@ impl InputHandler {
                     })
                 }));
 
+        // Cmd/Super shortcuts are GUI-global: a chord carrying the command
+        // modifier (Cmd on macOS) must trigger its bound command regardless of
+        // focus — AI chat, agent terminal, or test runner — instead of being
+        // swallowed by those focus interceptors or forwarded to the PTY as raw
+        // bytes (a terminal never needs a Cmd combo). Context-scoped bindings
+        // still win because `resolve` is handed the current context, and keys
+        // with no binding fall through to the normal per-focus routing below.
+        if normalized.has_command_modifier()
+            && !zen_mode_allows_leader
+            && let Some(resolved) = input_map.resolve(&normalized, context)
+        {
+            let (repeat_count, count_ignored) =
+                self.consume_repeat_count_for_command(&resolved.command, None);
+            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug,
+                format!(
+                    "focus={} -> global cmd shortcut -> {}",
+                    context.focus.as_str(),
+                    resolved.reason
+                ),
+                resolved.command,
+                repeat_count,
+                count_ignored,
+            )));
+        }
+
         if context.focus == InputFocusContext::AiChat && !zen_mode_allows_leader {
             return self.route_ai_chat_input(normalized, input_debug, context);
+        }
+
+        // Test Runner panel: modal input (nav + edit), all handled in the router.
+        if context.focus == InputFocusContext::TestRunner && !zen_mode_allows_leader {
+            return self.route_test_runner_input(normalized, input_debug, context);
+        }
+
+        // Outline panel: j/k to move highlights and jump editor cursor, Enter to focus editor.
+        if context.focus == InputFocusContext::Outline && !zen_mode_allows_leader {
+            return self.route_outline_input(normalized, input_debug, context);
         }
 
         if context.mode == EditorMode::PaletteFocus && context.command_palette_visible {
@@ -1612,205 +1653,147 @@ impl InputHandler {
     /// All keys are intercepted — Esc closes, Enter sends, printable chars
     /// append to input buffer, Backspace deletes last char. Everything else
     /// is swallowed so keys don't leak into the editor buffer.
+    /// Input for the in-panel AI-agent picker (AI Chat tab, no agent running):
+    /// j/k (or arrows) move the selection, Enter launches, Esc leaves. When an
+    /// agent is already running this routes nothing (the terminal owns input).
     fn route_ai_chat_input(
         &mut self,
         normalized: NormalizedInput,
         input_debug: String,
         context: KeybindingContext,
     ) -> Option<InputRouteOutcome> {
-        // Ctrl+N / Ctrl+P → cycle suggestion popup; Ctrl+U/D → scroll history; Ctrl+C → clear input.
-        // On macOS, `has_command_modifier()` means Cmd, so check Control explicitly here.
-        let control_shortcut = normalized.modifiers.control_key()
-            && !normalized.modifiers.alt_key()
-            && !normalized.modifiers.super_key();
-        if control_shortcut {
-            match normalized.physical_key {
-                Some(KeyCode::KeyC) => {
-                    return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
-                        input_debug,
-                        format!(
-                            "mode={} focus={} -> ai chat: stop generation / clear input",
-                            context.mode.as_str(),
-                            context.focus.as_str(),
-                        ),
-                        Command::AiChatClearInput,
-                        1,
-                        false,
-                    )));
-                }
-                Some(KeyCode::KeyN) => {
-                    return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
-                        input_debug,
-                        format!(
-                            "mode={} focus={} -> ai chat: suggestion next",
-                            context.mode.as_str(),
-                            context.focus.as_str(),
-                        ),
-                        Command::AiChatSuggestionNext,
-                        1,
-                        false,
-                    )));
-                }
-                Some(KeyCode::KeyP) => {
-                    return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
-                        input_debug,
-                        format!(
-                            "mode={} focus={} -> ai chat: suggestion prev",
-                            context.mode.as_str(),
-                            context.focus.as_str(),
-                        ),
-                        Command::AiChatSuggestionPrev,
-                        1,
-                        false,
-                    )));
-                }
-                Some(KeyCode::KeyU) => {
-                    return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
-                        input_debug,
-                        format!(
-                            "mode={} focus={} -> ai chat: scroll up half page",
-                            context.mode.as_str(),
-                            context.focus.as_str(),
-                        ),
-                        Command::AiChatScrollHalfPageUp,
-                        1,
-                        false,
-                    )));
-                }
-                Some(KeyCode::KeyD) => {
-                    return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
-                        input_debug,
-                        format!(
-                            "mode={} focus={} -> ai chat: scroll down half page",
-                            context.mode.as_str(),
-                            context.focus.as_str(),
-                        ),
-                        Command::AiChatScrollHalfPageDown,
-                        1,
-                        false,
-                    )));
-                }
-                _ => {}
-            }
+        if !context.ai_agent_picker_active {
+            return None;
         }
-
-        // Esc → unfocus AI chat, return focus to editor (keep dock visible)
-        if normalized.named_key == Some(NamedKey::Escape) {
-            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
-                input_debug,
-                format!(
-                    "mode={} focus={} -> ai chat: unfocus (Esc)",
-                    context.mode.as_str(),
-                    context.focus.as_str(),
-                ),
-                Command::AiChatUnfocus,
-                1,
-                false,
-            )));
-        }
-
-        // Enter → send message
-        if normalized.named_key == Some(NamedKey::Enter) && !normalized.has_command_modifier() {
-            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
-                input_debug,
-                format!(
-                    "mode={} focus={} -> ai chat: send (Enter)",
-                    context.mode.as_str(),
-                    context.focus.as_str(),
-                ),
-                Command::AiChatSend,
-                1,
-                false,
-            )));
-        }
-
-        // Tab → complete the highlighted slash command suggestion.
-        if normalized.named_key == Some(NamedKey::Tab) && !normalized.has_command_modifier() {
-            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
-                input_debug,
-                format!(
-                    "mode={} focus={} -> ai chat: accept suggestion (Tab)",
-                    context.mode.as_str(),
-                    context.focus.as_str(),
-                ),
-                Command::AiChatAcceptSuggestion,
-                1,
-                false,
-            )));
-        }
-
-        // Backspace → delete last char
-        if normalized.named_key == Some(NamedKey::Backspace) && !normalized.has_command_modifier() {
-            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
-                input_debug,
-                format!(
-                    "mode={} focus={} -> ai chat: backspace",
-                    context.mode.as_str(),
-                    context.focus.as_str(),
-                ),
-                Command::AiChatBackspace,
-                1,
-                false,
-            )));
-        }
-
-        // Cmd/Ctrl+V → paste system clipboard into AI chat input.
-        if normalized.physical_key == Some(KeyCode::KeyV) && normalized.has_command_modifier() {
-            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
-                input_debug,
-                format!(
-                    "mode={} focus={} -> ai chat: paste clipboard",
-                    context.mode.as_str(),
-                    context.focus.as_str(),
-                ),
-                Command::AiChatPasteClipboard,
-                1,
-                false,
-            )));
-        }
-
-        // Text input → append to input buffer. Use the full text payload instead
-        // of a single char so IME/dead-key commits like "đ", "ổi", "ể" survive.
-        if let Some(text) = normalized.text.as_deref()
-            && !text.is_empty()
-            && !normalized.has_command_modifier()
-            && text.chars().all(|ch| !ch.is_control())
-        {
-            let command = if text.chars().count() == 1 {
-                Command::AiChatInputChar(text.chars().next().unwrap_or_default())
-            } else {
-                Command::AiChatInputText(text.to_string())
-            };
-            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
-                input_debug,
-                format!(
-                    "mode={} focus={} -> ai chat: input text {:?}",
-                    context.mode.as_str(),
-                    context.focus.as_str(),
-                    text,
-                ),
+        let focus = context.focus.as_str();
+        let make = |command: Command, reason: &str| {
+            Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug.clone(),
+                format!("focus={focus} -> ai agent picker: {reason}"),
                 command,
                 1,
                 false,
-            )));
-        }
+            )))
+        };
 
-        // Space → append space to input buffer
-        if normalized.named_key == Some(NamedKey::Space) && !normalized.has_command_modifier() {
-            return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
-                input_debug,
-                format!(
-                    "mode={} focus={} -> ai chat: input char ' '",
-                    context.mode.as_str(),
-                    context.focus.as_str(),
-                ),
-                Command::AiChatInputChar(' '),
+        if normalized.named_key == Some(NamedKey::Escape) {
+            return make(Command::FocusEditor, "close picker (Esc)");
+        }
+        if normalized.named_key == Some(NamedKey::Enter) && !normalized.has_command_modifier() {
+            return make(Command::AiAgentPickerLaunch, "launch (Enter)");
+        }
+        if normalized.named_key == Some(NamedKey::ArrowDown) {
+            return make(Command::AiAgentPickerNext, "next (Down)");
+        }
+        if normalized.named_key == Some(NamedKey::ArrowUp) {
+            return make(Command::AiAgentPickerPrev, "prev (Up)");
+        }
+        if let Some(text) = normalized.text.as_deref()
+            && !normalized.has_command_modifier()
+        {
+            match text {
+                "j" => return make(Command::AiAgentPickerNext, "next (j)"),
+                "k" => return make(Command::AiAgentPickerPrev, "prev (k)"),
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// Modal input for the Test Runner panel. `context.test_runner_editing`
+    /// selects between edit mode (typing edits the focused field) and nav mode
+    /// (j/k move cases, i/Enter edit, a add, x delete, Tab/h/l switch column).
+    /// F5 runs in either mode; Esc ends edit (edit mode) or unfocuses (nav mode).
+    fn route_test_runner_input(
+        &mut self,
+        normalized: NormalizedInput,
+        input_debug: String,
+        context: KeybindingContext,
+    ) -> Option<InputRouteOutcome> {
+        let focus = context.focus.as_str();
+        let make = |command: Command, reason: &str| {
+            Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug.clone(),
+                format!("focus={focus} -> test runner: {reason}"),
+                command,
                 1,
                 false,
-            )));
+            )))
+        };
+
+        // F5 runs the cases in both modes.
+        if normalized.named_key == Some(NamedKey::F5) {
+            return make(Command::RunTestCases, "run (F5)");
         }
 
-        // Ignore all other keys while in AI chat (modifier-only, arrows, etc.)
+        // ── Nav mode ──────────────────────────────────────────────────────────
+        if normalized.named_key == Some(NamedKey::Escape) {
+            return make(Command::TestRunnerUnfocus, "unfocus (Esc)");
+        }
+        if normalized.named_key == Some(NamedKey::Tab) && !normalized.has_command_modifier() {
+            return make(Command::TestRunnerToggleField, "toggle field (Tab)");
+        }
+        if normalized.named_key == Some(NamedKey::ArrowDown) {
+            return make(Command::TestRunnerNextCase, "next case (Down)");
+        }
+        if normalized.named_key == Some(NamedKey::ArrowUp) {
+            return make(Command::TestRunnerPrevCase, "prev case (Up)");
+        }
+        if let Some(text) = normalized.text.as_deref()
+            && !normalized.has_command_modifier()
+        {
+            match text {
+                "j" => return make(Command::TestRunnerNextCase, "next case (j)"),
+                "k" => return make(Command::TestRunnerPrevCase, "prev case (k)"),
+                "h" | "l" => return make(Command::TestRunnerToggleField, "toggle field"),
+                "a" => return make(Command::TestRunnerAddCase, "add case (a)"),
+                "x" => return make(Command::TestRunnerDeleteCase, "delete case (x)"),
+                "g" => return make(Command::TestRunnerGenerateCases, "generate cases (g)"),
+                _ => {}
+            }
+        }
+        None
+    }
+
+    fn route_outline_input(
+        &mut self,
+        normalized: NormalizedInput,
+        input_debug: String,
+        context: KeybindingContext,
+    ) -> Option<InputRouteOutcome> {
+        let focus = context.focus.as_str();
+        let make = |command: Command, reason: &str| {
+            Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
+                input_debug.clone(),
+                format!("focus={focus} -> outline: {reason}"),
+                command,
+                1,
+                false,
+            )))
+        };
+
+        if normalized.named_key == Some(NamedKey::Escape) {
+            return make(Command::FocusEditor, "exit outline (Esc)");
+        }
+        if normalized.named_key == Some(NamedKey::Enter) && !normalized.has_command_modifier() {
+            return make(Command::OutlineConfirm, "confirm outline (Enter)");
+        }
+        if normalized.named_key == Some(NamedKey::ArrowDown) {
+            return make(Command::OutlineNext, "next (Down)");
+        }
+        if normalized.named_key == Some(NamedKey::ArrowUp) {
+            return make(Command::OutlinePrev, "prev (Up)");
+        }
+        if let Some(text) = normalized.text.as_deref()
+            && !normalized.has_command_modifier()
+        {
+            match text {
+                "j" => return make(Command::OutlineNext, "next (j)"),
+                "k" => return make(Command::OutlinePrev, "prev (k)"),
+                "q" => return make(Command::FocusEditor, "exit outline (q)"),
+                _ => {}
+            }
+        }
         None
     }
 }

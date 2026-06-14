@@ -96,6 +96,18 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 Err(report) => report,
             }
         }
+        Command::FetchLeetCodeProblem => match open_palette_mode(
+            ctx,
+            CommandPaletteMode::LeetCodeProblemInput,
+            "leetcode problem input",
+        ) {
+            Ok((result_count, mode_changed)) => DispatchReport::success_with_flags(
+                format!("Dispatch: leetcode problem input opened ({result_count} items)"),
+                true,
+                mode_changed,
+            ),
+            Err(report) => report,
+        },
         Command::SearchInFiles => {
             let _ = ctx.app_state.apply_mode_event(ModeEvent::EnterInsert);
             let buffer_index = ctx
@@ -596,6 +608,18 @@ fn confirm_selection(ctx: &mut DispatchCtx<'_, '_, '_>) -> DispatchReport {
             true,
             false,
         ),
+        CommandPaletteAction::CreateLeetCodeFile(_key) => DispatchReport::success_with_flags(
+            "Dispatch: leetcode language selected (handled by AppShell)".to_string(),
+            true,
+            false,
+        ),
+        CommandPaletteAction::FetchLeetCodeWithLanguage { .. } => {
+            DispatchReport::success_with_flags(
+                "Dispatch: leetcode fetch language selected (handled by AppShell)".to_string(),
+                true,
+                false,
+            )
+        }
     }
 }
 

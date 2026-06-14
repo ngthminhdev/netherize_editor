@@ -10,3 +10,15 @@ api_url = "http://localhost:20128/v1"
 model = "mistral/devstral-2512"
 api_key = "sk-2c73203b37ac06c4-lvvv2y-f8b99b2a"
 endpoint_kind = "chat"
+
+[leetcode]
+use_ai = true
+
+[leetcode.provider]
+api_url = "http://localhost:20128/v1"
+model = "mistral/codestral-2508"
+api_key = "sk-2c73203b37ac06c4-lvvv2y-f8b99b2a"
+endpoint_kind = "chat"
+# reasoning_effort = "low"
+
+# Lỗi nặng rồi khi tôi lần đầu click vào input để sửa input trong testrunner json nó không hiển thị input test mà vẫn hiện thị code ở file cũ đang mở (dù trên buffer tab có open ra file input json rồi) ngoài ra treesitter, highlight cũng vỡ nát không hoạt động cho tới khi tôi switch tab qua lại bằng ctrl-h, ctrl-l thì nó mới đúng

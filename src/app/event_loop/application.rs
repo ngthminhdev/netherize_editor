@@ -52,6 +52,17 @@ fn statusbar_source_path_label(
         .unwrap_or_else(|| path.display().to_string())
 }
 
+fn test_runner_runtime_label(path: Option<&Path>) -> &'static str {
+    match path.and_then(Path::extension).and_then(|ext| ext.to_str()) {
+        Some("js" | "mjs" | "cjs") => "Node.js",
+        Some("ts" | "mts" | "cts") => "tsx",
+        Some("py") => "Python",
+        Some("rs") => "Rust",
+        Some("go") => "Go",
+        _ => "Runner",
+    }
+}
+
 fn visible_region_bounds(
     flat_regions: &[crate::workbench::region_model::FlatRegion],
     id: RegionId,
@@ -236,16 +247,48 @@ impl AppShell {
         visible_region_bounds(&flat_regions, RegionId::RightSidebar)
     }
 
+    fn current_bottom_panel_bounds(&self) -> Option<[f32; 4]> {
+        let layout = self
+            .layout_engine
+            .compute(self.window_size, &self.panel_state);
+        let flat_regions: Vec<_> = layout.model.flatten();
+        visible_region_bounds(&flat_regions, RegionId::BottomPanel)
+    }
+
+    /// Bounds of the right-dock terminal *content* area — the region the agent
+    /// PTY grid is actually rendered into, i.e. the sidebar minus the outline
+    /// inset and the tab strip band on top. Mirrors the geometry used in the
+    /// render path (`term_bounds`) so mouse hit-tests and SGR cell mapping line
+    /// up with what's on screen. Without this, clicks on the tab strip get
+    /// swallowed by the terminal and forwarded wheel coordinates are shifted up
+    /// by the strip height (breaking scroll in strict TUIs like Claude/Codex).
+    fn current_right_terminal_bounds(&self) -> Option<[f32; 4]> {
+        let rb = self.current_right_sidebar_bounds()?;
+        let strip_h = crate::workbench::layout_engine::RIGHT_TAB_STRIP_HEIGHT;
+        let inset = crate::workbench::layout_engine::RIGHT_DOCK_OUTLINE_INSET
+            .min(rb[2] * 0.5)
+            .min(rb[3] * 0.5)
+            .max(0.0);
+        Some([
+            rb[0] + inset,
+            rb[1] + inset + strip_h,
+            (rb[2] - inset * 2.0).max(0.0),
+            (rb[3] - inset * 2.0 - strip_h).max(0.0),
+        ])
+    }
+
     fn right_terminal_active(&self) -> bool {
         self.panel_state.right.visible
-            && self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal)
+            && (self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal)
+                || (self.panel_state.right.active_tab_id() == Some(PanelTabId::AiChat)
+                    && self.right_pty_session_id.is_some()))
     }
 
     fn right_terminal_mouse_cell_at(&self, position: (f32, f32)) -> Option<(usize, usize)> {
         if !self.right_terminal_active() {
             return None;
         }
-        let bounds = self.current_right_sidebar_bounds()?;
+        let bounds = self.current_right_terminal_bounds()?;
         let scaled_ui = scale_ui_config(&self.ui_config, self.runtime_scale);
         let panel_padding = scaled_ui
             .layout
@@ -266,7 +309,7 @@ impl AppShell {
         if !self.right_terminal_active() {
             return false;
         }
-        let Some(bounds) = self.current_right_sidebar_bounds() else {
+        let Some(bounds) = self.current_right_terminal_bounds() else {
             return false;
         };
         self.last_cursor_position
@@ -333,7 +376,7 @@ impl AppShell {
         if !self.right_terminal_active() {
             return false;
         }
-        let Some(bounds) = self.current_right_sidebar_bounds() else {
+        let Some(bounds) = self.current_right_terminal_bounds() else {
             return false;
         };
         if !point_in_bounds(position, bounds) {
@@ -359,6 +402,206 @@ impl AppShell {
             let _ = self.handle_command(Command::TerminalWriteInput(sequence));
         }
         true
+    }
+
+    /// Switch the bottom dock's active outer tab when the user clicks its tab
+    /// strip. The strip is laid out against the full BottomPanel region bounds
+    /// (same `update_terminal_tab_bar` geometry the renderer draws), so we
+    /// hit-test against those bounds with the outer-tab count.
+    fn handle_bottom_tab_mouse_click(&mut self) -> bool {
+        if !self.panel_state.bottom.visible {
+            return false;
+        }
+        let Some(position) = self.last_cursor_position else {
+            return false;
+        };
+        let Some(bounds) = self.current_bottom_panel_bounds() else {
+            return false;
+        };
+        let tab_count = self.panel_state.bottom.tabs.len();
+        let Some(idx) = self
+            .renderer
+            .as_ref()
+            .and_then(|renderer| renderer.terminal_tab_index_at(tab_count, bounds, position))
+        else {
+            return false;
+        };
+        self.handle_command(Command::SwitchBottomTab(idx))
+    }
+
+    /// Mouse click on the right-dock tab strip → switch tab + focus the dock.
+    /// Lets the user jump between AI Chat / Test Runner / … with the pointer.
+    fn handle_right_dock_tab_mouse_click(&mut self) -> bool {
+        if !self.panel_state.right.visible {
+            return false;
+        }
+        let Some(position) = self.last_cursor_position else {
+            return false;
+        };
+        let Some(bounds) = self.current_right_sidebar_bounds() else {
+            return false;
+        };
+        let strip_h = crate::workbench::layout_engine::RIGHT_TAB_STRIP_HEIGHT;
+        let inset = crate::workbench::layout_engine::RIGHT_DOCK_OUTLINE_INSET
+            .min(bounds[2] * 0.5)
+            .min(bounds[3] * 0.5)
+            .max(0.0);
+        let strip_bounds = [
+            bounds[0] + inset,
+            bounds[1] + inset,
+            (bounds[2] - inset * 2.0).max(0.0),
+            strip_h,
+        ];
+        let tab_count = self.panel_state.right.tabs.len();
+        let Some(idx) = self.renderer.as_ref().and_then(|renderer| {
+            renderer.right_dock_tab_index_at(tab_count, strip_bounds, position)
+        }) else {
+            return false;
+        };
+        self.panel_state.right.switch_to_index(idx);
+        self.focus_manager.set(FocusTarget::RightSidebar);
+        // Clicking onto the AI Chat tab: drop into the running agent terminal,
+        // or open the agent picker when none is running.
+        if self.panel_state.right.active_tab_id() == Some(PanelTabId::AiChat) {
+            if self.right_pty_session_id.is_some() || self.pending_right_pty_spawn {
+                let _ = self.app_state.apply_mode_event(ModeEvent::FocusTerminal);
+            } else {
+                self.open_ai_agent_chooser();
+            }
+        }
+        true
+    }
+
+    /// Click a symbol in the Outline panel to jump the editor to its location.
+    fn handle_outline_mouse_click(&mut self) -> bool {
+        if !self.panel_state.right.visible
+            || self.panel_state.right.active_tab_id() != Some(PanelTabId::Outline)
+        {
+            return false;
+        }
+        let Some(position) = self.last_cursor_position else {
+            return false;
+        };
+        let Some(bounds) = self.current_right_sidebar_bounds() else {
+            return false;
+        };
+        let strip_h = crate::workbench::layout_engine::RIGHT_TAB_STRIP_HEIGHT;
+        let inset = crate::workbench::layout_engine::RIGHT_DOCK_OUTLINE_INSET
+            .min(bounds[2] * 0.5)
+            .min(bounds[3] * 0.5)
+            .max(0.0);
+        let content_bounds = [
+            bounds[0] + inset,
+            bounds[1] + inset + strip_h,
+            (bounds[2] - inset * 2.0).max(0.0),
+            (bounds[3] - inset * 2.0 - strip_h).max(0.0),
+        ];
+        let inner_padding = self.layout_engine.config.inner_padding;
+        let count = self.cached_document_symbols.len();
+        let Some(idx) = self.renderer.as_ref().and_then(|renderer| {
+            renderer.outline_row_at(content_bounds, count, inner_padding, position)
+        }) else {
+            return false;
+        };
+        let Some(symbol) = self.cached_document_symbols.get(idx) else {
+            return false;
+        };
+        let (line, column) = (symbol.range.start.line, symbol.range.start.character);
+
+        self.app_state.push_jump();
+        let jumped = self
+            .app_state
+            .jump_to_line_and_column(line as usize, column as usize);
+        let viewport_lines = self.editor_viewport_lines();
+        self.app_state.center_cursor_line(viewport_lines);
+        self.focus_manager.set(FocusTarget::CenterEditor);
+        let _ = self.release_focus_mode_to_editor();
+        self.outline_selected = None;
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        jumped || true
+    }
+
+    fn current_test_runner_content_bounds(&self) -> Option<[f32; 4]> {
+        if !self.panel_state.right.visible
+            || self.panel_state.right.active_tab_id() != Some(PanelTabId::TestRunner)
+        {
+            return None;
+        }
+        let bounds = self.current_right_sidebar_bounds()?;
+        let strip_h = crate::workbench::layout_engine::RIGHT_TAB_STRIP_HEIGHT;
+        let inset = crate::workbench::layout_engine::RIGHT_DOCK_OUTLINE_INSET
+            .min(bounds[2] * 0.5)
+            .min(bounds[3] * 0.5)
+            .max(0.0);
+        Some([
+            bounds[0] + inset,
+            bounds[1] + inset + strip_h,
+            (bounds[2] - inset * 2.0).max(0.0),
+            (bounds[3] - inset * 2.0 - strip_h).max(0.0),
+        ])
+    }
+
+    fn handle_test_runner_mouse_click(&mut self) -> bool {
+        let Some(position) = self.last_cursor_position else {
+            return false;
+        };
+        let Some(bounds) = self.current_test_runner_content_bounds() else {
+            return false;
+        };
+        let action = self.renderer.as_ref().and_then(|renderer| {
+            renderer.test_runner_pointer_action_at(
+                bounds,
+                &self.app_state.test_runner,
+                self.layout_engine.config.inner_padding,
+                position,
+            )
+        });
+        let command = match action {
+            Some(crate::render::renderer::TestRunnerPointerAction::Run) => Command::RunTestCases,
+            Some(crate::render::renderer::TestRunnerPointerAction::AddCase) => {
+                Command::TestRunnerAddCase
+            }
+            Some(crate::render::renderer::TestRunnerPointerAction::SelectCase(index)) => {
+                Command::TestRunnerSelectCase(index)
+            }
+            Some(crate::render::renderer::TestRunnerPointerAction::OpenField {
+                case_index,
+                expected,
+            }) => Command::TestRunnerOpenField {
+                case_index,
+                expected,
+            },
+            None => return false,
+        };
+        self.focus_manager.set(FocusTarget::RightSidebar);
+        self.handle_command(command)
+    }
+
+    fn handle_test_runner_mouse_wheel(&mut self, delta: MouseScrollDelta) -> bool {
+        let Some(position) = self.last_cursor_position else {
+            return false;
+        };
+        let Some(bounds) = self.current_test_runner_content_bounds() else {
+            return false;
+        };
+        if !point_in_bounds(position, bounds) {
+            return false;
+        }
+        let amount = match delta {
+            MouseScrollDelta::LineDelta(_, y) if y.abs() > f32::EPSILON => {
+                if y > 0.0 {
+                    -y.abs().ceil() as isize
+                } else {
+                    y.abs().ceil() as isize
+                }
+            }
+            MouseScrollDelta::PixelDelta(position) if position.y.abs() > f64::EPSILON => {
+                if position.y > 0.0 { -1 } else { 1 }
+            }
+            _ => return false,
+        };
+        self.handle_command(Command::TestRunnerScroll(amount))
     }
 }
 
@@ -637,12 +880,34 @@ impl ApplicationHandler<AppEvent> for AppShell {
             WindowEvent::MouseWheel { delta, .. } => {
                 if self.handle_right_terminal_mouse_wheel(delta) {
                     self.request_redraw();
+                } else if self.handle_test_runner_mouse_wheel(delta) {
+                    self.request_redraw();
                 } else if self.invalidate_editor_overlays() {
                     self.request_redraw();
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 if self.handle_right_terminal_mouse_input(button, state) {
+                    self.request_redraw();
+                } else if button == MouseButton::Left
+                    && state == ElementState::Pressed
+                    && self.handle_right_dock_tab_mouse_click()
+                {
+                    self.request_redraw();
+                } else if button == MouseButton::Left
+                    && state == ElementState::Pressed
+                    && self.handle_outline_mouse_click()
+                {
+                    self.request_redraw();
+                } else if button == MouseButton::Left
+                    && state == ElementState::Pressed
+                    && self.handle_test_runner_mouse_click()
+                {
+                    self.request_redraw();
+                } else if button == MouseButton::Left
+                    && state == ElementState::Pressed
+                    && self.handle_bottom_tab_mouse_click()
+                {
                     self.request_redraw();
                 }
             }
@@ -1528,70 +1793,164 @@ impl AppShell {
             }
         }
 
-        // ── AI Chat text (right sidebar) ──────────────────────────────────
+        // ── AI Chat (right sidebar) ───────────────────────────────────────
+        // The built-in chat UI is retired: the AI Chat tab now hosts a CLI
+        // agent terminal (rendered in the right-terminal block below). Clear the
+        // built-in chat surface unless the markdown preview borrows its pipeline.
         let right_sidebar_bounds = visible_region_bounds(&flat_regions, RegionId::RightSidebar);
-        let ai_chat_active = self.panel_state.right.visible
-            && right_sidebar_bounds.is_some()
-            && self.panel_state.right.active_tab_id() == Some(PanelTabId::AiChat);
         let markdown_preview_uses_ai_chat_pipeline =
             self.app_state.active_buffer_is_markdown_preview()
                 || (self.panel_state.right.visible
                     && right_sidebar_bounds.is_some()
                     && self.panel_state.right.active_tab_id() == Some(PanelTabId::MarkdownPreview)
                     && self.app_state.markdown_preview.visible);
-        if ai_chat_active {
-            let history_bounds = visible_region_bounds(&flat_regions, RegionId::AiChatHistory);
-            let input_bounds = visible_region_bounds(&flat_regions, RegionId::AiChatInput);
-
-            if let (Some(hb), Some(ib)) = (history_bounds, input_bounds) {
-                let chat = &self.panel_state.ai_chat;
-                let file_suggestions = self.ai_chat_file_reference_suggestions(&chat.input_buffer);
-                if let Some(renderer) = self.renderer.as_mut() {
-                    let show_cursor = self.focus_manager.current() == FocusTarget::RightSidebar;
-                    let inner_padding = self.layout_engine.config.inner_padding;
-                    let scroll_y = chat.scroll_y;
-                    let (cursor_quads, max_scroll_y) = renderer.update_ai_chat_content(
-                        hb,
-                        ib,
-                        &chat.messages,
-                        &chat.input_buffer,
-                        &file_suggestions,
-                        chat.selected_suggestion_index,
-                        show_cursor,
-                        inner_padding,
-                        chat.is_opencode_missing,
-                        chat.model.as_deref(),
-                        chat.agent.label(),
-                        chat.is_generating,
-                        scroll_y,
-                    );
-                    self.panel_state.ai_chat.max_scroll_y = max_scroll_y;
-                    region_instances.extend(cursor_quads);
-                }
-            }
-        } else if !markdown_preview_uses_ai_chat_pipeline
-            && let Some(renderer) = self.renderer.as_mut()
-        {
+        if !markdown_preview_uses_ai_chat_pipeline && let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_ai_chat();
         }
 
-        // ── Right-sidebar terminal ────────────────────────────────────────
+        // ── Right-dock tab strip (+ Test Runner content) ──────────────────
+        // The strip renders on every tab so the user can mouse-switch between
+        // AI Chat / Test Runner / … ; the case-list content is added only when
+        // the Test Runner tab is active. Both share the Test Runner surface.
+        if self.panel_state.right.visible
+            && let Some(rb) = right_sidebar_bounds
+        {
+            let active_tab_id = self.panel_state.right.active_tab_id();
+            let is_test_runner = active_tab_id == Some(PanelTabId::TestRunner);
+            let is_outline = active_tab_id == Some(PanelTabId::Outline);
+            // Outline tab: fetch the active file's document symbols (once per file).
+            if is_outline {
+                self.ensure_outline_symbols();
+            }
+            let labels: Vec<&str> = self
+                .panel_state
+                .right
+                .tabs
+                .iter()
+                .map(|t| t.label())
+                .collect();
+            let tab_icons: Vec<Option<&'static str>> = self
+                .panel_state
+                .right
+                .tabs
+                .iter()
+                .map(|t| t.icon_glyph())
+                .collect();
+            let active = self.panel_state.right.active_tab;
+            let strip_focused = self.focus_manager.current() == FocusTarget::RightSidebar;
+            let inner_padding = self.layout_engine.config.inner_padding;
+            let strip_h = crate::workbench::layout_engine::RIGHT_TAB_STRIP_HEIGHT;
+            let test_runner_file_label = self
+                .app_state
+                .active_file()
+                .and_then(Path::file_name)
+                .and_then(|name| name.to_str())
+                .unwrap_or("No active file")
+                .to_string();
+            let test_runner_runtime = test_runner_runtime_label(self.app_state.active_file());
+            let content = if is_test_runner {
+                Some((
+                    &self.app_state.test_runner,
+                    inner_padding,
+                    strip_focused,
+                    test_runner_file_label.as_str(),
+                    test_runner_runtime,
+                ))
+            } else {
+                None
+            };
+            let outline = if is_outline {
+                let is_outline_focused = self.focus_manager.current() == FocusTarget::RightSidebar;
+                let selected = if is_outline_focused {
+                    self.outline_selected
+                        .or_else(|| self.outline_cursor_symbol_index())
+                } else {
+                    self.outline_cursor_symbol_index()
+                };
+                Some((
+                    self.cached_document_symbols.as_slice(),
+                    selected,
+                    inner_padding,
+                ))
+            } else {
+                None
+            };
+            // AI Chat tab with no agent running yet: show the in-panel agent picker.
+            let agent_running = self.right_pty_session_id.is_some() || self.pending_right_pty_spawn;
+            let agent_rows: Vec<(&str, &str)> =
+                if active_tab_id == Some(PanelTabId::AiChat) && !agent_running {
+                    self.ai_agent_picker_agents()
+                        .into_iter()
+                        .map(|a| (a.label, a.command))
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+            let agent_picker = if agent_rows.is_empty() {
+                None
+            } else {
+                let count = agent_rows.len();
+                Some((
+                    agent_rows.as_slice(),
+                    self.ai_agent_picker_selected.min(count - 1),
+                    strip_focused,
+                ))
+            };
+            if let Some(renderer) = self.renderer.as_mut() {
+                let mode = self.app_state.current_mode();
+                renderer.update_right_dock_panel(
+                    rb,
+                    &labels,
+                    &tab_icons,
+                    active,
+                    strip_h,
+                    strip_focused,
+                    content,
+                    outline,
+                    agent_picker,
+                    mode,
+                );
+            }
+        } else if let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_test_runner();
+        }
+
+        // ── Right-sidebar AI agent terminal ───────────────────────────────
+        // The AI Chat tab hosts a CLI agent PTY. (The legacy Terminal tab still
+        // works when present, e.g. in tests.) Rendered inset below the tab strip.
+        let agent_terminal_running =
+            self.right_pty_session_id.is_some() || self.pending_right_pty_spawn;
         let right_terminal_active = self.panel_state.right.visible
             && right_sidebar_bounds.is_some()
-            && self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal);
+            && matches!(
+                self.panel_state.right.active_tab_id(),
+                Some(PanelTabId::AiChat) | Some(PanelTabId::Terminal)
+            )
+            && agent_terminal_running;
         if right_terminal_active {
             if let Some(rb) = right_sidebar_bounds {
-                let bounds_changed = self.last_right_terminal_bounds != Some(rb);
-                let grid_changed = self.sync_right_terminal_layout(rb);
+                let strip_h = crate::workbench::layout_engine::RIGHT_TAB_STRIP_HEIGHT;
+                let inset = crate::workbench::layout_engine::RIGHT_DOCK_OUTLINE_INSET
+                    .min(rb[2] * 0.5)
+                    .min(rb[3] * 0.5)
+                    .max(0.0);
+                let term_bounds = [
+                    rb[0] + inset,
+                    rb[1] + inset + strip_h,
+                    (rb[2] - inset * 2.0).max(0.0),
+                    (rb[3] - inset * 2.0 - strip_h).max(0.0),
+                ];
+                let bounds_changed = self.last_right_terminal_bounds != Some(term_bounds);
+                let grid_changed = self.sync_right_terminal_layout(term_bounds);
                 if (self.right_terminal_needs_layout || bounds_changed || grid_changed)
                     && let Some(renderer) = self.renderer.as_mut()
                 {
                     renderer.update_right_terminal_content(
                         &self.right_terminal_grid,
-                        rb,
+                        term_bounds,
                         self.app_state.current_mode(),
                     );
-                    self.last_right_terminal_bounds = Some(rb);
+                    self.last_right_terminal_bounds = Some(term_bounds);
                     self.right_terminal_needs_layout = false;
                 }
             }
@@ -1881,51 +2240,59 @@ impl AppShell {
                     bottom.bounds.height,
                 ];
 
-                let terminal_content_bounds = self
-                    .renderer
-                    .as_ref()
-                    .map(|renderer| {
-                        renderer.terminal_tab_bar_content_bounds(
-                            bottom_bounds,
-                            self.terminal_tabs.len(),
-                        )
-                    })
-                    .unwrap_or(bottom_bounds);
+                // The bottom dock's top strip shows the OUTER dock tabs
+                // (Terminal / Debug Console / Problems …). The terminal body is
+                // rendered only while the Terminal tab is active; other tabs show
+                // an empty body for now (per-tab content routers land later).
+                let outer_tabs: Vec<PanelTabId> = self.panel_state.bottom.tabs.clone();
+                let active_outer_idx = self.panel_state.bottom.active_tab;
+                let terminal_tab_active =
+                    self.panel_state.bottom.active_tab_id() == Some(PanelTabId::Terminal);
+                let outer_tab_count = outer_tabs.len();
 
-                let bounds_changed = self.last_terminal_bounds != Some(bottom_bounds);
-                let grid_changed = self.sync_terminal_layout(terminal_content_bounds);
-                if (self.terminal_needs_layout || bounds_changed || grid_changed)
-                    && let Some(renderer) = self.renderer.as_mut()
-                {
-                    renderer.update_terminal_content(
-                        &self.terminal_tabs[self.active_terminal_tab].grid,
-                        terminal_content_bounds,
-                        self.app_state.current_mode(),
-                    );
-                    self.last_terminal_bounds = Some(bottom_bounds);
-                    self.terminal_needs_layout = false;
+                if terminal_tab_active {
+                    let terminal_content_bounds = self
+                        .renderer
+                        .as_ref()
+                        .map(|renderer| {
+                            renderer.terminal_tab_bar_content_bounds(bottom_bounds, outer_tab_count)
+                        })
+                        .unwrap_or(bottom_bounds);
+
+                    let bounds_changed = self.last_terminal_bounds != Some(bottom_bounds);
+                    let grid_changed = self.sync_terminal_layout(terminal_content_bounds);
+                    if (self.terminal_needs_layout || bounds_changed || grid_changed)
+                        && let Some(renderer) = self.renderer.as_mut()
+                    {
+                        renderer.update_terminal_content(
+                            &self.terminal_tabs[self.active_terminal_tab].grid,
+                            terminal_content_bounds,
+                            self.app_state.current_mode(),
+                        );
+                        self.last_terminal_bounds = Some(bottom_bounds);
+                        self.terminal_needs_layout = false;
+                    }
+                } else if let Some(renderer) = self.renderer.as_mut() {
+                    // Non-terminal outer tab: clear the terminal body each frame so
+                    // only the strip's tab labels populate the terminal text
+                    // pipeline (no stale body glyphs, no unbounded growth). The
+                    // strip itself is rendered just below.
+                    renderer.clear_terminal();
+                    self.last_terminal_bounds = None;
                 }
 
-                // Render tab bar after terminal content layout so tab labels are
-                // appended after body glyphs in the shared terminal text pipeline.
+                // Render the outer dock tab strip (always, while the dock is shown).
+                // Reuses the terminal tab-bar renderer; the running dot only lights
+                // for the Terminal tab when a terminal session is live.
+                let any_terminal_running = self.terminal_tabs.iter().any(|t| t.status.is_running());
                 let tab_bar_quads = if let Some(renderer) = self.renderer.as_mut() {
-                    let labels: Vec<&str> = self
-                        .terminal_tabs
+                    let labels: Vec<&str> = outer_tabs.iter().map(|t| t.label()).collect();
+                    let running: Vec<bool> = outer_tabs
                         .iter()
-                        .map(|t| t.label.as_str())
-                        .collect();
-                    let running: Vec<bool> = self
-                        .terminal_tabs
-                        .iter()
-                        .map(|t| t.status.is_running())
+                        .map(|t| *t == PanelTabId::Terminal && any_terminal_running)
                         .collect();
                     renderer
-                        .update_terminal_tab_bar(
-                            &labels,
-                            &running,
-                            self.active_terminal_tab,
-                            bottom_bounds,
-                        )
+                        .update_terminal_tab_bar(&labels, &running, active_outer_idx, bottom_bounds)
                         .0
                 } else {
                     Vec::new()
@@ -2110,8 +2477,8 @@ mod tests {
     use super::{
         breadcrumb_segment_text, build_editor_breadcrumb_segments, focus_ring_instances,
         focus_target_region_id, mouse_button_code, point_in_bounds, sgr_mouse_sequence,
-        sgr_wheel_sequence,
-        statusbar_source_path_label, terminal_cell_at_position, visible_region_bounds,
+        sgr_wheel_sequence, statusbar_source_path_label, terminal_cell_at_position,
+        visible_region_bounds,
     };
     use crate::async_runtime::message::{
         LspDocumentSymbol, LspDocumentSymbolSegment, LspPosition, LspRange,

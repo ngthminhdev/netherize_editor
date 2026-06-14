@@ -82,6 +82,9 @@ pub const OPEN_RECENT_PROJECTS: &str = "projects.recent";
 // ── App-level UI ──────────────────────────────────────────────────────────────
 pub const TOGGLE_TERMINAL: &str = "app.toggle_terminal";
 pub const TOGGLE_BOTTOM_DOCK: &str = "app.toggle_bottom_dock";
+pub const RUN_TEST_CASES: &str = "runner.run";
+pub const NEW_LEETCODE_FILE: &str = "runner.new_leetcode_file";
+pub const FETCH_LEETCODE_PROBLEM: &str = "runner.fetch_leetcode_problem";
 pub const TOGGLE_LEFT_DOCK: &str = "app.toggle_left_dock";
 pub const OPEN_FILE_PICKER: &str = "app.open_file_picker";
 pub const OPEN_FILE_FINDER: &str = "app.open_file_finder";
@@ -113,6 +116,17 @@ pub const TERMINAL_TAB_SWITCH_7: &str = "terminal.tab_switch_7";
 pub const TERMINAL_TAB_SWITCH_8: &str = "terminal.tab_switch_8";
 pub const TERMINAL_TAB_SWITCH_9: &str = "terminal.tab_switch_9";
 
+// ── Right dock tab switch ───────────────────────────────────────────────────
+pub const RIGHT_DOCK_SWITCH_1: &str = "right_dock.switch_tab_1";
+pub const RIGHT_DOCK_SWITCH_2: &str = "right_dock.switch_tab_2";
+pub const RIGHT_DOCK_SWITCH_3: &str = "right_dock.switch_tab_3";
+pub const RIGHT_DOCK_SWITCH_4: &str = "right_dock.switch_tab_4";
+pub const RIGHT_DOCK_SWITCH_5: &str = "right_dock.switch_tab_5";
+pub const RIGHT_DOCK_SWITCH_6: &str = "right_dock.switch_tab_6";
+pub const RIGHT_DOCK_SWITCH_7: &str = "right_dock.switch_tab_7";
+pub const RIGHT_DOCK_SWITCH_8: &str = "right_dock.switch_tab_8";
+pub const RIGHT_DOCK_SWITCH_9: &str = "right_dock.switch_tab_9";
+
 // ── Buffer goto ─────────────────────────────────────────────────────────────
 pub const BUFFER_GOTO_1: &str = "buffer.goto_1";
 pub const BUFFER_GOTO_2: &str = "buffer.goto_2";
@@ -138,12 +152,10 @@ pub const LSP_SELECT_DART_ENV: &str = "lsp.select_dart_env";
 pub const RELOAD_WORKSPACE: &str = "workspace.reload";
 pub const RESIZE_DECREASE_WIDTH: &str = "resize.decrease_width";
 pub const RESIZE_INCREASE_WIDTH: &str = "resize.increase_width";
-pub const RESIZE_INCREASE_LEFT_WIDTH: &str = "resize.increase_left_width";
-pub const RESIZE_DECREASE_LEFT_WIDTH: &str = "resize.decrease_left_width";
-pub const RESIZE_INCREASE_RIGHT_WIDTH: &str = "resize.increase_right_width";
-pub const RESIZE_DECREASE_RIGHT_WIDTH: &str = "resize.decrease_right_width";
 pub const RESIZE_DECREASE_HEIGHT: &str = "resize.decrease_height";
 pub const RESIZE_INCREASE_HEIGHT: &str = "resize.increase_height";
+pub const RESIZE_GROW_LEFT_DOCK: &str = "resize.grow_left_dock";
+pub const RESIZE_GROW_RIGHT_DOCK: &str = "resize.grow_right_dock";
 pub const COMPLETION_NEXT: &str = "completion.next";
 pub const COMPLETION_PREV: &str = "completion.prev";
 pub const COMPLETION_ACCEPT: &str = "completion.accept";
@@ -323,17 +335,18 @@ pub const ALL_IDS: &[&str] = &[
     ENTER_RESIZE,
     RESIZE_DECREASE_WIDTH,
     RESIZE_INCREASE_WIDTH,
-    RESIZE_INCREASE_LEFT_WIDTH,
-    RESIZE_DECREASE_LEFT_WIDTH,
-    RESIZE_INCREASE_RIGHT_WIDTH,
-    RESIZE_DECREASE_RIGHT_WIDTH,
     RESIZE_DECREASE_HEIGHT,
     RESIZE_INCREASE_HEIGHT,
+    RESIZE_GROW_LEFT_DOCK,
+    RESIZE_GROW_RIGHT_DOCK,
     ENTER_TERMINAL_FOCUS,
     EXIT_FOCUS,
     ESCAPE_MODE,
     TOGGLE_TERMINAL,
     TOGGLE_BOTTOM_DOCK,
+    RUN_TEST_CASES,
+    NEW_LEETCODE_FILE,
+    FETCH_LEETCODE_PROBLEM,
     TOGGLE_LEFT_DOCK,
     OPEN_FILE_PICKER,
     OPEN_FILE_FINDER,
@@ -363,6 +376,15 @@ pub const ALL_IDS: &[&str] = &[
     TERMINAL_TAB_SWITCH_7,
     TERMINAL_TAB_SWITCH_8,
     TERMINAL_TAB_SWITCH_9,
+    RIGHT_DOCK_SWITCH_1,
+    RIGHT_DOCK_SWITCH_2,
+    RIGHT_DOCK_SWITCH_3,
+    RIGHT_DOCK_SWITCH_4,
+    RIGHT_DOCK_SWITCH_5,
+    RIGHT_DOCK_SWITCH_6,
+    RIGHT_DOCK_SWITCH_7,
+    RIGHT_DOCK_SWITCH_8,
+    RIGHT_DOCK_SWITCH_9,
     BUFFER_GOTO_1,
     BUFFER_GOTO_2,
     BUFFER_GOTO_3,
@@ -586,6 +608,15 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         TERMINAL_TAB_SWITCH_7 => Some(Command::SwitchTerminalTab(6)),
         TERMINAL_TAB_SWITCH_8 => Some(Command::SwitchTerminalTab(7)),
         TERMINAL_TAB_SWITCH_9 => Some(Command::SwitchTerminalTab(8)),
+        RIGHT_DOCK_SWITCH_1 => Some(Command::SwitchRightTab(0)),
+        RIGHT_DOCK_SWITCH_2 => Some(Command::SwitchRightTab(1)),
+        RIGHT_DOCK_SWITCH_3 => Some(Command::SwitchRightTab(2)),
+        RIGHT_DOCK_SWITCH_4 => Some(Command::SwitchRightTab(3)),
+        RIGHT_DOCK_SWITCH_5 => Some(Command::SwitchRightTab(4)),
+        RIGHT_DOCK_SWITCH_6 => Some(Command::SwitchRightTab(5)),
+        RIGHT_DOCK_SWITCH_7 => Some(Command::SwitchRightTab(6)),
+        RIGHT_DOCK_SWITCH_8 => Some(Command::SwitchRightTab(7)),
+        RIGHT_DOCK_SWITCH_9 => Some(Command::SwitchRightTab(8)),
         BUFFER_GOTO_1 => Some(Command::BufferGoto(0)),
         BUFFER_GOTO_2 => Some(Command::BufferGoto(1)),
         BUFFER_GOTO_3 => Some(Command::BufferGoto(2)),
@@ -597,6 +628,9 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         BUFFER_GOTO_9 => Some(Command::BufferGoto(8)),
         TOGGLE_TERMINAL => Some(Command::ToggleTerminal),
         TOGGLE_BOTTOM_DOCK => Some(Command::ToggleBottomDock),
+        RUN_TEST_CASES => Some(Command::RunTestCases),
+        NEW_LEETCODE_FILE => Some(Command::NewLeetCodeFile),
+        FETCH_LEETCODE_PROBLEM => Some(Command::FetchLeetCodeProblem),
         TOGGLE_LEFT_DOCK => Some(Command::ToggleLeftDock),
         OPEN_FILE_PICKER => Some(Command::OpenFilePicker),
         OPEN_FILE_FINDER => Some(Command::OpenFileFinder),
@@ -626,12 +660,10 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         RELOAD_WORKSPACE => Some(Command::ReloadWorkspace),
         RESIZE_DECREASE_WIDTH => Some(Command::ResizeDecreaseWidth),
         RESIZE_INCREASE_WIDTH => Some(Command::ResizeIncreaseWidth),
-        RESIZE_INCREASE_LEFT_WIDTH => Some(Command::ResizeIncreaseLeftWidth),
-        RESIZE_DECREASE_LEFT_WIDTH => Some(Command::ResizeDecreaseLeftWidth),
-        RESIZE_INCREASE_RIGHT_WIDTH => Some(Command::ResizeIncreaseRightWidth),
-        RESIZE_DECREASE_RIGHT_WIDTH => Some(Command::ResizeDecreaseRightWidth),
         RESIZE_DECREASE_HEIGHT => Some(Command::ResizeDecreaseHeight),
         RESIZE_INCREASE_HEIGHT => Some(Command::ResizeIncreaseHeight),
+        RESIZE_GROW_LEFT_DOCK => Some(Command::ResizeGrowLeftDock),
+        RESIZE_GROW_RIGHT_DOCK => Some(Command::ResizeGrowRightDock),
         COMPLETION_NEXT => Some(Command::CompletionNext),
         COMPLETION_PREV => Some(Command::CompletionPrev),
         COMPLETION_ACCEPT => Some(Command::CompletionAccept),
@@ -728,5 +760,30 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         TOGGLE_FOLD => Some(Command::ToggleFold),
         TOGGLE_FOLD_ALL => Some(Command::ToggleFoldAll),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_leetcode_file_id_round_trips() {
+        assert_eq!(NEW_LEETCODE_FILE, "runner.new_leetcode_file");
+        assert!(ALL_IDS.contains(&NEW_LEETCODE_FILE));
+        assert!(matches!(
+            parse(NEW_LEETCODE_FILE, None),
+            Some(Command::NewLeetCodeFile)
+        ));
+    }
+
+    #[test]
+    fn fetch_leetcode_problem_id_round_trips() {
+        assert_eq!(FETCH_LEETCODE_PROBLEM, "runner.fetch_leetcode_problem");
+        assert!(ALL_IDS.contains(&FETCH_LEETCODE_PROBLEM));
+        assert!(matches!(
+            parse(FETCH_LEETCODE_PROBLEM, None),
+            Some(Command::FetchLeetCodeProblem)
+        ));
     }
 }

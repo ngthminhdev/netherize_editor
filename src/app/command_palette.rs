@@ -53,6 +53,11 @@ pub enum CommandPaletteMode {
     PythonEnvSelector,
     /// Dart environment selector — opened from the command palette.
     DartEnvSelector,
+    /// LeetCode language picker — choose a language to scaffold a new
+    /// runnable stdin/stdout solution file. Static list, MRU-sorted.
+    LeetCodeLanguageSelector,
+    /// Free-text problem ID, slug, or URL prompt.
+    LeetCodeProblemInput,
 }
 
 impl CommandPaletteMode {
@@ -79,6 +84,8 @@ impl CommandPaletteMode {
             Self::CodeAction => "action> ",
             Self::PythonEnvSelector => "python> ",
             Self::DartEnvSelector => "dart> ",
+            Self::LeetCodeLanguageSelector => "language> ",
+            Self::LeetCodeProblemInput => "leetcode> ",
         }
     }
 
@@ -105,6 +112,8 @@ impl CommandPaletteMode {
             Self::CodeAction => "no code actions available",
             Self::PythonEnvSelector => "scanning Python environments...",
             Self::DartEnvSelector => "scanning Dart environments...",
+            Self::LeetCodeLanguageSelector => "type to filter languages...",
+            Self::LeetCodeProblemInput => "enter problem ID, slug, or URL...",
         }
     }
 
@@ -131,6 +140,8 @@ impl CommandPaletteMode {
             Self::CodeAction => "ACTIONS",
             Self::PythonEnvSelector => "PYTHON ENV",
             Self::DartEnvSelector => "DART ENV",
+            Self::LeetCodeLanguageSelector => "NEW LEETCODE",
+            Self::LeetCodeProblemInput => "FETCH LEETCODE",
         }
     }
 
@@ -173,6 +184,12 @@ pub enum CommandPaletteAction {
     SelectPythonEnv(PathBuf),
     /// Chọn Dart/Flutter SDK path để restart LSP.
     SelectDartEnv(PathBuf),
+    /// Chọn ngôn ngữ để scaffold một file LeetCode mới (key = template key).
+    CreateLeetCodeFile(String),
+    FetchLeetCodeWithLanguage {
+        problem_input: String,
+        language_key: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -313,6 +330,34 @@ impl CommandPaletteItem {
             secondary_label,
             action: CommandPaletteAction::SelectFileHistoryEntry(index),
             tone,
+            preview_colors: Vec::new(),
+        }
+    }
+
+    pub fn leetcode_language(key: &str, label: &str, hint: &str) -> Self {
+        Self {
+            label: label.to_string(),
+            secondary_label: Some(hint.to_string()),
+            action: CommandPaletteAction::CreateLeetCodeFile(key.to_string()),
+            tone: CommandPaletteItemTone::Default,
+            preview_colors: Vec::new(),
+        }
+    }
+
+    pub fn leetcode_fetch_language(
+        problem_input: &str,
+        key: &str,
+        label: &str,
+        hint: &str,
+    ) -> Self {
+        Self {
+            label: label.to_string(),
+            secondary_label: Some(hint.to_string()),
+            action: CommandPaletteAction::FetchLeetCodeWithLanguage {
+                problem_input: problem_input.to_string(),
+                language_key: key.to_string(),
+            },
+            tone: CommandPaletteItemTone::Default,
             preview_colors: Vec::new(),
         }
     }
@@ -598,6 +643,7 @@ impl CommandPalette {
             CommandPaletteMode::RecentProjects
                 | CommandPaletteMode::ThemeSelector
                 | CommandPaletteMode::DocumentSymbols
+                | CommandPaletteMode::LeetCodeLanguageSelector
         ) {
             self.results = if self.query.is_empty() {
                 self.static_items.clone()
@@ -647,11 +693,13 @@ impl CommandPalette {
             | CommandPaletteMode::LspRename
             | CommandPaletteMode::BufferCloseConfirm
             | CommandPaletteMode::AiChatInstallConfirm => Vec::new(),
+            CommandPaletteMode::LeetCodeProblemInput => Vec::new(),
             CommandPaletteMode::RecentProjects => unreachable!("handled above"),
             CommandPaletteMode::ThemeSelector => unreachable!("handled above"),
             CommandPaletteMode::LspReferences => unreachable!("handled above"),
             CommandPaletteMode::FileHistory => unreachable!("handled above"),
             CommandPaletteMode::CodeAction => unreachable!("handled above"),
+            CommandPaletteMode::LeetCodeLanguageSelector => unreachable!("handled above"),
             CommandPaletteMode::PythonEnvSelector => Vec::new(),
             CommandPaletteMode::DartEnvSelector => Vec::new(),
         };
@@ -850,14 +898,20 @@ impl CommandPalette {
                     (line_height * 6.1 + panel_padding * 2.0 + 36.0)
                         .min((height - 64.0).max(line_height + panel_padding * 2.0))
                 } else {
-                    (line_height * content_rows
-                        + panel_padding * 2.0
-                        + if requested_visible_rows > 0 {
-                            12.0
-                        } else {
-                            4.0
-                        })
-                    .min((height - 64.0).max(line_height + panel_padding * 2.0))
+                    // Must match the minimalist renderer's row math exactly, else
+                    // the panel is shorter than the rows it claims to show and the
+                    // last result gets clipped by the scissor. Layout per row:
+                    //   prompt_h (= line_height + 10, min 30) + separator (8px)
+                    //   + N * row_height (= line_height + 8) + top/bottom padding.
+                    let _ = content_rows;
+                    let prompt_h = (line_height + 10.0).max(30.0);
+                    let body_h = if requested_visible_rows > 0 {
+                        8.0 + row_height * requested_visible_rows as f32
+                    } else {
+                        4.0
+                    };
+                    (prompt_h + body_h + panel_padding * 2.0)
+                        .min((height - 64.0).max(line_height + panel_padding * 2.0))
                 };
                 // TRUE CENTER: phân bố 50/50 trần-sàn
                 let py = y + ((height - ph) * 0.5).max(16.0).min(height - ph - 16.0);
@@ -921,7 +975,9 @@ impl CommandPalette {
                 .collect()
         } else if matches!(
             self.mode,
-            CommandPaletteMode::LiveGrep | CommandPaletteMode::DocumentSymbols
+            CommandPaletteMode::LiveGrep
+                | CommandPaletteMode::DocumentSymbols
+                | CommandPaletteMode::LeetCodeLanguageSelector
         ) {
             self.results
                 .iter()
@@ -1019,7 +1075,7 @@ fn theme_selector_preview_colors(theme: &ThemeConfig) -> Vec<[f32; 4]> {
     ]
 }
 
-fn symbol_icon(kind: &str) -> &'static str {
+pub(crate) fn symbol_icon(kind: &str) -> &'static str {
     match kind {
         // LSP symbol kinds mapped to SVG icons in assets/bearded-icons/symbol-*.svg
         "Function" => "built_in:symbol-function",
@@ -1081,6 +1137,8 @@ fn command_palette_items(query: &str, max_results: usize) -> Vec<CommandPaletteI
         ("lsp.rename", "Rename Symbol"),
         ("lsp.select_python_env", "Change Python Venv"),
         ("lsp.select_dart_env", "Change Dart/Flutter SDK"),
+        ("runner.new_leetcode_file", "New LeetCode File"),
+        ("runner.fetch_leetcode_problem", "Fetch LeetCode Problem"),
         ("workspace.reload", "Reload Workspace"),
         ("app.open_vim_command", "Open Vim Command"),
         ("app.open_help", "Open Cheat Sheet"),

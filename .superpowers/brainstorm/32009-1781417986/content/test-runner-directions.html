@@ -1,0 +1,85 @@
++<h2>Test Runner UX Direction</h2>
+<p class="subtitle">JavaScript LeetCode flow: create <code>solution.js</code> → understand stdin/stdout → author cases → run with F5. Click the direction that feels easiest to approach.</p>
+
+<div class="cards" style="grid-template-columns:repeat(3,minmax(300px,1fr));align-items:start">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:14px;background:#11151b">
+      <div style="height:38px;display:flex;background:#171c24;border:1px solid #28303c;border-radius:9px 9px 0 0;color:#9da8b8;font:11px monospace">
+        <div style="flex:1;padding:12px;text-align:center">AI CHAT</div>
+        <div style="flex:1;padding:12px;text-align:center;background:#202833;color:#e8edf4;border-top:2px solid #74a7ff">TEST RUNNER</div>
+        <div style="flex:1;padding:12px;text-align:center">OUTLINE</div>
+      </div>
+      <div style="min-height:310px;border:1px solid #28303c;border-top:0;padding:14px;color:#aab4c2;font:11px monospace">
+        <div style="color:#8692a2;margin-bottom:17px">2 case(s) &nbsp; i:edit &nbsp; Tab:field &nbsp; a:add &nbsp; x:del &nbsp; F5:run</div>
+        <div style="background:#202834;border-radius:7px;padding:10px;margin-bottom:12px">
+          <div style="color:#83d9a2;margin-bottom:8px">✓ Case 1 &nbsp; 31 ms</div>
+          <div style="display:grid;grid-template-columns:32px 1fr;gap:6px;margin-bottom:5px"><span>in:</span><span style="background:#29313d;padding:5px;border-radius:4px">[2,7,11,15] ⏎ 9</span></div>
+          <div style="display:grid;grid-template-columns:32px 1fr;gap:6px"><span>exp:</span><span style="background:#29313d;padding:5px;border-radius:4px">[0,1]</span></div>
+        </div>
+        <div style="color:#697586">• Case 2</div>
+      </div>
+    </div>
+    <div class="card-body"><h3>A. Polish Current Layout</h3><p>Keep compact rows. Add a visible NAV/EDIT badge, clearer labels and persistent shortcut footer.</p></div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:14px;background:#11151b">
+      <div style="height:38px;display:flex;background:#171c24;border:1px solid #28303c;border-radius:9px 9px 0 0;color:#9da8b8;font:11px monospace">
+        <div style="flex:1;padding:12px;text-align:center">AI CHAT</div>
+        <div style="flex:1;padding:10px;text-align:center;background:#202833;color:#fff;border-top:2px solid #74a7ff">TEST RUNNER</div>
+        <div style="flex:1;padding:12px;text-align:center">OUTLINE</div>
+      </div>
+      <div style="min-height:310px;border:1px solid #28303c;border-top:0;padding:12px;color:#dce3ec;font:11px monospace">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div><b>solution.js</b><div style="font-size:10px;color:#7f8b9b;margin-top:3px">node · stdin → stdout</div></div>
+          <div><span style="background:#233654;color:#91b8ff;padding:4px 7px;border-radius:4px">NAV</span> <span style="background:#315c43;color:#a7efbc;padding:6px 10px;border-radius:5px">▶ Run F5</span></div>
+        </div>
+        <div style="border:1px solid #4070b8;background:#192333;border-radius:8px;padding:10px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px"><b style="color:#94baff">Case 1</b><span style="color:#83d9a2">✓ Passed · 31 ms</span></div>
+          <div style="font-size:10px;color:#8290a2;margin-bottom:4px">INPUT <span style="float:right;color:#6e7a89">stdin</span></div>
+          <div style="background:#111821;border:1px solid #314054;padding:7px;border-radius:5px;white-space:pre-line;margin-bottom:8px">[2,7,11,15]
+9</div>
+          <div style="font-size:10px;color:#8290a2;margin-bottom:4px">EXPECTED OUTPUT</div>
+          <div style="background:#111821;border:1px solid #314054;padding:7px;border-radius:5px">[0,1]</div>
+        </div>
+        <div style="border:1px dashed #394454;border-radius:7px;padding:9px;text-align:center;color:#8491a1">＋ Add case <b style="color:#b2bdca">A</b></div>
+        <div style="margin-top:11px;color:#778495">↑↓ select · Enter edit · Tab next field · X delete · Esc editor</div>
+      </div>
+    </div>
+    <div class="card-body"><h3>B. Case Cards <span style="color:#74a7ff">Recommended</span></h3><p>Make file/runtime, mode, status and actions explicit. Preserve all current keyboard controls and use multiline fields.</p></div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:14px;background:#11151b">
+      <div style="height:38px;display:flex;background:#171c24;border:1px solid #28303c;border-radius:9px 9px 0 0;color:#9da8b8;font:11px monospace">
+        <div style="flex:1;padding:12px;text-align:center">AI CHAT</div>
+        <div style="flex:1;padding:10px;text-align:center;background:#202833;color:#fff;border-top:2px solid #74a7ff">TEST RUNNER</div>
+        <div style="flex:1;padding:12px;text-align:center">OUTLINE</div>
+      </div>
+      <div style="min-height:310px;border:1px solid #28303c;border-top:0;padding:12px;color:#dce3ec;font:11px monospace">
+        <div style="color:#8b9aab;font-size:10px;letter-spacing:.08em;margin-bottom:5px">GET STARTED · JAVASCRIPT</div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:5px">Your function reads stdin and returns stdout</div>
+        <div style="color:#8491a1;margin-bottom:12px">The generated <code>solve(data)</code> receives exactly what you type below.</div>
+        <div style="background:#141c26;border:1px solid #2d3c4f;border-radius:7px;padding:9px;margin-bottom:11px;color:#aebbd0;white-space:pre;font-size:10px"><span style="color:#78a9ff">function</span> solve(data) {
+  <span style="color:#6f7c8b">// parse lines, return answer</span>
+}</div>
+        <div style="display:grid;grid-template-columns:1fr 24px 1fr;align-items:center;gap:6px;margin-bottom:12px">
+          <div><div style="font-size:9px;color:#7f8c9c;margin-bottom:3px">STDIN</div><div style="background:#202a36;padding:8px;border-radius:5px;white-space:pre-line">[2,7,11,15]
+9</div></div>
+          <div style="text-align:center;color:#6f9ce6">→</div>
+          <div><div style="font-size:9px;color:#7f8c9c;margin-bottom:3px">EXPECTED STDOUT</div><div style="background:#202a36;padding:8px;border-radius:5px">[0,1]</div></div>
+        </div>
+        <div style="display:flex;gap:7px"><div style="flex:1;background:#274d38;color:#a7efbc;padding:8px;border-radius:5px;text-align:center">Create example case</div><div style="border:1px solid #3a4655;padding:8px;border-radius:5px">Skip</div></div>
+      </div>
+    </div>
+    <div class="card-body"><h3>C. Guided First Run</h3><p>Show a one-time explanation for the generated JS template, then transition to the card layout after creating the first case.</p></div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:22px">
+  <div class="label">Audit findings reflected above</div>
+  <div class="pros-cons">
+    <div class="cons"><h4>Current friction</h4><ul><li>NAV vs EDIT mode is invisible</li><li>Multiline stdin is flattened into one row</li><li>Empty state teaches keys, not the stdin/stdout model</li><li>F5 on an empty runner creates a blank case instead of running</li><li>Template filename is generic and template comments do not include a working example</li></ul></div>
+    <div class="pros"><h4>Keep intact</h4><ul><li>Keyboard-first j/k/i/a/x flow</li><li>F5 from editor or panel</li><li>Per-case status, duration and stderr</li><li>Raw stdin/stdout supports all problem shapes</li><li>MRU language picker</li></ul></div>
+  </div>
+</div>

@@ -106,6 +106,7 @@ fn named_key_display(named: NamedKey) -> String {
         NamedKey::ArrowLeft => "<Left>".to_string(),
         NamedKey::ArrowRight => "<Right>".to_string(),
         NamedKey::F1 => "<F1>".to_string(),
+        NamedKey::F5 => "<F5>".to_string(),
         NamedKey::F12 => "<F12>".to_string(),
         _ => format!("<{named:?}>"),
     }
@@ -227,6 +228,7 @@ fn parse_non_leader_key(token: &str) -> Option<KeySpec> {
         "arrowright" => Some(NamedKey::ArrowRight),
         "tab" => Some(NamedKey::Tab),
         "f1" => Some(NamedKey::F1),
+        "f5" => Some(NamedKey::F5),
         "f12" => Some(NamedKey::F12),
         _ => None,
     };
@@ -649,6 +651,15 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(None, cmd(KeyCode::KeyR), FOCUS_INSPECTOR);
     km.insert(None, nk(NamedKey::F12), FOCUS_TERMINAL);
     km.insert(None, cmd(KeyCode::Backslash), TOGGLE_BOTTOM_DOCK);
+    km.insert(None, cmd(KeyCode::Digit1), RIGHT_DOCK_SWITCH_1);
+    km.insert(None, cmd(KeyCode::Digit2), RIGHT_DOCK_SWITCH_2);
+    km.insert(None, cmd(KeyCode::Digit3), RIGHT_DOCK_SWITCH_3);
+    km.insert(None, cmd(KeyCode::Digit4), RIGHT_DOCK_SWITCH_4);
+    km.insert(None, cmd(KeyCode::Digit5), RIGHT_DOCK_SWITCH_5);
+    km.insert(None, cmd(KeyCode::Digit6), RIGHT_DOCK_SWITCH_6);
+    km.insert(None, cmd(KeyCode::Digit7), RIGHT_DOCK_SWITCH_7);
+    km.insert(None, cmd(KeyCode::Digit8), RIGHT_DOCK_SWITCH_8);
+    km.insert(None, cmd(KeyCode::Digit9), RIGHT_DOCK_SWITCH_9);
 
     // ── Insert mode ───────────────────────────────────────────────────────────
     km.insert(Some("insert"), nk(NamedKey::Escape), ENTER_NORMAL);
@@ -975,28 +986,22 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("terminal_normal"), ch('*'), SEARCH_WORD_UNDER_CURSOR);
 
     // ── Resize mode bindings ──────────────────────────────────────────────────
-    km.insert(
-        Some("resize"),
-        ph(KeyCode::KeyH),
-        RESIZE_INCREASE_LEFT_WIDTH,
-    );
+    // Lowercase h/j/k/l resize whichever panel/region is focused.
+    km.insert(Some("resize"), ph(KeyCode::KeyH), RESIZE_DECREASE_WIDTH);
+    km.insert(Some("resize"), ph(KeyCode::KeyL), RESIZE_INCREASE_WIDTH);
+    km.insert(Some("resize"), ph(KeyCode::KeyJ), RESIZE_INCREASE_HEIGHT);
+    km.insert(Some("resize"), ph(KeyCode::KeyK), RESIZE_DECREASE_HEIGHT);
+    // Uppercase H/L grow the left/right dock (the editor edge they border).
     km.insert(
         Some("resize"),
         KeySpec::ShiftPlus(KeyCode::KeyH),
-        RESIZE_DECREASE_LEFT_WIDTH,
-    );
-    km.insert(
-        Some("resize"),
-        ph(KeyCode::KeyL),
-        RESIZE_INCREASE_RIGHT_WIDTH,
+        RESIZE_GROW_LEFT_DOCK,
     );
     km.insert(
         Some("resize"),
         KeySpec::ShiftPlus(KeyCode::KeyL),
-        RESIZE_DECREASE_RIGHT_WIDTH,
+        RESIZE_GROW_RIGHT_DOCK,
     );
-    km.insert(Some("resize"), ph(KeyCode::KeyJ), RESIZE_INCREASE_HEIGHT);
-    km.insert(Some("resize"), ph(KeyCode::KeyK), RESIZE_DECREASE_HEIGHT);
     km.insert(Some("resize"), nk(NamedKey::Escape), ENTER_NORMAL);
 
     // ── Explorer focus mode bindings (mode-only lookup in InputMap) ──────────
@@ -1124,6 +1129,18 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert_sequence(
         Some("normal"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyR), ph(KeyCode::KeyR)]),
+        ENTER_RESIZE,
+    );
+    // Resize mode is reachable from the explorer and terminal too, so panels can
+    // be resized while they hold focus.
+    km.insert_sequence(
+        Some("explorer"),
+        seq(&[KeySpec::Leader, ph(KeyCode::KeyR), ph(KeyCode::KeyR)]),
+        ENTER_RESIZE,
+    );
+    km.insert_sequence(
+        Some("terminal_normal"),
         seq(&[KeySpec::Leader, ph(KeyCode::KeyR), ph(KeyCode::KeyR)]),
         ENTER_RESIZE,
     );

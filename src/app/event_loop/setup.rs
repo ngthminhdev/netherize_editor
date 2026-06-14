@@ -155,6 +155,8 @@ impl AppShell {
             last_right_terminal_bounds: None,
             last_cursor_position: None,
             pending_right_pty_spawn: false,
+            right_agent_label: None,
+            ai_agent_picker_selected: 0,
             right_pty_startup_command: None,
             terminal_buffer_grids: HashMap::new(),
             pending_lazygit_buffer_index: None,
@@ -163,6 +165,8 @@ impl AppShell {
             semantic_highlight_spans: Vec::new(),
             cached_document_symbols_path: None,
             cached_document_symbols: Vec::new(),
+            outline_fetch_path: None,
+            outline_selected: None,
             syntax_engine: None,
             syntax_engine_file: None,
             terminal_tabs: {
@@ -742,8 +746,22 @@ impl AppShell {
             match self.focus_manager.current() {
                 FocusTarget::LeftSidebar => InputFocusContext::Explorer,
                 FocusTarget::RightSidebar => match self.panel_state.right.active_tab_id() {
+                    // AI Chat tab hosts a CLI agent PTY — route keystrokes to the
+                    // terminal while one is running and terminal mode is active.
+                    Some(PanelTabId::AiChat)
+                        if (self.right_pty_session_id.is_some()
+                            || self.pending_right_pty_spawn)
+                            && matches!(
+                                mode,
+                                EditorMode::TerminalFocus | EditorMode::TerminalNormal
+                            ) =>
+                    {
+                        InputFocusContext::Terminal
+                    }
                     Some(PanelTabId::AiChat) => InputFocusContext::AiChat,
+                    Some(PanelTabId::TestRunner) => InputFocusContext::TestRunner,
                     Some(PanelTabId::MarkdownPreview) => InputFocusContext::MarkdownPreview,
+                    Some(PanelTabId::Outline) => InputFocusContext::Outline,
                     Some(PanelTabId::Terminal)
                         if matches!(
                             mode,
@@ -805,7 +823,14 @@ impl AppShell {
             hover_overlay_visible: self.app_state.has_scrollable_floating_overlay(),
             zen_mode_active: self.panel_state.maximized_region.is_some(),
             right_sidebar_terminal: self.focus_manager.current() == FocusTarget::RightSidebar
-                && self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal),
+                && (self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal)
+                    || (self.panel_state.right.active_tab_id() == Some(PanelTabId::AiChat)
+                        && (self.right_pty_session_id.is_some() || self.pending_right_pty_spawn))),
+            test_runner_editing: false,
+            ai_agent_picker_active: self.panel_state.right.visible
+                && self.panel_state.right.active_tab_id() == Some(PanelTabId::AiChat)
+                && self.right_pty_session_id.is_none()
+                && !self.pending_right_pty_spawn,
         }
     }
 
@@ -1537,7 +1562,11 @@ impl AppShell {
             .map(|companion| {
                 (
                     companion.binary.to_string(),
-                    companion.launch_args.iter().map(|s| s.to_string()).collect(),
+                    companion
+                        .launch_args
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
                 )
             })
             .collect();
