@@ -3,7 +3,7 @@ use crate::async_runtime::message::WorkerResultPayload;
 
 pub(super) fn handle_leetcode_generate_result(app: &mut AppShell, payload: WorkerResultPayload) {
     match payload {
-        WorkerResultPayload::LeetCodeTestsGenerated { id: _, cases, .. } => {
+        WorkerResultPayload::LeetCodeTestsGenerated { id: _, cases, verified } => {
             app.app_state.test_runner.is_generating = false;
             app.app_state.test_runner.cases = cases
                 .into_iter()
@@ -14,9 +14,14 @@ pub(super) fn handle_leetcode_generate_result(app: &mut AppShell, payload: Worke
             app.app_state.test_runner.focused_field = crate::runner::TestField::Input;
             app.app_state.test_runner.is_running = false;
             app.app_state.test_runner.launch_error = None;
+            let suffix = if verified {
+                " (verified)"
+            } else {
+                " — review Expected, then F5"
+            };
             app.show_transient_toast_kind(
                 format!(
-                    "Generate LeetCode Tests\n{} AI test cases — verify Expected, then F5.",
+                    "Generate LeetCode Tests\n{} AI test cases{suffix}.",
                     app.app_state.test_runner.cases.len()
                 ),
                 ToastKind::Success,
