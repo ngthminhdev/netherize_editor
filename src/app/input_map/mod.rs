@@ -253,6 +253,45 @@ impl InputMap {
             );
         }
 
+        // Cmd + digit switches dock tabs when a dock panel is focused. This is
+        // resolved here — ahead of the per-mode keymap — so it stays correct even
+        // when the editor mode has drifted (e.g. the right dock keeps `TerminalFocus`
+        // after switching off the AI Chat terminal tab to the Test Runner, which
+        // would otherwise route Cmd+digit to the terminal-tab bindings).
+        if input.has_command_modifier() {
+            let digit = input.physical_key.and_then(|k| match k {
+                KeyCode::Digit1 => Some(0),
+                KeyCode::Digit2 => Some(1),
+                KeyCode::Digit3 => Some(2),
+                KeyCode::Digit4 => Some(3),
+                KeyCode::Digit5 => Some(4),
+                KeyCode::Digit6 => Some(5),
+                KeyCode::Digit7 => Some(6),
+                KeyCode::Digit8 => Some(7),
+                KeyCode::Digit9 => Some(8),
+                _ => None,
+            });
+            if let Some(digit) = digit {
+                match context.focus {
+                    InputFocusContext::Explorer | InputFocusContext::Outline => {
+                        return Some(KeybindingMatch {
+                            command: Command::SwitchLeftTab(digit),
+                            reason: "left sidebar focus: cmd + digit -> switch left tab",
+                        });
+                    }
+                    InputFocusContext::AiChat
+                    | InputFocusContext::TestRunner
+                    | InputFocusContext::Inspector => {
+                        return Some(KeybindingMatch {
+                            command: Command::SwitchRightTab(digit),
+                            reason: "right sidebar focus: cmd + digit -> switch right tab",
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         // Resize mode is modal: once active it owns h/j/k/l + Esc regardless of
         // which panel holds focus, so the keys aren't swallowed by focus-specific
         // handlers (explorer navigation, terminal copy mode, …).

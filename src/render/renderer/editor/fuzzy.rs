@@ -22,7 +22,10 @@ use super::super::helpers::{
     layout_panel_rich_text, layout_panel_text, layout_panel_text_bold, layout_panel_text_italic,
     rect_to_scissor, should_draw_block_cursor,
 };
-use super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
+use super::{
+    buffers::grouped_list_window_start, cursor_diagnostic, editor_viewport_geometry,
+    run_x_for_byte, wrap_text_lines,
+};
 use crate::text::text_system::StyledTextSpan;
 
 impl Renderer {
@@ -311,10 +314,34 @@ impl Renderer {
             0.0
         };
         let visible_rows = ((content_h / row_h).floor() as usize).max(1);
-        let mut start_idx = fuzzy_state.selected_index.saturating_sub(visible_rows / 2);
-        if start_idx + visible_rows > fuzzy_state.results.len() {
-            start_idx = fuzzy_state.results.len().saturating_sub(visible_rows);
-        }
+        let start_idx = grouped_list_window_start(
+            fuzzy_state.results.len(),
+            fuzzy_state.selected_index,
+            content_h,
+            row_h,
+            group_header_h,
+            |left, right| {
+                if !is_live_grep {
+                    return true;
+                }
+                match (
+                    &fuzzy_state.results[left].action,
+                    &fuzzy_state.results[right].action,
+                ) {
+                    (
+                        crate::app::command_palette::CommandPaletteAction::OpenSearchMatch {
+                            path: left_path,
+                            ..
+                        },
+                        crate::app::command_palette::CommandPaletteAction::OpenSearchMatch {
+                            path: right_path,
+                            ..
+                        },
+                    ) => left_path == right_path,
+                    _ => false,
+                }
+            },
+        );
         let left_text_width = (left_w - 20.0 * s).max(1.0);
         let mut draw_y = content_top;
         let mut previous_group_path: Option<String> = None;

@@ -353,8 +353,11 @@ fn dispatch_command_with_clipboard_once(
         | Command::SwitchTerminalTab(_)
         | Command::SwitchBottomTab(_)
         | Command::SwitchRightTab(_)
+        | Command::SwitchLeftTab(_)
         | Command::OutlineNext
         | Command::OutlinePrev
+        | Command::OutlineFirst
+        | Command::OutlineLast
         | Command::OutlineConfirm
         | Command::RunTestCases
         | Command::AiAgentPickerNext
@@ -374,6 +377,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::TestRunnerScroll(_)
         | Command::FocusEditor
         | Command::FocusExplorer
+        | Command::FocusOutline
         | Command::FocusTerminal
         | Command::FocusInspector
         | Command::FocusLeft

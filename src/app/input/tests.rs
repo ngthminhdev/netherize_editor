@@ -2091,6 +2091,40 @@ fn test_right_dock_switching_under_various_focuses() {
         mapped
     );
 
+    // 3-bug. Focused on TestRunner with a drifted TerminalFocus mode (left over
+    // from switching off the AI Chat terminal tab) -> Cmd-1 must still switch the
+    // right dock tab, not fall through to the terminal-tab bindings.
+    let mut context_runner_drifted =
+        KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::TestRunner);
+    context_runner_drifted.right_sidebar_terminal = false;
+    let mapped =
+        handler.route_normalized_input(cmd_1.clone(), &map, context_runner_drifted, now);
+    assert!(
+        matches!(mapped, Some(InputRouteOutcome::Dispatch(ref trans)) if trans.command == Command::SwitchRightTab(0)),
+        "Expected SwitchRightTab(0) from TestRunner focus with drifted terminal mode, got {:?}",
+        mapped
+    );
+
+    // 3a. Focused on Explorer -> Cmd-2 switches Left Dock tab
+    let context_explorer =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Explorer);
+    let mapped_left_2 = handler.route_normalized_input(cmd_2.clone(), &map, context_explorer, now);
+    assert!(
+        matches!(mapped_left_2, Some(InputRouteOutcome::Dispatch(ref trans)) if trans.command == Command::SwitchLeftTab(1)),
+        "Expected SwitchLeftTab(1) from Explorer focus, got {:?}",
+        mapped_left_2
+    );
+
+    // 3b. Focused on Outline -> Cmd-1 switches Left Dock tab
+    let context_outline =
+        KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Outline);
+    let mapped_left_1 = handler.route_normalized_input(cmd_1.clone(), &map, context_outline, now);
+    assert!(
+        matches!(mapped_left_1, Some(InputRouteOutcome::Dispatch(ref trans)) if trans.command == Command::SwitchLeftTab(0)),
+        "Expected SwitchLeftTab(0) from Outline focus, got {:?}",
+        mapped_left_1
+    );
+
     // 4. Focused on bottom terminal (TerminalFocus mode, right_sidebar_terminal: false) -> Cmd-2 switches terminal tab
     let mut context_bottom_terminal =
         KeybindingContext::with_focus(EditorMode::TerminalFocus, InputFocusContext::Terminal);
@@ -2175,5 +2209,52 @@ fn test_outline_navigation_routing() {
         matches!(mapped, Some(InputRouteOutcome::Dispatch(ref trans)) if trans.command == Command::FocusEditor),
         "Expected FocusEditor command, got {:?}",
         mapped
+    );
+}
+
+#[test]
+fn outline_navigation_supports_key_repeat_and_first_last_shortcuts() {
+    let mut handler = InputHandler::new();
+    let map = make_map();
+    let now = std::time::Instant::now();
+    let context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::Outline);
+
+    let repeated_j =
+        handler.route_repeated_normalized_input(char_input('j', KeyCode::KeyJ), &map, context);
+    assert!(
+        matches!(repeated_j, Some(InputRouteOutcome::Dispatch(ref translated)) if translated.command == Command::OutlineNext),
+        "held j should continue moving the Outline selection, got {repeated_j:?}"
+    );
+
+    let repeated_up = handler.route_repeated_normalized_input(
+        named_input(NamedKey::ArrowUp, Some(KeyCode::ArrowUp)),
+        &map,
+        context,
+    );
+    assert!(
+        matches!(repeated_up, Some(InputRouteOutcome::Dispatch(ref translated)) if translated.command == Command::OutlinePrev),
+        "held Up should continue moving the Outline selection, got {repeated_up:?}"
+    );
+
+    let first_g =
+        handler.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, now);
+    assert!(matches!(
+        first_g,
+        Some(InputRouteOutcome::NoDispatch { .. })
+    ));
+    assert_eq!(handler.get_pending_keys(), "g");
+
+    let second_g =
+        handler.route_normalized_input(char_input('g', KeyCode::KeyG), &map, context, now);
+    assert!(
+        matches!(second_g, Some(InputRouteOutcome::Dispatch(ref translated)) if translated.command == Command::OutlineFirst),
+        "gg should select the first Outline symbol, got {second_g:?}"
+    );
+
+    let uppercase_g =
+        handler.route_normalized_input(char_input('G', KeyCode::KeyG), &map, context, now);
+    assert!(
+        matches!(uppercase_g, Some(InputRouteOutcome::Dispatch(ref translated)) if translated.command == Command::OutlineLast),
+        "G should select the last Outline symbol, got {uppercase_g:?}"
     );
 }

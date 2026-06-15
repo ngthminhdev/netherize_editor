@@ -217,10 +217,16 @@ pub enum Command {
     SwitchBottomTab(usize),
     /// Switch the right dock's active outer tab to index N (0-based).
     SwitchRightTab(usize),
+    /// Switch the left dock's active outer tab to index N (0-based).
+    SwitchLeftTab(usize),
     /// Move outline selection highlight down (next) and jump main editor cursor.
     OutlineNext,
     /// Move outline selection highlight up (prev) and jump main editor cursor.
     OutlinePrev,
+    /// Select the first symbol in the focused Outline panel.
+    OutlineFirst,
+    /// Select the last symbol in the focused Outline panel.
+    OutlineLast,
     /// Confirm outline selection, centering cursor and returning focus to the editor.
     OutlineConfirm,
     /// Run the active source file against all authored test cases (LeetCode
@@ -268,6 +274,8 @@ pub enum Command {
     FocusEditor,
     /// Show and focus the left sidebar (file explorer).
     FocusExplorer,
+    /// Show, switch to outline tab, and focus the left sidebar.
+    FocusOutline,
     /// Show and focus the terminal in the bottom panel.
     FocusTerminal,
     /// Show and focus the right sidebar (inspector).
@@ -599,6 +607,8 @@ impl Command {
                 | Self::ExplorerMoveDown
                 | Self::ExplorerCollapseOrParent
                 | Self::ExplorerExpandOrChild
+                | Self::OutlineNext
+                | Self::OutlinePrev
                 | Self::TerminalScrollUp
                 | Self::TerminalScrollDown
                 | Self::TerminalScrollHalfPageUp

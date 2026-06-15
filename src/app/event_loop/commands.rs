@@ -264,8 +264,8 @@ impl AppShell {
                 .switch_to_tab(crate::workbench::panel_state::PanelTabId::TestRunner);
             self.focus_manager.set(FocusTarget::RightSidebar);
         }
-        if self.focus_manager.current() != FocusTarget::RightSidebar
-            || self.panel_state.right.active_tab_id() != Some(PanelTabId::Outline)
+        if self.focus_manager.current() != FocusTarget::LeftSidebar
+            || self.panel_state.left.active_tab_id() != Some(PanelTabId::Outline)
         {
             self.outline_selected = None;
         }

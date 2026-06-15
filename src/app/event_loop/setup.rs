@@ -255,6 +255,7 @@ impl AppShell {
             last_show_welcome: None,
             last_sidebar_bounds: None,
             last_sidebar_focused: None,
+            last_left_active_tab: None,
             last_terminal_bounds: None,
             last_buffer_terminal_bounds: None,
             sidebar_selection_quads: Vec::new(),
@@ -744,7 +745,10 @@ impl AppShell {
             InputFocusContext::Welcome
         } else {
             match self.focus_manager.current() {
-                FocusTarget::LeftSidebar => InputFocusContext::Explorer,
+                FocusTarget::LeftSidebar => match self.panel_state.left.active_tab_id() {
+                    Some(PanelTabId::Outline) => InputFocusContext::Outline,
+                    _ => InputFocusContext::Explorer,
+                },
                 FocusTarget::RightSidebar => match self.panel_state.right.active_tab_id() {
                     // AI Chat tab hosts a CLI agent PTY — route keystrokes to the
                     // terminal while one is running and terminal mode is active.

@@ -648,6 +648,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert(None, cmd(KeyCode::KeyB), TOGGLE_LEFT_DOCK);
     km.insert(None, KeySpec::CtrlPlus(KeyCode::KeyF), FOCUS_EXPLORER);
+    km.insert(None, KeySpec::CtrlPlus(KeyCode::KeyP), FOCUS_OUTLINE);
     km.insert(None, cmd(KeyCode::KeyR), FOCUS_INSPECTOR);
     km.insert(None, nk(NamedKey::F12), FOCUS_TERMINAL);
     km.insert(None, cmd(KeyCode::Backslash), TOGGLE_BOTTOM_DOCK);

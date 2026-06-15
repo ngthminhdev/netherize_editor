@@ -211,6 +211,7 @@ pub const HELP_SCROLL_HALF_PAGE_UP: &str = "app.help_scroll_half_page_up";
 // ── Workbench focus navigation ────────────────────────────────────────────────
 pub const FOCUS_EDITOR: &str = "app.focus_editor";
 pub const FOCUS_EXPLORER: &str = "app.focus_explorer";
+pub const FOCUS_OUTLINE: &str = "app.focus_outline";
 pub const FOCUS_TERMINAL: &str = "app.focus_terminal";
 pub const FOCUS_INSPECTOR: &str = "app.focus_inspector";
 pub const FOCUS_LEFT: &str = "app.focus_left";
@@ -682,6 +683,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         JUMP_FORWARD => Some(Command::JumpForward),
         FOCUS_EDITOR => Some(Command::FocusEditor),
         FOCUS_EXPLORER => Some(Command::FocusExplorer),
+        FOCUS_OUTLINE => Some(Command::FocusOutline),
         FOCUS_TERMINAL => Some(Command::FocusTerminal),
         FOCUS_INSPECTOR => Some(Command::FocusInspector),
         FOCUS_LEFT => Some(Command::FocusLeft),

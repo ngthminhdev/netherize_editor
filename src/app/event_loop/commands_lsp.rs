@@ -70,6 +70,8 @@ impl AppShell {
                     self.app_state.center_cursor_line(vp);
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
+                    // Re-render the sidebar so the moved outline highlight is shown.
+                    self.sidebar_needs_layout = true;
                     Some(true)
                 } else {
                     Some(false)
@@ -95,6 +97,51 @@ impl AppShell {
                     self.app_state.center_cursor_line(vp);
                     self.editor_needs_layout = true;
                     self.editor_caret_needs_layout = false;
+                    // Re-render the sidebar so the moved outline highlight is shown.
+                    self.sidebar_needs_layout = true;
+                    Some(true)
+                } else {
+                    Some(false)
+                }
+            }
+            Command::OutlineFirst => {
+                if let Some(symbol) = self.cached_document_symbols.first() {
+                    self.outline_selected = Some(0);
+                    let line = symbol.range.start.line as usize;
+                    let col = symbol.range.start.character as usize;
+                    self.app_state.push_jump();
+                    self.app_state.jump_to_line_and_column(line, col);
+                    let vp = self.editor_viewport_lines();
+                    self.app_state.center_cursor_line(vp);
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    self.sidebar_needs_layout = true;
+                    Some(true)
+                } else {
+                    Some(false)
+                }
+            }
+            Command::OutlineLast => {
+                if let Some((last_idx, symbol)) = self
+                    .cached_document_symbols
+                    .len()
+                    .checked_sub(1)
+                    .and_then(|idx| {
+                        self.cached_document_symbols
+                            .get(idx)
+                            .map(|symbol| (idx, symbol))
+                    })
+                {
+                    self.outline_selected = Some(last_idx);
+                    let line = symbol.range.start.line as usize;
+                    let col = symbol.range.start.character as usize;
+                    self.app_state.push_jump();
+                    self.app_state.jump_to_line_and_column(line, col);
+                    let vp = self.editor_viewport_lines();
+                    self.app_state.center_cursor_line(vp);
+                    self.editor_needs_layout = true;
+                    self.editor_caret_needs_layout = false;
+                    self.sidebar_needs_layout = true;
                     Some(true)
                 } else {
                     Some(false)
@@ -120,6 +167,7 @@ impl AppShell {
                 self.outline_selected = None;
                 self.editor_needs_layout = true;
                 self.editor_caret_needs_layout = false;
+                self.sidebar_needs_layout = true;
                 Some(true)
             }
             _ => None,
@@ -174,17 +222,28 @@ impl AppShell {
     pub(in crate::app::event_loop) fn ensure_outline_symbols(&mut self) {
         let Some(active) = self.app_state.active_file().map(PathBuf::from) else {
             self.outline_fetch_path = None;
-            self.outline_selected = None;
+            if self.clear_document_symbol_breadcrumb_cache() {
+                self.sidebar_needs_layout = true;
+            }
             return;
         };
+        if self.cached_document_symbols_path.as_deref() != Some(active.as_path())
+            && self.clear_document_symbol_breadcrumb_cache()
+        {
+            self.sidebar_needs_layout = true;
+        }
         if self.outline_fetch_path.as_deref() == Some(active.as_path()) {
             return;
         }
-        self.outline_fetch_path = Some(active);
+        if self.active_lsp_server.is_none() || self.lsp_cursor_context().is_none() {
+            self.outline_fetch_path = None;
+            return;
+        }
         self.outline_selected = None;
         // Reuses the breadcrumb document-symbol pipeline; the result lands in
         // `cached_document_symbols` (shared) and triggers a redraw.
         let _ = self.ensure_document_symbol_breadcrumbs(true);
+        self.outline_fetch_path = Some(active);
     }
 
     /// Index of the cached document symbol whose range contains the cursor line

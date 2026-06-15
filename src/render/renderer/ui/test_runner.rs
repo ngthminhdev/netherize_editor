@@ -958,12 +958,12 @@ fn json_preview(value: &str, max_chars: usize) -> String {
     clip_chars(&compact, max_chars)
 }
 
-fn outline_symbol_icon_id(kind: &str) -> Option<&'static str> {
+pub(super) fn outline_symbol_icon_id(kind: &str) -> Option<&'static str> {
     canonical_icon_id(crate::app::command_palette::symbol_icon(kind))
 }
 
 /// Color an Outline kind icon by category (mirrors the symbol-picker tones).
-fn outline_kind_color(
+pub(super) fn outline_kind_color(
     kind: &str,
     function: [f32; 4],
     type_: [f32; 4],
@@ -979,7 +979,7 @@ fn outline_kind_color(
 }
 
 /// Truncate `s` to at most `max` chars, appending `…` when it overflows.
-fn clip_chars(s: &str, max: usize) -> String {
+pub(super) fn clip_chars(s: &str, max: usize) -> String {
     if max == 0 {
         return String::new();
     }

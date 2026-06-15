@@ -1318,7 +1318,7 @@ fn toggle_line_comment_command_comments_and_uncomments_current_line() {
 }
 
 #[test]
-fn toggle_selection_comment_exits_visual_mode_and_undo_restores_buffer() {
+fn toggle_selection_comment_wraps_and_unwraps_block_comment_for_rs_file() {
     let mut app_state = AppState::from_text(
         std::path::PathBuf::from("comment_selection.rs"),
         "let first = 1;\nlet second = 2;\n",
@@ -1342,12 +1342,241 @@ fn toggle_selection_comment_exits_visual_mode_and_undo_restores_buffer() {
     assert_eq!(app_state.current_mode(), EditorMode::Normal);
     assert_eq!(
         app_state.text_string(),
-        "// let first = 1;\n// let second = 2;\n"
+        "/* let first = 1;\nlet second = 2; */\n"
+    );
+
+    let _ = dispatch_command(&mut app_state, Command::MoveToFirstLine);
+
+    let enter_visual2 = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterVisual),
+    );
+    assert!(enter_visual2.success);
+    let move_down2 = dispatch_command(&mut app_state, Command::MoveDown);
+    assert!(move_down2.success);
+
+    let uncomment = dispatch_command(&mut app_state, Command::ToggleSelectionComment);
+    assert!(uncomment.success);
+    assert_eq!(app_state.current_mode(), EditorMode::Normal);
+    assert_eq!(app_state.text_string(), "let first = 1;\nlet second = 2;\n");
+}
+
+#[test]
+fn toggle_selection_comment_falls_back_to_line_comment_for_py_file() {
+    let mut app_state = AppState::from_text(
+        std::path::PathBuf::from("script.py"),
+        "a = 1\nb = 2\n",
+    );
+    let _ = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
+    );
+
+    let enter_visual = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterVisual),
+    );
+    assert!(enter_visual.success);
+
+    let move_down = dispatch_command(&mut app_state, Command::MoveDown);
+    assert!(move_down.success);
+
+    let comment = dispatch_command(&mut app_state, Command::ToggleSelectionComment);
+    assert!(comment.success);
+    assert_eq!(app_state.current_mode(), EditorMode::Normal);
+    assert_eq!(
+        app_state.text_string(),
+        "# a = 1\n# b = 2\n"
     );
 
     let undo = dispatch_command(&mut app_state, Command::Undo);
     assert!(undo.success);
-    assert_eq!(app_state.text_string(), "let first = 1;\nlet second = 2;\n");
+    assert_eq!(app_state.text_string(), "a = 1\nb = 2\n");
+}
+
+#[test]
+fn toggle_selection_comment_falls_back_to_hash_for_unknown_extension() {
+    let mut app_state = AppState::from_text(
+        std::path::PathBuf::from("scratch.xyz"),
+        "hello\nworld\n",
+    );
+    let _ = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
+    );
+
+    let enter_visual = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterVisual),
+    );
+    assert!(enter_visual.success);
+
+    let move_down = dispatch_command(&mut app_state, Command::MoveDown);
+    assert!(move_down.success);
+
+    let comment = dispatch_command(&mut app_state, Command::ToggleSelectionComment);
+    assert!(comment.state_changed);
+    assert_eq!(
+        app_state.text_string(),
+        "# hello\n# world\n"
+    );
+}
+
+#[test]
+fn toggle_selection_comment_wraps_block_for_html_file() {
+    let mut app_state = AppState::from_text(
+        std::path::PathBuf::from("page.html"),
+        "<div>\n  <p>text</p>\n</div>\n",
+    );
+    let _ = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
+    );
+
+    let enter_visual = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterVisual),
+    );
+    assert!(enter_visual.success);
+    let _ = dispatch_command(&mut app_state, Command::MoveDown);
+    let _ = dispatch_command(&mut app_state, Command::MoveDown);
+
+    let comment = dispatch_command(&mut app_state, Command::ToggleSelectionComment);
+    assert!(comment.success);
+    assert_eq!(
+        app_state.text_string(),
+        "<!-- <div>\n  <p>text</p>\n</div> -->\n"
+    );
+
+    let _ = dispatch_command(&mut app_state, Command::MoveToFirstLine);
+
+    let enter_visual2 = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterVisual),
+    );
+    assert!(enter_visual2.success);
+    let _ = dispatch_command(&mut app_state, Command::MoveDown);
+    let _ = dispatch_command(&mut app_state, Command::MoveDown);
+
+    let uncomment = dispatch_command(&mut app_state, Command::ToggleSelectionComment);
+    assert!(uncomment.success);
+    assert_eq!(
+        app_state.text_string(),
+        "<div>\n  <p>text</p>\n</div>\n"
+    );
+}
+
+#[test]
+fn toggle_selection_comment_wraps_and_unwraps_block_for_css_file() {
+    let mut app_state = AppState::from_text(
+        std::path::PathBuf::from("styles.css"),
+        "body {\n  color: red;\n}\n",
+    );
+    let _ = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
+    );
+
+    let enter_visual = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterVisual),
+    );
+    assert!(enter_visual.success);
+    let _ = dispatch_command(&mut app_state, Command::MoveDown);
+    let _ = dispatch_command(&mut app_state, Command::MoveDown);
+
+    let comment = dispatch_command(&mut app_state, Command::ToggleSelectionComment);
+    assert!(comment.success);
+    assert_eq!(
+        app_state.text_string(),
+        "/* body {\n  color: red;\n} */\n"
+    );
+
+    let _ = dispatch_command(&mut app_state, Command::MoveToFirstLine);
+
+    let enter_visual2 = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterVisual),
+    );
+    assert!(enter_visual2.success);
+    let _ = dispatch_command(&mut app_state, Command::MoveDown);
+    let _ = dispatch_command(&mut app_state, Command::MoveDown);
+
+    let uncomment = dispatch_command(&mut app_state, Command::ToggleSelectionComment);
+    assert!(uncomment.success);
+    assert_eq!(app_state.text_string(), "body {\n  color: red;\n}\n");
+}
+
+#[test]
+fn toggle_line_comment_ignored_for_language_without_line_syntax() {
+    let mut app_state = AppState::from_text(
+        std::path::PathBuf::from("styles.css"),
+        "body { color: red; }\n",
+    );
+    let _ = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
+    );
+
+    let comment = dispatch_command(&mut app_state, Command::ToggleLineComment);
+    assert!(!comment.state_changed);
+    assert_eq!(app_state.text_string(), "body { color: red; }\n");
+}
+
+#[test]
+fn toggle_line_comment_uses_hash_for_txt_file() {
+    let mut app_state = AppState::from_text(
+        std::path::PathBuf::from("notes.txt"),
+        "hello world\n",
+    );
+    let _ = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
+    );
+
+    let comment = dispatch_command(&mut app_state, Command::ToggleLineComment);
+    assert!(comment.state_changed);
+    assert_eq!(app_state.text_string(), "# hello world\n");
+
+    let uncomment = dispatch_command(&mut app_state, Command::ToggleLineComment);
+    assert!(uncomment.state_changed);
+    assert_eq!(app_state.text_string(), "hello world\n");
+}
+
+#[test]
+fn toggle_line_comment_uses_hash_for_env_dist_file() {
+    let mut app_state = AppState::from_text(
+        std::path::PathBuf::from("env.dist"),
+        "DB_HOST=localhost\n",
+    );
+    let _ = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
+    );
+
+    let comment = dispatch_command(&mut app_state, Command::ToggleLineComment);
+    assert!(comment.state_changed);
+    assert_eq!(app_state.text_string(), "# DB_HOST=localhost\n");
+
+    let uncomment = dispatch_command(&mut app_state, Command::ToggleLineComment);
+    assert!(uncomment.state_changed);
+    assert_eq!(app_state.text_string(), "DB_HOST=localhost\n");
+}
+
+#[test]
+fn toggle_line_comment_noop_for_json_file() {
+    let mut app_state = AppState::from_text(
+        std::path::PathBuf::from("config.json"),
+        "{\n  \"key\": 1\n}\n",
+    );
+    let _ = dispatch_command(
+        &mut app_state,
+        Command::SwitchMode(crate::core::mode::ModeEvent::EnterNormal),
+    );
+
+    let comment = dispatch_command(&mut app_state, Command::ToggleLineComment);
+    assert!(!comment.state_changed);
+    assert_eq!(app_state.text_string(), "{\n  \"key\": 1\n}\n");
 }
 
 #[test]

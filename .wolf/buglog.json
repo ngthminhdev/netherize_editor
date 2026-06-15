@@ -1,5 +1,41 @@
 [
   {
+    "id": "bug-012",
+    "timestamp": "2026-06-15T00:00:00+00:00",
+    "error_message": "Right-dock tab switch bug: from AI Chat, Cmd-2 switches to Test Runner, but from Test Runner, Cmd-1 cannot switch back to AI Chat.",
+    "file": "src/app/input_map/mod.rs",
+    "root_cause": "Switching AiChat->TestRunner via Cmd-2 leaves the editor mode drifted at TerminalFocus (SwitchRightTab does not reset mode for non-terminal tabs). On TestRunner with mode=TerminalFocus, Cmd+digit fell through to the per-mode 'terminal' keymap which binds Cmd+digit to TERMINAL_TAB_SWITCH instead of the global RIGHT_DOCK_SWITCH. The left dock avoided this with an explicit mode-independent Cmd+digit block; the right dock had none.",
+    "fix": "Added a mode-independent Cmd+digit block in InputMap::resolve for right-dock focuses (AiChat/TestRunner/Inspector) -> SwitchRightTab(digit), mirroring the existing left-dock block (Explorer/Outline -> SwitchLeftTab). Resolved ahead of the per-mode keymap so it stays correct under mode drift. Added regression test for TestRunner+TerminalFocus+Cmd-1.",
+    "tags": ["input", "keybinding", "right-dock", "tab-switch", "mode-drift", "user-reported"],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-06-15T00:00:00+00:00"
+  },
+  {
+    "id": "bug-011",
+    "timestamp": "2026-06-15T00:00:00+00:00",
+    "error_message": "Outline tab: j/k/Enter navigation appears not to work (highlight does not move).",
+    "file": "src/app/event_loop/commands_lsp.rs",
+    "root_cause": "OutlineNext/OutlinePrev update outline_selected and jump the editor cursor (setting editor_needs_layout) but never set sidebar_needs_layout. The outline highlight is rendered in the left-dock panel, which only re-renders when sidebar_needs_layout || bounds_changed || focus_changed || left_active_tab_changed (application.rs:1859). So the highlight stayed frozen even though the command ran.",
+    "fix": "Set self.sidebar_needs_layout = true in OutlineNext, OutlinePrev, and OutlineConfirm handlers. Added assertions to test_outline_navigation_commands.",
+    "tags": ["outline", "render", "sidebar", "lsp", "user-reported"],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-06-15T00:00:00+00:00"
+  },
+  {
+    "id": "bug-010",
+    "timestamp": "2026-06-15T00:00:00+00:00",
+    "error_message": "Explorer tab in the left dock has no prefix icon (Outline shows one).",
+    "file": "src/workbench/panel_state.rs",
+    "root_cause": "The dock tab strip only draws icons that resolve via canonical_icon_id (SVG assets, e.g. 'built_in:...'). PanelTabId::Explorer's icon_glyph returned a raw nerd-font glyph string, which canonical_icon_id does not map, so build_left_tab_strip drew the label with no icon.",
+    "fix": "Changed PanelTabId::Explorer icon_glyph from the nerd-font glyph to 'built_in:folder' so it renders as an SVG asset like the other tabs.",
+    "tags": ["ui", "icon", "explorer", "sidebar", "tab-strip", "user-reported"],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-06-15T00:00:00+00:00"
+  },
+  {
     "id": "bug-009",
     "timestamp": "2026-06-14T00:00:00+00:00",
     "error_message": "Test Runner JSON-input UI overlaps/does not clear the old UI after pressing i/Enter to edit a field; cannot use the real vim editor there.",
@@ -2789,5 +2825,17 @@
     "related_bugs": ["bug-165"],
     "occurrences": 1,
     "last_seen": "2026-06-14T17:30:00+07:00"
+  },
+  {
+    "id": "bug-167",
+    "timestamp": "2026-06-15T10:57:59+07:00",
+    "error_message": "Buffer-tab result lists such as Fuzzy Finder/Live Grep and References allow selection to move into bottom results, but the list viewport does not scroll down and the selected row is hidden by overflow.",
+    "file": "src/render/renderer/editor.rs, src/render/renderer/editor/fuzzy.rs, src/render/renderer/editor/buffers.rs, src/render/renderer/editor/buffers/diagnostics.rs",
+    "root_cause": "The result window estimated capacity from content height divided only by row height. File/group headers also consume vertical space, so the computed start index could render fewer items than estimated and stop before the selected item.",
+    "fix": "Added a shared grouped-list window calculation that simulates row plus group-header height and advances the start until the selected item fits. Applied it to Live Grep, References, and Diagnostics, with a regression test covering a selected final item across multiple groups.",
+    "tags": ["buffer-tab", "fuzzy-finder", "live-grep", "references", "diagnostics", "viewport", "scroll", "renderer"],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-06-15T10:57:59+07:00"
   }
 ]

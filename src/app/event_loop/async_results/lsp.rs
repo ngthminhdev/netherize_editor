@@ -47,6 +47,15 @@ pub(super) fn handle_lsp_result(
                 app.submit_lsp_did_open_for_active_file();
             }
 
+            if app.panel_state.left.visible
+                && app.panel_state.left.active_tab_id() == Some(PanelTabId::Outline)
+            {
+                app.outline_fetch_path = None;
+                app.ensure_outline_symbols();
+                app.sidebar_needs_layout = true;
+                app.request_redraw();
+            }
+
             // Trigger workspace symbol indexing for fast import suggestions
             if let Some(language_id) = app.app_state.active_file().and_then(|path| {
                 crate::lsp::registry::language_profile_for_path(std::path::Path::new(path))
@@ -497,6 +506,7 @@ pub(super) fn handle_lsp_result(
             }
             app.cached_document_symbols_path = Some(path);
             app.cached_document_symbols = symbols.clone();
+            app.sidebar_needs_layout = true;
             if app.app_state.command_palette_mode() != Some(CommandPaletteMode::DocumentSymbols) {
                 app.editor_needs_layout = true;
                 app.editor_caret_needs_layout = false;

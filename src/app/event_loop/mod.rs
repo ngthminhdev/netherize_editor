@@ -262,6 +262,7 @@ pub struct AppShell {
     last_show_welcome: Option<bool>,
     last_sidebar_bounds: Option<[f32; 4]>,
     last_sidebar_focused: Option<bool>,
+    last_left_active_tab: Option<crate::workbench::panel_state::PanelTabId>,
     last_terminal_bounds: Option<[f32; 4]>,
     last_buffer_terminal_bounds: Option<[f32; 4]>,
     sidebar_selection_quads: Vec<RegionDrawInstance>,

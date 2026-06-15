@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-14T14:28:06.324Z
-> Files: 404 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-15T06:56:01.546Z
+> Files: 405 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -375,13 +375,13 @@
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
 - `commands_explorer.rs` (~7394 tok)
-- `commands_lsp.rs` (~9598 tok)
+- `commands_lsp.rs` (~10650 tok)
 - `commands_palette.rs` (~8052 tok)
 - `commands_prompts.rs` (~7222 tok)
 - `commands_settings_helpers.rs` — Which workbench dock a resize-mode key adjusts. (~9781 tok)
 - `commands_settings.rs` (~5614 tok)
 - `commands_terminal.rs` (~12688 tok)
-- `commands_tests.rs` — [derive(Default)] (~34526 tok)
+- `commands_tests.rs` — [derive(Default)] (~36163 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~10265 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18582 tok)
 - `mod.rs` — Struct: AppShell (~7021 tok)
@@ -412,13 +412,13 @@
 - `mod.rs` (~69 tok)
 - `model.rs` — Dữ liệu key đã chuẩn hóa để tách phần "đọc winit event" (~764 tok)
 - `pending.rs` — [derive(Debug, Clone, PartialEq, Eq)] (~2406 tok)
-- `tests.rs` (~20276 tok)
+- `tests.rs` (~20758 tok)
 
 ## src/app/input_map/
 
 - `focus.rs` (~11494 tok)
 - `helpers.rs` (~180 tok)
-- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette (~5890 tok)
+- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette (~6528 tok)
 - `tests.rs` (~15331 tok)
 
 ## src/async_runtime/
@@ -695,7 +695,7 @@
 - `layout_engine.rs` — Height (logical px) of the clickable tab strip reserved at the top of the (~10632 tok)
 - `mod.rs` (~54 tok)
 - `overlay_manager.rs` — OverlaySurface: toggle_command_palette, is_command_palette_open, command_palette_query, push_command_palette_text + 3 more (~2247 tok)
-- `panel_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~2324 tok)
+- `panel_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~2559 tok)
 - `region_model.rs` — ID chuẩn hóa cho các vùng chính của Workbench. (~960 tok)
 - `text_coordinate_map.rs` — [derive(Debug, Clone, PartialEq)] (~1674 tok)
 

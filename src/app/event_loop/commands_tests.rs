@@ -3637,10 +3637,10 @@ fn test_outline_navigation_commands() {
     ];
 
     // Set focus and switch active tab so outline commands are not bypassed/reset
-    shell.focus_manager.set(FocusTarget::RightSidebar);
+    shell.focus_manager.set(FocusTarget::LeftSidebar);
     shell
         .panel_state
-        .right
+        .left
         .switch_to_tab(crate::workbench::panel_state::PanelTabId::Outline);
 
     // Set cursor to a line without any symbols (line 1)
@@ -3650,9 +3650,16 @@ fn test_outline_navigation_commands() {
     assert_eq!(shell.outline_selected, None);
 
     // 1. Move to next (first symbol)
+    shell.sidebar_needs_layout = false;
     assert!(shell.handle_command(Command::OutlineNext));
     assert_eq!(shell.outline_selected, Some(0));
     assert_eq!(shell.app_state.cursor_line_col(), (0, 3));
+    // The outline highlight lives in the sidebar, so navigating must flag the
+    // sidebar for re-layout or the highlight appears frozen.
+    assert!(
+        shell.sidebar_needs_layout,
+        "OutlineNext must request a sidebar re-render so the highlight moves"
+    );
 
     // 2. Move to next (second symbol)
     assert!(shell.handle_command(Command::OutlineNext));
@@ -3665,9 +3672,14 @@ fn test_outline_navigation_commands() {
     assert_eq!(shell.app_state.cursor_line_col(), (2, 3));
 
     // 4. Move to previous (first symbol)
+    shell.sidebar_needs_layout = false;
     assert!(shell.handle_command(Command::OutlinePrev));
     assert_eq!(shell.outline_selected, Some(0));
     assert_eq!(shell.app_state.cursor_line_col(), (0, 3));
+    assert!(
+        shell.sidebar_needs_layout,
+        "OutlinePrev must request a sidebar re-render so the highlight moves"
+    );
 
     // 5. Move to previous at boundary (should clamp/stay at first symbol)
     assert!(shell.handle_command(Command::OutlinePrev));
@@ -3675,13 +3687,136 @@ fn test_outline_navigation_commands() {
     assert_eq!(shell.app_state.cursor_line_col(), (0, 3));
 
     // 6. Confirm selection (should clear outline_selected and focus editor)
-    shell.focus_manager.set(FocusTarget::RightSidebar);
+    shell.focus_manager.set(FocusTarget::LeftSidebar);
     assert!(shell.handle_command(Command::OutlineConfirm));
     assert_eq!(shell.outline_selected, None);
     assert_eq!(shell.focus_manager.current(), FocusTarget::CenterEditor);
     assert_eq!(shell.app_state.cursor_line_col(), (0, 3));
 
+    // First/last shortcuts select the corresponding symbol directly.
+    shell.focus_manager.set(FocusTarget::LeftSidebar);
+    assert!(shell.handle_command(Command::OutlineLast));
+    assert_eq!(shell.outline_selected, Some(1));
+    assert_eq!(shell.app_state.cursor_line_col(), (2, 3));
+
+    assert!(shell.handle_command(Command::OutlineFirst));
+    assert_eq!(shell.outline_selected, Some(0));
+    assert_eq!(shell.app_state.cursor_line_col(), (0, 3));
+
     let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn outline_symbol_refresh_tracks_active_buffer_and_retries_after_lsp_startup() {
+    use crate::async_runtime::message::{
+        LspDocumentSymbol, LspPosition, LspRange, RequestTopic, WorkerResult, WorkerResultPayload,
+    };
+
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    let root =
+        std::env::temp_dir().join(format!("netherize_outline_refresh_{}", std::process::id()));
+    std::fs::create_dir_all(root.join("src")).expect("create workspace");
+    let first_path = root.join("src/first.rs");
+    let second_path = root.join("src/second.rs");
+    std::fs::write(&first_path, "fn first() {}\n").expect("write first file");
+    std::fs::write(&second_path, "fn second() {}\n").expect("write second file");
+    shell
+        .app_state
+        .attach_workspace(root.clone())
+        .expect("attach workspace");
+    shell
+        .app_state
+        .open_file(first_path.clone())
+        .expect("open first file");
+    shell.cached_document_symbols_path = Some(first_path.clone());
+    shell.cached_document_symbols = vec![LspDocumentSymbol {
+        name: "first".to_string(),
+        kind: "Function".to_string(),
+        range: LspRange {
+            start: LspPosition {
+                line: 0,
+                character: 3,
+            },
+            end: LspPosition {
+                line: 0,
+                character: 8,
+            },
+        },
+        ancestors: vec![],
+    }];
+    shell.outline_fetch_path = Some(first_path);
+    shell
+        .app_state
+        .open_file(second_path.clone())
+        .expect("open second file");
+    let active_second_path = shell
+        .app_state
+        .active_file()
+        .map(PathBuf::from)
+        .expect("active second file");
+
+    // The old file's symbols must disappear immediately, but an unavailable
+    // LSP must not mark the new file as fetched or suppress the later retry.
+    shell.ensure_outline_symbols();
+    assert!(shell.cached_document_symbols.is_empty());
+    assert_eq!(shell.cached_document_symbols_path, None);
+    assert_eq!(shell.outline_fetch_path, None);
+
+    shell.panel_state.left.visible = true;
+    shell
+        .panel_state
+        .left
+        .switch_to_tab(crate::workbench::panel_state::PanelTabId::Outline);
+    shell.on_worker_result(WorkerResult {
+        request_id: 1,
+        revision_id: 0,
+        topic: RequestTopic::LspClient,
+        payload: WorkerResultPayload::LspServerStarted {
+            server_name: "rust-analyzer".to_string(),
+            root_path: root.clone(),
+            completion_trigger_chars: Vec::new(),
+        },
+    });
+    assert_eq!(
+        shell.outline_fetch_path.as_deref(),
+        Some(active_second_path.as_path())
+    );
+
+    shell.sidebar_needs_layout = false;
+    shell.on_worker_result(WorkerResult {
+        request_id: 2,
+        revision_id: shell.document_symbols_request_revision,
+        topic: RequestTopic::LspRequest,
+        payload: WorkerResultPayload::LspDocumentSymbolsResult {
+            uri: crate::lsp::client::path_to_lsp_uri(&second_path),
+            symbols: vec![LspDocumentSymbol {
+                name: "second".to_string(),
+                kind: "Function".to_string(),
+                range: LspRange {
+                    start: LspPosition {
+                        line: 0,
+                        character: 3,
+                    },
+                    end: LspPosition {
+                        line: 0,
+                        character: 9,
+                    },
+                },
+                ancestors: vec![],
+            }],
+        },
+    });
+    assert_eq!(
+        shell.cached_document_symbols_path.as_deref(),
+        Some(active_second_path.as_path())
+    );
+    assert_eq!(shell.cached_document_symbols[0].name, "second");
+    assert!(
+        shell.sidebar_needs_layout,
+        "document-symbol results must invalidate the visible Outline layout"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -3745,4 +3880,29 @@ fn generated_leetcode_tests_failure_clears_generating_flag() {
     assert!(!shell.app_state.test_runner.is_generating);
     // Pre-existing cases should NOT be replaced on failure.
     assert_eq!(shell.app_state.test_runner.cases.len(), 1);
+}
+
+#[test]
+fn test_terminal_focus_exits_on_right_sidebar_tab_switch() {
+    use crate::core::mode::{EditorMode, ModeEvent};
+    use crate::workbench::focus_manager::FocusTarget;
+
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+
+    // 1. Focus RightSidebar and switch to active AI Chat tab
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+    shell.panel_state.right.switch_to_index(0); // AI Chat is at index 0
+
+    // 2. Set mode to TerminalFocus
+    let _ = shell.app_state.apply_mode_event(ModeEvent::FocusTerminal);
+    assert_eq!(shell.app_state.current_mode(), EditorMode::TerminalFocus);
+
+    // 3. Switch Right Tab to TestRunner (index 1) via command
+    assert!(shell.handle_command(Command::SwitchRightTab(1)));
+
+    // 4. Redraw triggers the validation/reset
+    shell.redraw();
+
+    // 5. Mode must have transitioned back to Normal (or non-terminal mode) since TestRunner doesn't support terminal
+    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
 }

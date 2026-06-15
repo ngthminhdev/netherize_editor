@@ -195,10 +195,16 @@ impl Renderer {
             let row_h = line_height + 8.0 * s;
             let group_header_h = line_height + 7.0 * s;
             let visible_rows = ((content_h / row_h).floor() as usize).max(1);
-            let mut start_idx = references.selected_index.saturating_sub(visible_rows / 2);
-            if start_idx + visible_rows > references.items.len() {
-                start_idx = references.items.len().saturating_sub(visible_rows);
-            }
+            let start_idx = grouped_list_window_start(
+                references.items.len(),
+                references.selected_index,
+                content_h,
+                row_h,
+                group_header_h,
+                |left, right| {
+                    references.items[left].relative_path == references.items[right].relative_path
+                },
+            );
 
             let mut draw_y = content_top;
             let mut previous_group_path: Option<&str> = None;
@@ -486,5 +492,76 @@ fn reference_row_summary<'a>(item: &'a ReferencesBufferItem, buffer: &'a mut Str
         buffer.as_str()
     } else {
         summary
+    }
+}
+
+pub(super) fn grouped_list_window_start(
+    item_count: usize,
+    selected_index: usize,
+    content_height: f32,
+    row_height: f32,
+    group_header_height: f32,
+    same_group: impl Fn(usize, usize) -> bool,
+) -> usize {
+    if item_count == 0 {
+        return 0;
+    }
+
+    let selected_index = selected_index.min(item_count - 1);
+    let visible_rows = ((content_height / row_height.max(1.0)).floor() as usize).max(1);
+    let mut start = selected_index.saturating_sub(visible_rows / 2);
+    if start + visible_rows > item_count {
+        start = item_count.saturating_sub(visible_rows);
+    }
+
+    while start < selected_index {
+        let mut used_height = 0.0;
+        let mut selected_is_visible = false;
+
+        for item_index in start..item_count {
+            let starts_group = item_index == start || !same_group(item_index - 1, item_index);
+            let item_height = row_height
+                + if starts_group {
+                    group_header_height
+                } else {
+                    0.0
+                };
+            if used_height + item_height > content_height + 1.0 {
+                break;
+            }
+            used_height += item_height;
+            if item_index == selected_index {
+                selected_is_visible = true;
+                break;
+            }
+        }
+
+        if selected_is_visible {
+            break;
+        }
+        start += 1;
+    }
+
+    start
+}
+
+#[cfg(test)]
+mod tests {
+    use super::grouped_list_window_start;
+
+    #[test]
+    fn grouped_list_window_keeps_selected_item_visible_with_group_headers() {
+        let groups = [0, 0, 1, 1, 2, 2, 3, 3];
+        let selected_index = groups.len() - 1;
+        let start = grouped_list_window_start(
+            groups.len(),
+            selected_index,
+            3.0,
+            1.0,
+            1.0,
+            |left, right| groups[left] == groups[right],
+        );
+
+        assert_eq!(start, 6);
     }
 }

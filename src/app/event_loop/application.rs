@@ -239,6 +239,14 @@ fn build_editor_breadcrumb_segments(
 }
 
 impl AppShell {
+    fn current_left_sidebar_bounds(&self) -> Option<[f32; 4]> {
+        let layout = self
+            .layout_engine
+            .compute(self.window_size, &self.panel_state);
+        let flat_regions: Vec<_> = layout.model.flatten();
+        visible_region_bounds(&flat_regions, RegionId::LeftSidebar)
+    }
+
     fn current_right_sidebar_bounds(&self) -> Option<[f32; 4]> {
         let layout = self
             .layout_engine
@@ -472,21 +480,54 @@ impl AppShell {
         true
     }
 
+    /// Mouse click on the left-dock tab strip → switch tab + focus the dock.
+    fn handle_left_dock_tab_mouse_click(&mut self) -> bool {
+        if !self.panel_state.left.visible {
+            return false;
+        }
+        let Some(position) = self.last_cursor_position else {
+            return false;
+        };
+        let Some(bounds) = self.current_left_sidebar_bounds() else {
+            return false;
+        };
+        let strip_h = crate::workbench::layout_engine::LEFT_TAB_STRIP_HEIGHT;
+        let inset = crate::workbench::layout_engine::LEFT_DOCK_OUTLINE_INSET
+            .min(bounds[2] * 0.5)
+            .min(bounds[3] * 0.5)
+            .max(0.0);
+        let strip_bounds = [
+            bounds[0] + inset,
+            bounds[1] + inset,
+            (bounds[2] - inset * 2.0).max(0.0),
+            strip_h,
+        ];
+        let tab_count = self.panel_state.left.tabs.len();
+        let Some(idx) = self.renderer.as_ref().and_then(|renderer| {
+            renderer.left_dock_tab_index_at(tab_count, strip_bounds, position)
+        }) else {
+            return false;
+        };
+        self.panel_state.left.switch_to_index(idx);
+        self.focus_manager.set(FocusTarget::LeftSidebar);
+        true
+    }
+
     /// Click a symbol in the Outline panel to jump the editor to its location.
     fn handle_outline_mouse_click(&mut self) -> bool {
-        if !self.panel_state.right.visible
-            || self.panel_state.right.active_tab_id() != Some(PanelTabId::Outline)
+        if !self.panel_state.left.visible
+            || self.panel_state.left.active_tab_id() != Some(PanelTabId::Outline)
         {
             return false;
         }
         let Some(position) = self.last_cursor_position else {
             return false;
         };
-        let Some(bounds) = self.current_right_sidebar_bounds() else {
+        let Some(bounds) = self.current_left_sidebar_bounds() else {
             return false;
         };
-        let strip_h = crate::workbench::layout_engine::RIGHT_TAB_STRIP_HEIGHT;
-        let inset = crate::workbench::layout_engine::RIGHT_DOCK_OUTLINE_INSET
+        let strip_h = crate::workbench::layout_engine::LEFT_TAB_STRIP_HEIGHT;
+        let inset = crate::workbench::layout_engine::LEFT_DOCK_OUTLINE_INSET
             .min(bounds[2] * 0.5)
             .min(bounds[3] * 0.5)
             .max(0.0);
@@ -891,6 +932,11 @@ impl ApplicationHandler<AppEvent> for AppShell {
                     self.request_redraw();
                 } else if button == MouseButton::Left
                     && state == ElementState::Pressed
+                    && self.handle_left_dock_tab_mouse_click()
+                {
+                    self.request_redraw();
+                } else if button == MouseButton::Left
+                    && state == ElementState::Pressed
                     && self.handle_right_dock_tab_mouse_click()
                 {
                     self.request_redraw();
@@ -1192,7 +1238,23 @@ impl AppShell {
         Some(changed)
     }
 
-    fn redraw(&mut self) {
+    pub(super) fn redraw(&mut self) {
+        let mode = self.app_state.current_mode();
+        if matches!(mode, EditorMode::TerminalFocus | EditorMode::TerminalNormal) {
+            let terminal_allowed = match self.focus_manager.current() {
+                FocusTarget::BottomPanel => true,
+                FocusTarget::RightSidebar => {
+                    let tab = self.panel_state.right.active_tab_id();
+                    tab == Some(PanelTabId::AiChat) || tab == Some(PanelTabId::Terminal)
+                }
+                FocusTarget::CenterEditor => self.app_state.active_buffer_is_terminal(),
+                _ => false,
+            };
+            if !terminal_allowed {
+                self.release_focus_mode_to_editor();
+            }
+        }
+
         let got_new_data = self.pump_bridge();
         self.update_frame_metrics_snapshot(Instant::now());
         let layout = self
@@ -1750,6 +1812,26 @@ impl AppShell {
         }
         self.last_show_welcome = Some(show_welcome);
 
+        let left_active_tab_id = self.panel_state.left.active_tab_id();
+        let left_is_explorer = left_active_tab_id == Some(PanelTabId::Explorer);
+        let left_is_outline = left_active_tab_id == Some(PanelTabId::Outline);
+
+        if left_is_outline {
+            self.ensure_outline_symbols();
+        }
+
+        let left_outline_selected = if left_is_outline {
+            let is_outline_focused = self.focus_manager.current() == FocusTarget::LeftSidebar;
+            if is_outline_focused {
+                self.outline_selected
+                    .or_else(|| self.outline_cursor_symbol_index())
+            } else {
+                self.outline_cursor_symbol_index()
+            }
+        } else {
+            None
+        };
+
         let sidebar_filter_state = self.sidebar_filter_state();
         let sidebar_scroll_offset_rows = if let Some(bounds) = sidebar_bounds {
             if self.sync_explorer_scroll_to_selected(bounds) {
@@ -1772,16 +1854,57 @@ impl AppShell {
                 let sidebar_focused = self.focus_manager.current() == FocusTarget::LeftSidebar;
                 let bounds_changed = self.last_sidebar_bounds != Some(bounds);
                 let focus_changed = self.last_sidebar_focused != Some(sidebar_focused);
-                if self.sidebar_needs_layout || bounds_changed || focus_changed {
-                    self.sidebar_selection_quads = renderer.update_sidebar_content(
-                        None,
-                        &sidebar_rows,
+                let left_active_tab_changed = self.last_left_active_tab != left_active_tab_id;
+
+                if self.sidebar_needs_layout || bounds_changed || focus_changed || left_active_tab_changed {
+                    let labels: Vec<&str> = self
+                        .panel_state
+                        .left
+                        .tabs
+                        .iter()
+                        .map(|t| t.label())
+                        .collect();
+                    let tab_icons: Vec<Option<&'static str>> = self
+                        .panel_state
+                        .left
+                        .tabs
+                        .iter()
+                        .map(|t| t.icon_glyph())
+                        .collect();
+                    let left_active = self.panel_state.left.active_tab;
+                    let strip_h = crate::workbench::layout_engine::LEFT_TAB_STRIP_HEIGHT;
+
+                    let explorer_rows_opt = if left_is_explorer {
+                        Some(sidebar_rows.as_slice())
+                    } else {
+                        None
+                    };
+
+                    let outline_opt = if left_is_outline {
+                        let inner_padding = self.layout_engine.config.inner_padding;
+                        Some((
+                            self.cached_document_symbols.as_slice(),
+                            left_outline_selected,
+                            inner_padding,
+                        ))
+                    } else {
+                        None
+                    };
+
+                    self.sidebar_selection_quads = renderer.update_left_dock_panel(
                         bounds,
+                        &labels,
+                        &tab_icons,
+                        left_active,
+                        strip_h,
                         sidebar_focused,
+                        explorer_rows_opt,
+                        outline_opt,
                         sidebar_filter_state.as_ref(),
                     );
                     self.last_sidebar_bounds = Some(bounds);
                     self.last_sidebar_focused = Some(sidebar_focused);
+                    self.last_left_active_tab = left_active_tab_id;
                     self.sidebar_needs_layout = false;
                 }
                 region_instances.extend(self.sidebar_selection_quads.iter().copied());
@@ -1789,6 +1912,7 @@ impl AppShell {
                 renderer.clear_sidebar();
                 self.last_sidebar_bounds = None;
                 self.last_sidebar_focused = None;
+                self.last_left_active_tab = None;
                 self.sidebar_selection_quads.clear();
             }
         }

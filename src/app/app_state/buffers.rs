@@ -659,6 +659,9 @@ impl AppState {
         let Some(selection) = self.visual_selection_range() else {
             return false;
         };
+        if self.toggle_block_comment_on_selection() {
+            return true;
+        }
         self.toggle_comments_on_lines(selection.start_line, selection.end_line)
     }
 

@@ -163,6 +163,7 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::GitBlameLine
         | Command::FocusEditor
         | Command::FocusExplorer
+        | Command::FocusOutline
         | Command::FocusTerminal
         | Command::FocusInspector
         | Command::FocusLeft
@@ -240,7 +241,8 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::MarkdownPreviewScrollHalfPageUp
         | Command::MarkdownPreviewScrollHalfPageDown
         | Command::SwitchBottomTab(_)
-        | Command::SwitchRightTab(_) => DispatchReport::success_with_flags(
+        | Command::SwitchRightTab(_)
+        | Command::SwitchLeftTab(_) => DispatchReport::success_with_flags(
             "Dispatch: workbench navigation (handled by event loop)",
             true,
             false,

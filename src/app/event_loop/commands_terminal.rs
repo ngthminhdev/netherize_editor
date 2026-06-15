@@ -193,6 +193,29 @@ impl AppShell {
             }
             Command::FocusExplorer => {
                 let mut changed = self.release_focus_mode_to_editor();
+                if self.panel_state.left.switch_to_tab(crate::workbench::panel_state::PanelTabId::Explorer) {
+                    changed = true;
+                    self.sidebar_needs_layout = true;
+                }
+                if !self.panel_state.left.visible {
+                    self.panel_state.left.visible = true;
+                    changed = true;
+                    self.sidebar_needs_layout = true;
+                }
+                changed |= self.dismiss_initial_launch_welcome_if_active();
+                let focus_changed = self.focus_manager.set(FocusTarget::LeftSidebar);
+                changed |= focus_changed;
+                if focus_changed {
+                    self.input_handler.clear_pending_prefix();
+                }
+                Some(changed)
+            }
+            Command::FocusOutline => {
+                let mut changed = self.release_focus_mode_to_editor();
+                if self.panel_state.left.switch_to_tab(crate::workbench::panel_state::PanelTabId::Outline) {
+                    changed = true;
+                    self.sidebar_needs_layout = true;
+                }
                 if !self.panel_state.left.visible {
                     self.panel_state.left.visible = true;
                     changed = true;
@@ -411,6 +434,37 @@ impl AppShell {
 
                     self.sidebar_needs_layout = true;
                     true
+                } else {
+                    false
+                }
+            }),
+            Command::SwitchLeftTab(idx) => Some({
+                let idx = *idx;
+                if idx < self.panel_state.left.tabs.len() {
+                    let mut changed = false;
+                    let old_tab = self.panel_state.left.active_tab_id();
+                    if self.panel_state.left.switch_to_index(idx) {
+                        changed = true;
+                    }
+
+                    if !self.panel_state.left.visible {
+                        self.panel_state.left.visible = true;
+                        changed = true;
+                    }
+
+                    let focus_changed = self.focus_manager.set(FocusTarget::LeftSidebar);
+                    changed |= focus_changed;
+                    if focus_changed {
+                        self.input_handler.clear_pending_prefix();
+                    }
+
+                    let new_tab = self.panel_state.left.active_tab_id();
+                    if old_tab == Some(PanelTabId::Outline) && new_tab != Some(PanelTabId::Outline) {
+                        self.outline_selected = None;
+                    }
+
+                    self.sidebar_needs_layout = true;
+                    changed || true
                 } else {
                     false
                 }

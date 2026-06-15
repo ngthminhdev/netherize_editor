@@ -663,7 +663,7 @@ impl AppState {
                     relative_path: item.label.clone(),
                     score: 0,
                 }),
-                _ => None,
+        _ => None,
             })
             .collect();
     }
@@ -825,6 +825,9 @@ impl AppState {
         let Some(syntax) = self.active_comment_syntax() else {
             return false;
         };
+        let Some(line_prefix) = syntax.line_prefix else {
+            return false;
+        };
         if self.text.len_lines() == 0 {
             return false;
         }
@@ -833,7 +836,7 @@ impl AppState {
         let start_line = start_line.min(last_line);
         let end_line = end_line.min(last_line);
         let plans: Vec<LineCommentPlan> = (start_line..=end_line)
-            .map(|line_idx| line_comment_plan(&self.text, line_idx, syntax.line_prefix))
+            .map(|line_idx| line_comment_plan(&self.text, line_idx, line_prefix))
             .collect();
         let should_uncomment =
             !plans.is_empty() && plans.iter().all(|plan| plan.removal_len_chars.is_some());
@@ -849,7 +852,7 @@ impl AppState {
                 })
                 .collect()
         } else {
-            let insert_text = format!("{} ", syntax.line_prefix);
+            let insert_text = format!("{} ", line_prefix);
             plans
                 .into_iter()
                 .map(|plan| CommentEdit::Insert {
@@ -891,6 +894,114 @@ impl AppState {
 
         if !changed {
             return false;
+        }
+
+        self.dirty = true;
+        let moved = self.move_cursor_to_char_idx(cursor.min(self.text.len_chars()));
+        if !moved {
+            self.bump_revision();
+        }
+        true
+    }
+
+    pub(super) fn toggle_block_comment_on_selection(&mut self) -> bool {
+        let Some(syntax) = self.active_comment_syntax() else {
+            return false;
+        };
+        let (Some(block_open), Some(block_close)) = (syntax.block_open, syntax.block_close) else {
+            return false;
+        };
+        let Some(selection) = self.visual_selection_range() else {
+            return false;
+        };
+        if self.text.len_lines() == 0 {
+            return false;
+        }
+
+        let last_line_idx = self.text.len_lines().saturating_sub(1);
+        let start_line = selection.start_line.min(last_line_idx);
+        let end_line = selection.end_line.min(last_line_idx);
+        if start_line > end_line {
+            return false;
+        }
+
+        let first_line_text = self.text.line(start_line).to_string();
+        let last_line_text = self.text.line(end_line).to_string();
+        let first_trimmed = first_line_text
+            .strip_suffix('\n')
+            .unwrap_or(&first_line_text);
+        let last_trimmed = last_line_text
+            .strip_suffix('\n')
+            .unwrap_or(&last_line_text);
+
+        let already_wrapped = first_trimmed.trim_start().starts_with(block_open)
+            && last_trimmed.trim_end().ends_with(block_close);
+
+        let mut cursor = self.cursor_char_idx.min(self.text.len_chars());
+
+        if already_wrapped {
+            let first_line_start = self.text.line_to_char(start_line);
+            let open_pos = first_trimmed.find(block_open).unwrap_or(0);
+            let open_at = first_line_start + open_pos;
+
+            let mut open_len = block_open.len();
+            let suffix = &first_trimmed[open_pos + block_open.len()..];
+            if suffix.starts_with(' ') {
+                open_len += 1;
+            }
+
+            let last_line_start = self.text.line_to_char(end_line);
+            let close_pos = last_trimmed.rfind(block_close).unwrap_or(
+                last_trimmed
+                    .len()
+                    .saturating_sub(block_close.len()),
+            );
+
+            let mut close_at = last_line_start + close_pos;
+            let mut close_len = block_close.len();
+            if close_pos > 0
+                && last_trimmed
+                    .chars()
+                    .nth(close_pos - 1)
+                    .is_some_and(|c| c == ' ')
+            {
+                close_at -= 1;
+                close_len += 1;
+            }
+
+            if close_at > open_at {
+                if self.apply_delete(close_at, close_len) {
+                    cursor = adjust_cursor_after_delete(cursor, close_at, close_len);
+                }
+                if self.apply_delete(open_at, open_len) {
+                    cursor = adjust_cursor_after_delete(cursor, open_at, open_len);
+                }
+            } else {
+                if self.apply_delete(open_at, open_len) {
+                    cursor = adjust_cursor_after_delete(cursor, open_at, open_len);
+                    close_at = shift_char_position(close_at, -(open_len as isize));
+                }
+                if self.apply_delete(close_at.min(self.text.len_chars()), close_len) {
+                    cursor = adjust_cursor_after_delete(cursor, close_at.min(self.text.len_chars()), close_len);
+                }
+            }
+        } else {
+            let first_line_start = self.text.line_to_char(start_line);
+            let last_content_end =
+                self.text.line_to_char(end_line) + last_trimmed.len();
+
+            let open_text = format!("{} ", block_open);
+            let open_len = open_text.chars().count();
+            if self.apply_insert(first_line_start, open_text) {
+                cursor = adjust_cursor_after_insert(cursor, first_line_start, open_len);
+            }
+
+            let close_at = shift_char_position(last_content_end, open_len as isize);
+            let close_text = format!(" {}", block_close);
+            let close_len = close_text.chars().count();
+            if self.apply_insert(close_at.min(self.text.len_chars()), close_text) {
+                cursor = adjust_cursor_after_insert(cursor, close_at.min(self.text.len_chars()), close_len);
+            }
         }
 
         self.dirty = true;
@@ -1297,7 +1408,9 @@ fn merge_completion_item(
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct CommentSyntax {
-    line_prefix: &'static str,
+    line_prefix: Option<&'static str>,
+    block_open: Option<&'static str>,
+    block_close: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1313,30 +1426,144 @@ enum CommentEdit {
 }
 
 pub(super) fn active_comment_syntax_for_path(path: &Path) -> Option<CommentSyntax> {
-    if let Some(file_name) = path.file_name().and_then(|name| name.to_str())
-        && file_name.eq_ignore_ascii_case("makefile")
-    {
-        return Some(CommentSyntax { line_prefix: "#" });
+    let file_name_lower = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|s| s.to_ascii_lowercase());
+
+    let is_makefile = file_name_lower
+        .as_deref()
+        .is_some_and(|n| n == "makefile");
+    let is_envfile = file_name_lower
+        .as_deref()
+        .map_or(false, |n| {
+            n.starts_with('.')
+                || n == "env"
+                || n.starts_with("env.")
+                || n == "dockerfile"
+                || n == "vagrantfile"
+                || n == "gemfile"
+                || n == "rakefile"
+                || n.ends_with("rc")
+        });
+
+    if is_makefile || is_envfile {
+        return Some(CommentSyntax {
+            line_prefix: Some("#"),
+            block_open: None,
+            block_close: None,
+        });
     }
 
     let extension = path
         .extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| ext.to_ascii_lowercase());
-    let line_prefix = match extension.as_deref() {
-        Some(
-            "rs" | "go" | "js" | "jsx" | "ts" | "tsx" | "c" | "cc" | "cpp" | "h" | "hpp" | "java"
-            | "kt" | "kts" | "swift" | "cs" | "dart" | "scala" | "scss" | "proto" | "php",
-        ) => "//",
-        Some(
-            "py" | "sh" | "bash" | "zsh" | "fish" | "rb" | "yml" | "yaml" | "toml" | "ini" | "cfg"
-            | "conf" | "properties",
-        ) => "#",
-        Some("sql" | "lua") => "--",
-        _ => "//",
-    };
 
-    Some(CommentSyntax { line_prefix })
+    match extension.as_deref() {
+        Some("rs" | "go" | "js" | "jsx" | "ts" | "tsx" | "c" | "cc" | "cpp" | "cxx"
+        | "h" | "hpp" | "hxx" | "java" | "kt" | "kts" | "swift" | "cs" | "dart"
+        | "scala" | "scss" | "less" | "proto" | "php" | "m" | "mm" | "groovy"
+        | "zig") => {
+            Some(CommentSyntax {
+                line_prefix: Some("//"),
+                block_open: Some("/*"),
+                block_close: Some("*/"),
+            })
+        }
+        Some("rsx" | "vue" | "svelte" | "astro") => Some(CommentSyntax {
+            line_prefix: Some("//"),
+            block_open: Some("/*"),
+            block_close: Some("*/"),
+        }),
+        Some("py" | "sh" | "bash" | "zsh" | "fish" | "rb" | "pl" | "pm" | "r" | "R"
+        | "yml" | "yaml" | "toml" | "ini" | "cfg" | "conf" | "properties"
+        | "gitignore" | "dockerignore" | "txt" | "text" | "env" | "dist") => {
+            Some(CommentSyntax {
+                line_prefix: Some("#"),
+                block_open: None,
+                block_close: None,
+            })
+        }
+        Some("lua") => Some(CommentSyntax {
+            line_prefix: Some("--"),
+            block_open: Some("--[["),
+            block_close: Some("]]"),
+        }),
+        Some("hs") => Some(CommentSyntax {
+            line_prefix: Some("--"),
+            block_open: Some("{-"),
+            block_close: Some("-}"),
+        }),
+        Some("sql") => Some(CommentSyntax {
+            line_prefix: Some("--"),
+            block_open: Some("/*"),
+            block_close: Some("*/"),
+        }),
+        Some("html" | "htm" | "xml" | "svg" | "mdx") => Some(CommentSyntax {
+            line_prefix: Some("<!--"),
+            block_open: Some("<!--"),
+            block_close: Some("-->"),
+        }),
+        Some("css") => Some(CommentSyntax {
+            line_prefix: None,
+            block_open: Some("/*"),
+            block_close: Some("*/"),
+        }),
+        Some("md" | "markdown" | "rst" | "tex" | "bib"
+        | "json" | "jsonc" | "csv" | "tsv" | "log") => {
+            Some(CommentSyntax {
+                line_prefix: None,
+                block_open: None,
+                block_close: None,
+            })
+        }
+        Some("tf" | "tfvars" | "hcl") => Some(CommentSyntax {
+            line_prefix: Some("#"),
+            block_open: Some("/*"),
+            block_close: Some("*/"),
+        }),
+        Some("elm") => Some(CommentSyntax {
+            line_prefix: Some("--"),
+            block_open: Some("{-"),
+            block_close: Some("-}"),
+        }),
+        Some("erl" | "hrl") => Some(CommentSyntax {
+            line_prefix: Some("%"),
+            block_open: None,
+            block_close: None,
+        }),
+        Some("ex" | "exs" | "heex") => Some(CommentSyntax {
+            line_prefix: Some("#"),
+            block_open: None,
+            block_close: None,
+        }),
+        Some("nim") => Some(CommentSyntax {
+            line_prefix: Some("#"),
+            block_open: None,
+            block_close: None,
+        }),
+        Some("wat") => Some(CommentSyntax {
+            line_prefix: Some(";;"),
+            block_open: None,
+            block_close: None,
+        }),
+        Some("clj" | "cljs" | "cljc" | "edn") => Some(CommentSyntax {
+            line_prefix: Some(";;"),
+            block_open: None,
+            block_close: None,
+        }),
+        Some("coffee" | "litcoffee") => Some(CommentSyntax {
+            line_prefix: Some("#"),
+            block_open: None,
+            block_close: None,
+        }),
+        _ => Some(CommentSyntax {
+            line_prefix: Some("#"),
+            block_open: None,
+            block_close: None,
+        }),
+    }
 }
 
 pub(super) fn line_comment_plan(

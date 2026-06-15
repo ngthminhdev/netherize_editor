@@ -25,6 +25,7 @@ use super::super::super::helpers::{
     rect_to_scissor, should_draw_block_cursor,
 };
 use super::super::{cursor_diagnostic, editor_viewport_geometry, run_x_for_byte, wrap_text_lines};
+use super::grouped_list_window_start;
 use crate::text::text_system::StyledTextSpan;
 impl Renderer {
     pub fn update_diagnostics_buffer_content(
@@ -224,10 +225,16 @@ impl Renderer {
         let row_h = line_height + 8.0;
         let group_header_h = line_height + 7.0;
         let visible_rows = ((content_h / row_h).floor() as usize).max(1);
-        let mut start = diagnostics.selected_index.saturating_sub(visible_rows / 2);
-        if start + visible_rows > diagnostics.results.len() {
-            start = diagnostics.results.len().saturating_sub(visible_rows);
-        }
+        let start = grouped_list_window_start(
+            diagnostics.results.len(),
+            diagnostics.selected_index,
+            content_h,
+            row_h,
+            group_header_h,
+            |left, right| {
+                diagnostics.results[left].file_path == diagnostics.results[right].file_path
+            },
+        );
         let left_text_width = (left_w - 20.0).max(1.0);
         let mut draw_y = content_top;
         let mut previous_group_path: Option<String> = None;

@@ -6,7 +6,12 @@ use winit::{
 };
 
 use crate::{
-    app::input_map::{InputFocusContext, InputMap, KeybindingContext, SequenceMatch},
+    app::{
+        input_map::{
+            InputFocusContext, InputMap, KeybindingContext, PendingSequence, SequenceMatch,
+        },
+        resolved_keymap::KeySpec,
+    },
     core::{
         commands::{Command, Operator},
         mode::EditorMode,
@@ -260,6 +265,10 @@ impl InputHandler {
             return self.route_test_runner_input(normalized, input_debug, context);
         }
 
+        if context.focus == InputFocusContext::Outline {
+            return self.route_outline_input(normalized, input_debug, context, Instant::now());
+        }
+
         if let Some(scroll) = Self::right_chat_scroll_command(&normalized, context) {
             self.clear_pending_counts();
             return Some(InputRouteOutcome::Dispatch(Self::translate_dispatch(
@@ -415,7 +424,7 @@ impl InputHandler {
 
         // Outline panel: j/k to move highlights and jump editor cursor, Enter to focus editor.
         if context.focus == InputFocusContext::Outline && !zen_mode_allows_leader {
-            return self.route_outline_input(normalized, input_debug, context);
+            return self.route_outline_input(normalized, input_debug, context, now);
         }
 
         if context.mode == EditorMode::PaletteFocus && context.command_palette_visible {
@@ -1760,6 +1769,7 @@ impl InputHandler {
         normalized: NormalizedInput,
         input_debug: String,
         context: KeybindingContext,
+        now: Instant,
     ) -> Option<InputRouteOutcome> {
         let focus = context.focus.as_str();
         let make = |command: Command, reason: &str| {
@@ -1771,6 +1781,23 @@ impl InputHandler {
                 false,
             )))
         };
+
+        let has_pending_g = self.pending_input.as_ref().is_some_and(|pending| {
+            matches!(pending.state, PendingState::Sequence)
+                && pending.sequence.as_ref().is_some_and(|sequence| {
+                    sequence.steps.as_slice() == [KeySpec::Physical(KeyCode::KeyG)]
+                })
+        });
+        if has_pending_g {
+            self.clear_pending_input();
+            if normalized.text.as_deref() == Some("g")
+                && !normalized.has_command_modifier()
+                && !normalized.modifiers.control_key()
+                && !normalized.modifiers.alt_key()
+            {
+                return make(Command::OutlineFirst, "first symbol (gg)");
+            }
+        }
 
         if normalized.named_key == Some(NamedKey::Escape) {
             return make(Command::FocusEditor, "exit outline (Esc)");
@@ -1790,6 +1817,20 @@ impl InputHandler {
             match text {
                 "j" => return make(Command::OutlineNext, "next (j)"),
                 "k" => return make(Command::OutlinePrev, "prev (k)"),
+                "g" => {
+                    self.pending_input = Some(PendingInput {
+                        sequence: Some(PendingSequence {
+                            steps: vec![KeySpec::Physical(KeyCode::KeyG)],
+                        }),
+                        state: PendingState::Sequence,
+                        started_at: now,
+                    });
+                    return Some(InputRouteOutcome::NoDispatch {
+                        input_debug,
+                        route_debug: format!("focus={focus} -> outline: pending g"),
+                    });
+                }
+                "G" => return make(Command::OutlineLast, "last symbol (G)"),
                 "q" => return make(Command::FocusEditor, "exit outline (q)"),
                 _ => {}
             }

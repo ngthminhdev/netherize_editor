@@ -1746,3 +1746,25 @@
 | 21:28 | Edited src/render/renderer/ui/test_runner.rs | 9→9 lines | ~86 |
 | 21:31 | LeetCode test-runner: AI generate (g, async+spinner), per-file header+cache (load on open/persist on edit), keybind rework (i/Enter→click-only, +g), paste fix | leetcode_cache.rs(new), leetcode_fetch.rs, message.rs, handler.rs, commands*.rs, test_runner.rs, editing.rs | 826 tests pass (+11) | ~60k |
 | 21:31 | Session end: 46 writes across 18 files (ai_config.rs, ai.toml, leetcode_fetch.rs, commands_tests.rs, commands_palette.rs) | 39 reads | ~393903 tok |
+
+## Session: 2026-06-15 10:11
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 10:57 | Fixed grouped buffer-tab result viewport so selected items remain visible past file headers; added regression coverage and applied to Live Grep, References, and Diagnostics | src/render/renderer/editor.rs, src/render/renderer/editor/fuzzy.rs, src/render/renderer/editor/buffers.rs, src/render/renderer/editor/buffers/diagnostics.rs | root cause fixed; cargo check and full tests verified | ~9000 |
+
+## Session: 2026-06-15 13:34
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 13:54 | Edited src/app/input_map/mod.rs | modified has_command_modifier() | ~513 |
+| 13:54 | Edited src/app/input_map/mod.rs | 4→3 lines | ~41 |
+| 13:55 | Edited src/app/event_loop/commands_lsp.rs | 11→13 lines | ~211 |
+| 13:55 | Edited src/app/event_loop/commands_lsp.rs | 11→13 lines | ~211 |
+| 13:55 | Edited src/app/event_loop/commands_lsp.rs | 6→7 lines | ~95 |
+| 13:55 | Edited src/workbench/panel_state.rs | inline fix | ~15 |
+| 13:55 | Edited src/app/input/tests.rs | expanded (+14 lines) | ~227 |
+| 13:55 | Edited src/app/event_loop/commands_tests.rs | expanded (+7 lines) | ~138 |
+| 13:56 | Edited src/app/event_loop/commands_tests.rs | 4→9 lines | ~102 |
+| 13:59 | Fixed Gemini-broken dock features: right-dock Cmd+digit (mode-drift), outline j/k highlight re-render, Explorer SVG icon | input_map/mod.rs, commands_lsp.rs, panel_state.rs | 842 tests pass | ~30k |
+| 13:59 | Session end: 9 writes across 5 files (mod.rs, commands_lsp.rs, panel_state.rs, tests.rs, commands_tests.rs) | 12 reads | ~191555 tok |

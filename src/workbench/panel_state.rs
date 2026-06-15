@@ -31,7 +31,7 @@ impl PanelTabId {
     /// Icon displayed in the right-dock tab strip (SVG asset or nerd-font glyph).
     pub fn icon_glyph(self) -> Option<&'static str> {
         match self {
-            Self::Explorer => Some(""),        // nf-fa-folder
+            Self::Explorer => Some("built_in:folder"),
             Self::Search => Some(""),          // nf-fa-search
             Self::Inspector => Some(""),       // nf-fa-info_circle
             Self::Outline => Some("built_in:outline"),
@@ -216,14 +216,20 @@ pub struct WorkbenchPanelState {
 impl Default for WorkbenchPanelState {
     fn default() -> Self {
         Self {
-            left: PanelState::new(true, 240.0, vec![PanelTabId::Explorer, PanelTabId::Search]),
+            left: PanelState::new(
+                true,
+                240.0,
+                vec![
+                    PanelTabId::Explorer,
+                    PanelTabId::Outline,
+                ],
+            ),
             right: PanelState::new(
                 false,
                 650.0,
                 vec![
                     PanelTabId::AiChat,
                     PanelTabId::TestRunner,
-                    PanelTabId::Outline,
                 ],
             ),
             // Bottom dock only exposes the Terminal for now; Debug Console and
