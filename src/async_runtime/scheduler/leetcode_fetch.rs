@@ -214,6 +214,65 @@ Wrap this JSON array inside a ```json``` code block."#,
     )
 }
 
+fn build_verify_prompt(
+    cache: &crate::runner::leetcode_cache::LeetCodeProblemCache,
+    _language_key: &str,
+    cases: &[crate::runner::leetcode_api::LeetCodeTestCase],
+) -> String {
+    let params = cache
+        .parameters
+        .iter()
+        .map(|param| format!("{}: {}", param.name, param.type_name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let statement: String = cache.statement.chars().take(4000).collect();
+    let cases_json: String = cases
+        .iter()
+        .enumerate()
+        .map(|(i, case)| {
+            format!(
+                "Case {}: input={}, expected={}",
+                i + 1,
+                case.input,
+                case.expected
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        r#"You are verifying test cases for LeetCode problem "{title}" ({slug}).
+
+Function signature: {func}({params})
+
+Problem description:
+{statement}
+
+Here are the test cases to verify:
+{cases_json}
+
+For EACH test case:
+1. Re-trace the optimal algorithm step-by-step using the given input.
+2. Calculate the correct expected output independently.
+3. Check if the input satisfies ALL problem constraints.
+4. Compare your calculated output with the provided expected output.
+
+Output a JSON array of exactly {count} objects, one per input case, each with:
+{{"input": <same input object>, "expected": <correct expected output>, "ok": <true if original expected was correct, false if you corrected it>}}
+
+If a case's expected output was wrong, provide the CORRECTED expected value.
+If a case's input violates constraints, still provide the expected output for that input and note the violation in ok=false.
+
+Wrap the JSON array inside a ```json``` code block."#,
+        title = cache.title,
+        slug = cache.slug,
+        func = cache.function_name,
+        params = params,
+        statement = statement,
+        cases_json = cases_json,
+        count = cases.len(),
+    )
+}
+
 async fn generate_via_ai(
     provider: &AiProviderConfig,
     cache: &crate::runner::leetcode_cache::LeetCodeProblemCache,
@@ -1226,6 +1285,39 @@ Wrap this JSON array inside a ```json``` code block.",
         assert!(prompt.contains("twoSum"), "missing function name");
         assert!(prompt.contains("two-sum"), "missing slug");
         assert!(prompt.contains("```json"), "missing json code block instruction");
+    }
+
+    #[test]
+    fn build_verify_prompt_contains_case_count() {
+        let cache = crate::runner::leetcode_cache::LeetCodeProblemCache {
+            id: "1".to_string(),
+            slug: "two-sum".to_string(),
+            title: "Two Sum".to_string(),
+            statement: "Given an array...".to_string(),
+            function_name: "twoSum".to_string(),
+            parameters: vec![
+                crate::runner::leetcode_cache::CachedParam {
+                    name: "nums".to_string(),
+                    type_name: "number[]".to_string(),
+                },
+            ],
+            cases: vec![],
+        };
+        let cases = vec![
+            crate::runner::leetcode_api::LeetCodeTestCase {
+                input: r#"{"nums":[1,2]}"#.to_string(),
+                expected: "[0,1]".to_string(),
+            },
+            crate::runner::leetcode_api::LeetCodeTestCase {
+                input: r#"{"nums":[3,3]}"#.to_string(),
+                expected: "[0,1]".to_string(),
+            },
+        ];
+        let prompt = build_verify_prompt(&cache, "javascript", &cases);
+        assert!(prompt.contains("exactly 2 objects"), "should mention case count");
+        assert!(prompt.contains("Case 1:"), "should list case 1");
+        assert!(prompt.contains("Case 2:"), "should list case 2");
+        assert!(prompt.contains("Re-trace"), "should ask for re-tracing");
     }
 }
 
