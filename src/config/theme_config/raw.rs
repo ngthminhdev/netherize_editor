@@ -84,6 +84,7 @@ pub(in crate::config::theme_config) struct RawUi {
     pub(in crate::config::theme_config) bottom_panel_height: Option<f32>,
     pub(in crate::config::theme_config) top_bar_height: Option<f32>,
     pub(in crate::config::theme_config) status_bar_height: Option<f32>,
+    pub(in crate::config::theme_config) bg_opacity: Option<u8>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

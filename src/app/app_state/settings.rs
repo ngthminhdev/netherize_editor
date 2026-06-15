@@ -103,6 +103,9 @@ pub enum SettingItem {
     UiScale {
         current: Option<f32>,
     },
+    BgOpacity {
+        current: u8,
+    },
 }
 
 impl SettingItem {
@@ -135,6 +138,7 @@ impl SettingItem {
             Self::UiRounding { .. } => "UI Rounding",
             Self::EnableOutline { .. } => "Panel Outlines",
             Self::UiScale { .. } => "UI Scale",
+            Self::BgOpacity { .. } => "Panel Background Opacity",
         }
     }
 }
@@ -163,6 +167,7 @@ pub enum SettingsEditingKind {
     LeetCodeAiApiKey,
     LeetCodeAiEndpointKind,
     LeetCodeAiReasoningEffort,
+    BgOpacity,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -195,6 +200,7 @@ impl SettingsState {
         inline_suggestion_enabled: bool,
         ai: AiInlineSettings,
         ui_scale_override: Option<f32>,
+        bg_opacity: u8,
     ) -> Self {
         Self {
             selected_index: 0,
@@ -212,6 +218,9 @@ impl SettingsState {
                 },
                 SettingItem::UiScale {
                     current: ui_scale_override,
+                },
+                SettingItem::BgOpacity {
+                    current: bg_opacity,
                 },
                 // TYPOGRAPHY
                 SettingItem::FontFamily {
@@ -387,6 +396,9 @@ impl SettingsState {
             }
             SettingItem::LeetCodeAiReasoningEffort { current } => {
                 (SettingsEditingKind::LeetCodeAiReasoningEffort, current.clone())
+            }
+            SettingItem::BgOpacity { current } => {
+                (SettingsEditingKind::BgOpacity, current.to_string())
             }
             SettingItem::ThemeSelector { .. }
             | SettingItem::EnableOutline { .. }

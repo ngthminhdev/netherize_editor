@@ -1329,6 +1329,7 @@ impl AppState {
         inline_suggestion_enabled: bool,
         ai: AiInlineSettings,
         ui_scale_override: Option<f32>,
+        bg_opacity: u8,
     ) -> usize {
         // Save current text buffer before switching to settings buffer
         self.save_current_text_buffer_history();
@@ -1362,6 +1363,7 @@ impl AppState {
             inline_suggestion_enabled,
             ai,
             ui_scale_override,
+            bg_opacity,
         );
         self.is_initial_launch_welcome = false;
         self.buffers.push(BufferEntry {

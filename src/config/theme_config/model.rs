@@ -202,6 +202,8 @@ pub struct UiThemeTokens {
     pub top_bar_height: f32,
     /// Height of the status bar, px.
     pub status_bar_height: f32,
+    /// Panel background opacity (0–100). Applied to all region quads except the window clear color.
+    pub bg_opacity: u8,
 }
 
 #[derive(Debug, Clone)]

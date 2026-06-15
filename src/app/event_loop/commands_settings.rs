@@ -69,6 +69,7 @@ impl AppShell {
                     self.ai_config.inline_completion_enabled(),
                     ai,
                     self.ui_config.window.scale_factor_override,
+                    self.base_theme.ui.bg_opacity,
                 );
                 let _ = self.sync_focus_mode_for_active_buffer();
                 self.editor_needs_layout = true;

@@ -1449,8 +1449,11 @@ impl AppShell {
                 // Push solid terminal_bg background quad MỖI FRAME khi terminal active.
                 // Không phụ thuộc vào dirty flag — đảm bảo background không bao giờ
                 // biến mất giữa các frame (khi chỉ có gutter/caret dirty mà không push bg).
+                let opacity = self.theme.ui.bg_opacity as f32 / 100.0;
+                let mut term_bg = self.theme.ui.terminal_bg.as_f32();
+                term_bg[3] *= opacity;
                 region_instances.push(
-                    RegionDrawInstance::new(center_bounds, self.theme.ui.terminal_bg.as_f32())
+                    RegionDrawInstance::new(center_bounds, term_bg)
                         .with_radius(self.ui_config.border_radius_px),
                 );
             }

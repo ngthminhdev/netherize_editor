@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-15T16:42:00.361Z
-> Files: 410 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-15T18:25:21.918Z
+> Files: 413 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -45,6 +45,7 @@
 - `twoSum.go` — Two Sum — reads from stdin, prints to stdout (for the Test Runner panel). (~263 tok)
 - `twoSum.js` — Two Sum — reads from stdin, prints to stdout (for the Test Runner panel). (~235 tok)
 - `update_themes.sh` — Script to update all theme files with vibrant syntax colors (~410 tok)
+- `WINDOW_TRANSPARENCY_TODO.md` — TODO — Window Transparency + macOS Vibrancy (Warp-style) (~895 tok)
 
 ## .claude/
 
@@ -332,11 +333,16 @@
 - `MODULE12_HANDOFF_COMPACT.md` — Netherize Editor — Module 12 Handoff (Compact) (~1188 tok)
 - `perf_profiling.md` — Netherize Editor Perf Kit (Module 10 / Phase 3) (~786 tok)
 
+## docs/superpowers/plans/
+
+- `2026-06-16-window-transparency-vibrancy.md` — Window Transparency + macOS Vibrancy Implementation Plan (~6707 tok)
+
 ## docs/superpowers/specs/
 
 - `2026-06-14-leetcode-test-runner-ai-generate-design.md` — LeetCode Test Runner — AI Generate, Per-File Cache, UX Rework (~859 tok)
 - `2026-06-14-test-runner-field-editing-design.md` — Test Runner — Edit JSON fields via the real vim editor (~1569 tok)
 - `2026-06-15-test-generation-improvement-design.md` — Test Case Generation Improvement — Prompt, Verification, Stratification (~2022 tok)
+- `2026-06-16-window-transparency-vibrancy-design.md` — Window Transparency + macOS Vibrancy (Warp-style) — Design (~2299 tok)
 
 ## scripts/
 

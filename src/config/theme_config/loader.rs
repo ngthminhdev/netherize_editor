@@ -278,6 +278,7 @@ fn merge_raw_ui(defaults: Option<&RawUi>, current: &RawUi) -> RawUi {
         bottom_panel_height: current.bottom_panel_height.or(defaults.bottom_panel_height),
         top_bar_height: current.top_bar_height.or(defaults.top_bar_height),
         status_bar_height: current.status_bar_height.or(defaults.status_bar_height),
+        bg_opacity: current.bg_opacity.or(defaults.bg_opacity),
     }
 }
 
@@ -633,6 +634,7 @@ fn parse_ui(raw: &RawUi, raw_editor: &RawEditor) -> Result<UiThemeTokens, String
             "status_bar_height",
             raw.status_bar_height.unwrap_or(24.0),
         )?,
+        bg_opacity: raw.bg_opacity.unwrap_or(100).clamp(0, 100),
     })
 }
 

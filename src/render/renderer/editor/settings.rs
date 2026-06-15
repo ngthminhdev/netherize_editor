@@ -40,7 +40,8 @@ impl SettingItem {
             Self::ThemeSelector { .. }
             | Self::UiRounding { .. }
             | Self::EnableOutline { .. }
-            | Self::UiScale { .. } => SettingsSection::Appearance,
+            | Self::UiScale { .. }
+            | Self::BgOpacity { .. } => SettingsSection::Appearance,
             Self::FontFamily { .. } | Self::FontSize { .. } | Self::LineHeight { .. } => {
                 SettingsSection::Typography
             }
@@ -149,6 +150,9 @@ impl SettingItem {
             Self::UiScale { .. } => {
                 "Force a fixed UI scale (0.5–3.0). Auto follows the display DPI. Use h/l for ±0.05 or Enter to type a value or 'auto'."
             }
+            Self::BgOpacity { .. } => {
+                "Panel background opacity (0–100%). Use h/l for ±5 or Enter to type a value. Does not affect the window clear color."
+            }
         }
     }
 
@@ -198,6 +202,7 @@ impl SettingItem {
                 current.to_string()
             }
             Self::AiDebounceMs { current } => current.to_string(),
+            Self::BgOpacity { current } => current.to_string(),
         }
     }
 
@@ -292,6 +297,7 @@ impl SettingItem {
                 format!("{current} ch")
             }
             Self::AiDebounceMs { current } => format!("{current} ms"),
+            Self::BgOpacity { current } => format!("{current}%"),
         }
     }
 }
@@ -327,6 +333,7 @@ fn setting_value_ratio(item: &SettingItem) -> Option<f32> {
         SettingItem::SidebarWidth { current } => (*current as f32 - 160.0) / (1280.0 - 160.0),
         SettingItem::RightSidebarWidth { current } => (*current as f32 - 180.0) / (1440.0 - 180.0),
         SettingItem::BottomPanelHeight { current } => (*current as f32 - 120.0) / (1040.0 - 120.0),
+        SettingItem::BgOpacity { current } => *current as f32 / 100.0,
         _ => return None,
     };
     Some(ratio.clamp(0.0, 1.0))
@@ -381,7 +388,8 @@ fn current_row_value(settings: &SettingsState, item: &SettingItem, is_selected: 
         | (SettingsEditingKind::LeetCodeAiApiUrl, SettingItem::LeetCodeAiApiUrl { .. })
         | (SettingsEditingKind::LeetCodeAiModel, SettingItem::LeetCodeAiModel { .. })
         | (SettingsEditingKind::LeetCodeAiEndpointKind, SettingItem::LeetCodeAiEndpointKind { .. })
-        | (SettingsEditingKind::LeetCodeAiReasoningEffort, SettingItem::LeetCodeAiReasoningEffort { .. }) => {
+        | (SettingsEditingKind::LeetCodeAiReasoningEffort, SettingItem::LeetCodeAiReasoningEffort { .. })
+        | (SettingsEditingKind::BgOpacity, SettingItem::BgOpacity { .. }) => {
             format!("{}_", editing.draft)
         }
         (SettingsEditingKind::AiApiKey, SettingItem::AiApiKey { .. })
@@ -514,6 +522,9 @@ fn settings_preview_lines(settings: &SettingsState) -> Vec<String> {
             }
             SettingItem::EnableOutline { .. } => {
                 lines.push(format!("enable_outline = {}", item.preview_value()))
+            }
+            SettingItem::BgOpacity { .. } => {
+                lines.push(format!("bg_opacity = {}", item.preview_value()))
             }
             _ => {}
         }

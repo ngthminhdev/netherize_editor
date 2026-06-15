@@ -199,6 +199,10 @@ impl AppShell {
                     let next = (current as i64 + delta as i64 * 10).clamp(0, 5_000);
                     self.update_active_settings_edit_draft(next.to_string())
                 }
+                crate::app::app_state::SettingItem::BgOpacity { current } => {
+                    let next = (current as i32 + delta * 5).clamp(0, 100) as u8;
+                    self.update_active_settings_edit_draft(next.to_string())
+                }
                 _ => false,
             };
         }
@@ -304,6 +308,17 @@ impl AppShell {
                     *current = Some(next);
                 }
                 self.refresh_runtime_scale_from_window();
+                self.finalize_settings_change()
+            }
+            crate::app::app_state::SettingItem::BgOpacity { current } => {
+                let next = (current as i32 + delta * 5).clamp(0, 100) as u8;
+                self.base_theme.ui.bg_opacity = next;
+                if let Some(state) = self.app_state.active_settings_buffer_mut()
+                    && let Some(crate::app::app_state::SettingItem::BgOpacity { current }) =
+                        state.selected_item_mut()
+                {
+                    *current = next;
+                }
                 self.finalize_settings_change()
             }
             crate::app::app_state::SettingItem::AiMaxTokens { current } => {
@@ -493,7 +508,8 @@ impl AppShell {
             | crate::app::app_state::SettingItem::LeetCodeAiApiKey { .. }
             | crate::app::app_state::SettingItem::LeetCodeAiEndpointKind { .. }
             | crate::app::app_state::SettingItem::LeetCodeAiReasoningEffort { .. }
-            | crate::app::app_state::SettingItem::UiScale { .. } => {
+            | crate::app::app_state::SettingItem::UiScale { .. }
+            | crate::app::app_state::SettingItem::BgOpacity { .. } => {
                 let changed = self.app_state.settings_begin_editing();
                 if changed {
                     if let Ok(result) = self
@@ -705,6 +721,19 @@ impl AppShell {
                         *current = next;
                     }
                     self.refresh_runtime_scale_from_window();
+                    changed = true;
+                }
+            }
+            crate::app::app_state::SettingsEditingKind::BgOpacity => {
+                if let Ok(value) = trimmed.parse::<u8>() {
+                    let value = value.clamp(0, 100);
+                    self.base_theme.ui.bg_opacity = value;
+                    if let Some(state) = self.app_state.active_settings_buffer_mut()
+                        && let Some(crate::app::app_state::SettingItem::BgOpacity { current }) =
+                            state.selected_item_mut()
+                    {
+                        *current = value;
+                    }
                     changed = true;
                 }
             }

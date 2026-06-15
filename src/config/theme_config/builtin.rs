@@ -83,6 +83,7 @@ fn builtin_ui_tokens() -> UiThemeTokens {
         bottom_panel_height: 220.0,
         top_bar_height: 34.0,
         status_bar_height: 22.0,
+        bg_opacity: 100,
     }
 }
 

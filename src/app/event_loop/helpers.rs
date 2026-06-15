@@ -1664,7 +1664,8 @@ pub(super) fn build_sidebar_rows(
 }
 
 pub(super) fn region_color(id: RegionId, theme: &ThemeConfig) -> [f32; 4] {
-    match id {
+    let opacity = theme.ui.bg_opacity as f32 / 100.0;
+    let mut color = match id {
         RegionId::TopBar => theme.ui.panel_bg.as_f32(),
         RegionId::LeftSidebar => theme.ui.sidebar_bg.as_f32(),
         RegionId::Center => theme.editor.bg.as_f32(),
@@ -1672,7 +1673,9 @@ pub(super) fn region_color(id: RegionId, theme: &ThemeConfig) -> [f32; 4] {
         RegionId::BottomPanel => theme.ui.terminal_bg.as_f32(),
         RegionId::StatusBar => theme.ui.status_bar_bg.as_f32(),
         _ => theme.ui.border_color.as_f32(),
-    }
+    };
+    color[3] *= opacity;
+    color
 }
 
 pub(super) fn language_id_for_path(path: &Path) -> String {
