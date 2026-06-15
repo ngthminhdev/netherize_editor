@@ -1711,7 +1711,8 @@ impl InputHandler {
 
     /// Modal input for the Test Runner panel. `context.test_runner_editing`
     /// selects between edit mode (typing edits the focused field) and nav mode
-    /// (j/k move cases, i/Enter edit, a add, x delete, Tab/h/l switch column).
+    /// (j/k move cases, a add, x delete, g generate, Tab/h/l switch column).
+    /// Field editing is click-only — there is no key to enter edit mode.
     /// F5 runs in either mode; Esc ends edit (edit mode) or unfocuses (nav mode).
     fn route_test_runner_input(
         &mut self,
