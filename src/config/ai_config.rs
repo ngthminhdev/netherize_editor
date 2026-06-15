@@ -17,6 +17,7 @@ pub struct LeetCodeConfig {
     /// temporarily falls back to `[inline_completion.provider]`; fill this block
     /// in to give LeetCode its own model/key without touching inline completion.
     pub provider: Option<AiProviderConfig>,
+    pub verify: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -98,6 +99,13 @@ impl AiConfig {
         self.inline_completion
             .as_ref()
             .map(|config| &config.provider)
+    }
+
+    pub fn leetcode_verify_enabled(&self) -> bool {
+        self.leetcode
+            .as_ref()
+            .and_then(|lc| lc.verify)
+            .unwrap_or(false)
     }
 
     pub fn set_leetcode_ai_enabled(&mut self, enabled: bool) -> Result<(), String> {
