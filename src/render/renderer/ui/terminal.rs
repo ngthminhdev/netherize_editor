@@ -432,12 +432,12 @@ impl Renderer {
 
     // ── Terminal tab bar ─────────────────────────────────────────────────────────
 
-    const TAB_BAR_HEIGHT: f32 = 72.0;
+    const TAB_BAR_HEIGHT: f32 = 50.0;
     const TAB_BAR_OUTLINE_INSET: f32 = 2.0;
     const TAB_BAR_PADDING_X: f32 = 3.0;
-    const TAB_BAR_DOT_SIZE: f32 = 15.0;
-    const TAB_BAR_DOT_GAP: f32 = 25.0;
-    const TAB_BAR_TOP_BORDER: f32 = 3.0;
+    const TAB_BAR_DOT_SIZE: f32 = 8.0;
+    const TAB_BAR_DOT_GAP: f32 = 14.0;
+    const TAB_BAR_TOP_BORDER: f32 = 2.0;
 
     /// Render terminal tab bar at the top of the bottom panel.
     ///
@@ -551,11 +551,11 @@ impl Renderer {
         let dead_color = [0.45, 0.45, 0.45, 0.55_f32]; // gray
         let active_fg = self.theme.editor.fg.as_f32();
         let inactive_fg = self.theme.ui.fg_dim.as_f32();
-        let font_size = (self.theme.ui.panel_font_size + 2.0).max(self.theme.ui.panel_font_size);
+        let font_size = self.theme.editor.font_size;
         let tab_bar_y = bounds[1] + outline_inset;
-        let text_y = tab_bar_y + ((tab_bar_h - self.theme.ui.panel_line_height) * 0.5).max(0.0);
-        let label_x_offset = Self::TAB_BAR_DOT_GAP + Self::TAB_BAR_DOT_SIZE + 14.0;
-        let label_right_padding = 28.0_f32;
+        let text_y = tab_bar_y + ((tab_bar_h - self.theme.editor.line_height) * 0.5).max(0.0);
+        let label_x_offset = Self::TAB_BAR_DOT_GAP + Self::TAB_BAR_DOT_SIZE + 8.0;
+        let label_right_padding = 16.0_f32;
         let body_count = self.terminal_glyph_instances.len() as u32;
         let tab_text_start = body_count;
 
@@ -567,8 +567,16 @@ impl Renderer {
         ];
         let terminal_bounds = self.terminal_tab_bar_content_bounds(bounds, tab_count);
 
-        // Tab bar background
-        chrome.push(RegionDrawInstance::new(tab_bar_bounds, tab_bg));
+        let radius = (self.panel_corner_radius - outline_inset)
+            .min(tab_bar_h)
+            .min(tab_bar_bounds[2] * 0.5)
+            .max(0.0);
+
+        // Tab bar background — top corners only
+        chrome.push(
+            RegionDrawInstance::new(tab_bar_bounds, tab_bg)
+                .with_corner_radii([radius, radius, 0.0, 0.0]),
+        );
 
         let show_tab_titles = tab_count >= 2;
 
@@ -594,18 +602,45 @@ impl Renderer {
             }
 
             let is_active = i == active_tab;
+            let is_first = i == 0;
+            let is_last = i + 1 == tab_count;
+            let tab_corners = [
+                if is_first { radius } else { 0.0 }, // top-left
+                if is_last { radius } else { 0.0 },  // top-right
+                0.0,
+                0.0,
+            ];
 
             // Tab background
-            chrome.push(RegionDrawInstance::new(
-                [tab_x, tab_bar_y, tab_w, tab_bar_h],
-                if is_active { active_bg } else { inactive_bg },
-            ));
+            chrome.push(
+                RegionDrawInstance::new(
+                    [tab_x, tab_bar_y, tab_w, tab_bar_h],
+                    if is_active { active_bg } else { inactive_bg },
+                )
+                .with_corner_radii(tab_corners),
+            );
             if is_active {
-                // Top accent border
-                chrome.push(RegionDrawInstance::new(
-                    [tab_x, tab_bar_y, tab_w, Self::TAB_BAR_TOP_BORDER],
-                    accent,
-                ));
+                // Top accent border — inset on rounded corners
+                let bar_x = if is_first { tab_x + radius } else { tab_x };
+                let mut bar_w = tab_w;
+                if is_first {
+                    bar_w -= radius;
+                }
+                if is_last {
+                    bar_w -= radius;
+                }
+                chrome.push(
+                    RegionDrawInstance::new(
+                        [bar_x, tab_bar_y, bar_w.max(0.0), Self::TAB_BAR_TOP_BORDER],
+                        accent,
+                    )
+                    .with_corner_radii([
+                        if is_first { radius } else { 0.0 },
+                        if is_last { radius } else { 0.0 },
+                        0.0,
+                        0.0,
+                    ]),
+                );
             }
 
             // Status dot

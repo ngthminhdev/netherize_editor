@@ -582,8 +582,8 @@ impl Renderer {
             return (chrome, glyphs, icon_instances);
         }
 
-        let font = (self.theme.ui.panel_font_size + 2.0).max(11.0);
-        let line_h = self.theme.ui.panel_line_height.max(font + 4.0);
+        let font = self.theme.editor.font_size;
+        let line_h = self.theme.editor.line_height;
         let fg = self.theme.ui.fg.as_f32();
         let fg_dim = self.theme.ui.fg_dim.as_f32();
         let accent = self.theme.ui.accent.as_f32();
@@ -591,7 +591,7 @@ impl Renderer {
         let border = self.theme.ui.border_color.as_f32();
         let active_bg = super::utils::blend_rgb(panel_bg, fg, 0.06, panel_bg[3]);
         let inactive_bg = super::utils::blend_rgb(panel_bg, fg, 0.015, panel_bg[3]);
-        const TOP_BORDER: f32 = 3.0;
+        const TOP_BORDER: f32 = 2.0;
 
         let inset = crate::workbench::layout_engine::LEFT_DOCK_OUTLINE_INSET;
         let radius = (self.panel_corner_radius - inset)

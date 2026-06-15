@@ -413,9 +413,8 @@ impl AppShell {
     }
 
     /// Switch the bottom dock's active outer tab when the user clicks its tab
-    /// strip. The strip is laid out against the full BottomPanel region bounds
-    /// (same `update_terminal_tab_bar` geometry the renderer draws), so we
-    /// hit-test against those bounds with the outer-tab count.
+    /// strip.  When the Terminal outer tab is active, clicks switch the inner
+    /// terminal tabs (terminal 1, terminal 2, …) instead.
     fn handle_bottom_tab_mouse_click(&mut self) -> bool {
         if !self.panel_state.bottom.visible {
             return false;
@@ -426,7 +425,13 @@ impl AppShell {
         let Some(bounds) = self.current_bottom_panel_bounds() else {
             return false;
         };
-        let tab_count = self.panel_state.bottom.tabs.len();
+        let terminal_active =
+            self.panel_state.bottom.active_tab_id() == Some(PanelTabId::Terminal);
+        let tab_count = if terminal_active {
+            self.terminal_tabs.len()
+        } else {
+            self.panel_state.bottom.tabs.len()
+        };
         let Some(idx) = self
             .renderer
             .as_ref()
@@ -434,7 +439,11 @@ impl AppShell {
         else {
             return false;
         };
-        self.handle_command(Command::SwitchBottomTab(idx))
+        if terminal_active {
+            self.handle_command(Command::SwitchTerminalTab(idx))
+        } else {
+            self.handle_command(Command::SwitchBottomTab(idx))
+        }
     }
 
     /// Mouse click on the right-dock tab strip → switch tab + focus the dock.
@@ -2372,14 +2381,14 @@ impl AppShell {
                 let active_outer_idx = self.panel_state.bottom.active_tab;
                 let terminal_tab_active =
                     self.panel_state.bottom.active_tab_id() == Some(PanelTabId::Terminal);
-                let outer_tab_count = outer_tabs.len();
 
                 if terminal_tab_active {
+                    let inner_tab_count = self.terminal_tabs.len();
                     let terminal_content_bounds = self
                         .renderer
                         .as_ref()
                         .map(|renderer| {
-                            renderer.terminal_tab_bar_content_bounds(bottom_bounds, outer_tab_count)
+                            renderer.terminal_tab_bar_content_bounds(bottom_bounds, inner_tab_count)
                         })
                         .unwrap_or(bottom_bounds);
 
@@ -2405,18 +2414,34 @@ impl AppShell {
                     self.last_terminal_bounds = None;
                 }
 
-                // Render the outer dock tab strip (always, while the dock is shown).
-                // Reuses the terminal tab-bar renderer; the running dot only lights
-                // for the Terminal tab when a terminal session is live.
-                let any_terminal_running = self.terminal_tabs.iter().any(|t| t.status.is_running());
+                // Render the dock tab strip (always, while the dock is shown).
+                // When the Terminal outer tab is active, show the inner terminal
+                // tabs (terminal 1, terminal 2, …) so the user can see and
+                // switch between them.  For other outer tabs, fall back to the
+                // outer dock labels.
                 let tab_bar_quads = if let Some(renderer) = self.renderer.as_mut() {
-                    let labels: Vec<&str> = outer_tabs.iter().map(|t| t.label()).collect();
-                    let running: Vec<bool> = outer_tabs
-                        .iter()
-                        .map(|t| *t == PanelTabId::Terminal && any_terminal_running)
-                        .collect();
+                    let (labels, running, active_idx): (Vec<&str>, Vec<bool>, usize) =
+                        if terminal_tab_active {
+                            let r: Vec<bool> = self
+                                .terminal_tabs
+                                .iter()
+                                .map(|t| t.status.is_running())
+                                .collect();
+                            let l: Vec<&str> =
+                                self.terminal_tabs.iter().map(|t| t.label.as_str()).collect();
+                            (l, r, self.active_terminal_tab)
+                        } else {
+                            let any_terminal_running =
+                                self.terminal_tabs.iter().any(|t| t.status.is_running());
+                            let l: Vec<&str> = outer_tabs.iter().map(|t| t.label()).collect();
+                            let r: Vec<bool> = outer_tabs
+                                .iter()
+                                .map(|t| *t == PanelTabId::Terminal && any_terminal_running)
+                                .collect();
+                            (l, r, active_outer_idx)
+                        };
                     renderer
-                        .update_terminal_tab_bar(&labels, &running, active_outer_idx, bottom_bounds)
+                        .update_terminal_tab_bar(&labels, &running, active_idx, bottom_bounds)
                         .0
                 } else {
                     Vec::new()

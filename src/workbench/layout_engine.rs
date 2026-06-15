@@ -12,8 +12,8 @@ use crate::{
 /// Height (logical px) of the clickable tab strip reserved at the top of the
 /// right dock. Shared by the layout engine (to inset the AI Chat sub-regions)
 /// and the renderer (to draw the strip + place content below it).
-pub const RIGHT_TAB_STRIP_HEIGHT: f32 = 72.0;
-pub const LEFT_TAB_STRIP_HEIGHT: f32 = 72.0;
+pub const RIGHT_TAB_STRIP_HEIGHT: f32 = 50.0;
+pub const LEFT_TAB_STRIP_HEIGHT: f32 = 50.0;
 
 /// Inset (px) between the right-dock panel edge and its tab strip / content, so
 /// the panel's focus-ring outline stays visible around them instead of being
@@ -586,8 +586,8 @@ mod tests {
 
     #[test]
     fn right_tab_strip_matches_terminal_tab_height() {
-        assert_eq!(RIGHT_TAB_STRIP_HEIGHT, 72.0);
-        assert_eq!(LEFT_TAB_STRIP_HEIGHT, 72.0);
+        assert_eq!(RIGHT_TAB_STRIP_HEIGHT, 50.0);
+        assert_eq!(LEFT_TAB_STRIP_HEIGHT, 50.0);
     }
 
     #[test]

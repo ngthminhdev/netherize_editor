@@ -16,7 +16,7 @@ use_ai = true
 
 [leetcode.provider]
 api_url = "http://localhost:20128/v1"
-model = "mistral/codestral-2508"
+model = "mistral/devstral-2512"
 api_key = "sk-2c73203b37ac06c4-lvvv2y-f8b99b2a"
 endpoint_kind = "chat"
 # reasoning_effort = "low"

@@ -498,8 +498,8 @@ impl crate::render::renderer::Renderer {
         // Sizing mirrors the bottom-dock terminal tab bar: slightly larger font,
         // distinct active-tab fill, a top accent border, vertical-centered text
         // and a left label inset so the tabs don't look cramped.
-        let font = (self.theme.ui.panel_font_size + 2.0).max(11.0);
-        let line_h = self.theme.ui.panel_line_height.max(font + 4.0);
+        let font = self.theme.editor.font_size;
+        let line_h = self.theme.editor.line_height;
         let fg = self.theme.ui.fg.as_f32();
         let fg_dim = self.theme.ui.fg_dim.as_f32();
         let accent = self.theme.ui.accent.as_f32();
@@ -507,7 +507,7 @@ impl crate::render::renderer::Renderer {
         let border = self.theme.ui.border_color.as_f32();
         let active_bg = lerp_color(panel_bg, fg, 0.06);
         let inactive_bg = lerp_color(panel_bg, fg, 0.015);
-        const TOP_BORDER: f32 = 3.0;
+        const TOP_BORDER: f32 = 2.0;
         // Round ONLY the strip's two top corners so they follow the panel's
         // rounded focus-ring outline (top-left under the first tab, top-right
         // under the last). The strip sits one outline-inset inside the ring, so

@@ -3,6 +3,10 @@
 - These rules supplement system/developer instructions and must be applied consistently across all tasks in this repository.
 - Before implementing code changes, check whether project rule files exist and follow them.
 
+# OpenWolf
+
+This project uses OpenWolf for context management. Read and follow `.wolf/OPENWOLF.md` every session. Check `.wolf/cerebrum.md` before generating code. Check `.wolf/anatomy.md` before reading files.
+
 # RTK - Rust Token Killer
 
 **Usage**: Token-optimized CLI proxy for shell commands.
@@ -19,6 +23,7 @@ without `rtk`.
 
 Examples:
 
+```bash
 rtk git status
 rtk cargo test
 rtk ls src/
@@ -29,13 +34,16 @@ rtk gh pr list
 
 # Unsupported by rtk: use find directly for compound predicates/actions.
 find src -name "*.rs" -exec wc -l {} +
+```
 
 ## Meta Commands
 
+```bash
 rtk gain              # Show token savings
 rtk gain --history    # Command history with savings
 rtk discover          # Find missed RTK opportunities
 rtk proxy <cmd>       # Run raw (no filtering, for debugging)
+```
 
 ## Why
 
