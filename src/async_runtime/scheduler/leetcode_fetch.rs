@@ -154,6 +154,66 @@ fn save_problem_cache(
     );
 }
 
+fn build_stratified_prompt(
+    cache: &crate::runner::leetcode_cache::LeetCodeProblemCache,
+    _language_key: &str,
+) -> String {
+    let params = cache
+        .parameters
+        .iter()
+        .map(|param| format!("{}: {}", param.name, param.type_name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let examples = cache
+        .cases
+        .iter()
+        .take(2)
+        .map(|case| format!("input={} expected={}", case.input, case.expected))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let statement: String = cache.statement.chars().take(4000).collect();
+    format!(
+        r#"You are an expert software engineer and competitive programmer.
+Generate exactly 5 high-quality test cases for the LeetCode problem "{title}" ({slug}).
+
+Function signature: {func}({params})
+
+Problem description (HTML may be present):
+{statement}
+
+Existing examples:
+{examples}
+
+Each test case MUST target one of these specific categories:
+
+Case 1 — BASIC: The simplest valid input, similar to the provided examples. This confirms the fundamental algorithm works.
+
+Case 2 — CONSTRAINT BOUNDARY: Input at the exact min or max of the problem constraints (e.g., array length = 1, array length = maximum allowed, values at min/max bounds). This catches off-by-one errors at boundaries.
+
+Case 3 — COMMON BUG CATCHER: An input that causes a common incorrect solution to fail (e.g., off-by-one in loop bounds, missing the last element, not handling duplicates, wrong initialization). In the explanation, describe WHICH common bug this case would catch.
+
+Case 4 — ALGORITHMIC STRESS: A structurally challenging input (e.g., reverse-sorted, all identical elements, alternating pattern, single large input). This tests algorithmic correctness under non-trivial conditions.
+
+Case 5 — ADVERSARIAL/HARD: A LeetCode hidden-test style case designed to expose subtle implementation bugs. Think of what test case a problem setter would include to catch solutions that pass examples but have a flaw.
+
+For EACH of the 5 test cases:
+1. State which category (1-5) it belongs to and what specific edge case or bug it targets.
+2. Provide the input arguments.
+3. Trace through the OPTIMAL algorithm step-by-step on this input to calculate the correct expected output.
+4. Verify that the input satisfies ALL problem constraints (array lengths, value ranges, etc.).
+
+Finally, output a JSON array of exactly 5 objects, each having the format:
+{{"input": <object whose keys are the parameter names>, "expected": <expected return value>}}
+Wrap this JSON array inside a ```json``` code block."#,
+        title = cache.title,
+        slug = cache.slug,
+        func = cache.function_name,
+        params = params,
+        statement = statement,
+        examples = examples,
+    )
+}
+
 async fn generate_via_ai(
     provider: &AiProviderConfig,
     cache: &crate::runner::leetcode_cache::LeetCodeProblemCache,
@@ -1135,6 +1195,37 @@ Wrap this JSON array inside a ```json``` code block.",
         println!("Two Sum (Improved): {}/{} ({}%)", two_sum_imp_correct, two_sum_imp_total, if two_sum_imp_total > 0 { two_sum_imp_correct * 100 / two_sum_imp_total } else { 0 });
         println!("Merge Sorted Array (Original): {}/{} ({}%)", merge_orig_correct, merge_orig_total, if merge_orig_total > 0 { merge_orig_correct * 100 / merge_orig_total } else { 0 });
         println!("Merge Sorted Array (Improved): {}/{} ({}%)", merge_imp_correct, merge_imp_total, if merge_imp_total > 0 { merge_imp_correct * 100 / merge_imp_total } else { 0 });
+    }
+
+    #[test]
+    fn build_stratified_prompt_contains_all_categories() {
+        let cache = crate::runner::leetcode_cache::LeetCodeProblemCache {
+            id: "1".to_string(),
+            slug: "two-sum".to_string(),
+            title: "Two Sum".to_string(),
+            statement: "Given an array of integers...".to_string(),
+            function_name: "twoSum".to_string(),
+            parameters: vec![
+                crate::runner::leetcode_cache::CachedParam {
+                    name: "nums".to_string(),
+                    type_name: "number[]".to_string(),
+                },
+                crate::runner::leetcode_cache::CachedParam {
+                    name: "target".to_string(),
+                    type_name: "number".to_string(),
+                },
+            ],
+            cases: vec![],
+        };
+        let prompt = build_stratified_prompt(&cache, "javascript");
+        assert!(prompt.contains("Case 1 — BASIC"), "missing BASIC category");
+        assert!(prompt.contains("Case 2 — CONSTRAINT BOUNDARY"), "missing CONSTRAINT BOUNDARY category");
+        assert!(prompt.contains("Case 3 — COMMON BUG CATCHER"), "missing COMMON BUG CATCHER category");
+        assert!(prompt.contains("Case 4 — ALGORITHMIC STRESS"), "missing ALGORITHMIC STRESS category");
+        assert!(prompt.contains("Case 5 — ADVERSARIAL/HARD"), "missing ADVERSARIAL/HARD category");
+        assert!(prompt.contains("twoSum"), "missing function name");
+        assert!(prompt.contains("two-sum"), "missing slug");
+        assert!(prompt.contains("```json"), "missing json code block instruction");
     }
 }
 
