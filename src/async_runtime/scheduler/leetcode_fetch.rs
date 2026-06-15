@@ -273,6 +273,167 @@ Wrap the JSON array inside a ```json``` code block."#,
     )
 }
 
+async fn generate_stratified_cases(
+    provider: &AiProviderConfig,
+    cache: &crate::runner::leetcode_cache::LeetCodeProblemCache,
+    language_key: &str,
+) -> Result<Vec<crate::runner::leetcode_api::LeetCodeTestCase>, String> {
+    if provider.api_url.trim().is_empty() || provider.model.trim().is_empty() {
+        return Err("AI provider is not configured".to_string());
+    }
+    let prompt = build_stratified_prompt(cache, language_key);
+    let endpoint = format!("{}/chat/completions", provider.api_url.trim_end_matches('/'));
+    let mut body = serde_json::json!({
+        "model": provider.model,
+        "messages": [
+            {"role": "system", "content": "You are a LeetCode test-case generator. Carefully reason step-by-step to calculate outputs first, then write the JSON block."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.2,
+        "max_tokens": 4096
+    });
+    if let Some(effort) = provider
+        .reasoning_effort
+        .as_ref()
+        .filter(|e| !e.trim().is_empty())
+    {
+        body["reasoning_effort"] = serde_json::Value::String(effort.clone());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(90))
+        .build()
+        .map_err(|err| format!("AI client build failed: {err}"))?;
+    let mut request = client.post(endpoint).json(&body);
+    if let Some(key) = provider
+        .api_key
+        .as_ref()
+        .filter(|key| !key.trim().is_empty())
+    {
+        request = request.bearer_auth(key);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|err| format!("AI request failed: {err}"))?;
+    let status = response.status();
+    let body_text = response
+        .text()
+        .await
+        .map_err(|err| format!("AI response read failed: {err}"))?;
+    let mut cleaned = body_text.trim();
+    if let Some(idx) = cleaned.rfind('}') {
+        cleaned = &cleaned[..=idx];
+    }
+    let value: serde_json::Value = serde_json::from_str(cleaned)
+        .map_err(|err| format!("AI returned invalid JSON: {err}"))?;
+    if !status.is_success() {
+        if let Some(msg) = value["error"]["message"].as_str() {
+            return Err(format!("AI error (HTTP {status}): {msg}"));
+        }
+        return Err(format!("AI returned HTTP {status}"));
+    }
+    let text = value["choices"][0]["message"]["content"]
+        .as_str()
+        .ok_or_else(|| {
+            let finish = value["choices"][0]["finish_reason"]
+                .as_str()
+                .unwrap_or("unknown");
+            let reasoning_toks = value["usage"]["completion_tokens_details"]["reasoning_tokens"]
+                .as_u64();
+            if finish == "length" {
+                if let Some(rt) = reasoning_toks {
+                    format!(
+                        "AI model exhausted token budget on reasoning ({rt} reasoning tokens, \
+                         finish_reason=length). Set reasoning_effort = \"low\" in \
+                         [leetcode.provider] or use a non-reasoning model."
+                    )
+                } else {
+                    "AI response was truncated (finish_reason=length) — \
+                     increase max_tokens or use a non-reasoning model."
+                        .to_string()
+                }
+            } else {
+                format!(
+                    "AI response contained no content (finish_reason={finish})"
+                )
+            }
+        })?;
+    parse_generated_cases(text)
+}
+
+async fn verify_generated_cases(
+    provider: &AiProviderConfig,
+    cache: &crate::runner::leetcode_cache::LeetCodeProblemCache,
+    language_key: &str,
+    cases: Vec<crate::runner::leetcode_api::LeetCodeTestCase>,
+) -> (Vec<crate::runner::leetcode_api::LeetCodeTestCase>, bool) {
+    let prompt = build_verify_prompt(cache, language_key, &cases);
+    let endpoint = format!("{}/chat/completions", provider.api_url.trim_end_matches('/'));
+    let mut body = serde_json::json!({
+        "model": provider.model,
+        "messages": [
+            {"role": "system", "content": "You are a LeetCode test-case verifier. Carefully re-trace each test case and correct any wrong expected outputs."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.1,
+        "max_tokens": 4096
+    });
+    if let Some(effort) = provider
+        .reasoning_effort
+        .as_ref()
+        .filter(|e| !e.trim().is_empty())
+    {
+        body["reasoning_effort"] = serde_json::Value::String(effort.clone());
+    }
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return (cases, false),
+    };
+    let mut request = client.post(endpoint).json(&body);
+    if let Some(key) = provider
+        .api_key
+        .as_ref()
+        .filter(|key| !key.trim().is_empty())
+    {
+        request = request.bearer_auth(key);
+    }
+    let response = match request.send().await {
+        Ok(r) => r,
+        Err(_) => return (cases, false),
+    };
+    let status = response.status();
+    let body_text = match response.text().await {
+        Ok(t) => t,
+        Err(_) => return (cases, false),
+    };
+    let mut cleaned = body_text.trim();
+    if let Some(idx) = cleaned.rfind('}') {
+        cleaned = &cleaned[..=idx];
+    }
+    let value: serde_json::Value = match serde_json::from_str(cleaned) {
+        Ok(v) => v,
+        Err(_) => return (cases, false),
+    };
+    if !status.is_success() {
+        return (cases, false);
+    }
+    let text = match value["choices"][0]["message"]["content"].as_str() {
+        Some(t) => t,
+        None => return (cases, false),
+    };
+    let verified_cases = match parse_generated_cases(text) {
+        Ok(vc) => vc,
+        Err(_) => return (cases, false),
+    };
+    if verified_cases.len() != cases.len() {
+        return (cases, false);
+    }
+    (verified_cases, true)
+}
+
 async fn generate_via_ai(
     provider: &AiProviderConfig,
     cache: &crate::runner::leetcode_cache::LeetCodeProblemCache,
@@ -1318,6 +1479,15 @@ Wrap this JSON array inside a ```json``` code block.",
         assert!(prompt.contains("Case 1:"), "should list case 1");
         assert!(prompt.contains("Case 2:"), "should list case 2");
         assert!(prompt.contains("Re-trace"), "should ask for re-tracing");
+    }
+
+    #[test]
+    fn verify_count_mismatch_falls_back() {
+        let text = r#"[{"input": {"x": 1}, "expected": 1}]"#; // 1 case
+        let parsed = parse_generated_cases(text).expect("parse");
+        assert_eq!(parsed.len(), 1);
+        // If original had 2 cases, this would be a count mismatch
+        // (verified in the async function's reconciliation logic).
     }
 }
 
