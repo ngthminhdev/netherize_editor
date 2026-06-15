@@ -78,6 +78,7 @@ pub(super) struct LeetCodeGenerateJob {
     pub cache: crate::runner::leetcode_cache::LeetCodeProblemCache,
     pub language_key: String,
     pub provider: AiProviderConfig,
+    pub verify: bool,
 }
 
 pub(super) async fn run_leetcode_generate(
@@ -103,6 +104,7 @@ pub(super) async fn run_leetcode_generate(
             WorkerResultPayload::LeetCodeTestsGenerated {
                 id: job.cache.id.clone(),
                 cases,
+                verified: false,
             }
         }
         Err(message) => WorkerResultPayload::LeetCodeTestsGenerateFailed { message },

@@ -3840,6 +3840,7 @@ fn generated_leetcode_tests_populate_runner_with_ai_flag() {
                     expected: "[0,1]".into(),
                 },
             ],
+            verified: false,
         },
     });
 

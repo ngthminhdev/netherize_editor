@@ -3,7 +3,7 @@ use crate::async_runtime::message::WorkerResultPayload;
 
 pub(super) fn handle_leetcode_generate_result(app: &mut AppShell, payload: WorkerResultPayload) {
     match payload {
-        WorkerResultPayload::LeetCodeTestsGenerated { id: _, cases } => {
+        WorkerResultPayload::LeetCodeTestsGenerated { id: _, cases, .. } => {
             app.app_state.test_runner.is_generating = false;
             app.app_state.test_runner.cases = cases
                 .into_iter()

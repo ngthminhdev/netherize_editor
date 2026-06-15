@@ -112,6 +112,7 @@ pub(super) async fn dispatch_loop(
                     cache,
                     language_key,
                     provider,
+                    verify: false,
                 },
                 worker_tx,
                 worker_proxy,

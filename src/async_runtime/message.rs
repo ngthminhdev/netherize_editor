@@ -628,6 +628,7 @@ pub enum WorkerResultPayload {
     LeetCodeTestsGenerated {
         id: String,
         cases: Vec<crate::runner::leetcode_api::LeetCodeTestCase>,
+        verified: bool,
     },
     LeetCodeTestsGenerateFailed {
         message: String,
