@@ -618,6 +618,7 @@ impl AppShell {
                 cache,
                 language_key: language_key.to_string(),
                 provider,
+                verify: self.ai_config.leetcode_verify_enabled(),
             },
         });
         self.show_transient_toast_kind(

@@ -101,6 +101,7 @@ pub(super) async fn dispatch_loop(
             cache,
             language_key,
             provider,
+            verify,
         } = request.payload.clone()
         {
             let worker_tx = result_tx.clone();
@@ -112,7 +113,7 @@ pub(super) async fn dispatch_loop(
                     cache,
                     language_key,
                     provider,
-                    verify: false,
+                    verify,
                 },
                 worker_tx,
                 worker_proxy,

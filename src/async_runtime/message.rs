@@ -473,6 +473,7 @@ pub enum WorkerRequestPayload {
         cache: crate::runner::leetcode_cache::LeetCodeProblemCache,
         language_key: String,
         provider: crate::config::ai_config::AiProviderConfig,
+        verify: bool,
     },
 }
 

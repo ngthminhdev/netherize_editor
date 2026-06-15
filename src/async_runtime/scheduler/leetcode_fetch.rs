@@ -86,11 +86,15 @@ pub(super) async fn run_leetcode_generate(
     result_tx: std_mpsc::Sender<WorkerMessage>,
     event_proxy: EventLoopProxy<AppEvent>,
 ) {
-    let payload = match generate_via_ai(&job.provider, &job.cache, &job.language_key).await {
+    let payload = match generate_stratified_cases(&job.provider, &job.cache, &job.language_key).await {
         Ok(cases) => {
-            // Persist the regenerated cases back into the per-problem cache.
+            let (final_cases, verified) = if job.verify {
+                verify_generated_cases(&job.provider, &job.cache, &job.language_key, cases).await
+            } else {
+                (cases, false)
+            };
             let mut updated = job.cache.clone();
-            updated.cases = cases
+            updated.cases = final_cases
                 .iter()
                 .map(|case| crate::runner::leetcode_cache::CachedCase {
                     input: case.input.clone(),
@@ -103,8 +107,8 @@ pub(super) async fn run_leetcode_generate(
             );
             WorkerResultPayload::LeetCodeTestsGenerated {
                 id: job.cache.id.clone(),
-                cases,
-                verified: false,
+                cases: final_cases,
+                verified,
             }
         }
         Err(message) => WorkerResultPayload::LeetCodeTestsGenerateFailed { message },
