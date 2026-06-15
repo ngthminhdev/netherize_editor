@@ -6,7 +6,14 @@
     "file": "src/app/input_map/mod.rs",
     "root_cause": "Switching AiChat->TestRunner via Cmd-2 leaves the editor mode drifted at TerminalFocus (SwitchRightTab does not reset mode for non-terminal tabs). On TestRunner with mode=TerminalFocus, Cmd+digit fell through to the per-mode 'terminal' keymap which binds Cmd+digit to TERMINAL_TAB_SWITCH instead of the global RIGHT_DOCK_SWITCH. The left dock avoided this with an explicit mode-independent Cmd+digit block; the right dock had none.",
     "fix": "Added a mode-independent Cmd+digit block in InputMap::resolve for right-dock focuses (AiChat/TestRunner/Inspector) -> SwitchRightTab(digit), mirroring the existing left-dock block (Explorer/Outline -> SwitchLeftTab). Resolved ahead of the per-mode keymap so it stays correct under mode drift. Added regression test for TestRunner+TerminalFocus+Cmd-1.",
-    "tags": ["input", "keybinding", "right-dock", "tab-switch", "mode-drift", "user-reported"],
+    "tags": [
+      "input",
+      "keybinding",
+      "right-dock",
+      "tab-switch",
+      "mode-drift",
+      "user-reported"
+    ],
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-06-15T00:00:00+00:00"
@@ -18,7 +25,13 @@
     "file": "src/app/event_loop/commands_lsp.rs",
     "root_cause": "OutlineNext/OutlinePrev update outline_selected and jump the editor cursor (setting editor_needs_layout) but never set sidebar_needs_layout. The outline highlight is rendered in the left-dock panel, which only re-renders when sidebar_needs_layout || bounds_changed || focus_changed || left_active_tab_changed (application.rs:1859). So the highlight stayed frozen even though the command ran.",
     "fix": "Set self.sidebar_needs_layout = true in OutlineNext, OutlinePrev, and OutlineConfirm handlers. Added assertions to test_outline_navigation_commands.",
-    "tags": ["outline", "render", "sidebar", "lsp", "user-reported"],
+    "tags": [
+      "outline",
+      "render",
+      "sidebar",
+      "lsp",
+      "user-reported"
+    ],
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-06-15T00:00:00+00:00"
@@ -30,7 +43,14 @@
     "file": "src/workbench/panel_state.rs",
     "root_cause": "The dock tab strip only draws icons that resolve via canonical_icon_id (SVG assets, e.g. 'built_in:...'). PanelTabId::Explorer's icon_glyph returned a raw nerd-font glyph string, which canonical_icon_id does not map, so build_left_tab_strip drew the label with no icon.",
     "fix": "Changed PanelTabId::Explorer icon_glyph from the nerd-font glyph to 'built_in:folder' so it renders as an SVG asset like the other tabs.",
-    "tags": ["ui", "icon", "explorer", "sidebar", "tab-strip", "user-reported"],
+    "tags": [
+      "ui",
+      "icon",
+      "explorer",
+      "sidebar",
+      "tab-strip",
+      "user-reported"
+    ],
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-06-15T00:00:00+00:00"
@@ -78,7 +98,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/app_state/state.rs",
     "root_cause": "3 lines replaced/restructured",
-    "fix": "Rewrote 14\u219227 lines (3 removed)",
+    "fix": "Rewrote 14→27 lines (3 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -94,7 +114,7 @@
     "error_message": "Significant refactor of ",
     "file": "PERFORMANCE.md",
     "root_cause": "5 lines replaced/restructured",
-    "fix": "Rewrote 19\u219243 lines (5 removed)",
+    "fix": "Rewrote 19→43 lines (5 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -110,7 +130,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/event_loop/commands_terminal.rs",
     "root_cause": "9 lines replaced/restructured",
-    "fix": "Rewrote 36\u219243 lines (9 removed)",
+    "fix": "Rewrote 36→43 lines (9 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -126,7 +146,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/render/renderer/palette/leap.rs",
     "root_cause": "22 lines replaced/restructured",
-    "fix": "Rewrote 45\u219225 lines (22 removed)",
+    "fix": "Rewrote 45→25 lines (22 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -142,7 +162,7 @@
     "error_message": "Significant refactor of ",
     "file": "DEPENDENCIES.md",
     "root_cause": "9 lines replaced/restructured",
-    "fix": "Rewrote 13\u219220 lines (9 removed) | Also: When packaging for end users, consider:; 1. **Bundle approach**: Include pre-compiled LSP s",
+    "fix": "Rewrote 13→20 lines (9 removed) | Also: When packaging for end users, consider:; 1. **Bundle approach**: Include pre-compiled LSP s",
     "tags": [
       "auto-detected",
       "refactor",
@@ -261,7 +281,7 @@
     "error_message": "Wrong operator: && should be ||",
     "file": "src/app/app_state/buffers.rs",
     "root_cause": "Used \"&&\" instead of \"||\"",
-    "fix": "Changed operator && \u2192 ||",
+    "fix": "Changed operator && → ||",
     "tags": [
       "auto-detected",
       "operator-fix",
@@ -277,7 +297,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/core/command_dispatch/editing.rs",
     "root_cause": "2 lines replaced/restructured",
-    "fix": "Rewrote 18\u219237 lines (2 removed)",
+    "fix": "Rewrote 18→37 lines (2 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -326,7 +346,7 @@
     "timestamp": "2026-05-23T00:00:00.000Z",
     "error_message": "Python files (.py extension) display hidden file icon instead of Python icon in file tree sidebar",
     "file": "src/app/event_loop/helpers.rs",
-    "root_cause": "Logic at lines 1529-1537 checked if file is hidden/ignored and forced generic hidden file icon ('\udb81\ude13') instead of using file-type-specific icon. This meant .py files marked as hidden (e.g., .python-version) or ignored would show generic icon instead of Python icon from assets/bearded-icons/python.svg",
+    "root_cause": "Logic at lines 1529-1537 checked if file is hidden/ignored and forced generic hidden file icon ('󰘓') instead of using file-type-specific icon. This meant .py files marked as hidden (e.g., .python-version) or ignored would show generic icon instead of Python icon from assets/bearded-icons/python.svg",
     "fix": "Removed conditional logic that overrode file-type icons for hidden/ignored files. Now all files use theme.get_icon_for_file() which correctly maps .py extension to 'built_in:python' icon, ensuring Python files always show the Python icon regardless of hidden/ignored status. Color tinting (warning color) still applied to indicate hidden/ignored status.",
     "tags": [
       "icon-rendering",
@@ -377,7 +397,7 @@
     "error_message": "JavaScript files (.js) incorrectly display Node.js icon instead of JavaScript icon in file tree",
     "file": "src/config/theme_config/model.rs, src/render/icon_pipeline.rs",
     "root_cause": "Extension mapping at line 544 in model.rs mapped all .js/.mjs/.cjs files to 'built_in:node' (Node.js icon). This was incorrect - .js files should show JavaScript icon, only package.json should show Node.js icon.",
-    "fix": "1. Added 'built_in:javascript' to canonical_icon_id mapping in icon_pipeline.rs. 2. Added js.svg to icon atlas. 3. Changed extension mapping from 'built_in:node' to 'built_in:javascript' for .js/.mjs/.cjs extensions. 4. Added special case in special_icon_for_filename() to map package.json specifically to 'built_in:node'. Now: .js files \u2192 JavaScript icon, package.json \u2192 Node.js icon.",
+    "fix": "1. Added 'built_in:javascript' to canonical_icon_id mapping in icon_pipeline.rs. 2. Added js.svg to icon atlas. 3. Changed extension mapping from 'built_in:node' to 'built_in:javascript' for .js/.mjs/.cjs extensions. 4. Added special case in special_icon_for_filename() to map package.json specifically to 'built_in:node'. Now: .js files → JavaScript icon, package.json → Node.js icon.",
     "tags": [
       "icon-rendering",
       "file-tree",
@@ -397,7 +417,7 @@
     "error_message": "Wrong reference: 1_000 should be 100",
     "file": "src/app/app_state/mod.rs",
     "root_cause": "Used \"1_000\" instead of \"100\"",
-    "fix": "Changed 1_000 \u2192 100",
+    "fix": "Changed 1_000 → 100",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -413,7 +433,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/text/text_system.rs",
     "root_cause": "2 lines replaced/restructured",
-    "fix": "Rewrote 5\u21923 lines (2 removed) | Also: // Add ellipsis indicator for truncated lines; if truncated {",
+    "fix": "Rewrote 5→3 lines (2 removed) | Also: // Add ellipsis indicator for truncated lines; if truncated {",
     "tags": [
       "auto-detected",
       "refactor",
@@ -429,7 +449,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/render/renderer/editor/viewport.rs",
     "root_cause": "61 lines replaced/restructured",
-    "fix": "Rewrote 77\u21924 lines (61 removed) | Also: let mut cumulative_byte_offset = 0isize;; let original_line_bytes = line.len();",
+    "fix": "Rewrote 77→4 lines (61 removed) | Also: let mut cumulative_byte_offset = 0isize;; let original_line_bytes = line.len();",
     "tags": [
       "auto-detected",
       "refactor",
@@ -479,7 +499,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/render/renderer/editor/viewport.rs",
     "root_cause": "20 lines replaced/restructured",
-    "fix": "Rewrote 91\u2192122 lines (20 removed)",
+    "fix": "Rewrote 91→122 lines (20 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -495,7 +515,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/event_loop/commands_editor.rs",
     "root_cause": "15 lines replaced/restructured",
-    "fix": "Rewrote 46\u219229 lines (15 removed)",
+    "fix": "Rewrote 46→29 lines (15 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -528,7 +548,7 @@
     "error_message": "Significant refactor of ",
     "file": "config/keymaps/default.toml",
     "root_cause": "2 lines replaced/restructured",
-    "fix": "Rewrote 10\u21925 lines (2 removed)",
+    "fix": "Rewrote 10→5 lines (2 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -544,7 +564,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/core/command_dispatch/tests.rs",
     "root_cause": "3 lines replaced/restructured",
-    "fix": "Rewrote 15\u219252 lines (3 removed)",
+    "fix": "Rewrote 15→52 lines (3 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -560,7 +580,7 @@
     "error_message": "Wrong reference: 100 should be 200",
     "file": "src/app/app_state/mod.rs",
     "root_cause": "Used \"100\" instead of \"200\"",
-    "fix": "Changed 100 \u2192 200",
+    "fix": "Changed 100 → 200",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -576,7 +596,7 @@
     "error_message": "Wrong reference: 100 should be 200",
     "file": "src/render/renderer/editor/viewport.rs",
     "root_cause": "Used \"100\" instead of \"200\"",
-    "fix": "Changed 100 \u2192 200",
+    "fix": "Changed 100 → 200",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -608,7 +628,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/lsp/symbol_cache.rs",
     "root_cause": "50 lines replaced/restructured",
-    "fix": "Rewrote 77\u219210 lines (50 removed)",
+    "fix": "Rewrote 77→10 lines (50 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -624,7 +644,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/render/icon_pipeline.rs",
     "root_cause": "2 lines replaced/restructured",
-    "fix": "Rewrote 3\u219221 lines (2 removed)",
+    "fix": "Rewrote 3→21 lines (2 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -640,7 +660,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/event_loop/commands.rs",
     "root_cause": "2 lines replaced/restructured",
-    "fix": "Rewrote 11\u219229 lines (2 removed)",
+    "fix": "Rewrote 11→29 lines (2 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -656,7 +676,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/render/renderer/editor/buffers/diagnostics.rs",
     "root_cause": "5 lines replaced/restructured",
-    "fix": "Rewrote 16\u219235 lines (5 removed)",
+    "fix": "Rewrote 16→35 lines (5 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -672,7 +692,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/render/renderer/editor/buffers/diagnostics.rs",
     "root_cause": "4 lines replaced/restructured",
-    "fix": "Rewrote 8\u219217 lines (4 removed)",
+    "fix": "Rewrote 8→17 lines (4 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -688,7 +708,7 @@
     "error_message": "Significant refactor of ",
     "file": "scripts/bundle_linux.sh",
     "root_cause": "4 lines replaced/restructured",
-    "fix": "Rewrote 21\u219251 lines (4 removed)",
+    "fix": "Rewrote 21→51 lines (4 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -741,7 +761,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/resolved_keymap.rs",
     "root_cause": "10 lines replaced/restructured",
-    "fix": "Rewrote 17\u21924 lines (10 removed) | Also: let normalized = normalize_modifier_alias(token);; if normalized == \"<leader>\" { | Also: fn normalize_modifier_alias(token: &str) -> String; // Just lowercase - no more mod aliasing",
+    "fix": "Rewrote 17→4 lines (10 removed) | Also: let normalized = normalize_modifier_alias(token);; if normalized == \"<leader>\" { | Also: fn normalize_modifier_alias(token: &str) -> String; // Just lowercase - no more mod aliasing",
     "tags": [
       "auto-detected",
       "refactor",
@@ -777,7 +797,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/event_loop/commands_terminal.rs",
     "root_cause": "20 lines replaced/restructured",
-    "fix": "Rewrote 26\u21926 lines (20 removed) | Also: /// Flag the layout of whichever terminal surface ; /// new scroll position is re-rendered on the next",
+    "fix": "Rewrote 26→6 lines (20 removed) | Also: /// Flag the layout of whichever terminal surface ; /// new scroll position is re-rendered on the next",
     "tags": [
       "auto-detected",
       "refactor",
@@ -816,7 +836,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/terminal/grid.rs",
     "root_cause": "3 lines replaced/restructured",
-    "fix": "Rewrote 7\u219220 lines (3 removed)",
+    "fix": "Rewrote 7→20 lines (3 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -829,10 +849,10 @@
   {
     "id": "bug-047",
     "timestamp": "2026-06-11T00:00:00Z",
-    "error_message": "Vietnamese tone marks dropped when rendering opencode output in the terminal. Base vowels with circumflex (\u00f4 \u00ea \u00e2) showed, but tone marks were lost: 'b\u1ea1n'->'ban', 'c\u1ee5 th\u1ec3'->'cu th\u00ea', 'ki\u1ec3u'->'ki\u00eau'. User suspected line-height clipping.",
+    "error_message": "Vietnamese tone marks dropped when rendering opencode output in the terminal. Base vowels with circumflex (ô ê â) showed, but tone marks were lost: 'bạn'->'ban', 'cụ thể'->'cu thê', 'kiểu'->'kiêu'. User suspected line-height clipping.",
     "file": "src/terminal/grid.rs, Cargo.toml",
-    "root_cause": "NOT a line-height issue (panel_line_height 22 vs panel_font_size 14 is generous). The terminal grid stores one Unicode scalar per cell: print_char_at_cursor always wrote the char and advanced the cursor, with no handling for zero-width combining marks. The ANSI parser emits each codepoint as a separate PrintChar with no normalization. So a combining tone mark (e.g. precomposed '\u00f4' U+00F4 followed by combining dot-below U+0323) landed in its own cell, advancing the cursor; the lone mark shaped in isolation rendered clipped/invisible and the base lost its tone.",
-    "fix": "Added unicode-normalization dep. In print_char_at_cursor, detect combining marks via unicode_normalization::char::is_combining_mark; instead of consuming a cell, fold the mark into the previous cell's base char by NFC-normalizing base+mark (grapheme.nfc()). NFC reorders marks canonically first, so it composes even when the stream sends marks out of canonical order (pairwise char::compose alone misses '\u00f4'+U+0323 -> '\u1ed9' because \u1ed9 decomposes to \u1ecd+circumflex). Only adopt the result if it collapses to a single scalar; otherwise keep base and drop mark to avoid misaligning the fixed-width grid. Cursor not advanced (zero-width). Tests: combining_marks_fold_into_base_cell, stacked_combining_marks_compose_incrementally, precomposed_vietnamese_passes_through, leading_combining_mark_is_dropped_not_misaligned.",
+    "root_cause": "NOT a line-height issue (panel_line_height 22 vs panel_font_size 14 is generous). The terminal grid stores one Unicode scalar per cell: print_char_at_cursor always wrote the char and advanced the cursor, with no handling for zero-width combining marks. The ANSI parser emits each codepoint as a separate PrintChar with no normalization. So a combining tone mark (e.g. precomposed 'ô' U+00F4 followed by combining dot-below U+0323) landed in its own cell, advancing the cursor; the lone mark shaped in isolation rendered clipped/invisible and the base lost its tone.",
+    "fix": "Added unicode-normalization dep. In print_char_at_cursor, detect combining marks via unicode_normalization::char::is_combining_mark; instead of consuming a cell, fold the mark into the previous cell's base char by NFC-normalizing base+mark (grapheme.nfc()). NFC reorders marks canonically first, so it composes even when the stream sends marks out of canonical order (pairwise char::compose alone misses 'ô'+U+0323 -> 'ộ' because ộ decomposes to ọ+circumflex). Only adopt the result if it collapses to a single scalar; otherwise keep base and drop mark to avoid misaligning the fixed-width grid. Cursor not advanced (zero-width). Tests: combining_marks_fold_into_base_cell, stacked_combining_marks_compose_incrementally, precomposed_vietnamese_passes_through, leading_combining_mark_is_dropped_not_misaligned.",
     "tags": [
       "terminal",
       "unicode",
@@ -855,7 +875,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/async_runtime/scheduler/file_watch.rs",
     "root_cause": "7 lines replaced/restructured",
-    "fix": "Rewrote 100\u2192130 lines (7 removed)",
+    "fix": "Rewrote 100→130 lines (7 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -871,7 +891,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/event_loop/async_results/filesystem.rs",
     "root_cause": "2 lines replaced/restructured",
-    "fix": "Rewrote 5\u21923 lines (2 removed)",
+    "fix": "Rewrote 5→3 lines (2 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -887,7 +907,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/app_state/palette.rs",
     "root_cause": "4 lines replaced/restructured",
-    "fix": "Rewrote 9\u21925 lines (4 removed) | Also: eprintln!(\"[FileWatch] Inactive file {:?} is dirty; eprintln!(\"[FileWatch] Reloading inactive file fro",
+    "fix": "Rewrote 9→5 lines (4 removed) | Also: eprintln!(\"[FileWatch] Inactive file {:?} is dirty; eprintln!(\"[FileWatch] Reloading inactive file fro",
     "tags": [
       "auto-detected",
       "refactor",
@@ -903,7 +923,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/app_state/tests.rs",
     "root_cause": "6 lines replaced/restructured",
-    "fix": "Rewrote 22\u219247 lines (6 removed)",
+    "fix": "Rewrote 22→47 lines (6 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1001,7 +1021,7 @@
     "error_message": "Wrong reference: grid should be cell_shapes",
     "file": "src/terminal/mod.rs",
     "root_cause": "Used \"grid\" instead of \"cell_shapes\"",
-    "fix": "Changed grid \u2192 cell_shapes",
+    "fix": "Changed grid → cell_shapes",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -1014,10 +1034,10 @@
   {
     "id": "bug-048",
     "timestamp": "2026-06-12T00:45:00+07:00",
-    "error_message": "Right dock (opencode) renders '\u0111\u1ee9t n\u00e9t': block-element logo (\u2580\u2584\u2588) has gaps between cells and vertical borders (\u2503\u2502) appear as broken dashes. User initially attributed Vietnamese mark loss to this.",
+    "error_message": "Right dock (opencode) renders 'đứt nét': block-element logo (▀▄█) has gaps between cells and vertical borders (┃│) appear as broken dashes. User initially attributed Vietnamese mark loss to this.",
     "file": "src/terminal/cell_shapes.rs, src/terminal/terminal_renderer.rs, src/text/atlas.rs",
     "root_cause": "Terminal cells are panel_line_height tall (22px) but block/box-drawing glyphs from the font only cover the font's natural line box (~17px at 14px font). Each row leaves a ~5px uncovered strip, so vertical lines and block art show seams. Fonts can never fill an arbitrary cell height; real terminal emulators (kitty, alacritty) draw these characters procedurally.",
-    "fix": "Added src/terminal/cell_shapes.rs: solid_cell_rects() maps Block Elements (U+2580-259F incl. shades/quadrants) and Box Drawing (light/heavy/double lines, corners, tees, half-lines; rounded mapped to square; doubles approximated as heavy) to cell-filling rectangles. GlyphAtlas::solid_entry() lazily reserves a 4x4 white texel region (entry points at inset 2x2 core to avoid Nearest-sampling bleed). build_instances() emits these as GlyphInstance quads with fg color (alpha scaled for \u2591\u2592\u2593) and skips font shaping for those chars. Dashed/diagonal chars still use font glyphs.",
+    "fix": "Added src/terminal/cell_shapes.rs: solid_cell_rects() maps Block Elements (U+2580-259F incl. shades/quadrants) and Box Drawing (light/heavy/double lines, corners, tees, half-lines; rounded mapped to square; doubles approximated as heavy) to cell-filling rectangles. GlyphAtlas::solid_entry() lazily reserves a 4x4 white texel region (entry points at inset 2x2 core to avoid Nearest-sampling bleed). build_instances() emits these as GlyphInstance quads with fg color (alpha scaled for ░▒▓) and skips font shaping for those chars. Dashed/diagonal chars still use font glyphs.",
     "tags": [
       "terminal",
       "rendering",
@@ -1040,7 +1060,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/input/handler.rs",
     "root_cause": "3 lines replaced/restructured",
-    "fix": "Rewrote 21\u219225 lines (3 removed)",
+    "fix": "Rewrote 21→25 lines (3 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1056,7 +1076,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/event_loop/application.rs",
     "root_cause": "5 lines replaced/restructured",
-    "fix": "Rewrote 11\u219221 lines (5 removed)",
+    "fix": "Rewrote 11→21 lines (5 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1072,7 +1092,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/input/tests.rs",
     "root_cause": "2 lines replaced/restructured",
-    "fix": "Rewrote 16\u219225 lines (2 removed) | Also: matches!(translated.command, Command::TerminalWrit; \"bottom terminal Ctrl+U should forward raw, got {:",
+    "fix": "Rewrote 16→25 lines (2 removed) | Also: matches!(translated.command, Command::TerminalWrit; \"bottom terminal Ctrl+U should forward raw, got {:",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1114,7 +1134,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/async_runtime/scheduler/file_watch.rs",
     "root_cause": "4 lines replaced/restructured",
-    "fix": "Rewrote 4\u219211 lines (4 removed) | Also: extend_unique_file_events(; extend_unique_file_events(",
+    "fix": "Rewrote 4→11 lines (4 removed) | Also: extend_unique_file_events(; extend_unique_file_events(",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1130,7 +1150,7 @@
     "error_message": "Wrong reference: normalize_notify_event should be file_watch_restart_backoff",
     "file": "src/async_runtime/scheduler/tests.rs",
     "root_cause": "Used \"normalize_notify_event\" instead of \"file_watch_restart_backoff\"",
-    "fix": "Changed normalize_notify_event \u2192 file_watch_restart_backoff",
+    "fix": "Changed normalize_notify_event → file_watch_restart_backoff",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -1186,7 +1206,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/app_state/palette.rs",
     "root_cause": "11 lines replaced/restructured",
-    "fix": "Rewrote 17\u21928 lines (11 removed) | Also: // Check if this is a self-save event by comparing; let current_active_path = event.path.clone(); | Also: match std::fs::read_to_string(&buffer.path) {; Ok(content) => { | Also: if let Ok(content) = std::fs::read_to_string(new_p; buffer.in_memory_text = Some(Rope::from_str(&conte",
+    "fix": "Rewrote 17→8 lines (11 removed) | Also: // Check if this is a self-save event by comparing; let current_active_path = event.path.clone(); | Also: match std::fs::read_to_string(&buffer.path) {; Ok(content) => { | Also: if let Ok(content) = std::fs::read_to_string(new_p; buffer.in_memory_text = Some(Rope::from_str(&conte",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1218,7 +1238,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/app_state/buffers.rs",
     "root_cause": "37 lines replaced/restructured",
-    "fix": "Rewrote 94\u219256 lines (37 removed)",
+    "fix": "Rewrote 94→56 lines (37 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1234,7 +1254,7 @@
     "error_message": "Wrong reference: reloaded_paths should be changed_paths",
     "file": "src/app/app_state/buffers.rs",
     "root_cause": "Used \"reloaded_paths\" instead of \"changed_paths\"",
-    "fix": "Changed reloaded_paths \u2192 changed_paths",
+    "fix": "Changed reloaded_paths → changed_paths",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -1282,7 +1302,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/terminal/grid.rs",
     "root_cause": "3 lines replaced/restructured",
-    "fix": "Rewrote 10\u219214 lines (3 removed)",
+    "fix": "Rewrote 10→14 lines (3 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1325,7 +1345,7 @@
     "error_message": "Wrong reference: bounds should be ai_status",
     "file": "src/render/renderer/ui/statusbar.rs",
     "root_cause": "Used \"bounds\" instead of \"ai_status\"",
-    "fix": "Changed bounds \u2192 ai_status",
+    "fix": "Changed bounds → ai_status",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -1359,7 +1379,7 @@
     "error_message": "Wrong reference: last_ai_inline_queue_at should be last_ai_inline_submit_at",
     "file": "src/app/event_loop/mod.rs",
     "root_cause": "Used \"last_ai_inline_queue_at\" instead of \"last_ai_inline_submit_at\"",
-    "fix": "Changed last_ai_inline_queue_at \u2192 last_ai_inline_submit_at",
+    "fix": "Changed last_ai_inline_queue_at → last_ai_inline_submit_at",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -1375,7 +1395,7 @@
     "error_message": "Wrong reference: last_ai_inline_queue_at should be last_ai_inline_submit_at",
     "file": "src/app/event_loop/setup.rs",
     "root_cause": "Used \"last_ai_inline_queue_at\" instead of \"last_ai_inline_submit_at\"",
-    "fix": "Changed last_ai_inline_queue_at \u2192 last_ai_inline_submit_at",
+    "fix": "Changed last_ai_inline_queue_at → last_ai_inline_submit_at",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -1390,7 +1410,7 @@
     "timestamp": "2026-06-12T12:40:00Z",
     "error_message": "User: typing 'logg' or text inside console.log(\"\") never shows AI ghost text suggestion",
     "file": "src/app/event_loop/setup.rs",
-    "root_cause": "should_queue_ai_inline_completion only queued when the char before cursor was a trigger char (space, '.', '(', ...). Normal letters/quotes fell to the 'idle trigger' branch which compared now against last_ai_inline_queue_at \u2014 reset on EVERY keystroke \u2014 so fast typing always failed the check, and after the user stopped typing no event ever re-queued. Net effect: word typing never produced a request (no AiInlineCompletion failures in logs = nothing submitted).",
+    "root_cause": "should_queue_ai_inline_completion only queued when the char before cursor was a trigger char (space, '.', '(', ...). Normal letters/quotes fell to the 'idle trigger' branch which compared now against last_ai_inline_queue_at — reset on EVERY keystroke — so fast typing always failed the check, and after the user stopped typing no event ever re-queued. Net effect: word typing never produced a request (no AiInlineCompletion failures in logs = nothing submitted).",
     "fix": "Queue on every typing edit and let the 150ms debounce in flush_pending_ai_inline_completion coalesce keystrokes. Moved min_interval rate limiting from queue time (dropping) to flush time (delaying, with next_ai_inline_flush_deadline extended to max(debounce, min_interval) so the event loop wakes to retry). Removed dead last_ai_inline_queue_at field; trigger_chars/idle_trigger_ms config now unused by the queue path.",
     "tags": [
       "ai-inline-completion",
@@ -1406,7 +1426,7 @@
   {
     "id": "bug-INLINE-EMPTY-001",
     "timestamp": "2026-06-12T14:30:00Z",
-    "error_message": "No ghost text when typing inside console.log(\"\") \u2014 user thought string context blocked it",
+    "error_message": "No ghost text when typing inside console.log(\"\") — user thought string context blocked it",
     "file": "config/ai.toml",
     "root_cause": "Not a string/trigger issue: should_queue_ai_inline_completion only checks min_prefix_chars + suppress_in_middle_of_word, so requests fire fine inside strings. Real cause: configured model xmtp/mimo-v2.5 is a reasoning model that consumes the ENTIRE max_tokens budget on hidden reasoning (finish_reason=length, reasoning_tokens==completion_tokens) and returns empty content. Editor drops the empty suggestion -> no ghost text. Verified on proxy localhost:20128: mimo/qwen3.6-plus/deepseek-v4-flash all reasoning-only (empty/slow); ds/deepseek-* = 402 Insufficient Balance; cc/claude-* = 403 OAuth blocked.",
     "fix": "Switched config/ai.toml model to mistral/mistral-tiny (proxy -> ministral-8b-latest): non-reasoning, ~0.5s, finish_reason=stop, streams clean content via delta.content. Removed reasoning_effort line; lowered max_tokens 384 -> 96.",
@@ -1428,7 +1448,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/input/handler.rs",
     "root_cause": "25 lines replaced/restructured",
-    "fix": "Rewrote 27\u21925 lines (25 removed)",
+    "fix": "Rewrote 27→5 lines (25 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1441,9 +1461,9 @@
   {
     "id": "bug-INLINE-OVERLAP-001",
     "timestamp": "2026-06-12T15:15:00Z",
-    "error_message": "Ghost text overlaps LSP completion popup (hard to read); Tab had duplicate accept behavior \u2014 user wants Ctrl+j only for ghost text",
+    "error_message": "Ghost text overlaps LSP completion popup (hard to read); Tab had duplicate accept behavior — user wants Ctrl+j only for ghost text",
     "file": "src/app/input/handler.rs, src/app/resolved_keymap.rs, src/app/event_loop/async_results/ai.rs, src/app/event_loop/async_results/lsp.rs",
-    "root_cause": "Two problems. (1) Tab accepted ghost text via TWO paths: a hardcoded intercept in handler.rs (ran before input_map.resolve) AND resolved_keymap.rs:595 Tab->AI_ACCEPT_INLINE \u2014 duplicate behavior. (2) AI ghost text (inline_suggestion) and the LSP completion menu (has_completion) are independent overlays that both trigger on typing; LSP is fast, AI ~0.6s, so both end up visible and render stacked on top of each other plus the code below.",
+    "root_cause": "Two problems. (1) Tab accepted ghost text via TWO paths: a hardcoded intercept in handler.rs (ran before input_map.resolve) AND resolved_keymap.rs:595 Tab->AI_ACCEPT_INLINE — duplicate behavior. (2) AI ghost text (inline_suggestion) and the LSP completion menu (has_completion) are independent overlays that both trigger on typing; LSP is fast, AI ~0.6s, so both end up visible and render stacked on top of each other plus the code below.",
     "fix": "(a) Removed the hardcoded Tab->AiAcceptInline intercept in handler.rs; changed resolved_keymap.rs:595 Tab->INSERT_TAB. Ghost text now accepted ONLY by Ctrl+j (full) / Ctrl+l (word). Tab inserts indentation; the separate completion-menu Tab->CompletionAccept intercept (handler.rs:1271, guarded by completion_visible) is untouched. (b) Ghost text wins: handle_ai_result now calls dismiss_completion_for_ghost_text (clear_completion + set_completion_loading(false)) when a suggestion becomes visible, and lsp.rs completion handler returns early (no menu) when inline_suggestion().is_some(). The two overlays can no longer be visible simultaneously.",
     "tags": [
       "ai-inline-completion",
@@ -1465,7 +1485,7 @@
     "timestamp": "2026-06-12T08:27:44.488Z",
     "error_message": "Wrong return value",
     "file": "config/ai.toml",
-    "root_cause": "Was returning: empty content \u2014 avoid.",
+    "root_cause": "Was returning: empty content — avoid.",
     "fix": "Now returns: empty content.",
     "tags": [
       "auto-detected",
@@ -1482,7 +1502,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/event_loop/async_results/ai.rs",
     "root_cause": "4 lines replaced/restructured",
-    "fix": "Rewrote 9\u219212 lines (4 removed)",
+    "fix": "Rewrote 9→12 lines (4 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1498,7 +1518,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/event_loop/async_results/ai.rs",
     "root_cause": "2 lines replaced/restructured",
-    "fix": "Rewrote 8\u219218 lines (2 removed)",
+    "fix": "Rewrote 8→18 lines (2 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1555,7 +1575,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/render/renderer/ui/welcome.rs",
     "root_cause": "6 lines replaced/restructured",
-    "fix": "Rewrote 6\u21924 lines (6 removed)",
+    "fix": "Rewrote 6→4 lines (6 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1571,7 +1591,7 @@
     "error_message": "Significant refactor of ",
     "file": "config/ui/default.toml",
     "root_cause": "2 lines replaced/restructured",
-    "fix": "Rewrote 6\u21928 lines (2 removed)",
+    "fix": "Rewrote 6→8 lines (2 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1587,7 +1607,7 @@
     "error_message": "Wrong reference: true should be false",
     "file": "../../.config/netherize/ui.toml",
     "root_cause": "Used \"true\" instead of \"false\"",
-    "fix": "Changed true \u2192 false",
+    "fix": "Changed true → false",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -1600,10 +1620,10 @@
   {
     "id": "bug-090",
     "timestamp": "2026-06-12T00:00:00+07:00",
-    "error_message": "UI proportions unstable ('bi bop') across monitors \u2014 welcome screen squeezed on Full HD vs MacBook",
+    "error_message": "UI proportions unstable ('bi bop') across monitors — welcome screen squeezed on Full HD vs MacBook",
     "file": "src/render/renderer/ui/welcome.rs",
     "root_cause": "welcome_scale = (welcome_card_max_width/560) * (font_size/14): both factors already carry runtime_scale -> quadratic scaling (rs^2). MacBook rs=2 -> 4x (clamped 3.0), Full HD rs=1 -> 1x, so cross-monitor ratio was 3:1 instead of 2:1.",
-    "fix": "welcome_scale = layout_clamp(welcome_card_max_width / 560.0, 0.5, 3.0) \u2014 single scale source. Also set auto_scale=false by default (config/ui/default.toml + user ui.toml) so UI size is logical-points x OS scale factor only, like other IDEs.",
+    "fix": "welcome_scale = layout_clamp(welcome_card_max_width / 560.0, 0.5, 3.0) — single scale source. Also set auto_scale=false by default (config/ui/default.toml + user ui.toml) so UI size is logical-points x OS scale factor only, like other IDEs.",
     "tags": [
       "ui-scaling",
       "welcome-screen",
@@ -1622,7 +1642,7 @@
     "error_message": "Extensions manager: LSP/tool installed-state detection wrong ('lsp bat khong dung')",
     "file": "src/app/app_state/mod.rs, src/async_runtime/scheduler/syntax_jobs.rs",
     "root_cause": "1) installed flags hardcoded in default_extension_items (author machine state: pylsp/rust-analyzer/yaml/json/bash=true) shown until async which-check returns; 2) resolve_system_path misses ~/.pub-cache/bin, fvm, ~/.asdf/shims, and uses non-standard ~/.nvm/versions/node/current/bin (nvm has no 'current' dir by default) so nvm-installed node LSPs report missing; 3) Dart LSP absent from registry despite editor Dart/FVM support; 4) SystemDepCheckResult only applied if extensions buffer active (system.rs:8)",
-    "fix": "FIXED: resolve_system_path now scans ~/.nvm/versions/node/*/bin (newest 3), adds ~/.pub-cache/bin, fvm default bin, ~/.asdf/shims, ~/.bun/bin, ~/.deno/bin; installed flags no longer hardcoded (all false + deps_checked flag, renderer shows '\u2026 Checking'); SystemDepCheckResult/install results applied via any_extensions_manager_buffer_mut even when buffer inactive; Dart LSP added to registry + which-check list.",
+    "fix": "FIXED: resolve_system_path now scans ~/.nvm/versions/node/*/bin (newest 3), adds ~/.pub-cache/bin, fvm default bin, ~/.asdf/shims, ~/.bun/bin, ~/.deno/bin; installed flags no longer hardcoded (all false + deps_checked flag, renderer shows '… Checking'); SystemDepCheckResult/install results applied via any_extensions_manager_buffer_mut even when buffer inactive; Dart LSP added to registry + which-check list.",
     "tags": [
       "extensions-manager",
       "lsp",
@@ -1658,7 +1678,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/render/renderer/editor/extensions.rs",
     "root_cause": "4 lines replaced/restructured",
-    "fix": "Rewrote 8\u219216 lines (4 removed) | Also: [popup_x - 1.5, popup_y - 1.5, popup_w + 3.0, popu; .with_radius(6.0), | Also: [inner_x + 12.0, detail_y, inner_w - 24.0, detail_; .with_radius(6.0), | Also: let status_color = if item.installed { success } e; let status = if item.installed {",
+    "fix": "Rewrote 8→16 lines (4 removed) | Also: [popup_x - 1.5, popup_y - 1.5, popup_w + 3.0, popu; .with_radius(6.0), | Also: [inner_x + 12.0, detail_y, inner_w - 24.0, detail_; .with_radius(6.0), | Also: let status_color = if item.installed { success } e; let status = if item.installed {",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1674,7 +1694,7 @@
     "error_message": "Wrong reference: scroll_y should be s",
     "file": "src/render/renderer/editor/extensions.rs",
     "root_cause": "Used \"scroll_y\" instead of \"s\"",
-    "fix": "Changed scroll_y \u2192 s",
+    "fix": "Changed scroll_y → s",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -1690,7 +1710,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/async_runtime/scheduler/syntax_jobs.rs",
     "root_cause": "4 lines replaced/restructured",
-    "fix": "Rewrote 6\u21927 lines (4 removed)",
+    "fix": "Rewrote 6→7 lines (4 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1706,7 +1726,7 @@
     "error_message": "Wrong reference: active_extensions_manager_buffer_mut should be any_extensions_manager_buffer_mut",
     "file": "src/app/event_loop/async_results/system.rs",
     "root_cause": "Used \"active_extensions_manager_buffer_mut\" instead of \"any_extensions_manager_buffer_mut\"",
-    "fix": "Changed active_extensions_manager_buffer_mut \u2192 any_extensions_manager_buffer_mut",
+    "fix": "Changed active_extensions_manager_buffer_mut → any_extensions_manager_buffer_mut",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -1738,7 +1758,7 @@
     "error_message": "Wrong reference: true should be false",
     "file": "src/app/app_state/mod.rs",
     "root_cause": "Used \"true\" instead of \"false\"",
-    "fix": "Changed true \u2192 false",
+    "fix": "Changed true → false",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -1751,7 +1771,7 @@
   {
     "id": "bug-099",
     "timestamp": "2026-06-12T00:00:00+07:00",
-    "error_message": "Cheatsheet 'chua hoat dong' \u2014 no way to open help by key",
+    "error_message": "Cheatsheet 'chua hoat dong' — no way to open help by key",
     "file": "config/keymaps/default.toml",
     "root_cause": "Command app.open_help existed with full dispatch+render path but had NO keybinding; only :help vim command triggered it, which new users never discover",
     "fix": "Added <leader>? (Space ?) binding in normal mode to app.open_help",
@@ -1768,7 +1788,7 @@
   {
     "id": "bug-100",
     "timestamp": "2026-06-12T00:00:00+07:00",
-    "error_message": "[keymap] unknown command 'app.open_help' (key='<leader>?') \u2014 skipped; also C, {, }, ctrl+v, cmd+shift+n, ai.chat_stop silently dead",
+    "error_message": "[keymap] unknown command 'app.open_help' (key='<leader>?') — skipped; also C, {, }, ctrl+v, cmd+shift+n, ai.chat_stop silently dead",
     "file": "src/core/command_ids.rs, config/keymaps/default.toml",
     "root_cause": "command_ids::is_valid only checked ALL_IDS array; 11 ids (NEW_INSTANCE, ENTER_VISUAL_BLOCK, CHANGE_TO_LINE_END, DELETE_TO_LINE_END, JOIN_LINES, MOVE_PARAGRAPH_UP/DOWN, AI_CHAT_STOP, OPEN_HELP, MARKDOWN_PREVIEW_SCROLL_TOP/BOTTOM) existed in parse() but were missing from ALL_IDS, so keymap loader skipped their bindings silently. Plus default.toml referenced nonexistent 'editor.insert_newline' (correct: editor.newline).",
     "fix": "Added missing ids to ALL_IDS; is_valid now falls back to parse(id, None).is_some() so future drift cannot kill bindings; fixed editor.insert_newline->editor.newline; added regression test default_keymap_has_no_unknown_commands",
@@ -1791,7 +1811,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/render/renderer/editor/settings.rs",
     "root_cause": "9 lines replaced/restructured",
-    "fix": "Rewrote 22\u219234 lines (9 removed) | Also: let key_col_w = 400.0;; let value_col_w = 300.0;",
+    "fix": "Rewrote 22→34 lines (9 removed) | Also: let key_col_w = 400.0;; let value_col_w = 300.0;",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1807,7 +1827,7 @@
     "error_message": "Wrong reference: footer_y should be s",
     "file": "src/render/renderer/editor/settings.rs",
     "root_cause": "Used \"footer_y\" instead of \"s\"",
-    "fix": "Changed footer_y \u2192 s",
+    "fix": "Changed footer_y → s",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -1877,7 +1897,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/core/command_dispatch/common.rs",
     "root_cause": "2 lines replaced/restructured",
-    "fix": "Rewrote 11\u219226 lines (2 removed)",
+    "fix": "Rewrote 11→26 lines (2 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1893,7 +1913,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/core/command_dispatch/tests.rs",
     "root_cause": "4 lines replaced/restructured",
-    "fix": "Rewrote 29\u219235 lines (4 removed)",
+    "fix": "Rewrote 29→35 lines (4 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -1908,7 +1928,7 @@
     "timestamp": "2026-06-12T00:00:00+07:00",
     "error_message": "Ctrl+O/Ctrl+I jump list barely usable: most navigations never pushed (live grep Space f w, file picker, explorer open, / search confirm, n/N, gg/G, {/}, leap); stack had no cap or dedup",
     "file": "src/core/command_dispatch/{common,palette,navigation}.rs, src/app/event_loop/commands_editor.rs, src/app/app_state/palette.rs",
-    "root_cause": "push_jump was only called at 5 sites (gd, references, diagnostics, document symbols, *). DispatchCtx::open_file \u2014 the choke point used by file picker, live grep, and explorer \u2014 never recorded the origin. In-buffer jump motions (n/N, gg/G, paragraph, leap) weren't treated as jumps at all.",
+    "root_cause": "push_jump was only called at 5 sites (gd, references, diagnostics, document symbols, *). DispatchCtx::open_file — the choke point used by file picker, live grep, and explorer — never recorded the origin. In-buffer jump motions (n/N, gg/G, paragraph, leap) weren't treated as jumps at all.",
     "fix": "DispatchCtx::open_file pushes origin when switching to a different file (covers picker/grep/explorer in one place); OpenSearchMatch and InFileSearch-confirm push explicitly (same-file case); navigation.rs jump_origin/record_jump_if_moved helpers wrap SearchNext/Prev, MoveToFirst/LastLine, MoveParagraphUp/Down; leap jump pushes. push_jump_entry now dedups consecutive same (file,line) and caps stack at 100 (vim-style).",
     "tags": [
       "jumplist",
@@ -1946,7 +1966,7 @@
     "timestamp": "2026-06-12T00:00:00+07:00",
     "error_message": "User: type code, move caret elsewhere, THEN the AI ghost text appears at the new spot and follows the cursor; changes during debounce were not cancelled",
     "file": "src/app/event_loop/setup.rs, src/app/event_loop/application.rs, src/app/event_loop/commands_editor.rs, src/app/event_loop/commands_lsp.rs, src/app/event_loop/async_results/ai.rs, src/app/event_loop/mod.rs",
-    "root_cause": "Only insert-typing commands cancelled/re-queued the inline pipeline. Cursor motion, mouse clicks, Escape, and buffer switches never cancelled the pending debounce or the in-flight request and never bumped ai_inline_revision, so a late result passed the bridge revision gate. The ghost text is stored as bare text with no position anchor and renders at the live caret, so the stale suggestion appeared at \u2014 and followed \u2014 whatever position the caret had moved to. flush_pending_ai_inline_completion also captured prefix/suffix at flush time, not queue time.",
+    "root_cause": "Only insert-typing commands cancelled/re-queued the inline pipeline. Cursor motion, mouse clicks, Escape, and buffer switches never cancelled the pending debounce or the in-flight request and never bumped ai_inline_revision, so a late result passed the bridge revision gate. The ghost text is stored as bare text with no position anchor and renders at the live caret, so the stale suggestion appeared at — and followed — whatever position the caret had moved to. flush_pending_ai_inline_completion also captured prefix/suffix at flush time, not queue time.",
     "fix": "Added ai_inline_anchor: Option<(Option<PathBuf>, usize)> on AppShell anchoring the whole pipeline (pending -> in-flight -> visible ghost) to (buffer, caret, Insert mode). queue_ai_inline_completion sets it; enforce_ai_inline_anchor() runs every about_to_wait pass before the flush and on mismatch drops the pending request, cancels the in-flight token, bumps ai_inline_revision (bridge drops late results as stale), and clears visible ghost text. flush re-validates the anchor before submitting. handle_ai_result (chunk + result arms) drops payloads when the anchor is no longer current. Legitimate caret moves keep the ghost by re-anchoring: prefix-retained typing (commands_editor.rs) and partial word accept AiAcceptInlineWord (commands_lsp.rs).",
     "tags": [
       "ai-inline-completion",
@@ -1967,7 +1987,7 @@
     "error_message": "Wrong reference: ai_chat_text_system should be whichkey_text_system",
     "file": "src/render/renderer/lifecycle.rs",
     "root_cause": "Used \"ai_chat_text_system\" instead of \"whichkey_text_system\"",
-    "fix": "Changed ai_chat_text_system \u2192 whichkey_text_system",
+    "fix": "Changed ai_chat_text_system → whichkey_text_system",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -1983,7 +2003,7 @@
     "error_message": "Wrong reference: toast_chrome_instances should be whichkey_chrome_instances",
     "file": "src/render/renderer/lifecycle/frame.rs",
     "root_cause": "Used \"toast_chrome_instances\" instead of \"whichkey_chrome_instances\"",
-    "fix": "Changed toast_chrome_instances \u2192 whichkey_chrome_instances",
+    "fix": "Changed toast_chrome_instances → whichkey_chrome_instances",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -2014,7 +2034,7 @@
     "timestamp": "2026-06-12T14:47:52.689Z",
     "error_message": "Incorrect value in code",
     "file": "src/render/renderer/ui/welcome.rs",
-    "root_cause": "Had \"Press Space P J for Recent Projects  |  Press \u2318 ,",
+    "root_cause": "Had \"Press Space P J for Recent Projects  |  Press ⌘ ,",
     "fix": "Changed to \"Press Space ? or F1 for all keybindings  |  Space",
     "tags": [
       "auto-detected",
@@ -2031,7 +2051,7 @@
     "error_message": "Wrong reference: ai_status should be lsp_indicator",
     "file": "src/render/renderer/ui/statusbar.rs",
     "root_cause": "Used \"ai_status\" instead of \"lsp_indicator\"",
-    "fix": "Changed ai_status \u2192 lsp_indicator",
+    "fix": "Changed ai_status → lsp_indicator",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -2047,7 +2067,7 @@
     "error_message": "Wrong reference: super should be crate",
     "file": "src/async_runtime/scheduler/syntax_jobs.rs",
     "root_cause": "Used \"super\" instead of \"crate\"",
-    "fix": "Changed super \u2192 crate",
+    "fix": "Changed super → crate",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -2063,7 +2083,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/render/renderer/editor/fuzzy.rs",
     "root_cause": "2 lines replaced/restructured",
-    "fix": "Rewrote 10\u219215 lines (2 removed) | Also: [right_x + 6.0, row_y, (right_w - 12.0).max(1.0), ; [right_x + 6.0, row_y, (right_w - 12.0).max(1.0), ",
+    "fix": "Rewrote 10→15 lines (2 removed) | Also: [right_x + 6.0, row_y, (right_w - 12.0).max(1.0), ; [right_x + 6.0, row_y, (right_w - 12.0).max(1.0), ",
     "tags": [
       "auto-detected",
       "refactor",
@@ -2079,7 +2099,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/render/renderer/editor/help.rs",
     "root_cause": "4 lines replaced/restructured",
-    "fix": "Rewrote 4\u21927 lines (4 removed)",
+    "fix": "Rewrote 4→7 lines (4 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -2095,7 +2115,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/input/tests.rs",
     "root_cause": "5 lines replaced/restructured",
-    "fix": "Rewrote 37\u219277 lines (5 removed)",
+    "fix": "Rewrote 37→77 lines (5 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -2130,7 +2150,7 @@
     "error_message": "Wrong reference: submit_lsp_completion should be submit_lsp_completion_manual",
     "file": "src/app/event_loop/commands_lsp.rs",
     "root_cause": "Used \"submit_lsp_completion\" instead of \"submit_lsp_completion_manual\"",
-    "fix": "Changed submit_lsp_completion \u2192 submit_lsp_completion_manual",
+    "fix": "Changed submit_lsp_completion → submit_lsp_completion_manual",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -2185,7 +2205,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/render/renderer/editor/settings.rs",
     "root_cause": "2 lines replaced/restructured",
-    "fix": "Rewrote 6\u219240 lines (2 removed)",
+    "fix": "Rewrote 6→40 lines (2 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -2201,7 +2221,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/event_loop/setup.rs",
     "root_cause": "4 lines replaced/restructured",
-    "fix": "Rewrote 10\u219213 lines (4 removed)",
+    "fix": "Rewrote 10→13 lines (4 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -2233,7 +2253,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/async_runtime/message.rs",
     "root_cause": "2 lines replaced/restructured",
-    "fix": "Rewrote 8\u219211 lines (2 removed)",
+    "fix": "Rewrote 8→11 lines (2 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -2249,7 +2269,7 @@
     "error_message": "Wrong operator: != should be ==",
     "file": "src/app/app_state/palette.rs",
     "root_cause": "Used \"!=\" instead of \"==\"",
-    "fix": "Changed operator != \u2192 ==",
+    "fix": "Changed operator != → ==",
     "tags": [
       "auto-detected",
       "operator-fix",
@@ -2265,7 +2285,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/lsp/registry.rs",
     "root_cause": "2 lines replaced/restructured",
-    "fix": "Rewrote 7\u219230 lines (2 removed)",
+    "fix": "Rewrote 7→30 lines (2 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -2316,7 +2336,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/async_runtime/scheduler/lsp.rs",
     "root_cause": "4 lines replaced/restructured",
-    "fix": "Rewrote 7\u219218 lines (4 removed)",
+    "fix": "Rewrote 7→18 lines (4 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -2332,7 +2352,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/app_state/overlays.rs",
     "root_cause": "6 lines replaced/restructured",
-    "fix": "Rewrote 8\u219214 lines (6 removed)",
+    "fix": "Rewrote 8→14 lines (6 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -2348,7 +2368,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/lsp/symbol_cache.rs",
     "root_cause": "4 lines replaced/restructured",
-    "fix": "Rewrote 5\u219210 lines (4 removed) | Also: // Sort by path so the DFS order \u2014 and any truncat; // across runs rather than dependent on filesystem",
+    "fix": "Rewrote 5→10 lines (4 removed) | Also: // Sort by path so the DFS order — and any truncat; // across runs rather than dependent on filesystem",
     "tags": [
       "auto-detected",
       "refactor",
@@ -2364,7 +2384,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/event_loop/application.rs",
     "root_cause": "11 lines replaced/restructured",
-    "fix": "Rewrote 59\u219274 lines (11 removed)",
+    "fix": "Rewrote 59→74 lines (11 removed)",
     "tags": [
       "auto-detected",
       "refactor",
@@ -2380,7 +2400,7 @@
     "error_message": "Wrong reference: FocusEditor should be SwitchBottomTab",
     "file": "src/core/command_dispatch/mod.rs",
     "root_cause": "Used \"FocusEditor\" instead of \"SwitchBottomTab\"",
-    "fix": "Changed FocusEditor \u2192 SwitchBottomTab",
+    "fix": "Changed FocusEditor → SwitchBottomTab",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -2396,7 +2416,7 @@
     "error_message": "Wrong reference: syntax should be runner",
     "file": "src/lib.rs",
     "root_cause": "Used \"syntax\" instead of \"runner\"",
-    "fix": "Changed syntax \u2192 runner",
+    "fix": "Changed syntax → runner",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -2411,7 +2431,7 @@
     "timestamp": "2026-06-13T17:54:11.955Z",
     "error_message": "Missing await",
     "file": "src/async_runtime/scheduler/syntax_jobs.rs",
-    "root_cause": "Async call without await \u2014 returned Promise instead of value",
+    "root_cause": "Async call without await — returned Promise instead of value",
     "fix": "Added await to async call",
     "tags": [
       "auto-detected",
@@ -2492,7 +2512,7 @@
     "error_message": "Wrong reference: shell should be runner",
     "file": "src/app/event_loop/async_results/mod.rs",
     "root_cause": "Used \"shell\" instead of \"runner\"",
-    "fix": "Changed shell \u2192 runner",
+    "fix": "Changed shell → runner",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -2540,7 +2560,7 @@
     "error_message": "Significant refactor of ",
     "file": "src/app/event_loop/commands_terminal.rs",
     "root_cause": "3 lines replaced/restructured",
-    "fix": "Rewrote 11\u219218 lines (3 removed) | Also: // Surface the bottom dock + Test Runner tab so re; self.panel_state.bottom.visible = true;",
+    "fix": "Rewrote 11→18 lines (3 removed) | Also: // Surface the bottom dock + Test Runner tab so re; self.panel_state.bottom.visible = true;",
     "tags": [
       "auto-detected",
       "refactor",
@@ -2556,7 +2576,7 @@
     "error_message": "Wrong reference: leap_label_text_system should be test_runner_text_system",
     "file": "src/render/renderer/lifecycle.rs",
     "root_cause": "Used \"leap_label_text_system\" instead of \"test_runner_text_system\"",
-    "fix": "Changed leap_label_text_system \u2192 test_runner_text_system",
+    "fix": "Changed leap_label_text_system → test_runner_text_system",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -2572,7 +2592,7 @@
     "error_message": "Wrong reference: palette_chrome_instances should be test_runner_chrome_instances",
     "file": "src/render/renderer/lifecycle/frame.rs",
     "root_cause": "Used \"palette_chrome_instances\" instead of \"test_runner_chrome_instances\"",
-    "fix": "Changed palette_chrome_instances \u2192 test_runner_chrome_instances",
+    "fix": "Changed palette_chrome_instances → test_runner_chrome_instances",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -2588,7 +2608,7 @@
     "error_message": "Wrong reference: topbar should be test_runner",
     "file": "src/render/renderer/ui.rs",
     "root_cause": "Used \"topbar\" instead of \"test_runner\"",
-    "fix": "Changed topbar \u2192 test_runner",
+    "fix": "Changed topbar → test_runner",
     "tags": [
       "auto-detected",
       "wrong-reference",
@@ -2601,7 +2621,7 @@
   {
     "id": "bug-150",
     "timestamp": "2026-06-14",
-    "error_message": "Test Runner panel opened (bottom dock) but keyboard input did nothing \u2014 could not type cases",
+    "error_message": "Test Runner panel opened (bottom dock) but keyboard input did nothing — could not type cases",
     "file": "src/app/input/handler.rs",
     "root_cause": "route_test_runner_input hook was added only to route_repeated_normalized_input (key-REPEAT path), not to route_normalized_input (the main key-PRESS path). AiChat has hooks in BOTH; TestRunner was missing the press-path hook, so normal key presses never reached the test-runner router.",
     "fix": "Added `if context.focus == InputFocusContext::TestRunner && !zen_mode_allows_leader { return self.route_test_runner_input(...) }` in route_normalized_input right after the AiChat hook.",
@@ -2619,7 +2639,7 @@
   {
     "id": "bug-151",
     "timestamp": "2026-06-14",
-    "error_message": "Right-dock tab title overlapping the panel outline (\u0111\u00e8 l\u00ean outline)",
+    "error_message": "Right-dock tab title overlapping the panel outline (đè lên outline)",
     "file": "src/render/renderer/ui/test_runner.rs",
     "root_cause": "update_right_dock_panel drew the tab strip flush at the region edge (rb), painting over the panel focus-ring outline which is drawn earlier in region_instances.",
     "fix": "Added layout_engine::RIGHT_DOCK_OUTLINE_INSET=2.0 (==FOCUS_RING_THICKNESS); inset strip+content+scissor by it, mirroring the bottom dock TAB_BAR_OUTLINE_INSET. Mouse hit-tests apply the same inset.",
@@ -2676,8 +2696,18 @@
     "file": "src/app/event_loop/application.rs",
     "root_cause": "handle_right_terminal_mouse_input runs first in the MouseInput dispatch and hit-tested against the FULL right-sidebar bounds (current_right_sidebar_bounds), which includes the tab strip band. With an agent PTY live, right_terminal_active() is true so clicks on the strip were swallowed and forwarded to the PTY before handle_right_dock_tab_mouse_click could run. From Test Runner right_terminal_active() is false, so tab switching worked.",
     "fix": "Added current_right_terminal_bounds() mirroring the render-path term_bounds (sidebar minus RIGHT_DOCK_OUTLINE_INSET and RIGHT_TAB_STRIP_HEIGHT). right_terminal_mouse_cell_at / right_terminal_mouse_targeted / handle_right_terminal_mouse_input now use it, so the strip band is excluded and clicks there fall through to the tab handler.",
-    "tags": ["right-dock", "mouse", "tab-switch", "ai-chat", "input-routing", "z-index"],
-    "related_bugs": ["bug-151", "bug-153"],
+    "tags": [
+      "right-dock",
+      "mouse",
+      "tab-switch",
+      "ai-chat",
+      "input-routing",
+      "z-index"
+    ],
+    "related_bugs": [
+      "bug-151",
+      "bug-153"
+    ],
     "occurrences": 1,
     "last_seen": "2026-06-14"
   },
@@ -2688,8 +2718,17 @@
     "file": "src/app/event_loop/application.rs",
     "root_cause": "right_terminal_mouse_cell_at computed the SGR wheel cell from the full sidebar bounds, but the grid is rendered at term_bounds (offset down by inset + strip_h ~52px). Forwarded wheel coordinates were shifted up by several rows; opencode tolerated it, stricter TUIs ignored wheel events landing outside their scroll pane.",
     "fix": "Same current_right_terminal_bounds() correction so wheel cell coordinates map to the actually-rendered grid region. NOTE: the ANSI parser still ignores private modes (ESC[?...h/l -> AnsiEvent::Unknown at ansi_parser.rs:424), so there is no alt-screen/mouse-mode tracking; if a TUI never enables mouse reporting, wheel forwarding still won't scroll it (would need mode tracking + arrow-key fallback).",
-    "tags": ["right-dock", "mouse", "scroll", "sgr", "ai-chat", "terminal"],
-    "related_bugs": ["bug-154"],
+    "tags": [
+      "right-dock",
+      "mouse",
+      "scroll",
+      "sgr",
+      "ai-chat",
+      "terminal"
+    ],
+    "related_bugs": [
+      "bug-154"
+    ],
     "occurrences": 1,
     "last_seen": "2026-06-14"
   },
@@ -2700,8 +2739,17 @@
     "file": "src/app/event_loop/commands_ai_chat.rs",
     "root_cause": "spawn_right_agent_terminal (picker launch) ran the agent INSIDE a login shell via startup command '{command}\\r'. Killing/quitting the agent dropped back to a live shell prompt instead of closing the PTY, so PtySessionClosed never fired -> grid not cleared, right_pty_session_id stayed Some -> picker never re-shown. (ensure_right_opencode_terminal already avoided this by spawning directly.)",
     "fix": "Startup command is now 'exec {command}\\r' so the login shell is replaced by the agent (keeps login PATH resolution). When the agent exits/killed the PTY closes -> PtySessionClosed clears the grid and sets right_pty_session_id=None -> the AI Chat picker auto-renders again.",
-    "tags": ["right-dock", "ai-chat", "pty", "exec", "ctrl-c", "picker"],
-    "related_bugs": ["bug-153"],
+    "tags": [
+      "right-dock",
+      "ai-chat",
+      "pty",
+      "exec",
+      "ctrl-c",
+      "picker"
+    ],
+    "related_bugs": [
+      "bug-153"
+    ],
     "occurrences": 1,
     "last_seen": "2026-06-14"
   },
@@ -2712,8 +2760,16 @@
     "file": "src/render/renderer/ui/test_runner.rs",
     "root_cause": "build_right_tab_strip drew the strip background and active-tab fills as plain square rects flush to the panel edge, so the panel's rounded focus-ring outline met square strip corners.",
     "fix": "Strip background now drawn with .with_radius(panel_corner_radius); the active first/last tab rounds its outer corner to match while interior active tabs stay square (mirrors the bottom dock rounded-panel look).",
-    "tags": ["render", "right-dock", "tab-strip", "border-radius", "polish"],
-    "related_bugs": ["bug-151"],
+    "tags": [
+      "render",
+      "right-dock",
+      "tab-strip",
+      "border-radius",
+      "polish"
+    ],
+    "related_bugs": [
+      "bug-151"
+    ],
     "occurrences": 1,
     "last_seen": "2026-06-14"
   },
@@ -2724,8 +2780,18 @@
     "file": "src/app/event_loop/async_results/terminal.rs",
     "root_cause": "PtySessionClosed handler for the right PTY set app.last_right_terminal_bounds = None BEFORE the redraw. The render-time cleanup that drops the renderer's uploaded terminal glyphs only runs in the `else if self.last_right_terminal_bounds.is_some()` branch — which was now skipped — so clear_right_terminal() never fired and the old glyphs lingered. (The grid model was reset, but the GPU surface was not.)",
     "fix": "Call renderer.clear_right_terminal() directly inside the PtySessionClosed handler right after nulling the bounds, guaranteeing the surface is blanked the moment the PTY closes (bug-156's exec change is what makes the PTY actually close).",
-    "tags": ["right-dock", "render", "pty", "ai-chat", "clear", "ghost-glyphs"],
-    "related_bugs": ["bug-156", "bug-153"],
+    "tags": [
+      "right-dock",
+      "render",
+      "pty",
+      "ai-chat",
+      "clear",
+      "ghost-glyphs"
+    ],
+    "related_bugs": [
+      "bug-156",
+      "bug-153"
+    ],
     "occurrences": 1,
     "last_seen": "2026-06-14"
   },
@@ -2736,8 +2802,19 @@
     "file": "src/render/region_pipeline.rs, src/render/shaders/region.wgsl, src/render/renderer/ui/test_runner.rs",
     "root_cause": "RegionDrawInstance/region.wgsl only supported a single uniform border_radius, so the earlier with_radius fix rounded all four corners (and every active tab), creating notches; and the active accent bar spanned the full tab width flush to the panel edge, overrunning the rounded focus-ring corner.",
     "fix": "Added per-corner radius: RegionInstanceRaw now carries corner_radii:[f32;4] (same 48-byte footprint, replacing border_radius+_pad), vertex attr Float32->Float32x4, and region.wgsl picks the radius per quadrant ([TL,TR,BR,BL]). with_radius still sets all four (identical SDF when equal -> existing UI unaffected); new with_corner_radii for partial rounding. build_right_tab_strip now rounds only the strip's two top corners (radius = panel_corner_radius - RIGHT_DOCK_OUTLINE_INSET), rounds only the outer corner of the first/last active tab, and insets the accent bar by the radius on the outer side so it no longer overflows. Added a naga parse+validate test (region_shader_is_valid_wgsl) since the shader only compiles at GPU init.",
-    "tags": ["render", "right-dock", "tab-strip", "border-radius", "per-corner", "wgsl", "shader"],
-    "related_bugs": ["bug-157", "bug-151"],
+    "tags": [
+      "render",
+      "right-dock",
+      "tab-strip",
+      "border-radius",
+      "per-corner",
+      "wgsl",
+      "shader"
+    ],
+    "related_bugs": [
+      "bug-157",
+      "bug-151"
+    ],
     "occurrences": 1,
     "last_seen": "2026-06-14"
   },
@@ -2748,8 +2825,18 @@
     "file": "src/app/input/handler.rs",
     "root_cause": "The per-focus interceptors run before keymap resolution: focus==AiChat returned route_ai_chat_input (which swallows non-nav keys), and TerminalFocus forwarded everything except a tiny allow-list to the PTY as raw bytes. So cmd+r (bound globally to app.focus_inspector) never reached input_map.resolve when an agent terminal/picker/test-runner had focus.",
     "fix": "Added a global-Cmd resolver at the top of route() (after the zen-leader check, before the focus interceptors): if normalized.has_command_modifier() and input_map.resolve(...) yields a binding, dispatch it. Cmd combos never go to a PTY, and context-scoped bindings still win since resolve is given the current context; unbound Cmd keys fall through to normal routing.",
-    "tags": ["input", "keybindings", "cmd", "focus", "ai-chat", "terminal", "global-shortcut"],
-    "related_bugs": ["bug-150"],
+    "tags": [
+      "input",
+      "keybindings",
+      "cmd",
+      "focus",
+      "ai-chat",
+      "terminal",
+      "global-shortcut"
+    ],
+    "related_bugs": [
+      "bug-150"
+    ],
     "occurrences": 1,
     "last_seen": "2026-06-14"
   },
@@ -2760,12 +2847,21 @@
     "file": "src/app/input_map/mod.rs, src/app/event_loop/commands_settings_helpers.rs, src/app/event_loop/commands_settings.rs, config/keymaps/default.toml, src/app/resolved_keymap.rs, src/core/commands.rs, src/core/command_ids.rs, src/core/command_dispatch/mod.rs, src/render/renderer/ui/statusbar.rs",
     "root_cause": "Two issues. (1) Reachability: command_allowed_in_context() hard-gated EnterResize to InputFocusContext::Editor, so `<leader>r r` did nothing when the explorer/terminal held focus; once in resize mode FocusTarget was therefore always CenterEditor. (2) Once in resize mode under a non-editor focus, the single-key resolver branched on focus BEFORE any mode check, so resize keys would have been swallowed by resolve_explorer_focus/terminal handlers. The old h/H/l/L commands were also gated to CenterEditor in their helpers.",
     "fix": "Relaxed command_allowed_in_context() to allow EnterResize from Editor/Explorer/Terminal; added `<leader>r r` bindings under the explorer and terminal_normal keymap modes (TOML + resolved_keymap built-in); added an EditorMode::Resize precedence branch at the top of InputMap::resolve so resize-mode keys own h/j/k/l + Esc regardless of focus. Replaced the 8 width/edge commands with 6 focus-aware ones: h/l/j/k resize the focused panel (sidebar width, bottom height) or push the editor's docks when the editor is focused; H/L grow the left/right dock. New focus-aware helpers resize_focused_width/height + resize_left_dock/right_dock backed by a single clamped adjust_dock(ResizeDock). Added a RESIZE-mode key hint line in the status bar.",
-    "tags": ["resize", "keybindings", "input", "focus", "modal", "workbench", "docks"],
-    "related_bugs": ["bug-160"],
+    "tags": [
+      "resize",
+      "keybindings",
+      "input",
+      "focus",
+      "modal",
+      "workbench",
+      "docks"
+    ],
+    "related_bugs": [
+      "bug-160"
+    ],
     "occurrences": 1,
     "last_seen": "2026-06-14"
-  }
-  ,
+  },
   {
     "id": "bug-162",
     "timestamp": "2026-06-14T15:08:00+07:00",
@@ -2773,7 +2869,11 @@
     "file": "src/async_runtime/scheduler/leetcode_fetch.rs",
     "root_cause": "The numeric LeetCode resolver used an outdated GraphQL field name.",
     "fix": "Changed the question-list query and response lookup to questionFrontendId.",
-    "tags": ["leetcode", "graphql", "numeric-id"],
+    "tags": [
+      "leetcode",
+      "graphql",
+      "numeric-id"
+    ],
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-06-14T15:08:00+07:00"
@@ -2785,8 +2885,15 @@
     "file": "src/runner/leetcode_api.rs, src/render/renderer/editor/settings.rs, src/async_runtime/scheduler/leetcode_fetch.rs, src/app/event_loop/commands_tests.rs",
     "root_cause": "The first TDD implementation borrowed a slug from a local Url, inserted a duplicate match delimiter, moved problem strings before extracting cases, and compared a non-canonical temp path.",
     "fix": "Owned the normalized slug, corrected the combined toggle arm, extracted cases before moving fields, and canonicalized the expected test path.",
-    "tags": ["leetcode", "rust", "compiler", "test"],
-    "related_bugs": ["bug-162"],
+    "tags": [
+      "leetcode",
+      "rust",
+      "compiler",
+      "test"
+    ],
+    "related_bugs": [
+      "bug-162"
+    ],
     "occurrences": 1,
     "last_seen": "2026-06-14T15:25:00+07:00"
   },
@@ -2797,7 +2904,12 @@
     "file": "src/core/command_dispatch/mod.rs, src/core/command_dispatch/palette.rs",
     "root_cause": "The new command called the AppState palette opener directly instead of the standard open_palette_mode helper that applies ModeEvent::OpenPalette.",
     "fix": "Routed FetchLeetCodeProblem through palette::dispatch/open_palette_mode and added a regression assertion for PaletteFocus.",
-    "tags": ["leetcode", "palette", "mode", "command-dispatch"],
+    "tags": [
+      "leetcode",
+      "palette",
+      "mode",
+      "command-dispatch"
+    ],
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-06-14T15:42:00+07:00"
@@ -2809,8 +2921,16 @@
     "file": "src/app/event_loop/commands_palette.rs",
     "root_cause": "handle_palette_and_open_command had keep-open carve-outs for LeetCodeLanguageSelector/PythonEnvSelector/DartEnvSelector but NOT LeetCodeProblemInput. The command-list path dispatches FilePickerConfirmSelection -> ExecuteCommand(FetchLeetCodeProblem) which opens LeetCodeProblemInput, then fell through to release_focus_mode_to_editor() which exited PaletteFocus and tore the overlay down. The existing test passed because it dispatched Command::FetchLeetCodeProblem directly, bypassing the confirm flow.",
     "fix": "Added a carve-out for CommandPaletteMode::LeetCodeProblemInput that arms IME suppression, keeps OverlayLayer focus, and returns early. Added regression test fetch_leetcode_from_command_list_keeps_problem_input_open driving the real command-list confirm path.",
-    "tags": ["leetcode", "palette", "command-list", "focus", "regression-test"],
-    "related_bugs": ["bug-164"],
+    "tags": [
+      "leetcode",
+      "palette",
+      "command-list",
+      "focus",
+      "regression-test"
+    ],
+    "related_bugs": [
+      "bug-164"
+    ],
     "occurrences": 1,
     "last_seen": "2026-06-14T16:30:00+07:00"
   },
@@ -2821,8 +2941,15 @@
     "file": "src/core/command_dispatch/editing.rs",
     "root_cause": "The EditorPaste handler routes clipboard text into the palette query only for an explicit allow-list of CommandPaletteModes; LeetCodeProblemInput (and LeetCodeLanguageSelector) were missing, so paste fell through to insert_text_at_cursor on the editor buffer instead.",
     "fix": "Added CommandPaletteMode::LeetCodeProblemInput and LeetCodeLanguageSelector to the paste allow-list at editing.rs. Regression test editor_paste_appends_to_leetcode_problem_input_query.",
-    "tags": ["leetcode", "palette", "paste", "clipboard"],
-    "related_bugs": ["bug-165"],
+    "tags": [
+      "leetcode",
+      "palette",
+      "paste",
+      "clipboard"
+    ],
+    "related_bugs": [
+      "bug-165"
+    ],
     "occurrences": 1,
     "last_seen": "2026-06-14T17:30:00+07:00"
   },
@@ -2833,9 +2960,34 @@
     "file": "src/render/renderer/editor.rs, src/render/renderer/editor/fuzzy.rs, src/render/renderer/editor/buffers.rs, src/render/renderer/editor/buffers/diagnostics.rs",
     "root_cause": "The result window estimated capacity from content height divided only by row height. File/group headers also consume vertical space, so the computed start index could render fewer items than estimated and stop before the selected item.",
     "fix": "Added a shared grouped-list window calculation that simulates row plus group-header height and advances the start until the selected item fits. Applied it to Live Grep, References, and Diagnostics, with a regression test covering a selected final item across multiple groups.",
-    "tags": ["buffer-tab", "fuzzy-finder", "live-grep", "references", "diagnostics", "viewport", "scroll", "renderer"],
+    "tags": [
+      "buffer-tab",
+      "fuzzy-finder",
+      "live-grep",
+      "references",
+      "diagnostics",
+      "viewport",
+      "scroll",
+      "renderer"
+    ],
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-06-15T10:57:59+07:00"
+  },
+  {
+    "id": "bug-172",
+    "timestamp": "2026-06-15T12:00:00+07:00",
+    "error_message": "LeetCode AI test-case generation produced cases identical to existing ones (first 2 always verbatim copies of cached cases), plus invalid edge cases (empty/single-element arrays) and ~40% arithmetically wrong expected outputs.",
+    "file": "src/async_runtime/scheduler/leetcode_fetch.rs (build_stratified_prompt), src/config/ai_config.rs (leetcode_verify_enabled), ~/.config/netherize/config/ai.toml (leetcode.provider.model)",
+    "root_cause": "Two causes. (1) Duplication: build_stratified_prompt fed the first 2 cached cases as 'Existing examples' and instructed '2 like the examples', so at temp 0.1 the model echoed them back verbatim; the degenerate edge-case guidance ('empty/zero, single element') also violated problem constraints. (2) Wrong expected values: mistral/codestral-2508 is a non-reasoning code model that cannot reliably compute expected outputs (measured ~40% wrong, systematic index patterns like [1,3]/[0,2] regardless of arithmetic); the verify pass was also OFF by default (leetcode_verify_enabled unwrap_or(false)) so nothing caught the errors.",
+    "fix": "Rewrote build_stratified_prompt to list ALL existing cases as 'must NOT repeat', require 5 NEW/DIFFERENT, constraint-valid, small inputs, and re-check expected before emitting. Flipped leetcode_verify_enabled default to true (second re-trace pass). Switched leetcode.provider.model from codestral-2508 to mistral/mistral-large-latest, which benchmarked 0/5 wrong across repeated runs at ~2.7s (codestral was ~40% wrong). Verified: 844 lib tests pass; live generate 0 dupes/0 wrong, verify pass corrects injected errors.",
+    "tags": [
+      "leetcode",
+      "ai-generation",
+      "prompt-engineering",
+      "model-selection",
+      "correctness",
+      "mistral"
+    ]
   }
 ]

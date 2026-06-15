@@ -623,6 +623,14 @@ impl Command {
                 | Self::HelpScrollUp
                 | Self::HelpScrollHalfPageDown
                 | Self::HelpScrollHalfPageUp
+                | Self::ResizeDecreaseWidth
+                | Self::ResizeIncreaseWidth
+                | Self::ResizeDecreaseHeight
+                | Self::ResizeIncreaseHeight
+                | Self::ResizeGrowLeftDock
+                | Self::ResizeGrowRightDock
+                | Self::SettingsSelectNext
+                | Self::SettingsSelectPrev
         )
     }
 }

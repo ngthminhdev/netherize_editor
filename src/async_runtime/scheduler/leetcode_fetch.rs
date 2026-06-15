@@ -168,53 +168,52 @@ fn build_stratified_prompt(
         .map(|param| format!("{}: {}", param.name, param.type_name))
         .collect::<Vec<_>>()
         .join(", ");
-    let examples = cache
+    // List EVERY existing case so the model is told not to reproduce any of
+    // them. Feeding only the first couple "as examples" was why regeneration
+    // kept echoing the cached cases back verbatim.
+    let existing = cache
         .cases
         .iter()
-        .take(2)
+        .take(8)
         .map(|case| format!("input={} expected={}", case.input, case.expected))
         .collect::<Vec<_>>()
         .join("\n");
-    let statement: String = cache.statement.chars().take(4000).collect();
+    let existing = if existing.is_empty() {
+        "(none yet)".to_string()
+    } else {
+        existing
+    };
+    let statement: String = cache.statement.chars().take(2500).collect();
     format!(
-        r#"You are an expert software engineer and competitive programmer.
-Generate exactly 5 high-quality test cases for the LeetCode problem "{title}" ({slug}).
+        r#"Generate test cases for the LeetCode problem "{title}" ({slug}).
 
 Function signature: {func}({params})
 
 Problem description (HTML may be present):
 {statement}
 
-Existing examples:
-{examples}
+These cases ALREADY EXIST — your output must NOT repeat any of them:
+{existing}
 
-Each test case MUST target one of these specific categories:
+Produce exactly 5 NEW test cases, each DIFFERENT from every existing case above
+and from each other. Correctness is the priority, so:
+- Keep every input SIMPLE and as small as the constraints allow, using small,
+  distinct numbers so the expected output is easy to compute without mistakes.
+- Every input MUST be valid under the problem's constraints — never produce an
+  input the problem guarantees cannot occur (e.g. an empty or too-short array,
+  or a case that has no valid answer).
+- Re-read each input and re-compute its expected output before emitting it.
 
-Case 1 — BASIC: The simplest valid input, similar to the provided examples. This confirms the fundamental algorithm works.
-
-Case 2 — CONSTRAINT BOUNDARY: Input at the exact min or max of the problem constraints (e.g., array length = 1, array length = maximum allowed, values at min/max bounds). This catches off-by-one errors at boundaries.
-
-Case 3 — COMMON BUG CATCHER: An input that causes a common incorrect solution to fail (e.g., off-by-one in loop bounds, missing the last element, not handling duplicates, wrong initialization). In the explanation, describe WHICH common bug this case would catch.
-
-Case 4 — ALGORITHMIC STRESS: A structurally challenging input (e.g., reverse-sorted, all identical elements, alternating pattern, single large input). This tests algorithmic correctness under non-trivial conditions.
-
-Case 5 — ADVERSARIAL/HARD: A LeetCode hidden-test style case designed to expose subtle implementation bugs. Think of what test case a problem setter would include to catch solutions that pass examples but have a flaw.
-
-For EACH of the 5 test cases:
-1. State which category (1-5) it belongs to and what specific edge case or bug it targets.
-2. Provide the input arguments.
-3. Trace through the OPTIMAL algorithm step-by-step on this input to calculate the correct expected output.
-4. Verify that the input satisfies ALL problem constraints (array lengths, value ranges, etc.).
-
-Finally, output a JSON array of exactly 5 objects, each having the format:
-{{"input": <object whose keys are the parameter names>, "expected": <expected return value>}}
-Wrap this JSON array inside a ```json``` code block."#,
+Output ONLY a JSON array of exactly 5 objects — no explanation, no reasoning,
+no commentary, nothing before or after it:
+[{{"input": <object whose keys are the parameter names>, "expected": <expected return value>}}, ...]
+Wrap the JSON array inside a ```json``` code block."#,
         title = cache.title,
         slug = cache.slug,
         func = cache.function_name,
         params = params,
         statement = statement,
-        examples = examples,
+        existing = existing,
     )
 }
 
@@ -290,11 +289,13 @@ async fn generate_stratified_cases(
     let mut body = serde_json::json!({
         "model": provider.model,
         "messages": [
-            {"role": "system", "content": "You are a LeetCode test-case generator. Carefully reason step-by-step to calculate outputs first, then write the JSON block."},
+            {"role": "system", "content": "You output LeetCode test cases as a compact JSON array only. No prose, no reasoning, no explanation — just the JSON array."},
             {"role": "user", "content": prompt}
         ],
-        "temperature": 0.2,
-        "max_tokens": 4096
+        "temperature": 0.1,
+        // Output is a small JSON array, never prose — a tight cap keeps the
+        // model fast and prevents it from streaming a long chain of thought.
+        "max_tokens": 1200
     });
     if let Some(effort) = provider
         .reasoning_effort
@@ -303,8 +304,10 @@ async fn generate_stratified_cases(
     {
         body["reasoning_effort"] = serde_json::Value::String(effort.clone());
     }
+    // 30s ceiling: generation should take a few seconds; fail fast instead of
+    // hanging the user behind a 90s timeout if the provider stalls.
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(90))
+        .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|err| format!("AI client build failed: {err}"))?;
     let mut request = client.post(endpoint).json(&body);
@@ -966,7 +969,7 @@ mod tests {
     }
 
     #[test]
-    fn build_stratified_prompt_contains_all_categories() {
+    fn build_stratified_prompt_is_lean_and_json_only() {
         let cache = crate::runner::leetcode_cache::LeetCodeProblemCache {
             id: "1".to_string(),
             slug: "two-sum".to_string(),
@@ -986,14 +989,64 @@ mod tests {
             cases: vec![],
         };
         let prompt = build_stratified_prompt(&cache, "javascript");
-        assert!(prompt.contains("Case 1 — BASIC"), "missing BASIC category");
-        assert!(prompt.contains("Case 2 — CONSTRAINT BOUNDARY"), "missing CONSTRAINT BOUNDARY category");
-        assert!(prompt.contains("Case 3 — COMMON BUG CATCHER"), "missing COMMON BUG CATCHER category");
-        assert!(prompt.contains("Case 4 — ALGORITHMIC STRESS"), "missing ALGORITHMIC STRESS category");
-        assert!(prompt.contains("Case 5 — ADVERSARIAL/HARD"), "missing ADVERSARIAL/HARD category");
         assert!(prompt.contains("twoSum"), "missing function name");
         assert!(prompt.contains("two-sum"), "missing slug");
+        assert!(prompt.contains("exactly 5"), "should request exactly 5 cases");
         assert!(prompt.contains("```json"), "missing json code block instruction");
+        // Speed/correctness contract: forbid prose/reasoning so a non-reasoning
+        // model emits only the JSON array (fast, no truncation), and ask for
+        // simple inputs rather than adversarial ones.
+        assert!(prompt.contains("ONLY"), "should demand JSON-only output");
+        assert!(
+            prompt.to_lowercase().contains("simple"),
+            "should ask for simple cases"
+        );
+        // Dedup contract: the prompt must forbid reproducing existing cases —
+        // echoing the cached cases back was the reported bug.
+        assert!(
+            prompt.contains("NOT repeat"),
+            "should forbid repeating existing cases"
+        );
+        assert!(
+            prompt.contains("DIFFERENT"),
+            "should require new cases to differ from existing ones"
+        );
+        // Must NOT instruct step-by-step tracing (the old slow contract).
+        assert!(
+            !prompt.contains("step-by-step"),
+            "lean prompt must not request step-by-step reasoning"
+        );
+    }
+
+    #[test]
+    fn build_stratified_prompt_lists_existing_cases_to_avoid() {
+        let cache = crate::runner::leetcode_cache::LeetCodeProblemCache {
+            id: "1".to_string(),
+            slug: "two-sum".to_string(),
+            title: "Two Sum".to_string(),
+            statement: "Given an array of integers...".to_string(),
+            function_name: "twoSum".to_string(),
+            parameters: vec![crate::runner::leetcode_cache::CachedParam {
+                name: "nums".to_string(),
+                type_name: "number[]".to_string(),
+            }],
+            cases: vec![crate::runner::leetcode_api::LeetCodeTestCase {
+                input: r#"{"nums":[2,7,11,15],"target":9}"#.to_string(),
+                expected: "[0,1]".to_string(),
+            }]
+            .into_iter()
+            .map(|c| crate::runner::leetcode_cache::CachedCase {
+                input: c.input,
+                expected: c.expected,
+            })
+            .collect(),
+        };
+        let prompt = build_stratified_prompt(&cache, "javascript");
+        // The existing case's input must appear so the model knows to avoid it.
+        assert!(
+            prompt.contains(r#"{"nums":[2,7,11,15],"target":9}"#),
+            "existing case input should be listed in the prompt"
+        );
     }
 
     #[test]

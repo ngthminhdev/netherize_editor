@@ -1768,3 +1768,48 @@
 | 13:56 | Edited src/app/event_loop/commands_tests.rs | 4→9 lines | ~102 |
 | 13:59 | Fixed Gemini-broken dock features: right-dock Cmd+digit (mode-drift), outline j/k highlight re-render, Explorer SVG icon | input_map/mod.rs, commands_lsp.rs, panel_state.rs | 842 tests pass | ~30k |
 | 13:59 | Session end: 9 writes across 5 files (mod.rs, commands_lsp.rs, panel_state.rs, tests.rs, commands_tests.rs) | 12 reads | ~191555 tok |
+
+## Session: 2026-06-15 18:05
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 18:08 | Edited docs/superpowers/specs/2026-06-15-test-generation-improvement-design.md | modified build_stratified_prompt() | ~314 |
+| 18:09 | Edited docs/superpowers/specs/2026-06-15-test-generation-improvement-design.md | expanded (+9 lines) | ~1308 |
+| 18:09 | Session end: 2 writes across 1 files (2026-06-15-test-generation-improvement-design.md) | 2 reads | ~6870 tok |
+
+## Session: 2026-06-15 21:12
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| now | Task 9: removed dead `generate_via_ai`, `generate_via_ai_improved`, `run_generation_experiment` + verify helpers | leetcode_fetch.rs | -456 lines; cargo check clean (dead_code warning gone) | ~3500 |
+| now | Task 8: full verification | cargo test --lib | 843 passed, 1 ignored; 5 clippy logic-bug errors + 233 warnings all PRE-EXISTING (untouched files) | ~1500 |
+| 21:22 | Edited src/app/input/handler.rs | 4→5 lines | ~105 |
+| 21:26 | Session end: 1 writes across 1 files (handler.rs) | 3 reads | ~25328 tok |
+| 21:27 | Edited ../../.claude/CLAUDE.md | expanded (+12 lines) | ~180 |
+| 21:27 | Created ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/feedback_never_auto_commit.md | — | ~234 |
+| 21:27 | Edited ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/MEMORY.md | 1→2 lines | ~75 |
+| 21:27 | Session end: 4 writes across 4 files (handler.rs, CLAUDE.md, feedback_never_auto_commit.md, MEMORY.md) | 5 reads | ~27395 tok |
+| 21:34 | Edited src/async_runtime/scheduler/leetcode_fetch.rs | modified build_stratified_prompt_is_lean_and_json_only() | ~485 |
+| 21:34 | Edited src/async_runtime/scheduler/leetcode_fetch.rs | modified description() | ~279 |
+| 21:34 | Edited src/async_runtime/scheduler/leetcode_fetch.rs | 20→24 lines | ~288 |
+| 21:35 | Session end: 7 writes across 5 files (handler.rs, CLAUDE.md, feedback_never_auto_commit.md, MEMORY.md, leetcode_fetch.rs) | 6 reads | ~28694 tok |
+
+## Session: 2026-06-15 23:14
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-15 23:15
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 23:27 | Edited src/async_runtime/scheduler/leetcode_fetch.rs | modified is_empty() | ~504 |
+| 23:27 | Edited src/async_runtime/scheduler/leetcode_fetch.rs | modified build_stratified_prompt_lists_existing_cases_to_avoid() | ~547 |
+| 23:27 | Edited src/config/ai_config.rs | modified leetcode_verify_enabled() | ~110 |
+| 23:28 | Edited ../../.config/netherize/config/ai.toml | 6→8 lines | ~93 |
+| 23:32 | Created ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/project_leetcode_gen_model.md | — | ~362 |
+| 23:32 | Edited ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/MEMORY.md | 1→2 lines | ~69 |
+| 23:33 | Session end: 6 writes across 5 files (leetcode_fetch.rs, ai_config.rs, ai.toml, project_leetcode_gen_model.md, MEMORY.md) | 3 reads | ~14961 tok |
+| 23:41 | Edited config/ai.toml | 6→9 lines | ~112 |
+| 23:42 | Edited ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/project_leetcode_gen_model.md | expanded (+11 lines) | ~188 |
+| 23:42 | Session end: 8 writes across 5 files (leetcode_fetch.rs, ai_config.rs, ai.toml, project_leetcode_gen_model.md, MEMORY.md) | 4 reads | ~16017 tok |

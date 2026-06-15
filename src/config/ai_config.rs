@@ -102,10 +102,13 @@ impl AiConfig {
     }
 
     pub fn leetcode_verify_enabled(&self) -> bool {
+        // Default ON: a second re-trace pass catches wrong expected outputs from
+        // the first generation. With a capable model both passes are reliable and
+        // the extra round-trip stays well within the generation time budget.
         self.leetcode
             .as_ref()
             .and_then(|lc| lc.verify)
-            .unwrap_or(false)
+            .unwrap_or(true)
     }
 
     pub fn set_leetcode_ai_enabled(&mut self, enabled: bool) -> Result<(), String> {

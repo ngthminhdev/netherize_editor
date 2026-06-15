@@ -2,14 +2,14 @@
   "version": 1,
   "created_at": "2026-05-16T05:48:05.030Z",
   "lifetime": {
-    "total_tokens_estimated": 19004683,
-    "total_reads": 2020,
-    "total_writes": 3382,
-    "total_sessions": 98,
-    "anatomy_hits": 1881,
-    "anatomy_misses": 94,
-    "repeated_reads_blocked": 2506,
-    "estimated_savings_vs_bare_cli": 30335415
+    "total_tokens_estimated": 19149164,
+    "total_reads": 2046,
+    "total_writes": 3410,
+    "total_sessions": 102,
+    "anatomy_hits": 1898,
+    "anatomy_misses": 103,
+    "repeated_reads_blocked": 2533,
+    "estimated_savings_vs_bare_cli": 30485894
   },
   "sessions": [
     {
@@ -32207,6 +32207,420 @@
         "writes_count": 9,
         "repeated_reads_blocked": 7,
         "anatomy_lookups": 12
+      }
+    },
+    {
+      "id": "session-2026-06-15-1805",
+      "started": "2026-06-15T11:05:16.606Z",
+      "ended": "2026-06-15T11:09:38.072Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/leetcode_fetch.rs",
+          "tokens_estimated": 5132,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/docs/superpowers/specs/2026-06-15-test-generation-improvement-design.md",
+          "tokens_estimated": 0,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/docs/superpowers/specs/2026-06-15-test-generation-improvement-design.md",
+          "tokens_estimated": 336,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/docs/superpowers/specs/2026-06-15-test-generation-improvement-design.md",
+          "tokens_estimated": 1402,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 5132,
+        "output_tokens_estimated": 1738,
+        "reads_count": 2,
+        "writes_count": 2,
+        "repeated_reads_blocked": 0,
+        "anatomy_lookups": 1
+      }
+    },
+    {
+      "id": "session-2026-06-15-2112",
+      "started": "2026-06-15T14:12:18.965Z",
+      "ended": "2026-06-15T14:20:45.347Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/input/handler.rs",
+          "tokens_estimated": 20084,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/docs/superpowers/plans/2026-06-15-test-generation-improvement.md",
+          "tokens_estimated": 0,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/leetcode_fetch.rs",
+          "tokens_estimated": 5132,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [],
+      "totals": {
+        "input_tokens_estimated": 25216,
+        "output_tokens_estimated": 0,
+        "reads_count": 3,
+        "writes_count": 0,
+        "repeated_reads_blocked": 5,
+        "anatomy_lookups": 2
+      }
+    },
+    {
+      "id": "session-2026-06-15-2112",
+      "started": "2026-06-15T14:12:18.965Z",
+      "ended": "2026-06-15T14:26:03.400Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/input/handler.rs",
+          "tokens_estimated": 20084,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/docs/superpowers/plans/2026-06-15-test-generation-improvement.md",
+          "tokens_estimated": 0,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/leetcode_fetch.rs",
+          "tokens_estimated": 5132,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/input/handler.rs",
+          "tokens_estimated": 112,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 25216,
+        "output_tokens_estimated": 112,
+        "reads_count": 3,
+        "writes_count": 1,
+        "repeated_reads_blocked": 5,
+        "anatomy_lookups": 2
+      }
+    },
+    {
+      "id": "session-2026-06-15-2112",
+      "started": "2026-06-15T14:12:18.965Z",
+      "ended": "2026-06-15T14:27:57.124Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/input/handler.rs",
+          "tokens_estimated": 20084,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/docs/superpowers/plans/2026-06-15-test-generation-improvement.md",
+          "tokens_estimated": 0,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/leetcode_fetch.rs",
+          "tokens_estimated": 5132,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/.claude/CLAUDE.md",
+          "tokens_estimated": 1543,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/MEMORY.md",
+          "tokens_estimated": 0,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/input/handler.rs",
+          "tokens_estimated": 112,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/.claude/CLAUDE.md",
+          "tokens_estimated": 193,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/feedback_never_auto_commit.md",
+          "tokens_estimated": 251,
+          "action": "create"
+        },
+        {
+          "file": "/Users/qc-bright/.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/MEMORY.md",
+          "tokens_estimated": 80,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 26759,
+        "output_tokens_estimated": 636,
+        "reads_count": 5,
+        "writes_count": 4,
+        "repeated_reads_blocked": 5,
+        "anatomy_lookups": 3
+      }
+    },
+    {
+      "id": "session-2026-06-15-2112",
+      "started": "2026-06-15T14:12:18.965Z",
+      "ended": "2026-06-15T14:35:56.882Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/input/handler.rs",
+          "tokens_estimated": 20084,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/docs/superpowers/plans/2026-06-15-test-generation-improvement.md",
+          "tokens_estimated": 0,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/leetcode_fetch.rs",
+          "tokens_estimated": 5132,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/.claude/CLAUDE.md",
+          "tokens_estimated": 1543,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/MEMORY.md",
+          "tokens_estimated": 0,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/.config/netherize/config/ai.toml",
+          "tokens_estimated": 171,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/app/input/handler.rs",
+          "tokens_estimated": 112,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/.claude/CLAUDE.md",
+          "tokens_estimated": 193,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/feedback_never_auto_commit.md",
+          "tokens_estimated": 251,
+          "action": "create"
+        },
+        {
+          "file": "/Users/qc-bright/.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/MEMORY.md",
+          "tokens_estimated": 80,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/leetcode_fetch.rs",
+          "tokens_estimated": 520,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/leetcode_fetch.rs",
+          "tokens_estimated": 299,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/leetcode_fetch.rs",
+          "tokens_estimated": 309,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 26930,
+        "output_tokens_estimated": 1764,
+        "reads_count": 6,
+        "writes_count": 7,
+        "repeated_reads_blocked": 9,
+        "anatomy_lookups": 4
+      }
+    },
+    {
+      "id": "session-2026-06-15-2315",
+      "started": "2026-06-15T16:15:26.006Z",
+      "ended": "2026-06-15T16:33:08.717Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/leetcode_fetch.rs",
+          "tokens_estimated": 10192,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/config/ai_config.rs",
+          "tokens_estimated": 2963,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/MEMORY.md",
+          "tokens_estimated": 0,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/leetcode_fetch.rs",
+          "tokens_estimated": 540,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/leetcode_fetch.rs",
+          "tokens_estimated": 586,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/config/ai_config.rs",
+          "tokens_estimated": 118,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/.config/netherize/config/ai.toml",
+          "tokens_estimated": 100,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/project_leetcode_gen_model.md",
+          "tokens_estimated": 388,
+          "action": "create"
+        },
+        {
+          "file": "/Users/qc-bright/.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/MEMORY.md",
+          "tokens_estimated": 74,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 13155,
+        "output_tokens_estimated": 1806,
+        "reads_count": 3,
+        "writes_count": 6,
+        "repeated_reads_blocked": 1,
+        "anatomy_lookups": 2
+      }
+    },
+    {
+      "id": "session-2026-06-15-2315",
+      "started": "2026-06-15T16:15:26.006Z",
+      "ended": "2026-06-15T16:42:18.043Z",
+      "reads": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/leetcode_fetch.rs",
+          "tokens_estimated": 10192,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/config/ai_config.rs",
+          "tokens_estimated": 3527,
+          "was_repeated": true,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/MEMORY.md",
+          "tokens_estimated": 0,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/config/ai.toml",
+          "tokens_estimated": 171,
+          "was_repeated": false,
+          "anatomy_had_description": false
+        }
+      ],
+      "writes": [
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/leetcode_fetch.rs",
+          "tokens_estimated": 540,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/async_runtime/scheduler/leetcode_fetch.rs",
+          "tokens_estimated": 586,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/src/config/ai_config.rs",
+          "tokens_estimated": 118,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/.config/netherize/config/ai.toml",
+          "tokens_estimated": 100,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/project_leetcode_gen_model.md",
+          "tokens_estimated": 388,
+          "action": "create"
+        },
+        {
+          "file": "/Users/qc-bright/.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/MEMORY.md",
+          "tokens_estimated": 74,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/Project/netherize_editor/config/ai.toml",
+          "tokens_estimated": 120,
+          "action": "edit"
+        },
+        {
+          "file": "/Users/qc-bright/.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/project_leetcode_gen_model.md",
+          "tokens_estimated": 201,
+          "action": "edit"
+        }
+      ],
+      "totals": {
+        "input_tokens_estimated": 13890,
+        "output_tokens_estimated": 2127,
+        "reads_count": 4,
+        "writes_count": 8,
+        "repeated_reads_blocked": 2,
+        "anatomy_lookups": 3
       }
     }
   ],

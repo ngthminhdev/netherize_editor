@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-15T06:56:01.546Z
-> Files: 405 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-15T16:42:00.361Z
+> Files: 410 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -9,15 +9,25 @@
 - `multiline_test.py` — ask, show, process (~588 tok)
 - `sanitize_check.py` — Mirror of src/app/event_loop/async_results/ai.rs::sanitize_inline_suggestion (~490 tok)
 
+## ../../.claude/
+
+- `CLAUDE.md` — Git commits — HUMAN ONLY (~815 tok)
+
 ## ../../.claude/projects/-Users-qc-bright-Project-netherize-editor/memory/
 
+- `feedback_never_auto_commit.md` (~239 tok)
 - `feedback_superpowers_skills.md` (~334 tok)
-- `MEMORY.md` (~124 tok)
+- `MEMORY.md` (~195 tok)
 - `onboarding-roadmap.md` — Declares blocks (~497 tok)
+- `project_leetcode_gen_model.md` (~519 tok)
 
 ## ../../.config/netherize/
 
 - `ui.toml` (~139 tok)
+
+## ../../.config/netherize/config/
+
+- `ai.toml` (~264 tok)
 
 ## ./
 
@@ -220,7 +230,7 @@
 ## config/
 
 - `.DS_Store` (~1640 tok)
-- `ai.toml` (~171 tok)
+- `ai.toml` (~283 tok)
 
 ## config/keymaps/
 
@@ -326,6 +336,7 @@
 
 - `2026-06-14-leetcode-test-runner-ai-generate-design.md` — LeetCode Test Runner — AI Generate, Per-File Cache, UX Rework (~859 tok)
 - `2026-06-14-test-runner-field-editing-design.md` — Test Runner — Edit JSON fields via the real vim editor (~1569 tok)
+- `2026-06-15-test-generation-improvement-design.md` — Test Case Generation Improvement — Prompt, Verification, Stratification (~2022 tok)
 
 ## scripts/
 
@@ -407,7 +418,7 @@
 
 ## src/app/input/
 
-- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix (~20084 tok)
+- `handler.rs` — InputHandler: new, update_modifiers, on_focus_changed, clear_pending_prefix (~20549 tok)
 - `helpers.rs` — Trả về true nếu đây là event modifier-only (ShiftLeft, ShiftRight, ControlLeft...). (~4366 tok)
 - `mod.rs` (~69 tok)
 - `model.rs` — Dữ liệu key đã chuẩn hóa để tách phần "đọc winit event" (~764 tok)
@@ -438,7 +449,7 @@
 - `file_watch.rs` — Declares FILE_WATCH_DEGRADED_THRESHOLD (~3241 tok)
 - `fzf.rs` — Declares MAX_FZF_RESULTS (~2494 tok)
 - `git.rs` (~1560 tok)
-- `leetcode_fetch.rs` (~5132 tok)
+- `leetcode_fetch.rs` (~10816 tok)
 - `local_history.rs` — Local history (disk persistence) has been removed. (~42 tok)
 - `lsp_io.rs` (~2278 tok)
 - `lsp_parse.rs` — Declares MAX_COMPLETION_ITEMS (~15075 tok)
@@ -450,7 +461,7 @@
 
 ## src/config/
 
-- `ai_config.rs` — Dedicated AI provider for the LeetCode adapter. When left empty the code (~2963 tok)
+- `ai_config.rs` — Dedicated AI provider for the LeetCode adapter. When left empty the code (~3527 tok)
 - `keymap_config.rs` — Root structure of a `.toml` keymap profile file. (~350 tok)
 - `keymap_loader.rs` — Load and layer keymap profiles, returning a flat list of validated bindings. (~1764 tok)
 - `mod.rs` (~35 tok)
