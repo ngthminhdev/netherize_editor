@@ -37,11 +37,6 @@ pub trait AsyncResultRouter {
     fn on_worker_event(&mut self, event: WorkerEvent);
     fn on_worker_result(&mut self, result: WorkerResult);
     fn on_stale_result(&mut self, stale: WorkerResult);
-    fn on_ai_message_chunk(&mut self, text: String);
-    fn on_ai_stream_complete(&mut self);
-    fn on_ai_stream_cancelled(&mut self);
-    fn on_ai_stream_error(&mut self, error: String);
-    fn on_ai_install_success(&mut self);
     fn on_system_dep_tool_progress(&mut self, tool: String, status: InstallStatus);
     fn on_system_dep_install_done(&mut self);
     fn on_extension_command_started(&mut self, binary: String, uninstall: bool);
@@ -140,26 +135,6 @@ impl AppAsyncBridge {
                                 router.on_worker_result(result);
                             }
                         }
-                        WorkerMessage::AiMessageChunk { text } => {
-                            async_trace!("[Bridge] AI message chunk: {} chars", text.len());
-                            router.on_ai_message_chunk(text);
-                        }
-                        WorkerMessage::AiStreamComplete => {
-                            async_trace!("[Bridge] AI stream complete");
-                            router.on_ai_stream_complete();
-                        }
-                        WorkerMessage::AiStreamCancelled => {
-                            async_trace!("[Bridge] AI stream cancelled");
-                            router.on_ai_stream_cancelled();
-                        }
-                        WorkerMessage::AiStreamError { error } => {
-                            async_trace!("[Bridge] AI stream error: {}", error);
-                            router.on_ai_stream_error(error);
-                        }
-                        WorkerMessage::AiInstallSuccess => {
-                            async_trace!("[Bridge] AI install success — restarting editor");
-                            router.on_ai_install_success();
-                        }
                         WorkerMessage::SystemDepToolProgress { tool, status } => {
                             async_trace!("[Bridge] system dep progress: {} {:?}", tool, status);
                             router.on_system_dep_tool_progress(tool, status);
@@ -248,11 +223,6 @@ mod tests {
             self.stale.push(stale.revision_id);
         }
 
-        fn on_ai_message_chunk(&mut self, _text: String) {}
-        fn on_ai_stream_complete(&mut self) {}
-        fn on_ai_stream_cancelled(&mut self) {}
-        fn on_ai_stream_error(&mut self, _error: String) {}
-        fn on_ai_install_success(&mut self) {}
         fn on_system_dep_tool_progress(&mut self, _tool: String, _status: InstallStatus) {}
         fn on_system_dep_install_done(&mut self) {}
         fn on_extension_command_started(&mut self, _binary: String, _uninstall: bool) {}

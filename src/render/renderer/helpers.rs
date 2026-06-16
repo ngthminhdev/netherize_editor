@@ -59,6 +59,58 @@ pub(super) fn layout_panel_rich_text(
     collect_instances(text_system, atlas, queue, origin_x, origin_y, default_color)
 }
 
+/// Like `layout_panel_rich_text` but also returns byte offset ranges per glyph.
+/// Used for drawing underline/strikethrough decorations.
+pub(super) fn layout_panel_rich_text_with_bytes(
+    text: &str,
+    spans: &[StyledTextSpan],
+    default_color: [f32; 4],
+    text_system: &mut TextSystem,
+    atlas: &mut GlyphAtlas,
+    queue: &wgpu::Queue,
+    origin_x: f32,
+    origin_y: f32,
+) -> (Vec<GlyphInstance>, Vec<(usize, usize)>) {
+    let color_u8 = color_f32_to_u8(default_color);
+    text_system.set_text_with_spans(text, color_u8, spans);
+    let visible = text_system.collect_visible_glyphs(origin_x, origin_y, default_color, None);
+    let mut instances = Vec::with_capacity(visible.len());
+    let mut byte_ranges = Vec::with_capacity(visible.len());
+
+    for glyph in visible {
+        let entry = if let Some(e) = atlas.get(glyph.cache_key) {
+            e
+        } else {
+            let Some(rasterized) = rasterize_glyph_alpha(text_system, glyph.cache_key) else {
+                continue;
+            };
+            match atlas.get_or_reserve(glyph.cache_key, &rasterized) {
+                Ok(e) => e,
+                Err(_) => continue,
+            }
+        };
+
+        if entry.region.width == 0 || entry.region.height == 0 {
+            continue;
+        }
+
+        let (uv_min, uv_max) = atlas.uv_min_max(entry.region);
+        let tl_x = glyph.physical_x + entry.placement_left;
+        let tl_y = glyph.physical_y - entry.placement_top;
+        instances.push(GlyphInstance::new(
+            [tl_x as f32, tl_y as f32],
+            [entry.region.width as f32, entry.region.height as f32],
+            uv_min,
+            uv_max,
+            glyph.color,
+        ));
+        byte_ranges.push((glyph.byte_start, glyph.byte_end));
+    }
+
+    atlas.flush_pending(queue);
+    (instances, byte_ranges)
+}
+
 /// Like `layout_panel_text` but rasterizes **bold** — for Leap label overlay.
 pub(super) fn layout_panel_text_bold(
     text: &str,

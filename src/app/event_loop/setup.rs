@@ -267,7 +267,6 @@ impl AppShell {
             last_scroll_animation_tick: now,
             last_git_branch_refresh_at: now,
             last_workspace_git_status_refresh_at: now,
-            last_thinking_animation_tick: now,
             last_lsp_loading_animation_tick: now,
             lsp_loading_frame: 0,
             caret_blink_visible: true,
@@ -597,7 +596,6 @@ impl AppShell {
         self.layout_engine.config.center_min_height = scaled_ui.layout.center_min_height;
         self.layout_engine.config.sidebar_min_width = scaled_ui.layout.sidebar_min_width;
         self.layout_engine.config.bottom_min_height = scaled_ui.layout.bottom_min_height;
-        self.layout_engine.config.chat_input_height = scaled_ui.layout.chat_input_height;
         self.layout_engine.config.panel_border_width = scaled_ui.layout.panel_border_width;
 
         self.panel_state.left.size_px = scaled_ui.docks.left.size_px;

@@ -1579,53 +1579,6 @@ fn leader_d_s_maps_to_diagnostics_open_picker() {
 }
 
 #[test]
-fn visual_leader_a_c_adds_selection_to_ai_chat() {
-    let map = make_default_profile_map();
-    let context = KeybindingContext::for_mode(EditorMode::Visual);
-    let space = input_from_named(NamedKey::Space);
-    let first = map
-        .resolve_sequence_start(&space, context)
-        .expect("space should start visual leader chord");
-    let pending = match first {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!("expected pending visual leader sequence, got {:?}", other),
-    };
-
-    let follow_a = NormalizedInput {
-        physical_key: Some(KeyCode::KeyA),
-        named_key: None,
-        text: Some("a".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-    let second = map
-        .resolve_sequence_next(&pending, &follow_a, context)
-        .expect("leader+a should stay pending");
-    let pending = match second {
-        SequenceMatch::Pending(pending) => pending,
-        other => panic!(
-            "expected second pending visual leader sequence, got {:?}",
-            other
-        ),
-    };
-
-    let follow_c = NormalizedInput {
-        physical_key: Some(KeyCode::KeyC),
-        named_key: None,
-        text: Some("c".to_string()),
-        modifiers: ModifiersState::empty(),
-    };
-    let resolved = map
-        .resolve_sequence_next(&pending, &follow_c, context)
-        .expect("leader+a+c should resolve");
-    match resolved {
-        SequenceMatch::Dispatch(resolved) => {
-            assert_eq!(resolved.command, Command::AiChatAddSelectionContext);
-        }
-        other => panic!("expected dispatch for visual leader a c, got {:?}", other),
-    }
-}
-
-#[test]
 fn leader_sequence_is_not_started_in_insert_mode() {
     let map = make_map();
     let start_input = input_from_named(NamedKey::Space);

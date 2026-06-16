@@ -366,23 +366,23 @@ pub struct Renderer {
     pub(super) test_runner_chrome_instances: Vec<RegionDrawInstance>,
     pub(super) test_runner_scissor: Option<[u32; 4]>,
 
-    // ── AI Chat (RightSidebar) ─────────────────────────────────────────────
-    pub(super) ai_chat_text_system: TextSystem,
-    pub(super) ai_chat_text_pipeline: TextPipeline,
-    pub(super) ai_chat_header_image_pipeline: ImagePipeline,
-    pub(super) ai_chat_hero_image_pipeline: ImagePipeline,
-    pub(super) ai_chat_glyph_instances: Vec<GlyphInstance>,
-    pub(super) ai_chat_history_chrome_instances: Vec<RegionDrawInstance>,
+    // ── Markdown Preview (RightSidebar) ─────────────────────────────────────────────
+    pub(super) markdown_preview_text_system: TextSystem,
+    pub(super) markdown_preview_text_pipeline: TextPipeline,
+    pub(super) markdown_preview_header_image_pipeline: ImagePipeline,
+    pub(super) markdown_preview_hero_image_pipeline: ImagePipeline,
+    pub(super) markdown_preview_glyph_instances: Vec<GlyphInstance>,
+    pub(super) markdown_preview_chrome_instances: Vec<RegionDrawInstance>,
     /// Background rects for the slash-command suggestion popup, rendered as a
     /// separate pass *after* message bubble text so they appear on top.
-    pub(super) ai_chat_suggestion_chrome_instances: Vec<RegionDrawInstance>,
-    /// Index into `ai_chat_glyph_instances` where suggestion-popup glyphs begin.
-    pub(super) ai_chat_suggestion_glyph_start: Option<u32>,
-    pub(super) ai_chat_history_scissor: Option<[u32; 4]>,
-    pub(super) ai_chat_image_scissor: Option<[u32; 4]>,
-    pub(super) ai_chat_input_scissor: Option<[u32; 4]>,
-    /// Instance range for input-box glyphs inside `ai_chat_glyph_instances`.
-    pub(super) ai_chat_input_batch: Option<TextScissorBatch>,
+    pub(super) markdown_preview_overlay_chrome_instances: Vec<RegionDrawInstance>,
+    /// Index into `markdown_preview_glyph_instances` where suggestion-popup glyphs begin.
+    pub(super) markdown_preview_overlay_glyph_start: Option<u32>,
+    pub(super) markdown_preview_scissor: Option<[u32; 4]>,
+    pub(super) markdown_preview_image_scissor: Option<[u32; 4]>,
+    pub(super) markdown_preview_input_scissor: Option<[u32; 4]>,
+    /// Instance range for input-box glyphs inside `markdown_preview_glyph_instances`.
+    pub(super) markdown_preview_input_batch: Option<TextScissorBatch>,
 
     // ── Tối ưu 2: Text Caching ────────────────────────────────────────────
     /// Revision của text content lần cuối được shaped bởi cosmic-text.

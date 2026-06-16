@@ -830,6 +830,8 @@ pub struct MarkdownPreviewState {
     pub visible: bool,
     pub scroll_y: f32,
     pub max_scroll: f32,
+    pub scroll_x: f32,
+    pub max_scroll_x: f32,
     pub source_path: Option<PathBuf>,
     pub source_text: String,
     pub rendered_lines: Vec<MarkdownPreviewLine>,
@@ -842,6 +844,19 @@ pub struct MarkdownPreviewLine {
     pub spans: Vec<StyledTextSpan>,
     pub block_type: MarkdownBlockType,
     pub code_language: Option<String>,
+    pub font_size: Option<f32>,
+}
+
+impl Default for MarkdownPreviewLine {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            spans: Vec::new(),
+            block_type: MarkdownBlockType::Paragraph,
+            code_language: None,
+            font_size: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -863,6 +878,8 @@ impl Default for MarkdownPreviewState {
             visible: false,
             scroll_y: 0.0,
             max_scroll: 0.0,
+            scroll_x: 0.0,
+            max_scroll_x: 0.0,
             source_path: None,
             source_text: String::new(),
             rendered_lines: Vec::new(),

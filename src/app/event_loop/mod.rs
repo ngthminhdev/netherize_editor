@@ -276,7 +276,6 @@ pub struct AppShell {
     last_scroll_animation_tick: Instant,
     last_git_branch_refresh_at: Instant,
     last_workspace_git_status_refresh_at: Instant,
-    last_thinking_animation_tick: Instant,
     last_lsp_loading_animation_tick: Instant,
     lsp_loading_frame: u8,
     caret_blink_visible: bool,
@@ -312,7 +311,6 @@ const LSP_DIAGNOSTIC_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(500);
 const FPS_METRICS_UPDATE_INTERVAL: Duration = Duration::from_millis(500);
 const GIT_BRANCH_REFRESH_INTERVAL: Duration = Duration::from_millis(750);
 const GIT_STATUS_REFRESH_INTERVAL: Duration = Duration::from_millis(750);
-const THINKING_ANIMATION_INTERVAL: Duration = Duration::from_millis(400);
 const LSP_LOADING_ANIMATION_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone)]
@@ -345,8 +343,6 @@ enum PendingConfirmationAction {
     ExternalOverwrite {
         path: PathBuf,
     },
-    /// User confirmed or cancelled the opencode auto-install prompt.
-    AiChatInstall,
 }
 
 #[derive(Debug, Clone)]

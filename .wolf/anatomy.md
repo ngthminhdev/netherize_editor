@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-15T16:42:00.361Z
-> Files: 410 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-16T06:38:31.184Z
+> Files: 411 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -357,14 +357,14 @@
 ## src/app/
 
 - `ai_agents.rs` — AI agent CLIs that can be launched inside the right-dock terminal. (~635 tok)
-- `async_bridge.rs` — BridgePumpStats: new, pump (~4298 tok)
+- `async_bridge.rs` — BridgePumpStats: new, pump (~3855 tok)
 - `clipboard.rs` — SystemClipboard: new (~524 tok)
 - `command_palette.rs` — File Picker (Space f f) — Box 800px, top-center, badges theo ext (~14954 tok)
 - `file_picker.rs` — FilePickerEntry: open, close, append_query, backspace_query + 6 more (~1644 tok)
 - `match_ranges.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~2135 tok)
 - `mod.rs` (~66 tok)
 - `persistence.rs` — True after the one-time first-run key-hint toast was shown. (~1823 tok)
-- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~16159 tok)
+- `resolved_keymap.rs` — Typed representation of a key specification parsed from a TOML string. (~16287 tok)
 
 ## src/app/app_state/
 
@@ -381,7 +381,7 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~30005 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~32755 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
@@ -391,10 +391,10 @@
 - `commands_prompts.rs` (~7222 tok)
 - `commands_settings_helpers.rs` — Which workbench dock a resize-mode key adjusts. (~9781 tok)
 - `commands_settings.rs` (~5614 tok)
-- `commands_terminal.rs` (~12688 tok)
+- `commands_terminal.rs` (~13344 tok)
 - `commands_tests.rs` — [derive(Default)] (~36163 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~10265 tok)
-- `helpers.rs` — Declares BRACKET_PAIRS (~18582 tok)
+- `helpers.rs` — Declares BRACKET_PAIRS (~18603 tok)
 - `mod.rs` — Struct: AppShell (~7021 tok)
 - `setup.rs` — new, new_for_tests (~22987 tok)
 - `welcome.rs` (~611 tok)
@@ -478,7 +478,7 @@
 
 ## src/core/
 
-- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~9501 tok)
+- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~10034 tok)
 - `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5882 tok)
 - `mod.rs` (~35 tok)
 - `mode.rs` — Các mode cốt lõi của editor. (~4298 tok)
@@ -569,13 +569,14 @@
 ## src/render/renderer/ui/
 
 - `ai_chat.rs` — Right-sidebar AI chat and markdown preview text rendering. (~19536 tok)
+- `markdown_preview.rs` — Right-sidebar markdown preview text rendering. (~6778 tok)
 - `popups.rs` — update_lsp_guide_popup, clear_lsp_guide_popup, update_system_dep_popup (~6724 tok)
 - `sidebar.rs` — update_sidebar_content, clear_sidebar (~3120 tok)
 - `statusbar.rs` — Render the three-zone status bar. (~5840 tok)
 - `terminal.rs` — update_terminal_content, update_right_terminal_content, clear_right_terminal, update_buffer_terminal (~7135 tok)
 - `test_runner.rs` — Test Runner panel (bottom dock): renders authored test cases with their (~10360 tok)
 - `topbar.rs` — update_topbar_content (~4633 tok)
-- `utils.rs` — Declares BORDER (~2418 tok)
+- `utils.rs` — Declares BORDER (~1962 tok)
 - `welcome.rs` — update_welcome_screen_content (~9261 tok)
 - `whichkey.rs` — Which-key overlay: while a chord is pending (e.g. Space …), show every (~1932 tok)
 

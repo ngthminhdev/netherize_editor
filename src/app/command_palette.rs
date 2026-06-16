@@ -45,8 +45,6 @@ pub enum CommandPaletteMode {
     LspRename,
     /// Local file history picker with live editor preview.
     FileHistory,
-    /// AI Chat install confirmation overlay — asks user whether to auto-install opencode.
-    AiChatInstallConfirm,
     /// LSP Code Action picker — danh sách các action user có thể chọn để apply.
     CodeAction,
     /// Python environment selector — opened from the command palette.
@@ -80,7 +78,6 @@ impl CommandPaletteMode {
             Self::LspReferences => "refs> ",
             Self::LspRename => "rename> ",
             Self::FileHistory => "history> ",
-            Self::AiChatInstallConfirm => "install> ",
             Self::CodeAction => "action> ",
             Self::PythonEnvSelector => "python> ",
             Self::DartEnvSelector => "dart> ",
@@ -108,7 +105,6 @@ impl CommandPaletteMode {
             Self::LspReferences => "no references found",
             Self::LspRename => "enter a new symbol name...",
             Self::FileHistory => "no local history entries",
-            Self::AiChatInstallConfirm => "Install opencode CLI? (y/n)",
             Self::CodeAction => "no code actions available",
             Self::PythonEnvSelector => "scanning Python environments...",
             Self::DartEnvSelector => "scanning Dart environments...",
@@ -136,7 +132,6 @@ impl CommandPaletteMode {
             Self::LspReferences => "REFS",
             Self::LspRename => "RENAME",
             Self::FileHistory => "HISTORY",
-            Self::AiChatInstallConfirm => "INSTALL",
             Self::CodeAction => "ACTIONS",
             Self::PythonEnvSelector => "PYTHON ENV",
             Self::DartEnvSelector => "DART ENV",
@@ -691,8 +686,7 @@ impl CommandPalette {
             | CommandPaletteMode::ExplorerRenameFull
             | CommandPaletteMode::ExplorerRenameBase
             | CommandPaletteMode::LspRename
-            | CommandPaletteMode::BufferCloseConfirm
-            | CommandPaletteMode::AiChatInstallConfirm => Vec::new(),
+            | CommandPaletteMode::BufferCloseConfirm => Vec::new(),
             CommandPaletteMode::LeetCodeProblemInput => Vec::new(),
             CommandPaletteMode::RecentProjects => unreachable!("handled above"),
             CommandPaletteMode::ThemeSelector => unreachable!("handled above"),
@@ -797,7 +791,6 @@ impl CommandPalette {
                 | CommandPaletteMode::ExplorerRenameBase
                 | CommandPaletteMode::LspRename
                 | CommandPaletteMode::BufferCloseConfirm
-                | CommandPaletteMode::AiChatInstallConfirm
         );
         let requested_visible_rows = if show_results {
             self.results.len().min(max_items)
@@ -878,9 +871,7 @@ impl CommandPalette {
                 // Command Palette — min 30% screen width, TRUE CENTER vũa dọc vũa ngang
                 let is_confirmation = matches!(
                     self.mode,
-                    CommandPaletteMode::ExplorerDeleteConfirm
-                        | CommandPaletteMode::BufferCloseConfirm
-                        | CommandPaletteMode::AiChatInstallConfirm
+                    CommandPaletteMode::ExplorerDeleteConfirm | CommandPaletteMode::BufferCloseConfirm
                 );
                 let min_w = if is_confirmation {
                     (width * 0.34).max(380.0)

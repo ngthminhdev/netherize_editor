@@ -116,90 +116,6 @@ impl PanelState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AiRole {
-    User,
-    Assistant,
-    System,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AiChatMessage {
-    pub role: AiRole,
-    pub text: String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AiChatCodeContext {
-    pub title: String,
-    pub language_id: Option<String>,
-    pub text: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AiAgentMode {
-    Build,
-    Plan,
-}
-
-impl AiAgentMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Build => "build",
-            Self::Plan => "plan",
-        }
-    }
-
-    pub fn opencode_agent(self) -> &'static str {
-        self.label()
-    }
-
-    pub fn from_input(input: &str) -> Option<Self> {
-        match input.trim().to_ascii_lowercase().as_str() {
-            "build" | "default" => Some(Self::Build),
-            "plan" => Some(Self::Plan),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AiChatState {
-    pub messages: Vec<AiChatMessage>,
-    pub input_buffer: String,
-    pub attached_code_contexts: Vec<AiChatCodeContext>,
-    pub is_generating: bool,
-    /// `true` when the `opencode` CLI binary was not found on PATH at toggle time.
-    pub is_opencode_missing: bool,
-    /// Active model override passed via `/model <name>`.
-    pub model: Option<String>,
-    /// Active opencode primary agent. `plan` is the restricted planning mode.
-    pub agent: AiAgentMode,
-    /// Index of the currently highlighted suggestion in the suggestion popup.
-    pub selected_suggestion_index: usize,
-    /// Pixel offset from the top of chat history. `f32::MAX` = follow latest (bottom).
-    pub scroll_y: f32,
-    /// Maximum valid scroll_y as computed by the renderer each frame.
-    pub max_scroll_y: f32,
-}
-
-impl Default for AiChatState {
-    fn default() -> Self {
-        Self {
-            messages: Vec::new(),
-            input_buffer: String::new(),
-            attached_code_contexts: Vec::new(),
-            is_generating: false,
-            is_opencode_missing: false,
-            model: None,
-            agent: AiAgentMode::Build,
-            selected_suggestion_index: 0,
-            scroll_y: f32::MAX,
-            max_scroll_y: 0.0,
-        }
-    }
-}
-
 use super::focus_manager::FocusTarget;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -208,7 +124,6 @@ pub struct WorkbenchPanelState {
     pub right: PanelState,
     pub bottom: PanelState,
     pub overlay_visible: bool,
-    pub ai_chat: AiChatState,
     /// When `Some`, the specified region/editor is maximized (Zen Mode).
     pub maximized_region: Option<FocusTarget>,
 }
@@ -236,7 +151,6 @@ impl Default for WorkbenchPanelState {
             // Problems have no content yet, so they're hidden to avoid dead tabs.
             bottom: PanelState::new(false, 420.0, vec![PanelTabId::Terminal]),
             overlay_visible: false,
-            ai_chat: AiChatState::default(),
             maximized_region: None,
         }
     }

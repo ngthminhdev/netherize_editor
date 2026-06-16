@@ -441,23 +441,9 @@ fn dispatch_command_with_clipboard_once(
         | Command::JumpBack
         | Command::JumpForward
         | Command::AiChatToggle
-        | Command::AiChatSend
-        | Command::AiChatStop
         | Command::AiChatClose
         | Command::AiChatUnfocus
         | Command::AiChatFocus
-        | Command::AiChatAddSelectionContext
-        | Command::AiChatInputChar(_)
-        | Command::AiChatBackspace
-        | Command::AiChatClearInput
-        | Command::AiChatAcceptSuggestion
-        | Command::AiChatSuggestionNext
-        | Command::AiChatSuggestionPrev
-        | Command::AiChatInputText(_)
-        | Command::AiChatPasteClipboard
-        | Command::AiChatPromptInstall
-        | Command::AiChatScrollHalfPageUp
-        | Command::AiChatScrollHalfPageDown
         | Command::ToggleMarkdownPreview
         | Command::FocusMarkdownPreview
         | Command::MarkdownPreviewScrollUp
@@ -465,7 +451,9 @@ fn dispatch_command_with_clipboard_once(
         | Command::MarkdownPreviewScrollHalfPageUp
         | Command::MarkdownPreviewScrollHalfPageDown
         | Command::MarkdownPreviewScrollTop
-        | Command::MarkdownPreviewScrollBottom => session::dispatch(&mut ctx, command),
+        | Command::MarkdownPreviewScrollBottom
+        | Command::MarkdownPreviewScrollLeft
+        | Command::MarkdownPreviewScrollRight => session::dispatch(&mut ctx, command),
         Command::HelpScrollDown
         | Command::HelpScrollUp
         | Command::HelpScrollHalfPageDown

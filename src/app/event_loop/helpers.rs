@@ -411,7 +411,7 @@ fn preserve_markdown_blank_lines(source: &str, lines: &mut Vec<MarkdownPreviewLi
                     text: String::new(),
                     spans: Vec::new(),
                     block_type: MarkdownBlockType::Empty,
-                    code_language: None,
+                    ..Default::default()
                 });
             }
         } else if let Some(line) = rendered_iter.next() {
@@ -452,7 +452,7 @@ fn fallback_markdown_preview(source: &str, _theme: &ThemeConfig) -> Vec<Markdown
             text: line.to_string(),
             spans: Vec::new(),
             block_type: MarkdownBlockType::Paragraph,
-            code_language: None,
+            ..Default::default()
         })
         .collect()
 }
@@ -502,7 +502,8 @@ fn render_markdown_node(
                 text: content_text,
                 spans,
                 block_type: MarkdownBlockType::Heading(level),
-                code_language: None,
+                font_size: Some(heading_font_size(level)),
+                ..Default::default()
             });
         }
         "setext_heading" => {
@@ -515,7 +516,8 @@ fn render_markdown_node(
                 text: content_text,
                 spans,
                 block_type: MarkdownBlockType::Heading(level),
-                code_language: None,
+                font_size: Some(heading_font_size(level)),
+                ..Default::default()
             });
         }
         "paragraph" => {
@@ -525,7 +527,7 @@ fn render_markdown_node(
                 text,
                 spans,
                 block_type: MarkdownBlockType::Paragraph,
-                code_language: None,
+                ..Default::default()
             });
         }
         "link_reference_definition" | "link_reference_definition_block" => {
@@ -553,7 +555,7 @@ fn render_markdown_node(
                     ],
                     text,
                     block_type: MarkdownBlockType::Paragraph,
-                    code_language: None,
+                    ..Default::default()
                 });
             } else if !raw_text.is_empty() {
                 out.push(MarkdownPreviewLine {
@@ -564,7 +566,7 @@ fn render_markdown_node(
                         theme.syntax.identifier.as_u8(),
                     )],
                     block_type: MarkdownBlockType::Paragraph,
-                    code_language: None,
+                    ..Default::default()
                 });
             }
         }
@@ -590,6 +592,7 @@ fn render_markdown_node(
                     spans,
                     block_type: MarkdownBlockType::CodeBlock,
                     code_language: Some(preview_lang.clone()),
+                    ..Default::default()
                 });
                 line_start = line_end.saturating_add(1);
             }
@@ -599,6 +602,7 @@ fn render_markdown_node(
                     spans: Vec::new(),
                     block_type: MarkdownBlockType::CodeBlock,
                     code_language: Some(preview_lang.clone()),
+                    ..Default::default()
                 });
             }
         }
@@ -606,15 +610,10 @@ fn render_markdown_node(
             let text = node_text(node, source);
             for line_str in text.lines() {
                 let content = line_str.trim_start_matches('>').trim_start();
-                let prefixed = format!("  │ {}", content);
-                let prefix_len = prefixed.len().saturating_sub(content.len());
-                let mut spans = vec![StyledTextSpan::new(
-                    0,
-                    prefix_len,
-                    theme.syntax.constant.as_u8(),
-                )];
+                let prefix_len = 3;
                 let (rendered_content, inline_spans) = render_markdown_inline_text(content, theme);
-                let prefixed = format!("  │ {}", rendered_content);
+                let prefixed = format!("   {}", rendered_content);
+                let mut spans = Vec::new();
                 spans.extend(
                     inline_spans
                         .into_iter()
@@ -624,7 +623,7 @@ fn render_markdown_node(
                     text: prefixed,
                     spans,
                     block_type: MarkdownBlockType::BlockQuote,
-                    code_language: None,
+                    ..Default::default()
                 });
             }
         }
@@ -690,7 +689,7 @@ fn render_markdown_node(
                 text: full_text,
                 spans,
                 block_type: MarkdownBlockType::ListItem,
-                code_language: None,
+                ..Default::default()
             });
 
             let mut cursor = node.walk();
@@ -701,18 +700,11 @@ fn render_markdown_node(
             }
         }
         "thematic_break" => {
-            // Use 80 chars for horizontal rule (will be wrapped by renderer if needed)
-            let rule_width = 80;
-            let rule_text = "─".repeat(rule_width);
             out.push(MarkdownPreviewLine {
-                text: rule_text.clone(),
-                spans: vec![StyledTextSpan::new(
-                    0,
-                    rule_text.len(),
-                    theme.syntax.punctuation.as_u8(),
-                )],
+                text: String::new(),
+                spans: Vec::new(),
                 block_type: MarkdownBlockType::HorizontalRule,
-                code_language: None,
+                ..Default::default()
             });
         }
         "table" | "pipe_table" => {
@@ -729,7 +721,7 @@ fn render_markdown_node(
                         theme.syntax.tag.as_u8(),
                     )],
                     block_type: MarkdownBlockType::Paragraph,
-                    code_language: None,
+                    ..Default::default()
                 });
             }
         }
@@ -761,34 +753,76 @@ fn clip_styled_span_to_line(
     if start >= end {
         return None;
     }
-    Some(StyledTextSpan::with_style(
+    Some(StyledTextSpan::with_decoration(
         start.saturating_sub(line_start),
         end.saturating_sub(line_start),
         span.color_rgba,
         span.bold,
         span.italic,
+        span.underline,
+        span.strikethrough,
     ))
 }
 
 fn offset_styled_span(span: StyledTextSpan, offset: usize) -> StyledTextSpan {
-    StyledTextSpan::with_style(
+    StyledTextSpan::with_decoration(
         span.start.saturating_add(offset),
         span.end.saturating_add(offset),
         span.color_rgba,
         span.bold,
         span.italic,
+        span.underline,
+        span.strikethrough,
     )
 }
 
 fn render_markdown_inline_text(text: &str, theme: &ThemeConfig) -> (String, Vec<StyledTextSpan>) {
     let mut rendered = String::new();
     let mut spans = Vec::new();
-    let mut i = 0usize;
+    parse_inline_to(text, theme, &mut rendered, &mut spans);
+    (rendered, spans)
+}
 
+fn parse_inline_to(
+    text: &str,
+    theme: &ThemeConfig,
+    out: &mut String,
+    spans: &mut Vec<StyledTextSpan>,
+) {
+    let mut i = 0usize;
     while i < text.len() {
         let rest = &text[i..];
+
+        // Image: ![alt](url)
+        if let Some(after_bang) = rest.strip_prefix("![")
+            && let Some(label_close_rel) = find_balanced_close(after_bang, '[', ']')
+        {
+            let after_label = &after_bang[label_close_rel + 1..];
+            if let Some(after_url_open) = after_label.strip_prefix('(')
+                && let Some(url_close_rel) = after_url_open.find(')')
+            {
+                let alt = &after_bang[..label_close_rel];
+                let placeholder = if alt.trim().is_empty() {
+                    "\u{1F5BC} image".to_string()
+                } else {
+                    format!("\u{1F5BC} {alt}")
+                };
+                let start = out.len();
+                out.push_str(&placeholder);
+                let end = out.len();
+                spans.push(StyledTextSpan::new(
+                    start,
+                    end,
+                    theme.syntax.comment.as_u8(),
+                ));
+                i += 2 + label_close_rel + 1 + 1 + url_close_rel + 1;
+                continue;
+            }
+        }
+
+        // Link: [text](url)
         if let Some(after_label_open) = rest.strip_prefix('[')
-            && let Some(label_close_rel) = after_label_open.find(']')
+            && let Some(label_close_rel) = find_balanced_close(after_label_open, '[', ']')
         {
             let after_label = &after_label_open[label_close_rel + 1..];
             if let Some(after_url_open) = after_label.strip_prefix('(')
@@ -796,19 +830,21 @@ fn render_markdown_inline_text(text: &str, theme: &ThemeConfig) -> (String, Vec<
             {
                 let label = &after_label_open[..label_close_rel];
                 let url = &after_url_open[..url_close_rel];
-                let start = rendered.len();
-                rendered.push_str(label);
-                let label_end = rendered.len();
+                let start = out.len();
+                parse_inline_to(label, theme, out, spans);
+                let label_end = out.len();
                 if !url.trim().is_empty() {
-                    rendered.push_str(" ↗");
+                    out.push_str(" \u{2197}");
                 }
-                let end = rendered.len();
+                let end = out.len();
                 if label_end > start {
-                    spans.push(StyledTextSpan::with_style(
+                    spans.push(StyledTextSpan::with_decoration(
                         start,
                         label_end,
                         theme.syntax.function.as_u8(),
                         false,
+                        false,
+                        true,
                         false,
                     ));
                 }
@@ -823,13 +859,64 @@ fn render_markdown_inline_text(text: &str, theme: &ThemeConfig) -> (String, Vec<
                 continue;
             }
         }
-        if let Some(after_open) = rest.strip_prefix("**")
-            && let Some(close_rel) = after_open.find("**")
+
+        // Autolink: <https://...>
+        if let Some(after_open) = rest.strip_prefix('<')
+            && let Some(close_rel) = after_open.find('>')
         {
             let content = &after_open[..close_rel];
-            let start = rendered.len();
-            rendered.push_str(content);
-            let end = rendered.len();
+            if content.starts_with("http://")
+                || content.starts_with("https://")
+                || content.starts_with("mailto:")
+            {
+                let start = out.len();
+                out.push_str(content);
+                let end = out.len();
+                spans.push(StyledTextSpan::with_decoration(
+                    start,
+                    end,
+                    theme.syntax.function.as_u8(),
+                    false,
+                    false,
+                    true,
+                    false,
+                ));
+                i += 1 + close_rel + 1;
+                continue;
+            }
+        }
+
+        // Strikethrough: ~~text~~
+        if let Some(after_open) = rest.strip_prefix("~~")
+            && let Some(close_rel) = find_balanced_pair(after_open, "~~")
+        {
+            let content = &after_open[..close_rel];
+            let start = out.len();
+            parse_inline_to(content, theme, out, spans);
+            let end = out.len();
+            if end > start {
+                spans.push(StyledTextSpan::with_decoration(
+                    start,
+                    end,
+                    theme.syntax.comment.as_u8(),
+                    false,
+                    false,
+                    false,
+                    true,
+                ));
+            }
+            i += 2 + close_rel + 2;
+            continue;
+        }
+
+        // Bold: **text**
+        if let Some(after_open) = rest.strip_prefix("**")
+            && let Some(close_rel) = find_balanced_pair(after_open, "**")
+        {
+            let content = &after_open[..close_rel];
+            let start = out.len();
+            parse_inline_to(content, theme, out, spans);
+            let end = out.len();
             if end > start {
                 spans.push(StyledTextSpan::with_style(
                     start,
@@ -842,27 +929,31 @@ fn render_markdown_inline_text(text: &str, theme: &ThemeConfig) -> (String, Vec<
             i += 2 + close_rel + 2;
             continue;
         }
+
+        // Inline code: `text`
         if let Some(after_open) = rest.strip_prefix('`')
             && let Some(close_rel) = after_open.find('`')
         {
             let content = &after_open[..close_rel];
-            let start = rendered.len();
-            rendered.push_str(content);
-            let end = rendered.len();
+            let start = out.len();
+            out.push_str(content);
+            let end = out.len();
             if end > start {
                 spans.push(StyledTextSpan::new(start, end, theme.syntax.string.as_u8()));
             }
             i += 1 + close_rel + 1;
             continue;
         }
+
+        // Italic: *text*
         if let Some(after_open) = rest.strip_prefix('*')
             && let Some(close_rel) = after_open.find('*')
         {
             let content = &after_open[..close_rel];
-            let start = rendered.len();
-            rendered.push_str(content);
-            let end = rendered.len();
-            if end > start {
+            if !content.is_empty() {
+                let start = out.len();
+                parse_inline_to(content, theme, out, spans);
+                let end = out.len();
                 spans.push(StyledTextSpan::with_style(
                     start,
                     end,
@@ -875,15 +966,49 @@ fn render_markdown_inline_text(text: &str, theme: &ThemeConfig) -> (String, Vec<
             continue;
         }
 
+        // Plain character
         if let Some(ch) = rest.chars().next() {
-            rendered.push(ch);
+            out.push(ch);
             i += ch.len_utf8();
         } else {
             break;
         }
     }
+}
 
-    (rendered, spans)
+fn find_balanced_close(text: &str, open: char, close: char) -> Option<usize> {
+    let mut depth = 0usize;
+    for (i, ch) in text.char_indices() {
+        if ch == open {
+            depth += 1;
+        } else if ch == close {
+            if depth == 0 {
+                return Some(i);
+            }
+            depth -= 1;
+        }
+    }
+    None
+}
+
+fn find_balanced_pair(text: &str, delimiter: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    let delim_len = delimiter.len();
+    let bytes = text.as_bytes();
+    let delim_bytes = delimiter.as_bytes();
+    let mut i = 0usize;
+    while i + delim_len <= bytes.len() {
+        if &bytes[i..i + delim_len] == delim_bytes {
+            if depth == 0 {
+                return Some(i);
+            }
+            depth -= 1;
+            i += delim_len;
+        } else {
+            i += 1;
+        }
+    }
+    None
 }
 
 fn parse_link_reference_definition(text: &str) -> Option<(String, String)> {
@@ -992,6 +1117,15 @@ fn heading_color(level: u8, theme: &ThemeConfig) -> [u8; 4] {
         2 => theme.syntax.function.as_u8(),
         3 => theme.syntax.r#type.as_u8(),
         _ => theme.syntax.constant.as_u8(),
+    }
+}
+
+fn heading_font_size(level: u8) -> f32 {
+    match level {
+        1 => 1.50,
+        2 => 1.30,
+        3 => 1.15,
+        _ => 1.05,
     }
 }
 
@@ -1235,7 +1369,7 @@ fn render_table(
             } else {
                 MarkdownBlockType::TableRow
             },
-            code_language: None,
+            ..Default::default()
         });
 
         if is_header {
@@ -1272,7 +1406,7 @@ fn push_table_rule(
         )],
         text,
         block_type: MarkdownBlockType::TableRow,
-        code_language: None,
+        ..Default::default()
     });
 }
 

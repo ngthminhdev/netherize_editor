@@ -10,8 +10,7 @@ use crate::{
 };
 
 /// Height (logical px) of the clickable tab strip reserved at the top of the
-/// right dock. Shared by the layout engine (to inset the AI Chat sub-regions)
-/// and the renderer (to draw the strip + place content below it).
+/// right dock. Shared by the layout engine and renderer.
 pub const RIGHT_TAB_STRIP_HEIGHT: f32 = 50.0;
 pub const LEFT_TAB_STRIP_HEIGHT: f32 = 50.0;
 
@@ -73,7 +72,6 @@ pub struct WorkbenchLayoutConfig {
     pub sidebar_min_width: f32,
     pub bottom_min_height: f32,
     pub panel_border_width: f32,
-    pub chat_input_height: f32,
 }
 
 impl Default for WorkbenchLayoutConfig {
@@ -90,7 +88,6 @@ impl Default for WorkbenchLayoutConfig {
             sidebar_min_width: 140.0,
             bottom_min_height: 100.0,
             panel_border_width: 1.0,
-            chat_input_height: 150.0,
         }
     }
 }
@@ -114,7 +111,6 @@ impl WorkbenchLayoutConfig {
             sidebar_min_width: defaults.sidebar_min_width,
             bottom_min_height: defaults.bottom_min_height,
             panel_border_width: defaults.panel_border_width,
-            chat_input_height: defaults.chat_input_height,
         }
     }
 }
@@ -210,34 +206,8 @@ impl WorkbenchLayoutEngine {
 
             // Reserve a tab strip band at the very top; all tab content (AI Chat,
             // Test Runner, …) lives below it.
-            let strip_h = RIGHT_TAB_STRIP_HEIGHT.min(rs_rect.height);
-            let content_y = rs_rect.y + strip_h;
-            let content_h = (rs_rect.height - strip_h).max(0.0);
-
-            // Split the content area into AI Chat sub-regions using inner_padding.
-            let pad = self.config.inner_padding;
-            let available = (content_h - pad * 2.0).max(0.0);
-            let chat_input_h = self.config.chat_input_height.min(available * 0.5);
-            let history_h = (available - chat_input_h - pad).max(0.0);
-
-            let history_rect = RegionBounds::new(
-                rs_rect.x + pad,
-                content_y + pad,
-                (rs_rect.width - pad * 2.0).max(0.0),
-                history_h,
-            );
-            let input_rect = RegionBounds::new(
-                rs_rect.x + pad,
-                content_y + pad + history_h + pad,
-                (rs_rect.width - pad * 2.0).max(0.0),
-                chat_input_h,
-            );
-
-            let history_node = RegionNode::new(RegionId::AiChatHistory, history_rect, true);
-            let input_node = RegionNode::new(RegionId::AiChatInput, input_rect, true);
-
+            let _strip_h = RIGHT_TAB_STRIP_HEIGHT.min(rs_rect.height);
             RegionNode::new(RegionId::RightSidebar, rs_rect, true)
-                .with_children(vec![history_node, input_node])
         } else {
             RegionNode::new(
                 RegionId::RightSidebar,
@@ -919,20 +889,14 @@ mod tests {
     }
 
     #[test]
-    fn right_sidebar_contains_chat_sub_regions() {
+    fn right_sidebar_does_not_create_dead_chat_sub_regions() {
         let engine = WorkbenchLayoutEngine::new(WorkbenchLayoutConfig::default());
         let mut state = WorkbenchPanelState::default();
         state.right.visible = true;
         state.right.size_px = 320.0;
 
         let layout = engine.compute(PhysicalSize::new(1280, 800), &state);
-        assert!(layout.model.find(RegionId::AiChatHistory).is_some());
-        assert!(layout.model.find(RegionId::AiChatInput).is_some());
-
-        let history = layout.model.find(RegionId::AiChatHistory).unwrap();
-        let input = layout.model.find(RegionId::AiChatInput).unwrap();
-        // Input should be below history
-        assert!(input.y >= history.y + history.height - 0.001);
+        assert!(layout.model.find(RegionId::RightSidebar).is_some());
     }
 
     #[test]

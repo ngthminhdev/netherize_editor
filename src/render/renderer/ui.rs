@@ -1,6 +1,6 @@
 //! Panel UI rendering modules.
 
-mod ai_chat;
+mod markdown_preview;
 mod popups;
 mod sidebar;
 mod statusbar;

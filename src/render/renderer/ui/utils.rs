@@ -2,11 +2,6 @@ use crate::render::region_pipeline::RegionDrawInstance;
 use crate::text::text_system::StyledTextSpan;
 use std::ops::Range;
 
-pub(crate) fn with_alpha(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
-    color[3] = alpha.clamp(0.0, 1.0);
-    color
-}
-
 pub(crate) fn blend_rgb(base: [f32; 4], tint: [f32; 4], amount: f32, alpha: f32) -> [f32; 4] {
     let t = amount.clamp(0.0, 1.0);
     [
@@ -15,34 +10,6 @@ pub(crate) fn blend_rgb(base: [f32; 4], tint: [f32; 4], amount: f32, alpha: f32)
         base[2] * (1.0 - t) + tint[2] * t,
         alpha.clamp(0.0, 1.0),
     ]
-}
-
-pub(crate) fn slash_suggestion_rect(
-    input_bounds: [f32; 4],
-    history_clip: [f32; 4],
-    line_h: f32,
-    suggestion_count: usize,
-) -> [f32; 4] {
-    let desired_h = suggestion_count as f32 * line_h + 12.0;
-    let scissor_bottom = history_clip[1] + history_clip[3];
-    let bottom_gap = (input_bounds[1] - scissor_bottom).max(8.0);
-    let available_above_input = (scissor_bottom - history_clip[1] - 8.0).max(line_h);
-    let h = desired_h.min(available_above_input);
-    [
-        input_bounds[0] + 2.0,
-        (input_bounds[1] - h - bottom_gap).max(history_clip[1]),
-        (input_bounds[2] - 4.0).max(1.0),
-        h,
-    ]
-}
-
-/// Word-wrap a string into lines of at most `max_chars` characters,
-/// breaking at whitespace where possible and at glyph boundaries for long tokens.
-pub(crate) fn word_wrap(text: &str, max_chars: usize) -> Vec<String> {
-    word_wrap_with_ranges(text, max_chars)
-        .into_iter()
-        .map(|(line, _)| line)
-        .collect()
 }
 
 pub(crate) fn word_wrap_with_ranges(text: &str, max_chars: usize) -> Vec<(String, Range<usize>)> {

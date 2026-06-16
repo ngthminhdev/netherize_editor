@@ -486,7 +486,6 @@ fn settings_activate_begins_text_edit_for_leetcode_ai_model() {
     assert_eq!(editing.draft, model_value);
 }
 
-
 #[test]
 fn settings_text_edit_works_after_opening_from_right_terminal_focus() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
@@ -1112,66 +1111,6 @@ fn first_real_keypress_after_palette_open_clears_ime_suppression() {
 }
 
 #[test]
-fn visual_selection_adds_code_context_to_ai_chat() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    shell.app_state = AppState::from_text(
-        PathBuf::from("src/main.rs"),
-        "let secret = 1;\nlet visible = true;\n",
-    );
-    let _ = dispatch_command(
-        &mut shell.app_state,
-        Command::SwitchMode(ModeEvent::EnterVisual),
-    );
-    shell.app_state.move_to_line_end();
-
-    let changed = shell.handle_command(Command::AiChatAddSelectionContext);
-
-    assert!(changed);
-    assert!(shell.panel_state.right.visible);
-    assert_eq!(
-        shell.panel_state.right.active_tab_id(),
-        Some(PanelTabId::AiChat)
-    );
-    assert_eq!(shell.focus_manager.current(), FocusTarget::RightSidebar);
-    assert_eq!(shell.app_state.current_mode(), EditorMode::Normal);
-    assert_eq!(shell.panel_state.ai_chat.attached_code_contexts.len(), 1);
-    assert!(
-        shell.panel_state.ai_chat.attached_code_contexts[0]
-            .text
-            .contains("let secret = 1")
-    );
-    assert!(
-        shell
-            .panel_state
-            .ai_chat
-            .input_buffer
-            .starts_with("Hỏi về đoạn code đã chọn")
-    );
-}
-
-#[test]
-fn ai_chat_at_file_suggestions_use_workspace_files() {
-    let mut shell = AppShell::new_for_tests().expect("create app shell");
-    let root = std::env::temp_dir().join(format!(
-        "netherize_ai_chat_at_suggestions_{}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(root.join("src")).expect("create dirs");
-    std::fs::write(root.join("src/main.rs"), "fn main() {}\n").expect("write file");
-
-    shell
-        .app_state
-        .attach_workspace(root.clone())
-        .expect("attach workspace");
-
-    let suggestions = shell.ai_chat_file_reference_suggestions("read @mai");
-
-    assert!(suggestions.iter().any(|(path, _)| path == "src/main.rs"));
-
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
 fn open_file_finder_keeps_center_focus_for_fuzzy_buffer() {
     let mut shell = AppShell::new_for_tests().expect("create app shell");
 
@@ -1455,7 +1394,7 @@ fn move_to_last_line_scrolls_active_markdown_preview_buffer_to_bottom() {
             text: format!("line {idx}"),
             spans: Vec::new(),
             block_type: crate::app::app_state::MarkdownBlockType::Paragraph,
-            code_language: None,
+            ..Default::default()
         })
         .collect();
     let _ = shell
@@ -3704,6 +3643,41 @@ fn test_outline_navigation_commands() {
     assert_eq!(shell.app_state.cursor_line_col(), (0, 3));
 
     let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn outline_navigation_preserves_selection_in_right_dock() {
+    use crate::async_runtime::message::{LspDocumentSymbol, LspPosition, LspRange};
+
+    let mut shell = AppShell::new_for_tests().expect("create app shell");
+    shell.cached_document_symbols = vec![LspDocumentSymbol {
+        name: "foo".to_string(),
+        kind: "Function".to_string(),
+        range: LspRange {
+            start: LspPosition {
+                line: 0,
+                character: 0,
+            },
+            end: LspPosition {
+                line: 0,
+                character: 3,
+            },
+        },
+        ancestors: vec![],
+    }];
+    shell.panel_state.right.tabs = vec![
+        crate::workbench::panel_state::PanelTabId::AiChat,
+        crate::workbench::panel_state::PanelTabId::TestRunner,
+        crate::workbench::panel_state::PanelTabId::Outline,
+    ];
+    shell.focus_manager.set(FocusTarget::RightSidebar);
+    shell
+        .panel_state
+        .right
+        .switch_to_tab(crate::workbench::panel_state::PanelTabId::Outline);
+
+    assert!(shell.handle_command(Command::OutlineNext));
+    assert_eq!(shell.outline_selected, Some(0));
 }
 
 #[test]

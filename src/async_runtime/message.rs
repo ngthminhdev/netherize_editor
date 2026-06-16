@@ -47,8 +47,6 @@ pub enum RequestTopic {
     FzfSearch,
     FilePreview,
     AiInlineCompletion,
-    AiChat,
-    AiInstall,
     SystemDepCheck,
     /// Per-tool streaming installation.
     SystemDepInstall,
@@ -364,24 +362,6 @@ pub enum WorkerRequestPayload {
         max_tokens: u32,
         cancel_token: CancellationToken,
     },
-    AiChatRequest {
-        prompt: String,
-        buffer_context: String,
-        cursor_position: (usize, usize),
-        history: Vec<(String, String)>,
-        active_buffer_path: Option<PathBuf>,
-        workspace_root: Option<PathBuf>,
-        /// User-attached files to include in the AI prompt context.
-        file_refs: Vec<PathBuf>,
-        /// Optional model override (e.g. "anthropic/claude-opus-4-5").
-        model: Option<String>,
-        /// Optional primary agent override (e.g. "build" or "plan").
-        agent: Option<String>,
-    },
-    /// Cancel the currently running AI chat generation, if any.
-    AiChatCancel,
-    /// Install the opencode CLI on the host machine.
-    AiInstallRequest,
     /// Check for missing system CLI tools (fzf, lazygit, lazydocker, rg, etc.).
     CheckSystemDeps,
     /// Install system CLI tools one-by-one, streaming per-tool progress messages.
@@ -912,16 +892,6 @@ pub enum WorkerEventKind {
 pub enum WorkerMessage {
     Event(WorkerEvent),
     Result(WorkerResult),
-    AiMessageChunk {
-        text: String,
-    },
-    AiStreamComplete,
-    AiStreamCancelled,
-    AiStreamError {
-        error: String,
-    },
-    /// The opencode CLI was installed successfully; the editor should restart.
-    AiInstallSuccess,
     /// Per-tool progress update during system dependency installation.
     SystemDepToolProgress {
         tool: String,

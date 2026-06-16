@@ -393,43 +393,15 @@ pub enum Command {
     /// Accept the next word/token from the AI inline ghost-text suggestion.
     AiAcceptInlineWord,
 
-    // ── AI Chat ───────────────────────────────────────────────────────────────
-    /// Toggle the AI chat panel open/closed.
+    // ── AI Agent Terminal ────────────────────────────────────────────────────
+    /// Toggle the AI agent terminal tab open/closed.
     AiChatToggle,
-    /// Send the current input text to the AI chat agent.
-    AiChatSend,
-    /// Stop the currently running AI chat generation.
-    AiChatStop,
-    /// Close the AI chat panel.
+    /// Close the AI agent terminal tab.
     AiChatClose,
-    /// Unfocus AI chat input — return focus to editor without closing the dock.
+    /// Unfocus AI agent terminal — return focus to editor without closing the dock.
     AiChatUnfocus,
-    /// Focus into the AI chat panel — open dock if closed, switch to AI Chat tab, focus input.
+    /// Focus the AI agent terminal tab — open dock if closed and show picker if needed.
     AiChatFocus,
-    /// Add the current Visual selection as context for the next AI chat prompt.
-    AiChatAddSelectionContext,
-    /// Append a character to the AI chat input buffer.
-    AiChatInputChar(char),
-    /// Delete the last character from the AI chat input buffer.
-    AiChatBackspace,
-    /// Clear all text currently typed in the AI chat input buffer.
-    AiChatClearInput,
-    /// Complete the current slash command from the AI chat suggestion list.
-    AiChatAcceptSuggestion,
-    /// Cycle to the next suggestion in the AI chat suggestion popup.
-    AiChatSuggestionNext,
-    /// Cycle to the previous suggestion in the AI chat suggestion popup.
-    AiChatSuggestionPrev,
-    /// Append a text string to the AI chat input buffer (IME commit).
-    AiChatInputText(String),
-    /// Paste system clipboard text into the AI chat input buffer.
-    AiChatPasteClipboard,
-    /// Show the "opencode not found — install?" confirmation overlay.
-    AiChatPromptInstall,
-    /// Scroll AI chat message history up by half a page (see older messages).
-    AiChatScrollHalfPageUp,
-    /// Scroll AI chat message history down by half a page (see newer messages).
-    AiChatScrollHalfPageDown,
     /// References view: chọn item kế tiếp.
     ReferencesSelectNext,
     /// References view: chọn item trước đó.
@@ -470,6 +442,10 @@ pub enum Command {
     MarkdownPreviewScrollTop,
     /// Scroll markdown preview to bottom (G).
     MarkdownPreviewScrollBottom,
+    /// Scroll markdown preview left (h).
+    MarkdownPreviewScrollLeft,
+    /// Scroll markdown preview right (l).
+    MarkdownPreviewScrollRight,
 
     // ── Help / Cheat Sheet ────────────────────────────────────────────────────
     /// Scroll help / cheat sheet down.
@@ -619,6 +595,8 @@ impl Command {
                 | Self::MarkdownPreviewScrollHalfPageDown
                 | Self::MarkdownPreviewScrollTop
                 | Self::MarkdownPreviewScrollBottom
+                | Self::MarkdownPreviewScrollLeft
+                | Self::MarkdownPreviewScrollRight
                 | Self::HelpScrollDown
                 | Self::HelpScrollUp
                 | Self::HelpScrollHalfPageDown

@@ -1578,20 +1578,6 @@ impl InputHandler {
             });
         }
 
-        // AI Chat: route IME commit to chat input buffer.
-        if context.focus == InputFocusContext::AiChat {
-            return Some(TranslatedInput {
-                input_debug: format!("IME Commit({text:?})"),
-                route_debug: format!(
-                    "mode={} focus={} -> IME commit -> AiChatInputText",
-                    context.mode.as_str(),
-                    context.focus.as_str()
-                ),
-                command: Command::AiChatInputText(text.to_string()),
-                repeat_count: 1,
-            });
-        }
-
         if context.focus != InputFocusContext::Editor {
             return None;
         }

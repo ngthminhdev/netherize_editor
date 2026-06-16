@@ -214,23 +214,9 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::JumpBack
         | Command::JumpForward
         | Command::AiChatToggle
-        | Command::AiChatSend
-        | Command::AiChatStop
         | Command::AiChatClose
         | Command::AiChatUnfocus
         | Command::AiChatFocus
-        | Command::AiChatAddSelectionContext
-        | Command::AiChatInputChar(_)
-        | Command::AiChatBackspace
-        | Command::AiChatClearInput
-        | Command::AiChatAcceptSuggestion
-        | Command::AiChatSuggestionNext
-        | Command::AiChatSuggestionPrev
-        | Command::AiChatInputText(_)
-        | Command::AiChatPasteClipboard
-        | Command::AiChatPromptInstall
-        | Command::AiChatScrollHalfPageUp
-        | Command::AiChatScrollHalfPageDown
         | Command::ToggleMarkdownPreview
         | Command::CloseSidebars
         | Command::FocusMarkdownPreview
@@ -240,6 +226,8 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::MarkdownPreviewScrollBottom
         | Command::MarkdownPreviewScrollHalfPageUp
         | Command::MarkdownPreviewScrollHalfPageDown
+        | Command::MarkdownPreviewScrollLeft
+        | Command::MarkdownPreviewScrollRight
         | Command::SwitchBottomTab(_)
         | Command::SwitchRightTab(_)
         | Command::SwitchLeftTab(_) => DispatchReport::success_with_flags(

@@ -55,16 +55,16 @@ impl Renderer {
         let right_term_cursor_start = right_term_cell_bg_start + right_term_cell_bg_count;
         let right_term_cursor_count = self.right_terminal_cursor_instances.len() as u32;
 
-        let ai_chat_history_chrome_start = right_term_cursor_start + right_term_cursor_count;
-        let ai_chat_history_chrome_count = self.ai_chat_history_chrome_instances.len() as u32;
+        let markdown_preview_chrome_start = right_term_cursor_start + right_term_cursor_count;
+        let markdown_preview_chrome_count = self.markdown_preview_chrome_instances.len() as u32;
 
         // Suggestion popup chrome is a separate range drawn *after* bubble text.
-        let ai_chat_suggestion_chrome_start =
-            ai_chat_history_chrome_start + ai_chat_history_chrome_count;
-        let ai_chat_suggestion_chrome_count = self.ai_chat_suggestion_chrome_instances.len() as u32;
+        let markdown_preview_overlay_chrome_start =
+            markdown_preview_chrome_start + markdown_preview_chrome_count;
+        let markdown_preview_overlay_chrome_count = self.markdown_preview_overlay_chrome_instances.len() as u32;
 
         let test_runner_chrome_start =
-            ai_chat_suggestion_chrome_start + ai_chat_suggestion_chrome_count;
+            markdown_preview_overlay_chrome_start + markdown_preview_overlay_chrome_count;
         let test_runner_chrome_count = self.test_runner_chrome_instances.len() as u32;
 
         let palette_start = test_runner_chrome_start + test_runner_chrome_count;
@@ -98,8 +98,8 @@ impl Renderer {
         all_instances.extend_from_slice(&self.buffer_terminal_cursor_instances);
         all_instances.extend_from_slice(&self.right_terminal_cell_background_instances);
         all_instances.extend_from_slice(&self.right_terminal_cursor_instances);
-        all_instances.extend_from_slice(&self.ai_chat_history_chrome_instances);
-        all_instances.extend_from_slice(&self.ai_chat_suggestion_chrome_instances);
+        all_instances.extend_from_slice(&self.markdown_preview_chrome_instances);
+        all_instances.extend_from_slice(&self.markdown_preview_overlay_chrome_instances);
         all_instances.extend_from_slice(&self.test_runner_chrome_instances);
         all_instances.extend_from_slice(&self.palette_chrome_instances);
         all_instances.extend_from_slice(&self.lsp_guide_chrome_instances);
@@ -267,28 +267,28 @@ impl Renderer {
                 },
             );
 
-            // 4b. AI Chat text — history (scissor clipped to history bounds).
+            // 4b. Markdown Preview text — history (scissor clipped to history bounds).
             draw_text_region(
                 &mut pass,
-                self.ai_chat_image_scissor,
+                self.markdown_preview_image_scissor,
                 viewport_width,
                 viewport_height,
                 |render_pass| {
-                    self.ai_chat_header_image_pipeline.draw(render_pass);
-                    self.ai_chat_hero_image_pipeline.draw(render_pass);
+                    self.markdown_preview_header_image_pipeline.draw(render_pass);
+                    self.markdown_preview_hero_image_pipeline.draw(render_pass);
                 },
             );
-            if ai_chat_history_chrome_count > 0 {
+            if markdown_preview_chrome_count > 0 {
                 draw_text_region(
                     &mut pass,
-                    self.ai_chat_history_scissor,
+                    self.markdown_preview_scissor,
                     viewport_width,
                     viewport_height,
                     |render_pass| {
                         self.region_pipeline.draw_range(
                             render_pass,
-                            ai_chat_history_chrome_start,
-                            ai_chat_history_chrome_count,
+                            markdown_preview_chrome_start,
+                            markdown_preview_chrome_count,
                         );
                     },
                 );
@@ -296,23 +296,23 @@ impl Renderer {
             // 4b-i. Draw message-bubble glyphs up to where suggestion text begins.
             //        If there is no suggestion, this draws all history glyphs at once.
             {
-                let total = self.ai_chat_glyph_instances.len() as u32;
-                let hist_count = match &self.ai_chat_input_batch {
+                let total = self.markdown_preview_glyph_instances.len() as u32;
+                let hist_count = match &self.markdown_preview_input_batch {
                     Some(batch) => batch.range.start,
                     None => total,
                 };
                 let pre_suggestion = self
-                    .ai_chat_suggestion_glyph_start
+                    .markdown_preview_overlay_glyph_start
                     .unwrap_or(hist_count)
                     .min(hist_count);
                 if pre_suggestion > 0 {
                     draw_text_region(
                         &mut pass,
-                        self.ai_chat_history_scissor,
+                        self.markdown_preview_scissor,
                         viewport_width,
                         viewport_height,
                         |render_pass| {
-                            self.ai_chat_text_pipeline.draw_range(
+                            self.markdown_preview_text_pipeline.draw_range(
                                 render_pass,
                                 crate::render::text_pipeline::InstanceDrawRange {
                                     start: 0,
@@ -323,32 +323,32 @@ impl Renderer {
                     );
                 }
                 // 4b-ii. Suggestion popup chrome on top of bubble text.
-                if ai_chat_suggestion_chrome_count > 0 {
+                if markdown_preview_overlay_chrome_count > 0 {
                     draw_text_region(
                         &mut pass,
-                        self.ai_chat_history_scissor,
+                        self.markdown_preview_scissor,
                         viewport_width,
                         viewport_height,
                         |render_pass| {
                             self.region_pipeline.draw_range(
                                 render_pass,
-                                ai_chat_suggestion_chrome_start,
-                                ai_chat_suggestion_chrome_count,
+                                markdown_preview_overlay_chrome_start,
+                                markdown_preview_overlay_chrome_count,
                             );
                         },
                     );
                 }
                 // 4b-iii. Suggestion text on top of popup chrome.
-                if let Some(sug_start) = self.ai_chat_suggestion_glyph_start {
+                if let Some(sug_start) = self.markdown_preview_overlay_glyph_start {
                     let sug_count = hist_count.saturating_sub(sug_start);
                     if sug_count > 0 {
                         draw_text_region(
                             &mut pass,
-                            self.ai_chat_history_scissor,
+                            self.markdown_preview_scissor,
                             viewport_width,
                             viewport_height,
                             |render_pass| {
-                                self.ai_chat_text_pipeline.draw_range(
+                                self.markdown_preview_text_pipeline.draw_range(
                                     render_pass,
                                     crate::render::text_pipeline::InstanceDrawRange {
                                         start: sug_start,
@@ -361,15 +361,15 @@ impl Renderer {
                 }
             }
 
-            // 4c. AI Chat text — input box (scissor clipped to input bounds).
-            if let Some(batch) = &self.ai_chat_input_batch {
+            // 4c. Markdown Preview text — input box (scissor clipped to input bounds).
+            if let Some(batch) = &self.markdown_preview_input_batch {
                 draw_text_region(
                     &mut pass,
                     Some(batch.scissor),
                     viewport_width,
                     viewport_height,
                     |render_pass| {
-                        self.ai_chat_text_pipeline
+                        self.markdown_preview_text_pipeline
                             .draw_range(render_pass, batch.range);
                     },
                 );

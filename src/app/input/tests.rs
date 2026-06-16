@@ -1940,20 +1940,6 @@ fn ime_commit_is_redirected_to_file_picker_when_palette_is_open() {
 }
 
 #[test]
-fn ime_commit_is_redirected_to_ai_chat_text() {
-    let handler = InputHandler::new();
-    let context = KeybindingContext::with_focus(EditorMode::Normal, InputFocusContext::AiChat);
-    let translated = handler
-        .translate_ime_commit("đổi ể", context)
-        .expect("ai chat ime commit should translate");
-
-    assert_eq!(
-        translated.command,
-        Command::AiChatInputText("đổi ể".to_string())
-    );
-}
-
-#[test]
 fn ai_agent_picker_j_k_navigate() {
     let mut handler = InputHandler::new();
     let map = make_map();

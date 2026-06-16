@@ -99,9 +99,9 @@ impl Renderer {
             crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
         let test_runner_icon_pipeline =
             crate::render::icon_pipeline::IconPipeline::new(&device, &queue, surface_format);
-        let ai_chat_header_image_pipeline =
+        let markdown_preview_header_image_pipeline =
             crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
-        let ai_chat_hero_image_pipeline =
+        let markdown_preview_hero_image_pipeline =
             crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
         let topbar_logo_image_pipeline =
             crate::render::image_pipeline::ImagePipeline::new(&device, surface_format);
@@ -137,7 +137,7 @@ impl Renderer {
         let lsp_guide_text_system = make_text_system(panel_metrics, font_family.as_deref());
         let system_dep_text_system = make_text_system(panel_metrics, font_family.as_deref());
         let diagnostic_hover_text_system = make_text_system(editor_metrics, font_family.as_deref());
-        let ai_chat_text_system = make_text_system(ui_metrics, font_family.as_deref());
+        let markdown_preview_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let toast_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let whichkey_text_system = make_text_system(ui_metrics, font_family.as_deref());
         let test_runner_text_system = make_text_system(panel_metrics, font_family.as_deref());
@@ -181,7 +181,7 @@ impl Renderer {
             make_text_pipeline(&device, &atlas, surface_format, width, height);
         let leap_label_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
-        let ai_chat_text_pipeline =
+        let markdown_preview_text_pipeline =
             make_text_pipeline(&device, &atlas, surface_format, width, height);
 
         Ok(Self {
@@ -341,18 +341,18 @@ impl Renderer {
             test_runner_icon_instances: Vec::new(),
             test_runner_chrome_instances: Vec::new(),
             test_runner_scissor: None,
-            ai_chat_text_system,
-            ai_chat_text_pipeline,
-            ai_chat_header_image_pipeline,
-            ai_chat_hero_image_pipeline,
-            ai_chat_glyph_instances: Vec::new(),
-            ai_chat_history_chrome_instances: Vec::new(),
-            ai_chat_suggestion_chrome_instances: Vec::new(),
-            ai_chat_suggestion_glyph_start: None,
-            ai_chat_history_scissor: None,
-            ai_chat_image_scissor: None,
-            ai_chat_input_scissor: None,
-            ai_chat_input_batch: None,
+            markdown_preview_text_system,
+            markdown_preview_text_pipeline,
+            markdown_preview_header_image_pipeline,
+            markdown_preview_hero_image_pipeline,
+            markdown_preview_glyph_instances: Vec::new(),
+            markdown_preview_chrome_instances: Vec::new(),
+            markdown_preview_overlay_chrome_instances: Vec::new(),
+            markdown_preview_overlay_glyph_start: None,
+            markdown_preview_scissor: None,
+            markdown_preview_image_scissor: None,
+            markdown_preview_input_scissor: None,
+            markdown_preview_input_batch: None,
             last_shaped_revision: u64::MAX,
             last_shaped_spans_fingerprint: u64::MAX,
             last_shaped_viewport_width: 0.0,
@@ -400,7 +400,7 @@ impl Renderer {
         ));
         self.toast_text_system.set_metrics(ui_metrics);
         self.whichkey_text_system.set_metrics(ui_metrics);
-        self.ai_chat_text_system.set_metrics(ui_metrics);
+        self.markdown_preview_text_system.set_metrics(ui_metrics);
         let panel_metrics = Metrics::new(theme.ui.panel_font_size, theme.ui.panel_line_height);
         self.welcome_logo_text_system.set_metrics(panel_metrics);
         self.test_runner_text_system.set_metrics(panel_metrics);
@@ -436,7 +436,7 @@ impl Renderer {
         self.whichkey_text_system.set_font_family(family);
         self.test_runner_text_system.set_font_family(family);
         self.leap_label_text_system.set_font_family(family);
-        self.ai_chat_text_system.set_font_family(family);
+        self.markdown_preview_text_system.set_font_family(family);
 
         self.clear_color = theme_color_to_wgpu(theme.ui.bg);
         self.theme = theme;
@@ -476,7 +476,7 @@ impl Renderer {
         self.clear_editor_overlays();
         self.clear_diagnostic_hover_popup();
         self.clear_leap_labels();
-        self.clear_ai_chat();
+        self.clear_markdown_preview();
         self.last_topbar_layout_key = None;
         self.last_statusbar_layout_key = None;
         self.last_palette_model = None;
@@ -548,7 +548,7 @@ impl Renderer {
             &mut self.whichkey_text_pipeline,
             &mut self.test_runner_text_pipeline,
             &mut self.leap_label_text_pipeline,
-            &mut self.ai_chat_text_pipeline,
+            &mut self.markdown_preview_text_pipeline,
         ] {
             pipeline.update_screen_size(&self.queue, width, height);
         }

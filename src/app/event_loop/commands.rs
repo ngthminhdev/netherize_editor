@@ -1,5 +1,5 @@
-#[path = "commands_ai_chat.rs"]
-mod commands_ai_chat;
+#[path = "commands_ai_agent.rs"]
+mod commands_ai_agent;
 #[path = "commands_completion.rs"]
 mod commands_completion;
 #[path = "commands_editor.rs"]
@@ -264,9 +264,16 @@ impl AppShell {
                 .switch_to_tab(crate::workbench::panel_state::PanelTabId::TestRunner);
             self.focus_manager.set(FocusTarget::RightSidebar);
         }
-        if self.focus_manager.current() != FocusTarget::LeftSidebar
-            || self.panel_state.left.active_tab_id() != Some(PanelTabId::Outline)
-        {
+        let outline_focused = match self.focus_manager.current() {
+            FocusTarget::LeftSidebar => {
+                self.panel_state.left.active_tab_id() == Some(PanelTabId::Outline)
+            }
+            FocusTarget::RightSidebar => {
+                self.panel_state.right.active_tab_id() == Some(PanelTabId::Outline)
+            }
+            _ => false,
+        };
+        if !outline_focused {
             self.outline_selected = None;
         }
         res
@@ -353,7 +360,7 @@ impl AppShell {
                 changed,
             );
         }
-        if let Some(changed) = self.handle_ai_chat_command(&command) {
+        if let Some(changed) = self.handle_ai_agent_command(&command) {
             return self.finalize_post_command_hooks(
                 &command_for_post_hooks,
                 should_persist_history_after,
@@ -727,6 +734,8 @@ impl AppShell {
                 | Command::MarkdownPreviewScrollBottom
                 | Command::MarkdownPreviewScrollHalfPageUp
                 | Command::MarkdownPreviewScrollHalfPageDown
+                | Command::MarkdownPreviewScrollLeft
+                | Command::MarkdownPreviewScrollRight
         ) && self.app_state.active_buffer_is_markdown_preview()
             && let Some(preview) = self.app_state.active_markdown_preview_buffer().cloned()
         {
@@ -930,6 +939,39 @@ impl AppShell {
                 };
                 preview.scroll_y = max_scroll;
                 let changed = (preview.scroll_y - previous).abs() > f32::EPSILON;
+                if changed {
+                    self.editor_needs_layout = true;
+                    let _ = self
+                        .app_state
+                        .sync_markdown_preview_buffer(self.app_state.markdown_preview.clone());
+                }
+                Some(changed)
+            }
+            Command::MarkdownPreviewScrollLeft => {
+                let preview = &mut self.app_state.markdown_preview;
+                if !preview.visible {
+                    return Some(false);
+                }
+                let previous = preview.scroll_x;
+                preview.scroll_x = (preview.scroll_x - 20.0).max(0.0);
+                let changed = (preview.scroll_x - previous).abs() > f32::EPSILON;
+                if changed {
+                    self.editor_needs_layout = true;
+                    let _ = self
+                        .app_state
+                        .sync_markdown_preview_buffer(self.app_state.markdown_preview.clone());
+                }
+                Some(changed)
+            }
+            Command::MarkdownPreviewScrollRight => {
+                let preview = &mut self.app_state.markdown_preview;
+                if !preview.visible {
+                    return Some(false);
+                }
+                let previous = preview.scroll_x;
+                let max_x = preview.max_scroll_x;
+                preview.scroll_x = (preview.scroll_x + 20.0).min(max_x);
+                let changed = (preview.scroll_x - previous).abs() > f32::EPSILON;
                 if changed {
                     self.editor_needs_layout = true;
                     let _ = self

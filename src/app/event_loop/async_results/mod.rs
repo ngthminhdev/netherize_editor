@@ -127,26 +127,6 @@ impl AsyncResultRouter for AppShell {
         lsp::handle_stale_result(self, stale);
     }
 
-    fn on_ai_message_chunk(&mut self, text: String) {
-        ai::handle_ai_message_chunk(self, text);
-    }
-
-    fn on_ai_stream_complete(&mut self) {
-        ai::handle_ai_stream_complete(self);
-    }
-
-    fn on_ai_stream_cancelled(&mut self) {
-        ai::handle_ai_stream_cancelled(self);
-    }
-
-    fn on_ai_stream_error(&mut self, error: String) {
-        ai::handle_ai_stream_error(self, error);
-    }
-
-    fn on_ai_install_success(&mut self) {
-        ai::handle_ai_install_success(self);
-    }
-
     fn on_system_dep_tool_progress(
         &mut self,
         tool: String,

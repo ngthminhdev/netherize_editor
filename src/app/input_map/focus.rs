@@ -539,6 +539,27 @@ impl InputMap {
         }
 
         if !input.has_command_modifier()
+            && !input.modifiers.control_key()
+            && !input.modifiers.shift_key()
+            && input.physical_key == Some(KeyH)
+        {
+            return Some(KeybindingMatch {
+                command: Command::MarkdownPreviewScrollLeft,
+                reason: "preview: h -> scroll left",
+            });
+        }
+        if !input.has_command_modifier()
+            && !input.modifiers.control_key()
+            && !input.modifiers.shift_key()
+            && input.physical_key == Some(KeyL)
+        {
+            return Some(KeybindingMatch {
+                command: Command::MarkdownPreviewScrollRight,
+                reason: "preview: l -> scroll right",
+            });
+        }
+
+        if !input.has_command_modifier()
             && input.physical_key == Some(KeyG)
             && (input.modifiers.shift_key() || input.text.as_deref() == Some("G"))
         {

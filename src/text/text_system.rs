@@ -44,6 +44,8 @@ pub struct StyledTextSpan {
     pub color_rgba: [u8; 4],
     pub bold: bool,
     pub italic: bool,
+    pub underline: bool,
+    pub strikethrough: bool,
 }
 
 impl StyledTextSpan {
@@ -54,6 +56,8 @@ impl StyledTextSpan {
             color_rgba,
             bold: false,
             italic: false,
+            underline: false,
+            strikethrough: false,
         }
     }
 
@@ -70,6 +74,42 @@ impl StyledTextSpan {
             color_rgba,
             bold,
             italic,
+            underline: false,
+            strikethrough: false,
+        }
+    }
+
+    pub const fn with_decoration(
+        start: usize,
+        end: usize,
+        color_rgba: [u8; 4],
+        bold: bool,
+        italic: bool,
+        underline: bool,
+        strikethrough: bool,
+    ) -> Self {
+        Self {
+            start,
+            end,
+            color_rgba,
+            bold,
+            italic,
+            underline,
+            strikethrough,
+        }
+    }
+}
+
+impl Default for StyledTextSpan {
+    fn default() -> Self {
+        Self {
+            start: 0,
+            end: 0,
+            color_rgba: [255, 255, 255, 255],
+            bold: false,
+            italic: false,
+            underline: false,
+            strikethrough: false,
         }
     }
 }
@@ -134,6 +174,41 @@ impl TextSystem {
 
     pub fn set_metrics(&mut self, metrics: Metrics) {
         self.buffer.set_metrics(&mut self.font_system, metrics);
+    }
+
+    pub fn buffer_metrics(&self) -> Metrics {
+        self.buffer.metrics()
+    }
+
+    /// Compute pixel rectangles for underline decorations over the given byte ranges.
+    /// Returns `Vec<[x, y, w, h]>` in the buffer's local coordinate space.
+    pub fn underline_rects(
+        &self,
+        ranges: &[(usize, usize)],
+        origin_x: f32,
+        origin_y: f32,
+    ) -> Vec<[f32; 4]> {
+        if ranges.is_empty() {
+            return Vec::new();
+        }
+        let mut rects = Vec::new();
+        for run in self.buffer.layout_runs() {
+            let run_y = origin_y + run.line_y;
+            for glyph in run.glyphs.iter() {
+                let g_start = glyph.start;
+                let g_end = glyph.end;
+                for &(r_start, r_end) in ranges {
+                    if g_start < r_end && g_end > r_start {
+                        let x = origin_x + glyph.x;
+                        let w = glyph.w;
+                        let underline_y = run_y + 2.0;
+                        rects.push([x, underline_y, w, 1.0]);
+                        break;
+                    }
+                }
+            }
+        }
+        rects
     }
 
     pub fn tab_width(&self) -> u16 {

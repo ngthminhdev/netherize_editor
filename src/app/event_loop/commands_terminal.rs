@@ -267,13 +267,6 @@ impl AppShell {
                             self.open_ai_agent_chooser();
                             changed = true;
                         }
-                    } else if self.panel_state.right.active_tab_id() == Some(PanelTabId::Terminal) {
-                        self.ensure_right_opencode_terminal();
-                        if let Ok(result) =
-                            self.app_state.apply_mode_event(ModeEvent::FocusTerminal)
-                        {
-                            changed |= result.changed;
-                        }
                     }
                 }
                 Some(changed)

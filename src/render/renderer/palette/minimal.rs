@@ -274,7 +274,6 @@ impl Renderer {
             model.mode,
             crate::app::command_palette::CommandPaletteMode::ExplorerDeleteConfirm
                 | crate::app::command_palette::CommandPaletteMode::BufferCloseConfirm
-                | crate::app::command_palette::CommandPaletteMode::AiChatInstallConfirm
         ) {
             self.render_confirmation_palette(model);
             return;

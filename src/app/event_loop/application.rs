@@ -425,8 +425,7 @@ impl AppShell {
         let Some(bounds) = self.current_bottom_panel_bounds() else {
             return false;
         };
-        let terminal_active =
-            self.panel_state.bottom.active_tab_id() == Some(PanelTabId::Terminal);
+        let terminal_active = self.panel_state.bottom.active_tab_id() == Some(PanelTabId::Terminal);
         let tab_count = if terminal_active {
             self.terminal_tabs.len()
         } else {
@@ -447,7 +446,7 @@ impl AppShell {
     }
 
     /// Mouse click on the right-dock tab strip → switch tab + focus the dock.
-    /// Lets the user jump between AI Chat / Test Runner / … with the pointer.
+    /// Lets the user jump between Markdown Preview / Test Runner / … with the pointer.
     fn handle_right_dock_tab_mouse_click(&mut self) -> bool {
         if !self.panel_state.right.visible {
             return false;
@@ -477,7 +476,7 @@ impl AppShell {
         };
         self.panel_state.right.switch_to_index(idx);
         self.focus_manager.set(FocusTarget::RightSidebar);
-        // Clicking onto the AI Chat tab: drop into the running agent terminal,
+        // Clicking onto the Markdown Preview tab: drop into the running agent terminal,
         // or open the agent picker when none is running.
         if self.panel_state.right.active_tab_id() == Some(PanelTabId::AiChat) {
             if self.right_pty_session_id.is_some() || self.pending_right_pty_spawn {
@@ -548,6 +547,12 @@ impl AppShell {
         ];
         let inner_padding = self.layout_engine.config.inner_padding;
         let count = self.cached_document_symbols.len();
+        let _selected = if self.focus_manager.current() == FocusTarget::LeftSidebar {
+            self.outline_selected
+                .or_else(|| self.outline_cursor_symbol_index())
+        } else {
+            self.outline_cursor_symbol_index()
+        };
         let Some(idx) = self.renderer.as_ref().and_then(|renderer| {
             renderer.outline_row_at(content_bounds, count, inner_padding, position)
         }) else {
@@ -991,9 +996,6 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.tick_smooth_scroll_animation() {
             self.request_redraw();
         }
-        if self.tick_thinking_animation() {
-            self.request_redraw();
-        }
         if self.tick_lsp_loading_animation() {
             self.request_redraw();
         }
@@ -1164,19 +1166,6 @@ impl AppShell {
         }
     }
 
-    fn tick_thinking_animation(&mut self) -> bool {
-        if !self.panel_state.ai_chat.is_generating {
-            return false;
-        }
-        let now = Instant::now();
-        if now.duration_since(self.last_thinking_animation_tick) >= THINKING_ANIMATION_INTERVAL {
-            self.last_thinking_animation_tick = now;
-            true
-        } else {
-            false
-        }
-    }
-
     /// Tối ưu 3: Caret Blink — tick timer nhấp nháy, chỉ set caret_blink_dirty.
     /// KHÔNG set editor_needs_layout hay editor_caret_needs_layout.
     /// Nhờ đó toàn bộ text pipeline không bị trigger reshape chỉ vì con trỏ nháy.
@@ -1329,19 +1318,8 @@ impl AppShell {
             };
         focused_outline[3] = focused_outline[3].max(0.95);
 
-        // RightSidebar (AI Chat) background: flat fill + input-box accent.
+        // RightSidebar background: flat fill with an optional focus ring.
         let rs_panel_bg = self.theme.ui.panel_bg.as_f32();
-        let rs_input_bg = self.theme.editor.bg.as_f32();
-        let right_panel_tab = self.panel_state.right.active_tab_id();
-        let right_panel_uses_ai_chat_input = right_panel_tab == Some(PanelTabId::AiChat);
-        let ai_chat_input_bounds = if right_panel_uses_ai_chat_input {
-            flat_regions
-                .iter()
-                .find(|r| r.id == RegionId::AiChatInput && r.visible)
-                .map(|r| [r.bounds.x, r.bounds.y, r.bounds.width, r.bounds.height])
-        } else {
-            None
-        };
 
         let mut region_instances: Vec<RegionDrawInstance> = flat_regions
             .iter()
@@ -1351,8 +1329,6 @@ impl AppShell {
                     && region.id != RegionId::Root
                     && region.id != RegionId::OverlayLayer
                     && region.id != RegionId::StatusBar
-                    && region.id != RegionId::AiChatHistory
-                    && region.id != RegionId::AiChatInput
                     && !(show_welcome && !workspace_attached && region.id == RegionId::LeftSidebar)
             })
             .flat_map(|region| {
@@ -1371,41 +1347,22 @@ impl AppShell {
 
                 if region.id == RegionId::RightSidebar {
                     if suppress_ring {
-                        let mut quads = vec![
+                        vec![
                             RegionDrawInstance::new(bounds, rs_panel_bg).with_radius(panel_radius),
-                        ];
-                        if let Some([ix, iy, iw, ih]) = ai_chat_input_bounds {
-                            if iw > 0.0 && ih > 0.0 {
-                                quads.push(
-                                    RegionDrawInstance::new([ix, iy, iw, ih], rs_input_bg)
-                                        .with_radius(panel_radius),
-                                );
-                            }
-                        }
-                        quads
+                        ]
                     } else {
                         let outline_color = if is_focused {
                             focused_outline
                         } else {
                             default_outline
                         };
-                        let mut quads = focus_ring_instances(
+                        let quads = focus_ring_instances(
                             bounds,
                             outline_color,
                             FOCUS_RING_THICKNESS,
                             panel_radius,
                             rs_panel_bg,
                         );
-                        if let Some([ix, iy, iw, ih]) = ai_chat_input_bounds {
-                            if iw > 0.0 && ih > 0.0 {
-                                quads.push(
-                                    RegionDrawInstance::new([ix, iy, iw, ih], rs_input_bg)
-                                        .with_radius(
-                                            (panel_radius - FOCUS_RING_THICKNESS).max(0.0),
-                                        ),
-                                );
-                            }
-                        }
                         quads
                     }
                 } else if suppress_ring {
@@ -1507,17 +1464,23 @@ impl AppShell {
                         renderer.clear_editor_content();
                         if let Some(preview) = self.app_state.active_markdown_preview_buffer() {
                             let scroll_y = preview.scroll_y;
+                            let scroll_x = preview.scroll_x;
                             let rendered_lines = preview.rendered_lines.clone();
                             let inner_padding = self.layout_engine.config.inner_padding;
-                            let max_scroll = renderer.update_markdown_preview_content(
+                            let (max_scroll, max_scroll_x) = renderer.update_markdown_preview_content(
                                 center_bounds,
                                 &rendered_lines,
                                 scroll_y,
+                                scroll_x,
                                 inner_padding,
                             );
                             self.app_state.markdown_preview.max_scroll = max_scroll;
+                            self.app_state.markdown_preview.max_scroll_x = max_scroll_x;
                             if self.app_state.markdown_preview.scroll_y > max_scroll {
                                 self.app_state.markdown_preview.scroll_y = max_scroll;
+                            }
+                            if self.app_state.markdown_preview.scroll_x > max_scroll_x {
+                                self.app_state.markdown_preview.scroll_x = max_scroll_x;
                             }
                             let preview_cloned = self.app_state.markdown_preview.clone();
                             self.app_state.sync_markdown_preview_buffer(preview_cloned);
@@ -1639,17 +1602,23 @@ impl AppShell {
                         renderer.clear_editor_content();
                         if let Some(preview) = self.app_state.active_markdown_preview_buffer() {
                             let scroll_y = preview.scroll_y;
+                            let scroll_x = preview.scroll_x;
                             let rendered_lines = preview.rendered_lines.clone();
                             let inner_padding = self.layout_engine.config.inner_padding;
-                            let max_scroll = renderer.update_markdown_preview_content(
+                            let (max_scroll, max_scroll_x) = renderer.update_markdown_preview_content(
                                 center_bounds,
                                 &rendered_lines,
                                 scroll_y,
+                                scroll_x,
                                 inner_padding,
                             );
                             self.app_state.markdown_preview.max_scroll = max_scroll;
+                            self.app_state.markdown_preview.max_scroll_x = max_scroll_x;
                             if self.app_state.markdown_preview.scroll_y > max_scroll {
                                 self.app_state.markdown_preview.scroll_y = max_scroll;
+                            }
+                            if self.app_state.markdown_preview.scroll_x > max_scroll_x {
+                                self.app_state.markdown_preview.scroll_x = max_scroll_x;
                             }
                             let preview_cloned = self.app_state.markdown_preview.clone();
                             self.app_state.sync_markdown_preview_buffer(preview_cloned);
@@ -1865,7 +1834,11 @@ impl AppShell {
                 let focus_changed = self.last_sidebar_focused != Some(sidebar_focused);
                 let left_active_tab_changed = self.last_left_active_tab != left_active_tab_id;
 
-                if self.sidebar_needs_layout || bounds_changed || focus_changed || left_active_tab_changed {
+                if self.sidebar_needs_layout
+                    || bounds_changed
+                    || focus_changed
+                    || left_active_tab_changed
+                {
                     let labels: Vec<&str> = self
                         .panel_state
                         .left
@@ -1926,24 +1899,22 @@ impl AppShell {
             }
         }
 
-        // ── AI Chat (right sidebar) ───────────────────────────────────────
-        // The built-in chat UI is retired: the AI Chat tab now hosts a CLI
-        // agent terminal (rendered in the right-terminal block below). Clear the
-        // built-in chat surface unless the markdown preview borrows its pipeline.
+        // ── Markdown Preview (right sidebar) ─────────────────────────────────
+        // Clear the preview surface when no markdown preview view is active.
         let right_sidebar_bounds = visible_region_bounds(&flat_regions, RegionId::RightSidebar);
-        let markdown_preview_uses_ai_chat_pipeline =
+        let markdown_preview_uses_preview_pipeline =
             self.app_state.active_buffer_is_markdown_preview()
                 || (self.panel_state.right.visible
                     && right_sidebar_bounds.is_some()
                     && self.panel_state.right.active_tab_id() == Some(PanelTabId::MarkdownPreview)
                     && self.app_state.markdown_preview.visible);
-        if !markdown_preview_uses_ai_chat_pipeline && let Some(renderer) = self.renderer.as_mut() {
-            renderer.clear_ai_chat();
+        if !markdown_preview_uses_preview_pipeline && let Some(renderer) = self.renderer.as_mut() {
+            renderer.clear_markdown_preview();
         }
 
         // ── Right-dock tab strip (+ Test Runner content) ──────────────────
         // The strip renders on every tab so the user can mouse-switch between
-        // AI Chat / Test Runner / … ; the case-list content is added only when
+        // Markdown Preview / Test Runner / … ; the case-list content is added only when
         // the Test Runner tab is active. Both share the Test Runner surface.
         if self.panel_state.right.visible
             && let Some(rb) = right_sidebar_bounds
@@ -2008,7 +1979,7 @@ impl AppShell {
             } else {
                 None
             };
-            // AI Chat tab with no agent running yet: show the in-panel agent picker.
+            // Markdown Preview tab with no agent running yet: show the in-panel agent picker.
             let agent_running = self.right_pty_session_id.is_some() || self.pending_right_pty_spawn;
             let agent_rows: Vec<(&str, &str)> =
                 if active_tab_id == Some(PanelTabId::AiChat) && !agent_running {
@@ -2049,7 +2020,7 @@ impl AppShell {
         }
 
         // ── Right-sidebar AI agent terminal ───────────────────────────────
-        // The AI Chat tab hosts a CLI agent PTY. (The legacy Terminal tab still
+        // The Markdown Preview tab hosts a CLI agent PTY. (The legacy Terminal tab still
         // works when present, e.g. in tests.) Rendered inset below the tab strip.
         let agent_terminal_running =
             self.right_pty_session_id.is_some() || self.pending_right_pty_spawn;
@@ -2103,17 +2074,23 @@ impl AppShell {
                 let preview = &self.app_state.markdown_preview;
                 let inner_padding = self.layout_engine.config.inner_padding;
                 let scroll_y = preview.scroll_y;
+                let scroll_x = preview.scroll_x;
                 let rendered_lines = preview.rendered_lines.clone();
                 if let Some(renderer) = self.renderer.as_mut() {
-                    let max_scroll = renderer.update_markdown_preview_content(
+                    let (max_scroll, max_scroll_x) = renderer.update_markdown_preview_content(
                         bounds,
                         &rendered_lines,
                         scroll_y,
+                        scroll_x,
                         inner_padding,
                     );
                     self.app_state.markdown_preview.max_scroll = max_scroll;
+                    self.app_state.markdown_preview.max_scroll_x = max_scroll_x;
                     if self.app_state.markdown_preview.scroll_y > max_scroll {
                         self.app_state.markdown_preview.scroll_y = max_scroll;
+                    }
+                    if self.app_state.markdown_preview.scroll_x > max_scroll_x {
+                        self.app_state.markdown_preview.scroll_x = max_scroll_x;
                     }
                     let preview_cloned = self.app_state.markdown_preview.clone();
                     self.app_state.sync_markdown_preview_buffer(preview_cloned);
@@ -2121,7 +2098,7 @@ impl AppShell {
             }
         } else if md_preview_active {
             if let Some(renderer) = self.renderer.as_mut() {
-                renderer.clear_ai_chat();
+                renderer.clear_markdown_preview();
             }
         }
 
@@ -2427,8 +2404,11 @@ impl AppShell {
                                 .iter()
                                 .map(|t| t.status.is_running())
                                 .collect();
-                            let l: Vec<&str> =
-                                self.terminal_tabs.iter().map(|t| t.label.as_str()).collect();
+                            let l: Vec<&str> = self
+                                .terminal_tabs
+                                .iter()
+                                .map(|t| t.label.as_str())
+                                .collect();
                             (l, r, self.active_terminal_tab)
                         } else {
                             let any_terminal_running =

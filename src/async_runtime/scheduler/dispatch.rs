@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex, mpsc as std_mpsc};
 
 use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
 use winit::event_loop::EventLoopProxy;
 
 use crate::{
@@ -15,7 +14,6 @@ use crate::{
 use super::{
     LspSessionRegistry, PtySessionRegistry, SyntaxEngineCache, SyntaxEngineCacheHandle,
     ai::execute_ai_inline_request,
-    ai_jobs::{run_ai_chat_stream, run_opencode_install},
     async_trace,
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
     file_watch::run_file_watch_request,
@@ -68,7 +66,6 @@ pub(super) async fn dispatch_loop(
     let syntax_engine_cache: Arc<SyntaxEngineCacheHandle> =
         Arc::new(Mutex::new(SyntaxEngineCache::default()));
     let mut active_fzf_search: Option<tokio::task::JoinHandle<()>> = None;
-    let mut active_ai_chat_cancel: Option<CancellationToken> = None;
 
     while let Some(request) = request_rx.recv().await {
         if let WorkerRequestPayload::FetchLeetCodeProblem {
@@ -279,81 +276,6 @@ pub(super) async fn dispatch_loop(
                         );
                     }
                 }
-            });
-            continue;
-        }
-
-        if matches!(request.payload, WorkerRequestPayload::AiChatCancel) {
-            if let Some(cancel_token) = active_ai_chat_cancel.take() {
-                cancel_token.cancel();
-            }
-            continue;
-        }
-
-        if matches!(request.payload, WorkerRequestPayload::AiChatRequest { .. }) {
-            if let Some(cancel_token) = active_ai_chat_cancel.take() {
-                cancel_token.cancel();
-            }
-            let cancel_token = CancellationToken::new();
-            active_ai_chat_cancel = Some(cancel_token.clone());
-            let (
-                prompt,
-                cursor_position,
-                history,
-                active_buffer_path,
-                workspace_root,
-                file_refs,
-                model,
-                agent,
-            ) = match request.payload {
-                WorkerRequestPayload::AiChatRequest {
-                    prompt,
-                    buffer_context: _,
-                    cursor_position,
-                    history,
-                    active_buffer_path,
-                    workspace_root,
-                    file_refs,
-                    model,
-                    agent,
-                } => (
-                    prompt,
-                    cursor_position,
-                    history,
-                    active_buffer_path,
-                    workspace_root,
-                    file_refs,
-                    model,
-                    agent,
-                ),
-                _ => unreachable!(),
-            };
-            let worker_tx = result_tx.clone();
-            let ai_event_proxy = event_proxy.clone();
-            tokio::spawn(async move {
-                run_ai_chat_stream(
-                    worker_tx,
-                    ai_event_proxy,
-                    prompt,
-                    active_buffer_path,
-                    workspace_root,
-                    cursor_position,
-                    history,
-                    file_refs,
-                    model,
-                    agent,
-                    cancel_token,
-                )
-                .await;
-            });
-            continue;
-        }
-
-        if matches!(request.payload, WorkerRequestPayload::AiInstallRequest) {
-            let worker_tx = result_tx.clone();
-            let ai_event_proxy = event_proxy.clone();
-            tokio::spawn(async move {
-                run_opencode_install(worker_tx, ai_event_proxy).await;
             });
             continue;
         }

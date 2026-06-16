@@ -163,14 +163,11 @@ pub const COMPLETION_CLOSE: &str = "completion.close";
 pub const AI_ACCEPT_INLINE: &str = "ai.accept_inline";
 pub const AI_ACCEPT_INLINE_WORD: &str = "ai.accept_inline_word";
 
-// ── AI Chat ──────────────────────────────────────────────────────────────
+// ── AI Agent Terminal ────────────────────────────────────────────────────
 pub const AI_CHAT_TOGGLE: &str = "ai.chat_toggle";
-pub const AI_CHAT_SEND: &str = "ai.chat_send";
-pub const AI_CHAT_STOP: &str = "ai.chat_stop";
 pub const AI_CHAT_CLOSE: &str = "ai.chat_close";
 pub const AI_CHAT_UNFOCUS: &str = "ai.chat_unfocus";
 pub const AI_CHAT_FOCUS: &str = "ai.chat_focus";
-pub const AI_CHAT_ADD_SELECTION_CONTEXT: &str = "ai.chat_add_selection_context";
 pub const DIAGNOSTICS_OPEN_PICKER: &str = "diagnostics.open_picker";
 
 // ── Jump list navigation ─────────────────────────────────────────────────────
@@ -201,6 +198,8 @@ pub const MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN: &str =
     "app.markdown_preview_scroll_half_page_down";
 pub const MARKDOWN_PREVIEW_SCROLL_TOP: &str = "app.markdown_preview_scroll_top";
 pub const MARKDOWN_PREVIEW_SCROLL_BOTTOM: &str = "app.markdown_preview_scroll_bottom";
+pub const MARKDOWN_PREVIEW_SCROLL_LEFT: &str = "app.markdown_preview_scroll_left";
+pub const MARKDOWN_PREVIEW_SCROLL_RIGHT: &str = "app.markdown_preview_scroll_right";
 
 // ── Help / Cheat Sheet ───────────────────────────────────────────────────────
 pub const HELP_SCROLL_DOWN: &str = "app.help_scroll_down";
@@ -413,11 +412,9 @@ pub const ALL_IDS: &[&str] = &[
     AI_ACCEPT_INLINE,
     AI_ACCEPT_INLINE_WORD,
     AI_CHAT_TOGGLE,
-    AI_CHAT_SEND,
     AI_CHAT_CLOSE,
     AI_CHAT_UNFOCUS,
     AI_CHAT_FOCUS,
-    AI_CHAT_ADD_SELECTION_CONTEXT,
     DIAGNOSTICS_OPEN_PICKER,
     JUMP_BACK,
     JUMP_FORWARD,
@@ -506,7 +503,6 @@ pub const ALL_IDS: &[&str] = &[
     JOIN_LINES,
     MOVE_PARAGRAPH_UP,
     MOVE_PARAGRAPH_DOWN,
-    AI_CHAT_STOP,
     OPEN_HELP,
     MARKDOWN_PREVIEW_SCROLL_TOP,
     MARKDOWN_PREVIEW_SCROLL_BOTTOM,
@@ -672,12 +668,9 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         AI_ACCEPT_INLINE => Some(Command::AiAcceptInline),
         AI_ACCEPT_INLINE_WORD => Some(Command::AiAcceptInlineWord),
         AI_CHAT_TOGGLE => Some(Command::AiChatToggle),
-        AI_CHAT_SEND => Some(Command::AiChatSend),
-        AI_CHAT_STOP => Some(Command::AiChatStop),
         AI_CHAT_CLOSE => Some(Command::AiChatClose),
         AI_CHAT_UNFOCUS => Some(Command::AiChatUnfocus),
         AI_CHAT_FOCUS => Some(Command::AiChatFocus),
-        AI_CHAT_ADD_SELECTION_CONTEXT => Some(Command::AiChatAddSelectionContext),
         DIAGNOSTICS_OPEN_PICKER => Some(Command::DiagnosticsOpenPicker),
         JUMP_BACK => Some(Command::JumpBack),
         JUMP_FORWARD => Some(Command::JumpForward),
@@ -754,6 +747,8 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         MARKDOWN_PREVIEW_SCROLL_HALF_PAGE_DOWN => Some(Command::MarkdownPreviewScrollHalfPageDown),
         MARKDOWN_PREVIEW_SCROLL_TOP => Some(Command::MarkdownPreviewScrollTop),
         MARKDOWN_PREVIEW_SCROLL_BOTTOM => Some(Command::MarkdownPreviewScrollBottom),
+        MARKDOWN_PREVIEW_SCROLL_LEFT => Some(Command::MarkdownPreviewScrollLeft),
+        MARKDOWN_PREVIEW_SCROLL_RIGHT => Some(Command::MarkdownPreviewScrollRight),
         HELP_SCROLL_DOWN => Some(Command::HelpScrollDown),
         HELP_SCROLL_UP => Some(Command::HelpScrollUp),
         HELP_SCROLL_HALF_PAGE_DOWN => Some(Command::HelpScrollHalfPageDown),
