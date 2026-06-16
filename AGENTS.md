@@ -69,6 +69,45 @@ For any input-to-action feature, you MUST follow this exact path:
 * **ModeState (`mode.rs`):** Vim-style mode FSM. Validate all mode transitions here.
 * **CommandDispatch (`command_dispatch.rs`):** The ONLY place where commands are allowed to mutate editor state and group undo transactions.
 
+## 🔄 STRUCTURE CHANGE RULES
+
+When you add, remove, or move files/modules that affect the project structure:
+
+1. **Update `README.md`** — add/remove entries in the "Repository Layout" tree, update "Where To Fix What" table, update "Quick Status" if feature status changed, and update "Key Structs at a Glance" if new major structs were introduced.
+2. **Update `DEPENDENCIES.md`** — if the change involves a new LSP server, tree-sitter parser, system tool, or companion server.
+3. **Re-run GitNexus analytics** — run `npx gitnexus analyze` to refresh the code intelligence index so symbol search, impact analysis, and execution flows stay accurate.
+
+Failure to do this causes context drift: agents and contributors will search stale file paths, miss new modules, and make wrong assumptions about the codebase.
+
+## 📖 CONTEXT GUIDELINES FOR AGENTS
+
+Before exploring the codebase, read these files for orientation:
+
+| When you need... | Read this | Why |
+|------------------|-----------|-----|
+| Overall architecture, data flow, file layout | `README.md` | Complete repo layout, architecture diagrams, "Where To Fix What" table, key structs |
+| Runtime dependencies, LSP servers, tool detection | `DEPENDENCIES.md` | All optional runtime tools, LSP registry, install commands, graceful degradation |
+| Build instructions | `BUILD.md` | How to build, bundle, and distribute |
+
+### When to consult README.md
+
+- **First time exploring the project** — read the "Repository Layout" and "Where to Start Reading" sections
+- **Looking for where a feature lives** — check the "Where To Fix What" table
+- **Understanding data flow** — read "Architecture: How Data Flows" and "Async Runtime Flow"
+- **Need to know supported languages/features** — check "Quick Status"
+
+### When to consult DEPENDENCIES.md
+
+- **Adding a new LSP server** — check the LSP registry pattern and companion server setup
+- **Debugging missing tool errors** — check what tools are detected via `CheckSystemDeps`
+- **Understanding graceful degradation** — check how the editor handles missing dependencies
+
+### Reading Order for New Context
+
+1. `AGENTS.md` (this file) — rules, anti-patterns, data flow
+2. `README.md` — architecture, layout, key structs, debug paths
+3. `DEPENDENCIES.md` — runtime tools, LSP, tree-sitter
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 

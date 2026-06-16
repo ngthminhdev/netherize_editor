@@ -2,7 +2,7 @@
 
 # Netherize Editor
 
-A GPU-accelerated terminal/text editor written in Rust. Currently in active development (Module 12 / Phase 2–3).
+A GPU-accelerated terminal/text editor written in Rust. Currently in active development.
 
 ---
 
@@ -15,16 +15,21 @@ A GPU-accelerated terminal/text editor written in Rust. Currently in active deve
 | GPU renderer (wgpu) | ✅ Renders text, cursor, gutter, sidebar, statusbar |
 | Glyph atlas (texture packing) | ✅ Shelf-packer, uploaded to GPU |
 | Text shaping (cosmic-text) | ✅ Rich text + syntax spans |
-| Syntax highlighting (tree-sitter) | ✅ Polyglot bootstrap (Rust / JS / TS / Go / YAML / JSON / Bash) |
+| Syntax highlighting (tree-sitter) | ✅ 17 languages (Rust / JS / TS / JSX / TSX / Go / Python / Dart / Java / Bash / JSON / YAML / TOML / Markdown / SQL / XML / Dockerfile / Proto) |
 | Workbench layout engine | ✅ Region-based, resizable splits |
 | File explorer sidebar | ✅ Tree with j/k/h/l/Enter navigation + theme-correct colors |
 | Embedded terminal (PTY) | ✅ ANSI parser + grid |
 | LSP client | ✅ Smart root detection + async stdio transport + Mason-style install prompt |
-| Config / theme (TOML runtime) | ✅ Repo profiles + user theme discovery + persisted runtime selection |
+| Config / theme (TOML runtime) | ✅ 83 built-in themes + repo profiles + user theme discovery + persisted runtime selection |
 | Command palette | ✅ Overlay UI with prompt prefix/query color split |
 | File picker (fuzzy) | ✅ Matched-char accent highlight + fg_dim labels |
 | Multi-buffer | ✅ Buffer ring (next/prev/close) |
 | Leap navigation | ✅ EasyMotion-style jump with dim overlay + per-char quad |
+| AI chat panel | ✅ Inline AI assistant with dedicated commands |
+| LeetCode integration | ✅ Problem fetch, code runner, cache |
+| Test runner | ✅ In-editor test execution with results UI |
+| Live grep | ✅ Workspace-wide search with results overlay |
+| Which-key | ✅ Keybinding hint popup |
 
 ---
 
@@ -37,6 +42,23 @@ cargo run
 ```sh
 cargo test             # full unit + doc test suite
 cargo bench            # criterion benchmarks in benches/
+```
+
+### Bundling / Distribution
+
+```sh
+scripts/bundle_macos.sh      # macOS .app bundle
+scripts/bundle_linux.sh      # Linux AppImage / tarball
+scripts/bundle_windows.sh    # Windows installer
+scripts/install.sh           # Quick install to local bin
+```
+
+### Profiling
+
+```sh
+scripts/profile_flamegraph.sh   # Generate flamegraph
+scripts/run_perf_baseline.sh    # Run performance baseline
+scripts/generate_bench_samples.sh  # Generate benchmark samples
 ```
 
 ---
@@ -65,7 +87,21 @@ netherize_editor/
 │   │   ├── event_loop/            # winit ApplicationHandler impl + command dispatch
 │   │   │   ├── mod.rs             # run() entrypoint
 │   │   │   ├── application.rs     # winit::ApplicationHandler impl
-│   │   │   ├── async_results/     # Async result processing split by topic (LSP, AI, Terminal, etc.)
+│   │   │   ├── async_results/     # Async result processing split by topic
+│   │   │   │   ├── mod.rs         # Drain bridge, reject stale results, delegate to handlers
+│   │   │   │   ├── ai.rs          # AI chat results
+│   │   │   │   ├── failure.rs     # Error/failure handling
+│   │   │   │   ├── filesystem.rs  # File system operation results
+│   │   │   │   ├── fzf.rs         # Fuzzy finder results
+│   │   │   │   ├── git.rs         # Git operation results
+│   │   │   │   ├── leetcode_fetch.rs  # LeetCode problem fetch results
+│   │   │   │   ├── lsp.rs         # LSP response handling
+│   │   │   │   ├── preview.rs     # File/buffer preview results
+│   │   │   │   ├── runner.rs      # Code runner results
+│   │   │   │   ├── shell.rs       # Shell command results
+│   │   │   │   ├── syntax.rs      # Syntax highlighting results
+│   │   │   │   ├── system.rs      # System info results
+│   │   │   │   └── terminal.rs    # Terminal PTY output
 │   │   │   ├── commands.rs        # Command orchestration facade + shared helpers
 │   │   │   ├── commands_editor.rs # Editor edit/navigation/leap command helpers
 │   │   │   ├── commands_completion.rs # Completion popup and insert flows
@@ -75,6 +111,9 @@ netherize_editor/
 │   │   │   ├── commands_lsp.rs    # LSP/diagnostics/inline-AI commands
 │   │   │   ├── commands_ai_chat.rs # AI chat panel commands
 │   │   │   ├── commands_prompts.rs # Confirmation/prompt/theme/recent-project flows
+│   │   │   ├── commands_settings.rs # Settings panel commands
+│   │   │   ├── commands_settings_helpers.rs # Settings editing helpers
+│   │   │   ├── commands_tests.rs  # Test runner commands
 │   │   │   ├── helpers.rs         # Shared render/layout helpers
 │   │   │   ├── setup.rs           # GPU + window init
 │   │   │   └── welcome.rs         # Welcome screen logic
@@ -83,43 +122,103 @@ netherize_editor/
 │   │   │   ├── handler.rs         # Main input state machine / router
 │   │   │   ├── model.rs           # NormalizedInput / TranslatedInput
 │   │   │   ├── pending.rs         # Pending chord/operator state types
+│   │   │   ├── helpers.rs         # Terminal key payload building, input utilities
+│   │   │   └── tests.rs           # Input handler tests
 │   │   ├── input_map/             # Keymap resolution (key event → Command)
 │   │   │   ├── mod.rs
-│   │   │   └── focus.rs           # Focus-context-aware key routing
+│   │   │   ├── focus.rs           # Focus-context-aware key routing
+│   │   │   ├── helpers.rs         # Input map utilities
+│   │   │   └── tests.rs           # Input map tests
+│   │   ├── ai_agents.rs           # AI agent integration
+│   │   ├── clipboard.rs           # Clipboard read/write (arboard wrapper)
 │   │   ├── command_palette.rs     # Command palette state + filtering
 │   │   ├── file_picker.rs         # File picker state + fuzzy results
+│   │   ├── match_ranges.rs        # Match range tracking for search/highlight
+│   │   ├── persistence.rs         # App state persistence (recent projects, etc.)
+│   │   ├── resolved_keymap.rs     # Merged runtime keymap from config layers
 │   │   └── async_bridge.rs        # Tokio ↔ winit message bridge
 │   │
 │   ├── core/                      # Editor semantics (mode, commands)
 │   │   ├── mode.rs                # EditorMode enum + ModeState transition machine
 │   │   ├── commands.rs            # Command enum (all editor actions)
 │   │   ├── command_ids.rs         # Stable string IDs for palette lookup
+│   │   ├── text_object.rs         # Text object definitions (word, paragraph, etc.)
+│   │   ├── transaction.rs         # Undo/redo transaction grouping
 │   │   ├── command_dispatch/      # Command execution logic split by domain
 │   │   │   ├── mod.rs             # Routes Command → handler
 │   │   │   ├── editing.rs         # Text mutation handlers
 │   │   │   ├── navigation.rs      # Cursor movement handlers
-│   │   │   └── palette.rs         # Command palette/picker handlers
+│   │   │   ├── palette.rs         # Command palette/picker handlers
+│   │   │   ├── common.rs          # Shared dispatch utilities
+│   │   │   ├── session.rs         # Session management dispatch
+│   │   │   └── tests.rs           # Command dispatch tests
 │   │   └── mod.rs
 │   │
 │   ├── lsp/                       # Polyglot language server client
 │   │   ├── registry.rs            # File extension/filename → language profile, install command, root markers
 │   │   ├── client.rs              # JSON-RPC framing, async stdio transport, didOpen/didChange lifecycle
+│   │   ├── capabilities.rs        # LSP server capability negotiation
+│   │   ├── symbol_cache.rs        # Workspace symbol caching
 │   │   └── mod.rs
 │   │
 │   ├── render/                    # GPU rendering layer (wgpu)
 │   │   ├── renderer.rs            # Renderer facade + shared render types
 │   │   ├── renderer/              # Modular rendering implementation
-│   │   │   ├── ui/                # UI components: sidebar, terminal, statusbar, AI chat, etc.
-│   │   │   ├── editor/            # Editor components: buffers, selections, overlays, completion, etc.
-│   │   │   ├── palette/           # Palette components: file picker, leap, recent projects, etc.
-│   │   │   ├── lifecycle/         # GPU frame management and lifecycle
+│   │   │   ├── ui/                # UI components
+│   │   │   │   ├── sidebar.rs     # File explorer sidebar
+│   │   │   │   ├── terminal.rs    # Terminal grid rendering
+│   │   │   │   ├── statusbar.rs   # Status bar
+│   │   │   │   ├── topbar.rs      # Top bar / tab bar
+│   │   │   │   ├── ai_chat.rs     # AI chat panel
+│   │   │   │   ├── test_runner.rs # Test runner results panel
+│   │   │   │   ├── whichkey.rs    # Which-key hint popup
+│   │   │   │   ├── popups.rs      # Generic popup rendering
+│   │   │   │   ├── welcome.rs     # Welcome screen
+│   │   │   │   └── utils.rs       # UI render utilities
+│   │   │   ├── editor/            # Editor components
+│   │   │   │   ├── buffers.rs     # Buffer rendering
+│   │   │   │   ├── buffers/       # Buffer sub-components
+│   │   │   │   ├── selections.rs  # Selection highlight rendering
+│   │   │   │   ├── overlays.rs    # Editor overlays
+│   │   │   │   ├── overlays/      # Overlay sub-components
+│   │   │   │   ├── completion.rs  # Completion popup rendering
+│   │   │   │   ├── extensions.rs  # Editor extension rendering
+│   │   │   │   ├── fuzzy.rs       # Fuzzy match rendering
+│   │   │   │   ├── help.rs        # Help panel rendering
+│   │   │   │   ├── settings.rs    # Settings panel rendering
+│   │   │   │   └── viewport.rs    # Viewport management
+│   │   │   ├── palette/           # Palette components
+│   │   │   │   ├── file_picker.rs # File picker overlay
+│   │   │   │   ├── leap.rs        # Leap/EasyMotion overlay
+│   │   │   │   ├── live_grep.rs   # Live grep overlay
+│   │   │   │   ├── recent_projects.rs # Recent projects overlay
+│   │   │   │   ├── highlighted_label.rs # Highlighted text label
+│   │   │   │   └── minimal.rs     # Minimal palette variant
+│   │   │   ├── components/        # Reusable UI primitives
+│   │   │   │   ├── help_keycaps.rs
+│   │   │   │   ├── highlight_chip.rs
+│   │   │   │   ├── prefix_icon_badge.rs
+│   │   │   │   └── shortcut_hint.rs
+│   │   │   ├── lifecycle/         # GPU frame management
+│   │   │   │   └── frame.rs
 │   │   │   ├── components.rs      # Common UI component primitives
 │   │   │   └── helpers.rs         # Shared pure helpers for render modules
 │   │   ├── caret.rs               # Cursor/caret rendering
 │   │   ├── text_pipeline.rs       # Glyph-instance pipeline (text quads)
 │   │   ├── region_pipeline.rs     # Colored quad pipeline (backgrounds, highlights)
 │   │   ├── image_pipeline.rs      # Image/texture rendering pipeline
+│   │   ├── icon_pipeline.rs       # Icon/SVG rendering pipeline
+│   │   ├── pipeline.rs            # Base pipeline abstractions
+│   │   ├── glyph_instance.rs      # Glyph instance data structures
+│   │   ├── color_space.rs         # Color space conversion utilities
+│   │   ├── surface.rs             # GPU surface management
 │   │   ├── shaders/               # WGSL shader sources
+│   │   │   ├── caret.wgsl
+│   │   │   ├── glyph.wgsl
+│   │   │   ├── icon.wgsl
+│   │   │   ├── image.wgsl
+│   │   │   ├── quad.wgsl
+│   │   │   └── region.wgsl
 │   │   └── mod.rs
 │   │
 │   ├── text/                      # Text shaping + atlas
@@ -130,10 +229,34 @@ netherize_editor/
 │   │   └── mod.rs
 │   │
 │   ├── syntax/                    # Syntax highlighting
-│   │   ├── highlight/             # Highlighting logic split into categories, engine, queries, spans
+│   │   ├── highlight/             # Highlighting logic
+│   │   │   ├── categories.rs      # Token category definitions
+│   │   │   ├── engine.rs          # Highlight engine
+│   │   │   ├── queries.rs         # Query loading
+│   │   │   ├── spans.rs           # Highlight span generation
+│   │   │   ├── mod.rs
+│   │   │   └── normalize_tests.rs # Highlight normalization tests
 │   │   ├── parser.rs              # Language registry bridge → tree-sitter grammar bootstrap
 │   │   ├── syntax_engine.rs       # tree-sitter parser lifecycle for each supported language
+│   │   ├── fold.rs                # Code folding support
 │   │   ├── queries/               # Tree-sitter query sources (.scm files)
+│   │   │   ├── bash/
+│   │   │   ├── dart/
+│   │   │   ├── dockerfile/
+│   │   │   ├── go/
+│   │   │   ├── java/
+│   │   │   ├── javascript/
+│   │   │   ├── json/
+│   │   │   ├── jsx/
+│   │   │   ├── markdown/
+│   │   │   ├── proto/
+│   │   │   ├── python/
+│   │   │   ├── rust/
+│   │   │   ├── sql/
+│   │   │   ├── tsx/
+│   │   │   ├── typescript/
+│   │   │   ├── xml/
+│   │   │   └── yaml/
 │   │   └── mod.rs
 │   │
 │   ├── workbench/                 # UI layout + panel management
@@ -142,6 +265,9 @@ netherize_editor/
 │   │   ├── panel_state.rs         # Sidebar/bottom panel open-state + sizes
 │   │   ├── focus_manager.rs       # Which region currently holds keyboard focus
 │   │   ├── overlay_manager.rs     # Overlay stack (palette, picker, etc.)
+│   │   ├── inspector_panel.rs     # Inspector/Right sidebar panel
+│   │   ├── text_coordinate_map.rs # Text ↔ pixel coordinate mapping
+│   │   ├── debug_state.rs         # Debug/development state tracking
 │   │   └── mod.rs
 │   │
 │   ├── workspace/                 # File system workspace
@@ -154,38 +280,117 @@ netherize_editor/
 │   │   ├── pty.rs                 # portable-pty spawn + read/write
 │   │   ├── ansi_parser.rs         # ANSI escape sequence parser
 │   │   ├── grid.rs                # Terminal cell grid + scrollback
+│   │   ├── cell_shapes.rs         # Terminal cell shape definitions
+│   │   ├── highlighter.rs         # Terminal output syntax highlighting
+│   │   ├── terminal_renderer.rs   # Terminal-specific rendering logic
+│   │   └── mod.rs
+│   │
+│   ├── runner/                    # Code runner (LeetCode integration)
+│   │   ├── leetcode.rs            # LeetCode problem management
+│   │   ├── leetcode_adapter.rs    # LeetCode API adapter
+│   │   ├── leetcode_api.rs        # LeetCode HTTP API client
+│   │   ├── leetcode_cache.rs      # LeetCode problem cache
 │   │   └── mod.rs
 │   │
 │   ├── async_runtime/             # Tokio async bridge
 │   │   ├── scheduler.rs           # Thin facade: shared registries/constants + AsyncScheduler surface
-│   │   ├── scheduler/             # Modular scheduler tasks (LSP, PTY, Syntax, AI, etc.)
+│   │   ├── scheduler/             # Modular scheduler tasks
+│   │   │   ├── runtime.rs         # Runtime bootstrap + request IDs
+│   │   │   ├── dispatch.rs        # Request routing / wake-up plumbing
+│   │   │   ├── emit.rs            # Event emission to UI thread
+│   │   │   ├── ai_jobs.rs         # AI inference jobs
+│   │   │   ├── ai.rs              # AI service integration
+│   │   │   ├── lsp.rs             # LSP lifecycle
+│   │   │   ├── lsp_io.rs          # LSP transport readers
+│   │   │   ├── lsp_parse.rs       # LSP response parsing
+│   │   │   ├── pty.rs             # PTY lifecycle and terminal output streaming
+│   │   │   ├── syntax_jobs.rs     # Tree-sitter parse/highlight and lightweight virtual jobs
+│   │   │   ├── file_watch.rs      # File watcher
+│   │   │   ├── local_history.rs   # Local file history
+│   │   │   ├── fzf.rs             # FZF integration
+│   │   │   ├── git.rs             # Git helpers
+│   │   │   ├── leetcode_fetch.rs  # LeetCode problem fetching
+│   │   │   └── tests.rs           # Scheduler tests
 │   │   ├── message.rs             # Worker request/result/event types sent across the bridge
+│   │   ├── dart_env.rs            # Dart environment setup
+│   │   ├── python_env.rs          # Python environment setup
 │   │   └── mod.rs
 │   │
-│   └── config/                    # Config loading
-│       ├── theme_config/          # Theme loading and model logic
-│       ├── paths.rs               # Shared user-config / legacy-state path helpers
-│       ├── ui_config.rs           # UiConfig — layout sizes, cursor style, padding
-│       ├── keymap_config.rs       # KeymapConfig — raw key binding table
-│       ├── keymap_loader.rs       # Loads + merges keymap TOML files
-│       └── mod.rs
+│   ├── config/                    # Config loading
+│   │   ├── theme_config/          # Theme loading and model logic
+│   │   │   ├── builtin.rs         # Built-in theme definitions
+│   │   │   ├── loader.rs          # Theme file loading
+│   │   │   ├── model.rs           # Theme data model
+│   │   │   └── raw.rs             # Raw TOML theme deserialization
+│   │   ├── theme_config.rs        # Theme config top-level facade
+│   │   ├── paths.rs               # Shared user-config / legacy-state path helpers
+│   │   ├── ui_config.rs           # UiConfig — layout sizes, cursor style, padding
+│   │   ├── keymap_config.rs       # KeymapConfig — raw key binding table
+│   │   ├── keymap_loader.rs       # Loads + merges keymap TOML files
+│   │   ├── ai_config.rs           # AI service configuration
+│   │   └── mod.rs
+│   │
+│   ├── platform/                  # Platform-specific code (empty, reserved)
+│   └── bin/                       # Additional binary targets (empty, reserved)
 │
 ├── config/
-│   ├── themes/
-│   │   └── default-dark.toml      # Theme profile ([theme], [editor], [ui], [syntax], [icons])
+│   ├── themes/                    # 83 built-in theme profiles
+│   │   ├── default-dark.toml      # Default dark theme
+│   │   ├── catppuccin-mocha.toml
+│   │   ├── dracula.toml
+│   │   ├── tokyo-night.toml
+│   │   └── ... (83 total: bearded-*, gruvbox, nord, one-dark, rose-pine, etc.)
 │   ├── ui/
 │   │   └── default.toml           # Layout sizes, cursor shape, padding, dock visibility
-│   └── keymaps/
-│       └── default.toml           # Shared repo baseline; local remaps can live in ~/.config/netherize/keymaps/user.toml
+│   ├── keymaps/
+│   │   └── default.toml           # Shared repo baseline; local remaps live in ~/.config/netherize/keymaps/user.toml
+│   ├── fonts/
+│   │   ├── GoogleSansCode.ttf     # Bundled UI font
+│   │   └── HackNerdFont-Regular.ttf  # Bundled monospace/terminal font
+│   └── ai.toml                    # AI service configuration
+│
+├── tests/
+│   ├── lsp_fvm_detection.rs       # LSP FVM detection integration test
+│   └── vietnamese_terminal_render.rs  # Vietnamese terminal rendering test
+│
+├── benches/
+│   ├── editor_bench.rs            # Criterion editor benchmarks
+│   └── e2e_perf_runner.rs         # End-to-end performance benchmarks
+│
+├── benchmarks/
+│   ├── baselines/                 # Performance baseline data
+│   └── inputs/                    # Benchmark input files
+│
+├── scripts/
+│   ├── bundle_macos.sh            # macOS .app bundler
+│   ├── bundle_linux.sh            # Linux AppImage / tarball bundler
+│   ├── bundle_windows.sh          # Windows installer bundler
+│   ├── install.sh                 # Quick install to local bin
+│   ├── profile_flamegraph.sh      # Flamegraph profiling
+│   ├── run_perf_baseline.sh       # Performance baseline runner
+│   └── generate_bench_samples.sh  # Benchmark sample generator
+│
+├── assets/
+│   ├── app_logo.png               # App logo (color)
+│   ├── app_logo_black.png         # App logo (black)
+│   ├── app_logo_1.png             # App logo variant
+│   ├── app_logo_black_1.png       # App logo black variant
+│   ├── app_logo_keyboard.svg      # Keyboard logo variant
+│   └── bearded-icons/             # Bearded icon set
 │
 ├── docs/
 │   ├── MODULE12_HANDOFF_COMPACT.md  # Handoff notes for Module 12 (Phase 2+3)
-│   └── perf_profiling.md
+│   ├── FVM_LSP_FIX.md             # FVM LSP fix documentation
+│   ├── perf_profiling.md          # Performance profiling guide
+│   └── superpowers/               # Superpowers documentation
 │
-├── benches/
-│   └── editor_bench.rs            # Criterion benchmarks
-│
-└── Cargo.toml
+├── Cargo.toml
+├── Cargo.lock
+├── Cross.toml                     # Cross-compilation config
+├── AGENTS.md                      # Agent instructions
+├── CLAUDE.md                      # Claude-specific instructions
+├── BUILD.md                       # Build instructions
+└── DEPENDENCIES.md                # Dependency documentation
 ```
 
 ### Runtime State And User Config
@@ -280,7 +485,7 @@ AsyncScheduler::submit()
       ▼
 dispatch_loop()
   - classify request family
-  - route into PTY / LSP / FZF / local history / syntax job worker
+  - route into PTY / LSP / FZF / local history / syntax / AI / git / leetcode job worker
       │
       ▼
 Worker task
@@ -295,7 +500,7 @@ EventLoopProxy<AppEvent>
 app/event_loop/async_results/mod.rs
   - drain bridge
   - reject stale buffer/revision results
-  - delegate to focused handlers (lsp.rs, syntax.rs, etc.)
+  - delegate to focused handlers (lsp.rs, syntax.rs, ai.rs, git.rs, etc.)
       │
       ▼
 window.request_redraw()
@@ -311,6 +516,8 @@ window.request_redraw()
 | PTY lifecycle and terminal output streaming | `src/async_runtime/scheduler/pty.rs` |
 | LSP lifecycle, transport readers, response parsing | `src/async_runtime/scheduler/lsp.rs`, `lsp_io.rs`, `lsp_parse.rs` |
 | File watcher / local history / FZF / git helpers | `src/async_runtime/scheduler/file_watch.rs`, `local_history.rs`, `fzf.rs`, `git.rs` |
+| AI inference and service integration | `src/async_runtime/scheduler/ai_jobs.rs`, `ai.rs` |
+| LeetCode problem fetching | `src/async_runtime/scheduler/leetcode_fetch.rs` |
 
 ### Keyboard / Vim Path In One Line
 
@@ -337,16 +544,25 @@ Use this table when you want to jump straight to the likely file instead of read
 | Vim counts, pending operators, chord interruption, `r<char>`, Leap pending states | `src/app/input/handler.rs`, `src/app/input/pending.rs` | Handler owns the state machine; pending types keep the router states readable |
 | A shortcut does not fire, or `0/F12/<leader>` maps wrong | `config/keymaps/default.toml`, `src/app/input_map/mod.rs`, `src/app/resolved_keymap.rs` | Binding definition, sequence matching, and merged runtime keymap live here |
 | A command should repeat `count` times or should/should not support counts | `src/core/commands.rs`, `src/core/command_dispatch/mod.rs` | Count policy and the actual execution loop are centralized here |
-| Undo transaction boundaries for repeated delete/paste/edit commands | `src/core/command_dispatch/mod.rs`, `src/app/app_state/mod.rs` | Dispatch decides when to commit; AppState stores the transaction stack |
+| Undo transaction boundaries for repeated delete/paste/edit commands | `src/core/command_dispatch/mod.rs`, `src/core/transaction.rs`, `src/app/app_state/mod.rs` | Dispatch decides when to commit; transaction.rs groups; AppState stores the stack |
 | Mode transitions such as Normal/Insert/Visual/TerminalFocus | `src/core/mode.rs`, `src/app/app_state/mod.rs` | `ModeState` validates transitions; `AppState` applies them |
 | F12 terminal behavior, focus handoff, explorer/panel focus routing | `src/app/event_loop/commands.rs`, `src/app/event_loop/commands_terminal.rs`, `src/app/event_loop/commands_explorer.rs` | The facade routes by UI domain; terminal and explorer behavior now live in focused modules |
 | Completion popup behavior, acceptance, and auto-trigger after typing | `src/app/event_loop/commands_completion.rs`, `src/app/event_loop/commands_lsp.rs`, `src/app/event_loop/async_results/` | Request submit lives with command helpers; result application lands in async results sub-modules |
 | Delete/close confirmations, theme selection, recent-project palette, explorer create/rename prompts | `src/app/event_loop/commands_prompts.rs`, `src/app/event_loop/commands_palette.rs` | Prompt lifecycle and confirm flows were split out of the main command facade |
+| Settings panel behavior, settings editing | `src/app/event_loop/commands_settings.rs`, `src/app/event_loop/commands_settings_helpers.rs` | Settings commands and their editing helpers live in dedicated modules |
 | Terminal raw input, ANSI behavior, PTY I/O | `src/app/input/helpers.rs`, `src/app/input/handler.rs`, `src/terminal/pty.rs`, `src/terminal/grid.rs` | Terminal key payload building lives in input helpers, then flows into PTY/grid behavior |
 | Sidebar / bottom panel overlap, docking geometry, resize handles | `src/workbench/layout_engine.rs`, `src/workbench/panel_state.rs` | Region bounds and panel sizes come from the workbench layout engine |
 | Cursor/caret rendering, terminal cursor visibility, status bar UI | `src/render/caret.rs`, `src/render/renderer/ui/`, `src/app/event_loop/application.rs` | Render prep happens in modular UI code, driven by event-loop state |
 | Theme token bug or wrong color/icon | `config/themes/default-dark.toml`, `src/config/theme_config/` | Theme data is defined in TOML and validated/loaded in the theme module |
 | UI spacing, panel sizes, cursor shape defaults | `config/ui/default.toml`, `src/config/ui_config.rs` | Geometry defaults come from UI config, not from the renderer |
+| AI chat panel behavior | `src/app/event_loop/commands_ai_chat.rs`, `src/app/event_loop/async_results/ai.rs`, `src/app/ai_agents.rs` | AI chat commands, async results, and agent integration |
+| LeetCode problem fetch, code runner | `src/runner/`, `src/app/event_loop/async_results/runner.rs`, `src/async_runtime/scheduler/leetcode_fetch.rs` | Runner logic, async results, and scheduler tasks |
+| Test runner behavior | `src/app/event_loop/commands_tests.rs`, `src/render/renderer/ui/test_runner.rs` | Test runner commands and rendering |
+| Live grep / workspace search | `src/app/event_loop/commands_palette.rs`, `src/render/renderer/palette/live_grep.rs`, `src/workspace/fuzzy.rs` | Search initiation, rendering, and fuzzy matching |
+| Which-key hints | `src/render/renderer/ui/whichkey.rs` | Which-key popup rendering |
+| Clipboard behavior | `src/app/clipboard.rs` | Clipboard read/write via arboard |
+| LSP capabilities or symbol caching | `src/lsp/capabilities.rs`, `src/lsp/symbol_cache.rs` | LSP negotiation and symbol cache |
+| Dart/Python environment setup | `src/async_runtime/dart_env.rs`, `src/async_runtime/python_env.rs` | Language environment initialization |
 
 ### Three Common Debug Paths
 
@@ -374,6 +590,8 @@ Use this table when you want to jump straight to the likely file instead of read
 | `WorkbenchLayoutEngine` | `workbench/layout_engine.rs` | Computes pixel bounds for all UI regions |
 | `RegionModel` | `workbench/region_model.rs` | Tree of named, bounded UI regions |
 | `FocusManager` | `workbench/focus_manager.rs` | Tracks which region has keyboard focus |
+| `AsyncScheduler` | `async_runtime/scheduler.rs` | Tokio bridge facade for off-thread work |
+| `ThemeConfig` | `config/theme_config/` | Theme data model loaded from TOML |
 
 ---
 
@@ -455,6 +673,8 @@ panel_padding = ...
 
 Controls theme metadata, colors, sizes, and file icons.
 
+The editor ships with 83 built-in themes including popular choices like Catppuccin Mocha, Dracula, Tokyo Night, Gruvbox, Nord, One Dark, Rose Pine, and the full Bearded theme family.
+
 Theme loading order:
 
 1. `ThemeConfig::load_preferred(...)` reads `NETHERIZE_THEME` if it is set
@@ -483,7 +703,7 @@ string = ...
 comment = ...
 
 [icons]
-explorer_folder_collapsed_marker = ""
+explorer_folder_collapsed_marker = ""
 
 [icons.rust]
 glyph = "\uE7A8"
@@ -493,6 +713,10 @@ color = "#FF955C"
 ### `config/keymaps/default.toml`
 
 Maps key combos to `Command` IDs per mode context.
+
+### `config/ai.toml`
+
+AI service configuration (API endpoints, model selection, etc.).
 
 ### Active Profiles And Override Flow
 
@@ -580,8 +804,8 @@ Each frame in `Renderer::render()` runs modularized update passes before submitt
 
 1. **Backgrounds**: region quads for visible panels (sidebar, editor, terminal, etc.)
 2. **Editor**: gutter, text, selections, caret
-3. **UI**: topbar, statusbar, sidebars, terminal grid
-4. **Overlays**: command palette, file picker, completion popups
+3. **UI**: topbar, statusbar, sidebars, terminal grid, AI chat, test runner, which-key
+4. **Overlays**: command palette, file picker, completion popups, live grep
 
 ---
 
@@ -594,16 +818,28 @@ Each frame in `Renderer::render()` runs modularized update passes before submitt
 | `wgpu` | GPU rendering (WebGPU API) |
 | `cosmic-text` | Font loading, text shaping, glyph rasterization |
 | `swash` | Low-level glyph rasterizer used by cosmic-text |
-| `tree-sitter` + `tree-sitter-rust` | Incremental syntax parsing for highlighting |
+| `font-kit` | System font discovery |
+| `tree-sitter` + language grammars | Incremental syntax parsing for 17 languages |
 | `portable-pty` | PTY spawn + I/O for the embedded terminal |
-| `tokio` | Async runtime for LSP + file watching |
+| `tokio` | Async runtime for LSP + file watching + AI |
 | `notify` | File system watcher (external change detection) |
 | `serde` + `serde_json` | JSON-RPC (LSP protocol) |
+| `lsp-types` | LSP protocol type definitions |
 | `toml` | Config file parsing |
 | `sysinfo` | System info for statusbar |
 | `bytemuck` | Safe vertex buffer casting |
 | `pollster` | Block-on-async for GPU device init |
+| `arboard` | Cross-platform clipboard |
+| `reqwest` | HTTP client (LeetCode API, etc.) |
+| `image` | Image loading (PNG, JPEG, GIF, etc.) |
+| `rfd` | Native file dialogs |
+| `ignore` | Git-aware file filtering |
+| `regex` | Regular expression support |
+| `resvg` / `tiny-skia` / `usvg` | SVG rendering for icons |
+| `similar` | Text diffing |
+| `sha2` | Hashing |
 | `criterion` | Benchmarks (dev-dependency) |
+| `naga` | Shader validation (dev-dependency) |
 
 ---
 

@@ -8,12 +8,12 @@ This document lists all external tools and LSP servers that Netherize Editor use
 
 The editor binary runs completely standalone with:
 - ✅ Text editing (Vim keybindings)
-- ✅ Syntax highlighting (16 languages via built-in tree-sitter)
+- ✅ Syntax highlighting (17 languages via built-in tree-sitter)
 - ✅ File picker (built-in fuzzy search)
 - ✅ Git status display
 - ✅ Terminal emulator
 - ✅ Multi-cursor editing
-- ✅ Theme system
+- ✅ Theme system (83 built-in themes)
 
 **No external tools required for basic usage.**
 
@@ -33,7 +33,7 @@ These tools enhance the editor experience but are not required for basic functio
 | **bat** | Syntax-highlighted file previews | `brew install bat` | `sudo apt install bat` |
 | **delta** | Git diff viewer | `brew install git-delta` | `sudo apt install git-delta` |
 
-**Detection:** The editor checks for these tools at runtime via `CheckSystemDeps` worker request (see `src/async_runtime/scheduler/syntax_jobs.rs:234`).
+**Detection:** The editor checks for these tools at runtime via `CheckSystemDeps` worker request (see `src/async_runtime/scheduler/syntax_jobs.rs:240`).
 
 ### AI Integration
 
@@ -41,7 +41,7 @@ These tools enhance the editor experience but are not required for basic functio
 |------|---------|---------|
 | **opencode** | AI code assistant | `curl -fsSL https://opencode.ai/install \| sh` |
 
-**Location:** `src/async_runtime/scheduler/ai_jobs.rs`
+**Location:** `src/async_runtime/scheduler/ai_jobs.rs`, `src/app/ai_agents.rs`
 
 ## Language Server Protocol (LSP) Servers
 
@@ -57,13 +57,17 @@ The editor supports LSP for the following languages. Each LSP server is **option
 | **TypeScript** | `typescript-language-server` | `npm install -g typescript typescript-language-server` | `.ts` |
 | **TSX** | `typescript-language-server` | `npm install -g typescript typescript-language-server` | `.tsx` |
 | **Go** | `gopls` | `go install golang.org/x/tools/gopls@latest` | `.go` |
-| **Python** | `pylsp` | `pip install python-lsp-server` | `.py` |
+| **Python** | `pyright-langserver` | `npm install -g pyright` | `.py` |
+| **Python** (companion) | `ruff` | `brew install ruff` (or: `pip install ruff`) | `.py` |
 | **Java** | `jdtls` | `brew install jdtls` (macOS) | `.java` |
+| **Dart** | `dart` | `brew tap dart-lang/dart && brew install dart` | `.dart` |
 | **SQL** | `sqls` | `go install github.com/sqls-server/sqls@latest` | `.sql` |
 | **YAML** | `yaml-language-server` | `npm install -g yaml-language-server` | `.yaml`, `.yml` |
 | **Dockerfile** | `docker-langserver` | `npm install -g dockerfile-language-server-nodejs` | `Dockerfile*` |
 | **JSON** | `vscode-json-language-server` | `npm install -g vscode-langservers-extracted` | `.json` |
 | **Bash** | `bash-language-server` | `npm install -g bash-language-server` | `.sh` |
+
+> **Note on Python:** The primary server is `pyright-langserver` (completion, hover, go-to-definition). The companion `ruff` server runs alongside for fast linting diagnostics, formatting, and quick-fix code actions. Both are optional and independent.
 
 **Registry Location:** `src/lsp/registry.rs`
 
@@ -73,32 +77,37 @@ These languages have tree-sitter syntax highlighting but no LSP integration:
 
 - **Markdown** (`.md`, `.markdown`, `.mdx`)
 - **Protobuf** (`.proto`)
-- **Dotenv** (`.env`, `.env*`)
-- **XML** (`.xml`)
 - **HTML** (`.html`)
 - **CSS** (`.css`)
+- **XML** (`.xml`)
+- **Dotenv** (`.env`, `.env*`)
 - **Plain Text** (`.txt`)
 
 ## Tree-sitter Parsers (Built-in)
 
 These are compiled into the binary via `Cargo.toml` dependencies:
 
-- `tree-sitter-rust`
-- `tree-sitter-javascript`
-- `tree-sitter-typescript`
-- `tree-sitter-go`
-- `tree-sitter-python`
-- `tree-sitter-java`
-- `tree-sitter-bash`
-- `tree-sitter-json`
-- `tree-sitter-yaml`
-- `tree-sitter-md` (Markdown)
-- `tree-sitter-sequel` (SQL)
-- `tree-sitter-containerfile` (Dockerfile)
-- `tree-sitter-html`
-- `tree-sitter-css`
-- `tree-sitter-proto` (Protobuf)
-- `tree-sitter-xml`
+| Parser Crate | Language |
+|-------------|----------|
+| `tree-sitter-rust` | Rust |
+| `tree-sitter-javascript` | JavaScript |
+| `tree-sitter-typescript` | TypeScript / TSX |
+| `tree-sitter-go` | Go |
+| `tree-sitter-python` | Python |
+| `tree-sitter-java` | Java |
+| `tree-sitter-bash` | Bash |
+| `tree-sitter-json` | JSON |
+| `tree-sitter-yaml` | YAML |
+| `tree-sitter-md` | Markdown |
+| `tree-sitter-sequel` | SQL |
+| `tree-sitter-containerfile` | Dockerfile |
+| `tree-sitter-html` | HTML |
+| `tree-sitter-css` | CSS |
+| `tree-sitter-proto` | Protobuf |
+| `tree-sitter-xml` | XML |
+| `tree-sitter-dart` | Dart |
+
+**Total: 17 language parsers**
 
 ## Graceful Degradation
 
@@ -108,15 +117,26 @@ The editor is designed to work without optional dependencies:
 2. **Missing LSP servers**: Syntax highlighting still works via tree-sitter
 3. **Missing lazygit/lazydocker**: Git/Docker features disabled but editor remains functional
 4. **Missing opencode**: AI features disabled
+5. **Missing ruff**: Python linting/formatting disabled; pyright still serves completion/hover
 
 ## Dependency Checking
 
-The editor checks for missing system dependencies at runtime:
+The editor checks for missing system dependencies at runtime. The `CheckSystemDeps` worker request checks **21 tools** including all system CLI tools, LSP servers, and AI tools:
 
 ```rust
-// src/async_runtime/scheduler/syntax_jobs.rs:232
+// src/async_runtime/scheduler/syntax_jobs.rs:240
 WorkerRequestPayload::CheckSystemDeps => {
-    let tools = ["fzf", "lazygit", "lazydocker", "rg", "fd", "bat", "delta"];
+    let tools = [
+        // System CLI tools
+        "fzf", "lazygit", "lazydocker", "rg", "fd", "bat", "delta",
+        // AI
+        "opencode",
+        // LSP servers
+        "rust-analyzer", "typescript-language-server", "gopls", "dart",
+        "pyright-langserver", "ruff", "jdtls", "sqls",
+        "yaml-language-server", "docker-langserver",
+        "vscode-json-language-server", "bash-language-server",
+    ];
     // ... checks which tools are missing
 }
 ```
@@ -124,7 +144,7 @@ WorkerRequestPayload::CheckSystemDeps => {
 LSP servers are checked per-file when opened:
 
 ```rust
-// src/async_runtime/scheduler/syntax_jobs.rs:206
+// src/async_runtime/scheduler/syntax_jobs.rs:214
 WorkerRequestPayload::CheckLspForPath { path } => {
     // Returns binary name, install command, and installation status
 }
@@ -136,6 +156,7 @@ See `scripts/` directory for automated installation helpers:
 
 - `scripts/install.sh` - Main installer
 - `scripts/bundle_macos.sh` - macOS app bundle creator
+- `scripts/bundle_linux.sh` - Linux AppImage / tarball creator
 - `scripts/bundle_windows.sh` - Windows installer creator
 
 ## Runtime Dependency Summary
@@ -161,7 +182,9 @@ sudo apt install fzf ripgrep    # Linux
 rustup component add rust-analyzer              # Rust
 npm install -g typescript-language-server       # JS/TS
 go install golang.org/x/tools/gopls@latest      # Go
-pip install python-lsp-server                   # Python
+npm install -g pyright                          # Python (primary)
+brew install ruff                               # Python (lint/format companion)
+brew tap dart-lang/dart && brew install dart    # Dart
 
 # Add optional tools:
 brew install lazygit lazydocker fd bat delta    # macOS
