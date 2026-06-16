@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-16T06:38:31.184Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-16T08:23:49.596Z
 > Files: 411 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
@@ -23,7 +23,7 @@
 
 ## ../../.config/netherize/
 
-- `ui.toml` (~139 tok)
+- `ui.toml` (~129 tok)
 
 ## ../../.config/netherize/config/
 

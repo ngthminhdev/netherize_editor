@@ -5,6 +5,7 @@
 > Last updated: 2026-05-30
 
 ## User Preferences
+- **Yank flash UX tuning (2026-06-16):** User prefers yank flash at 100ms with max opacity around 0.25, and expects all keyboard yank variants (`y`, `yy`, `ye`, `y{motion}`, visual `y`) to produce the same flash feedback.
 - **User runs the editor via `cargo run --release` from the repo (2026-06-12):** so CWD = repo and the active UI profile is the repo's `config/ui/default.toml` (+ `~/.config/netherize/ui.toml` field overrides). The /Applications bundle and ~/.local/bin copies are secondary.
 
 <!-- How the user likes things done. Code style, tools, patterns, communication. -->
@@ -13,6 +14,7 @@
 
 ## Key Learnings
 
+- **[2026-06-16] Animation-only editor overlays must dirty the overlay layout path:** `request_redraw()` alone reuses cached renderer overlay instances. For transient overlays like yank flash that append into `editor_overlay_chrome_instances` via `update_editor_overlays` + `add_yank_flash_overlay`, the tick must set `editor_caret_needs_layout = true` (unless a full editor layout is already pending) so alpha changes and final clearing render without waiting for a later keypress.
 - **[2026-06-15] Dock Cmd+digit tab switching must be mode-independent (resolved in `InputMap::resolve` BEFORE the per-mode keymap):** The global `None`-context keymap binds Cmd+digit→RIGHT_DOCK_SWITCH, but per-mode keymaps (`terminal`/`terminal_normal`) re-bind Cmd+digit→TERMINAL_TAB_SWITCH. Editor mode drifts (e.g. switching off the AiChat terminal tab leaves mode=TerminalFocus), so relying on the keymap shadows the dock switch. Fix pattern: an explicit early block in `resolve` keyed on `context.focus` — left-dock focuses (Explorer/Outline)→`SwitchLeftTab(digit)`, right-dock focuses (AiChat/TestRunner/Inspector)→`SwitchRightTab(digit)`. Do NOT add MarkdownPreview (it can be a center-editor buffer too).
 - **[2026-06-15] Outline highlight is rendered in the dock panel, gated by `sidebar_needs_layout`:** `application.rs` only rebuilds the left-dock panel when `sidebar_needs_layout || bounds_changed || focus_changed || left_active_tab_changed`. Any command that moves `outline_selected` (OutlineNext/Prev/Confirm) MUST set `self.sidebar_needs_layout = true`, else the editor cursor jumps but the outline highlight looks frozen. Setting only `editor_needs_layout` is not enough.
 - **[2026-06-15] Dock tab-strip icons must be SVG assets, not nerd-font glyphs:** `build_left_tab_strip`/`build_right_tab_strip` only draw an icon when `canonical_icon_id(id)` resolves (i.e. `built_in:<name>`). A raw nerd-font glyph in `PanelTabId::icon_glyph` renders as a blank (label only). Use `built_in:` ids (e.g. `built_in:folder`).

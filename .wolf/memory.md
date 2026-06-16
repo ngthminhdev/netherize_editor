@@ -1844,3 +1844,33 @@
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
+
+## Session: 2026-06-16 14:47
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-16 15:16
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 15:23 | Edited ../../.config/netherize/ui.toml | 4→3 lines | ~18 |
+| 15:24 | Session end: 1 writes across 1 files (ui.toml) | 5 reads | ~74175 tok |
+
+## Session: 2026-06-16 15:30
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 15:32 | Added yank_flash color to Theme Config | src/config/theme_config/{model.rs, raw.rs, loader.rs, builtin.rs} | Successfully added yank_flash field and parsing | ~500 |
+| 15:34 | Rewrote add_yank_flash_overlay to highlight line-by-line | src/render/renderer/editor/overlays.rs | Correctly matches text run bounds, handles multi-line yanks | ~400 |
+| 15:36 | Added yank_flash_triggered_on_yank_commands unit test | src/core/command_dispatch/tests.rs | Successfully verified both linewise and charwise yank flash trigger | ~300 |
+| 15:40 | Fixed final redraw request and reduced opacity | src/app/event_loop/application.rs, src/render/renderer/editor/overlays.rs | Force redraw on animation finish, opacity reduced to 0.25 | ~200 |
+| 15:44 | Scheduled event loop wakeups for yank flash and reduced duration to 50ms | src/app/event_loop/application.rs, src/app/app_state/mod.rs | Fixed the issue where flash stayed on screen until next key, yank duration set to 50ms | ~250 |
+| 15:46 | Session end: 11 writes across 7 files | 22 reads | ~170k tok |
+
+## Session: 2026-06-16 15:52
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 15:59 | Fixed yank flash overlay invalidation | src/app/event_loop/application.rs, src/app/app_state/mod.rs, src/render/renderer/editor/overlays.rs | Tick now rebuilds overlay layer without waiting for keypress; max alpha reduced to 0.14 | ~650 |
+| 16:06 | Tuned yank flash duration/opacity and expanded yank-motion regression coverage | src/app/app_state/mod.rs, src/app/event_loop/application.rs, src/render/renderer/editor/overlays.rs, src/core/command_dispatch/tests.rs | Flash now lasts 100ms at 0.25 alpha; `YankToWordEnd` and generic `y{motion}` flash covered | ~500 |

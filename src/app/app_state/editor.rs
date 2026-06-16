@@ -700,7 +700,7 @@ impl AppState {
         true
     }
 
-    pub(super) fn operation_range(
+    pub fn operation_range(
         &self,
         target: OperationTarget,
         op: Operator,

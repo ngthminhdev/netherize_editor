@@ -15,8 +15,8 @@ use crate::{
         glyph_instance::GlyphInstance, region_pipeline::RegionDrawInstance, renderer::Renderer,
     },
     text::layout_sync::{
-        compute_caret_layout, compute_caret_layout_with_folds, compute_cursor_overlay,
-        rebuild_layout_projection,
+        compute_caret_layout, compute_caret_layout_at_with_folds,
+        compute_caret_layout_with_folds, compute_cursor_overlay, rebuild_layout_projection,
     },
 };
 use cosmic_text::Metrics;
@@ -1370,6 +1370,97 @@ impl Renderer {
             &self.queue,
             &self.editor_overlay_glyph_instances,
         );
+    }
+
+    pub fn add_yank_flash_overlay(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {
+        let Some((start_char, end_char)) = app_state.yank_flash_range() else {
+            return;
+        };
+
+        let alpha = app_state.yank_flash_alpha();
+        if alpha <= 0.0 {
+            return;
+        }
+
+        let (mut start_line, mut start_byte_in_line) =
+            app_state.char_idx_to_line_and_byte_in_line(start_char);
+        let (mut end_line, mut end_byte_in_line) =
+            app_state.char_idx_to_line_and_byte_in_line(end_char);
+        if start_line > end_line
+            || (start_line == end_line && start_byte_in_line > end_byte_in_line)
+        {
+            std::mem::swap(&mut start_line, &mut end_line);
+            std::mem::swap(&mut start_byte_in_line, &mut end_byte_in_line);
+        }
+
+        // Adjust if it ends at the start of a new line to avoid highlighting the first character of the next line.
+        if end_line > start_line && end_byte_in_line == 0 {
+            end_line -= 1;
+            end_byte_in_line = app_state
+                .line_end_byte_idx(end_line)
+                .saturating_sub(app_state.line_start_byte_idx(end_line));
+        }
+
+        let geometry = super::editor_viewport_geometry(self, app_state, center_bounds);
+        let line_height = geometry.line_height;
+        let text_area_x = geometry.viewport_text_left;
+        let text_area_w = geometry.viewport_text_width;
+        let viewport_top = geometry.viewport_text_top;
+        let viewport_bottom = viewport_top + geometry.viewport_text_height.max(1.0);
+
+        let mut color = self
+            .theme
+            .editor
+            .yank_flash
+            .unwrap_or(self.theme.ui.accent)
+            .as_f32();
+        color[3] = (color[3] * alpha * 0.25).clamp(0.0, 1.0);
+
+        let scroll_y_px = crate::text::layout_sync::visual_y_for_logical_scroll_with_folds(
+            &self.text_system,
+            app_state.current_scroll_y,
+            app_state.folded_ranges(),
+        );
+        let origin_y = geometry.viewport_text_top + line_height - scroll_y_px;
+
+        for run in self.text_system.buffer().layout_runs() {
+            if run.line_i < start_line || run.line_i > end_line {
+                continue;
+            }
+            if app_state.is_line_folded(run.line_i) {
+                continue;
+            }
+            let line_top = origin_y + run.line_top
+                - app_state.folded_visual_y_offset_before(run.line_i, run.line_height);
+            let line_height_px = run.line_height.max(1.0);
+            let line_bottom = line_top + line_height_px;
+            if line_bottom <= viewport_top || line_top >= viewport_bottom {
+                continue;
+            }
+
+            let line_start_x = text_area_x;
+            let line_end_x = (text_area_x + run.line_w).max(line_start_x + 1.0);
+            let start_x = if run.line_i == start_line {
+                super::run_x_for_byte(text_area_x, &run, start_byte_in_line)
+            } else {
+                line_start_x
+            };
+            let end_x = if run.line_i == end_line {
+                super::run_x_for_byte(text_area_x, &run, end_byte_in_line)
+            } else {
+                line_end_x
+            };
+
+            let left = start_x.min(end_x).max(text_area_x);
+            let right = start_x.max(end_x).min(text_area_x + text_area_w);
+            let width = (right - left).max(1.0);
+
+            self.editor_overlay_chrome_instances
+                .push(RegionDrawInstance::new(
+                    [left, line_top, width, line_height_px],
+                    color,
+                ));
+        }
     }
 }
 

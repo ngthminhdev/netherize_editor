@@ -45,6 +45,37 @@ rtk discover          # Find missed RTK opportunities
 rtk proxy <cmd>       # Run raw (no filtering, for debugging)
 ```
 
+## Tested Commands
+
+### ✅ Works Well (Use These)
+```bash
+rtk git status          # Compact, clear
+rtk git log             # Compact, clear
+rtk git branch          # Compact, clear
+rtk git stash list      # Compact, clear
+rtk git remote -v       # Compact, clear
+rtk git show --stat     # Compact, clear
+rtk git diff --stat     # Compact, clear
+rtk ls src/             # Compact, clear
+rtk find "*.rs" src/    # Compact, clear
+rtk wc -l file.rs       # Compact, clear
+rtk deps                # Compact, clear
+rtk env                 # Compact, clear
+rtk err <cmd>           # Shows errors only
+rtk test cargo test     # Shows failures only
+rtk docker ps           # Compact, clear
+rtk summary <cmd>       # Heuristic summary
+```
+
+### ❌ Don't Use (Broken or Problematic)
+```bash
+rtk grep "pattern" src/ # Returns 0 matches when matches exist - BROKEN
+rtk json '{"key":"val"}'# Tries to read file instead of parsing - BROKEN
+rtk cargo test          # Times out (120s limit) - USE DIRECTLY
+rtk dotnet build        # Not installed on this system
+rtk kubectl get pods    # Not installed on this system
+```
+
 ## Why
 
 RTK filters and compresses command output before it reaches the LLM context, saving 60-90% tokens on common operations. Use `rtk <cmd>` when the command shape is supported; use the raw shell command when `rtk` does not support that syntax.

@@ -26,11 +26,11 @@ panel_border_width = 1.0
 
 [docks]
 left_visible = false
-left_size_px = 280.0
+left_size_px = 300.0
 right_visible = false
 right_size_px = 600.0
 bottom_visible = false
-bottom_size_px = 500.0
+bottom_size_px = 400.0
 overlay_visible = false
 
 [cursor]

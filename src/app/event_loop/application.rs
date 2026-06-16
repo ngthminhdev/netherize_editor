@@ -1022,6 +1022,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.tick_caret_blink() {
             self.request_redraw();
         }
+        if self.tick_yank_flash() {
+            self.request_redraw();
+        }
         if self.pump_bridge() {
             self.request_redraw();
         }
@@ -1080,6 +1083,16 @@ impl ApplicationHandler<AppEvent> for AppShell {
             next_deadline = Some(match next_deadline {
                 Some(existing) => existing.min(whichkey_deadline),
                 None => whichkey_deadline,
+            });
+        }
+
+        if let Some(start) = self.app_state.yank_flash_start() {
+            let next_frame = Instant::now() + Duration::from_millis(8);
+            let expiry = start + Duration::from_millis(100);
+            let yank_deadline = next_frame.min(expiry);
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(yank_deadline),
+                None => yank_deadline,
             });
         }
 
@@ -1164,6 +1177,20 @@ impl AppShell {
         } else {
             false
         }
+    }
+
+    /// Yank Flash — tick timer for the yank highlight fade-out animation.
+    /// Returns true while the flash is active so the overlay layer is rebuilt
+    /// with the current alpha, then once more after expiration to clear it.
+    fn tick_yank_flash(&mut self) -> bool {
+        if self.app_state.yank_flash_range().is_some() {
+            let _expired = self.app_state.clear_expired_yank_flash();
+            if !self.editor_needs_layout {
+                self.editor_caret_needs_layout = true;
+            }
+            return true;
+        }
+        false
     }
 
     /// Tối ưu 3: Caret Blink — tick timer nhấp nháy, chỉ set caret_blink_dirty.
@@ -1559,6 +1586,7 @@ impl AppShell {
                                 &styled_spans,
                             );
                             renderer.update_editor_overlays(&self.app_state, center_bounds);
+                            renderer.add_yank_flash_overlay(&self.app_state, center_bounds);
                         }
                     }
                 }
@@ -1688,6 +1716,7 @@ impl AppShell {
                         renderer.update_editor_caret(&self.app_state, center_bounds);
                     }
                     renderer.update_editor_overlays(&self.app_state, center_bounds);
+                    renderer.add_yank_flash_overlay(&self.app_state, center_bounds);
                 }
                 self.editor_caret_needs_layout = false;
                 // Cursor đã được re-projected → reset blink về visible.
@@ -2604,11 +2633,12 @@ fn focus_ring_instances(
 #[cfg(test)]
 mod tests {
     use super::{
-        breadcrumb_segment_text, build_editor_breadcrumb_segments, focus_ring_instances,
+        breadcrumb_segment_text, build_editor_breadcrumb_segments, focus_ring_instances, AppShell,
         focus_target_region_id, mouse_button_code, point_in_bounds, sgr_mouse_sequence,
         sgr_wheel_sequence, statusbar_source_path_label, terminal_cell_at_position,
         visible_region_bounds,
     };
+    use crate::app::app_state::AppState;
     use crate::async_runtime::message::{
         LspDocumentSymbol, LspDocumentSymbolSegment, LspPosition, LspRange,
     };
@@ -2617,7 +2647,7 @@ mod tests {
         focus_manager::FocusTarget,
         region_model::{FlatRegion, RegionBounds, RegionId},
     };
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use winit::event::MouseButton;
 
     #[test]
@@ -2896,5 +2926,18 @@ mod tests {
             breadcrumb_segment_text("Constructor", "constructor"),
             "[sym] constructor"
         );
+    }
+
+    #[test]
+    fn yank_flash_tick_invalidates_editor_overlay_layer() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        shell.app_state = AppState::from_text(PathBuf::from("yank-flash.txt"), "abcdef");
+        shell.app_state.set_yank_flash(0, 3);
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = false;
+
+        assert!(shell.tick_yank_flash());
+        assert!(!shell.editor_needs_layout);
+        assert!(shell.editor_caret_needs_layout);
     }
 }

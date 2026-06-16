@@ -3,6 +3,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::Arc,
+    time::{Duration, Instant},
 };
 
 use ropey::Rope;
@@ -42,6 +43,8 @@ mod palette;
 mod settings;
 mod state;
 mod workspace;
+
+const YANK_FLASH_DURATION: Duration = Duration::from_millis(100);
 
 #[cfg(test)]
 mod tests;
@@ -2251,6 +2254,12 @@ pub struct AppState {
     /// Authored test cases and their last run results for the active session.
     pub test_runner: crate::runner::TestRunnerState,
     pub test_field_edit: Option<TestFieldEditSession>,
+    // ── Yank Flash ──────────────────────────────────────────────────────────
+    /// Character range that was last yanked (copied). Used to render a brief
+    /// highlight flash to give visual feedback that the yank succeeded.
+    yank_flash_range: Option<(usize, usize)>,
+    /// Instant when the yank flash started, used to compute fade-out alpha.
+    yank_flash_start: Option<Instant>,
 }
 
 impl AppState {
@@ -2316,6 +2325,8 @@ impl AppState {
             workspace_symbol_cache: Arc::new(crate::lsp::WorkspaceSymbolCache::new()),
             test_runner: crate::runner::TestRunnerState::new(),
             test_field_edit: None,
+            yank_flash_range: None,
+            yank_flash_start: None,
         }
     }
 
@@ -2373,6 +2384,8 @@ impl AppState {
         Self {
             text: Rope::from(text),
             cursor_char_idx: 0,
+            yank_flash_range: None,
+            yank_flash_start: None,
             target_col: 0,
             revision: 0,
             mode_state: ModeState::default(),
@@ -2730,6 +2743,47 @@ impl AppState {
         }
         self.bump_revision();
         true
+    }
+
+    // ── Yank Flash ────────────────────────────────────────────────────────────
+
+    pub fn set_yank_flash(&mut self, start_char: usize, end_char: usize) {
+        self.yank_flash_range = Some((start_char, end_char));
+        self.yank_flash_start = Some(Instant::now());
+        self.bump_revision();
+    }
+
+    pub fn yank_flash_range(&self) -> Option<(usize, usize)> {
+        self.yank_flash_range
+    }
+
+    pub fn yank_flash_start(&self) -> Option<Instant> {
+        self.yank_flash_start
+    }
+
+    pub fn yank_flash_alpha(&self) -> f32 {
+        let Some(start) = self.yank_flash_start else {
+            return 0.0;
+        };
+        let elapsed_ms = start
+            .elapsed()
+            .as_millis()
+            .min(YANK_FLASH_DURATION.as_millis()) as f32;
+        let duration_ms = YANK_FLASH_DURATION.as_millis().max(1) as f32;
+        (1.0 - elapsed_ms / duration_ms).max(0.0)
+    }
+
+    /// Returns true if a previously-active yank flash just expired and was cleared.
+    pub fn clear_expired_yank_flash(&mut self) -> bool {
+        if let Some(start) = self.yank_flash_start {
+            if start.elapsed() >= YANK_FLASH_DURATION {
+                self.yank_flash_range = None;
+                self.yank_flash_start = None;
+                self.bump_revision();
+                return true;
+            }
+        }
+        false
     }
 }
 

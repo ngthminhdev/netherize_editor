@@ -2154,3 +2154,80 @@ fn visual_mode_star_search_persists_after_mode_exit() {
     assert_eq!(app_state.last_search_query(), "foo");
     assert_eq!(app_state.search_highlights().len(), 3);
 }
+
+#[test]
+fn yank_flash_triggered_on_yank_commands() {
+    let mut app_state = AppState::from_text(
+        unique_temp_path("yank_flash"),
+        "Hello World\nLine two\nLine three",
+    );
+    let mut clipboard = MockClipboard::default();
+
+    // Test YankCurrentLine (yy equivalent)
+    let report = dispatch_command_with_clipboard(
+        &mut app_state,
+        Command::YankCurrentLine,
+        Some(&mut clipboard),
+    );
+    assert!(report.success);
+    let flash_range = app_state.yank_flash_range();
+    assert!(
+        flash_range.is_some(),
+        "YankCurrentLine should trigger yank flash range"
+    );
+    let (start, end) = flash_range.unwrap();
+    assert_eq!(start, 0);
+    // newline is included in current line range
+    assert_eq!(end, 12);
+
+    let mut word_end_state =
+        AppState::from_text(unique_temp_path("yank_flash_word_end"), "hello world");
+    let _ = dispatch_command(&mut word_end_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let _ = dispatch_command(&mut word_end_state, Command::MoveRight);
+    let _ = dispatch_command(&mut word_end_state, Command::MoveRight);
+    let report = dispatch_command_with_clipboard(
+        &mut word_end_state,
+        Command::YankToWordEnd,
+        Some(&mut clipboard),
+    );
+    assert!(report.success);
+    assert_eq!(word_end_state.yank_flash_range(), Some((2, 5)));
+
+    let mut motion_state =
+        AppState::from_text(unique_temp_path("yank_flash_motion"), "hello world");
+    let _ = dispatch_command(&mut motion_state, Command::SwitchMode(ModeEvent::EnterNormal));
+    let report = dispatch_command_with_clipboard(
+        &mut motion_state,
+        Command::Operate {
+            op: Operator::Yank,
+            target: OperationTarget::Motion(Motion::WordForward),
+        },
+        Some(&mut clipboard),
+    );
+    assert!(report.success);
+    assert!(
+        motion_state.yank_flash_range().is_some(),
+        "y{{motion}} should trigger yank flash range"
+    );
+
+    // Move to visual mode and select Hello
+    let _ = dispatch_command(&mut app_state, Command::SwitchMode(ModeEvent::EnterVisual));
+    for _ in 0..4 {
+        let _ = dispatch_command(&mut app_state, Command::MoveRight);
+    }
+    // Now range is 0 to 5
+    let report2 = dispatch_command_with_clipboard(
+        &mut app_state,
+        Command::YankSelection,
+        Some(&mut clipboard),
+    );
+    assert!(report2.success);
+    let flash_range2 = app_state.yank_flash_range();
+    assert!(
+        flash_range2.is_some(),
+        "YankSelection should trigger yank flash range"
+    );
+    let (start2, end2) = flash_range2.unwrap();
+    assert_eq!(start2, 0);
+    assert_eq!(end2, 5);
+}

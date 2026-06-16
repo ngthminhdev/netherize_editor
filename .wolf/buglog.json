@@ -2989,5 +2989,43 @@
       "correctness",
       "mistral"
     ]
+  },
+  {
+    "id": "bug-173",
+    "timestamp": "2026-06-16T15:42:00+07:00",
+    "error_message": "Yank flash remains visible on screen until another key is pressed, and is too opaque (completely covers text).",
+    "file": "src/app/event_loop/application.rs, src/app/app_state/mod.rs, src/render/renderer/editor/overlays.rs",
+    "root_cause": "(1) The winit event loop went to sleep (ControlFlow::Wait) between keypresses, meaning tick_yank_flash was never called to check for timer expiration. (2) tick_yank_flash returned false when the timer expired, preventing request_redraw. (3) Opacity used self.theme.ui.accent directly (alpha = 1.0), obscuring the text.",
+    "fix": "(1) Added a getter for yank_flash_start in AppState, and factored this into winit's next_deadline calculation in about_to_wait to wake the loop up at the next frame (every 8ms) while yank flash is active. (2) Reduced duration to 50ms as preferred. (3) Reduced yank flash alpha by multiplying by 0.25.",
+    "tags": [
+      "yank-flash",
+      "redraw",
+      "animation",
+      "opacity",
+      "uiux",
+      "user-reported"
+    ]
+  },
+  {
+    "id": "bug-174",
+    "timestamp": "2026-06-16T15:59:52+07:00",
+    "error_message": "Yank flash still remains visible until another keypress after the first wakeup/50ms fix, and the highlight is still too opaque.",
+    "file": "src/app/event_loop/application.rs, src/app/app_state/mod.rs, src/render/renderer/editor/overlays.rs",
+    "root_cause": "The timer woke the event loop and requested redraws, but tick-only redraws did not mark the editor overlay layer dirty. add_yank_flash_overlay appends into editor_overlay_chrome_instances only when update_editor_overlays runs, so cached chrome could remain onscreen until a later key/movement invalidated editor_caret_needs_layout.",
+    "fix": "tick_yank_flash now marks editor_caret_needs_layout when flash is active or expiring, forcing the overlay layer to rebuild and clear without any keypress. The flash lifecycle uses a shared 50ms duration constant, clearing bumps revision, and max overlay alpha was lowered to 0.14.",
+    "tags": [
+      "yank-flash",
+      "redraw",
+      "overlay",
+      "animation",
+      "opacity",
+      "uiux",
+      "user-reported"
+    ],
+    "related_bugs": [
+      "bug-173"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-16T15:59:52+07:00"
   }
 ]

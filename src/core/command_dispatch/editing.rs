@@ -326,6 +326,11 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             },
         ),
         Command::YankSelection => {
+            let flash_range = ctx
+                .app_state
+                .visual_selection_range()
+                .map(|sel| (sel.start_char, sel.end_char));
+
             let Some(selection_text) = ctx.app_state.visual_selection_text() else {
                 return DispatchReport::success_with_flags(
                     "Dispatch: yank selection ignored",
@@ -339,6 +344,10 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
                 return DispatchReport::failure(
                     "Dispatch: yank selection failed (clipboard unavailable)",
                 );
+            }
+
+            if let Some((start, end)) = flash_range {
+                ctx.app_state.set_yank_flash(start, end);
             }
 
             let mut changed = false;
@@ -753,6 +762,9 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             ctx.write_text_to_clipboard_and_remember(Some(clipboard_text), kind);
 
             if op == Operator::Yank {
+                if let Some((start, end, _)) = ctx.app_state.operation_range(target, op) {
+                    ctx.app_state.set_yank_flash(start, end);
+                }
                 let mut changed = false;
                 if ctx.app_state.current_mode() == EditorMode::Visual
                     && let Ok(result) = ctx.app_state.apply_mode_event(ModeEvent::EnterNormal)
