@@ -269,6 +269,7 @@ fn dispatch_command_with_clipboard_once(
         | Command::MoveToLastLine
         | Command::MoveParagraphUp
         | Command::MoveParagraphDown
+        | Command::MatchBracket
         | Command::MoveFindChar(..)
         | Command::ScrollHalfPageUp
         | Command::ScrollHalfPageDown

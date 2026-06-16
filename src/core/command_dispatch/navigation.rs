@@ -172,6 +172,19 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
             record_jump_if_moved(ctx, origin, changed);
             DispatchReport::success("Dispatch: move paragraph down", changed)
         }
+        Command::MatchBracket => {
+            let origin = jump_origin(ctx);
+            let changed = ctx.app_state.match_bracket();
+            record_jump_if_moved(ctx, origin, changed);
+            DispatchReport::success(
+                if changed {
+                    "Dispatch: match bracket".to_string()
+                } else {
+                    "Dispatch: match bracket ignored".to_string()
+                },
+                changed,
+            )
+        }
         Command::ScrollHalfPageUp | Command::ScrollHalfPageDown | Command::CenterCursorLine => {
             DispatchReport::success_with_flags(
                 "Dispatch: scroll (handled by event loop)",

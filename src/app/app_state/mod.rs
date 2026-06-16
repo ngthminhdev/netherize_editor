@@ -45,6 +45,7 @@ mod state;
 mod workspace;
 
 const YANK_FLASH_DURATION: Duration = Duration::from_millis(100);
+const BRACKET_RIPPLE_DURATION: Duration = Duration::from_millis(150);
 
 #[cfg(test)]
 mod tests;
@@ -1264,6 +1265,12 @@ fn build_help_lines(
     append_help_binding(
         &mut lines,
         bindings,
+        "editor.match_bracket",
+        "Match bracket",
+    );
+    append_help_binding(
+        &mut lines,
+        bindings,
         "editor.scroll_half_page_up",
         "½ page up",
     );
@@ -1655,6 +1662,7 @@ fn command_label_for_help(command_id: &str) -> String {
         "editor.move_to_last_line" => "Last line",
         "editor.move_paragraph_up" => "Paragraph up",
         "editor.move_paragraph_down" => "Paragraph down",
+        "editor.match_bracket" => "Match bracket",
         "editor.scroll_half_page_up" => "½ page up",
         "editor.scroll_half_page_down" => "½ page down",
         "editor.center_cursor_line" => "Center cursor line",
@@ -2260,6 +2268,12 @@ pub struct AppState {
     yank_flash_range: Option<(usize, usize)>,
     /// Instant when the yank flash started, used to compute fade-out alpha.
     yank_flash_start: Option<Instant>,
+    /// Matching bracket character under the cursor, if the cursor is on a bracket.
+    matched_bracket_pos: Option<usize>,
+    /// Destination bracket of the most recent `%` jump.
+    bracket_ripple_pos: Option<usize>,
+    /// Instant when the bracket ripple started, used to compute fade-out alpha.
+    bracket_ripple_start: Option<Instant>,
 }
 
 impl AppState {
@@ -2327,6 +2341,9 @@ impl AppState {
             test_field_edit: None,
             yank_flash_range: None,
             yank_flash_start: None,
+            matched_bracket_pos: None,
+            bracket_ripple_pos: None,
+            bracket_ripple_start: None,
         }
     }
 
@@ -2386,6 +2403,9 @@ impl AppState {
             cursor_char_idx: 0,
             yank_flash_range: None,
             yank_flash_start: None,
+            matched_bracket_pos: None,
+            bracket_ripple_pos: None,
+            bracket_ripple_start: None,
             target_col: 0,
             revision: 0,
             mode_state: ModeState::default(),
@@ -2779,6 +2799,68 @@ impl AppState {
             if start.elapsed() >= YANK_FLASH_DURATION {
                 self.yank_flash_range = None;
                 self.yank_flash_start = None;
+                self.bump_revision();
+                return true;
+            }
+        }
+        false
+    }
+
+    // ── Match Bracket Highlight / Ripple ─────────────────────────────────────
+
+    pub fn matched_bracket_pos(&self) -> Option<usize> {
+        self.matched_bracket_pos
+    }
+
+    pub fn refresh_matched_bracket(&mut self) -> bool {
+        let changed = self.refresh_matched_bracket_without_revision();
+        if changed {
+            self.bump_revision();
+        }
+        changed
+    }
+
+    pub(super) fn refresh_matched_bracket_without_revision(&mut self) -> bool {
+        let next = self.matching_bracket_at_cursor();
+        if self.matched_bracket_pos == next {
+            return false;
+        }
+        self.matched_bracket_pos = next;
+        true
+    }
+
+    pub fn set_bracket_ripple(&mut self, char_idx: usize) {
+        self.bracket_ripple_pos = Some(char_idx);
+        self.bracket_ripple_start = Some(Instant::now());
+        self.bump_revision();
+    }
+
+    pub fn bracket_ripple_pos(&self) -> Option<usize> {
+        self.bracket_ripple_pos
+    }
+
+    pub fn bracket_ripple_start(&self) -> Option<Instant> {
+        self.bracket_ripple_start
+    }
+
+    pub fn bracket_ripple_alpha(&self) -> f32 {
+        let Some(start) = self.bracket_ripple_start else {
+            return 0.0;
+        };
+        let elapsed_ms = start
+            .elapsed()
+            .as_millis()
+            .min(BRACKET_RIPPLE_DURATION.as_millis()) as f32;
+        let duration_ms = BRACKET_RIPPLE_DURATION.as_millis().max(1) as f32;
+        (1.0 - elapsed_ms / duration_ms).max(0.0)
+    }
+
+    /// Returns true if a previously-active bracket ripple just expired and was cleared.
+    pub fn clear_expired_bracket_ripple(&mut self) -> bool {
+        if let Some(start) = self.bracket_ripple_start {
+            if start.elapsed() >= BRACKET_RIPPLE_DURATION {
+                self.bracket_ripple_pos = None;
+                self.bracket_ripple_start = None;
                 self.bump_revision();
                 return true;
             }

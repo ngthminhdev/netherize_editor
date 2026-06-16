@@ -282,6 +282,7 @@ impl AppShell {
                 | Command::MoveToFirstNonWhitespace
                 | Command::MoveParagraphUp
                 | Command::MoveParagraphDown
+                | Command::MatchBracket
                 | Command::InsertAtLineStart
                 | Command::AppendAtLineEnd
                 | Command::AppendAfterCursor

@@ -178,6 +178,32 @@ impl AppState {
         true
     }
 
+    pub fn match_bracket(&mut self) -> bool {
+        let Some(target_idx) = self.matching_bracket_at_cursor() else {
+            let _ = self.refresh_matched_bracket();
+            return false;
+        };
+
+        let changed = self.move_cursor_to_char_idx(target_idx);
+        if changed {
+            self.set_bracket_ripple(target_idx);
+        }
+        changed
+    }
+
+    pub(super) fn matching_bracket_at_cursor(&self) -> Option<usize> {
+        let cursor = self.cursor_char_idx;
+        let ch = self.char_at_cursor()?;
+        match bracket_pair_for_char(ch)? {
+            BracketMatchSpec::Open { open, close } => {
+                find_matching_close_bracket(&self.text, cursor, open, close)
+            }
+            BracketMatchSpec::Close { open, close } => {
+                find_matching_open_bracket(&self.text, cursor, open, close)
+            }
+        }
+    }
+
     pub fn backspace(&mut self) -> bool {
         if self.visual_selection_range().is_some() {
             return self.delete_visual_selection();
@@ -1061,6 +1087,7 @@ impl AppState {
         let new_line = self.cursor_line_col().0.saturating_sub(half);
         self.cursor_char_idx = self.text.line_to_char(new_line);
         self.target_col = 0;
+        let _ = self.refresh_matched_bracket_without_revision();
         self.bump_revision();
     }
 
@@ -1072,6 +1099,7 @@ impl AppState {
         let new_line = (self.cursor_line_col().0 + half).min(total.saturating_sub(1));
         self.cursor_char_idx = self.text.line_to_char(new_line);
         self.target_col = 0;
+        let _ = self.refresh_matched_bracket_without_revision();
         self.bump_revision();
     }
 
@@ -1105,4 +1133,90 @@ impl AppState {
     pub fn snap_current_scroll_to_target(&mut self) {
         self.current_scroll_y = self.target_scroll_y;
     }
+}
+
+enum BracketMatchSpec {
+    Open { open: char, close: char },
+    Close { open: char, close: char },
+}
+
+fn bracket_pair_for_char(ch: char) -> Option<BracketMatchSpec> {
+    match ch {
+        '(' => Some(BracketMatchSpec::Open {
+            open: '(',
+            close: ')',
+        }),
+        '[' => Some(BracketMatchSpec::Open {
+            open: '[',
+            close: ']',
+        }),
+        '{' => Some(BracketMatchSpec::Open {
+            open: '{',
+            close: '}',
+        }),
+        ')' => Some(BracketMatchSpec::Close {
+            open: '(',
+            close: ')',
+        }),
+        ']' => Some(BracketMatchSpec::Close {
+            open: '[',
+            close: ']',
+        }),
+        '}' => Some(BracketMatchSpec::Close {
+            open: '{',
+            close: '}',
+        }),
+        _ => None,
+    }
+}
+
+fn find_matching_close_bracket(
+    text: &ropey::Rope,
+    open_idx: usize,
+    open: char,
+    close: char,
+) -> Option<usize> {
+    let len = text.len_chars();
+    if open_idx >= len || text.char(open_idx) != open {
+        return None;
+    }
+
+    let mut depth = 0usize;
+    for idx in (open_idx + 1)..len {
+        let ch = text.char(idx);
+        if ch == open {
+            depth += 1;
+        } else if ch == close {
+            if depth == 0 {
+                return Some(idx);
+            }
+            depth = depth.saturating_sub(1);
+        }
+    }
+    None
+}
+
+fn find_matching_open_bracket(
+    text: &ropey::Rope,
+    close_idx: usize,
+    open: char,
+    close: char,
+) -> Option<usize> {
+    if close_idx >= text.len_chars() || text.char(close_idx) != close {
+        return None;
+    }
+
+    let mut depth = 0usize;
+    for idx in (0..close_idx).rev() {
+        let ch = text.char(idx);
+        if ch == close {
+            depth += 1;
+        } else if ch == open {
+            if depth == 0 {
+                return Some(idx);
+            }
+            depth = depth.saturating_sub(1);
+        }
+    }
+    None
 }

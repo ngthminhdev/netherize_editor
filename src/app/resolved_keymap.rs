@@ -740,6 +740,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     );
     km.insert(Some("normal"), ch('{'), MOVE_PARAGRAPH_UP);
     km.insert(Some("normal"), ch('}'), MOVE_PARAGRAPH_DOWN);
+    km.insert(Some("normal"), ch('%'), MATCH_BRACKET);
     km.insert(
         Some("normal"),
         KeySpec::CtrlPlus(KeyCode::KeyH),
@@ -776,6 +777,7 @@ pub fn builtin_defaults() -> ResolvedKeymap {
     km.insert(Some("visual"), ch('G'), MOVE_TO_LAST_LINE);
     km.insert(Some("visual"), ch('{'), MOVE_PARAGRAPH_UP);
     km.insert(Some("visual"), ch('}'), MOVE_PARAGRAPH_DOWN);
+    km.insert(Some("visual"), ch('%'), MATCH_BRACKET);
     km.insert(Some("visual"), ch('*'), SEARCH_WORD_UNDER_CURSOR);
     km.insert(Some("visual"), ph(KeyCode::KeyD), DELETE_SELECTION);
     km.insert(Some("visual"), ph(KeyCode::KeyC), CHANGE_SELECTION);

@@ -111,6 +111,8 @@ pub enum Command {
     MoveToLastLine,
     MoveParagraphUp,
     MoveParagraphDown,
+    /// Vim `%`: jump between matching brackets and trigger a short target flash.
+    MatchBracket,
     /// Vim f/F/t/T motion: nhảy tới ký tự trên dòng hiện tại, đồng thời set
     /// search highlight cho ký tự đó để n/N nhảy tiếp giữa các match.
     MoveFindChar(FindMotionKind, char),
@@ -509,6 +511,7 @@ impl Command {
                 | Self::MoveToLastLine
                 | Self::MoveParagraphUp
                 | Self::MoveParagraphDown
+                | Self::MatchBracket
                 | Self::MoveFindChar(..)
                 | Self::ScrollHalfPageUp
                 | Self::ScrollHalfPageDown
@@ -555,6 +558,7 @@ impl Command {
                 | Self::MoveToLastLine
                 | Self::MoveParagraphUp
                 | Self::MoveParagraphDown
+                | Self::MatchBracket
                 | Self::Backspace
                 | Self::DeleteChar
                 | Self::DeleteWordForward

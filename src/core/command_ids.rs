@@ -17,6 +17,7 @@ pub const MOVE_TO_FIRST_LINE: &str = "editor.move_to_first_line";
 pub const MOVE_TO_LAST_LINE: &str = "editor.move_to_last_line";
 pub const MOVE_PARAGRAPH_UP: &str = "editor.move_paragraph_up";
 pub const MOVE_PARAGRAPH_DOWN: &str = "editor.move_paragraph_down";
+pub const MATCH_BRACKET: &str = "editor.match_bracket";
 pub const SCROLL_HALF_PAGE_UP: &str = "editor.scroll_half_page_up";
 pub const SCROLL_HALF_PAGE_DOWN: &str = "editor.scroll_half_page_down";
 pub const CENTER_CURSOR_LINE: &str = "editor.center_cursor_line";
@@ -292,6 +293,7 @@ pub const ALL_IDS: &[&str] = &[
     MOVE_TO_LAST_LINE,
     SCROLL_HALF_PAGE_UP,
     SCROLL_HALF_PAGE_DOWN,
+    MATCH_BRACKET,
     CENTER_CURSOR_LINE,
     OPEN_IN_FILE_SEARCH,
     SEARCH_NEXT,
@@ -532,6 +534,7 @@ pub fn parse(id: &str, open_file_path: Option<&std::path::Path>) -> Option<Comma
         MOVE_TO_LAST_LINE => Some(Command::MoveToLastLine),
         MOVE_PARAGRAPH_UP => Some(Command::MoveParagraphUp),
         MOVE_PARAGRAPH_DOWN => Some(Command::MoveParagraphDown),
+        MATCH_BRACKET => Some(Command::MatchBracket),
         SCROLL_HALF_PAGE_UP => Some(Command::ScrollHalfPageUp),
         SCROLL_HALF_PAGE_DOWN => Some(Command::ScrollHalfPageDown),
         CENTER_CURSOR_LINE => Some(Command::CenterCursorLine),

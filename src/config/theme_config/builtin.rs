@@ -32,6 +32,7 @@ fn builtin_editor_tokens() -> EditorThemeTokens {
         cursor: rgb(155, 229, 100),
         selection: rgb(30, 37, 53),
         yank_flash: None,
+        bracket_ripple: None,
         gutter: rgb(13, 16, 23),
         gutter_active: rgb(216, 222, 234),
         indent_guide: rgba(143, 152, 170, 56),

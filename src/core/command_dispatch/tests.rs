@@ -953,6 +953,19 @@ fn editor_paste_in_insert_mode_keeps_cursor_after_inserted_text() {
 }
 
 #[test]
+fn match_bracket_dispatch_jumps_and_sets_ripple() {
+    let mut app_state =
+        AppState::from_text(unique_temp_path("match_bracket_dispatch"), "{ alpha }");
+
+    let report = dispatch_command(&mut app_state, Command::MatchBracket);
+
+    assert!(report.success);
+    assert!(report.state_changed);
+    assert_eq!(app_state.cursor_char_idx(), 8);
+    assert_eq!(app_state.bracket_ripple_pos(), Some(8));
+}
+
+#[test]
 fn editor_paste_appends_to_palette_query() {
     let mut app_state = AppState::from_text(unique_temp_path("paste_system_palette"), "alpha");
     let mut clipboard = MockClipboard {

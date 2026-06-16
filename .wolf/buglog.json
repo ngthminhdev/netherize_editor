@@ -3027,5 +3027,25 @@
     ],
     "occurrences": 1,
     "last_seen": "2026-06-16T15:59:52+07:00"
+  },
+  {
+    "id": "bug-175",
+    "timestamp": "2026-06-16T16:54:22+07:00",
+    "error_message": "Vim % match-bracket command was missing, and the editor had no live matched-bracket highlight or jump-target ripple feedback.",
+    "file": "src/core/commands.rs, src/core/command_ids.rs, src/core/command_dispatch/navigation.rs, src/app/app_state/editor.rs, src/app/event_loop/application.rs, src/render/renderer/editor/overlays.rs, src/app/resolved_keymap.rs, config/keymaps/default.toml",
+    "root_cause": "The keymap and command registry had no editor.match_bracket / Command::MatchBracket path, so % could not resolve in Normal or Visual mode. Matching-bracket state and animation state also did not exist in AppState, and the overlay redraw tick only handled yank flash.",
+    "fix": "Added Command::MatchBracket, command id parsing, default Normal/Visual % bindings, navigation dispatch with jump-stack recording, balanced rope scan matching for ()[]{} pairs, live matched-bracket state on cursor updates, a 150ms bracket ripple timer, overlay invalidation in about_to_wait, and renderer quads for matched-bracket highlight plus fading expanding ripple. Covered with app-state, dispatch, input-map, and event-loop tests.",
+    "tags": [
+      "match-bracket",
+      "vim",
+      "keymap",
+      "overlay",
+      "animation",
+      "uiux",
+      "user-reported"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-06-16T16:54:22+07:00"
   }
 ]

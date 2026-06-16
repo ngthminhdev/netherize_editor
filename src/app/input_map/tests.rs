@@ -698,6 +698,19 @@ fn markdown_preview_uppercase_g_text_scrolls_bottom_without_shift_state() {
 }
 
 #[test]
+fn default_profile_percent_routes_to_match_bracket_in_normal_and_visual_modes() {
+    let map = make_default_profile_map();
+    let input = shifted_input_from_physical(KeyCode::Digit5, "%");
+
+    for mode in [EditorMode::Normal, EditorMode::Visual] {
+        let actual = map
+            .resolve(&input, KeybindingContext::for_mode(mode))
+            .map(|matched| matched.command);
+        assert_eq!(actual, Some(Command::MatchBracket), "mode={mode:?}");
+    }
+}
+
+#[test]
 fn default_profile_resize_keys_map_to_requested_directions() {
     let map = make_default_profile_map();
     let context = KeybindingContext::for_mode(EditorMode::Resize);

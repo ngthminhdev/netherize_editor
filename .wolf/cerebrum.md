@@ -142,3 +142,8 @@
 - **Decision Log:** Jump semantics theo vim: n/N, gg/G, {/}, leap, *, mở file khác đều push; dedup liên tiếp cùng (file, line) + cap 100 entry. h/j/k/l/w/b và Ctrl+U/D không push (đúng vim).
 
 - AI inline settings: editable in Settings tab via `SettingItem::Ai*` variants (app_state/settings.rs). Commit path = `commit_ai_text_edit`/`commit_ai_number_edit` in commands_settings_helpers.rs → `AiConfig::set_inline_*` (config/ai_config.rs) which mutates `self.ai_config` in-memory AND saves. Active immediately with NO reload because `flush_pending_ai_inline_completion` reads `self.ai_config.inline_completion()` live each request. `AiConfig::save_user_override` writes to cwd/config/ai.toml first — so cargo tests that COMMIT would clobber the real config; new tests stop at begin_editing to stay disk-safe.
+
+### 2026-06-16 — Match bracket and overlay animation
+- **Decision Log:** `%` is a normal keymap-resolved command (`editor.match_bracket`) for Normal/Visual modes, not a pending-state key, because it has no dynamic payload. It pushes the jump origin only when the cursor actually moves.
+- **Key Learning:** The overlay animation pattern for short flashes is AppState timer state + `about_to_wait` wake deadline + `editor_caret_needs_layout` invalidation. Without the caret-layer invalidation, renderer overlay instances can stay cached until the next unrelated input.
+- **Decision Log:** Bracket matching currently reuses a balanced `Rope` char scan for `()[]{}`. Tree-sitter acceleration can be added later, but the user-visible path stays deterministic and avoids parser availability coupling.

@@ -1025,6 +1025,9 @@ impl ApplicationHandler<AppEvent> for AppShell {
         if self.tick_yank_flash() {
             self.request_redraw();
         }
+        if self.tick_bracket_ripple() {
+            self.request_redraw();
+        }
         if self.pump_bridge() {
             self.request_redraw();
         }
@@ -1093,6 +1096,15 @@ impl ApplicationHandler<AppEvent> for AppShell {
             next_deadline = Some(match next_deadline {
                 Some(existing) => existing.min(yank_deadline),
                 None => yank_deadline,
+            });
+        }
+        if let Some(start) = self.app_state.bracket_ripple_start() {
+            let next_frame = Instant::now() + Duration::from_millis(8);
+            let expiry = start + Duration::from_millis(150);
+            let ripple_deadline = next_frame.min(expiry);
+            next_deadline = Some(match next_deadline {
+                Some(existing) => existing.min(ripple_deadline),
+                None => ripple_deadline,
             });
         }
 
@@ -1185,6 +1197,18 @@ impl AppShell {
     fn tick_yank_flash(&mut self) -> bool {
         if self.app_state.yank_flash_range().is_some() {
             let _expired = self.app_state.clear_expired_yank_flash();
+            if !self.editor_needs_layout {
+                self.editor_caret_needs_layout = true;
+            }
+            return true;
+        }
+        false
+    }
+
+    /// Match-bracket Ripple — tick timer for the 150ms destination flash.
+    fn tick_bracket_ripple(&mut self) -> bool {
+        if self.app_state.bracket_ripple_pos().is_some() {
+            let _expired = self.app_state.clear_expired_bracket_ripple();
             if !self.editor_needs_layout {
                 self.editor_caret_needs_layout = true;
             }
@@ -1586,6 +1610,8 @@ impl AppShell {
                                 &styled_spans,
                             );
                             renderer.update_editor_overlays(&self.app_state, center_bounds);
+                            renderer.add_matched_bracket_overlay(&self.app_state, center_bounds);
+                            renderer.add_bracket_ripple_overlay(&self.app_state, center_bounds);
                             renderer.add_yank_flash_overlay(&self.app_state, center_bounds);
                         }
                     }
@@ -1716,6 +1742,8 @@ impl AppShell {
                         renderer.update_editor_caret(&self.app_state, center_bounds);
                     }
                     renderer.update_editor_overlays(&self.app_state, center_bounds);
+                    renderer.add_matched_bracket_overlay(&self.app_state, center_bounds);
+                    renderer.add_bracket_ripple_overlay(&self.app_state, center_bounds);
                     renderer.add_yank_flash_overlay(&self.app_state, center_bounds);
                 }
                 self.editor_caret_needs_layout = false;
@@ -2937,6 +2965,19 @@ mod tests {
         shell.editor_caret_needs_layout = false;
 
         assert!(shell.tick_yank_flash());
+        assert!(!shell.editor_needs_layout);
+        assert!(shell.editor_caret_needs_layout);
+    }
+
+    #[test]
+    fn bracket_ripple_tick_invalidates_editor_overlay_layer() {
+        let mut shell = AppShell::new_for_tests().expect("create app shell");
+        shell.app_state = AppState::from_text(PathBuf::from("bracket-ripple.txt"), "{}");
+        shell.app_state.set_bracket_ripple(1);
+        shell.editor_needs_layout = false;
+        shell.editor_caret_needs_layout = false;
+
+        assert!(shell.tick_bracket_ripple());
         assert!(!shell.editor_needs_layout);
         assert!(shell.editor_caret_needs_layout);
     }

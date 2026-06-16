@@ -1055,6 +1055,8 @@ impl AppState {
             changed = true;
         }
 
+        changed |= self.refresh_matched_bracket_without_revision();
+
         if changed {
             self.bump_revision();
         }

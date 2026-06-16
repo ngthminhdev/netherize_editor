@@ -216,6 +216,57 @@ mod tests {
     }
 
     #[test]
+    fn match_bracket_jumps_between_nested_pairs_and_sets_ripple() {
+        let mut state = AppState::from_text(
+            unique_temp_path("match_bracket_nested"),
+            "fn main() { call([1]); }",
+        );
+
+        assert!(state.jump_to_line_col(0, 10));
+        assert!(state.match_bracket());
+
+        assert_eq!(state.cursor_char_idx(), 23);
+        assert_eq!(state.bracket_ripple_pos(), Some(23));
+        assert_eq!(state.matched_bracket_pos(), Some(10));
+
+        assert!(state.match_bracket());
+
+        assert_eq!(state.cursor_char_idx(), 10);
+        assert_eq!(state.bracket_ripple_pos(), Some(10));
+        assert_eq!(state.matched_bracket_pos(), Some(23));
+    }
+
+    #[test]
+    fn match_bracket_ignores_non_bracket_cursor_and_unmatched_bracket() {
+        let mut state = AppState::from_text(unique_temp_path("match_bracket_none"), "abc {");
+
+        assert!(!state.match_bracket());
+        assert_eq!(state.cursor_char_idx(), 0);
+        assert_eq!(state.bracket_ripple_pos(), None);
+        assert_eq!(state.matched_bracket_pos(), None);
+
+        assert!(state.jump_to_line_col(0, 4));
+        assert!(!state.match_bracket());
+        assert_eq!(state.cursor_char_idx(), 4);
+        assert_eq!(state.bracket_ripple_pos(), None);
+        assert_eq!(state.matched_bracket_pos(), None);
+    }
+
+    #[test]
+    fn matched_bracket_highlight_tracks_only_cursor_on_brackets() {
+        let mut state = AppState::from_text(unique_temp_path("match_bracket_highlight"), "([x])");
+
+        assert!(state.refresh_matched_bracket());
+        assert_eq!(state.matched_bracket_pos(), Some(4));
+
+        assert!(state.jump_to_line_col(0, 1));
+        assert_eq!(state.matched_bracket_pos(), Some(3));
+
+        assert!(state.jump_to_line_col(0, 2));
+        assert_eq!(state.matched_bracket_pos(), None);
+    }
+
+    #[test]
     fn help_buffer_uses_config_driven_keymap_content() {
         let bindings = vec![
             KeyBinding {

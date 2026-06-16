@@ -1874,3 +1874,9 @@
 |------|--------|---------|---------|--------|
 | 15:59 | Fixed yank flash overlay invalidation | src/app/event_loop/application.rs, src/app/app_state/mod.rs, src/render/renderer/editor/overlays.rs | Tick now rebuilds overlay layer without waiting for keypress; max alpha reduced to 0.14 | ~650 |
 | 16:06 | Tuned yank flash duration/opacity and expanded yank-motion regression coverage | src/app/app_state/mod.rs, src/app/event_loop/application.rs, src/render/renderer/editor/overlays.rs, src/core/command_dispatch/tests.rs | Flash now lasts 100ms at 0.25 alpha; `YankToWordEnd` and generic `y{motion}` flash covered | ~500 |
+
+## Session: 2026-06-16 16:54
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 16:54 | Added Vim `%` match-bracket command and match-paren ripple | command registry/dispatch, AppState, event loop, renderer overlays, keymaps, theme tokens | `%` jumps between matched brackets in Normal/Visual mode, live highlight tracks cursor-on-bracket, and jump target renders a 150ms ripple; targeted and lib tests pass | ~1200 |

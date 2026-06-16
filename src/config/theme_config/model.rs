@@ -154,6 +154,7 @@ pub struct EditorThemeTokens {
     pub cursor: ThemeColor,
     pub selection: ThemeColor,
     pub yank_flash: Option<ThemeColor>,
+    pub bracket_ripple: Option<ThemeColor>,
     pub gutter: ThemeColor,
     pub gutter_active: ThemeColor,
     pub indent_guide: ThemeColor,

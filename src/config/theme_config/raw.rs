@@ -40,6 +40,7 @@ pub(in crate::config::theme_config) struct RawEditor {
     pub(in crate::config::theme_config) cursor: String,
     pub(in crate::config::theme_config) selection: String,
     pub(in crate::config::theme_config) yank_flash: Option<String>,
+    pub(in crate::config::theme_config) bracket_ripple: Option<String>,
     pub(in crate::config::theme_config) gutter: String,
     pub(in crate::config::theme_config) gutter_active: Option<String>,
     pub(in crate::config::theme_config) indent_guide: Option<String>,

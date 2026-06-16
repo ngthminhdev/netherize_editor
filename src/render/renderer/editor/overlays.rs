@@ -1372,6 +1372,114 @@ impl Renderer {
         );
     }
 
+    pub fn add_matched_bracket_overlay(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {
+        let Some(char_idx) = app_state.matched_bracket_pos() else {
+            return;
+        };
+        let Some(rect) = self.editor_char_rect(app_state, center_bounds, char_idx) else {
+            return;
+        };
+
+        let mut color = self
+            .theme
+            .editor
+            .bracket_ripple
+            .unwrap_or(self.theme.ui.accent)
+            .as_f32();
+        color[3] = (color[3] * 0.22).clamp(0.0, 1.0);
+        self.editor_overlay_chrome_instances.push(
+            RegionDrawInstance::new(rect, color).with_radius(2.0 * self.ui_scale.max(0.5)),
+        );
+    }
+
+    pub fn add_bracket_ripple_overlay(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {
+        let Some(char_idx) = app_state.bracket_ripple_pos() else {
+            return;
+        };
+        let alpha = app_state.bracket_ripple_alpha();
+        if alpha <= 0.0 {
+            return;
+        }
+        let Some(rect) = self.editor_char_rect(app_state, center_bounds, char_idx) else {
+            return;
+        };
+
+        let ui_s = self.ui_scale.max(0.5);
+        let progress = 1.0 - alpha;
+        let expand = progress * 10.0 * ui_s;
+        let ripple_rect = [
+            rect[0] - expand,
+            rect[1] - expand,
+            rect[2] + expand * 2.0,
+            rect[3] + expand * 2.0,
+        ];
+        let mut color = self
+            .theme
+            .editor
+            .bracket_ripple
+            .unwrap_or(self.theme.ui.accent)
+            .as_f32();
+        color[3] = (color[3] * alpha * 0.35).clamp(0.0, 1.0);
+
+        self.editor_overlay_chrome_instances.push(
+            RegionDrawInstance::new(ripple_rect, color).with_radius((3.0 + expand * 0.35) * ui_s),
+        );
+    }
+
+    fn editor_char_rect(
+        &self,
+        app_state: &AppState,
+        center_bounds: [f32; 4],
+        char_idx: usize,
+    ) -> Option<[f32; 4]> {
+        if char_idx >= app_state.len_chars() {
+            return None;
+        }
+
+        let (line_idx, start_byte_in_line) = app_state.char_idx_to_line_and_byte_in_line(char_idx);
+        if app_state.is_line_folded(line_idx) {
+            return None;
+        }
+        let (end_line_idx, end_byte_in_line) =
+            app_state.char_idx_to_line_and_byte_in_line(char_idx + 1);
+        if end_line_idx != line_idx {
+            return None;
+        }
+
+        let geometry = super::editor_viewport_geometry(self, app_state, center_bounds);
+        let viewport_top = geometry.viewport_text_top;
+        let viewport_bottom = viewport_top + geometry.viewport_text_height.max(1.0);
+        let viewport_left = geometry.viewport_text_left;
+        let viewport_right = viewport_left + geometry.viewport_text_width.max(1.0);
+        let scroll_y_px = crate::text::layout_sync::visual_y_for_logical_scroll_with_folds(
+            &self.text_system,
+            app_state.current_scroll_y,
+            app_state.folded_ranges(),
+        );
+        let origin_y = geometry.viewport_text_top + geometry.line_height - scroll_y_px;
+
+        for run in self.text_system.buffer().layout_runs() {
+            if run.line_i != line_idx {
+                continue;
+            }
+            let line_top = origin_y + run.line_top
+                - app_state.folded_visual_y_offset_before(run.line_i, run.line_height);
+            let line_height_px = run.line_height.max(1.0);
+            let line_bottom = line_top + line_height_px;
+            if line_bottom <= viewport_top || line_top >= viewport_bottom {
+                return None;
+            }
+
+            let start_x = super::run_x_for_byte(viewport_left, &run, start_byte_in_line);
+            let end_x = super::run_x_for_byte(viewport_left, &run, end_byte_in_line);
+            let left = start_x.min(end_x).max(viewport_left);
+            let right = start_x.max(end_x).min(viewport_right);
+            let width = (right - left).max((geometry.font_size * 0.52).max(1.0));
+            return Some([left, line_top, width, line_height_px]);
+        }
+        None
+    }
+
     pub fn add_yank_flash_overlay(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {
         let Some((start_char, end_char)) = app_state.yank_flash_range() else {
             return;

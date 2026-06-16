@@ -444,6 +444,11 @@ mode = "normal"
 key = "}"
 command = "editor.move_paragraph_down"
 
+[[bindings]]
+mode = "normal"
+key = "%"
+command = "editor.match_bracket"
+
 # ───────────────── VISUAL ─────────────────
 [[bindings]]
 mode = "visual"
@@ -499,6 +504,11 @@ command = "editor.move_to_line_end"
 mode = "visual"
 key = "^"
 command = "editor.move_to_first_non_whitespace"
+
+[[bindings]]
+mode = "visual"
+key = "%"
+command = "editor.match_bracket"
 
 [[bindings]]
 mode = "visual"

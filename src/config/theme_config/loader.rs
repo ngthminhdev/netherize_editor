@@ -194,6 +194,10 @@ fn merge_raw_editor(defaults: Option<&RawEditor>, current: &RawEditor) -> RawEdi
             .yank_flash
             .clone()
             .or_else(|| defaults.yank_flash.clone()),
+        bracket_ripple: current
+            .bracket_ripple
+            .clone()
+            .or_else(|| defaults.bracket_ripple.clone()),
         gutter: current.gutter.clone(),
         gutter_active: current
             .gutter_active
@@ -502,6 +506,10 @@ fn parse_editor(raw: &RawEditor) -> Result<EditorThemeTokens, String> {
         selection: parse_color("editor", "selection", &raw.selection)?,
         yank_flash: match raw.yank_flash.as_deref() {
             Some(c) => Some(parse_color("editor", "yank_flash", c)?),
+            None => None,
+        },
+        bracket_ripple: match raw.bracket_ripple.as_deref() {
+            Some(c) => Some(parse_color("editor", "bracket_ripple", c)?),
             None => None,
         },
         gutter: parse_color("editor", "gutter", &raw.gutter)?,
