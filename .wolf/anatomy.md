@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-16T08:23:49.596Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-16T12:39:32.470Z
 > Files: 411 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
@@ -381,7 +381,7 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~32755 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~34677 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
@@ -513,14 +513,14 @@
 - `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
 - `region_pipeline.rs` — RegionDrawInstance: new, with_radius, with_corner_radii, new (~3335 tok)
-- `renderer.rs` — Core renderer types and module layout. (~4737 tok)
+- `renderer.rs` — Core renderer types and module layout. (~4827 tok)
 - `surface.rs` — SurfaceState giữ toàn bộ thông tin liên quan đến swapchain/surface. (~797 tok)
 - `text_pipeline.rs` — TextPipeline: new, update_screen_size, upload_instances, draw + 1 more (~2779 tok)
 
 ## src/render/renderer/
 
 - `components.rs` (~123 tok)
-- `editor.rs` — Editor viewport rendering modules. (~2289 tok)
+- `editor.rs` — Editor viewport rendering modules. (~2136 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3458 tok)
 - `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~6892 tok)
 - `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~3160 tok)
@@ -540,10 +540,10 @@
 - `extensions.rs` — update_extensions_manager_content (~9544 tok)
 - `fuzzy.rs` — update_fuzzy_picker_buffer_content (~7928 tok)
 - `help.rs` — update_help_buffer_content (~3996 tok)
-- `overlays.rs` — update_editor_overlays (~19960 tok)
+- `overlays.rs` — update_editor_overlays (~21181 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11283 tok)
 - `settings.rs` — Declares SettingsSection (~12386 tok)
-- `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~7848 tok)
+- `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~7304 tok)
 
 ## src/render/renderer/editor/buffers/
 
@@ -571,10 +571,10 @@
 - `ai_chat.rs` — Right-sidebar AI chat and markdown preview text rendering. (~19536 tok)
 - `markdown_preview.rs` — Right-sidebar markdown preview text rendering. (~6778 tok)
 - `popups.rs` — update_lsp_guide_popup, clear_lsp_guide_popup, update_system_dep_popup (~6724 tok)
-- `sidebar.rs` — update_sidebar_content, clear_sidebar (~3120 tok)
+- `sidebar.rs` — update_sidebar_content, clear_sidebar, update_left_dock_panel (~8559 tok)
 - `statusbar.rs` — Render the three-zone status bar. (~5840 tok)
-- `terminal.rs` — update_terminal_content, update_right_terminal_content, clear_right_terminal, update_buffer_terminal (~7135 tok)
-- `test_runner.rs` — Test Runner panel (bottom dock): renders authored test cases with their (~10360 tok)
+- `terminal.rs` — update_terminal_content, update_right_terminal_content, clear_right_terminal, update_buffer_terminal (~7624 tok)
+- `test_runner.rs` — Test Runner panel (bottom dock): renders authored test cases with their (~11022 tok)
 - `topbar.rs` — update_topbar_content (~4633 tok)
 - `utils.rs` — Declares BORDER (~1962 tok)
 - `welcome.rs` — update_welcome_screen_content (~9261 tok)

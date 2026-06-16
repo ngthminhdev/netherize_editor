@@ -27,7 +27,7 @@ use super::super::helpers::{
     layout_panel_text_italic, rect_to_scissor, should_draw_block_cursor,
 };
 use super::completion::{completion_kind_badge, completion_label_spans};
-use super::{EDITOR_BREADCRUMB_GAP_Y, EDITOR_BREADCRUMB_PAD_Y, EDITOR_BREADCRUMB_TOP_INSET};
+use super::{EDITOR_BREADCRUMB_GAP_Y, EDITOR_BREADCRUMB_TOP_INSET};
 use crate::render::icon_pipeline::{IconDrawInstance, canonical_icon_id};
 
 const DIAGNOSTIC_SEVERITY_ERROR: u32 = 1;
@@ -83,6 +83,9 @@ impl Renderer {
             let separator = " › ";
             let separator_w = estimate_monospace_width(separator, geometry.font_size);
             let separator_color = self.theme.ui.fg_ghost.as_f32();
+            let icon_size = (geometry.line_height * 0.82).min(geometry.font_size * 1.3);
+            let icon_gap = (geometry.font_size * 0.35).max(4.0);
+            let icon_y = header_y + ((header_h - icon_size).max(0.0) * 0.5);
 
             for (index, segment) in self.editor_breadcrumb_segments.iter().enumerate() {
                 let is_last = index + 1 == self.editor_breadcrumb_segments.len();
@@ -90,15 +93,25 @@ impl Renderer {
                 if available <= 1.0 {
                     break;
                 }
-                let text = clamp_monospace_text(
-                    &segment.text,
-                    if is_last {
-                        available
-                    } else {
-                        available - separator_w
-                    },
-                    geometry.font_size,
-                );
+                let icon_w = if segment.icon_id.is_some() {
+                    icon_size + icon_gap
+                } else {
+                    0.0
+                };
+                if available <= icon_w + 1.0 {
+                    break;
+                }
+                if let Some(icon_id) = segment.icon_id {
+                    icon_instances.push(IconDrawInstance {
+                        icon: icon_id,
+                        rect: [x, icon_y, icon_size, icon_size],
+                        tint: segment.color,
+                    });
+                    x += icon_w;
+                }
+                let text_budget =
+                    (available - icon_w - if is_last { 0.0 } else { separator_w }).max(1.0);
+                let text = clamp_monospace_text(&segment.text, text_budget, geometry.font_size);
                 if text.is_empty() {
                     break;
                 }

@@ -168,12 +168,11 @@ fn symbol_kind_color(kind: &str, theme: &ThemeConfig) -> [f32; 4] {
 }
 
 fn breadcrumb_segment_text(kind: &str, name: &str) -> String {
-    const BREADCRUMB_ICON_PREFIX: &str = "[sym]";
     let label = symbol_kind_label(kind);
     if kind == "Constructor" && name.eq_ignore_ascii_case("constructor") {
-        format!("{BREADCRUMB_ICON_PREFIX} {label}")
+        label
     } else {
-        format!("{BREADCRUMB_ICON_PREFIX} {label} {name}")
+        format!("{label} {name}")
     }
 }
 
@@ -229,12 +228,47 @@ fn build_editor_breadcrumb_segments(
         segments.push(crate::render::renderer::EditorBreadcrumbSegment {
             text: breadcrumb_segment_text(&ancestor.kind, &ancestor.name),
             color: symbol_kind_color(&ancestor.kind, theme),
+            icon_id: Some(crate::app::command_palette::symbol_icon(&ancestor.kind)),
         });
     }
     segments.push(crate::render::renderer::EditorBreadcrumbSegment {
         text: breadcrumb_segment_text(&current.kind, &current.name),
         color: symbol_kind_color(&current.kind, theme),
+        icon_id: Some(crate::app::command_palette::symbol_icon(&current.kind)),
     });
+    segments
+}
+
+/// Build the breadcrumb header shown at the top of the main editor.
+///
+/// The header always leads with the active file name (carrying its file-type
+/// icon) so it stays visible like the other dock panel headers, then appends
+/// the symbol breadcrumb whenever the cursor sits inside a known symbol.
+fn build_editor_header_segments(
+    path: Option<&std::path::Path>,
+    symbols: &[crate::async_runtime::message::LspDocumentSymbol],
+    cursor_line: usize,
+    cursor_col: usize,
+    theme: &ThemeConfig,
+) -> Vec<crate::render::renderer::EditorBreadcrumbSegment> {
+    let mut segments = Vec::new();
+    if let Some(name) = path
+        .and_then(|path| path.file_name())
+        .and_then(|name| name.to_str())
+    {
+        let file_icon = theme.file_icon_for_path(path.unwrap(), false, false);
+        segments.push(crate::render::renderer::EditorBreadcrumbSegment {
+            text: name.to_string(),
+            color: file_icon.color.as_f32(),
+            icon_id: crate::render::icon_pipeline::canonical_icon_id(&file_icon.glyph),
+        });
+    }
+    segments.extend(build_editor_breadcrumb_segments(
+        symbols,
+        cursor_line,
+        cursor_col,
+        theme,
+    ));
     segments
 }
 
@@ -1586,7 +1620,8 @@ impl AppShell {
                             renderer.clear_buffer_terminal();
                             let (cursor_line, cursor_col) = self.app_state.cursor_line_col();
                             renderer.set_editor_breadcrumb_segments(
-                                build_editor_breadcrumb_segments(
+                                build_editor_header_segments(
+                                    self.app_state.active_file(),
                                     &self.cached_document_symbols,
                                     cursor_line,
                                     cursor_col,
@@ -1715,7 +1750,8 @@ impl AppShell {
                 {
                     let (cursor_line, cursor_col) = self.app_state.cursor_line_col();
                     let breadcrumb_viewport_changed =
-                        renderer.set_editor_breadcrumb_segments(build_editor_breadcrumb_segments(
+                        renderer.set_editor_breadcrumb_segments(build_editor_header_segments(
+                            self.app_state.active_file(),
                             &self.cached_document_symbols,
                             cursor_line,
                             cursor_col,
@@ -2661,10 +2697,10 @@ fn focus_ring_instances(
 #[cfg(test)]
 mod tests {
     use super::{
-        breadcrumb_segment_text, build_editor_breadcrumb_segments, focus_ring_instances, AppShell,
-        focus_target_region_id, mouse_button_code, point_in_bounds, sgr_mouse_sequence,
-        sgr_wheel_sequence, statusbar_source_path_label, terminal_cell_at_position,
-        visible_region_bounds,
+        breadcrumb_segment_text, build_editor_breadcrumb_segments, build_editor_header_segments,
+        focus_ring_instances, AppShell, focus_target_region_id, mouse_button_code,
+        point_in_bounds, sgr_mouse_sequence, sgr_wheel_sequence, statusbar_source_path_label,
+        terminal_cell_at_position, visible_region_bounds,
     };
     use crate::app::app_state::AppState;
     use crate::async_runtime::message::{
@@ -2862,10 +2898,16 @@ mod tests {
             .collect();
         assert_eq!(
             labels,
+            vec!["class SubscribeLogSync", "method stop", "const intervalId"]
+        );
+        let icon_ids: Vec<Option<&str>> =
+            breadcrumb.iter().map(|segment| segment.icon_id).collect();
+        assert_eq!(
+            icon_ids,
             vec![
-                "[sym] class SubscribeLogSync",
-                "[sym] method stop",
-                "[sym] const intervalId"
+                Some("built_in:symbol-class"),
+                Some("built_in:symbol-method"),
+                Some("built_in:symbol-constant")
             ]
         );
     }
@@ -2940,11 +2982,57 @@ mod tests {
             .collect();
         assert_eq!(
             labels,
-            vec![
-                "[sym] class KafkaProducer",
-                "[sym] constructor",
-                "[sym] const kafkaClient"
-            ]
+            vec!["class KafkaProducer", "constructor", "const kafkaClient"]
+        );
+    }
+
+    #[test]
+    fn build_editor_header_segments_prepends_file_name_segment() {
+        let theme = ThemeConfig::builtin_dark();
+        let path = PathBuf::from("/tmp/demo/src/main.rs");
+        let symbols: Vec<LspDocumentSymbol> = Vec::new();
+
+        let header = build_editor_header_segments(Some(&path), &symbols, 0, 0, &theme);
+
+        assert_eq!(header.len(), 1, "no symbols -> only the file segment shows");
+        assert_eq!(header[0].text, "main.rs");
+        assert!(
+            header[0].icon_id.is_some(),
+            "file segment should carry a file-type icon"
+        );
+    }
+
+    #[test]
+    fn build_editor_header_segments_appends_symbol_breadcrumb() {
+        let theme = ThemeConfig::builtin_dark();
+        let path = PathBuf::from("/tmp/demo/src/main.rs");
+        let symbols = vec![LspDocumentSymbol {
+            name: "main".to_string(),
+            kind: "Function".to_string(),
+            range: LspRange {
+                start: LspPosition {
+                    line: 0,
+                    character: 0,
+                },
+                end: LspPosition {
+                    line: 5,
+                    character: 1,
+                },
+            },
+            ancestors: Vec::new(),
+        }];
+
+        let header = build_editor_header_segments(Some(&path), &symbols, 2, 4, &theme);
+        let symbol_only = build_editor_breadcrumb_segments(&symbols, 2, 4, &theme);
+
+        assert_eq!(header[0].text, "main.rs", "file segment leads the header");
+        let header_tail: Vec<&str> = header[1..].iter().map(|s| s.text.as_str()).collect();
+        let symbol_text: Vec<&str> =
+            symbol_only.iter().map(|s| s.text.as_str()).collect();
+        assert!(!symbol_text.is_empty(), "cursor is inside the function");
+        assert_eq!(
+            header_tail, symbol_text,
+            "symbol breadcrumb follows the file segment unchanged"
         );
     }
 
@@ -2952,7 +3040,7 @@ mod tests {
     fn breadcrumb_segment_text_dedupes_constructor_label() {
         assert_eq!(
             breadcrumb_segment_text("Constructor", "constructor"),
-            "[sym] constructor"
+            "constructor"
         );
     }
 

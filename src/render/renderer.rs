@@ -169,6 +169,7 @@ pub(super) struct StatusbarLayoutKey {
 pub(crate) struct EditorBreadcrumbSegment {
     pub(crate) text: String,
     pub(crate) color: [f32; 4],
+    pub(crate) icon_id: Option<&'static str>,
 }
 
 // ── Renderer struct ────────────────────────────────────────────────────────────

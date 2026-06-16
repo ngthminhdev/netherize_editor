@@ -503,10 +503,13 @@ impl crate::render::renderer::Renderer {
         let fg = self.theme.ui.fg.as_f32();
         let fg_dim = self.theme.ui.fg_dim.as_f32();
         let accent = self.theme.ui.accent.as_f32();
-        let panel_bg = self.theme.ui.panel_bg.as_f32();
+        // Unified tab-bar palette across every dock + the main editor: base on the
+        // (darker) editor background, with a subtle lift for the selected tab so it
+        // reads as active without going near-white.
+        let tab_base = self.theme.editor.bg.as_f32();
         let border = self.theme.ui.border_color.as_f32();
-        let active_bg = lerp_color(panel_bg, fg, 0.06);
-        let inactive_bg = lerp_color(panel_bg, fg, 0.015);
+        let active_bg = lerp_color(tab_base, fg, 0.05);
+        let inactive_bg = tab_base;
         const TOP_BORDER: f32 = 2.0;
         // Round ONLY the strip's two top corners so they follow the panel's
         // rounded focus-ring outline (top-left under the first tab, top-right
@@ -529,6 +532,12 @@ impl crate::render::renderer::Renderer {
         let tab_w = bounds[2] / n as f32;
         let text_y = bounds[1] + ((bounds[3] - line_h) * 0.5).max(0.0);
         let char_w = estimate_monospace_width("0", font).max(1.0);
+        // Render tab titles at the main-editor title size so every dock tab bar
+        // matches it. The text system is shared with the panel body, so save and
+        // restore its metrics around the labels.
+        let saved_metrics = self.test_runner_text_system.buffer_metrics();
+        self.test_runner_text_system
+            .set_metrics(cosmic_text::Metrics::new(font, line_h));
         for (i, label) in labels.iter().enumerate() {
             let tab_x = bounds[0] + i as f32 * tab_w;
             let is_active = i == active;
@@ -644,6 +653,7 @@ impl crate::render::renderer::Renderer {
             [bounds[0], bounds[1] + bounds[3] - 1.0, bounds[2], 1.0],
             border,
         ));
+        self.test_runner_text_system.set_metrics(saved_metrics);
         (chrome, glyphs, icon_instances)
     }
 

@@ -587,10 +587,13 @@ impl Renderer {
         let fg = self.theme.ui.fg.as_f32();
         let fg_dim = self.theme.ui.fg_dim.as_f32();
         let accent = self.theme.ui.accent.as_f32();
-        let panel_bg = self.theme.ui.panel_bg.as_f32();
+        // Unified tab-bar palette across every dock + the main editor: base on the
+        // (darker) editor background, with a subtle lift for the selected tab so it
+        // reads as active without going near-white.
+        let tab_base = self.theme.editor.bg.as_f32();
         let border = self.theme.ui.border_color.as_f32();
-        let active_bg = super::utils::blend_rgb(panel_bg, fg, 0.06, panel_bg[3]);
-        let inactive_bg = super::utils::blend_rgb(panel_bg, fg, 0.015, panel_bg[3]);
+        let active_bg = super::utils::blend_rgb(tab_base, fg, 0.05, tab_base[3]);
+        let inactive_bg = tab_base;
         const TOP_BORDER: f32 = 2.0;
 
         let inset = crate::workbench::layout_engine::LEFT_DOCK_OUTLINE_INSET;
@@ -608,6 +611,12 @@ impl Renderer {
         let tab_w = bounds[2] / n as f32;
         let text_y = bounds[1] + ((bounds[3] - line_h) * 0.5).max(0.0);
         let _char_w = estimate_monospace_width("0", font).max(1.0);
+        // Render tab titles at the main-editor title size so every dock tab bar
+        // matches it. The text system is shared with the list below, so save and
+        // restore its metrics around the labels.
+        let saved_metrics = self.sidebar_text_system.buffer_metrics();
+        self.sidebar_text_system
+            .set_metrics(cosmic_text::Metrics::new(font, line_h));
         for (i, label) in labels.iter().enumerate() {
             let tab_x = bounds[0] + i as f32 * tab_w;
             let is_active = i == active;
@@ -699,6 +708,7 @@ impl Renderer {
                 ));
             }
         }
+        self.sidebar_text_system.set_metrics(saved_metrics);
         (chrome, glyphs, icon_instances)
     }
 

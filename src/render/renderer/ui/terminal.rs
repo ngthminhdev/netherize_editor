@@ -530,22 +530,19 @@ impl Renderer {
             return (chrome, bounds);
         }
 
-        let tab_bg = self.theme.ui.terminal_bg.as_f32();
+        // Unified tab-bar palette across every dock + the main editor: base on the
+        // (darker) editor background, with a subtle lift for the selected tab so it
+        // reads as active without going near-white.
+        let tab_bg = self.theme.editor.bg.as_f32();
         let active_bg = {
+            let blend_fg = self.theme.editor.fg.as_f32();
             let mut c = tab_bg;
             for i in 0..3 {
-                c[i] = (c[i] + 0.055).min(1.0);
+                c[i] += (blend_fg[i] - c[i]) * 0.05;
             }
             c
         };
-        let inactive_bg = {
-            let mut c = tab_bg;
-            for i in 0..3 {
-                c[i] = (c[i] + 0.018).min(1.0);
-            }
-            c[3] = 0.92;
-            c
-        };
+        let inactive_bg = tab_bg;
         let accent = self.theme.ui.cyan.as_f32();
         let running_color = [0.32, 0.92, 0.52, 0.95_f32]; // green
         let dead_color = [0.45, 0.45, 0.45, 0.55_f32]; // gray
@@ -588,6 +585,15 @@ impl Renderer {
         } else {
             0.0
         };
+
+        // Render tab titles at the main-editor title size so every dock tab bar
+        // matches it. The text system is shared with the terminal body, so save
+        // and restore its metrics around the labels.
+        let saved_metrics = self.terminal_text_system.buffer_metrics();
+        self.terminal_text_system.set_metrics(cosmic_text::Metrics::new(
+            font_size,
+            self.theme.editor.line_height,
+        ));
 
         for i in 0..tab_count {
             let remaining_width = (right_limit - tab_x).max(0.0);
@@ -684,6 +690,7 @@ impl Renderer {
 
             tab_x += tab_w;
         }
+        self.terminal_text_system.set_metrics(saved_metrics);
 
         // Bottom divider between tab strip and terminal body.
         chrome.push(RegionDrawInstance::new(

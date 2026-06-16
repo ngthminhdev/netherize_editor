@@ -3047,5 +3047,25 @@
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-06-16T16:54:22+07:00"
+  },
+  {
+    "id": "bug-176",
+    "timestamp": "2026-06-16T18:30:00+07:00",
+    "error_message": "User reported the editor breadcrumb / tab-bar was not visible at all in the main editor.",
+    "file": "src/app/event_loop/application.rs, src/render/renderer/editor.rs, src/render/renderer/editor/overlays.rs, src/render/renderer/editor/viewport.rs, src/render/renderer.rs, src/render/renderer/ui/topbar.rs",
+    "root_cause": "Breadcrumb segments were being fed into the topbar (replacing the project name) and only populated from LSP document symbols at the cursor. With no symbol under the cursor the segment list was empty, so the topbar fell back to the project name and no breadcrumb ever showed. The user actually wanted a header bar at the top of the main editor pane (like the Explorer/Outline/TestRunner panel headers), independent of LSP availability.",
+    "fix": "Reverted the topbar breadcrumb changes (topbar.rs back to project name, removed breadcrumb_segments from TopbarLayoutKey). Re-enabled the main-editor header by restoring breadcrumb_height in editor_viewport_geometry. Added a build_editor_header_segments helper that always leads with a file-name segment (file-type icon + themed color) and then appends the symbol breadcrumb, wired into both render call sites. Added SVG icon rendering per segment in the overlays editor-header loop. Header is now always visible for any open file regardless of LSP symbols.",
+    "tags": [
+      "breadcrumb",
+      "editor-header",
+      "topbar",
+      "lsp-symbols",
+      "icons",
+      "uiux",
+      "user-reported"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-06-16T18:30:00+07:00"
   }
 ]

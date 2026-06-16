@@ -216,12 +216,13 @@ fn truncate_folded_lines(
 impl Renderer {
     pub(crate) fn set_editor_breadcrumb_segments(
         &mut self,
-        _segments: Vec<crate::render::renderer::EditorBreadcrumbSegment>,
+        segments: Vec<crate::render::renderer::EditorBreadcrumbSegment>,
     ) -> bool {
-        // Temporary kill-switch: breadcrumb UI is disabled, so keep the render list empty.
-        let had_segments = !self.editor_breadcrumb_segments.is_empty();
-        self.editor_breadcrumb_segments.clear();
-        had_segments
+        if self.editor_breadcrumb_segments == segments {
+            return false;
+        }
+        self.editor_breadcrumb_segments = segments;
+        true
     }
 
     pub fn clear_editor_content(&mut self) {
