@@ -163,6 +163,9 @@ fn symbol_kind_color(kind: &str, theme: &ThemeConfig) -> [f32; 4] {
         "Method" | "Function" | "Constructor" => theme.ui.cyan.as_f32(),
         "Constant" | "Variable" | "Property" | "Field" | "EnumMember" => theme.ui.info.as_f32(),
         "Namespace" | "Module" | "Package" => theme.ui.amber.as_f32(),
+        "Object" | "Array" => theme.ui.cyan.as_f32(),
+        "String" | "Number" | "Key" => theme.ui.info.as_f32(),
+        "Boolean" | "Null" => theme.ui.magenta.as_f32(),
         _ => theme.ui.fg.as_f32(),
     }
 }
@@ -256,7 +259,7 @@ fn build_editor_header_segments(
         .and_then(|path| path.file_name())
         .and_then(|name| name.to_str())
     {
-        let file_icon = theme.file_icon_for_path(path.unwrap(), false, false);
+        let file_icon = theme.icon_theme_for_path(path.unwrap(), false, false);
         segments.push(crate::render::renderer::EditorBreadcrumbSegment {
             text: name.to_string(),
             color: file_icon.color.as_f32(),
@@ -1493,7 +1496,7 @@ impl AppShell {
             // Nếu terminal buffer đang chiếm center, đảm bảo editor GPU buffer
             // luôn được xóa trước khi render — bất kể nhánh nào xử lý frame này.
             // Điều này ngăn editor stale content "leak" qua khi chỉ có caret/terminal dirty.
-            if active_terminal_session.is_some() {
+            if active_terminal_session.is_some() || self.app_state.active_buffer_is_terminal() {
                 if let Some(renderer) = self.renderer.as_mut() {
                     renderer.clear_editor_content();
                 }
@@ -1615,6 +1618,15 @@ impl AppShell {
                     } else if let Some(image) = self.app_state.active_image_buffer() {
                         renderer.set_editor_breadcrumb_segments(Vec::new());
                         renderer.update_image_content(image, center_bounds);
+                    } else if self.app_state.active_buffer_is_terminal() {
+                        // Terminal buffer without PTY session yet (e.g. lazygit spawning).
+                        // Clear editor content/breadcrumb; the invariant guard above
+                        // pushes a solid terminal_bg quad every frame.
+                        renderer.set_editor_breadcrumb_segments(Vec::new());
+                        renderer.clear_welcome_logo();
+                        renderer.clear_editor_content();
+                        renderer.clear_buffer_terminal();
+                        renderer.clear_editor_overlays();
                     } else {
                         // Skip editor content rendering in Zen Mode when target is not CenterEditor
                         let zen_mode_active = self.panel_state.maximized_region.is_some()
@@ -1752,7 +1764,15 @@ impl AppShell {
                         renderer.set_editor_breadcrumb_segments(Vec::new());
                         renderer.update_image_content(image, center_bounds);
                     }
+                } else if self.app_state.active_buffer_is_terminal() {
+                    // Terminal buffer active but no PTY session yet — the invariant
+                    // guard above already clears editor content + pushes terminal_bg.
+                    // No additional rendering needed here.
                 } else if !show_welcome
+                    && active_terminal_session.is_none()
+                    && !references_active
+                    && !diagnostics_active
+                    && !markdown_preview_active
                     && (self.panel_state.maximized_region.is_none()
                         || self.panel_state.maximized_region == Some(FocusTarget::CenterEditor))
                     && let Some(renderer) = self.renderer.as_mut()

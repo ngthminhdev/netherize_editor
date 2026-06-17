@@ -338,9 +338,16 @@ fn special_icon_for_filename(filename: &str) -> Option<&'static str> {
 
     if filename == "dockerfile"
         || filename.starts_with("dockerfile.")
+        || filename.starts_with("dockerfile-")
         || filename.ends_with(".dockerfile")
     {
         return Some("built_in:docker");
+    }
+    if filename == "makefile"
+        || filename == "gnumakefile"
+        || filename == "justfile"
+    {
+        return Some("built_in:makefile");
     }
     if filename == ".dockerignore" {
         return Some("built_in:dockerignore");

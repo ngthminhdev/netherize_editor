@@ -2065,3 +2065,38 @@
 | 15:11 | Edited src/app/event_loop/application.rs | 14→14 lines | ~143 |
 - Bottom strip refinements: (a) tab icon size is capped to `bounds[3] - 2*9px` so it always keeps vertical padding (was getting clipped by the strip scissor when line_height made it taller than the strip). (b) The "+new terminal" is now a compact square button pinned to the FAR RIGHT (width = strip height, accent-tinted bg, centered "+"), NOT a full equal-width tab. Terminal tabs share `bounds[2] - add_w`. Renderer draws the button; caller no longer pushes a "+Terminal" label. Hit-test `bottom_dock_tab_index_at(term_count, ...)` returns `Some(term_count)` for the + button. Add-button width lives in `Renderer::bottom_dock_add_button_w` (shared by render + hit-test).
 | 15:12 | Session end: 22 writes across 7 files (panel_state.rs, application.rs, terminal.rs, renderer.rs, lifecycle.rs) | 13 reads | ~155103 tok |
+
+## Session: 2026-06-17 18:13
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-17 22:12
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-17 22:25
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-17 22:26
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-17 22:26
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-17 22:27
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-17 22:36
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|

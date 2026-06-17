@@ -149,7 +149,7 @@ fn builtin_icon_tokens(ui: &UiThemeTokens) -> IconThemeTokens {
         javascript: icon("built_in:node", ui.amber),
         typescript: icon("built_in:typescript", ui.info),
         tsx: icon("built_in:typescript", ui.info),
-        jsx: icon("built_in:node", ui.amber),
+        jsx: icon("built_in:reactjs", ui.amber),
         java: icon("built_in:java", ui.error),
         kotlin: icon("built_in:kotlin", ui.magenta),
         c: icon("built_in:c", ui.info),

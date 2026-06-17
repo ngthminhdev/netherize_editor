@@ -1106,6 +1106,12 @@ pub(crate) fn symbol_icon(kind: &str) -> &'static str {
         "Reference" => "built_in:symbol-reference",
         "File" => "built_in:file",
         "Folder" => "built_in:folder",
+        "Object" => "built_in:symbol-object",
+        "Array" => "built_in:symbol-array",
+        "String" => "built_in:symbol-keyword",
+        "Number" => "built_in:symbol-operator",
+        "Boolean" | "Null" => "built_in:symbol-constant",
+        "Key" => "built_in:key",
         _ => "built_in:identifier",
     }
 }

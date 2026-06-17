@@ -51,6 +51,8 @@ pub fn canonical_icon_id(icon: &str) -> Option<&'static str> {
         "dart" | "dartlang" => "built_in:dart",
         "docker" => "built_in:docker",
         "dockerignore" => "built_in:dockerignore",
+        "cypressjs" => "built_in:cypressjs",
+        "cypressts" => "built_in:cypressts",
         "drizzle" => "built_in:drizzle",
         "editorconfig" => "built_in:editorconfig",
         "elm" => "built_in:elm",
@@ -92,6 +94,8 @@ pub fn canonical_icon_id(icon: &str) -> Option<&'static str> {
         "error" => "built_in:error",
         "warning" => "built_in:warning",
         "info" | "text" | "unit" | "value" | "color" | "snippet" => "built_in:info",
+        "array" | "symbol-array" => "built_in:symbol-array",
+        "object" | "symbol-object" => "built_in:symbol-object",
         "keyword" | "symbol-keyword" => "built_in:symbol-keyword",
         "java" => "built_in:java",
         "javascript" | "js" => "built_in:javascript",
@@ -135,6 +139,7 @@ pub fn canonical_icon_id(icon: &str) -> Option<&'static str> {
         "nginx" => "built_in:nginx",
         "nim" => "built_in:nim",
         "ocaml" => "built_in:ocaml",
+        "oxlint" => "built_in:oxlint",
         "perl" => "built_in:perl",
         "php" => "built_in:php",
         "playright" | "playwright" => "built_in:playright",
@@ -152,6 +157,7 @@ pub fn canonical_icon_id(icon: &str) -> Option<&'static str> {
         "readme" => "built_in:readme",
         "remix" => "built_in:remix",
         "ruby" => "built_in:ruby",
+        "rollup" => "built_in:rollup",
         "rust" => "built_in:rust",
         "sass" | "scss" => "built_in:sass",
         "scala" => "built_in:scala",
@@ -540,6 +546,14 @@ fn build_bearded_atlas() -> BuiltAtlas {
         (
             "built_in:csharp",
             include_bytes!("../../assets/bearded-icons/csharp.svg"),
+        ),
+        (
+            "built_in:cypressjs",
+            include_bytes!("../../assets/bearded-icons/cypressjs.svg"),
+        ),
+        (
+            "built_in:cypressts",
+            include_bytes!("../../assets/bearded-icons/cypressts.svg"),
         ),
         (
             "built_in:css",
@@ -954,6 +968,10 @@ fn build_bearded_atlas() -> BuiltAtlas {
             include_bytes!("../../assets/bearded-icons/ruby.svg"),
         ),
         (
+            "built_in:rollup",
+            include_bytes!("../../assets/bearded-icons/rollup.svg"),
+        ),
+        (
             "built_in:rust",
             include_bytes!("../../assets/bearded-icons/rust.svg"),
         ),
@@ -1094,6 +1112,14 @@ fn build_bearded_atlas() -> BuiltAtlas {
             include_bytes!("../../assets/bearded-icons/zig.svg"),
         ),
         (
+            "built_in:symbol-array",
+            include_bytes!("../../assets/bearded-icons/array.svg"),
+        ),
+        (
+            "built_in:symbol-object",
+            include_bytes!("../../assets/bearded-icons/object-brackets.svg"),
+        ),
+        (
             "built_in:sparkles",
             include_bytes!("../../assets/bearded-icons/sparkles.svg"),
         ),
@@ -1104,6 +1130,10 @@ fn build_bearded_atlas() -> BuiltAtlas {
         (
             "built_in:outline",
             include_bytes!("../../assets/bearded-icons/outline.svg"),
+        ),
+        (
+            "built_in:oxlint",
+            include_bytes!("../../assets/bearded-icons/oxlint.svg"),
         ),
         (
             "built_in:terminal",
