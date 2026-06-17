@@ -28,19 +28,19 @@ impl PanelTabId {
         }
     }
 
-    /// Icon displayed in the right-dock tab strip (SVG asset or nerd-font glyph).
+    /// Icon displayed in dock tab strips (SVG asset or nerd-font glyph).
     pub fn icon_glyph(self) -> Option<&'static str> {
         match self {
             Self::Explorer => Some("built_in:folder"),
-            Self::Search => Some(""),          // nf-fa-search
-            Self::Inspector => Some(""),       // nf-fa-info_circle
+            Self::Search => Some("\u{f002}"),          // nf-fa-search
+            Self::Inspector => Some("\u{f05a}"),       // nf-fa-info_circle
             Self::Outline => Some("built_in:outline"),
-            Self::Terminal => Some(""),        // nf-fa-terminal
+            Self::Terminal => Some("built_in:terminal"),
             Self::TestRunner => Some("built_in:flask"),
-            Self::DebugConsole => Some(""),    // nf-fa-terminal
-            Self::Problems => Some(""),        // nf-fa-exclamation_triangle
+            Self::DebugConsole => Some("built_in:cli"),
+            Self::Problems => Some("built_in:warning"),
             Self::AiChat => Some("built_in:sparkles"),
-            Self::MarkdownPreview => Some(""), // nf-fa-file_text
+            Self::MarkdownPreview => Some("\u{f15c}"), // nf-fa-file_text
         }
     }
 }
@@ -147,8 +147,9 @@ impl Default for WorkbenchPanelState {
                     PanelTabId::TestRunner,
                 ],
             ),
-            // Bottom dock only exposes the Terminal for now; Debug Console and
-            // Problems have no content yet, so they're hidden to avoid dead tabs.
+            // Bottom dock only exposes the Terminal; its outer tab strip lists each
+            // terminal instance as a tab. Debug Console and Problems have no content
+            // yet, so they're omitted to avoid dead tabs.
             bottom: PanelState::new(false, 420.0, vec![PanelTabId::Terminal]),
             overlay_visible: false,
             maximized_region: None,

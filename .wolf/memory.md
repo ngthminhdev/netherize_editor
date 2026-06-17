@@ -2025,3 +2025,43 @@
 | 11:40 | Session end: 1 writes across 1 files (overlays.rs) | 0 reads | ~106 tok |
 | 11:46 | Edited src/render/renderer/editor/overlays.rs | 14→18 lines | ~268 |
 | 11:46 | Session end: 2 writes across 1 files (overlays.rs) | 1 reads | ~27308 tok |
+
+## Session: 2026-06-17 14:24
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 14:38 | Edited src/workbench/panel_state.rs | 7→4 lines | ~83 |
+| 14:38 | Edited src/app/event_loop/application.rs | modified enumerate() | ~614 |
+| 14:39 | Edited src/app/event_loop/application.rs | modified as_mut() | ~762 |
+| 14:39 | Edited src/render/renderer/ui/terminal.rs | expanded (+8 lines) | ~175 |
+| 14:39 | Edited src/render/renderer/ui/terminal.rs | modified is_empty() | ~648 |
+| 14:39 | Edited src/render/renderer/ui/terminal.rs | expanded (+8 lines) | ~192 |
+| 14:40 | Edited src/render/renderer.rs | 6→5 lines | ~85 |
+| 14:40 | Edited src/render/renderer.rs | removed 21 lines | ~15 |
+| 14:40 | Edited src/render/renderer/lifecycle.rs | 3→2 lines | ~41 |
+| 14:41 | Edited src/render/renderer/lifecycle/frame.rs | expanded (+7 lines) | ~111 |
+| 14:41 | Edited src/app/event_loop/application.rs | modified handle_bottom_tab_mouse_click() | ~93 |
+| 14:41 | Edited src/app/event_loop/application.rs | reduced (-21 lines) | ~152 |
+| 14:41 | Edited src/app/event_loop/mod.rs | reduced (-6 lines) | ~11 |
+
+## Bottom-dock unified tab strip fix (bug-177)
+- Outer strip (`build_bottom_tab_strip`) is now the bottom dock's ONLY tab bar (inner `update_terminal_tab_bar` no longer wired); each terminal = a tab + an "+Terminal" tab.
+- Order matters: `update_terminal_content` MUST run before `build_bottom_tab_strip`, because the former does `*terminal_glyph_instances = ...` (replaces buffer). The strip anchors to `terminal_body_batch`, truncates stale titles, then re-uploads.
+- Tab icons ride the sidebar icon pipeline; `frame.rs` is the single merge point (drain → upload → draw with outer scissor → truncate back). Don't re-add `flush_bottom_dock_tab_icons`.
+- Tab title = `tab.label` ("Terminal N · <latest cmd>"); `tab.label` is set by `terminal_command_title` on Enter in `track_terminal_tab_input`.
+| 14:44 | Session end: 13 writes across 7 files (panel_state.rs, application.rs, terminal.rs, renderer.rs, lifecycle.rs) | 10 reads | ~114059 tok |
+| 14:54 | Edited src/render/renderer/ui/terminal.rs | estimate_monospace_width() → label() | ~499 |
+| 14:54 | Edited src/render/renderer/ui/terminal.rs | 3→1 lines | ~23 |
+- Follow-up: bottom strip tab content is LEFT-aligned (icon at fixed 12px left pad, label after with 6px gap, clamped to remaining tab width). Centering was collapsing the label (→ "T") and clipping the icon once the "Terminal N · <cmd>" title got long.
+| 14:54 | Session end: 15 writes across 7 files (panel_state.rs, application.rs, terminal.rs, renderer.rs, lifecycle.rs) | 11 reads | ~118432 tok |
+| 15:01 | Edited src/render/renderer/ui/terminal.rs | modified enumerate() | ~172 |
+- ROOT CAUSE of the persistent single "T": `TerminalViewRenderer::build_instances` (terminal_renderer.rs:203) leaves the SHARED `terminal_text_system` buffer sized to one cell width (~font*0.6). `build_bottom_tab_strip` reused that buffer without re-sizing, so `Wrap::WordOrGlyph` wrapped every tab label to one glyph per line — only the first line ("T") sat at text_y, the rest wrapped below the strip scissor. Fix: `terminal_text_system.set_size(Some(strip_w), Some(strip_h))` before laying out labels (the old inner tab bar did this per-label). Any code laying out text via terminal_text_system after the body MUST reset set_size first.
+| 15:02 | Session end: 16 writes across 7 files (panel_state.rs, application.rs, terminal.rs, renderer.rs, lifecycle.rs) | 12 reads | ~124902 tok |
+| 15:10 | Edited src/render/renderer/ui/terminal.rs | 1→3 lines | ~32 |
+| 15:10 | Edited src/render/renderer/ui/terminal.rs | 6→6 lines | ~66 |
+| 15:11 | Edited src/render/renderer/ui/terminal.rs | modified enumerate() | ~1749 |
+| 15:11 | Edited src/render/renderer/ui/terminal.rs | modified bottom_dock_add_button_w() | ~435 |
+| 15:11 | Edited src/app/event_loop/application.rs | 9→8 lines | ~99 |
+| 15:11 | Edited src/app/event_loop/application.rs | 14→14 lines | ~143 |
+- Bottom strip refinements: (a) tab icon size is capped to `bounds[3] - 2*9px` so it always keeps vertical padding (was getting clipped by the strip scissor when line_height made it taller than the strip). (b) The "+new terminal" is now a compact square button pinned to the FAR RIGHT (width = strip height, accent-tinted bg, centered "+"), NOT a full equal-width tab. Terminal tabs share `bounds[2] - add_w`. Renderer draws the button; caller no longer pushes a "+Terminal" label. Hit-test `bottom_dock_tab_index_at(term_count, ...)` returns `Some(term_count)` for the + button. Add-button width lives in `Renderer::bottom_dock_add_button_w` (shared by render + hit-test).
+| 15:12 | Session end: 22 writes across 7 files (panel_state.rs, application.rs, terminal.rs, renderer.rs, lifecycle.rs) | 13 reads | ~155103 tok |

@@ -30,6 +30,12 @@ A GPU-accelerated terminal/text editor written in Rust. Currently in active deve
 | Test runner | ✅ In-editor test execution with results UI |
 | Live grep | ✅ Workspace-wide search with results overlay |
 | Which-key | ✅ Keybinding hint popup |
+| Code Graph HUD | ✅ Interactive symbol dependency + risk visualization overlay |
+| Markdown preview | ✅ In-editor markdown rendering |
+| Editor breadcrumb | ✅ File icon + path breadcrumb in editor header |
+| Vim `%` match-bracket | ✅ Jump to matching bracket with ripple overlay |
+| Yank flash | ✅ Visual feedback for copy/yank with fade-out animation |
+| LeetCode test generation | ✅ Stratified case generation + AI verification |
 
 ---
 
@@ -83,6 +89,7 @@ netherize_editor/
 │   │   │   ├── settings.rs        # Settings tab models and editing state
 │   │   │   ├── state.rs           # Derived/query helpers, completion/search/undo-redo state access
 │   │   │   ├── overlays.rs        # Overlay + shared internal helper logic
+│   │   │   ├── code_graph_hud.rs  # Code graph HUD overlay state
 │   │   │   └── tests.rs           # AppState regression tests
 │   │   ├── event_loop/            # winit ApplicationHandler impl + command dispatch
 │   │   │   ├── mod.rs             # run() entrypoint
@@ -109,7 +116,7 @@ netherize_editor/
 │   │   │   ├── commands_explorer.rs # Explorer/sidebar/workspace commands
 │   │   │   ├── commands_palette.rs # Palette/open-file/open-buffer commands
 │   │   │   ├── commands_lsp.rs    # LSP/diagnostics/inline-AI commands
-│   │   │   ├── commands_ai_chat.rs # AI chat panel commands
+│   │   │   ├── commands_ai_agent.rs # AI agent/chat panel commands
 │   │   │   ├── commands_prompts.rs # Confirmation/prompt/theme/recent-project flows
 │   │   │   ├── commands_settings.rs # Settings panel commands
 │   │   │   ├── commands_settings_helpers.rs # Settings editing helpers
@@ -154,6 +161,14 @@ netherize_editor/
 │   │   │   └── tests.rs           # Command dispatch tests
 │   │   └── mod.rs
 │   │
+│   ├── codegraph/                  # Code graph data model + HUD
+│   │   ├── mod.rs
+│   │   ├── model.rs               # Symbol/edge graph model
+│   │   ├── edges.rs               # Edge type definitions
+│   │   ├── layout.rs              # Graph layout computation
+│   │   ├── navigation.rs          # Graph navigation logic
+│   │   └── cli_json.rs            # CLI JSON parser for code graph data
+│   │
 │   ├── lsp/                       # Polyglot language server client
 │   │   ├── registry.rs            # File extension/filename → language profile, install command, root markers
 │   │   ├── client.rs              # JSON-RPC framing, async stdio transport, didOpen/didChange lifecycle
@@ -169,7 +184,7 @@ netherize_editor/
 │   │   │   │   ├── terminal.rs    # Terminal grid rendering
 │   │   │   │   ├── statusbar.rs   # Status bar
 │   │   │   │   ├── topbar.rs      # Top bar / tab bar
-│   │   │   │   ├── ai_chat.rs     # AI chat panel
+│   │   │   │   ├── markdown_preview.rs # Markdown preview rendering
 │   │   │   │   ├── test_runner.rs # Test runner results panel
 │   │   │   │   ├── whichkey.rs    # Which-key hint popup
 │   │   │   │   ├── popups.rs      # Generic popup rendering
@@ -310,6 +325,7 @@ netherize_editor/
 │   │   │   ├── fzf.rs             # FZF integration
 │   │   │   ├── git.rs             # Git helpers
 │   │   │   ├── leetcode_fetch.rs  # LeetCode problem fetching
+│   │   │   ├── codegraph.rs       # Code graph analysis jobs
 │   │   │   └── tests.rs           # Scheduler tests
 │   │   ├── message.rs             # Worker request/result/event types sent across the bridge
 │   │   ├── dart_env.rs            # Dart environment setup
@@ -518,6 +534,7 @@ window.request_redraw()
 | File watcher / local history / FZF / git helpers | `src/async_runtime/scheduler/file_watch.rs`, `local_history.rs`, `fzf.rs`, `git.rs` |
 | AI inference and service integration | `src/async_runtime/scheduler/ai_jobs.rs`, `ai.rs` |
 | LeetCode problem fetching | `src/async_runtime/scheduler/leetcode_fetch.rs` |
+| Code graph analysis | `src/async_runtime/scheduler/codegraph.rs` |
 
 ### Keyboard / Vim Path In One Line
 
@@ -555,7 +572,9 @@ Use this table when you want to jump straight to the likely file instead of read
 | Cursor/caret rendering, terminal cursor visibility, status bar UI | `src/render/caret.rs`, `src/render/renderer/ui/`, `src/app/event_loop/application.rs` | Render prep happens in modular UI code, driven by event-loop state |
 | Theme token bug or wrong color/icon | `config/themes/default-dark.toml`, `src/config/theme_config/` | Theme data is defined in TOML and validated/loaded in the theme module |
 | UI spacing, panel sizes, cursor shape defaults | `config/ui/default.toml`, `src/config/ui_config.rs` | Geometry defaults come from UI config, not from the renderer |
-| AI chat panel behavior | `src/app/event_loop/commands_ai_chat.rs`, `src/app/event_loop/async_results/ai.rs`, `src/app/ai_agents.rs` | AI chat commands, async results, and agent integration |
+| AI chat panel behavior | `src/app/event_loop/commands_ai_agent.rs`, `src/app/event_loop/async_results/ai.rs`, `src/app/ai_agents.rs` | AI agent commands, async results, and agent integration |
+| Code Graph HUD | `src/codegraph/`, `src/app/app_state/code_graph_hud.rs`, `src/app/event_loop/commands_lsp.rs`, `src/async_runtime/scheduler/codegraph.rs` | Graph model, HUD state, trigger commands, and async analysis |
+| Markdown preview | `src/render/renderer/ui/markdown_preview.rs`, `src/app/event_loop/commands.rs` | Markdown rendering and preview toggle |
 | LeetCode problem fetch, code runner | `src/runner/`, `src/app/event_loop/async_results/runner.rs`, `src/async_runtime/scheduler/leetcode_fetch.rs` | Runner logic, async results, and scheduler tasks |
 | Test runner behavior | `src/app/event_loop/commands_tests.rs`, `src/render/renderer/ui/test_runner.rs` | Test runner commands and rendering |
 | Live grep / workspace search | `src/app/event_loop/commands_palette.rs`, `src/render/renderer/palette/live_grep.rs`, `src/workspace/fuzzy.rs` | Search initiation, rendering, and fuzzy matching |
@@ -592,6 +611,8 @@ Use this table when you want to jump straight to the likely file instead of read
 | `FocusManager` | `workbench/focus_manager.rs` | Tracks which region has keyboard focus |
 | `AsyncScheduler` | `async_runtime/scheduler.rs` | Tokio bridge facade for off-thread work |
 | `ThemeConfig` | `config/theme_config/` | Theme data model loaded from TOML |
+| `CodeGraphModel` | `codegraph/model.rs` | Symbol dependency graph data model |
+| `CodeGraphHudState` | `app/app_state/code_graph_hud.rs` | Code graph HUD overlay state |
 
 ---
 
@@ -804,7 +825,7 @@ Each frame in `Renderer::render()` runs modularized update passes before submitt
 
 1. **Backgrounds**: region quads for visible panels (sidebar, editor, terminal, etc.)
 2. **Editor**: gutter, text, selections, caret
-3. **UI**: topbar, statusbar, sidebars, terminal grid, AI chat, test runner, which-key
+3. **UI**: topbar, statusbar, sidebars, terminal grid, markdown preview, test runner, which-key
 4. **Overlays**: command palette, file picker, completion popups, live grep
 
 ---

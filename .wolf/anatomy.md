@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-17T04:46:04.763Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-17T08:11:47.996Z
 > Files: 421 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
@@ -387,7 +387,7 @@
 
 ## src/app/event_loop/
 
-- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~34677 tok)
+- `application.rs` — Delay before the which-key overlay appears for a pending chord — long (~35191 tok)
 - `commands_ai_chat.rs` — Like [`ai_slash_command_completion`] but selects the Nth matching command. (~12204 tok)
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
@@ -401,7 +401,7 @@
 - `commands_tests.rs` — [derive(Default)] (~36163 tok)
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~10265 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18603 tok)
-- `mod.rs` — Struct: AppShell (~7021 tok)
+- `mod.rs` — Struct: AppShell (~6986 tok)
 - `setup.rs` — new, new_for_tests (~23112 tok)
 - `welcome.rs` (~611 tok)
 
@@ -529,7 +529,7 @@
 - `mod.rs` (~60 tok)
 - `pipeline.rs` — Mỗi vertex của quad chỉ cần vị trí 2D (NDC). (~1222 tok)
 - `region_pipeline.rs` — RegionDrawInstance: new, with_radius, with_corner_radii, new (~3335 tok)
-- `renderer.rs` — Core renderer types and module layout. (~4827 tok)
+- `renderer.rs` — Core renderer types and module layout. (~4930 tok)
 - `surface.rs` — SurfaceState giữ toàn bộ thông tin liên quan đến swapchain/surface. (~797 tok)
 - `text_pipeline.rs` — TextPipeline: new, update_screen_size, upload_instances, draw + 1 more (~2779 tok)
 
@@ -538,7 +538,7 @@
 - `components.rs` (~123 tok)
 - `editor.rs` — Editor viewport rendering modules. (~2136 tok)
 - `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3963 tok)
-- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~6892 tok)
+- `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~7021 tok)
 - `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~3160 tok)
 - `ui.rs` — Panel UI rendering modules. (~48 tok)
 
@@ -571,7 +571,7 @@
 
 ## src/render/renderer/lifecycle/
 
-- `frame.rs` — render (~9303 tok)
+- `frame.rs` — render (~10107 tok)
 
 ## src/render/renderer/palette/
 
@@ -589,7 +589,7 @@
 - `popups.rs` — update_lsp_guide_popup, clear_lsp_guide_popup, update_system_dep_popup (~6724 tok)
 - `sidebar.rs` — update_sidebar_content, clear_sidebar, update_left_dock_panel (~8559 tok)
 - `statusbar.rs` — Render the three-zone status bar. (~5840 tok)
-- `terminal.rs` — update_terminal_content, update_right_terminal_content, clear_right_terminal, update_buffer_terminal (~7624 tok)
+- `terminal.rs` — update_terminal_content, update_right_terminal_content, clear_right_terminal, update_buffer_terminal (~10622 tok)
 - `test_runner.rs` — Test Runner panel (bottom dock): renders authored test cases with their (~11022 tok)
 - `topbar.rs` — update_topbar_content (~4633 tok)
 - `utils.rs` — Declares BORDER (~1962 tok)
@@ -723,7 +723,7 @@
 - `layout_engine.rs` — Height (logical px) of the clickable tab strip reserved at the top of the (~10632 tok)
 - `mod.rs` (~54 tok)
 - `overlay_manager.rs` — OverlaySurface: toggle_command_palette, is_command_palette_open, command_palette_query, push_command_palette_text + 3 more (~2247 tok)
-- `panel_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~2559 tok)
+- `panel_state.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] (~1943 tok)
 - `region_model.rs` — ID chuẩn hóa cho các vùng chính của Workbench. (~960 tok)
 - `text_coordinate_map.rs` — [derive(Debug, Clone, PartialEq)] (~1674 tok)
 

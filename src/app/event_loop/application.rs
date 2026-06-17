@@ -446,9 +446,10 @@ impl AppShell {
         true
     }
 
-    /// Switch the bottom dock's active outer tab when the user clicks its tab
-    /// strip.  When the Terminal outer tab is active, clicks switch the inner
-    /// terminal tabs (terminal 1, terminal 2, …) instead.
+    /// Switch the bottom dock's active tab when the user clicks its tab strip.
+    /// The outer strip shows each terminal instance as a tab, followed by an
+    /// "Add terminal" tab. Clicking a terminal tab switches to that instance;
+    /// clicking the "+" tab creates a new terminal.
     fn handle_bottom_tab_mouse_click(&mut self) -> bool {
         if !self.panel_state.bottom.visible {
             return false;
@@ -459,24 +460,32 @@ impl AppShell {
         let Some(bounds) = self.current_bottom_panel_bounds() else {
             return false;
         };
-        let terminal_active = self.panel_state.bottom.active_tab_id() == Some(PanelTabId::Terminal);
-        let tab_count = if terminal_active {
-            self.terminal_tabs.len()
-        } else {
-            self.panel_state.bottom.tabs.len()
-        };
-        let Some(idx) = self
-            .renderer
-            .as_ref()
-            .and_then(|renderer| renderer.terminal_tab_index_at(tab_count, bounds, position))
-        else {
-            return false;
-        };
-        if terminal_active {
-            self.handle_command(Command::SwitchTerminalTab(idx))
-        } else {
-            self.handle_command(Command::SwitchBottomTab(idx))
+
+        let strip_h = crate::workbench::layout_engine::BOTTOM_TAB_STRIP_HEIGHT;
+        let inset = crate::workbench::layout_engine::BOTTOM_DOCK_OUTLINE_INSET
+            .min(bounds[2] * 0.5)
+            .min(bounds[3] * 0.5)
+            .max(0.0);
+        let outer_strip_bounds = [
+            bounds[0] + inset,
+            bounds[1] + inset,
+            (bounds[2] - inset * 2.0).max(0.0),
+            strip_h.min(bounds[3]),
+        ];
+
+        let term_count = self.terminal_tabs.len();
+        if let Some(idx) = self.renderer.as_ref().and_then(|renderer| {
+            renderer.bottom_dock_tab_index_at(term_count, outer_strip_bounds, position)
+        }) {
+            if idx < term_count {
+                self.handle_command(Command::SwitchTerminalTab(idx));
+            } else {
+                // idx == term_count → the "+" button.
+                self.handle_command(Command::TerminalTabNew);
+            }
+            return true;
         }
+        false
     }
 
     /// Mouse click on the right-dock tab strip → switch tab + focus the dock.
@@ -2429,10 +2438,7 @@ impl AppShell {
         }
 
         if let Some(bottom) = bottom_region {
-            // Ẩn bottom panel terminal khi center đang hiển thị terminal buffer
-            // (lazygit, v.v.) để tránh render terminal hai nơi đồng thời.
             let center_has_terminal = self.app_state.active_terminal_session_id().is_some();
-            // In Zen Mode, only render terminal when BottomPanel is the target.
             let zen_allows_terminal = self.panel_state.maximized_region.is_none()
                 || self.panel_state.maximized_region == Some(FocusTarget::BottomPanel);
             if bottom.visible && !show_welcome && !center_has_terminal && zen_allows_terminal {
@@ -2443,83 +2449,120 @@ impl AppShell {
                     bottom.bounds.height,
                 ];
 
-                // The bottom dock's top strip shows the OUTER dock tabs
-                // (Terminal / Debug Console / Problems …). The terminal body is
-                // rendered only while the Terminal tab is active; other tabs show
-                // an empty body for now (per-tab content routers land later).
-                let outer_tabs: Vec<PanelTabId> = self.panel_state.bottom.tabs.clone();
-                let active_outer_idx = self.panel_state.bottom.active_tab;
+                // ── Outer bottom dock tab strip ──────────────────────────────
+                // Rendered at the top of the bottom panel, showing all outer
+                // dock tabs (Terminal, Debug Console, Problems). Uses the same
+                // visual style as left/right dock tab bars.
+                let outer_strip_h =
+                    crate::workbench::layout_engine::BOTTOM_TAB_STRIP_HEIGHT;
+                let inset = crate::workbench::layout_engine::BOTTOM_DOCK_OUTLINE_INSET
+                    .min(bottom_bounds[2] * 0.5)
+                    .min(bottom_bounds[3] * 0.5)
+                    .max(0.0);
+                let outer_strip_h = outer_strip_h
+                    .min((bottom_bounds[3] - inset * 2.0).max(0.0));
+
+                // Build the outer tab list dynamically: each terminal instance
+                // appears as an individual tab, followed by an "Add terminal"
+                // tab. This mirrors the left/right dock tab strips — one unified
+                // tab bar at the top of the dock.
                 let terminal_tab_active =
                     self.panel_state.bottom.active_tab_id() == Some(PanelTabId::Terminal);
+                let terminal_label = PanelTabId::Terminal.label();
 
+                let mut outer_labels: Vec<String> = Vec::new();
+                let mut outer_icons: Vec<Option<&'static str>> = Vec::new();
+                let mut outer_active = 0usize;
+
+                // Terminal instances. The tab title shows the terminal number plus
+                // the latest command run in it (tracked on `tab.label`); when no
+                // command has run yet `tab.label` equals `shell_label`, so we show
+                // just the numbered title.
+                let term_count = self.terminal_tabs.len();
+                for (i, tab) in self.terminal_tabs.iter().enumerate() {
+                    let label = if tab.label != tab.shell_label {
+                        format!("{terminal_label} {} · {}", i + 1, tab.label)
+                    } else {
+                        format!("{terminal_label} {}", i + 1)
+                    };
+                    outer_labels.push(label);
+                    outer_icons.push(PanelTabId::Terminal.icon_glyph());
+                    if terminal_tab_active && i == self.active_terminal_tab {
+                        outer_active = i;
+                    }
+                }
+                // The "new terminal" (+) button is drawn by the renderer as a
+                // compact square on the right — it's not a full-width tab.
+
+                // If the active index was never set (e.g. Terminal tab is
+                // the active panel tab but no terminal instance exists yet),
+                // default to the first tab.
+                if outer_active == 0
+                    && terminal_tab_active
+                    && term_count > 0
+                    && self.active_terminal_tab > 0
+                {
+                    outer_active = self.active_terminal_tab.min(term_count - 1);
+                }
+
+                let outer_labels_refs: Vec<&str> =
+                    outer_labels.iter().map(|s| s.as_str()).collect();
+                let strip_focused =
+                    self.focus_manager.current() == FocusTarget::BottomPanel;
+
+                // ── Content area below the outer tab strip ───────────────────
+                // The outer strip IS the dock's only tab bar (like the left/right
+                // docks), so the terminal body fills the whole area beneath it —
+                // no second inner tab bar.
+                let content_bounds = [
+                    bottom_bounds[0] + inset,
+                    bottom_bounds[1] + inset + outer_strip_h,
+                    (bottom_bounds[2] - inset * 2.0).max(0.0),
+                    (bottom_bounds[3] - inset * 2.0 - outer_strip_h).max(0.0),
+                ];
+
+                // 1. Update the terminal body FIRST. `update_terminal_content`
+                //    replaces `terminal_glyph_instances` with the body glyphs, so
+                //    it has to run before the tab strip appends its title glyphs.
                 if terminal_tab_active {
-                    let inner_tab_count = self.terminal_tabs.len();
-                    let terminal_content_bounds = self
-                        .renderer
-                        .as_ref()
-                        .map(|renderer| {
-                            renderer.terminal_tab_bar_content_bounds(bottom_bounds, inner_tab_count)
-                        })
-                        .unwrap_or(bottom_bounds);
-
-                    let bounds_changed = self.last_terminal_bounds != Some(bottom_bounds);
-                    let grid_changed = self.sync_terminal_layout(terminal_content_bounds);
+                    let bounds_changed =
+                        self.last_terminal_bounds != Some(bottom_bounds);
+                    let grid_changed = self.sync_terminal_layout(content_bounds);
                     if (self.terminal_needs_layout || bounds_changed || grid_changed)
                         && let Some(renderer) = self.renderer.as_mut()
                     {
                         renderer.update_terminal_content(
                             &self.terminal_tabs[self.active_terminal_tab].grid,
-                            terminal_content_bounds,
+                            content_bounds,
                             self.app_state.current_mode(),
                         );
                         self.last_terminal_bounds = Some(bottom_bounds);
                         self.terminal_needs_layout = false;
                     }
                 } else if let Some(renderer) = self.renderer.as_mut() {
-                    // Non-terminal outer tab: clear the terminal body each frame so
-                    // only the strip's tab labels populate the terminal text
-                    // pipeline (no stale body glyphs, no unbounded growth). The
-                    // strip itself is rendered just below.
                     renderer.clear_terminal();
                     self.last_terminal_bounds = None;
                 }
 
-                // Render the dock tab strip (always, while the dock is shown).
-                // When the Terminal outer tab is active, show the inner terminal
-                // tabs (terminal 1, terminal 2, …) so the user can see and
-                // switch between them.  For other outer tabs, fall back to the
-                // outer dock labels.
-                let tab_bar_quads = if let Some(renderer) = self.renderer.as_mut() {
-                    let (labels, running, active_idx): (Vec<&str>, Vec<bool>, usize) =
-                        if terminal_tab_active {
-                            let r: Vec<bool> = self
-                                .terminal_tabs
-                                .iter()
-                                .map(|t| t.status.is_running())
-                                .collect();
-                            let l: Vec<&str> = self
-                                .terminal_tabs
-                                .iter()
-                                .map(|t| t.label.as_str())
-                                .collect();
-                            (l, r, self.active_terminal_tab)
-                        } else {
-                            let any_terminal_running =
-                                self.terminal_tabs.iter().any(|t| t.status.is_running());
-                            let l: Vec<&str> = outer_tabs.iter().map(|t| t.label()).collect();
-                            let r: Vec<bool> = outer_tabs
-                                .iter()
-                                .map(|t| *t == PanelTabId::Terminal && any_terminal_running)
-                                .collect();
-                            (l, r, active_outer_idx)
-                        };
-                    renderer
-                        .update_terminal_tab_bar(&labels, &running, active_idx, bottom_bounds)
-                        .0
+                // 2. Build the outer tab strip LAST so its title glyphs are
+                //    appended after the terminal body and survive into the final
+                //    glyph upload (done inside `build_bottom_tab_strip`).
+                let outer_quads = if let Some(renderer) = self.renderer.as_mut() {
+                    let ix = bottom_bounds[0] + inset;
+                    let iy = bottom_bounds[1] + inset;
+                    let iw = (bottom_bounds[2] - inset * 2.0).max(0.0);
+                    let outer_strip_bounds = [ix, iy, iw, outer_strip_h];
+                    renderer.build_bottom_tab_strip(
+                        outer_strip_bounds,
+                        &outer_labels_refs,
+                        &outer_icons,
+                        outer_active,
+                        strip_focused,
+                    )
                 } else {
                     Vec::new()
                 };
-                region_instances.extend(tab_bar_quads);
+                region_instances.extend(outer_quads);
             } else if self.last_terminal_bounds.is_some() {
                 if let Some(renderer) = self.renderer.as_mut() {
                     renderer.clear_terminal();

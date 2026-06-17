@@ -234,6 +234,8 @@ impl Renderer {
             terminal_scissor: None,
             terminal_body_batch: None,
             terminal_tab_bar_batch: None,
+            terminal_outer_tab_batch: None,
+            bottom_dock_tab_icon_instances: Vec::new(),
             right_terminal_text_system: make_text_system(panel_metrics, font_family.as_deref()),
             right_terminal_text_pipeline,
             right_terminal_view_renderer: TerminalViewRenderer::default_monospace(),

@@ -455,12 +455,6 @@ pub(super) enum TerminalTabStatus {
     Exited(i32),
 }
 
-impl TerminalTabStatus {
-    pub fn is_running(&self) -> bool {
-        matches!(self, Self::Running)
-    }
-}
-
 /// Một tab terminal trong bottom panel.
 #[derive(Clone)]
 pub(super) struct TerminalTab {

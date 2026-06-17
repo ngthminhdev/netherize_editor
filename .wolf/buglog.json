@@ -3109,5 +3109,26 @@
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-06-16T18:30:00+07:00"
+  },
+  {
+    "id": "bug-177",
+    "timestamp": "2026-06-17T00:00:00+07:00",
+    "error_message": "Bottom-dock outer tab strip: icons and titles showed inconsistently ('lúc có lúc không') / wrong; DebugConsole + Problems tabs shown though unwanted; latest command not reflected in tab title.",
+    "file": "src/app/event_loop/application.rs, src/render/renderer/ui/terminal.rs, src/render/renderer/lifecycle/frame.rs, src/render/renderer.rs, src/render/renderer/lifecycle.rs, src/workbench/panel_state.rs, src/app/event_loop/mod.rs",
+    "root_cause": "Two defects. (1) Tab ICONS were flushed twice: application.rs called flush_bottom_dock_tab_icons() (pre-merging them into the sidebar icon buffer and draining bottom_dock_tab_icon_instances), then frame.rs re-derived the count and found the buffer already drained — so the icons were drawn under the sidebar scissor (clipped away) while the correct outer-strip-scissor draw got count 0. (2) Tab TITLE glyphs were appended to terminal_glyph_instances by build_bottom_tab_strip BEFORE update_terminal_content, which does `*glyph_instances = ...` (replaces the whole buffer) — destroying the titles and leaving terminal_outer_tab_batch pointing at a stale range. Titles only survived when the terminal body wasn't the active content, hence the intermittent display. Separately, panel_state.bottom and the outer label builder hard-coded DebugConsole/Problems tabs, and the strip label used 'Terminal {n}' instead of tab.label (which already carries the latest-command title from terminal_command_title).",
+    "fix": "Removed the duplicate flush_bottom_dock_tab_icons() (method + sidebar_icon_count field deleted); frame.rs is now the single merge point and truncates sidebar_icon_instances back after submit so icons can't accumulate across frames. Reordered application.rs so update_terminal_content runs first (full content_bounds, no inner tab bar) and build_bottom_tab_strip runs LAST; build_bottom_tab_strip now anchors to terminal_body_batch (truncating stale titles), clamps each label to its tab width, and re-uploads terminal_glyph_instances so titles reach the GPU. Removed the redundant inner terminal tab bar so the outer strip is the dock's only tab bar (matching left/right docks). Reverted panel_state.bottom to [Terminal] and dropped DebugConsole/Problems from the outer label/icon list and the click handler. Outer tab labels now use tab.label, showing 'Terminal N · <latest cmd>'.",
+    "tags": [
+      "bottom-dock",
+      "terminal",
+      "tab-bar",
+      "icons",
+      "scissor",
+      "glyph-buffer",
+      "uiux",
+      "user-reported"
+    ],
+    "related_bugs": ["bug-176"],
+    "occurrences": 1,
+    "last_seen": "2026-06-17T00:00:00+07:00"
   }
 ]

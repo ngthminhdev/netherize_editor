@@ -233,6 +233,12 @@ pub struct Renderer {
     pub(super) terminal_scissor: Option<[u32; 4]>,
     pub(super) terminal_body_batch: Option<TextScissorBatch>,
     pub(super) terminal_tab_bar_batch: Option<TextScissorBatch>,
+    pub(super) terminal_outer_tab_batch: Option<TextScissorBatch>,
+
+    // ── Bottom dock outer tab strip icons ──────────────────────────────────────
+    /// Tab-strip icons built by `build_bottom_tab_strip`. `frame.rs` appends them
+    /// to the sidebar icon buffer and draws them with the outer-strip scissor.
+    pub(super) bottom_dock_tab_icon_instances: Vec<IconDrawInstance>,
 
     // ── Right-dock terminal (opencode) ────────────────────────────────────────
     pub(super) right_terminal_text_system: TextSystem,

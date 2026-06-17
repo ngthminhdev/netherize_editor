@@ -189,6 +189,8 @@ pub fn canonical_icon_id(icon: &str) -> Option<&'static str> {
         "sparkles" => "built_in:sparkles",
         "flask" => "built_in:flask",
         "outline" => "built_in:outline",
+        "terminal" => "built_in:terminal",
+        "cli" => "built_in:cli",
         _ => "built_in:file",
     })
 }
@@ -430,6 +432,32 @@ impl IconPipeline {
         pass.set_vertex_buffer(0, vb.slice(..));
         pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
         pass.draw_indexed(0..self.index_count, 0, 0..1);
+    }
+
+    pub fn draw_range<'pass>(
+        &'pass self,
+        pass: &mut wgpu::RenderPass<'pass>,
+        first_icon: u32,
+        icon_count: u32,
+    ) {
+        if icon_count == 0 || first_icon >= self.index_count / 6 {
+            return;
+        }
+        let (Some(vb), Some(ib), Some(bg)) =
+            (&self.vertex_buffer, &self.index_buffer, &self.bind_group)
+        else {
+            return;
+        };
+        let first_index = first_icon * 6;
+        let index_count = (icon_count * 6).min(self.index_count.saturating_sub(first_index));
+        if index_count == 0 {
+            return;
+        }
+        pass.set_pipeline(&self.render_pipeline);
+        pass.set_bind_group(0, bg, &[]);
+        pass.set_vertex_buffer(0, vb.slice(..));
+        pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+        pass.draw_indexed(first_index..first_index + index_count, 0, 0..1);
     }
 }
 
@@ -1076,6 +1104,14 @@ fn build_bearded_atlas() -> BuiltAtlas {
         (
             "built_in:outline",
             include_bytes!("../../assets/bearded-icons/outline.svg"),
+        ),
+        (
+            "built_in:terminal",
+            include_bytes!("../../assets/bearded-icons/terminal.svg"),
+        ),
+        (
+            "built_in:cli",
+            include_bytes!("../../assets/bearded-icons/cli.svg"),
         ),
     ];
     let icon_size = 96u32;

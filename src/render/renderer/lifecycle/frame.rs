@@ -112,6 +112,20 @@ impl Renderer {
         self.region_pipeline
             .upload_instances(&self.device, &self.queue, &all_instances);
 
+        // Merge bottom-dock outer tab strip icons into the sidebar icon
+        // pipeline so they can be drawn with their own scissor via draw_range.
+        let sidebar_icon_count = self.sidebar_icon_instances.len() as u32;
+        self.sidebar_icon_instances
+            .extend(self.bottom_dock_tab_icon_instances.drain(..));
+        self.sidebar_icon_pipeline.upload_instances(
+            &self.device,
+            &self.sidebar_icon_instances,
+            [
+                self.surface_state.config.width,
+                self.surface_state.config.height,
+            ],
+        );
+
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -247,16 +261,38 @@ impl Renderer {
                 },
             );
 
-            // 4. Explorer sidebar.
-            draw_text_region(
-                &mut pass,
-                self.sidebar_scissor,
-                viewport_width,
-                viewport_height,
-                |render_pass| {
-                    self.sidebar_icon_pipeline.draw(render_pass);
-                },
-            );
+            // 4. Explorer sidebar icons + bottom-dock outer tab strip icons.
+            if sidebar_icon_count > 0 {
+                draw_text_region(
+                    &mut pass,
+                    self.sidebar_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.sidebar_icon_pipeline
+                            .draw_range(render_pass, 0, sidebar_icon_count);
+                    },
+                );
+            }
+            let bottom_dock_icon_count =
+                self.sidebar_icon_instances.len() as u32 - sidebar_icon_count;
+            if bottom_dock_icon_count > 0 {
+                let outer_tab_scissor =
+                    self.terminal_outer_tab_batch.map(|b| b.scissor);
+                draw_text_region(
+                    &mut pass,
+                    outer_tab_scissor,
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.sidebar_icon_pipeline.draw_range(
+                            render_pass,
+                            sidebar_icon_count,
+                            bottom_dock_icon_count,
+                        );
+                    },
+                );
+            }
             draw_text_region(
                 &mut pass,
                 self.sidebar_scissor,
@@ -438,6 +474,20 @@ impl Renderer {
                     viewport_height,
                     |render_pass| {
                         self.leap_label_text_pipeline.draw(render_pass);
+                    },
+                );
+            }
+
+            // 5b. Bottom-dock outer tab strip text — drawn above terminal bodies.
+            if let Some(outer_tab_batch) = self.terminal_outer_tab_batch {
+                draw_text_region(
+                    &mut pass,
+                    Some(outer_tab_batch.scissor),
+                    viewport_width,
+                    viewport_height,
+                    |render_pass| {
+                        self.terminal_text_pipeline
+                            .draw_range(render_pass, outer_tab_batch.range);
                     },
                 );
             }
@@ -881,6 +931,13 @@ impl Renderer {
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
+
+        // Drop the bottom-dock tab icons that were merged into the sidebar icon
+        // buffer for this frame's draw, so they don't accumulate across frames
+        // when the sidebar itself isn't rebuilt.
+        self.sidebar_icon_instances
+            .truncate(sidebar_icon_count as usize);
+
         let frame_time = frame_started_at.elapsed();
         if frame_time > FRAME_TIME_WARN_THRESHOLD {
             eprintln!(

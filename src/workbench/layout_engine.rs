@@ -13,6 +13,7 @@ use crate::{
 /// right dock. Shared by the layout engine and renderer.
 pub const RIGHT_TAB_STRIP_HEIGHT: f32 = 46.0;
 pub const LEFT_TAB_STRIP_HEIGHT: f32 = 46.0;
+pub const BOTTOM_TAB_STRIP_HEIGHT: f32 = 46.0;
 
 /// Inset (px) between the right-dock panel edge and its tab strip / content, so
 /// the panel's focus-ring outline stays visible around them instead of being
@@ -20,6 +21,7 @@ pub const LEFT_TAB_STRIP_HEIGHT: f32 = 46.0;
 /// `FOCUS_RING_THICKNESS`.
 pub const RIGHT_DOCK_OUTLINE_INSET: f32 = 2.0;
 pub const LEFT_DOCK_OUTLINE_INSET: f32 = 2.0;
+pub const BOTTOM_DOCK_OUTLINE_INSET: f32 = 2.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SplitHandleId {
