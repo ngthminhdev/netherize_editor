@@ -11,8 +11,8 @@ use crate::{
 
 /// Height (logical px) of the clickable tab strip reserved at the top of the
 /// right dock. Shared by the layout engine and renderer.
-pub const RIGHT_TAB_STRIP_HEIGHT: f32 = 50.0;
-pub const LEFT_TAB_STRIP_HEIGHT: f32 = 50.0;
+pub const RIGHT_TAB_STRIP_HEIGHT: f32 = 46.0;
+pub const LEFT_TAB_STRIP_HEIGHT: f32 = 46.0;
 
 /// Inset (px) between the right-dock panel edge and its tab strip / content, so
 /// the panel's focus-ring outline stays visible around them instead of being
@@ -555,9 +555,9 @@ mod tests {
     use winit::dpi::PhysicalSize;
 
     #[test]
-    fn right_tab_strip_matches_terminal_tab_height() {
-        assert_eq!(RIGHT_TAB_STRIP_HEIGHT, 50.0);
-        assert_eq!(LEFT_TAB_STRIP_HEIGHT, 50.0);
+    fn tab_strip_matches_breadcrumb_height() {
+        assert_eq!(RIGHT_TAB_STRIP_HEIGHT, 46.0);
+        assert_eq!(LEFT_TAB_STRIP_HEIGHT, 46.0);
     }
 
     #[test]

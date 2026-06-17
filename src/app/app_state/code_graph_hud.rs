@@ -12,15 +12,21 @@ pub enum CodeGraphHudStatus {
     Error(String),
 }
 
-/// A small code snippet around the focused node's definition, shown in the
-/// HUD's detail panel (hover-style preview).
+/// A small, syntax-highlighted code snippet around the focused node's
+/// definition, shown in the HUD's detail panel (hover-style preview). Built with
+/// the same in-process highlighter as the fuzzy/references previews.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeDetail {
     pub name: String,
     pub file_path: String,
+    /// Target line (1-based) — the symbol's definition line.
     pub line: u32,
-    /// `(line_number, text)` rows; `line_number` is 1-based.
-    pub snippet: Vec<(u32, String)>,
+    /// Line number (1-based) of the first snippet row.
+    pub start_line: u32,
+    /// Snippet line texts (no trailing newline).
+    pub lines: Vec<String>,
+    /// Highlight spans over the snippet joined with `\n`.
+    pub spans: Vec<crate::text::text_system::StyledTextSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

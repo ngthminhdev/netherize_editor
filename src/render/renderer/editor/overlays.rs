@@ -1460,7 +1460,7 @@ impl Renderer {
 
         // ── Backdrop dim + panel (70% of the editor area) ───────────────────
         quads.push(RegionDrawInstance::new(center_bounds, c_overlay));
-        let pw = (bw * 0.90).min(bw - 8.0);
+        let pw = (bw * 0.80).min(bw - 8.0);
         let ph = (bh * 0.90).min(bh - 8.0);
         let px = bx + (bw - pw) * 0.5;
         let py = by + (bh - ph) * 0.5;
@@ -1601,15 +1601,12 @@ impl Renderer {
                     Focus::Callee(i) => Some(i),
                     _ => None,
                 };
-                // Reserve a bottom strip for the focused-node code preview.
+                // Reserve a FIXED-height bottom strip for the code preview so
+                // navigating between nodes never reflows the graph (no UI jump).
                 let detail = hud.detail.as_ref();
-                let detail_rows = detail.map(|d| d.snippet.len()).unwrap_or(0);
-                let detail_h = if detail_rows > 0 {
-                    (detail_rows as f32 + 1.6) * lh + 18.0 * ui_s
-                } else {
-                    0.0
-                };
-                let dgap = if detail_h > 0.0 { 14.0 * ui_s } else { 0.0 };
+                const PREVIEW_ROWS: f32 = 7.0;
+                let detail_h = (PREVIEW_ROWS + 1.6) * lh + 18.0 * ui_s;
+                let dgap = 14.0 * ui_s;
                 let graph_content = [
                     content[0],
                     content[1],
@@ -1656,9 +1653,12 @@ impl Renderer {
                             c_dim,
                         );
                         let gutter_w = 48.0 * ui_s;
+                        let code_x = dx + tpad + gutter_w;
+                        let code_w = dw - gutter_w - tpad * 2.0;
                         let mut sy = dy + 6.0 * ui_s + lh * 1.5;
-                        for (ln, code) in &d.snippet {
-                            let is_target = *ln == d.line;
+                        for (idx, code) in d.lines.iter().enumerate() {
+                            let ln = d.start_line + idx as u32;
+                            let is_target = ln == d.line;
                             if is_target {
                                 // Highlight the line that holds the symbol definition.
                                 quads.push(
@@ -1675,15 +1675,37 @@ impl Renderer {
                             }
                             let ln_color = if is_target { c_cyan } else { c_ghost };
                             text(self, glyphs, &format!("{ln:>4}"), dx + tpad, sy, ln_color);
-                            let code = clamp_monospace_text(code, dw - gutter_w - tpad * 2.0, fs);
-                            text(
-                                self,
-                                glyphs,
-                                &code,
-                                dx + tpad + gutter_w,
-                                sy,
+                            // Slice the syntax-highlight spans down to this line.
+                            let line_start: usize =
+                                d.lines.iter().take(idx).map(|t| t.len() + 1).sum();
+                            let line_end = line_start + code.len();
+                            let line_spans: Vec<StyledTextSpan> = d
+                                .spans
+                                .iter()
+                                .filter_map(|span| {
+                                    if span.end <= line_start || span.start >= line_end {
+                                        return None;
+                                    }
+                                    Some(StyledTextSpan::with_style(
+                                        span.start.max(line_start) - line_start,
+                                        span.end.min(line_end) - line_start,
+                                        span.color_rgba,
+                                        span.bold,
+                                        span.italic,
+                                    ))
+                                })
+                                .collect();
+                            let shown = clamp_monospace_text(code, code_w, fs);
+                            glyphs.extend(layout_panel_rich_text(
+                                &shown,
+                                &line_spans,
                                 if is_target { c_fg } else { c_dim },
-                            );
+                                &mut self.editor_overlay_text_system,
+                                &mut self.atlas,
+                                &self.queue,
+                                code_x,
+                                sy,
+                            ));
                             sy += lh;
                         }
                     }
@@ -1742,19 +1764,23 @@ impl Renderer {
                             .with_radius(pr + 4.0 * ui_s),
                         );
                     }
-                    // Light translucent risk tint (keeps text legible over the panel).
-                    let fill = with_alpha(col, if focused { 0.1 } else { 0.05 });
-                    quads.push(
-                        RegionDrawInstance::new([pill.x, pill.y, pill.w, pill.h], fill)
-                            .with_radius(pr),
-                    );
-                    // Left accent stripe in the risk color.
+                    // Card look: a risk-colored border RING (outer rect) with a
+                    // subtle tinted interior (inset rect) drawn on top — so each
+                    // node reads as an outlined card like the design mockup.
+                    let bt = if focused { 2.0 * ui_s } else { 1.0 * ui_s };
                     quads.push(
                         RegionDrawInstance::new(
-                            [pill.x, pill.y + 4.0 * ui_s, 3.0 * ui_s, pill.h - 8.0 * ui_s],
-                            col,
+                            [pill.x, pill.y, pill.w, pill.h],
+                            with_alpha(col, if focused { 0.95 } else { 0.55 }),
                         )
-                        .with_radius(1.5 * ui_s),
+                        .with_radius(pr),
+                    );
+                    quads.push(
+                        RegionDrawInstance::new(
+                            [pill.x + bt, pill.y + bt, pill.w - bt * 2.0, pill.h - bt * 2.0],
+                            blend_rgba(c_bg, col, if focused { 0.16 } else { 0.10 }, 1.0),
+                        )
+                        .with_radius((pr - bt).max(2.0)),
                     );
 
                     let tx = pill.x + 14.0 * ui_s;

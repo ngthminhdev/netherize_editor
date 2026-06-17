@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-17T03:59:03.200Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-17T04:46:04.763Z
 > Files: 421 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
@@ -374,7 +374,7 @@
 ## src/app/app_state/
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer + 12 more (~8220 tok)
-- `code_graph_hud.rs` — Runtime state for the Code Graph HUD overlay (the `gp` graph view). (~1139 tok)
+- `code_graph_hud.rs` — Runtime state for the Code Graph HUD overlay (the `gp` graph view). (~1231 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~10520 tok)
 - `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~25976 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
@@ -392,7 +392,7 @@
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
 - `commands_explorer.rs` (~7394 tok)
-- `commands_lsp.rs` (~13120 tok)
+- `commands_lsp.rs` (~13253 tok)
 - `commands_palette.rs` (~8052 tok)
 - `commands_prompts.rs` (~7222 tok)
 - `commands_settings_helpers.rs` — Which workbench dock a resize-mode key adjusts. (~9781 tok)
@@ -556,7 +556,7 @@
 - `extensions.rs` — update_extensions_manager_content (~9544 tok)
 - `fuzzy.rs` — update_fuzzy_picker_buffer_content (~7928 tok)
 - `help.rs` — update_help_buffer_content (~3996 tok)
-- `overlays.rs` — update_editor_overlays (~26538 tok)
+- `overlays.rs` — update_editor_overlays (~26989 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11283 tok)
 - `settings.rs` — Declares SettingsSection (~12386 tok)
 - `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~7304 tok)

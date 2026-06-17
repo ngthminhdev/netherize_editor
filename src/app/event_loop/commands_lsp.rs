@@ -830,6 +830,7 @@ impl AppShell {
     /// cheap enough to run on each navigation.
     pub(in crate::app::event_loop) fn refresh_code_graph_detail(&mut self) {
         use crate::app::app_state::code_graph_hud::NodeDetail;
+        use crate::async_runtime::message::FilePreviewLine;
         let Some(node) = self.app_state.code_graph_hud.focused_node().cloned() else {
             self.app_state.code_graph_hud.detail = None;
             return;
@@ -839,23 +840,32 @@ impl AppShell {
             Some(root) => root.join(&node.file_path),
             None => std::path::PathBuf::from(&node.file_path),
         };
-        let snippet = std::fs::read_to_string(&path)
-            .ok()
-            .map(|content| {
-                let lines: Vec<&str> = content.lines().collect();
-                let target = (node.line as usize).saturating_sub(1); // 0-based
-                let start = target.saturating_sub(1);
-                let end = (target + 6).min(lines.len());
-                (start..end)
-                    .map(|i| ((i + 1) as u32, lines[i].to_string()))
-                    .collect::<Vec<_>>()
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            self.app_state.code_graph_hud.detail = None;
+            return;
+        };
+        let all: Vec<&str> = content.lines().collect();
+        let target = (node.line as usize).saturating_sub(1); // 0-based
+        let start = target.saturating_sub(1);
+        let end = (target + 6).min(all.len());
+        let preview_lines: Vec<FilePreviewLine> = (start..end)
+            .map(|i| FilePreviewLine {
+                line_number: i + 1,
+                text: all[i].to_string(),
+                is_target: i == target,
             })
-            .unwrap_or_default();
+            .collect();
+        // Same in-process tree-sitter highlighter the fuzzy/references previews use.
+        let (_text, spans) =
+            super::helpers::build_preview_render_data(&preview_lines, &path, &self.theme);
+        let lines: Vec<String> = preview_lines.into_iter().map(|l| l.text).collect();
         self.app_state.code_graph_hud.detail = Some(NodeDetail {
             name: node.name.clone(),
             file_path: node.file_path.clone(),
             line: node.line,
-            snippet,
+            start_line: (start + 1) as u32,
+            lines,
+            spans,
         });
     }
 

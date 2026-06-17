@@ -587,7 +587,12 @@ impl Renderer {
         let fg = self.theme.ui.fg.as_f32();
         let fg_dim = self.theme.ui.fg_dim.as_f32();
         let accent = self.theme.ui.accent.as_f32();
-        let tab_base = self.theme.ui.panel_bg.as_f32();
+        let tab_base = super::utils::blend_rgb(
+            self.theme.editor.bg.as_f32(),
+            self.theme.ui.status_bar_bg.as_f32(),
+            0.62,
+            1.0,
+        );
         let border = self.theme.ui.border_color.as_f32();
         let active_bg = self.theme.editor.bg.as_f32();
         let inactive_bg = tab_base;
@@ -705,6 +710,7 @@ impl Renderer {
                 ));
             }
         }
+        let divider = super::utils::blend_rgb(tab_base, border, 0.7, 1.0);
         chrome.push(RegionDrawInstance::new(
             [
                 bounds[0],
@@ -712,7 +718,7 @@ impl Renderer {
                 bounds[2],
                 1.0,
             ],
-            border,
+            divider,
         ));
         self.sidebar_text_system.set_metrics(saved_metrics);
         (chrome, glyphs, icon_instances)

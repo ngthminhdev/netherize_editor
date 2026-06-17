@@ -2008,3 +2008,20 @@
 | 10:58 | Edited src/render/renderer/editor/overlays.rs | expanded (+31 lines) | ~369 |
 | 10:59 | Edited src/render/renderer/editor/overlays.rs | expanded (+9 lines) | ~270 |
 | 11:00 | Session end: 83 writes across 23 files (2026-06-16-code-graph-hud-design.md, 2026-06-16-code-graph-hud.md, cli_json.rs, model.rs, navigation.rs) | 28 reads | ~275293 tok |
+| 11:11 | Edited src/app/app_state/code_graph_hud.rs | expanded (+6 lines) | ~185 |
+| 11:11 | Edited src/app/event_loop/commands_lsp.rs | modified refresh_code_graph_detail() | ~485 |
+| 11:11 | Edited src/render/renderer/editor/overlays.rs | 2→2 lines | ~34 |
+| 11:11 | Edited src/render/renderer/editor/overlays.rs | modified enumerate() | ~854 |
+| 11:13 | Session end: 87 writes across 23 files (2026-06-16-code-graph-hud-design.md, 2026-06-16-code-graph-hud.md, cli_json.rs, model.rs, navigation.rs) | 31 reads | ~294921 tok |
+| 11:21 | Edited src/render/renderer/editor/overlays.rs | 2→2 lines | ~24 |
+| 11:22 | Session end: 88 writes across 23 files (2026-06-16-code-graph-hud-design.md, 2026-06-16-code-graph-hud.md, cli_json.rs, model.rs, navigation.rs) | 31 reads | ~294946 tok |
+
+## Session: 2026-06-17 11:30
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 11:38 | Edited src/render/renderer/editor/overlays.rs | 9→6 lines | ~99 |
+| 11:38 | Session end: 1 writes across 1 files (overlays.rs) | 0 reads | ~106 tok |
+| 11:40 | Session end: 1 writes across 1 files (overlays.rs) | 0 reads | ~106 tok |
+| 11:46 | Edited src/render/renderer/editor/overlays.rs | 14→18 lines | ~268 |
+| 11:46 | Session end: 2 writes across 1 files (overlays.rs) | 1 reads | ~27308 tok |
