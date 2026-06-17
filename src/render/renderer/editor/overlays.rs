@@ -27,6 +27,7 @@ use super::super::helpers::{
     gutter_width_for_editor, layout_panel_rich_text, layout_panel_text, layout_panel_text_bold,
     layout_panel_text_italic, rect_to_scissor, should_draw_block_cursor,
 };
+use super::super::components::{estimate_help_keycaps_width, layout_help_keycaps};
 use super::completion::{completion_kind_badge, completion_label_spans};
 use super::{EDITOR_BREADCRUMB_GAP_Y, EDITOR_BREADCRUMB_TOP_INSET};
 use crate::render::icon_pipeline::{IconDrawInstance, canonical_icon_id};
@@ -1437,6 +1438,8 @@ impl Renderer {
         let c_amber = self.theme.ui.amber.as_f32();
         let c_green = self.theme.ui.success.as_f32();
         let c_red = self.theme.ui.error.as_f32();
+        let c_accent = self.theme.ui.accent.as_f32();
+        let c_info = self.theme.ui.info.as_f32();
         let c_overlay = self.theme.ui.overlay_bg.as_f32();
 
         let with_alpha = |c: [f32; 4], a: f32| [c[0], c[1], c[2], a];
@@ -1521,12 +1524,43 @@ impl Renderer {
             c_ghost,
         );
 
-        // ── Footer ──────────────────────────────────────────────────────────
-        let foot_h = lh + 12.0 * ui_s;
+        // ── Footer (shortcut guide rendered as keycaps) ─────────────────────
+        let foot_h = lh + 16.0 * ui_s;
         let foot_y = py + ph - foot_h;
         quads.push(RegionDrawInstance::new([px, foot_y, pw, 1.0], c_border));
-        let footer = "h j k l  move    ·    Enter  jump to node    ·    Esc  close";
-        text(self, glyphs, footer, px + pad, foot_y + (foot_h - lh) * 0.5, c_dim);
+        {
+            let groups: [(&[&str], &str); 3] = [
+                (&["h", "j", "k", "l"], "navigate"),
+                (&["Enter"], "jump"),
+                (&["Esc"], "close"),
+            ];
+            let label_y = foot_y + (foot_h - lh) * 0.5;
+            let mut fx = px + pad;
+            for (keys, label) in groups {
+                let kc = layout_help_keycaps(
+                    keys,
+                    &mut self.editor_overlay_text_system,
+                    &mut self.atlas,
+                    &self.queue,
+                    quads,
+                    fx,
+                    foot_y,
+                    fs,
+                    foot_h,
+                    c_fg,
+                    c_dim,
+                    c_accent,
+                    c_info,
+                    c_amber,
+                    c_red,
+                    c_bg,
+                );
+                glyphs.extend(kc);
+                fx += estimate_help_keycaps_width(keys, fs) + 8.0 * ui_s;
+                text(self, glyphs, label, fx, label_y, c_dim);
+                fx += estimate_monospace_width(label, fs) + 22.0 * ui_s;
+            }
+        }
 
         // ── Content area ────────────────────────────────────────────────────
         let content = [
@@ -1626,12 +1660,21 @@ impl Renderer {
                         for (ln, code) in &d.snippet {
                             let is_target = *ln == d.line;
                             if is_target {
+                                // Highlight the line that holds the symbol definition.
+                                quads.push(
+                                    RegionDrawInstance::new(
+                                        [dx + 4.0 * ui_s, sy, dw - 8.0 * ui_s, lh],
+                                        with_alpha(c_cyan, 0.16),
+                                    )
+                                    .with_radius(3.0 * ui_s),
+                                );
                                 quads.push(RegionDrawInstance::new(
-                                    [dx + 4.0 * ui_s, sy - 1.0, dw - 8.0 * ui_s, lh],
-                                    with_alpha(c_cyan, 0.10),
+                                    [dx + 4.0 * ui_s, sy, 2.5 * ui_s, lh],
+                                    c_cyan,
                                 ));
                             }
-                            text(self, glyphs, &format!("{ln:>4}"), dx + tpad, sy, c_ghost);
+                            let ln_color = if is_target { c_cyan } else { c_ghost };
+                            text(self, glyphs, &format!("{ln:>4}"), dx + tpad, sy, ln_color);
                             let code = clamp_monospace_text(code, dw - gutter_w - tpad * 2.0, fs);
                             text(
                                 self,
@@ -1694,13 +1737,13 @@ impl Renderer {
                         quads.push(
                             RegionDrawInstance::new(
                                 [pill.x - h, pill.y - h, pill.w + h * 2.0, pill.h + h * 2.0],
-                                with_alpha(col, 0.32),
+                                with_alpha(col, 0.15),
                             )
                             .with_radius(pr + 4.0 * ui_s),
                         );
                     }
                     // Light translucent risk tint (keeps text legible over the panel).
-                    let fill = with_alpha(col, if focused { 0.22 } else { 0.15 });
+                    let fill = with_alpha(col, if focused { 0.1 } else { 0.05 });
                     quads.push(
                         RegionDrawInstance::new([pill.x, pill.y, pill.w, pill.h], fill)
                             .with_radius(pr),

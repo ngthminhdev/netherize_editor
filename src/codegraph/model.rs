@@ -90,10 +90,16 @@ pub fn build_model(
     let callers = dedup(&callers.callers, &mut seen)
         .into_iter()
         .map(|s| {
-            let risk = if affected.contains(&ident(&s)) {
-                RiskLevel::High
-            } else {
-                RiskLevel::Medium
+            // Blast-radius heuristic for a caller (it depends on the focal symbol):
+            //  - in the impact set AND in a different file  -> High  (confirmed
+            //    dependent whose breakage crosses a module boundary),
+            //  - confirmed dependent in the focal's own file -> Medium (contained),
+            //  - a caller the `impact` traversal did not surface -> Medium.
+            let in_impact = affected.contains(&ident(&s));
+            let cross_file = s.file_path != focal_file;
+            let risk = match (in_impact, cross_file) {
+                (true, true) => RiskLevel::High,
+                _ => RiskLevel::Medium,
             };
             GraphNode {
                 name: s.name,

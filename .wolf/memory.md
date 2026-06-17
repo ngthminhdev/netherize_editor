@@ -2001,3 +2001,10 @@
 | 10:45 | Edited src/render/renderer/editor/overlays.rs | expanded (+69 lines) | ~962 |
 | 10:45 | Edited src/render/renderer/editor/overlays.rs | 10→11 lines | ~159 |
 | 10:46 | Session end: 77 writes across 23 files (2026-06-16-code-graph-hud-design.md, 2026-06-16-code-graph-hud.md, cli_json.rs, model.rs, navigation.rs) | 25 reads | ~265424 tok |
+| 10:56 | Edited src/core/commands.rs | 4→8 lines | ~71 |
+| 10:57 | Edited src/codegraph/model.rs | modified map() | ~251 |
+| 10:58 | Edited src/render/renderer/editor/overlays.rs | added 1 import(s) | ~59 |
+| 10:58 | Edited src/render/renderer/editor/overlays.rs | 2→4 lines | ~57 |
+| 10:58 | Edited src/render/renderer/editor/overlays.rs | expanded (+31 lines) | ~369 |
+| 10:59 | Edited src/render/renderer/editor/overlays.rs | expanded (+9 lines) | ~270 |
+| 11:00 | Session end: 83 writes across 23 files (2026-06-16-code-graph-hud-design.md, 2026-06-16-code-graph-hud.md, cli_json.rs, model.rs, navigation.rs) | 28 reads | ~275293 tok |

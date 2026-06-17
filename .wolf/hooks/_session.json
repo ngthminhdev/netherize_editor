@@ -38,8 +38,8 @@
       "first_read": "2026-06-16T16:42:47.639Z"
     },
     "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/overlays.rs": {
-      "count": 9,
-      "tokens": 26074,
+      "count": 12,
+      "tokens": 26134,
       "first_read": "2026-06-16T16:42:48.192Z"
     },
     "/Users/qc-bright/Project/netherize_editor/src/lib.rs": {
@@ -126,6 +126,21 @@
       "count": 1,
       "tokens": 0,
       "first_read": "2026-06-16T17:18:37.613Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/render/renderer/components/help_keycaps.rs": {
+      "count": 1,
+      "tokens": 2003,
+      "first_read": "2026-06-17T03:54:32.496Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/syntax/highlight/engine.rs": {
+      "count": 1,
+      "tokens": 5276,
+      "first_read": "2026-06-17T03:55:44.862Z"
+    },
+    "/Users/qc-bright/Project/netherize_editor/src/codegraph/model.rs": {
+      "count": 1,
+      "tokens": 1378,
+      "first_read": "2026-06-17T03:57:00.828Z"
     }
   },
   "files_written": [
@@ -590,13 +605,49 @@
       "action": "edit",
       "tokens": 171,
       "at": "2026-06-17T03:45:34.922Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/core/commands.rs",
+      "action": "edit",
+      "tokens": 76,
+      "at": "2026-06-17T03:56:30.698Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/codegraph/model.rs",
+      "action": "edit",
+      "tokens": 268,
+      "at": "2026-06-17T03:57:11.381Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/overlays.rs",
+      "action": "edit",
+      "tokens": 63,
+      "at": "2026-06-17T03:58:19.948Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/overlays.rs",
+      "action": "edit",
+      "tokens": 61,
+      "at": "2026-06-17T03:58:33.772Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/overlays.rs",
+      "action": "edit",
+      "tokens": 395,
+      "at": "2026-06-17T03:58:49.868Z"
+    },
+    {
+      "file": "/Users/qc-bright/Project/netherize_editor/src/render/renderer/editor/overlays.rs",
+      "action": "edit",
+      "tokens": 289,
+      "at": "2026-06-17T03:59:03.208Z"
     }
   ],
   "edit_counts": {
     "docs/superpowers/specs/2026-06-16-code-graph-hud-design.md": 1,
     "docs/superpowers/plans/2026-06-16-code-graph-hud.md": 1,
     "src/codegraph/cli_json.rs": 1,
-    "src/codegraph/model.rs": 1,
+    "src/codegraph/model.rs": 2,
     "src/codegraph/navigation.rs": 1,
     "src/codegraph/layout.rs": 6,
     "src/codegraph/edges.rs": 5,
@@ -607,7 +658,7 @@
     "src/async_runtime/scheduler/dispatch.rs": 2,
     "src/async_runtime/scheduler.rs": 1,
     "src/core/command_ids.rs": 3,
-    "src/core/commands.rs": 2,
+    "src/core/commands.rs": 3,
     "src/core/command_dispatch/mod.rs": 2,
     "src/core/command_dispatch/session.rs": 2,
     "config/keymaps/default.toml": 1,
@@ -618,12 +669,12 @@
     "src/app/event_loop/commands_lsp.rs": 6,
     "src/app/input_map/focus.rs": 1,
     "src/app/event_loop/async_results/mod.rs": 2,
-    "src/render/renderer/editor/overlays.rs": 19,
+    "src/render/renderer/editor/overlays.rs": 23,
     "src/render/renderer/helpers.rs": 1
   },
-  "anatomy_hits": 23,
+  "anatomy_hits": 26,
   "anatomy_misses": 2,
-  "repeated_reads_warned": 33,
+  "repeated_reads_warned": 36,
   "cerebrum_warnings": 0,
-  "stop_count": 13
+  "stop_count": 14
 }

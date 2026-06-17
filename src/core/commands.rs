@@ -624,6 +624,10 @@ impl Command {
                 | Self::ResizeGrowRightDock
                 | Self::SettingsSelectNext
                 | Self::SettingsSelectPrev
+                | Self::CodeGraphNavLeft
+                | Self::CodeGraphNavRight
+                | Self::CodeGraphNavUp
+                | Self::CodeGraphNavDown
         )
     }
 }

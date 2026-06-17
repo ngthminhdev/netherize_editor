@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-17T03:45:34.914Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-17T03:59:03.200Z
 > Files: 421 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
@@ -472,7 +472,7 @@
 - `edges.rs` — Edge geometry for the Code Graph HUD. (~728 tok)
 - `layout.rs` — Column layout for the Code Graph HUD: center pill + two side columns, (~1026 tok)
 - `mod.rs` — Code Graph HUD domain logic — pure, UI-free, fully unit-tested. (~121 tok)
-- `model.rs` — The renderable graph model built from the three codegraph CLI payloads. (~1378 tok)
+- `model.rs` — The renderable graph model built from the three codegraph CLI payloads. (~1514 tok)
 - `navigation.rs` — `hjkl` navigation state machine for the Code Graph HUD. (~642 tok)
 
 ## src/config/
@@ -495,7 +495,7 @@
 ## src/core/
 
 - `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~10115 tok)
-- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5952 tok)
+- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5996 tok)
 - `mod.rs` (~35 tok)
 - `mode.rs` — Các mode cốt lõi của editor. (~4298 tok)
 - `text_object.rs` — find_text_object_range (~1753 tok)
@@ -556,7 +556,7 @@
 - `extensions.rs` — update_extensions_manager_content (~9544 tok)
 - `fuzzy.rs` — update_fuzzy_picker_buffer_content (~7928 tok)
 - `help.rs` — update_help_buffer_content (~3996 tok)
-- `overlays.rs` — update_editor_overlays (~26085 tok)
+- `overlays.rs` — update_editor_overlays (~26538 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11283 tok)
 - `settings.rs` — Declares SettingsSection (~12386 tok)
 - `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~7304 tok)
