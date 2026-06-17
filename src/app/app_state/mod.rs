@@ -36,6 +36,7 @@ use crate::text::text_system::StyledTextSpan;
 use crate::workspace::model::{WorkspaceModel, WorkspaceNodeType};
 
 mod buffers;
+pub mod code_graph_hud;
 mod editor;
 mod multi_cursor;
 mod overlays;
@@ -572,6 +573,15 @@ fn default_extension_items() -> Vec<ExtensionItem> {
             "SEARCH",
             "brew install fzf",
             "sudo apt install fzf",
+            false,
+        ),
+        cli_extension(
+            "CodeGraph",
+            "Code intelligence — callers/callees/impact graph (gp)",
+            "codegraph",
+            "GRAPH",
+            "npm install -g codegraph",
+            "npm install -g codegraph",
             false,
         ),
         cli_extension(
@@ -2180,6 +2190,7 @@ struct ClipboardRecord {
 #[derive(Debug, Clone)]
 pub struct AppState {
     text: Rope,
+    pub code_graph_hud: code_graph_hud::CodeGraphHudState,
     cursor_char_idx: usize,
     target_col: usize,
     revision: u64,
@@ -2299,6 +2310,7 @@ impl AppState {
             scroll_column: 0,
             workspace_model: None,
             command_palette: CommandPalette::default(),
+            code_graph_hud: code_graph_hud::CodeGraphHudState::default(),
             file_picker_results_cache: Vec::new(),
             last_search_query: String::new(),
             search_highlights: Vec::new(),
@@ -2424,6 +2436,7 @@ impl AppState {
             scroll_column: 0,
             workspace_model: None,
             command_palette: CommandPalette::default(),
+            code_graph_hud: code_graph_hud::CodeGraphHudState::default(),
             file_picker_results_cache: Vec::new(),
             last_search_query: String::new(),
             search_highlights: Vec::new(),

@@ -119,6 +119,28 @@ impl AsyncResultRouter for AppShell {
             | WorkerResultPayload::LeetCodeTestsGenerateFailed { .. } => {
                 leetcode_fetch::handle_leetcode_generate_result(self, result.payload);
             }
+            WorkerResultPayload::CodeGraphReady { model } => {
+                if self.app_state.code_graph_hud.open {
+                    self.app_state.code_graph_hud.set_model(model);
+                    self.refresh_code_graph_detail();
+                    self.editor_needs_layout = true;
+                    self.request_redraw();
+                }
+            }
+            WorkerResultPayload::CodeGraphFailed {
+                not_installed,
+                message,
+            } => {
+                if self.app_state.code_graph_hud.open {
+                    if not_installed {
+                        self.app_state.code_graph_hud.set_not_installed();
+                    } else {
+                        self.app_state.code_graph_hud.set_error(message);
+                    }
+                    self.editor_needs_layout = true;
+                    self.request_redraw();
+                }
+            }
             _ => {}
         }
     }

@@ -408,6 +408,11 @@ impl Renderer {
             }
         }
 
+        chrome.push(RegionDrawInstance::new(
+            [bounds[0], bounds[1] + bounds[3] - 1.0, bounds[2], 1.0],
+            border,
+        ));
+
         self.topbar_icon_pipeline.upload_instances(
             &self.device,
             &self.topbar_icon_instances,

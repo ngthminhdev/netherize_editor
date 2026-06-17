@@ -45,6 +45,21 @@ impl AppShell {
             Command::ReferencesSelectNext => Some(self.select_next_reference_item()),
             Command::ReferencesSelectPrev => Some(self.select_prev_reference_item()),
             Command::ReferencesOpenSelection => Some(self.open_selected_reference_item()),
+            Command::CodeGraphOpenGraphHud => Some(self.open_code_graph_hud()),
+            Command::CodeGraphNavLeft => {
+                Some(self.code_graph_nav(crate::codegraph::navigation::NavKey::Left))
+            }
+            Command::CodeGraphNavRight => {
+                Some(self.code_graph_nav(crate::codegraph::navigation::NavKey::Right))
+            }
+            Command::CodeGraphNavUp => {
+                Some(self.code_graph_nav(crate::codegraph::navigation::NavKey::Up))
+            }
+            Command::CodeGraphNavDown => {
+                Some(self.code_graph_nav(crate::codegraph::navigation::NavKey::Down))
+            }
+            Command::CodeGraphJump => Some(self.code_graph_jump()),
+            Command::CodeGraphClose => Some(self.code_graph_close()),
             Command::DiagnosticsSelectNext => Some(self.select_next_diagnostic_item()),
             Command::DiagnosticsSelectPrev => Some(self.select_prev_diagnostic_item()),
             Command::DiagnosticsOpenSelection => Some(self.open_selected_diagnostic_item()),
@@ -725,6 +740,161 @@ impl AppShell {
             self.input_handler.clear_pending_prefix();
         }
         let _ = closed;
+        true
+    }
+
+    /// `gp`: resolve the symbol enclosing the caret (from the document-symbol
+    /// outline) and open the Code Graph HUD in its loading state, submitting the
+    /// codegraph query off the UI thread.
+    pub(super) fn open_code_graph_hud(&mut self) -> bool {
+        let idx = self
+            .outline_selected
+            .filter(|i| *i < self.cached_document_symbols.len())
+            .or_else(|| self.outline_cursor_symbol_index());
+        let Some(idx) = idx else {
+            self.app_state
+                .code_graph_hud
+                .open_loading("(cursor)".to_string());
+            self.app_state
+                .code_graph_hud
+                .set_error("No symbol under cursor".to_string());
+            self.editor_needs_layout = true;
+            self.request_redraw();
+            return true;
+        };
+        let symbol = &self.cached_document_symbols[idx];
+        let symbol_name = symbol.name.clone();
+        // codegraph startLine is 1-based; LSP range is 0-based.
+        let focal_line = symbol.range.start.line + 1;
+
+        let Some(active) = self.app_state.active_file().map(PathBuf::from) else {
+            self.app_state
+                .code_graph_hud
+                .open_loading(symbol_name.clone());
+            self.app_state
+                .code_graph_hud
+                .set_error("No active file".to_string());
+            self.editor_needs_layout = true;
+            self.request_redraw();
+            return true;
+        };
+        let workspace_root = self
+            .app_state
+            .workspace_root_path()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| {
+                active
+                    .parent()
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_default()
+            });
+        let focal_file = active
+            .strip_prefix(&workspace_root)
+            .unwrap_or(&active)
+            .to_string_lossy()
+            .to_string();
+
+        self.app_state
+            .code_graph_hud
+            .open_loading(symbol_name.clone());
+
+        let _ = self.submit(RequestSpec {
+            revision_id: 0,
+            topic: RequestTopic::CodeGraph,
+            payload: WorkerRequestPayload::CodeGraphQuery {
+                symbol: symbol_name,
+                focal_file,
+                focal_line,
+                workspace_root,
+            },
+        });
+        self.editor_needs_layout = true;
+        self.request_redraw();
+        true
+    }
+
+    pub(super) fn code_graph_nav(&mut self, key: crate::codegraph::navigation::NavKey) -> bool {
+        let changed = self.app_state.code_graph_hud.nav(key);
+        if changed {
+            self.refresh_code_graph_detail();
+        }
+        // The HUD (incl. the focus ring) is rebuilt by update_editor_overlays,
+        // which only runs when the editor overlay is marked dirty.
+        self.editor_needs_layout = true;
+        self.request_redraw();
+        true
+    }
+
+    /// Load a small code preview around the focused node's definition into the
+    /// HUD state (shown as a hover-style detail panel). Reads the file on disk;
+    /// cheap enough to run on each navigation.
+    pub(in crate::app::event_loop) fn refresh_code_graph_detail(&mut self) {
+        use crate::app::app_state::code_graph_hud::NodeDetail;
+        let Some(node) = self.app_state.code_graph_hud.focused_node().cloned() else {
+            self.app_state.code_graph_hud.detail = None;
+            return;
+        };
+        let root = self.app_state.workspace_root_path().map(|p| p.to_path_buf());
+        let path = match root {
+            Some(root) => root.join(&node.file_path),
+            None => std::path::PathBuf::from(&node.file_path),
+        };
+        let snippet = std::fs::read_to_string(&path)
+            .ok()
+            .map(|content| {
+                let lines: Vec<&str> = content.lines().collect();
+                let target = (node.line as usize).saturating_sub(1); // 0-based
+                let start = target.saturating_sub(1);
+                let end = (target + 6).min(lines.len());
+                (start..end)
+                    .map(|i| ((i + 1) as u32, lines[i].to_string()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        self.app_state.code_graph_hud.detail = Some(NodeDetail {
+            name: node.name.clone(),
+            file_path: node.file_path.clone(),
+            line: node.line,
+            snippet,
+        });
+    }
+
+    pub(super) fn code_graph_close(&mut self) -> bool {
+        self.app_state.code_graph_hud.close();
+        self.editor_needs_layout = true;
+        self.request_redraw();
+        true
+    }
+
+    pub(super) fn code_graph_jump(&mut self) -> bool {
+        let Some(node) = self.app_state.code_graph_hud.focused_node().cloned() else {
+            return true;
+        };
+        let target = match self.app_state.workspace_root_path() {
+            Some(root) => root.join(&node.file_path),
+            None => PathBuf::from(&node.file_path),
+        };
+        self.app_state.code_graph_hud.close();
+        self.app_state.push_jump();
+        if let Err(err) = self.app_state.open_file(target.clone()) {
+            eprintln!("[AppShell] code graph jump open_file failed: {err}");
+            self.request_redraw();
+            return true;
+        }
+        // codegraph startLine is 1-based; the editor expects 0-based.
+        let line = (node.line as usize).saturating_sub(1);
+        self.app_state.jump_to_line_and_column(line, 0);
+        let vp = self.editor_viewport_lines();
+        self.app_state.center_cursor_line(vp);
+        self.invalidate_highlights_and_parse_active_buffer();
+        self.submit_lsp_did_open_for_active_file();
+        self.editor_needs_layout = true;
+        self.editor_caret_needs_layout = false;
+        let focus_changed = self.focus_manager.set(FocusTarget::CenterEditor);
+        if focus_changed {
+            self.input_handler.clear_pending_prefix();
+        }
+        self.request_redraw();
         true
     }
 

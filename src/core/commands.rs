@@ -381,6 +381,17 @@ pub enum Command {
     CodeAction,
     LspSelectPythonEnv,
     LspSelectDartEnv,
+    /// gp: Open the Code Graph HUD for the symbol under the caret.
+    CodeGraphOpenGraphHud,
+    /// Code Graph HUD navigation (vim hjkl) while the overlay is open.
+    CodeGraphNavLeft,
+    CodeGraphNavRight,
+    CodeGraphNavUp,
+    CodeGraphNavDown,
+    /// Enter: jump to the focused node's file:line and close the HUD.
+    CodeGraphJump,
+    /// Esc: close the HUD.
+    CodeGraphClose,
     ReloadWorkspace,
     /// Completion popup: chọn item kế tiếp.
     CompletionNext,

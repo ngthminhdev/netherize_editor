@@ -244,6 +244,32 @@ pub(super) fn clamp_monospace_text(text: &str, max_width: f32, font_size: f32) -
     shortened
 }
 
+/// Like [`clamp_monospace_text`] but keeps the END of the string, prefixing an
+/// ellipsis (`.../dir/file.rs`). Used for file paths where the tail matters.
+pub(super) fn clamp_monospace_text_left(text: &str, max_width: f32, font_size: f32) -> String {
+    if text.is_empty() || max_width <= 0.0 {
+        return String::new();
+    }
+    if estimate_monospace_width(text, font_size) <= max_width {
+        return text.to_string();
+    }
+    let char_width = (font_size * 0.6).max(1.0);
+    let max_chars = (max_width / char_width).floor() as usize;
+    if max_chars == 0 {
+        return String::new();
+    }
+    let count = text.chars().count();
+    if count <= max_chars {
+        return text.to_string();
+    }
+    if max_chars <= 3 {
+        return text.chars().skip(count - max_chars).collect();
+    }
+    let keep = max_chars - 3;
+    let tail: String = text.chars().skip(count - keep).collect();
+    format!("...{tail}")
+}
+
 pub(super) fn gutter_width_for_editor(
     gutter_digits: usize,
     font_size: f32,

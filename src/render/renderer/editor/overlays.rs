@@ -22,7 +22,8 @@ use crate::{
 use cosmic_text::Metrics;
 
 use super::super::helpers::{
-    caret_rect_for_mode, clamp_monospace_text, clamp_popup_width, estimate_monospace_width,
+    caret_rect_for_mode, clamp_monospace_text, clamp_monospace_text_left, clamp_popup_width,
+    estimate_monospace_width,
     gutter_width_for_editor, layout_panel_rich_text, layout_panel_text, layout_panel_text_bold,
     layout_panel_text_italic, rect_to_scissor, should_draw_block_cursor,
 };
@@ -1367,6 +1368,16 @@ impl Renderer {
         );
         glyphs.extend(ghost_glyphs);
 
+        // Code Graph HUD draws on top of all other editor overlays.
+        self.append_code_graph_hud(
+            app_state,
+            center_bounds,
+            geometry.font_size,
+            geometry.line_height,
+            &mut chrome_quads,
+            &mut glyphs,
+        );
+
         self.editor_overlay_chrome_instances = chrome_quads;
         self.editor_overlay_icon_instances = icon_instances;
         self.editor_overlay_icon_pipeline.upload_instances(
@@ -1383,6 +1394,404 @@ impl Renderer {
             &self.queue,
             &self.editor_overlay_glyph_instances,
         );
+    }
+
+    /// Render the Code Graph HUD overlay (`gp`) on top of the editor. Appends
+    /// flat quads and text glyphs to the editor-overlay batches.
+    pub fn append_code_graph_hud(
+        &mut self,
+        app_state: &AppState,
+        center_bounds: [f32; 4],
+        font_size: f32,
+        line_h: f32,
+        quads: &mut Vec<RegionDrawInstance>,
+        glyphs: &mut Vec<GlyphInstance>,
+    ) {
+        use crate::app::app_state::code_graph_hud::CodeGraphHudStatus;
+        use crate::codegraph::edges::elbow;
+        use crate::codegraph::layout::{PillRect, layout};
+        use crate::codegraph::model::RiskLevel;
+        use crate::codegraph::navigation::Focus;
+
+        let hud = &app_state.code_graph_hud;
+        if !hud.open {
+            return;
+        }
+
+        let ui_s = self.ui_scale.max(0.5);
+        let radius = self.panel_corner_radius;
+
+        // The HUD uses a denser font than the editor. The overlay text system is
+        // SHARED (breadcrumb etc.), so we restore its metrics before returning.
+        let fs = (font_size * 0.82).max(11.0 * ui_s);
+        let lh = fs * 1.34;
+        self.editor_overlay_text_system
+            .set_metrics(Metrics::new(fs, lh));
+
+        let c_bg = self.theme.ui.panel_bg.as_f32();
+        let c_border = self.theme.ui.border_color.as_f32();
+        let c_fg = self.theme.ui.fg.as_f32();
+        let c_dim = self.theme.ui.fg_dim.as_f32();
+        let c_ghost = self.theme.ui.fg_ghost.as_f32();
+        let c_cyan = self.theme.ui.cyan.as_f32();
+        let c_amber = self.theme.ui.amber.as_f32();
+        let c_green = self.theme.ui.success.as_f32();
+        let c_red = self.theme.ui.error.as_f32();
+        let c_overlay = self.theme.ui.overlay_bg.as_f32();
+
+        let with_alpha = |c: [f32; 4], a: f32| [c[0], c[1], c[2], a];
+        let risk_color = |r: RiskLevel| match r {
+            RiskLevel::Focal => c_cyan,
+            RiskLevel::Safe => c_green,
+            RiskLevel::Medium => c_amber,
+            RiskLevel::High => c_red,
+        };
+        let risk_label = |r: RiskLevel| match r {
+            RiskLevel::Focal => "focal",
+            RiskLevel::Safe => "safe",
+            RiskLevel::Medium => "med risk",
+            RiskLevel::High => "high risk",
+        };
+
+        let [bx, by, bw, bh] = center_bounds;
+
+        // ── Backdrop dim + panel (70% of the editor area) ───────────────────
+        quads.push(RegionDrawInstance::new(center_bounds, c_overlay));
+        let pw = (bw * 0.90).min(bw - 8.0);
+        let ph = (bh * 0.90).min(bh - 8.0);
+        let px = bx + (bw - pw) * 0.5;
+        let py = by + (bh - ph) * 0.5;
+        quads.push(
+            RegionDrawInstance::new([px - 1.0, py - 1.0, pw + 2.0, ph + 2.0], c_border)
+                .with_radius(radius + 1.0),
+        );
+        quads.push(RegionDrawInstance::new([px, py, pw, ph], c_bg).with_radius(radius));
+
+        let text = |this: &mut Self,
+                    glyphs: &mut Vec<GlyphInstance>,
+                    s: &str,
+                    x: f32,
+                    y: f32,
+                    color: [f32; 4]| {
+            glyphs.extend(layout_panel_text(
+                s,
+                &mut this.editor_overlay_text_system,
+                &mut this.atlas,
+                &this.queue,
+                x,
+                y,
+                color,
+            ));
+        };
+
+        // ── Top bar ─────────────────────────────────────────────────────────
+        let pad = 16.0 * ui_s;
+        let bar_h = lh + 16.0 * ui_s;
+        quads.push(RegionDrawInstance::new([px, py + bar_h - 1.0, pw, 1.0], c_border));
+        let bar_text_y = py + (bar_h - lh) * 0.5;
+        let focal = format!("◎ {}", hud.focal_symbol);
+        text(self, glyphs, &focal, px + pad, bar_text_y, c_cyan);
+
+        if let CodeGraphHudStatus::Ready(m) = &hud.status {
+            let high = m.callers.iter().any(|n| n.risk == RiskLevel::High);
+            let med = m.callers.iter().any(|n| n.risk == RiskLevel::Medium);
+            let (lbl, col) = if high {
+                ("blast radius: high", c_red)
+            } else if med {
+                ("blast radius: med", c_amber)
+            } else {
+                ("blast radius: low", c_green)
+            };
+            let nodes = 1 + m.callers.len() + m.callees.len();
+            let edges = m.callers.len() + m.callees.len();
+            let counts = format!("{nodes} nodes · {edges} edges");
+            let gap = 20.0 * ui_s;
+            let bx2 = px + pad + estimate_monospace_width(&focal, fs) + gap;
+            text(self, glyphs, lbl, bx2, bar_text_y, col);
+            let cx2 = bx2 + estimate_monospace_width(lbl, fs) + gap;
+            text(self, glyphs, &counts, cx2, bar_text_y, c_dim);
+        }
+        let esc = "Esc  close";
+        text(
+            self,
+            glyphs,
+            esc,
+            px + pw - pad - estimate_monospace_width(esc, fs),
+            bar_text_y,
+            c_ghost,
+        );
+
+        // ── Footer ──────────────────────────────────────────────────────────
+        let foot_h = lh + 12.0 * ui_s;
+        let foot_y = py + ph - foot_h;
+        quads.push(RegionDrawInstance::new([px, foot_y, pw, 1.0], c_border));
+        let footer = "h j k l  move    ·    Enter  jump to node    ·    Esc  close";
+        text(self, glyphs, footer, px + pad, foot_y + (foot_h - lh) * 0.5, c_dim);
+
+        // ── Content area ────────────────────────────────────────────────────
+        let content = [
+            px + 16.0 * ui_s,
+            py + bar_h + 16.0 * ui_s,
+            pw - 32.0 * ui_s,
+            ph - bar_h - foot_h - 32.0 * ui_s,
+        ];
+
+        match &hud.status {
+            CodeGraphHudStatus::Loading => {
+                let msg = "indexing…  (building / syncing code graph)";
+                let x = content[0] + (content[2] - estimate_monospace_width(msg, fs)).max(0.0) * 0.5;
+                text(self, glyphs, msg, x, content[1] + content[3] * 0.5, c_dim);
+            }
+            CodeGraphHudStatus::NotInstalled => {
+                let msg = "codegraph not installed — press <leader>m e to install";
+                let x = content[0] + (content[2] - estimate_monospace_width(msg, fs)).max(0.0) * 0.5;
+                text(self, glyphs, msg, x, content[1] + content[3] * 0.5, c_amber);
+            }
+            CodeGraphHudStatus::Empty => {
+                let msg = "no callers or callees found for this symbol";
+                let x = content[0] + (content[2] - estimate_monospace_width(msg, fs)).max(0.0) * 0.5;
+                text(self, glyphs, msg, x, content[1] + content[3] * 0.5, c_dim);
+            }
+            CodeGraphHudStatus::Error(emsg) => {
+                let msg = format!("error: {emsg}");
+                let m = clamp_monospace_text(&msg, content[2], fs);
+                let x = content[0] + (content[2] - estimate_monospace_width(&m, fs)).max(0.0) * 0.5;
+                text(self, glyphs, &m, x, content[1] + content[3] * 0.5, c_red);
+            }
+            CodeGraphHudStatus::Ready(model) => {
+                let caller_focus = match hud.focus {
+                    Focus::Caller(i) => Some(i),
+                    _ => None,
+                };
+                let callee_focus = match hud.focus {
+                    Focus::Callee(i) => Some(i),
+                    _ => None,
+                };
+                // Reserve a bottom strip for the focused-node code preview.
+                let detail = hud.detail.as_ref();
+                let detail_rows = detail.map(|d| d.snippet.len()).unwrap_or(0);
+                let detail_h = if detail_rows > 0 {
+                    (detail_rows as f32 + 1.6) * lh + 18.0 * ui_s
+                } else {
+                    0.0
+                };
+                let dgap = if detail_h > 0.0 { 14.0 * ui_s } else { 0.0 };
+                let graph_content = [
+                    content[0],
+                    content[1],
+                    content[2],
+                    (content[3] - detail_h - dgap).max(80.0 * ui_s),
+                ];
+                let gl = layout(
+                    graph_content,
+                    model.callers.len(),
+                    model.callees.len(),
+                    caller_focus,
+                    callee_focus,
+                    ui_s,
+                );
+                let center = gl.center;
+
+                // ── Detail panel (focused node code preview) ────────────────
+                if let Some(d) = detail {
+                    if detail_h > 0.0 {
+                        let dx = content[0];
+                        let dy = content[1] + graph_content[3] + dgap;
+                        let dw = content[2];
+                        quads.push(
+                            RegionDrawInstance::new(
+                                [dx, dy, dw, detail_h],
+                                blend_rgba(c_bg, c_fg, 0.05, 1.0),
+                            )
+                            .with_radius(8.0 * ui_s),
+                        );
+                        quads.push(RegionDrawInstance::new([dx, dy, dw, 1.0], c_border));
+                        let tpad = 12.0 * ui_s;
+                        text(self, glyphs, &d.name, dx + tpad, dy + 6.0 * ui_s, c_fg);
+                        let loc = clamp_monospace_text_left(
+                            &format!("{}:{}", d.file_path, d.line),
+                            dw * 0.55,
+                            fs,
+                        );
+                        text(
+                            self,
+                            glyphs,
+                            &loc,
+                            dx + dw - tpad - estimate_monospace_width(&loc, fs),
+                            dy + 6.0 * ui_s,
+                            c_dim,
+                        );
+                        let gutter_w = 48.0 * ui_s;
+                        let mut sy = dy + 6.0 * ui_s + lh * 1.5;
+                        for (ln, code) in &d.snippet {
+                            let is_target = *ln == d.line;
+                            if is_target {
+                                quads.push(RegionDrawInstance::new(
+                                    [dx + 4.0 * ui_s, sy - 1.0, dw - 8.0 * ui_s, lh],
+                                    with_alpha(c_cyan, 0.10),
+                                ));
+                            }
+                            text(self, glyphs, &format!("{ln:>4}"), dx + tpad, sy, c_ghost);
+                            let code = clamp_monospace_text(code, dw - gutter_w - tpad * 2.0, fs);
+                            text(
+                                self,
+                                glyphs,
+                                &code,
+                                dx + tpad + gutter_w,
+                                sy,
+                                if is_target { c_fg } else { c_dim },
+                            );
+                            sy += lh;
+                        }
+                    }
+                }
+
+                // Column headers.
+                text(self, glyphs, "CALLERS", content[0], content[1] - lh, c_ghost);
+                let chdr = "CALLEES";
+                text(
+                    self,
+                    glyphs,
+                    chdr,
+                    content[0] + content[2] - estimate_monospace_width(chdr, fs),
+                    content[1] - lh,
+                    c_ghost,
+                );
+
+                // Edges (under pills).
+                for (slot, pill) in gl.callers.iter().enumerate() {
+                    let n = &model.callers[gl.caller_window_start + slot];
+                    let focused = hud.focus == Focus::Caller(gl.caller_window_start + slot);
+                    let col = with_alpha(risk_color(n.risk), if focused { 0.9 } else { 0.22 });
+                    for seg in elbow(center, *pill, false, ui_s) {
+                        quads.push(RegionDrawInstance::new([seg.x, seg.y, seg.w, seg.h], col));
+                    }
+                }
+                for (slot, pill) in gl.callees.iter().enumerate() {
+                    let n = &model.callees[gl.callee_window_start + slot];
+                    let focused = hud.focus == Focus::Callee(gl.callee_window_start + slot);
+                    let col = with_alpha(risk_color(n.risk), if focused { 0.9 } else { 0.22 });
+                    for seg in elbow(center, *pill, true, ui_s) {
+                        quads.push(RegionDrawInstance::new([seg.x, seg.y, seg.w, seg.h], col));
+                    }
+                }
+
+                // Pill renderer — solid tinted bg + left accent stripe + 3 lines.
+                let mut draw_pill = |this: &mut Self,
+                                     glyphs: &mut Vec<GlyphInstance>,
+                                     pill: PillRect,
+                                     name: &str,
+                                     kind: &str,
+                                     file: &str,
+                                     line: u32,
+                                     risk: RiskLevel,
+                                     focused: bool,
+                                     is_center: bool| {
+                    let col = risk_color(risk);
+                    let pr = if is_center { 12.0 * ui_s } else { 8.0 * ui_s };
+                    if focused {
+                        let h = 5.0 * ui_s;
+                        quads.push(
+                            RegionDrawInstance::new(
+                                [pill.x - h, pill.y - h, pill.w + h * 2.0, pill.h + h * 2.0],
+                                with_alpha(col, 0.32),
+                            )
+                            .with_radius(pr + 4.0 * ui_s),
+                        );
+                    }
+                    // Light translucent risk tint (keeps text legible over the panel).
+                    let fill = with_alpha(col, if focused { 0.22 } else { 0.15 });
+                    quads.push(
+                        RegionDrawInstance::new([pill.x, pill.y, pill.w, pill.h], fill)
+                            .with_radius(pr),
+                    );
+                    // Left accent stripe in the risk color.
+                    quads.push(
+                        RegionDrawInstance::new(
+                            [pill.x, pill.y + 4.0 * ui_s, 3.0 * ui_s, pill.h - 8.0 * ui_s],
+                            col,
+                        )
+                        .with_radius(1.5 * ui_s),
+                    );
+
+                    let tx = pill.x + 14.0 * ui_s;
+                    let tw = pill.w - 22.0 * ui_s;
+                    let mut ty = pill.y + 8.0 * ui_s;
+                    // Line 1: name (bold, bright).
+                    let nm = clamp_monospace_text(name, tw, fs);
+                    glyphs.extend(layout_panel_text_bold(
+                        &nm,
+                        &mut this.editor_overlay_text_system,
+                        &mut this.atlas,
+                        &this.queue,
+                        tx,
+                        ty,
+                        c_fg,
+                    ));
+                    ty += lh;
+                    // Line 2: kind · risk (risk color) — or "at cursor" for center.
+                    let sub = if is_center {
+                        "‹ symbol at cursor ›".to_string()
+                    } else {
+                        format!("{kind} · {}", risk_label(risk))
+                    };
+                    let sub = clamp_monospace_text(&sub, tw, fs);
+                    glyphs.extend(layout_panel_text(
+                        &sub,
+                        &mut this.editor_overlay_text_system,
+                        &mut this.atlas,
+                        &this.queue,
+                        tx,
+                        ty,
+                        if is_center { with_alpha(c_cyan, 0.7) } else { col },
+                    ));
+                    ty += lh;
+                    // Line 3: file:line (truncated from the LEFT to keep the tail).
+                    let loc = clamp_monospace_text_left(&format!("{file}:{line}"), tw, fs);
+                    glyphs.extend(layout_panel_text(
+                        &loc,
+                        &mut this.editor_overlay_text_system,
+                        &mut this.atlas,
+                        &this.queue,
+                        tx,
+                        ty,
+                        c_dim,
+                    ));
+                };
+
+                for (slot, pill) in gl.callers.iter().enumerate() {
+                    let abs = gl.caller_window_start + slot;
+                    let n = &model.callers[abs];
+                    draw_pill(self, glyphs, *pill, &n.name, &n.kind, &n.file_path, n.line,
+                        n.risk, hud.focus == Focus::Caller(abs), false);
+                }
+                for (slot, pill) in gl.callees.iter().enumerate() {
+                    let abs = gl.callee_window_start + slot;
+                    let n = &model.callees[abs];
+                    draw_pill(self, glyphs, *pill, &n.name, &n.kind, &n.file_path, n.line,
+                        n.risk, hud.focus == Focus::Callee(abs), false);
+                }
+                draw_pill(self, glyphs, center, &model.focal.name, &model.focal.kind,
+                    &model.focal.file_path, model.focal.line, RiskLevel::Focal,
+                    hud.focus == Focus::Center, true);
+
+                let overflow_y = content[1] + graph_content[3] - lh;
+                if gl.caller_overflow > 0 {
+                    let s = format!("+{} more callers", gl.caller_overflow);
+                    text(self, glyphs, &s, content[0], overflow_y, c_ghost);
+                }
+                if gl.callee_overflow > 0 {
+                    let s = format!("+{} more callees", gl.callee_overflow);
+                    text(self, glyphs, &s,
+                        content[0] + content[2] - estimate_monospace_width(&s, fs),
+                        overflow_y, c_ghost);
+                }
+            }
+        }
+
+        // Restore the shared overlay text system's metrics.
+        self.editor_overlay_text_system
+            .set_metrics(Metrics::new(font_size, line_h));
     }
 
     pub fn add_matched_bracket_overlay(&mut self, app_state: &AppState, center_bounds: [f32; 4]) {

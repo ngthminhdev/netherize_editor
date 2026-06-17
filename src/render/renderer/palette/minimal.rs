@@ -486,9 +486,10 @@ fn palette_tone_color(
     model: &CommandPaletteRenderModel,
 ) -> [f32; 4] {
     match tone {
-        crate::app::command_palette::CommandPaletteItemTone::Function => model.info_color,
-        crate::app::command_palette::CommandPaletteItemTone::Type => model.warning_color,
-        crate::app::command_palette::CommandPaletteItemTone::Variable => model.success_color,
+        crate::app::command_palette::CommandPaletteItemTone::Function => model.cyan_color,
+        crate::app::command_palette::CommandPaletteItemTone::Type => model.magenta_color,
+        crate::app::command_palette::CommandPaletteItemTone::Variable => model.info_color,
+        crate::app::command_palette::CommandPaletteItemTone::Module => model.amber_color,
         _ => model.label_color,
     }
 }

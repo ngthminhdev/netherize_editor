@@ -52,6 +52,8 @@ pub enum InputFocusContext {
     SettingsTab,
     /// Right sidebar Outline tab.
     Outline,
+    /// Code Graph HUD overlay (gp) — owns hjkl/Enter/Esc while open.
+    CodeGraph,
 }
 
 impl InputFocusContext {
@@ -74,6 +76,7 @@ impl InputFocusContext {
             Self::FuzzyPicker => "fuzzy_picker",
             Self::SettingsTab => "settings_tab",
             Self::Outline => "outline",
+            Self::CodeGraph => "code_graph",
         }
     }
 
@@ -364,6 +367,9 @@ impl InputMap {
             }
         }
 
+        if context.focus == InputFocusContext::CodeGraph {
+            return self.resolve_code_graph_focus(input);
+        }
         if context.focus == InputFocusContext::References {
             return self.resolve_references_focus(input);
         }
@@ -652,6 +658,7 @@ impl InputMap {
             InputFocusContext::FuzzyPicker => editor_mode_str(context.mode),
             InputFocusContext::SettingsTab => editor_mode_str(context.mode),
             InputFocusContext::Outline => "normal",
+            InputFocusContext::CodeGraph => "code_graph",
         }
     }
 

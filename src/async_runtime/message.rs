@@ -57,6 +57,8 @@ pub enum RequestTopic {
     /// Run-and-compare test execution (LeetCode/interview runner).
     TestRunner,
     LeetCode,
+    /// Code Graph HUD query (codegraph callers/callees/impact).
+    CodeGraph,
 }
 
 /// Which search mode the fzf worker is running.
@@ -454,6 +456,14 @@ pub enum WorkerRequestPayload {
         language_key: String,
         provider: crate::config::ai_config::AiProviderConfig,
         verify: bool,
+    },
+    /// Run codegraph callers+callees+impact for the symbol under the caret,
+    /// building the Code Graph HUD model off the UI thread.
+    CodeGraphQuery {
+        symbol: String,
+        focal_file: String,
+        focal_line: u32,
+        workspace_root: PathBuf,
     },
 }
 
@@ -854,6 +864,16 @@ pub enum WorkerResultPayload {
     TestCasesCompleted {
         command_preview: String,
         outcomes: Vec<crate::runner::TestCaseOutcome>,
+    },
+    /// Code Graph HUD model built from codegraph callers/callees/impact.
+    CodeGraphReady {
+        model: crate::codegraph::model::CodeGraphModel,
+    },
+    /// Code Graph HUD query failed. `not_installed` distinguishes a missing
+    /// `codegraph` binary from a query/parse error.
+    CodeGraphFailed {
+        not_installed: bool,
+        message: String,
     },
 }
 

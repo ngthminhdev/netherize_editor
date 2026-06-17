@@ -503,12 +503,9 @@ impl crate::render::renderer::Renderer {
         let fg = self.theme.ui.fg.as_f32();
         let fg_dim = self.theme.ui.fg_dim.as_f32();
         let accent = self.theme.ui.accent.as_f32();
-        // Unified tab-bar palette across every dock + the main editor: base on the
-        // (darker) editor background, with a subtle lift for the selected tab so it
-        // reads as active without going near-white.
-        let tab_base = self.theme.editor.bg.as_f32();
+        let tab_base = self.theme.ui.panel_bg.as_f32();
         let border = self.theme.ui.border_color.as_f32();
-        let active_bg = lerp_color(tab_base, fg, 0.05);
+        let active_bg = self.theme.editor.bg.as_f32();
         let inactive_bg = tab_base;
         const TOP_BORDER: f32 = 2.0;
         // Round ONLY the strip's two top corners so they follow the panel's
@@ -858,9 +855,10 @@ impl crate::render::renderer::Renderer {
 
             let icon_color = outline_kind_color(
                 &sym.kind,
+                self.theme.ui.cyan.as_f32(),
+                self.theme.ui.magenta.as_f32(),
                 self.theme.ui.info.as_f32(),
-                self.theme.ui.warning.as_f32(),
-                self.theme.ui.success.as_f32(),
+                self.theme.ui.amber.as_f32(),
                 fg_dim,
             );
             let icon_size = line_h.min(18.0 * scale).max(12.0);
@@ -978,12 +976,14 @@ pub(super) fn outline_kind_color(
     function: [f32; 4],
     type_: [f32; 4],
     variable: [f32; 4],
+    module: [f32; 4],
     default: [f32; 4],
 ) -> [f32; 4] {
     match kind {
         "Function" | "Method" | "Constructor" => function,
         "Class" | "Struct" | "Interface" | "Enum" | "TypeParameter" => type_,
         "Variable" | "Constant" | "Field" | "Property" | "EnumMember" => variable,
+        "Namespace" | "Module" | "Package" => module,
         _ => default,
     }
 }

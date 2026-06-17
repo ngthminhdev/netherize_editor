@@ -4,6 +4,55 @@ use super::helpers::palette_query_from_text;
 use super::*;
 
 impl InputMap {
+    /// Code Graph HUD overlay: vim hjkl navigation, Enter to jump, Esc to close.
+    pub(super) fn resolve_code_graph_focus(
+        &self,
+        input: &NormalizedInput,
+    ) -> Option<KeybindingMatch> {
+        use KeyCode::*;
+
+        if input.named_key == Some(NamedKey::Escape) {
+            return Some(KeybindingMatch {
+                command: Command::CodeGraphClose,
+                reason: "code graph: Esc -> close HUD",
+            });
+        }
+        if !input.has_command_modifier() && input.named_key == Some(NamedKey::Enter) {
+            return Some(KeybindingMatch {
+                command: Command::CodeGraphJump,
+                reason: "code graph: Enter -> jump to focused node",
+            });
+        }
+        if input.has_command_modifier() {
+            return None;
+        }
+        if input.physical_key == Some(KeyH) || input.named_key == Some(NamedKey::ArrowLeft) {
+            return Some(KeybindingMatch {
+                command: Command::CodeGraphNavLeft,
+                reason: "code graph: h/left -> navigate left",
+            });
+        }
+        if input.physical_key == Some(KeyL) || input.named_key == Some(NamedKey::ArrowRight) {
+            return Some(KeybindingMatch {
+                command: Command::CodeGraphNavRight,
+                reason: "code graph: l/right -> navigate right",
+            });
+        }
+        if input.physical_key == Some(KeyK) || input.named_key == Some(NamedKey::ArrowUp) {
+            return Some(KeybindingMatch {
+                command: Command::CodeGraphNavUp,
+                reason: "code graph: k/up -> navigate up",
+            });
+        }
+        if input.physical_key == Some(KeyJ) || input.named_key == Some(NamedKey::ArrowDown) {
+            return Some(KeybindingMatch {
+                command: Command::CodeGraphNavDown,
+                reason: "code graph: j/down -> navigate down",
+            });
+        }
+        None
+    }
+
     pub(super) fn resolve_extensions_manager_focus(
         &self,
         input: &NormalizedInput,

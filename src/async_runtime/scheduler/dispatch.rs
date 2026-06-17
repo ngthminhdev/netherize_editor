@@ -17,6 +17,7 @@ use super::{
     async_trace,
     emit::{emit_message, emit_message_and_wake, failure_from_join_error},
     file_watch::run_file_watch_request,
+    codegraph::run_codegraph_request,
     fzf::run_fzf_request,
     leetcode_fetch::{
         LeetCodeFetchJob, LeetCodeGenerateJob, run_leetcode_fetch, run_leetcode_generate,
@@ -213,6 +214,15 @@ pub(super) async fn dispatch_loop(
                 run_fzf_request(request, worker_tx, event_proxy).await;
             });
             active_fzf_search = Some(handle);
+            continue;
+        }
+
+        if matches!(request.payload, WorkerRequestPayload::CodeGraphQuery { .. }) {
+            let worker_tx = result_tx.clone();
+            let event_proxy = event_proxy.clone();
+            tokio::spawn(async move {
+                run_codegraph_request(request, worker_tx, event_proxy).await;
+            });
             continue;
         }
 

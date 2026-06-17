@@ -1907,3 +1907,97 @@
 | 19:39 | Edited src/render/renderer/ui/terminal.rs | expanded (+9 lines) | ~167 |
 | 19:39 | Edited src/render/renderer/ui/terminal.rs | 4→5 lines | ~44 |
 | 19:40 | Session end: 19 writes across 8 files (application.rs, renderer.rs, viewport.rs, editor.rs, overlays.rs) | 14 reads | ~129000 tok |
+
+## Session: 2026-06-16 21:45
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-06-16 21:47
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 23:41 | Created docs/superpowers/specs/2026-06-16-code-graph-hud-design.md | — | ~2104 |
+| 23:47 | Created docs/superpowers/plans/2026-06-16-code-graph-hud.md | — | ~12524 |
+| 23:47 | Session end: 2 writes across 2 files (2026-06-16-code-graph-hud-design.md, 2026-06-16-code-graph-hud.md) | 8 reads | ~87111 tok |
+| 23:50 | Created src/codegraph/cli_json.rs | — | ~724 |
+| 23:50 | Created src/codegraph/model.rs | — | ~1378 |
+| 23:51 | Created src/codegraph/navigation.rs | — | ~642 |
+| 23:51 | Created src/codegraph/layout.rs | — | ~965 |
+| 23:51 | Created src/codegraph/edges.rs | — | ~641 |
+| 23:51 | Created src/codegraph/mod.rs | — | ~121 |
+| 23:51 | Edited src/lib.rs | 4→5 lines | ~23 |
+| 23:53 | Edited src/async_runtime/message.rs | expanded (+8 lines) | ~149 |
+| 23:53 | Edited src/async_runtime/message.rs | 4→6 lines | ~48 |
+| 23:54 | Edited src/async_runtime/message.rs | expanded (+10 lines) | ~132 |
+| 23:54 | Created src/async_runtime/scheduler/codegraph.rs | — | ~1142 |
+| 23:54 | Edited src/async_runtime/scheduler/dispatch.rs | 2→3 lines | ~23 |
+| 23:54 | Edited src/async_runtime/scheduler.rs | 2→3 lines | ~10 |
+| 23:54 | Edited src/async_runtime/scheduler/dispatch.rs | expanded (+9 lines) | ~119 |
+| 23:56 | Edited src/core/command_ids.rs | 3→4 lines | ~67 |
+| 23:56 | Edited src/core/command_ids.rs | 1→2 lines | ~37 |
+| 23:56 | Edited src/core/command_ids.rs | 3→4 lines | ~28 |
+| 23:56 | Edited src/core/commands.rs | 3→5 lines | ~43 |
+| 23:57 | Edited src/core/command_dispatch/mod.rs | 2→3 lines | ~30 |
+| 23:58 | Edited src/core/command_dispatch/session.rs | 3→4 lines | ~41 |
+| 23:58 | Edited config/keymaps/default.toml | 4→9 lines | ~39 |
+| 00:00 | Created src/app/app_state/code_graph_hud.rs | — | ~993 |
+| 00:00 | Edited src/app/app_state/mod.rs | 2→3 lines | ~13 |
+| 00:00 | Edited src/app/app_state/mod.rs | 2→3 lines | ~28 |
+| 00:00 | Edited src/app/app_state/mod.rs | 2→3 lines | ~48 |
+| 00:00 | Edited src/app/input_map/mod.rs | 3→5 lines | ~36 |
+| 00:00 | Edited src/app/input_map/mod.rs | 4→5 lines | ~40 |
+| 00:01 | Edited src/app/input_map/mod.rs | 4→5 lines | ~54 |
+| 00:04 | Edited src/app/event_loop/setup.rs | 5→9 lines | ~114 |
+| 00:04 | Edited src/core/commands.rs | expanded (+9 lines) | ~110 |
+| 00:04 | Edited src/core/command_dispatch/mod.rs | expanded (+6 lines) | ~86 |
+| 00:04 | Edited src/core/command_dispatch/session.rs | expanded (+6 lines) | ~87 |
+| 00:04 | Edited src/app/event_loop/commands_lsp.rs | expanded (+15 lines) | ~280 |
+| 00:07 | Edited src/app/event_loop/commands_lsp.rs | modified open_code_graph_hud() | ~1056 |
+| 00:07 | Edited src/app/input_map/focus.rs | modified resolve_code_graph_focus() | ~531 |
+| 00:07 | Edited src/app/event_loop/commands_lsp.rs | 6→11 lines | ~104 |
+| 00:07 | Edited src/app/event_loop/commands_lsp.rs | 6→11 lines | ~114 |
+| 00:07 | Edited src/app/input_map/mod.rs | 3→6 lines | ~68 |
+| 00:10 | Edited src/app/event_loop/async_results/mod.rs | expanded (+21 lines) | ~300 |
+| 00:14 | Edited src/render/renderer/editor/overlays.rs | modified append_code_graph_hud() | ~3560 |
+| 00:15 | Edited src/render/renderer/editor/overlays.rs | 3→6 lines | ~70 |
+| 00:15 | Edited src/render/renderer/editor/overlays.rs | 6→6 lines | ~57 |
+| 00:16 | Edited src/app/app_state/mod.rs | expanded (+9 lines) | ~143 |
+| 00:19 | Session end: 45 writes across 22 files (2026-06-16-code-graph-hud-design.md, 2026-06-16-code-graph-hud.md, cli_json.rs, model.rs, navigation.rs) | 25 reads | ~249014 tok |
+| 00:36 | Edited src/codegraph/layout.rs | modified layout() | ~172 |
+| 00:37 | Edited src/codegraph/layout.rs | 4→4 lines | ~59 |
+| 00:37 | Edited src/codegraph/layout.rs | 4→4 lines | ~72 |
+| 00:38 | Edited src/codegraph/layout.rs | modified layout_caps_visible_and_reports_overflow() | ~126 |
+| 00:38 | Edited src/codegraph/edges.rs | modified elbow() | ~96 |
+| 00:38 | Edited src/codegraph/edges.rs | 23→23 lines | ~160 |
+| 00:38 | Edited src/codegraph/edges.rs | 2→2 lines | ~21 |
+| 00:39 | Edited src/render/renderer/editor/overlays.rs | modified append_code_graph_hud() | ~276 |
+| 00:39 | Edited src/render/renderer/editor/overlays.rs | 4→4 lines | ~78 |
+| 00:40 | Edited src/render/renderer/editor/overlays.rs | 9→10 lines | ~126 |
+| 00:40 | Edited src/render/renderer/editor/overlays.rs | modified is_empty() | ~368 |
+| 00:40 | Edited src/render/renderer/editor/overlays.rs | 7→8 lines | ~52 |
+| 00:41 | Edited src/render/renderer/editor/overlays.rs | modified elbow() | ~43 |
+| 00:41 | Edited src/render/renderer/editor/overlays.rs | modified elbow() | ~43 |
+| 00:42 | Edited src/render/renderer/editor/overlays.rs | 42→47 lines | ~578 |
+| 00:42 | Edited src/render/renderer/editor/overlays.rs | expanded (+7 lines) | ~77 |
+| 00:44 | Session end: 61 writes across 22 files (2026-06-16-code-graph-hud-design.md, 2026-06-16-code-graph-hud.md, cli_json.rs, model.rs, navigation.rs) | 25 reads | ~251525 tok |
+| 09:47 | Edited src/async_runtime/scheduler/codegraph.rs | expanded (+13 lines) | ~208 |
+| 09:48 | Session end: 62 writes across 22 files (2026-06-16-code-graph-hud-design.md, 2026-06-16-code-graph-hud.md, cli_json.rs, model.rs, navigation.rs) | 25 reads | ~251748 tok |
+| 10:04 | Edited src/codegraph/edges.rs | modified elbow() | ~378 |
+| 10:04 | Edited src/app/event_loop/commands_lsp.rs | modified code_graph_nav() | ~103 |
+| 10:04 | Edited src/codegraph/layout.rs | 5→5 lines | ~54 |
+| 10:07 | Edited src/render/renderer/editor/overlays.rs | modified append_code_graph_hud() | ~3917 |
+| 10:08 | Session end: 66 writes across 22 files (2026-06-16-code-graph-hud-design.md, 2026-06-16-code-graph-hud.md, cli_json.rs, model.rs, navigation.rs) | 25 reads | ~260295 tok |
+| 10:39 | Session end: 66 writes across 22 files (2026-06-16-code-graph-hud-design.md, 2026-06-16-code-graph-hud.md, cli_json.rs, model.rs, navigation.rs) | 25 reads | ~260295 tok |
+| 10:42 | Edited src/render/renderer/editor/overlays.rs | 2→2 lines | ~24 |
+| 10:42 | Edited src/render/renderer/editor/overlays.rs | 7→6 lines | ~96 |
+| 10:42 | Edited src/render/renderer/helpers.rs | modified clamp_monospace_text_left() | ~264 |
+| 10:42 | Edited src/render/renderer/editor/overlays.rs | 1→2 lines | ~33 |
+| 10:42 | Edited src/render/renderer/editor/overlays.rs | 2→2 lines | ~47 |
+| 10:43 | Edited src/app/app_state/code_graph_hud.rs | modified default() | ~263 |
+| 10:43 | Edited src/app/app_state/code_graph_hud.rs | modified set_model() | ~74 |
+| 10:43 | Edited src/app/event_loop/commands_lsp.rs | modified code_graph_nav() | ~534 |
+| 10:44 | Edited src/app/event_loop/async_results/mod.rs | 7→8 lines | ~99 |
+| 10:45 | Edited src/render/renderer/editor/overlays.rs | expanded (+69 lines) | ~962 |
+| 10:45 | Edited src/render/renderer/editor/overlays.rs | 10→11 lines | ~159 |
+| 10:46 | Session end: 77 writes across 23 files (2026-06-16-code-graph-hud-design.md, 2026-06-16-code-graph-hud.md, cli_json.rs, model.rs, navigation.rs) | 25 reads | ~265424 tok |

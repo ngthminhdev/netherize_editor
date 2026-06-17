@@ -587,12 +587,9 @@ impl Renderer {
         let fg = self.theme.ui.fg.as_f32();
         let fg_dim = self.theme.ui.fg_dim.as_f32();
         let accent = self.theme.ui.accent.as_f32();
-        // Unified tab-bar palette across every dock + the main editor: base on the
-        // (darker) editor background, with a subtle lift for the selected tab so it
-        // reads as active without going near-white.
-        let tab_base = self.theme.editor.bg.as_f32();
+        let tab_base = self.theme.ui.panel_bg.as_f32();
         let border = self.theme.ui.border_color.as_f32();
-        let active_bg = super::utils::blend_rgb(tab_base, fg, 0.05, tab_base[3]);
+        let active_bg = self.theme.editor.bg.as_f32();
         let inactive_bg = tab_base;
         const TOP_BORDER: f32 = 2.0;
 
@@ -708,6 +705,15 @@ impl Renderer {
                 ));
             }
         }
+        chrome.push(RegionDrawInstance::new(
+            [
+                bounds[0],
+                bounds[1] + bounds[3] - 1.0,
+                bounds[2],
+                1.0,
+            ],
+            border,
+        ));
         self.sidebar_text_system.set_metrics(saved_metrics);
         (chrome, glyphs, icon_instances)
     }
@@ -815,9 +821,10 @@ impl Renderer {
 
             let icon_color = super::test_runner::outline_kind_color(
                 &sym.kind,
+                self.theme.ui.cyan.as_f32(),
+                self.theme.ui.magenta.as_f32(),
                 self.theme.ui.info.as_f32(),
-                self.theme.ui.warning.as_f32(),
-                self.theme.ui.success.as_f32(),
+                self.theme.ui.amber.as_f32(),
                 fg_dim,
             );
             let icon_size = line_h.min(18.0 * scale).max(12.0);

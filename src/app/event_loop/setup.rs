@@ -737,7 +737,11 @@ impl AppShell {
             && (!self.app_state.is_command_palette_visible()
                 || self.app_state.command_palette_mode()
                     == Some(CommandPaletteMode::RecentProjects));
-        let focus = if welcome_visible
+        let focus = if self.app_state.code_graph_hud.open {
+            // The Code Graph HUD is modal: it owns hjkl/Enter/Esc while open,
+            // regardless of the underlying editor/sidebar focus.
+            InputFocusContext::CodeGraph
+        } else if welcome_visible
             && !matches!(self.focus_manager.current(), FocusTarget::LeftSidebar)
         {
             InputFocusContext::Welcome

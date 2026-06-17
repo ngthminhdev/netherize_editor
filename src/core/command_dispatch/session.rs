@@ -204,6 +204,13 @@ pub(super) fn dispatch(ctx: &mut DispatchCtx<'_, '_, '_>, command: Command) -> D
         | Command::LspGoToDefinition
         | Command::LspPreviewDefinition
         | Command::LspReferences
+        | Command::CodeGraphOpenGraphHud
+        | Command::CodeGraphNavLeft
+        | Command::CodeGraphNavRight
+        | Command::CodeGraphNavUp
+        | Command::CodeGraphNavDown
+        | Command::CodeGraphJump
+        | Command::CodeGraphClose
         | Command::ReferencesSelectNext
         | Command::ReferencesSelectPrev
         | Command::ReferencesOpenSelection

@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-06-16T12:39:32.470Z
-> Files: 411 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-06-17T03:45:34.914Z
+> Files: 421 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -234,7 +234,7 @@
 
 ## config/keymaps/
 
-- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5314 tok)
+- `default.toml` — Netherize Editor — Unified Neovim Profile (Final Clean) (~5329 tok)
 
 ## config/themes/
 
@@ -332,11 +332,16 @@
 - `MODULE12_HANDOFF_COMPACT.md` — Netherize Editor — Module 12 Handoff (Compact) (~1188 tok)
 - `perf_profiling.md` — Netherize Editor Perf Kit (Module 10 / Phase 3) (~786 tok)
 
+## docs/superpowers/plans/
+
+- `2026-06-16-code-graph-hud.md` — Code Graph HUD & Blast Radius Implementation Plan (~11742 tok)
+
 ## docs/superpowers/specs/
 
 - `2026-06-14-leetcode-test-runner-ai-generate-design.md` — LeetCode Test Runner — AI Generate, Per-File Cache, UX Rework (~859 tok)
 - `2026-06-14-test-runner-field-editing-design.md` — Test Runner — Edit JSON fields via the real vim editor (~1569 tok)
 - `2026-06-15-test-generation-improvement-design.md` — Test Case Generation Improvement — Prompt, Verification, Stratification (~2022 tok)
+- `2026-06-16-code-graph-hud-design.md` — Code Graph HUD & Blast Radius — Design (~1972 tok)
 
 ## scripts/
 
@@ -351,7 +356,7 @@
 ## src/
 
 - `editor_core.rs` — Editor core buffer tối thiểu cho single-file workflow. (~7620 tok)
-- `lib.rs` — Phiên bản hiển thị trong UI (Welcome screen, status bar…). (~122 tok)
+- `lib.rs` — Phiên bản hiển thị trong UI (Welcome screen, status bar…). (~127 tok)
 - `main.rs` (~42 tok)
 
 ## src/app/
@@ -369,8 +374,9 @@
 ## src/app/app_state/
 
 - `buffers.rs` — open_file, save_file, reload_active_file_from_disk_discarding_local, new_empty_buffer + 12 more (~8220 tok)
+- `code_graph_hud.rs` — Runtime state for the Code Graph HUD overlay (the `gp` graph view). (~1139 tok)
 - `editor.rs` — insert_tab, insert_char, step_over_closing_char, insert_html_auto_close_tag, insert_auto_pair (~10520 tok)
-- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~24453 tok)
+- `mod.rs` — ExternalChangeReport: status_label, new, is_supported_image_path, new (~25976 tok)
 - `multi_cursor.rs` — Returns all virtual cursors (read-only, used by the renderer). (~9219 tok)
 - `overlays.rs` — Update an item's `detail` (signature) by label. Used to apply data filled in (~17364 tok)
 - `palette.rs` — open_command_palette_mode, open_python_env_selector, open_python_env_selector_with_items, open_leetc (~18583 tok)
@@ -386,7 +392,7 @@
 - `commands_completion.rs` (~15455 tok)
 - `commands_editor.rs` (~5335 tok)
 - `commands_explorer.rs` (~7394 tok)
-- `commands_lsp.rs` (~10650 tok)
+- `commands_lsp.rs` (~13120 tok)
 - `commands_palette.rs` (~8052 tok)
 - `commands_prompts.rs` (~7222 tok)
 - `commands_settings_helpers.rs` — Which workbench dock a resize-mode key adjusts. (~9781 tok)
@@ -396,7 +402,7 @@
 - `commands.rs` — [path = "commands_ai_chat.rs"] (~10265 tok)
 - `helpers.rs` — Declares BRACKET_PAIRS (~18603 tok)
 - `mod.rs` — Struct: AppShell (~7021 tok)
-- `setup.rs` — new, new_for_tests (~22987 tok)
+- `setup.rs` — new, new_for_tests (~23112 tok)
 - `welcome.rs` (~611 tok)
 
 ## src/app/event_loop/async_results/
@@ -408,7 +414,7 @@
 - `git.rs` (~865 tok)
 - `leetcode_fetch.rs` (~1154 tok)
 - `lsp.rs` (~9497 tok)
-- `mod.rs` (~9234 tok)
+- `mod.rs` (~9344 tok)
 - `preview.rs` (~993 tok)
 - `runner.rs` — Fold the worker's per-case outcomes back into `test_runner` state and judge (~313 tok)
 - `shell.rs` (~112 tok)
@@ -427,24 +433,25 @@
 
 ## src/app/input_map/
 
-- `focus.rs` (~11494 tok)
+- `focus.rs` — Code Graph HUD overlay: vim hjkl navigation, Enter to jump, Esc to close. (~11606 tok)
 - `helpers.rs` (~180 tok)
-- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette (~6528 tok)
+- `mod.rs` — KeybindingContext: as_str, allows_leader, for_mode, for_mode_with_palette (~6612 tok)
 - `tests.rs` (~15331 tok)
 
 ## src/async_runtime/
 
 - `dart_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~1030 tok)
-- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~7949 tok)
+- `message.rs` — Trạng thái cài đặt của từng tool hệ thống. (~7891 tok)
 - `mod.rs` (~22 tok)
 - `python_env.rs` — [derive(Debug, Clone, Serialize, Deserialize)] (~2566 tok)
-- `scheduler.rs` — Declares FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD (~3127 tok)
+- `scheduler.rs` — Declares FULL_BUFFER_HIGHLIGHT_BYTE_THRESHOLD (~3132 tok)
 
 ## src/async_runtime/scheduler/
 
 - `ai_jobs.rs` — Platform install command for opencode: (~3926 tok)
 - `ai.rs` (~1916 tok)
-- `dispatch.rs` (~7800 tok)
+- `codegraph.rs` — Code Graph HUD worker job — spawns the external `codegraph` CLI and builds (~1307 tok)
+- `dispatch.rs` (~7205 tok)
 - `emit.rs` (~458 tok)
 - `file_watch.rs` — Declares FILE_WATCH_DEGRADED_THRESHOLD (~3241 tok)
 - `fzf.rs` — Declares MAX_FZF_RESULTS (~2494 tok)
@@ -458,6 +465,15 @@
 - `runtime.rs` — Runtime wrapper duy nhất cho background jobs. (~839 tok)
 - `syntax_jobs.rs` (~10267 tok)
 - `tests.rs` (~1915 tok)
+
+## src/codegraph/
+
+- `cli_json.rs` — Serde structs matching the `codegraph` CLI `--json` output. (~724 tok)
+- `edges.rs` — Edge geometry for the Code Graph HUD. (~728 tok)
+- `layout.rs` — Column layout for the Code Graph HUD: center pill + two side columns, (~1026 tok)
+- `mod.rs` — Code Graph HUD domain logic — pure, UI-free, fully unit-tested. (~121 tok)
+- `model.rs` — The renderable graph model built from the three codegraph CLI payloads. (~1378 tok)
+- `navigation.rs` — `hjkl` navigation state machine for the Code Graph HUD. (~642 tok)
 
 ## src/config/
 
@@ -478,8 +494,8 @@
 
 ## src/core/
 
-- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~10034 tok)
-- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5882 tok)
+- `command_ids.rs` — ── Editor movement & editing ──────────────────────────────────────────────── (~10115 tok)
+- `commands.rs` — [derive(Debug, Clone, Copy, PartialEq, Eq)] (~5952 tok)
 - `mod.rs` (~35 tok)
 - `mode.rs` — Các mode cốt lõi của editor. (~4298 tok)
 - `text_object.rs` — find_text_object_range (~1753 tok)
@@ -489,10 +505,10 @@
 
 - `common.rs` — Struct: DispatchReport (~1802 tok)
 - `editing.rs` (~9958 tok)
-- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~4658 tok)
+- `mod.rs` — Dispatcher là điểm duy nhất được phép apply `Command` vào `AppState`. (~4649 tok)
 - `navigation.rs` — Chụp lại (file, line, col) hiện tại trước một jump-motion (gg/G/{}/n/N). (~3534 tok)
 - `palette.rs` (~6779 tok)
-- `session.rs` (~4900 tok)
+- `session.rs` (~4866 tok)
 - `tests.rs` (~18838 tok)
 
 ## src/lsp/
@@ -521,7 +537,7 @@
 
 - `components.rs` (~123 tok)
 - `editor.rs` — Editor viewport rendering modules. (~2136 tok)
-- `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3458 tok)
+- `helpers.rs` — Pure free-standing helper functions shared across renderer submodules. (~3963 tok)
 - `lifecycle.rs` — Renderer lifecycle: GPU bootstrap, theme/config application, resize handling, (~6892 tok)
 - `palette.rs` — Overlay rendering: Command Palette, File Picker, Recent Projects, Leap labels. (~3160 tok)
 - `ui.rs` — Panel UI rendering modules. (~48 tok)
@@ -540,7 +556,7 @@
 - `extensions.rs` — update_extensions_manager_content (~9544 tok)
 - `fuzzy.rs` — update_fuzzy_picker_buffer_content (~7928 tok)
 - `help.rs` — update_help_buffer_content (~3996 tok)
-- `overlays.rs` — update_editor_overlays (~21181 tok)
+- `overlays.rs` — update_editor_overlays (~26085 tok)
 - `selections.rs` — indent_guide_quads, current_line_highlight_quad, visual_selection_quads, visual_block_selection_quads (~11283 tok)
 - `settings.rs` — Declares SettingsSection (~12386 tok)
 - `viewport.rs` — clear_editor_content, update_image_content, update_editor_content (~7304 tok)

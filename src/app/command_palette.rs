@@ -197,6 +197,7 @@ pub enum CommandPaletteItemTone {
     Function,
     Type,
     Variable,
+    Module,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -419,6 +420,9 @@ pub struct CommandPaletteRenderModel {
     pub warning_color: [f32; 4],
     /// Màu info (xanh dương) — dùng cho ext badges của .ts, .go ...
     pub info_color: [f32; 4],
+    pub magenta_color: [f32; 4],
+    pub cyan_color: [f32; 4],
+    pub amber_color: [f32; 4],
     pub item_tones: Vec<CommandPaletteItemTone>,
     pub item_preview_colors: Vec<Vec<[f32; 4]>>,
     pub search_case_sensitive: bool,
@@ -644,7 +648,8 @@ impl CommandPalette {
                 self.static_items.clone()
             } else {
                 let q = self.query.to_lowercase();
-                self.static_items
+                let mut filtered: Vec<CommandPaletteItem> = self
+                    .static_items
                     .iter()
                     .filter(|item| {
                         item.label.to_lowercase().contains(&q)
@@ -658,7 +663,17 @@ impl CommandPalette {
                                     if path.to_string_lossy().to_lowercase().contains(&q))
                     })
                     .cloned()
-                    .collect()
+                    .collect();
+
+                if self.mode == CommandPaletteMode::DocumentSymbols {
+                    filtered.sort_by_key(|item| {
+                        item.label
+                            .to_lowercase()
+                            .find(&q)
+                            .unwrap_or(usize::MAX)
+                    });
+                }
+                filtered
             };
             if self.results.is_empty() {
                 self.selected_index = 0;
@@ -1044,6 +1059,9 @@ impl CommandPalette {
             success_color: theme.ui.success.as_f32(),
             warning_color: theme.ui.warning.as_f32(),
             info_color: theme.ui.info.as_f32(),
+            magenta_color: theme.ui.magenta.as_f32(),
+            cyan_color: theme.ui.cyan.as_f32(),
+            amber_color: theme.ui.amber.as_f32(),
             item_tones: self.results.iter().map(|entry| entry.tone).collect(),
             item_preview_colors: self
                 .results
@@ -1096,7 +1114,8 @@ fn symbol_tone(kind: &str) -> CommandPaletteItemTone {
     match kind {
         "Function" | "Method" | "Constructor" => CommandPaletteItemTone::Function,
         "Class" | "Struct" | "Interface" | "Enum" | "TypeParameter" => CommandPaletteItemTone::Type,
-        "Variable" | "Constant" | "Field" | "Property" => CommandPaletteItemTone::Variable,
+        "Variable" | "Constant" | "Field" | "Property" | "EnumMember" => CommandPaletteItemTone::Variable,
+        "Namespace" | "Module" | "Package" => CommandPaletteItemTone::Module,
         _ => CommandPaletteItemTone::Default,
     }
 }

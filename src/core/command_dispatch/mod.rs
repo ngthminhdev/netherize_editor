@@ -425,6 +425,13 @@ fn dispatch_command_with_clipboard_once(
         | Command::LspGoToDefinition
         | Command::LspPreviewDefinition
         | Command::LspReferences
+        | Command::CodeGraphOpenGraphHud
+        | Command::CodeGraphNavLeft
+        | Command::CodeGraphNavRight
+        | Command::CodeGraphNavUp
+        | Command::CodeGraphNavDown
+        | Command::CodeGraphJump
+        | Command::CodeGraphClose
         | Command::LspFormatDocument
         | Command::TriggerCompletion
         | Command::CodeAction

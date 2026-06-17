@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Netherize — Code Graph HUD</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #root { height: 100%; overflow: hidden; }
+
+@keyframes hud-in {
+  from { opacity: 0; transform: scale(0.975) translateY(-5px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes breathe {
+  0%, 100% { opacity: 0.35; }
+  50%       { opacity: 0.75; }
+}
+@keyframes tip-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// ── Bearded Arc tokens ────────────────────────────────────────
+const C = {
+  bg:      "#0f1520",
+  editor:  "#1c2433",
+  panel:   "#141a28",
+  glass:   "rgba(16,21,36,0.94)",
+  border:  "#1e2738",
+  overlay: "rgba(6,9,16,0.84)",
+  fg:      "#d0d7e4",
+  dim:     "#8a9abf",
+  ghost:   "#3a4d68",
+  cyan:    "#22ECDB",
+  green:   "#3CEC85",
+  amber:   "#EACD61",
+  red:     "#E35535",
+};
+
+// ── Risk helpers ──────────────────────────────────────────────
+const RISK = {
+  center:  { color: C.cyan,  label: "focal",    mk: "cy" },
+  success: { color: C.green, label: "safe",     mk: "gr" },
+  warning: { color: C.amber, label: "med risk", mk: "am" },
+  error:   { color: C.red,   label: "high risk",mk: "rd" },
+};
+const rc = r => RISK[r]?.color ?? C.dim;
+
+// ── Node data ─────────────────────────────────────────────────
+// ViewBox 720 × 380
+// Center pill:  x=260 y=160  200×62
+// Caller pills: x=20  y=[68,168,268]  160×44
+// Callee pills: x=540 y=[68,168,268]  160×44
+const VW = 720, VH = 380;
+const NW = 160, NH = 44;
+const CW = 200, CH = 62;
+
+const NODES = {
+  center: {
+    id:"center", role:"center", risk:"center", kbd:null,
+    symbol:"validate", fullSymbol:"UserService.validate",
+    file:"user_service.rs", line:142, refs:null,
+    sig:"fn validate(&self, token: &str) -> Result<Claims>",
+    desc:"Focal symbol — all callers depend on this return contract.",
+    x:260, y:160, w:CW, h:CH,
+  },
+  caller1: {
+    id:"caller1", role:"caller", risk:"error", kbd:"a",
+    symbol:"login", fullSymbol:"AuthController.login",
+    file:"auth.rs", line:58, refs:1,
+    sig:"async fn login(req: LoginRequest) -> Response",
+    desc:"Directly consumes return type. Will break on signature change.",
+    x:20, y:68, w:NW, h:NH,
+  },
+  caller2: {
+    id:"caller2", role:"caller", risk:"warning", kbd:"s",
+    symbol:"check", fullSymbol:"SessionManager.check",
+    file:"manager.rs", line:23, refs:1,
+    sig:"fn check(&self, sid: SessionId) -> bool",
+    desc:"Indirect dependency via Claims fields. Verify on error-type changes.",
+    x:20, y:168, w:NW, h:NH,
+  },
+  caller3: {
+    id:"caller3", role:"caller", risk:"error", kbd:"d",
+    symbol:"handler", fullSymbol:"UserRoute.handler",
+    file:"users.rs", line:91, refs:1,
+    sig:"async fn handler(ctx: Ctx) -> Json",
+    desc:"Uses both Claims fields and error variants. High blast radius.",
+    x:20, y:268, w:NW, h:NH,
+  },
+  callee1: {
+    id:"callee1", role:"callee", risk:"success", kbd:"j",
+    symbol:"find_by_id", fullSymbol:"db.users.find_by_id",
+    file:"db/users.rs", line:34, refs:3,
+    sig:"async fn find_by_id(id: Uuid) -> Option<User>",
+    desc:"Stable API. No coupling risk from focal changes.",
+    x:540, y:68, w:NW, h:NH,
+  },
+  callee2: {
+    id:"callee2", role:"callee", risk:"warning", kbd:"k",
+    symbol:"verify", fullSymbol:"bcrypt.compare",
+    file:"extern::bcrypt", line:null, refs:1,
+    sig:"fn verify(hash: &str, pass: &str) -> bool",
+    desc:"External crate — pinned, but API drift is possible.",
+    x:540, y:168, w:NW, h:NH,
+  },
+  callee3: {
+    id:"callee3", role:"callee", risk:"success", kbd:"l",
+    symbol:"has", fullSymbol:"TokenBlacklist.has",
+    file:"blacklist.rs", line:12, refs:1,
+    sig:"fn has(&self, token: &str) -> bool",
+    desc:"Pure lookup. No mutation exposed. Safe callee.",
+    x:540, y:268, w:NW, h:NH,
+  },
+};
+
+const CALLERS = ["caller1","caller2","caller3"];
+const CALLEES = ["callee1","callee2","callee3"];
+
+// ── Edges ─────────────────────────────────────────────────────
+const EDGES = (() => {
+  const cLx = 260, cRx = 260 + CW, cMy = 160 + CH / 2;
+  const out = [];
+  CALLERS.forEach(id => {
+    const n = NODES[id];
+    const sx = n.x + n.w, sy = n.y + n.h / 2;
+    const mx = (sx + cLx) / 2;
+    out.push({ id, risk: n.risk, touches: [id, "center"],
+      d: `M${sx},${sy} C${mx},${sy} ${mx},${cMy} ${cLx},${cMy}` });
+  });
+  CALLEES.forEach(id => {
+    const n = NODES[id];
+    const dx = n.x, dy = n.y + n.h / 2;
+    const mx = (cRx + dx) / 2;
+    out.push({ id, risk: n.risk, touches: ["center", id],
+      d: `M${cRx},${cMy} C${mx},${cMy} ${mx},${dy} ${dx},${dy}` });
+  });
+  return out;
+})();
+
+// ── Compact pill node ─────────────────────────────────────────
+function Pill({ node, focused, onClick }) {
+  const color = rc(node.risk);
+  const isCenter = node.risk === "center";
+  const { x, y, w, h } = node;
+
+  return (
+    <g onClick={onClick} style={{ cursor: "pointer" }}>
+      {/* Focus halo */}
+      {focused && (
+        <rect x={x-5} y={y-5} width={w+10} height={h+10}
+          rx={isCenter ? 14 : 9} fill="none"
+          stroke={`${color}28`} strokeWidth={6}
+          style={{ animation: "breathe 1.8s ease-in-out infinite" }} />
+      )}
+      {/* Pill bg */}
+      <rect x={x} y={y} width={w} height={h}
+        rx={isCenter ? 10 : 6}
+        fill={focused ? `${color}18` : `${color}09`}
+        stroke={focused ? `${color}cc` : `${color}35`}
+        strokeWidth={focused ? 1.5 : 1} />
+
+      {isCenter ? (
+        <>
+          <text x={x+w/2} y={y+19} textAnchor="middle"
+            fill={C.cyan} fontSize={12.5} fontWeight="600"
+            fontFamily="'JetBrains Mono',monospace">
+            ◎ {node.symbol}
+          </text>
+          <text x={x+w/2} y={y+35} textAnchor="middle"
+            fill={C.dim} fontSize={9.5}
+            fontFamily="'JetBrains Mono',monospace">
+            {node.file}:{node.line}
+          </text>
+          <text x={x+w/2} y={y+52} textAnchor="middle"
+            fill={`${C.cyan}55`} fontSize={8.5}
+            fontFamily="'JetBrains Mono',monospace"
+            letterSpacing="0.05em">
+            ‹ cursor position ›
+          </text>
+        </>
+      ) : (
+        <>
+          {/* Keyboard hint outside pill */}
+          <text
+            x={node.role === "caller" ? x - 9 : x + w + 9}
+            y={y + h/2 + 4}
+            textAnchor={node.role === "caller" ? "end" : "start"}
+            fill={focused ? `${color}dd` : `${C.ghost}88`}
+            fontSize={8.5} fontWeight="600"
+            fontFamily="'JetBrains Mono',monospace">
+            {node.kbd}
+          </text>
+          {/* Risk dot */}
+          <circle cx={x+10} cy={y+h/2-2} r={3}
+            fill={color} opacity={focused ? 0.85 : 0.32} />
+          {/* Symbol */}
+          <text x={x+20} y={y+h/2-2}
+            fill={focused ? C.fg : C.dim}
+            fontSize={10.5} fontWeight={focused ? "600" : "400"}
+            fontFamily="'JetBrains Mono',monospace">
+            {node.symbol}
+          </text>
+          {/* File:line */}
+          <text x={x+20} y={y+h/2+11}
+            fill={C.ghost} fontSize={8.5}
+            fontFamily="'JetBrains Mono',monospace">
+            {node.file}{node.line ? `:${node.line}` : ""}
+          </text>
+        </>
+      )}
+    </g>
+  );
+}
+
+// ── Floating tooltip near focused node ────────────────────────
+function Tooltip({ node }) {
+  if (!node || node.risk === "center") return null;
+  const color = rc(node.risk);
+  const label = RISK[node.risk]?.label ?? "unknown";
+
+  const tW = 190, tH = 108;
+  // center on node, below by default; flip above if near bottom
+  let tx = node.x + node.w / 2 - tW / 2;
+  let ty = node.y + node.h + 8;
+  if (ty + tH > VH - 4) ty = node.y - tH - 8;
+  tx = Math.max(4, Math.min(tx, VW - tW - 4));
+
+  return (
+    <foreignObject x={tx} y={ty} width={tW} height={tH + 20}
+      style={{ overflow: "visible", animation: "tip-in .1s ease-out" }}>
+      <div xmlns="http://www.w3.org/1999/xhtml" style={{
+        background: "rgba(11,15,26,0.97)",
+        border: `1px solid ${color}44`,
+        borderRadius: 7, padding: "8px 10px",
+        fontFamily: "'JetBrains Mono', monospace",
+        width: tW + "px",
+      }}>
+        <div style={{ fontSize: 10.5, color: C.fg, fontWeight: 600,
+          marginBottom: 2, whiteSpace: "nowrap",
+          overflow: "hidden", textOverflow: "ellipsis" }}>
+          {node.fullSymbol}
+        </div>
+        <div style={{ fontSize: 8.5, color: color, marginBottom: 5 }}>
+          {node.role} · {label}
+        </div>
+        <div style={{ fontSize: 8.5, color: C.ghost, marginBottom: 4, lineHeight: "1.55" }}>
+          {node.file}{node.line ? `:${node.line}` : ""}
+          {node.refs != null ? ` · ${node.refs} ref` : ""}
+        </div>
+        <div style={{ fontSize: 8.5, color: `${C.dim}a0`, lineHeight: "1.5",
+          marginBottom: 5 }}>
+          {node.desc}
+        </div>
+        <div style={{ fontSize: 8, color: C.ghost,
+          borderTop: `1px solid ${C.border}`, paddingTop: 4 }}>
+          <span style={{ color: C.cyan }}>Enter</span>
+          {" jump · "}
+          <span style={{ color: C.dim }}>gr</span>
+          {" refs"}
+        </div>
+      </div>
+    </foreignObject>
+  );
+}
+
+// ── Background editor ─────────────────────────────────────────
+const BG = [
+  [{t:"kw",v:"use"},{t:"x",v:" crate::auth::UserService;"}],
+  [{t:"kw",v:"use"},{t:"x",v:" crate::session::SessionManager;"}],
+  [],
+  [{t:"kw",v:"pub async fn"},{t:"x",v:" "},{t:"fn",v:"login"},{t:"p",v:"("}],
+  [{t:"x",v:"    "},{t:"pm",v:"req"},{t:"p",v:": Json<LoginRequest>,"}],
+  [{t:"x",v:"    "},{t:"pm",v:"state"},{t:"p",v:": State<AppState>,"}],
+  [{t:"p",v:") -> Result<Json<AuthResponse>> {"}],
+  [{t:"x",v:'    let token = req.token.as_deref().unwrap_or("");'}],
+  [{t:"x",v:"    let claims = state"}],
+  [{t:"x",v:"        .user_svc"}],
+  [{t:"x",v:"        ."},{t:"fn",v:"validate"},{t:"p",v:"(token)"}],
+  [{t:"x",v:"        .map_err(|_| AuthError::InvalidToken)?;"}],
+  [{t:"x",v:"    Ok(Json(AuthResponse { session_id }))"}],
+  [{t:"p",v:"}"}],
+];
+const SYN = { kw:"#EACD61", fn:"#69C3FF", pm:"#22ECDB", p:"#3d5575", x:"#d0d7e4" };
+
+function BgEditor() {
+  return (
+    <div style={{
+      position: "absolute", inset: 0, background: C.editor,
+      fontFamily: "'JetBrains Mono',monospace", fontSize: 13,
+      lineHeight: "21px", padding: "52px 20px 20px 68px",
+      overflow: "hidden", opacity: 0.2,
+      userSelect: "none", pointerEvents: "none",
+    }}>
+      <div style={{
+        position: "absolute", left: 0, top: 0, bottom: 0, width: 54,
+        background: "#161d2a", borderRight: "1px solid #1e2738",
+      }} />
+      {BG.map((tokens, i) => (
+        <div key={i} style={{ display: "flex", position: "relative" }}>
+          <span style={{
+            position: "absolute", left: -48, width: 40,
+            textAlign: "right", color: "#2a3b55",
+            fontSize: 11, lineHeight: "21px",
+          }}>{i + 12}</span>
+          {tokens.map((tok, j) => (
+            <span key={j} style={{ color: SYN[tok.t] ?? "#d0d7e4" }}>{tok.v}</span>
+          ))}
+        </div>
+      ))}
+      {/* Cursor line highlight */}
+      <div style={{
+        position: "absolute", left: 0, right: 0,
+        top: 52 + 10 * 21, height: 21,
+        background: "rgba(34,65,68,0.22)",
+      }} />
+    </div>
+  );
+}
+
+// ── App ───────────────────────────────────────────────────────
+function App() {
+  const [focused, setFocused] = useState("center");
+  const [open,    setOpen]    = useState(true);
+  const [jumped,  setJumped]  = useState(null);
+
+  const node = NODES[focused];
+
+  function jump(id) {
+    setJumped(id);
+    setTimeout(() => setJumped(null), 1600);
+  }
+
+  useEffect(() => {
+    function onKey(e) {
+      if (!open) { if (e.key === "g") setOpen(true); return; }
+      const ci = CALLERS.indexOf(focused);
+      const ei = CALLEES.indexOf(focused);
+      const isClr = ci >= 0, isCle = ei >= 0, isCtr = focused === "center";
+
+      switch (e.key) {
+        case "Escape": setOpen(false); break;
+        case "Enter":  jump(focused); break;
+        // Leap-style direct jump
+        case "a": setFocused("caller1"); break;
+        case "s": setFocused("caller2"); break;
+        case "d": setFocused("caller3"); break;
+        case "j": setFocused("callee1"); break;
+        case "k": setFocused("callee2"); break;
+        case "l": setFocused("callee3"); break;
+        // Directional nav
+        case "h": case "ArrowLeft":
+          if (isCle) setFocused("center");
+          break;
+        case "ArrowRight":
+          if (isClr) setFocused("center");
+          if (isCtr) setFocused("callee2");
+          break;
+        case "ArrowUp":
+          if (isClr) setFocused(CALLERS[Math.max(ci-1, 0)]);
+          if (isCle) setFocused(CALLEES[Math.max(ei-1, 0)]);
+          break;
+        case "ArrowDown":
+          if (isClr) setFocused(CALLERS[Math.min(ci+1, 2)]);
+          if (isCle) setFocused(CALLEES[Math.min(ei+1, 2)]);
+          break;
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, focused]);
+
+  return (
+    <div style={{
+      width: "100vw", height: "100vh", position: "relative",
+      fontFamily: "'Inter',sans-serif", overflow: "hidden", background: C.bg,
+    }}>
+      <BgEditor />
+
+      {/* Simulated top chrome */}
+      <div style={{
+        position: "absolute", top: 10, left: 10, right: 10, height: 32,
+        background: C.panel, borderRadius: "6px 6px 0 0",
+        border: `1px solid ${C.border}`, opacity: 0.35,
+      }} />
+
+      {/* Overlay */}
+      {open && (
+        <div
+          onClick={e => { if (e.target === e.currentTarget) setOpen(false); }}
+          style={{
+            position: "absolute", inset: 0, background: C.overlay,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            zIndex: 100,
+          }}>
+
+          {/* HUD */}
+          <div style={{
+            width: "min(860px, calc(100vw - 48px))",
+            background: C.glass,
+            border: `1px solid ${C.border}`,
+            borderRadius: 10,
+            display: "flex", flexDirection: "column",
+            overflow: "hidden",
+            animation: "hud-in .15s ease-out",
+          }}>
+
+            {/* Top bar */}
+            <div style={{
+              height: 38, borderBottom: `1px solid ${C.border}`,
+              display: "flex", alignItems: "center",
+              padding: "0 14px", gap: 8, flexShrink: 0,
+            }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%",
+                background: C.cyan, flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: C.fg,
+                fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>
+                ◎ UserService.validate
+              </span>
+              <div style={{ width: 1, height: 12, background: C.border }} />
+              <span style={{ fontSize: 9.5, color: C.red,
+                fontFamily: "'JetBrains Mono',monospace" }}>
+                blast radius: high
+              </span>
+              <div style={{ width: 1, height: 12, background: C.border }} />
+              <span style={{ fontSize: 9.5, color: C.ghost,
+                fontFamily: "'JetBrains Mono',monospace" }}>
+                7 nodes · 6 edges
+              </span>
+              <div style={{ flex: 1 }} />
+              <span style={{
+                fontSize: 8.5, color: C.ghost,
+                fontFamily: "'JetBrains Mono',monospace",
+                border: `1px solid ${C.border}`, borderRadius: 3,
+                padding: "1px 6px",
+              }}>
+                src/auth/user_service.rs:142
+              </span>
+              <div onClick={() => setOpen(false)} style={{
+                width: 22, height: 22, display: "flex",
+                alignItems: "center", justifyContent: "center",
+                borderRadius: 4, cursor: "pointer",
+                color: C.ghost, fontSize: 12,
+                border: `1px solid ${C.border}`,
+              }}>✕</div>
+            </div>
+
+            {/* Graph */}
+            <div style={{ position: "relative", flex: 1 }}>
+              {/* Column labels */}
+              {["Callers","Callees"].map((lbl, i) => (
+                <div key={lbl} style={{
+                  position: "absolute", top: 6,
+                  [i === 0 ? "left" : "right"]: 14,
+                  fontSize: 8, color: C.ghost,
+                  fontFamily: "'Inter',sans-serif",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.13em", fontWeight: 600,
+                }}>{lbl}</div>
+              ))}
+
+              <svg viewBox={`0 0 ${VW} ${VH}`}
+                style={{ width: "100%", height: "100%", display: "block" }}>
+                <defs>
+                  {[["cy",C.cyan],["gr",C.green],["am",C.amber],["rd",C.red]].map(([k,col]) => (
+                    <marker key={k} id={`mk-${k}`}
+                      viewBox="0 0 8 8" refX="6" refY="4"
+                      markerWidth="5" markerHeight="5" orient="auto">
+                      <polygon points="0,1.5 7,4 0,6.5" fill={col} />
+                    </marker>
+                  ))}
+                </defs>
+
+                {/* Edges */}
+                {EDGES.map(e => {
+                  const color = rc(e.risk);
+                  const hot = e.touches.includes(focused);
+                  const mk = RISK[e.risk]?.mk ?? "gr";
+                  return (
+                    <path key={e.id} d={e.d} fill="none"
+                      stroke={hot ? `${color}99` : `${color}12`}
+                      strokeWidth={hot ? 1.5 : 1}
+                      markerEnd={hot ? `url(#mk-${mk})` : undefined}
+                    />
+                  );
+                })}
+
+                {/* Nodes */}
+                {Object.values(NODES).map(n => (
+                  <Pill key={n.id} node={n}
+                    focused={focused === n.id}
+                    onClick={() => setFocused(n.id)} />
+                ))}
+
+                {/* Tooltip near focused non-center node */}
+                {focused !== "center" && <Tooltip node={node} />}
+              </svg>
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              height: 30, borderTop: `1px solid ${C.border}`,
+              display: "flex", alignItems: "center",
+              padding: "0 14px", gap: 10, flexShrink: 0,
+              background: "rgba(12,17,28,0.7)",
+            }}>
+              {[
+                ["a s d",    "callers"],
+                ["j k l",    "callees"],
+                ["← →",      "navigate"],
+                ["Enter",    "jump"],
+                ["o",        "expand"],
+                ["t",        "tests"],
+                ["Esc",      "close"],
+              ].map(([k, d]) => (
+                <div key={k} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{
+                    fontSize: 8.5, color: C.dim, fontFamily: "monospace",
+                    border: `1px solid ${C.border}`, borderRadius: 3,
+                    padding: "1px 5px",
+                  }}>{k}</span>
+                  <span style={{ fontSize: 8.5, color: C.ghost }}>{d}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Jump flash */}
+      {jumped && (
+        <div style={{
+          position: "fixed", bottom: 36, left: "50%",
+          transform: "translateX(-50%)",
+          background: C.panel,
+          border: `1px solid ${C.cyan}44`,
+          borderRadius: 5, padding: "5px 14px",
+          color: C.cyan, fontSize: 10,
+          fontFamily: "'JetBrains Mono',monospace",
+          zIndex: 999, animation: "hud-in .12s ease-out",
+        }}>
+          ↳ jumping to {NODES[jumped]?.fullSymbol}
+        </div>
+      )}
+
+      {/* Reopen hint */}
+      {!open && (
+        <div style={{
+          position: "absolute", top: "50%", left: "50%",
+          transform: "translate(-50%,-50%)",
+          display: "flex", flexDirection: "column",
+          alignItems: "center", gap: 8, zIndex: 10,
+        }}>
+          <div style={{
+            fontSize: 11, color: C.ghost,
+            fontFamily: "'JetBrains Mono',monospace",
+          }}>graph closed</div>
+          <button onClick={() => setOpen(true)} style={{
+            padding: "5px 14px",
+            background: `${C.cyan}12`,
+            border: `1px solid ${C.cyan}44`,
+            borderRadius: 5, color: C.cyan, fontSize: 10.5,
+            fontFamily: "'JetBrains Mono',monospace",
+            cursor: "pointer",
+          }}>&lt;leader&gt;g — reopen</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>

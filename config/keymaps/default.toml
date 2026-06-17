@@ -959,6 +959,11 @@ command = "lsp.references"
 
 [[bindings]]
 mode = "normal"
+key = "g p"
+command = "codegraph.open_graph_hud"
+
+[[bindings]]
+mode = "normal"
 key = "<leader>r n"
 command = "lsp.rename"
 

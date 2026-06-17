@@ -255,14 +255,24 @@ impl Renderer {
         if model.result_labels.is_empty()
             && model.mode != crate::app::command_palette::CommandPaletteMode::FilePicker
         {
+            let empty_label = if model.is_loading {
+                "  Loading..."
+            } else {
+                "  (no results — type to search)"
+            };
+            let empty_color = if model.is_loading {
+                model.amber_color
+            } else {
+                model.hint_color
+            };
             glyphs.extend(layout_panel_text(
-                "  (no results — type to search)",
+                empty_label,
                 &mut self.palette_text_system,
                 &mut self.atlas,
                 &self.queue,
                 text_x,
                 row_top + row_v_pad,
-                model.hint_color,
+                empty_color,
             ));
         }
 
@@ -350,9 +360,10 @@ fn file_picker_tone_color(
     model: &CommandPaletteRenderModel,
 ) -> [f32; 4] {
     match tone {
-        crate::app::command_palette::CommandPaletteItemTone::Function => model.info_color,
-        crate::app::command_palette::CommandPaletteItemTone::Type => model.warning_color,
-        crate::app::command_palette::CommandPaletteItemTone::Variable => model.success_color,
+        crate::app::command_palette::CommandPaletteItemTone::Function => model.cyan_color,
+        crate::app::command_palette::CommandPaletteItemTone::Type => model.magenta_color,
+        crate::app::command_palette::CommandPaletteItemTone::Variable => model.info_color,
+        crate::app::command_palette::CommandPaletteItemTone::Module => model.amber_color,
         _ => model.label_color,
     }
 }

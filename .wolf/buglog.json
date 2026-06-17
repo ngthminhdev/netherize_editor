@@ -1,5 +1,47 @@
 [
   {
+    "id": "bug-014",
+    "timestamp": "2026-06-17T00:00:00+00:00",
+    "error_message": "Code Graph HUD: left (caller) edges drawn wrong/mirrored vs right; pressing hjkl moved focus (Enter jumped to the right node) but the focus ring did not visually move.",
+    "file": "src/codegraph/edges.rs",
+    "root_cause": "(1) elbow() wired the horizontal segments to cy (center y) and py (pill y) assuming the callee orientation (cx=center edge, px=pill edge). For callers (to_right=false) cx/px were swapped to pill/center but cy/py were not, so the center segment attached to the caller's x-edge and vice versa -> left edges looked reversed. (2) code_graph_nav() updated code_graph_hud.focus and called request_redraw() but did NOT set editor_needs_layout, so update_editor_overlays (which rebuilds the HUD incl. the focus ring) never re-ran; the ring stayed frozen while the underlying focus state had already moved (hence Enter jumped correctly).",
+    "fix": "Rewrote elbow() to always anchor the center end at center mid-y and the pill end at pill mid-y, choosing horizontal edges per side (center.x+center.w/center.x and pill.x/pill.x+pill.w). Set self.editor_needs_layout = true in code_graph_nav so the overlay (and ring) rebuilds each navigation.",
+    "tags": [
+      "codegraph",
+      "render",
+      "edges",
+      "geometry",
+      "dirty-flag",
+      "focus-ring",
+      "user-reported"
+    ],
+    "related_bugs": [
+      "bug-013"
+    ],
+    "occurrences": 1,
+    "last_seen": "2026-06-17T00:00:00+00:00"
+  },
+  {
+    "id": "bug-013",
+    "timestamp": "2026-06-17T00:00:00+00:00",
+    "error_message": "Code Graph HUD (gp): HUD UI renders tiny, HUD fonts look squished/broken, and the editor breadcrumb font shrinks after opening the HUD once.",
+    "file": "src/render/renderer/editor/overlays.rs",
+    "root_cause": "append_code_graph_hud called self.editor_overlay_text_system.set_metrics(Metrics::new(13,18)). That text system is SHARED with the breadcrumb and every other editor overlay, and the change persists across frames, so from the next frame on the breadcrumb (and HUD) text was laid out at the wrong, smaller metrics. Separately, all HUD pixel sizes (panel, pills, bars, gaps, font) were hardcoded in logical px without multiplying by self.ui_scale, while the rest of the chrome scales by ui_scale — so on HiDPI/retina the whole HUD rendered at half size ('bé xíu'). The codegraph::layout::layout absolute clamps (max 200px pill width) compounded this.",
+    "fix": "Removed the set_metrics call entirely; the HUD now reuses the editor-overlay text system as-is and receives the editor's runtime-scaled font_size/line_height as parameters (passed from `geometry`). Multiplied every absolute HUD pixel size by ui_s = self.ui_scale.max(0.5). Added a `scale` parameter to codegraph::layout::layout and codegraph::edges::elbow so pill/center/gap/edge sizes track HiDPI; tests pass scale=1.0.",
+    "tags": [
+      "codegraph",
+      "render",
+      "hidpi",
+      "ui-scale",
+      "text-system",
+      "shared-state",
+      "user-reported"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-06-17T00:00:00+00:00"
+  },
+  {
     "id": "bug-012",
     "timestamp": "2026-06-15T00:00:00+00:00",
     "error_message": "Right-dock tab switch bug: from AI Chat, Cmd-2 switches to Test Runner, but from Test Runner, Cmd-1 cannot switch back to AI Chat.",
