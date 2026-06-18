@@ -388,17 +388,16 @@ impl Renderer {
             }
 
             if let Some(label) = model.vim_mode_label {
-                let text = format!("-- {label} --");
-                let label_w = estimate_monospace_width(&text, font_size);
+                let label_w = estimate_monospace_width(label, font_size);
                 let label_x = panel_x + panel_w - model.panel_padding - label_w;
                 glyphs.extend(layout_panel_text(
-                    &text,
+                    label,
                     &mut self.palette_text_system,
                     &mut self.atlas,
                     &self.queue,
                     label_x,
                     prompt_y,
-                    model.hint_color,
+                    model.vim_mode_color.unwrap_or(model.hint_color),
                 ));
             }
         }
